@@ -264,7 +264,8 @@ async def test_execute_workflow(
             in result_stripped
         )
         assert (
-            "|swp2|[server2](mock_nb_url)|--|--|eth0|00:00:00:00:00:03|TenantA|300|" in result_stripped
+            "|swp2|[server2](mock_nb_url)|--|--|eth0|00:00:00:00:00:03|TenantA|300|"
+            in result_stripped
         )
         # Check entries with MAC addresses reported over LLDP
         assert (

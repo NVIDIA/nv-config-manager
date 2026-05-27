@@ -16,7 +16,6 @@
 
 from nautobot.core.api.fields import NautobotHyperlinkedRelatedField
 from nautobot.extras.api.serializers import NautobotModelSerializer
-from rest_framework import serializers
 
 from nv_config_manager.models import (
     BackupConfig,

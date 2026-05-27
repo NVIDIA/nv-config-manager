@@ -137,9 +137,7 @@ class TestTemporalAPI:
                     return detail
             except (requests.ConnectionError, requests.Timeout) as exc:
                 last_error = exc
-                print(
-                    f"  - Backup workflow {workflow_id[:8]}... poll transient error: {exc}"
-                )
+                print(f"  - Backup workflow {workflow_id[:8]}... poll transient error: {exc}")
 
             remaining = deadline - time.monotonic()
             if remaining <= 0:

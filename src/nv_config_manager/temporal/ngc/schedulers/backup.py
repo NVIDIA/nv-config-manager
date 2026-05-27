@@ -97,10 +97,7 @@ query ($is_aggregate_managed: Boolean) {
                 device = entry["device"]
                 status_name = (device.get("status") or {}).get("name")
                 platform_name = (device.get("platform") or {}).get("name")
-                if (
-                    status_name in self.STATUSES
-                    and platform_name in self.SUPPORTED_PLATFORMS
-                ):
+                if status_name in self.STATUSES and platform_name in self.SUPPORTED_PLATFORMS:
                     devices.add(device["id"])
         except KeyError as e:
             raise NautobotException(

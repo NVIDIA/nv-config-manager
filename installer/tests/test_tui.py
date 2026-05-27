@@ -21,7 +21,7 @@ async def test_app_starts_with_default_config():
     app = NVConfigManagerInstallerApp(config=NVConfigManagerInstallConfig())
     async with app.run_test():
         assert app.active_section == "cluster"
-        assert app.title == "NVIDIA Config Manager Install Wizard"
+        assert app.title == "NVCM Install Wizard"
 
 
 @pytest.mark.asyncio

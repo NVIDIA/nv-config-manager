@@ -125,7 +125,9 @@ def test_device_v2():
         ]
 
         # Test with custom platform
-        rsp = client.get("/v1/parameter/device?site=SITEA&status=Active&tenant=TenantA&platform=UFM")
+        rsp = client.get(
+            "/v1/parameter/device?site=SITEA&status=Active&tenant=TenantA&platform=UFM"
+        )
         assert rsp.json() == [
             {
                 "id": "aa6ef75b-00fe-45e6-8adb-62609509cb4f",
