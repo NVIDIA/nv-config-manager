@@ -1,0 +1,37 @@
+---
+manufacturer: NVIDIA
+model: SN4600C
+part_number: 920-9N31G-00MI-CC0
+device_family: Network
+u_height: 2
+is_full_depth: true
+weight: 14.6
+weight_unit: kg
+airflow: front-to-rear
+comments: "[Data Sheet](https://docs.nvidia.com/networking/display/sn4000/introduction)"
+deployment_types: [all, superpod]
+console_ports:
+  - name: con0
+    type: rj-45
+power_ports:
+  - name: PSU1
+    type: iec-60320-c14
+    maximum_draw: 750
+  - name: PSU2
+    type: iec-60320-c14
+    maximum_draw: 750
+interfaces:
+  - name: eth0
+    type: 1000base-t
+    mgmt_only: true
+module_bays:
+  - name: qsfp[1-64]
+    label: QSFP56 slot [1-64]
+    description: 100gbase-x-qsfp56 or 200gbase-x-qsfp56
+    position: "[1-64]"
+  - name: ps[1-2]
+    label: Power supply slot [1-2]
+    position: "[1-2]"
+  - name: fan[1-3]
+    label: Fan slot [1-3]
+    position: "[1-3]"

@@ -1,0 +1,342 @@
+# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
+#
+# =============================================================================
+# Ingress Resources for NVIDIA Config Manager Services (ingress-nginx mode)
+# =============================================================================
+# These Ingress resources are created when ingress.type=ingressNginx.
+# Each service gets its own hostname-based Ingress.
+#
+# Traffic flow with oauth2-proxy:
+#   Browser → ingress-nginx → oauth2-proxy (auth check) → Service → App
+#
+# ingress-nginx uses auth-url annotation to call oauth2-proxy for auth.
+# oauth2-proxy returns 202 (allow) or 401 (redirect to login).
+# =============================================================================
+
+{{- if eq (.Values.ingress.type | default "envoyGateway") "ingressNginx" }}
+{{- $ingressClassName := .Values.ingress.nginx.className | default "nginx" }}
+{{- $renderName := include "nv-config-manager.componentName" (dict "root" . "component" "render") }}
+{{- $ztpName := include "nv-config-manager.componentName" (dict "root" . "component" "ztp") }}
+{{- $dhcpName := include "nv-config-manager.componentName" (dict "root" . "component" "dhcp") }}
+{{- $temporalName := include "nv-config-manager.componentName" (dict "root" . "component" "temporal") }}
+{{- $uiName := include "nv-config-manager.componentName" (dict "root" . "component" "ui") }}
+{{- $nautobotName := include "nv-config-manager.componentName" (dict "root" . "component" "nautobot") }}
+{{- $oauth2ProxyName := include "nv-config-manager.componentName" (dict "root" . "component" "oauth2-proxy") }}
+{{- $configStoreName := include "nv-config-manager.componentName" (dict "root" . "component" "config-store") }}
+{{- $tlsSecretName := include "nv-config-manager.componentName" (dict "root" . "component" "gateway-tls") }}
+{{- $baseAnnotations := .Values.ingress.nginx.annotations | default dict }}
+
+{{- /* Build annotations with oauth2-proxy auth if enabled */}}
+{{- $annotations := $baseAnnotations }}
+{{- if .Values.oidc.enabled }}
+{{- /* Use internal service URL for auth-url (more efficient, avoids external round-trip) */}}
+{{- /* Keep external URL for auth-signin (browser redirect needs external hostname) */}}
+{{- /* Use FQDN because ingress-nginx controller runs in a different namespace */}}
+{{- $oauth2Annotations := dict 
+    "nginx.ingress.kubernetes.io/auth-url" (printf "http://%s.%s.svc.cluster.local:4180/oauth2/auth" $oauth2ProxyName .Values.global.namespace)
+    "nginx.ingress.kubernetes.io/auth-signin" (printf "https://%s/oauth2/start?rd=$scheme://$host$escaped_request_uri" .Values.oidc.hostname)
+    "nginx.ingress.kubernetes.io/auth-response-headers" "Authorization,X-Auth-Request-User,X-Auth-Request-Email,X-Auth-Request-Preferred-Username,X-Auth-Request-Groups"
+}}
+{{- $annotations = merge $oauth2Annotations $baseAnnotations }}
+{{- end }}
+
+{{- /* Local Development: Mock SSO headers when auth is disabled */}}
+{{- /* This injects X-Auth-Request-* headers as if user went through SSO */}}
+{{- if and .Values.localDev.mockAuth.enabled (not .Values.oidc.enabled) }}
+{{- $mockEmail := .Values.localDev.mockAuth.email | default "dev@localhost" }}
+{{- $mockUser := .Values.localDev.mockAuth.user | default "dev@localhost" }}
+{{- $mockName := .Values.localDev.mockAuth.name | default "Local Developer" }}
+{{- $mockGroups := .Values.localDev.mockAuth.groups | default "nv-config-manager" }}
+{{- $mockPreferredUsername := .Values.localDev.mockAuth.preferredUsername | default "dev" }}
+{{- $mockAuthSnippet := printf "proxy_set_header X-Auth-Request-Email \"%s\";\nproxy_set_header X-Auth-Request-User \"%s\";\nproxy_set_header X-Auth-Request-Name \"%s\";\nproxy_set_header X-Auth-Request-Groups \"%s\";\nproxy_set_header X-Auth-Request-Preferred-Username \"%s\";" $mockEmail $mockUser $mockName $mockGroups $mockPreferredUsername }}
+{{- $mockAuthAnnotations := dict 
+    "nginx.ingress.kubernetes.io/configuration-snippet" $mockAuthSnippet
+}}
+{{- $annotations = merge $mockAuthAnnotations $annotations }}
+{{- end }}
+
+# Render Service Ingress
+{{- if .Values.renderService.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $renderName }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: render-service
+  annotations:
+    {{- toYaml $annotations | nindent 4 }}
+spec:
+  ingressClassName: {{ $ingressClassName }}
+  {{- if .Values.gateway.certificates.enabled }}
+  tls:
+    - hosts:
+        - {{ tpl .Values.renderService.gateway.hostname . }}
+      secretName: {{ $tlsSecretName }}
+  {{- end }}
+  rules:
+    - host: {{ tpl .Values.renderService.gateway.hostname . }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $renderName }}-api
+                port:
+                  number: 9000
+{{- end }}
+
+# Network ZTP Ingress (for user/SSO access)
+{{- if .Values.networkZtp.enabled }}
+{{- $ztpAnnotations := merge (.Values.networkZtp.ingress.annotations | default dict) $annotations }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $ztpName }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: network-ztp
+  annotations:
+    {{- toYaml $ztpAnnotations | nindent 4 }}
+spec:
+  ingressClassName: {{ $ingressClassName }}
+  {{- if .Values.gateway.certificates.enabled }}
+  tls:
+    - hosts:
+        - {{ tpl .Values.networkZtp.gateway.hostname . }}
+      secretName: {{ $tlsSecretName }}
+  {{- end }}
+  rules:
+    - host: {{ tpl .Values.networkZtp.gateway.hostname . }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $ztpName }}-api
+                port:
+                  number: 9000
+{{- end }}
+
+# Network DHCP Ingress (for user/SSO access)
+{{- if .Values.networkDhcp.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $dhcpName }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: network-dhcp
+  annotations:
+    {{- toYaml $annotations | nindent 4 }}
+spec:
+  ingressClassName: {{ $ingressClassName }}
+  {{- if .Values.gateway.certificates.enabled }}
+  tls:
+    - hosts:
+        - {{ tpl .Values.networkDhcp.gateway.hostname . }}
+      secretName: {{ $tlsSecretName }}
+  {{- end }}
+  rules:
+    - host: {{ tpl .Values.networkDhcp.gateway.hostname . }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $dhcpName }}-internal
+                port:
+                  number: 9000
+{{- end }}
+
+# Temporal API Ingress
+{{- if .Values.temporal.enabled }}
+{{- $temporalCorsAnnotations := dict
+    "nginx.ingress.kubernetes.io/enable-cors" "true"
+    "nginx.ingress.kubernetes.io/cors-allow-methods" "PUT, GET, POST, OPTIONS, DELETE, PATCH"
+    "nginx.ingress.kubernetes.io/cors-allow-credentials" "true"
+    "nginx.ingress.kubernetes.io/cors-allow-origin" (printf "https://%s" .Values.gateway.baseHostname)
+}}
+{{- $temporalApiAnnotations := merge $temporalCorsAnnotations $annotations }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $temporalName }}-api
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: temporal-api
+  annotations:
+    {{- toYaml $temporalApiAnnotations | nindent 4 }}
+spec:
+  ingressClassName: {{ $ingressClassName }}
+  {{- if .Values.gateway.certificates.enabled }}
+  tls:
+    - hosts:
+        - {{ tpl .Values.temporal.gateway.api.hostname . }}
+      secretName: {{ $tlsSecretName }}
+  {{- end }}
+  rules:
+    - host: {{ tpl .Values.temporal.gateway.api.hostname . }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $temporalName }}-api
+                port:
+                  number: 9000
+---
+# Temporal Web UI Ingress (temporal.<base>) - OIDC-only, direct to app port
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $temporalName }}-web
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: temporal-web
+  annotations:
+    {{- toYaml $annotations | nindent 4 }}
+spec:
+  ingressClassName: {{ $ingressClassName }}
+  {{- if .Values.gateway.certificates.enabled }}
+  tls:
+    - hosts:
+        - {{ tpl .Values.temporal.gateway.devUi.hostname . }}
+      secretName: {{ $tlsSecretName }}
+  {{- end }}
+  rules:
+    - host: {{ tpl .Values.temporal.gateway.devUi.hostname . }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $temporalName }}-web-service
+                port:
+                  number: 8080
+{{- end }}
+
+# Unified UI Ingress (at base hostname) - OIDC-only, direct to app port
+{{- if .Values.ui.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $uiName }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ui
+  annotations:
+    {{- toYaml $annotations | nindent 4 }}
+spec:
+  ingressClassName: {{ $ingressClassName }}
+  {{- if .Values.gateway.certificates.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.gateway.baseHostname }}
+      secretName: {{ $tlsSecretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.gateway.baseHostname }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $uiName }}
+                port:
+                  number: 3000
+{{- end }}
+
+# Nautobot Ingress (when deployed locally)
+{{- if and .Values.nautobot.enabled .Values.externalServices.nautobot.local }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $nautobotName }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: nautobot
+  annotations:
+    {{- toYaml $annotations | nindent 4 }}
+spec:
+  ingressClassName: {{ $ingressClassName }}
+  {{- if .Values.gateway.certificates.enabled }}
+  tls:
+    - hosts:
+        - {{ tpl .Values.nautobot.gateway.hostname . }}
+      secretName: {{ $tlsSecretName }}
+  {{- end }}
+  rules:
+    - host: {{ tpl .Values.nautobot.gateway.hostname . }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $nautobotName }}
+                port:
+                  number: 80
+{{- end }}
+
+# Config Store API Ingress
+{{- if .Values.configStore.enabled }}
+{{- $configStoreCorsAnnotations := dict
+    "nginx.ingress.kubernetes.io/enable-cors" "true"
+    "nginx.ingress.kubernetes.io/cors-allow-methods" "PUT, GET, POST, OPTIONS, DELETE, PATCH"
+    "nginx.ingress.kubernetes.io/cors-allow-credentials" "true"
+    "nginx.ingress.kubernetes.io/cors-allow-origin" (printf "https://%s" .Values.gateway.baseHostname)
+}}
+{{- $configStoreApiAnnotations := merge $configStoreCorsAnnotations $annotations }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $configStoreName }}-api
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: config-store-api
+  annotations:
+    {{- toYaml $configStoreApiAnnotations | nindent 4 }}
+spec:
+  ingressClassName: {{ $ingressClassName }}
+  {{- if .Values.gateway.certificates.enabled }}
+  tls:
+    - hosts:
+        - {{ tpl .Values.configStore.gateway.api.hostname . }}
+      secretName: {{ $tlsSecretName }}
+  {{- end }}
+  rules:
+    - host: {{ tpl .Values.configStore.gateway.api.hostname . }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $configStoreName }}-api
+                port:
+                  number: 9000
+{{- end }}
+
+{{- end }}

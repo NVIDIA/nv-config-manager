@@ -1,0 +1,30 @@
+---
+title: BMC Provisioning
+sidebar-title: BMC Provisioning
+position: 10
+---
+
+Provisions and configures Baseboard Management Controllers (BMCs) for server infrastructure management using Redfish protocols.
+
+<Warning title="Deprecated / Experimental">
+The BMC provisioning workflow is deprecated and experimental. It has not completed QA and is not for production use.
+</Warning>
+
+## User Interface
+
+### Form Inputs
+
+| Field | Description | Selection Type | Required |
+| :---- | :---------- | :------------- | :------- |
+| **Site** | Choose the site containing BMC devices | Single dropdown from available sites | Yes |
+| **BMC Range** | IP address range for BMC discovery | Text input field | Yes |
+| **Credentials** | Management credentials for BMC access | Secure credential selection | Yes |
+
+## Workflow Execution
+
+### Execution Stages
+
+1. Discover BMC devices
+1. Provision BMC credentials
+1. Configure Redfish services
+1. Validate BMC functionality

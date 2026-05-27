@@ -1,0 +1,62 @@
+---
+apiVersion: v2
+name: nv-config-manager
+description: Unified NVIDIA Config Manager platform deployment including all microservices and gateway
+type: application
+version: 1.2.2-rc.23
+appVersion: "1.2.2-rc.23"
+keywords:
+  - nv-config-manager
+  - gateway
+  - envoy
+  - gateway-api
+  - kubernetes
+  - network-automation
+maintainers:
+  - name: NVIDIA Config Manager Team
+    email: ngc-cfa@nvidia.com
+# Optional subcharts for the local-dev observability stack.
+# Prometheus and Alloy default to disabled in values.yaml; they are turned on
+# together via values-observability.yaml (or observability enabled in installer
+# config / the TUI switch). Grafana and Loki remain chart-compatible optional
+# dependencies, but the installer-managed local stack does not enable them and
+# the default airgap bundle excludes their AGPL OSS distributions.
+dependencies:
+  # NOTE: prometheus-operator-crds is intentionally NOT a subchart here.
+  #
+  # It provides the PodMonitor / ServiceMonitor / Probe / PrometheusRule /
+  # Alertmanager / Prometheus / ThanosRuler CRDs that templates/monitoring.yaml
+  # references. If we shipped it as a subchart, helm would render the parent
+  # chart and these CRDs into one manifest, then ask the API server to validate
+  # every kind via REST discovery before applying anything. On a fresh cluster
+  # the PodMonitor CRD doesn't exist yet at validation time -- even though the
+  # CRD that defines it is in the same manifest -- and the install fails with
+  # "no matches for kind PodMonitor in version monitoring.coreos.com/v1".
+  #
+  # Instead the installer (Deployer._install_crds) installs prometheus-
+  # operator-crds as its own sibling Helm release before the main chart, the
+  # same way it pre-installs envoy-gateway / cert-manager / cnpg. By the time
+  # `helm upgrade --install nv-config-manager` runs, the CRDs are already
+  # registered cluster-wide and the parent chart's PodMonitor / Probe
+  # resources resolve cleanly.
+  #
+  # Standalone Prometheus running in receive-only mode
+  # (--web.enable-remote-write-receiver). All scraping happens in Alloy via
+  # prometheus.operator.{podmonitors,servicemonitors,probes}; Prometheus is
+  # purely the TSDB backend.
+  - name: prometheus
+    version: "29.4.0"
+    repository: "https://prometheus-community.github.io/helm-charts"
+    condition: prometheus.enabled
+  - name: grafana
+    version: "10.5.15"
+    repository: "https://grafana.github.io/helm-charts"
+    condition: grafana.enabled
+  - name: loki
+    version: "6.55.0"
+    repository: "https://grafana.github.io/helm-charts"
+    condition: loki.enabled
+  - name: alloy
+    version: "1.8.0"
+    repository: "https://grafana.github.io/helm-charts"
+    condition: alloy.enabled

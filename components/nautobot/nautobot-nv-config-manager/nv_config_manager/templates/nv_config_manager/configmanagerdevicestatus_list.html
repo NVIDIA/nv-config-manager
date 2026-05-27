@@ -1,0 +1,35 @@
+{% extends 'generic/object_list.html' %}
+{% load helpers %}
+
+{% block extra_styles %}
+  {{ block.super }}
+  <style>
+    #actions-dropdown,
+    #actions-dropdown + .dropdown-menu { display: none; }
+    .btn-group > a.btn:first-child { border-radius: 10px !important; }
+  </style>
+{% endblock extra_styles %}
+
+{% block header_extra %}
+  <div class="panel panel-default">
+    <div class="panel-heading">
+      <strong>Stats</strong>
+    </div>
+    <div class="panel-body">
+      <div class="col-md-6 text-center">
+        <h2 class="btn {% if managed_devices_count %}btn-primary{% else %}btn-default{% endif %} btn-large">
+          {{ managed_devices_count }}
+        </h2>
+        <p>Total Managed Devices</p>
+      </div>
+      <div class="col-md-6 text-center">
+        <a href="?is_pending=True">
+          <h2 class="btn {% if managed_devices_pending_count %}btn-warning{% else %}btn-default{% endif %} btn-large">
+            {{ managed_devices_pending_count }}
+          </h2>
+        </a>
+        <p>All Pending Deployments</p>
+      </div>
+    </div>
+  </div>
+{% endblock header_extra %}

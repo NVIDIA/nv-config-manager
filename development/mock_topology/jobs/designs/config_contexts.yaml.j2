@@ -1,0 +1,29 @@
+---
+# Config Contexts design file
+# Creates site-level and role-based configuration contexts
+
+{% if json.config_contexts is defined and json.config_contexts | length > 0 %}
+config_contexts:
+  {% for cc in json.config_contexts %}
+  - "!create_or_update:name": {{ cc.name }}
+    description: {{ cc.description | default("") }}
+    weight: {{ cc.weight | default(1000) }}
+    is_active: {{ cc.is_active | default(true) }}
+    data: {{ cc.data | tojson }}
+    {% if cc.locations is defined and cc.locations | length > 0 %}
+    locations:
+      {% for location in cc.locations %}
+      - "!get:name": {{ location }}
+      {% endfor %}
+    {% endif %}
+    {% if cc.roles is defined and cc.roles | length > 0 %}
+    roles:
+      {% for role in cc.roles %}
+      - "!get:name": {{ role }}
+      {% endfor %}
+    {% endif %}
+  {% endfor %}
+{% else %}
+config_contexts: []
+{% endif %}
+

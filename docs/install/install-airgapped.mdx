@@ -1,0 +1,437 @@
+---
+title: Deploy Config Manager in an Airgapped Environment
+sidebar-title: Airgapped Deployment
+---
+
+For environments without internet access, NVIDIA Config Manager provides a comprehensive airgapped deployment workflow that bundles everything needed for offline installation.
+
+You might need to deploy Config Manager in an airgapped environment in situations such as:
+
+* **Secure environments** — Isolated networks with no external connectivity
+* **Regulated industries** — Compliance requirements prohibiting external connections (for example, HIPAA, PCI-DSS, government)
+* **Edge deployments** — Remote locations with limited or no internet connectivity
+* **Reproducible installs** — Version-locked bundles for consistent deployments
+
+Follow the instructions on this page to deploy a self-contained bundle for an airgapped environment. The bundle includes the Helm chart, container image tarballs, dependency charts and manifests, operator version pins, image loader manifests, an OCI registry upload helper, and the offline installer package.
+
+<Note>
+This process is different from Nautobot's `Load Bootstrap Data` job which seeds initial data into Nautobot. This tool uses _deployment bundles_ for offline Kubernetes environments.
+</Note>
+
+## Prerequisites
+
+<Tip>
+The instructions on this page assume you have a pre-built deployment bundle available, from NVIDIA or another source. If you do not have a deployment bundle, follow the instructions in [Appendix: Developer Details](#appendix-developer-details) to create your own.
+</Tip>
+
+The following components are assumed to be pre-installed and configured by your platform team:
+
+| Component | Required | Purpose |
+| :-------- | :------- | :------ |
+| MetalLB | Yes | Provides load balancer IP addresses for ZTP and DHCP services |
+| NFS Storage | Yes (multi-node) | Shared storage (ReadWriteMany) for PVCs across nodes |
+| OpenBao/Vault | Optional | Secrets management through External Secrets Operator |
+| Keycloak | Optional | OIDC/SSO authentication |
+| SPIRE | Optional | SPIFFE workload identity for mTLS |
+
+**ZTP and DHCP IP Addresses**. The deploy script requires the IP addresses for the ZTP and DHCP load balancer services. To find available IPs for ZTP and DHCP services, query the existing MetalLB IP address pool:
+
+1. List configured IP address pools:
+
+    ```bash
+    kubectl get ipaddresspool -n metallb-system
+    ```
+
+1. View pool details including address ranges:
+
+    ```bash
+    kubectl get ipaddresspool -n metallb-system -o yaml
+    ```
+
+    The output of the second command will be similar to the following example. In this case, the output shows a pool of available IP addresses from `10.0.100.200` through `10.0.100.210`:
+
+    ```yaml
+    apiVersion: metallb.io/v1beta1
+    kind: IPAddressPool
+    metadata:
+      name: nv-config-manager-pool
+      namespace: metallb-system
+    spec:
+      addresses:
+      - 10.0.100.200-10.0.100.210
+    ```
+
+1. From the output of the second command, select two unused IP addresses for ZTP and DHCP services.
+
+    You will use these with the `--ztp-lb-ip` and `--dhcp-lb-ip` flags when deploying Config Manager.
+
+1. Set the `--lb-allowed-prefixes` flag for the deploy script to the OOB (out-of-band) management network CIDR(s) from which devices will reach these services.
+
+## Transfer and Extract the Bundle
+
+Transfer the bundle to the target host by using a storage medium or another approved transfer method.
+
+```bash
+export TARGET_HOST="airgap-host.example.com"
+
+scp output/nv-config-manager-airgapped-v1.0.0-amd64.tar.gz "${TARGET_HOST}:~/"
+ssh "${TARGET_HOST}"
+tar -xzf nv-config-manager-airgapped-v1.0.0-amd64.tar.gz
+cd nv-config-manager-airgapped-v1.0.0-amd64
+```
+
+The extracted bundle has the following layout:
+
+```text
+helm/                    # NVIDIA Config Manager Helm chart and packaged chart
+charts/                  # Dependency charts
+images/                  # Image tarballs and image-list.txt
+manifests/               # Image loader and operator manifests
+installer/               # Offline installer wheel, dependencies, and install.sh
+developer-docs/          # Optional developer documentation
+tools/skopeo/            # Optional bundled Skopeo binary
+upload-to-registry.sh    # OCI registry image and chart upload helper
+operator-versions.env    # Dependency version pins
+manifest.json            # Bundle metadata
+```
+
+**Stage any site-specific content** that the installer will reference, such as custom Nautobot jobs, template plugins, and OS images for ZTP, on storage that is reachable from the target host.
+
+## Prepare Images and Charts
+
+Before deployment, Config Manager images must either be reachable from an OCI registry inside the airgapped environment, or preloaded onto the target cluster nodes.
+
+### Upload Images and Chart to a Registry
+
+If the target cluster can pull from an internal registry, push the bundled image archives and packaged chart to an OCI-compliant registry that the cluster can reach.
+
+```bash
+export REGISTRY_USERNAME="registry-user"
+
+./upload-to-registry.sh \
+  --registry registry.example.com/nv-config-manager \
+  --chart-registry registry.example.com/nv-config-manager/charts \
+  --username "${REGISTRY_USERNAME}" \
+  --password-stdin
+```
+
+The helper writes `image-map.tsv` with source and target image references. Use that map when configuring the container image registry and prefix values in `install.yaml`.
+
+Use these options when they apply:
+
+* `--include-dependency-charts` mirrors dependency chart tarballs under `charts/`.
+* `--plain-http` allows Helm chart upload to local HTTP registries used in test environments.
+
+### Preload Images onto Nodes
+
+If the target environment does not have an internal registry, preload the image tarballs before deploying.
+
+**For Kind or single-node test clusters**, load images directly from the bundle:
+
+```bash
+./manifests/load-airgapped-images.sh ./images
+```
+
+**For multi-node clusters with shared storage**, copy `images/` to the shared path and run the loader as a DaemonSet:
+
+```bash
+mkdir -p /shared/nv-config-manager
+cp -r images /shared/nv-config-manager/images
+./manifests/load-airgapped-images.sh /shared/nv-config-manager/images --daemonset
+```
+
+**For SSH-based loading**, provide the shared image path and node access details:
+
+```bash
+./manifests/load-airgapped-images.sh /shared/nv-config-manager/images \
+  --ssh \
+  --ssh-user admin \
+  --ssh-key ~/.ssh/id_rsa
+```
+
+**After preloading images**, configure `install.yaml` with image references that match the images loaded into the node container runtimes.
+
+## Bootstrap the Installer TUI
+
+Install the bundled installer package on the target host and verify the TUI is available.
+
+```bash
+./installer/install.sh
+./installer/nv-config-manager-installer --help
+```
+
+The bootstrap script creates a local virtual environment from bundled wheels and does not require internet access on the target host.
+
+## Create a Configuration
+
+Launch the TUI and save a repeatable installer configuration.
+
+```bash
+./installer/nv-config-manager-installer init install.yaml
+```
+
+At minimum, confirm the following sections before deploying:
+
+| Section | Required Choices |
+| :------ | :--------------- |
+| Cluster | Hostname, namespace, environment, `Airgapped Deployment` enabled, and size profile |
+| Services | Config Manager services to enable for the deployment |
+| App Secrets | Kubernetes secrets or External Secrets Operator with Vault/OpenBao settings |
+| Container Images | OCI registry targets from `image-map.tsv`, or image references that match preloaded images |
+| Infrastructure | TLS, load balancer provider, and MetalLB, Cilium, or NLB addresses when used |
+| OS Images | Optional ZTP image PVC or S3 settings |
+| Ingest Data | Optional custom Nautobot jobs and post-deploy jobs |
+
+For more information about the configuration options, see the [TUI Wizard Reference](tui-wizard-reference.mdx).
+
+<Note>
+Treat `install.yaml` as sensitive. Depending on the choices you make in the TUI, it can include secret values or references to secret material.
+</Note>
+
+### Resource Profiles
+
+Config Manager provides pre-configured resource profiles through the TUI `Size` field.
+
+| Profile | Use Case | vCPU | RAM | Replicas |
+| :------ | :------- | :--- | :-- | :------- |
+| `small` | Local laptop or Kind development | 8+ | 24 GB | Single replicas for most services |
+| `medium` | Remote VM or staging environment | 16+ | 64 GB | Single replicas with larger service limits |
+| `large` | Production or HA deployment | 96+ | 256 GB+ | HA replicas for critical services |
+
+The requirements for the `large` profile are cumulative across all nodes. For example, a three-node cluster can satisfy the profile with 32 vCPUs and 86 GB RAM per node.
+
+## Deploy Config Manager
+
+Deploy from the extracted bundle after `install.yaml` is complete and images are either reachable from the configured registry or preloaded on the cluster nodes.
+
+```bash
+./installer/nv-config-manager-installer deploy install.yaml \
+  --chart-dir helm \
+  --image-source registry \
+  --install-envoy-gateway \
+  --install-cert-manager \
+  --install-cnpg-operator \
+  --helm-timeout 30m
+```
+
+When `cluster.airgapped` is true, the installer resolves operator manifests and dependency charts from the local bundle instead of the network.
+
+If you preloaded images instead of uploading them to a registry, keep `cluster.airgapped` enabled and make sure the container image values in `install.yaml` match the references loaded into the node container runtimes.
+
+To learn more about the installer and configuration screens, see the main [installer documentation](index.mdx).
+
+## Verify Deployment
+
+For common failure modes and recovery steps, see the [Troubleshooting](troubleshooting.mdx) page.
+
+After deployment, verify that pods are running, services are present, and the gateway is available. The commands below use the default `nv-config-manager` namespace; replace it if `install.yaml` uses a different namespace.
+
+```bash
+# Check all pods.
+kubectl get pods -n nv-config-manager -o wide
+
+# Check services and gateway resources.
+kubectl get svc -n nv-config-manager
+kubectl get gateway -n nv-config-manager
+
+# Get the Nautobot admin password.
+kubectl get secret nautobot-admin -n nv-config-manager -o jsonpath='{.data.password}' | base64 -d && echo
+```
+
+Configure DNS or `/etc/hosts` for the selected base hostname and service subdomains. In the example below, replace `GATEWAY_IP` with the gateway address from your deployment.
+
+```text wordWrap
+GATEWAY_IP config-manager.example.com nautobot.config-manager.example.com render.config-manager.example.com ztp.config-manager.example.com
+GATEWAY_IP dhcp.config-manager.example.com workflow.config-manager.example.com temporal.config-manager.example.com config-store.config-manager.example.com
+```
+
+After pods are running and DNS is configured, open the Nautobot UI in your browser, for example `https://nautobot.config-manager.example.com`, and log in with the admin credentials.
+
+## After Deployment
+
+Deploying Config Manager with the installer, including any post-deploy Nautobot jobs, is the only step required for day-0 bring-up.
+
+### How Devices Get into Config Manager
+
+Devices enter Config Manager through Nautobot. You can create them manually, through the Nautobot API, or with a post-deploy job such as a Nautobot Design Builder topology loader. The local SuperPOD profile includes a mock topology Design Builder job in `development/mock_topology` that you can use as a model before building your own offline context or job bundle. See [Design Builder Data Loading](../nautobot/design-builder-data-loading.mdx) for the job structure.
+
+### How ZTP Starts
+
+ZTP is initiated by the device, not by Config Manager. As soon as Config Manager has sufficient Nautobot data, it serves DHCP on the configured network. When a device is cabled and powered on, it gets an IP address and boot file from DHCP, then retrieves its configuration and firmware from the ZTP service. Devices that successfully complete ZTP show a status of `Provisioned` in Nautobot.
+
+### If a Post-Deploy Job Fails
+
+Validation or runtime errors from post-deploy jobs appear in the installer deploy output. Fix the job code, Design Builder design files, or context data and re-run the deployment with the same `content.run_after_deploy` configuration.
+
+### Post-Deployment Checks
+
+Open the Config Store UI, such as `https://config-manager.example.com/configs`, and confirm that intended configs are present for every device that should be rendered. If renders are missing, check the render service logs.
+
+The commands below use the default `nv-config-manager` namespace; replace it if your deployment uses a different namespace.
+
+```bash
+# List render-service pods.
+kubectl get pods -n nv-config-manager -l app=nv-config-manager-platform-render
+
+# Device-change consumer performs the actual render.
+kubectl logs -n nv-config-manager -l app=nv-config-manager-platform-render,component=consumer-device -f --tail=500
+
+# Nautobot consumer dispatches events.
+kubectl logs -n nv-config-manager -l app=nv-config-manager-platform-render,component=consumer-nautobot -f --tail=500
+```
+
+Search log output for `RenderException`, `Error processing event`, or Python tracebacks to identify the failing device and cause.
+
+To verify that devices have DHCP reservations, call the DHCP config endpoint, usually `https://dhcp.config-manager.example.com/config?ip_version=4`, and search for the device by hostname, IP address, or device UUID.
+
+To verify that DHCP has sufficient data from Nautobot, check the logs of the `config-refresh-v4` container in the DHCP refresh pods.
+
+```bash
+kubectl logs -n nv-config-manager -l app=nv-config-manager-platform-dhcp-refresh -c config-refresh-v4 -f --tail=200
+```
+
+## Iterative Deployment and Post-Deploy Changes
+
+You do not need to redeploy from scratch when you change data, add images, update templates, or upgrade versions. Treat `install.yaml` as the source of truth: re-open it with `./installer/nv-config-manager-installer init install.yaml`, adjust the configuration, and deploy again.
+
+```bash
+./installer/nv-config-manager-installer deploy install.yaml \
+  --chart-dir helm \
+  --image-source registry \
+  --helm-timeout 30m
+```
+
+The deployer detects existing releases and restarts services only when relevant staged content changes.
+
+### Update Nautobot or Site Data
+
+To change topology, devices, or other data managed by a post-deploy job, edit that job's context data or design files and re-run the deployment with the same post-deploy job configuration.
+
+You can also make changes in the Nautobot UI. For subsequent deployments, remove the job configuration if you do not want the job to overwrite UI changes.
+
+### Add or Update OS Images
+
+With file-backed OS image storage, add or update image entries in the OS Images section and re-run deployment. The installer updates the PVC layout and manifest, including checksums.
+
+If the PVC is backed by NFS, you can also copy images into the expected path and update the manifest manually. Some environments support the ZTP upload endpoint, which can upload images without re-running deployment. See [Upload Images to the ZTP Server](../network-ztp/upload-images.mdx) for the full procedure.
+
+### Upgrade Cumulus or Other Platforms
+
+Set the intended firmware version on the device or in a Config Context that applies to the device, such as by platform. You do not need a new Config Context for every image version.
+
+For a new OS version, add a version-specific entry point in the templates repository, such as a `5.15.0` directory under the platform and role path. Templates are versioned so syntax changes can be tested per OS version.
+
+### Sample Workflows
+
+* **First-time deploy with data and images**: Configure custom Nautobot jobs, post-deploy jobs, and OS images in the TUI, deploy once, and allow powered-on devices to ZTP after Nautobot data is ready.
+* **Data not ready at deploy time**: Deploy without the post-deploy topology job or with minimal data, then re-open `install.yaml`, add the job and context data, and deploy again.
+* **Add images or templates later**: Update `install.yaml` with new image or template settings, or stage files on NFS where appropriate, then deploy again.
+
+## Uninstall Config Manager
+
+To completely remove the Config Manager platform deployment:
+
+```bash
+# Uninstall the Helm release.
+helm uninstall nv-config-manager -n nv-config-manager
+
+# Optionally delete the namespace and all resources.
+kubectl delete namespace nv-config-manager
+```
+
+Operators such as Envoy Gateway, cert-manager, and CloudNativePG are cluster-level dependencies. Remove them only if they are not shared with other applications.
+
+## Appendix: Developer Details
+
+### Build the Bundle
+
+Build the airgapped bundle on a host with internet access and permission to pull Config Manager images.
+
+First, clone the Config Manager platform repository.
+
+```bash
+export NV_CONFIG_MANAGER_REPOSITORY_URL="https://github.com/NVIDIA/nv-config-manager.git"
+
+git clone "${NV_CONFIG_MANAGER_REPOSITORY_URL}"
+cd nv-config-manager
+```
+
+Next, build the bundle.
+
+```bash
+cd deploy/airgapped
+export NGC_API_KEY="your-ngc-api-key"
+./create-airgapped.sh --version v1.0.0 --arch amd64
+```
+
+The script writes the bundle to `deploy/airgapped/output/`.
+
+Add `--include-skopeo` to copy a local Skopeo binary into the bundle. When bundled Skopeo is present, the registry upload helper uses it automatically. Missing images fail the bundle build by default. Use `--allow-missing-images` only for diagnostics, because a bundle with missing images might not install offline.
+
+<Note>
+Pre-release E2E test workflows can use `--local-image-fallback` after tagging local images to the same source references that the chart renders.
+</Note>
+
+### Validate the Bundle
+
+Before transferring a self-built bundle, validate the archive, expected files, installer bootstrap, and registry upload path.
+
+Start with the checksum and bundle contents on the build host:
+
+```bash
+cd deploy/airgapped/output
+export BUNDLE_VERSION="v1.0.0"
+export BUNDLE_ARCH="amd64"
+export BUNDLE_NAME="nv-config-manager-airgapped-${BUNDLE_VERSION}-${BUNDLE_ARCH}.tar.gz"
+
+if [ -f "${BUNDLE_NAME}.sha256" ]; then
+  shasum -a 256 -c "${BUNDLE_NAME}.sha256"
+fi
+
+mkdir -p /tmp/nvcm-airgap-validate
+tar -xzf "${BUNDLE_NAME}" -C /tmp/nvcm-airgap-validate
+cd "/tmp/nvcm-airgap-validate/nv-config-manager-airgapped-${BUNDLE_VERSION}-${BUNDLE_ARCH}"
+
+test -f manifest.json
+test -d helm
+test -d charts
+test -d images
+test -d manifests
+test -d installer
+test -x upload-to-registry.sh
+test -x installer/install.sh
+
+jq -r '.bundleType, .version, .architecture, .chart, (.images | length)' manifest.json
+test "$(jq -r '.bundleType' manifest.json)" = "airgapped-install-bundle"
+test -f "$(jq -r '.chart' manifest.json)"
+test -s images/image-list.txt
+```
+
+Verify the offline installer can bootstrap from the bundled wheels:
+
+```bash
+./installer/install.sh
+./installer/nv-config-manager-installer --help
+```
+
+After you create an `install.yaml`, validate the installer config and generated Helm values against the bundled chart:
+
+```bash
+./installer/nv-config-manager-installer validate install.yaml
+./installer/nv-config-manager-installer generate-values install.yaml \
+  --chart-dir helm \
+  --output-dir /tmp/nvcm-airgap-values
+```
+
+For a full functional validation, upload the extracted bundle to a disposable internal registry and deploy into a test cluster using the same registry override path planned for production:
+
+```bash
+./upload-to-registry.sh \
+  --registry registry.example.com/nv-config-manager \
+  --chart-registry registry.example.com/nv-config-manager/charts \
+  --platform linux/amd64 \
+  --include-dependency-charts \
+  --map-file image-map.tsv
+```
+
+Validation passes when the upload helper writes `image-map.tsv`, the installer deploys with `cluster.airgapped: true`, workloads do not enter `ImagePullBackOff`, operator installs use bundled `manifests/` and `charts/`, and no workload tries to pull from public source registries.

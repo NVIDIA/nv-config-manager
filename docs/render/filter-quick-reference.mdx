@@ -1,0 +1,271 @@
+---
+title: Jinja2 filter quick reference
+sidebar-title: Filter quick reference
+position: 11
+---
+
+Quick lookup for common filters used in network templates. For Nautobot field mappings and narrative detail, see the [Network Template Rendering System overview](index.mdx).
+
+## Device information
+
+```jinja
+{{ device_data|hostname }}                    {# Device hostname #}
+{{ device_data|site_name }}                   {# Site name #}
+{{ device_data|platform }}                    {# Platform (e.g., "Cumulus Linux") #}
+{{ device_data|role }}                        {# Device role (e.g., "TAN-Leaf") #}
+{{ device_data|model }}                       {# Device model #}
+{{ device_data|desired_firmware }}            {# Target firmware version #}
+{{ device_data|uuid }}                        {# Nautobot UUID #}
+{{ device_data|device_tags }}                 {# List of device tags #}
+{{ device_data|has_tag("tag-name") }}         {# Check for specific tag #}
+```
+
+## Routing and BGP
+
+```jinja
+{{ device_data|router_id }}                   {# Router ID (loopback IP without mask) #}
+{{ device_data|asn }}                         {# BGP ASN for default VRF #}
+{{ device_data|asn("VRF-NAME") }}             {# BGP ASN for specific VRF #}
+{{ device_data|local_asn }}                   {# Local ASN (Azure) #}
+
+{% for peer in device_data|bgp_peers %}
+  neighbor {{ peer.peer_ipv4 }} remote-as {{ peer.asn }}
+  neighbor {{ peer.peer_ipv4 }} description {{ peer.description }}
+  neighbor {{ peer.peer_ipv4 }} peer-group {{ peer.peer_group }}
+{% endfor %}
+
+{{ "1.100"|asplain }}                         {# Convert ASDOT to ASPLAIN (→ 65636) #}
+```
+
+## Interface operations
+
+```jinja
+{# Get all interfaces #}
+{% for intf in device_data|interfaces %}
+  {{ intf.name }} - {{ intf.description }}
+{% endfor %}
+
+{# Filter by prefix #}
+{% for intf in device_data|interfaces(prefix="swp") %}
+  interface {{ intf.name }}
+{% endfor %}
+
+{# Filter by role #}
+{% for intf in device_data|interfaces(role="Uplink") %}
+  interface {{ intf.name }}
+{% endfor %}
+
+{# Filter by tags #}
+{% for intf in device_data|interfaces(tags=["qos-enabled"]) %}
+  interface {{ intf.name }}
+{% endfor %}
+
+{# Get specific interface #}
+{% set intf = device_data|interface_by_name("eth0") %}
+{{ intf.name }} - {{ intf.primary_ipv4 }}
+
+{# Get breakout count #}
+{{ device_data|breakout_count("swp1") }}      {# Returns 0, 2, 4, or 8 #}
+
+{# Loopback parent prefix #}
+{{ device_data|loopback_prefix }}             {# Parent prefix of loopback IP #}
+```
+
+## Interface object properties
+
+```jinja
+{{ intf.name }}                               {# Interface name #}
+{{ intf.description }}                        {# Description #}
+{{ intf.primary_ipv4 }}                       {# Primary IPv4 (with prefix) #}
+{{ intf.primary_ipv6 }}                       {# Primary IPv6 (with prefix) #}
+{{ intf.enabled }}                            {# Admin state (true/false) #}
+{{ intf.mtu }}                                {# MTU #}
+{{ intf.vrf }}                                {# VRF name (default if none) #}
+{{ intf.role }}                               {# Interface role #}
+{{ intf.untagged_vlan }}                      {# Untagged VLAN ID (or None) #}
+{{ intf.tagged_vlans }}                       {# List of tagged VLAN IDs #}
+{{ intf.tags }}                               {# List of interface tags #}
+{{ intf.has_bgp_peer() }}                     {# True if BGP-eligible #}
+
+{# Connected device info #}
+{% if intf.connected_interface %}
+  {{ intf.connected_interface.name }}
+  {{ intf.connected_interface.device.name }}
+  {{ intf.connected_interface.device.role }}
+  {{ intf.connected_interface.device.asn }}
+  {{ intf.connected_interface.device.peer_ipv4 }}
+{% endif %}
+```
+
+## IP address manipulation
+
+```jinja
+{{ "10.0.0.5/24"|gateway }}                   {# → "10.0.0.1" (first usable) #}
+{{ "10.0.0.5/31"|get_peer_ip }}               {# → peer in /31 #}
+{{ "10.0.0.5/24"|network_address }}           {# → "10.0.0.0/24" #}
+
+{# Subnet operations #}
+{% for subnet in "10.0.0.0/16"|subnet(24) %}
+  {{ subnet }}                                {# /24 subnets #}
+{% endfor %}
+
+{{ "10.0.0.0/24"|supernet(16) }}              {# → "10.0.0.0/16" #}
+
+{# All IPs in range #}
+{% for ip in "10.0.0.0/29"|ips %}
+  {{ ip }}                                    {# Each IP in subnet #}
+{% endfor %}
+
+{# Netmask notation #}
+{% set addr, mask = "10.0.0.0/24"|netmask_notation %}
+{{ addr }}                                    {# → "10.0.0.0" #}
+{{ mask }}                                    {# → "255.255.255.0" #}
+
+{# DHCP host range #}
+{% set first, last = "10.0.0.0/24"|host_range %}
+range {{ first }} {{ last }};                 {# → range 10.0.0.2 10.0.0.254 #}
+
+{# RFC3442 static route for DHCP #}
+{{ "10.1.0.0/16"|rfc3442_classless_static_route("10.0.0.1") }}
+```
+
+## Location and site data
+
+```jinja
+{{ location_data|site_asn }}                  {# Site BGP ASN #}
+
+{% for prefix in location_data|site_aggregates("Aggregate") %}
+  network {{ prefix }}
+{% endfor %}
+
+{% for prefix in location_data|site_aggregates("Aggregate", tags=["bgp-advertise"]) %}
+  network {{ prefix }}
+{% endfor %}
+
+{% for prefix in location_data|site_aggregates("Infrastructure", exclude_tags=["do-not-advertise"]) %}
+  network {{ prefix }}
+{% endfor %}
+
+{% for rs in location_data|route_server_peers %}
+  neighbor {{ rs.peer_ipv4 }} remote-as {{ rs.asn }}
+{% endfor %}
+
+{% for name, loopback in location_data|wan_loopbacks %}
+  router {{ name }} loopback {{ loopback }}
+{% endfor %}
+
+{% for prefix in location_data|uc_jumphost_prefixes %}
+  ip prefix-list JUMPHOSTS permit {{ prefix }}
+{% endfor %}
+```
+
+## DHCP helper addresses
+
+```jinja
+{# By VLAN: { vlan_id: [helpers] } for device VLANs #}
+{% set vlan_helpers = device_data|helper_addresses_by_vlan(location_data) %}
+{% for vlan_id, helpers in vlan_helpers.items() %}
+  vlan {{ vlan_id }}:
+  {% for helper in helpers %}
+    dhcp-server {{ helper }}
+  {% endfor %}
+{% endfor %}
+
+{# By VRF: { vrf_name: { vlans: [], helpers: [] } } #}
+{% set vrf_configs = device_data|helper_addresses_by_vrf(location_data) %}
+{% for vrf_name, config in vrf_configs.items() %}
+  vrf {{ vrf_name }}:
+    vlans: {{ config.vlans }}
+  {% for helper in config.helpers %}
+    dhcp-server {{ helper }}
+  {% endfor %}
+{% endfor %}
+```
+
+## Secret management
+
+```jinja
+{% set secret = "secret_key"|load_secret(site=device_data|site_name) %}
+{% set secret = "secret_key"|load_secret(region="US-WEST") %}
+
+{% for user in device_data|users %}
+  {# user.username, user.role (optional), user.password_key #}
+  {% set password = user.password_key|load_secret(site=device_data|site_name) %}
+  username {{ user.username }} secret {{ password|encrypt("sha512", site=device_data|site_name) }}{% if user.role %} role {{ user.role }}{% endif %}
+{% endfor %}
+
+{% set password = "root_password_r1"|load_secret(site=device_data|site_name) %}
+username admin secret {{ password|encrypt("sha512", site=device_data|site_name) }}
+tacacs-server key {{ ("tacacs_key_r1"|load_secret(site=device_data|site_name))|encrypt("ciscot7", site=device_data|site_name) }}
+```
+
+In development or testing, set `NV_CONFIG_MANAGER_SKIP_VAULT=1` to use dummy secret values.
+
+## ISIS
+
+```jinja
+{{ device_data|router_id|isis_system_id }}
+```
+
+## VRF operations
+
+```jinja
+{% for vrf in device_data|tenant_vrfs %}
+  vrf {{ vrf.name }}
+    vni {{ vrf.vni }}
+    {% for rt in vrf.export_targets %}
+    route-target export {{ rt }}
+    {% endfor %}
+    {% for rt in vrf.import_targets %}
+    route-target import {{ rt }}
+    {% endfor %}
+{% endfor %}
+```
+
+## Specialized filters
+
+```jinja
+{% for entry in device_data|spx_subnets(ip_version=4) %}
+  route {{ entry.subnet }} via {{ entry.rail_prefix }}
+{% endfor %}
+
+{% for port in device_data|console_server_ports %}
+  console-port {{ port.name }} connects to {{ port.device.name }}
+{% endfor %}
+```
+
+## Common patterns
+
+### Management interface
+
+```jinja
+{% set mgmt = device_data|interface_by_name("eth0") %}
+interface eth0
+  description {{ mgmt.description }}
+  ip address {{ mgmt.primary_ipv4 }}
+  ip gateway {{ mgmt.primary_ipv4|gateway }}
+  vrf mgmt
+```
+
+### Conditional configuration
+
+```jinja
+{% if device_data|has_tag("enable-feature") %}
+feature-x enable
+{% endif %}
+```
+
+### Error handling
+
+Most filters raise `FilterException` when data is missing. Use `fail_if_missing=False` on `interface_by_name` to get `None` instead:
+
+```jinja
+{% set intf = device_data|interface_by_name("eth1", fail_if_missing=False) %}
+{% if intf %}
+  {# configure interface #}
+{% endif %}
+```
+
+## Further reading
+
+For detailed explanations, examples, and Nautobot field mappings, see [Network Template Rendering System](index.mdx).

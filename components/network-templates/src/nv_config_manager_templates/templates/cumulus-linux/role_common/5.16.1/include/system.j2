@@ -1,0 +1,62 @@
+    system:
+      aaa:
+{% if device_data|tacacs_servers %}
+        tacacs:
+          state: enabled
+          server:
+{% for tacacs_server in device_data|tacacs_servers %}
+            '{{ loop.index }}':
+              host: {{ tacacs_server }}
+              secret: '{{ "tacacs_key_r1"|load_secret(site=device_data|site_name) }}'
+{% endfor %}
+          vrf: mgmt
+{% endif %}
+        user:
+{% for user in device_data|users %}
+          {{ user.username }}:
+            hashed-password: {{ (user.password_key|load_secret(site=device_data|site_name))|encrypt("sha512", site=device_data|site_name) }}
+{% if user.role %}            role: {{ user.role }}
+{% endif %}{% endfor %}
+{% block password_hardening %}
+      security:
+        password-hardening:
+          state: disabled
+{% endblock %}
+      hostname: {{ device_data|hostname|upper }}
+      date-time:
+        timezone: Etc/UTC
+{% block config_autosave %}
+      config:
+        auto-save:
+          state: enabled
+{% block config_snippet %}{% endblock config_snippet %}
+{% endblock %}
+{% block frr_config %}{% endblock frr_config %}
+{% block dns %}
+{% if device_data|dns_servers %}
+      dns:
+        server:
+{% for dns_server in device_data|dns_servers %}
+          {{ dns_server }}: {}
+{% endfor %}
+{% endif %}
+{% endblock dns %}
+{% block lldp %}
+      lldp:
+        dot1-tlv: enabled
+        mode: force-send-lldp
+{% endblock lldp %}
+{% block ntp %}
+{% if device_data|ntp_servers %}
+      ntp:
+        server:
+{% for ntp_server in device_data|ntp_servers %}
+          {{ ntp_server }}:
+            iburst: enabled
+            state: enabled
+{% endfor %}
+{% endif %}
+{% endblock ntp %}
+{% block system_forwarding %}{% endblock system_forwarding %}
+{% block system_telemetry %}{% endblock system_telemetry %}
+{% block system_reboot %}{% endblock system_reboot %}

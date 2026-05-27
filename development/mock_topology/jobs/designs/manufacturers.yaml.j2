@@ -1,0 +1,11 @@
+---
+
+manufacturers:
+{% for manufacturer in manufacturers %}
+  - "!create_or_update:name": {{ manufacturer }}
+{% endfor %}
+{% if json.manufacturers is defined and json.manufacturers | length > 0 %}
+{% for manufacturer in json.manufacturers %}
+  - "!create_or_update:name": {{ manufacturer }}
+{% endfor %}
+{% endif %}

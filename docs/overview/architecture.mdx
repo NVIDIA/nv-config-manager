@@ -1,0 +1,230 @@
+---
+title: System Architecture
+sidebar-title: System Architecture
+position: 20
+---
+
+NVIDIA Config Manager uses different architectural patterns for initial network deployment (Day Zero) versus ongoing operations (Day Two).
+
+## Day Zero: Network Bootstrap
+
+The Day Zero architecture handles initial network provisioning for new deployments.
+
+**Architecture Components:**
+
+```text maxLines=0
+┌─────────────────┐
+│ Jinja2 Config   │
+│   Templates     │ (Function/role-based definitions)
+└────────┬────────┘
+         │
+         ├──────────────┐
+         │              │
+         ▼              ▼
+    ┌────────┐     ┌────────┐
+    │ Render │────▶│  ZTP   │────▶ Network Devices
+    │Service │     │ Server │
+    └────┬───┘     └────────┘
+         │              │
+         │              ▼
+         │         ┌─────────┐
+         │         │ Image   │
+         │         │  Store  │
+         │         └─────────┘
+         ▼
+    ┌─────────┐
+    │  Data   │
+    │  Store  │ (Hostnames, IP addresses, cables, etc.)
+    └─────────┘
+```
+
+**Component Functions:**
+
+- **Jinja2 Config Templates**: Function and role-based configuration definitions
+- **Render Service**: Generates device-specific configurations from templates and data
+- **ZTP Server**: Zero-Touch Provisioning server that delivers configurations to new devices
+- **Nautobot**: Network source of truth (for example, hostnames, IP addresses, and cabling rules)
+- **Config Store**: Central repository for rendered configurations
+- **Image Store**: Storage for network operating system images
+
+**Bootstrap Process:**
+
+Anytime you make a change in Nautobot, the Render Service generates device configuration using templates and the Data Store. Then, when a new device joins the network, the configuration is ready to be delivered.
+
+1. New device powers on and requests DHCP
+1. DHCP directs device to ZTP Server
+1. ZTP Server identifies device and retrieves appropriate OS image from Image Store
+1. Device downloads and installs OS image
+1. ZTP Server delivers configuration to device
+1. Device applies configuration and joins network
+
+## Day Two: Operational Changes
+
+Day Two architecture handles ongoing network changes and operations through a workflow engine.
+
+**Architecture Components:**
+
+```text maxLines=0
+┌─────────────────┐
+│ Jinja2 Config   │
+│   Templates     │
+└────────┬────────┘
+         │
+         ├──────────────┐
+         │              │
+         ▼              ▼
+    ┌────────┐     ┌──────────┐
+    │ Render │────▶│ Workflow │────▶ Network Devices
+    │Service │     │  Engine  │      (via workflows)
+    └────┬───┘     └──────────┘
+         │               ▲
+         │               │ (Human approvals)
+         │               │
+         ▼               ▼
+    ┌──────────┐     ┌───────┐
+    │ Nautobot │     │ User  │
+    └──────────┘     └───────┘
+```
+
+**Key Differences from Day Zero:**
+
+- Changes pushed (without ZTP) directly to live devices with no impact to traffic
+- Human approval workflows for SOC2 compliance
+- Change tracking and audit capabilities
+
+## Nautobot Interface Capabilities
+
+Config Manager provides a web-based interface through a Nautobot plugin for fleet-wide device management.
+
+### Instant Fleet-Wide Drift Audit
+
+- Compare intended configuration against actual device state
+- Identify configuration drift across entire fleet
+- Filter devices by drift status
+
+### Device Management
+
+- View device details and status
+- Track pending deployments
+
+### Workflow Execution
+
+The interface provides access to multiple workflow types. For more details, see the [Workflows](workflows.mdx) documentation.
+
+### Status Indicators
+
+Each device displays current status:
+
+- **Total Config Manager Devices**: Complete device inventory count
+- **All Pending Deployments**: Devices awaiting configuration changes
+- **Pending Status**: Orange "Deploy" button shows deployment available
+- **No Pending Deployment**: Device up to date
+
+### Config Manager Config Details (per device)
+
+The device detail view includes a Config Manager Config Details section showing:
+
+| Field | Description |
+| :---- | :---------- |
+| Intended Config Version | Timestamp of intended configuration |
+| Intended Config Updated By | User who last updated the configuration |
+| Intended Config History | Link to intended configuration history in the Config Store UI |
+| Last Config Backup | Timestamp of last backup |
+| Backup History | Link to backup history |
+| Render Enabled | ✅ Whether render service is active |
+| ZTP Enabled | ✅ Whether ZTP provisioning is active |
+| Deploy Enabled | ✅ Whether deployment is active |
+| Backup Enabled | ✅ Whether backup workflows are active |
+| Aggregate Managed | ❌ Whether managed by aggregate |
+
+### Cable Validation
+
+Config Manager provides automated cable validation by comparing intended network topology against live LLDP, MAC, and ARP data from devices.
+
+The cable validation workflow:
+
+- Bridges gaps between human-driven inventory data and live data sources
+- Is deeply integrated, validating across network, DPU, and server boundaries
+- Is performant, validating full site in under 60 seconds
+
+For details on the cable validation workflow and report, see the [Cable Validation user's guide](../user-guides/cable-validation/index.mdx).
+
+## Service Communication Diagram
+
+```mermaid
+flowchart LR
+    %% === TIER 1: UI ===
+    UI[UI - Next.js]
+
+    %% === TIER 2: Config Manager Services (horizontal) ===
+    subgraph Services["Config Manager Services"]
+        direction LR
+        Temporal[Temporal Service]
+        Render[Render Service]
+        ConfigStore[Config Store]
+        ZTP[ZTP Service]
+        DHCP[DHCP Service]
+    end
+
+    %% === TIER 3: Infrastructure (horizontal) ===
+    subgraph Infra["Infrastructure"]
+        direction LR
+        Nautobot[(Nautobot)]
+        NATS[[NATS JetStream]]
+        Redis[(Redis)]
+        PostgreSQL[(PostgreSQL)]
+        KEA[KEA DHCP]
+    end
+
+    %% === TIER 4: External Systems (horizontal) ===
+    subgraph External["External / Managed Devices"]
+        direction LR
+        Devices[Network Devices]
+    end
+
+    %% === UI Connections ===
+    UI -->|"HTTPS REST"| Temporal
+    UI -->|"HTTPS REST"| ConfigStore
+    UI -.->|"Links To"| Render
+    UI -.->|"Links To"| ZTP
+    UI -.->|"Links To"| DHCP
+
+    %% === Temporal Connections ===
+    Temporal -->|"HTTPS REST | SPIFFE"| Render
+    Temporal -->|"HTTPS REST | SPIFFE"| ConfigStore
+    Temporal -->|"HTTPS API| Password" | Devices
+    Temporal -->|"TCP + Password"| Redis
+    Temporal -->|"TLS + Password"| NATS
+    Temporal -->|"GraphQL | TLS + Token"| Nautobot
+
+    %% === Render Connections ===
+    Render -->|"GraphQL | TLS + Token"| Nautobot
+    Render -->|"HTTPS REST | SPIFFE"| ConfigStore
+    Render -->|"TLS + Password"| NATS
+
+    %% === ZTP Connections ===
+    ZTP -->|"GraphQL | TLS + Token"| Nautobot
+    ZTP -->|"HTTPS REST | SPIFFE"| ConfigStore
+    Devices -->|"HTTP(S) / SFTP"| ZTP
+
+    %% === DHCP Connections ===
+    DHCP -->|"GraphQL | TLS + Token"| Nautobot
+    DHCP -->|"TCP + Password"| Redis
+    DHCP -->|"File / API"| KEA
+
+    %% === Config Store Connections ===
+    ConfigStore -->|"GraphQL | TLS + Token"| Nautobot
+    ConfigStore -->|"TCP + Password"| PostgreSQL
+    ConfigStore -->|"TCP + Password"| Redis
+
+    %% === Styling ===
+    classDef service fill:#4a9eff,stroke:#2d6bb3,color:#fff
+    classDef external fill:#ff9f43,stroke:#cc7a2e,color:#fff
+    classDef infra fill:#26de81,stroke:#1ba35c,color:#fff
+    classDef ui fill:#a55eea,stroke:#7c3db8,color:#fff
+
+    class UI ui
+    class Temporal,Render,ConfigStore,ZTP,DHCP service
+    class Devices external
+    class Nautobot,NATS,Redis,PostgreSQL,KEA infra
+```

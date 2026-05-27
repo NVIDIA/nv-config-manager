@@ -1,0 +1,220 @@
+#  SPDX-FileCopyrightText: Copyright (c) "2025" NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+#  SPDX-License-Identifier: Apache-2.0
+#
+#  Licensed under the Apache License, Version 2.0 (the "License")
+#  you may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at
+#
+#  http://www.apache.org/licenses/LICENSE-2.0
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+"""Views."""
+
+from django.conf import settings
+from django.shortcuts import get_object_or_404
+from django.urls import reverse
+from nautobot.core.views import generic
+from nautobot.dcim.models import Device, Location
+
+from nv_config_manager import filters, forms, models, tables
+from nv_config_manager.utils import (
+    generate_config_store_url,
+    get_all_descendants,
+)
+
+
+def generate_config_urls(instance):
+    """Handle URL formatting and generation for configs."""
+    config_store_links = {
+        "intended_config_version": None,
+        "intended_config_history": None,
+        "last_config_backup": None,
+        "backup_history": None,
+    }
+
+    if instance:
+        intended_config = getattr(instance, "intended_config", None)
+        backup_config = getattr(instance, "backup_config", None)
+
+        if intended_config:
+            config_store_links.update(
+                {
+                    "intended_config_version": generate_config_store_url(intended_config, "commit"),
+                    "intended_config_history": generate_config_store_url(intended_config, "history"),
+                }
+            )
+
+        if backup_config:
+            config_store_links.update(
+                {
+                    "last_config_backup": generate_config_store_url(backup_config, "commit"),
+                    "backup_history": generate_config_store_url(backup_config, "history"),
+                }
+            )
+    return config_store_links
+
+
+class ConfigManagerDeviceStatusListView(generic.ObjectListView):
+    """List view for ConfigManagerDeviceStatus."""
+
+    queryset = models.ConfigManagerDeviceStatus.objects.all()
+    table = tables.ConfigManagerDeviceStatusTable
+    filterset = filters.ConfigManagerDeviceStatusFilterSet
+    filterset_form = forms.ConfigManagerDeviceStatusFilterForm
+    action_buttons = ("add",)
+    template_name = "nv_config_manager/configmanagerdevicestatus_list.html"
+
+    def extra_context(self):
+        """Return extra data for populating stats."""
+        context = super().extra_context()
+        queryset = models.ConfigManagerDeviceStatus.objects.all()
+        context["managed_devices_count"] = queryset.count()
+        context["managed_devices_pending_count"] = sum(1 for device in queryset if device.is_pending)
+
+        return context
+
+
+class ConfigManagerDeviceStatusAddView(generic.ObjectEditView):
+    """Add view for ConfigManagerDeviceStatus."""
+
+    queryset = models.ConfigManagerDeviceStatus.objects.all()
+    model_form = forms.ConfigManagerDeviceStatusAddForm
+    template_name = "nv_config_manager/configmanagerdevicestatus_add.html"
+
+
+class ConfigManagerDeviceStatusEditView(generic.ObjectEditView):
+    """Edit view for ConfigManagerDeviceStatus."""
+
+    queryset = models.ConfigManagerDeviceStatus.objects.all()
+    model_form = forms.ConfigManagerDeviceStatusEditForm
+    template_name = "nv_config_manager/configmanagerdevicestatus_edit.html"
+
+
+class ConfigManagerDeviceStatusBulkEditView(generic.BulkEditView):
+    """Bulk edit view for ConfigManagerDeviceStatus."""
+
+    queryset = models.ConfigManagerDeviceStatus.objects.all()
+    form = forms.ConfigManagerDeviceStatusBulkEditForm
+    table = tables.ConfigManagerDeviceStatusTable
+
+
+class ConfigManagerDeviceStatusDeleteView(generic.ObjectDeleteView):
+    """Delete view for ConfigManagerDeviceStatus."""
+
+    queryset = models.ConfigManagerDeviceStatus.objects.all()
+
+
+class ConfigManagerDeviceStatusBulkDeleteView(generic.BulkDeleteView):
+    """Bulk delete view for ConfigManagerDeviceStatus."""
+
+    queryset = models.ConfigManagerDeviceStatus.objects.all()
+    table = tables.ConfigManagerDeviceStatusTable
+
+
+class ConfigManagerDeviceStatusDetailView(generic.ObjectView):
+    """Detail view for ConfigManagerDeviceStatus."""
+
+    queryset = models.ConfigManagerDeviceStatus.objects.all()
+    template_name = "nv_config_manager/configmanagerdevicestatus_retrieve.html"
+
+    def get_extra_context(self, request, instance=None):
+        """Return extra data for populating detail view."""
+        context = super().get_extra_context(request, instance)
+
+        context["config_store_links"] = generate_config_urls(instance)
+        return context
+
+
+class ConfigManagerDeviceStatusWorkflowsTab(generic.ObjectView):
+    """View for displaying Workflows for a managed device."""
+
+    queryset = models.ConfigManagerDeviceStatus.objects.all()
+    template_name = "nv_config_manager/configmanagerdevicestatus_workflows_tab.html"
+
+    def get_extra_context(self, request, instance=None):
+        """Return any additional context data for the template."""
+        context = super().get_extra_context(request, instance)
+        context["managed_device"] = instance
+        context["device_id"] = instance.pk if instance else ""
+        context["tenant"] = getattr(instance.device.tenant, "name", "") if instance else ""
+        context["temporal_url"] = settings.PLUGINS_CONFIG["nv_config_manager"].get("temporal_url")
+        context["site"] = instance.device.location.name if instance and instance.device.location else ""
+
+        return context
+
+
+class LocationManagedDevicesViewTab(generic.ObjectView):
+    """View for displaying managed devices by location."""
+
+    queryset = Location.objects.all()
+    template_name = "nv_config_manager/inc/managed_devices_table.html"
+
+    def get_extra_context(self, request, instance=None):
+        """Return any additional context data for the template."""
+        context = super().get_extra_context(request, instance)
+
+        if instance:
+            # get_all_descendants returns a list of location IDs including the instance itself
+            location_ids = get_all_descendants(instance)
+            managed_devices = models.ConfigManagerDeviceStatus.objects.filter(
+                device__location__in=location_ids
+            ).select_related("device", "device__location")
+            managed_devices_table = tables.ConfigManagerDeviceStatusTable(data=managed_devices, user=request.user)
+            if order_by := request.GET.get("sort"):
+                managed_devices_table.order_by = order_by
+
+            context["location"] = instance
+            context["managed_devices_table"] = managed_devices_table
+            context["html"] = "dcim/location.html"
+
+            is_pending = {}
+            for managed_device in managed_devices:
+                is_pending[managed_device] = managed_device.is_pending
+
+            context["is_pending_deployment"] = is_pending
+
+        return context
+
+
+class DeviceConfigManagerWorkflowsViewTab(generic.ObjectView):
+    """Tab to view Config Manager workflows in Device view."""
+
+    queryset = Device.objects.all()
+    template_name = "nv_config_manager/configmanagerdevicestatus_workflows_tab.html"
+
+    def get_extra_context(self, request, instance=None):
+        """Return any additional context data for the template."""
+        context = super().get_extra_context(request, instance)
+        managed_device = get_object_or_404(models.ConfigManagerDeviceStatus.objects, device=instance)
+        context["managed_device"] = managed_device
+        context["temporal_url"] = settings.PLUGINS_CONFIG["nv_config_manager"].get("temporal_url")
+        context["device_id"] = managed_device.pk
+        context["tenant"] = getattr(instance.tenant, "name", "") if instance else ""
+        context["html"] = "dcim/device.html"
+        context["site"] = instance.location.name if instance and instance.location else ""
+
+        return context
+
+
+class DeviceConfigManagerInfoViewTab(generic.ObjectView):
+    """View for displaying Config Manager info in dcim.device."""
+
+    queryset = Device.objects.all()
+    template_name = "nv_config_manager/device_config_manager_info_tab.html"
+
+    def get_extra_context(self, request, instance=None):
+        """Return any additional context data for the template."""
+        context = super().get_extra_context(request, instance)
+
+        managed_device_instance = get_object_or_404(models.ConfigManagerDeviceStatus.objects, device=instance)
+        context["managed_device_instance"] = managed_device_instance
+        context["config_store_links"] = generate_config_urls(managed_device_instance)
+        context["edit_url"] = reverse(
+            "plugins:nv_config_manager:configmanagerdevicestatus_edit",
+            kwargs={"pk": instance.pk if instance else ""},
+        )
+        return context

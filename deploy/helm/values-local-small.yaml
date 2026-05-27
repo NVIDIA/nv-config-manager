@@ -1,0 +1,432 @@
+# =============================================================================
+# Small Environment Configuration (--size small)
+# =============================================================================
+# Optimized for local development on laptops with limited resources.
+# Target: Docker Desktop/Kind with 24GB RAM allocated (single node)
+#
+# This file is automatically included when using --size small (the default).
+#
+# Key settings:
+#   - Single replicas for all services
+#   - No nodeSelector/affinity (runs on single node)
+#   - Nautobot: 2Gi request, 4Gi limit
+#   - Celery: 1Gi request, 2Gi limit
+#   - PostgreSQL: Single instances, 512Mi-1Gi each
+#   - Total memory requests: ~12GB
+#
+# NOTE: We use `null` instead of `{}` to clear nodeSelector/affinity because
+# Helm's deep merge does not replace non-empty maps with empty ones. Setting
+# a value to `null` removes the key entirely, allowing single-node scheduling.
+#
+# Usage:
+#   make kind-up                    # Default uses small
+#   use installer config cluster.size: small
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Nautobot - Primary memory consumer
+# Reduced from production 8Gi/16Gi to 2Gi/4Gi
+# Clear node scheduling (single-node cluster)
+# -----------------------------------------------------------------------------
+nautobot:
+  server:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 250m
+        memory: 2Gi
+      limits:
+        cpu: 2000m
+        memory: 4Gi
+    uwsgi:
+      listen: 64
+      processes: 2
+      threads: 2
+    nodeSelector: null
+    affinity: null
+    topologySpreadConstraints: []
+  celery:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 250m
+        memory: 1Gi
+      limits:
+        cpu: 2000m
+        memory: 2Gi
+    workers:
+      default:
+        taskConcurrency: "2"
+      beat:
+        resources:
+          requests:
+            cpu: "25m"
+            memory: "384M"
+          limits:
+            memory: "512M"
+    nodeSelector: null
+    affinity: null
+
+# -----------------------------------------------------------------------------
+# Render Service - Clear node scheduling
+# -----------------------------------------------------------------------------
+renderService:
+  api:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    nodeSelector: null
+    affinity: null
+  consumers:
+    nautobot:
+      replicas: 1
+      resources:
+        requests:
+          cpu: 25m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 1Gi
+      nodeSelector: null
+      affinity: null
+    device:
+      replicas: 4
+      resources:
+        requests:
+          cpu: 25m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 256Mi
+      nodeSelector: null
+      affinity: null
+
+# -----------------------------------------------------------------------------
+# ZTP Service - Clear node scheduling
+# -----------------------------------------------------------------------------
+networkZtp:
+  replicas: 1
+  resources:
+    http:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+      limits:
+        cpu: 250m
+        memory: 1Gi
+    https:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+      limits:
+        cpu: 250m
+        memory: 1Gi
+    sftp:
+      requests:
+        cpu: 100m
+        memory: 1Gi
+      limits:
+        cpu: 250m
+        memory: 2Gi
+  nodeSelector: null
+  affinity: null
+
+# -----------------------------------------------------------------------------
+# DHCP Service - Clear node scheduling
+# -----------------------------------------------------------------------------
+networkDhcp:
+  replicas: 1
+  resources:
+    dhcp:
+      requests:
+        cpu: 500m
+        memory: 256Mi
+      limits:
+        cpu: 1000m
+        memory: 256Mi
+    confgen:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
+  nodeSelector: null
+  affinity: null
+
+# -----------------------------------------------------------------------------
+# Temporal - Workflow Engine - Clear node scheduling
+# -----------------------------------------------------------------------------
+temporal:
+  devUi:
+    replicas: 1
+    nodeSelector: null
+  services:
+    frontend:
+      replicas: 1
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          cpu: 100m
+          memory: 128Mi
+      nodeSelector: null
+      affinity: null
+    history:
+      replicas: 4  # Must match numHistoryShards (set by replicas) for Temporal to work
+      resources:
+        requests:
+          cpu: 50m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 256Mi
+      nodeSelector: null
+      affinity: null
+    matching:
+      replicas: 1
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          cpu: 100m
+          memory: 128Mi
+      nodeSelector: null
+      affinity: null
+    worker:
+      replicas: 1
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          cpu: 100m
+          memory: 128Mi
+      nodeSelector: null
+      affinity: null
+  api:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 50m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi  # large workflow results (e.g. 800-device cable/hardware validation) can spike memory
+  configManagerWorker:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 50m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    nodeSelector: null
+    affinity: null
+    topologySpreadConstraints: []
+  scheduler:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 192Mi
+      limits:
+        cpu: 100m
+        memory: 256Mi
+    nodeSelector: null
+  reactUI:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+    nodeSelector: null
+    affinity: null
+
+# -----------------------------------------------------------------------------
+# Config Store - Clear node scheduling
+# -----------------------------------------------------------------------------
+configStore:
+  api:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    nodeSelector: null
+    affinity: null
+  ui:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 250m
+        memory: 256Mi
+    nodeSelector: null
+  cacheRefresh:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 250m
+        memory: 256Mi
+    nodeSelector: null
+
+# -----------------------------------------------------------------------------
+# UI - Clear node scheduling
+# -----------------------------------------------------------------------------
+ui:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+  nodeSelector: null
+  affinity: null
+
+# -----------------------------------------------------------------------------
+# Redis - Clear node scheduling
+# -----------------------------------------------------------------------------
+externalServices:
+  redis:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 250m
+        memory: 256Mi
+    nodeSelector: null
+
+# -----------------------------------------------------------------------------
+# NATS - Clear node scheduling
+# -----------------------------------------------------------------------------
+nautobotNats:
+  jetstream:
+    maxMem: 128M
+    maxFile: 512M
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+  nodeSelector: null
+  natsReady:
+    streamMaxBytes: 52428800  # 50MB
+
+# -----------------------------------------------------------------------------
+# CloudNativePG Databases - Clear node scheduling
+# Reduced from production sizing (4-8Gi memory, 50-100Gi storage)
+# to fit in constrained local environments
+# -----------------------------------------------------------------------------
+cnpg:
+  temporal:
+    instances: 1
+    postgresql:
+      maxConnections: "100"
+      sharedBuffers: "128MB"
+    storage:
+      size: 5Gi
+    resources:
+      limits:
+        cpu: '1'
+        memory: 1Gi
+      requests:
+        cpu: '100m'
+        memory: 512Mi
+    affinity:
+      nodeSelector: null
+      enablePodAntiAffinity: false
+  temporalVisibility:
+    instances: 1
+    postgresql:
+      maxConnections: "100"
+      sharedBuffers: "128MB"
+    storage:
+      size: 5Gi
+    resources:
+      limits:
+        cpu: '1'
+        memory: 1Gi
+      requests:
+        cpu: '250m'
+        memory: 512Mi
+    affinity:
+      nodeSelector: null
+      enablePodAntiAffinity: false
+  nautobot:
+    instances: 1
+    postgresql:
+      maxConnections: "100"
+      sharedBuffers: "256MB"
+    storage:
+      size: 20Gi
+    resources:
+      limits:
+        cpu: '1'
+        memory: 2Gi
+      requests:
+        cpu: '250m'
+        memory: 1Gi
+    affinity:
+      nodeSelector: null
+      enablePodAntiAffinity: false
+  configStore:
+    instances: 1
+    postgresql:
+      maxConnections: "100"
+      sharedBuffers: "128MB"
+    storage:
+      size: 10Gi
+    resources:
+      limits:
+        cpu: '500m'
+        memory: 512Mi
+      requests:
+        cpu: '100m'
+        memory: 256Mi
+    affinity:
+      nodeSelector: null
+      enablePodAntiAffinity: false
+  dhcp:
+    instances: 1
+    postgresql:
+      maxConnections: "50"
+      sharedBuffers: "64MB"
+    storage:
+      size: 2Gi
+    resources:
+      limits:
+        cpu: '500m'
+        memory: 512Mi
+      requests:
+        cpu: '100m'
+        memory: 256Mi
+    affinity:
+      nodeSelector: null
+      enablePodAntiAffinity: false
+networkPolicy:
+  additionalAllowedNamespaces:
+    - cnpg-system

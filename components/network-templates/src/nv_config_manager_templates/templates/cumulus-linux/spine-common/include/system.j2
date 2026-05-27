@@ -1,0 +1,6 @@
+{% extends "cumulus-linux/superpod-common/include/system.j2" %}
+
+{% block global_fabric_mac %}
+      global:
+        fabric-mac: {{ device_data | global_fabric_mac }}
+{% endblock global_fabric_mac %}

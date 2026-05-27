@@ -1,0 +1,448 @@
+# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
+{{- if .Values.renderService.enabled }}
+{{- $renderName := include "nv-config-manager.componentName" (dict "root" . "component" "render") }}
+---
+# Render Service API Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $renderName }}-api
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ $renderName }}
+    component: api
+    app.kubernetes.io/name: nv-config-manager
+    app.kubernetes.io/component: render-service
+spec:
+  replicas: {{ .Values.renderService.api.replicas }}
+  selector:
+    matchLabels:
+      app: {{ $renderName }}
+      component: api
+  template:
+    metadata:
+      labels:
+        app: {{ $renderName }}
+        component: api
+        {{- include "nv-config-manager.spiffe.podLabels" . | nindent 8 }}
+        {{- include "nv-config-manager.customPodLabels" . | nindent 8 }}
+      annotations:
+        {{- include "nv-config-manager.authIniChecksum" . | nindent 8 }}
+        {{- if eq .Values.secrets.method "vault-agent" }}
+        {{- include "nv-config-manager.vaultAgent.injectorAnnotations" . | nindent 8 }}
+        {{- end }}
+        {{- if include "nv-config-manager.spiffe.enabled" . }}
+        {{- include "nv-config-manager.spiffe.annotations" (dict "root" . "app" $renderName) | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "nv-config-manager.serviceAccountName" . }}
+      {{- if .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range .Values.global.imagePullSecrets }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      {{- include "nv-config-manager.scheduling" .Values.renderService.api | nindent 6 }}
+      {{- include "nv-config-manager.podSecurityContext" . | nindent 6 }}
+      {{- if .Values.renderService.templatePlugins.enabled }}
+      initContainers:
+      {{- include "nv-config-manager.copyTemplatePluginImages" . | nindent 6 }}
+      {{- include "nv-config-manager.installTemplatePlugins" . | nindent 6 }}
+      {{- end }}
+      containers:
+      - name: api
+        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ .Values.global.images.nvConfigManager.tag }}"
+        imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
+        {{- include "nv-config-manager.containerSecurityContext" . | nindent 8 }}
+        command: ["nv-config-manager-render-api"]
+        args: []
+        env:
+        - name: NV_CONFIG_MANAGER_INI
+          value: {{ include "nv-config-manager.vaultAgent.configManagerIniPathApp" . | quote }}
+        - name: NV_CONFIG_MANAGER_SERVICE
+          value: "render"
+        - name: ENVIRONMENT
+          value: {{ .Values.global.environment }}
+        {{- include "nv-config-manager.customLabelsEnv" . | nindent 8 }}
+        - name: NV_CONFIG_MANAGER_DEV_SALT
+          value: "W585uq6K"
+        {{- if .Values.secrets.vault.configSecrets.enabled }}
+        - name: NV_CONFIG_MANAGER_CONFIG_SECRET_PATH
+          value: {{ include "nv-config-manager.vaultAgent.configSecretsFilePath" (dict "root" . "path" .Values.renderService.configSecrets.path) | quote }}
+        {{- end }}
+        {{- if .Values.renderService.templatePlugins.enabled }}
+        - name: PYTHONPATH
+          value: "/opt/plugins:${PYTHONPATH:-}"
+        {{- end }}
+        ports:
+        - containerPort: 9000
+          name: http
+        resources:
+          {{- toYaml .Values.renderService.api.resources | nindent 10 }}
+        volumeMounts:
+        {{- include "nv-config-manager.vaultAgent.configManagerIniVolumeMount" . | nindent 8 }}
+        {{- if .Values.secrets.vault.configSecrets.enabled }}
+        {{- include "nv-config-manager.vaultAgent.configSecretsVolumeMount" (dict "root" . "mountPath" .Values.renderService.configSecrets.mountPath) | nindent 8 }}
+        {{- end }}
+        {{- if .Values.renderService.templatePlugins.enabled }}
+        - name: template-plugins-installed
+          mountPath: /opt/plugins
+          readOnly: true
+        {{- end }}
+        {{- include "nv-config-manager.authVolumeMounts" . | nindent 8 }}
+        livenessProbe:
+          httpGet:
+            path: /healthcheck
+            port: 9000
+        readinessProbe:
+          httpGet:
+            path: /healthcheck
+            port: 9000
+      {{- /* SPIFFE helper sidecar for outbound JWT-SVID */ -}}
+      {{- include "nv-config-manager.authSidecar" (dict "root" . "serviceName" "render-service-api") | nindent 6 }}
+      volumes:
+      {{- include "nv-config-manager.vaultAgent.projectedSATokenVolume" . | nindent 6 }}
+      {{- include "nv-config-manager.vaultAgent.configManagerIniVolume" . | nindent 6 }}
+      {{- if .Values.secrets.vault.configSecrets.enabled }}
+      {{- include "nv-config-manager.vaultAgent.configSecretsVolume" . | nindent 6 }}
+      {{- end }}
+      {{- if .Values.renderService.templatePlugins.enabled }}
+      {{- include "nv-config-manager.templatePluginVolumes" . | nindent 6 }}
+      {{- end }}
+      {{- /* SPIFFE volumes */ -}}
+      {{- include "nv-config-manager.authSidecar.volumes" (dict "root" .) | nindent 6 }}
+---
+# Render Service API Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $renderName }}-api
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ $renderName }}
+    component: api
+spec:
+  type: ClusterIP
+  ports:
+  - port: 9000
+    targetPort: 9000
+    protocol: TCP
+    name: http
+  selector:
+    app: {{ $renderName }}
+    component: api
+---
+# Render Service - Nautobot Consumer Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $renderName }}-consumer-nautobot
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ $renderName }}
+    component: consumer-nautobot
+spec:
+  {{- if not (and .Values.renderService.autoscaling.enabled .Values.renderService.autoscaling.consumers.nautobot.enabled) }}
+  replicas: {{ .Values.renderService.consumers.nautobot.replicas }}
+  {{- end }}
+  selector:
+    matchLabels:
+      app: {{ $renderName }}
+      component: consumer-nautobot
+  template:
+    metadata:
+      labels:
+        app: {{ $renderName }}
+        component: consumer-nautobot
+        {{- include "nv-config-manager.spiffe.podLabels" . | nindent 8 }}
+        {{- include "nv-config-manager.customPodLabels" . | nindent 8 }}
+      annotations:
+        {{- include "nv-config-manager.authIniChecksum" . | nindent 8 }}
+        {{- if eq .Values.secrets.method "vault-agent" }}
+        {{- include "nv-config-manager.vaultAgent.injectorAnnotations" . | nindent 8 }}
+        {{- end }}
+        {{- if include "nv-config-manager.spiffe.enabled" . }}
+        {{- include "nv-config-manager.spiffe.annotations" (dict "root" . "app" $renderName) | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "nv-config-manager.serviceAccountName" . }}
+      {{- if .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range .Values.global.imagePullSecrets }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      {{- include "nv-config-manager.scheduling" .Values.renderService.consumers.nautobot | nindent 6 }}
+      {{- include "nv-config-manager.podSecurityContext" . | nindent 6 }}
+      initContainers:
+      # Wait for NATS to be available before starting consumer
+      {{- include "nv-config-manager.waitForNats" . | nindent 6 }}
+      {{- if .Values.renderService.templatePlugins.enabled }}
+      {{- include "nv-config-manager.copyTemplatePluginImages" . | nindent 6 }}
+      {{- include "nv-config-manager.installTemplatePlugins" . | nindent 6 }}
+      {{- end }}
+      containers:
+      - name: consumer
+        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ .Values.global.images.nvConfigManager.tag }}"
+        imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
+        {{- include "nv-config-manager.containerSecurityContext" . | nindent 8 }}
+        command: ["nv-config-manager-render-consumer"]
+        args: []
+        env:
+        - name: NV_CONFIG_MANAGER_INI
+          value: {{ include "nv-config-manager.vaultAgent.configManagerIniPathApp" . | quote }}
+        - name: ENVIRONMENT
+          value: {{ .Values.global.environment }}
+        {{- include "nv-config-manager.customLabelsEnv" . | nindent 8 }}
+        - name: NV_CONFIG_MANAGER_DEV_SALT
+          value: "W585uq6K"
+        - name: NATS_CONSUMER
+          value: "nautobot"
+        {{- if .Values.secrets.vault.configSecrets.enabled }}
+        - name: NV_CONFIG_MANAGER_CONFIG_SECRET_PATH
+          value: {{ include "nv-config-manager.vaultAgent.configSecretsFilePath" (dict "root" . "path" .Values.renderService.configSecrets.path) | quote }}
+        {{- end }}
+        {{- if .Values.renderService.templatePlugins.enabled }}
+        - name: PYTHONPATH
+          value: "/opt/plugins:${PYTHONPATH:-}"
+        {{- end }}
+        ports:
+        - name: metrics
+          containerPort: 8000
+        resources:
+          {{- toYaml .Values.renderService.consumers.nautobot.resources | nindent 10 }}
+        volumeMounts:
+        {{- include "nv-config-manager.vaultAgent.configManagerIniVolumeMount" . | nindent 8 }}
+        {{- if .Values.secrets.vault.configSecrets.enabled }}
+        {{- include "nv-config-manager.vaultAgent.configSecretsVolumeMount" (dict "root" . "mountPath" .Values.renderService.configSecrets.mountPath) | nindent 8 }}
+        {{- end }}
+        {{- if .Values.renderService.templatePlugins.enabled }}
+        - name: template-plugins-installed
+          mountPath: /opt/plugins
+          readOnly: true
+        {{- end }}
+        {{- if .Values.spiffe.enabled }}
+        - name: spiffe-jwt-svid
+          mountPath: /var/run/secrets/spiffe
+          readOnly: true
+        {{- end }}
+      {{- include "nv-config-manager.spiffeClientSidecar" (dict "root" .) | nindent 6 }}
+      volumes:
+      {{- include "nv-config-manager.vaultAgent.projectedSATokenVolume" . | nindent 6 }}
+      {{- include "nv-config-manager.vaultAgent.configManagerIniVolume" . | nindent 6 }}
+      {{- if .Values.secrets.vault.configSecrets.enabled }}
+      {{- include "nv-config-manager.vaultAgent.configSecretsVolume" . | nindent 6 }}
+      {{- end }}
+      {{- if .Values.renderService.templatePlugins.enabled }}
+      {{- include "nv-config-manager.templatePluginVolumes" . | nindent 6 }}
+      {{- end }}
+      {{- include "nv-config-manager.spiffeClientVolumes" (dict "root" .) | nindent 6 }}
+---
+# Render Service - Device Consumer Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $renderName }}-consumer-device
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ $renderName }}
+    component: consumer-device
+spec:
+  {{- if not (and .Values.renderService.autoscaling.enabled .Values.renderService.autoscaling.consumers.device.enabled) }}
+  replicas: {{ .Values.renderService.consumers.device.replicas }}
+  {{- end }}
+  selector:
+    matchLabels:
+      app: {{ $renderName }}
+      component: consumer-device
+  template:
+    metadata:
+      labels:
+        app: {{ $renderName }}
+        component: consumer-device
+        {{- include "nv-config-manager.spiffe.podLabels" . | nindent 8 }}
+        {{- include "nv-config-manager.customPodLabels" . | nindent 8 }}
+      annotations:
+        {{- include "nv-config-manager.authIniChecksum" . | nindent 8 }}
+        {{- if eq .Values.secrets.method "vault-agent" }}
+        {{- include "nv-config-manager.vaultAgent.injectorAnnotations" . | nindent 8 }}
+        {{- end }}
+        {{- if include "nv-config-manager.spiffe.enabled" . }}
+        {{- include "nv-config-manager.spiffe.annotations" (dict "root" . "app" $renderName) | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "nv-config-manager.serviceAccountName" . }}
+      {{- if .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range .Values.global.imagePullSecrets }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      {{- include "nv-config-manager.scheduling" .Values.renderService.consumers.device | nindent 6 }}
+      {{- include "nv-config-manager.podSecurityContext" . | nindent 6 }}
+      initContainers:
+      # Wait for NATS to be available before starting consumer
+      {{- include "nv-config-manager.waitForNats" . | nindent 6 }}
+      {{- if .Values.renderService.templatePlugins.enabled }}
+      {{- include "nv-config-manager.copyTemplatePluginImages" . | nindent 6 }}
+      {{- include "nv-config-manager.installTemplatePlugins" . | nindent 6 }}
+      {{- end }}
+      containers:
+      - name: consumer
+        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ .Values.global.images.nvConfigManager.tag }}"
+        imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
+        {{- include "nv-config-manager.containerSecurityContext" . | nindent 8 }}
+        command: ["nv-config-manager-render-consumer"]
+        args: []
+        env:
+        - name: NV_CONFIG_MANAGER_INI
+          value: {{ include "nv-config-manager.vaultAgent.configManagerIniPathApp" . | quote }}
+        - name: ENVIRONMENT
+          value: {{ .Values.global.environment }}
+        {{- include "nv-config-manager.customLabelsEnv" . | nindent 8 }}
+        - name: NV_CONFIG_MANAGER_DEV_SALT
+          value: "W585uq6K"
+        - name: NATS_CONSUMER
+          value: "device"
+        {{- if .Values.secrets.vault.configSecrets.enabled }}
+        - name: NV_CONFIG_MANAGER_CONFIG_SECRET_PATH
+          value: {{ include "nv-config-manager.vaultAgent.configSecretsFilePath" (dict "root" . "path" .Values.renderService.configSecrets.path) | quote }}
+        {{- end }}
+        {{- if .Values.renderService.templatePlugins.enabled }}
+        - name: PYTHONPATH
+          value: "/opt/plugins:${PYTHONPATH:-}"
+        {{- end }}
+        ports:
+        - name: metrics
+          containerPort: 8000
+        resources:
+          {{- toYaml .Values.renderService.consumers.device.resources | nindent 10 }}
+        volumeMounts:
+        {{- include "nv-config-manager.vaultAgent.configManagerIniVolumeMount" . | nindent 8 }}
+        {{- if .Values.secrets.vault.configSecrets.enabled }}
+        {{- include "nv-config-manager.vaultAgent.configSecretsVolumeMount" (dict "root" . "mountPath" .Values.renderService.configSecrets.mountPath) | nindent 8 }}
+        {{- end }}
+        {{- if .Values.renderService.templatePlugins.enabled }}
+        - name: template-plugins-installed
+          mountPath: /opt/plugins
+          readOnly: true
+        {{- end }}
+        {{- if .Values.spiffe.enabled }}
+        - name: spiffe-jwt-svid
+          mountPath: /var/run/secrets/spiffe
+          readOnly: true
+        {{- end }}
+      {{- include "nv-config-manager.spiffeClientSidecar" (dict "root" .) | nindent 6 }}
+      volumes:
+      {{- include "nv-config-manager.vaultAgent.projectedSATokenVolume" . | nindent 6 }}
+      {{- include "nv-config-manager.vaultAgent.configManagerIniVolume" . | nindent 6 }}
+      {{- if .Values.secrets.vault.configSecrets.enabled }}
+      {{- include "nv-config-manager.vaultAgent.configSecretsVolume" . | nindent 6 }}
+      {{- end }}
+      {{- if .Values.renderService.templatePlugins.enabled }}
+      {{- include "nv-config-manager.templatePluginVolumes" . | nindent 6 }}
+      {{- end }}
+      {{- include "nv-config-manager.spiffeClientVolumes" (dict "root" .) | nindent 6 }}
+---
+# Render Service - Template Updater Job (runs once to completion)
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $renderName }}-template-updater
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ $renderName }}
+    component: template-updater
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    "helm.sh/hook-weight": "0"
+spec:
+  ttlSecondsAfterFinished: {{ .Values.renderService.templateUpdater.ttlSecondsAfterFinished }}
+  backoffLimit: {{ .Values.renderService.templateUpdater.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.renderService.templateUpdater.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        app: {{ $renderName }}
+        component: template-updater
+        {{- include "nv-config-manager.spiffe.podLabels" . | nindent 8 }}
+        {{- include "nv-config-manager.customPodLabels" . | nindent 8 }}
+      annotations:
+        {{- include "nv-config-manager.authIniChecksum" . | nindent 8 }}
+        {{- if eq .Values.secrets.method "vault-agent" }}
+        {{- include "nv-config-manager.vaultAgent.injectorAnnotationsJob" . | nindent 8 }}
+        {{- end }}
+        {{- if include "nv-config-manager.spiffe.enabled" . }}
+        {{- include "nv-config-manager.spiffe.annotations" (dict "root" . "app" $renderName) | nindent 8 }}
+        {{- end }}
+    spec:
+      restartPolicy: OnFailure  # Required for Jobs - only restart on failure, not on success
+      serviceAccountName: {{ include "nv-config-manager.serviceAccountName" . }}
+      {{- if .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range .Values.global.imagePullSecrets }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      {{- include "nv-config-manager.scheduling" .Values.renderService.templateUpdater | nindent 6 }}
+      {{- include "nv-config-manager.podSecurityContext" . | nindent 6 }}
+      initContainers:
+      # Wait for dependencies before running direct template update renders.
+      {{- include "nv-config-manager.waitForNautobot" . | nindent 6 }}
+      {{- include "nv-config-manager.waitForRedis" . | nindent 6 }}
+      {{- if .Values.renderService.templatePlugins.enabled }}
+      {{- include "nv-config-manager.copyTemplatePluginImages" . | nindent 6 }}
+      {{- include "nv-config-manager.installTemplatePlugins" . | nindent 6 }}
+      {{- end }}
+      containers:
+      - name: template-updater
+        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ .Values.global.images.nvConfigManager.tag }}"
+        imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
+        {{- include "nv-config-manager.containerSecurityContext" . | nindent 8 }}
+        command: ["nv-config-manager-render-template-updater"]
+        args: []
+        env:
+        - name: NV_CONFIG_MANAGER_INI
+          value: {{ include "nv-config-manager.vaultAgent.configManagerIniPathApp" . | quote }}
+        - name: ENVIRONMENT
+          value: {{ .Values.global.environment }}
+        {{- include "nv-config-manager.customLabelsEnv" . | nindent 8 }}
+        - name: NV_CONFIG_MANAGER_DEV_SALT
+          value: "W585uq6K"
+        - name: NV_CONFIG_MANAGER_TEMPLATE_UPDATE_CONCURRENCY
+          value: {{ .Values.renderService.templateUpdater.concurrency | quote }}
+        - name: NV_CONFIG_MANAGER_TEMPLATE_UPDATE_LOCK_TIMEOUT
+          value: {{ .Values.renderService.templateUpdater.lockTimeoutSeconds | quote }}
+        {{- if .Values.secrets.vault.configSecrets.enabled }}
+        - name: NV_CONFIG_MANAGER_CONFIG_SECRET_PATH
+          value: {{ include "nv-config-manager.vaultAgent.configSecretsFilePath" (dict "root" . "path" .Values.renderService.configSecrets.path) | quote }}
+        {{- end }}
+        {{- if .Values.renderService.templatePlugins.enabled }}
+        - name: PYTHONPATH
+          value: "/opt/plugins:${PYTHONPATH:-}"
+        {{- end }}
+        resources:
+          {{- toYaml .Values.renderService.templateUpdater.resources | nindent 10 }}
+        volumeMounts:
+        {{- include "nv-config-manager.vaultAgent.configManagerIniVolumeMount" . | nindent 8 }}
+        {{- if .Values.secrets.vault.configSecrets.enabled }}
+        {{- include "nv-config-manager.vaultAgent.configSecretsVolumeMount" (dict "root" . "mountPath" .Values.renderService.configSecrets.mountPath) | nindent 8 }}
+        {{- end }}
+        {{- if .Values.renderService.templatePlugins.enabled }}
+        - name: template-plugins-installed
+          mountPath: /opt/plugins
+          readOnly: true
+        {{- end }}
+      volumes:
+      {{- include "nv-config-manager.vaultAgent.projectedSATokenVolume" . | nindent 6 }}
+      {{- include "nv-config-manager.vaultAgent.configManagerIniVolume" . | nindent 6 }}
+      {{- if .Values.secrets.vault.configSecrets.enabled }}
+      {{- include "nv-config-manager.vaultAgent.configSecretsVolume" . | nindent 6 }}
+      {{- end }}
+      {{- if .Values.renderService.templatePlugins.enabled }}
+      {{- include "nv-config-manager.templatePluginVolumes" . | nindent 6 }}
+      {{- end }}
+      {{- /* SPIFFE volumes for outbound JWT-SVID */ -}}
+      {{- include "nv-config-manager.authSidecar.volumes" (dict "root" .) | nindent 6 }}
+{{- end }}

@@ -1,0 +1,141 @@
+name: Docs
+
+on:
+  pull_request:
+    paths:
+      - "docs/**"
+      - "scripts/generate_openapi.py"
+      - "installer/scripts/screenshot_tui.py"
+      - "Makefile"
+      - ".github/workflows/docs.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/**"
+      - "scripts/generate_openapi.py"
+      - "installer/scripts/screenshot_tui.py"
+      - "Makefile"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "24"
+  PYTHON_VERSION: "3.13"
+
+jobs:
+  lint:
+    name: Lint Docs
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: make openapi-check
+      - run: make docs-lint
+      - run: make docs-lint-fern
+
+  preview:
+    name: Preview Docs
+    needs: lint
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Install Fern
+        run: npm install -g fern-api
+      - name: Generate preview
+        id: preview
+        env:
+          FERN_TOKEN: ${{ secrets.FERN_TOKEN }}
+          PREVIEW_ID: ${{ github.event.repository.name }}-pr-${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          if [ -z "${FERN_TOKEN:-}" ]; then
+            echo "FERN_TOKEN is not configured; skipping docs preview."
+            exit 0
+          fi
+
+          output="$(cd docs && fern generate --docs --preview --id "${PREVIEW_ID}" --force 2>&1)" || {
+            printf '%s\n' "$output"
+            exit 1
+          }
+          printf '%s\n' "$output"
+
+          preview_url="$(printf '%s\n' "$output" | sed -nE 's#.*(https://[^[:space:]]+-preview-[^[:space:]]+).*#\1#p' | head -n 1)"
+          if [ -z "$preview_url" ]; then
+            echo "Fern preview completed, but no preview URL was found."
+            exit 1
+          fi
+
+          echo "preview_url=${preview_url}" >> "$GITHUB_OUTPUT"
+          echo "Preview URL: ${preview_url}"
+      - name: Comment preview URL
+        if: steps.preview.outputs.preview_url != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PREVIEW_URL: ${{ steps.preview.outputs.preview_url }}
+        run: |
+          set -euo pipefail
+          marker="<!-- nv-config-manager-docs-preview -->"
+          body="$(printf '%s\nDocs preview: %s' "$marker" "$PREVIEW_URL")"
+
+          comment_id="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" --paginate \
+            --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | contains(\"${marker}\"))) | .id" \
+            | head -n 1)"
+
+          if [ -n "$comment_id" ]; then
+            gh api "repos/${GITHUB_REPOSITORY}/issues/comments/${comment_id}" \
+              --method PATCH \
+              --field body="$body" >/dev/null
+          else
+            gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+              --method POST \
+              --field body="$body" >/dev/null
+          fi
+
+  publish:
+    name: Publish Docs
+    needs: lint
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Install Fern
+        run: npm install -g fern-api
+      - name: Publish docs
+        env:
+          FERN_TOKEN: ${{ secrets.FERN_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${FERN_TOKEN:-}" ]; then
+            echo "FERN_TOKEN is required to publish docs."
+            exit 1
+          fi
+          make docs-publish-in-ci

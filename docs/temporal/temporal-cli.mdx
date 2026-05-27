@@ -1,0 +1,220 @@
+---
+title: Config Manager Temporal CLI
+sidebar-title: Temporal CLI
+position: 10
+---
+
+`workflow-cli` is the Config Manager command-line client for invoking Temporal workflows through the workflow API gateway. It is registered by the platform package as the `workflow-cli` project script and should be run with `uv` from the `nv-config-manager` checkout.
+
+The CLI discovers registered workflows from the codebase and generates one Click command per workflow. It also handles device-name-to-device-ID lookup for workflows that accept `device_id`.
+
+## Run the CLI
+
+From the platform repository:
+
+```bash
+cd ../nv-config-manager
+uv sync
+uv run workflow-cli --help
+```
+
+The examples in this guide use `uv run`.
+
+## Authentication
+
+The CLI auto-detects whether SSO is enabled for the target deployment:
+
+- If the workflow gateway redirects to an OIDC provider, the CLI uses browser-based OIDC PKCE authentication and sends workflow API requests to `https://svc-workflow.<hostname>/v1/workflow` with a bearer token.
+- If SSO is not enabled, the CLI sends unauthenticated requests to `https://workflow.<hostname>/v1/workflow`.
+
+Cached OIDC tokens are stored in `~/.nv-config-manager/token.json`.
+
+```bash
+# Authenticate against a deployment. This opens a browser for OIDC PKCE.
+uv run workflow-cli login -H config-manager.example.com
+
+# Local deployments with self-signed certificates commonly need -k.
+uv run workflow-cli login -H config-manager.local -k
+
+# Check or clear the cached token.
+uv run workflow-cli auth-status
+uv run workflow-cli logout
+
+# Force a fresh browser login.
+uv run workflow-cli login -H config-manager.example.com --force
+```
+
+If gateway OIDC discovery is not available, pass the issuer and client ID directly:
+
+```bash
+uv run workflow-cli login \
+  -H config-manager.example.com \
+  --issuer https://keycloak.example.com/realms/nv-config-manager \
+  --client-id nv-config-manager
+```
+
+## Target Selection
+
+Every generated workflow command accepts the same target and authentication options.
+
+| Option | Description |
+| :----- | :---------- |
+| `-H, --hostname` | Base hostname, such as `config-manager.local` or `qa.config-manager.example.com`. Takes precedence over `--environment` and `--domain`. |
+| `-e, --environment` | Environment name. Combined with `--domain` as `<environment>.<domain>`. |
+| `-d, --domain` | Base domain used with `--environment`. Defaults to `config-manager.example.com`. |
+| `-v, --verbose` | Print detailed API calls, parameters, token debug details, and response JSON. |
+| `--issuer` | OIDC issuer URL. Optional when gateway discovery works. |
+| `--client-id` | OIDC client ID. Optional when gateway discovery works. |
+| `--force-auth-refresh` | Force token refresh before a workflow request. |
+| `-k, --insecure` | Disable TLS certificate verification for local development with self-signed certificates. |
+
+Use either `--hostname` directly:
+
+```bash
+uv run workflow-cli backup \
+  -H config-manager.example.com \
+  --device-name switch001.example.com
+```
+
+Or target an environment under a shared domain:
+
+```bash
+uv run workflow-cli backup \
+  -e qa \
+  -d config-manager.example.com \
+  --device-name switch001.example.com
+```
+
+## Discovery
+
+Use the generated help output as the authoritative command list for the version you are running.
+
+```bash
+# Top-level commands, including auth helpers and workflow commands.
+uv run workflow-cli --help
+
+# Registered workflows, API endpoints, and generated parameters.
+uv run workflow-cli list-workflows
+
+# Command-specific options.
+uv run workflow-cli backup --help
+uv run workflow-cli deploy --help
+uv run workflow-cli validate-hardware --help
+```
+
+The current CLI includes utility commands such as `login`, `logout`, `auth-status`, `list-workflows`, and `examples`. Workflow commands are generated from registered workflow metadata, for example `backup`, `deploy`, `multi-deploy`, `reprovision`, `site-cable-validation`, `validate-hardware`, `switch-os-upgrade`, and the InfiniBand, NVLink, Redfish, VPC, and password-rotation workflows.
+
+## Device Workflows
+
+For workflows with a `device_id` input, the CLI also adds `--device-name`. When provided, the CLI calls the parameter API to resolve the device name to a UUID before invoking the workflow.
+
+```bash
+# Backup using device hostname.
+uv run workflow-cli backup \
+  -H config-manager.example.com \
+  --device-name switch001.example.com
+
+# Backup using device UUID.
+uv run workflow-cli backup \
+  -H config-manager.example.com \
+  --device-id 12345678-1234-1234-1234-123456789abc
+
+# Deploy intended configuration. commit_confirm is a boolean option.
+uv run workflow-cli deploy \
+  -H config-manager.example.com \
+  --device-name switch001.example.com \
+  --commit-confirm true
+
+# Reprovision a device through ZTP.
+uv run workflow-cli reprovision \
+  -H config-manager.example.com \
+  --device-name switch001.example.com
+
+# Switch OS upgrade.
+uv run workflow-cli switch-os-upgrade \
+  -H config-manager.example.com \
+  --device-name switch001.example.com
+```
+
+Do not pass both `--device-name` and `--device-id`. The CLI requires exactly one for workflows that need a device UUID.
+
+## Site and Multi-Device Workflows
+
+List parameters are passed as comma-separated strings. Boolean parameters take explicit values such as `true` or `false`.
+
+```bash
+# Multi-device deploy by role, optionally filtered by status and tenant.
+uv run workflow-cli multi-deploy \
+  -H config-manager.example.com \
+  --role leaf-switch \
+  --status active,maintenance \
+  --tenant tenant01 \
+  --max-batch-size 10 \
+  --commit-confirm true
+
+# Site cable validation.
+uv run workflow-cli site-cable-validation \
+  -H config-manager.example.com \
+  --site datacenter01 \
+  --roles leaf-switch,spine-switch \
+  --status active \
+  --raise-for-invalid true
+
+# Hardware validation. The current command name is validate-hardware.
+uv run workflow-cli validate-hardware \
+  -H config-manager.example.com \
+  --site datacenter01 \
+  --tenant tenant01 \
+  --roles leaf-switch,spine-switch \
+  --raise-for-invalid true
+```
+
+## Verbose Output
+
+Use `--verbose` to see device-name resolution, the target URL, request parameters, and the response body.
+
+```bash
+uv run workflow-cli connected-host-metadata \
+  -H config-manager.example.com \
+  --device-name switch001.example.com \
+  --verbose
+```
+
+Example output shape:
+
+```text
+Converting device name 'switch001.example.com' to device ID...
+Found device ID: ca22595f-7044-46d1-b760-63cac2f947b3
+Invoking ConnectedHostMetadataWorkflow workflow...
+URL: https://svc-workflow.config-manager.example.com/v1/workflow/ngc/connected_host_metadata
+Parameters: {
+  "device_id": "ca22595f-7044-46d1-b760-63cac2f947b3"
+}
+Workflow started successfully!
+View progress: https://config-manager.example.com/workflows/61ef44af-2b6c-425e-b839-c766022bd064
+Workflow ID: 61ef44af-2b6c-425e-b839-c766022bd064
+Response: {
+  "id": "61ef44af-2b6c-425e-b839-c766022bd064",
+  "href": "https://temporal.config-manager.example.com/namespaces/default/workflows/61ef44af-2b6c-425e-b839-c766022bd064"
+}
+```
+
+## Troubleshooting
+
+**Either `--hostname` or `--environment` is required.**
+
+Pass `-H <base-hostname>` or use `-e <environment> -d <domain>`.
+
+**Device lookup fails.**
+
+Verify the device exists in Nautobot and that the authenticated user can access the workflow parameter API. Re-run with `--verbose` to see the device lookup URL and response details.
+
+**Gateway redirects to login during a workflow call.**
+
+The gateway did not accept the CLI bearer token. Re-run `uv run workflow-cli login -H <hostname> --force`, then retry. If the issue persists, verify the deployment's OIDC issuer, JWKS URI, audiences, and client ID.
+
+**Local TLS verification fails.**
+
+Use `-k` only for local development or other environments using self-signed certificates.
+
+For API details, see the [Temporal API Reference](api:temporal-api) and [Workflow Documentation](workflows/index.mdx).

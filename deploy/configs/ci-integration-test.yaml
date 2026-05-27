@@ -1,0 +1,88 @@
+# =============================================================================
+# NVIDIA Config Manager - CI Integration Test Config
+# =============================================================================
+# Used by the integration-test CI job via:
+#   make kind-up INSTALL_CONFIG=deploy/configs/ci-integration-test.yaml HELM_TIMEOUT=20m
+# =============================================================================
+
+version: "1"
+
+cluster:
+  hostname: config-manager.local
+  environment: local
+  namespace: nv-config-manager
+  release_name: nv-config-manager
+  airgapped: false
+  mock_devices: true
+  size: small
+
+secrets:
+  method: kubernetes
+  config_manager_service_username: nv-config-manager
+
+network_secrets:
+  - name: Hash Salt
+    description: Password hashing salt for user accounts
+    source: generate
+    secret_key: hash_salt
+    rotation: r1
+    required: true
+  - name: BGP Password
+    description: BGP peering authentication
+    source: generate
+    secret_key: bgp_password
+    rotation: r1
+    required: true
+  - name: Device Admin Password
+    description: Admin/root password for managed devices
+    source: generate
+    secret_key: root_password
+    rotation: r1
+    required: true
+  - name: NVIDIA Config Manager API Key
+    description: NVIDIA Config Manager service account device credential
+    source: generate
+    secret_key: api_user_key
+    rotation: r1
+    required: true
+
+git_tokens:
+  - name: testgit
+    token: dummy-token-value
+    username: dummy-user
+
+sites:
+  - name: test-site
+
+sso:
+  enabled: false
+
+spiffe:
+  enabled: false
+
+content:
+  jobs:
+    - path: development/mock_topology
+  template_plugins: []
+  include_bootstrap_jobs: true
+  run_after_deploy:
+    - job: mock_topology.jobs.mock_topology_design.MockTopologyDesign
+      input: '{"blueprint": "superpod", "deployment_name": "test"}'
+
+services:
+  render: true
+  ztp: true
+  dhcp: true
+  temporal: true
+  config_store: true
+  nautobot: true
+
+infrastructure:
+  gateway: envoyGateway
+  tls: true
+  cnpg_s3_backup:
+    enabled: false
+  monitoring:
+    enabled: false
+  load_balancer:
+    provider: ""

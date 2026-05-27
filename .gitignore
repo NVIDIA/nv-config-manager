@@ -1,0 +1,167 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Poetry
+.venv/
+poetry.lock
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Translations
+*.mo
+*.pot
+
+# Sphinx documentation
+developer-docs/_build/
+
+# PyBuilder
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.env.local
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Local development configuration
+local_dev.ini
+*.local.ini
+values-generated.yaml
+nv-config-manager-install.yaml
+installer/nv-config-manager-install.yaml
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# Fern documentation
+docs/node_modules/
+docs/public/
+docs/_build/
+docs/.dori/
+docs/**/ai_examples_override.yml
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Ruff
+.ruff_cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Node.js (UI)
+ui/node_modules/
+ui/.next/
+ui/out/
+ui/.env.local
+ui/playwright-report/
+ui/test-results/
+ui/.nvmrc
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Logs
+*.log
+logs/
+
+# Helm
+deploy/helm/*.tgz
+deploy/helm/charts/
+deploy/airgapped/output/
+deploy/helm/values-local-diagnostics.yaml
+
+# Kubernetes
+*.kubeconfig
+
+# Secrets
+secrets/
+*.pem
+*.key
+*.crt
+
+
+# Generated local artifacts from validation runs
+.cache/
+.pytest_cache/
+.venv/
+installer/.venv/
+installer/.pytest_cache/
+**/__pycache__/
+ui/.next/
+ui/playwright-report/
+ui/test-results/
+components/network-templates/coverage.xml

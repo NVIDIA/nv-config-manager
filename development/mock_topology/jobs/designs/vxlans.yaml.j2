@@ -1,0 +1,25 @@
+---
+
+{% if json.vxlans is defined and json.vxlans | length > 0 %}
+vxlans:
+  {% for vxlan in json.vxlans %}
+  - "!create_or_update:vnid": {{ vxlan.vnid }}
+    "!create_or_update:namespace__name": {{ global_defaults.namespace }}
+    name: {{ vxlan.name }}
+    vni_type: {{ vxlan.vni_type }}
+    status__name: {{ global_defaults.status }}
+    tenant__name: {{ global_defaults.tenant }}
+    overlay__name: {{ vxlan.overlay.name }}
+    {% if vxlan.l3_vlan_id is defined and vxlan.l3_vlan_id %}
+    l3_vlan_id: {{ vxlan.l3_vlan_id }}
+    {% endif %}
+    {% if vxlan.vlan is defined and vxlan.vlan %}
+    vlan: "!ref:vlan-{{ vxlan.vlan.vid }}"
+    {% endif %}
+    {% if vxlan.vrf is defined and vxlan.vrf %}
+    vrf: "!ref:vrf-{{ vxlan.vrf.name }}"
+    {% endif %}
+  {% endfor %}
+{% else %}
+vxlans: []
+{% endif %}

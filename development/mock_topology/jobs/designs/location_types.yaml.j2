@@ -1,0 +1,23 @@
+---
+
+{% if location_types is defined and location_types | length > 0 %}
+location_types:
+  {% for location_type in location_types %}
+  - "!create_or_update:name": {{ location_type.name }}
+    {% if location_type.parent is defined %}
+    parent__name: {{ location_type.parent }}
+    {% endif %}
+    {% if location_type.nestable is defined %}
+    nestable: {{ location_type.nestable }}
+    {% endif %}
+    {% if location_type.content_types is defined %}
+    content_types:
+      {% for content_type in location_type.content_types %}
+      - "!get:app_label": {{ content_type.split(".")[0] }}
+        "!get:model": {{ content_type.split(".")[1] }}
+      {% endfor %}
+    {% endif %}
+  {% endfor %}
+{% else %}
+location_types: []
+{% endif %}

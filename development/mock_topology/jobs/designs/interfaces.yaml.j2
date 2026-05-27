@@ -1,0 +1,57 @@
+---
+
+{% if json.devices is defined and json.devices | length > 0 %}
+interfaces:
+  {% for device in json.devices %}
+  {% set interface_names = device.interfaces | map(attribute='name') | list %}
+  {% for intf in device.interfaces %}
+  - "!create_or_update:name": {{ intf.name }}
+    "!create_or_update:device": "!ref:device-{{ device.name }}"
+    "!ref": intf-{{ device.name }}-{{ intf.name }}
+    {% if intf.role is defined and intf.role %}
+    role__name: {{ intf.role.name }}
+    {% endif %}
+    type: {{ intf.type | lower | replace("a_", "") | replace("_", "-") }}
+    status__name: {{ intf.status.name if intf.status is defined else global_defaults.status }}
+    enabled: {{ intf.enabled | default(true) }}
+    mgmt_only: {{ intf.mgmt_only }}
+    mtu: {{ intf.mtu | default(1500, true) | int }}
+    {% if intf.description is defined and intf.description %}
+    description: {{ intf.description }}
+    {% endif %}
+    {% if intf.mac_address is defined and intf.mac_address %}
+    mac_address: {{ intf.mac_address }}
+    {% endif %}
+    {% if intf.mode is defined and intf.mode %}
+    mode: {{ intf.mode }}
+    {% elif intf.tagged_vlans is defined and intf.tagged_vlans | length > 0 %}
+    mode: tagged
+    {% elif intf.untagged_vlan is defined and intf.untagged_vlan %}
+    mode: access
+    {% endif %}
+    {% if intf.vrf is defined and intf.vrf %}
+    vrf: "!ref:vrf-{{ intf.vrf.name }}"
+    {% endif %}
+    {% if intf.untagged_vlan is defined and intf.untagged_vlan %}
+    untagged_vlan: "!ref:vlan-{{ intf.untagged_vlan.vid }}"
+    {% endif %}
+    {% if intf.tagged_vlans is defined and intf.tagged_vlans | length > 0 %}
+    tagged_vlans:
+      {% for vlan in intf.tagged_vlans %}
+      - "!ref:vlan-{{ vlan.vid }}"
+      {% endfor %}
+    {% endif %}
+    {% if intf.parent_interface is defined and intf.parent_interface and intf.parent_interface.name in interface_names %}
+    parent_interface: "!ref:intf-{{ device.name }}-{{ intf.parent_interface.name }}"
+    {% endif %}
+    {% if intf.ip_addresses is defined and intf.ip_addresses | length > 0 %}
+    ip_addresses:
+      {% for ip in intf.ip_addresses %}
+      - "!get:address": {{ ip.address }}
+      {% endfor %}
+    {% endif %}
+  {% endfor %}
+  {% endfor %}
+{% else %}
+interfaces: []
+{% endif %}

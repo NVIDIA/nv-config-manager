@@ -1,0 +1,285 @@
+# =============================================================================
+# NVIDIA Config Manager ESO Configuration Example
+# =============================================================================
+# This file shows how to configure ESO (External Secrets Operator) integration
+# for NVIDIA Config Manager. Each secret requires an explicit full path.
+#
+# Usage:
+#   secrets:
+#     method: eso
+#     vault:
+#       server: "https://vault.example.com"
+#       secretsPath: "nv-config-manager"  # KV v2 mount path
+#       paths:
+#         nautobot:
+#           path: "prod/nautobot"  # Full path within the secrets engine
+#           keys:
+#             token: "token"
+# =============================================================================
+
+# =============================================================================
+# Full Example Configuration for values.yaml
+# =============================================================================
+
+secrets:
+  # Use ESO for secret management
+  method: eso
+  
+  vault:
+    # Vault/OpenBao server address
+    server: "https://vault.example.com"
+    
+    # Enterprise namespace (leave empty for OpenBao or non-enterprise Vault)
+    namespace: ""
+    
+    # KV v2 secrets engine mount path
+    secretsPath: "nv-config-manager"
+    
+    # KV v2 secrets engine mount path for config secrets (sites/regions)
+    # Optional: defaults to secretsPath if not set. Use when config secrets
+    # are stored in a different KV engine than application secrets.
+    # configSecretsPath: "secrets"
+    
+    # JWT authentication (recommended for production)
+    jwtAuth:
+      role: "nv-config-manager"
+      mountPath: "auth/kubernetes/prod"
+    
+    # Token authentication (for local dev/testing only)
+    # Create the secret first:
+    #   kubectl create secret generic openbao-token --from-literal=token=root -n <namespace>
+    # tokenAuth:
+    #   enabled: true
+    #   secretName: "openbao-token"
+    
+    # -------------------------------------------------------------------------
+    # Secret Paths
+    # -------------------------------------------------------------------------
+    # Each secret requires:
+    #   - path: Full path to the secret within the secrets engine
+    #   - keys: Mapping of logical names to actual Vault key names
+    # -------------------------------------------------------------------------
+    paths:
+      # Nautobot API credentials
+      nautobot:
+        path: "prod/nautobot"  # Full path within secretsPath
+        keys:
+          token: "token"
+          natsPassword: "nats_password"
+      
+      # Redis credentials
+      redis:
+        path: "prod/redis"
+        keys:
+          password: "password"
+      
+      # PostgreSQL credentials (all CNPG clusters)
+      postgres:
+        path: "prod/postgres"
+        keys:
+          temporalUser: "temporal_user"
+          temporalPassword: "temporal_password"
+          temporalVisibilityUser: "temporal_visibility_user"
+          temporalVisibilityPassword: "temporal_visibility_password"
+          configStoreUser: "config_store_user"
+          configStorePassword: "config_store_password"
+          dhcpUser: "dhcp_user"
+          dhcpPassword: "dhcp_password"
+          nautobotUser: "nautobot_user"
+          nautobotPassword: "nautobot_password"
+      
+      # Network device credentials
+      network:
+        path: "prod/network"
+        keys:
+          user: "user"
+          password: "password"
+      
+      # Redfish/BMC credentials
+      redfish:
+        path: "prod/redfish"
+        keys:
+          lenovoDefaultUser: "lenovo_default_user"
+          lenovoDefaultPassword: "lenovo_default_password"
+          lenovoConfigManagerPassword: "lenovo_config_manager_password"
+          bluefieldDefaultUser: "bluefield_default_user"
+          bluefieldDefaultPassword: "bluefield_default_password"
+          bluefieldConfigManagerPassword: "bluefield_config_manager_password"
+      
+      # BMC credentials JSON
+      bmc:
+        path: "prod/bmc"
+        keys:
+          credsJson: "bmc-creds.json"
+      
+      # Slack integration
+      slack:
+        path: "prod/slack"
+        keys:
+          token: "token"
+      
+      # DHCP service credentials
+      dhcp:
+        path: "prod/dhcp"
+        keys:
+          password: "password"
+      
+      # AIR service credentials
+      air:
+        path: "prod/air"
+        keys:
+          ssaClientId: "ssa_client_id"
+          ssaClientSecret: "ssa_client_secret"
+      
+      # Jira service account credentials (used by DiagnosticsWorkflow)
+      jira:
+        path: "prod/jira"
+        keys:
+          baseUrl: "base_url"
+          apiToken: "api_token"
+
+      # Nautobot app secrets
+      nautobotApp:
+        path: "prod/nautobot-app"
+        keys:
+          adminPassword: "admin_password"
+          djangoSecretKey: "django_secret_key"
+          superuserApiToken: "superuser_api_token"
+      
+      # OIDC/SSO credentials (for Envoy Gateway OIDC or oauth2-proxy)
+      # The client secret must match what's configured in your identity provider
+      # (Keycloak, Azure AD, etc.)
+      oidc:
+        path: "prod/oidc"
+        keys:
+          clientSecret: "client_secret"
+          # cookieSecret only needed for oauth2-proxy (ingress-nginx mode)
+          # cookieSecret: "cookie_secret"
+      
+      # KEDA Prometheus mTLS certificates (optional - only when using KEDA autoscaling
+      # with a secured Prometheus). Contains ca.crt, tls.crt, tls.key for mTLS auth.
+      # kedaPrometheusCerts:
+      #   path: "prod/keda-prometheus-certs"
+      #   keys:
+      #     caCert: "ca.crt"
+      #     tlsCert: "tls.crt"
+      #     tlsKey: "tls.key"
+
+# =============================================================================
+# Site/Region Config Secrets (Optional)
+# =============================================================================
+# For deployments that need site/region-specific configuration secrets.
+# Each site/region requires an explicit name and path.
+# =============================================================================
+
+configSecrets:
+  enabled: false
+  sites:
+    - name: site01
+      path: "prod/site/site01/config_secrets"
+    - name: site02
+      path: "prod/site/site02/config_secrets"
+  regions:
+    - name: region01
+      path: "prod/region/region01/config_secrets"
+
+# =============================================================================
+# Custom Secrets and INI Snippets (Environment-Specific Configuration)
+# =============================================================================
+# This section allows adding custom Vault secrets and nv-config-manager.ini snippets for
+# environment-specific configuration that isn't part of the core chart.
+#
+# Use cases:
+#   - Proprietary integrations specific to your organization
+#   - Custom monitoring or observability backends
+#   - Environment-specific service configurations
+#   - Any INI sections needed by custom workflows or activities
+# =============================================================================
+
+customConfig:
+  # Enable custom configuration
+  enabled: false
+  
+  # ---------------------------------------------------------------------------
+  # Custom Vault Secrets
+  # ---------------------------------------------------------------------------
+  # Define Vault secrets to fetch. Each secret becomes available in INI
+  # snippets as <name>_data (JSON containing all key-value pairs from Vault).
+  # ---------------------------------------------------------------------------
+  vaultSecrets: []
+  # Example:
+  # - name: my_service
+  #   path: "prod/my-service"  # Full path in Vault
+  
+  # ---------------------------------------------------------------------------
+  # Custom Values (non-secrets)
+  # ---------------------------------------------------------------------------
+  # Configuration values that don't need to be stored in Vault.
+  # Reference in snippets as: {{ .Values.customConfig.values.mySection.myKey }}
+  # ---------------------------------------------------------------------------
+  values: {}
+  # Example:
+  # myService:
+  #   endpoint: "https://my-service.example.com"
+  #   timeout: 30
+  
+  # ---------------------------------------------------------------------------
+  # Custom INI Snippets
+  # ---------------------------------------------------------------------------
+  # INI sections appended to nv-config-manager.ini. These go through Helm templating first
+  # (for .Values references), then ESO templating (for secrets).
+  #
+  # For non-secrets: {{ .Values.customConfig.values.path.to.value }}
+  # For secrets:     {{ "{{" }} index (fromJson .secretName_data) "key" {{ "}}" }}
+  #
+  # Note: The escaped braces {{ "{{" }} and {{ "}}" }} are required because
+  # Helm processes the template first, then ESO processes the result.
+  # ---------------------------------------------------------------------------
+  iniSnippets: []
+  # Example:
+  # - |
+  #   [my_service]
+  #   endpoint = {{ .Values.customConfig.values.myService.endpoint }}
+  #   api_key = {{ "{{" }} index (fromJson .my_service_data) "api_key" {{ "}}" }}
+  #   timeout = {{ .Values.customConfig.values.myService.timeout }}
+
+# =============================================================================
+# Custom Config Example - Full Configuration
+# =============================================================================
+# 
+# customConfig:
+#   enabled: true
+#   
+#   vaultSecrets:
+#     # Custom monitoring backend
+#     - name: monitoring
+#       path: "prod/monitoring"
+#     
+#     # Custom SSO provider
+#     - name: custom_sso
+#       path: "prod/sso"
+#   
+#   values:
+#     monitoring:
+#       endpoint: "https://monitoring.example.com"
+#       interval: 30
+#     customSso:
+#       provider: "okta"
+#       tenant: "my-org"
+#   
+#   iniSnippets:
+#     # Custom monitoring configuration
+#     - |
+#       [monitoring]
+#       endpoint = {{ .Values.customConfig.values.monitoring.endpoint }}
+#       api_key = {{ "{{" }} index (fromJson .monitoring_data) "api_key" {{ "}}" }}
+#       interval = {{ .Values.customConfig.values.monitoring.interval }}
+#     
+#     # Custom SSO integration
+#     - |
+#       [custom_sso]
+#       provider = {{ .Values.customConfig.values.customSso.provider }}
+#       client_id = {{ "{{" }} index (fromJson .custom_sso_data) "client_id" {{ "}}" }}
+#       client_secret = {{ "{{" }} index (fromJson .custom_sso_data) "client_secret" {{ "}}" }}
+#       tenant = {{ .Values.customConfig.values.customSso.tenant }}
+# =============================================================================

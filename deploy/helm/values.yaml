@@ -1,0 +1,2711 @@
+# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
+#
+# =============================================================================
+# NVIDIA Config Manager Mono-Chart - Production Configuration
+# =============================================================================
+# This chart combines all NVIDIA Config Manager microservices into a single deployment:
+# - Gateway (Envoy Gateway with JWT auth)
+# - Render Service
+# - Network ZTP
+# - Network DHCP
+# - Temporal (workflows + UI)
+# - Config Store Service
+#
+# =============================================================================
+# RESOURCE SIZING (T-Shirt Sizes)
+# =============================================================================
+# This file contains PRODUCTION/LARGE settings:
+#   - 3+ replicas for high availability
+#   - nodeSelector targeting labeled nodes
+#   - podAntiAffinity for distribution across nodes
+#   - topologySpreadConstraints for even distribution
+#
+# For development/testing environments, use override files:
+#   --size small  -> values-local-small.yaml (24GB laptop, single node)
+#   --size medium -> values-local-medium.yaml (64GB VM, single node)
+#   --size large  -> base values.yaml (production, multi-node)
+#
+# Node Label Requirements for Production:
+#   - nv-config-manager.nvidia.com/node-type=control-plane (Temporal, Gateway, UI)
+#   - nv-config-manager.nvidia.com/node-type=worker        (Render, ZTP, DHCP, workers)
+#   - nv-config-manager.nvidia.com/node-type=database      (CNPG PostgreSQL clusters)
+# =============================================================================
+
+nameOverride: ""
+fullnameOverride: ""
+# =============================================================================
+# Global Configuration
+# =============================================================================
+global:
+  # Base domain for all services
+  # Services will be accessible at: *.nv-config-manager.{environment}.{baseDomain}
+  baseDomain: config-manager.example.com
+  # Environment identifier (dev, test, staging, agg-prod, etc.)
+  environment: dev
+  # Whether this is an aggregate deployment
+  aggregate: false
+  # Kubernetes namespace for all services
+  namespace: nv-config-manager
+  # Namespace creation - set to false if namespace is provided by platform team
+  createNamespace: false
+  # ServiceAccount creation - set to false if SA is provided by platform team
+  createServiceAccount: true
+  serviceAccountName: vault-access-sa
+  serviceAccountEksRole: ""
+  # Image pull secrets for all services
+  imagePullSecrets:
+    - regcred-nvcr
+  # Custom labels applied to all NVIDIA Config Manager service logs (as JSON fields) and to pod
+  # templates (nv-config-manager.customPodLabels). PodMonitors list these keys in
+  # podTargetLabels so Prometheus copies them onto scraped metrics; the same map
+  # is merged onto PodMonitor and Probe metadata.labels. Every scraped workload
+  # must include customPodLabels on its pod spec (see monitoring.yaml).
+  # Use for deployment-level metadata such as production status, region, etc.
+  # Example:
+  #   customLabels:
+  #     production: "true"
+  #     region: "us-east-1"
+  customLabels: {}
+  # Default image pull policy for infrastructure images (redis, nats, busybox)
+  # Set to "Always" for local development to pick up newer images
+  imagePullPolicy: IfNotPresent
+  # ---------------------------------------------------------------------------
+  # Container Images
+  # ---------------------------------------------------------------------------
+  # All NVIDIA Config Manager service images are defined here. For local development with
+  # the installer overrides these with local image names when building images.
+  # Checked-in service repositories intentionally use registry.example.com placeholders.
+  # Internal CI rewrites these to the configured image target when publishing charts or
+  # updating downstream kiwi-argocd values. Replace the placeholder with the public
+  # NVIDIA registry path when public publishing is enabled.
+  # ---------------------------------------------------------------------------
+  images:
+    # Main NVIDIA Config Manager Python services image (render, ztp, dhcp, temporal, config-store)
+    nvConfigManager:
+      repository: registry.example.com/nvidia/nv-config-manager
+      tag: "1.2.2-rc.23"
+      pullPolicy: Always
+    # NVIDIA Config Manager UI (React/Next.js - workflows + config-store)
+    nvConfigManagerUi:
+      repository: registry.example.com/nvidia/nv-config-manager-ui
+      tag: "1.2.2-rc.23"
+      pullPolicy: Always
+    # Kea DHCP server
+    kea:
+      repository: registry.example.com/nvidia/nv-config-manager-kea
+      tag: "1.2.2-rc.23"
+      pullPolicy: Always
+    # Kea database admin (for schema initialization)
+    keaAdmin:
+      repository: registry.example.com/nvidia/nv-config-manager-kea-admin
+      tag: "1.2.2-rc.23"
+      pullPolicy: Always
+    # Nautobot with NVIDIA Config Manager plugins
+    nautobot:
+      repository: registry.example.com/nvidia/nv-config-manager-nautobot
+      tag: "1.2.2-rc.23"
+      pullPolicy: Always
+    # NATS streams initializer
+    natsReady:
+      repository: registry.example.com/nvidia/nv-config-manager-nats-ready
+      tag: "1.2.2-rc.23"
+      pullPolicy: Always
+    httpEcho:
+      repository: hashicorp/http-echo
+      tag: "1.0"
+      pullPolicy: IfNotPresent
+    # Infrastructure images - configurable to support private registries and air-gapped deployments
+    # Override repository to point at an internal mirror (e.g. public.ecr.aws/docker/library/busybox)
+    kubectl:
+      repository: docker.io/alpine/kubectl
+      tag: "1.35.4"
+    busybox:
+      repository: docker.io/library/busybox
+      tag: "1.36"
+    redis:
+      repository: docker.io/library/redis
+      tag: "7-alpine"
+    nats:
+      repository: docker.io/library/nats
+      tag: "2.10-alpine"
+    natsBox:
+      repository: docker.io/natsio/nats-box
+      tag: "0.14.3"
+    temporalServer:
+      repository: docker.io/temporalio/server
+      tag: "1.29"
+    temporalAdminTools:
+      repository: docker.io/temporalio/admin-tools
+      tag: "1.29"
+    temporalUi:
+      repository: docker.io/temporalio/ui
+      tag: "v2.37.4"
+# =============================================================================
+# Local Development - Mock SSO Authentication
+# =============================================================================
+# For local development without running a real SSO provider, you can mock
+# the authentication headers that services expect via ingress-nginx which
+# injects headers via configuration-snippet annotation.
+#
+# When enabled, all requests will include the configured mock user/groups
+# as if they had gone through SSO authentication.
+#
+# WARNING: NEVER enable in production - this bypasses all authentication!
+# =============================================================================
+localDev:
+  mockAuth:
+    # Enable mock SSO headers for local development
+    # Sets X-Auth-Request-Email, X-Auth-Request-User, X-Auth-Request-Groups
+    enabled: false
+    # Mock user identity (appears in X-Auth-Request-Email and X-Auth-Request-User)
+    email: "dev@localhost"
+    user: "dev@localhost"
+    # Mock user's display name (X-Auth-Request-Name)
+    name: "Local Developer"
+    # Mock group memberships (comma-separated, X-Auth-Request-Groups)
+    # These should match the RBAC groups your services expect
+    groups: "nv-config-manager,nv-config-manager-admin"
+    # Mock preferred username (X-Auth-Request-Preferred-Username)
+    preferredUsername: "dev"
+  # Enable mock network device connections (returns stub data, no real SSH/API calls)
+  # Set to true in local Kind environments where worker pods can't reach real devices
+  mockDevices: false
+# =============================================================================
+# Secrets Configuration
+# =============================================================================
+secrets:
+  # ---------------------------------------------------------------------------
+  # Method: eso, kubernetes, or vault-agent
+  # ---------------------------------------------------------------------------
+  # - eso: External Secrets Operator fetches secrets from Vault/OpenBao
+  # - kubernetes: Native Kubernetes secrets created by the installer
+  # - vault-agent: HashiCorp Vault Agent Injector renders file-based secrets
+  #   (nv-config-manager.ini, config-secrets.ini, bmc-creds.json) from the same Vault KV paths
+  #   as ESO. Operator-facing Kubernetes Secrets can still be synced by ESO when
+  #   secrets.vaultAgent.esoForOperators is true (see vaultAgent comment block).
+  #
+  # When using 'kubernetes' method:
+  #   1. Run the installer, which creates secrets directly in the namespace
+  #   2. A pre-install Job assembles them into the nv-config-manager-ini secret
+  #   3. No secrets are stored in values files
+  # ---------------------------------------------------------------------------
+  method: eso
+  # ---------------------------------------------------------------------------
+  # Vault Agent (only used when method=vault-agent)
+  # ---------------------------------------------------------------------------
+  # Requires the Vault Agent Injector webhook in the cluster. Pods that consume
+  # nv-config-manager.ini / network config secrets / BMC JSON use annotation
+  # vault.hashicorp.com/agent-configmap pointing at the rendered ConfigMap.
+  #
+  # The injector mounts shared volume "vault-secrets" at /vault/secrets on each
+  # container at Pod admission. The chart does not declare that volume or file
+  # subPath mounts (Deployment validation requires template volumes for every
+  # volumeMount name; declaring vault-secrets duplicates the injector volume).
+  # Apps use NV_CONFIG_MANAGER_INI, NV_CONFIG_MANAGER_CONFIG_SECRET_PATH, and BMC_CREDS_PATH pointing at
+  # /vault/secrets/... (see templates/_vault-agent.tpl).
+  # ---------------------------------------------------------------------------
+  vaultAgent:
+    # When method=vault-agent and esoForOperators=true, ExternalSecrets still
+    # create the Kubernetes Secrets below (exact names and keys must match if you
+    # create them by hand). Vault Agent renders nv-config-manager.ini / config-secrets.ini /
+    # bmc-creds.json under /vault/secrets; those are NOT stored in the unified
+    # nv-config-manager-ini Secret when using vault-agent.
+    #
+    # Name = Secret.metadata.name. Keys = data keys consumers expect (CNPG uses
+    # username + password). "<release>" = Helm fullname (nv-config-manager.fullname).
+    #
+    # --- method=eso only (not created when method=vault-agent; use Agent files) ---
+    #   nautobot-token                    → token
+    #   slack-token                       → token
+    #   device-creds                      → username  (password sourced from config-secrets.ini via api_user_key_r*)
+    #   redfish-creds                     → lenovo-default-user, lenovo-default-password,
+    #                                         lenovo-nv-config-manager-password, bluefield-default-user,
+    #                                         bluefield-default-password, bluefield-nv-config-manager-password
+    #   air-creds                         → ssa-client-id, ssa-client-secret
+    #   bmc-creds                         → bmc-creds.json (file body; ESO pulls bmc_data then templates)
+    #   <release>-network-secrets         → config-secrets.ini (single key; helper networkSecretsName)
+    #   <release>-ini                     → nv-config-manager.ini (single key; helper iniSecretName)
+    #
+    # --- method=eso OR vault-agent+esoForOperators (operator / secretKeyRef secrets) ---
+    #
+    # Only when externalServices.nautobot.local (plus nested conditions below):
+    #   nautobot-django-secret            → secret_key
+    #                                         (also secrets.vault.paths.nautobotApp.path)
+    #   nautobot-admin                    → password, api_token
+    #                                         (same nautobotApp path)
+    #   nats-sys                          → password
+    #                                         (also externalServices.nats.authMethod=password)
+    #   nats-nautobot                     → password
+    #                                         (same NATS password mode)
+    #   <gitTokens[].secretName>          → token; plus username if paths.gitTokens[].hasUsername
+    #
+    # Other operator secrets:
+    #   redis-password                    → password
+    #   nats-nv-config-manager                         → password
+    #   cluster-temporal-app              → username, password
+    #   cluster-temporal-visibility-app   → username, password
+    #   cluster-config-store-app          → username, password
+    #   cluster-dhcp-app                  → username, password
+    #   cluster-nautobot-app              → username, password
+    #                                         (templates/cnpg-clusters.yaml: cnpg.nautobot.enabled
+    #                                         OR (nautobot.enabled AND externalServices.nautobot.local).
+    #                                         In most installs only local Nautobot sets the second
+    #                                         branch; the first branch is an explicit cnpg.nautobot.enabled
+    #                                         without requiring nautobot.local.)
+    #   <cnpg.backup.credentialsSecret or "cnpg-backup-credentials"> → ACCESS_KEY_ID, ACCESS_SECRET_KEY
+    #   <oidc.clientSecretName or "oidc-client-secret"> → hmac-secret (always);
+    #         client-secret if ingress.type=envoyGateway; cookie-secret if ingress.type=ingressNginx
+    #   <prometheus TLS secretName or "keda-prometheus-certs"> → keys from
+    #         secrets.vault.paths.kedaPrometheusCerts.keys (default ca.crt, tls.crt, tls.key)
+    #
+    # With method=vault-agent and esoForOperators=false, create the second block
+    # yourself with these exact names/keys (and the first block too if any workload
+    # still expects those Secrets). See templates/vault-secrets.yaml for if-conditions.
+    esoForOperators: false
+    # Agent log level (passed through injector)
+    logLevel: "info"
+    # Pre-populate secrets in an init container before the app container starts
+    prePopulate: true
+    # kubernetes: default pod SA token. jwt: same Vault *Kubernetes* auth mount but read the
+    # projected SA token (custom audience); matches ESO kubernetesServiceAccountToken — not the Vault JWT engine.
+    autoAuthMethod: kubernetes
+    # Required when autoAuthMethod=jwt (custom token audience). Fixed read path for agent:
+    # /var/run/secrets/vault.hashicorp.com/serviceaccount/token (vault-k8s projected volume).
+    serviceAccountTokenAudience: ""
+    # Expiration for the projected token (seconds)
+    serviceAccountTokenExpirationSeconds: 3600
+  # ---------------------------------------------------------------------------
+  # Vault Configuration (only used when method=eso or vault-agent)
+  # ---------------------------------------------------------------------------
+  vault:
+    # Optional SecretStore names for migrations. Defaults preserve the
+    # nv-config-manager names for new installs.
+    secretStoreName: ""
+    networkSecretStoreName: ""
+    # Vault/OpenBao server URL (required when method=eso)
+    server: "" # e.g., "https://vault.example.com" or "http://openbao.openbao.svc:8200"
+    # Vault namespace (enterprise feature, leave empty for OpenBao or non-enterprise Vault).
+    # When method=vault-agent and set, also emitted as pod annotation vault.hashicorp.com/namespace.
+    namespace: ""
+    # Kubernetes auth mount for Vault Agent / ESO.
+    # Mount name as in /v1/auth/<mount>/login
+    # mountPath: ""
+    # Kubernetes JWT auth role
+    role: "{{ .Values.global.namespace }}-vault-auth"
+    # KV v2 secrets engine mount path in Vault (required)
+    # secretsPath: "nv-config-manager"
+    # KV v2 secrets engine mount path for config secrets (sites/regions)
+    # Defaults to secretsPath if not set. Use this when config secrets are
+    # stored in a different KV engine than application secrets.
+    # configSecretsPath: ""
+    # JWT audiences for token validation (defaults to vault server URL)
+    # jwtAudiences:
+    #   - "https://vault.example.com"
+
+    # -------------------------------------------------------------------------
+    # Token Authentication (for dev environments without Kubernetes auth)
+    # -------------------------------------------------------------------------
+    # Enable for development when Kubernetes auth isn't configured.
+    # You must create the token secret manually before deploying:
+    #
+    #   kubectl create secret generic vault-token \
+    #     --from-literal=token=<your-token> \
+    #     -n <namespace>
+    #
+    # -------------------------------------------------------------------------
+    tokenAuth:
+      enabled: false
+      # Name of the pre-created secret containing the token
+      secretName: "vault-token"
+    # -------------------------------------------------------------------------
+    # Secret Definitions
+    # -------------------------------------------------------------------------
+    # Each secret requires an explicit full path in Vault and key mappings.
+    # No default paths are provided - you must configure these for your environment.
+    #
+    # Example:
+    #   nautobot:
+    #     path: "my-org/nv-config-manager/prod/nautobot"  # Full path to secret
+    #     keys:
+    #       token: "api_token"               # Map logical name to actual key
+    # -------------------------------------------------------------------------
+    paths:
+      nautobot:
+        # Full path to nautobot secret in Vault
+        path: "" # Required: e.g., "my-org/nv-config-manager/dev/nautobot"
+        keys:
+          token: "token"
+          natsPassword: "nats_password"
+          natsSysPassword: "nats_sys_password"
+          natsNautobotPassword: "nats_nautobot_password"
+      redis:
+        path: "" # Required: e.g., "my-org/nv-config-manager/dev/redis"
+        keys:
+          password: "password"
+      postgres:
+        path: "" # Required: e.g., "my-org/nv-config-manager/dev/postgres"
+        keys:
+          temporalUser: "temporal_user"
+          temporalPassword: "temporal_password"
+          temporalVisibilityUser: "temporal_visibility_user"
+          temporalVisibilityPassword: "temporal_visibility_password"
+          configStoreUser: "config_store_user"
+          configStorePassword: "config_store_password"
+          dhcpUser: "dhcp_user"
+          dhcpPassword: "dhcp_password"
+          nautobotUser: "nautobot_user"
+          nautobotPassword: "nautobot_password"
+      network:
+        path: "" # Required: e.g., "my-org/nv-config-manager/dev/network"
+        keys:
+          user: "user"
+          password: "password"
+      redfish:
+        path: "" # Required: e.g., "my-org/nv-config-manager/dev/redfish"
+        keys:
+          lenovoDefaultUser: "lenovo_default_user"
+          lenovoDefaultPassword: "lenovo_default_password"
+          lenovoConfigManagerPassword: "lenovo_config_manager_password"
+          bluefieldDefaultUser: "bluefield_default_user"
+          bluefieldDefaultPassword: "bluefield_default_password"
+          bluefieldConfigManagerPassword: "bluefield_config_manager_password"
+      bmc:
+        path: "" # Required: e.g., "my-org/nv-config-manager/dev/bmc"
+        keys:
+          credsJson: "bmc-creds.json"
+      slack:
+        path: "" # Required: e.g., "my-org/nv-config-manager/dev/slack"
+        keys:
+          token: "token"
+      # Note: DHCP lease database password comes from postgres path (dhcpPassword key)
+      air:
+        path: "" # Required: e.g., "my-org/nv-config-manager/dev/air"
+        keys:
+          ssaClientId: "ssa_client_id"
+          ssaClientSecret: "ssa_client_secret"
+      nautobotApp:
+        path: "" # Required: e.g., "my-org/nv-config-manager/dev/nautobot-app"
+        keys:
+          adminPassword: "admin_password"
+          djangoSecretKey: "django_secret_key"
+          superuserApiToken: "superuser_api_token"
+      # OIDC/SSO client credentials (optional - only needed when oidc.enabled)
+      oidc:
+        path: "" # Required when using SSO: e.g., "my-org/nv-config-manager/dev/oidc"
+        keys:
+          clientSecret: "client_secret"
+          # cookieSecret is only used for oauth2-proxy (deprecated ingress-nginx mode)
+          # Envoy Gateway mode uses JWT validation and doesn't need this
+          cookieSecret: "cookie_secret"
+      # CNPG backup S3 credentials (optional - only when cnpg backup is enabled)
+      # Creates the cnpg-backup-credentials secret via ESO instead of manually
+      cnpgBackup:
+        path: "" # e.g., "my-org/nv-config-manager/dev/cnpg-backup"
+        keys:
+          accessKeyId: "s3_backup_access_key_id"
+          accessSecretKey: "s3_backup_access_secret_key"
+      # KEDA Prometheus mTLS certificates (optional - only when autoscaling with TLS)
+      # Contains ca.crt, tls.crt, tls.key for authenticated Prometheus access
+      kedaPrometheusCerts:
+        path: "" # e.g., "my-org/nv-config-manager/dev/keda-prometheus-certs"
+        keys:
+          caCert: "ca.crt"
+          tlsCert: "tls.crt"
+          tlsKey: "tls.key"
+      # Git repository credentials for Nautobot git sync (e.g. Prismo)
+      # Each entry auto-creates env vars in Nautobot and Celery pods:
+      #   - GIT_TOKEN_<NAME>    (always, from secret key "token")
+      #   - GIT_USERNAME_<NAME> (when hasUsername: true, from secret key "username")
+      #
+      # In Nautobot UI, create Secrets sourcing from these env var names,
+      # bundle into a Secrets Group, and link to the git repository.
+      #
+      # For ESO: set path to auto-create the K8s Secret from Vault.
+      # For kubernetes method: configure git_tokens in the installer config.
+      #
+      # Example:
+      #   gitTokens:
+      #     - name: prismo
+      #       secretName: prismo-git-token
+      #       hasUsername: true
+      #       path: "my-org/nv-config-manager/prod/prismo-git"
+      gitTokens: []
+    # -------------------------------------------------------------------------
+    # Site/Region Config Secrets (for render service template rendering)
+    # -------------------------------------------------------------------------
+    # These are per-site/region secrets used by nv_config_manager_templates during
+    # config rendering (e.g., root passwords, BGP keys). Fetched via ESO and
+    # mounted as an INI file on render consumer pods.
+    configSecrets:
+      enabled: false
+      sites: []
+      # - name: site01
+      #   path: "my-org/nv-config-manager/site/site01/config_secrets"
+      regions: []
+      # - name: region01
+      #   path: "my-org/nv-config-manager/region/region01/config_secrets"
+# =============================================================================
+# External Services Configuration (Shared)
+# =============================================================================
+externalServices:
+  # Nautobot Configuration
+  nautobot:
+    # Set to true to use local Nautobot deployment in nv-config-manager namespace
+    # Set to false to use an external Nautobot deployment
+    local: false
+    # External Nautobot server URL (required when local=false)
+    # e.g., "https://nautobot.prod.example.com"
+    # When local=true, server is auto-generated
+    server: ""
+    # Local server URL (used when local=true)
+    # Routes through the gateway for HTTPS termination
+    localServer: "https://{{ tpl .Values.nautobot.gateway.hostname . }}"
+    tokenKey: token
+    version: 2.3.5
+    maxWorkers: 8
+    retries: 3
+    # SSL verification: true (default, use system CAs), false (disable), or path to CA cert
+    verify: true
+    cacheRefreshInterval: 300
+    cacheTtl: 3600
+  # NATS Configuration
+  nats:
+    # Server URL
+    server: "nats://nats:4222"
+    # Username for password auth
+    user: "nv-config-manager"
+    # Optional password secret name overrides. By default this is nats-<user>.
+    secretName: ""
+    externalSecretName: ""
+    authMethod: JWT # JWT or password
+    local: false
+    queue: nv-config-manager
+    credsPath: /etc/nv-config-manager/secrets/nats.creds
+    streams:
+      configManager:
+        name: kiwi
+        subjects:
+          - kiwi.nautobotchange
+          - kiwi.devicechange
+          - kiwi.workflow.result
+        renderChangeSubject: kiwi.nautobotchange
+        deviceChangeSubject: kiwi.devicechange
+        archiveSubject: kiwi.workflow.result
+      nautobot:
+        name: nautobot
+        subjects:
+          - nautobot
+        subject: nautobot
+  # Redis Configuration (Shared by all services including Nautobot)
+  redis:
+    # Set to true to deploy a local Redis instance in the nv-config-manager namespace
+    # When local=true, host is auto-generated
+    # When local=false, set host to external Redis server
+    local: false
+    host: ""
+    port: 6379
+    db: 0
+    lockDb: 0
+    ssl: false
+    passwordAuth: true
+    socketTimeout: 5
+    socketConnectTimeout: 5
+    # Local Redis deployment configuration (when local=true)
+    resources:
+      requests:
+        cpu: 500m
+        memory: 512Mi
+      limits:
+        memory: 1Gi
+    persistence:
+      enabled: true
+      size: 2Gi
+      # nodeSelector:  # Uncomment for production node placement
+      # nv-config-manager.nvidia.com/node-type: control-plane
+  # Elasticsearch (for Temporal)
+  elasticsearch:
+    local: false
+    server: "https://elasticsearch:9200"
+    domain: ""
+  # PostgreSQL (for Temporal & Config Store)
+  # Each service must specify its own database host explicitly.
+  #
+  # Two modes:
+  #   1. CNPG-managed (cnpg.enabled=true): Hosts should be CNPG service names
+  #      (e.g., "cluster-temporal-rw"). CNPG creates the Cluster resources and
+  #      the credential secrets are provisioned for both CNPG bootstrap and app use.
+  #   2. External PostgreSQL (cnpg.enabled=false): Set hosts to external PG
+  #      endpoints (e.g., "external-pg.example.com"). Credential secrets are
+  #      still created from Vault for app authentication. The external PG must
+  #      be pre-provisioned with the required databases and users.
+  postgres:
+    port: 5432
+    # Temporal databases - each environment MUST set these hosts
+    temporal:
+      host: "cluster-temporal-rw"
+      database: temporal
+      visibilityHost: "cluster-temporal-visibility-rw"
+      visibilityDatabase: temporal_visibility
+    # Config Store database
+    configStore:
+      host: "cluster-config-store-rw"
+      database: nv_config_manager_config_store
+    # DHCP lease database
+    dhcp:
+      host: "cluster-dhcp-rw"
+      database: kea_dhcp
+  # Optional: Slack notifications
+  # slack:
+  #   channel: "#nv-config-manager-alerts"
+  # UFM credentials for InfiniBand workflows are loaded from config-secrets.ini
+  # using site-scoped keys: ufm_api_user and ufm_api_token_rN.
+  # This flag is retained for compatibility; it no longer creates app secrets.
+  ufm:
+    enabled: false
+  # Jira Configuration (for DiagnosticsWorkflow ticketing)
+  # In production, credentials are sourced from Vault via secrets.vault.paths.jira.
+  # In local dev (secrets.method=kubernetes), set enabled=true and provide a
+  # jira-creds K8s secret: kubectl create secret generic jira-creds --from-literal=api-token=<token> -n <namespace>
+  jira:
+    enabled: false
+    baseUrl: ""
+# =============================================================================
+# Ingress Configuration
+# =============================================================================
+# Controls how external traffic reaches the platform. Supports two modes:
+#
+# envoyGateway (recommended):
+#   - Uses Gateway API with Envoy Gateway controller
+#   - TLS termination via Gateway listener
+#   - Modern, feature-rich, actively developed
+#
+# ingressNginx:
+#   - Uses traditional Ingress resources with ingress-nginx
+#   - TLS termination via Ingress tls configuration
+#   - Use when Envoy Gateway is not available in your cluster
+#
+# In BOTH modes, JWT authentication is handled by the Envoy sidecar:
+#   - Validates external JWTs (Azure AD, OIDC)
+#   - Extracts claims to X-Auth-Request-* headers
+#   - Optionally handles SPIFFE for service-to-service calls
+#
+# This provides a consistent auth pattern regardless of ingress controller.
+# =============================================================================
+ingress:
+  # Ingress controller type: envoyGateway or ingressNginx
+  type: envoyGateway
+  # ---------------------------------------------------------------------------
+  # ingress-nginx specific configuration (when type=ingressNginx)
+  # ---------------------------------------------------------------------------
+  nginx:
+    # Ingress class name
+    className: nginx
+    # Annotations to add to all Ingress resources
+    annotations: {}
+    #   nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    #   nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+# =============================================================================
+# Gateway Configuration (used when ingress.type=envoyGateway)
+# =============================================================================
+gateway:
+  enabled: true
+  name: nv-config-manager-gateway
+  className: envoy-gateway
+  # Set to false when using an existing Envoy Gateway installation
+  # (e.g., shared infrastructure, pre-installed by platform team)
+  createGatewayClass: true
+  # Host network mode (for local Kind clusters without LoadBalancer)
+  # When enabled, Envoy proxy uses host network and binds directly to ports 80/443
+  hostNetwork:
+    enabled: false
+  # DEPRECATED: Use nodePort instead for Envoy Gateway v1.6+
+  # Host Ports configuration for Envoy + Kind (legacy approach)
+  # Uses hostPort to bind directly to ports 80/443 on the node
+  # This approach requires runtime patching and doesn't work reliably with v1.6+
+  hostPorts:
+    enabled: false
+    https: 443
+    containerPort: 10443
+  # NodePort configuration for Envoy Gateway
+  # Uses NodePort service type instead of LoadBalancer
+  nodePort:
+    enabled: false
+    # NodePort for HTTP (must be in range 30000-32767)
+    http: 30080
+    # NodePort for HTTPS (must be in range 30000-32767)
+    https: 30443
+  # ---------------------------------------------------------------------------
+  # EnvoyProxy custom configuration (platform-style)
+  # ---------------------------------------------------------------------------
+  # When enabled, creates an EnvoyProxy and attaches it to the Gateway. Use for
+  # LoadBalancer + BGP/labels (e.g. SCP site-local) or other envoyService/logging
+  # without NLB.
+  # ---------------------------------------------------------------------------
+  envoyProxy:
+    enabled: false
+    # name: nv-config-manager-envoy-config  # optional; defaults to gateway.name + "-proxy"
+    # image: "" # Optional Envoy data-plane image override for airgapped registries
+    logging:
+      level:
+        default: warn # Envoy log level: trace, debug, info, warn, error, critical, off
+    envoyService:
+      type: LoadBalancer
+      externalTrafficPolicy: Local
+      labels: {} # e.g. bgp.scp.nvidia.com/scope: site-local
+      # annotations: {}
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+  # ---------------------------------------------------------------------------
+  # AWS Network Load Balancer Configuration (for EKS environments)
+  # ---------------------------------------------------------------------------
+  # Configure AWS-specific NLB settings.
+  # Only applies when using LoadBalancer service type.
+  # ---------------------------------------------------------------------------
+  # nlb:
+  #   type: external  # or internal
+  #   target_type: ip  # or instance
+  #   name: nv-config-manager-gateway-lb  # Optional: custom NLB name
+  #   sg: "sg-xxxxxxxxx,sg-yyyyyyyyy"  # Security groups
+  #   subnets: "subnet-xxxxxxxx,subnet-yyyyyyyy"  # Specific subnets
+  #   ips: "10.x.x.x,10.y.y.y"  # Optional: static IPs
+  #   dns_name: "*.config-manager.example.com"  # Optional: external-dns hostname
+
+  # Base hostname for the gateway - services prepend their subdomain to this
+  # e.g., baseHostname: "config-manager.example.com" -> render.config-manager.example.com, config-store.config-manager.example.com
+  # The base hostname itself routes to the unified UI
+  #
+  # Hostname scheme:
+  #   <service>.<baseHostname>           → OIDC+JWT (browser access)
+  #   svc-<service>.<baseHostname>       → JWT-only (CLI/machine access, no OIDC redirect)
+  baseHostname: "" # Must be set in environment-specific values file
+  # Listeners configuration
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+    - name: https
+      protocol: HTTPS
+      port: 443
+      tls:
+        mode: Terminate
+        certificateRef:
+          kind: Secret
+          name: nv-config-manager-gateway-tls
+  # Certificate configuration (cert-manager)
+  certificates:
+    enabled: true
+    issuer:
+      kind: ClusterIssuer
+      name: letsencrypt-prod
+  # ---------------------------------------------------------------------------
+  # JWT Authentication (used by both envoyGateway and ingress-nginx modes)
+  # ---------------------------------------------------------------------------
+  # The sidecar validates JWTs from multiple providers:
+  #   - SSO: ID tokens from oauth2-proxy (Azure AD, OIDC)
+  #   - API: Direct JWT from external services
+  #   - SPIFFE: JWT-SVIDs from local or federated SPIFFE providers
+  #
+  # Multi-provider support allows trusting tokens from:
+  #   - Azure AD (for human users and Azure-integrated services)
+  #   - External SPIRE clusters (for cross-cluster service-to-service)
+  #   - Teleport (for SPIFFE via Teleport Workload Identity)
+  #   - Any OIDC-compliant provider
+  # ---------------------------------------------------------------------------
+  auth:
+    jwt:
+      enabled: true
+      # -------------------------------------------------------------------------
+      # JWT Providers - List of trusted token issuers
+      # -------------------------------------------------------------------------
+      # Each provider specifies an issuer, audiences, and JWKS endpoint.
+      # The sidecar accepts tokens from ANY of these providers.
+      #
+      # For Azure AD: jwksUri is auto-derived from issuer if not specified
+      # For SPIRE/Teleport: specify the full jwksUri to the bundle endpoint
+      # -------------------------------------------------------------------------
+      # providers: Multi-provider JWT configuration (optional)
+      # When empty, uses issuer/audiences/jwksUri above (single-issuer mode)
+      # When set, each provider is validated independently (multi-issuer mode)
+      #
+      # Each provider supports an optional claimMappings block that controls
+      # which JWT claims are extracted to X-Auth-Request-* headers:
+      #   email:  claim for X-Auth-Request-Email  (default: "email")
+      #   groups: claim for X-Auth-Request-Groups (default: "roles", extracted as array)
+      #   user:   claim for X-Auth-Request-User   (default: "preferred_username")
+      # The sidecar Lua filter looks up mappings by the token's "iss" claim,
+      # so each provider can use different claim names without code changes.
+      providers: []
+      # Example multi-provider config:
+      # providers:
+      #   - name: azure-ad
+      #     issuer: "https://login.microsoftonline.com/{tenant}/v2.0"
+      #     audiences:
+      #       - "api://{client-id}"
+      #     # jwksUri auto-derived for Azure AD: {issuer}/discovery/v2.0/keys
+      #     # claimMappings: omitted → uses defaults (email, roles, preferred_username)
+      #
+      #   - name: keycloak
+      #     issuer: "https://keycloak.example.com/realms/myrealm"
+      #     audiences:
+      #       - "my-client-id"
+      #     jwksUri: "https://keycloak.example.com/realms/myrealm/protocol/openid-connect/certs"
+      # Example: External SPIRE cluster (uncomment to enable)
+      # - name: spire-cluster-a
+      #   issuer: "https://spire.cluster-a.example.com"
+      #   audiences:
+      #     - "spiffe://cluster-a.example.com"
+      #   jwksUri: "https://spire.cluster-a.example.com:8443/keys"
+
+      # Forward the original JWT to the upstream service
+      forwardToken: true
+      # -------------------------------------------------------------------------
+      # Claim-to-Header Mapping (applied to all providers)
+      # -------------------------------------------------------------------------
+      # Extract claims from validated JWTs and set as request headers.
+      # These headers are trusted by the application after sidecar validation.
+      # -------------------------------------------------------------------------
+      claimToHeaders:
+        - claim: email
+          header: X-Auth-Request-Email
+        - claim: preferred_username
+          header: X-Auth-Request-Preferred-Username
+        - claim: name
+          header: X-Auth-Request-Name
+        - claim: groups
+          header: X-Auth-Request-Groups
+        # SPIFFE tokens use 'sub' for the SPIFFE ID
+        - claim: sub
+          header: X-Auth-Request-Subject
+  # Rate limiting
+  # Requires the EnvoyGateway config to have rate limit service (gRPC + Redis) enabled at the system level.
+  rateLimit:
+    enabled: false
+    global:
+      requests: 1000
+      unit: Minute
+      perClient:
+        enabled: true
+        requests: 100
+        unit: Minute
+  # Timeout configuration (applies globally to all HTTPRoutes)
+  timeout:
+    # Request timeout - max time to wait for complete response from backend
+    requestTimeout: 300s
+    # Connection idle timeout - how long to keep idle connections open
+    connectionIdleTimeout: 60s
+    # Max connection duration - max lifetime of a connection (0s = unlimited)
+    maxConnectionDuration: 0s
+    # TCP connect timeout - time to establish connection to backend
+    connectTimeout: 10s
+  # CORS configuration
+  cors:
+    enabled: true
+    # allowOrigins: list of origins allowed for CORS requests.
+    # When empty (default), origins are auto-derived from gateway.baseHostname:
+    #   - https://<baseHostname>          (base UI)
+    #   - https://*.<baseHostname>        (all service subdomains)
+    # Override with explicit origins if needed. For local development only,
+    # you may use "*" — but NEVER use "*" in production with allowCredentials: true
+    # as this creates CWE-942 (Overly Permissive Cross-domain Whitelist).
+    allowOrigins: []
+    allowCredentials: true
+    allowMethods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - PATCH
+      - OPTIONS
+    allowHeaders:
+      - "*"
+    exposeHeaders:
+      - "*"
+    # maxAge must be a duration string (e.g., "86400s" for 24 hours)
+    maxAge: "86400s"
+  # Health check echo service (returns "OK" on any path).
+  # NOTE: This only controls whether the health-check-service pod is deployed.
+  # To actually bypass OIDC/JWT auth for health check paths on each service,
+  # use the per-service gateway.authBypass configuration instead.
+  healthChecks:
+    enabled: true
+    paths:
+      - /health
+      - /healthz
+      - /ready
+      - /readyz
+      - /ping
+      - /healthcheck
+  # ---------------------------------------------------------------------------
+  # Auth Bypass Configuration (per-service path-based auth bypass)
+  # ---------------------------------------------------------------------------
+  # Some services need specific paths to bypass OIDC redirect while still
+  # allowing JWT auth if a token is present. This is useful for:
+  #   - APIs that support both JWT auth AND native token auth (e.g., Nautobot)
+  #   - Service-to-service calls using SPIFFE JWT
+  #   - Machine-to-machine API access without browser flow
+  #   - Static assets (JS, CSS, fonts) - not sensitive, avoids JWT load on every file
+  #
+  # When a path is in authBypass:
+  #   - OIDC redirect is DISABLED (no login prompt)
+  #   - JWT validation is OPTIONAL (allow_missing_or_failed)
+  #   - If valid JWT present: claims extracted to X-Auth-Request-* headers
+  #   - If no JWT: request passes through, service handles its own auth
+  #
+  # This creates separate HTTPRoutes with SecurityPolicies that have
+  # jwt.optional=true but NO oidc block, and configures the sidecar to
+  # allow requests without valid JWT on these paths.
+  # ---------------------------------------------------------------------------
+  authBypass:
+    # Master switch for all auth bypass routes
+    enabled: true
+    # Static file suffix bypass (like nv-config-manager-temporal) - match by extension, not path
+    # Regex for paths ending in common static asset extensions
+    staticFileRegex: ".*\\.(js|css|ico|woff2?|ttf|svg|png|jpg|jpeg|gif|webp)$"
+  # Observability
+  observability:
+    accessLogs:
+      enabled: true
+    metrics:
+      enabled: true
+    tracing:
+      enabled: false
+      endpoint: ""
+      samplingRate: 0.1
+# =============================================================================
+# OAuth2 Proxy (SSO) Configuration
+# =============================================================================
+# Handles browser-based OIDC login flow. Works with both Envoy Gateway (ExtAuth)
+# and ingress-nginx (auth-url annotation).
+#
+# Browser flow:
+#   1. User accesses https://nautobot.config-manager.example.com/
+#   2. Gateway/ingress calls oauth2-proxy /oauth2/auth
+#   3. No cookie? → Redirect to OIDC provider login
+#   4. User authenticates → Redirect back with cookie + JWT in headers
+#   5. Subsequent requests pass through with Authorization: Bearer <token>
+# =============================================================================
+oidc:
+  # Enable SSO/OIDC authentication for browser access
+  # Implementation depends on ingress.type:
+  #   - envoyGateway: Uses Envoy's native OIDC filter (per-route policies)
+  #   - ingressNginx: Uses oauth2-proxy deployment
+  enabled: false
+  # -------------------------------------------------------------------------
+  # Per-Route OIDC (Envoy Gateway)
+  # -------------------------------------------------------------------------
+  # Each HTTPRoute gets its own SecurityPolicy with OIDC configured to use
+  # the route's hostname as the callback URL.
+  #
+  # Session cookies are shared across all subdomains via:
+  #   - cookieNames: NVConfigManagerAccessToken, NVConfigManagerIdToken (consistent across routes)
+  #   - cookieDomain: <baseHostname> (allows subdomain sharing)
+  #
+  # IdP Configuration - register each redirect URI:
+  #   - https://<baseHostname>/oauth2/callback
+  #   - https://render.<baseHostname>/oauth2/callback
+  #   - https://ztp.<baseHostname>/oauth2/callback
+  #   - https://dhcp.<baseHostname>/oauth2/callback
+  #   - https://workflow.<baseHostname>/oauth2/callback
+  #   - https://temporal.<baseHostname>/oauth2/callback
+  #   - https://config-store.<baseHostname>/oauth2/callback
+  #   - https://nautobot.<baseHostname>/oauth2/callback
+  #
+  # For Keycloak: Can use * (wildcard) for Valid Redirect URIs
+  # -------------------------------------------------------------------------
+
+  # OIDC issuer URL (e.g., Azure AD, Okta, Keycloak, etc.)
+  # For Azure AD v2.0: https://login.microsoftonline.com/{tenant-id}/v2.0
+  # For Keycloak: https://<host>/realms/<realm>
+  issuerUrl: ""
+  # OAuth2 client ID
+  clientId: ""
+  # Name of K8s secret containing client-secret key
+  # Secret must have key 'client-secret'
+  clientSecretName: "oidc-client-secret"
+  # OIDC scopes to request
+  # Default: ["openid", "email", "profile"]
+  # For Azure AD JWT access tokens, use: ["api://{client-id}/.default", "openid", "profile"]
+  scopes: []
+  # Token audiences for JWT validation
+  # Default: uses clientId as audience
+  # audiences:
+  #   - "api://my-app-id"
+
+  # Disable token encryption in cookies (default: false)
+  # When true, JWTs are stored as plain text in cookies, allowing downstream
+  # JWT validation to extract claims. Required for auth bypass routes to work
+  # with JWT claim extraction.
+  # WARNING: Only enable in secure environments (HTTPS, secure cookie flags)
+  disableTokenEncryption: true
+  # JWKS URI for token validation (auto-derived from issuerUrl if not set)
+  # For Keycloak: https://<host>/realms/<realm>/protocol/openid-connect/certs
+  # For Azure AD: https://login.microsoftonline.com/<tenant>/discovery/v2.0/keys
+  # jwksUri: ""
+
+  # Optional: Override authorization and token endpoints
+  # (usually auto-discovered from issuer)
+  # authorizationEndpoint: ""
+  # tokenEndpoint: ""
+
+  # Optional: Internal issuer URL for token exchange (if external URL isn't reachable from cluster)
+  # internalIssuerUrl: ""
+
+  # JWT claim containing user groups/roles (default: "roles")
+  groupsClaim: "roles"
+  # Optional: restrict to specific groups (not enforced at gateway, checked by sidecar)
+  # allowedGroups:
+  #   - "group-uuid-1"
+
+  # -------------------------------------------------------------------------
+  # Claim-to-Header Mapping (OIDC provider in Envoy Gateway SecurityPolicy)
+  # -------------------------------------------------------------------------
+  # Extract claims from validated JWTs and set as request headers.
+  # These are applied by the Envoy Gateway SecurityPolicy for the OIDC provider.
+  # -------------------------------------------------------------------------
+  claimToHeaders:
+    - claim: email
+      header: X-Auth-Request-Email
+    - claim: preferred_username
+      header: X-Auth-Request-User
+    - claim: roles
+      header: X-Auth-Request-Groups
+  # Optional: callback port (if using non-standard HTTPS port)
+  # callbackPort: ""
+
+  # -------------------------------------------------------------------------
+  # oauth2-proxy settings (only used for ingress-nginx mode)
+  # -------------------------------------------------------------------------
+  oauth2Proxy:
+    # Replicas
+    replicas: 1
+    # Container image
+    image:
+      repository: quay.io/oauth2-proxy/oauth2-proxy
+      tag: v7.6.0
+      pullPolicy: IfNotPresent
+    # Cookie secret for session encryption (must be exactly 32 bytes for AES-256)
+    # Generate with: openssl rand -base64 24 (produces exactly 32 characters)
+    # If empty, the installer can generate one
+    cookieSecret: ""
+    # TLS configuration
+    tls:
+      enabled: true
+      # secretName defaults to the gateway-tls certificate if not specified
+      secretName: ""
+    # Resources
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
+# =============================================================================
+# UI: Unified NVIDIA Config Manager UI
+# =============================================================================
+# Combined React/Next.js UI for workflows and config-store.
+# Accessible at the base hostname (e.g., config-manager.example.com)
+# =============================================================================
+ui:
+  enabled: true
+  # Number of replicas
+  replicas: 3
+  # Gateway routing - base hostname (no subdomain)
+  gateway:
+    # The UI is served at the base hostname
+    hostname: "{{ .Values.gateway.baseHostname }}"
+    # Optional: restrict access to specific groups (Azure AD group UUIDs)
+    allowedGroups: []
+    # Static file bypass - no JWT auth on assets (faster load, fewer refreshes)
+    # UI is OIDC-only; static file auth bypass removed
+    authBypass:
+      enabled: false
+      pathRegex: ""
+  # Resource limits
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+      # nodeSelector:  # Uncomment for production node placement
+    # nv-config-manager.nvidia.com/node-type: control-plane
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+                - key: app.kubernetes.io/name
+                  operator: In
+                  values:
+                    - nv-config-manager-ui
+            topologyKey: kubernetes.io/hostname
+# =============================================================================
+# Service: Render Service
+# =============================================================================
+renderService:
+  enabled: true
+  # Gateway routing - subdomain based
+  gateway:
+    # Hostname: render.<baseHostname> (OIDC+JWT, browser access)
+    hostname: "render.{{ .Values.gateway.baseHostname }}"
+    # Hostname: svc-render.<baseHostname> (JWT-only, CLI/machine access)
+    svcHostname: "svc-render.{{ .Values.gateway.baseHostname }}"
+    # Optional: restrict access to specific groups (Azure AD group UUIDs)
+    allowedGroups: []
+    # Auth bypass - healthcheck must be accessible without OIDC/JWT
+    authBypass:
+      enabled: true
+      paths:
+        - /healthcheck
+  # API configuration
+  api:
+    replicas: 3
+    resources:
+      requests:
+        cpu: 500m
+        memory: 256Mi
+      limits:
+        memory: 512Mi
+        # nodeSelector:  # Uncomment for production node placement
+      # nv-config-manager.nvidia.com/node-type: worker
+    affinity:
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                  - key: app.kubernetes.io/component
+                    operator: In
+                    values:
+                      - render-api
+              topologyKey: kubernetes.io/hostname
+  # Consumers
+  consumers:
+    nautobot:
+      replicas: 3
+      resources:
+        requests:
+          cpu: 500m
+          memory: 512Mi
+        limits:
+          memory: 2Gi
+          # nodeSelector:  # Uncomment for production node placement
+        # nv-config-manager.nvidia.com/node-type: worker
+    # affinity:  # Uncomment for production pod distribution
+    # podAntiAffinity:
+    # preferredDuringSchedulingIgnoredDuringExecution:
+    # - weight: 100
+    # podAffinityTerm:
+    # labelSelector:
+    # matchExpressions:
+    # - key: app.kubernetes.io/component
+    # operator: In
+    # values:
+    # - render-consumer-nautobot
+    # topologyKey: kubernetes.io/hostname
+
+    device:
+      replicas: 6
+      resources:
+        requests:
+          cpu: 500m
+          memory: 512Mi
+        limits:
+          memory: 1Gi
+          # nodeSelector:  # Uncomment for production node placement
+        # nv-config-manager.nvidia.com/node-type: worker
+  # affinity:  # Uncomment for production pod distribution
+  # podAntiAffinity:
+  # preferredDuringSchedulingIgnoredDuringExecution:
+  # - weight: 100
+  # podAffinityTerm:
+  # labelSelector:
+  # matchExpressions:
+  # - key: app.kubernetes.io/component
+  # operator: In
+  # values:
+  # - render-consumer-device
+  # topologyKey: kubernetes.io/hostname
+
+  # Template updater job
+  templateUpdater:
+    concurrency: 8
+    lockTimeoutSeconds: 120
+    ttlSecondsAfterFinished: 86400
+    backoffLimit: 10
+    activeDeadlineSeconds: 3600
+    resources:
+      requests:
+        cpu: 1000m
+        memory: 1Gi
+      limits:
+        memory: 4Gi
+  # Config secrets path (network/site specific secrets for rendering)
+  configSecrets:
+    # Path where config secrets are mounted in the container
+    mountPath: /etc/nv-config-manager/secrets/config-secrets
+    # Full path to the config-secrets.ini file
+    path: /etc/nv-config-manager/secrets/config-secrets/config-secrets.ini
+  # Template plugins (optional additional templates from PVC)
+  templatePlugins:
+    enabled: false
+    pvcName: render-service-template-plugins
+    mountPath: /opt/template-plugins
+    # Image for init container that installs plugins (needs pip + hatchling)
+    installerImage: python:3.13-alpine
+    # Image-based plugin sources for ArgoCD-managed deployments.
+    # Each image can provide /plugin-wheels/*.whl and/or /plugin-source/pyproject.toml.
+    images: []
+  # ---------------------------------------------------------------------------
+  # KEDA Autoscaling (NATS queue-based scaling for consumers)
+  # ---------------------------------------------------------------------------
+  # Scales render-service consumers based on NATS JetStream pending message count.
+  # Each consumer type can be independently configured. KEDA queries Prometheus
+  # for the nats_consumer_num_pending metric to determine scaling needs.
+  #
+  # Prerequisites:
+  #   - KEDA installed in cluster (keda-operator)
+  #   - Prometheus with NATS JetStream metrics available
+  #   - (Optional) mTLS certs for secure Prometheus access (e.g., Panoptes/Mimir)
+  #
+  # Metric used: nats_consumer_num_pending{stream_name="nv-config-manager", consumer_name="..."}
+  # ---------------------------------------------------------------------------
+  autoscaling:
+    # Enable KEDA autoscaling for render-service consumers
+    enabled: false
+    # Prometheus configuration for KEDA
+    prometheus:
+      # Prometheus/Mimir server address
+      serverAddress: ""
+      # Namespace label to filter NATS metrics (prevents cross-environment matching)
+      natsMetricsNamespace: ""
+      # Ignore null values from Prometheus (prevents scale-to-zero issues when no data)
+      ignoreNullValues: "true"
+      # Skip TLS verification (only for testing, not recommended for production)
+      unsafeSsl: "false"
+      # ---------------------------------------------------------------------------
+      # mTLS Authentication (for secure Prometheus like Panoptes/Mimir)
+      # ---------------------------------------------------------------------------
+      # Configure TLS client certificates for authenticated access to Prometheus.
+      # Leave disabled for unauthenticated Prometheus instances.
+      #
+      # The secret is provisioned differently based on secrets.method:
+      #   - eso: Set secrets.vault.paths.kedaPrometheusCerts.path and ESO creates it
+      #   - kubernetes: Pre-create the secret or configure it through installer-managed values
+      #
+      # Vault path/key mappings are configured in secrets.vault.paths.kedaPrometheusCerts
+      tls:
+        enabled: false
+        # Name of the K8s secret containing TLS certificates (ca.crt, tls.crt, tls.key)
+        secretName: "keda-prometheus-certs"
+    # KEDA polling and cooldown settings
+    pollingInterval: 30 # How often KEDA checks metrics (seconds)
+    cooldownPeriod: 300 # Wait time before scaling down after last trigger (seconds)
+    # ---------------------------------------------------------------------------
+    # Per-Consumer Autoscaling Configuration
+    # ---------------------------------------------------------------------------
+    # Each consumer can be independently configured for autoscaling.
+    # Consumer names in Prometheus: {nats.queue}-{consumer_type}
+    # ---------------------------------------------------------------------------
+    consumers:
+      device:
+        enabled: true
+        minReplicas: 6
+        maxReplicas: 30
+        targetPendingPerPod: 10
+        behavior:
+          scaleUp:
+            stabilizationWindowSeconds: 0
+            policies:
+              percent: 100
+              pods: 10
+              periodSeconds: 15
+          scaleDown:
+            stabilizationWindowSeconds: 300
+            policies:
+              percent: 50
+              pods: 5
+              periodSeconds: 60
+      nautobot:
+        enabled: true
+        minReplicas: 3
+        maxReplicas: 15
+        targetPendingPerPod: 10
+        behavior:
+          scaleUp:
+            stabilizationWindowSeconds: 60
+            policies:
+              percent: 50
+              pods: 10
+              periodSeconds: 30
+          scaleDown:
+            stabilizationWindowSeconds: 300
+            policies:
+              percent: 25
+              pods: 5
+              periodSeconds: 60
+  # Client configuration (for other services to call render service)
+  client:
+    # Set to true for internal cluster communication (uses api_service endpoint)
+    # Set to false for external mTLS communication (uses api_url endpoint)
+    useInternalEndpoint: false
+# =============================================================================
+# Service: Network ZTP
+# =============================================================================
+networkZtp:
+  enabled: true
+  # Gateway routing - subdomain based
+  gateway:
+    # Hostname: ztp.<baseHostname> (OIDC+JWT, browser access)
+    hostname: "ztp.{{ .Values.gateway.baseHostname }}"
+    # Hostname: svc-ztp.<baseHostname> (JWT-only, CLI/machine access)
+    svcHostname: "svc-ztp.{{ .Values.gateway.baseHostname }}"
+    # Optional: restrict access to specific groups (Azure AD group UUIDs)
+    allowedGroups: []
+    # Auth bypass - healthcheck must be accessible without OIDC/JWT
+    authBypass:
+      enabled: true
+      paths:
+        - /healthcheck
+  # ---------------------------------------------------------------------------
+  # LoadBalancer Configuration (for network device access)
+  # ---------------------------------------------------------------------------
+  # The LoadBalancer exposes HTTP/HTTPS/SFTP to network devices on the OOB network.
+  # This is SEPARATE from the Ingress/Gateway which provides user/SSO access.
+  # Choose ONE provider: nlb (AWS), cilium, or metallb.
+  # ---------------------------------------------------------------------------
+  ingress:
+    # -------------------------------------------------------------------------
+    # AWS Network Load Balancer (NLB) - for EKS environments
+    # -------------------------------------------------------------------------
+    # nlb:
+    #   type: external
+    #   target_type: ip
+    #   name: nv-config-manager-network-ztp-lb
+    #   sg: "sg-xxxxxxxxx,sg-yyyyyyyyy"
+    #   subnets: "subnet-xxxxxxxx,subnet-yyyyyyyy"
+    #   ips: "10.x.x.x,10.y.y.y"
+    #   dns_name: "ztp-ext.config-manager.example.com"
+
+    # -------------------------------------------------------------------------
+    # Cilium BGP Control Plane - for on-prem/UC environments
+    # -------------------------------------------------------------------------
+    # cilium:
+    #   hostname: "ztp-ext.config-manager.example.com"
+    #   staticIP: "10.x.x.x"
+    #   # Allowed OOB network prefixes (required for device access)
+    #   allowedPrefixes:
+    #     - "10.0.0.0/8"
+    #     - "172.16.0.0/12"
+
+    # -------------------------------------------------------------------------
+    # MetalLB - for Kind/local/bare-metal environments
+    # -------------------------------------------------------------------------
+    # metallb:
+    #   staticIP: "172.18.255.201"
+    #   # Allowed OOB network prefixes (optional for local dev)
+    #   allowedPrefixes: []
+
+    # -------------------------------------------------------------------------
+    # Browser/User Ingress (SSO access for troubleshooting)
+    # -------------------------------------------------------------------------
+    # This is handled by the gateway.hostname or ingress.nginx settings
+    # and uses SSO authentication via oauth2-proxy
+    browser:
+      # Hostname for user/SSO access (uses gateway.baseHostname by default)
+      hostname: ""
+      sso:
+        enabled: false
+        authURL: ""
+        authSignInURL: ""
+        allowedGroups: []
+        # Ingress-specific annotations (merged with global nginx annotations)
+    annotations:
+      # Allow large file uploads (up to 5GB for ZTP images)
+      nginx.ingress.kubernetes.io/proxy-body-size: "5g"
+      # Increase timeouts for large uploads
+      nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+      nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+  # ---------------------------------------------------------------------------
+  # Upload configuration (OS images can be up to 5GB)
+  # ---------------------------------------------------------------------------
+  # Note on body size limits:
+  #   - ingress-nginx: requires explicit proxy-body-size (set above as "5g")
+  #   - Envoy Gateway: NO body size limit needed — Envoy streams request
+  #     bodies through without buffering, so there is no equivalent of
+  #     nginx's client_max_body_size. Do NOT add requestBuffer.limit to the
+  #     BackendTrafficPolicy — that would force Envoy to buffer the entire
+  #     body in memory before forwarding.
+  upload:
+    # Maximum time for an upload request (applies to Gateway + sidecar).
+    # Must accommodate 5GB files on slower connections.
+    timeout: 3600s
+    # Stream idle timeout — how long a connection can be idle (no data frames)
+    # before it is closed. Shorter than the total timeout to detect stalled
+    # uploads promptly.
+    idleTimeout: 300s
+  # Deployment configuration
+  replicas: 3
+  # Resources per container type
+  resources:
+    http:
+      requests:
+        cpu: 1
+        memory: 4Gi
+      limits:
+        memory: 8Gi
+    https:
+      requests:
+        cpu: 1
+        memory: 4Gi
+      limits:
+        memory: 8Gi
+    sftp:
+      requests:
+        cpu: 1
+        memory: 8Gi
+      limits:
+        memory: 16Gi
+        # nodeSelector:  # Uncomment for production node placement
+    # nv-config-manager.nvidia.com/node-type: worker
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/component
+                operator: In
+                values:
+                  - network-ztp
+          topologyKey: kubernetes.io/hostname
+  # ---------------------------------------------------------------------------
+  # Storage Configuration
+  # ---------------------------------------------------------------------------
+  # Controls how OS images and firmware files are stored and accessed.
+  #
+  # type: "s3" (default)
+  #   - Uses S3/Ceph storage
+  #   - Images stored in S3 bucket: ngc-network-firmware-images
+  #   - Best for cloud deployments and multi-region distribution
+  #   - No PVC required
+  #
+  # type: "file"
+  #   - Uses file-based storage (PVC)
+  #   - Images stored in a PersistentVolumeClaim
+  #   - Includes manifest.json for version/checksum mapping
+  #   - Best for on-premises deployments with local high-speed storage
+  #   - Requires PVC to be created and populated by the installer OS image workflow
+  #
+  # Environment variables set by this configuration:
+  #   STORAGE_TYPE: "s3" or "file"
+  #   FILE_STORE_PATH: Path where images are mounted (when type=file)
+  # ---------------------------------------------------------------------------
+  storage:
+    # Storage type: s3 or file
+    type: s3
+    # File storage configuration (when type=file)
+    file:
+      # Name of the PVC containing OS images
+      # Created automatically by the installer when file storage is used
+      pvcName: ztp-os-images
+      # Path where the PVC is mounted in the container
+      # This becomes the FILE_STORE_PATH environment variable
+      mountPath: /mnt/images
+      # Storage class for installer-created PVCs
+      storageClass: ""
+      # Size of installer-created PVCs
+      size: 10Gi
+  # Client configuration (for other services to call ZTP service)
+  client:
+    # Set to true for internal cluster communication (uses api_service endpoint)
+    # Set to false for external mTLS communication (uses api_url endpoint)
+    useInternalEndpoint: false
+# =============================================================================
+# Service: Network DHCP
+# =============================================================================
+networkDhcp:
+  enabled: true
+  # Gateway routing - subdomain based
+  gateway:
+    # Hostname: dhcp.<baseHostname> (OIDC+JWT, browser access)
+    hostname: "dhcp.{{ .Values.gateway.baseHostname }}"
+    # Hostname: svc-dhcp.<baseHostname> (JWT-only, CLI/machine access)
+    svcHostname: "svc-dhcp.{{ .Values.gateway.baseHostname }}"
+    # Optional: restrict access to specific groups (Azure AD group UUIDs)
+    allowedGroups: []
+    # Auth bypass - healthcheck must be accessible without OIDC/JWT
+    authBypass:
+      enabled: true
+      paths:
+        - /healthcheck
+  # ---------------------------------------------------------------------------
+  # LoadBalancer Configuration (for network device access)
+  # ---------------------------------------------------------------------------
+  # The LoadBalancer exposes DHCP (UDP 67) and healthcheck (9090) to devices.
+  # NOTE: The API is NOT exposed on LoadBalancer - only via Ingress for users.
+  # This is SEPARATE from the Ingress/Gateway which provides user/SSO access.
+  # Choose ONE provider: nlb (AWS), cilium, or metallb.
+  # ---------------------------------------------------------------------------
+  ingress:
+    # -------------------------------------------------------------------------
+    # AWS Network Load Balancer (NLB) - for EKS environments
+    # -------------------------------------------------------------------------
+    # nlb:
+    #   type: external
+    #   target_type: ip
+    #   name: nv-config-manager-network-dhcp-lb
+    #   sg: "sg-xxxxxxxxx,sg-yyyyyyyyy"
+    #   subnets: "subnet-xxxxxxxx,subnet-yyyyyyyy"
+    #   ips: "10.x.x.x,10.y.y.y"
+    #   dns_name: "dhcp-ext.config-manager.example.com"
+
+    # -------------------------------------------------------------------------
+    # Cilium BGP Control Plane - for on-prem/UC environments
+    # -------------------------------------------------------------------------
+    # cilium:
+    #   hostname: "dhcp-ext.config-manager.example.com"
+    #   staticIP: "10.x.x.x"
+    #   # Allowed OOB network prefixes (required for device access)
+    #   allowedPrefixes:
+    #     - "10.0.0.0/8"
+    #     - "172.16.0.0/12"
+
+    # -------------------------------------------------------------------------
+    # MetalLB - for Kind/local/bare-metal environments
+    # -------------------------------------------------------------------------
+    # metallb:
+    #   staticIP: "172.18.255.200"
+    #   # Allowed OOB network prefixes (optional for local dev)
+    #   allowedPrefixes: []
+
+    # -------------------------------------------------------------------------
+    # Browser/User Ingress (SSO access for troubleshooting)
+    # -------------------------------------------------------------------------
+    browser:
+      # Hostname for user/SSO access (uses gateway.baseHostname by default)
+      hostname: ""
+      sso:
+        enabled: false
+        authURL: ""
+        authSignInURL: ""
+        allowedGroups: []
+  # Deployment configuration
+  replicas: 3
+  # Resources
+  resources:
+    dhcp:
+      requests:
+        cpu: 4
+        memory: 1Gi
+      limits:
+        memory: 2Gi
+    confgen:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        memory: 512Mi
+        # nodeSelector:  # Uncomment for production node placement
+    # nv-config-manager.nvidia.com/node-type: worker
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/component
+                operator: In
+                values:
+                  - network-dhcp
+          topologyKey: kubernetes.io/hostname
+  # Kea configuration
+  kea:
+    storkAgentPort: 9457
+# =============================================================================
+# Service: Temporal (Workflows)
+# =============================================================================
+temporal:
+  enabled: true
+  # Gateway routing - subdomain based
+  gateway:
+    api:
+      # Hostname: workflow.<baseHostname> (OIDC+JWT, browser access)
+      hostname: "workflow.{{ .Values.gateway.baseHostname }}"
+      # Hostname: svc-workflow.<baseHostname> (JWT-only, CLI/machine access)
+      svcHostname: "svc-workflow.{{ .Values.gateway.baseHostname }}"
+      # Optional: restrict access to specific groups (Azure AD group UUIDs)
+      # If empty, all authenticated users can access
+      allowedGroups: []
+      # Auth bypass - healthcheck must be accessible without OIDC/JWT
+      authBypass:
+        enabled: true
+        paths:
+          - /healthcheck
+          - /v1/codec
+    devUi:
+      # Hostname: temporal.<baseHostname> (Temporal native UI)
+      hostname: "temporal.{{ .Values.gateway.baseHostname }}"
+      # Optional: restrict access to specific groups
+      allowedGroups: []
+      # Static file bypass - no JWT auth on assets (faster load, fewer refreshes)
+      # Temporal Web is OIDC-only; static file auth bypass removed
+      authBypass:
+        enabled: false
+        pathRegex: ""
+  # Temporal Web UI (built-in temporalio/ui)
+  devUi:
+    replicas: 2
+    tag: "v2.37.4"
+    # Codec endpoint for payload decode in UI. Builds from gateway.baseHostname when set.
+    codecEndpoint: "https://workflow.{{ .Values.gateway.baseHostname }}/v1/codec"
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
+        # nodeSelector:  # Uncomment for production node placement
+      # nv-config-manager.nvidia.com/node-type: control-plane
+  # Temporal server components
+  services:
+    frontend:
+      replicas: 3
+      port: 7233
+      membershipPort: 8233
+      resources:
+        requests:
+          cpu: 200m
+          memory: 512Mi
+        limits:
+          memory: 1Gi
+          # nodeSelector:  # Uncomment for production node placement
+        # nv-config-manager.nvidia.com/node-type: control-plane
+    # affinity:  # Uncomment for production pod distribution
+    # podAntiAffinity:
+    # requiredDuringSchedulingIgnoredDuringExecution:
+    # - labelSelector:
+    # matchExpressions:
+    # - key: app.kubernetes.io/component
+    # operator: In
+    # values:
+    # - temporal-frontend
+    # topologyKey: kubernetes.io/hostname
+
+    history:
+      replicas: 4
+      port: 7234
+      membershipPort: 8234
+      resources:
+        requests:
+          cpu: 1
+          memory: 1Gi
+        limits:
+          memory: 2Gi
+          # nodeSelector:  # Uncomment for production node placement
+        # nv-config-manager.nvidia.com/node-type: control-plane
+    # affinity:  # Uncomment for production pod distribution
+    # podAntiAffinity:
+    # requiredDuringSchedulingIgnoredDuringExecution:
+    # - labelSelector:
+    # matchExpressions:
+    # - key: app.kubernetes.io/component
+    # operator: In
+    # values:
+    # - temporal-history
+    # topologyKey: kubernetes.io/hostname
+
+    matching:
+      replicas: 3
+      port: 7235
+      membershipPort: 8235
+      resources:
+        requests:
+          cpu: 200m
+          memory: 512Mi
+        limits:
+          memory: 1Gi
+          # nodeSelector:  # Uncomment for production node placement
+        # nv-config-manager.nvidia.com/node-type: control-plane
+    # affinity:  # Uncomment for production pod distribution
+    # podAntiAffinity:
+    # requiredDuringSchedulingIgnoredDuringExecution:
+    # - labelSelector:
+    # matchExpressions:
+    # - key: app.kubernetes.io/component
+    # operator: In
+    # values:
+    # - temporal-matching
+    # topologyKey: kubernetes.io/hostname
+
+    worker:
+      replicas: 3
+      port: 7239
+      membershipPort: 8239
+      resources:
+        requests:
+          cpu: 200m
+          memory: 512Mi
+        limits:
+          memory: 1Gi
+          # nodeSelector:  # Uncomment for production node placement
+        # nv-config-manager.nvidia.com/node-type: control-plane
+  # affinity:  # Uncomment for production pod distribution
+  # podAntiAffinity:
+  # preferredDuringSchedulingIgnoredDuringExecution:
+  # - weight: 100
+  # podAffinityTerm:
+  # labelSelector:
+  # matchExpressions:
+  # - key: app.kubernetes.io/component
+  # operator: In
+  # values:
+  # - temporal-worker
+  # topologyKey: kubernetes.io/hostname
+
+  # NVIDIA Config Manager Temporal API (scales independently of configManagerWorker)
+  api:
+    replicas: 3
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    nodeSelector: null
+    affinity: null
+  # NVIDIA Config Manager Temporal Worker
+  configManagerWorker:
+    # Optional resource name controls for migrations. By default the worker
+    # renders as <temporal component>-nv-config-manager-worker.
+    nameSuffix: nv-config-manager-worker
+    nameOverride: ""
+    replicas: 3
+    resources:
+      requests:
+        cpu: 1
+        memory: 1Gi
+      limits:
+        memory: 2Gi
+        # nodeSelector:  # Uncomment for production node placement
+      # nv-config-manager.nvidia.com/node-type: worker
+    # Config secrets path (network/site specific secrets for device credentials)
+    configSecrets:
+      # Path where config secrets are mounted in the container
+      mountPath: /etc/nv-config-manager/secrets/config-secrets
+      # Full path to the config-secrets.ini file
+      path: /etc/nv-config-manager/secrets/config-secrets/config-secrets.ini
+  # affinity:  # Uncomment for production pod distribution
+  # podAntiAffinity:
+  # preferredDuringSchedulingIgnoredDuringExecution:
+  # - weight: 100
+  # podAffinityTerm:
+  # labelSelector:
+  # matchExpressions:
+  # - key: app.kubernetes.io/component
+  # operator: In
+  # values:
+  # - nv-config-manager-worker
+  # topologyKey: kubernetes.io/hostname
+  # topologySpreadConstraints:  # Uncomment for production pod distribution
+  # - maxSkew: 1
+  # topologyKey: kubernetes.io/hostname
+  # whenUnsatisfiable: ScheduleAnyway
+  # labelSelector:
+  # matchLabels:
+  # app.kubernetes.io/component: nv-config-manager-worker
+
+  # Scheduler (for automatic backup scheduling)
+  scheduler:
+    enabled: true
+    resources:
+      requests:
+        cpu: 200m
+        memory: 256Mi
+      limits:
+        memory: 512Mi
+        # nodeSelector:  # Uncomment for production node placement
+      # nv-config-manager.nvidia.com/node-type: control-plane
+    affinity:
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                  - key: app.kubernetes.io/component
+                    operator: In
+                    values:
+                      - temporal-react-ui
+              topologyKey: kubernetes.io/hostname
+  # Archive service
+  archive:
+    enabled: false
+    replicas: 1
+  # Dynamic configuration for Temporal server
+  # See: https://docs.temporal.io/references/dynamic-configuration
+  dynamicConfig: []
+  # Example:
+  # - key: system.enableActivityEagerExecution
+  #   value: true
+  #   constraints: []
+
+  # AIR integration
+  air:
+    orgId: ""
+    airApiUrl: ""
+    airNodeUser: ""
+    airNodePassword: ""
+  # Redfish / BMC workflows
+  # Enable only if Redfish provisioning workflows are in use.
+  # When disabled, redfish-creds secret is not required.
+  redfish:
+    enabled: false
+  # Client configuration (for other services to call temporal API)
+  client:
+    # Set to true for internal cluster communication (uses api_service endpoint)
+    # Set to false for external mTLS communication (uses api_url endpoint)
+    useInternalEndpoint: false
+# =============================================================================
+# Service: Config Store
+# =============================================================================
+configStore:
+  enabled: true
+  # Gateway routing - subdomain based
+  gateway:
+    api:
+      # Hostname: config-store.<baseHostname> (OIDC+JWT, browser access)
+      hostname: "config-store.{{ .Values.gateway.baseHostname }}"
+      # Hostname: svc-config-store.<baseHostname> (JWT-only, CLI/machine access)
+      svcHostname: "svc-config-store.{{ .Values.gateway.baseHostname }}"
+      # Optional: restrict access to specific groups (Azure AD group UUIDs)
+      allowedGroups: []
+      # Auth bypass - healthcheck must be accessible without OIDC/JWT
+      authBypass:
+        enabled: true
+        paths:
+          - /healthcheck
+  # API service
+  api:
+    replicas: 3
+    resources:
+      requests:
+        cpu: 500m
+        memory: 512Mi
+      limits:
+        memory: 2Gi
+        # nodeSelector:  # Uncomment for production node placement
+      # nv-config-manager.nvidia.com/node-type: worker
+    affinity:
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                  - key: app.kubernetes.io/component
+                    operator: In
+                    values:
+                      - config-store-api
+              topologyKey: kubernetes.io/hostname
+  # UI service
+  ui:
+    replicas: 2
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+        # nodeSelector:  # Uncomment for production node placement
+      # nv-config-manager.nvidia.com/node-type: worker
+  # Cache refresh service
+  cacheRefresh:
+    enabled: true
+    replicas: 1
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        memory: 512Mi
+        # nodeSelector:  # Uncomment for production node placement
+      # nv-config-manager.nvidia.com/node-type: worker
+  # Client configuration (for other services to call config-store)
+  # This controls how services like render-service connect to config-store
+  client:
+    # Set to true for internal cluster communication (uses api_service endpoint)
+    # Set to false for external mTLS communication (uses api_url endpoint)
+    useInternalEndpoint: false
+    # SSL verification: true, false, or path to CA cert file
+    verify: true
+# =============================================================================
+# SPIFFE Configuration (Service-to-Service Authentication)
+# =============================================================================
+# When enabled, adds Envoy sidecars to all deployments for service authentication.
+# Supports two providers:
+#   - spire: SPIRE + spire-controller-manager (uses CSI driver for socket)
+#   - teleport: Teleport Machine ID (uses hostPath for workload API socket)
+#
+# Authentication modes:
+#   - jwt: JWT-SVID based authentication (recommended, simpler)
+#   - mtls: X.509-SVID based mutual TLS
+#
+# The Envoy sidecar handles authentication, apps talk plain HTTP to localhost.
+# =============================================================================
+spiffe:
+  # Enable SPIFFE-based authentication via Envoy sidecars
+  enabled: false
+  # ---------------------------------------------------------------------------
+  # Authentication Mode
+  # ---------------------------------------------------------------------------
+  # jwt: Uses JWT-SVIDs for authentication (recommended)
+  #   - Simpler setup, no certificate rotation at transport layer
+  #   - JWT tokens passed in Authorization header
+  #   - Validated using SPIFFE trust bundle JWKS
+  #
+  # mtls: Uses X.509-SVIDs for mutual TLS
+  #   - Transport-layer encryption and authentication
+  #   - Requires certificate rotation
+  # ---------------------------------------------------------------------------
+  authMode: jwt # Options: jwt, mtls
+  # ---------------------------------------------------------------------------
+  # Provider Configuration
+  # ---------------------------------------------------------------------------
+  # Choose between 'spire' or 'teleport' as the SPIFFE provider
+  #
+  # spire:
+  #   - Uses CSI driver (csi.spiffe.io) to mount workload API socket
+  #   - Requires: spire-server, spire-agent, spiffe-csi-driver installed
+  #   - Socket path: /spiffe-workload-api/spire-agent.sock (via CSI mount)
+  #   - Uses spiffe.io/spiffe-id annotation for workload registration
+  #
+  # teleport:
+  #   - Uses hostPath to access tbot workload API socket
+  #   - Requires: tbot deployed as DaemonSet on nodes (managed externally)
+  #   - Socket path: /var/run/teleport/workload-api.sock (configurable)
+  # ---------------------------------------------------------------------------
+  provider: spire # Options: spire, teleport
+  # SPIFFE trust domain (must match your SPIRE or Teleport configuration)
+  trustDomain: "config-manager.example.com"
+  # ---------------------------------------------------------------------------
+  # JWKS URI for validating inbound SPIFFE JWT-SVIDs
+  # ---------------------------------------------------------------------------
+  # Defaults to the local bundle file written by spiffe-helper.
+  # Override with an HTTP(S) endpoint for direct SPIRE OIDC / Teleport JWKS:
+  #   SPIRE:    https://spire-oidc.spire:8443/keys
+  #   Teleport: https://teleport-proxy:3080/v1/webapi/jwt/jwks
+  # ---------------------------------------------------------------------------
+  jwksUri: "" # empty = /var/run/secrets/spiffe/bundle.json (spiffe-helper default)
+  # ---------------------------------------------------------------------------
+  # Socket Configuration
+  # ---------------------------------------------------------------------------
+  # The SPIFFE Workload API socket path varies by provider:
+  socket:
+    # Path where the socket is mounted in the container
+    # For SPIRE: typically /spiffe-workload-api/spire-agent.sock
+    # For Teleport: typically /var/run/teleport/workload-api.sock
+    mountPath: /spiffe-workload-api
+    socketFile: spire-agent.sock
+    # For Teleport: hostPath where the socket exists on the node
+    # Ignored for SPIRE (uses CSI driver instead)
+    hostPath: /var/run/teleport
+  # ---------------------------------------------------------------------------
+  # SPIRE-specific Configuration
+  # ---------------------------------------------------------------------------
+  spire:
+    # CSI driver name (standard for SPIRE)
+    csiDriver: "csi.spiffe.io"
+    # Custom SPIRE agent socket name (if different from default)
+    agentSocketName: "spire-agent.sock"
+    # ---------------------------------------------------------------------------
+    # ClusterSPIFFEID Configuration
+    # ---------------------------------------------------------------------------
+    # When enabled, the chart deploys a ClusterSPIFFEID resource that instructs
+    # spire-controller-manager to register per-component SPIFFE workload entries
+    # for nv-config-manager pods.  Each pod receives:
+    #   spiffe://<trustDomain>/ns/<namespace>/sa/<app-label>
+    #
+    # Set enabled=false if your SPIRE installation already manages workload
+    # registration for nv-config-manager pods (e.g. via a site-wide ClusterSPIFFEID that
+    # reads the spiffe.io/spiffe-id annotation, or per-service SpiffeID CRDs).
+    # ---------------------------------------------------------------------------
+    clusterSPIFFEID:
+      enabled: true
+      # className must match the controllerClassName configured in spire-controller-manager
+      #
+      # - Standard SPIRE Helm chart (spire-stack/helm-charts-hardened) default: "default-spire"
+      # - Custom/bare SPIRE deployments with no --controller-class-name flag: ""
+      className: ""
+  # ---------------------------------------------------------------------------
+  # SPIFFE Helper Configuration (for JWT mode)
+  # ---------------------------------------------------------------------------
+  # spiffe-helper fetches JWT-SVIDs and writes them to a file for Envoy
+  # See: https://github.com/spiffe/spiffe-helper
+  helper:
+    image:
+      repository: ghcr.io/spiffe/spiffe-helper
+      tag: "0.8.0"
+      pullPolicy: IfNotPresent
+    # Resources for the spiffe-helper sidecar
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        cpu: 100m
+        memory: 64Mi
+  # ---------------------------------------------------------------------------
+  # Local Development / Testing Options
+  # ---------------------------------------------------------------------------
+  # For local testing without a full SPIFFE infrastructure:
+  #
+  # Option 1: Disable SPIFFE entirely (recommended for local dev)
+  #   spiffe:
+  #     enabled: false
+  #
+  # Option 2: Use SPIRE in Kind/Minikube
+  #   - Install spire-server and spire-agent in cluster
+  #   - Install spiffe-csi-driver
+  #   - Use provider: spire
+  #   - See: https://spiffe.io/docs/latest/try/getting-started-k8s/
+  #
+  # Option 3: Mock mode with static certificates (for integration testing)
+  #   spiffe:
+  #     enabled: true
+  #     mock:
+  #       enabled: true
+  #
+  # Option 4: Teleport local agent
+  #   - Run 'teleport start' with machine-id on your local machine
+  #   - Forward socket to Kind/Minikube node
+  #   - Use provider: teleport
+  # ---------------------------------------------------------------------------
+
+  # ---------------------------------------------------------------------------
+  # RBAC Configuration for nv-config-manager-temporal Integration
+  # ---------------------------------------------------------------------------
+  # When nv-config-manager workloads call nv-config-manager-temporal, the sidecar injects auth headers
+  # that match what mTLS does today. The inbound sidecar validates that requests
+  # come from allowed namespaces before trusting these headers.
+  # ---------------------------------------------------------------------------
+  rbac:
+    # Namespaces allowed to send requests with nv-config-manager RBAC headers
+    # By default, only the nv-config-manager namespace is allowed
+    # Workloads from other namespaces can still call services (if JWT is valid)
+    # but won't get the nv-config-manager RBAC group
+    allowedNamespaces: []
+    # - nv-config-manager
+    # - nv-config-manager-staging
+    # If empty, defaults to global.namespace
+
+    # Map SPIFFE ID prefixes to group names.  Matching callers get
+    # the mapped group; non-matching callers only get spiffe:<name>.
+    # Example:
+    #   groupPrefixes:
+    #     "spiffe://trust-domain/ns/nv-config-manager": "nv-config-manager"
+    #     "spiffe://trust-domain/ns/dgxc": "dgxc"
+    groupPrefixes: {}
+  # ---------------------------------------------------------------------------
+  mock:
+    # Enable mock mode for testing without real SPIFFE infrastructure
+    # Uses static self-signed certificates instead of dynamic SVID fetching
+    enabled: false
+    # Secret containing static certificates for mock mode
+    certSecret: "spiffe-mock-certs"
+# =============================================================================
+# Network Policy Configuration (Namespace Isolation)
+# =============================================================================
+# Restricts ingress traffic to same-namespace communication only.
+# This provides defense-in-depth by preventing lateral movement from
+# compromised pods in other namespaces.
+# Egress is fully open - services can reach any external endpoint.
+# =============================================================================
+networkPolicy:
+  # Enable namespace isolation network policy
+  enabled: true
+  # Allow ingress from Envoy Gateway system namespace
+  # Set to true if your Envoy proxy pods run in a different namespace
+  allowFromGatewayNamespace: true
+  gatewayNamespace: envoy-gateway-system
+  # Allow ingress from LoadBalancer provider namespace
+  # Set to true if using MetalLB, Cilium LB, or AWS NLB
+  # Namespace defaults: metallb-system (MetalLB), kube-system (Cilium/NLB)
+  allowFromLBNamespace: false
+  lbNamespace: metallb-system
+  # Additional namespaces to allow ingress from
+  # Useful for: cnpg-system (CNPG operator needs HTTP to instance status port 8000),
+  # monitoring (prometheus), logging, or other platform services
+  additionalAllowedNamespaces: []
+# =============================================================================
+# Reference Grants (for cross-namespace service references)
+# =============================================================================
+referenceGrants:
+  enabled: false
+  # List of namespaces that are allowed to reference services in the gateway namespace
+  allowedNamespaces: []
+  # - other-namespace
+# =============================================================================
+# Kubernetes Secrets Mode (vault.method=kubernetes)
+# =============================================================================
+# When using vault.method=kubernetes, the installer creates secrets
+# directly in the namespace before helm install. Required secrets:
+#
+# Created by the installer:
+#   - nv-config-manager-secrets-core (nautobot-token, redis-password, nats-password)
+#   - nv-config-manager-secrets-postgres (temporal, config-store credentials)
+#   - nv-config-manager-secrets-network (device username/password)
+#   - nv-config-manager-secrets-redfish (BMC credentials)
+#   - nv-config-manager-secrets-slack (bot token)
+#   - nv-config-manager-secrets-dhcp (if DHCP enabled)
+#   - cluster-*-app (CNPG cluster credentials)
+#
+# The secret-assembler Job combines these into the nv-config-manager-ini secret.
+# =============================================================================
+
+# =============================================================================
+# Custom Secrets and Configuration (Environment-Specific Extensions)
+# =============================================================================
+# This section allows adding custom Vault secrets and INI file snippets for
+# environment-specific configuration that isn't part of the core chart.
+#
+# Use cases:
+#   - Proprietary integrations specific to your organization
+#   - Custom monitoring or observability backends
+#   - Environment-specific service configurations
+#   - Any INI sections needed by custom workflows or activities
+#
+# How it works:
+#   1. Define custom Vault secrets in customConfig.vaultSecrets
+#   2. ESO fetches these secrets and makes them available as JSON data
+#   3. Define INI snippets that reference both values and secrets
+#   4. Snippets are appended to nv-config-manager.ini
+#
+# Templating:
+#   - For non-secret values: {{ .Values.customConfig.values.mySection.myKey }}
+#   - For Vault secrets: {{ "{{" }} index (fromJson .mySecret_data) "key" {{ "}}" }}
+#   
+#   The double-brace escaping is needed because Helm processes first, then ESO.
+# =============================================================================
+customConfig:
+  # Enable custom secrets and INI snippets
+  enabled: false
+  # ---------------------------------------------------------------------------
+  # Custom Vault Secrets
+  # ---------------------------------------------------------------------------
+  # Each entry creates an ExternalSecret data entry that fetches a secret from
+  # Vault. The secret is available in INI snippets as <name>_data JSON.
+  #
+  # Format:
+  #   - name: <identifier>        # Used as <name>_data in ESO template
+  #     path: "<vault-path>"      # Full path within secretsPath
+  # ---------------------------------------------------------------------------
+  vaultSecrets: []
+  # Example:
+  # - name: my_service
+  #   path: "prod/my-service"  # Contains api_key field in Vault
+
+  # ---------------------------------------------------------------------------
+  # Custom Values (non-secrets)
+  # ---------------------------------------------------------------------------
+  # Non-secret configuration values that can be referenced in iniSnippets.
+  # These are processed by Helm templating before ESO processes the secrets.
+  # ---------------------------------------------------------------------------
+  values: {}
+  # Example:
+  # myService:
+  #   endpoint: "https://my-service.example.com"
+  #   timeout: 30
+
+  # ---------------------------------------------------------------------------
+  # Custom INI Snippets
+  # ---------------------------------------------------------------------------
+  # Raw INI content appended to nv-config-manager.ini. These snippets are processed through
+  # Helm templating first, then ESO templating.
+  #
+  # For values from values.yaml:
+  #   {{ .Values.customConfig.values.myKey }}
+  #
+  # For Vault secrets (note the escaped braces for ESO):
+  #   {{ "{{" }} index (fromJson .mySecret_data) "key" {{ "}}" }}
+  #
+  # Each snippet should be a complete INI section including [section.name] header.
+  # ---------------------------------------------------------------------------
+  iniSnippets: []
+  # Example:
+  # - |
+  #   [my_service]
+  #   endpoint = {{ .Values.customConfig.values.myService.endpoint }}
+  #   api_key = {{ "{{" }} index (fromJson .my_service_data) "api_key" {{ "}}" }}
+  #   timeout = {{ .Values.customConfig.values.myService.timeout }}
+# =============================================================================
+# CloudNative PostgreSQL (CNPG) Configuration
+# =============================================================================
+# Creates PostgreSQL clusters using CNPG operator.
+# Requires: CNPG operator installed in cnpg-system namespace
+# =============================================================================
+cnpg:
+  # Enable CNPG clusters (set false if using external PostgreSQL)
+  enabled: true
+  # Optional CNPG operand images for airgapped registries. imageName controls
+  # PostgreSQL Cluster pods; poolerImageName is reserved for CNPG Pooler resources.
+  imageName: ""
+  poolerImageName: ""
+  # Monitoring via PodMonitor (requires Prometheus Operator)
+  monitoring:
+    enabled: true
+  # ---------------------------------------------------------------------------
+  # Cluster Definitions
+  # ---------------------------------------------------------------------------
+  # Each cluster has: clusterName, database, owner, postgresql params, etc.
+  # The template iterates over clusters listed in cnpg.clusterList
+  # ---------------------------------------------------------------------------
+  clusterList:
+    - temporal
+    - temporalVisibility
+    - configStore
+    - dhcp
+  # ---------------------------------------------------------------------------
+  # Backup Configuration (shared settings)
+  # ---------------------------------------------------------------------------
+  # CNPG supports S3, Azure Blob, and GCS for backups.
+  # Configure the destination here; each cluster can enable/disable backups.
+  # See: https://cloudnative-pg.io/documentation/current/backup/
+  # ---------------------------------------------------------------------------
+  backup:
+    # Destination type: s3, azure, or gcs
+    destinationType: s3
+    # S3 configuration
+    s3:
+      endpoint: "" # e.g., "https://s3.us-west-2.amazonaws.com"
+      bucket: "" # e.g., "nv-config-manager-cnpg-backups"
+      path: "" # optional path prefix within bucket
+      region: "" # e.g., "us-west-2"
+    # Secret containing credentials (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
+    credentialsSecret: cnpg-backup-credentials
+    # WAL compression (gzip, bzip2, snappy, lz4, zstd)
+    walCompression: gzip
+    # Data compression
+    dataCompression: gzip
+  # Temporal database cluster
+  temporal:
+    enabled: true
+    clusterName: cluster-temporal
+    database: temporal
+    owner: temporal
+    instances: 3 # HA in production
+    enablePDB: true
+    postgresql:
+      maxConnections: "400"
+      sharedBuffers: "1GB"
+    storage:
+      size: 50Gi
+      storageClass: "" # Use default storage class
+    resources:
+      limits:
+        cpu: '4'
+        memory: 8Gi
+      requests:
+        cpu: '1'
+        memory: 4Gi
+    affinity:
+      # nodeSelector:  # Uncomment for production node placement
+      # nv-config-manager.nvidia.com/node-type: database
+      # enablePodAntiAffinity: true  # Uncomment for production
+      topologyKey: kubernetes.io/hostname
+    backup:
+      enabled: false
+      schedule: "0 0 * * *" # Daily at midnight
+      retentionPolicy: "30d"
+      target: preferStandby # preferStandby or primary
+  # Temporal visibility database cluster
+  temporalVisibility:
+    enabled: true
+    clusterName: cluster-temporal-visibility
+    database: temporal_visibility
+    owner: temporal_visibility
+    instances: 3
+    enablePDB: true
+    postgresql:
+      maxConnections: "400"
+      sharedBuffers: "1GB"
+    storage:
+      size: 50Gi
+      storageClass: ""
+    resources:
+      limits:
+        cpu: '4'
+        memory: 8Gi
+      requests:
+        cpu: '1'
+        memory: 4Gi
+    affinity:
+      # nodeSelector:  # Uncomment for production node placement
+      # nv-config-manager.nvidia.com/node-type: database
+      # enablePodAntiAffinity: true  # Uncomment for production
+      topologyKey: kubernetes.io/hostname
+    backup:
+      enabled: false
+      schedule: "0 0 * * *"
+      retentionPolicy: "30d"
+      target: preferStandby
+  # Config Store Service database cluster
+  configStore:
+    enabled: true
+    clusterName: cluster-config-store
+    database: config_store
+    owner: config_store
+    instances: 3
+    enablePDB: true
+    postgresql:
+      maxConnections: "400"
+      sharedBuffers: "2GB"
+    storage:
+      size: 500Gi
+      storageClass: ""
+    resources:
+      limits:
+        cpu: '4'
+        memory: 16Gi
+      requests:
+        cpu: '2'
+        memory: 8Gi
+    affinity:
+      # nodeSelector:  # Uncomment for production node placement
+      # nv-config-manager.nvidia.com/node-type: database
+      # enablePodAntiAffinity: true  # Uncomment for production
+      topologyKey: kubernetes.io/hostname
+    backup:
+      enabled: false
+      schedule: "0 0 * * *"
+      retentionPolicy: "30d" # Config store may need longer retention
+      target: preferStandby
+  # DHCP database cluster
+  dhcp:
+    enabled: false
+    clusterName: cluster-dhcp
+    database: kea_dhcp
+    owner: dhcp
+    instances: 3
+    enablePDB: true
+    postgresql:
+      maxConnections: "200"
+      sharedBuffers: "512MB"
+    storage:
+      size: 20Gi
+      storageClass: ""
+    resources:
+      limits:
+        cpu: '2'
+        memory: 4Gi
+      requests:
+        cpu: '500m'
+        memory: 2Gi
+    affinity:
+      # nodeSelector:  # Uncomment for production node placement
+      # nv-config-manager.nvidia.com/node-type: database
+      # enablePodAntiAffinity: true  # Uncomment for production
+      topologyKey: kubernetes.io/hostname
+    backup:
+      enabled: false
+      schedule: "0 0 * * *"
+      retentionPolicy: "30d"
+      target: preferStandby
+  # Nautobot PostgreSQL cluster (when nautobot.enabled=true)
+  # Note: Nautobot is NOT in clusterList - it has special enable conditions
+  nautobot:
+    enabled: false # Enabled automatically when nautobot.enabled=true
+    clusterName: cluster-nautobot
+    database: nautobot
+    owner: nautobot
+    instances: 3
+    enablePDB: true
+    postgresql:
+      maxConnections: "800"
+      sharedBuffers: "2GB"
+    storage:
+      size: 200Gi
+      storageClass: ""
+    resources:
+      limits:
+        cpu: '8'
+        memory: 32Gi
+      requests:
+        cpu: '2'
+        memory: 16Gi
+    affinity:
+      # nodeSelector:  # Uncomment for production node placement
+      # nv-config-manager.nvidia.com/node-type: database
+      # enablePodAntiAffinity: true  # Uncomment for production
+      topologyKey: kubernetes.io/hostname
+    backup:
+      enabled: false
+      schedule: "0 0 * * *"
+      retentionPolicy: "30d"
+      target: preferStandby
+# =============================================================================
+# Local Nautobot Deployment (Optional)
+# =============================================================================
+# Deploy Nautobot, Redis, and NATS locally within the nv-config-manager namespace.
+# Enable this for environments without full Cerebro deployment.
+# When enabled, externalServices.nautobot.local should also be true.
+# =============================================================================
+nautobot:
+  # Enable local Nautobot deployment
+  enabled: false
+  # ---------------------------------------------------------------------------
+  # Role-Based Access Control
+  # ---------------------------------------------------------------------------
+  # Mapping of IdP groups to Nautobot privilege levels.  Reconciled on every
+  # JWT login by nv_config_manager_auth.jwt_authentication so that promotions and demotions
+  # in the IdP take effect without manual intervention.
+  rbac:
+    # Group/role names from the JWT groups claim (default claim: "roles") that
+    # grant the user Django ``is_superuser`` + ``is_staff`` on login.  When
+    # empty, the feature is disabled and existing user privileges are not
+    # touched -- the bootstrap admin user remains a superuser.  Set this to a
+    # non-empty list once you have established admin groups in your IdP.
+    #
+    # Example:
+    #   superuserGroups:
+    #     - nautobot-admins
+    #     - nv-config-manager-admins
+    superuserGroups: []
+  # Nautobot Server Configuration
+  server:
+    replicas: 3
+    resources:
+      requests:
+        cpu: 1
+        memory: 8Gi
+      limits:
+        memory: 16Gi
+    # Database configuration
+    # Host: set to CNPG cluster service name (e.g., "cluster-nautobot-rw") or external host
+    db:
+      host: "cluster-nautobot-rw"
+      port: 5432
+      name: nautobot
+    # Nautobot application settings
+    debug: false
+    logLevel: INFO
+    # uWSGI settings
+    uwsgi:
+      listen: 128
+      processes: 4
+      threads: 4
+      bufferSize: 16384
+      harakiri: 1210
+    # nodeSelector:  # Uncomment for production node placement
+    # nv-config-manager.nvidia.com/node-type: worker
+    affinity:
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                  - key: app.kubernetes.io/component
+                    operator: In
+                    values:
+                      - nautobot-server
+              topologyKey: kubernetes.io/hostname
+    topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/component: nautobot-server
+  # Celery Worker Configuration
+  celery:
+    enabled: true
+    replicas: 3
+    resources:
+      requests:
+        cpu: 1
+        memory: 8Gi
+      limits:
+        memory: 16Gi
+    # Task queues
+    workers:
+      default:
+        enabled: true
+        taskQueues: "default"
+        taskConcurrency: "16"
+      beat:
+        enabled: true
+        replicas: 1 # Beat can only have 1 replica
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "512Mi"
+          limits:
+            memory: "1Gi"
+            # nodeSelector:  # Uncomment for production node placement
+      # nv-config-manager.nvidia.com/node-type: worker
+  # affinity:  # Uncomment for production pod distribution
+  # podAntiAffinity:
+  # preferredDuringSchedulingIgnoredDuringExecution:
+  # - weight: 100
+  # podAffinityTerm:
+  # labelSelector:
+  # matchExpressions:
+  # - key: app.kubernetes.io/component
+  # operator: In
+  # values:
+  # - nautobot-celery
+  # topologyKey: kubernetes.io/hostname
+
+  # NGINX sidecar for static files
+  nginx:
+    enabled: true
+    # Worker processes - set explicitly to prevent OOM on high-CPU nodes (DGX, etc.)
+    workerProcesses: 4
+    image:
+      registry: docker.io
+      repository: nginxinc/nginx-unprivileged
+      tag: "1.27"
+      pullPolicy: Always
+    resources:
+      requests:
+        cpu: ".001"
+        memory: "32Mi"
+      limits:
+        memory: "256Mi"
+  # Gateway routing - subdomain based
+  gateway:
+    # Hostname: nautobot.<baseHostname> (OIDC+JWT, browser access)
+    hostname: "nautobot.{{ .Values.gateway.baseHostname }}"
+    # Hostname: svc-nautobot.<baseHostname> (JWT-only, CLI/machine access)
+    svcHostname: "svc-nautobot.{{ .Values.gateway.baseHostname }}"
+    # Optional: restrict access to specific groups (Azure AD group UUIDs)
+    allowedGroups: []
+    # -------------------------------------------------------------------------
+    # Auth Bypass Paths
+    # -------------------------------------------------------------------------
+    # Nautobot supports multiple auth methods:
+    #   1. OIDC/JWT (browser users via SSO)
+    #   2. Native API tokens (Authorization: Token <token>)
+    #   3. Remote user auth (trusts X-Auth-Request-User header from reverse proxy)
+    #
+    # For /api/ paths:
+    #   - OIDC redirect is disabled (no login prompt)
+    #   - JWT is optional but claims extracted if present (for remote user auth)
+    #   - Nautobot handles its own token auth for requests without JWT
+    #
+    # This enables both SSO users (with JWT) and API clients (with native tokens)
+    # to access the same endpoints.
+    # -------------------------------------------------------------------------
+    authBypass:
+      enabled: true
+      paths:
+        - /api/
+  # Ingress (optional, for direct access)
+  ingress:
+    enabled: false
+    hostname: ""
+    ingressClassName: nginx
+  # Init job settings
+  initJob:
+    enabled: true
+    singleInit: true # Run migrations, collect static, load bootstrap in single job
+  # Persistence
+  persistence:
+    staticFiles:
+      enabled: true
+      size: 1Gi
+    mediaFiles:
+      enabled: false
+      size: 1Gi
+  # Metrics and monitoring
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+  # ---------------------------------------------------------------------------
+  # Run the built-in bootstrap job after migrations (loads tags, statuses, roles, etc.).
+  # Independent of customJobs: bootstrap runs from image jobs when no PVC is used.
+  bootstrap:
+    enabled: true
+  # Custom Jobs Configuration
+  # ---------------------------------------------------------------------------
+  # Mount custom Nautobot jobs from a ConfigMap or hostPath.
+  # Jobs are mounted to $NAUTOBOT_ROOT/jobs/ (default: /opt/nautobot/jobs/)
+  # See: https://docs.nautobot.com/projects/core/en/stable/development/jobs/installation/#manual-installation-via-jobs_root
+  #
+  # The jobs must contain valid Job classes (subclasses of nautobot.apps.jobs.Job)
+  # and register them using register_jobs(). After deployment, run post_upgrade
+  # and enable the jobs in the Nautobot UI.
+  # ---------------------------------------------------------------------------
+  customJobs:
+    # Enable custom jobs mounting
+    # Jobs are mounted from a PersistentVolumeClaim that the customer populates.
+    # This works for airgapped installs with no size limits.
+    #
+    # Workflow:
+    #   1. Create PVC: kubectl apply -f custom-jobs-pvc.yaml
+    #   2. Populate with jobs (kubectl cp, job, or pre-provisioned storage)
+    #   3. Enable here and deploy
+    #
+    # See: https://docs.nautobot.com/projects/core/en/stable/development/jobs/installation/
+    enabled: false
+    # Name of the PVC containing custom jobs
+    # The PVC must exist and contain the jobs directory structure
+    pvcName: nautobot-custom-jobs
+    # Storage class for auto-created PVC (if createPvc is true)
+    # Leave empty to use the cluster default storage class
+    storageClass: ""
+    # Access mode for auto-created PVC
+    accessMode: ReadWriteOnce
+    # Size of auto-created PVC
+    size: 1Gi
+    # Automatically create the PVC (set false if using pre-existing PVC)
+    createPvc: false
+    # Optional node selector for Nautobot pods that mount the jobs PVC.
+    # Use this with ReadWriteOnce PVCs to keep replacement pods on the node
+    # where the jobs volume can attach.
+    nodeSelector: {}
+# =============================================================================
+# Local NATS (when externalServices.nats.local=true or nautobot.enabled=true)
+# =============================================================================
+nautobotNats:
+  enabled: false # Auto-enabled when nautobot.enabled=true
+  # JetStream configuration
+  jetstream:
+    enabled: true
+    # JetStream storage limits
+    maxMem: 1G # Max memory storage
+    maxFile: 10G # Max file storage (increase for production or use nats-ready binary)
+  # Max payload size (8MB)
+  maxPayload: 8388608
+  # NATS resources
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      memory: 1Gi
+      # nodeSelector:  # Uncomment for production node placement
+    # nv-config-manager.nvidia.com/node-type: control-plane
+  # Account configuration
+  accounts:
+    nvConfigManager:
+      enabled: true
+    nautobot:
+      enabled: true
+  # nats-ready init container configuration
+  # This creates the JetStream streams needed by nautobot and nv-config-manager services
+  natsReady:
+    enabled: true
+    # Use nats CLI instead of nats-ready binary (for local dev with smaller streams)
+    useNatsCli: false
+    # Max bytes per stream (nv-config-manager + nautobot). Must fit within jetstream.maxFile.
+    # Total storage needed: 2 x streamMaxBytes (both streams)
+    # Default maxFile is 10G, so 4GB per stream (8GB total) fits safely.
+    streamMaxBytes: 4294967296 # 4GB
+    natsUrl: "nats://nats:4222"
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        memory: 256Mi
+# =============================================================================
+# Monitoring Configuration (Prometheus Operator PodMonitors)
+# =============================================================================
+# PodMonitors for scraping NVIDIA Config Manager services. Requires Prometheus Operator CRDs.
+# Enable through installer infrastructure.monitoring.enabled
+#
+# Service-specific configuration (selectors, ports, paths) is defined in the
+# podmonitors.yaml template. Values here control only enabled/disabled state.
+# =============================================================================
+monitoring:
+  # Master switch for all monitoring resources
+  enabled: false
+  # External Grafana URL.
+  # When set, the UI splash page links to this URL. 
+  grafanaUrl: ""
+  # Prometheus namespace (for network policy to allow scraping)
+  prometheus:
+    namespace: monitoring
+  # PodMonitor configuration
+  # ---------------------------------------------------------------------------
+  # Probes (Blackbox Exporter)
+  # ---------------------------------------------------------------------------
+  # Probes use the Prometheus Blackbox Exporter to perform external HTTP checks
+  # against service endpoints through the gateway. This validates end-to-end
+  # connectivity including TLS termination and routing.
+  #
+  # Requirements:
+  #   - Blackbox Exporter deployed in the cluster
+  #   - Prometheus Operator CRDs installed
+  #   - Services must be accessible via gateway hostnames
+  # ---------------------------------------------------------------------------
+  # Probes: each probe is enabled when probes.enabled AND the target service is enabled
+  probes:
+    enabled: false
+    # URL of the Blackbox Exporter service (required when enabled)
+    # e.g., "blackbox-exporter.monitoring.svc.cluster.local:9115"
+    blackboxExporterUrl: ""
+    # Optional prefix applied to every probe's `jobName` (the Prometheus
+    # `job` label). Final job names are `<jobNamePrefix><componentName>-probe`
+    # where `<componentName>` is derived from the Helm release (e.g.
+    # `<release>-render`, `<release>-temporal-api`). Override
+    # per-environment when probes need to match a site-specific alerting /
+    # dashboard regex.
+    jobNamePrefix: ""
+  # PodMonitors: each PodMonitor is enabled when podMonitors.enabled AND the target service is enabled
+  podMonitors:
+    enabled: false
+    # Default scrape interval
+    interval: 30s
+    # Default scrape timeout
+    scrapeTimeout: 10s
+    # Per-endpoint metricRelabelings for global.customLabels are rendered in monitoring.yaml (job-based).
+# =============================================================================
+# Local Observability Stack (subcharts)
+# =============================================================================
+# Standalone Prometheus (storage only) + Grafana + Loki + Grafana Alloy are
+# pulled in as Helm subchart dependencies. They are DISABLED by default
+# because:
+#   * Grafana is AGPL-licensed and is intentionally excluded from production
+#     installs (production deployments should keep grafana.enabled=false on their
+#     kube-prometheus-stack release).
+#   * The Alloy DaemonSet mounts /var/log/pods (hostPath) to tail pod logs,
+#     which is blocked by Kyverno in shared clusters (nv-config-manager-qa, prod).
+#
+# Enable the whole stack together for LOCAL DEV / KIND / AIRGAPPED DEMOS ONLY
+# by toggling "Enable local observability stack" in the TUI installer (or by
+# layering deploy/helm/values-observability.yaml on top of your values).
+#
+# Architecture: Alloy watches the PodMonitor / ServiceMonitor / Probe CRs
+# (via prometheus.operator.* components) and scrapes the targets, then
+# remote_writes to the standalone Prometheus. No Prometheus Operator pod
+# runs in this path -- Alloy IS the operator-equivalent.
+#
+# Note: prometheus-operator-crds is NOT a subchart -- the installer
+# pre-installs it as a sibling Helm release so the parent chart's
+# PodMonitor / Probe templates can reference its CRDs cleanly. See the
+# long note in deploy/helm/Chart.yaml.
+#
+# DO NOT enable this in the same cluster as a separately managed production Prometheus Operator stack.
+# =============================================================================
+prometheus:
+  enabled: false
+grafana:
+  enabled: false
+loki:
+  enabled: false
+alloy:
+  enabled: false

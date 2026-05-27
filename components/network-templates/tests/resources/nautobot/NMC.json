@@ -1,0 +1,143 @@
+{
+    "data": {
+        "wan_devices": [],
+        "route_servers": [],
+        "prefixes": [
+            {
+                "prefix": "10.78.144.0/20",
+                "role": {
+                    "name": "Site-Aggregate"
+                },
+                "tags": [
+                    {
+                        "name": "role-aggregate"
+                    }
+                ]
+            },
+            {
+                "prefix": "192.0.2.0/23",
+                "role": {
+                    "name": "ipminet0"
+                },
+                "tags": [
+                    {
+                        "name": "role-aggregate"
+                    }
+                ]
+            },
+            {
+                "prefix": "10.78.154.128/25",
+                "role": {
+                    "name": "ipminet2"
+                },
+                "tags": [
+                    {
+                        "name": "role-aggregate"
+                    }
+                ]
+            },
+            {
+                "prefix": "10.78.156.0/22",
+                "role": {
+                    "name": "ipminet1"
+                },
+                "tags": [
+                    {
+                        "name": "role-aggregate"
+                    }
+                ]
+            },
+            {
+                "prefix": "10.254.32.0/23",
+                "role": {
+                    "name": "OOB-Fabric-P2P"
+                },
+                "tags": [
+                    {
+                        "name": "role-aggregate"
+                    }
+                ]
+            },
+            {
+                "prefix": "10.254.34.0/23",
+                "role": {
+                    "name": "OOB-Fabric-P2P"
+                },
+                "tags": [
+                    {
+                        "name": "role-aggregate"
+                    }
+                ]
+            },
+            {
+                "prefix": "10.254.254.0/23",
+                "role": {
+                    "name": "Loopback"
+                },
+                "tags": [
+                    {
+                        "name": "role-aggregate"
+                    }
+                ]
+            }
+        ],
+        "uc_jumphost_prefixes": [],
+        "vlans": [
+            {
+                "vid": 101,
+                "rel_vlan_to_helper_address": [
+                    {
+                        "host": "10.78.144.8"
+                    },
+                    {
+                        "host": "10.78.144.9"
+                    }
+                ]
+            },
+            {
+                "vid": 102,
+                "rel_vlan_to_helper_address": [
+                    {
+                        "host": "10.78.144.8"
+                    },
+                    {
+                        "host": "10.78.144.9"
+                    }
+                ]
+            },
+            {
+                "vid": 201,
+                "rel_vlan_to_helper_address": [
+                    {
+                        "host": "192.0.2.8"
+                    },
+                    {
+                        "host": "192.0.2.9"
+                    }
+                ]
+            },
+            {
+                "vid": 202,
+                "rel_vlan_to_helper_address": [
+                    {
+                        "host": "192.0.2.8"
+                    },
+                    {
+                        "host": "192.0.2.9"
+                    }
+                ]
+            },
+            {
+                "vid": 203,
+                "rel_vlan_to_helper_address": [
+                    {
+                        "host": "192.0.2.8"
+                    },
+                    {
+                        "host": "192.0.2.9"
+                    }
+                ]
+            }
+        ]
+    }
+}

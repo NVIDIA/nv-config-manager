@@ -1,0 +1,997 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+from datetime import datetime
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
+from uuid import uuid4
+
+import pytest
+from fastapi import HTTPException
+from fastapi.testclient import TestClient
+from temporalio.client import WorkflowExecutionStatus, WorkflowHandle
+
+from nv_config_manager.temporal.api.main import app
+from nv_config_manager.temporal.api.workflow_v1 import start_workflow
+from nv_config_manager.temporal.common.mixins.stage import ReviewSignalInput, Stage, StageMixin
+from nv_config_manager.temporal.hello_world.workflows.hello_world_workflow import (
+    HelloWorld,
+    HelloWorldInput,
+)
+from nv_config_manager.temporal.ngc.workflows.deploy import DeployInput, DeployWorkflow
+
+
+def test_healthcheck():
+    """Verify healthcheck."""
+    client = TestClient(app)
+    rsp = client.get("/healthcheck")
+    assert rsp.status_code == 200
+    assert rsp.json() == "OK"
+
+
+@pytest.mark.asyncio
+@patch("nv_config_manager.temporal.api.workflow_v1.get_client")
+@patch("nv_config_manager.temporal.api.workflow_v1.uuid4", return_value="mockuuid")
+@patch("nv_config_manager.temporal.api.workflow_v1.RBACConfig")
+async def test_start_workflow(mock_rbac_config, mock_uuid, mock_connect):
+    """Verify Start Workflow."""
+    handle = MagicMock()
+    handle.id = "mockuuid"
+
+    mock_connect.return_value.start_workflow.return_value = handle
+
+    # Mock RBAC config for HelloWorld workflow
+    mock_rbac_instance = MagicMock()
+    mock_rbac_instance.get_workflow_roles.return_value = {
+        "read_roles": {"all"},
+        "execute_roles": {"all"},
+    }
+    mock_rbac_config.return_value = mock_rbac_instance
+
+    request = MagicMock()
+    request.state.user = "testuser"
+    request.state.roles = {"all"}
+    body = HelloWorldInput(name="test")
+    result = await start_workflow(request, HelloWorld, body)
+    assert result == "mockuuid"
+
+    mock_connect.return_value.start_workflow.assert_called_with(
+        HelloWorld.run,
+        body,
+        id="mockuuid",
+        task_queue="default-task-queue",
+        search_attributes={
+            "ExecuteRoles": ["all"],
+            "ReadRoles": ["all"],
+            "User": ["testuser"],
+        },
+    )
+
+    # Test that more strict workflow permissions are respected
+    mock_connect.reset_mock()
+    # Mock RBAC config for DeployWorkflow
+    mock_rbac_instance.get_workflow_roles.return_value = {
+        "read_roles": {"ngc-cfa", "ngc-gni"},
+        "execute_roles": {"ngc-cfa", "ngc-gni"},
+    }
+    body = DeployInput(
+        device_id="test",
+    )
+    with pytest.raises(HTTPException) as e:
+        result = await start_workflow(request, DeployWorkflow, body)
+        assert e.value.status_code == 403
+        mock_connect.return_value.start_workflow.assert_not_called()
+
+    # Now modify headers to include an allowed role and try again
+    request.state.roles = {"ngc-gni"}
+    result = await start_workflow(request, DeployWorkflow, body)
+    assert result == "mockuuid"
+    mock_connect.return_value.start_workflow.assert_called_with(
+        DeployWorkflow.run,
+        body,
+        id="mockuuid",
+        task_queue="default-task-queue",
+        search_attributes={
+            "ExecuteRoles": ["ngc-cfa", "ngc-gni"],
+            "ReadRoles": ["ngc-cfa", "ngc-gni"],
+            "User": ["testuser"],
+        },
+    )
+
+
+@pytest.mark.asyncio
+@patch("nv_config_manager.temporal.api.workflow_v1.get_client")
+@patch("nv_config_manager.temporal.api.workflow_v1.uuid4", return_value="mockuuid")
+@patch("nv_config_manager.temporal.api.workflow_v1.RBACConfig")
+async def test_hello_world_workflow(mock_rbac_config, mock_uuid, mock_get_client):
+    """Verify HelloWorld Workflow API."""
+    # Mock Temporal client
+    handle = MagicMock()
+    handle.id = "mockuuid"
+    mock_get_client.return_value.start_workflow.return_value = handle
+
+    # Mock RBAC config for HelloWorld workflow
+    mock_rbac_instance = MagicMock()
+    mock_rbac_instance.get_workflow_roles.return_value = {
+        "read_roles": {"all"},
+        "execute_roles": {"all"},
+    }
+    mock_rbac_config.return_value = mock_rbac_instance
+
+    client = TestClient(app)
+    rsp = client.post("/v1/workflow/hello_world", json={"name": "test"})
+    assert rsp.json() == {
+        "id": "mockuuid",
+        "href": "http://localhost:8080/namespaces/default/workflows/mockuuid",
+    }
+
+
+@pytest.mark.asyncio
+@patch("nv_config_manager.temporal.api.workflow_v1.get_client")
+@patch("nv_config_manager.temporal.api.workflow_v1.uuid4", return_value="mockuuid")
+@patch("nv_config_manager.temporal.api.workflow_v1.RBACConfig")
+async def test_hello_world_approval_workflow(mock_rbac_config, mock_uuid, mock_get_client):
+    """Verify HelloWorld Workflow API."""
+    # Mock Temporal client
+    handle = MagicMock()
+    handle.id = "mockuuid"
+    mock_get_client.return_value.start_workflow.return_value = handle
+
+    # Mock RBAC config for HelloWorldApproval workflow
+    mock_rbac_instance = MagicMock()
+    mock_rbac_instance.get_workflow_roles.return_value = {
+        "read_roles": {"all"},
+        "execute_roles": {"all"},
+    }
+    mock_rbac_config.return_value = mock_rbac_instance
+
+    client = TestClient(app)
+    rsp = client.post("/v1/workflow/hello_world_approval", json={"name": "test"})
+    assert rsp.json() == {
+        "id": "mockuuid",
+        "href": "http://localhost:8080/namespaces/default/workflows/mockuuid",
+    }
+
+
+@pytest.mark.asyncio
+@patch("nv_config_manager.temporal.api.workflow_v1.signal_workflow")
+async def test_approve(mock_signal):
+    """Verify HelloWorld Workflow API."""
+    workflow_id = str(uuid4())
+
+    client = TestClient(app)
+    rsp = client.post(f"/v1/workflow/{workflow_id}/approve/prompt")
+    assert rsp.json() == {
+        "id": workflow_id,
+        "href": f"http://localhost:8080/namespaces/default/workflows/{workflow_id}",
+    }
+
+    mock_signal.assert_called_with(
+        ANY,
+        workflow_id,
+        "approve",
+        ReviewSignalInput(stage_name="prompt", user="unknown"),
+    )
+
+
+@pytest.mark.asyncio
+@patch("nv_config_manager.temporal.api.workflow_v1.signal_workflow")
+async def test_reject(mock_signal):
+    """Verify HelloWorld Workflow API."""
+    workflow_id = str(uuid4())
+
+    client = TestClient(app)
+    rsp = client.post(f"/v1/workflow/{workflow_id}/reject/prompt")
+    assert rsp.json() == {
+        "id": workflow_id,
+        "href": f"http://localhost:8080/namespaces/default/workflows/{workflow_id}",
+    }
+
+    mock_signal.assert_called_with(
+        ANY,
+        workflow_id,
+        "reject",
+        ReviewSignalInput(stage_name="prompt", user="unknown"),
+    )
+
+
+@pytest.mark.asyncio
+@patch("nv_config_manager.temporal.api.workflow_v1.signal_workflow")
+async def test_retry(mock_signal):
+    """Test the retry signal API."""
+    workflow_id = str(uuid4())
+
+    client = TestClient(app)
+    rsp = client.post(f"/v1/workflow/{workflow_id}/retry/prompt")
+    assert rsp.json() == {
+        "id": workflow_id,
+        "href": f"http://localhost:8080/namespaces/default/workflows/{workflow_id}",
+    }
+
+    mock_signal.assert_called_with(ANY, workflow_id, "retry", "prompt")
+
+
+@pytest.mark.asyncio
+@patch("nv_config_manager.temporal.api.workflow_v1.get_client")
+async def test_terminate_success(mock_client):
+    """Test the terminate workflow API when workflow is running and user is authorized."""
+    workflow_id = str(uuid4())
+    mock_handle = MagicMock()
+
+    async def mock_describe():
+        mock_description = MagicMock()
+        mock_description.status = WorkflowExecutionStatus.RUNNING
+        mock_description.search_attributes = {
+            "User": ["test"],
+            "ReadRoles": ["ngc-cfa"],
+            "ExecuteRoles": ["ngc-cfa"],
+        }
+        return mock_description
+
+    mock_handle.describe = mock_describe
+    mock_handle.terminate = AsyncMock(return_value=None)
+    mock_handle.id = workflow_id
+
+    mock_client_instance = MagicMock()
+    mock_client_instance.get_workflow_handle.return_value = mock_handle
+    mock_client.return_value = mock_client_instance
+
+    client = TestClient(app)
+    rsp = client.post(
+        f"/v1/workflow/{workflow_id}/terminate",
+        headers={"X-Auth-Request-Email": "test@nvidia.com", "X-AUTH-REQUEST-GROUPS": "ngc-cfa"},
+    )
+    assert rsp.status_code == 200
+    assert rsp.json() == {
+        "id": workflow_id,
+        "href": f"http://localhost:8080/namespaces/default/workflows/{workflow_id}",
+    }
+    mock_handle.terminate.assert_called_once()
+
+
+@pytest.mark.asyncio
+@patch("nv_config_manager.temporal.api.workflow_v1.get_client")
+async def test_terminate_workflow_not_found(mock_client):
+    """Test terminate returns 404 when workflow does not exist (via is_authorized)."""
+    from temporalio.service import RPCError, RPCStatusCode
+
+    workflow_id = "nonexistent-workflow-id"
+    mock_handle = MagicMock()
+
+    async def mock_describe():
+        raise RPCError("sql: no rows in result set", RPCStatusCode.NOT_FOUND, b"")
+
+    mock_handle.describe = mock_describe
+    mock_handle.id = workflow_id
+
+    mock_client_instance = MagicMock()
+    mock_client_instance.get_workflow_handle.return_value = mock_handle
+    mock_client.return_value = mock_client_instance
+
+    client = TestClient(app)
+    rsp = client.post(
+        f"/v1/workflow/{workflow_id}/terminate",
+        headers={"X-AUTH-REQUEST-GROUPS": "ngc-cfa"},
+    )
+    assert rsp.status_code == 404
+    assert rsp.json() == {"detail": f"Workflow with ID '{workflow_id}' not found"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "status,expected_in_detail",
+    [
+        (WorkflowExecutionStatus.COMPLETED, "COMPLETED"),
+        (None, "UNKNOWN"),
+    ],
+)
+@patch("nv_config_manager.temporal.api.workflow_v1.get_client")
+async def test_terminate_workflow_not_running(mock_client, status, expected_in_detail):
+    """Test terminate returns 400 when workflow is not running."""
+    workflow_id = str(uuid4())
+    mock_handle = MagicMock()
+
+    async def mock_describe():
+        mock_description = MagicMock()
+        mock_description.status = status
+        mock_description.search_attributes = {
+            "User": ["test"],
+            "ReadRoles": ["ngc-cfa"],
+            "ExecuteRoles": ["ngc-cfa"],
+        }
+        return mock_description
+
+    mock_handle.describe = mock_describe
+    mock_handle.id = workflow_id
+
+    mock_client_instance = MagicMock()
+    mock_client_instance.get_workflow_handle.return_value = mock_handle
+    mock_client.return_value = mock_client_instance
+
+    client = TestClient(app)
+    rsp = client.post(
+        f"/v1/workflow/{workflow_id}/terminate",
+        headers={"X-Auth-Request-Email": "test@nvidia.com", "X-AUTH-REQUEST-GROUPS": "ngc-cfa"},
+    )
+    assert rsp.status_code == 400
+    assert "Workflow is not running" in rsp.json()["detail"]
+    assert expected_in_detail in rsp.json()["detail"]
+    mock_handle.terminate.assert_not_called()
+
+
+@pytest.mark.asyncio
+@patch("nv_config_manager.temporal.api.workflow_v1.get_client")
+async def test_terminate_forbidden(mock_client):
+    """Test terminate returns 403 when user is not authorized."""
+    workflow_id = str(uuid4())
+    mock_handle = MagicMock()
+
+    async def mock_describe():
+        mock_description = MagicMock()
+        mock_description.status = WorkflowExecutionStatus.RUNNING
+        mock_description.search_attributes = {
+            "User": ["other-user"],
+            "ReadRoles": ["ngc-cfa"],
+            "ExecuteRoles": ["ngc-cfa"],
+        }
+        return mock_description
+
+    mock_handle.describe = mock_describe
+    mock_handle.id = workflow_id
+
+    mock_client_instance = MagicMock()
+    mock_client_instance.get_workflow_handle.return_value = mock_handle
+    mock_client.return_value = mock_client_instance
+
+    client = TestClient(app)
+    rsp = client.post(
+        f"/v1/workflow/{workflow_id}/terminate",
+        headers={"X-Auth-Request-Email": "user@nvidia.com", "X-AUTH-REQUEST-GROUPS": "ngc-gni"},
+    )
+    assert rsp.status_code == 403
+    assert rsp.json() == {"detail": "Forbidden"}
+    mock_handle.terminate.assert_not_called()
+
+
+@pytest.mark.asyncio
+@patch("nv_config_manager.temporal.api.workflow_v1.get_client")
+@patch("nv_config_manager.temporal.api.workflow_v1.RedisClient")
+async def test_workflow_detail(mock_redis, mock_client):
+    """Verify HelloWorld Workflow API."""
+    # Mock to always cache miss
+    mock_redis.return_value.get_cached_result.return_value = None
+    mock_redis.from_config.return_value.get_cached_query = AsyncMock(return_value=None)
+    mock_redis.from_config.return_value.cache_query = AsyncMock()
+
+    class MockHandle(WorkflowHandle):
+        _id = "mockid"
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def describe(self):
+            mock_description = MagicMock()
+            mock_description.search_attributes = {
+                "User": ["test"],
+                "ReadRoles": ["ngc-cfa"],
+                "ExecuteRoles": ["ngc-cfa"],
+            }
+            mock_description.status = WorkflowExecutionStatus.RUNNING
+            mock_description.start_time = datetime.fromisoformat("1970-01-01T00:00:00+00:00")
+            mock_description.close_time = None
+            mock_description.workflow_type = "HelloWorldApproval"
+            return mock_description
+
+        async def query(self, name: str):
+            if name == "pending_approval":
+                return True
+            if name == "input":
+                return {"user": "test"}
+            if name == "compressed_stages":
+                stages = [
+                    {
+                        "approval_threshold": 1,
+                        "approvers": [],
+                        "child_workflows": [],
+                        "depends_on": [],
+                        "description": "Ask the user if they want to be greeted",
+                        "execution_time": None,
+                        "input": None,
+                        "name": "prompt",
+                        "output": {
+                            "approved": False,
+                            "display": "Would you like to be greeted?",
+                        },
+                        "rejecters": [],
+                        "requires_approval": True,
+                        "retry_count": 0,
+                        "retryable": True,
+                        "state": "PENDING_APPROVAL",
+                        "state_history": [
+                            {
+                                "state": "NOT_STARTED",
+                                "time": "1970-01-01T00:00:00+00:00",
+                            },
+                            {
+                                "state": "IN_PROGRESS",
+                                "time": "1970-01-01T00:00:00+00:00",
+                            },
+                            {
+                                "state": "PENDING_APPROVAL",
+                                "time": "1970-01-01T00:00:00+00:00",
+                            },
+                        ],
+                        "traceback": None,
+                    },
+                    {
+                        "approval_threshold": 0,
+                        "approvers": [],
+                        "child_workflows": [],
+                        "depends_on": ["prompt"],
+                        "description": "Greet the user.",
+                        "execution_time": None,
+                        "input": None,
+                        "name": "greet",
+                        "output": None,
+                        "rejecters": [],
+                        "requires_approval": False,
+                        "retry_count": 0,
+                        "retryable": True,
+                        "state": "NOT_STARTED",
+                        "state_history": [
+                            {
+                                "state": "NOT_STARTED",
+                                "time": "1970-01-01T00:00:00+00:00",
+                            }
+                        ],
+                        "traceback": None,
+                    },
+                    {
+                        "approval_threshold": 0,
+                        "approvers": [],
+                        "child_workflows": [],
+                        "depends_on": ["prompt"],
+                        "description": "Say goodbye to the user",
+                        "execution_time": None,
+                        "input": None,
+                        "name": "goodbye",
+                        "output": None,
+                        "rejecters": [],
+                        "requires_approval": False,
+                        "retry_count": 0,
+                        "retryable": True,
+                        "state": "NOT_STARTED",
+                        "state_history": [
+                            {
+                                "state": "NOT_STARTED",
+                                "time": "1970-01-01T00:00:00+00:00",
+                            }
+                        ],
+                        "traceback": None,
+                    },
+                ]
+                stages = [Stage(**stage) for stage in stages]
+                return StageMixin.compress_stages(stages)
+
+    mock_client.return_value.get_workflow_handle = MockHandle
+    workflow_id = str(uuid4())
+
+    client = TestClient(app)
+    rsp = client.get(f"/v1/workflow/{workflow_id}")
+    assert rsp.status_code == 403
+    assert rsp.json() == {"detail": "Forbidden"}
+
+    rsp = client.get(
+        f"/v1/workflow/{workflow_id}",
+        headers={"X-Auth-Request-Email": "test@nvidia.com", "X-AUTH-REQUEST-GROUPS": "ngc-cfa"},
+    )
+    assert rsp.status_code == 200
+    assert rsp.json() == {
+        "id": "mockid",
+        "workflow_type": "HelloWorldApproval",
+        "workflow_input": {"user": "test"},
+        "started_by": "test",
+        "start_time": "1970-01-01T00:00:00Z",
+        "close_time": None,
+        "status": "RUNNING",
+        "pending_approval": True,
+        "stages": [
+            {
+                "approval_threshold": 1,
+                "approvers": [],
+                "child_workflows": [],
+                "depends_on": [],
+                "description": "Ask the user if they want to be greeted",
+                "execution_time": None,
+                "input": None,
+                "name": "prompt",
+                "output": {
+                    "approved": False,
+                    "display": "Would you like to be greeted?",
+                },
+                "rejecters": [],
+                "requires_approval": True,
+                "retry_count": 0,
+                "retryable": True,
+                "state": "PENDING_APPROVAL",
+                "state_history": [
+                    {"state": "NOT_STARTED", "time": "1970-01-01T00:00:00+00:00"},
+                    {"state": "IN_PROGRESS", "time": "1970-01-01T00:00:00+00:00"},
+                    {
+                        "state": "PENDING_APPROVAL",
+                        "time": "1970-01-01T00:00:00+00:00",
+                    },
+                ],
+                "traceback": None,
+            },
+            {
+                "approval_threshold": 0,
+                "approvers": [],
+                "child_workflows": [],
+                "depends_on": ["prompt"],
+                "description": "Greet the user.",
+                "execution_time": None,
+                "input": None,
+                "name": "greet",
+                "output": None,
+                "rejecters": [],
+                "requires_approval": False,
+                "retry_count": 0,
+                "retryable": True,
+                "state": "NOT_STARTED",
+                "state_history": [{"state": "NOT_STARTED", "time": "1970-01-01T00:00:00+00:00"}],
+                "traceback": None,
+            },
+            {
+                "approval_threshold": 0,
+                "approvers": [],
+                "child_workflows": [],
+                "depends_on": ["prompt"],
+                "description": "Say goodbye to the user",
+                "execution_time": None,
+                "input": None,
+                "name": "goodbye",
+                "output": None,
+                "rejecters": [],
+                "requires_approval": False,
+                "retry_count": 0,
+                "retryable": True,
+                "state": "NOT_STARTED",
+                "state_history": [{"state": "NOT_STARTED", "time": "1970-01-01T00:00:00+00:00"}],
+                "traceback": None,
+            },
+        ],
+        "result": None,
+        "search_attributes": {
+            "User": ["test"],
+            "ReadRoles": ["ngc-cfa"],
+            "ExecuteRoles": ["ngc-cfa"],
+        },
+        "href": "http://localhost:8080/namespaces/default/workflows/mockid",
+    }
+
+
+@pytest.mark.asyncio
+@patch("nv_config_manager.temporal.api.workflow_v1.get_client")
+async def test_workflow_detail_not_found(mock_client):
+    """Verify workflow detail returns 404 when workflow doesn't exist."""
+    from temporalio.service import RPCError, RPCStatusCode
+
+    class MockHandle(WorkflowHandle):
+        _id = "nonexistent-workflow-id"
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def describe(self):
+            # Simulate the error that Temporal throws for non-existent workflows
+            raise RPCError("sql: no rows in result set", RPCStatusCode.NOT_FOUND, b"")
+
+    mock_client.return_value.get_workflow_handle = MockHandle
+    workflow_id = "nonexistent-workflow-id"
+
+    client = TestClient(app)
+    rsp = client.get(f"/v1/workflow/{workflow_id}")
+    assert rsp.status_code == 404
+    assert rsp.json() == {"detail": f"Workflow with ID '{workflow_id}' not found"}
+
+
+@pytest.mark.asyncio
+@patch("nv_config_manager.temporal.api.workflow_v1.get_client")
+async def test_approve_workflow_not_found(mock_client):
+    """Verify workflow approval returns 404 when workflow doesn't exist."""
+    from temporalio.service import RPCError, RPCStatusCode
+
+    class MockHandle(WorkflowHandle):
+        _id = "nonexistent-workflow-id"
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def describe(self):
+            # Simulate the error that Temporal throws for non-existent workflows
+            raise RPCError("sql: no rows in result set", RPCStatusCode.NOT_FOUND, b"")
+
+    mock_client.return_value.get_workflow_handle = MockHandle
+    workflow_id = "nonexistent-workflow-id"
+
+    client = TestClient(app)
+    rsp = client.post(
+        f"/v1/workflow/{workflow_id}/approve/test-stage",
+        headers={"X-AUTH-REQUEST-GROUPS": "ngc-cfa"},
+    )
+    assert rsp.status_code == 404
+    assert rsp.json() == {"detail": f"Workflow with ID '{workflow_id}' not found"}
+
+
+@pytest.mark.asyncio
+@patch("nv_config_manager.temporal.api.workflow_v1.get_client")
+@patch("nv_config_manager.temporal.api.workflow_v1.RedisClient")
+@patch("nv_config_manager.temporal.api.workflow_v1.RBACConfig")
+async def test_workflows(mock_rbac_config, mock_redis, mock_client):
+    """Verify HelloWorld Workflow API."""
+    # Mock to always cache miss
+    mock_redis.return_value.get_cached_result.return_value = None
+    mock_redis.from_config.return_value.get_cached_query = AsyncMock(return_value=None)
+    mock_redis.from_config.return_value.cache_query = AsyncMock()
+
+    mock_rbac_instance = MagicMock()
+    mock_rbac_instance.get_admin_roles.return_value = {"ngc-cfa"}
+    mock_rbac_config.return_value = mock_rbac_instance
+
+    class MockHandle(WorkflowHandle):
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def describe(self):
+            mock_description = MagicMock()
+            mock_description.search_attributes = {"User": ["test"]}
+            mock_description.status = WorkflowExecutionStatus.RUNNING
+            mock_description.start_time = datetime.fromisoformat("1970-01-01T00:00:00+00:00")
+            mock_description.close_time = None
+            mock_description.workflow_type = "HelloWorldApproval"
+            return mock_description
+
+        async def query(self, name: str):
+            if name == "pending_approval":
+                return True
+            if name == "input":
+                return {"user": "test"}
+
+    class MockHandle1(MockHandle):
+        _id = "mock_uuid1"
+
+    class MockHandle2(MockHandle):
+        _id = "mock_uuid2"
+
+    class MockHandle3(MockHandle):
+        _id = "mock_uuid3"
+
+    class MockWorkflowExecutionAsyncIterator:
+        items = [
+            MagicMock(id="mock_uuid1"),
+            MagicMock(id="mock_uuid2"),
+            MagicMock(id="mock_uuid3"),
+        ]
+
+        async def __aiter__(self):
+            for item in self.items:
+                yield item
+
+        @property
+        def next_page_token(self) -> bytes | None:
+            """Token for the next page request if any."""
+            return None
+
+    def mock_get_workflow_handle(workflow_id):
+        if workflow_id == "mock_uuid1":
+            return MockHandle1()
+        if workflow_id == "mock_uuid2":
+            return MockHandle2()
+        if workflow_id == "mock_uuid3":
+            return MockHandle3()
+
+    def mock_list_queries(query, **kwargs):
+        return MockWorkflowExecutionAsyncIterator()
+
+    mock_client.return_value.get_workflow_handle = mock_get_workflow_handle
+    mock_client.return_value.list_workflows = MagicMock(side_effect=mock_list_queries)
+
+    client = TestClient(app)
+    rsp = client.get("/v1/workflow")
+    assert rsp.status_code == 200
+    assert rsp.json() == {
+        "workflows": [
+            {
+                "id": "mock_uuid1",
+                "workflow_type": "HelloWorldApproval",
+                "workflow_input": {"user": "test"},
+                "started_by": "test",
+                "start_time": "1970-01-01T00:00:00Z",
+                "close_time": None,
+                "status": "RUNNING",
+                "pending_approval": True,
+                "search_attributes": {"User": ["test"]},
+                "href": "http://localhost:8080/namespaces/default/workflows/mock_uuid1",
+            },
+            {
+                "id": "mock_uuid2",
+                "workflow_type": "HelloWorldApproval",
+                "workflow_input": {"user": "test"},
+                "started_by": "test",
+                "start_time": "1970-01-01T00:00:00Z",
+                "close_time": None,
+                "status": "RUNNING",
+                "pending_approval": True,
+                "search_attributes": {"User": ["test"]},
+                "href": "http://localhost:8080/namespaces/default/workflows/mock_uuid2",
+            },
+            {
+                "id": "mock_uuid3",
+                "workflow_type": "HelloWorldApproval",
+                "workflow_input": {"user": "test"},
+                "started_by": "test",
+                "start_time": "1970-01-01T00:00:00Z",
+                "close_time": None,
+                "status": "RUNNING",
+                "pending_approval": True,
+                "search_attributes": {"User": ["test"]},
+                "href": "http://localhost:8080/namespaces/default/workflows/mock_uuid3",
+            },
+        ],
+        "next_page_token": None,
+    }
+
+    # Test filter query construction
+    rsp = client.get(
+        "/v1/workflow",
+        params={
+            "user": "test",
+            "workflow_type": "test",
+            "device_id": "test",
+            "device_name": "test",
+            "device_role": "test",
+            "device_platform": "test",
+            "site": "test",
+            "status": "RUNNING",
+        },
+    )
+    mock_client.return_value.list_workflows.assert_called_with(
+        "User = 'test' and "
+        "WorkflowType = 'test' and "
+        "DeviceID = 'test' and "
+        "DeviceName = 'test' and "
+        "DeviceRole = 'test' and "
+        "DevicePlatform = 'test' and "
+        "Site = 'test' and "
+        "ExecutionStatus = 'RUNNING' and "
+        "(ReadRoles = 'all')",
+        limit=100,
+        page_size=100,
+        next_page_token=None,
+    )
+
+    # Modify the X-AUTH-REQUEST-GROUPS header and test filter change
+    # admin roles can see all workflows, so ReadRoles is not added to the filter
+    rsp = client.get(
+        "/v1/workflow",
+        params={
+            "user": "test",
+            "workflow_type": "test",
+            "device_id": "test",
+            "device_name": "test",
+            "device_role": "test",
+            "device_platform": "test",
+            "site": "test",
+            "status": "RUNNING",
+        },
+        headers={"X-Auth-Request-Email": "admin@nvidia.com", "X-AUTH-REQUEST-GROUPS": "ngc-cfa"},
+    )
+    mock_client.return_value.list_workflows.assert_called_with(
+        "User = 'test' and "
+        "WorkflowType = 'test' and "
+        "DeviceID = 'test' and "
+        "DeviceName = 'test' and "
+        "DeviceRole = 'test' and "
+        "DevicePlatform = 'test' and "
+        "Site = 'test' and "
+        "ExecutionStatus = 'RUNNING'",
+        limit=100,
+        page_size=100,
+        next_page_token=None,
+    )
+
+    # GNI is less permissive, so ReadRoles is added to the filter
+    rsp = client.get(
+        "/v1/workflow",
+        params={
+            "user": "test",
+            "workflow_type": "test",
+            "device_id": "test",
+            "device_name": "test",
+            "device_role": "test",
+            "device_platform": "test",
+            "site": "test",
+            "status": "RUNNING",
+        },
+        headers={"X-Auth-Request-Email": "user@nvidia.com", "X-AUTH-REQUEST-GROUPS": "ngc-gni"},
+    )
+    mock_client.return_value.list_workflows.assert_called_with(
+        "User = 'test' and "
+        "WorkflowType = 'test' and "
+        "DeviceID = 'test' and "
+        "DeviceName = 'test' and "
+        "DeviceRole = 'test' and "
+        "DevicePlatform = 'test' and "
+        "Site = 'test' and "
+        "ExecutionStatus = 'RUNNING' and "
+        "(ReadRoles = 'all' or ReadRoles = 'ngc-gni')",
+        limit=100,
+        page_size=100,
+        next_page_token=None,
+    )
+
+
+def test_workflow_types():
+    """Verify Workflow Types."""
+    client = TestClient(app)
+    rsp = client.get("/v1/workflow/types")
+    assert rsp.status_code == 200
+    workflow_types = set(rsp.json())
+    # Assert some of our workflows are returned
+    # dont want to have to update this test on every
+    # workflow creation
+    assert {"BackupWorkflow", "DeployWorkflow"}.issubset(workflow_types)
+
+
+@patch("nv_config_manager.common.auth.x509.load_pem_x509_certificate")
+def test_middleware(mock_load_cert):
+    """Verify the auth middleware with different certificate types."""
+    from unittest.mock import Mock
+
+    from cryptography import x509
+
+    client = TestClient(app)
+
+    # Test 1: Legacy certificate (org=nv-config-manager only)
+    # Should use org for both user and role
+    mock_cert = Mock()
+    mock_cert.subject.get_attributes_for_oid.side_effect = lambda oid: {
+        x509.NameOID.ORGANIZATION_NAME: [Mock(value="nv-config-manager")],
+        x509.NameOID.ORGANIZATIONAL_UNIT_NAME: [],
+        x509.NameOID.COMMON_NAME: [],
+    }.get(oid, [])
+    mock_load_cert.return_value = mock_cert
+
+    rsp = client.get("/whoami", headers={"ssl-client-cert": "dummy_cert"})
+    assert rsp.json() == {
+        "user": "nv-config-manager",
+        "roles": ["all", "nv-config-manager"],
+    }
+
+    # Test 2: Service-to-service certificate (org=nv-config-manager, ou=nv-config-manager)
+    # Should use ou for role, ou for user (since no CN)
+    mock_cert.subject.get_attributes_for_oid.side_effect = lambda oid: {
+        x509.NameOID.ORGANIZATION_NAME: [Mock(value="nv-config-manager")],
+        x509.NameOID.ORGANIZATIONAL_UNIT_NAME: [Mock(value="nv-config-manager")],
+        x509.NameOID.COMMON_NAME: [],
+    }.get(oid, [])
+    mock_load_cert.return_value = mock_cert
+
+    rsp = client.get("/whoami", headers={"ssl-client-cert": "dummy_cert"})
+    assert rsp.json() == {
+        "user": "nv-config-manager",
+        "roles": ["all", "nv-config-manager"],
+    }
+
+    # Test 3: User certificate (org=nv-config-manager, ou=ngc-gni, cn=testuser@nvidia.com)
+    # Should use ou for role, cn for user
+    mock_cert.subject.get_attributes_for_oid.side_effect = lambda oid: {
+        x509.NameOID.ORGANIZATION_NAME: [Mock(value="nv-config-manager")],
+        x509.NameOID.ORGANIZATIONAL_UNIT_NAME: [Mock(value="ngc-gni")],
+        x509.NameOID.COMMON_NAME: [Mock(value="testuser@nvidia.com")],
+    }.get(oid, [])
+    mock_load_cert.return_value = mock_cert
+
+    rsp = client.get("/whoami", headers={"ssl-client-cert": "dummy_cert"})
+    assert rsp.json() == {
+        "user": "testuser@nvidia.com",
+        "roles": ["all", "ngc-gni"],
+    }
+
+    rsp = client.get(
+        "/whoami",
+        headers={
+            "X-AUTH-REQUEST-EMAIL": "ngc-cfa@nvidia.com",
+            "X-AUTH-REQUEST-GROUPS": "nv-config-manager",
+        },
+    )
+    assert rsp.json() == {
+        "user": "ngc-cfa",
+        "roles": ["all", "nv-config-manager"],
+    }
+
+
+def test_cors_middleware_configured(custom_ini):
+    """Test that CORS middleware is configured when temporal.api section exists."""
+    custom_ini(
+        """
+        [temporal.api]
+        cors_origins = https://example.com,https://test.com
+
+        [nautobot]
+        server = https://nautobot.example.com
+        token = test
+
+        [temporal]
+        grpc_service = temporal:7233
+        api_service = http://temporal-api:9000
+        api_url = https://temporal-api.example.com
+        ui_url = https://temporal-ui.example.com
+        use_internal_endpoint = true
+        """
+    )
+
+    # Need to reimport app to pick up new config
+    from importlib import reload
+
+    from nv_config_manager.temporal.api import main as temporal_main
+
+    reload(temporal_main)
+
+    client = TestClient(temporal_main.app)
+
+    # Test that CORS headers are present
+    response = client.options(
+        "/healthcheck",
+        headers={
+            "Origin": "https://example.com",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+
+    # FastAPI/Starlette CORS middleware should add these headers
+    assert response.status_code == 200
+    assert "access-control-allow-origin" in response.headers
+
+
+def test_cors_middleware_not_configured_when_section_missing(custom_ini):
+    """Test that CORS middleware is not configured when temporal.api section is missing."""
+    custom_ini(
+        """
+        [nautobot]
+        server = https://nautobot.example.com
+        token = test
+
+        [temporal]
+        grpc_service = temporal:7233
+        api_service = http://temporal-api:9000
+        api_url = https://temporal-api.example.com
+        ui_url = https://temporal-ui.example.com
+        use_internal_endpoint = true
+        """
+    )
+
+    # Need to reimport app to pick up new config
+    from importlib import reload
+
+    from nv_config_manager.temporal.api import main as temporal_main
+
+    reload(temporal_main)
+
+    client = TestClient(temporal_main.app)
+
+    # Without CORS middleware, OPTIONS requests should still work
+    # but won't have CORS headers
+    response = client.get("/healthcheck")
+    assert response.status_code == 200

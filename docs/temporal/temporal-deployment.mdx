@@ -1,0 +1,32 @@
+---
+title: Config Manager Temporal Deployment Process
+sidebar-title: Temporal Deployment Process
+position: 10
+---
+
+Temporal is deployed as part of the Config Manager Helm release. Use the [standard deployment guide](../install/index.mdx) for connected environments and the [airgapped deployment guide](../install/install-airgapped.mdx) for disconnected environments.
+
+## Deployment Inputs
+
+The installer controls Temporal deployment through `nv-config-manager-install.yaml` and generated Helm values:
+
+- `services.temporal`: enables the Temporal API, workers, and related deployment resources.
+- `cluster.hostname`: drives public workflow API and Temporal Web hostnames.
+- `secrets`: provides database, auth, and integration secrets.
+- `rbac`: configures workflow read and execute roles.
+- `infrastructure`: configures TLS, gateway, storage, and optional observability.
+
+## Verify Temporal
+
+After deployment, verify the workflow API and Temporal Web routes:
+
+```bash
+kubectl get pods -n <namespace> | grep temporal
+kubectl get httproutes -n <namespace> | grep -E 'workflow|temporal'
+```
+
+Open the workflow API at `https://workflow.<hostname>/docs` and Temporal Web at `https://temporal.<hostname>` if Temporal Web is enabled for the environment.
+
+## Operations
+
+For normal operator actions, use the Config Manager UI. Use Temporal Web for detailed workflow event history, retries, payload inspection, and child workflow troubleshooting. See [Which Interface Should I Use?](../getting-started/interfaces.mdx).

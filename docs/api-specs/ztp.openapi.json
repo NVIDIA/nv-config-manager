@@ -1,0 +1,1031 @@
+{
+  "components": {
+    "schemas": {
+      "Body_upload_file_v1_files__platform___version___filename__post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_file_v1_files__platform___version___filename__post",
+        "type": "object"
+      },
+      "ChecksumResponse": {
+        "description": "Response containing a file checksum.",
+        "properties": {
+          "checksum": {
+            "title": "Checksum",
+            "type": "string"
+          }
+        },
+        "required": [
+          "checksum"
+        ],
+        "title": "ChecksumResponse",
+        "type": "object"
+      },
+      "FileInfo": {
+        "description": "Metadata for a file in object storage.",
+        "properties": {
+          "file": {
+            "description": "Filename",
+            "title": "File",
+            "type": "string"
+          },
+          "last_modified": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "description": "Last modification timestamp",
+            "title": "Last Modified"
+          },
+          "size": {
+            "description": "File size in bytes",
+            "title": "Size",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "file",
+          "last_modified",
+          "size"
+        ],
+        "title": "FileInfo",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "ObjectInfo": {
+        "description": "Metadata for an object in the storage backend.",
+        "properties": {
+          "etag": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "ETag hash",
+            "title": "Etag"
+          },
+          "key": {
+            "description": "Object key/path",
+            "title": "Key",
+            "type": "string"
+          },
+          "last_modified": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "description": "Last modification timestamp",
+            "title": "Last Modified"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Object metadata",
+            "title": "Metadata"
+          },
+          "size": {
+            "description": "Object size in bytes",
+            "title": "Size",
+            "type": "integer"
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Object tags",
+            "title": "Tags"
+          }
+        },
+        "required": [
+          "key",
+          "size",
+          "last_modified"
+        ],
+        "title": "ObjectInfo",
+        "type": "object"
+      },
+      "ValidateSerialBody": {
+        "description": "Request body for serial number validation.",
+        "properties": {
+          "serial": {
+            "title": "Serial",
+            "type": "string"
+          }
+        },
+        "required": [
+          "serial"
+        ],
+        "title": "ValidateSerialBody",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "WhoamiResponse": {
+        "description": "Response shape for ``GET /whoami``.",
+        "properties": {
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "user": {
+            "title": "User",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user",
+          "roles"
+        ],
+        "title": "WhoamiResponse",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "ZTP API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/healthcheck": {
+      "get": {
+        "description": "Execute healthcheck.",
+        "operationId": "healthcheck_healthcheck_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Healthcheck Healthcheck Get",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Healthcheck"
+      }
+    },
+    "/v1/device/{device_uuid}/boot-script": {
+      "get": {
+        "description": "Load the bootscript for the given nautobot device UUID.",
+        "operationId": "load_bootscript_v1_device__device_uuid__boot_script_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "device_uuid",
+            "required": true,
+            "schema": {
+              "title": "Device Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Load Bootscript",
+        "tags": [
+          "device"
+        ]
+      }
+    },
+    "/v1/device/{device_uuid}/config/{configlet}": {
+      "get": {
+        "description": "Load the specified configuration file for the given nautobot device UUID.",
+        "operationId": "load_configuration_v1_device__device_uuid__config__configlet__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "device_uuid",
+            "required": true,
+            "schema": {
+              "title": "Device Uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "configlet",
+            "required": true,
+            "schema": {
+              "title": "Configlet",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Load Configuration",
+        "tags": [
+          "device"
+        ]
+      }
+    },
+    "/v1/device/{device_uuid}/firmware": {
+      "get": {
+        "description": "Load the firmware for the given device.",
+        "operationId": "load_firmware_v1_device__device_uuid__firmware_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "device_uuid",
+            "required": true,
+            "schema": {
+              "title": "Device Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Load Firmware",
+        "tags": [
+          "device"
+        ]
+      }
+    },
+    "/v1/device/{device_uuid}/firmware/checksum": {
+      "get": {
+        "description": "Load the firmware checksum for the given device.",
+        "operationId": "load_firmware_checksum_v1_device__device_uuid__firmware_checksum_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "device_uuid",
+            "required": true,
+            "schema": {
+              "title": "Device Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChecksumResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Load Firmware Checksum",
+        "tags": [
+          "device"
+        ]
+      }
+    },
+    "/v1/device/{device_uuid}/onie": {
+      "get": {
+        "description": "Load the firmware for the given device.",
+        "operationId": "load_firmware_v1_device__device_uuid__onie_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "device_uuid",
+            "required": true,
+            "schema": {
+              "title": "Device Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Load Firmware",
+        "tags": [
+          "device"
+        ]
+      }
+    },
+    "/v1/device/{device_uuid}/provisioned": {
+      "post": {
+        "description": "Mark the ZTP process complete for the given device.",
+        "operationId": "mark_provisioned_v1_device__device_uuid__provisioned_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "device_uuid",
+            "required": true,
+            "schema": {
+              "title": "Device Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Mark Provisioned V1 Device  Device Uuid  Provisioned Post",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mark Provisioned",
+        "tags": [
+          "device"
+        ]
+      }
+    },
+    "/v1/device/{device_uuid}/validate_serial": {
+      "post": {
+        "description": "Validate the device serial number matches nautobot.",
+        "operationId": "validate_serial_v1_device__device_uuid__validate_serial_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "device_uuid",
+            "required": true,
+            "schema": {
+              "title": "Device Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ValidateSerialBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Validate Serial V1 Device  Device Uuid  Validate Serial Post",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Validate Serial",
+        "tags": [
+          "device"
+        ]
+      }
+    },
+    "/v1/files/": {
+      "get": {
+        "description": "List all files and their metadata in the storage backend.",
+        "operationId": "list_all_files_v1_files__get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ObjectInfo"
+                  },
+                  "title": "Response List All Files V1 Files  Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        },
+        "summary": "List All Files",
+        "tags": [
+          "files"
+        ]
+      }
+    },
+    "/v1/files/{platform}/{version}/": {
+      "get": {
+        "description": "List files associated with the given platform and version.",
+        "operationId": "list_files_v1_files__platform___version___get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "platform",
+            "required": true,
+            "schema": {
+              "title": "Platform",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FileInfo"
+                  },
+                  "title": "Response List Files V1 Files  Platform   Version   Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Files",
+        "tags": [
+          "files"
+        ]
+      }
+    },
+    "/v1/files/{platform}/{version}/{filename}": {
+      "get": {
+        "description": "Load the firmware by platform and version.",
+        "operationId": "load_object_v1_files__platform___version___filename__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "platform",
+            "required": true,
+            "schema": {
+              "title": "Platform",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "filename",
+            "required": true,
+            "schema": {
+              "title": "Filename",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Load Object",
+        "tags": [
+          "files"
+        ]
+      },
+      "post": {
+        "description": "Upload a file to the storage backend.\n\nSet ``firmware_image=true`` to tag this file as the OS/firmware image for\nthe given platform and version. Only one firmware image is allowed per\nplatform/version directory; the upload will be rejected if a *different*\nfile already occupies that slot.",
+        "operationId": "upload_file_v1_files__platform___version___filename__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "platform",
+            "required": true,
+            "schema": {
+              "title": "Platform",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "filename",
+            "required": true,
+            "schema": {
+              "title": "Filename",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "checksum",
+            "required": true,
+            "schema": {
+              "title": "Checksum",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "overwrite",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Overwrite",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "firmware_image",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Firmware Image",
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_file_v1_files__platform___version___filename__post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Upload File V1 Files  Platform   Version   Filename  Post",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload File",
+        "tags": [
+          "files"
+        ]
+      }
+    },
+    "/v1/files/{platform}/{version}/{filename}/checksum": {
+      "get": {
+        "description": "Load the firmware checksum by platform and version.",
+        "operationId": "load_checksum_v1_files__platform___version___filename__checksum_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "platform",
+            "required": true,
+            "schema": {
+              "title": "Platform",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "filename",
+            "required": true,
+            "schema": {
+              "title": "Filename",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChecksumResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Load Checksum",
+        "tags": [
+          "files"
+        ]
+      }
+    },
+    "/v1/firmware/{platform}/{version}": {
+      "get": {
+        "description": "Load the firmware by platform and version.\n\nNote: For large firmware files, use curl or direct browser download instead of\nthe OpenAPI UI, which may not handle large streaming responses properly.",
+        "operationId": "load_firmware_v1_firmware__platform___version__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "platform",
+            "required": true,
+            "schema": {
+              "title": "Platform",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Load Firmware",
+        "tags": [
+          "firmware"
+        ]
+      }
+    },
+    "/v1/firmware/{platform}/{version}/checksum": {
+      "get": {
+        "description": "Load the firmware checksum by platform and version.",
+        "operationId": "load_firmware_checksum_v1_firmware__platform___version__checksum_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "platform",
+            "required": true,
+            "schema": {
+              "title": "Platform",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChecksumResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Load Firmware Checksum",
+        "tags": [
+          "firmware"
+        ]
+      }
+    },
+    "/whoami": {
+      "get": {
+        "description": "Reflect the caller's identity as seen by this service.",
+        "operationId": "whoami_whoami_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WhoamiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Current User Info"
+      }
+    }
+  }
+}

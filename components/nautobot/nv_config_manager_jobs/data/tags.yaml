@@ -1,0 +1,173 @@
+---
+# Tags for NVIDIA Config Manager deployments
+# Required for render service, IPAM, and temporal workflows
+
+# ============================================================================
+# Device and Interface Tags
+# ============================================================================
+
+- name: nv-config-manager-managed
+  description: Devices and interfaces managed by NVIDIA Config Manager automation
+  color: 4caf50
+  content_types:
+    - dcim.device
+    - dcim.interface
+  deployment_types: [all, superpod]
+
+- name: dns-exempt
+  description: Interfaces exempt from DNS registration
+  color: c0c0c0
+  content_types:
+    - dcim.device
+    - dcim.interface
+  deployment_types: [all, superpod]
+
+- name: spectrumx
+  description: SpectrumX namespace tag for VPC workflows
+  color: 9e9e9e
+  content_types:
+    - ipam.namespace
+    - ipam.vrf
+  deployment_types: [all, superpod]
+
+- name: cable-validation-ignore
+  description: Interfaces to skip during cable validation
+  color: aa1409
+  content_types:
+    - dcim.interface
+  deployment_types: [all, superpod]
+
+- name: cable-validation-link-state-only
+  description: Interfaces to validate link state only (skip detailed checks)
+  color: 2196f3
+  content_types:
+    - dcim.interface
+  deployment_types: [all, superpod]
+
+- name: Uplink
+  description: Uplink interfaces
+  color: 2196f3
+  content_types:
+    - dcim.interface
+  deployment_types: [all, superpod]
+
+- name: Downlink
+  description: Downlink interfaces
+  color: 2196f3
+  content_types:
+    - dcim.interface
+  deployment_types: [all, superpod]
+
+- name: route-server
+  description: Route server devices for BGP peering
+  color: 9c27b0
+  content_types:
+    - dcim.device
+  deployment_types: [all]
+
+- name: dataloader-test
+  description: Test devices for dataloader validation
+  color: 607d8b
+  content_types:
+    - dcim.device
+  deployment_types: [all]
+
+- name: dc-ops-install
+  description: DC ops installation devices
+  color: c0c0c0
+  content_types:
+    - dcim.device
+  deployment_types: [all]
+
+# ============================================================================
+# DHCP Tags
+# ============================================================================
+
+- name: dhcp-subnet
+  description: DHCP subnet tag
+  color: 2196f3
+  content_types:
+    - ipam.prefix
+  deployment_types: [all, superpod]
+
+- name: dhcp-reserve
+  description: DHCP reserve tag
+  color: 2196f3
+  content_types:
+    - ipam.ipaddress
+  deployment_types: [all, superpod]
+
+- name: dhcp-pool
+  description: DHCP pool tag
+  color: 2196f3
+  content_types:
+    - ipam.ipaddress
+  deployment_types: [all, superpod]
+
+# ============================================================================
+# IPAM Prefix Tags - Routing and Aggregation
+# ============================================================================
+
+- name: role-aggregate
+  description: Aggregate prefix for routing announcements
+  color: 00bcd4
+  content_types:
+    - ipam.prefix
+  deployment_types: [all]
+
+- name: ignore-bgp-aggregate
+  description: Prefix to ignore in BGP aggregate announcements
+  color: ff9800
+  content_types:
+    - ipam.prefix
+  deployment_types: [all]
+
+- name: uc-jumphost
+  description: UC jumphost prefix allocation
+  color: ff9800
+  content_types:
+    - ipam.prefix
+  deployment_types: [all]
+
+# ============================================================================
+# IPAM Prefix Tags - DPU
+# ============================================================================
+
+- name: DpuLoopback
+  description: DPU loopback prefix tag
+  color: 673ab7
+  content_types:
+    - ipam.prefix
+  deployment_types: [all]
+
+# ============================================================================
+# IPAM Prefix Tags - Forge
+# ============================================================================
+
+- name: ForgeAdmin
+  description: Forge admin prefix tag
+  color: e91e63
+  content_types:
+    - ipam.prefix
+  deployment_types: [all]
+
+- name: ForgeControlPlane
+  description: Forge control plane prefix tag
+  color: e91e63
+  content_types:
+    - ipam.prefix
+  deployment_types: [all]
+
+- name: ForgeOverlay
+  description: Forge overlay prefix tag
+  color: e91e63
+  content_types:
+    - ipam.prefix
+  deployment_types: [all]
+
+- name: ForgeServiceVip
+  description: Forge service VIP prefix tag
+  color: e91e63
+  content_types:
+    - ipam.prefix
+  deployment_types: [all]

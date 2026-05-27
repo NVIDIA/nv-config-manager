@@ -1,0 +1,109 @@
+---
+title: Device Reprovision
+sidebar-title: Reprovision
+position: 10
+---
+
+The Device Reprovision workflow wipes a network switch back to factory state via an API-driven factory reset and re-runs the ZTP process against it, then takes a fresh configuration backup once the device is provisioned. It is the recovery action when a device is still up and running, still reachable over its management IP, but its on-box configuration can no longer be trusted to match its intended state in Nautobot.
+
+This workflow is **not** for devices that are already factory-reset or have been physically replaced — those boot with no configuration and run through ZTP automatically on first power-up. Use Reprovision only when the device still has a configuration that needs to be wiped over API.
+
+<Warning title="Destructive workflow">
+Reprovision factory-resets the target switch to initiate ZTP. Before starting, manually confirm that the intended configuration exists in Config Store, Nautobot has the correct serial number and management identity, DHCP/ZTP paths are healthy, required OS images are present, and the maintenance window allows the device to go offline.
+</Warning>
+
+Typical reasons to reprovision a device:
+
+- Two devices have been swapped in the rack and their Nautobot records have been updated to match — see [Device swaps](../new-site-deployment/index.mdx#device-swaps).
+- A device has drifted from its rendered configuration in a way that cannot be cleanly reconciled and is faster to rebuild than to repair.
+
+## Prerequisites
+
+Before running Reprovision, confirm the following are in place:
+
+- **Device exists in Nautobot** with the correct serial number, eth0 MAC address, primary IPv4, platform, and any required config contexts. If you have just swapped hardware, update the serial and MAC in Nautobot before starting.
+- **ZTP is enabled** on the device record (the `ztp_enabled` flag on the Config Manager Info tab).
+- **Device is reachable** on its current management IP and responds to the API-driven factory reset. The workflow has no path forward against an unreachable device — and an unreachable device that has truly been factory-reset will ZTP on its own anyway.
+- **Device status** is one of Provisioning, Provisioned, or Active so that Nautobot considers it in scope for ZTP.
+- **Network path is healthy.** DHCP (UDP 67/68) and ZTP (TCP 443/80) must be open end-to-end between the device subnet and Config Manager. The switch's upstream relay path must be up.
+- **Cumulus Linux 5.x** is installed. ZTP will not proceed on pre-5.x releases; upgrade the device first using the [Switch OS Upgrade](../switch-os-upgrade/index.mdx) workflow.
+- **Approval to take the device offline.** Reprovisioning reboots the switch and re-applies its full configuration; any traffic transiting the device will be disrupted.
+
+## Running the workflow
+
+1. Navigate to the Config Manager URL for your environment.
+1. Click the **+** in the top right and select **ReprovisionWorkflow**.
+1. Fill in the form using the field reference below and submit.
+
+The workflow form takes the following inputs:
+
+| Field | Description | Required |
+| :---- | :---------- | :------- |
+| **Site** | The site of the target device. Drives the device list below. | Yes |
+| **Tenant** | Optional Nautobot tenant filter to narrow the device list. | No |
+| **Status** | Optional device-status filter to narrow the device list. | No |
+| **Device** | The target device. The list is filtered by the selections above and pre-filtered to Cumulus Linux and NV-OS platforms. | Yes |
+
+After submission, a status page appears showing each stage as it runs. The workflow typically completes in 10-35 minutes, depending on how long the device takes to ZTP and how large the backup is.
+
+## Execution stages
+
+The workflow runs two stages in order. Each stage is defined as a Pydantic-validated input and runs against the device identified by `device_id`. Neither stage requires manual approval.
+
+1. **`execute_ztp` — Reset the device and run ZTP.**
+
+    This stage drives the full ZTP cycle:
+
+   - Fetches the device record from Nautobot to confirm it exists and to attach device search attributes to the workflow for observability.
+   - Calls the `execute_ztp` activity, which triggers a factory reset on the switch. The switch reboots, requests DHCP, and downloads its boot script and rendered configuration from the ZTP service. See [Network ZTP](../../network-ztp/index.mdx) for how this works under the hood.
+   - Polls ZTP status for up to 30 minutes (with a 5-minute buffer), heartbeating every 3 minutes so that a hung activity is detected and retried promptly. The poll uses the ZTP execution timestamp captured during the reset so that it can verify the reboot actually happened and is not reading a stale "success" state from the previous provisioning.
+   - Activities retry up to 3 times on transient errors; ZTP failures surface as `ApplicationError`.
+
+     If ZTP does not complete within the 30-minute window, the stage fails with `ZTP failed to complete within 30 minutes, check the device logs for details.` See [Common issues](#common-issues) below.
+
+1. **`perform_backup` — Capture the post-provision configuration.**
+
+    Once ZTP succeeds, the workflow starts the [Configuration Backup](../configuration-backup/index.mdx) workflow as a child workflow against the same device, with `trigger=WORKFLOW` and a 10-minute run timeout. The child workflow ID is recorded on the parent so you can drill into the backup run from the Reprovision status page.
+
+    The backup gives you a known-good starting point for future change tracking on the freshly provisioned device.
+
+After both stages complete, the workflow archives its results and returns success.
+
+## Verifying outcomes
+
+Confirm the reprovision succeeded by checking all of the following:
+
+- **Workflow status** shows both stages green on the Config Manager run page, and the run reports `display: "ZTP completed successfully"` and `display: "Configuration backup completed via workflow <id>."`.
+- **Nautobot device status** has returned to **Provisioned**. ZTP is the process that flips the device into this state, so if the device is still showing Provisioning, ZTP did not finalize.
+- **Backup record** is present in the Config Manager backup store with a timestamp matching the workflow run. If the backup child workflow failed but ZTP succeeded, the device is provisioned but you should re-run the backup workflow directly — see [Configuration Backup](../configuration-backup/index.mdx).
+- **Device is reachable** over its management IP using the current site root credentials from your secrets store, and the cumulus user is restored.
+- **Cable validation** still passes for any ports on the reprovisioned device. If you replaced hardware, run the [Cable Validation](../cable-validation/index.mdx) workflow on the device's site to confirm the new unit is cabled the same way as the old one.
+
+## Common issues
+
+**ZTP failed to complete within 30 minutes.**
+
+The `execute_ztp` stage gives ZTP a hard 30-minute deadline. If it expires, the device either never received DHCP, never reached the ZTP service, or stalled partway through. Work through the [Monitoring DHCP and ZTP](../new-site-deployment/index.mdx#monitoring-dhcp-and-ztp) and [Common errors](../new-site-deployment/index.mdx#common-errors-and-troubleshooting) sections of the New Site Bringup guide, filtering logs by the device's UUID, MAC, or uplink IP. The most common causes for an otherwise-healthy device are:
+
+- The device factory-reset but no longer has a static DHCP reservation because its MAC or serial was changed in Nautobot without saving.
+- A firewall or security-group change has dropped UDP 67/68 or TCP 443 between the device subnet and Config Manager.
+- The device is on a Cumulus release older than 5.x and cannot ZTP. Upgrade with the [Switch OS Upgrade](../switch-os-upgrade/index.mdx) workflow first.
+
+**Device is stuck and the workflow is still running.**
+
+If the device is unreachable, the ZTP activity will continue heartbeating until the 30-minute timeout. You do not need to cancel the workflow to investigate — log into the device via console or upstream SSH (see [Options for logging into a stuck device](../new-site-deployment/index.mdx#options-for-logging-into-a-stuck-device)) and inspect `/var/log/autoprovision`. If you fix the underlying issue before the timeout, ZTP will retry and the workflow will complete normally.
+
+**ZTP completed but the backup child workflow failed.**
+
+The device is provisioned and in service, but no fresh backup was captured. Open the child workflow link from the Reprovision status page to see the backup failure, then re-run the [Configuration Backup](../configuration-backup/index.mdx) workflow against the device once the underlying issue is resolved.
+
+**Reprovision is the wrong tool.**
+
+If the device's configuration has only drifted slightly, a full reprovision is overkill — re-render and re-apply the device's configuration instead. Reprovision is for reachable devices whose on-box state can no longer be trusted and need to be wiped via API and re-ZTPed; freshly replaced or factory-reset devices ZTP automatically without this workflow.
+
+## Related guides
+
+- [Network ZTP](../../network-ztp/index.mdx) — how Config Manager onboards devices end to end.
+- [New Site Bringup](../new-site-deployment/index.mdx) — full bringup procedure and the canonical DHCP/ZTP troubleshooting reference; includes [Device swaps](../new-site-deployment/index.mdx#device-swaps).
+- [Configuration Backup](../configuration-backup/index.mdx) — the child workflow that runs at the end of Reprovision.
+- [Switch OS Upgrade](../switch-os-upgrade/index.mdx) — required before reprovisioning a device that is on a pre-5.x Cumulus release.

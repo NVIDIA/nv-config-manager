@@ -1,0 +1,96 @@
+---
+title: Local Development Quick Start
+sidebar-title: Local Development Quick Start
+position: 30
+---
+
+Use this guide when you want to bring up the local development environment to preview Config Manager functionality without a real lab. The local environment is useful for previewing rendered configurations, exploring the Config Manager UI, browsing Config Store output, and understanding how Nautobot data is shaped.
+
+<Warning title="Render-only local preview">
+The bundled mock topology data is not production data and must never be used for a real deployment. Local mock mode is only useful for testing renders, UI navigation, Config Store browsing, and source-of-truth modeling examples.
+
+Real device interaction is not meaningfully mocked today. Workflows such as ZTP, cable validation, deploy, multi-deploy, backup, reprovision, password rotation, hardware validation, and LLDP-based discovery require reachable real devices to be useful.
+</Warning>
+
+Future work will include a more robust mocking infrastructure for local development. Until then, treat the local quick start as a render and interface preview only.
+
+## What this gives you
+
+The local SuperPOD config profile in the platform repository deploys Config Manager with an in-cluster Nautobot, render-focused sample site data, generated Kubernetes secrets, and no SSO. The profile sets development-only flags and runs the sample topology design job to populate Nautobot; those flags should not be interpreted as a meaningful substitute for device interactions.
+
+Use the generated topology as a reference for the kinds of objects your own site data needs: locations, devices, roles, platforms, interfaces, prefixes, IP addresses, cables, VLANs, VRFs, tenants, config contexts, and managed-device metadata.
+
+The sample data is loaded by a Nautobot Design Builder job. See [Design Builder Data Loading](../nautobot/design-builder-data-loading.mdx) for the job structure and for guidance on replacing the sample topology context with your own data.
+
+## Prerequisites
+
+- Docker
+- Kind
+- Helm 3.x
+- `kubectl`
+- Python 3.11+
+- `uv`
+- At least 8 vCPU, 24 GB RAM, and 30 GB free in Docker storage for the small local profile
+
+Use the standard local Kind cluster name so image loading targets the right cluster:
+
+```bash
+kind create cluster --name nv-config-manager --config deploy/kind-config.yaml --wait 5m
+```
+
+## Deploy a local development preview
+
+From the Config Manager platform repository:
+
+```bash
+make kind-up
+```
+
+Equivalent headless installer command:
+
+```bash
+cd installer
+uv run nv-config-manager-installer deploy ../deploy/configs/local-superpod.yaml \
+  --image-source local \
+  --build-images \
+  --load-kind \
+  --kind-cluster nv-config-manager \
+  --install-envoy-gateway \
+  --install-cnpg-operator \
+  --install-cert-manager
+```
+
+## Access the local services
+
+Add local hostnames for the Envoy Gateway.
+
+```text
+127.0.0.1 config-manager.local
+127.0.0.1 nautobot.config-manager.local
+127.0.0.1 render.config-manager.local
+127.0.0.1 ztp.config-manager.local
+127.0.0.1 dhcp.config-manager.local
+127.0.0.1 workflow.config-manager.local
+127.0.0.1 config-store.config-manager.local
+127.0.0.1 temporal.config-manager.local
+```
+
+Then open:
+
+| Service | URL |
+| :------ | :-- |
+| Config Manager UI | `https://config-manager.local` |
+| Nautobot | `https://nautobot.config-manager.local` |
+| Workflow API | `https://workflow.config-manager.local` |
+| Config Store API | `https://config-store.config-manager.local` |
+
+For the local profile, Nautobot login is `admin` / `admin`.
+
+## What to inspect first
+
+1. In Nautobot, inspect the generated site, devices, interfaces, cables, prefixes, and config contexts.
+1. In the Config Manager UI, inspect workflow forms and existing config links.
+1. In Config Store, confirm intended configs exist for generated devices.
+1. Edit a safe Nautobot object that affects render output and confirm the intended config updates.
+
+Stop there for local validation. Do not interpret successful local render output as proof that device-facing workflows will succeed against a real fabric.

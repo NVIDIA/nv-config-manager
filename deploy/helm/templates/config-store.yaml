@@ -1,0 +1,261 @@
+# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
+{{- if .Values.configStore.enabled }}
+{{- $configStoreName := include "nv-config-manager.componentName" (dict "root" . "component" "config-store") }}
+---
+# Config Store API Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $configStoreName }}-api
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ $configStoreName }}
+    component: api
+    app.kubernetes.io/name: nv-config-manager
+    app.kubernetes.io/component: config-store
+spec:
+  replicas: {{ .Values.configStore.api.replicas }}
+  selector:
+    matchLabels:
+      app: {{ $configStoreName }}
+      component: api
+  template:
+    metadata:
+      labels:
+        app: {{ $configStoreName }}
+        component: api
+        {{- include "nv-config-manager.spiffe.podLabels" . | nindent 8 }}
+        {{- include "nv-config-manager.customPodLabels" . | nindent 8 }}
+      annotations:
+        {{- include "nv-config-manager.authIniChecksum" . | nindent 8 }}
+        {{- if eq .Values.secrets.method "vault-agent" }}
+        {{- include "nv-config-manager.vaultAgent.injectorAnnotations" . | nindent 8 }}
+        {{- end }}
+        {{- if include "nv-config-manager.spiffe.enabled" . }}
+        {{- include "nv-config-manager.spiffe.annotations" (dict "root" . "app" $configStoreName) | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "nv-config-manager.serviceAccountName" . }}
+      {{- if .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range .Values.global.imagePullSecrets }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      {{- include "nv-config-manager.scheduling" .Values.configStore.api | nindent 6 }}
+      {{- include "nv-config-manager.podSecurityContext" . | nindent 6 }}
+      initContainers:
+      # Wait for Redis to be ready (required for device metadata cache)
+      {{- include "nv-config-manager.waitForRedis" . | nindent 6 }}
+      containers:
+      - name: api
+        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ .Values.global.images.nvConfigManager.tag }}"
+        imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
+        {{- include "nv-config-manager.containerSecurityContext" . | nindent 8 }}
+        command: ["nv-config-manager-config-store-api"]
+        args: []
+        env:
+        - name: LOG_LEVEL
+          value: "INFO"
+        - name: ENVIRONMENT
+          value: {{ .Values.global.environment }}
+        {{- include "nv-config-manager.customLabelsEnv" . | nindent 8 }}
+        - name: RETENTION_DAYS
+          value: "365"
+        - name: NV_CONFIG_MANAGER_INI
+          value: {{ include "nv-config-manager.vaultAgent.configManagerIniPathApp" . | quote }}
+        - name: NV_CONFIG_MANAGER_SERVICE
+          value: "config_store.api"
+        ports:
+        - containerPort: 9000
+          name: http
+        resources:
+          {{- toYaml .Values.configStore.api.resources | nindent 10 }}
+        volumeMounts:
+        {{- include "nv-config-manager.vaultAgent.configManagerIniVolumeMount" . | nindent 8 }}
+        {{- include "nv-config-manager.authVolumeMounts" . | nindent 8 }}
+        livenessProbe:
+          httpGet:
+            path: /healthcheck
+            port: 9000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /healthcheck
+            port: 9000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+      {{- /* SPIFFE helper sidecar for outbound JWT-SVID */ -}}
+      {{- include "nv-config-manager.authSidecar" (dict "root" . "serviceName" "config-store-api") | nindent 6 }}
+      volumes:
+      {{- include "nv-config-manager.vaultAgent.projectedSATokenVolume" . | nindent 6 }}
+      {{- include "nv-config-manager.vaultAgent.configManagerIniVolume" . | nindent 6 }}
+      {{- /* SPIFFE volumes */ -}}
+      {{- include "nv-config-manager.authSidecar.volumes" (dict "root" .) | nindent 6 }}
+---
+# Config Store API Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $configStoreName }}-api
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ $configStoreName }}
+    component: api
+spec:
+  type: ClusterIP
+  ports:
+  - port: 9000
+    targetPort: 9000
+    protocol: TCP
+    name: http
+  selector:
+    app: {{ $configStoreName }}
+    component: api
+---
+# Config Store Database Migration Job
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $configStoreName }}-db-init
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ $configStoreName }}
+    component: db-init
+  annotations:
+    # Helm hooks to handle Job immutability
+    "helm.sh/hook": post-install,post-upgrade
+    # Note: hook-succeeded removed temporarily for debugging - job will persist for ttlSecondsAfterFinished
+    "helm.sh/hook-delete-policy": before-hook-creation
+    "helm.sh/hook-weight": "5"
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app: {{ $configStoreName }}
+        component: db-init
+      {{- if eq .Values.secrets.method "vault-agent" }}
+      annotations:
+        {{- include "nv-config-manager.vaultAgent.injectorAnnotationsJob" . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "nv-config-manager.serviceAccountName" . }}
+      restartPolicy: OnFailure
+      {{- if .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range .Values.global.imagePullSecrets }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      {{- include "nv-config-manager.podSecurityContext" . | nindent 6 }}
+      initContainers:
+      # Wait for config-store postgres to be ready
+      - name: wait-for-postgres
+        image: "{{ .Values.global.images.busybox.repository }}:{{ .Values.global.images.busybox.tag }}"
+        command:
+        - sh
+        - -c
+        - |
+          echo "Waiting for config-store postgres..."
+          until nc -z {{ tpl .Values.externalServices.postgres.configStore.host . }} {{ .Values.externalServices.postgres.port }}; do
+            echo "waiting for postgres at {{ tpl .Values.externalServices.postgres.configStore.host . }}:{{ .Values.externalServices.postgres.port }}"
+            sleep 2
+          done
+          echo "Config-store postgres is ready"
+      containers:
+      - name: db-init
+        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ .Values.global.images.nvConfigManager.tag }}"
+        imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
+        {{- include "nv-config-manager.containerSecurityContext" . | nindent 8 }}
+        workingDir: /code/nv-config-manager
+        command: ["alembic", "-c", "db/alembic.ini", "upgrade", "head"]
+        env:
+        - name: NV_CONFIG_MANAGER_INI
+          value: {{ include "nv-config-manager.vaultAgent.configManagerIniPathApp" . | quote }}
+        - name: ENVIRONMENT
+          value: {{ .Values.global.environment }}
+        volumeMounts:
+        {{- include "nv-config-manager.vaultAgent.configManagerIniVolumeMount" . | nindent 8 }}
+      volumes:
+      {{- include "nv-config-manager.vaultAgent.projectedSATokenVolume" . | nindent 6 }}
+      {{- include "nv-config-manager.vaultAgent.configManagerIniVolume" . | nindent 6 }}
+---
+# Config Store Cache Refresh Service
+{{- if .Values.configStore.cacheRefresh.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $configStoreName }}-cache-refresh
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ $configStoreName }}
+    component: cache-refresh
+spec:
+  replicas: {{ .Values.configStore.cacheRefresh.replicas }}
+  progressDeadlineSeconds: 1800
+  selector:
+    matchLabels:
+      app: {{ $configStoreName }}
+      component: cache-refresh
+  template:
+    metadata:
+      labels:
+        app: {{ $configStoreName }}
+        component: cache-refresh
+        {{- include "nv-config-manager.spiffe.podLabels" . | nindent 8 }}
+        {{- include "nv-config-manager.customPodLabels" . | nindent 8 }}
+      annotations:
+        {{- include "nv-config-manager.authIniChecksum" . | nindent 8 }}
+        {{- if eq .Values.secrets.method "vault-agent" }}
+        {{- include "nv-config-manager.vaultAgent.injectorAnnotations" . | nindent 8 }}
+        {{- end }}
+        {{- if include "nv-config-manager.spiffe.enabled" . }}
+        {{- include "nv-config-manager.spiffe.annotations" (dict "root" . "app" $configStoreName) | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "nv-config-manager.serviceAccountName" . }}
+      {{- if .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range .Values.global.imagePullSecrets }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      {{- include "nv-config-manager.scheduling" .Values.configStore.cacheRefresh | nindent 6 }}
+      {{- include "nv-config-manager.podSecurityContext" . | nindent 6 }}
+      initContainers:
+      # Wait for Nautobot to be available before starting cache refresh
+      {{- include "nv-config-manager.waitForNautobot" . | nindent 6 }}
+      containers:
+      - name: cache-refresh
+        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ .Values.global.images.nvConfigManager.tag }}"
+        imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
+        {{- include "nv-config-manager.containerSecurityContext" . | nindent 8 }}
+        command: ["nv-config-manager-config-store-cache-refresh"]
+        args: []
+        env:
+        - name: NV_CONFIG_MANAGER_INI
+          value: {{ include "nv-config-manager.vaultAgent.configManagerIniPathApp" . | quote }}
+        - name: ENVIRONMENT
+          value: {{ .Values.global.environment }}
+        {{- include "nv-config-manager.customLabelsEnv" . | nindent 8 }}
+        resources:
+          {{- toYaml .Values.configStore.cacheRefresh.resources | nindent 10 }}
+        volumeMounts:
+        {{- include "nv-config-manager.vaultAgent.configManagerIniVolumeMount" . | nindent 8 }}
+        {{- if .Values.spiffe.enabled }}
+        - name: spiffe-jwt-svid
+          mountPath: /var/run/secrets/spiffe
+          readOnly: true
+        {{- end }}
+      {{- include "nv-config-manager.spiffeClientSidecar" (dict "root" .) | nindent 6 }}
+      volumes:
+      {{- include "nv-config-manager.vaultAgent.projectedSATokenVolume" . | nindent 6 }}
+      {{- include "nv-config-manager.vaultAgent.configManagerIniVolume" . | nindent 6 }}
+      {{- /* SPIFFE volumes (CSI driver) for outbound mTLS */ -}}
+      {{- include "nv-config-manager.spiffeClientVolumes" (dict "root" .) | nindent 6 }}
+{{- end }}
+{{- end }}

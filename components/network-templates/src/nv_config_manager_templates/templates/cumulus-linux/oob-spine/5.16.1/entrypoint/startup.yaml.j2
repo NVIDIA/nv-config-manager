@@ -1,0 +1,18 @@
+{% extends "cumulus-linux/oob-spine/base/startup.yaml.j2" %}
+
+{% block service %}
+{% include "cumulus-linux/role_common/5.16.1/include/service.j2" %}
+{% endblock service %}
+
+
+{% block router %}
+{% include "cumulus-linux/oob-spine/5.16.1/include/router.j2" %}
+{% endblock router %}
+
+{% block interfaces %}
+{% include "cumulus-linux/oob-spine/5.16.1/include/interface.j2" %}
+{% endblock interfaces %}
+
+{% block system %}
+{% include "cumulus-linux/role_common/5.16.1/include/system.j2" %}
+{% endblock system %}

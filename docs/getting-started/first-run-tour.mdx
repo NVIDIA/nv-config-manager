@@ -1,0 +1,55 @@
+---
+title: First Run Tour
+sidebar-title: First Run Tour
+position: 40
+---
+
+After Config Manager is installed, use this tour to confirm the platform is reachable and move through the first operational path in the right order: site bringup first, then workflow exploration.
+
+## Verify the deployment
+
+1. Confirm all Config Manager pods are running in the deployment namespace.
+1. Confirm service hostnames resolve from your workstation or jump host.
+1. Open the Config Manager UI and Nautobot UI.
+1. Confirm the intended site data exists in Nautobot.
+1. Confirm intended configuration exists in Config Store for devices that should render.
+
+For deployment checks and commands, see [Getting Started with Config Manager](../install/index.mdx#verify-deployment).
+
+## Local render preview
+
+If you used [Local Development Quick Start](local-development-quick-start.mdx), inspect generated Nautobot data and rendered configs only. Do not run device-facing workflows as validation.
+
+## Bring up the site first
+
+For a real lab or production site, start with [New Site Bringup](../user-guides/new-site-deployment/index.mdx). Config Manager cannot run useful device-facing workflows against new switches until those devices have booted through DHCP/ZTP and completed provisioning through Config Manager.
+
+Follow the site bringup guide until:
+
+1. Devices have received DHCP leases from Config Manager.
+1. Devices have fetched their ZTP boot artifacts.
+1. Devices have applied the rendered configuration.
+1. Nautobot shows the devices as provisioned.
+1. The device management addresses are reachable from the Config Manager environment.
+
+<Warning>
+  Before ZTP completes, workflows such as backup, deploy, cable validation, password rotation, OS upgrade, firmware upgrade, and reprovisioning should be expected to fail or produce unhelpful results because Config Manager cannot yet reach or authenticate to the devices.
+</Warning>
+
+## Real or simulated devices
+
+After site bringup has completed, start with workflows that establish visibility before making broad changes.
+
+| Workflow | Why run it first |
+| :------- | :--------------- |
+| New Site Bringup | Drives the Day-0 path when devices are factory-reset and ready for DHCP/ZTP. Run this before other device-facing workflows. |
+| Configuration Backup | Captures current running configuration and verifies device reachability and credentials. |
+| Configuration Deploy | Applies one reviewed intended-config change to one device. |
+| Multi-Device Deploy | Demonstrates grouped diffs and per-batch approval after single-device deploy is proven. |
+| Cable Validation | Compares observed cabling against Nautobot intent after devices can be reached. |
+
+Use [Controlling Running Workflows](../user-guides/workflow-lifecycle/index.mdx) before approving, rejecting, retrying, or terminating a live workflow.
+
+## Before destructive workflows
+
+Reprovisioning, OS upgrades, firmware upgrades, and password rotation can disrupt devices. Before running them, confirm current backups, intended configuration, device reachability, credentials, maintenance approval, and recovery access.

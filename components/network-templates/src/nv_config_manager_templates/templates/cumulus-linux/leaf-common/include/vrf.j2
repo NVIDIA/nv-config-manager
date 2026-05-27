@@ -1,0 +1,98 @@
+    vrf:
+{% for vrf in device_data|attached_vrfs %}
+{% set lo_intf = device_data|interface_by_name("lo-" + vrf.name|lower, false) %}
+{% if lo_intf %}
+      {{ vrf.name }}:
+{% if vrf.vni and device_data | l3vni_mappings(vrf.name) %}
+        evpn:
+          enable: on
+          vlan: {{ device_data | l3vni_mappings(vrf.name) }}
+          vni:
+            '{{ vrf.vni }}': {}
+{% endif %}
+        loopback:
+          ip:
+            address:
+              {{ lo_intf.primary_ipv4 }}: {}
+        router:
+          bgp:
+            address-family:
+              ipv4-unicast:
+                enable: on
+                redistribute:
+                  connected:
+                    enable: on
+                route-export:
+                  to-evpn:
+                    enable: on
+              l2vpn-evpn:
+                enable: on
+            enable: on
+{% endif %}
+{% endfor %}
+      default:
+        evpn:
+          enable: on
+        router:
+          bgp:
+            address-family:
+              ipv4-unicast:
+                enable: on
+                redistribute:
+                  connected:
+                    enable: on
+                    route-map: RM_LOOPBACK
+              l2vpn-evpn:
+                enable: on
+            enable: on
+            neighbor:
+{% for peer in (device_data|bgp_routing_instance(vrf="default")).peers | sort(attribute="peer_ipv4") %}
+              {{ peer.peer_ipv4 }}:
+                peer-group: {{ peer.peer_group }}
+                type: numbered
+{% endfor %}
+            path-selection:
+              multipath:
+                aspath-ignore: on
+            peer-group:
+              EVPN:
+                address-family:
+                  ipv4-unicast:
+                    enable: off
+                  l2vpn-evpn:
+                    enable: on
+                bfd:
+                  detect-multiplier: 3
+                  enable: on
+                  min-rx-interval: 1000
+                  min-tx-interval: 1000
+                description: evpn_vxlan_control_plane
+                multihop-ttl: 2
+                remote-as: external
+                update-source: lo
+              UNDERLAY:
+                address-family:
+                  ipv4-unicast:
+                    policy:
+                      outbound:
+                        route-map: RM_ADD_WECMP
+                bfd:
+                  detect-multiplier: 3
+                  enable: on
+                  min-rx-interval: 300
+                  min-tx-interval: 300
+                description: underlay_interconnect
+                remote-as: external
+{% block mgmt_vrf %}
+      mgmt:
+        router:
+          static:
+            0.0.0.0/0:
+              address-family: ipv4-unicast
+              via:
+{% for gateway_ip in device_data|default_gateways %}
+                {{ gateway_ip }}:
+                  type: ipv4-address
+{% endfor %}
+{% endblock mgmt_vrf %}
+

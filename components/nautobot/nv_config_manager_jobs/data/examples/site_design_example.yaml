@@ -1,0 +1,187 @@
+# =============================================================================
+# Site Design Example for Load Site Design Job
+# =============================================================================
+#
+# This YAML file defines a complete site topology that can be imported into
+# Nautobot using the "Load Site Design" job.
+#
+# The job processes sections in this order to satisfy dependencies:
+#   1. location_hierarchy
+#   2. deployment_racks
+#   3. devices
+#   4. interfaces
+#   5. cabling_assignments
+#   6. prefixes
+#   7. ip_addresses
+#
+# =============================================================================
+
+---
+# -----------------------------------------------------------------------------
+# LOCATION HIERARCHY
+# -----------------------------------------------------------------------------
+# Locations are created in order, each becoming a child of the previous.
+# This builds a tree: Provider -> Region -> Site
+#
+# The last location becomes the default for racks/devices if not specified.
+#
+# Required fields:
+#   - name: Unique name for the location
+#   - type: Must match an existing LocationType
+#
+location_hierarchy:
+  - name: "My Company"
+    type: "Provider"
+  - name: "US-West"
+    type: "Region"
+  - name: "Site-01"
+    type: "Site"
+
+# -----------------------------------------------------------------------------
+# DEPLOYMENT RACKS
+# -----------------------------------------------------------------------------
+# Racks are containers for devices. Each rack is placed in the leaf location
+# from location_hierarchy (or specify location_name to override).
+#
+# Required fields:
+#   - name: Unique rack name within the location
+#
+# Optional fields:
+#   - location_name: Override the default location
+#   - role: Rack role (must exist in Nautobot)
+#   - status: Default "Active"
+#   - u_height: Rack height in units (default 42)
+#
+# RACK LAYOUT:
+# The rack_layout defines devices and their positions in the rack.
+#   - id: The rack unit (U) position (1 = bottom, 42 = top)
+#   - device: The device definition
+#
+deployment_racks:
+  - name: "Rack-A1"
+    rack_layout:
+      # Device at U42 (top of rack) - typically network switches
+      - id: 42
+        device:
+          name: "leaf-a1-01"
+          device_type:
+            # model must match an existing DeviceType
+            model: "SN2201"
+          # role must match an existing Role
+          role: "OOB-Switch"
+          # device_optionset references a template in device_option_sets
+          device_optionset: "TOR-Switch"
+
+      # Device at U10 - compute/GPU server
+      - id: 10
+        device:
+          name: "server-a1-01"
+          device_type:
+            model: "GB-NVL-Compute"
+          role: "GPU"
+          device_optionset: "GPU-Server"
+
+# -----------------------------------------------------------------------------
+# DEVICE OPTION SETS
+# -----------------------------------------------------------------------------
+# Option sets are interface templates that define which interfaces to create
+# on devices. Devices reference these via the device_optionset field.
+#
+# This allows reusing the same interface definition across multiple devices
+# of the same type.
+#
+# Interface fields:
+#   - name: Interface name (e.g., eth0, Ethernet1/1)
+#   - type: Nautobot interface type (e.g., 100gbase-x-qsfp28, 25gbase-x-sfp28)
+#
+# Optional interface fields:
+#   - role: Interface role (must exist in Nautobot)
+#   - status: Default "Active"
+#
+device_option_sets:
+  TOR-Switch:
+    interfaces:
+      - name: "eth0"
+        type: "100gbase-x-qsfp28"
+      - name: "eth1"
+        type: "25gbase-x-sfp28"
+
+  GPU-Server:
+    interfaces:
+      - name: "eth0"
+        type: "25gbase-x-sfp28"
+
+# -----------------------------------------------------------------------------
+# CABLING ASSIGNMENTS
+# -----------------------------------------------------------------------------
+# Cables connect interfaces between devices. Both interfaces must exist
+# (created via device_option_sets above).
+#
+# Each connection requires:
+#   - source.device: Source device name
+#   - source.component.name: Source interface name
+#   - destination.device: Destination device name
+#   - destination.component.name: Destination interface name
+#
+# Optional metadata:
+#   - metadata.label: Cable label
+#   - metadata.color: Cable color (hex without #)
+#
+cabling_assignments:
+  connections:
+    - source:
+        device: "leaf-a1-01"
+        component:
+          name: "eth1"
+      destination:
+        device: "server-a1-01"
+        component:
+          name: "eth0"
+
+# -----------------------------------------------------------------------------
+# PREFIXES
+# -----------------------------------------------------------------------------
+# IP prefixes define address ranges. Create prefixes before IP addresses
+# so the addresses can be allocated from them.
+#
+# Required fields:
+#   - prefix: CIDR notation (e.g., 10.0.0.0/24)
+#   - namespace: Must match existing Namespace (default "Global")
+#
+# Optional fields:
+#   - status: Default "Active"
+#   - description: Prefix description
+#
+prefixes:
+  - prefix: "10.0.0.0/24"
+    namespace: "Global"
+    status: "Active"
+
+# -----------------------------------------------------------------------------
+# IP ADDRESSES
+# -----------------------------------------------------------------------------
+# IP addresses can be assigned to device interfaces. 
+#
+# Required fields:
+#   - address: IP with prefix length (e.g., 10.0.0.1/24)
+#   - namespace: Must match existing Namespace (default "Global")
+#   - status: Default "Active"
+# Optional fields:
+#   - device: Device name to assign IP to
+#   - interface: Interface name on the device
+#
+# If device and interface are specified, creates an IPAddressToInterface
+# record linking the IP to that interface.
+#
+ip_addresses:
+  - address: "10.0.0.1/24"
+    namespace: "Global"
+    status: "Active"
+    device: "leaf-a1-01"
+    interface: "eth0"
+
+  - address: "10.0.0.2/24"
+    namespace: "Global"
+    status: "Active"
+    device: "server-a1-01"
+    interface: "eth0"

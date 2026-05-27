@@ -1,0 +1,15 @@
+---
+
+locations:
+  {% for location in locations %}
+  - "!create_or_update:name": {{ location.name }}
+    location_type__name: {{ location.location_type }}
+    status__name: Active
+    {% if location.parent is defined %}
+    parent__name: {{ location.parent }}
+    {% endif %}
+    status__name: {{ location.status | default("Active") }}
+    {% if location.ref is defined %}
+    "!ref": {{ location.ref }}
+    {% endif %}
+  {% endfor %}

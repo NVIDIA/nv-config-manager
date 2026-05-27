@@ -1,0 +1,326 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""S3 Proxy Client."""
+
+import os
+from types import TracebackType
+from typing import Any, BinaryIO, Self
+
+import aioboto3  # type: ignore[import-untyped]
+from boto3.s3.transfer import TransferConfig
+from botocore.config import Config
+from botocore.exceptions import ClientError
+
+from nv_config_manager.ztp.storage import (
+    ObjectStorageClient,
+    ObjectStorageException,
+    ObjectStorageExistsException,
+    ObjectStorageNotAuthorizedException,
+    ObjectStorageNotFoundException,
+)
+
+
+class S3Exception(ObjectStorageException):
+    """Generic S3 Exception."""
+
+
+class S3ExistsException(ObjectStorageExistsException):
+    """File already exists exception."""
+
+
+class S3NotFoundException(ObjectStorageNotFoundException):
+    """File not found in S3."""
+
+
+class S3NotAuthorizedException(ObjectStorageNotAuthorizedException):
+    """Not authorized to modify this file."""
+
+
+class S3Client(ObjectStorageClient):
+    """Async S3 proxy client.
+
+    Implements the ObjectStorageClient interface for S3/Ceph object storage.
+    """
+
+    def __init__(self) -> None:
+        """Initialize the S3 client with optimized configuration for large file transfers."""
+        # Optimized configuration for large file streaming performance
+        config = Config(
+            # Increase connection pool size for better throughput
+            max_pool_connections=50,
+            # Optimize retry strategy for large files
+            retries={"max_attempts": 3, "mode": "adaptive"},
+            # Increase read timeout for large chunks
+            read_timeout=300,  # 5 minutes for very large chunks
+            # TCP keep-alive for long transfers
+            tcp_keepalive=True,
+        )
+
+        self.bucket = "ngc-network-firmware-images"
+        self.config = config
+        self.custom_endpoint = os.environ.get("CUSTOM_S3_ENDPOINT")
+        self.custom_access_key = os.environ.get("CUSTOM_S3_ACCESS_KEY")
+        self.custom_secret_key = os.environ.get("CUSTOM_S3_SECRET_KEY")
+
+        # Create session for async operations
+        self.session = aioboto3.Session()
+        self._client_instance: Any = None
+
+    @property
+    def _client(self) -> Any:
+        """Get the S3 client, raising if not connected."""
+        if self._client_instance is None:
+            raise RuntimeError("S3Client not connected. Use 'async with' or call connect() first.")
+        return self._client_instance
+
+    async def connect(self) -> Self:
+        """Connect to S3 and initialize the client session."""
+        if self.custom_endpoint:
+            custom_config = Config(
+                signature_version="s3v4",
+                max_pool_connections=50,
+                retries={"max_attempts": 3, "mode": "adaptive"},
+                read_timeout=300,
+                tcp_keepalive=True,
+            )
+            self._client_instance = await self.session.client(
+                "s3",
+                endpoint_url=self.custom_endpoint,
+                aws_access_key_id=self.custom_access_key,
+                aws_secret_access_key=self.custom_secret_key,
+                config=custom_config,
+                verify=False,
+            ).__aenter__()
+        else:
+            self._client_instance = await self.session.client("s3", config=self.config).__aenter__()
+        return self
+
+    async def close(self) -> None:
+        """Close the S3 client session."""
+        if self._client_instance:
+            await self._client_instance.__aexit__(None, None, None)
+            self._client_instance = None
+
+    async def __aenter__(self) -> Self:
+        """Async context manager entry."""
+        return await self.connect()
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        """Async context manager exit."""
+        await self.close()
+
+    async def _key_exists(self, key: str) -> bool:
+        """Check whether an object key exists in the bucket."""
+        try:
+            await self._client.head_object(Bucket=self.bucket, Key=key)
+            return True
+        except ClientError as exc:
+            if exc.response["Error"]["Code"] == "404":
+                return False
+            raise S3Exception(exc) from exc
+
+    async def _get_firmware_key(self, platform: str, image: str) -> tuple[str, str]:
+        """Get the object key and shortname from the platform and image."""
+        platform = platform.replace(" ", "_").lower()
+        prefix = f"{platform}/{image}/"
+        rsp = await self._client.list_objects(Bucket=self.bucket, Prefix=prefix)
+        keys = []
+        for content in rsp.get("Contents", []):
+            key = content["Key"]
+            tag_content = await self._client.get_object_tagging(Bucket=self.bucket, Key=key)
+            tag_names = [tag["Key"] for tag in tag_content["TagSet"]]
+            if "firmware-image" in tag_names:
+                keys.append((content["Key"], content["Key"].replace(prefix, "")))
+        if not keys:
+            raise S3NotFoundException(f"Did not find a firmware image in path {prefix}")
+        if len(keys) > 1:
+            raise S3Exception(f"Found multiple files in path {prefix} tagged as firmware.")
+        return keys[0]
+
+    async def get_firmware_object(self, platform: str, image: str) -> tuple[str, Any]:
+        """Return the object and checksum for the given device."""
+        key, fname = await self._get_firmware_key(platform, image)
+        obj = await self._client.get_object(Bucket=self.bucket, Key=key)
+        return fname, obj["Body"]
+
+    async def get_firmware_checksum(self, platform: str, image: str) -> str:
+        """Get the checksum for the image."""
+        key, _ = await self._get_firmware_key(platform, image)
+        rsp = await self._client.head_object(Bucket=self.bucket, Key=key)
+        return str(rsp.get("Metadata", {}).get("sha256-checksum", ""))
+
+    async def get_object(self, platform: str, version: str, filename: str) -> tuple[str, Any]:
+        """Get an arbitrary file stored under a given platform/version."""
+        key = f"{platform}/{version}/{filename}"
+        try:
+            obj = await self._client.get_object(Bucket=self.bucket, Key=key)
+            return filename, obj["Body"]
+        except ClientError as exc:
+            if exc.response["Error"]["Code"] == "NoSuchKey":
+                raise S3NotFoundException(f"Did not find {key} in S3.") from exc
+            raise S3Exception(exc) from exc
+
+    async def get_checksum(self, platform: str, version: str, filename: str) -> str:
+        """Get an arbitrary file checksum stored under a given platform/version."""
+        key = f"{platform}/{version}/{filename}"
+        try:
+            rsp = await self._client.head_object(Bucket=self.bucket, Key=key)
+        except ClientError as exc:
+            if exc.response["Error"]["Code"] == "404":
+                raise S3NotFoundException(f"Did not find {key} in S3.") from exc
+            raise S3Exception(exc) from exc
+        return str(rsp.get("Metadata", {}).get("sha256-checksum", ""))
+
+    async def get_object_metadata(
+        self, platform: str, version: str, filename: str
+    ) -> dict[str, Any]:
+        """Get object metadata without downloading the file content."""
+        key = f"{platform}/{version}/{filename}"
+        try:
+            rsp = await self._client.head_object(Bucket=self.bucket, Key=key)
+            return {
+                "size": rsp.get("ContentLength"),
+                "last_modified": rsp.get("LastModified"),
+                "metadata": rsp.get("Metadata", {}),
+                "etag": rsp.get("ETag"),
+            }
+        except ClientError as exc:
+            if exc.response["Error"]["Code"] in ["404", "NoSuchKey"]:
+                raise S3NotFoundException(f"Did not find {key} in S3.") from exc
+            raise S3Exception(exc) from exc
+
+    async def list_object_keys(self, platform: str, version: str) -> list[dict[str, Any]]:
+        """List objects within the given platform and version directory."""
+        prefix = f"{platform}/{version}/"
+        rsp = await self._client.list_objects(Bucket=self.bucket, Prefix=prefix)
+        objects = []
+        for content in rsp.get("Contents", []):
+            objects.append(
+                {
+                    "file": content["Key"].replace(prefix, ""),
+                    "last_modified": content["LastModified"],
+                    "size": content["Size"],
+                }
+            )
+        return objects
+
+    async def list_all_objects(self) -> list[dict[str, Any]]:
+        """List all objects in the bucket with metadata for sync purposes."""
+        objects = []
+        paginator = self._client.get_paginator("list_objects_v2")
+
+        async for page in paginator.paginate(Bucket=self.bucket):
+            for content in page.get("Contents", []):
+                key = content["Key"]
+
+                # Get metadata and tags for each object
+                try:
+                    head_response = await self._client.head_object(Bucket=self.bucket, Key=key)
+                    tags_response = await self._client.get_object_tagging(
+                        Bucket=self.bucket, Key=key
+                    )
+
+                    objects.append(
+                        {
+                            "key": key,
+                            "last_modified": content["LastModified"],
+                            "size": content["Size"],
+                            "etag": content["ETag"].strip('"'),
+                            "metadata": head_response.get("Metadata", {}),
+                            "tags": {
+                                tag["Key"]: tag["Value"] for tag in tags_response.get("TagSet", [])
+                            },
+                        }
+                    )
+                except ClientError:
+                    # Skip objects we can't access
+                    continue
+
+        return objects
+
+    async def upload_file(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        self,
+        platform: str,
+        version: str,
+        filename: str,
+        checksum: str,
+        file: BinaryIO,
+        overwrite: bool = False,
+        firmware_image: bool = False,
+    ) -> None:
+        """Upload a file to S3 using optimized multipart upload for large files.
+
+        Uses multipart upload with larger chunk sizes (10MB) for better throughput
+        on large files. This allows parallel chunk uploads and is much faster than
+        simple put_object for files > 10MB.
+        """
+        key = f"{platform}/{version}/{filename}"
+
+        if not overwrite and await self._key_exists(key):
+            raise S3ExistsException(f"File with path {key} already exists.")
+
+        # Only one file per platform/version may carry the firmware-image tag.
+        if firmware_image:
+            prefix = f"{platform}/{version}/"
+            rsp = await self._client.list_objects(Bucket=self.bucket, Prefix=prefix)
+            for content in rsp.get("Contents", []):
+                other_key = content["Key"]
+                if other_key == key:
+                    continue  # same file — will be overwritten
+                other_tags = await self._client.get_object_tagging(
+                    Bucket=self.bucket, Key=other_key
+                )
+                other_tag_names = [t["Key"] for t in other_tags["TagSet"]]
+                if "firmware-image" in other_tag_names:
+                    other_name = other_key.replace(prefix, "")
+                    raise S3ExistsException(
+                        f"A different firmware image already exists in "
+                        f"{prefix}: '{other_name}'. Remove it first or upload "
+                        f"with the same filename."
+                    )
+
+        # Use the managed uploader which automatically uses multipart for large files
+        # with optimized chunk size (10MB chunks) for better throughput
+        transfer_config = TransferConfig(
+            multipart_threshold=10 * 1024 * 1024,  # 10MB threshold
+            multipart_chunksize=10 * 1024 * 1024,  # 10MB chunks
+            max_concurrency=10,  # Upload up to 10 parts concurrently
+            use_threads=True,
+        )
+
+        await self._client.upload_fileobj(
+            Fileobj=file,
+            Bucket=self.bucket,
+            Key=key,
+            ExtraArgs={
+                "Metadata": {"sha256-checksum": checksum},
+            },
+            Config=transfer_config,
+        )
+
+        # Apply firmware-image tag after successful upload
+        if firmware_image:
+            await self._client.put_object_tagging(
+                Bucket=self.bucket,
+                Key=key,
+                Tagging={
+                    "TagSet": [{"Key": "firmware-image", "Value": ""}],
+                },
+            )

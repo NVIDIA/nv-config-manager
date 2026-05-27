@@ -1,0 +1,21 @@
+---
+
+prefixes:
+{% for prefix in json.prefixes %}
+  - "!create_or_update:prefix": {{ prefix.prefix }}
+    "!create_or_update:namespace__name": {{ global_defaults.namespace }}
+    status__name: {{ global_defaults.prefix_status }}
+    type: network
+    tenant__name: {{ global_defaults.tenant }}
+    locations:
+      - "!ref:location"
+    {% if prefix.role is defined and prefix.role %}
+    role__name: {{ prefix.role }}
+    {% endif %}
+    {% if prefix.tags is defined and prefix.tags | length > 0 %}
+    tags:
+      {% for tag in prefix.tags %}
+      - "!get:name": {{ tag }}
+      {% endfor %}
+    {% endif %}
+{% endfor %}

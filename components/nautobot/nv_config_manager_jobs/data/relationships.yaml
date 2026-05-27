@@ -1,0 +1,28 @@
+---
+# Relationships for NVIDIA Config Manager deployments
+
+- name: prefix-to-gateway
+  key: prefix_to_gateway
+  label: prefix-to-gateway
+  description: Prefix to Gateway Relationship
+  type: one-to-one
+  source_type: ipam.prefix
+  source_label: Gateway
+  destination_type: ipam.ipaddress
+  destination_label: Gateway for Prefix
+  destination_hidden: true
+  required_on: ""
+  deployment_types: [all]
+
+- name: vlan-to-helper-address
+  key: vlan_to_helper_address
+  label: vlan-to-helper-address
+  description: VLAN to DHCP Helper Address Relationship
+  type: many-to-many
+  source_type: ipam.vlan
+  source_label: IP Helper Address
+  destination_type: ipam.ipaddress
+  destination_label: VLAN
+  required_on: ""
+  deployment_types: [all]
+

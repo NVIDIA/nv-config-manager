@@ -1,0 +1,31 @@
+{% extends 'generic/object_edit.html' %} {% load helpers %} {% load form_helpers
+%} {% block form %}
+<div class="panel panel-default">
+  <div class="panel-heading">
+    <strong>Config Manager Services</strong>
+  </div>
+  <div class="panel-body">
+    <div class="container-fluid">
+      <div class="row">
+        <div class="col-md-8 col-md-offset-2">
+          <div class="form-group">
+            {{ form.render_enabled.label_tag }} {{ form.render_enabled }}
+          </div>
+          <div class="form-group">
+            {{ form.ztp_enabled.label_tag }} {{ form.ztp_enabled }}
+          </div>
+          <div class="form-group">
+            {{ form.deploy_enabled.label_tag }} {{ form.deploy_enabled }}
+          </div>
+          <div class="form-group">
+            {{ form.backup_enabled.label_tag }} {{ form.backup_enabled }}
+          </div>
+          <div class="form-group">
+            {{ form.is_aggregate_managed.label_tag }} {{ form.is_aggregate_managed }}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% include 'inc/extras_features_edit_form_fields.html' %} {% endblock %}

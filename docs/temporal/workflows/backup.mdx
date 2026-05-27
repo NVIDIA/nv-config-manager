@@ -1,0 +1,26 @@
+---
+title: Configuration Backup
+sidebar-title: Configuration Backup
+position: 10
+---
+
+Backs up a network device's configuration and stores it in the [NVIDIA Config Manager Config Store](../../config-store/index.mdx).
+
+## User Interface
+
+### Form Inputs
+
+Users interact with a simple device selection form:
+
+| Field | Description | Selection Type | Required |
+| :---- | :---------- | :------------- | :------- |
+| **Site** | Choose the site containing the device | Single dropdown from available sites | Yes |
+| **Device** | Select the specific device to back up | Single dropdown from devices in selected site | Yes |
+
+## Workflow Execution
+
+### Execution Stages
+
+1. Load running configuration
+1. Check for drift
+1. Store configuration

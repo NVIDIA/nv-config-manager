@@ -1,0 +1,528 @@
+{
+    "data": {
+        "config_manager_devices": [
+            {
+                "device": {
+                    "id": "e768a90c-f868-4d92-9b4f-cefa57b15e91",
+                    "config_context": {
+                        "dhcp": {
+                            "options": {
+                                "client_id_template": "00:{{ serial | hex }}",
+                                "interface_names": {
+                                    "eth0": {
+                                        "reservation_options": {
+                                            "boot-file-name": "http://{{ ztp_server }}/v1/device/{{ device_id }}/onie",
+                                            "cumulus-provision-url": "http://{{ ztp_server }}/v1/device/{{ device_id }}/boot-script"
+                                        },
+                                        "subnet_config": {
+                                            "reservations-global": true,
+                                            "reservations-in-subnet": true
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "ztp": {
+                            "ipv4": [
+                                "10.48.135.100"
+                            ]
+                        }
+                    }
+                }
+            },
+            {
+                "device": {
+                    "id": "0158d65b-4124-4987-93d5-10a0aff77d61",
+                    "config_context": {
+                        "dhcp": {
+                            "options": {
+                                "interface_names": {
+                                    "eth0": {
+                                        "reservation_options": {
+                                            "boot-file-name": "http://{{ ztp_server }}/v1/device/{{ device_id }}/onie",
+                                            "cumulus-provision-url": "http://{{ ztp_server }}/v1/device/{{ device_id }}/boot-script"
+                                        },
+                                        "subnet_config": {
+                                            "reservations-global": true,
+                                            "reservations-in-subnet": true
+                                        }
+                                    }
+                                },
+                                "client_id_template": "00:{{ serial | hex }}"
+                            }
+                        },
+                        "ztp": {
+                            "ipv4": [
+                                "10.48.135.100"
+                            ]
+                        }
+                    }
+                }
+            },
+            {
+                "device": {
+                    "id": "510de8e8-9589-4517-b67c-70b9affa9b28",
+                    "config_context": {
+                        "dhcp": {
+                            "options": {
+                                "interface_names": {
+                                    "eth0": {
+                                        "reservation_options": {
+                                            "boot-file-name": "http://{{ ztp_server }}/v1/device/{{ device_id }}/onie",
+                                            "cumulus-provision-url": "http://{{ ztp_server }}/v1/device/{{ device_id }}/boot-script"
+                                        },
+                                        "subnet_config": {
+                                            "reservations-global": true,
+                                            "reservations-in-subnet": true
+                                        }
+                                    }
+                                },
+                                "client_id_template": "00:{{ serial | hex }}"
+                            }
+                        },
+                        "ztp": {
+                            "ipv4": [
+                                "10.48.135.100"
+                            ]
+                        }
+                    }
+                }
+            },
+            {
+                "device": {
+                    "id": "7ff67cec-4009-44d8-8f28-25e8a26764ec",
+                    "config_context": {
+                        "dhcp": {
+                            "options": {
+                                "interface_names": {
+                                    "eth0": {
+                                        "reservation_options": {
+                                            "boot-file-name": "http://{{ ztp_server }}/v1/device/{{ device_id }}/onie",
+                                            "cumulus-provision-url": "http://{{ ztp_server }}/v1/device/{{ device_id }}/boot-script"
+                                        },
+                                        "subnet_config": {
+                                            "reservations-global": true,
+                                            "reservations-in-subnet": true
+                                        }
+                                    }
+                                },
+                                "client_id_template": "00:{{ serial | hex }}"
+                            }
+                        },
+                        "ztp": {
+                            "ipv4": [
+                                "10.48.135.100"
+                            ]
+                        }
+                    }
+                }
+            },
+            {
+                "device": {
+                    "id": "e9243d67-dad0-4f4b-9f6d-9cc977ff0023",
+                    "config_context": {
+                        "dhcp": {
+                            "options": {
+                                "interface_names": {
+                                    "eth0": {
+                                        "reservation_options": {
+                                            "boot-file-name": "http://{{ ztp_server }}/v1/device/{{ device_id }}/onie",
+                                            "cumulus-provision-url": "http://{{ ztp_server }}/v1/device/{{ device_id }}/boot-script"
+                                        },
+                                        "subnet_config": {
+                                            "reservations-global": true,
+                                            "reservations-in-subnet": true
+                                        }
+                                    }
+                                },
+                                "client_id_template": "00:{{ serial | hex }}"
+                            }
+                        },
+                        "ztp": {
+                            "ipv4": [
+                                "10.48.135.100"
+                            ]
+                        }
+                    }
+                }
+            },
+            {
+                "device": {
+                    "id": "76984a54-3188-418b-8e03-0489355e19fc",
+                    "config_context": {
+                        "dhcp": {
+                            "options": {
+                                "interface_names": {
+                                    "eth0": {
+                                        "reservation_options": {
+                                            "boot-file-name": "http://{{ ztp_server }}/v1/device/{{ device_id }}/onie",
+                                            "cumulus-provision-url": "http://{{ ztp_server }}/v1/device/{{ device_id }}/boot-script"
+                                        },
+                                        "subnet_config": {
+                                            "reservations-global": true,
+                                            "reservations-in-subnet": true
+                                        }
+                                    }
+                                },
+                                "client_id_template": "00:{{ serial | hex }}"
+                            }
+                        },
+                        "ztp": {
+                            "ipv4": [
+                                "10.48.135.100"
+                            ]
+                        }
+                    }
+                }
+            },
+            {
+                "device": {
+                    "id": "cb60e17a-b426-471f-a5c5-255f45368e7c",
+                    "config_context": {
+                        "dhcp": {
+                            "options": {
+                                "interface_names": {
+                                    "eth0": {
+                                        "reservation_options": {
+                                            "boot-file-name": "http://{{ ztp_server }}/v1/device/{{ device_id }}/onie",
+                                            "cumulus-provision-url": "http://{{ ztp_server }}/v1/device/{{ device_id }}/boot-script"
+                                        },
+                                        "subnet_config": {
+                                            "reservations-global": true,
+                                            "reservations-in-subnet": true
+                                        }
+                                    }
+                                },
+                                "client_id_template": "00:{{ serial | hex }}"
+                            }
+                        },
+                        "ztp": {
+                            "ipv4": [
+                                "10.48.135.100"
+                            ]
+                        }
+                    }
+                }
+            },
+            {
+                "device": {
+                    "id": "f8788f54-d511-48f1-8f5e-c102de59f15f",
+                    "config_context": {
+                        "dhcp": {
+                            "options": {
+                                "interface_names": {
+                                    "eth0": {
+                                        "reservation_options": {
+                                            "boot-file-name": "http://{{ ztp_server }}/v1/device/{{ device_id }}/onie",
+                                            "cumulus-provision-url": "http://{{ ztp_server }}/v1/device/{{ device_id }}/boot-script"
+                                        },
+                                        "subnet_config": {
+                                            "reservations-global": true,
+                                            "reservations-in-subnet": true
+                                        }
+                                    }
+                                },
+                                "client_id_template": "00:{{ serial | hex }}"
+                            }
+                        },
+                        "ztp": {
+                            "ipv4": [
+                                "10.48.135.100"
+                            ]
+                        }
+                    }
+                }
+            },
+            {
+                "device": {
+                    "id": "32fdefda-df59-4285-9d6e-a1f220906a8d",
+                    "config_context": {
+                        "dhcp": {
+                            "options": {
+                                "interface_names": {
+                                    "eth0": {
+                                        "reservation_options": {
+                                            "boot-file-name": "http://{{ ztp_server }}/v1/device/{{ device_id }}/onie",
+                                            "cumulus-provision-url": "http://{{ ztp_server }}/v1/device/{{ device_id }}/boot-script"
+                                        },
+                                        "subnet_config": {
+                                            "reservations-global": true,
+                                            "reservations-in-subnet": true
+                                        }
+                                    }
+                                },
+                                "client_id_template": "00:{{ serial | hex }}"
+                            }
+                        },
+                        "ztp": {
+                            "ipv4": [
+                                "10.48.135.100"
+                            ]
+                        }
+                    }
+                }
+            },
+            {
+                "device": {
+                    "id": "73c1eddf-d443-4b29-8ca0-f43f1358f7d8",
+                    "config_context": {
+                        "dhcp": {
+                            "options": {
+                                "interface_names": {
+                                    "eth0": {
+                                        "reservation_options": {
+                                            "boot-file-name": "\\,full-config\\,",
+                                            "tftp-server-name": "\\,http://{{ ztp_server }}/v1/device/{{ device_id }}/config/\\,"
+                                        },
+                                        "subnet_config": {
+                                            "reservations-global": true,
+                                            "reservations-in-subnet": false
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "ztp": {
+                            "ipv4": [
+                                "10.48.135.72"
+                            ]
+                        }
+                    }
+                }
+            },
+            {
+                "device": {
+                    "id": "2295db65-e1ac-4349-98fb-3fe69becadd6",
+                    "config_context": {
+                        "dhcp": {
+                            "options": {
+                                "interface_names": {
+                                    "eth0": {
+                                        "reservation_options": {
+                                            "boot-file-name": "http://{{ ztp_server }}/v1/device/{{ device_id }}/config/ztp.json"
+                                        },
+                                        "subnet_config": {
+                                            "reservations-global": true,
+                                            "reservations-in-subnet": true
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "ztp": {
+                            "ipv4": [
+                                "10.48.135.72"
+                            ]
+                        }
+                    }
+                }
+            },
+            {
+                "device": {
+                    "id": "e2977d85-4f77-4233-9ecf-3aa5127483ff",
+                    "config_context": {
+                        "dhcp": {
+                            "options": {
+                                "interface_names": {
+                                    "eth0": {
+                                        "reservation_options": {
+                                            "boot-file-name": "http://{{ ztp_server }}/v1/device/{{ device_id }}/config/ztp.json"
+                                        },
+                                        "subnet_config": {
+                                            "reservations-global": true,
+                                            "reservations-in-subnet": true
+                                        }
+                                    }
+                                },
+                                "client_id_template": "{{ ('NVOS##N5110_LD##' + serial) | hex }}"
+                            }
+                        },
+                        "ztp": {
+                            "ipv4": [
+                                "10.48.135.72"
+                            ]
+                        }
+                    }
+                }
+            },
+            {
+                "device": {
+                    "id": "bd1c19ea-50a3-4bfb-97e4-f796e1b66b08",
+                    "config_context": {
+                        "dhcp": {
+                            "options": {
+                                "interface_names": {
+                                    "eth0": {
+                                        "reservation_options": {
+                                            "boot-file-name": "http://10.48.135.100/v1/device/bd1c19ea-50a3-4bfb-97e4-f796e1b66b08/config/ztp.json"
+                                        },
+                                        "subnet_config": {
+                                            "reservations-global": true,
+                                            "reservations-in-subnet": true
+                                        }
+                                    },
+                                    "eth1": {
+                                        "reservation_options": {
+                                            "boot-file-name": "http://10.48.135.100/v1/device/bd1c19ea-50a3-4bfb-97e4-f796e1b66b08/config/ztp.json"
+                                        },
+                                        "subnet_config": {
+                                            "reservations-global": true,
+                                            "reservations-in-subnet": true
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "ztp": {
+                            "ipv4": [
+                                "10.48.135.100"
+                            ]
+                        }
+                    }
+                }
+            },
+            {
+                "device": {
+                    "id": "18e0fa2c-317b-4abb-b55d-18fa9cfe5f09",
+                    "config_context": {
+                        "dhcp": {
+                            "options": {
+                                "interface_roles": {
+                                    "Uplink": {
+                                        "subnet_options": {
+                                            "broadcast-address": "255.255.255.255",
+                                            "boot-file-name": "http://{{ ztp_server }}/v1/device/{{ device_id }}/onie",
+                                            "cumulus-provision-url": "http://{{ ztp_server }}/v1/device/{{ device_id }}/boot-script"
+                                        },
+                                        "subnet_config": {
+                                            "reservations-global": false,
+                                            "reservations-in-subnet": false
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "ztp": {
+                            "ipv4": [
+                                "10.48.175.210"
+                            ]
+                        }
+                    }
+                }
+            },
+            {
+                "device": {
+                    "id": "137ab7d5-d2ca-4cdc-ad7b-7bb485eb103e",
+                    "config_context": {
+                        "dhcp": {
+                            "options": {
+                                "interface_roles": {
+                                    "Uplink": {
+                                        "subnet_options": {
+                                            "boot-file-name": "http://{{ ztp_server }}/v1/device/{{ device_id }}/boot-script"
+                                        },
+                                        "subnet_config": {
+                                            "reservations-global": false,
+                                            "reservations-in-subnet": false
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "ztp": {
+                            "ipv4": [
+                                "10.48.175.210"
+                            ]
+                        }
+                    }
+                }
+            },
+            {
+                "device": {
+                    "id": "812c4731-062c-4422-a949-49a088ee2119",
+                    "config_context": {
+                        "dhcp": {
+                            "options": {
+                                "interface_roles": {
+                                    "Uplink": {
+                                        "subnet_options": {
+                                            "broadcast-address": "255.255.255.255",
+                                            "boot-file-name": "http://{{ ztp_server }}/v1/device/{{ device_id }}/onie",
+                                            "cumulus-provision-url": "http://{{ ztp_server }}/v1/device/{{ device_id }}/boot-script"
+                                        },
+                                        "subnet_config": {
+                                            "reservations-global": false,
+                                            "reservations-in-subnet": false
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "ztp": {
+                            "ipv4": [
+                                "10.48.175.210"
+                            ]
+                        }
+                    }
+                }
+            },
+            {
+                "device": {
+                    "id": "device-test-device-1",
+                    "config_context": {
+                        "dhcp": {
+                            "options": {
+                                "interface_names": {
+                                    "eth0": {
+                                        "subnet_config": {
+                                            "reservations-global": true,
+                                            "reservations-in-subnet": true
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            {
+                "device": {
+                    "id": "device-test-device-2",
+                    "config_context": {
+                        "dhcp": {
+                            "options": {
+                                "interface_names": {
+                                    "eth0": {
+                                        "subnet_config": {
+                                            "reservations-global": true,
+                                            "reservations-in-subnet": true
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            {
+                "device": {
+                    "id": "device-console1-cp1-smn1-sitea",
+                    "config_context": {
+                        "dhcp": {
+                            "options": {
+                                "interface_names": {
+                                    "eth0": {
+                                        "subnet_config": {
+                                            "reservations-global": true,
+                                            "reservations-in-subnet": true
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        ]
+    }
+}

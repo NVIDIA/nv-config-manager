@@ -1,0 +1,114 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+name: Bug Report
+description: Report a reproducible problem in NVIDIA Config Manager
+title: "[BUG]: "
+labels: ["bug"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug.
+        Please do not report security vulnerabilities here; use the private disclosure path in SECURITY.md.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: What release, tag, branch, or commit are you running?
+      placeholder: "example: v1.0.0 or commit SHA"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install_method
+    attributes:
+      label: Installation or runtime path
+      multiple: true
+      options:
+        - Installer CLI/TUI
+        - Local Kind profile
+        - Helm chart
+        - Air-gapped bundle
+        - Source/development environment
+        - UI development server
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected component
+      multiple: true
+      options:
+        - Installer
+        - Helm/deployment
+        - Nautobot integration
+        - DHCP
+        - ZTP
+        - Render
+        - Config Store
+        - Temporal workflows
+        - UI
+        - Documentation
+        - CI/release automation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the bug
+      description: What happened, and what did you expect to happen?
+      placeholder: "Observed behavior, expected behavior, and why this looks incorrect."
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Include commands, config snippets, or workflow inputs needed to reproduce the issue.
+      placeholder: |
+        1. Run ...
+        2. Configure ...
+        3. Observe ...
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or output
+      description: Paste the smallest useful log excerpt. Redact secrets, tokens, and internal hostnames as needed.
+      render: shell
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment details
+      description: Include Kubernetes, Helm, Python/Node, browser, OS, cloud, or cluster details.
+      placeholder: |
+        Kubernetes:
+        Helm:
+        Python:
+        Node:
+        Browser:
+        OS/cloud:
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Checklist
+      options:
+        - label: I have searched existing issues for duplicates.
+          required: true
+        - label: I have removed or redacted secrets, tokens, and sensitive environment details.
+          required: true
+        - label: I agree to follow this project's Code of Conduct.
+          required: true

@@ -1,0 +1,7 @@
+# GitHub issue template chooser configuration.
+blank_issues_enabled: true
+
+contact_links:
+  - name: Report a security vulnerability
+    url: https://www.nvidia.com/object/submit-security-vulnerability.html
+    about: Please do not report security vulnerabilities through public GitHub issues.

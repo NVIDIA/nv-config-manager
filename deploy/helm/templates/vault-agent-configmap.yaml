@@ -1,0 +1,26 @@
+# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
+{{- if eq .Values.secrets.method "vault-agent" }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ printf "%s-vault-agent" (include "nv-config-manager.fullname" .) }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: vault-agent
+data:
+  nv-config-manager.ini.tpl: |
+{{- include "nv-config-manager.vaultAgent.configManagerIniTplFile" . | nindent 4 }}
+{{- if and .Values.secrets.vault.configSecrets.enabled (or .Values.secrets.vault.configSecrets.sites .Values.secrets.vault.configSecrets.regions) }}
+  config-secrets.ini.tpl: |
+{{- include "nv-config-manager.vaultAgent.configSecretsTplFile" . | nindent 4 }}
+{{- end }}
+{{- if .Values.temporal.enabled }}
+  bmc-creds.json.tpl: |
+{{- include "nv-config-manager.vaultAgent.bmcJsonTplFile" . | nindent 4 }}
+{{- end }}
+  config.hcl: |
+{{- include "nv-config-manager.vaultAgent.agentHcl" . | nindent 4 }}
+  config-init.hcl: |
+{{- include "nv-config-manager.vaultAgent.agentHclInit" . | nindent 4 }}
+{{- end }}

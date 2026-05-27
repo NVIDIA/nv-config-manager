@@ -1,0 +1,856 @@
+{
+    "data": {
+        "prefixes": [
+            {
+                "id": "prefix-3",
+                "prefix": "10.91.50.128/25",
+                "ip_version": 4,
+                "rel_prefix_to_gateway": {
+                    "address": "10.91.50.193/25"
+                }
+            },
+            {
+                "id": "prefix-4",
+                "prefix": "198.51.100.132/31",
+                "ip_version": 4,
+                "rel_prefix_to_gateway": {
+                    "address": "198.51.100.132/31"
+                }
+            },
+            {
+                "id": "prefix-5",
+                "prefix": "198.51.100.72/31",
+                "ip_version": 4,
+                "rel_prefix_to_gateway": {
+                    "address": "198.51.100.72/31"
+                }
+            },
+            {
+                "id": "prefix-6",
+                "prefix": "203.0.113.0/30",
+                "ip_version": 4,
+                "rel_prefix_to_gateway": {
+                    "address": "203.0.113.1/30"
+                }
+            },
+            {
+                "id": "prefix-7",
+                "prefix": "203.0.113.4/31",
+                "ip_version": 4,
+                "rel_prefix_to_gateway": {
+                    "address": "203.0.113.4/31"
+                }
+            },
+            {
+                "id": "prefix-8",
+                "prefix": "203.0.113.64/30",
+                "ip_version": 4,
+                "rel_prefix_to_gateway": {
+                    "address": "203.0.113.65/30"
+                }
+            },
+            {
+                "id": "prefix-9",
+                "prefix": "10.23.160.0/26",
+                "ip_version": 4,
+                "rel_prefix_to_gateway": {
+                    "address": "10.23.160.2/26"
+                }
+            },
+            {
+                "id": "prefix-10",
+                "prefix": "10.23.161.0/26",
+                "ip_version": 4,
+                "rel_prefix_to_gateway": {
+                    "address": "10.23.161.2/26"
+                }
+            },
+            {
+                "id": "prefix-11",
+                "prefix": "10.217.162.0/24",
+                "ip_version": 4,
+                "rel_prefix_to_gateway": {
+                    "address": "10.217.162.1/24"
+                }
+            },
+            {
+                "id": "prefix-12",
+                "prefix": "10.217.188.0/24",
+                "ip_version": 4,
+                "rel_prefix_to_gateway": {
+                    "address": "10.217.188.1/24"
+                }
+            },
+            {
+                "id": "prefix-15",
+                "prefix": "172.16.2.0/24",
+                "ip_version": 4,
+                "rel_prefix_to_gateway": {
+                    "address": "172.16.2.1/24"
+                }
+            },
+            {
+                "id": "prefix-16",
+                "prefix": "192.0.2.0/24",
+                "ip_version": 4,
+                "rel_prefix_to_gateway": {
+                    "address": "192.0.2.1/24"
+                }
+            },
+            {
+                "id": "prefix-13",
+                "prefix": "10.23.160.64/26",
+                "ip_version": 4,
+                "rel_prefix_to_gateway": {
+                    "address": "10.23.160.65/26"
+                }
+            },
+            {
+                "id": "prefix-14",
+                "prefix": "10.23.161.64/26",
+                "ip_version": 4,
+                "rel_prefix_to_gateway": {
+                    "address": "10.23.161.65/26"
+                }
+            }
+        ],
+        "pool_ips": [
+            {
+                "address": "198.51.100.133",
+                "ip_version": 4,
+                "parent": {"id": "prefix-4"},
+                "interfaces": [{
+                    "name": "swp1",
+                    "mac_address": null,
+                    "role": {"name": "Uplink"},
+                    "device": {
+                        "id": "18e0fa2c-317b-4abb-b55d-18fa9cfe5f09",
+                        "name": "dummy-for-subnet-options-1",
+                        "serial": "DUMMY1",
+                        "platform": {"name": "Cumulus Linux"},
+                        "status": {"name": "active"},
+                        "configmanagerdevicestatus": {"ztp_enabled": true, "is_aggregate_managed": false}
+                    }
+                }]
+            },
+            {
+                "address": "198.51.100.73",
+                "ip_version": 4,
+                "parent": {"id": "prefix-5"},
+                "interfaces": [{
+                    "name": "swp1",
+                    "mac_address": null,
+                    "role": {"name": "Uplink"},
+                    "device": {
+                        "id": "18e0fa2c-317b-4abb-b55d-18fa9cfe5f09",
+                        "name": "dummy-for-subnet-options-1",
+                        "serial": "DUMMY1",
+                        "platform": {"name": "Cumulus Linux"},
+                        "status": {"name": "active"},
+                        "configmanagerdevicestatus": {"ztp_enabled": true, "is_aggregate_managed": false}
+                    }
+                }]
+            },
+            {
+                "address": "203.0.113.2",
+                "ip_version": 4,
+                "parent": {"id": "prefix-6"},
+                "interfaces": [{
+                    "name": "swp1",
+                    "mac_address": null,
+                    "role": {"name": "Uplink"},
+                    "device": {
+                        "id": "137ab7d5-d2ca-4cdc-ad7b-7bb485eb103e",
+                        "name": "dummy-for-subnet-options-2",
+                        "serial": "DUMMY2",
+                        "platform": {"name": "Cumulus Linux"},
+                        "status": {"name": "active"},
+                        "configmanagerdevicestatus": {"ztp_enabled": true, "is_aggregate_managed": false}
+                    }
+                }]
+            },
+            {
+                "address": "203.0.113.5",
+                "ip_version": 4,
+                "parent": {"id": "prefix-7"},
+                "interfaces": [{
+                    "name": "swp1",
+                    "mac_address": null,
+                    "role": {"name": "Uplink"},
+                    "device": {
+                        "id": "812c4731-062c-4422-a949-49a088ee2119",
+                        "name": "dummy-for-subnet-options-3",
+                        "serial": "DUMMY3",
+                        "platform": {"name": "Cumulus Linux"},
+                        "status": {"name": "active"},
+                        "configmanagerdevicestatus": {"ztp_enabled": true, "is_aggregate_managed": false}
+                    }
+                }]
+            },
+            {
+                "address": "203.0.113.66",
+                "ip_version": 4,
+                "parent": {"id": "prefix-8"},
+                "interfaces": [{
+                    "name": "swp1",
+                    "mac_address": null,
+                    "role": {"name": "Uplink"},
+                    "device": {
+                        "id": "137ab7d5-d2ca-4cdc-ad7b-7bb485eb103e",
+                        "name": "dummy-for-subnet-options-2",
+                        "serial": "DUMMY2",
+                        "platform": {"name": "Cumulus Linux"},
+                        "status": {"name": "active"},
+                        "configmanagerdevicestatus": {"ztp_enabled": true, "is_aggregate_managed": false}
+                    }
+                }]
+            },
+            {
+                "address": "10.23.160.10",
+                "ip_version": 4,
+                "parent": {"id": "prefix-9"},
+                "interfaces": []
+            },
+            {
+                "address": "10.23.160.11",
+                "ip_version": 4,
+                "parent": {"id": "prefix-9"},
+                "interfaces": []
+            },
+            {
+                "address": "10.23.161.10",
+                "ip_version": 4,
+                "parent": {"id": "prefix-10"},
+                "interfaces": []
+            },
+            {
+                "address": "10.23.161.11",
+                "ip_version": 4,
+                "parent": {"id": "prefix-10"},
+                "interfaces": []
+            }
+        ],
+        "reserved_ips": [
+            {
+                "address": "10.23.160.66",
+                "ip_version": 4,
+                "parent": {
+                    "id": "prefix-13"
+                },
+                "interfaces": [
+                    {
+                        "name": "eth0",
+                        "mac_address": "00:11:22:33:44:55",
+                        "role": {
+                            "name": "management"
+                        },
+                        "device": {
+                            "id": "device-test-device-1",
+                            "name": "test-device-1",
+                            "serial": "SERIAL-test-device-1",
+                            "platform": {
+                                "name": "Unknown"
+                            },
+                            "status": {
+                                "name": "active"
+                            },
+                            "configmanagerdevicestatus": {
+                                "ztp_enabled": true,
+                                "is_aggregate_managed": false
+                            }
+                        }
+                    }
+                ]
+            },
+            {
+                "address": "10.23.161.66",
+                "ip_version": 4,
+                "parent": {
+                    "id": "prefix-14"
+                },
+                "interfaces": [
+                    {
+                        "name": "eth0",
+                        "mac_address": "00:11:22:33:44:66",
+                        "role": {
+                            "name": "management"
+                        },
+                        "device": {
+                            "id": "device-test-device-2",
+                            "name": "test-device-2",
+                            "serial": "SERIAL-test-device-2",
+                            "platform": {
+                                "name": "Unknown"
+                            },
+                            "status": {
+                                "name": "active"
+                            },
+                            "configmanagerdevicestatus": {
+                                "ztp_enabled": true,
+                                "is_aggregate_managed": false
+                            }
+                        }
+                    }
+                ]
+            },
+            {
+                "address": "10.217.162.42",
+                "ip_version": 4,
+                "parent": {
+                    "id": "prefix-11"
+                },
+                "interfaces": [
+                    {
+                        "name": "eth0",
+                        "mac_address": null,
+                        "role": {
+                            "name": "management"
+                        },
+                        "device": {
+                            "id": "e768a90c-f868-4d92-9b4f-cefa57b15e91",
+                            "name": "SPINE1-GP1-CIN3-PDX01",
+                            "serial": "MT2415XZ04QY",
+                            "platform": {
+                                "name": "Cumulus Linux"
+                            },
+                            "status": {
+                                "name": "active"
+                            },
+                            "configmanagerdevicestatus": {
+                                "ztp_enabled": true,
+                                "is_aggregate_managed": false
+                            }
+                        }
+                    }
+                ]
+            },
+            {
+                "address": "10.217.162.51",
+                "ip_version": 4,
+                "parent": {
+                    "id": "prefix-11"
+                },
+                "interfaces": [
+                    {
+                        "name": "eth0",
+                        "mac_address": null,
+                        "role": {
+                            "name": "management"
+                        },
+                        "device": {
+                            "id": "0158d65b-4124-4987-93d5-10a0aff77d61",
+                            "name": "LEAF1-GP1-CIN2-PDX01",
+                            "serial": "MT2415XZ04Q1",
+                            "platform": {
+                                "name": "Cumulus Linux"
+                            },
+                            "status": {
+                                "name": "active"
+                            },
+                            "configmanagerdevicestatus": {
+                                "ztp_enabled": true,
+                                "is_aggregate_managed": false
+                            }
+                        }
+                    }
+                ]
+            },
+            {
+                "address": "10.217.162.36",
+                "ip_version": 4,
+                "parent": {
+                    "id": "prefix-11"
+                },
+                "interfaces": [
+                    {
+                        "name": "eth0",
+                        "mac_address": null,
+                        "role": {
+                            "name": "management"
+                        },
+                        "device": {
+                            "id": "510de8e8-9589-4517-b67c-70b9affa9b28",
+                            "name": "LEAF2-GP1-CIN1-PDX01",
+                            "serial": "MT2415XZ04Q5",
+                            "platform": {
+                                "name": "Cumulus Linux"
+                            },
+                            "status": {
+                                "name": "active"
+                            },
+                            "configmanagerdevicestatus": {
+                                "ztp_enabled": true,
+                                "is_aggregate_managed": false
+                            }
+                        }
+                    }
+                ]
+            },
+            {
+                "address": "10.217.162.52",
+                "ip_version": 4,
+                "parent": {
+                    "id": "prefix-11"
+                },
+                "interfaces": [
+                    {
+                        "name": "eth0",
+                        "mac_address": null,
+                        "role": {
+                            "name": "management"
+                        },
+                        "device": {
+                            "id": "7ff67cec-4009-44d8-8f28-25e8a26764ec",
+                            "name": "LEAF2-GP1-CIN2-PDX01",
+                            "serial": "MT2415XZ04PU",
+                            "platform": {
+                                "name": "Cumulus Linux"
+                            },
+                            "status": {
+                                "name": "active"
+                            },
+                            "configmanagerdevicestatus": {
+                                "ztp_enabled": true,
+                                "is_aggregate_managed": false
+                            }
+                        }
+                    }
+                ]
+            },
+            {
+                "address": "10.217.162.35",
+                "ip_version": 4,
+                "parent": {
+                    "id": "prefix-11"
+                },
+                "interfaces": [
+                    {
+                        "name": "eth0",
+                        "mac_address": null,
+                        "role": {
+                            "name": "management"
+                        },
+                        "device": {
+                            "id": "e9243d67-dad0-4f4b-9f6d-9cc977ff0023",
+                            "name": "LEAF1-GP1-CIN1-PDX01",
+                            "serial": "MT2415XZ04QW",
+                            "platform": {
+                                "name": "Cumulus Linux"
+                            },
+                            "status": {
+                                "name": "active"
+                            },
+                            "configmanagerdevicestatus": {
+                                "ztp_enabled": true,
+                                "is_aggregate_managed": false
+                            }
+                        }
+                    }
+                ]
+            },
+            {
+                "address": "10.217.162.44",
+                "ip_version": 4,
+                "parent": {
+                    "id": "prefix-11"
+                },
+                "interfaces": [
+                    {
+                        "name": "eth0",
+                        "mac_address": null,
+                        "role": {
+                            "name": "management"
+                        },
+                        "device": {
+                            "id": "76984a54-3188-418b-8e03-0489355e19fc",
+                            "name": "LEAF2-GP1-CIN3-PDX01",
+                            "serial": "MT2418XZ00FX",
+                            "platform": {
+                                "name": "Cumulus Linux"
+                            },
+                            "status": {
+                                "name": "active"
+                            },
+                            "configmanagerdevicestatus": {
+                                "ztp_enabled": true,
+                                "is_aggregate_managed": false
+                            }
+                        }
+                    }
+                ]
+            },
+            {
+                "address": "10.217.162.43",
+                "ip_version": 4,
+                "parent": {
+                    "id": "prefix-11"
+                },
+                "interfaces": [
+                    {
+                        "name": "eth0",
+                        "mac_address": null,
+                        "role": {
+                            "name": "management"
+                        },
+                        "device": {
+                            "id": "cb60e17a-b426-471f-a5c5-255f45368e7c",
+                            "name": "LEAF1-GP1-CIN3-PDX01",
+                            "serial": "MT2415XZ04PV",
+                            "platform": {
+                                "name": "Cumulus Linux"
+                            },
+                            "status": {
+                                "name": "active"
+                            },
+                            "configmanagerdevicestatus": {
+                                "ztp_enabled": true,
+                                "is_aggregate_managed": false
+                            }
+                        }
+                    }
+                ]
+            },
+            {
+                "address": "10.217.162.34",
+                "ip_version": 4,
+                "parent": {
+                    "id": "prefix-11"
+                },
+                "interfaces": [
+                    {
+                        "name": "eth0",
+                        "mac_address": null,
+                        "role": {
+                            "name": "management"
+                        },
+                        "device": {
+                            "id": "f8788f54-d511-48f1-8f5e-c102de59f15f",
+                            "name": "SPINE1-GP1-CIN1-PDX01",
+                            "serial": "MT2415XZ04Q2",
+                            "platform": {
+                                "name": "Cumulus Linux"
+                            },
+                            "status": {
+                                "name": "active"
+                            },
+                            "configmanagerdevicestatus": {
+                                "ztp_enabled": true,
+                                "is_aggregate_managed": false
+                            }
+                        }
+                    }
+                ]
+            },
+            {
+                "address": "10.217.162.50",
+                "ip_version": 4,
+                "parent": {
+                    "id": "prefix-11"
+                },
+                "interfaces": [
+                    {
+                        "name": "eth0",
+                        "mac_address": null,
+                        "role": {
+                            "name": "management"
+                        },
+                        "device": {
+                            "id": "32fdefda-df59-4285-9d6e-a1f220906a8d",
+                            "name": "SPINE1-GP1-CIN2-PDX01",
+                            "serial": "MT2415XZ04MG",
+                            "platform": {
+                                "name": "Cumulus Linux"
+                            },
+                            "status": {
+                                "name": "active"
+                            },
+                            "configmanagerdevicestatus": {
+                                "ztp_enabled": true,
+                                "is_aggregate_managed": false
+                            }
+                        }
+                    }
+                ]
+            },
+            {
+                "address": "192.0.2.130",
+                "ip_version": 4,
+                "parent": {
+                    "id": "prefix-16"
+                },
+                "interfaces": [
+                    {
+                        "name": "eth0",
+                        "mac_address": "00:13:C6:0A:DD:3D",
+                        "role": {
+                            "name": "management"
+                        },
+                        "device": {
+                            "id": "device-console1-cp1-smn1-sitea",
+                            "name": "console1-cp1-smn1-sitea",
+                            "serial": "SERIAL-console1-cp1-smn1-sitea",
+                            "platform": {
+                                "name": "Unknown"
+                            },
+                            "status": {
+                                "name": "active"
+                            },
+                            "configmanagerdevicestatus": {
+                                "ztp_enabled": true,
+                                "is_aggregate_managed": false
+                            }
+                        }
+                    }
+                ]
+            },
+            {
+                "address": "10.91.50.201",
+                "ip_version": 4,
+                "parent": {
+                    "id": "prefix-3"
+                },
+                "interfaces": [
+                    {
+                        "name": "eth0",
+                        "mac_address": "58:A2:E1:85:E3:A8",
+                        "role": {
+                            "name": "management"
+                        },
+                        "device": {
+                            "id": "73c1eddf-d443-4b29-8ca0-f43f1358f7d8",
+                            "name": "AZ51-AD504-IBSPINE-02",
+                            "serial": "SERIAL-AZ51-AD504-IBSPINE-02",
+                            "platform": {
+                                "name": "Unknown"
+                            },
+                            "status": {
+                                "name": "active"
+                            },
+                            "configmanagerdevicestatus": {
+                                "ztp_enabled": true,
+                                "is_aggregate_managed": false
+                            }
+                        }
+                    }
+                ]
+            },
+            {
+                "address": "172.16.2.101",
+                "ip_version": 4,
+                "parent": {
+                    "id": "prefix-15"
+                },
+                "interfaces": [
+                    {
+                        "name": "eth0",
+                        "mac_address": "b8:e9:24:2e:f9:44",
+                        "role": {
+                            "name": "management"
+                        },
+                        "device": {
+                            "id": "2295db65-e1ac-4349-98fb-3fe69becadd6",
+                            "name": "WIWYNN-QS1-NVLINK1",
+                            "serial": "SERIAL-WIWYNN-QS1-NVLINK1",
+                            "platform": {
+                                "name": "Unknown"
+                            },
+                            "status": {
+                                "name": "active"
+                            },
+                            "configmanagerdevicestatus": {
+                                "ztp_enabled": true,
+                                "is_aggregate_managed": false
+                            }
+                        }
+                    }
+                ]
+            },
+            {
+                "address": "172.16.2.103",
+                "ip_version": 4,
+                "parent": {
+                    "id": "prefix-15"
+                },
+                "interfaces": [
+                    {
+                        "name": "eth0",
+                        "mac_address": null,
+                        "role": {
+                            "name": "management"
+                        },
+                        "device": {
+                            "id": "e2977d85-4f77-4233-9ecf-3aa5127483ff",
+                            "name": "WIWYNN-QS1-NVLINK2",
+                            "serial": "A1NJ42C0019",
+                            "platform": {
+                                "name": "NV-OS"
+                            },
+                            "status": {
+                                "name": "active"
+                            },
+                            "configmanagerdevicestatus": {
+                                "ztp_enabled": true,
+                                "is_aggregate_managed": false
+                            }
+                        }
+                    }
+                ]
+            },
+            {
+                "address": "10.217.188.226",
+                "ip_version": 4,
+                "parent": {
+                    "id": "prefix-12"
+                },
+                "interfaces": [
+                    {
+                        "name": "eth0",
+                        "mac_address": "50:00:E6:79:98:D0",
+                        "role": {
+                            "name": "management"
+                        },
+                        "device": {
+                            "id": "bd1c19ea-50a3-4bfb-97e4-f796e1b66b08",
+                            "name": "nvswitch1-nvl1-gp1-pdx01",
+                            "serial": "SERIAL-nvswitch1-nvl1-gp1-pdx01",
+                            "platform": {
+                                "name": "Unknown"
+                            },
+                            "status": {
+                                "name": "active"
+                            },
+                            "configmanagerdevicestatus": {
+                                "ztp_enabled": true,
+                                "is_aggregate_managed": false
+                            }
+                        }
+                    }
+                ]
+            },
+            {
+                "address": "10.217.188.227",
+                "ip_version": 4,
+                "parent": {
+                    "id": "prefix-12"
+                },
+                "interfaces": [
+                    {
+                        "name": "mgmt",
+                        "mac_address": "64:33:AA:26:C4:BE",
+                        "role": {
+                            "name": "management"
+                        },
+                        "device": {
+                            "id": "bd1c19ea-50a3-4bfb-97e4-f796e1b66b08",
+                            "name": "nvswitch1-nvl1-gp1-pdx01",
+                            "serial": "SERIAL-nvswitch1-nvl1-gp1-pdx01",
+                            "platform": {
+                                "name": "Unknown"
+                            },
+                            "status": {
+                                "name": "active"
+                            },
+                            "configmanagerdevicestatus": {
+                                "ztp_enabled": true,
+                                "is_aggregate_managed": false
+                            }
+                        }
+                    }
+                ]
+            },
+            {
+                "address": "10.217.188.162",
+                "ip_version": 4,
+                "parent": {
+                    "id": "prefix-12"
+                },
+                "interfaces": [
+                    {
+                        "name": "eth1",
+                        "mac_address": "50:00:E6:79:98:D1",
+                        "role": {
+                            "name": "management"
+                        },
+                        "device": {
+                            "id": "bd1c19ea-50a3-4bfb-97e4-f796e1b66b08",
+                            "name": "nvswitch1-nvl1-gp1-pdx01",
+                            "serial": "SERIAL-nvswitch1-nvl1-gp1-pdx01",
+                            "platform": {
+                                "name": "Unknown"
+                            },
+                            "status": {
+                                "name": "active"
+                            },
+                            "configmanagerdevicestatus": {
+                                "ztp_enabled": true,
+                                "is_aggregate_managed": false
+                            }
+                        }
+                    }
+                ]
+            },
+            {
+                "address": "10.91.50.200",
+                "ip_version": 4,
+                "parent": {
+                    "id": "prefix-3"
+                },
+                "interfaces": [
+                    {
+                        "name": "eth0",
+                        "mac_address": "aa:bb:cc:dd:ee:ff",
+                        "role": {
+                            "name": "management"
+                        },
+                        "device": {
+                            "id": "device-aggregate-managed",
+                            "name": "aggregate-managed-device",
+                            "serial": "AGG-MANAGED-001",
+                            "platform": {
+                                "name": "Cumulus Linux"
+                            },
+                            "status": {
+                                "name": "active"
+                            },
+                            "configmanagerdevicestatus": {
+                                "ztp_enabled": true,
+                                "is_aggregate_managed": true
+                            }
+                        }
+                    }
+                ]
+            },
+            {
+                "address": "10.91.50.201",
+                "ip_version": 4,
+                "parent": {
+                    "id": "prefix-3"
+                },
+                "interfaces": [
+                    {
+                        "name": "eth0",
+                        "mac_address": "11:22:33:44:55:66",
+                        "role": {
+                            "name": "management"
+                        },
+                        "device": {
+                            "id": "device-ztp-disabled",
+                            "name": "ztp-disabled-device",
+                            "serial": "ZTP-DISABLED-001",
+                            "platform": {
+                                "name": "Cumulus Linux"
+                            },
+                            "status": {
+                                "name": "active"
+                            },
+                            "configmanagerdevicestatus": {
+                                "ztp_enabled": false,
+                                "is_aggregate_managed": false
+                            }
+                        }
+                    }
+                ]
+            }
+        ]
+    }
+}

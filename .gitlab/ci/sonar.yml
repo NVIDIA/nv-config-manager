@@ -1,0 +1,109 @@
+---
+# =============================================================================
+# Sonar Stage - Code Quality Analysis
+# =============================================================================
+
+sonar-scanner:
+  stage: sonar
+  tags:
+    - dca
+    - linux/amd64
+    - docker
+  needs:
+    - job: test-mr-py
+      optional: true
+      artifacts: true
+    - job: test-mr-installer
+      optional: true
+      artifacts: true
+    - job: test-mr-network-templates
+      optional: true
+      artifacts: true
+    - job: test-mr-ui-e2e
+      optional: true
+      artifacts: true
+  image:
+    name: $NVCM_CI_IMAGE_SONAR
+    entrypoint: [""]
+  variables:
+    SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"
+    GIT_DEPTH: "0"
+  cache:
+    policy: pull-push
+    key: "sonar-cache-$CI_COMMIT_REF_SLUG"
+    paths:
+      - "${SONAR_USER_HOME}/cache"
+  script:
+    - sonar-scanner -Dsonar.host.url="${SONAR_HOST_URL}"
+  allow_failure: true
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - "src/**/*"
+        - "ui/**/*"
+        - "components/nautobot/**/*"
+        - "components/network-templates/**/*"
+        - "installer/**/*"
+        - pyproject.toml
+        - uv.lock
+        - sonar-project.properties
+      when: always
+    - if: $GITLAB_USER_EMAIL == $CI_PUSH_EMAIL
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - "src/**/*"
+        - "ui/**/*"
+        - "components/nautobot/**/*"
+        - "components/network-templates/**/*"
+        - "installer/**/*"
+        - pyproject.toml
+        - uv.lock
+        - sonar-project.properties
+      when: always
+    - when: never
+
+sonarqube-vulnerability-report:
+  stage: sonar
+  tags:
+    - dca
+    - linux/amd64
+    - docker
+  needs:
+    - job: sonar-scanner
+      optional: true
+  image: $NVCM_CI_IMAGE_ALPINE
+  script:
+    - apk add -q curl
+    - 'curl --retry 3 --retry-delay 5 --retry-connrefused -u "${SONAR_TOKEN}:" "${SONAR_HOST_URL}/api/issues/gitlab_sast_export?projectKey=${NVCM_SONAR_PROJECT_KEY}&branch=${CI_COMMIT_BRANCH}&pullRequest=${CI_MERGE_REQUEST_IID}" -o gl-sast-sonar-report.json'
+  allow_failure: true
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - "src/**/*"
+        - "ui/**/*"
+        - "components/nautobot/**/*"
+        - "components/network-templates/**/*"
+        - "installer/**/*"
+        - pyproject.toml
+        - uv.lock
+        - sonar-project.properties
+      when: always
+    - if: $GITLAB_USER_EMAIL == $CI_PUSH_EMAIL
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - "src/**/*"
+        - "ui/**/*"
+        - "components/nautobot/**/*"
+        - "components/network-templates/**/*"
+        - "installer/**/*"
+        - pyproject.toml
+        - uv.lock
+        - sonar-project.properties
+      when: always
+    - when: never
+  artifacts:
+    expire_in: 1 day
+    reports:
+      sast: gl-sast-sonar-report.json

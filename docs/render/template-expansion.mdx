@@ -1,0 +1,286 @@
+---
+title: Template and Plugin Expansion Walkthrough
+sidebar-title: Template expansion
+position: 13
+---
+
+This walkthrough shows how the render engine selects entrypoint templates, expands Jinja inheritance, and loads external template plugins. It is intended for external users who need to build their own template plugins while reusing the Config Manager template engine.
+
+## Entrypoint Selection
+
+For each device, the renderer loads device data and location data from Nautobot, then selects every entrypoint below this logical path:
+
+```text
+<normalized-platform>/<normalized-role>/<intended-firmware>/entrypoint/
+```
+
+The platform and role values come from Nautobot and are normalized by lower-casing and replacing whitespace with hyphens. The firmware value comes from the device config context key `intended-firmware.version`.
+
+For a device with platform `Cumulus Linux`, role `Storage Leaf`, and intended firmware `5.16.1`, the renderer looks under:
+
+```text
+cumulus-linux/storage-leaf/5.16.1/entrypoint/
+```
+
+Each matching `.j2` file renders one output file. The render service stores the output by stripping the path and `.j2` suffix, so `entrypoint/startup.yaml.j2` becomes `startup.yaml`.
+
+## Built-In Expansion Example
+
+A Cumulus storage leaf startup entrypoint starts as a thin version-specific composition file:
+
+```jinja
+{% extends "cumulus-linux/storage-leaf/base/startup.yaml.j2" %}
+
+{% block service %}
+{% include "cumulus-linux/role_common/5.16.1/include/service.j2" %}
+{% endblock service %}
+
+{% block qos %}
+{% include "cumulus-linux/storage-leaf/5.16.1/include/qos.j2" %}
+{% endblock qos %}
+
+{% block router %}
+{% include "cumulus-linux/storage-leaf/5.16.1/include/router.j2" %}
+{% endblock router %}
+
+{% block interfaces %}
+{% include "cumulus-linux/storage-leaf/5.16.1/include/interface.j2" %}
+{% endblock interfaces %}
+
+{% block system %}
+{% include "cumulus-linux/role_common/5.16.1/include/system.j2" %}
+{% endblock system %}
+```
+
+The role base inherits from broader common behavior:
+
+```jinja
+{% extends "cumulus-linux/superpod-common/base/startup.yaml.j2" %}
+
+{% block acl %}
+{% include "cumulus-linux/storage-leaf/include/acl.j2" %}
+{% endblock acl %}
+
+{% block bridge %}
+{% include "cumulus-linux/storage-leaf/include/bridge.j2" %}
+{% endblock bridge %}
+
+{% block interfaces %}
+{% include "cumulus-linux/storage-leaf/include/interface.j2" %}
+{% endblock interfaces %}
+
+{% block router %}
+{% include "cumulus-linux/storage-leaf/include/router.j2" %}
+{% endblock router %}
+
+{% block vrf %}
+{% include "cumulus-linux/storage-leaf/include/vrf.j2" %}
+{% endblock vrf %}
+```
+
+The common base defines the output skeleton and required blocks:
+
+```jinja
+{% block header %}
+- set:
+{% endblock header %}
+
+{% block acl %}{% endblock acl %}
+{% block bridge %}{% endblock bridge %}
+{% block evpn %}{% endblock evpn %}
+{% block interfaces required %}{% endblock interfaces %}
+{% block nve %}{% endblock nve %}
+{% block qos %}{% endblock qos %}
+{% block router required %}{% endblock router %}
+
+{% block service %}
+{% include "cumulus-linux/superpod-common/include/service.j2" %}
+{% endblock service %}
+
+{% block system %}
+{% include "cumulus-linux/superpod-common/include/system.j2" %}
+{% endblock system %}
+
+{% block vrf required %}{% endblock vrf %}
+```
+
+The final render is the merged result of those layers:
+
+1. The version-specific entrypoint selects the firmware-specific overrides.
+2. The role base supplies role-level blocks and includes.
+3. The common base supplies the file skeleton and default blocks.
+4. Jinja replaces each `include` with the included template output.
+5. Filters convert Nautobot and plugin data into the values used by the templates.
+
+## Plugin Discovery
+
+Template plugins are normal Python packages. A plugin registers an entry point in the `nv_config_manager_templates.plugins` group:
+
+```toml
+[project]
+name = "example-config-manager-templates"
+version = "0.1.0"
+dependencies = ["nv-config-manager-templates"]
+
+[project.entry-points."nv_config_manager_templates.plugins"]
+example = "example_config_manager_templates"
+```
+
+The plugin module can provide any combination of templates, filters, GraphQL queries, or location resolution:
+
+```python
+from pathlib import Path
+from typing import Any
+
+from example_config_manager_templates.filters import get_custom_filters as _filters
+
+
+def get_template_paths() -> list[Path]:
+    return [Path(__file__).parent / "templates"]
+
+
+def get_custom_filters() -> dict[str, Any]:
+    return _filters()
+
+
+def get_graphql_queries() -> dict[str, str]:
+    return {}
+
+
+def get_location_name(device_data: dict[str, Any]) -> str | None:
+    return None
+```
+
+At renderer startup, Config Manager:
+
+1. Discovers installed entry points from `nv_config_manager_templates.plugins`.
+2. Calls plugin hooks such as `get_template_paths()`, `get_custom_filters()`, and `get_graphql_queries()`.
+3. Adds plugin template paths before the built-in package templates.
+4. Loads built-in filters.
+5. Loads plugin filters that do not conflict with an existing filter name.
+6. Executes plugin GraphQL queries during data loading and passes results as `plugin_data`.
+
+Because plugin template paths are loaded before the built-in templates, a plugin can add new logical paths or intentionally shadow a built-in template path. Shadowing should be explicit and covered by render tests. Prefer `extends` and small block overrides when the plugin only needs to adjust part of a built-in template.
+
+## Plugin Template Layout
+
+A plugin template root uses the same logical layout as the built-in templates:
+
+```text
+src/example_config_manager_templates/templates/
+  cumulus-linux/
+    example-storage-leaf/
+      base/
+        startup.yaml.j2
+      include/
+        qos.j2
+      5.16.1/
+        entrypoint/
+          startup.yaml.j2
+        include/
+          qos.j2
+```
+
+For a new Nautobot device role, create a role path that matches the normalized role name. For example, role `Example Storage Leaf` resolves to `example-storage-leaf`.
+
+An entrypoint can reuse a built-in base template and override only the blocks that differ:
+
+```jinja
+{% extends "cumulus-linux/storage-leaf/base/startup.yaml.j2" %}
+
+{% block qos %}
+{% include "cumulus-linux/example-storage-leaf/5.16.1/include/qos.j2" %}
+{% endblock qos %}
+```
+
+If the plugin needs shared behavior for multiple plugin-owned roles, use plugin-owned common role names instead of broad names that look built-in:
+
+```text
+cumulus-linux/example-common/base/startup.yaml.j2
+cumulus-linux/example-storage-leaf/base/startup.yaml.j2
+cumulus-linux/example-border-leaf/base/startup.yaml.j2
+```
+
+## Plugin Data and Filters
+
+The render context always includes:
+
+```text
+device_data
+location_data
+```
+
+When plugin queries are registered, the context can also include:
+
+```text
+plugin_data
+```
+
+Plugin query results are keyed by query name. Templates should not traverse raw plugin GraphQL response paths directly. Instead, expose stable domain concepts through plugin filters:
+
+```python
+def fabric_policy(plugin_data: dict, policy_name: str) -> dict:
+    query_data = plugin_data.get("fabric_policy") or {}
+    ...
+```
+
+Then call that filter from the template:
+
+```jinja
+{% set policy = plugin_data|fabric_policy("default") %}
+```
+
+This keeps Nautobot plugin model changes isolated to Python filters instead of spreading response-shape assumptions across templates.
+
+## Local Plugin Testing
+
+Install the plugin into the same Python environment as `nv-config-manager-templates`, then use `template-cli` for local iteration.
+
+Cache core and plugin query data:
+
+```bash
+uv run template-cli cache-query \
+  --hostname sw01 \
+  --nautobot-url https://nautobot.example.com \
+  --token-file ~/.nautobot-token \
+  --output-file tests/resources/nautobot/sw01.json \
+  --output-location-file tests/resources/nautobot/DC01.json \
+  --output-plugin-file tests/resources/nautobot/sw01-plugin-data.json
+```
+
+Render from cached data:
+
+```bash
+uv run template-cli render \
+  --cached-data tests/resources/nautobot/sw01.json \
+  --cached-location-data tests/resources/nautobot/DC01.json \
+  --cached-plugin-data tests/resources/nautobot/sw01-plugin-data.json \
+  --entrypoint startup.yaml.j2
+```
+
+Without `--vault`, `template-cli render` disables Vault lookups and returns placeholder secret values. Use this mode for render tests, not for production device configuration.
+
+For regression coverage, add cached Nautobot JSON, cached plugin data when needed, and expected rendered output for every plugin role and entrypoint.
+
+## Deployment
+
+External deployments load template plugins through the installer or Helm chart, not through `template-cli`.
+
+With the installer, add plugin directories or plugin tarballs on the **Template Plugins** screen. The installer stages that content into the render service template plugin PVC and restarts render workloads only when the staged template content changes.
+
+For Helm or GitOps-managed deployments, set `renderService.templatePlugins.enabled` and provide plugin source images when needed. A plugin source image can provide:
+
+```text
+/plugin-wheels/*.whl
+/plugin-source/pyproject.toml
+```
+
+The render service installs those plugin wheels or source packages into its runtime environment so their `nv_config_manager_templates.plugins` entry points are discoverable.
+
+Rendered configuration metadata records both the engine package version and installed plugin package versions:
+
+```text
+engine=nv-config-manager-templates:<engine-version>;plugins=<plugin>:<plugin-version>
+```
+
+That version vector lets Config Manager compare rendered configurations against the exact template engine and plugin set that produced them.

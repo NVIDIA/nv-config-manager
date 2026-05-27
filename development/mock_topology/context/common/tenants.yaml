@@ -1,0 +1,5 @@
+---
+
+tenants:
+  - name: Example Cloud
+  - name: SuperPod

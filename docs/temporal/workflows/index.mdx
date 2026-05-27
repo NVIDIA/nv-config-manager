@@ -1,0 +1,109 @@
+---
+title: Workflows for Day 2 Operations
+sidebar-title: Workflows for Day 2 Operations
+position: 0
+---
+
+NVIDIA Config Manager Temporal provides comprehensive network infrastructure automation workflows. Each workflow is designed for specific operational tasks and includes detailed input/output specifications.
+
+<Note>
+These workflows are not part of initial setup, which the ZTP process handles. They are designed for Day 2 operations, after devices are bootstrapped using ZTP.
+
+The Redfish, BMC, InfiniBand, and VPC workflows are currently experimental and have not completed QA. Use them only in pilot or test environments.
+</Note>
+
+## Available Workflows
+
+### Network Validation
+
+| Workflow | Description | Purpose |
+| :------- | :---------- | :------ |
+| [Site Cable Validation](site-cable-validation.mdx) | Validate network connections across an entire site | Pre-deployment validation, troubleshooting connectivity issues |
+| [Device Cable Validation](device-cable-validation.mdx) | Validate network connections for a specific device | Device-specific connectivity testing |
+| [Infiniband Cable Validation](infiniband-cable-validation.mdx) | Specialized validation for InfiniBand networks | HPC cluster validation, GPU interconnect verification |
+| [Hardware Validation](hardware-validation.mdx) | Check device health and component status | Preventive maintenance, hardware lifecycle management |
+
+### Configuration Management
+
+| Workflow | Description | Purpose |
+| :------- | :---------- | :------ |
+| [Configuration Backup](backup.mdx) | Backup device configurations | Configuration preservation, disaster recovery |
+| [Configuration Deploy](deploy.mdx) | Deploy configurations to network devices | Configuration updates, standardization |
+| [Multi-Deploy](multi-deploy.mdx) | Deploy configurations to multiple devices | Bulk configuration deployment |
+| [Device Password Rotation](device-password-rotation.mdx) | Rotate user passwords on network devices | Security maintenance, credential lifecycle management |
+| [Site Password Rotation](site-password-rotation.mdx) | Rotate user passwords across all devices at a site | Bulk security maintenance, site-wide credential rotation |
+
+### Infrastructure Operations
+
+| Workflow | Description | Purpose |
+| :------- | :---------- | :------ |
+| [Switch OS Upgrade](switch-os-upgrade.mdx) | Upgrade network switch operating systems | Software lifecycle management |
+| [Infiniband MLNX OS Upgrade](infiniband-mlnx-os-upgrade.mdx) | Upgrade Mellanox InfiniBand switch OS | InfiniBand infrastructure maintenance |
+| [NVLink Switch Firmware Upgrade](nvlink-switch-firmware-upgrade.mdx) | Upgrade NVLink switch firmware | NVLink infrastructure maintenance |
+| [Device Reprovisioning](reprovision.mdx) | Reprovision network devices | Device lifecycle management |
+| [BMC Provisioning](bmc-provisioning.mdx) | Deprecated: Not for production use | Server infrastructure setup |
+
+### Data Center Management
+
+| Workflow | Description | Purpose |
+| :------- | :---------- | :------ |
+| [Connected Host Metadata](connected-host-metadata.mdx) | Collect and manage host connectivity metadata | Network topology discovery |
+| [VPC Creation](vpc-creation.mdx) | Create virtual private clouds | Cloud infrastructure deployment |
+| [VPC Deletion](vpc-deletion.mdx) | Delete virtual private clouds | Infrastructure cleanup |
+
+### Network Discovery
+
+| Workflow | Description | Purpose |
+| :------- | :---------- | :------ |
+| [Port LLDP Info](port-lldp-info.mdx) | Collect LLDP information from network ports | Network topology mapping |
+| [Infiniband Get Unhealthy Ports](infiniband-get-unhealthy-ports.mdx) | Identify unhealthy InfiniBand ports | Network health monitoring |
+
+## Workflow Architecture
+
+All workflows in Config Manager Temporal follow a consistent architecture:
+
+- **Input validation**: Structured input models with type checking
+- **Stage-based execution**: Multi-stage workflows with approval gates
+- **Error handling**: Comprehensive error management and retry policies
+- **Result archiving**: Persistent storage of workflow results
+- **Observability**: Full execution history and monitoring
+
+## Common Input Patterns
+
+Many workflows share common input patterns:
+
+- **Device ID**: Identifier for target network device
+- **Site Name**: Site identifier for multi-device operations
+- **User Context**: User information for audit trails
+- **Configuration Data**: Device-specific configuration parameters
+
+## Getting Started
+
+1. **Choose the appropriate workflow** from the list above
+1. **Review the input requirements** for your selected workflow
+1. **Prepare the input data** according to the workflow specification
+1. **Execute the workflow** using the API or UI
+1. **Monitor progress** through the workflow stages
+1. **Review results** and output data
+
+For detailed information about each workflow, click the workflow names in the tables above.
+
+- [BMC Provisioning](bmc-provisioning.mdx)
+- [Cable Validation: Device](device-cable-validation.mdx)
+- [Cable Validation: Infiniband](infiniband-cable-validation.mdx)
+- [Cable Validation: Site](site-cable-validation.mdx)
+- [Configuration Backup](backup.mdx)
+- [Configuration Deploy](deploy.mdx)
+- [Device Reprovisioning](reprovision.mdx)
+- [Hardware Validation](hardware-validation.mdx)
+- [Host Metadata Management](connected-host-metadata.mdx)
+- [Infiniband: Get Unhealthy Ports](infiniband-get-unhealthy-ports.mdx)
+- [Infiniband: MLNX OS Upgrade](infiniband-mlnx-os-upgrade.mdx)
+- [Multi-Deploy Workflow](multi-deploy.mdx)
+- [NVLink Firmware Upgrade](nvlink-switch-firmware-upgrade.mdx)
+- [Password Rotation: Device](device-password-rotation.mdx)
+- [Password Rotation: Site](site-password-rotation.mdx)
+- [Port LLDP Info](port-lldp-info.mdx)
+- [Switch OS Upgrade](switch-os-upgrade.mdx)
+- [VPC Creation](vpc-creation.mdx)
+- [VPC Deletion](vpc-deletion.mdx)

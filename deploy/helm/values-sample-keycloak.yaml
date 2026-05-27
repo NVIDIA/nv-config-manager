@@ -1,0 +1,156 @@
+# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
+#
+# =============================================================================
+# Local KeyCloak SSO Configuration
+# =============================================================================
+# Use this values file overlay for local/airgapped demos with KeyCloak as the
+# OIDC/SSO provider instead of Azure AD.
+#
+# Prerequisites:
+#   1. Envoy Gateway + KeyCloak installed via:
+#      ./deploy/scripts/setup-vm-prereqs.sh --install-security-stack
+#   2. NVIDIA Config Manager realm and client configured (done automatically by setup script)
+#   3. /etc/hosts entry for keycloak.config-manager.demo pointing to gateway IP
+#
+# Usage:
+#   helm install nv-config-manager . -f values.yaml -f values-local-keycloak.yaml
+#
+# Or with installer config:
+#   cluster.hostname: config-manager.demo
+#     --sso \
+#     --sso-issuer-url https://keycloak.config-manager.demo/realms/nv-config-manager \
+#     --sso-client-id nv-config-manager \
+#     --sso-client-secret nv-config-manager-client-secret \
+#     --values helm/values-local-keycloak.yaml
+#
+# Demo users (created by setup script):
+#   - admin / admin (administrator)
+#   - demo / demo (regular user)
+# =============================================================================
+
+# =============================================================================
+# OIDC - KeyCloak SSO Configuration
+# =============================================================================
+# Gateway-level OIDC: Single OIDC filter for all routes.
+# All subdomains share the same OAuth session (no per-route login required).
+#
+# Keycloak Client Configuration:
+#   Valid Redirect URIs: Just ONE callback URL:
+#     - https://<baseDomain>/oauth2/callback  (e.g., https://config-manager.demo/oauth2/callback)
+#
+#   OR use wildcard: *
+#
+# Reference: https://gateway.envoyproxy.io/docs/tasks/security/oidc/
+# =============================================================================
+oidc:
+  enabled: true
+  
+  # KeyCloak OIDC configuration
+  # Use the external gateway URL for browser redirects
+  # Note: Requires /etc/hosts entry for keycloak.config-manager.demo
+  issuerUrl: "https://keycloak.config-manager.demo/realms/nv-config-manager"
+  
+  # NVIDIA Config Manager client (created by setup-vm-prereqs.sh)
+  clientId: "nv-config-manager"
+  
+  # Name of K8s secret containing client-secret key
+  # Create with: kubectl create secret generic oidc-client-secret --from-literal=client-secret=nv-config-manager-client-secret -n nv-config-manager
+  clientSecretName: "oidc-client-secret"
+  
+  # OIDC scopes - KeyCloak standard scopes
+  scopes:
+    - "openid"
+    - "email"
+    - "profile"
+    - "roles"
+  
+  # JWT claim containing user groups/roles
+  groupsClaim: "realm_roles"
+  
+  # oauth2-proxy settings (for ingress-nginx mode)
+  oauth2Proxy:
+    replicas: 1
+    image:
+      repository: quay.io/oauth2-proxy/oauth2-proxy
+      tag: v7.6.0
+      pullPolicy: IfNotPresent
+    # Cookie secret for session encryption (32 bytes, base64)
+    # Generate with: openssl rand -base64 32
+    cookieSecret: "airgapped-demo-cookie-secret-32b="
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
+
+# =============================================================================
+# Gateway Configuration - JWT Auth with KeyCloak
+# =============================================================================
+gateway:
+  enabled: true
+  
+  auth:
+    jwt:
+      enabled: true
+      # KeyCloak as JWT issuer (must match issuer claim in tokens)
+      # This is the external URL that browsers use
+      issuer: "https://keycloak.config-manager.demo/realms/nv-config-manager"
+      audiences:
+        - "nv-config-manager"
+      # JWKS endpoint for token validation (use internal URL for reliability)
+      jwksUri: "http://keycloak.keycloak.svc.cluster.local:80/realms/nv-config-manager/protocol/openid-connect/certs"
+      # Forward the original JWT to backend services
+      forwardToken: true
+      
+      # Claim-to-Header Mappings (KeyCloak claims)
+      claimToHeaders:
+        # Email address
+        - claim: email
+          header: X-Auth-Request-Email
+        # Preferred username
+        - claim: preferred_username
+          header: X-Auth-Request-Preferred-Username
+        # User's display name
+        - claim: name
+          header: X-Auth-Request-Name
+        # Realm roles (KeyCloak specific)
+        - claim: realm_access.roles
+          header: X-Auth-Request-Roles
+        # Subject (user unique ID)
+        - claim: sub
+          header: X-Auth-Request-User
+        # Duplicate for compatibility with oauth2-proxy headers
+        - claim: email
+          header: X-Forwarded-Email
+        - claim: preferred_username
+          header: X-Forwarded-Preferred-Username
+        - claim: sub
+          header: X-Forwarded-User
+
+# =============================================================================
+# Note: Browser Access Setup
+# =============================================================================
+# The setup-vm-prereqs.sh --install-security-stack automatically:
+#   1. Installs Envoy Gateway with a shared Gateway
+#   2. Creates an HTTPRoute for KeyCloak at keycloak.config-manager.demo
+#   3. Generates a self-signed TLS certificate for *.config-manager.demo
+#
+# To complete browser SSO setup, add /etc/hosts entries on your client:
+#
+#   # Get gateway IP
+#   GATEWAY_IP=$(kubectl get gateway shared-gateway -n envoy-gateway-system \
+#     -o jsonpath='{.status.addresses[0].value}')
+#   
+#   # Add to /etc/hosts (on your laptop/client machine)
+#   echo "$GATEWAY_IP keycloak.config-manager.demo config-manager.demo nautobot.config-manager.demo" | sudo tee -a /etc/hosts
+#
+# Then access:
+#   - KeyCloak Admin: https://keycloak.config-manager.demo (admin / <password>)
+#   - NVIDIA Config Manager: https://nautobot.config-manager.demo (demo / demo)
+# =============================================================================
+
+networkPolicy:
+  additionalAllowedNamespaces:
+    - cnpg-system

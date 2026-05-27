@@ -1,0 +1,5 @@
+api:
+  specs:
+    - openapi: ../../../api-specs/temporal.openapi.json
+groups:
+  # SDK generator configuration

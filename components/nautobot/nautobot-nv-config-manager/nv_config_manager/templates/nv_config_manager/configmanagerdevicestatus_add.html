@@ -1,0 +1,103 @@
+{% extends 'generic/object_edit.html' %} 
+{% load helpers %} 
+{% load form_helpers %}
+
+{% block title%}
+  Add a Managed Device
+{% endblock title %}
+
+{% block form %}
+<div class="panel panel-default">
+  <div class="panel-heading">
+    <strong>Device Selection</strong>
+  </div>
+  <div class="panel-body">
+    <div class="alert alert-info" style="padding: 8px 12px; margin-bottom: 15px; font-size: 13px;">
+      Select a Tenant, then optionally a Location, to filter available Devices.
+    </div>
+    <div class="container-fluid">
+      <div class="row">
+        <div class="col-md-8 col-md-offset-2">
+          <div class="form-group">
+            {{ form.tenant.label_tag }}
+            {{ form.tenant }}
+          </div>
+          <div class="form-group">
+            {{ form.location.label_tag }}
+            {{ form.location }}
+            <span class="help-block">Optional. Narrows the device list by location.</span>
+          </div>
+          <div class="form-group">
+            {{ form.device.label_tag }}
+            {{ form.device }}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="panel panel-default">
+  <div class="panel-heading">
+    <strong>Config Manager Services</strong>
+  </div>
+  <div class="panel-body">
+    <div class="container-fluid">
+      <div class="row">
+        <div class="col-md-8 col-md-offset-2">
+          <div class="form-group">
+            {{ form.render_enabled.label_tag }}
+            {{ form.render_enabled }}
+          </div>
+          <div class="form-group">
+            {{ form.ztp_enabled.label_tag }}
+            {{ form.ztp_enabled }}
+          </div>
+          <div class="form-group">
+            {{ form.deploy_enabled.label_tag }}
+            {{ form.deploy_enabled }}
+          </div>
+          <div class="form-group">
+            {{ form.backup_enabled.label_tag }}
+            {{ form.backup_enabled }}
+          </div>
+          <div class="form-group">
+            {{ form.is_aggregate_managed.label_tag }}
+            {{ form.is_aggregate_managed }}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="text/javascript">
+  document.addEventListener("DOMContentLoaded", function () {
+    const locationField = document.querySelector("#id_location");
+    const tenantField = document.querySelector("#id_tenant");
+    const deviceField = document.querySelector("#id_device");
+
+    function toggleDeviceField() {
+      if (!locationField.value && !tenantField.value) {
+        deviceField.disabled = true;
+      } else {
+        deviceField.disabled = false;
+      }
+    }
+
+    toggleDeviceField();
+
+    const observer = new MutationObserver(function(mutations) {
+      mutations.forEach(function(mutation) {
+        if (mutation.type === 'childList') {
+          toggleDeviceField();
+        }
+      });
+    });
+
+    const config = { childList: true, subtree: true };
+    observer.observe(locationField, config);
+    observer.observe(tenantField, config);
+  });
+</script>
+{% endblock %}

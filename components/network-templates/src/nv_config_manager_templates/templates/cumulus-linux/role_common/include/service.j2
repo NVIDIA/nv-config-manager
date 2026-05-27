@@ -1,0 +1,45 @@
+    service:
+{% block dhcp_relay %}{% endblock dhcp_relay %}
+{% block dns %}
+{% if device_data|dns_servers %}
+      dns:
+        mgmt:
+          server:
+{% for dns_server in device_data|dns_servers %}
+            {{ dns_server }}: {}
+{% endfor %}
+{% endif %}
+{% endblock dns %}
+
+{% block lldp %}
+      lldp:
+        dot1-tlv: on
+        mode: force-send-lldp
+{% endblock lldp %}
+
+{% block ntp %}
+{% if device_data|ntp_servers %}
+      ntp:
+        mgmt:
+          server:
+{% for ntp_server in device_data|ntp_servers %}
+            {{ ntp_server }}:
+              iburst: on
+{% endfor %}
+{% endif %}
+{% endblock ntp %}
+
+{% block syslog %}
+{% if device_data|syslog_servers %}
+      syslog:
+        mgmt:
+          server:
+{% for syslog_server in device_data|syslog_servers %}
+            {{ syslog_server }}:
+              port: 32365
+              protocol: udp
+{% endfor %}
+{% endif %}
+{% endblock syslog %}
+{% block service_telemetry %}{% endblock service_telemetry %}
+

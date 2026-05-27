@@ -1,0 +1,125 @@
+---
+title: Multi-Device Deploy
+sidebar-title: Multi-Device Deploy
+position: 10
+---
+
+The Multi-Deploy workflow rolls a configuration change out across every device that matches a given role, grouping devices by the shape of their pending diff so that operators approve each unique change only once. It is the standard tool for fabric-wide updates — for example, pushing a new BGP policy, NTP server, or AAA stanza across all spine switches in a site.
+
+Each batch still requires a human approver to review the shared diff before any device is touched. For changes to a single device, use [Configuration Deploy](../configuration-deploy/index.mdx) instead.
+
+## Prerequisites
+
+Before running Multi-Deploy, confirm the following are in place:
+
+- **Devices exist in Nautobot** with the role you intend to target. The workflow discovers devices by their Nautobot role field, so the role name must match exactly.
+- **Devices have a current intended configuration.** Each device's intended config is loaded from the [Config Store](../../config-store/index.mdx) and was produced by the [Render Service](../../render/index.mdx). If a device is missing an intended config, it will fail the diff-collection stage rather than block the workflow.
+- **Devices are deploy-enabled in Nautobot.** Discovery filters on `deploy_enabled=True`, so any switch marked deploy-disabled (commonly Kubernetes-attached management switches on shared-network deployments) is automatically excluded. See [Hosting Options](../../hosting-options/index.mdx) for why this matters.
+- **Approval to change traffic-bearing devices.** Each batch is gated on a human approval. The approver should be authorized to land the change on production hardware.
+
+## Running the workflow
+
+1. Navigate to the Config Manager URL for your environment.
+1. Click the **+** in the top right and select **MultiDeployWorkflow**.
+1. Fill in the form using the field reference below and submit.
+
+The workflow form accepts the following inputs:
+
+| Field | Description | Required |
+| :---- | :---------- | :------- |
+| **Role** | Nautobot device role to target (for example, `spine`, `leaf`). All deploy-enabled devices with this role that match the other filters will be included. | Yes |
+| **Max Batch Size** | Maximum devices per child batch workflow. Diff groups larger than this are split into multiple batches. Defaults to `10`. | No |
+| **Location** | Optional Nautobot site filter. Omit to run across all sites. | No |
+| **Device Status** | Optional device-status filter (multi-select). | No |
+| **Tenant** | Optional Nautobot tenant filter. | No |
+| **Use commit-confirm** | When checked (default), each device's apply uses NVUE `commit confirm` so a broken change auto-rolls back if the device loses connectivity. Uncheck only for changes that are expected to interrupt connectivity. | No |
+
+After submission, a status page appears showing the four parent-workflow stages. Once the workflow reaches the **execute_batches** stage, it spawns one child [Batch Deploy](../batch-deploy/index.mdx) per batch — each with its own approval gate that must be cleared before any device is reconfigured.
+
+## Execution stages
+
+The parent workflow runs four stages in order. None of the parent stages require manual approval; the approval gates are inside the child batch workflows.
+
+1. **`discover_devices` — Query Nautobot for in-scope devices.**
+
+    Calls Nautobot with the supplied role, location, status, and tenant filters, and `deploy_enabled=True`. The stage display reports how many devices were discovered. If no devices match, the workflow exits early with `"No devices found with role '<role>'"` and no further stages run.
+
+1. **`collect_diffs` — Generate a candidate diff for every device.**
+
+    For each discovered device, in parallel, the workflow loads the device's intended configuration (with its own commit SHA) from the Config Store and runs a candidate diff against the device's live configuration. Devices with no diff are dropped from later stages. Devices that error out during diff collection (unreachable, render failure, syntax error) are recorded in `discovery_failures` and reported in the final result but do not stop the workflow. If no device has changes to apply, the workflow exits with `"No devices have configuration changes to deploy"`.
+
+1. **`group_and_batch` — Group by shared diff and slice into batches.**
+
+    Devices with byte-identical diff content are grouped together (see [Diff grouping and batching](#diff-grouping-and-batching) below). Each group is then split into batches no larger than `max_batch_size`. The stage display reports the number of diff groups, the number of batches, and how each group breaks down.
+
+1. **`execute_batches` — Spawn a child batch workflow per batch.**
+
+    For each batch, the parent starts a child [Batch Deploy](../batch-deploy/index.mdx) and posts a clickable link to it on the stage display. The parent stage stays running and updates the display as each child completes (succeeded, failed, or rejected). The approval gate for each batch lives inside its child workflow — open the child link to review the diff and approve or reject.
+
+The parent workflow is complete only after every child batch workflow terminates. The final result aggregates total successes, failures, and rejections across all batches.
+
+## Diff grouping and batching
+
+The point of Multi-Deploy is that a fabric-wide change usually produces the same diff on most devices, and operators should not have to approve the same diff dozens of times.
+
+The `group_and_batch` stage builds groups using the following rule:
+
+- For each device, the candidate diff text is hashed with SHA-256 and truncated to 16 hex characters.
+- Devices with the same diff hash share a `DiffGroup`. They will share a single approval gate inside their child workflow.
+- Grouping is based **only** on diff content. Each device keeps its own intended-config file and its own commit SHA — those flow through to the per-device apply and backup steps.
+
+If a diff group is larger than `max_batch_size`, the group is split into multiple batches. Every batch in a split group still shows the same diff content; the split exists purely to limit blast radius per approval.
+
+A run that targets 30 spine switches with `max_batch_size=10` might produce:
+
+- 1 diff group of 25 devices (the common change) split into 3 batches: 10, 10, 5.
+- 1 diff group of 3 devices (some variant — for example, devices with an extra interface) in a single batch.
+- 1 diff group of 2 devices in a single batch.
+
+That is 30 devices, 3 diff groups, and 5 child batch workflows — meaning 5 approval gates total, each reviewing one of the three unique diffs.
+
+## Verifying outcomes
+
+Confirm the run succeeded by checking all of the following:
+
+- **Parent workflow status** shows all four stages green on the Config Manager run page and reports a final summary with `total_devices`, `successful_devices`, `failed_devices`, and `rejected_devices`.
+- **Every child batch workflow** linked from the `execute_batches` display reached a terminal state. Click each batch link to confirm the per-batch outcome (approved + applied, approved with some device failures, or rejected).
+- **Discovery failures** in the parent result are an expected output, not a workflow failure. Any device that failed diff collection is listed under `discovery_failures` with the error string — typically unreachable devices, missing intended configs, or render failures. Address these separately and re-run the workflow.
+- **Backups completed** for every successfully applied device. The child workflow's `perform_backups` stage triggers a [Configuration Backup](../configuration-backup/index.mdx) per device as a child workflow; failures there mean the device is configured but no fresh backup was captured.
+- **Rejected batches.** If an approver rejected a batch, its devices appear in `rejected_devices` and never had configuration applied. Re-run a smaller scope once the underlying objection is resolved.
+
+## Common issues
+
+**No devices found with role '\<role\>'.**
+
+Discovery returned zero devices. Confirm the role name in Nautobot exactly matches what you submitted (it is case-sensitive), and that the location/status/tenant filters are not too narrow. Devices marked deploy-disabled are excluded by design — check the Config Manager Info tab in Nautobot if you expected a specific switch to appear.
+
+**No devices have configuration changes to deploy.**
+
+Every targeted device's running configuration already matches its intended configuration. This is a successful no-op. If you expected a change, confirm the render service produced a new intended config (the [Render Service](../../render/index.mdx) is triggered by Nautobot change events or template version bumps) and that the new config landed in the [Config Store](../../config-store/index.mdx).
+
+**A diff group has split into more batches than expected.**
+
+`max_batch_size` is the only knob that splits a group. Increase it if you want fewer approvals; decrease it if you want tighter blast-radius control. Splitting does not change the diff being approved — every batch in a group shows the same diff.
+
+**A batch is stuck on "Waiting for approval".**
+
+The child workflow is waiting on a human at its `review_shared_diff` stage. Click the batch link from the parent's `execute_batches` display, review the diff, and approve or reject. The parent stage stays running and updates its display each time a child completes.
+
+**Some devices in a batch failed to apply but others succeeded.**
+
+The `apply_configurations` stage runs all device applies in parallel and reports successes and failures independently. Failed devices appear in the batch's `failed_devices` map with the underlying error. Investigate the per-device error (commonly an NVUE syntax exception, a connectivity issue, or a non-retryable `DiffChangedException` if the device's running config changed mid-run) and re-run Multi-Deploy with a narrower scope once resolved.
+
+**A `DiffChangedException` is reported for a device.**
+
+The device's running configuration changed between diff collection and apply, so the diff the approver reviewed is no longer accurate. The activity does not retry — this is intentional. Re-run Multi-Deploy and a fresh diff will be collected and re-approved.
+
+## Related guides
+
+- [Controlling Running Workflows](../workflow-lifecycle/index.mdx) — approve, reject, retry, and terminate behavior, including the device-state implications of terminating mid-apply.
+- [Configuration Deploy](../configuration-deploy/index.mdx) — single-device deploy for one-off changes.
+- [Batch Deploy](../batch-deploy/index.mdx) — the per-batch child workflow, also runnable directly for ad-hoc batches.
+- [Configuration Backup](../configuration-backup/index.mdx) — the child workflow triggered for every successfully applied device.
+- [Render Service](../../render/index.mdx) — produces the intended configurations that Multi-Deploy diffs against.
+- [Config Store](../../config-store/index.mdx) — where intended and backup configurations are versioned.
+- [Hosting Options](../../hosting-options/index.mdx) — explains the deploy-disabled safeguard for Kubernetes-attached switches.

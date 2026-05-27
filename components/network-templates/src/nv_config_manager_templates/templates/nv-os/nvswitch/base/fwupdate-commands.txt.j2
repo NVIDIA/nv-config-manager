@@ -1,0 +1,23 @@
+{# Base firmware update template that uses config contexts for firmware bundle mapping #}
+{# This template uses custom filters defined in filters/device.py to access firmware bundle data #}
+
+{% set bmc_fw = device_data|firmware_component('bmc') %}
+{% if bmc_fw %}
+nv action fetch platform firmware BMC sftp://user:password@{{ (device_data|firmware_cache)[0] }}:2222/file/{{ bmc_fw.s3_path }}
+nv action install platform firmware BMC files {{ bmc_fw.file }} skip-reboot
+
+{% endif %}
+
+{% set cpld_fw = device_data|firmware_component('cpld') %}
+{% if cpld_fw %}
+nv action fetch platform firmware CPLD1 sftp://user:password@{{ (device_data|firmware_cache)[0] }}:2222/file/{{ cpld_fw.s3_path }}
+nv action install platform firmware CPLD1 files {{ cpld_fw.file }} skip-reboot
+
+{% endif %}
+
+{% set bios_fw = device_data|firmware_component('bios') %}
+{% if bios_fw %}
+nv action fetch platform firmware BIOS sftp://user:password@{{ (device_data|firmware_cache)[0] }}:2222/file/{{ bios_fw.s3_path }}
+nv action install platform firmware BIOS files {{ bios_fw.file }} skip-reboot
+
+{% endif %}

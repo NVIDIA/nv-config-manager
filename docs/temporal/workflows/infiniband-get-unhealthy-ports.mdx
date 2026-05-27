@@ -1,0 +1,30 @@
+---
+title: Infiniband Get Unhealthy Ports
+sidebar-title: Infiniband Get Unhealthy Ports
+position: 10
+---
+
+Identifies and reports unhealthy or degraded InfiniBand ports across the high-performance computing fabric.
+
+<Warning title="Experimental">
+This workflow is experimental and has not completed QA. Use it only in test or pilot environments.
+</Warning>
+
+## User Interface
+
+### Form Inputs
+
+| Field | Description | Selection Type | Required |
+| :---- | :---------- | :------------- | :------- |
+| **Site** | Choose the site containing InfiniBand infrastructure | Dropdown with available sites | Yes |
+| **Fabric Scope** | InfiniBand fabric or subnet to analyze | Dropdown with available IB fabrics | Yes |
+| **Health Thresholds** | Criteria for defining unhealthy ports | Predefined or custom threshold settings | Yes |
+
+## Workflow Execution
+
+### Execution Stages
+
+1. Discover InfiniBand fabric
+1. Collect port health data
+1. Analyze health thresholds
+1. Generate health report

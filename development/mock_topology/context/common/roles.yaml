@@ -1,0 +1,6 @@
+---
+# Roles are managed by the bootstrap job (nv_config_manager_jobs/data/roles.yaml)
+# The json.roles variable is dynamically built from device data in context/__init__.py
+# and filters out bootstrap-managed roles to avoid conflicts.
+#
+# This file previously contained common_roles which was not used by any template.

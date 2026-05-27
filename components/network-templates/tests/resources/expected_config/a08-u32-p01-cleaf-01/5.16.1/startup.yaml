@@ -1,0 +1,1580 @@
+- set:
+    bridge:
+      domain:
+        br_default:
+          stp:
+            priority: 28672
+            state:
+              up: {}
+          vlan: {}
+    evpn:
+      state: enabled
+      multihoming:
+        state: enabled
+        startup-delay: 30
+      route-advertise: {}
+    interface:
+      eth0:
+        description: a08-u44-p01-mleaf-01_swp7
+        ipv4:
+          address:
+            192.0.2.18/23: {}
+        type: eth
+      lo:
+        ipv4:
+          address:
+            10.254.254.11/32: {}
+        type: loopback
+      swp1:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp1s0:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a07-p01-dgx-01-c01_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp1s1:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a07-p01-dgx-01-c02_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp2:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp2s0:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a07-p01-dgx-01-c03_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp2s1:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a07-p01-dgx-01-c04_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp3:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp3s0:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a07-p01-dgx-01-c05_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp3s1:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a07-p01-dgx-01-c06_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp4:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp4s0:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a07-p01-dgx-01-c07_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp4s1:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a07-p01-dgx-01-c08_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp5:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp5s0:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a07-p01-dgx-01-c09_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp5s1:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a07-p01-dgx-01-c10_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp6:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp6s0:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a07-p01-dgx-01-c11_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp6s1:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a07-p01-dgx-01-c12_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp7:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp7s0:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a07-p01-dgx-01-c13_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp7s1:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a07-p01-dgx-01-c14_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp8:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp8s0:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a07-p01-dgx-01-c15_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp8s1:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a07-p01-dgx-01-c16_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp9:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp9s0:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a07-p01-dgx-01-c17_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp9s1:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a07-p01-dgx-01-c18_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp10:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp10s0:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a06-p01-dgx-02-c01_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp10s1:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a06-p01-dgx-02-c02_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp11:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp11s0:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a06-p01-dgx-02-c03_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp11s1:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a06-p01-dgx-02-c04_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp12:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp12s0:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a06-p01-dgx-02-c05_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp12s1:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a06-p01-dgx-02-c06_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp13:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp13s0:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a06-p01-dgx-02-c07_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp13s1:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a06-p01-dgx-02-c08_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp14:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp14s0:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a06-p01-dgx-02-c09_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp14s1:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a06-p01-dgx-02-c10_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp15:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp15s0:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a06-p01-dgx-02-c11_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp15s1:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a06-p01-dgx-02-c12_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp16:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp16s0:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a06-p01-dgx-02-c13_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp16s1:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a06-p01-dgx-02-c14_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp17:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp17s0:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a06-p01-dgx-02-c15_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp17s1:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a06-p01-dgx-02-c16_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp18:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp18s0:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a06-p01-dgx-02-c17_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp18s1:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a06-p01-dgx-02-c18_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp19:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp19s0:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a05-p01-dgx-03-c01_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp19s1:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a05-p01-dgx-03-c02_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp20:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp20s0:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a05-p01-dgx-03-c03_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp20s1:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a05-p01-dgx-03-c04_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp21:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp21s0:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a05-p01-dgx-03-c05_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp21s1:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a05-p01-dgx-03-c06_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp22:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp22s0:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a05-p01-dgx-03-c07_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp22s1:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a05-p01-dgx-03-c08_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp23:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp23s0:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a05-p01-dgx-03-c09_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp23s1:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a05-p01-dgx-03-c10_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp24:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp24s0:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a05-p01-dgx-03-c11_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp24s1:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a05-p01-dgx-03-c12_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp25:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp25s0:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a05-p01-dgx-03-c13_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp25s1:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a05-p01-dgx-03-c14_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp26:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp26s0:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a05-p01-dgx-03-c15_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp26s1:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a05-p01-dgx-03-c16_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp27:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp27s0:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a05-p01-dgx-03-c17_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp27s1:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a05-p01-dgx-03-c18_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp28:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp28s0:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a04-p01-dgx-04-c01_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp28s1:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a04-p01-dgx-04-c02_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp29:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp29s0:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a04-p01-dgx-04-c03_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp29s1:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a04-p01-dgx-04-c04_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp30:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp30s0:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a04-p01-dgx-04-c05_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp30s1:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a04-p01-dgx-04-c06_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp31:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp31s0:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a04-p01-dgx-04-c07_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp31s1:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a04-p01-dgx-04-c08_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp32:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp32s0:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a04-p01-dgx-04-c09_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp32s1:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a04-p01-dgx-04-c10_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp33:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp33s0:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a04-p01-dgx-04-c11_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp33s1:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a04-p01-dgx-04-c12_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp34:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp34s0:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a04-p01-dgx-04-c13_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp34s1:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a04-p01-dgx-04-c14_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp35:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp35s0:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a04-p01-dgx-04-c15_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp35s1:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a04-p01-dgx-04-c16_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp36:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp36s0:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a04-p01-dgx-04-c17_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp36s1:
+        bridge:
+          domain:
+            br_default:
+              access: 102
+        description: a04-p01-dgx-04-c18_enP22p3s0f0np0
+        link:
+          mtu: 9000
+          state:
+            up: {}
+        type: swp
+      swp53:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp53s0:
+        description: a09-u36-p01-spine-01_swp1s0
+        evpn:
+          multihoming:
+            uplink: enabled
+        ipv4:
+          address:
+            10.254.1.1/31: {}
+        link:
+          state:
+            up: {}
+        type: swp
+      swp53s1:
+        description: a09-u36-p01-spine-01_swp1s1
+        evpn:
+          multihoming:
+            uplink: enabled
+        ipv4:
+          address:
+            10.254.1.3/31: {}
+        link:
+          state:
+            up: {}
+        type: swp
+      swp54:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp54s0:
+        description: a09-u36-p01-spine-01_swp2s0
+        evpn:
+          multihoming:
+            uplink: enabled
+        ipv4:
+          address:
+            10.254.1.5/31: {}
+        link:
+          state:
+            up: {}
+        type: swp
+      swp54s1:
+        description: a09-u36-p01-spine-01_swp2s1
+        evpn:
+          multihoming:
+            uplink: enabled
+        ipv4:
+          address:
+            10.254.1.7/31: {}
+        link:
+          state:
+            up: {}
+        type: swp
+      swp55:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp55s0:
+        description: a09-u36-p01-spine-01_swp3s0
+        evpn:
+          multihoming:
+            uplink: enabled
+        ipv4:
+          address:
+            10.254.1.9/31: {}
+        link:
+          state:
+            up: {}
+        type: swp
+      swp55s1:
+        description: a09-u36-p01-spine-01_swp3s1
+        evpn:
+          multihoming:
+            uplink: enabled
+        ipv4:
+          address:
+            10.254.1.11/31: {}
+        link:
+          state:
+            up: {}
+        type: swp
+      swp56:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp56s0:
+        description: a09-u36-p01-spine-01_swp4s0
+        evpn:
+          multihoming:
+            uplink: enabled
+        ipv4:
+          address:
+            10.254.1.13/31: {}
+        link:
+          state:
+            up: {}
+        type: swp
+      swp56s1:
+        description: a09-u36-p01-spine-01_swp4s1
+        evpn:
+          multihoming:
+            uplink: enabled
+        ipv4:
+          address:
+            10.254.1.15/31: {}
+        link:
+          state:
+            up: {}
+        type: swp
+      swp57:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp57s0:
+        description: a09-u36-p01-spine-01_swp5s0
+        evpn:
+          multihoming:
+            uplink: enabled
+        ipv4:
+          address:
+            10.254.1.17/31: {}
+        link:
+          state:
+            up: {}
+        type: swp
+      swp57s1:
+        description: a09-u36-p01-spine-01_swp5s1
+        evpn:
+          multihoming:
+            uplink: enabled
+        ipv4:
+          address:
+            10.254.1.19/31: {}
+        link:
+          state:
+            up: {}
+        type: swp
+      swp58:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp58s0:
+        description: a09-u36-p01-spine-01_swp6s0
+        evpn:
+          multihoming:
+            uplink: enabled
+        ipv4:
+          address:
+            10.254.1.21/31: {}
+        link:
+          state:
+            up: {}
+        type: swp
+      swp58s1:
+        description: a09-u36-p01-spine-01_swp6s1
+        evpn:
+          multihoming:
+            uplink: enabled
+        ipv4:
+          address:
+            10.254.1.23/31: {}
+        link:
+          state:
+            up: {}
+        type: swp
+      swp59:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp59s0:
+        description: b09-u36-p01-spine-02_swp1s0
+        evpn:
+          multihoming:
+            uplink: enabled
+        ipv4:
+          address:
+            10.254.2.1/31: {}
+        link:
+          state:
+            up: {}
+        type: swp
+      swp59s1:
+        description: b09-u36-p01-spine-02_swp1s1
+        evpn:
+          multihoming:
+            uplink: enabled
+        ipv4:
+          address:
+            10.254.2.3/31: {}
+        link:
+          state:
+            up: {}
+        type: swp
+      swp60:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp60s0:
+        description: b09-u36-p01-spine-02_swp2s0
+        evpn:
+          multihoming:
+            uplink: enabled
+        ipv4:
+          address:
+            10.254.2.5/31: {}
+        link:
+          state:
+            up: {}
+        type: swp
+      swp60s1:
+        description: b09-u36-p01-spine-02_swp2s1
+        evpn:
+          multihoming:
+            uplink: enabled
+        ipv4:
+          address:
+            10.254.2.7/31: {}
+        link:
+          state:
+            up: {}
+        type: swp
+      swp61:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp61s0:
+        description: b09-u36-p01-spine-02_swp3s0
+        evpn:
+          multihoming:
+            uplink: enabled
+        ipv4:
+          address:
+            10.254.2.9/31: {}
+        link:
+          state:
+            up: {}
+        type: swp
+      swp61s1:
+        description: b09-u36-p01-spine-02_swp3s1
+        evpn:
+          multihoming:
+            uplink: enabled
+        ipv4:
+          address:
+            10.254.2.11/31: {}
+        link:
+          state:
+            up: {}
+        type: swp
+      swp62:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp62s0:
+        description: b09-u36-p01-spine-02_swp4s0
+        evpn:
+          multihoming:
+            uplink: enabled
+        ipv4:
+          address:
+            10.254.2.13/31: {}
+        link:
+          state:
+            up: {}
+        type: swp
+      swp62s1:
+        description: b09-u36-p01-spine-02_swp4s1
+        evpn:
+          multihoming:
+            uplink: enabled
+        ipv4:
+          address:
+            10.254.2.15/31: {}
+        link:
+          state:
+            up: {}
+        type: swp
+      swp63:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp63s0:
+        description: b09-u36-p01-spine-02_swp5s0
+        evpn:
+          multihoming:
+            uplink: enabled
+        ipv4:
+          address:
+            10.254.2.17/31: {}
+        link:
+          state:
+            up: {}
+        type: swp
+      swp63s1:
+        description: b09-u36-p01-spine-02_swp5s1
+        evpn:
+          multihoming:
+            uplink: enabled
+        ipv4:
+          address:
+            10.254.2.19/31: {}
+        link:
+          state:
+            up: {}
+        type: swp
+      swp64:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp64s0:
+        description: b09-u36-p01-spine-02_swp6s0
+        evpn:
+          multihoming:
+            uplink: enabled
+        ipv4:
+          address:
+            10.254.2.21/31: {}
+        link:
+          state:
+            up: {}
+        type: swp
+      swp64s1:
+        description: b09-u36-p01-spine-02_swp6s1
+        evpn:
+          multihoming:
+            uplink: enabled
+        ipv4:
+          address:
+            10.254.2.23/31: {}
+        link:
+          state:
+            up: {}
+        type: swp
+      vlan102:
+        ipv4:
+          address:
+            10.78.145.1/25: {}
+        vrf: INBAND
+        type: svi
+        vlan: 102
+    nve:
+      vxlan:
+        arp-nd-suppress: enabled
+        state: enabled
+        source:
+          address: 10.254.254.11
+    router:
+      bgp:
+        autonomous-system: 4230000012
+        state: enabled
+        graceful-restart:
+          mode: full
+        router-id: 10.254.254.11
+      policy:
+        route-map:
+          RM_ADD_WECMP:
+            rule:
+              '10':
+                action:
+                  permit: {}
+                description: RM_ADD_WECMP_COMMUNITY
+                set:
+                  ext-community-bw: multipaths
+          RM_LOOPBACK:
+            rule:
+              '10':
+                action:
+                  permit: {}
+                description: permit_lo_ip
+                match:
+                  interface: lo
+                  type: ipv4
+          RM_SUM_WECMP:
+            rule:
+              '10':
+                action:
+                  permit: {}
+                description: RM_SUM_WECMP_COMMUNITY
+                set:
+                  ext-community-bw: cumulative
+    system:
+      aaa:
+        user:
+          cumulus:
+            hashed-password: $6$H0QFj2rx$nZvUivJum/KP/YIvEu1iyuDUZcFGc48GMnoaAqrtW/dwbVtDsdqF1xCOD.eIR1ukFxwoLzze9PHGPDK0f2KHt.
+            role: system-admin
+          nv-config-manager:
+            hashed-password: $6$H0QFj2rx$Vz4idKh.iwlfraq9WAV5sy1STcsz75Bv9YDx3LrJEoeB7vvkg.VQwPpssmhZpNBgY9iTCTiUQnjeoqk261KYp.
+            role: system-admin
+      security:
+        password-hardening:
+          state: disabled
+      hostname: A08-U32-P01-CLEAF-01
+      date-time:
+        timezone: Etc/UTC
+      config:
+        auto-save:
+          state: enabled
+      dns:
+        server:
+          192.0.2.8: {}
+          192.0.2.9: {}
+      lldp:
+        dot1-tlv: enabled
+        mode: force-send-lldp
+      ntp:
+        server:
+          192.0.2.8:
+            iburst: enabled
+            state: enabled
+          192.0.2.9:
+            iburst: enabled
+            state: enabled
+    vrf:
+      INBAND:
+        evpn:
+          state: enabled
+          vlan: 4001
+          vni:
+            '1000': {}
+        loopback:
+          ipv4:
+            address:
+              10.78.151.192/32: {}
+        router:
+          bgp:
+            address-family:
+              ipv4-unicast:
+                state: enabled
+                redistribute:
+                  connected:
+                    state: enabled
+                route-export:
+                  to-evpn:
+                    state: enabled
+              l2vpn-evpn:
+                state: enabled
+            state: enabled
+      default:
+        evpn:
+          state: enabled
+        router:
+          bgp:
+            address-family:
+              ipv4-unicast:
+                state: enabled
+                redistribute:
+                  connected:
+                    state: enabled
+                    route-map: RM_LOOPBACK
+              l2vpn-evpn:
+                state: enabled
+            state: enabled
+            neighbor:
+              10.254.1.0:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.10:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.12:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.14:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.16:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.18:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.2:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.20:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.22:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.4:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.6:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.8:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.2.0:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.2.10:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.2.12:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.2.14:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.2.16:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.2.18:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.2.2:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.2.20:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.2.22:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.2.4:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.2.6:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.2.8:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.254.16:
+                peer-group: EVPN
+                type: numbered
+              10.254.254.34:
+                peer-group: EVPN
+                type: numbered
+            path-selection:
+              multipath:
+                aspath-ignore: enabled
+            peer-group:
+              EVPN:
+                address-family:
+                  ipv4-unicast:
+                    state: disabled
+                  l2vpn-evpn:
+                    state: enabled
+                bfd:
+                  profile: default-bfd-multihop
+                description: evpn_vxlan_control_plane
+                multihop-ttl: 2
+                remote-as: external
+                update-source: lo
+              UNDERLAY:
+                address-family:
+                  ipv4-unicast:
+                    policy:
+                      outbound:
+                        route-map: RM_ADD_WECMP
+                bfd:
+                  profile: default-bfd
+                description: underlay_interconnect
+                remote-as: external
+      mgmt:
+        router:
+          static:
+            0.0.0.0/0:
+              address-family: ipv4-unicast
+              via:
+                192.0.2.1:
+                  type: ipv4-address

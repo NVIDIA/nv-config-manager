@@ -1,0 +1,644 @@
+{
+    "Dhcp4": {
+        "interfaces-config": {
+            "interfaces": [
+                "eth0"
+            ],
+            "service-sockets-max-retries": 5,
+            "service-sockets-require-all": true
+        },
+        "control-socket": {
+            "socket-type": "unix",
+            "socket-name": "/var/run/kea/control_socket_4"
+        },
+        "loggers": [
+            {
+                "name": "kea-dhcp4",
+                "output-options": [
+                    {
+                        "output": "stdout"
+                    }
+                ],
+                "severity": "DEBUG"
+            }
+        ],
+        "hooks-libraries": [
+            {
+                "library": "/usr/lib/kea/hooks/libdhcp_lease_cmds.so"
+            }
+        ],
+        "option-def": [
+            {
+                "name": "cumulus-provision-url",
+                "code": 239,
+                "type": "string",
+                "array": false,
+                "record-types": "",
+                "space": "dhcp4",
+                "encapsulate": ""
+            }
+        ],
+        "reservations-global": true,
+        "reservations": [
+            {
+                "hostname": "test-device-1",
+                "hw-address": "00:11:22:33:44:55",
+                "ip-address": "10.23.160.66",
+                "option-data": []
+            },
+            {
+                "hostname": "test-device-2",
+                "hw-address": "00:11:22:33:44:66",
+                "ip-address": "10.23.161.66",
+                "option-data": []
+            },
+            {
+                "hostname": "SPINE1-GP1-CIN3-PDX01",
+                "client-id": "00:4d:54:32:34:31:35:58:5a:30:34:51:59",
+                "option-data": [
+                    {
+                        "name": "cumulus-provision-url",
+                        "code": 239,
+                        "data": "http://10.48.135.100/v1/device/e768a90c-f868-4d92-9b4f-cefa57b15e91/boot-script"
+                    },
+                    {
+                        "name": "boot-file-name",
+                        "data": "http://10.48.135.100/v1/device/e768a90c-f868-4d92-9b4f-cefa57b15e91/onie"
+                    }
+                ],
+                "ip-address": "10.217.162.42"
+            },
+            {
+                "hostname": "LEAF1-GP1-CIN2-PDX01",
+                "client-id": "00:4d:54:32:34:31:35:58:5a:30:34:51:31",
+                "option-data": [
+                    {
+                        "name": "cumulus-provision-url",
+                        "code": 239,
+                        "data": "http://10.48.135.100/v1/device/0158d65b-4124-4987-93d5-10a0aff77d61/boot-script"
+                    },
+                    {
+                        "name": "boot-file-name",
+                        "data": "http://10.48.135.100/v1/device/0158d65b-4124-4987-93d5-10a0aff77d61/onie"
+                    }
+                ],
+                "ip-address": "10.217.162.51"
+            },
+            {
+                "hostname": "LEAF2-GP1-CIN1-PDX01",
+                "client-id": "00:4d:54:32:34:31:35:58:5a:30:34:51:35",
+                "option-data": [
+                    {
+                        "name": "cumulus-provision-url",
+                        "code": 239,
+                        "data": "http://10.48.135.100/v1/device/510de8e8-9589-4517-b67c-70b9affa9b28/boot-script"
+                    },
+                    {
+                        "name": "boot-file-name",
+                        "data": "http://10.48.135.100/v1/device/510de8e8-9589-4517-b67c-70b9affa9b28/onie"
+                    }
+                ],
+                "ip-address": "10.217.162.36"
+            },
+            {
+                "hostname": "LEAF2-GP1-CIN2-PDX01",
+                "client-id": "00:4d:54:32:34:31:35:58:5a:30:34:50:55",
+                "option-data": [
+                    {
+                        "name": "cumulus-provision-url",
+                        "code": 239,
+                        "data": "http://10.48.135.100/v1/device/7ff67cec-4009-44d8-8f28-25e8a26764ec/boot-script"
+                    },
+                    {
+                        "name": "boot-file-name",
+                        "data": "http://10.48.135.100/v1/device/7ff67cec-4009-44d8-8f28-25e8a26764ec/onie"
+                    }
+                ],
+                "ip-address": "10.217.162.52"
+            },
+            {
+                "hostname": "LEAF1-GP1-CIN1-PDX01",
+                "client-id": "00:4d:54:32:34:31:35:58:5a:30:34:51:57",
+                "option-data": [
+                    {
+                        "name": "cumulus-provision-url",
+                        "code": 239,
+                        "data": "http://10.48.135.100/v1/device/e9243d67-dad0-4f4b-9f6d-9cc977ff0023/boot-script"
+                    },
+                    {
+                        "name": "boot-file-name",
+                        "data": "http://10.48.135.100/v1/device/e9243d67-dad0-4f4b-9f6d-9cc977ff0023/onie"
+                    }
+                ],
+                "ip-address": "10.217.162.35"
+            },
+            {
+                "hostname": "LEAF2-GP1-CIN3-PDX01",
+                "client-id": "00:4d:54:32:34:31:38:58:5a:30:30:46:58",
+                "option-data": [
+                    {
+                        "name": "cumulus-provision-url",
+                        "code": 239,
+                        "data": "http://10.48.135.100/v1/device/76984a54-3188-418b-8e03-0489355e19fc/boot-script"
+                    },
+                    {
+                        "name": "boot-file-name",
+                        "data": "http://10.48.135.100/v1/device/76984a54-3188-418b-8e03-0489355e19fc/onie"
+                    }
+                ],
+                "ip-address": "10.217.162.44"
+            },
+            {
+                "hostname": "LEAF1-GP1-CIN3-PDX01",
+                "client-id": "00:4d:54:32:34:31:35:58:5a:30:34:50:56",
+                "option-data": [
+                    {
+                        "name": "cumulus-provision-url",
+                        "code": 239,
+                        "data": "http://10.48.135.100/v1/device/cb60e17a-b426-471f-a5c5-255f45368e7c/boot-script"
+                    },
+                    {
+                        "name": "boot-file-name",
+                        "data": "http://10.48.135.100/v1/device/cb60e17a-b426-471f-a5c5-255f45368e7c/onie"
+                    }
+                ],
+                "ip-address": "10.217.162.43"
+            },
+            {
+                "hostname": "SPINE1-GP1-CIN1-PDX01",
+                "client-id": "00:4d:54:32:34:31:35:58:5a:30:34:51:32",
+                "option-data": [
+                    {
+                        "name": "cumulus-provision-url",
+                        "code": 239,
+                        "data": "http://10.48.135.100/v1/device/f8788f54-d511-48f1-8f5e-c102de59f15f/boot-script"
+                    },
+                    {
+                        "name": "boot-file-name",
+                        "data": "http://10.48.135.100/v1/device/f8788f54-d511-48f1-8f5e-c102de59f15f/onie"
+                    }
+                ],
+                "ip-address": "10.217.162.34"
+            },
+            {
+                "hostname": "SPINE1-GP1-CIN2-PDX01",
+                "client-id": "00:4d:54:32:34:31:35:58:5a:30:34:4d:47",
+                "option-data": [
+                    {
+                        "name": "cumulus-provision-url",
+                        "code": 239,
+                        "data": "http://10.48.135.100/v1/device/32fdefda-df59-4285-9d6e-a1f220906a8d/boot-script"
+                    },
+                    {
+                        "name": "boot-file-name",
+                        "data": "http://10.48.135.100/v1/device/32fdefda-df59-4285-9d6e-a1f220906a8d/onie"
+                    }
+                ],
+                "ip-address": "10.217.162.50"
+            },
+            {
+                "hostname": "console1-cp1-smn1-sitea",
+                "hw-address": "00:13:C6:0A:DD:3D",
+                "ip-address": "192.0.2.130",
+                "option-data": []
+            },
+            {
+                "hostname": "AZ51-AD504-IBSPINE-02",
+                "hw-address": "58:A2:E1:85:E3:A8",
+                "option-data": [
+                    {
+                        "data": "\\,full-config\\,",
+                        "name": "boot-file-name"
+                    },
+                    {
+                        "data": "\\,http://10.48.135.72/v1/device/73c1eddf-d443-4b29-8ca0-f43f1358f7d8/config/\\,",
+                        "name": "tftp-server-name"
+                    }
+                ],
+                "ip-address": "10.91.50.201"
+            },
+            {
+                "hostname": "WIWYNN-QS1-NVLINK1",
+                "hw-address": "b8:e9:24:2e:f9:44",
+                "option-data": [
+                    {
+                        "data": "http://10.48.135.72/v1/device/2295db65-e1ac-4349-98fb-3fe69becadd6/config/ztp.json",
+                        "name": "boot-file-name"
+                    }
+                ],
+                "ip-address": "172.16.2.101"
+            },
+            {
+                "hostname": "WIWYNN-QS1-NVLINK2",
+                "client-id": "4e:56:4f:53:23:23:4e:35:31:31:30:5f:4c:44:23:23:41:31:4e:4a:34:32:43:30:30:31:39",
+                "option-data": [
+                    {
+                        "data": "http://10.48.135.72/v1/device/e2977d85-4f77-4233-9ecf-3aa5127483ff/config/ztp.json",
+                        "name": "boot-file-name"
+                    }
+                ],
+                "ip-address": "172.16.2.103"
+            },
+            {
+                "hostname": "nvswitch1-nvl1-gp1-pdx01",
+                "hw-address": "50:00:E6:79:98:D0",
+                "option-data": [
+                    {
+                        "name": "boot-file-name",
+                        "data": "http://10.48.135.100/v1/device/bd1c19ea-50a3-4bfb-97e4-f796e1b66b08/config/ztp.json"
+                    }
+                ],
+                "ip-address": "10.217.188.226"
+            },
+            {
+                "hostname": "nvswitch1-nvl1-gp1-pdx01",
+                "ip-address": "10.217.188.227",
+                "hw-address": "64:33:AA:26:C4:BE",
+                "option-data": []
+            },
+            {
+                "hostname": "nvswitch1-nvl1-gp1-pdx01",
+                "ip-address": "10.217.188.162",
+                "hw-address": "50:00:E6:79:98:D1",
+                "option-data": [
+                    {
+                        "name": "boot-file-name",
+                        "data": "http://10.48.135.100/v1/device/bd1c19ea-50a3-4bfb-97e4-f796e1b66b08/config/ztp.json"
+                    }
+                ]
+            },
+            {
+                "hw-address": "c8:4b:d6:7a:e9:e2",
+                "hostname": "rno1-m04-c10-server1.lab1",
+                "ip-address": "10.180.166.60",
+                "option-data": []
+            },
+            {
+                "hw-address": "58:a2:e1:72:dd:c5",
+                "hostname": "rno1-m04-c10-server1-dpu1.lab1",
+                "ip-address": "10.180.166.41",
+                "option-data": []
+            },
+            {
+                "hw-address": "58:a2:e1:72:b9:1b",
+                "hostname": "rno1-m04-c10-server1-dpu2.lab1",
+                "ip-address": "10.180.166.42",
+                "option-data": []
+            },
+            {
+                "hw-address": "c8:4b:d6:7a:e8:f2",
+                "hostname": "rno1-m04-c10-server2.lab1",
+                "ip-address": "10.180.166.61",
+                "option-data": []
+            },
+            {
+                "hw-address": "58:a2:e1:72:ca:2d",
+                "hostname": "rno1-m04-c10-server2-dpu1.lab1",
+                "ip-address": "10.180.166.43",
+                "option-data": []
+            },
+            {
+                "hw-address": "58:a2:e1:72:c9:6f",
+                "hostname": "rno1-m04-c10-server2-dpu2.lab1",
+                "ip-address": "10.180.166.44",
+                "option-data": []
+            },
+            {
+                "hw-address": "d0:8e:79:f8:92:44",
+                "hostname": "rno1-m04-c10-server3.lab1",
+                "ip-address": "10.180.166.62",
+                "option-data": []
+            },
+            {
+                "hw-address": "58:a2:e1:72:c9:e0",
+                "hostname": "rno1-m04-c10-server3-dpu1.lab1",
+                "ip-address": "10.180.166.45",
+                "option-data": []
+            },
+            {
+                "hw-address": "58:a2:e1:72:dd:52",
+                "hostname": "rno1-m04-c10-server3-dpu2.lab1",
+                "ip-address": "10.180.166.46",
+                "option-data": []
+            },
+            {
+                "hw-address": "38:7c:76:8d:6f:13",
+                "hostname": "rno1-m04-c10-server4.lab1",
+                "ip-address": "10.180.166.54",
+                "option-data": []
+            },
+            {
+                "hw-address": "58:a2:e1:84:74:fb",
+                "hostname": "rno1-m04-c10-server4-dpu1.lab1",
+                "ip-address": "10.180.166.55",
+                "option-data": []
+            },
+            {
+                "hw-address": "5c:ed:8c:39:23:80",
+                "hostname": "no1-m04-c10-server5.lab1",
+                "ip-address": "10.180.166.56",
+                "option-data": []
+            },
+            {
+                "hw-address": "5c:ed:8c:3a:34:f8",
+                "hostname": "no1-m04-c10-server6.lab1",
+                "ip-address": "10.180.166.57",
+                "option-data": []
+            },
+            {
+                "hw-address": "5c:ed:8c:39:13:7e",
+                "hostname": "no1-m04-c10-server7.lab1",
+                "ip-address": "10.180.166.58",
+                "option-data": []
+            }
+        ],
+        "subnet4": [
+            {
+                "subnet": "10.180.166.0/26",
+                "id": 1,
+                "option-data": [
+                    {
+                        "data": "10.180.166.2",
+                        "name": "routers"
+                    }
+                ],
+                "pools": [],
+                "reservations-global": true,
+                "reservations-in-subnet": true
+            },
+            {
+                "subnet": "10.91.36.0/25",
+                "id": 4,
+                "option-data": [
+                    {
+                        "data": "10.91.36.1",
+                        "name": "routers"
+                    }
+                ],
+                "pools": [],
+                "reservations-global": true,
+                "reservations-in-subnet": false
+            },
+            {
+                "subnet": "10.91.50.128/25",
+                "id": 5,
+                "option-data": [
+                    {
+                        "data": "10.91.50.193",
+                        "name": "routers"
+                    }
+                ],
+                "pools": [],
+                "reservations-global": true,
+                "reservations-in-subnet": false
+            },
+            {
+                "subnet": "198.51.100.132/31",
+                "id": 6,
+                "option-data": [
+                    {
+                        "data": "198.51.100.132",
+                        "name": "routers"
+                    },
+                    {
+                        "data": "255.255.255.255",
+                        "name": "broadcast-address"
+                    },
+                    {
+                        "code": 239,
+                        "data": "http://10.48.175.210/v1/device/18e0fa2c-317b-4abb-b55d-18fa9cfe5f09/boot-script",
+                        "name": "cumulus-provision-url"
+                    },
+                    {
+                        "data": "http://10.48.175.210/v1/device/18e0fa2c-317b-4abb-b55d-18fa9cfe5f09/onie",
+                        "name": "boot-file-name"
+                    }
+                ],
+                "pools": [
+                    {
+                        "pool": "198.51.100.133-198.51.100.133"
+                    }
+                ],
+                "reservations-global": false,
+                "reservations-in-subnet": false
+            },
+            {
+                "subnet": "198.51.100.72/31",
+                "id": 7,
+                "option-data": [
+                    {
+                        "data": "198.51.100.72",
+                        "name": "routers"
+                    },
+                    {
+                        "data": "255.255.255.255",
+                        "name": "broadcast-address"
+                    },
+                    {
+                        "code": 239,
+                        "data": "http://10.48.175.210/v1/device/18e0fa2c-317b-4abb-b55d-18fa9cfe5f09/boot-script",
+                        "name": "cumulus-provision-url"
+                    },
+                    {
+                        "data": "http://10.48.175.210/v1/device/18e0fa2c-317b-4abb-b55d-18fa9cfe5f09/onie",
+                        "name": "boot-file-name"
+                    }
+                ],
+                "pools": [
+                    {
+                        "pool": "198.51.100.73-198.51.100.73"
+                    }
+                ],
+                "reservations-global": false,
+                "reservations-in-subnet": false
+            },
+            {
+                "subnet": "203.0.113.0/30",
+                "id": 8,
+                "option-data": [
+                    {
+                        "data": "203.0.113.1",
+                        "name": "routers"
+                    },
+                    {
+                        "name": "boot-file-name",
+                        "data": "http://10.48.175.210/v1/device/137ab7d5-d2ca-4cdc-ad7b-7bb485eb103e/boot-script"
+                    }
+                ],
+                "reservations-global": false,
+                "reservations-in-subnet": false,
+                "pools": [
+                    {
+                        "pool": "203.0.113.2-203.0.113.2"
+                    }
+                ]
+            },
+            {
+                "subnet": "203.0.113.4/31",
+                "id": 9,
+                "option-data": [
+                    {
+                        "data": "203.0.113.4",
+                        "name": "routers"
+                    },
+                    {
+                        "data": "255.255.255.255",
+                        "name": "broadcast-address"
+                    },
+                    {
+                        "name": "cumulus-provision-url",
+                        "code": 239,
+                        "data": "http://10.48.175.210/v1/device/812c4731-062c-4422-a949-49a088ee2119/boot-script"
+                    },
+                    {
+                        "name": "boot-file-name",
+                        "data": "http://10.48.175.210/v1/device/812c4731-062c-4422-a949-49a088ee2119/onie"
+                    }
+                ],
+                "reservations-global": false,
+                "reservations-in-subnet": false,
+                "pools": [
+                    {
+                        "pool": "203.0.113.5-203.0.113.5"
+                    }
+                ]
+            },
+            {
+                "subnet": "203.0.113.64/30",
+                "id": 10,
+                "option-data": [
+                    {
+                        "data": "203.0.113.65",
+                        "name": "routers"
+                    },
+                    {
+                        "name": "boot-file-name",
+                        "data": "http://10.48.175.210/v1/device/137ab7d5-d2ca-4cdc-ad7b-7bb485eb103e/boot-script"
+                    }
+                ],
+                "reservations-global": false,
+                "reservations-in-subnet": false,
+                "pools": [
+                    {
+                        "pool": "203.0.113.66-203.0.113.66"
+                    }
+                ]
+            },
+            {
+                "subnet": "10.23.160.0/26",
+                "id": 2,
+                "option-data": [
+                    {
+                        "name": "routers",
+                        "data": "10.23.160.2"
+                    }
+                ],
+                "pools": [
+                    {
+                        "pool": "10.23.160.10-10.23.160.11"
+                    }
+                ]
+            },
+            {
+                "subnet": "10.23.161.0/26",
+                "id": 3,
+                "option-data": [
+                    {
+                        "name": "routers",
+                        "data": "10.23.161.2"
+                    }
+                ],
+                "pools": [
+                    {
+                        "pool": "10.23.161.10-10.23.161.11"
+                    }
+                ]
+            },
+            {
+                "subnet": "10.217.162.0/24",
+                "id": 11,
+                "option-data": [
+                    {
+                        "name": "routers",
+                        "data": "10.217.162.1"
+                    }
+                ],
+                "pools": [],
+                "reservations-global": true,
+                "reservations-in-subnet": true
+            },
+            {
+                "subnet": "10.217.188.0/24",
+                "id": 12,
+                "option-data": [
+                    {
+                        "name": "routers",
+                        "data": "10.217.188.1"
+                    }
+                ],
+                "pools": [],
+                "reservations-global": true,
+                "reservations-in-subnet": true
+            },
+            {
+                "subnet": "10.23.160.64/26",
+                "id": 13,
+                "option-data": [
+                    {
+                        "name": "routers",
+                        "data": "10.23.160.65"
+                    }
+                ],
+                "pools": [],
+                "reservations-global": true,
+                "reservations-in-subnet": true
+            },
+            {
+                "subnet": "10.23.161.64/26",
+                "id": 14,
+                "option-data": [
+                    {
+                        "name": "routers",
+                        "data": "10.23.161.65"
+                    }
+                ],
+                "pools": [],
+                "reservations-global": true,
+                "reservations-in-subnet": true
+            },
+            {
+                "subnet": "172.16.2.0/24",
+                "id": 15,
+                "option-data": [
+                    {
+                        "name": "routers",
+                        "data": "172.16.2.1"
+                    }
+                ],
+                "pools": [],
+                "reservations-global": true,
+                "reservations-in-subnet": true
+            },
+            {
+                "subnet": "192.0.2.0/24",
+                "id": 16,
+                "option-data": [
+                    {
+                        "name": "routers",
+                        "data": "192.0.2.1"
+                    }
+                ],
+                "pools": [],
+                "reservations-global": true,
+                "reservations-in-subnet": true
+            }
+        ],
+        "lease-database": {
+            "type": "postgresql",
+            "name": "kea_dhcp",
+            "host": "dhcp-db.example.local",
+            "user": "kea_user",
+            "password": "DUMMY"
+        }
+    }
+}

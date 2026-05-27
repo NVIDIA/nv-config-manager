@@ -1,0 +1,27 @@
+---
+
+{% if json.devices is defined and json.devices | length > 0 %}
+ip_addresses:
+  {% for device in json.devices %}
+  {% for intf in device.interfaces %}
+  {% for ip in intf.ip_addresses %}
+  {% if ip.address %}
+  - "!create_or_update:address": {{ ip.address }}
+    status__name: {{ global_defaults.ip_address_status }}
+    {% set is_mgmt = intf.name == 'eth0' or intf.name.startswith('Management') or intf.mgmt_only %}
+    {% set is_uplink = intf.role is defined and intf.role and intf.role.name == 'Uplink' %}
+    {% if is_mgmt %}
+    tags:
+      - "!get:name": dhcp-reserve
+    {% elif is_uplink %}
+    {# SMN uplinks use pools, not reservations #}
+    tags:
+      - "!get:name": dhcp-pool
+    {% endif %}
+  {% endif %}
+  {% endfor %}
+  {% endfor %}
+  {% endfor %}
+{% else %}
+ip_addresses: []
+{% endif %}

@@ -1,0 +1,919 @@
+- set:
+    bridge:
+      domain:
+        br_default:
+          stp:
+            priority: 28672
+            state:
+              up: {}
+          vlan:
+            '201':
+              vni:
+                '2001': {}
+            '203':
+              vni:
+                '2003': {}
+    evpn:
+      enable: on
+      multihoming:
+        enable: on
+        startup-delay: 30
+      route-advertise: {}
+    interface:
+      eth0:
+        description: b08-u44-p01-mleaf-02_swp47
+        ipv4:
+          address:
+            192.0.2.139/23: {}
+        type: eth
+      lo:
+        ipv4:
+          address:
+            10.254.254.13/32: {}
+        type: loopback
+      swp1:
+        bridge:
+          domain:
+            br_default:
+              access: 201
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a02-u28-p01-rl00-ibspine-01_eth0
+        link:
+          state:
+            up: {}
+        type: swp
+      swp2:
+        bridge:
+          domain:
+            br_default:
+              access: 201
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a02-u34-p01-rl00-ibspine-02_eth0
+        link:
+          state:
+            up: {}
+        type: swp
+      swp3:
+        bridge:
+          domain:
+            br_default:
+              access: 201
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a03-u16-p01-rl01-ibleaf-01_eth0
+        link:
+          state:
+            up: {}
+        type: swp
+      swp4:
+        bridge:
+          domain:
+            br_default:
+              access: 201
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a03-u28-p01-rl03-ibleaf-01_eth0
+        link:
+          state:
+            up: {}
+        type: swp
+      swp5:
+        bridge:
+          domain:
+            br_default:
+              access: 201
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a03-u22-p01-rl01-ibleaf-02_eth0
+        link:
+          state:
+            up: {}
+        type: swp
+      swp6:
+        bridge:
+          domain:
+            br_default:
+              access: 201
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a03-u34-p01-rl03-ibleaf-02_eth0
+        link:
+          state:
+            up: {}
+        type: swp
+      swp7:
+        bridge:
+          domain:
+            br_default:
+              access: 201
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a08-u32-p01-cleaf-01_eth0
+        link:
+          state:
+            up: {}
+        type: swp
+      swp8:
+        bridge:
+          domain:
+            br_default:
+              access: 201
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a08-u36-p01-cleaf-03_eth0
+        link:
+          state:
+            up: {}
+        type: swp
+      swp9:
+        bridge:
+          domain:
+            br_default:
+              access: 201
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a04-u44-p01-tor-01_eth0
+        link:
+          state:
+            up: {}
+        type: swp
+      swp10:
+        bridge:
+          domain:
+            br_default:
+              access: 201
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a04-u45-p01-tor-02_eth0
+        link:
+          state:
+            up: {}
+        type: swp
+      swp11:
+        bridge:
+          domain:
+            br_default:
+              access: 201
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a05-u44-p01-tor-01_eth0
+        link:
+          state:
+            up: {}
+        type: swp
+      swp12:
+        bridge:
+          domain:
+            br_default:
+              access: 201
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a05-u45-p01-tor-02_eth0
+        link:
+          state:
+            up: {}
+        type: swp
+      swp13:
+        bridge:
+          domain:
+            br_default:
+              access: 201
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a06-u44-p01-tor-01_eth0
+        link:
+          state:
+            up: {}
+        type: swp
+      swp14:
+        bridge:
+          domain:
+            br_default:
+              access: 201
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a06-u45-p01-tor-02_eth0
+        link:
+          state:
+            up: {}
+        type: swp
+      swp15:
+        bridge:
+          domain:
+            br_default:
+              access: 201
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a07-u44-p01-tor-01_eth0
+        link:
+          state:
+            up: {}
+        type: swp
+      swp16:
+        bridge:
+          domain:
+            br_default:
+              access: 201
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a07-u45-p01-tor-02_eth0
+        link:
+          state:
+            up: {}
+        type: swp
+      swp17:
+        bridge:
+          domain:
+            br_default:
+              access: 201
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a09-u36-p01-spine-01_eth0
+        link:
+          state:
+            up: {}
+        type: swp
+      swp18:
+        bridge:
+          domain:
+            br_default:
+              access: 201
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a09-u28-p01-bleaf-01_eth0
+        link:
+          state:
+            up: {}
+        type: swp
+      swp19:
+        bridge:
+          domain:
+            br_default:
+              access: 201
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a09-u32-p01-sleaf-01_eth0
+        link:
+          state:
+            up: {}
+        type: swp
+      swp20:
+        bridge:
+          domain:
+            br_default:
+              access: 201
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a08-u04-p01-bcm-01_rf0
+        link:
+          state:
+            up: {}
+        type: swp
+      swp21:
+        bridge:
+          domain:
+            br_default:
+              access: 201
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a08-u06-p01-k8s-admin-01_rf0
+        link:
+          state:
+            up: {}
+        type: swp
+      swp22:
+        bridge:
+          domain:
+            br_default:
+              access: 201
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a08-u08-p01-k8s-runai-03_rf0
+        link:
+          state:
+            up: {}
+        type: swp
+      swp23:
+        bridge:
+          domain:
+            br_default:
+              access: 203
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a08-u11-p01-c2-bk-01_rf0
+        link:
+          state:
+            up: {}
+        type: swp
+      swp24:
+        bridge:
+          domain:
+            br_default:
+              access: 201
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a09-u04-p01-k8s-admin-03_rf0
+        link:
+          state:
+            up: {}
+        type: swp
+      swp25:
+        bridge:
+          domain:
+            br_default:
+              access: 201
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a09-u06-p01-slurm-01_rf0
+        link:
+          state:
+            up: {}
+        type: swp
+      swp26:
+        bridge:
+          domain:
+            br_default:
+              access: 201
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a09-u08-p01-k8s-runai-01_rf0
+        link:
+          state:
+            up: {}
+        type: swp
+      swp27:
+        bridge:
+          domain:
+            br_default:
+              access: 203
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a09-u11-p01-c2-bk-03_rf0
+        link:
+          state:
+            up: {}
+        type: swp
+      swp28:
+        bridge:
+          domain:
+            br_default:
+              access: 203
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a08-u15-p01-2bcm-01_rf0
+        link:
+          state:
+            up: {}
+        type: swp
+      swp29:
+        bridge:
+          domain:
+            br_default:
+              access: 203
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a08-u17-p01-2k8s-admin-01_rf0
+        link:
+          state:
+            up: {}
+        type: swp
+      swp30:
+        bridge:
+          domain:
+            br_default:
+              access: 203
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a08-u19-p01-2k8s-runai-03_rf0
+        link:
+          state:
+            up: {}
+        type: swp
+      swp31:
+        bridge:
+          domain:
+            br_default:
+              access: 203
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a08-u21-p01-2c2-bk-01_rf0
+        link:
+          state:
+            up: {}
+        type: swp
+      swp32:
+        bridge:
+          domain:
+            br_default:
+              access: 203
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a09-u15-p01-2k8s-admin-03_rf0
+        link:
+          state:
+            up: {}
+        type: swp
+      swp33:
+        bridge:
+          domain:
+            br_default:
+              access: 203
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a09-u17-p01-2slurm-01_rf0
+        link:
+          state:
+            up: {}
+        type: swp
+      swp34:
+        bridge:
+          domain:
+            br_default:
+              access: 203
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a09-u19-p01-2k8s-runai-01_rf0
+        link:
+          state:
+            up: {}
+        type: swp
+      swp35:
+        bridge:
+          domain:
+            br_default:
+              access: 203
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a09-u21-p01-2c2-bk-03_rf0
+        link:
+          state:
+            up: {}
+        type: swp
+      swp36:
+        bridge:
+          domain:
+            br_default:
+              access: 201
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a08-u28-p01-oobspine-01_eth0
+        evpn:
+          multihoming:
+            uplink: enabled
+        link:
+          state:
+            up: {}
+        type: swp
+      swp37:
+        bridge:
+          domain:
+            br_default:
+              access: 201
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a09-u23-p01-ufm-01_rf0
+        link:
+          state:
+            up: {}
+        type: swp
+      swp38:
+        bridge:
+          domain:
+            br_default:
+              access: 201
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: b09-u23-p01-ufm-02_rf0
+        link:
+          state:
+            up: {}
+        type: swp
+      swp39:
+        bridge:
+          domain:
+            br_default:
+              access: 201
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a10-u06-p01-hss-01_bmc-a
+        link:
+          state:
+            up: {}
+        type: swp
+      swp40:
+        bridge:
+          domain:
+            br_default:
+              access: 201
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a10-u06-p01-hss-01_bmc-b
+        link:
+          state:
+            up: {}
+        type: swp
+      swp41:
+        bridge:
+          domain:
+            br_default:
+              access: 201
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a10-u06-p01-hss-01_osmgmt-a
+        link:
+          state:
+            up: {}
+        type: swp
+      swp42:
+        bridge:
+          domain:
+            br_default:
+              access: 201
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a10-u06-p01-hss-01_osmgmt-b
+        link:
+          state:
+            up: {}
+        type: swp
+      swp43:
+        bridge:
+          domain:
+            br_default:
+              access: 201
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a10-u08-p01-hss-02_bmc-a
+        link:
+          state:
+            up: {}
+        type: swp
+      swp44:
+        bridge:
+          domain:
+            br_default:
+              access: 201
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a10-u08-p01-hss-02_bmc-b
+        link:
+          state:
+            up: {}
+        type: swp
+      swp45:
+        bridge:
+          domain:
+            br_default:
+              access: 201
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: b08-u44-p01-mleaf-02_eth0
+        link:
+          state:
+            up: {}
+        type: swp
+      swp46:
+        bridge:
+          domain:
+            br_default:
+              access: 201
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a10-u08-p01-hss-02_osmgmt-a
+        link:
+          state:
+            up: {}
+        type: swp
+      swp47:
+        bridge:
+          domain:
+            br_default:
+              access: 201
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a10-u08-p01-hss-02_osmgmt-b
+        link:
+          state:
+            up: {}
+        type: swp
+      swp48:
+        bridge:
+          domain:
+            br_default:
+              access: 201
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+        description: a10-u11-p01-hss-03_bmc-a
+        link:
+          state:
+            up: {}
+        type: swp
+      swp49:
+        description: a08-u28-p01-oobspine-01_swp17s0
+        evpn:
+          multihoming:
+            uplink: enabled
+        ipv4:
+          address:
+            10.254.32.33/31: {}
+        link:
+          state:
+            up: {}
+        type: swp
+      swp51:
+        description: b08-u28-p01-oobspine-02_swp17s0
+        evpn:
+          multihoming:
+            uplink: enabled
+        ipv4:
+          address:
+            10.254.34.33/31: {}
+        link:
+          state:
+            up: {}
+        type: swp
+      vlan201:
+        ipv4:
+          address:
+            192.0.2.3/23: {}
+        vrf: OOB
+        vrr:
+          address:
+            192.0.2.1/23: {}
+          state: enabled
+        type: svi
+        vlan: 201
+      vlan203:
+        ipv4:
+          address:
+            10.78.154.131/25: {}
+        vrf: OOB
+        vrr:
+          address:
+            10.78.154.129/25: {}
+          state: enabled
+        type: svi
+        vlan: 203
+    nve:
+      vxlan:
+        arp-nd-suppress: on
+        enable: on
+        source:
+          address: 10.254.254.13
+    router:
+      bgp:
+        autonomous-system: 4230000014
+        enable: on
+        graceful-restart:
+          mode: full
+        router-id: 10.254.254.13
+      policy:
+        route-map:
+          RM_ADD_WECMP:
+            rule:
+              '10':
+                action:
+                  permit: {}
+                description: RM_ADD_WECMP_COMMUNITY
+                set:
+                  ext-community-bw: multipaths
+          RM_LOOPBACK:
+            rule:
+              '10':
+                action:
+                  permit: {}
+                description: permit_lo_ip
+                match:
+                  interface: lo
+                  type: ipv4
+          RM_SUM_WECMP:
+            rule:
+              '10':
+                action:
+                  permit: {}
+                description: RM_SUM_WECMP_COMMUNITY
+                set:
+                  ext-community-bw: cumulative
+      vrr:
+        enable: on
+    system:
+      aaa:
+        user:
+          cumulus:
+            hashed-password: $6$H0QFj2rx$nZvUivJum/KP/YIvEu1iyuDUZcFGc48GMnoaAqrtW/dwbVtDsdqF1xCOD.eIR1ukFxwoLzze9PHGPDK0f2KHt.
+            role: system-admin
+          nv-config-manager:
+            hashed-password: $6$H0QFj2rx$Vz4idKh.iwlfraq9WAV5sy1STcsz75Bv9YDx3LrJEoeB7vvkg.VQwPpssmhZpNBgY9iTCTiUQnjeoqk261KYp.
+            role: system-admin
+      security:
+        password-hardening:
+          state: disabled
+      hostname: A08-U44-P01-MLEAF-01
+      date-time:
+        timezone: Etc/UTC
+      config:
+        auto-save:
+          state: enabled
+      dns:
+        server:
+          192.0.2.8: {}
+          192.0.2.9: {}
+      lldp:
+        dot1-tlv: enabled
+        mode: force-send-lldp
+      ntp:
+        server:
+          192.0.2.8:
+            iburst: enabled
+            state: enabled
+          192.0.2.9:
+            iburst: enabled
+            state: enabled
+    vrf:
+      OOB:
+        evpn:
+          enable: on
+          vlan: 4002
+          vni:
+            '2000': {}
+        loopback:
+          ip:
+            address:
+              10.78.154.9/32: {}
+        router:
+          bgp:
+            address-family:
+              ipv4-unicast:
+                enable: on
+                redistribute:
+                  connected:
+                    enable: on
+                route-export:
+                  to-evpn:
+                    enable: on
+              l2vpn-evpn:
+                enable: on
+            enable: on
+      default:
+        evpn:
+          enable: on
+        router:
+          bgp:
+            address-family:
+              ipv4-unicast:
+                enable: on
+                redistribute:
+                  connected:
+                    enable: on
+                    route-map: RM_LOOPBACK
+              l2vpn-evpn:
+                enable: on
+            enable: on
+            neighbor:
+              10.254.254.10:
+                peer-group: EVPN
+                type: numbered
+              10.254.32.32:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.34.32:
+                peer-group: UNDERLAY
+                type: numbered
+            path-selection:
+              multipath:
+                aspath-ignore: on
+            peer-group:
+              EVPN:
+                address-family:
+                  ipv4-unicast:
+                    enable: off
+                  l2vpn-evpn:
+                    enable: on
+                bfd:
+                  detect-multiplier: 3
+                  enable: on
+                  min-rx-interval: 1000
+                  min-tx-interval: 1000
+                description: evpn_vxlan_control_plane
+                multihop-ttl: 2
+                remote-as: external
+                update-source: lo
+              UNDERLAY:
+                address-family:
+                  ipv4-unicast:
+                    policy:
+                      outbound:
+                        route-map: RM_ADD_WECMP
+                bfd:
+                  detect-multiplier: 3
+                  enable: on
+                  min-rx-interval: 300
+                  min-tx-interval: 300
+                description: underlay_interconnect
+                remote-as: external
+      mgmt:
+        router:
+          static:
+            0.0.0.0/0:
+              address-family: ipv4-unicast
+              via:
+                192.0.2.1:
+                  type: ipv4-address

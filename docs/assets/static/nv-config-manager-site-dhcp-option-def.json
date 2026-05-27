@@ -1,0 +1,41 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "properties": {
+        "Dhcp4": {
+            "properties": {
+                "option-def": {
+                    "items": {
+                        "properties": {
+                            "array": {
+                                "type": "boolean"
+                            },
+                            "code": {
+                                "type": "number"
+                            },
+                            "encapsulate": {
+                                "type": "string"
+                            },
+                            "name": {
+                                "type": "string"
+                            },
+                            "record-types": {
+                                "type": "string"
+                            },
+                            "space": {
+                                "type": "string"
+                            },
+                            "type": {
+                                "type": "string"
+                            }
+                        },
+                        "type": "object"
+                    },
+                    "type": "array"
+                }
+            },
+            "type": "object"
+        }
+    },
+    "title": "NVIDIA Config Manager Site DHCP Option Definitions",
+    "type": "object"
+}

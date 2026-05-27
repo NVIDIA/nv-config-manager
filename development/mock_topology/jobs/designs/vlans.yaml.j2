@@ -1,0 +1,16 @@
+---
+
+{% if json.vlans is defined and json.vlans | length > 0 %}
+vlans:
+  {% for vlan in json.vlans %}
+  - "!create_or_update:vid": {{ vlan.vid }}
+    "!create_or_update:name": {{ vlan.name }}
+    status__name: {{ global_defaults.status }}
+    tenant__name: {{ global_defaults.tenant }}
+    locations:
+      - "!ref:location"
+    "!ref": vlan-{{ vlan.vid }}
+  {% endfor %}
+{% else %}
+vlans: []
+{% endif %}

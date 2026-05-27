@@ -1,0 +1,298 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""Base Nautobot Client.
+
+This module provides the base NautobotClient class that can be extended
+by individual services with service-specific methods.
+"""
+
+from __future__ import annotations
+
+import ssl
+import types
+from configparser import ConfigParser
+from typing import Any, Self, cast
+
+import aiohttp
+from aiohttp import ClientTimeout, TCPConnector
+
+from nv_config_manager.common.log import LogCategory, get_logger
+
+logger = get_logger(__name__, category=LogCategory.NAUTOBOT)
+
+
+class NautobotException(Exception):
+    """Exception raised for Nautobot errors."""
+
+
+class NautobotClient:
+    """Async Nautobot Client.
+
+    Base client with common functionality. Services should subclass this
+    and add their own service-specific methods.
+
+    Usage:
+        async with NautobotClient.from_config(config) as client:
+            result = await client.graphql_query(query, variables)
+    """
+
+    def __init__(
+        self,
+        nautobot_url: str,
+        token: str,
+        verify: bool | str = True,
+        timeout: int = 30,
+    ) -> None:
+        """Initialize the Nautobot client.
+
+        Args:
+            nautobot_url: Base URL for Nautobot instance
+            token: API token for authentication
+            verify: SSL verification - True (default), False (disable), or str (path to CA cert)
+            timeout: Default request timeout in seconds
+        """
+        self.nautobot_url = nautobot_url.rstrip("/") + "/"
+        self.token = token
+        self._verify = verify
+        self._timeout = timeout
+        self.graphql_endpoint = f"{self.nautobot_url}api/graphql/"
+        self.rest_endpoint = f"{self.nautobot_url}api/"
+        self._session: aiohttp.ClientSession | None = None
+
+    @classmethod
+    def from_config(cls, config: ConfigParser) -> Self:
+        """Create NautobotClient from configuration.
+
+        Args:
+            config: ConfigParser with 'nautobot' section containing
+                   'server', 'token', and optionally 'verify'
+
+        Returns:
+            Configured NautobotClient instance
+        """
+        # Lazy import to avoid circular dependency with nv_config_manager.common.config
+        from nv_config_manager.common.config import parse_verify_param
+
+        nautobot_config = config["nautobot"]
+        return cls(
+            nautobot_url=nautobot_config["server"],
+            token=nautobot_config["token"],
+            verify=parse_verify_param(nautobot_config),
+        )
+
+    async def __aenter__(self) -> Self:
+        """Async context manager entry."""
+        await self._ensure_session()
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: types.TracebackType | None,
+    ) -> None:
+        """Async context manager exit."""
+        if self._session:
+            await self._session.close()
+            self._session = None
+
+    async def _ensure_session(self) -> aiohttp.ClientSession:
+        """Ensure session exists, creating it lazily if needed."""
+        if not self._session:
+            ssl_context = ssl.create_default_context()
+
+            if isinstance(self._verify, str):
+                # Use custom CA certificate for verification
+                ssl_context.load_verify_locations(self._verify)
+            elif self._verify is False:
+                # Disable SSL verification
+                ssl_context.check_hostname = False
+                ssl_context.verify_mode = ssl.CERT_NONE
+
+            connector = TCPConnector(ssl=ssl_context)
+            timeout = ClientTimeout(total=self._timeout, connect=10)
+
+            self._session = aiohttp.ClientSession(
+                headers={"Authorization": f"Token {self.token}"},
+                connector=connector,
+                timeout=timeout,
+            )
+        return self._session
+
+    async def close(self) -> None:
+        """Close the HTTP client session.
+
+        Should be called when the client is no longer needed if not
+        using the async context manager.
+        """
+        if self._session:
+            await self._session.close()
+            self._session = None
+
+    async def _handle_error_response(
+        self, rsp: aiohttp.ClientResponse, method: str, path: str
+    ) -> None:
+        """Handle error responses by logging and raising with response body.
+
+        Args:
+            rsp: The aiohttp ClientResponse object
+            method: HTTP method used (GET, POST, PATCH, DELETE)
+            path: API path that was requested
+
+        Raises:
+            NautobotException: Always raised with status and response body details
+        """
+        # Try to get the response body for error details
+        try:
+            error_body = await rsp.json()
+        except Exception:
+            # If JSON parsing fails, try to get text
+            try:
+                error_body = await rsp.text()
+            except Exception:
+                error_body = "<unable to read response body>"
+
+        raise NautobotException(
+            f"Nautobot API error: {method} {path} returned {rsp.status}: {error_body}"
+        )
+
+    async def graphql_query(
+        self, query: str, variables: dict[str, Any] | None = None, timeout: int | None = None
+    ) -> dict[str, Any]:
+        """Execute a GraphQL query.
+
+        Args:
+            query: GraphQL query string
+            variables: Query variables
+            timeout: Request timeout in seconds (uses default if None)
+
+        Returns:
+            Query response data
+
+        Raises:
+            NautobotException: If the query fails or returns errors
+        """
+        session = await self._ensure_session()
+        payload = {"query": query, "variables": variables or {}}
+
+        logger.debug("Executing GraphQL query: %s with variables: %s", query[:100], variables)
+
+        request_timeout = aiohttp.ClientTimeout(total=timeout or self._timeout)
+        async with session.post(
+            self.graphql_endpoint, json=payload, timeout=request_timeout
+        ) as rsp:
+            if rsp.status == 400:
+                data = await rsp.json()
+                raise NautobotException(f"GraphQL error: {data.get('errors', data)}")
+            rsp.raise_for_status()
+            result = await rsp.json()
+
+            if "errors" in result:
+                raise NautobotException(f"GraphQL errors: {result['errors']}")
+
+            return cast(dict[str, Any], result)
+
+    async def get(
+        self, path: str, params: dict[str, Any] | None = None, timeout: int | None = None
+    ) -> Any:
+        """Send an HTTP GET request.
+
+        Args:
+            path: API path (relative to /api/)
+            params: Query parameters
+            timeout: Request timeout in seconds
+
+        Returns:
+            Response JSON data
+        """
+        session = await self._ensure_session()
+        request_timeout = aiohttp.ClientTimeout(total=timeout or self._timeout)
+        async with session.get(
+            f"{self.rest_endpoint}{path}",
+            params=params,
+            timeout=request_timeout,
+        ) as rsp:
+            if not rsp.ok:
+                await self._handle_error_response(rsp, "GET", path)
+            return await rsp.json()
+
+    async def post(self, path: str, data: Any, timeout: int | None = None) -> Any:
+        """Send an HTTP POST request.
+
+        Args:
+            path: API path (relative to /api/)
+            data: Request body data
+            timeout: Request timeout in seconds
+
+        Returns:
+            Response JSON data
+        """
+        session = await self._ensure_session()
+        request_timeout = aiohttp.ClientTimeout(total=timeout or self._timeout)
+        async with session.post(
+            f"{self.rest_endpoint}{path}",
+            json=data,
+            timeout=request_timeout,
+        ) as rsp:
+            if not rsp.ok:
+                await self._handle_error_response(rsp, "POST", path)
+            return await rsp.json()
+
+    async def patch(self, path: str, data: Any, timeout: int | None = None) -> Any:
+        """Send an HTTP PATCH request.
+
+        Args:
+            path: API path (relative to /api/)
+            data: Request body data
+            timeout: Request timeout in seconds
+
+        Returns:
+            Response JSON data
+        """
+        session = await self._ensure_session()
+        request_timeout = aiohttp.ClientTimeout(total=timeout or self._timeout)
+        async with session.patch(
+            f"{self.rest_endpoint}{path}",
+            json=data,
+            timeout=request_timeout,
+        ) as rsp:
+            if not rsp.ok:
+                await self._handle_error_response(rsp, "PATCH", path)
+            return await rsp.json()
+
+    async def delete(self, path: str, timeout: int | None = None) -> None:
+        """Send an HTTP DELETE request.
+
+        Args:
+            path: API path (relative to /api/)
+            timeout: Request timeout in seconds
+        """
+        session = await self._ensure_session()
+        request_timeout = aiohttp.ClientTimeout(total=timeout or self._timeout)
+        async with session.delete(
+            f"{self.rest_endpoint}{path}",
+            timeout=request_timeout,
+        ) as rsp:
+            if not rsp.ok:
+                await self._handle_error_response(rsp, "DELETE", path)
+
+    async def installed_plugins(self) -> dict[str, str]:
+        """Get plugins installed in the current Nautobot environment."""
+        data = await self.get("status/")
+        return cast(dict[str, str], data.get("plugins", {}))
+
+    def get_device_ui_url(self, device_id: str) -> str:
+        """Get the Device UI URL for a given Device UUID."""
+        return f"{self.nautobot_url}dcim/devices/{device_id}"

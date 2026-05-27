@@ -1,0 +1,151 @@
+{
+  "data": {
+    "config_manager_device": {
+      "intended_config": {
+        "config_store_instance": "https://ui.config-store.config-manager.example.com/",
+        "path": "startup.yaml"
+      },
+      "device": {
+        "id": "80ce0a9a-d3c8-5b8e-b755-e9c16d92237b",
+        "name": "rno1-m04-c10-spine1-hss-tan-lab1",
+        "platform": {
+          "name": "Cumulus Linux"
+        },
+        "config_context": {
+          "cumulus-file-notify": [
+            "/etc/frr/frr.conf",
+            "/etc/network/interfaces.d/",
+            "/etc/hosts"
+          ],
+          "route-maps": {
+            "LEAF_TO_SERVER": {
+              "rules": [
+                {
+                  "seq": 1,
+                  "match": {
+                    "community-list": "COMM_SERVER_LOOPBACK"
+                  },
+                  "action": "permit"
+                },
+                {
+                  "seq": 2,
+                  "match": {
+                    "community-list": "COMM_CORE_LOOPBACK"
+                  },
+                  "action": "permit"
+                },
+                {
+                  "seq": 3,
+                  "match": {
+                    "community-list": "COMM_LEAF_LOOPBACK"
+                  },
+                  "action": "permit"
+                }
+              ]
+            },
+            "SERVER_TO_LEAF": {
+              "rules": [
+                {
+                  "seq": 1,
+                  "set": {
+                    "ext-community-bw": "multipaths"
+                  },
+                  "match": {
+                    "as-path-list": "AS_PATH_LEN_1",
+                    "community-list": "COMM_SERVER_LOOPBACK",
+                    "ip-prefix-list": "SERVER_LOOPBACK"
+                  },
+                  "action": "permit"
+                }
+              ]
+            },
+            "REDISTRIBUTE_CONNECTED": {
+              "rules": [
+                {
+                  "seq": 1,
+                  "set": {
+                    "communities": [
+                      300
+                    ]
+                  },
+                  "match": {
+                    "ip-prefix-list": "LOOPBACK"
+                  },
+                  "action": "permit"
+                }
+              ]
+            }
+          },
+          "community-lists": {
+            "COMM_CORE_LOOPBACK": {
+              "rules": [
+                {
+                  "seq": 1,
+                  "action": "permit",
+                  "communities": [
+                    302
+                  ]
+                }
+              ]
+            }
+          },
+          "dns": {
+            "ipv4": [
+              "8.8.8.8"
+            ]
+          },
+          "ntp": {
+            "ipv4": [
+              "129.6.15.28",
+              "129.6.15.29"
+            ]
+          },
+          "ztp": {
+            "ipv4": [
+              "10.48.135.82",
+              "10.48.135.100"
+            ]
+          },
+          "dhcp": {
+            "ipv4": [
+              "10.48.135.91",
+              "10.48.135.101"
+            ]
+          },
+          "syslog": {
+            "ipv4": [
+              "1.1.1.1"
+            ]
+          },
+          "tacacs": {
+            "ipv4": [
+              "1.1.1.1"
+            ]
+          },
+          "bgp": {
+            "asn": "64512.200"
+          },
+          "intended-firmware": {
+            "version": "5.7.0"
+          }
+        },
+        "interfaces": [
+          {
+            "ip_addresses": [
+              {
+                "host": "10.180.166.13"
+              }
+            ]
+          },
+          {
+            "ip_addresses": [
+              {
+                "host": "10.180.166.130"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

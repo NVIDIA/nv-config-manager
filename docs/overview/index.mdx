@@ -1,0 +1,72 @@
+---
+title: Config Manager Concepts
+#sidebar-title: Config Manager Overview
+position: 0
+---
+
+NVIDIA Config Manager is a Helm-deployed network automation and configuration management platform designed to bootstrap and operate NVIDIA AI-factory networks. It combines APIs, workers, Nautobot, data stores, eventing, and device-facing services to render, deploy, and operate network configuration at scale.
+
+## Overview
+
+Running on [Nautobot](../nautobot/index.mdx), Config Manager provides a comprehensive suite of services for network automation:
+
+| Service | Description |
+| :------ | :---------- |
+| **UI** | Operator interface for workflows, approvals, and configuration browsing |
+| **[Temporal Service](../temporal/index.mdx)** | Orchestrated automation workflows for network operations |
+| **[Render Service](../render/index.mdx)** | Configuration rendering and template processing through NATS events |
+| **[Config Store](../config-store/index.mdx)** | PostgreSQL-backed configuration storage and versioning |
+| **[ZTP Service](../network-ztp/index.mdx)** | Zero Touch Provisioning for device bootstrapping and firmware distribution |
+| **[DHCP Service](../dhcp/index.mdx)** | Dynamic configuration generation for ISC Kea DHCP server |
+
+## Design Principles
+
+Config Manager follows these operating principles:
+
+**Platform Independence**
+
+- Does not rely on a single network operating system (NOS) technology suite
+- Supports multiple vendor platforms and OS versions
+- Design and configuration agnostic architecture
+
+**Simplified Operations**
+
+- Eliminates intermediate orchestration layers (such as Ansible or SaltStack)
+- Uses direct workflow-based automation for bootstrap and change operations
+- Gives network engineers one workflow path for provisioning, validation, and deployment
+
+**Self-Contained System**
+
+- Fully self-contained with no external dependencies
+- All components are either open source or developed in-house
+- Complete control over the technology stack
+
+**Zero-Touch Bootstrap**
+
+- Bootstraps networks without console or CLI access to each device
+- Automates provisioning from device boot through intended configuration
+- Supports repeatable bring-up for new sites and replacement devices
+
+**Configuration Agnostic**
+
+- No embedded logic in the system
+- Design and configuration managed externally
+- Flexible architecture supports any network design
+
+**SOC2 Compliance**
+
+- Incorporates approval workflows for Day Two changes
+- Audit trail for all configuration changes
+- Change management and governance built in
+
+**Live Data Validation**
+
+- Uses live data sources to validate topology
+- Validates cabling against intended design
+- Detects and reports discrepancies
+
+**Version Controlled**
+
+- All code and configuration under source control
+- Full version history and rollback capability
+- GitOps-based configuration management

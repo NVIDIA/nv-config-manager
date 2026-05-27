@@ -1,0 +1,151 @@
+{
+  "data": {
+    "device": {
+      "id": "anon-040035950848-0000-0000-000000000000",
+      "name": "control1-cno1-cp1-dc01",
+      "tags": [
+        {
+          "name": "dc-ops-install"
+        },
+        {
+          "name": "dns-exempt"
+        }
+      ],
+      "tenant": {
+        "name": "Example Cloud"
+      },
+      "role": {
+        "name": "Control-Server"
+      },
+      "device_type": {
+        "manufacturer": {
+          "name": "Dell"
+        },
+        "model": "PowerEdge R760"
+      },
+      "platform": null,
+      "serial": "ANON00001016",
+      "config_context": {},
+      "location": {
+        "name": "DC01 Module 2",
+        "location_type": {
+          "name": "Module"
+        },
+        "parent": {
+          "name": "DC01",
+          "location_type": {
+            "name": "Site"
+          }
+        }
+      },
+      "bgp_routing_instances": [],
+      "interfaces": [
+        {
+          "role": {
+            "name": "Uplink"
+          },
+          "type": "A_1000BASE_T",
+          "mtu": 1500,
+          "enabled": true,
+          "tags": [],
+          "name": "ipmi0",
+          "description": "leaf8-cp1-smn1-dc01:swp7",
+          "vrf": null,
+          "mgmt_only": true,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": null,
+          "tagged_vlans": [],
+          "ip_addresses": [
+            {
+              "host": "10.240.172.2",
+              "mask_length": 28,
+              "address": "10.240.172.2/28",
+              "ip_version": 4,
+              "parent": {
+                "prefix": "10.240.172.0/24",
+                "parent": {
+                  "prefix": "10.240.0.0/16"
+                }
+              }
+            }
+          ],
+          "connected_interface": {
+            "ip_addresses": [],
+            "device": {
+              "name": "leaf8-cp1-smn1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "SMN-Leaf"
+              },
+              "tags": [
+                {
+                  "name": "dc-ops-install"
+                },
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                },
+                "bgp": {
+                  "asn": 4266004236
+                },
+                "intended-firmware": {
+                  "version": "5.11.0"
+                }
+              }
+            },
+            "module": null,
+            "name": "swp7"
+          }
+        },
+        {
+          "role": {
+            "name": "Loopback"
+          },
+          "type": "VIRTUAL",
+          "mtu": null,
+          "enabled": true,
+          "tags": [],
+          "name": "lo",
+          "description": "",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": null,
+          "tagged_vlans": [],
+          "ip_addresses": [],
+          "connected_interface": null
+        }
+      ],
+      "console_server_ports": []
+    }
+  }
+}

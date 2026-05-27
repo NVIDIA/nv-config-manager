@@ -1,0 +1,70 @@
+---
+
+device_types:
+  Arista:
+    - model: DCS-7050SX3-48YC12-F
+      part_number: DCS-7050SX3-48YC12-F
+      is_full_depth: true
+      u_height: 1
+
+  Mellanox:
+    - model: MQM9790-NS2F
+      part_number: 920-9B210-00FN-0D0
+      is_full_depth: true
+      u_height: 1
+    - model: MSN2201-CB2FC
+      part_number: 920-9N110-00F1-0C0
+      is_full_depth: false
+      u_height: 1
+    - model: MSN2201-CB2RC
+      part_number: 920-9N110-00R1-0C0
+      is_full_depth: false
+      u_height: 1
+    - model: MSN3700-CS2FC
+      part_number: 920-9N201-00F7-0C0
+      is_full_depth: true
+      u_height: 1
+    - model: MSN3700-CS2RC
+      part_number: 920-9N201-00R7-0C0
+      is_full_depth: true
+      u_height: 1
+    - model: MSN4600-CS2FC
+      part_number: 920-9N302-00F7-0C2
+      is_full_depth: true
+      u_height: 2
+    - model: MSN4600-CS2RC
+      part_number: 920-9N302-00R7-0C0
+      is_full_depth: true
+      u_height: 2
+    - model: MSN4700-WS2FC
+      part_number: 920-9N301-00FB-0C0
+      is_full_depth: true
+      u_height: 1
+    - model: MSN4700-WS2RC
+      part_number: 920-9N301-00RB-0C0
+      is_full_depth: true
+      u_height: 1
+
+  Lenovo:
+    - model: ThinkSystem SR675 V3
+      is_full_depth: true
+      u_height: 3
+      subdevice_role: parent
+      device_bays:
+        - name: pcie0
+          label: PCIe slot 0
+
+  NVIDIA:
+    - model: SN5600
+      part_number: 920-9N42F-00RI-7C0
+      is_full_depth: true
+      u_height: 2
+    - model: BlueField 3220
+      is_full_depth: false
+      u_height: 0
+      subdevice_role: child
+
+  Opengear:
+    - model: IM7248-2-DAC-LR-EU
+      is_full_depth: false
+      u_height: 1

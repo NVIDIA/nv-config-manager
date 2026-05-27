@@ -1,0 +1,12 @@
+{% if device_data|role in ["Border-Leaf", "OOB-Spine"] %}
+    acl:
+      acl-edge-urpf:
+        rule:
+          '10':
+            action:
+              deny: {}
+            match:
+              ip:
+                source-ip: {{ (location_data|site_aggregates("Site-Aggregate"))[0] }}
+        type: ipv4
+{% endif %}

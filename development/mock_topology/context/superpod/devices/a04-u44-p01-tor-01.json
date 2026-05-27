@@ -1,0 +1,3881 @@
+{
+    "data": {
+        "device": {
+            "id": "73cd8d4d-2af7-4088-9758-22d8ee401900",
+            "vrfs": [
+                {
+                    "name": "OOB",
+                    "rd": "*:2000",
+                    "_custom_field_data": {},
+                    "import_targets": [],
+                    "export_targets": []
+                }
+            ],
+            "name": "a04-u44-p01-tor-01",
+            "tags": [],
+            "tenant": {
+                "name": "SuperPod"
+            },
+            "role": {
+                "name": "OOB-Leaf"
+            },
+            "device_type": {
+                "manufacturer": {
+                    "name": "Mellanox"
+                },
+                "model": "MSN2201"
+            },
+            "platform": {
+                "name": "Cumulus Linux"
+            },
+            "serial": "",
+            "config_context": {
+                "intended-firmware": {
+                    "version": "5.13.1"
+                },
+                "password_mappings": {
+                    "nv-config-manager": {
+                        "role": "system-admin",
+                        "password": "api_user_key",
+                        "rotation": "r1"
+                    },
+                    "cumulus": {
+                        "role": "system-admin",
+                        "password": "root_password",
+                        "rotation": "r1"
+                    }
+                },
+                "evpn_esi_base_mac": "44:38:39:ff:69:00",
+                "fabric-mac": "00:00:5E:00:01:69",
+                "dns": {
+                    "ipv4": [
+                        "192.0.2.8",
+                        "192.0.2.9"
+                    ]
+                },
+                "ntp": {
+                    "ipv4": [
+                        "192.0.2.8",
+                        "192.0.2.9"
+                    ]
+                },
+                "ztp": {
+                    "ipv4": [
+                        "192.0.2.10"
+                    ]
+                },
+                "Dhcp4": {
+                    "option-def": [
+                        {
+                            "code": 239,
+                            "name": "cumulus-provision-url",
+                            "type": "string",
+                            "array": false,
+                            "space": "dhcp4",
+                            "encapsulate": "",
+                            "record-types": ""
+                        }
+                    ]
+                },
+                "bgp": {
+                    "asn": 4230000004
+                }
+            },
+            "nvlink_domain": [],
+            "location": {
+                "name": "TEST-SITE SUPERPOD 1 - {{ deployment_name }}",
+                "location_type": {
+                    "name": "Module"
+                },
+                "parent": {
+                    "name": "TEST-SITE",
+                    "location_type": {
+                        "name": "Site"
+                    },
+                    "parent": null
+                }
+            },
+            "bgp_routing_instances": [
+                {
+                    "status": {
+                        "name": "Active"
+                    },
+                    "autonomous_system": {
+                        "asn": 4230000004
+                    },
+                    "router_id": {
+                        "id": "260ad0a4-bed0-40ee-99a1-278c62318092",
+                        "interfaces": [
+                            {
+                                "name": "lo",
+                                "vrf": null
+                            }
+                        ]
+                    },
+                    "endpoints": [
+                        {
+                            "source_interface": {
+                                "vrf": null
+                            },
+                            "peer_group": {
+                                "name": "UNDERLAY",
+                                "extra_attributes": null,
+                                "peergroup_template": null
+                            },
+                            "peer": {
+                                "source_ip": null,
+                                "source_interface": {
+                                    "name": "swp9s0",
+                                    "ip_addresses": [
+                                        {
+                                            "address": "10.254.32.0/31",
+                                            "ip_version": 4
+                                        }
+                                    ]
+                                },
+                                "routing_instance": {
+                                    "device": {
+                                        "name": "a08-u28-p01-oobspine-01",
+                                        "role": {
+                                            "name": "OOB-Spine"
+                                        }
+                                    },
+                                    "status": {
+                                        "name": "Active"
+                                    },
+                                    "autonomous_system": {
+                                        "asn": 4265355097
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "source_interface": {
+                                "vrf": null
+                            },
+                            "peer_group": {
+                                "name": "EVPN",
+                                "extra_attributes": null,
+                                "peergroup_template": null
+                            },
+                            "peer": {
+                                "source_ip": null,
+                                "source_interface": {
+                                    "name": "lo",
+                                    "ip_addresses": [
+                                        {
+                                            "address": "10.254.254.10/32",
+                                            "ip_version": 4
+                                        }
+                                    ]
+                                },
+                                "routing_instance": {
+                                    "device": {
+                                        "name": "a08-u28-p01-oobspine-01",
+                                        "role": {
+                                            "name": "OOB-Spine"
+                                        }
+                                    },
+                                    "status": {
+                                        "name": "Active"
+                                    },
+                                    "autonomous_system": {
+                                        "asn": 4265355097
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "source_interface": {
+                                "vrf": null
+                            },
+                            "peer_group": {
+                                "name": "UNDERLAY",
+                                "extra_attributes": null,
+                                "peergroup_template": null
+                            },
+                            "peer": {
+                                "source_ip": null,
+                                "source_interface": {
+                                    "name": "swp9s0",
+                                    "ip_addresses": [
+                                        {
+                                            "address": "10.254.34.0/31",
+                                            "ip_version": 4
+                                        }
+                                    ]
+                                },
+                                "routing_instance": {
+                                    "device": {
+                                        "name": "b08-u28-p01-oobspine-02",
+                                        "role": {
+                                            "name": "OOB-Spine"
+                                        }
+                                    },
+                                    "status": {
+                                        "name": "Active"
+                                    },
+                                    "autonomous_system": {
+                                        "asn": 4265355098
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "source_interface": {
+                                "vrf": null
+                            },
+                            "peer_group": {
+                                "name": "EVPN",
+                                "extra_attributes": null,
+                                "peergroup_template": null
+                            },
+                            "peer": {
+                                "source_ip": null,
+                                "source_interface": {
+                                    "name": "lo",
+                                    "ip_addresses": [
+                                        {
+                                            "address": "10.254.254.28/32",
+                                            "ip_version": 4
+                                        }
+                                    ]
+                                },
+                                "routing_instance": {
+                                    "device": {
+                                        "name": "b08-u28-p01-oobspine-02",
+                                        "role": {
+                                            "name": "OOB-Spine"
+                                        }
+                                    },
+                                    "status": {
+                                        "name": "Active"
+                                    },
+                                    "autonomous_system": {
+                                        "asn": 4265355098
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            ],
+            "interfaces": [
+                {
+                    "role": {
+                        "name": "Uplink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "eth0",
+                    "description": "",
+                    "vrf": {
+                        "name": "OOB",
+                        "rd": "*:2000",
+                        "export_targets": [],
+                        "import_targets": []
+                    },
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": null,
+                    "tagged_vlans": [],
+                    "ip_addresses": [
+                        {
+                            "host": "192.0.2.20",
+                            "mask_length": 23,
+                            "address": "192.0.2.20/23",
+                            "ip_version": 4,
+                            "role": null,
+                            "parent": {
+                                "prefix": "192.0.2.0/23",
+                                "parent": {
+                                    "prefix": "10.78.144.0/20",
+                                    "parent": {
+                                        "prefix": "0.0.0.0/0"
+                                    }
+                                }
+                            }
+                        }
+                    ],
+                    "connected_interface": {
+                        "ip_addresses": [],
+                        "device": {
+                            "name": "a08-u44-p01-mleaf-01",
+                            "tenant": null,
+                            "role": {
+                                "name": "Mgmt-Leaf"
+                            },
+                            "tags": [],
+                            "config_context": {
+                                "intended-firmware": {
+                                    "version": "5.13.1"
+                                },
+                                "password_mappings": {
+                                    "nv-config-manager": {
+                                        "role": "system-admin",
+                                        "password": "api_user_key",
+                                        "rotation": "r1"
+                                    },
+                                    "cumulus": {
+                                        "role": "system-admin",
+                                        "password": "root_password",
+                                        "rotation": "r1"
+                                    }
+                                },
+                                "evpn_esi_base_mac": "44:38:39:ff:69:00",
+                                "fabric-mac": "00:00:5E:00:01:69",
+                                "dns": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ntp": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ztp": {
+                                    "ipv4": [
+                                        "192.0.2.10"
+                                    ]
+                                },
+                                "Dhcp4": {
+                                    "option-def": [
+                                        {
+                                            "code": 239,
+                                            "name": "cumulus-provision-url",
+                                            "type": "string",
+                                            "array": false,
+                                            "space": "dhcp4",
+                                            "encapsulate": "",
+                                            "record-types": ""
+                                        }
+                                    ]
+                                },
+                                "bgp": {
+                                    "asn": 4230000014
+                                }
+                            }
+                        },
+                        "module": null,
+                        "name": "swp9"
+                    }
+                },
+                {
+                    "role": null,
+                    "type": "VIRTUAL",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "lo-oob",
+                    "description": "",
+                    "vrf": {
+                        "name": "OOB",
+                        "rd": "*:2000",
+                        "export_targets": [],
+                        "import_targets": []
+                    },
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": null,
+                    "tagged_vlans": [],
+                    "ip_addresses": [
+                        {
+                            "host": "10.78.154.0",
+                            "mask_length": 32,
+                            "address": "10.78.154.0/32",
+                            "ip_version": 4,
+                            "role": null,
+                            "parent": {
+                                "prefix": "10.78.154.0/32",
+                                "parent": {
+                                    "prefix": "10.78.154.0/27",
+                                    "parent": {
+                                        "prefix": "10.78.154.0/25"
+                                    }
+                                }
+                            }
+                        }
+                    ],
+                    "connected_interface": null
+                },
+                {
+                    "role": {
+                        "name": "Switch-Loopback"
+                    },
+                    "type": "VIRTUAL",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "lo",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": null,
+                    "tagged_vlans": [],
+                    "ip_addresses": [
+                        {
+                            "host": "10.254.254.2",
+                            "mask_length": 32,
+                            "address": "10.254.254.2/32",
+                            "ip_version": 4,
+                            "role": null,
+                            "parent": {
+                                "prefix": "10.254.254.2/32",
+                                "parent": {
+                                    "prefix": "10.254.254.0/26",
+                                    "parent": {
+                                        "prefix": "10.254.254.0/23"
+                                    }
+                                }
+                            }
+                        }
+                    ],
+                    "connected_interface": null
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp1",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": {
+                        "ip_addresses": [
+                            {
+                                "host": "10.78.156.18",
+                                "mask_length": 22,
+                                "address": "10.78.156.18/22",
+                                "ip_version": 4
+                            }
+                        ],
+                        "device": {
+                            "name": "a04-p01-nvsw-01",
+                            "tenant": null,
+                            "role": {
+                                "name": "NVSwitch"
+                            },
+                            "tags": [],
+                            "config_context": {
+                                "dns": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ntp": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ztp": {
+                                    "ipv4": [
+                                        "192.0.2.10"
+                                    ]
+                                },
+                                "Dhcp4": {
+                                    "option-def": [
+                                        {
+                                            "code": 239,
+                                            "name": "cumulus-provision-url",
+                                            "type": "string",
+                                            "array": false,
+                                            "space": "dhcp4",
+                                            "encapsulate": "",
+                                            "record-types": ""
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "module": null,
+                        "name": "rf0"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp2",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": {
+                        "ip_addresses": [
+                            {
+                                "host": "10.78.156.19",
+                                "mask_length": 22,
+                                "address": "10.78.156.19/22",
+                                "ip_version": 4
+                            }
+                        ],
+                        "device": {
+                            "name": "a04-p01-nvsw-02",
+                            "tenant": null,
+                            "role": {
+                                "name": "NVSwitch"
+                            },
+                            "tags": [],
+                            "config_context": {
+                                "dns": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ntp": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ztp": {
+                                    "ipv4": [
+                                        "192.0.2.10"
+                                    ]
+                                },
+                                "Dhcp4": {
+                                    "option-def": [
+                                        {
+                                            "code": 239,
+                                            "name": "cumulus-provision-url",
+                                            "type": "string",
+                                            "array": false,
+                                            "space": "dhcp4",
+                                            "encapsulate": "",
+                                            "record-types": ""
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "module": null,
+                        "name": "rf0"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp3",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": {
+                        "ip_addresses": [
+                            {
+                                "host": "10.78.156.20",
+                                "mask_length": 22,
+                                "address": "10.78.156.20/22",
+                                "ip_version": 4
+                            }
+                        ],
+                        "device": {
+                            "name": "a04-p01-nvsw-03",
+                            "tenant": null,
+                            "role": {
+                                "name": "NVSwitch"
+                            },
+                            "tags": [],
+                            "config_context": {
+                                "dns": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ntp": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ztp": {
+                                    "ipv4": [
+                                        "192.0.2.10"
+                                    ]
+                                },
+                                "Dhcp4": {
+                                    "option-def": [
+                                        {
+                                            "code": 239,
+                                            "name": "cumulus-provision-url",
+                                            "type": "string",
+                                            "array": false,
+                                            "space": "dhcp4",
+                                            "encapsulate": "",
+                                            "record-types": ""
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "module": null,
+                        "name": "rf0"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp4",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": {
+                        "ip_addresses": [
+                            {
+                                "host": "10.78.156.21",
+                                "mask_length": 22,
+                                "address": "10.78.156.21/22",
+                                "ip_version": 4
+                            }
+                        ],
+                        "device": {
+                            "name": "a04-p01-nvsw-04",
+                            "tenant": null,
+                            "role": {
+                                "name": "NVSwitch"
+                            },
+                            "tags": [],
+                            "config_context": {
+                                "dns": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ntp": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ztp": {
+                                    "ipv4": [
+                                        "192.0.2.10"
+                                    ]
+                                },
+                                "Dhcp4": {
+                                    "option-def": [
+                                        {
+                                            "code": 239,
+                                            "name": "cumulus-provision-url",
+                                            "type": "string",
+                                            "array": false,
+                                            "space": "dhcp4",
+                                            "encapsulate": "",
+                                            "record-types": ""
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "module": null,
+                        "name": "rf0"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp5",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": {
+                        "ip_addresses": [
+                            {
+                                "host": "10.78.156.22",
+                                "mask_length": 22,
+                                "address": "10.78.156.22/22",
+                                "ip_version": 4
+                            }
+                        ],
+                        "device": {
+                            "name": "a04-p01-nvsw-05",
+                            "tenant": null,
+                            "role": {
+                                "name": "NVSwitch"
+                            },
+                            "tags": [],
+                            "config_context": {
+                                "dns": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ntp": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ztp": {
+                                    "ipv4": [
+                                        "192.0.2.10"
+                                    ]
+                                },
+                                "Dhcp4": {
+                                    "option-def": [
+                                        {
+                                            "code": 239,
+                                            "name": "cumulus-provision-url",
+                                            "type": "string",
+                                            "array": false,
+                                            "space": "dhcp4",
+                                            "encapsulate": "",
+                                            "record-types": ""
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "module": null,
+                        "name": "rf0"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp6",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": {
+                        "ip_addresses": [
+                            {
+                                "host": "10.78.156.23",
+                                "mask_length": 22,
+                                "address": "10.78.156.23/22",
+                                "ip_version": 4
+                            }
+                        ],
+                        "device": {
+                            "name": "a04-p01-nvsw-06",
+                            "tenant": null,
+                            "role": {
+                                "name": "NVSwitch"
+                            },
+                            "tags": [],
+                            "config_context": {
+                                "dns": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ntp": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ztp": {
+                                    "ipv4": [
+                                        "192.0.2.10"
+                                    ]
+                                },
+                                "Dhcp4": {
+                                    "option-def": [
+                                        {
+                                            "code": 239,
+                                            "name": "cumulus-provision-url",
+                                            "type": "string",
+                                            "array": false,
+                                            "space": "dhcp4",
+                                            "encapsulate": "",
+                                            "record-types": ""
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "module": null,
+                        "name": "rf0"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp7",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": {
+                        "ip_addresses": [
+                            {
+                                "host": "10.78.156.24",
+                                "mask_length": 22,
+                                "address": "10.78.156.24/22",
+                                "ip_version": 4
+                            }
+                        ],
+                        "device": {
+                            "name": "a04-p01-nvsw-07",
+                            "tenant": null,
+                            "role": {
+                                "name": "NVSwitch"
+                            },
+                            "tags": [],
+                            "config_context": {
+                                "dns": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ntp": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ztp": {
+                                    "ipv4": [
+                                        "192.0.2.10"
+                                    ]
+                                },
+                                "Dhcp4": {
+                                    "option-def": [
+                                        {
+                                            "code": 239,
+                                            "name": "cumulus-provision-url",
+                                            "type": "string",
+                                            "array": false,
+                                            "space": "dhcp4",
+                                            "encapsulate": "",
+                                            "record-types": ""
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "module": null,
+                        "name": "rf0"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp8",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": {
+                        "ip_addresses": [
+                            {
+                                "host": "10.78.156.25",
+                                "mask_length": 22,
+                                "address": "10.78.156.25/22",
+                                "ip_version": 4
+                            }
+                        ],
+                        "device": {
+                            "name": "a04-p01-nvsw-08",
+                            "tenant": null,
+                            "role": {
+                                "name": "NVSwitch"
+                            },
+                            "tags": [],
+                            "config_context": {
+                                "dns": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ntp": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ztp": {
+                                    "ipv4": [
+                                        "192.0.2.10"
+                                    ]
+                                },
+                                "Dhcp4": {
+                                    "option-def": [
+                                        {
+                                            "code": 239,
+                                            "name": "cumulus-provision-url",
+                                            "type": "string",
+                                            "array": false,
+                                            "space": "dhcp4",
+                                            "encapsulate": "",
+                                            "record-types": ""
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "module": null,
+                        "name": "rf0"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp9",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": {
+                        "ip_addresses": [
+                            {
+                                "host": "10.78.156.26",
+                                "mask_length": 22,
+                                "address": "10.78.156.26/22",
+                                "ip_version": 4
+                            }
+                        ],
+                        "device": {
+                            "name": "a04-p01-nvsw-09",
+                            "tenant": null,
+                            "role": {
+                                "name": "NVSwitch"
+                            },
+                            "tags": [],
+                            "config_context": {
+                                "dns": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ntp": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ztp": {
+                                    "ipv4": [
+                                        "192.0.2.10"
+                                    ]
+                                },
+                                "Dhcp4": {
+                                    "option-def": [
+                                        {
+                                            "code": 239,
+                                            "name": "cumulus-provision-url",
+                                            "type": "string",
+                                            "array": false,
+                                            "space": "dhcp4",
+                                            "encapsulate": "",
+                                            "record-types": ""
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "module": null,
+                        "name": "rf0"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp10",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": {
+                        "ip_addresses": [
+                            {
+                                "host": "10.78.156.27",
+                                "mask_length": 22,
+                                "address": "10.78.156.27/22",
+                                "ip_version": 4
+                            }
+                        ],
+                        "device": {
+                            "name": "a04-p01-nvsw-01",
+                            "tenant": null,
+                            "role": {
+                                "name": "NVSwitch"
+                            },
+                            "tags": [],
+                            "config_context": {
+                                "dns": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ntp": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ztp": {
+                                    "ipv4": [
+                                        "192.0.2.10"
+                                    ]
+                                },
+                                "Dhcp4": {
+                                    "option-def": [
+                                        {
+                                            "code": 239,
+                                            "name": "cumulus-provision-url",
+                                            "type": "string",
+                                            "array": false,
+                                            "space": "dhcp4",
+                                            "encapsulate": "",
+                                            "record-types": ""
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "module": null,
+                        "name": "eth1"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp11",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": {
+                        "ip_addresses": [
+                            {
+                                "host": "10.78.156.28",
+                                "mask_length": 22,
+                                "address": "10.78.156.28/22",
+                                "ip_version": 4
+                            }
+                        ],
+                        "device": {
+                            "name": "a04-p01-nvsw-02",
+                            "tenant": null,
+                            "role": {
+                                "name": "NVSwitch"
+                            },
+                            "tags": [],
+                            "config_context": {
+                                "dns": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ntp": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ztp": {
+                                    "ipv4": [
+                                        "192.0.2.10"
+                                    ]
+                                },
+                                "Dhcp4": {
+                                    "option-def": [
+                                        {
+                                            "code": 239,
+                                            "name": "cumulus-provision-url",
+                                            "type": "string",
+                                            "array": false,
+                                            "space": "dhcp4",
+                                            "encapsulate": "",
+                                            "record-types": ""
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "module": null,
+                        "name": "eth1"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp12",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": {
+                        "ip_addresses": [
+                            {
+                                "host": "10.78.156.29",
+                                "mask_length": 22,
+                                "address": "10.78.156.29/22",
+                                "ip_version": 4
+                            }
+                        ],
+                        "device": {
+                            "name": "a04-p01-nvsw-03",
+                            "tenant": null,
+                            "role": {
+                                "name": "NVSwitch"
+                            },
+                            "tags": [],
+                            "config_context": {
+                                "dns": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ntp": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ztp": {
+                                    "ipv4": [
+                                        "192.0.2.10"
+                                    ]
+                                },
+                                "Dhcp4": {
+                                    "option-def": [
+                                        {
+                                            "code": 239,
+                                            "name": "cumulus-provision-url",
+                                            "type": "string",
+                                            "array": false,
+                                            "space": "dhcp4",
+                                            "encapsulate": "",
+                                            "record-types": ""
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "module": null,
+                        "name": "eth1"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp13",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": {
+                        "ip_addresses": [
+                            {
+                                "host": "10.78.156.30",
+                                "mask_length": 22,
+                                "address": "10.78.156.30/22",
+                                "ip_version": 4
+                            }
+                        ],
+                        "device": {
+                            "name": "a04-p01-nvsw-04",
+                            "tenant": null,
+                            "role": {
+                                "name": "NVSwitch"
+                            },
+                            "tags": [],
+                            "config_context": {
+                                "dns": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ntp": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ztp": {
+                                    "ipv4": [
+                                        "192.0.2.10"
+                                    ]
+                                },
+                                "Dhcp4": {
+                                    "option-def": [
+                                        {
+                                            "code": 239,
+                                            "name": "cumulus-provision-url",
+                                            "type": "string",
+                                            "array": false,
+                                            "space": "dhcp4",
+                                            "encapsulate": "",
+                                            "record-types": ""
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "module": null,
+                        "name": "eth1"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp14",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": {
+                        "ip_addresses": [
+                            {
+                                "host": "10.78.156.31",
+                                "mask_length": 22,
+                                "address": "10.78.156.31/22",
+                                "ip_version": 4
+                            }
+                        ],
+                        "device": {
+                            "name": "a04-p01-nvsw-05",
+                            "tenant": null,
+                            "role": {
+                                "name": "NVSwitch"
+                            },
+                            "tags": [],
+                            "config_context": {
+                                "dns": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ntp": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ztp": {
+                                    "ipv4": [
+                                        "192.0.2.10"
+                                    ]
+                                },
+                                "Dhcp4": {
+                                    "option-def": [
+                                        {
+                                            "code": 239,
+                                            "name": "cumulus-provision-url",
+                                            "type": "string",
+                                            "array": false,
+                                            "space": "dhcp4",
+                                            "encapsulate": "",
+                                            "record-types": ""
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "module": null,
+                        "name": "eth1"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp15",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": {
+                        "ip_addresses": [
+                            {
+                                "host": "10.78.156.32",
+                                "mask_length": 22,
+                                "address": "10.78.156.32/22",
+                                "ip_version": 4
+                            }
+                        ],
+                        "device": {
+                            "name": "a04-p01-nvsw-06",
+                            "tenant": null,
+                            "role": {
+                                "name": "NVSwitch"
+                            },
+                            "tags": [],
+                            "config_context": {
+                                "dns": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ntp": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ztp": {
+                                    "ipv4": [
+                                        "192.0.2.10"
+                                    ]
+                                },
+                                "Dhcp4": {
+                                    "option-def": [
+                                        {
+                                            "code": 239,
+                                            "name": "cumulus-provision-url",
+                                            "type": "string",
+                                            "array": false,
+                                            "space": "dhcp4",
+                                            "encapsulate": "",
+                                            "record-types": ""
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "module": null,
+                        "name": "eth1"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp16",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": {
+                        "ip_addresses": [
+                            {
+                                "host": "10.78.156.33",
+                                "mask_length": 22,
+                                "address": "10.78.156.33/22",
+                                "ip_version": 4
+                            }
+                        ],
+                        "device": {
+                            "name": "a04-p01-nvsw-07",
+                            "tenant": null,
+                            "role": {
+                                "name": "NVSwitch"
+                            },
+                            "tags": [],
+                            "config_context": {
+                                "dns": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ntp": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ztp": {
+                                    "ipv4": [
+                                        "192.0.2.10"
+                                    ]
+                                },
+                                "Dhcp4": {
+                                    "option-def": [
+                                        {
+                                            "code": 239,
+                                            "name": "cumulus-provision-url",
+                                            "type": "string",
+                                            "array": false,
+                                            "space": "dhcp4",
+                                            "encapsulate": "",
+                                            "record-types": ""
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "module": null,
+                        "name": "eth1"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp17",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": {
+                        "ip_addresses": [
+                            {
+                                "host": "10.78.156.34",
+                                "mask_length": 22,
+                                "address": "10.78.156.34/22",
+                                "ip_version": 4
+                            }
+                        ],
+                        "device": {
+                            "name": "a04-p01-nvsw-08",
+                            "tenant": null,
+                            "role": {
+                                "name": "NVSwitch"
+                            },
+                            "tags": [],
+                            "config_context": {
+                                "dns": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ntp": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ztp": {
+                                    "ipv4": [
+                                        "192.0.2.10"
+                                    ]
+                                },
+                                "Dhcp4": {
+                                    "option-def": [
+                                        {
+                                            "code": 239,
+                                            "name": "cumulus-provision-url",
+                                            "type": "string",
+                                            "array": false,
+                                            "space": "dhcp4",
+                                            "encapsulate": "",
+                                            "record-types": ""
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "module": null,
+                        "name": "eth1"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp18",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": {
+                        "ip_addresses": [
+                            {
+                                "host": "10.78.156.35",
+                                "mask_length": 22,
+                                "address": "10.78.156.35/22",
+                                "ip_version": 4
+                            }
+                        ],
+                        "device": {
+                            "name": "a04-p01-nvsw-09",
+                            "tenant": null,
+                            "role": {
+                                "name": "NVSwitch"
+                            },
+                            "tags": [],
+                            "config_context": {
+                                "dns": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ntp": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ztp": {
+                                    "ipv4": [
+                                        "192.0.2.10"
+                                    ]
+                                },
+                                "Dhcp4": {
+                                    "option-def": [
+                                        {
+                                            "code": 239,
+                                            "name": "cumulus-provision-url",
+                                            "type": "string",
+                                            "array": false,
+                                            "space": "dhcp4",
+                                            "encapsulate": "",
+                                            "record-types": ""
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "module": null,
+                        "name": "eth1"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp19",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": null
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp20",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": null
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp21",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": null
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp22",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": null
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp23",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": null
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp24",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": null
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp25",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": null
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp26",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": null
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp27",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": null
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp28",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": null
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp29",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": null
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp30",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": null
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp31",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": {
+                        "ip_addresses": [
+                            {
+                                "host": "10.78.156.36",
+                                "mask_length": 22,
+                                "address": "10.78.156.36/22",
+                                "ip_version": 4
+                            }
+                        ],
+                        "device": {
+                            "name": "a04-p01-dgx-04-c18",
+                            "tenant": null,
+                            "role": {
+                                "name": "GPU"
+                            },
+                            "tags": [],
+                            "config_context": {
+                                "dns": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ntp": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ztp": {
+                                    "ipv4": [
+                                        "192.0.2.10"
+                                    ]
+                                },
+                                "Dhcp4": {
+                                    "option-def": [
+                                        {
+                                            "code": 239,
+                                            "name": "cumulus-provision-url",
+                                            "type": "string",
+                                            "array": false,
+                                            "space": "dhcp4",
+                                            "encapsulate": "",
+                                            "record-types": ""
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "module": null,
+                        "name": "dpu0rf0"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp32",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": {
+                        "ip_addresses": [
+                            {
+                                "host": "10.78.156.37",
+                                "mask_length": 22,
+                                "address": "10.78.156.37/22",
+                                "ip_version": 4
+                            }
+                        ],
+                        "device": {
+                            "name": "a04-p01-dgx-04-c17",
+                            "tenant": null,
+                            "role": {
+                                "name": "GPU"
+                            },
+                            "tags": [],
+                            "config_context": {
+                                "dns": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ntp": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ztp": {
+                                    "ipv4": [
+                                        "192.0.2.10"
+                                    ]
+                                },
+                                "Dhcp4": {
+                                    "option-def": [
+                                        {
+                                            "code": 239,
+                                            "name": "cumulus-provision-url",
+                                            "type": "string",
+                                            "array": false,
+                                            "space": "dhcp4",
+                                            "encapsulate": "",
+                                            "record-types": ""
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "module": null,
+                        "name": "dpu0rf0"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp33",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": {
+                        "ip_addresses": [
+                            {
+                                "host": "10.78.156.38",
+                                "mask_length": 22,
+                                "address": "10.78.156.38/22",
+                                "ip_version": 4
+                            }
+                        ],
+                        "device": {
+                            "name": "a04-p01-dgx-04-c16",
+                            "tenant": null,
+                            "role": {
+                                "name": "GPU"
+                            },
+                            "tags": [],
+                            "config_context": {
+                                "dns": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ntp": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ztp": {
+                                    "ipv4": [
+                                        "192.0.2.10"
+                                    ]
+                                },
+                                "Dhcp4": {
+                                    "option-def": [
+                                        {
+                                            "code": 239,
+                                            "name": "cumulus-provision-url",
+                                            "type": "string",
+                                            "array": false,
+                                            "space": "dhcp4",
+                                            "encapsulate": "",
+                                            "record-types": ""
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "module": null,
+                        "name": "dpu0rf0"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp34",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": {
+                        "ip_addresses": [
+                            {
+                                "host": "10.78.156.39",
+                                "mask_length": 22,
+                                "address": "10.78.156.39/22",
+                                "ip_version": 4
+                            }
+                        ],
+                        "device": {
+                            "name": "a04-p01-dgx-04-c15",
+                            "tenant": null,
+                            "role": {
+                                "name": "GPU"
+                            },
+                            "tags": [],
+                            "config_context": {
+                                "dns": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ntp": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ztp": {
+                                    "ipv4": [
+                                        "192.0.2.10"
+                                    ]
+                                },
+                                "Dhcp4": {
+                                    "option-def": [
+                                        {
+                                            "code": 239,
+                                            "name": "cumulus-provision-url",
+                                            "type": "string",
+                                            "array": false,
+                                            "space": "dhcp4",
+                                            "encapsulate": "",
+                                            "record-types": ""
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "module": null,
+                        "name": "dpu0rf0"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp35",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": {
+                        "ip_addresses": [
+                            {
+                                "host": "10.78.156.40",
+                                "mask_length": 22,
+                                "address": "10.78.156.40/22",
+                                "ip_version": 4
+                            }
+                        ],
+                        "device": {
+                            "name": "a04-p01-dgx-04-c14",
+                            "tenant": null,
+                            "role": {
+                                "name": "GPU"
+                            },
+                            "tags": [],
+                            "config_context": {
+                                "dns": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ntp": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ztp": {
+                                    "ipv4": [
+                                        "192.0.2.10"
+                                    ]
+                                },
+                                "Dhcp4": {
+                                    "option-def": [
+                                        {
+                                            "code": 239,
+                                            "name": "cumulus-provision-url",
+                                            "type": "string",
+                                            "array": false,
+                                            "space": "dhcp4",
+                                            "encapsulate": "",
+                                            "record-types": ""
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "module": null,
+                        "name": "dpu0rf0"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp36",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": {
+                        "ip_addresses": [
+                            {
+                                "host": "10.78.156.41",
+                                "mask_length": 22,
+                                "address": "10.78.156.41/22",
+                                "ip_version": 4
+                            }
+                        ],
+                        "device": {
+                            "name": "a04-p01-dgx-04-c13",
+                            "tenant": null,
+                            "role": {
+                                "name": "GPU"
+                            },
+                            "tags": [],
+                            "config_context": {
+                                "dns": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ntp": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ztp": {
+                                    "ipv4": [
+                                        "192.0.2.10"
+                                    ]
+                                },
+                                "Dhcp4": {
+                                    "option-def": [
+                                        {
+                                            "code": 239,
+                                            "name": "cumulus-provision-url",
+                                            "type": "string",
+                                            "array": false,
+                                            "space": "dhcp4",
+                                            "encapsulate": "",
+                                            "record-types": ""
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "module": null,
+                        "name": "dpu0rf0"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp37",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": {
+                        "ip_addresses": [
+                            {
+                                "host": "10.78.156.42",
+                                "mask_length": 22,
+                                "address": "10.78.156.42/22",
+                                "ip_version": 4
+                            }
+                        ],
+                        "device": {
+                            "name": "a04-p01-dgx-04-c12",
+                            "tenant": null,
+                            "role": {
+                                "name": "GPU"
+                            },
+                            "tags": [],
+                            "config_context": {
+                                "dns": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ntp": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ztp": {
+                                    "ipv4": [
+                                        "192.0.2.10"
+                                    ]
+                                },
+                                "Dhcp4": {
+                                    "option-def": [
+                                        {
+                                            "code": 239,
+                                            "name": "cumulus-provision-url",
+                                            "type": "string",
+                                            "array": false,
+                                            "space": "dhcp4",
+                                            "encapsulate": "",
+                                            "record-types": ""
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "module": null,
+                        "name": "dpu0rf0"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp38",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": {
+                        "ip_addresses": [
+                            {
+                                "host": "10.78.156.43",
+                                "mask_length": 22,
+                                "address": "10.78.156.43/22",
+                                "ip_version": 4
+                            }
+                        ],
+                        "device": {
+                            "name": "a04-p01-dgx-04-c11",
+                            "tenant": null,
+                            "role": {
+                                "name": "GPU"
+                            },
+                            "tags": [],
+                            "config_context": {
+                                "dns": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ntp": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ztp": {
+                                    "ipv4": [
+                                        "192.0.2.10"
+                                    ]
+                                },
+                                "Dhcp4": {
+                                    "option-def": [
+                                        {
+                                            "code": 239,
+                                            "name": "cumulus-provision-url",
+                                            "type": "string",
+                                            "array": false,
+                                            "space": "dhcp4",
+                                            "encapsulate": "",
+                                            "record-types": ""
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "module": null,
+                        "name": "dpu0rf0"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp39",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": {
+                        "ip_addresses": [
+                            {
+                                "host": "10.78.156.44",
+                                "mask_length": 22,
+                                "address": "10.78.156.44/22",
+                                "ip_version": 4
+                            }
+                        ],
+                        "device": {
+                            "name": "a04-p01-dgx-04-c10",
+                            "tenant": null,
+                            "role": {
+                                "name": "GPU"
+                            },
+                            "tags": [],
+                            "config_context": {
+                                "dns": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ntp": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ztp": {
+                                    "ipv4": [
+                                        "192.0.2.10"
+                                    ]
+                                },
+                                "Dhcp4": {
+                                    "option-def": [
+                                        {
+                                            "code": 239,
+                                            "name": "cumulus-provision-url",
+                                            "type": "string",
+                                            "array": false,
+                                            "space": "dhcp4",
+                                            "encapsulate": "",
+                                            "record-types": ""
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "module": null,
+                        "name": "dpu0rf0"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp40",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": {
+                        "ip_addresses": [
+                            {
+                                "host": "10.78.156.45",
+                                "mask_length": 22,
+                                "address": "10.78.156.45/22",
+                                "ip_version": 4
+                            }
+                        ],
+                        "device": {
+                            "name": "a04-p01-dgx-04-c09",
+                            "tenant": null,
+                            "role": {
+                                "name": "GPU"
+                            },
+                            "tags": [],
+                            "config_context": {
+                                "dns": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ntp": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ztp": {
+                                    "ipv4": [
+                                        "192.0.2.10"
+                                    ]
+                                },
+                                "Dhcp4": {
+                                    "option-def": [
+                                        {
+                                            "code": 239,
+                                            "name": "cumulus-provision-url",
+                                            "type": "string",
+                                            "array": false,
+                                            "space": "dhcp4",
+                                            "encapsulate": "",
+                                            "record-types": ""
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "module": null,
+                        "name": "dpu0rf0"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp41",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": {
+                        "ip_addresses": [
+                            {
+                                "host": "10.78.156.46",
+                                "mask_length": 22,
+                                "address": "10.78.156.46/22",
+                                "ip_version": 4
+                            }
+                        ],
+                        "device": {
+                            "name": "a04-p01-dgx-04-c08",
+                            "tenant": null,
+                            "role": {
+                                "name": "GPU"
+                            },
+                            "tags": [],
+                            "config_context": {
+                                "dns": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ntp": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ztp": {
+                                    "ipv4": [
+                                        "192.0.2.10"
+                                    ]
+                                },
+                                "Dhcp4": {
+                                    "option-def": [
+                                        {
+                                            "code": 239,
+                                            "name": "cumulus-provision-url",
+                                            "type": "string",
+                                            "array": false,
+                                            "space": "dhcp4",
+                                            "encapsulate": "",
+                                            "record-types": ""
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "module": null,
+                        "name": "dpu0rf0"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp42",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": {
+                        "ip_addresses": [
+                            {
+                                "host": "10.78.156.47",
+                                "mask_length": 22,
+                                "address": "10.78.156.47/22",
+                                "ip_version": 4
+                            }
+                        ],
+                        "device": {
+                            "name": "a04-p01-dgx-04-c07",
+                            "tenant": null,
+                            "role": {
+                                "name": "GPU"
+                            },
+                            "tags": [],
+                            "config_context": {
+                                "dns": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ntp": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ztp": {
+                                    "ipv4": [
+                                        "192.0.2.10"
+                                    ]
+                                },
+                                "Dhcp4": {
+                                    "option-def": [
+                                        {
+                                            "code": 239,
+                                            "name": "cumulus-provision-url",
+                                            "type": "string",
+                                            "array": false,
+                                            "space": "dhcp4",
+                                            "encapsulate": "",
+                                            "record-types": ""
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "module": null,
+                        "name": "dpu0rf0"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp43",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": {
+                        "ip_addresses": [
+                            {
+                                "host": "10.78.156.48",
+                                "mask_length": 22,
+                                "address": "10.78.156.48/22",
+                                "ip_version": 4
+                            }
+                        ],
+                        "device": {
+                            "name": "a04-p01-dgx-04-c06",
+                            "tenant": null,
+                            "role": {
+                                "name": "GPU"
+                            },
+                            "tags": [],
+                            "config_context": {
+                                "dns": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ntp": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ztp": {
+                                    "ipv4": [
+                                        "192.0.2.10"
+                                    ]
+                                },
+                                "Dhcp4": {
+                                    "option-def": [
+                                        {
+                                            "code": 239,
+                                            "name": "cumulus-provision-url",
+                                            "type": "string",
+                                            "array": false,
+                                            "space": "dhcp4",
+                                            "encapsulate": "",
+                                            "record-types": ""
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "module": null,
+                        "name": "dpu0rf0"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp44",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": {
+                        "ip_addresses": [
+                            {
+                                "host": "10.78.156.49",
+                                "mask_length": 22,
+                                "address": "10.78.156.49/22",
+                                "ip_version": 4
+                            }
+                        ],
+                        "device": {
+                            "name": "a04-p01-dgx-04-c05",
+                            "tenant": null,
+                            "role": {
+                                "name": "GPU"
+                            },
+                            "tags": [],
+                            "config_context": {
+                                "dns": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ntp": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ztp": {
+                                    "ipv4": [
+                                        "192.0.2.10"
+                                    ]
+                                },
+                                "Dhcp4": {
+                                    "option-def": [
+                                        {
+                                            "code": 239,
+                                            "name": "cumulus-provision-url",
+                                            "type": "string",
+                                            "array": false,
+                                            "space": "dhcp4",
+                                            "encapsulate": "",
+                                            "record-types": ""
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "module": null,
+                        "name": "dpu0rf0"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp45",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": {
+                        "ip_addresses": [
+                            {
+                                "host": "10.78.156.50",
+                                "mask_length": 22,
+                                "address": "10.78.156.50/22",
+                                "ip_version": 4
+                            }
+                        ],
+                        "device": {
+                            "name": "a04-p01-dgx-04-c04",
+                            "tenant": null,
+                            "role": {
+                                "name": "GPU"
+                            },
+                            "tags": [],
+                            "config_context": {
+                                "dns": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ntp": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ztp": {
+                                    "ipv4": [
+                                        "192.0.2.10"
+                                    ]
+                                },
+                                "Dhcp4": {
+                                    "option-def": [
+                                        {
+                                            "code": 239,
+                                            "name": "cumulus-provision-url",
+                                            "type": "string",
+                                            "array": false,
+                                            "space": "dhcp4",
+                                            "encapsulate": "",
+                                            "record-types": ""
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "module": null,
+                        "name": "dpu0rf0"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp46",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": {
+                        "ip_addresses": [
+                            {
+                                "host": "10.78.156.51",
+                                "mask_length": 22,
+                                "address": "10.78.156.51/22",
+                                "ip_version": 4
+                            }
+                        ],
+                        "device": {
+                            "name": "a04-p01-dgx-04-c03",
+                            "tenant": null,
+                            "role": {
+                                "name": "GPU"
+                            },
+                            "tags": [],
+                            "config_context": {
+                                "dns": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ntp": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ztp": {
+                                    "ipv4": [
+                                        "192.0.2.10"
+                                    ]
+                                },
+                                "Dhcp4": {
+                                    "option-def": [
+                                        {
+                                            "code": 239,
+                                            "name": "cumulus-provision-url",
+                                            "type": "string",
+                                            "array": false,
+                                            "space": "dhcp4",
+                                            "encapsulate": "",
+                                            "record-types": ""
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "module": null,
+                        "name": "dpu0rf0"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp47",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": {
+                        "ip_addresses": [
+                            {
+                                "host": "10.78.156.52",
+                                "mask_length": 22,
+                                "address": "10.78.156.52/22",
+                                "ip_version": 4
+                            }
+                        ],
+                        "device": {
+                            "name": "a04-p01-dgx-04-c02",
+                            "tenant": null,
+                            "role": {
+                                "name": "GPU"
+                            },
+                            "tags": [],
+                            "config_context": {
+                                "dns": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ntp": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ztp": {
+                                    "ipv4": [
+                                        "192.0.2.10"
+                                    ]
+                                },
+                                "Dhcp4": {
+                                    "option-def": [
+                                        {
+                                            "code": 239,
+                                            "name": "cumulus-provision-url",
+                                            "type": "string",
+                                            "array": false,
+                                            "space": "dhcp4",
+                                            "encapsulate": "",
+                                            "record-types": ""
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "module": null,
+                        "name": "dpu0rf0"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp48",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": {
+                        "ip_addresses": [
+                            {
+                                "host": "10.78.156.53",
+                                "mask_length": 22,
+                                "address": "10.78.156.53/22",
+                                "ip_version": 4
+                            }
+                        ],
+                        "device": {
+                            "name": "a04-p01-dgx-04-c01",
+                            "tenant": null,
+                            "role": {
+                                "name": "GPU"
+                            },
+                            "tags": [],
+                            "config_context": {
+                                "dns": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ntp": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ztp": {
+                                    "ipv4": [
+                                        "192.0.2.10"
+                                    ]
+                                },
+                                "Dhcp4": {
+                                    "option-def": [
+                                        {
+                                            "code": 239,
+                                            "name": "cumulus-provision-url",
+                                            "type": "string",
+                                            "array": false,
+                                            "space": "dhcp4",
+                                            "encapsulate": "",
+                                            "record-types": ""
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "module": null,
+                        "name": "dpu0rf0"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "Uplink"
+                    },
+                    "type": "A_10GBASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp49",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": null,
+                    "tagged_vlans": [],
+                    "ip_addresses": [
+                        {
+                            "host": "10.254.32.1",
+                            "mask_length": 31,
+                            "address": "10.254.32.1/31",
+                            "ip_version": 4,
+                            "role": null,
+                            "parent": {
+                                "prefix": "10.254.32.0/31",
+                                "parent": {
+                                    "prefix": "10.254.32.0/26",
+                                    "parent": {
+                                        "prefix": "10.254.32.0/23"
+                                    }
+                                }
+                            }
+                        }
+                    ],
+                    "connected_interface": {
+                        "ip_addresses": [
+                            {
+                                "host": "10.254.32.0",
+                                "mask_length": 31,
+                                "address": "10.254.32.0/31",
+                                "ip_version": 4
+                            }
+                        ],
+                        "device": {
+                            "name": "a08-u28-p01-oobspine-01",
+                            "tenant": null,
+                            "role": {
+                                "name": "OOB-Spine"
+                            },
+                            "tags": [],
+                            "config_context": {
+                                "intended-firmware": {
+                                    "version": "5.13.1"
+                                },
+                                "password_mappings": {
+                                    "nv-config-manager": {
+                                        "role": "system-admin",
+                                        "password": "api_user_key",
+                                        "rotation": "r1"
+                                    },
+                                    "cumulus": {
+                                        "role": "system-admin",
+                                        "password": "root_password",
+                                        "rotation": "r1"
+                                    }
+                                },
+                                "evpn_esi_base_mac": "44:38:39:ff:69:00",
+                                "fabric-mac": "00:00:5E:00:01:69",
+                                "dns": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ntp": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ztp": {
+                                    "ipv4": [
+                                        "192.0.2.10"
+                                    ]
+                                },
+                                "Dhcp4": {
+                                    "option-def": [
+                                        {
+                                            "code": 239,
+                                            "name": "cumulus-provision-url",
+                                            "type": "string",
+                                            "array": false,
+                                            "space": "dhcp4",
+                                            "encapsulate": "",
+                                            "record-types": ""
+                                        }
+                                    ]
+                                },
+                                "bgp": {
+                                    "asn": 4265355097
+                                },
+                                "evpn": {
+                                    "df-preference": 50000
+                                }
+                            }
+                        },
+                        "module": null,
+                        "name": "swp9s0"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "Uplink"
+                    },
+                    "type": "A_10GBASE_T",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp51",
+                    "description": "",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": null,
+                    "tagged_vlans": [],
+                    "ip_addresses": [
+                        {
+                            "host": "10.254.34.1",
+                            "mask_length": 31,
+                            "address": "10.254.34.1/31",
+                            "ip_version": 4,
+                            "role": null,
+                            "parent": {
+                                "prefix": "10.254.34.0/31",
+                                "parent": {
+                                    "prefix": "10.254.34.0/26",
+                                    "parent": {
+                                        "prefix": "10.254.34.0/23"
+                                    }
+                                }
+                            }
+                        }
+                    ],
+                    "connected_interface": {
+                        "ip_addresses": [
+                            {
+                                "host": "10.254.34.0",
+                                "mask_length": 31,
+                                "address": "10.254.34.0/31",
+                                "ip_version": 4
+                            }
+                        ],
+                        "device": {
+                            "name": "b08-u28-p01-oobspine-02",
+                            "tenant": null,
+                            "role": {
+                                "name": "OOB-Spine"
+                            },
+                            "tags": [],
+                            "config_context": {
+                                "intended-firmware": {
+                                    "version": "5.13.1"
+                                },
+                                "password_mappings": {
+                                    "nv-config-manager": {
+                                        "role": "system-admin",
+                                        "password": "api_user_key",
+                                        "rotation": "r1"
+                                    },
+                                    "cumulus": {
+                                        "role": "system-admin",
+                                        "password": "root_password",
+                                        "rotation": "r1"
+                                    }
+                                },
+                                "evpn_esi_base_mac": "44:38:39:ff:69:00",
+                                "fabric-mac": "00:00:5E:00:01:69",
+                                "dns": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ntp": {
+                                    "ipv4": [
+                                        "192.0.2.8",
+                                        "192.0.2.9"
+                                    ]
+                                },
+                                "ztp": {
+                                    "ipv4": [
+                                        "192.0.2.10"
+                                    ]
+                                },
+                                "Dhcp4": {
+                                    "option-def": [
+                                        {
+                                            "code": 239,
+                                            "name": "cumulus-provision-url",
+                                            "type": "string",
+                                            "array": false,
+                                            "space": "dhcp4",
+                                            "encapsulate": "",
+                                            "record-types": ""
+                                        }
+                                    ]
+                                },
+                                "bgp": {
+                                    "asn": 4265355098
+                                },
+                                "evpn": {
+                                    "df-preference": 40000
+                                }
+                            }
+                        },
+                        "module": null,
+                        "name": "swp9s0"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "VLAN-202"
+                    },
+                    "type": "VIRTUAL",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "vlan202",
+                    "description": "",
+                    "vrf": {
+                        "name": "OOB",
+                        "rd": "*:2000",
+                        "export_targets": [],
+                        "import_targets": []
+                    },
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 202,
+                        "name": "Vlan202"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": [
+                        {
+                            "host": "10.78.156.2",
+                            "mask_length": 22,
+                            "address": "10.78.156.2/22",
+                            "ip_version": 4,
+                            "role": null,
+                            "parent": {
+                                "prefix": "10.78.156.0/22",
+                                "parent": {
+                                    "prefix": "10.78.144.0/20",
+                                    "parent": {
+                                        "prefix": "0.0.0.0/0"
+                                    }
+                                }
+                            }
+                        }
+                    ],
+                    "connected_interface": null
+                }
+            ],
+            "console_server_ports": []
+        },
+        "vxlans": [
+            {
+                "id": "19f423be-cebe-5b1d-9746-bc7276977948",
+                "name": "Vlan101",
+                "vnid": 1001,
+                "vni_type": "l2",
+                "l3_vlan_id": null,
+                "overlay": {
+                    "name": "Vlan101"
+                },
+                "vlan": {
+                    "vid": 101,
+                    "name": "Vlan101"
+                },
+                "vrf": null,
+                "import_targets": [],
+                "export_targets": []
+            },
+            {
+                "id": "5ff79e1d-eda8-5a04-9b22-5f66180eecaa",
+                "name": "Vlan150",
+                "vnid": 1050,
+                "vni_type": "l2",
+                "l3_vlan_id": null,
+                "overlay": {
+                    "name": "Vlan150"
+                },
+                "vlan": {
+                    "vid": 150,
+                    "name": "Vlan150"
+                },
+                "vrf": null,
+                "import_targets": [],
+                "export_targets": []
+            },
+            {
+                "id": "667ed733-e2ee-5ecc-ae52-8dbd3df0ac66",
+                "name": "Vlan201",
+                "vnid": 2001,
+                "vni_type": "l2",
+                "l3_vlan_id": null,
+                "overlay": {
+                    "name": "Vlan201"
+                },
+                "vlan": {
+                    "vid": 201,
+                    "name": "Vlan201"
+                },
+                "vrf": null,
+                "import_targets": [],
+                "export_targets": []
+            },
+            {
+                "id": "79a7dbe0-81a0-5fe7-be97-ac9b0e28d646",
+                "name": "Vlan202",
+                "vnid": 2002,
+                "vni_type": "l2",
+                "l3_vlan_id": null,
+                "overlay": {
+                    "name": "Vlan202"
+                },
+                "vlan": {
+                    "vid": 202,
+                    "name": "Vlan202"
+                },
+                "vrf": null,
+                "import_targets": [],
+                "export_targets": []
+            },
+            {
+                "id": "a125746a-cc12-5510-8d64-8e876dbd2fe0",
+                "name": "Vlan203",
+                "vnid": 2003,
+                "vni_type": "l2",
+                "l3_vlan_id": null,
+                "overlay": {
+                    "name": "Vlan203"
+                },
+                "vlan": {
+                    "vid": 203,
+                    "name": "Vlan203"
+                },
+                "vrf": null,
+                "import_targets": [],
+                "export_targets": []
+            },
+            {
+                "id": "6fb47449-1181-5c95-ae34-008bfa3ff99d",
+                "name": "Vlan301",
+                "vnid": 3001,
+                "vni_type": "l2",
+                "l3_vlan_id": null,
+                "overlay": {
+                    "name": "Vlan301"
+                },
+                "vlan": {
+                    "vid": 301,
+                    "name": "Vlan301"
+                },
+                "vrf": null,
+                "import_targets": [],
+                "export_targets": []
+            },
+            {
+                "id": "73aa5ee3-9f4c-5dfe-befa-093a9691b446",
+                "name": "INBAND-L3",
+                "vnid": 1000,
+                "vni_type": "l3",
+                "l3_vlan_id": 4001,
+                "overlay": {
+                    "name": "INBAND-L3"
+                },
+                "vlan": null,
+                "vrf": {
+                    "name": "INBAND"
+                },
+                "import_targets": [],
+                "export_targets": []
+            },
+            {
+                "id": "1e3e4c8e-8933-5fa7-ab2e-a1ea7cab8032",
+                "name": "OOB-L3",
+                "vnid": 2000,
+                "vni_type": "l3",
+                "l3_vlan_id": 4002,
+                "overlay": {
+                    "name": "OOB-L3"
+                },
+                "vlan": null,
+                "vrf": {
+                    "name": "OOB",
+                    "rd": "*:2000",
+                    "export_targets": [],
+                    "import_targets": []
+                },
+                "import_targets": [],
+                "export_targets": []
+            },
+            {
+                "id": "c31067c5-c9a6-59dc-aeaa-178a088859ac",
+                "name": "STORAGE-L3",
+                "vnid": 3000,
+                "vni_type": "l3",
+                "l3_vlan_id": 4003,
+                "overlay": {
+                    "name": "STORAGE-L3"
+                },
+                "vlan": null,
+                "vrf": {
+                    "name": "STORAGE"
+                },
+                "import_targets": [],
+                "export_targets": []
+            }
+        ],
+        "overlay_assignments": [
+            {
+                "assigned_object_id": "73cd8d4d-2af7-4088-9758-22d8ee401900",
+                "assigned_object_type": {
+                    "app_label": "dcim",
+                    "model": "device"
+                },
+                "overlay": {
+                    "name": "Vlan101",
+                    "assignments": []
+                }
+            },
+            {
+                "assigned_object_id": "73cd8d4d-2af7-4088-9758-22d8ee401900",
+                "assigned_object_type": {
+                    "app_label": "dcim",
+                    "model": "device"
+                },
+                "overlay": {
+                    "name": "Vlan150",
+                    "assignments": []
+                }
+            },
+            {
+                "assigned_object_id": "73cd8d4d-2af7-4088-9758-22d8ee401900",
+                "assigned_object_type": {
+                    "app_label": "dcim",
+                    "model": "device"
+                },
+                "overlay": {
+                    "name": "Vlan201",
+                    "assignments": []
+                }
+            },
+            {
+                "assigned_object_id": "73cd8d4d-2af7-4088-9758-22d8ee401900",
+                "assigned_object_type": {
+                    "app_label": "dcim",
+                    "model": "device"
+                },
+                "overlay": {
+                    "name": "Vlan202",
+                    "assignments": []
+                }
+            },
+            {
+                "assigned_object_id": "73cd8d4d-2af7-4088-9758-22d8ee401900",
+                "assigned_object_type": {
+                    "app_label": "dcim",
+                    "model": "device"
+                },
+                "overlay": {
+                    "name": "Vlan203",
+                    "assignments": []
+                }
+            },
+            {
+                "assigned_object_id": "73cd8d4d-2af7-4088-9758-22d8ee401900",
+                "assigned_object_type": {
+                    "app_label": "dcim",
+                    "model": "device"
+                },
+                "overlay": {
+                    "name": "Vlan301",
+                    "assignments": []
+                }
+            }
+        ]
+    }
+}

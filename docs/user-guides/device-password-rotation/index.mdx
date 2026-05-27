@@ -1,0 +1,102 @@
+---
+title: Device Password Rotation
+sidebar-title: Device Password Rotation
+position: 10
+---
+
+The Device Password Rotation workflow rotates the password for a single user account on a single network device. It renders the device's intended configuration (which by then contains the new password from the secrets store), computes the diff against the running configuration, validates that the diff only changes the target user's password — and on that condition auto-approves and applies the change. The auto-approval is the central feature: a pure password rotation never blocks on a human reviewer; a diff that touches anything else fails closed.
+
+For site-wide bulk rotation across every device at a site, use [Site Password Rotation](../site-password-rotation/index.mdx) instead — it fans out a Device Password Rotation per device.
+
+## Prerequisites
+
+Before running, confirm the following are in place:
+
+- **New password is populated in the secrets store and the intended configuration is re-rendered.** This is the pre-work that drives the rotation — the workflow only ever applies what the render says. Write the new password to the secrets backend the site is configured against (HashiCorp Vault or a Kubernetes Secret, per the site's `secrets:` install config) at the path the device's password mapping points to, then re-render via the [Render Service](../../render/index.mdx) so the device's intended configuration carries the new password. If the render has not rolled forward, the diff stage will report "No password changes needed, no diff" and the rotation will do nothing.
+- **Device exists in Nautobot** with a current intended configuration in the [Config Store](../../config-store/index.mdx), on a supported platform (Cumulus Linux or NVOS).
+- **Password mapping is populated** for the target username in the device's config context. The workflow's `get_password_mappings` activity fails fast if the mapping is missing.
+- **Device is reachable** from Config Manager on its management address and credentials are present in the secrets store. After rotation, the new password becomes the working credential — older clients holding the prior password will need to update.
+
+## Running the workflow
+
+1. Navigate to the Config Manager URL for your environment.
+1. Click the **+** in the top right and select **DevicePasswordRotationWorkflow**.
+1. Fill in the form using the field reference below and submit.
+
+| Field | Description | Required |
+| :---- | :---------- | :------- |
+| **Site** | The site of the target device. Drives the device list below. | Yes |
+| **Device** | The target device. The list is filtered by the site selection above. | Yes |
+| **Secret to Rotate** | The username whose password is being rotated (for example, `cumulus`, `breakglass`). The validator restricts the allowed diff to lines that change this user's password. | Yes |
+
+After submission, a status page appears showing the four stages. A normal password-only rotation completes without human interaction.
+
+## Execution stages
+
+The workflow runs four stages. The diff stage flips from `requires_approval=True` to `requires_approval=False` at runtime once the diff is validated, so the operator never sees an approval prompt on the happy path.
+
+1. **`load_intended_configuration` — Load the device's intended config.**
+
+    Pulls the rendered intended configuration plus its commit SHA. The intended config must contain the new password from the secrets store; if it still contains the old password, this is an upstream render issue and the diff stage will report "No password changes needed, no diff."
+
+1. **`perform_configuration_diff` — Compute the diff and validate it.**
+
+    Validates the device's platform is supported, validates the password mapping is present for the target username, runs a candidate diff against the device's running configuration, and then:
+
+   - **Empty diff** — clears the approval requirement and returns `approved=False` with display "No password changes needed, no diff." The workflow continues to `perform_backup` to record the unchanged state.
+   - **Password-only diff** — runs `validate_password_diff` against the diff text and the target username. If the diff *only* changes the target user's password, the stage clears its approval requirement and auto-approves with display "Password Rotation Configuration Diff (Auto-Approved password only changes for '`<user>`')".
+   - **Mixed or non-password diff** — raises `DiffValidationError` with the invalid lines surfaced in the error message. The workflow halts; `apply_configuration` and `perform_backup` are not reached.
+
+1. **`apply_configuration` — Apply the auto-approved diff.**
+
+    Pushes the configuration change to the device. The same non-retryable errors as Configuration Deploy apply: `ConfigSyntaxException`, `DiffChangedException`.
+
+1. **`perform_backup` — Capture a fresh backup.**
+
+    Starts the [Configuration Backup](../configuration-backup/index.mdx) workflow as a child workflow with `trigger=WORKFLOW` and a 10-minute run timeout. The backup is tagged with the just-applied commit SHA.
+
+## Verifying outcomes
+
+After the workflow reports success, confirm:
+
+- **All four stages green** on the Config Manager run page (or `perform_configuration_diff` green and downstream stages on the empty-diff path).
+- **You can log in with the new password.** SSH to the device using the rotated user's new credential.
+- **The prior account is still present.** Password rotation only changes the credential, not the account; if the user disappeared, that is a `DiffValidationError` waiting to happen on the next run.
+- **A fresh backup exists** in the Config Store, tagged with the commit SHA the workflow used.
+
+## Rollback / recovering from a stuck rotation
+
+A rotation rarely leaves a device in a worse state than it started in, but if it does:
+
+- **Apply succeeded but you cannot log in.** Use the secrets store's previous-version retrieval to recover the prior password — secrets stores typically retain versioned history. Cross-check that the password actually rotated in the secrets store (a stuck rotation upstream is the most common cause of an after-the-fact mismatch).
+- **All sudo-capable accounts are locked out.** Fall back to the `breakglass` user with the site root password from the secrets store. If breakglass is also unreachable, reach the device via console using the [Options for logging into a stuck device](../new-site-deployment/index.mdx#options-for-logging-into-a-stuck-device) procedure.
+- **The cumulus user was somehow dropped during rotation.** On Cumulus 5.11+, `nv action run system ztp` re-runs the ZTP boot script (including user creation) without sudo. See [New Site Bringup → Rerunning ZTP on a live device](../new-site-deployment/index.mdx#rerunning-ztp-on-a-live-device).
+
+## Common issues
+
+**`DiffValidationError: Diff contains non-password changes`.**
+
+The intended configuration has drifted in ways beyond the password — for example, a template change landed in the same render. The workflow fails closed by design rather than silently apply unrelated changes. Resolve the unintended change (revert the template or update Nautobot), re-render, and re-run. If you genuinely want to apply a mixed change, route it through [Configuration Deploy](../configuration-deploy/index.mdx) so a human reviews the diff.
+
+**`get_password_mappings` activity failed.**
+
+The device's config context does not have a password mapping populated for the target username. Add the mapping in Nautobot and re-run.
+
+**Diff stage reports "No password changes needed, no diff."**
+
+Either the rotation has already been applied, or the rendered intended config still references the old password (render has not picked up the new secret yet). Re-render via the [Render Service](../../render/index.mdx) if you expected a change.
+
+**Unsupported platform error.**
+
+Password rotation is only implemented for Cumulus Linux and NVOS today. Devices on other platforms fail at platform validation; rotate their passwords through whatever per-platform process applies.
+
+**`DiffChangedException` at apply.**
+
+The device's running configuration changed between diff and apply. Re-run the workflow — it will compute a fresh diff and re-validate.
+
+## Related guides
+
+- [Site Password Rotation](../site-password-rotation/index.mdx) — fans this workflow out across an entire site.
+- [Configuration Backup](../configuration-backup/index.mdx) — child workflow triggered after a successful apply.
+- [Configuration Deploy](../configuration-deploy/index.mdx) — when a change is broader than a pure password rotation.
+- [New Site Bringup → Options for logging into a stuck device](../new-site-deployment/index.mdx#options-for-logging-into-a-stuck-device) — recovery path if rotation locks you out.

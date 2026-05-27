@@ -1,0 +1,101 @@
+---
+title: Site Password Rotation
+sidebar-title: Site Password Rotation
+position: 10
+---
+
+The Site Password Rotation workflow rotates a user account's password across every in-scope device at a site. It fans out one [Device Password Rotation](../device-password-rotation/index.mdx) child workflow per device, aggregates the per-device results, and produces a consolidated report distinguishing successes, skips, and failures. It is the bulk equivalent of running Device Password Rotation by hand for each switch — typically used on a recurring credential-rotation schedule or after a security event that requires re-rotation.
+
+For a single-device rotation, use [Device Password Rotation](../device-password-rotation/index.mdx) directly.
+
+## Prerequisites
+
+Before running, confirm the following are in place. The two-step pre-work that drives the rotation must happen in this order — the workflow only ever applies what the render says, so until both steps are done the children all no-op.
+
+1. **New password is written to the secrets store.** Write the new password to the secrets backend the site is configured against (HashiCorp Vault or a Kubernetes Secret, per the site's `secrets:` install config).
+1. **Password mapping config context is updated** to reference the new credential for the target username. Updating this context re-renders every device tied to it (for example, all Cumulus devices at the site), so no manual render step is required. If you skip this step, every child will report "no diff" and the rotation will silently do nothing.
+
+Also confirm:
+
+- **All devices at the site are in Nautobot** with current intended configurations in the [Config Store](../../config-store/index.mdx). Each child workflow re-uses the same flow Device Password Rotation runs, so any device that would fail individually will fail individually here.
+- **Devices are reachable** from Config Manager on their management addresses, and credentials for the site are current.
+- **Authorization to bulk-rotate.** The workflow does not have a global approval gate — every child auto-approves if its diff is password-only.
+
+## Running the workflow
+
+1. Navigate to the Config Manager URL for your environment.
+1. Click the **+** in the top right and select **SitePasswordRotationWorkflow**.
+1. Fill in the form using the field reference below and submit.
+
+| Field | Description | Required |
+| :---- | :---------- | :------- |
+| **Location** | The site to rotate passwords across. | Yes |
+| **Roles** | Device roles to include in the rotation (multi-select). | Yes |
+| **Device Status** | Device statuses to include (multi-select). | Yes |
+| **Tenant** | Nautobot tenant for the run. | Yes |
+| **Secret to Rotate** | The username whose password is being rotated across the site (for example, `cumulus`, `breakglass`). | Yes |
+
+After submission, a status page appears showing the three stages. The middle stage updates its display incrementally as child workflows complete.
+
+## Execution stages
+
+The workflow runs three stages. None require manual approval at the site level — each child performs its own auto-approval based on diff validation.
+
+1. **`get_devices` — Resolve the device list from Nautobot.**
+
+    Calls Nautobot with the supplied location, role, status, and tenant filters and returns the device list to be rotated. The stage display reports the device count.
+
+1. **`rotate_passwords` — Fan out a child rotation per device.**
+
+    For each device, the workflow starts a [Device Password Rotation](../device-password-rotation/index.mdx) child workflow with the device ID and the target username. All children are started in parallel and awaited as they complete; the stage display updates as each result lands. A child that fails (validation error, unreachable device, apply failure) is captured in the per-device result rather than stopping the run.
+
+1. **`format_result` — Aggregate per-device results.**
+
+    Combines all child outcomes into a consolidated `PasswordRotationResultData` list and renders it on the stage display. Each entry includes the device, success/failure, optional error message, and the child workflow ID for drilling in.
+
+## Result structure
+
+The workflow result is a list of `PasswordRotationResultData` entries, each with:
+
+- **device** — the Nautobot device record that was rotated (or attempted).
+- **success** — `True` if the child workflow completed successfully (including the no-diff "already rotated" case), `False` if it failed.
+- **error** — populated on failure; commonly `DiffValidationError`, an unreachable device error, or a `ConfigSyntaxException`.
+- **child_workflow_id** — the Temporal workflow ID of the child run, for follow-up investigation.
+
+Devices that were skipped because their intended configuration produced no diff (already rotated, or render not rolled forward) appear with `success=True` and no error — distinguish these from real successes by checking the child workflow's diff stage display.
+
+## Partial failures and re-runs
+
+A child failure does not stop the rest of the site. Site rotation is idempotent against the auto-approval check — re-running it does not re-apply already-applied diffs, because a no-op diff short-circuits each child. To recover from partial failures:
+
+1. Open the consolidated result on the workflow status page and filter to `success=False`.
+1. For each failed device, click through to the child workflow's run page to read the underlying error and the rendered diff.
+1. Resolve the per-device cause (fix the password mapping, fix reachability, etc.).
+1. Re-run **Site Password Rotation** with the same inputs. Devices that succeeded last time will re-run with empty diffs and exit fast; the previously failed devices will retry.
+
+For one-off retries on a single device, [Device Password Rotation](../device-password-rotation/index.mdx) can also be invoked directly.
+
+## Common issues
+
+**Most children report "No password changes needed, no diff."**
+
+The password mapping config context was not updated after the new password landed in the secrets store, so the re-render never picked up the new credential. Update the context and re-run.
+
+**Many children report `DiffValidationError`.**
+
+A template change landed in the same render cycle as the password rotation, so the diffs touch more than just the password. Either revert/separate the template change and re-render, or route the broader change through [Configuration Deploy](../configuration-deploy/index.mdx) one device at a time.
+
+**A handful of devices are unreachable.**
+
+Site bringup may have left some devices in a state where their management interface is not reachable. The [Monitoring DHCP and ZTP](../new-site-deployment/index.mdx#monitoring-dhcp-and-ztp) section of New Site Bringup is the canonical troubleshooting path. Devices that come back online can be rotated by re-running this workflow.
+
+**You can no longer log in to a device after rotation.**
+
+The new password did not propagate. Use the [Options for logging into a stuck device](../new-site-deployment/index.mdx#options-for-logging-into-a-stuck-device) procedure (console or upstream SSH) to recover.
+
+## Related guides
+
+- [Device Password Rotation](../device-password-rotation/index.mdx) — the per-device child workflow, also runnable directly.
+- [Configuration Backup](../configuration-backup/index.mdx) — every successful rotation produces a fresh backup via the child workflow.
+- [Render Service](../../render/index.mdx) — produces the intended configurations the rotation diffs against.
+- [New Site Bringup → Options for logging into a stuck device](../new-site-deployment/index.mdx#options-for-logging-into-a-stuck-device) — recovery path if rotation locks you out.

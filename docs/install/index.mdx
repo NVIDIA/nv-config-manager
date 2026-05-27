@@ -1,0 +1,357 @@
+---
+title: Getting Started with Config Manager
+sidebar-title: Getting Started with Config Manager
+---
+
+Use the Config Manager installer for standard, internet-connected deployments. The installer guides you through cluster settings, services, secrets, external integrations, images, and deployment options; saves a repeatable `nv-config-manager-install.yaml` file; generates Helm values and Kubernetes secrets; and can run the deployment lifecycle from the same terminal interface.
+
+Use this page to:
+
+- Create and validate a `nv-config-manager-install.yaml` configuration
+- Run the interactive TUI wizard or the headless CLI
+- Open the dedicated [TUI Wizard Reference](tui-wizard-reference.mdx) and [Configuration Samples](configuration-samples.mdx) when you need field-by-field details
+- Verify the deployment and make post-deploy changes without starting over
+
+For disconnected environments, use the [airgapped deployment guide](install-airgapped.mdx). To preview Config Manager functionality locally without a real lab, use [Local Development Quick Start](../getting-started/local-development-quick-start.mdx) instead of this production deployment path.
+
+## Prerequisites
+
+Before you start, install the following tools and confirm you have access to the target cluster and supporting services.
+
+| Component | Purpose |
+| :-------- | :------ |
+| `kubectl` | Connects to the Kubernetes cluster where Config Manager will be installed |
+| Helm 3.x | Installs and upgrades the Config Manager chart and optional operators |
+| Python 3.11+ and `uv` | Runs or installs the `nv-config-manager-installer` CLI |
+| Docker | Builds local images when using the local image workflow |
+| Kind | Loads locally built images into a Kind cluster when using a local or remote-VM Kubernetes test environment |
+| Vault or OpenBao access | Required only when using External Secrets Operator instead of Kubernetes secrets |
+| Container registry credentials | Required when pulling images from an authenticated registry |
+
+### Host sizing
+
+The installer size profile controls Kubernetes resource requests and replica counts. The host or cluster still needs enough capacity for the selected profile.
+
+| Profile | Intended use | Minimum capacity |
+| :------ | :----------- | :--------------- |
+| `small` | Single-user local or Kind deployment | 8 vCPU, 24 GB RAM, 30 GB free Docker storage |
+| `medium` | Shared remote VM or staging | 16 vCPU, 64 GB RAM, 100 GB free storage |
+| `large` | Production or HA validation | 96 vCPU total, 256 GB RAM total, 3+ nodes |
+
+On Linux hosts running Kind or dense local clusters, raise the default inotify limits before deploying:
+
+```bash
+sudo tee /etc/sysctl.d/99-nv-config-manager-inotify.conf >/dev/null <<'EOF'
+fs.inotify.max_user_watches=1048576
+fs.inotify.max_user_instances=8192
+EOF
+sudo sysctl --system
+```
+
+For Kind deployments that build and load images locally, use the standard cluster name so the installer loads images into the expected cluster:
+
+```bash
+kind create cluster --name nv-config-manager --config deploy/kind-config.yaml --wait 5m
+```
+
+<Info>
+  On macOS, Terminal.app has limited support for text selection and copy/paste in Textual TUI applications. For the best experience, use iTerm2 or Ghostty.
+</Info>
+
+<Info>
+  Local and lab deployments commonly use self-signed TLS. Your browser and API clients must trust the generated certificate authority or explicitly accept the warning for each service hostname before the UIs and APIs behave normally.
+</Info>
+
+## Quick Start
+
+Clone the Config Manager platform repository and change into it.
+
+```bash
+git clone https://github.com/NVIDIA/nv-config-manager.git
+cd nv-config-manager
+```
+
+From the Config Manager platform repository, run the installer from the `installer` directory.
+
+```bash
+cd installer
+uv sync
+
+# Launch the interactive wizard.
+uv run nv-config-manager-installer init
+
+# Re-open an existing configuration.
+uv run nv-config-manager-installer init nv-config-manager-install.yaml
+
+# Validate the configuration without deploying.
+uv run nv-config-manager-installer validate nv-config-manager-install.yaml
+
+# Generate Helm values without deploying.
+uv run nv-config-manager-installer generate-values nv-config-manager-install.yaml -o ./generated
+```
+
+The wizard writes `nv-config-manager-install.yaml` with owner-only permissions (`0600`). Treat the file as sensitive because it can contain secrets.
+
+## Choose a CLI Workflow
+
+For one-time use from the platform repository, run the CLI with `uv`.
+
+```bash
+cd installer
+uv sync
+uv run nv-config-manager-installer --help
+```
+
+To make `nv-config-manager-installer` available as a standalone shell command from the installer package, run:
+
+```bash
+cd installer
+uv tool install .
+nv-config-manager-installer --help
+```
+
+## CLI Command Reference
+
+### init
+
+Run `nv-config-manager-installer init` to launch the interactive TUI wizard.
+
+| Flag | Default | Description |
+| :--- | :------ | :---------- |
+| `--config`, `-c` | `nv-config-manager-install.yaml` | Path to create or load an existing configuration file |
+
+The wizard walks through every configuration section, saves the configuration to disk, and can deploy directly from the TUI when you are ready.
+
+### validate
+
+Run `nv-config-manager-installer validate` to validate a configuration file without deploying.
+
+```bash
+nv-config-manager-installer validate nv-config-manager-install.yaml
+```
+
+Validation checks include:
+
+- Pydantic schema validation for types, enums, and required fields
+- Non-empty `cluster.hostname`
+- At least one configured site
+- `sso.issuer_url` when SSO is enabled
+- Local Nautobot when custom jobs are configured
+
+### generate-values
+
+Using ArgoCD? Generate a values file to use instead of managing the full deployment lifecycle with the TUI. Run `nv-config-manager-installer generate-values` to generate deployment artifacts without running a deployment.
+
+```bash
+nv-config-manager-installer generate-values nv-config-manager-install.yaml --output-dir ./generated
+```
+
+| Flag | Default | Description |
+| :--- | :------ | :---------- |
+| `--output-dir`, `-o` | `.` | Directory for generated files |
+| `--local-images` | `false` | Use local image tags instead of registry images |
+| `--chart-dir` | auto-detect | Helm chart directory used for size profile overlays |
+
+The command writes a `values-generated.yaml` file to the output directory, combining the installer config and selected size profile.
+
+### deploy
+
+Run `nv-config-manager-installer deploy` to run a headless, non-interactive deployment from an existing configuration file.
+
+Use this command for repeatable deploys after you have created and reviewed `nv-config-manager-install.yaml`.
+
+```bash
+nv-config-manager-installer deploy nv-config-manager-install.yaml \
+  --image-source local \
+  --build-images \
+  --load-kind \
+  --kind-cluster nv-config-manager \
+  --install-envoy-gateway \
+  --install-cert-manager \
+  --install-cnpg-operator
+```
+
+For a fresh Kind deployment that builds local images, the local-image flags and the three operator install flags are required unless those operators are already installed and images are already available to the cluster. If the Kind cluster name is not `nv-config-manager`, pass the actual name with `--kind-cluster`.
+
+| Flag | Default | Description |
+| :--- | :------ | :---------- |
+| `--chart-dir` | `deploy/helm` | Path to the Helm chart |
+| `--image-source` | `local` | `local` or `nvcr` |
+| `--ngc-api-key` | `""` | NGC API key for NVCR authentication |
+| `--build-images` | `false` | Build Docker images locally |
+| `--load-kind` | `false` | Load images into a Kind cluster |
+| `--kind-cluster` | `nv-config-manager` | Kind cluster name |
+| `--install-envoy-gateway` | `false` | Install Envoy Gateway CRDs and operator |
+| `--install-cert-manager` | `false` | Install cert-manager |
+| `--install-cnpg-operator` | `false` | Install CloudNativePG operator |
+| `--helm-timeout` | `15m` | Helm install or upgrade timeout |
+| `--recreate-secrets` | `false` | Force-recreate Kubernetes secrets |
+| `--dry-run` | `false` | Generate values but skip Helm install |
+
+Prerequisite operator versions are read from `deploy/operator-versions.env`. When `cluster.airgapped` is true, or the chart directory sits inside an airgapped bundle with sibling `charts/` and `manifests/` directories, the installer uses the local bundled artifacts.
+
+## TUI Wizard Reference
+
+Detailed installer screen fields are documented in [TUI Wizard Reference](tui-wizard-reference.mdx).
+
+## Configuration Samples
+
+Common `nv-config-manager-install.yaml` examples are documented in [Configuration Samples](configuration-samples.mdx).
+
+## Deployment Steps
+
+When you deploy from the TUI or with `nv-config-manager-installer deploy`, the installer runs the following steps. Steps are skipped when they do not apply to the selected configuration.
+
+| # | Step | Description |
+| :- | :--- | :---------- |
+| 1 | Prerequisites | Verify `kubectl`, Helm, cluster connectivity, and optional Docker or Kind access |
+| 2 | Build Images | Build Config Manager images with content-addressed tags when requested |
+| 3 | Load Kind | Load built images into the Kind cluster when requested |
+| 4 | Install CRDs | Install Gateway API CRDs, Envoy Gateway, cert-manager, and CNPG operator when requested |
+| 5 | Create Namespace | Ensure the Kubernetes namespace exists |
+| 6 | Create Secrets | Apply Kubernetes secrets unless ESO is selected |
+| 7 | Setup Jobs PVC | Create a PVC and load custom Nautobot jobs |
+| 8 | Setup Templates PVC | Create a PVC and load template plugins |
+| 9 | Setup ZTP Images PVC | Create the OS image PVC, upload images, and write `manifest.json` |
+| 10 | Generate Values | Produce combined Helm override values from the config, secrets, and size profile |
+| 11 | Helm Install | Run `helm upgrade --install` with generated values |
+| 12 | Patch Gateway | Apply HostPort access for NodePort deployments when no load balancer is configured |
+| 13 | Restart Nautobot | Restart Nautobot workloads on re-run when jobs changed |
+| 14 | Restart Render | Restart render workloads on re-run when templates changed |
+| 15 | Run Jobs | Execute post-deploy Nautobot jobs |
+| 16 | Refresh Caches | Restart config-store-cache and DHCP refresh pods |
+| 17 | Run Tests | Run integration tests from a ZTP pod when requested and supported |
+| 18 | Endpoints | Display URLs for enabled services |
+
+The deployer detects existing deployments and content checksums. On re-runs, it only restarts services when associated PVC content, generated INI content, or other relevant inputs have changed.
+
+## Template Secret Scanner
+
+The installer can scan Jinja2 template plugins to discover required config secrets before deployment. Start the scan from the **Network Secrets** screen after selecting your template plugin paths.
+
+| Pattern | Detection |
+| :------ | :-------- |
+| `"key" \| load_secret(...)` | Literal secret key references |
+| `encrypt('ciscot7')` | Indicates `hash_salt_t7` is needed |
+| `encrypt('...')` | Indicates `hash_salt` is needed |
+
+Discovered secrets are merged with the existing network secrets list. The installer also pre-seeds common secrets.
+
+| Secret Key | Required | Description |
+| :--------- | :------- | :---------- |
+| `hash_salt` | Yes | Password hashing salt for device accounts |
+| `bgp_password` | Yes | BGP session authentication |
+| `root_password` | Yes | Admin or root password for managed devices |
+| `api_user_key` | Yes | Config Manager service account device credential |
+| `ufm_api_user` | No | InfiniBand UFM API username |
+| `ufm_api_token_r1` | No | InfiniBand UFM API token |
+
+## Verify Deployment
+
+For common failure modes and recovery steps, see [Troubleshooting](troubleshooting.mdx).
+
+After deployment, verify that all pods are running and that Gateway or LoadBalancer resources are ready. You can also get the Nautobot admin password to log in to the Nautobot UI.
+
+The commands below use the default `nv-config-manager` namespace; replace it if your `nv-config-manager-install.yaml` uses a different namespace.
+
+```bash
+# Check all pods are running.
+kubectl get pods -n nv-config-manager
+
+# Check load balancer services have external IPs.
+kubectl get svc -n nv-config-manager | grep LoadBalancer
+
+# Check Gateway status when using Envoy Gateway.
+kubectl get gateway -n nv-config-manager
+
+# Get the Nautobot admin password.
+kubectl get secret nautobot-admin -n nv-config-manager -o jsonpath='{.data.password}' | base64 -d && echo
+```
+
+If DNS is not configured for the selected hostname, add host entries for the gateway address before opening the UIs:
+
+```bash wordWrap
+echo "<GATEWAY_IP> config-manager.example.com nautobot.config-manager.example.com render.config-manager.example.com ztp.config-manager.example.com dhcp.config-manager.example.com workflow.config-manager.example.com temporal.config-manager.example.com config-store.config-manager.example.com" | sudo tee -a /etc/hosts
+```
+
+If you enabled self-signed TLS, your browser or API client must trust the generated certificate authority or accept the browser warning for each service hostname in non-production environments.
+
+After pods are running and hostnames resolve, open the Nautobot UI in your browser at `https://nautobot.<hostname>` and log in with the admin credentials. Local development profiles, such as the SuperPOD sample, may set the password to `admin`; otherwise use the generated secret lookup above.
+
+## After Deployment
+
+Deploying Config Manager with the installer, including any post-deploy Nautobot jobs, is the only step required for day-0 bring-up.
+
+### How Devices get into Config Manager
+
+Devices enter Config Manager through Nautobot. You can create them manually, through the Nautobot API, or with a post-deploy job such as a Nautobot Design Builder topology loader. The local SuperPOD profile uses the bundled mock topology Design Builder job in `development/mock_topology` as an example. See [Design Builder Data Loading](../nautobot/design-builder-data-loading.mdx) for the job structure and the context-only customization path.
+
+### How ZTP Starts
+
+**ZTP is initiated by the device**, not by Config Manager. As soon as Config Manager has sufficient Nautobot data, it serves DHCP on the configured network. When a device is cabled and powered on, it gets an IP address and boot file from DHCP, then retrieves its configuration and firmware from the ZTP service. Devices that successfully complete ZTP show a status of `Provisioned` in Nautobot.
+
+### If a Post-Deploy Job Fails
+
+Validation or runtime errors from post-deploy jobs appear in the installer deploy output. Fix the job code, Design Builder design files, or context data and re-run the deployment with the same `content.run_after_deploy` configuration.
+
+### Post-Deployment Checks
+
+Open the Config Store UI from the Config Manager interface, such as `https://config-manager.example.com/configs`, and confirm that intended configs are present for every device that should be rendered. If renders are missing, check the render service logs.
+
+```bash
+# List render-service pods.
+kubectl get pods -n <namespace> -l app.kubernetes.io/component=render-service
+
+# Device-change consumer performs the actual render.
+kubectl logs -n <namespace> -l app.kubernetes.io/component=render-service --all-containers -f --tail=500
+
+# Nautobot consumer dispatches events.
+kubectl logs -n <namespace> -l app.kubernetes.io/component=render-service --all-containers -f --tail=500
+```
+
+Search log output for `RenderException`, `Error processing event`, or Python tracebacks to identify the failing device and cause.
+
+To verify that devices have DHCP reservations, call the DHCP config endpoint, usually `https://dhcp.<your-hostname>/config?ip_version=4`, and search for the device by hostname, IP address, or device UUID.
+
+To verify that DHCP has sufficient data from Nautobot, check the logs of the `config-refresh-v4` container in the DHCP refresh pods.
+
+```bash
+kubectl logs -n <namespace> -l app.kubernetes.io/component=network-dhcp -c config-refresh-v4 -f --tail=200
+```
+
+## Iterative Deployment and Post-Deploy Changes
+
+You do not need to redeploy from scratch when you change data, add images, update templates, or upgrade versions. Treat `nv-config-manager-install.yaml` as the source of truth: re-open it with `nv-config-manager-installer init nv-config-manager-install.yaml`, adjust the configuration, and deploy again. The deployer applies updates through Helm and only restarts services when relevant inputs have changed.
+
+### Update Nautobot or Site Data
+
+To change topology, devices, or other data managed by a post-deploy job, edit that job's context data or design files and re-run the deployment with the same post-deploy job configuration. You can also make changes in the Nautobot UI. For subsequent deployments, remove the job configuration if you do not want the job to overwrite UI changes.
+
+### Add or Update OS Images
+
+With file-backed OS image storage, add or update image entries in the OS Images section and re-run deployment. The installer updates the PVC layout and manifest, including checksums. If the PVC is backed by NFS, you can also copy images into the expected path and update the manifest manually.
+
+Some environments support the ZTP upload endpoint, which can upload images without re-running deployment. See [Upload Images to the ZTP Server](../network-ztp/upload-images.mdx) for the full procedure across all three approaches.
+
+### Upgrade Cumulus or Other Platforms
+
+Set the intended firmware version on the device or in a Config Context that applies to the device, such as by platform. You do not need a new Config Context for every image version.
+
+For a new OS version, add a version-specific entry point in the templates repository, such as a `5.15.0` directory under the platform and role path. Templates are versioned so syntax changes can be tested per OS version.
+
+## Uninstall Config Manager
+
+To completely remove the Config Manager platform deployment:
+
+```bash
+# Uninstall the Helm release.
+helm uninstall nv-config-manager-platform -n nv-config-manager
+
+# Optionally delete the namespace and all resources.
+kubectl delete namespace nv-config-manager
+
+# If the installer installed operators and you want to remove them:
+helm uninstall cnpg -n cnpg-system
+helm uninstall cert-manager -n cert-manager
+helm uninstall envoy-gateway -n envoy-gateway-system
+```

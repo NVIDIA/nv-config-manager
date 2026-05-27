@@ -1,0 +1,43 @@
+---
+title: VPC Creation
+sidebar-title: VPC Creation
+position: 10
+---
+
+Creates a virtual private cloud (VPC) with automated route distinguisher assignment and namespace configuration.
+
+<Note>
+A VPC is an _overlay network_, using virtual routing and forwarding (VRF) with route distinguishers (RDs). Currently, Spectrum-X is the only supported VPC platform.
+</Note>
+
+Typically, Spectrum-X tenant isolation is handled by the DPU with [Astra](https://developer.nvidia.com/blog/redefining-secure-ai-infrastructure-with-nvidia-bluefield-astra-for-nvidia-vera-rubin-nvl72/#what_is_nvidia_bluefield_astra%C2%A0), but where a DPU-based isolation solution (such as [NiCo](https://docs.nvidia.com/infra-controller/documentation/home) + Astra) is not available, Config Manager supports isolation at the Switch port level on the underlay instead.
+
+<Warning title="Experimental">
+This workflow is experimental and not intended for general use. Use it only in test or pilot environments.
+</Warning>
+
+## User Interface
+
+### Form Inputs
+
+| Field | Description | Selection Type | Required |
+| :---- | :---------- | :------------- | :------- |
+| **Site** | Choose the site for VPC deployment | Single dropdown from available sites | Yes |
+| **VPC ID** | Unique identifier for the new VPC | Text input field | Yes |
+| **Description** | Human-readable description of the VPC | Text input field | Yes |
+| **Namespace** | Tenant namespace for VPC isolation | Text input field (default: "spectrumx") | Yes |
+| **RD Min** | Minimum route distinguisher value | Numeric input (default: 60000) | Yes |
+| **RD Max** | Maximum route distinguisher value | Numeric input (default: 65000) | Yes |
+
+<Note>
+The route distinguisher minimum (RD Min) must be less than the route distinguisher maximum (RD Max). The workflow validates this constraint before submission.
+</Note>
+
+## Workflow Execution
+
+### Execution Stages
+
+1. Validate VPC configuration
+1. Allocate network resources
+1. Configure VPC infrastructure
+1. Verify VPC deployment

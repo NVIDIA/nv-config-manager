@@ -1,0 +1,127 @@
+---
+title: DHCP Service
+sidebar-title: DHCP Service
+position: 0
+---
+
+NVIDIA Config Manager's DHCP service provides automated ISC Kea DHCP server configuration management, generating configurations dynamically from Nautobot network data. This enables automated IP address assignment, DHCP reservations, and Zero Touch Provisioning (ZTP) for network devices.
+
+## Overview
+
+The DHCP service:
+
+- Queries Nautobot for DHCP-relevant network data (prefixes, IP addresses, devices)
+- Generates Kea DHCP4/DHCP6 configuration files with subnets, pools, and reservations
+- Manages Kea server configuration updates through the Kea Control Agent API
+- Supports ZTP integration with device-specific boot script URLs
+
+Key features include:
+
+- **Dynamic Configuration Generation**: Automatically generates Kea config from Nautobot source of truth
+- **Static DHCP Reservations**: Device-specific IP assignments based on MAC address or serial number
+- **Dynamic IP Pools**: Configurable ranges for transient device addressing
+- **ZTP Integration**: DHCP options for automated device bootstrapping (boot scripts, firmware URLs)
+- **Multi-Site Support**: Aggregate and site-local DHCP server deployments
+- **IPv4 and IPv6**: Full support for both DHCP4 and DHCP6
+- **Configuration Validation**: Validate configs against Kea Control Agent API before deployment
+
+## Getting Started
+
+To configure DHCP in Nautobot for use with Config Manager:
+
+Before you begin, make sure you understand the data model. Read [DHCP Modeling in Nautobot](nautobot-modeling.mdx) to learn about tagging network prefixes and IP addresses.
+
+Follow the procedures on this page to define and generate your DHCP configuration.
+
+### Set up Subnets and Gateways
+
+1. Set up your prefixes. Tag network prefixes with `dhcp-subnet`.
+
+1. Define gateway relationships. Create `prefix-to-gateway` relationships for each subnet.
+
+### Set up Reservations and Pools
+
+1. Configure reservations. Tag device IPs with `dhcp-reserve` for static assignments.
+
+1. Define pools. Tag IP ranges with `dhcp-pool` for dynamic allocation.
+
+### Set up DHCP and ZTP Options
+
+1. Add config contexts. Provide DHCP options and ZTP URLs for devices.
+
+### Generate the DHCP Configuration
+
+1. Generate configuration. Run `nv-config-manager-dhcp-confgen` to create Kea configuration files.
+
+## Architecture
+
+The DHCP service consists of:
+
+- **Configuration Generator** (`nv-config-manager-dhcp-confgen`): Queries Nautobot, generates Kea config files
+- **Kea DHCP Server**: ISC Kea DHCP4/DHCP6 server instances
+- **Kea Control Agent**: API for managing Kea configuration and leases
+- **PostgreSQL Lease Database**: Shared lease storage for high availability
+- **Redis Cache**: Stores previous configuration for subnet ID preservation
+
+## CLI Usage
+
+### Basic Configuration Generation
+
+```bash
+# Generate Kea DHCP4 configuration
+uv run nv-config-manager-dhcp-confgen generate-kea-configuration --ini-file nv-config-manager.ini --ip-version 4
+
+# Generate Kea DHCP6 configuration
+uv run nv-config-manager-dhcp-confgen generate-kea-configuration --ini-file nv-config-manager.ini --ip-version 6
+```
+
+### Refresh Running Configuration
+
+```bash
+# Refresh DHCP4 configuration on running Kea servers
+uv run nv-config-manager-dhcp-confgen refresh-kea-configuration --ini-file nv-config-manager.ini --ip-version 4
+
+# Refresh DHCP6 configuration on running Kea servers
+uv run nv-config-manager-dhcp-confgen refresh-kea-configuration --ini-file nv-config-manager.ini --ip-version 6
+```
+
+### Getting Help
+
+```bash
+# Show all available commands
+uv run nv-config-manager-dhcp-confgen --help
+
+# Show help for a specific command
+uv run nv-config-manager-dhcp-confgen generate-kea-configuration --help
+```
+
+### Advanced Options
+
+```bash
+# Generate configuration with custom output directory
+uv run nv-config-manager-dhcp-confgen generate-kea-configuration \
+  --ini-file nv-config-manager.ini \
+  --ip-version 4 \
+  --output-dir /etc/kea/
+
+# Generate configuration with verbose logging
+uv run nv-config-manager-dhcp-confgen generate-kea-configuration \
+  --ini-file nv-config-manager.ini \
+  --ip-version 4 \
+  --verbose
+
+# Dry run - validate configuration without applying
+uv run nv-config-manager-dhcp-confgen generate-kea-configuration \
+  --ini-file nv-config-manager.ini \
+  --ip-version 4 \
+  --dry-run
+```
+
+The generator runs on a 5-minute interval in the Kubernetes deployment, automatically refreshing the running Kea servers with updated configuration.
+
+## Related Documentation
+
+- [DHCP Modeling in Nautobot](nautobot-modeling.mdx) - Detailed guide on tagging and config contexts
+- [Network ZTP Service](../network-ztp/index.mdx) - Zero Touch Provisioning integration
+- [Nautobot Getting Started](../nautobot/index.mdx) - Understanding Nautobot data model
+- [API Reference](api:dhcp-api)

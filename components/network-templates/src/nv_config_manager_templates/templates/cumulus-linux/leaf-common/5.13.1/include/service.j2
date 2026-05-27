@@ -1,0 +1,24 @@
+{% extends "cumulus-linux/leaf-common/include/service.j2" %}
+
+{% block dhcp_relay %}
+{% set vrf_relay_configs = device_data|helper_addresses_by_vrf(location_data) %}
+{% if vrf_relay_configs %}
+      dhcp-relay:
+{% for vrf_name, config in vrf_relay_configs.items() %}
+        {{ vrf_name }}:
+          interface:
+{% for vlan_id in config.vlans|sort %}
+{% if vlan_id|string == "201" or vlan_id|string == "202" %}
+            vlan{{ vlan_id }}: {}
+{% endif %}
+{% endfor %}
+            vlan{{ device_data | l3vni_mappings(vrf_name) }}_l3: {}
+          server:
+{% for helper_ip in config.helpers %}
+            {{ helper_ip }}: {}
+{% endfor %}
+{% endfor %}
+{% else %}
+      dhcp-relay: {}
+{% endif %}
+{% endblock dhcp_relay %}

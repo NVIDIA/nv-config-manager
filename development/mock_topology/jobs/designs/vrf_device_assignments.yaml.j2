@@ -1,0 +1,15 @@
+---
+
+{% if json.vrf_device_assignments is defined and json.vrf_device_assignments | length > 0 %}
+vrf_device_assignments:
+  {% for assignment in json.vrf_device_assignments %}
+  - "!create_or_update:vrf": "!ref:vrf-{{ assignment.vrf }}"
+    "!create_or_update:device": "!ref:device-{{ assignment.device }}"
+    name: {{ assignment.vrf }}
+    {% if assignment.rd is defined and assignment.rd %}
+    rd: "{{ assignment.rd }}"
+    {% endif %}
+  {% endfor %}
+{% else %}
+vrf_device_assignments: []
+{% endif %}

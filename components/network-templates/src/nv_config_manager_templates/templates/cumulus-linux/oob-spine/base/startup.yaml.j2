@@ -1,0 +1,38 @@
+{% extends "cumulus-linux/superpod-common/base/startup.yaml.j2" %}
+
+{% block acl %}
+{% include "cumulus-linux/oob-spine/include/acl.j2" %}
+{% endblock acl %}
+
+{% block bridge %}
+{% include "cumulus-linux/oob-spine/include/bridge.j2" %}
+{% endblock bridge %}
+
+{% block evpn %}
+{% include "cumulus-linux/oob-spine/include/evpn.j2" %}
+{% endblock evpn %}
+
+{% block interfaces %}
+{% include "cumulus-linux/oob-spine/include/interface.j2" %}
+{% endblock interfaces %}
+
+{% block nve %}
+{% include "cumulus-linux/oob-spine/include/nve.j2" %}
+{% endblock nve %}
+
+{% block router %}
+{% include "cumulus-linux/oob-spine/include/router.j2" %}
+{% endblock router %}
+
+{% block service %}
+{% include "cumulus-linux/oob-spine/include/service.j2" %}
+{% endblock service %}
+
+{% block system %}
+{% include "cumulus-linux/oob-spine/include/system.j2" %}
+{% endblock system %}
+
+{% block vrf %}
+{% include "cumulus-linux/oob-spine/include/vrf.j2" %}
+{% endblock vrf %}
+

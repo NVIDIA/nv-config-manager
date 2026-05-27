@@ -1,0 +1,45 @@
+##
+## Running-config temporary prefix mode setting
+##
+no cli default prefix-modes enable
+
+##
+## Network interface configuration
+##
+{% set mgmt_int = (device_data|interface_by_name("eth0")).primary_ipv4.split("/") %}
+no interface mgmt0 dhcp
+   interface mgmt0 ip address {{ mgmt_int[0] }} /{{ mgmt_int[1] }}
+
+##
+## Other IP configuration
+##
+   hostname {{ device_data|hostname }}
+   ip route 0.0.0.0/0 {{ (device_data|default_gateways)[0] }}
+
+##
+## Other IPv6 configuration
+##
+no ipv6 enable
+
+##
+## Local user account configuration
+##
+{% for user in device_data|users %}
+   username {{ user.username }} password 7 {{ (user.password_key|load_secret(site=device_data|site_name))|encrypt("sha512", site=device_data|site_name) }}
+{% if user.role %}   username {{ user.username }} capability {{ user.role }}
+{% endif %}{% endfor %}
+##
+## Password restriction configuration
+##
+no password hardening enable
+
+##
+## Network management configuration
+##
+# web proxy auth basic password ********
+no cli default paging enable
+
+##
+## Persistent prefix mode setting
+##
+cli default prefix-modes enable

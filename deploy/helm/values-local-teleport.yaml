@@ -1,0 +1,52 @@
+# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
+#
+# =============================================================================
+# SPIFFE Local Testing - Teleport Provider
+# =============================================================================
+# Use this file as an overlay with values-local.yaml to test SPIFFE with Teleport.
+#
+# Usage:
+#   helm install nv-config-manager . -f values-local.yaml -f values-local-teleport.yaml
+#
+# Prerequisites:
+#   1. Teleport cluster access
+#   2. tbot DaemonSet deployed in the cluster:
+#        kubectl apply -f ../tbot-daemonset.yaml
+# =============================================================================
+
+spiffe:
+  enabled: true
+  provider: teleport
+  
+  # ---------------------------------------------------------------------------
+  # Trust Domain Configuration
+  # ---------------------------------------------------------------------------
+  # Set this to your Teleport cluster's SPIFFE trust domain.
+  # Usually this is your Teleport proxy address without the port.
+  # ---------------------------------------------------------------------------
+  trustDomain: "teleport-cluster.teleport.svc.cluster.local"
+  
+  # ---------------------------------------------------------------------------
+  # Socket Configuration
+  # ---------------------------------------------------------------------------
+  # tbot DaemonSet writes the socket to hostPath /var/run/teleport via
+  # deploy/tbot-daemonset.yaml. Pods mount it read-only.
+  # ---------------------------------------------------------------------------
+  socket:
+    # Mount path inside containers
+    mountPath: /var/run/teleport
+    # Socket filename (default for tbot workload identity)
+    socketFile: workload-api.sock
+    # Host path on Kind node where socket is forwarded
+    hostPath: /var/run/teleport
+  
+  # ---------------------------------------------------------------------------
+  # RBAC Configuration
+  # ---------------------------------------------------------------------------
+  rbac:
+    defaultGroup: "nv-config-manager"
+
+
+networkPolicy:
+  additionalAllowedNamespaces:
+    - cnpg-system

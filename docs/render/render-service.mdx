@@ -1,0 +1,113 @@
+---
+title: Config Manager Render Service
+sidebar-title: Render Service
+position: 10
+---
+
+## Overview
+
+The NVIDIA Config Manager Network Template Render Service is an event-driven microservice that automatically generates and versions network device configurations. The service monitors Nautobot (the network's source of truth) for changes, and renders updated configurations using Jinja2 templates. The rendered configurations are stored in the Config Store.
+
+## Architecture
+
+The service consists of three main components: [the API](#api-endpoints), [the event consumers](#event-consumers), and [the event dispatcher](#event-dispatcher).
+
+### API endpoints
+
+You can use the render service's API endpoints to trigger the rendering of network device configurations.
+
+- `POST /v1/render/{device_uuid}/render` - Render the configuration for a single device
+- `POST /v1/render/all` - Queue renders for all devices that are enabled for rendering
+- `POST /v1/render/batch` - Queue renders for a list of devices
+
+### Event Consumers
+
+Three specialized pull-based consumers process NATS JetStream events:
+
+**Nautobot event consumer** responds to Nautobot model changes (device, interface, cable, IP address, and so on). The consumer dispatches events to model-specific handlers, and queues device renders.
+
+**Device change consumer** responds to queued device render requests from event handlers. The consumer executes renders with distributed locking, and updates the config store.
+
+**Template change consumer** responds to template version updates. The consumer re-renders devices with stale template versions. If the running version is less than the desired version, the consumer will NAK the message and wait for 30 seconds before trying again.
+
+### Event Dispatcher
+
+The event dispatcher is a dynamic event routing system that maps Nautobot model events to handler functions. The event dispatcher maintains a dispatch table that maps Nautobot model events to handler functions, and exposes Prometheus metrics for event processing.
+
+## Rendering Process
+
+The rendering process is as follows:
+
+1. Fetch device data from Nautobot.
+1. Render the configuration using the `nv_config_manager_templates.Renderer`.
+1. Persist the rendered files using the Config Store client.
+1. Record the commit metadata in Nautobot.
+
+## Template Version Management
+
+**Producer**: Runs as a Kubernetes job on service deployment. The producer queries Nautobot for devices with stale `template_version`, and publishes template-change events for outdated devices.
+
+**Version tracking**: The producer records the `nv_config_manager_templates` version in Nautobot, and the template consumer refuses to process events for newer versions (NAKs with 30s delay). This allows for zero-downtime rolling deployments (old pods terminate, new pods process backlog).
+
+## Deployment
+
+The service is deployed as a Kubernetes deployment, with three consumer deployments (nautobot, device, template), a producer job (runs on helm upgrade), and Redis for distributed locking. The service exposes Prometheus metrics on port 8000.
+
+The service is configured using a configuration file (`config.py`). The configuration file contains the Nautobot URL and token, NATS connection details (TLS, credentials), Redis connection for locking, Config store client settings, and environment-specific aggregate management flags.
+
+## Monitoring
+
+**Prometheus metrics**:
+
+**Event processing**:
+
+- `nv_config_manager_events_received` - Events received through NATS (by model, instance, namespace).
+- `nv_config_manager_events_processed` - Events successfully processed.
+- `nv_config_manager_events_skipped` - Events skipped (no handler, device not enabled).
+- `nv_config_manager_events_failed` - Events that failed processing (by exception type).
+- `nv_config_manager_event_processing_time` - Event processing duration histogram.
+
+**Nautobot changes**:
+
+- `nv_config_manager_nautobot_change_messages_received`
+- `nv_config_manager_nautobot_change_messages_processed`
+- `nv_config_manager_nautobot_change_messages_failed`
+- `nv_config_manager_nautobot_change_message_processing_time` - Render duration
+- `nv_config_manager_nautobot_change_message_end_to_end_time` - Nautobot publish to Config Store persist
+
+**Template changes**:
+
+- `nv_config_manager_template_change_messages_received` (by template_version)
+- `nv_config_manager_template_change_messages_processed`
+- `nv_config_manager_template_change_messages_failed`
+- `nv_config_manager_template_change_message_processing_time`
+
+## Error handling
+
+**Exception types**:
+
+- `NautobotException` - Nautobot API errors, retry on transient failures
+- `RenderException` - Template rendering failures, ACK (do not retry)
+- `DeviceNotEnabledError` - Device not enabled for rendering, ACK
+- `EventParseError` - Malformed event data, fail counter incremented
+- `ConfigStoreException` - Config store persistence errors
+
+**Consumer behavior**:
+
+- **ACK**: Successful processing, render exceptions (will not succeed on retry), disabled devices
+- **NAK**: Transient failures, lock acquisition failures (5s delay), version mismatches (30s delay)
+- **Consumer recreation**: Any fetch/heartbeat failure triggers automatic consumer rebuild
+
+## Key design patterns
+
+**Dynamic handler discovery**: The event dispatcher builds routing table by introspecting `events/` module functions, eliminating manual registration.
+
+**Pull-based consumption**: Consumers fetch messages on-demand rather than push-based subscriptions, enabling better flow control and horizontal scaling.
+
+**Distributed locking**: Redis-backed locks prevent concurrent renders for the same device across multiple consumer instances.
+
+**Version-aware processing**: Template consumer compares running version to message version, refusing to process newer versions to enable safe rolling deployments.
+
+**Async blocking operations**: Long-running synchronous operations (Nautobot API calls, template rendering) run in thread pools using `asyncio.to_thread()` to avoid blocking the event loop.
+
+**Connection sharing**: `NATSConnectionManager` and `NautobotConnectionManager` share connections across components within a process.

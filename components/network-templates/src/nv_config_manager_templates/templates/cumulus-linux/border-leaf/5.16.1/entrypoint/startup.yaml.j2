@@ -1,0 +1,23 @@
+{% extends "cumulus-linux/border-leaf/base/startup.yaml.j2" %}
+
+{% block service %}
+{% include "cumulus-linux/role_common/5.16.1/include/service.j2" %}
+{% endblock service %}
+
+
+{% block qos %}
+{% include "cumulus-linux/border-leaf/5.16.1/include/qos.j2" %}
+{% endblock qos %}
+
+
+{% block router %}
+{% include "cumulus-linux/border-leaf/5.16.1/include/router.j2" %}
+{% endblock router %}
+
+{% block interfaces %}
+{% include "cumulus-linux/border-leaf/5.16.1/include/interface.j2" %}
+{% endblock interfaces %}
+
+{% block system %}
+{% include "cumulus-linux/role_common/5.16.1/include/system.j2" %}
+{% endblock system %}

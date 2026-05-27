@@ -1,0 +1,103 @@
+---
+# Statuses for NVIDIA Config Manager deployments
+
+- name: Active
+  description: Active/operational status
+  color: 4caf50
+  content_types:
+    - dcim.device
+    - dcim.interface
+    - dcim.cable
+    - dcim.location
+    - ipam.ipaddress
+    - ipam.prefix
+    - ipam.vlan
+    - ipam.vrf
+    - circuits.circuit
+    - nautobot_design_builder.deployment
+    - nautobot_nvdatamodels.nvlinkdomain
+    - nautobot_bgp_models.autonomoussystem
+    - nautobot_bgp_models.bgproutinginstance
+    - nautobot_bgp_models.peering
+    - nautobot_app_overlays.overlay
+    - nautobot_app_overlays.overlayassignment
+    - nautobot_app_overlays.vxlan
+  deployment_types: [all, superpod]
+
+- name: Connected
+  description: Connected cable status
+  color: 4caf50
+  content_types:
+    - dcim.cable
+  deployment_types: [all, superpod]
+
+- name: Planned
+  description: Planned but not yet deployed
+  color: 00bcd4
+  content_types:
+    - dcim.device
+    - dcim.interface
+    - ipam.ipaddress
+    - ipam.prefix
+    - ipam.vlan
+    - ipam.vrf
+    - circuits.circuit
+    - nautobot_design_builder.deployment
+    - nautobot_bgp_models.autonomoussystem
+    - nautobot_bgp_models.bgproutinginstance
+    - nautobot_bgp_models.peering
+  deployment_types: [all, superpod]
+
+- name: Provisioning
+  description: Device is being provisioned
+  color: 03a9f4
+  content_types:
+    - dcim.device
+    - circuits.circuit
+    - nautobot_bgp_models.peering
+  deployment_types: [all, superpod]
+
+- name: Provisioned
+  description: Device has completed ZTP provisioning
+  color: 2196f3
+  content_types:
+    - dcim.device
+  deployment_types: [all, superpod]
+
+- name: Maintenance
+  description: Under maintenance
+  color: ff9800
+  content_types:
+    - dcim.device
+    - dcim.interface
+  deployment_types: [all, superpod]
+
+- name: Decommissioned
+  description: Decommissioned/retired
+  color: 9e9e9e
+  content_types:
+    - dcim.device
+    - dcim.interface
+    - ipam.ipaddress
+    - ipam.prefix
+    - ipam.vlan
+    - ipam.vrf
+    - circuits.circuit
+    - nautobot_design_builder.deployment
+    - nautobot_bgp_models.bgproutinginstance
+    - nautobot_bgp_models.peering
+  deployment_types: [all, superpod]
+
+- name: Disabled
+  description: Disabled status for design builder deployments
+  color: 9e9e9e
+  content_types:
+    - nautobot_design_builder.deployment
+  deployment_types: [all, superpod]
+
+- name: Unknown
+  description: Unknown status for design builder deployments
+  color: aa1409
+  content_types:
+    - nautobot_design_builder.deployment
+  deployment_types: [all, superpod]

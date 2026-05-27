@@ -1,0 +1,18 @@
+    router:
+{% block adaptive_routing %}{% endblock adaptive_routing %}
+{% block vrr %}{% endblock vrr %}
+{% block bgp %}
+      bgp:
+        autonomous-system: {{ device_data|asn|asplain }}
+        enable: on
+        graceful-restart:
+          mode: full
+        router-id: {{ (device_data|router_id) }}
+{% endblock bgp %}
+      policy:
+
+{% block as_path_list %}{% endblock as_path_list %}
+{% block community_list required %}{% endblock community_list %}
+{% block prefix_list required %}{% endblock prefix_list %}
+{% block route_map required %}{% endblock route_map %}
+{% block static_route %}{% endblock static_route %}

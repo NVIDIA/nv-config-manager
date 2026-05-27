@@ -1,0 +1,112 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "properties": {
+        "Dhcp4": {
+            "properties": {
+                "reservations": {
+                    "items": {
+                        "properties": {
+                            "client-id": {
+                                "type": "string"
+                            },
+                            "hostname": {
+                                "type": "string"
+                            },
+                            "hw-address": {
+                                "type": "string"
+                            },
+                            "ip-address": {
+                                "type": "string"
+                            },
+                            "option-data": {
+                                "items": {
+                                    "properties": {
+                                        "code": {
+                                            "type": "number"
+                                        },
+                                        "data": {
+                                            "type": "string"
+                                        },
+                                        "name": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": [
+                                        "name",
+                                        "data"
+                                    ],
+                                    "type": "object"
+                                },
+                                "type": "array"
+                            }
+                        },
+                        "required": [
+                            "hostname",
+                            "ip-address"
+                        ],
+                        "type": "object"
+                    },
+                    "type": "array"
+                },
+                "subnet4": {
+                    "items": {
+                        "properties": {
+                            "option-data": {
+                                "items": {
+                                    "properties": {
+                                        "data": {
+                                            "type": "string"
+                                        },
+                                        "name": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": [
+                                        "data",
+                                        "name"
+                                    ],
+                                    "type": "object"
+                                },
+                                "type": "array"
+                            },
+                            "pools": {
+                                "items": {
+                                    "properties": {
+                                        "pool": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": [
+                                        "pool"
+                                    ],
+                                    "type": "object"
+                                },
+                                "type": "array"
+                            },
+                            "reservations-global": {
+                                "type": "boolean"
+                            },
+                            "reservations-in-subnet": {
+                                "type": "boolean"
+                            },
+                            "subnet": {
+                                "type": "string"
+                            }
+                        },
+                        "required": [
+                            "option-data",
+                            "reservations-global",
+                            "reservations-in-subnet",
+                            "subnet"
+                        ],
+                        "type": "object"
+                    },
+                    "type": "array"
+                }
+            },
+            "type": "object"
+        }
+    },
+    "title": "KEA Static Data Schema",
+    "type": "object"
+}

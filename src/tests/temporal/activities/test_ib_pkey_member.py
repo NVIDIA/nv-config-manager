@@ -1,0 +1,443 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""Tests for InfiniBand PKey member management activities."""
+
+import re
+from configparser import ConfigParser
+from unittest.mock import patch
+
+import pytest
+from aioresponses import aioresponses
+from temporalio.exceptions import ApplicationError
+
+from nv_config_manager.temporal.client.ufm import UFMClientError
+from nv_config_manager.temporal.common.secrets import clear_secrets_cache
+from nv_config_manager.temporal.ngc.activities.ib_nautobot import (
+    InterfaceRef,
+    RecordPKeyAssignmentsInput,
+    ResolvedInterface,
+    ResolveInterfaceGuidsInput,
+    record_pkey_assignments,
+    resolve_interface_guids,
+)
+from nv_config_manager.temporal.ngc.activities.ib_pkey import (
+    AddGuidsInput,
+    VerifyPKeyMembersInput,
+    add_guids_to_pkey,
+    verify_pkey_members,
+)
+
+UFM_BASE = "https://ufm.example.com/ufmRest"
+NB_URL = "https://nautobot.example.com"
+NB_API = f"{NB_URL}/api"
+PLUGIN = f"{NB_API}/plugins/overlays"
+
+OVERLAY_UUID = "ddd-444"
+STATUS_UUID = "ccc-333"
+IFACE_UUID_1 = "iface-001"
+IFACE_UUID_2 = "iface-002"
+ASSIGNMENT_UUID_1 = "asgn-001"
+ASSIGNMENT_UUID_2 = "asgn-002"
+
+GUID_1 = "0002c903000e0b72"
+GUID_2 = "0002c903000e0b73"
+
+
+# ---------------------------------------------------------------------------
+# Shared fixtures
+# ---------------------------------------------------------------------------
+
+
+def _ufm_config() -> ConfigParser:
+    config = ConfigParser()
+    config.add_section("ufm")
+    config.set("ufm", "ufm_api_user", "admin")
+    config.set("ufm", "ufm_api_token_r1", "password")
+    return config
+
+
+def _nb_config() -> ConfigParser:
+    config = ConfigParser()
+    config.add_section("nautobot")
+    config.set("nautobot", "server", NB_URL)
+    config.set("nautobot", "token", "test-token")
+    config.set("nautobot", "verify", "false")
+    return config
+
+
+@pytest.fixture(autouse=True)
+def reset_secrets_cache():
+    clear_secrets_cache()
+    yield
+    clear_secrets_cache()
+
+
+@pytest.fixture()
+def mock_ufm_config():
+    with patch("nv_config_manager.temporal.client.ufm.load_config") as mock:
+        mock.return_value = _ufm_config()
+        yield mock
+
+
+@pytest.fixture()
+def mock_nb_config():
+    with patch("nv_config_manager.temporal.client.nautobot.load_config") as mock:
+        mock.return_value = _nb_config()
+        yield mock
+
+
+# ---------------------------------------------------------------------------
+# add_guids_to_pkey
+# ---------------------------------------------------------------------------
+
+
+class TestAddGuidsToPKey:
+    @pytest.mark.asyncio
+    async def test_adds_guids_successfully(self, mock_ufm_config):
+        with aioresponses() as m:
+            m.post(f"{UFM_BASE}/resources/pkeys/", payload={})
+
+            result = await add_guids_to_pkey(
+                AddGuidsInput(
+                    host="ufm.example.com",
+                    pkey="0x0005",
+                    guids=[GUID_1, GUID_2],
+                )
+            )
+
+        assert result.pkey == "0x0005"
+        assert result.guids_added == [GUID_1, GUID_2]
+
+    @pytest.mark.asyncio
+    async def test_limited_membership(self, mock_ufm_config):
+        with aioresponses() as m:
+            m.post(f"{UFM_BASE}/resources/pkeys/", payload={})
+
+            result = await add_guids_to_pkey(
+                AddGuidsInput(
+                    host="ufm.example.com",
+                    pkey="0x0005",
+                    guids=[GUID_1],
+                    membership="limited",
+                )
+            )
+
+        assert result.guids_added == [GUID_1]
+
+    @pytest.mark.asyncio
+    async def test_ufm_error_raises(self, mock_ufm_config):
+        with aioresponses() as m:
+            m.post(f"{UFM_BASE}/resources/pkeys/", status=400, payload={"error": "bad"})
+
+            with pytest.raises(UFMClientError):
+                await add_guids_to_pkey(
+                    AddGuidsInput(
+                        host="ufm.example.com",
+                        pkey="0x0005",
+                        guids=[GUID_1],
+                    )
+                )
+
+
+# ---------------------------------------------------------------------------
+# verify_pkey_members
+# ---------------------------------------------------------------------------
+
+
+def _pkey_url(pkey: str) -> str:
+    return f"{UFM_BASE}/resources/pkeys/{pkey}?guids_data=true"
+
+
+class TestVerifyPKeyMembers:
+    @pytest.mark.asyncio
+    async def test_all_guids_present(self, mock_ufm_config):
+        with aioresponses() as m:
+            m.get(
+                _pkey_url("0x0005"),
+                payload={
+                    "partition": "api_pkey_0x5",
+                    "ip_over_ib": True,
+                    "guids": [
+                        {"guid": GUID_1, "membership": "full"},
+                        {"guid": GUID_2, "membership": "full"},
+                    ],
+                },
+            )
+
+            result = await verify_pkey_members(
+                VerifyPKeyMembersInput(
+                    host="ufm.example.com",
+                    pkey="0x0005",
+                    expected_guids=[GUID_1, GUID_2],
+                )
+            )
+
+        assert result.verified is True
+        assert result.missing_guids == []
+
+    @pytest.mark.asyncio
+    async def test_guid_case_insensitive(self, mock_ufm_config):
+        with aioresponses() as m:
+            m.get(
+                _pkey_url("0x0005"),
+                payload={
+                    "guids": [{"guid": GUID_1.upper(), "membership": "full"}],
+                },
+            )
+
+            result = await verify_pkey_members(
+                VerifyPKeyMembersInput(
+                    host="ufm.example.com",
+                    pkey="0x0005",
+                    expected_guids=[GUID_1.lower()],
+                )
+            )
+
+        assert result.verified is True
+
+    @pytest.mark.asyncio
+    async def test_missing_guid_raises_retryable_error(self, mock_ufm_config):
+        with aioresponses() as m:
+            m.get(
+                _pkey_url("0x0005"),
+                payload={
+                    "guids": [{"guid": GUID_1, "membership": "full"}],
+                },
+            )
+
+            with pytest.raises(ApplicationError) as exc_info:
+                await verify_pkey_members(
+                    VerifyPKeyMembersInput(
+                        host="ufm.example.com",
+                        pkey="0x0005",
+                        expected_guids=[GUID_1, GUID_2],
+                    )
+                )
+
+        assert exc_info.value.non_retryable is False
+        assert GUID_2 in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_pkey_not_found_raises(self, mock_ufm_config):
+        with aioresponses() as m:
+            m.get(_pkey_url("0x0005"), payload=None)
+
+            with pytest.raises(ApplicationError, match="not found"):
+                await verify_pkey_members(
+                    VerifyPKeyMembersInput(
+                        host="ufm.example.com",
+                        pkey="0x0005",
+                        expected_guids=[GUID_1],
+                    )
+                )
+
+
+# ---------------------------------------------------------------------------
+# resolve_interface_guids
+# ---------------------------------------------------------------------------
+
+
+_NB_INTERFACES = re.compile(rf"{re.escape(NB_API)}/dcim/interfaces/.*")
+
+
+class TestResolveInterfaceGuids:
+    @pytest.mark.asyncio
+    async def test_resolves_guids(self, mock_nb_config):
+        with aioresponses() as m:
+            m.get(
+                _NB_INTERFACES,
+                payload={
+                    "results": [
+                        {
+                            "id": IFACE_UUID_1,
+                            "name": "mlx5_0",
+                            "custom_fields": {"ib_guid": GUID_1},
+                        }
+                    ]
+                },
+            )
+            m.get(
+                _NB_INTERFACES,
+                payload={
+                    "results": [
+                        {
+                            "id": IFACE_UUID_2,
+                            "name": "mlx5_1",
+                            "custom_fields": {"ib_guid": GUID_2},
+                        }
+                    ]
+                },
+            )
+
+            result = await resolve_interface_guids(
+                ResolveInterfaceGuidsInput(
+                    interfaces=[
+                        InterfaceRef(device="hca01", interface="mlx5_0"),
+                        InterfaceRef(device="hca01", interface="mlx5_1"),
+                    ]
+                )
+            )
+
+        assert len(result.resolved) == 2
+        assert result.resolved[0].guid == GUID_1
+        assert result.resolved[0].interface_id == IFACE_UUID_1
+        assert result.resolved[1].guid == GUID_2
+
+    @pytest.mark.asyncio
+    async def test_interface_not_found_raises(self, mock_nb_config):
+        with aioresponses() as m:
+            m.get(_NB_INTERFACES, payload={"results": []})
+
+            with pytest.raises(ApplicationError, match="not found"):
+                await resolve_interface_guids(
+                    ResolveInterfaceGuidsInput(
+                        interfaces=[InterfaceRef(device="hca01", interface="ghost")]
+                    )
+                )
+
+    @pytest.mark.asyncio
+    async def test_missing_guid_raises(self, mock_nb_config):
+        with aioresponses() as m:
+            m.get(
+                _NB_INTERFACES,
+                payload={
+                    "results": [
+                        {
+                            "id": IFACE_UUID_1,
+                            "name": "mlx5_0",
+                            "custom_fields": {"ib_guid": ""},
+                        }
+                    ]
+                },
+            )
+
+            with pytest.raises(ApplicationError, match="no IB GUID"):
+                await resolve_interface_guids(
+                    ResolveInterfaceGuidsInput(
+                        interfaces=[InterfaceRef(device="hca01", interface="mlx5_0")]
+                    )
+                )
+
+    @pytest.mark.asyncio
+    async def test_null_custom_fields_raises(self, mock_nb_config):
+        with aioresponses() as m:
+            m.get(
+                _NB_INTERFACES,
+                payload={
+                    "results": [
+                        {
+                            "id": IFACE_UUID_1,
+                            "name": "mlx5_0",
+                            "custom_fields": None,
+                        }
+                    ]
+                },
+            )
+
+            with pytest.raises(ApplicationError, match="no IB GUID"):
+                await resolve_interface_guids(
+                    ResolveInterfaceGuidsInput(
+                        interfaces=[InterfaceRef(device="hca01", interface="mlx5_0")]
+                    )
+                )
+
+
+# ---------------------------------------------------------------------------
+# record_pkey_assignments
+# ---------------------------------------------------------------------------
+
+
+_NB_STATUSES = re.compile(rf"{re.escape(NB_API)}/extras/statuses/.*")
+_NB_ASSIGNMENTS = re.compile(rf"{re.escape(PLUGIN)}/overlay-assignments/.*")
+
+
+class TestRecordPKeyAssignments:
+    def _resolved_pair(self) -> list[ResolvedInterface]:
+        return [
+            ResolvedInterface(
+                device="hca01",
+                interface="mlx5_0",
+                interface_id=IFACE_UUID_1,
+                guid=GUID_1,
+            ),
+            ResolvedInterface(
+                device="hca01",
+                interface="mlx5_1",
+                interface_id=IFACE_UUID_2,
+                guid=GUID_2,
+            ),
+        ]
+
+    def _stub_status(self, m: aioresponses) -> None:
+        m.get(_NB_STATUSES, payload={"results": [{"id": STATUS_UUID, "name": "Active"}]})
+
+    @pytest.mark.asyncio
+    async def test_creates_assignments(self, mock_nb_config):
+        with aioresponses() as m:
+            self._stub_status(m)
+            m.get(_NB_ASSIGNMENTS, payload={"results": []})
+            m.post(
+                f"{PLUGIN}/overlay-assignments/",
+                payload={"id": ASSIGNMENT_UUID_1},
+            )
+            m.get(_NB_ASSIGNMENTS, payload={"results": []})
+            m.post(
+                f"{PLUGIN}/overlay-assignments/",
+                payload={"id": ASSIGNMENT_UUID_2},
+            )
+
+            result = await record_pkey_assignments(
+                RecordPKeyAssignmentsInput(
+                    overlay_id=OVERLAY_UUID,
+                    resolved=self._resolved_pair(),
+                )
+            )
+
+        assert result.assignment_ids == [ASSIGNMENT_UUID_1, ASSIGNMENT_UUID_2]
+
+    @pytest.mark.asyncio
+    async def test_idempotent_skips_existing(self, mock_nb_config):
+        with aioresponses() as m:
+            self._stub_status(m)
+            m.get(
+                _NB_ASSIGNMENTS,
+                payload={"results": [{"id": ASSIGNMENT_UUID_1}]},
+            )
+            m.get(
+                _NB_ASSIGNMENTS,
+                payload={"results": [{"id": ASSIGNMENT_UUID_2}]},
+            )
+
+            result = await record_pkey_assignments(
+                RecordPKeyAssignmentsInput(
+                    overlay_id=OVERLAY_UUID,
+                    resolved=self._resolved_pair(),
+                )
+            )
+
+        assert result.assignment_ids == [ASSIGNMENT_UUID_1, ASSIGNMENT_UUID_2]
+
+    @pytest.mark.asyncio
+    async def test_status_not_found_raises(self, mock_nb_config):
+        with aioresponses() as m:
+            m.get(_NB_STATUSES, payload={"results": []})
+
+            with pytest.raises(ApplicationError, match="Status.*not found"):
+                await record_pkey_assignments(
+                    RecordPKeyAssignmentsInput(
+                        overlay_id=OVERLAY_UUID,
+                        resolved=self._resolved_pair()[:1],
+                    )
+                )

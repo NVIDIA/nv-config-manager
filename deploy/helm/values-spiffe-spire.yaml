@@ -1,0 +1,56 @@
+# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
+#
+# =============================================================================
+# SPIFFE Configuration - SPIRE Provider
+# =============================================================================
+# Use this values file overlay when deploying with SPIRE as the SPIFFE provider.
+#
+# Prerequisites:
+#   1. SPIRE server deployed in cluster (e.g., spire-system namespace)
+#   2. SPIRE agent deployed as DaemonSet
+#   3. spiffe-csi-driver deployed for socket mounting
+#   4. spire-controller-manager for workload registration
+#
+# Usage:
+#   helm install nv-config-manager . -f values.yaml -f values-spiffe-spire.yaml
+#
+# Helm chart for SPIRE:
+#   helm repo add spiffe https://spiffe.github.io/helm-charts-hardened/
+#   helm install spire spiffe/spire --create-namespace -n spire-system
+# =============================================================================
+
+spiffe:
+  enabled: true
+  provider: spire
+  
+  # Trust domain must match your SPIRE server configuration
+  trustDomain: "config-manager.example.com"
+  
+  # Socket configuration for SPIRE
+  socket:
+    # Mount path in container (CSI driver mounts socket here)
+    mountPath: /spiffe-workload-api
+    # Socket filename (standard for SPIRE)
+    socketFile: spire-agent.sock
+  
+  # SPIRE-specific settings
+  spire:
+    # CSI driver name (standard SPIRE CSI driver)
+    csiDriver: "csi.spiffe.io"
+    agentSocketName: "spire-agent.sock"
+  
+  # Envoy sidecar configuration
+  envoy:
+    image:
+      repository: envoyproxy/envoy
+      tag: v1.31-latest
+      pullPolicy: IfNotPresent
+    inboundPort: 8443
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
+

@@ -1,0 +1,15 @@
+---
+
+{% if json.vrfs is defined and json.vrfs | length > 0 %}
+vrfs:
+  {% for vrf in json.vrfs %}
+  - "!create_or_update:name": {{ vrf.name }}
+    namespace__name: {{ global_defaults.namespace }}
+    {% if vrf.rd is defined and vrf.rd %}
+    rd: "{{ vrf.rd }}"
+    {% endif %}
+    "!ref": vrf-{{ vrf.name }}
+  {% endfor %}
+{% else %}
+vrfs: []
+{% endif %}

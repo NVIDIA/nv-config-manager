@@ -1,0 +1,295 @@
+---
+# Aggregate prefixes for DGX Cloud mock topology
+# Based on HFA01.json from nv-config-manager-templates with 7.x -> 10.x mapping
+
+aggregate_prefixes:
+  # Site-level aggregate
+  - prefix: "10.240.0.0/16"
+    role: Site-Aggregate
+    tags: [role-aggregate]
+
+  # SMN (Secure Management Network) prefixes
+  - prefix: "10.240.0.0/17"
+    role: SMN-Leaf-VLAN
+    tags: [role-aggregate]
+    parent: "10.240.0.0/16"
+
+  - prefix: "10.240.128.0/18"
+    role: SMN-Leaf-VLAN
+    tags: [role-aggregate]
+    parent: "10.240.0.0/16"
+
+  - prefix: "10.240.128.0/19"
+    role: SMN-Leaf-VLAN
+    tags: [ignore-bgp-aggregate, role-aggregate]
+    parent: "10.240.0.0/16"
+
+  # DHCP-enabled management VLAN subnets (used for device eth0 reservations)
+  # Gateway IPs are the first usable IP in each subnet (on SMN-Leaf Vlan interfaces)
+  - prefix: "10.240.128.0/27"
+    role: SMN-Leaf-VLAN
+    tags: [dhcp-subnet]
+    parent: "10.240.128.0/19"
+
+  - prefix: "10.240.128.32/27"
+    role: SMN-Leaf-VLAN
+    tags: [dhcp-subnet]
+    parent: "10.240.128.0/19"
+
+  - prefix: "10.240.143.224/27"
+    role: SMN-Leaf-VLAN
+    tags: [dhcp-subnet]
+    parent: "10.240.128.0/19"
+
+  - prefix: "10.240.144.128/27"
+    role: SMN-Leaf-VLAN
+    tags: [dhcp-subnet]
+    parent: "10.240.128.0/19"
+
+  - prefix: "10.240.160.0/22"
+    role: SMN-Aggleaf-p2p
+    tags: [role-aggregate]
+    parent: "10.240.0.0/16"
+
+  - prefix: "10.240.164.0/23"
+    role: SMN-Spine-p2p
+    tags: [role-aggregate]
+    parent: "10.240.0.0/16"
+
+  - prefix: "10.240.168.0/24"
+    role: SMN-Core-p2p
+    tags: [role-aggregate]
+    parent: "10.240.0.0/16"
+
+  - prefix: "10.240.169.0/24"
+    role: SMN-loopback
+    tags: [role-aggregate]
+    parent: "10.240.0.0/16"
+
+  - prefix: "10.240.172.0/22"
+    role: SMN-Leaf-VLAN
+    tags: [ignore-bgp-aggregate, role-aggregate]
+    parent: "10.240.0.0/16"
+
+  - prefix: "10.240.194.0/23"
+    role: SMN-ZTPleaf-Prefix
+    tags: [role-aggregate]
+    parent: "10.240.0.0/16"
+
+  # OOB (Out-of-Band) prefixes
+  - prefix: "10.240.192.0/22"
+    role: OOB-Aggregate
+    tags: [role-aggregate]
+    parent: "10.240.0.0/16"
+
+  - prefix: "10.240.192.96/27"
+    role: OOB-loopback
+    tags: [role-aggregate]
+    parent: "10.240.0.0/16"
+
+  - prefix: "10.240.192.128/25"
+    role: OOB-VLAN
+    tags: [role-aggregate]
+    parent: "10.240.0.0/16"
+
+  # UC (Unified Compute) prefixes
+  - prefix: "10.240.196.0/23"
+    role: UC-Site-Prefix
+    tags: [role-aggregate]
+    parent: "10.240.0.0/16"
+
+  - prefix: "10.240.196.0/25"
+    role: UC-Leaf-P2P
+    tags: [role-aggregate]
+    parent: "10.240.0.0/16"
+
+  - prefix: "10.240.196.128/25"
+    role: UC-BMCLeaf-VLAN
+    tags: [role-aggregate]
+    parent: "10.240.0.0/16"
+
+  - prefix: "10.240.197.0/27"
+    role: UC-BMCLeaf-p2p
+    tags: [role-aggregate]
+    parent: "10.240.0.0/16"
+
+  - prefix: "10.240.197.64/26"
+    role: UC-VIPs
+    tags: [role-aggregate]
+    parent: "10.240.0.0/16"
+
+  - prefix: "10.240.197.128/28"
+    role: UC-Loopback
+    tags: [role-aggregate]
+    parent: "10.240.0.0/16"
+
+  - prefix: "10.240.197.160/27"
+    role: UC-Server-Loopback
+    tags: [role-aggregate]
+    parent: "10.240.0.0/16"
+
+  # SCP (Site Control Plane) prefixes
+  - prefix: "10.240.198.0/23"
+    role: Scp-Site-Prefix
+    tags: [role-aggregate]
+    parent: "10.240.0.0/16"
+
+  - prefix: "10.240.198.0/25"
+    role: Scp-Dhcp-Allocations
+    tags: [role-aggregate]
+    parent: "10.240.0.0/16"
+
+  - prefix: "10.240.198.128/26"
+    role: Scp-Anycast-Vips
+    tags: [role-aggregate]
+    parent: "10.240.0.0/16"
+
+  - prefix: "10.240.198.192/27"
+    role: Scp-Server-Loopbacks
+    tags: [role-aggregate]
+    parent: "10.240.0.0/16"
+
+  - prefix: "10.240.198.252/30"
+    role: Scp-Temp-Hosts
+    tags: [role-aggregate]
+    parent: "10.240.0.0/16"
+
+  - prefix: "100.64.0.0/10"
+    role: Scp-Uc-Cgnat
+    tags: [role-aggregate]
+
+  # CIN (Compute Interconnect Network) prefixes
+  - prefix: "172.16.0.0/14"
+    role: CIN-Leaf-p2p
+    tags: [role-aggregate]
+
+  - prefix: "172.20.0.0/14"
+    role: CIN-Spine-p2p
+    tags: [role-aggregate]
+
+  - prefix: "172.24.0.0/14"
+    role: CIN-Core-p2p
+    tags: [role-aggregate]
+
+  - prefix: "172.28.0.0/14"
+    role: CIN-Leaf-p2p
+    tags: [role-aggregate]
+
+  - prefix: "172.31.224.0/19"
+    role: CIN-loopback
+    tags: [role-aggregate]
+
+  # TAN (Tenant Access Network) prefixes
+  - prefix: "10.240.224.0/24"
+    role: TAN-Spine-p2p
+    tags: [role-aggregate]
+    parent: "10.240.0.0/16"
+
+  - prefix: "10.240.225.0/24"
+    role: TAN-Spine-p2p
+    tags: [role-aggregate]
+    parent: "10.240.0.0/16"
+
+  - prefix: "10.240.226.0/24"
+    role: TAN-Spine-p2p
+    tags: [role-aggregate]
+    parent: "10.240.0.0/16"
+
+  - prefix: "10.240.227.0/24"
+    role: TAN-Spine-p2p
+    tags: [role-aggregate]
+    parent: "10.240.0.0/16"
+
+  - prefix: "10.240.228.0/24"
+    role: TAN-Spine-p2p
+    tags: [role-aggregate]
+    parent: "10.240.0.0/16"
+
+  - prefix: "10.240.232.0/24"
+    role: TAN-Core-p2p
+    tags: [role-aggregate]
+    parent: "10.240.0.0/16"
+
+  - prefix: "10.240.233.0/24"
+    role: TAN-Core-p2p
+    tags: [role-aggregate]
+    parent: "10.240.0.0/16"
+
+  - prefix: "10.240.234.0/24"
+    role: TAN-Core-p2p
+    tags: [role-aggregate]
+    parent: "10.240.0.0/16"
+
+  - prefix: "10.240.235.0/24"
+    role: TAN-Core-p2p
+    tags: [role-aggregate]
+    parent: "10.240.0.0/16"
+
+  - prefix: "10.240.236.0/24"
+    role: TAN-loopback
+    tags: [role-aggregate]
+    parent: "10.240.0.0/16"
+
+  - prefix: "10.240.237.0/24"
+    role: TAN-BBR-p2p
+    tags: [role-aggregate]
+    parent: "10.240.0.0/16"
+
+
+  # Backbone prefixes
+  - prefix: "10.16.0.0/16"
+    role: Backbone-p2p
+    tags: [role-aggregate]
+
+  - prefix: "10.16.8.0/24"
+    role: Backbone-p2p
+    tags: [role-aggregate]
+    parent: "10.16.0.0/16"
+
+  # BBR Loopback
+  - prefix: "10.100.172.0/24"
+    role: BBR-Loopback-Vtep
+    tags: [role-aggregate]
+
+  - prefix: "10.100.172.0/25"
+    role: BBR-Loopback-Vtep
+    tags: [role-aggregate]
+    parent: "10.100.172.0/24"
+
+  - prefix: "10.100.172.0/29"
+    role: BBR-Loopback-Vtep
+    tags: [role-aggregate]
+    parent: "10.100.172.0/25"
+
+  # DPU (Data Processing Unit) prefixes
+  - prefix: "10.240.240.0/22"
+    role: DPU-Loopback
+    tags: [DpuLoopback, role-aggregate]
+    parent: "10.240.0.0/16"
+
+  - prefix: "10.240.244.0/23"
+    role: DPU-Admin
+    tags: [ForgeAdmin, role-aggregate]
+    parent: "10.240.0.0/16"
+
+  # Forge prefixes
+  - prefix: "10.240.238.0/23"
+    role: Forge-Breakfix
+    tags: [ForgeOverlay, role-aggregate]
+    parent: "10.240.0.0/16"
+
+  - prefix: "10.240.246.0/29"
+    role: Forge-Control-Plane
+    tags: [ForgeControlPlane, role-aggregate]
+    parent: "10.240.0.0/16"
+
+  - prefix: "10.240.246.32/27"
+    role: Forge-Control-Plane-Vips
+    tags: [ForgeServiceVip, role-aggregate]
+    parent: "10.240.0.0/16"
+
+  - prefix: "10.240.248.0/21"
+    role: Forge-Tenants
+    tags: [ForgeOverlay, role-aggregate]
+    parent: "10.240.0.0/16"
+

@@ -1,0 +1,96 @@
+---
+title: Batch Deploy
+sidebar-title: Batch Deploy
+position: 20
+---
+
+The Batch Deploy workflow applies one shared configuration diff to a small group of network devices behind a single human approval gate. It is normally invoked as a child workflow by [Multi-Device Deploy](../multi-deploy/index.mdx) — Multi-Deploy collects diffs across a role, groups devices with identical diffs, and spawns one Batch Deploy per group — but it can also be started directly when an operator needs to push the same change to a known list of devices without going through role-based discovery.
+
+## Prerequisites
+
+Before running Batch Deploy directly (or before approving a child invocation from Multi-Deploy), confirm the following:
+
+- **Every device in the batch is in Nautobot** with a current intended configuration in the [Config Store](../../config-store/index.mdx). When Batch Deploy is a child of Multi-Deploy, the parent has already loaded each intended config — for direct invocations, the caller is responsible for supplying the `DeviceDiffData` payload, including the loaded intended config and commit SHA.
+- **Every device in the batch is deploy-enabled in Nautobot.** Switches marked deploy-disabled — typically the Kubernetes-attached management switches on a shared-network deployment — must never appear in a Batch Deploy input. See [Hosting Options](../../hosting-options/index.mdx) for the safeguard and the self-isolation risk it protects against.
+
+    Multi-Deploy enforces this safeguard automatically because its `discover_devices` stage filters on `deploy_enabled=True`. A direct Batch Deploy invocation bypasses that filter — the caller is responsible for ensuring no deploy-disabled device is in the batch.
+
+- **All devices in the batch are expected to apply the same diff.** The approval display shows a single diff; if devices in the batch actually have different running configurations, only those matching the approved diff will apply cleanly and the rest will fail at apply time.
+- **Approval to change traffic-bearing devices.** The first stage is a hard approval gate and will wait indefinitely for a human reviewer.
+
+## Running the workflow
+
+Batch Deploy is not exposed as a standalone form in the Config Manager UI today. It runs as a child of [Multi-Deploy](../multi-deploy/index.mdx), which collects diffs across a role, groups devices with identical diffs, and spawns one Batch Deploy per group. Multi-Deploy posts a deep link on its `execute_batches` display for every batch it spawns; click that link to land directly on the child workflow's status page.
+
+The operator's job on a Batch Deploy run is to **review and approve (or reject) the diff** at the first stage. The workflow blocks at that stage until a human approves or rejects.
+
+## Execution stages
+
+The workflow runs three stages in order. Only the first stage requires human approval; the remaining stages run automatically based on the approval outcome.
+
+1. **`review_shared_diff` — Hard approval gate. Requires one approver.**
+
+    The stage display renders a single shared diff with the full list of devices that will receive it. The reviewer should confirm:
+
+   - The diff content is what was expected (no surprise lines from drift or template bugs).
+   - Every device in the listed batch is one the reviewer is authorized to change.
+   - The change is safe to apply in parallel across all devices in the batch.
+
+     The stage waits indefinitely (state `PENDING_APPROVAL`) until a reviewer clicks Approve or Reject in the Config Manager UI. On approval, the workflow records the approver and continues. On rejection, the workflow records the rejecter, marks `apply_configurations` and `perform_backups` as **unreachable**, and exits with `approved=false` and an empty success/failure list. No device is touched on a rejection.
+
+1. **`apply_configurations` — Apply the approved diff to every device in parallel.**
+
+    Each device's apply runs as a separate `apply_approved_configuration` activity, all started concurrently with `asyncio.gather`. Each activity has a 5-minute start-to-close timeout and retries up to 3 attempts on transient errors. Two error types are non-retryable: `ConfigSyntaxException` (the rendered config is malformed) and `DiffChangedException` (the device's running config drifted between the diff capture and apply — re-run from Multi-Deploy to get a fresh diff).
+
+    Apply failures on individual devices do not stop the stage. Successful devices are listed under `successful_devices`; failures are reported under `failed_devices` as a `{device_name: error_string}` map. The stage display summarizes the success and failure counts.
+
+1. **`perform_backups` — Capture a fresh backup for every successful device.**
+
+    For each device in `successful_devices`, the workflow starts the [Configuration Backup](../configuration-backup/index.mdx) workflow as a child workflow with `trigger=WORKFLOW`, attaching the device's intended-config commit SHA so the new backup is correlated with the configuration version that was just applied. All backup children are started immediately and awaited in parallel with a 10-minute run timeout. Backup failures are not surfaced as workflow failures — the device is configured and in service; only the post-deploy backup is missing.
+
+If `review_shared_diff` rejects, the workflow archives the result and exits without running the two subsequent stages.
+
+## Verifying outcomes
+
+Confirm the run succeeded by checking all of the following:
+
+- **All three stages green** on the Config Manager run page (or `review_shared_diff` green and the others marked unreachable, if the diff was rejected).
+- **`successful_devices`** in the workflow result lists every device the operator expected to receive the change.
+- **`failed_devices`** is empty. Any entry is a `{device_name: error}` pair; investigate the error and re-run with a corrected batch input.
+- **A fresh backup exists** for every successful device. The `perform_backups` stage display reports the number of backup child workflows it initiated; cross-check those child runs from the status page if a device is in production and you need the new backup confirmed.
+- **Parent workflow link** (when invoked by Multi-Deploy) reflects the batch result in the parent's `execute_batches` display.
+
+## Common issues
+
+**Stage is stuck on "Waiting for approval".**
+
+`review_shared_diff` blocks until a human approves or rejects. There is no timeout. Open the Config Manager workflow page, review the diff and device list, and click Approve or Reject. If the batch was spawned by Multi-Deploy, the parent's `execute_batches` display has a direct link to this child.
+
+**Some devices in the batch failed to apply.**
+
+The stage continues past individual failures. The most common per-device errors are:
+
+- `ConfigSyntaxException` — the rendered intended config does not parse on the device. Re-render via the [Render Service](../../render/index.mdx) and check the template; do not retry the batch until the rendered config is fixed.
+- `DiffChangedException` — the device's running config changed between when the diff was captured and when the apply ran. Re-run Multi-Deploy so a fresh diff is captured, re-approved, and re-applied.
+- Connectivity / timeout — the device became unreachable mid-apply. With `commit_confirm=True` the device will auto-roll back on its own. Investigate the device and re-run.
+
+**`DiffChangedException` on every device.**
+
+Something is rewriting devices' running configurations out of band (a parallel manual change, another deploy workflow, or a configuration agent on the device). Resolve the source of the drift before retrying.
+
+**Backup workflow failed but apply succeeded.**
+
+The device is configured and in service; only the post-deploy backup is missing. Re-run the [Configuration Backup](../configuration-backup/index.mdx) workflow against the device once the underlying issue is resolved.
+
+**Deploy-disabled switch ended up in a direct Batch Deploy invocation.**
+
+Multi-Deploy filters these out, but a direct invocation does not. If the apply step touches a Kubernetes-attached management switch and breaks its configuration, operators can lose access to Config Manager itself — see [Hosting Options](../../hosting-options/index.mdx). Reject the approval, remove the deploy-disabled device from the batch input, and re-submit.
+
+## Related guides
+
+- [Multi-Device Deploy](../multi-deploy/index.mdx) — the parent workflow that normally spawns Batch Deploy, including role-based device discovery and diff grouping.
+- [Configuration Deploy](../configuration-deploy/index.mdx) — single-device deploy for one-off changes.
+- [Configuration Backup](../configuration-backup/index.mdx) — the child workflow triggered for every successfully applied device.
+- [Render Service](../../render/index.mdx) — produces the intended configurations Batch Deploy applies.
+- [Config Store](../../config-store/index.mdx) — where intended and backup configurations are versioned.
+- [Hosting Options](../../hosting-options/index.mdx) — explains the deploy-disabled safeguard and why it matters for batch operations.

@@ -1,0 +1,169 @@
+{% extends "cumulus-linux/superpod-common/include/interface.j2" %}
+
+{% block bond %}
+{% for intf in device_data|interfaces(prefix="bond") %}
+      {{ intf.name }}:
+{% if not intf.is_dot1q %}
+        bond:
+          lacp-bypass: on
+          member:
+{% for member in intf.member_interfaces %}
+            {{ member }}: {}
+{% endfor %}
+        bridge:
+          domain:
+            br_default:
+              access: {{ intf.untagged_vlan }}
+        evpn:
+          multihoming:
+            segment:
+              df-preference: {{ device_data|evpn_df_preference }}
+              enable: on
+              local-id: {{ intf.name.split('bond')[1] }}
+              mac-address: {{ device_data|evpn_esi_mac(intf.name.split('bond')[1]) }}
+        link:
+          mtu: {{ intf.mtu }}
+        type: bond
+{% endif %}
+{% endfor %}
+{% endblock bond %}
+
+{% block management %}
+{% set intf = device_data|interface_by_name("eth0") %}
+      eth0:
+{% if intf.description %}
+        description: {{ intf.description }}
+{% elif intf.connected_interface %}
+        description: {{ intf.connected_interface.device.name }}_{{ intf.connected_interface.name }}
+{% endif %}
+{% if intf.primary_ipv4 %}
+        ip:
+          address:
+            {{ intf.primary_ipv4 }}: {}
+{% endif %}
+        type: eth
+{% endblock management %}
+
+{% block breakouts %}
+{% endblock breakouts %}
+
+{% block swp %}
+{% set configured_parents = []%}
+{% for intf in device_data|interfaces(prefix="swp") %}
+{% if intf.parent and intf.parent not in configured_parents %}
+      {{ intf.parent }}:
+        link:
+          breakout:
+            {{ device_data|breakout_count(intf.parent) }}x: {}
+        type: swp
+{% set _ = configured_parents.append(intf.parent) %}
+{% endif %}
+      {{ intf.name }}:
+{% if intf.role == "Uplink" and intf.vrf == "EXIT" and device_data|role in ["Border-Leaf", "OOB-Spine"] %}
+        acl:
+          acl-edge-urpf:
+            inbound: {}
+{% endif %}
+{% if device_data|role in ["In-Band-Leaf", "Storage-Leaf"] and intf.untagged_vlan %}
+        bridge:
+          domain:
+            br_default:
+              access: {{ intf.untagged_vlan }}
+{% endif %}
+{% if intf.description %}
+        description: {{ intf.description }}
+{% elif intf.connected_interface %}
+        description: {{ intf.connected_interface.device.name }}_{{ intf.connected_interface.name }}
+{% endif %}
+{# {% if "Underlay" in intf.description and device_data|role != "Converged-Spine" %} #}
+{% if device_data|role != "Converged-Spine" and intf.connected_interface and intf.connected_interface.device.role in ["Converged-Spine", "Mgmt-Leaf", "OOB-Leaf", "Power-Leaf"] %}
+        evpn:
+          multihoming:
+            uplink: on
+{% endif %}
+{% if intf.primary_ipv4 %}
+        ip:
+          address:
+            {{ intf.primary_ipv4 }}: {}
+{% if intf.vrf and intf.vrf != "default" %}
+          vrf: {{ intf.vrf }}
+{% endif %}
+        link:
+{% if "breakout-disable" in intf.tags %}
+          breakout:
+            disabled: {}
+{% endif %}
+          state:
+            up: {}
+{% elif device_data|role in ["In-Band-Leaf", "Storage-Leaf"] and intf.untagged_vlan %}
+        link:
+{% if intf.mtu %}
+          mtu: {{ intf.mtu }}
+{% endif %}
+          state:
+            up: {}
+{% elif "breakout-disable" in intf.tags %}
+        link:
+          breakout:
+            disabled: {}
+{% endif %}
+{% if device_data|role == "Storage-Leaf" and intf.untagged_vlan %}
+        qos:
+          pfc-watchdog:
+            state: enable
+{% endif %}
+{% if intf.role == "Uplink" and (device_data|role in ["Converged-Spine", "Storage-Leaf"] or (device_data|role == "Border-Leaf" and intf.vrf == "default") or (device_data|role == "In-Band-Leaf" and device_data|has_vrf("STORAGE"))) %}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+{% elif intf.role == "Downlink" and device_data|role == "Converged-Spine" %}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+{% endif %}
+{% if device_data|role == "Border-Leaf" and intf.vrf in ["STORAGE", "EXIT"] %}
+        qos:
+          pfc-watchdog:
+            state: enable
+{% endif %}
+{% if device_data|role == "In-Band-Leaf" and intf.role == "Downlink" and intf.vrf == "STORAGE" %}
+        qos:
+          pfc-watchdog:
+            state: enable
+{% endif %}
+        type: swp
+{% endfor %}
+{% endblock swp %}
+
+{% block svi %}
+{% for vlan_intf in device_data|interfaces(prefix="Vlan") %}
+      {{ vlan_intf.name }}:
+{% if vlan_intf.description %}
+        description: {{ vlan_intf.description }}
+{% endif %}
+{% if vlan_intf.primary_ipv4 %}
+        ip:
+          address:
+            {{ vlan_intf.primary_ipv4 }}: {}
+{% if vlan_intf.vrf %}
+          vrf: {{ vlan_intf.vrf }}
+{% if device_data|role in ["Border-Leaf", "OOB-Spine", "Storage-Leaf"] %}
+          vrr:
+            address:
+              {{ vlan_intf.primary_ipv4|gateway }}/{{ vlan_intf.primary_ipv4.split('/')[1] }}: {}
+            enable: on
+            state:
+              up: {}
+{% endif %}
+{% endif %}
+{% endif %}
+        type: svi
+        vlan: {{ vlan_intf.vlan_number }}
+{% endfor %}
+{% endblock svi %}

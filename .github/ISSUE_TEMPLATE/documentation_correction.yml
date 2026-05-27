@@ -1,0 +1,58 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+name: Documentation Correction
+description: Report incorrect, stale, or confusing documentation
+title: "[DOC]: "
+labels: ["documentation"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve the documentation.
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - Critical (currently preventing usage)
+        - High
+        - Medium
+        - Low
+    validations:
+      required: true
+
+  - type: input
+    id: location
+    attributes:
+      label: Documentation location
+      description: Link to the page, file, section, or line number.
+      placeholder: "example: docs/install/index.mdx"
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What is incorrect, stale, missing, or confusing?
+    validations:
+      required: true
+
+  - type: textarea
+    id: correction
+    attributes:
+      label: Suggested correction
+      description: If you know the fix, describe the wording or content that should replace it.
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Checklist
+      options:
+        - label: I have searched existing documentation issues for duplicates.
+          required: true
+        - label: I agree to follow this project's Code of Conduct.
+          required: true

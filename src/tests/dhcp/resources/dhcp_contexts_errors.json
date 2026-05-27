@@ -1,0 +1,209 @@
+{
+    "data": {
+        "config_manager_devices": [
+            {
+                "device": {
+                    "id": "device-error-1",
+                    "config_context": {
+                        "dhcp": {
+                            "options": {
+                                "client_id_template": "00:{{ serial | hex }}",
+                                "interface_names": {
+                                    "eth0": {
+                                        "reservation_options": {
+                                            "boot-file-name": "http://{{ ztp_server }}/device1"
+                                        },
+                                        "subnet_options": {
+                                            "ntp-servers": "10.0.0.1"
+                                        },
+                                        "subnet_config": {
+                                            "reservations-global": true,
+                                            "reservations-in-subnet": true
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "ztp": {
+                            "ipv4": ["10.1.1.1"]
+                        }
+                    }
+                }
+            },
+            {
+                "device": {
+                    "id": "device-error-no-serial",
+                    "config_context": {
+                        "dhcp": {
+                            "options": {
+                                "client_id_template": "00:{{ serial | hex }}"
+                            }
+                        }
+                    }
+                }
+            },
+            {
+                "device": {
+                    "id": "device-error-2",
+                    "config_context": {
+                        "dhcp": {
+                            "options": {
+                                "interface_names": {
+                                    "eth0": {
+                                        "reservation_options": {
+                                            "boot-file-name": "http://{{ ztp_server }}/device2"
+                                        },
+                                        "subnet_options": {
+                                            "ntp-servers": "10.0.0.2"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "ztp": {
+                            "ipv4": ["10.1.1.2"]
+                        }
+                    }
+                }
+            },
+            {
+                "device": {
+                    "id": "device-conflicting-options",
+                    "config_context": {
+                        "dhcp": {
+                            "options": {
+                                "interface_roles": {
+                                    "management": {
+                                        "subnet_options": {
+                                            "ntp-servers": "10.0.0.1"
+                                        }
+                                    },
+                                    "uplink": {
+                                        "subnet_options": {
+                                            "ntp-servers": "10.0.0.99"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            {
+                "device": {
+                    "id": "device-conflicting-config",
+                    "config_context": {
+                        "dhcp": {
+                            "options": {
+                                "interface_roles": {
+                                    "management": {
+                                        "subnet_config": {
+                                            "reservations-global": true
+                                        }
+                                    },
+                                    "uplink": {
+                                        "subnet_config": {
+                                            "reservations-global": false
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            {
+                "device": {
+                    "id": "device-conflicting-reservation-options",
+                    "config_context": {
+                        "dhcp": {
+                            "options": {
+                                "interface_roles": {
+                                    "management": {
+                                        "reservation_options": {
+                                            "boot-file-name": "http://server1/boot"
+                                        }
+                                    }
+                                },
+                                "interface_names": {
+                                    "eth0": {
+                                        "reservation_options": {
+                                            "boot-file-name": "http://server2/boot"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            {
+                "device": {
+                    "id": "device-override-subnet",
+                    "config_context": {
+                        "dhcp": {
+                            "options": {
+                                "interface_names": {
+                                    "eth0": {
+                                        "subnet_config": {
+                                            "subnet": "10.0.0.0/24"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            {
+                "device": {
+                    "id": "device-malformed-template",
+                    "config_context": {
+                        "dhcp": {
+                            "options": {
+                                "client_id_template": "{{ invalid syntax }}"
+                            }
+                        }
+                    }
+                }
+            },
+            {
+                "device": {
+                    "id": "device-override-router",
+                    "config_context": {
+                        "dhcp": {
+                            "options": {
+                                "interface_names": {
+                                    "eth0": {
+                                        "subnet_options": {
+                                            "routers": "10.0.0.99"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            {
+                "device": {
+                    "id": "device-no-ztp",
+                    "config_context": {
+                        "dhcp": {
+                            "options": {
+                                "interface_names": {
+                                    "eth0": {
+                                        "reservation_options": {
+                                            "boot-file-name": "http://{{ ztp_server }}/boot"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        ]
+    }
+}
+

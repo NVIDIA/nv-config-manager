@@ -1,0 +1,377 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES.
+# SPDX-License-Identifier: Apache-2.0
+"""Tests for nv_config_manager_installer.secrets -- secret generation and ESO config building."""
+
+from __future__ import annotations
+
+import pytest
+
+from nv_config_manager_installer.schema import (
+    K8sSecretGroup,
+    KubernetesSecretsConfig,
+    NetworkSecretEntry,
+    NVConfigManagerInstallConfig,
+    PasswordSource,
+    RedfishConfig,
+    RedfishVendorCreds,
+    SecretsConfig,
+    SecretsMethod,
+    VaultAuth,
+    VaultAuthMethod,
+    VaultConfig,
+    VaultPathConfig,
+    VaultPathsConfig,
+)
+from nv_config_manager_installer.secrets import build_eso_vault_config, generate_secrets
+
+
+class TestGenerateSecrets:
+    def test_network_secrets_generated(self):
+        config = NVConfigManagerInstallConfig(
+            network_secrets=[
+                NetworkSecretEntry(name="BGP Password", secret_key="bgp_password"),
+                NetworkSecretEntry(name="ISIS Password", secret_key="isis_password"),
+                NetworkSecretEntry(name="TACACS Key", secret_key="tacacs_key"),
+            ]
+        )
+        state = generate_secrets(config)
+
+        assert "bgp_password_r1" in state
+        assert "isis_password_r1" in state
+        assert "tacacs_key_r1" in state
+        assert "hash_salt" in state
+
+    def test_infra_secrets_for_kubernetes_method(self):
+        config = NVConfigManagerInstallConfig(
+            secrets=SecretsConfig(method=SecretsMethod.KUBERNETES)
+        )
+        state = generate_secrets(config)
+
+        assert "nautobot_token" in state
+        assert len(state["nautobot_token"]) == 40
+        assert "redis_password" in state
+        assert "nats_password" in state
+        assert "django_secret_key" in state
+        assert "temporal_db_password" in state
+
+    def test_kubernetes_nautobot_admin_password_override(self):
+        config = NVConfigManagerInstallConfig(
+            secrets=SecretsConfig(
+                method=SecretsMethod.KUBERNETES,
+                k8s=KubernetesSecretsConfig(
+                    nautobot_app=K8sSecretGroup(values={"adminPassword": "admin"}),
+                ),
+            ),
+        )
+        state = generate_secrets(config)
+
+        assert state["nautobot_admin_password"] == "admin"
+
+    def test_infra_secrets_omitted_for_eso(self):
+        config = NVConfigManagerInstallConfig(secrets=SecretsConfig(method=SecretsMethod.ESO))
+        state = generate_secrets(config)
+
+        assert "nautobot_token" not in state
+        assert "redis_password" not in state
+
+    def test_unique_network_secret_passwords(self):
+        config = NVConfigManagerInstallConfig(
+            network_secrets=[
+                NetworkSecretEntry(
+                    name="Key 1",
+                    secret_key="k1",
+                    source=PasswordSource.GENERATE,
+                ),
+                NetworkSecretEntry(
+                    name="Key 2",
+                    secret_key="k2",
+                    source=PasswordSource.GENERATE,
+                ),
+            ],
+        )
+        state = generate_secrets(config)
+        assert state["k1_r1"] != state["k2_r1"]
+
+    def test_manual_network_secret_raises_when_no_value(self):
+        config = NVConfigManagerInstallConfig(
+            network_secrets=[
+                NetworkSecretEntry(
+                    name="Manual Key",
+                    secret_key="manual_pw",
+                    source=PasswordSource.MANUAL,
+                ),
+            ],
+        )
+        with pytest.raises(ValueError, match="manual_pw_r1"):
+            generate_secrets(config)
+
+    def test_manual_network_secret_uses_supplied_value(self):
+        config = NVConfigManagerInstallConfig(
+            network_secrets=[
+                NetworkSecretEntry(
+                    name="Manual Key",
+                    secret_key="manual_pw",
+                    source=PasswordSource.MANUAL,
+                    value="mysecret",
+                ),
+            ],
+        )
+        state = generate_secrets(config)
+        assert state["manual_pw_r1"] == "mysecret"
+
+    def test_non_rotated_network_secret_uses_bare_key(self):
+        config = NVConfigManagerInstallConfig(
+            network_secrets=[
+                NetworkSecretEntry(
+                    name="UFM API User",
+                    secret_key="ufm_api_user",
+                    source=PasswordSource.MANUAL,
+                    rotation="",
+                    value="admin",
+                ),
+            ],
+        )
+        state = generate_secrets(config)
+
+        assert state["ufm_api_user"] == "admin"
+        assert "ufm_api_user_" not in state
+
+    def test_vault_network_secret_omitted(self):
+        config = NVConfigManagerInstallConfig(
+            network_secrets=[
+                NetworkSecretEntry(
+                    name="Vault Key",
+                    secret_key="vault_pw",
+                    source=PasswordSource.VAULT,
+                ),
+            ],
+        )
+        state = generate_secrets(config)
+        assert "vault_pw_r1" not in state
+
+
+class TestESOVaultConfig:
+    def test_returns_empty_for_kubernetes(self):
+        config = NVConfigManagerInstallConfig(
+            secrets=SecretsConfig(method=SecretsMethod.KUBERNETES)
+        )
+        assert build_eso_vault_config(config) == {}
+
+    def test_jwt_auth_config(self):
+        config = NVConfigManagerInstallConfig(
+            secrets=SecretsConfig(
+                method=SecretsMethod.ESO,
+                vault=VaultConfig(
+                    server="https://vault.test",
+                    secrets_path="nv-config-manager",
+                    mount_path="auth/kubernetes/prod",
+                    role="test-role",
+                    auth=VaultAuth(method=VaultAuthMethod.JWT),
+                ),
+            ),
+        )
+        config.cluster.environment = "prod"
+        result = build_eso_vault_config(config)
+
+        assert result["secrets"]["method"] == "eso"
+        assert result["secrets"]["vault"]["server"] == "https://vault.test"
+        assert result["secrets"]["vault"]["mountPath"] == "auth/kubernetes/prod"
+        assert result["secrets"]["vault"]["role"] == "test-role"
+        assert "jwtAuth" not in result["secrets"]["vault"]
+        assert result["secrets"]["vault"]["paths"]["nautobot"]["path"] == "prod/nautobot"
+
+    def test_token_auth_config(self):
+        config = NVConfigManagerInstallConfig(
+            secrets=SecretsConfig(
+                method=SecretsMethod.ESO,
+                vault=VaultConfig(
+                    auth=VaultAuth(method=VaultAuthMethod.TOKEN, token_secret_name="my-token"),
+                ),
+            ),
+        )
+        result = build_eso_vault_config(config)
+
+        assert "tokenAuth" in result["secrets"]["vault"]
+        assert result["secrets"]["vault"]["tokenAuth"]["secretName"] == "my-token"
+        assert "mountPath" not in result["secrets"]["vault"]
+        assert "role" not in result["secrets"]["vault"]
+
+    def test_all_default_path_groups(self):
+        config = NVConfigManagerInstallConfig(
+            secrets=SecretsConfig(
+                method=SecretsMethod.ESO,
+                vault=VaultConfig(server="https://vault.test"),
+            ),
+        )
+        config.cluster.environment = "prod"
+        result = build_eso_vault_config(config)
+        paths = result["secrets"]["vault"]["paths"]
+
+        # Core groups always enabled by default
+        for group in (
+            "nautobot",
+            "redis",
+            "postgres",
+            "network",
+            "nautobotApp",
+            "oidc",
+        ):
+            assert group in paths, f"{group} missing from paths"
+            assert "path" in paths[group]
+            assert "keys" in paths[group]
+
+        # Optional groups disabled by default
+        for group in ("slack", "air", "jira", "cnpgBackup"):
+            assert group not in paths, f"{group} should be disabled by default"
+
+    def test_custom_path_preserves_default_keys(self):
+        config = NVConfigManagerInstallConfig(
+            secrets=SecretsConfig(
+                method=SecretsMethod.ESO,
+                vault=VaultConfig(
+                    server="https://vault.test",
+                    paths=VaultPathsConfig(
+                        nautobot=VaultPathConfig(
+                            path="groups/ngc-cfa/nv-config-manager/eks-test/nautobot"
+                        ),
+                    ),
+                ),
+            ),
+        )
+        result = build_eso_vault_config(config)
+        nb = result["secrets"]["vault"]["paths"]["nautobot"]
+
+        assert nb["path"] == "groups/ngc-cfa/nv-config-manager/eks-test/nautobot"
+        assert nb["keys"]["token"] == "token"
+        assert nb["keys"]["natsPassword"] == "nats_password"
+
+    def test_custom_keys_override(self):
+        config = NVConfigManagerInstallConfig(
+            secrets=SecretsConfig(
+                method=SecretsMethod.ESO,
+                vault=VaultConfig(
+                    server="https://vault.test",
+                    paths=VaultPathsConfig(
+                        nautobot=VaultPathConfig(
+                            path="custom/nautobot",
+                            keys={"token": "nb_token", "natsPassword": "nats_pw_dev"},
+                        ),
+                    ),
+                ),
+            ),
+        )
+        result = build_eso_vault_config(config)
+        nb = result["secrets"]["vault"]["paths"]["nautobot"]
+
+        assert nb["keys"]["token"] == "nb_token"
+        assert nb["keys"]["natsPassword"] == "nats_pw_dev"
+
+    def test_enabled_optional_group(self):
+        config = NVConfigManagerInstallConfig(
+            secrets=SecretsConfig(
+                method=SecretsMethod.ESO,
+                vault=VaultConfig(
+                    server="https://vault.test",
+                    paths=VaultPathsConfig(
+                        slack=VaultPathConfig(enabled=True, path="prod/slack"),
+                    ),
+                ),
+            ),
+        )
+        result = build_eso_vault_config(config)
+        paths = result["secrets"]["vault"]["paths"]
+
+        assert "slack" in paths
+        assert paths["slack"]["path"] == "prod/slack"
+        assert paths["slack"]["keys"]["token"] == "token"
+
+    def test_disabled_core_group(self):
+        config = NVConfigManagerInstallConfig(
+            secrets=SecretsConfig(
+                method=SecretsMethod.ESO,
+                vault=VaultConfig(
+                    server="https://vault.test",
+                    paths=VaultPathsConfig(
+                        redfish=VaultPathConfig(enabled=False),
+                    ),
+                ),
+            ),
+        )
+        result = build_eso_vault_config(config)
+        paths = result["secrets"]["vault"]["paths"]
+
+        assert "redfish" not in paths
+
+    def test_oidc_includes_cookie_secret(self):
+        config = NVConfigManagerInstallConfig(
+            secrets=SecretsConfig(
+                method=SecretsMethod.ESO,
+                vault=VaultConfig(server="https://vault.test"),
+            ),
+        )
+        result = build_eso_vault_config(config)
+        oidc_keys = result["secrets"]["vault"]["paths"]["oidc"]["keys"]
+
+        assert "clientSecret" in oidc_keys
+        assert "cookieSecret" in oidc_keys
+
+
+class TestRedfishSecrets:
+    def test_no_redfish_secrets_when_disabled(self):
+        config = NVConfigManagerInstallConfig(
+            secrets=SecretsConfig(method=SecretsMethod.KUBERNETES),
+            redfish=RedfishConfig(enabled=False),
+        )
+        state = generate_secrets(config)
+        assert not any(k.startswith("redfish_") for k in state)
+
+    def test_redfish_secrets_generated_when_enabled(self):
+        config = NVConfigManagerInstallConfig(
+            secrets=SecretsConfig(method=SecretsMethod.KUBERNETES),
+            redfish=RedfishConfig(
+                enabled=True,
+                vendors={
+                    "lenovo": RedfishVendorCreds(),
+                    "bluefield": RedfishVendorCreds(),
+                },
+            ),
+        )
+        state = generate_secrets(config)
+        assert "redfish_lenovo_default_user" in state
+        assert state["redfish_lenovo_default_user"] == "local-mock-user"
+        assert "redfish_lenovo_default_password" in state
+        assert len(state["redfish_lenovo_default_password"]) == 32
+        assert "redfish_lenovo_config_manager_password" in state
+        assert "redfish_bluefield_default_user" in state
+        assert "redfish_bluefield_default_password" in state
+        assert "redfish_bluefield_config_manager_password" in state
+
+    def test_redfish_user_supplied_values_preserved(self):
+        config = NVConfigManagerInstallConfig(
+            secrets=SecretsConfig(method=SecretsMethod.KUBERNETES),
+            redfish=RedfishConfig(
+                enabled=True,
+                vendors={
+                    "lenovo": RedfishVendorCreds(
+                        default_user="myadmin",
+                        default_password="mypass",
+                        config_manager_password="kpass",
+                    ),
+                },
+            ),
+        )
+        state = generate_secrets(config)
+        assert state["redfish_lenovo_default_user"] == "myadmin"
+        assert state["redfish_lenovo_default_password"] == "mypass"
+        assert state["redfish_lenovo_config_manager_password"] == "kpass"
+
+    def test_no_redfish_secrets_for_eso(self):
+        config = NVConfigManagerInstallConfig(
+            secrets=SecretsConfig(method=SecretsMethod.ESO),
+            redfish=RedfishConfig(
+                enabled=True,
+                vendors={"lenovo": RedfishVendorCreds()},
+            ),
+        )
+        state = generate_secrets(config)
+        assert not any(k.startswith("redfish_") for k in state)

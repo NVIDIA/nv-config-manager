@@ -1,0 +1,44 @@
+    router:
+{% block adaptive_routing %}
+{% endblock adaptive_routing %}
+      bgp:
+        autonomous-system: {{ device_data|asn }}
+        enable: on
+        graceful-restart:
+          mode: full
+        router-id: {{ device_data|router_id }}
+      policy:
+{% block prefix_list %}
+{% endblock prefix_list %}
+{% block route_map %}
+        route-map:
+          RM_ADD_WECMP:
+            rule:
+              '10':
+                action:
+                  permit: {}
+                description: RM_ADD_WECMP_COMMUNITY
+                set:
+                  ext-community-bw: multipaths
+          RM_LOOPBACK:
+            rule:
+              '10':
+                action:
+                  permit: {}
+                description: permit_lo_ip
+                match:
+                  interface: lo
+                  type: ipv4
+          RM_SUM_WECMP:
+            rule:
+              '10':
+                action:
+                  permit: {}
+                description: RM_SUM_WECMP_COMMUNITY
+                set:
+                  ext-community-bw: cumulative
+{% endblock route_map %}
+{% if device_data|role not in ["In-Band-Leaf", "Converged-Spine"] %}
+      vrr:
+        enable: on
+{% endif %}

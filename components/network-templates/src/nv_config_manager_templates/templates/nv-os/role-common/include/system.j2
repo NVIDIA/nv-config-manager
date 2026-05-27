@@ -1,0 +1,49 @@
+    system:
+      aaa:
+        user:
+{% for user in device_data|users %}
+          {{ user.username }}:
+            password: {{ (user.password_key|load_secret(site=device_data|site_name))|encrypt("sha512", site=device_data|site_name) }}
+{% if user.role %}            role: {{ user.role }}
+{% endif %}{% endfor %}
+      hostname: {{ device_data|hostname|upper }}
+      timezone: Etc/UTC
+      security:
+        password-hardening:
+          state: disabled
+{% block config_autosave %}
+      config:
+        auto-save:
+          state: enabled
+{% endblock %}
+{% block ntp %}
+{% if device_data|ntp_servers %}
+      ntp:
+        server:
+{% for ntp_server in device_data|ntp_servers %}
+          {{ ntp_server }}: {}
+{% endfor %}
+{% endif %}
+{% endblock ntp %}
+
+{% block dns %}
+{% if device_data|dns_servers %}
+      dns:
+        server:
+{% for dns_server in device_data|dns_servers %}
+          {{ dns_server }}: {}
+{% endfor %}
+{% endif %}
+{% endblock dns %}
+
+{% block syslog %}
+{% if device_data|syslog_servers %}
+      syslog:
+        server:
+{% for syslog_server in device_data|syslog_servers %}
+          {{ syslog_server }}:
+            port: 32365
+            protocol: udp
+{% endfor %}
+{% endif %}
+{% endblock syslog %}

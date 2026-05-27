@@ -1,0 +1,159 @@
+# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
+#
+{{- $dhcpName := include "nv-config-manager.componentName" (dict "root" . "component" "dhcp") }}
+{{- $ztpName := include "nv-config-manager.componentName" (dict "root" . "component" "ztp") }}
+# =============================================================================
+# Network Policy - Namespace Isolation
+# =============================================================================
+# Restricts ingress traffic to same-namespace communication only.
+# Allows:
+#   - All pod-to-pod traffic within the namespace
+#   - Ingress from Envoy Gateway system namespace (if configured)
+#   - Ingress from LoadBalancer provider namespace (if configured)
+# Denies:
+#   - Ingress from other namespaces (except allowed ones)
+# Egress:
+#   - Fully open (no restrictions)
+# =============================================================================
+
+{{- if .Values.networkPolicy.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: namespace-isolation
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+spec:
+  # Apply to all pods in the namespace
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    # Allow all traffic from within the same namespace
+    - from:
+        - podSelector: {}
+    {{- if .Values.networkPolicy.allowFromGatewayNamespace }}
+    # Allow traffic from Envoy Gateway system namespace (data plane proxies)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.gatewayNamespace }}
+    {{- end }}
+    {{- if .Values.networkPolicy.allowFromLBNamespace }}
+    # Allow traffic from LoadBalancer provider namespace (MetalLB/Cilium/AWS NLB)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.lbNamespace }}
+    {{- end }}
+    {{- range .Values.networkPolicy.additionalAllowedNamespaces }}
+    # Allow traffic from additional namespace: {{ . }}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ . }}
+    {{- end }}
+{{- end }}
+
+{{/*
+# =============================================================================
+# Network Policy - DHCP LoadBalancer Access (ipBlock-based)
+# =============================================================================
+# When using MetalLB or Cilium with externalTrafficPolicy: Local, the source IP
+# is preserved (not NAT'd through the LB namespace). This policy allows traffic
+# from the configured allowedPrefixes directly to DHCP pods on LB-exposed ports.
+# =============================================================================
+*/}}
+{{- if .Values.networkPolicy.enabled }}
+{{- $dhcpAllowedPrefixes := list }}
+{{- if and .Values.networkDhcp.ingress.cilium .Values.networkDhcp.ingress.cilium.allowedPrefixes }}
+  {{- $dhcpAllowedPrefixes = .Values.networkDhcp.ingress.cilium.allowedPrefixes }}
+{{- else if and .Values.networkDhcp.ingress.metallb .Values.networkDhcp.ingress.metallb.allowedPrefixes }}
+  {{- $dhcpAllowedPrefixes = .Values.networkDhcp.ingress.metallb.allowedPrefixes }}
+{{- end }}
+{{- if $dhcpAllowedPrefixes }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: dhcp-loadbalancer-access
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+spec:
+  # Apply only to DHCP pods
+  podSelector:
+    matchLabels:
+      app: {{ $dhcpName }}
+  policyTypes:
+    - Ingress
+  ingress:
+    # Allow traffic from configured OOB network prefixes to DHCP ports
+    - from:
+        {{- range $dhcpAllowedPrefixes }}
+        - ipBlock:
+            cidr: {{ . }}
+        {{- end }}
+      ports:
+        # DHCP (UDP 67)
+        - protocol: UDP
+          port: 67
+        # Healthcheck (HTTP 9090)
+        - protocol: TCP
+          port: 9090
+{{- end }}
+{{- end }}
+
+{{/*
+# =============================================================================
+# Network Policy - ZTP LoadBalancer Access (ipBlock-based)
+# =============================================================================
+# When using MetalLB or Cilium with externalTrafficPolicy: Local, the source IP
+# is preserved (not NAT'd through the LB namespace). This policy allows traffic
+# from the configured allowedPrefixes directly to ZTP pods on LB-exposed ports.
+# =============================================================================
+*/}}
+{{- if .Values.networkPolicy.enabled }}
+{{- $ztpAllowedPrefixes := list }}
+{{- if and .Values.networkZtp.ingress.cilium .Values.networkZtp.ingress.cilium.allowedPrefixes }}
+  {{- $ztpAllowedPrefixes = .Values.networkZtp.ingress.cilium.allowedPrefixes }}
+{{- else if and .Values.networkZtp.ingress.metallb .Values.networkZtp.ingress.metallb.allowedPrefixes }}
+  {{- $ztpAllowedPrefixes = .Values.networkZtp.ingress.metallb.allowedPrefixes }}
+{{- end }}
+{{- if $ztpAllowedPrefixes }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ztp-loadbalancer-access
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+spec:
+  # Apply only to ZTP pods
+  podSelector:
+    matchLabels:
+      app: {{ $ztpName }}
+  policyTypes:
+    - Ingress
+  ingress:
+    # Allow traffic from configured OOB network prefixes to ZTP ports
+    - from:
+        {{- range $ztpAllowedPrefixes }}
+        - ipBlock:
+            cidr: {{ . }}
+        {{- end }}
+      ports:
+        # HTTP API (port 8000)
+        - protocol: TCP
+          port: 8000
+        # HTTP API (port 9000, for internal/gateway access)
+        - protocol: TCP
+          port: 9000
+        # SFTP (port 2222)
+        - protocol: TCP
+          port: 2222
+{{- end }}
+{{- end }}

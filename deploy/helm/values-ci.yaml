@@ -1,0 +1,81 @@
+# =============================================================================
+# CI/Lint Values - Dummy values for Helm linting in CI pipelines
+# =============================================================================
+# This file provides minimal/required dummy values to allow `helm lint` to run.
+# It is NOT intended for actual deployment - use environment-specific values.
+# =============================================================================
+
+global:
+  namespace: nv-config-manager-ci
+
+# Use ESO/Vault method to test the full template rendering
+secrets:
+  method: "eso"
+  vault:
+    server: "https://vault.example.com"
+    namespace: "nv-config-manager"
+    mountPath: "auth/kubernetes"
+    role: "nv-config-manager-ci-vault-auth"
+    kvMount: "kv"
+    paths:
+      nautobot:
+        path: "nv-config-manager/ci/nautobot"
+      redis:
+        path: "nv-config-manager/ci/redis"
+      postgres:
+        path: "nv-config-manager/ci/postgres"
+      network:
+        path: "nv-config-manager/ci/network"
+      redfish:
+        path: "nv-config-manager/ci/redfish"
+      bmc:
+        path: "nv-config-manager/ci/bmc"
+      slack:
+        path: "nv-config-manager/ci/slack"
+      air:
+        path: "nv-config-manager/ci/air"
+      oauth2Proxy:
+        path: "nv-config-manager/ci/oauth2-proxy"
+      nautobot_nv_config_manager:
+        path: "nv-config-manager/ci/nautobot-app"
+      gitTokens:
+        - name: prismo
+          secretName: prismo-git-token
+          hasUsername: true
+          path: "nv-config-manager/ci/prismo-git"
+
+nautobot:
+  enabled: true
+
+# External services - use local deployments to avoid requiring external URLs
+externalServices:
+  nautobot:
+    local: true
+  redis:
+    local: true
+  postgres:
+    configStore:
+      host: "cluster-config-store-rw.nv-config-manager-ci.svc.cluster.local"
+    temporal:
+      host: "cluster-temporal-rw.nv-config-manager-ci.svc.cluster.local"
+    temporalVisibility:
+      host: "cluster-temporal-rw.nv-config-manager-ci.svc.cluster.local"
+    dhcp:
+      host: "cluster-dhcp-rw.nv-config-manager-ci.svc.cluster.local"
+
+# Gateway configuration
+gateway:
+  baseHostname: "ci.config-manager.example.com"
+  certificates:
+    enabled: true
+    selfSigned: true
+
+monitoring:
+  enabled: true
+  prometheus:
+    namespace: monitoring
+  podMonitors:
+    enabled: true
+  probes:
+    enabled: true
+    blackboxExporterUrl: "blackbox:9115"

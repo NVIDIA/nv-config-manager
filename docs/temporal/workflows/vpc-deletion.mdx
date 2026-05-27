@@ -1,0 +1,30 @@
+---
+title: VPC Deletion
+sidebar-title: VPC Deletion
+position: 10
+---
+
+Removes a virtual private cloud (VPC) and cleans up associated network resources and configurations.
+
+<Warning title="Experimental">
+This workflow is experimental and not intended for general use. Use it only in test or pilot environments.
+</Warning>
+
+## User Interface
+
+### Form Inputs
+
+| Field | Description | Selection Type | Required |
+| :---- | :---------- | :------------- | :------- |
+| **Site** | Choose the site containing the VPC | Single dropdown from available sites | Yes |
+| **VPC ID** | Identifier of the VPC to delete | Text input field | Yes |
+| **Namespace** | Tenant namespace of the VPC | Text input field (default is `spectrumx`) | Yes |
+
+## Workflow Execution
+
+### Execution Stages
+
+1. Validate VPC for deletion
+1. Clean up network resources
+1. Remove VPC infrastructure
+1. Verify complete removal

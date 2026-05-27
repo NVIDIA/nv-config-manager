@@ -1,0 +1,11 @@
+---
+# Tenants for NVIDIA Config Manager deployments
+
+- name: NGC
+  description: NVIDIA GPU Cloud tenant for superpod devices
+  deployment_types: [all, superpod]
+
+- name: Superpod
+  description: Superpod tenant for infrastructure devices
+  deployment_types: [all, superpod]
+

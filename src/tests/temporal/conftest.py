@@ -1,0 +1,120 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""Temporal test configuration - INI mocking handled by top-level conftest.py."""
+
+from collections.abc import AsyncGenerator
+from typing import Any
+
+import pytest
+import pytest_asyncio
+from temporalio import activity
+from temporalio.api.enums.v1 import IndexedValueType
+from temporalio.api.operatorservice.v1 import (
+    AddSearchAttributesRequest,
+    ListSearchAttributesRequest,
+)
+from temporalio.testing import WorkflowEnvironment
+
+from nv_config_manager.temporal.converter import get_data_converter
+from nv_config_manager.temporal.ngc.activities.nats import PublishNatsInput
+
+
+@activity.defn(name="publish_nats")
+async def mock_publish_nats(activity_input: PublishNatsInput) -> None:
+    """No-op mock for the publish_nats activity."""
+
+
+# UNCOMMENT THIS WHEN TROUBLESHOOTING HUNG TESTS
+# WILL BREAK ANY TESTS THAT ARE ACTUALLY TESTING RETRY LOGIC
+# @pytest.fixture(autouse=True)
+# def mock_workflow_wait_condition(mocker):
+#     """Mock workflow wait_condition to prevent tests from hanging on retry logic."""
+#     # Simple mock that returns immediately to prevent hanging
+#     mock_wait = AsyncMock(return_value=None)
+#     mocker.patch("nv_config_manager.temporal.common.mixins.stage.workflow.wait_condition", mock_wait)
+
+
+@pytest.fixture(autouse=True)
+def bmc_creds(mocker):
+    """Mock BMC creds."""
+
+    def mock_creds() -> Any:
+        return {
+            "C8-4B-D6-7A-E9-E2": {
+                "default_user": "USER1",
+                "default_password": "PASSWORD1",
+                "config_manager_password": "CONFIGMANAGERPASSWORD1",
+            },
+            "C8-4B-D6-7A-E8-F2": {
+                "default_user": "USER2",
+                "default_password": "PASSWORD2",
+                "config_manager_password": "CONFIGMANAGERPASSWORD2",
+            },
+            "D0-8E-79-F8-92-44": {
+                "default_user": "USER3",
+                "default_password": "PASSWORD3",
+                "config_manager_password": "CONFIGMANAGERPASSWORD3",
+            },
+            "38-7C-76-8D-6F-13": {
+                "default_user": "USER4",
+                "default_password": "PASSWORD4",
+                "config_manager_password": "CONFIGMANAGERPASSWORD4",
+            },
+            "58-A2-E1-84-74-FB": {
+                "default_user": "USER5",
+                "default_password": "PASSWORD5",
+                "config_manager_password": "CONFIGMANAGERPASSWORD5",
+            },
+            "58-A2-E1-72-DD-C5": {
+                "default_user": "USER6",
+                "default_password": "PASSWORD6",
+                "config_manager_password": "CONFIGMANAGERPASSWORD6",
+            },
+        }
+
+    mocker.patch("nv_config_manager.temporal.client.redfish.get_bmc_creds", new=mock_creds)
+
+
+@pytest_asyncio.fixture(scope="session")
+async def env() -> AsyncGenerator[WorkflowEnvironment]:
+    env = await WorkflowEnvironment.start_local(
+        data_converter=get_data_converter(),
+        dev_server_extra_args=[
+            "--dynamic-config-value",
+            "system.forceSearchAttributesCacheRefreshOnRead=true",
+        ],
+    )
+    await env.client.operator_service.add_search_attributes(
+        AddSearchAttributesRequest(
+            namespace=env.client.namespace,
+            search_attributes={
+                "User": IndexedValueType.INDEXED_VALUE_TYPE_KEYWORD,
+                "DeviceID": IndexedValueType.INDEXED_VALUE_TYPE_KEYWORD,
+                "DeviceRole": IndexedValueType.INDEXED_VALUE_TYPE_KEYWORD,
+                "Site": IndexedValueType.INDEXED_VALUE_TYPE_KEYWORD,
+                "DeviceName": IndexedValueType.INDEXED_VALUE_TYPE_TEXT,
+                "DevicePlatform": IndexedValueType.INDEXED_VALUE_TYPE_KEYWORD,
+                "ReadRoles": IndexedValueType.INDEXED_VALUE_TYPE_KEYWORD_LIST,
+                "ExecuteRoles": IndexedValueType.INDEXED_VALUE_TYPE_KEYWORD_LIST,
+                "IssueKey": IndexedValueType.INDEXED_VALUE_TYPE_KEYWORD,
+            },
+        )
+    )
+    # Read to force the cache refresh
+    await env.client.operator_service.list_search_attributes(
+        ListSearchAttributesRequest(namespace=env.client.namespace)
+    )
+    yield env
+    await env.shutdown()

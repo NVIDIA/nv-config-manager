@@ -1,0 +1,2001 @@
+- set:
+    bridge:
+      domain:
+        br_default:
+          stp:
+            priority: 28672
+            state:
+              up: {}
+          vlan: {}
+    evpn:
+      enable: on
+      multihoming:
+        enable: on
+        startup-delay: 30
+      route-advertise: {}
+    interface:
+      eth0:
+        description: a08-u44-p01-mleaf-01_swp17
+        ip:
+          address:
+            192.0.2.28/23: {}
+        type: eth
+      lo:
+        ip:
+          address:
+            10.254.254.16/32: {}
+        type: loopback
+      swp1:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp1s0:
+        description: a08-u32-p01-cleaf-01_swp53s0
+        ip:
+          address:
+            10.254.1.0/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp1s1:
+        description: a08-u32-p01-cleaf-01_swp53s1
+        ip:
+          address:
+            10.254.1.2/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp2:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp2s0:
+        description: a08-u32-p01-cleaf-01_swp54s0
+        ip:
+          address:
+            10.254.1.4/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp2s1:
+        description: a08-u32-p01-cleaf-01_swp54s1
+        ip:
+          address:
+            10.254.1.6/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp3:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp3s0:
+        description: a08-u32-p01-cleaf-01_swp55s0
+        ip:
+          address:
+            10.254.1.8/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp3s1:
+        description: a08-u32-p01-cleaf-01_swp55s1
+        ip:
+          address:
+            10.254.1.10/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp4:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp4s0:
+        description: a08-u32-p01-cleaf-01_swp56s0
+        ip:
+          address:
+            10.254.1.12/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp4s1:
+        description: a08-u32-p01-cleaf-01_swp56s1
+        ip:
+          address:
+            10.254.1.14/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp5:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp5s0:
+        description: a08-u32-p01-cleaf-01_swp57s0
+        ip:
+          address:
+            10.254.1.16/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp5s1:
+        description: a08-u32-p01-cleaf-01_swp57s1
+        ip:
+          address:
+            10.254.1.18/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp6:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp6s0:
+        description: a08-u32-p01-cleaf-01_swp58s0
+        ip:
+          address:
+            10.254.1.20/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp6s1:
+        description: a08-u32-p01-cleaf-01_swp58s1
+        ip:
+          address:
+            10.254.1.22/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp7:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp7s0:
+        description: b08-u32-p01-cleaf-02_swp53s0
+        ip:
+          address:
+            10.254.1.24/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp7s1:
+        description: b08-u32-p01-cleaf-02_swp53s1
+        ip:
+          address:
+            10.254.1.26/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp8:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp8s0:
+        description: b08-u32-p01-cleaf-02_swp54s0
+        ip:
+          address:
+            10.254.1.28/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp8s1:
+        description: b08-u32-p01-cleaf-02_swp54s1
+        ip:
+          address:
+            10.254.1.30/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp9:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp9s0:
+        description: b08-u32-p01-cleaf-02_swp55s0
+        ip:
+          address:
+            10.254.1.32/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp9s1:
+        description: b08-u32-p01-cleaf-02_swp55s1
+        ip:
+          address:
+            10.254.1.34/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp10:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp10s0:
+        description: b08-u32-p01-cleaf-02_swp56s0
+        ip:
+          address:
+            10.254.1.36/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp10s1:
+        description: b08-u32-p01-cleaf-02_swp56s1
+        ip:
+          address:
+            10.254.1.38/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp11:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp11s0:
+        description: b08-u32-p01-cleaf-02_swp57s0
+        ip:
+          address:
+            10.254.1.40/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp11s1:
+        description: b08-u32-p01-cleaf-02_swp57s1
+        ip:
+          address:
+            10.254.1.42/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp12:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp12s0:
+        description: b08-u32-p01-cleaf-02_swp58s0
+        ip:
+          address:
+            10.254.1.44/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp12s1:
+        description: b08-u32-p01-cleaf-02_swp58s1
+        ip:
+          address:
+            10.254.1.46/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp13:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp13s0:
+        description: a08-u36-p01-cleaf-03_swp53s0
+        ip:
+          address:
+            10.254.1.48/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp13s1:
+        description: a08-u36-p01-cleaf-03_swp53s1
+        ip:
+          address:
+            10.254.1.50/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp14:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp14s0:
+        description: a08-u36-p01-cleaf-03_swp54s0
+        ip:
+          address:
+            10.254.1.52/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp14s1:
+        description: a08-u36-p01-cleaf-03_swp54s1
+        ip:
+          address:
+            10.254.1.54/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp15:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp15s0:
+        description: a08-u36-p01-cleaf-03_swp55s0
+        ip:
+          address:
+            10.254.1.56/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp15s1:
+        description: a08-u36-p01-cleaf-03_swp55s1
+        ip:
+          address:
+            10.254.1.58/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp16:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp16s0:
+        description: a08-u36-p01-cleaf-03_swp56s0
+        ip:
+          address:
+            10.254.1.60/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp16s1:
+        description: a08-u36-p01-cleaf-03_swp56s1
+        ip:
+          address:
+            10.254.1.62/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp17:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp17s0:
+        description: a08-u36-p01-cleaf-03_swp57s0
+        ip:
+          address:
+            10.254.1.64/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp17s1:
+        description: a08-u36-p01-cleaf-03_swp57s1
+        ip:
+          address:
+            10.254.1.66/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp18:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp18s0:
+        description: a08-u36-p01-cleaf-03_swp58s0
+        ip:
+          address:
+            10.254.1.68/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp18s1:
+        description: a08-u36-p01-cleaf-03_swp58s1
+        ip:
+          address:
+            10.254.1.70/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp19:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp19s0:
+        description: b08-u36-p01-cleaf-04_swp53s0
+        ip:
+          address:
+            10.254.1.72/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp19s1:
+        description: b08-u36-p01-cleaf-04_swp53s1
+        ip:
+          address:
+            10.254.1.74/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp20:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp20s0:
+        description: b08-u36-p01-cleaf-04_swp54s0
+        ip:
+          address:
+            10.254.1.76/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp20s1:
+        description: b08-u36-p01-cleaf-04_swp54s1
+        ip:
+          address:
+            10.254.1.78/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp21:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp21s0:
+        description: b08-u36-p01-cleaf-04_swp55s0
+        ip:
+          address:
+            10.254.1.80/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp21s1:
+        description: b08-u36-p01-cleaf-04_swp55s1
+        ip:
+          address:
+            10.254.1.82/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp22:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp22s0:
+        description: b08-u36-p01-cleaf-04_swp56s0
+        ip:
+          address:
+            10.254.1.84/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp22s1:
+        description: b08-u36-p01-cleaf-04_swp56s1
+        ip:
+          address:
+            10.254.1.86/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp23:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp23s0:
+        description: b08-u36-p01-cleaf-04_swp57s0
+        ip:
+          address:
+            10.254.1.88/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp23s1:
+        description: b08-u36-p01-cleaf-04_swp57s1
+        ip:
+          address:
+            10.254.1.90/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp24:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp24s0:
+        description: b08-u36-p01-cleaf-04_swp58s0
+        ip:
+          address:
+            10.254.1.92/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp24s1:
+        description: b08-u36-p01-cleaf-04_swp58s1
+        ip:
+          address:
+            10.254.1.94/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp25:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp25s0:
+        description: a09-u32-p01-sleaf-01_swp57s0
+        ip:
+          address:
+            10.254.1.96/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp25s1:
+        description: a09-u32-p01-sleaf-01_swp57s1
+        ip:
+          address:
+            10.254.1.98/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp26:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp26s0:
+        description: a09-u32-p01-sleaf-01_swp58s0
+        ip:
+          address:
+            10.254.1.100/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp26s1:
+        description: a09-u32-p01-sleaf-01_swp58s1
+        ip:
+          address:
+            10.254.1.102/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp27:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp27s0:
+        description: a09-u32-p01-sleaf-01_swp59s0
+        ip:
+          address:
+            10.254.1.104/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp27s1:
+        description: a09-u32-p01-sleaf-01_swp59s1
+        ip:
+          address:
+            10.254.1.106/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp28:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp28s0:
+        description: a09-u32-p01-sleaf-01_swp60s0
+        ip:
+          address:
+            10.254.1.108/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp28s1:
+        description: a09-u32-p01-sleaf-01_swp60s1
+        ip:
+          address:
+            10.254.1.110/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp29:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp29s0:
+        description: b09-u32-p01-sleaf-02_swp57s0
+        ip:
+          address:
+            10.254.1.112/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp29s1:
+        description: b09-u32-p01-sleaf-02_swp57s1
+        ip:
+          address:
+            10.254.1.114/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp30:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp30s0:
+        description: b09-u32-p01-sleaf-02_swp58s0
+        ip:
+          address:
+            10.254.1.116/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp30s1:
+        description: b09-u32-p01-sleaf-02_swp58s1
+        ip:
+          address:
+            10.254.1.118/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp31:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp31s0:
+        description: b09-u32-p01-sleaf-02_swp59s0
+        ip:
+          address:
+            10.254.1.120/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp31s1:
+        description: b09-u32-p01-sleaf-02_swp59s1
+        ip:
+          address:
+            10.254.1.122/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp32:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp32s0:
+        description: b09-u32-p01-sleaf-02_swp60s0
+        ip:
+          address:
+            10.254.1.124/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp32s1:
+        description: b09-u32-p01-sleaf-02_swp60s1
+        ip:
+          address:
+            10.254.1.126/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp33:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp33s0:
+        description: a09-u28-p01-bleaf-01_swp54s0
+        ip:
+          address:
+            10.254.1.128/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp33s1:
+        description: a09-u28-p01-bleaf-01_swp54s1
+        ip:
+          address:
+            10.254.1.130/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp34:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp34s0:
+        description: a09-u28-p01-bleaf-01_swp55s0
+        ip:
+          address:
+            10.254.1.132/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp34s1:
+        description: a09-u28-p01-bleaf-01_swp55s1
+        ip:
+          address:
+            10.254.1.134/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp35:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp35s0:
+        description: a09-u28-p01-bleaf-01_swp56s0
+        ip:
+          address:
+            10.254.1.136/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp35s1:
+        description: a09-u28-p01-bleaf-01_swp56s1
+        ip:
+          address:
+            10.254.1.138/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp36:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp36s0:
+        description: a09-u28-p01-bleaf-01_swp57s0
+        ip:
+          address:
+            10.254.1.140/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp36s1:
+        description: a09-u28-p01-bleaf-01_swp57s1
+        ip:
+          address:
+            10.254.1.142/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp37:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp37s0:
+        description: a09-u28-p01-bleaf-01_swp58s0
+        ip:
+          address:
+            10.254.1.144/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp37s1:
+        description: a09-u28-p01-bleaf-01_swp58s1
+        ip:
+          address:
+            10.254.1.146/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp38:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp38s0:
+        description: a09-u28-p01-bleaf-01_swp59s0
+        ip:
+          address:
+            10.254.1.148/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp38s1:
+        description: b09-u28-p01-bleaf-02_swp54s0
+        ip:
+          address:
+            10.254.1.150/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp39:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp39s0:
+        description: b09-u28-p01-bleaf-02_swp54s1
+        ip:
+          address:
+            10.254.1.152/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp39s1:
+        description: b09-u28-p01-bleaf-02_swp55s0
+        ip:
+          address:
+            10.254.1.154/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp40:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp40s0:
+        description: b09-u28-p01-bleaf-02_swp55s1
+        ip:
+          address:
+            10.254.1.156/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp40s1:
+        description: b09-u28-p01-bleaf-02_swp56s0
+        ip:
+          address:
+            10.254.1.158/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp41:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp41s0:
+        description: b09-u28-p01-bleaf-02_swp56s1
+        ip:
+          address:
+            10.254.1.160/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp41s1:
+        description: b09-u28-p01-bleaf-02_swp57s0
+        ip:
+          address:
+            10.254.1.162/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp42:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp42s0:
+        description: b09-u28-p01-bleaf-02_swp57s1
+        ip:
+          address:
+            10.254.1.164/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp42s1:
+        description: b09-u28-p01-bleaf-02_swp58s0
+        ip:
+          address:
+            10.254.1.166/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp43:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp43s0:
+        description: b09-u28-p01-bleaf-02_swp58s1
+        ip:
+          address:
+            10.254.1.168/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp43s1:
+        description: b09-u28-p01-bleaf-02_swp59s0
+        ip:
+          address:
+            10.254.1.170/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+    nve:
+      vxlan:
+        arp-nd-suppress: on
+        enable: on
+        source:
+          address: 10.254.254.16
+    qos:
+      pfc:
+        default-global:
+          port-buffer: 363000
+          switch-priority:
+            '3': {}
+          xoff-threshold: 75000
+          xon-threshold: 75000
+      roce:
+        enable: on
+      traffic-pool:
+        default-lossy:
+          memory-percent: 10
+        roce-lossless:
+          memory-percent: 90
+    router:
+      adaptive-routing:
+        enable: on
+      bgp:
+        autonomous-system: 4230000001
+        enable: on
+        graceful-restart:
+          mode: full
+        router-id: 10.254.254.16
+      policy:
+        route-map:
+          RM_ADD_WECMP:
+            rule:
+              '10':
+                action:
+                  permit: {}
+                description: RM_ADD_WECMP_COMMUNITY
+                set:
+                  ext-community-bw: multipaths
+          RM_LOOPBACK:
+            rule:
+              '10':
+                action:
+                  permit: {}
+                description: permit_lo_ip
+                match:
+                  interface: lo
+                  type: ipv4
+          RM_SUM_WECMP:
+            rule:
+              '10':
+                action:
+                  permit: {}
+                description: RM_SUM_WECMP_COMMUNITY
+                set:
+                  ext-community-bw: cumulative
+    service:
+      dhcp-relay: {}
+      dns:
+        mgmt:
+          server:
+            192.0.2.8: {}
+            192.0.2.9: {}
+      ntp:
+        mgmt:
+          server:
+            192.0.2.8: {}
+            192.0.2.9: {}
+    system:
+      aaa:
+        class:
+          nvapply:
+            action: allow
+            command-path:
+              /:
+                permission: all
+          nvshow:
+            action: allow
+            command-path:
+              /:
+                permission: ro
+          sudo:
+            action: allow
+            command-path:
+              /:
+                permission: all
+        role:
+          nvue-admin:
+            class:
+              nvapply: {}
+          nvue-monitor:
+            class:
+              nvshow: {}
+          system-admin:
+            class:
+              nvapply: {}
+              sudo: {}
+        user:
+          cumulus:
+            full-name: cumulus,,,
+            hashed-password: $6$H0QFj2rx$nZvUivJum/KP/YIvEu1iyuDUZcFGc48GMnoaAqrtW/dwbVtDsdqF1xCOD.eIR1ukFxwoLzze9PHGPDK0f2KHt.
+            role: system-admin
+          nv-config-manager:
+            hashed-password: $6$H0QFj2rx$Vz4idKh.iwlfraq9WAV5sy1STcsz75Bv9YDx3LrJEoeB7vvkg.VQwPpssmhZpNBgY9iTCTiUQnjeoqk261KYp.
+            role: system-admin
+      api:
+        state: enabled
+      config:
+        auto-save:
+          state: enabled
+      control-plane:
+        acl:
+          acl-default-dos:
+            inbound: {}
+      global:
+        fabric-mac: 00:00:5E:00:01:69
+      hostname: a09-u36-p01-spine-01
+      reboot:
+        mode: cold
+      ssh-server:
+        state: enabled
+      wjh:
+        channel:
+          forwarding:
+            trigger:
+              l2: {}
+              l3: {}
+              tunnel: {}
+        enable: on
+    vrf:
+      default:
+        evpn:
+          enable: on
+        router:
+          bgp:
+            address-family:
+              ipv4-unicast:
+                enable: on
+                redistribute:
+                  connected:
+                    enable: on
+                    route-map: RM_LOOPBACK
+              l2vpn-evpn:
+                enable: on
+            enable: on
+            neighbor:
+              10.254.1.1:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.101:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.103:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.105:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.107:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.109:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.11:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.111:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.113:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.115:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.117:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.119:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.121:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.123:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.125:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.127:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.129:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.13:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.131:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.133:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.135:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.137:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.139:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.141:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.143:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.145:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.147:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.149:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.15:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.151:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.153:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.155:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.157:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.159:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.161:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.163:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.165:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.167:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.169:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.17:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.171:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.19:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.21:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.23:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.25:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.27:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.29:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.3:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.31:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.33:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.35:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.37:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.39:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.41:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.43:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.45:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.47:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.49:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.5:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.51:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.53:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.55:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.57:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.59:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.61:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.63:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.65:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.67:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.69:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.7:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.71:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.73:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.75:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.77:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.79:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.81:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.83:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.85:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.87:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.89:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.9:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.91:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.93:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.95:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.97:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.99:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.254.11:
+                peer-group: EVPN
+                type: numbered
+              10.254.254.12:
+                peer-group: EVPN
+                type: numbered
+              10.254.254.14:
+                peer-group: EVPN
+                type: numbered
+              10.254.254.15:
+                peer-group: EVPN
+                type: numbered
+              10.254.254.29:
+                peer-group: EVPN
+                type: numbered
+              10.254.254.30:
+                peer-group: EVPN
+                type: numbered
+              10.254.254.32:
+                peer-group: EVPN
+                type: numbered
+              10.254.254.33:
+                peer-group: EVPN
+                type: numbered
+            path-selection:
+              multipath:
+                aspath-ignore: on
+            peer-group:
+              EVPN:
+                address-family:
+                  ipv4-unicast:
+                    enable: off
+                  l2vpn-evpn:
+                    enable: on
+                bfd:
+                  detect-multiplier: 3
+                  enable: on
+                  min-rx-interval: 1000
+                  min-tx-interval: 1000
+                description: evpn_vxlan_control_plane
+                multihop-ttl: 2
+                remote-as: external
+                update-source: lo
+              UNDERLAY:
+                address-family:
+                  ipv4-unicast:
+                    policy:
+                      outbound:
+                        route-map: RM_SUM_WECMP
+                bfd:
+                  detect-multiplier: 3
+                  enable: on
+                  min-rx-interval: 300
+                  min-tx-interval: 300
+                description: underlay_interconnect
+                remote-as: external
+      mgmt:
+        router:
+          static:
+            0.0.0.0/0:
+              address-family: ipv4-unicast
+              via:
+                192.0.2.1:
+                  type: ipv4-address

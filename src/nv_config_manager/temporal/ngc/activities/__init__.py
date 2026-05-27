@@ -1,0 +1,279 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""NGC Network Activities."""
+
+from nv_config_manager.temporal.ngc.activities.air import (
+    create_simulation,
+    create_simulation_node_services,
+    delete_simulation,
+    generate_air_topology_for_location,
+    generate_minimal_topology_for_site,
+    prepare_simulation_nodes,
+    start_simulation,
+    validate_configuration_against_air_device,
+    wait_for_simulation_node,
+)
+from nv_config_manager.temporal.ngc.activities.backup import (
+    load_running_configuration,
+    persist_config_backup,
+    record_backup_config_manager_plugin,
+)
+from nv_config_manager.temporal.ngc.activities.bmc import (
+    discover_redfish_hosts,
+    factory_reset_bmc,
+    get_dpu_details,
+    get_server_details,
+    populate_redfish_macs,
+    power_on_host,
+    set_redfish_password,
+    update_dpu_data,
+)
+from nv_config_manager.temporal.ngc.activities.cable_validation import (
+    decorate_result,
+    format_device_validation_result,
+    format_results,
+    validate_device_neighbors,
+)
+from nv_config_manager.temporal.ngc.activities.config import get_ui_base_url
+from nv_config_manager.temporal.ngc.activities.deploy import (
+    apply_approved_configuration,
+    load_intended_configuration,
+    load_partial_configuration,
+    perform_candidate_diff,
+    validate_config_diff,
+    wait_for_tenant_render,
+)
+from nv_config_manager.temporal.ngc.activities.device import (
+    get_device_actual_neighbors,
+    get_device_arp_table,
+    get_device_intended_neighbors,
+    get_device_mac_table,
+    load_neighbor_data_by_switch_port,
+    validate_hostname,
+)
+from nv_config_manager.temporal.ngc.activities.device_password_rotation import (
+    format_password_rotation_results,
+    get_password_mappings,
+    validate_password_diff,
+    validate_platform_support,
+)
+from nv_config_manager.temporal.ngc.activities.diagnostics import (
+    collect_tech_support_bundle,
+    run_diagnostic_commands,
+)
+from nv_config_manager.temporal.ngc.activities.hardware_validation import (
+    create_consolidated_excel_export,
+    create_excel_export,
+    get_platform,
+    get_platform_environment_fan,
+    get_platform_environment_led,
+    get_platform_environment_psu,
+    get_platform_environment_voltage,
+    get_platform_inventory,
+)
+from nv_config_manager.temporal.ngc.activities.ib_guid_discovery import (
+    discover_ib_port_guids,
+    sync_ib_guid_on_interface,
+)
+from nv_config_manager.temporal.ngc.activities.ib_nautobot import (
+    create_partition_in_nautobot,
+    fetch_pkey_assignments,
+    record_ib_pkey_in_nautobot,
+    record_pkey_assignments,
+    remove_pkey_assignments,
+    resolve_guids_to_interfaces,
+    resolve_interface_guids,
+    sync_pkey_assignments,
+)
+from nv_config_manager.temporal.ngc.activities.ib_pkey import (
+    add_guids_to_pkey,
+    create_pkey_on_ufm,
+    fetch_pkey_members,
+    remove_guids_from_pkey,
+    validate_pkey_available,
+    verify_pkey_created,
+    verify_pkey_members,
+    verify_pkey_members_absent,
+)
+from nv_config_manager.temporal.ngc.activities.nats import publish_nats
+from nv_config_manager.temporal.ngc.activities.nautobot import (
+    assign_vrf_to_device,
+    assign_vrf_to_interface,
+    check_recorded_config_drift,
+    delete_vrf,
+    get_available_route_distinguishers,
+    get_device_interfaces,
+    get_device_vrfs,
+    get_host_data_by_macs,
+    get_host_data_by_names,
+    get_host_device,
+    get_host_devices,
+    get_network_device,
+    get_network_devices,
+    get_switch_port_by_remote_mac_address,
+    get_vrfs_by_vpc_id,
+    provision_vrf,
+)
+from nv_config_manager.temporal.ngc.activities.nvlinkswitch_firmware import (
+    compare_running_desired,
+    get_running_firmware,
+    reboot_device,
+    update_device_context,
+    validate_render_targets,
+    validate_target_files,
+)
+from nv_config_manager.temporal.ngc.activities.os import (
+    cleanup_mlnx_os,
+    download_mlnx_os,
+    execute_ztp,
+    get_current_os,
+    get_mlnx_os_version,
+    get_os_image_versions,
+    install_mlnx_os,
+    poll_image,
+    poll_ztp_status,
+    reload_mlnx_os,
+    update_intended_os_image,
+    wait_reboot,
+)
+from nv_config_manager.temporal.ngc.activities.render import (
+    execute_render,
+    validate_rendered_image_change,
+    validate_rendered_password_change,
+)
+from nv_config_manager.temporal.ngc.activities.slack import send_slack_message
+from nv_config_manager.temporal.ngc.activities.ticketing import (
+    add_ticket_comment,
+    upload_attachment,
+    upload_tech_support_from_redis,
+    validate_ticket,
+)
+from nv_config_manager.temporal.ngc.activities.ufm import get_ib_ports
+
+REGISTERED_ACTIVITIES = [
+    get_ui_base_url,
+    load_running_configuration,
+    persist_config_backup,
+    record_backup_config_manager_plugin,
+    get_device_intended_neighbors,
+    get_device_actual_neighbors,
+    get_device_mac_table,
+    validate_device_neighbors,
+    format_results,
+    format_device_validation_result,
+    load_intended_configuration,
+    load_partial_configuration,
+    perform_candidate_diff,
+    apply_approved_configuration,
+    validate_config_diff,
+    wait_for_tenant_render,
+    publish_nats,
+    get_host_data_by_macs,
+    get_host_data_by_names,
+    discover_redfish_hosts,
+    set_redfish_password,
+    power_on_host,
+    factory_reset_bmc,
+    get_device_arp_table,
+    populate_redfish_macs,
+    validate_hostname,
+    get_server_details,
+    get_dpu_details,
+    update_dpu_data,
+    get_host_devices,
+    get_network_devices,
+    get_host_device,
+    get_network_device,
+    decorate_result,
+    get_available_route_distinguishers,
+    provision_vrf,
+    load_neighbor_data_by_switch_port,
+    get_switch_port_by_remote_mac_address,
+    get_vrfs_by_vpc_id,
+    delete_vrf,
+    get_device_vrfs,
+    assign_vrf_to_device,
+    get_device_interfaces,
+    assign_vrf_to_interface,
+    get_ib_ports,
+    send_slack_message,
+    get_current_os,
+    execute_ztp,
+    get_os_image_versions,
+    poll_image,
+    poll_ztp_status,
+    update_intended_os_image,
+    execute_render,
+    validate_rendered_image_change,
+    validate_rendered_password_change,
+    check_recorded_config_drift,
+    wait_reboot,
+    generate_air_topology_for_location,
+    create_simulation,
+    prepare_simulation_nodes,
+    start_simulation,
+    create_simulation_node_services,
+    wait_for_simulation_node,
+    delete_simulation,
+    generate_minimal_topology_for_site,
+    validate_configuration_against_air_device,
+    get_mlnx_os_version,
+    download_mlnx_os,
+    install_mlnx_os,
+    reload_mlnx_os,
+    cleanup_mlnx_os,
+    get_platform,
+    get_platform_environment_fan,
+    get_platform_environment_led,
+    get_platform_environment_psu,
+    get_platform_environment_voltage,
+    get_platform_inventory,
+    create_excel_export,
+    create_consolidated_excel_export,
+    get_password_mappings,
+    validate_password_diff,
+    validate_platform_support,
+    get_running_firmware,
+    compare_running_desired,
+    update_device_context,
+    validate_render_targets,
+    validate_target_files,
+    reboot_device,
+    format_password_rotation_results,
+    validate_pkey_available,
+    create_pkey_on_ufm,
+    verify_pkey_created,
+    add_guids_to_pkey,
+    verify_pkey_members,
+    record_ib_pkey_in_nautobot,
+    create_partition_in_nautobot,
+    resolve_interface_guids,
+    resolve_guids_to_interfaces,
+    record_pkey_assignments,
+    fetch_pkey_assignments,
+    sync_pkey_assignments,
+    remove_pkey_assignments,
+    remove_guids_from_pkey,
+    verify_pkey_members_absent,
+    fetch_pkey_members,
+    discover_ib_port_guids,
+    sync_ib_guid_on_interface,
+    run_diagnostic_commands,
+    collect_tech_support_bundle,
+    validate_ticket,
+    upload_attachment,
+    upload_tech_support_from_redis,
+    add_ticket_comment,
+]

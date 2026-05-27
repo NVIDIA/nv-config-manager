@@ -1,0 +1,26 @@
+{% load render_table from django_tables2 %}
+{% load helpers %}
+
+<div class="panel panel-default">
+    <div class="panel-heading">
+        <strong>{{ panel_title }}</strong>
+    </div>
+    {% if table.rows %}
+    <div class="panel-body table-responsive">
+        {% render_table table %}
+    </div>
+    {% else %}
+    <div class="panel-body">
+        <span class="text-muted">Not assigned to any overlay</span>
+    </div>
+    {% endif %}
+    {% if show_add_button %}
+    <div class="panel-footer text-right noprint">
+        <a href="{% url 'plugins:nautobot_app_overlays:overlayassignment_add' %}?assigned_object_type={{ content_type.pk }}&assigned_object_id={{ object.pk }}&return_url={{ request.path }}" 
+           class="btn btn-primary btn-xs">
+            <span class="mdi mdi-plus-thick" aria-hidden="true"></span>
+            Assign to Overlay
+        </a>
+    </div>
+    {% endif %}
+</div>

@@ -1,0 +1,231 @@
+# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
+#
+# =============================================================================
+# CloudNative PostgreSQL Clusters for NVIDIA Config Manager
+# =============================================================================
+# Creates PostgreSQL clusters using CNPG operator.
+# Requires: CNPG operator installed (make install-cnpg-operator)
+# =============================================================================
+
+{{- if .Values.cnpg.enabled }}
+
+# -----------------------------------------------------------------------------
+# Database Clusters (iterates over cnpg.clusterList)
+# -----------------------------------------------------------------------------
+{{- range $clusterKey := .Values.cnpg.clusterList }}
+{{- $config := index $.Values.cnpg $clusterKey }}
+{{- if $config.enabled }}
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ $config.clusterName }}
+  namespace: {{ $.Values.global.namespace }}
+  labels:
+    app.kubernetes.io/name: {{ $config.clusterName }}
+    app.kubernetes.io/instance: {{ $.Release.Name }}
+    app.kubernetes.io/component: database
+spec:
+  instances: {{ $config.instances | default 1 }}
+  {{- if $.Values.cnpg.imageName }}
+  imageName: {{ $.Values.cnpg.imageName | quote }}
+  {{- end }}
+  
+  postgresql:
+    parameters:
+      max_connections: {{ $config.postgresql.maxConnections | quote }}
+      shared_buffers: {{ $config.postgresql.sharedBuffers | quote }}
+  
+  bootstrap:
+    initdb:
+      database: {{ $config.database }}
+      owner: {{ $config.owner }}
+      secret:
+        name: {{ $config.clusterName }}-app
+  
+  storage:
+    size: {{ $config.storage.size | default "1Gi" }}
+    {{- if $config.storage.storageClass }}
+    storageClass: {{ $config.storage.storageClass }}
+    {{- end }}
+  
+  resources:
+    {{- toYaml $config.resources | nindent 4 }}
+  
+  {{- if not $config.enablePDB }}
+  enablePDB: false
+  {{- end }}
+  
+  {{- if $config.affinity }}
+  affinity:
+    {{- if $config.affinity.nodeSelector }}
+    nodeSelector:
+      {{- toYaml $config.affinity.nodeSelector | nindent 6 }}
+    {{- end }}
+    {{- if $config.affinity.enablePodAntiAffinity }}
+    enablePodAntiAffinity: {{ $config.affinity.enablePodAntiAffinity }}
+    {{- end }}
+    {{- if $config.affinity.topologyKey }}
+    topologyKey: {{ $config.affinity.topologyKey }}
+    {{- end }}
+  {{- end }}
+  
+  monitoring:
+    enablePodMonitor: {{ $.Values.cnpg.monitoring.enabled | default false }}
+  
+  {{- if $config.backup.enabled }}
+  backup:
+    barmanObjectStore:
+      {{- if eq $.Values.cnpg.backup.destinationType "s3" }}
+      destinationPath: "s3://{{ $.Values.cnpg.backup.s3.bucket }}/{{ $.Values.cnpg.backup.s3.path }}/{{ $config.clusterName }}"
+      endpointURL: {{ $.Values.cnpg.backup.s3.endpoint | quote }}
+      s3Credentials:
+        accessKeyId:
+          name: {{ $.Values.cnpg.backup.credentialsSecret }}
+          key: ACCESS_KEY_ID
+        secretAccessKey:
+          name: {{ $.Values.cnpg.backup.credentialsSecret }}
+          key: ACCESS_SECRET_KEY
+      {{- end }}
+      wal:
+        compression: {{ $.Values.cnpg.backup.walCompression | default "gzip" }}
+      data:
+        compression: {{ $.Values.cnpg.backup.dataCompression | default "gzip" }}
+    retentionPolicy: {{ $config.backup.retentionPolicy | default "7d" | quote }}
+  {{- end }}
+{{- end }}
+{{- end }}
+
+# -----------------------------------------------------------------------------
+# Scheduled Backups (for clusters with backup.enabled)
+# -----------------------------------------------------------------------------
+{{- range $clusterKey := .Values.cnpg.clusterList }}
+{{- $config := index $.Values.cnpg $clusterKey }}
+{{- if and $config.enabled $config.backup.enabled }}
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: {{ $config.clusterName }}-backup
+  namespace: {{ $.Values.global.namespace }}
+  labels:
+    app.kubernetes.io/name: {{ $config.clusterName }}-backup
+    app.kubernetes.io/instance: {{ $.Release.Name }}
+    app.kubernetes.io/component: database-backup
+spec:
+  schedule: {{ $config.backup.schedule | quote }}
+  backupOwnerReference: self
+  cluster:
+    name: {{ $config.clusterName }}
+{{- end }}
+{{- end }}
+
+# -----------------------------------------------------------------------------
+# Nautobot Database Cluster (when local nautobot is enabled)
+# -----------------------------------------------------------------------------
+# Note: Nautobot is NOT in clusterList - it has special enable conditions
+{{- $nautobotConfig := .Values.cnpg.nautobot }}
+{{- if or $nautobotConfig.enabled (and .Values.nautobot.enabled .Values.externalServices.nautobot.local) }}
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ $nautobotConfig.clusterName }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app.kubernetes.io/name: {{ $nautobotConfig.clusterName }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: database
+spec:
+  instances: {{ $nautobotConfig.instances | default 1 }}
+  {{- if .Values.cnpg.imageName }}
+  imageName: {{ .Values.cnpg.imageName | quote }}
+  {{- end }}
+  
+  postgresql:
+    parameters:
+      max_connections: {{ $nautobotConfig.postgresql.maxConnections | quote }}
+      shared_buffers: {{ $nautobotConfig.postgresql.sharedBuffers | quote }}
+  
+  bootstrap:
+    initdb:
+      database: {{ $nautobotConfig.database }}
+      owner: {{ $nautobotConfig.owner }}
+      secret:
+        name: {{ $nautobotConfig.clusterName }}-app
+  
+  storage:
+    size: {{ $nautobotConfig.storage.size | default "10Gi" }}
+    {{- if $nautobotConfig.storage.storageClass }}
+    storageClass: {{ $nautobotConfig.storage.storageClass }}
+    {{- end }}
+  
+  resources:
+    {{- toYaml $nautobotConfig.resources | nindent 4 }}
+  
+  {{- if not $nautobotConfig.enablePDB }}
+  enablePDB: false
+  {{- end }}
+  
+  {{- if $nautobotConfig.affinity }}
+  affinity:
+    {{- if $nautobotConfig.affinity.nodeSelector }}
+    nodeSelector:
+      {{- toYaml $nautobotConfig.affinity.nodeSelector | nindent 6 }}
+    {{- end }}
+    {{- if $nautobotConfig.affinity.enablePodAntiAffinity }}
+    enablePodAntiAffinity: {{ $nautobotConfig.affinity.enablePodAntiAffinity }}
+    {{- end }}
+    {{- if $nautobotConfig.affinity.topologyKey }}
+    topologyKey: {{ $nautobotConfig.affinity.topologyKey }}
+    {{- end }}
+  {{- end }}
+  
+  monitoring:
+    enablePodMonitor: {{ .Values.cnpg.monitoring.enabled | default false }}
+  
+  {{- if $nautobotConfig.backup.enabled }}
+  backup:
+    barmanObjectStore:
+      {{- if eq .Values.cnpg.backup.destinationType "s3" }}
+      destinationPath: "s3://{{ .Values.cnpg.backup.s3.bucket }}/{{ .Values.cnpg.backup.s3.path }}/{{ $nautobotConfig.clusterName }}"
+      endpointURL: {{ .Values.cnpg.backup.s3.endpoint | quote }}
+      s3Credentials:
+        accessKeyId:
+          name: {{ .Values.cnpg.backup.credentialsSecret }}
+          key: ACCESS_KEY_ID
+        secretAccessKey:
+          name: {{ .Values.cnpg.backup.credentialsSecret }}
+          key: ACCESS_SECRET_KEY
+      {{- end }}
+      wal:
+        compression: {{ .Values.cnpg.backup.walCompression | default "gzip" }}
+      data:
+        compression: {{ .Values.cnpg.backup.dataCompression | default "gzip" }}
+    retentionPolicy: {{ $nautobotConfig.backup.retentionPolicy | default "7d" | quote }}
+  {{- end }}
+{{- end }}
+
+# -----------------------------------------------------------------------------
+# Nautobot Scheduled Backup (when backup is enabled)
+# -----------------------------------------------------------------------------
+{{- if and (or $nautobotConfig.enabled (and .Values.nautobot.enabled .Values.externalServices.nautobot.local)) $nautobotConfig.backup.enabled }}
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: {{ $nautobotConfig.clusterName }}-backup
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app.kubernetes.io/name: {{ $nautobotConfig.clusterName }}-backup
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: database-backup
+spec:
+  schedule: {{ $nautobotConfig.backup.schedule | quote }}
+  backupOwnerReference: self
+  cluster:
+    name: {{ $nautobotConfig.clusterName }}
+{{- end }}
+
+{{- end }}
+

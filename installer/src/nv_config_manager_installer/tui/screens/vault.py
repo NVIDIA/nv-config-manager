@@ -1,0 +1,685 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""Secrets / Vault configuration screen."""
+
+from __future__ import annotations
+
+from textual.app import ComposeResult
+from textual.containers import Container, Horizontal, Vertical
+from textual.widgets import Button, Input, Label, RadioButton, RadioSet
+
+from nv_config_manager_installer.schema import (
+    GitTokenEntry,
+    K8sSecretGroup,
+    NVConfigManagerInstallConfig,
+    SecretsMethod,
+    SiteConfig,
+    VaultAuthMethod,
+    VaultPathConfig,
+    VaultPathsConfig,
+)
+from nv_config_manager_installer.tui.widgets import LabeledSwitch
+
+# Ordered list of vault path groups to display in the TUI.
+# (schema_field, display_label)
+_PATH_GROUPS: list[tuple[str, str]] = [
+    ("nautobot", "Nautobot"),
+    ("redis", "Redis"),
+    ("postgres", "PostgreSQL"),
+    ("network", "Network/Device Creds"),
+    ("nautobot_app", "Nautobot App (admin/django)"),
+    ("oidc", "OIDC / SSO"),
+    ("slack", "Slack"),
+    ("air", "AIR"),
+    ("jira", "Jira"),
+    ("cnpg_backup", "CNPG Backup S3"),
+]
+
+_DEFAULTS = VaultPathsConfig()
+_LABEL_API_TOKEN = "API Token"
+
+# K8s mode: (schema_field, display_label, optional_by_default, [(vault_key, display_label)])
+_K8S_GROUPS: list[tuple[str, str, bool, list[tuple[str, str]]]] = [
+    (
+        "nautobot",
+        "Nautobot",
+        False,
+        [
+            ("token", _LABEL_API_TOKEN),
+            ("natsPassword", "NATS Password"),
+        ],
+    ),
+    (
+        "redis",
+        "Redis",
+        False,
+        [
+            ("password", "Password"),
+        ],
+    ),
+    (
+        "postgres",
+        "PostgreSQL",
+        False,
+        [
+            ("temporalUser", "Temporal User"),
+            ("temporalPassword", "Temporal Password"),
+            ("temporalVisibilityUser", "Temporal Visibility User"),
+            ("temporalVisibilityPassword", "Temporal Visibility Password"),
+            ("configStoreUser", "Config Store User"),
+            ("configStorePassword", "Config Store Password"),
+            ("dhcpUser", "DHCP User"),
+            ("dhcpPassword", "DHCP Password"),
+            ("nautobotUser", "Nautobot DB User"),
+            ("nautobotPassword", "Nautobot DB Password"),
+        ],
+    ),
+    (
+        "nautobot_app",
+        "Nautobot App",
+        False,
+        [
+            ("adminPassword", "Admin Password"),
+            ("djangoSecretKey", "Django Secret Key"),
+            ("superuserApiToken", "Superuser API Token"),
+        ],
+    ),
+    (
+        "network",
+        "Network / Device Credentials",
+        False,
+        [
+            ("user", "Username"),
+            ("password", "Password"),
+        ],
+    ),
+    (
+        "slack",
+        "Slack",
+        True,
+        [
+            ("token", "Bot Token"),
+        ],
+    ),
+    (
+        "air",
+        "AIR",
+        True,
+        [
+            ("ssaClientId", "SSA Client ID"),
+            ("ssaClientSecret", "SSA Client Secret"),
+        ],
+    ),
+    (
+        "jira",
+        "Jira",
+        True,
+        [
+            ("baseUrl", "Base URL"),
+            ("apiToken", _LABEL_API_TOKEN),
+        ],
+    ),
+    (
+        "cnpg_backup",
+        "CNPG Backup S3",
+        True,
+        [
+            ("accessKeyId", "Access Key ID"),
+            ("accessSecretKey", "Access Secret Key"),
+        ],
+    ),
+]
+
+
+class _K8sSecretCard(Vertical):
+    """Editable card for one kubernetes-mode secret group."""
+
+    def __init__(
+        self,
+        field_name: str,
+        label: str,
+        optional: bool,
+        keys: list[tuple[str, str]],
+        group: K8sSecretGroup,
+    ) -> None:
+        super().__init__(classes="account-card", id=f"k8s-card-{field_name}")
+        self._field_name = field_name
+        self._label = label
+        self._optional = optional
+        self._keys = keys
+        self._group = group
+
+    def compose(self) -> ComposeResult:
+        fn = self._field_name
+        with Horizontal(classes="compact-field-row"):
+            if self._optional:
+                yield LabeledSwitch(self._label, value=self._group.enabled, id=f"k8s-enabled-{fn}")
+            else:
+                yield Label(self._label, classes="account-header")
+        with Vertical(id=f"k8s-fields-{fn}", classes="k8s-field-group"):
+            for vault_key, key_label in self._keys:
+                with Horizontal(classes="compact-field-row"):
+                    lbl = Label(key_label, classes="field-label-compact")
+                    lbl.styles.width = "auto"
+                    lbl.styles.min_width = 28
+                    yield lbl
+                    inp = Input(
+                        value=self._group.values.get(vault_key, ""),
+                        placeholder="auto-generate",
+                        password=True,
+                        id=f"k8s-{fn}-{vault_key}",
+                    )
+                    inp.styles.width = "1fr"
+                    yield inp
+
+    def on_mount(self) -> None:
+        if self._optional:
+            self._toggle_fields()
+
+    def on_labeled_switch_changed(self, event: LabeledSwitch.Changed) -> None:
+        if event.labeled_switch.id == f"k8s-enabled-{self._field_name}":
+            self._toggle_fields()
+
+    def _toggle_fields(self) -> None:
+        try:
+            enabled = self.query_one(f"#k8s-enabled-{self._field_name}", LabeledSwitch).value
+            self.query_one(f"#k8s-fields-{self._field_name}").display = enabled
+        except Exception:
+            pass
+
+    def collect(self) -> K8sSecretGroup:
+        fn = self._field_name
+        enabled = True
+        if self._optional:
+            try:
+                enabled = self.query_one(f"#k8s-enabled-{fn}", LabeledSwitch).value
+            except Exception:
+                pass
+        values: dict[str, str] = {}
+        for vault_key, _ in self._keys:
+            try:
+                val = self.query_one(f"#k8s-{fn}-{vault_key}", Input).value.strip()
+                if val:
+                    values[vault_key] = val
+            except Exception:
+                pass
+        return K8sSecretGroup(enabled=enabled, values=values)
+
+    def sync_values(self, group: K8sSecretGroup) -> None:
+        fn = self._field_name
+        try:
+            if self._optional:
+                self.query_one(f"#k8s-enabled-{fn}", LabeledSwitch).value = group.enabled
+            for vault_key, _ in self._keys:
+                try:
+                    self.query_one(f"#k8s-{fn}-{vault_key}", Input).value = group.values.get(
+                        vault_key, ""
+                    )
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        if self._optional:
+            self._toggle_fields()
+
+
+class _GitTokenCard(Vertical):
+    """Editable card for a single git token entry."""
+
+    def __init__(
+        self,
+        entry: GitTokenEntry,
+        index: int,
+        *,
+        eso_mode: bool = False,
+        **kwargs: object,
+    ) -> None:
+        super().__init__(**kwargs, classes="account-card")
+        self._entry = entry
+        self._index = index
+        self._eso_mode = eso_mode
+
+    def compose(self) -> ComposeResult:
+        e = self._entry
+        idx = self._index
+        prefix = f"gt-{idx}"
+
+        with Horizontal(classes="account-title-row"):
+            yield Label(f"Git Token {idx + 1}", classes="account-header")
+            yield Button(
+                "Remove", variant="error", id=f"{prefix}-remove", classes="remove-button-inline"
+            )
+
+        with Horizontal(classes="compact-field-row"):
+            with Vertical(classes="compact-field"):
+                yield Label("Name", classes="field-label-compact")
+                yield Input(value=e.name, placeholder="e.g. prismo", id=f"{prefix}-name")
+            with Vertical(classes="compact-field"):
+                yield Label("Token", classes="field-label-compact")
+                yield Input(
+                    value=e.token,
+                    placeholder="ghp_... or PAT",
+                    id=f"{prefix}-token",
+                    password=True,
+                )
+
+        with Horizontal(classes="compact-field-row"):
+            with Vertical(classes="compact-field"):
+                yield Label("Username (optional)", classes="field-label-compact")
+                yield Input(value=e.username, placeholder="git username", id=f"{prefix}-username")
+            if self._eso_mode:
+                with Vertical(classes="compact-field"):
+                    yield Label("Vault Path (ESO)", classes="field-label-compact")
+                    yield Input(
+                        value=e.vault_path,
+                        placeholder="nv-config-manager/prod/git",
+                        id=f"{prefix}-vault-path",
+                    )
+
+    def collect(self) -> GitTokenEntry:
+        prefix = f"gt-{self._index}"
+        vault_path = ""
+        if self._eso_mode:
+            try:
+                vault_path = self.query_one(f"#{prefix}-vault-path", Input).value
+            except Exception:
+                pass
+        return GitTokenEntry(
+            name=self.query_one(f"#{prefix}-name", Input).value,
+            token=self.query_one(f"#{prefix}-token", Input).value,
+            username=self.query_one(f"#{prefix}-username", Input).value,
+            vault_path=vault_path,
+        )
+
+
+class _SiteVaultCard(Vertical):
+    """Card for per-site Vault path configuration (ESO mode only)."""
+
+    def __init__(self, site: SiteConfig, index: int) -> None:
+        super().__init__(classes="account-card")
+        self._site = site
+        self._index = index
+
+    def compose(self) -> ComposeResult:
+        yield Label(
+            self._site.name or f"Site {self._index + 1}",
+            classes="account-header",
+        )
+        yield Label("Vault Path [required]", classes="field-label-compact")
+        yield Input(
+            value=self._site.vault_path,
+            placeholder="e.g. nv-config-manager/site/dc01/config_secrets",
+            id=f"site-vault-{self._index}",
+        )
+
+    def collect(self) -> str:
+        """Return the current vault path value."""
+        return self.query_one(f"#site-vault-{self._index}", Input).value
+
+
+class _VaultPathCard(Vertical):
+    """Static card for a single vault path group — built once during compose."""
+
+    def __init__(self, field_name: str, label: str, pc: VaultPathConfig) -> None:
+        super().__init__(classes="account-card", id=f"vp-card-{field_name}")
+        self._field_name = field_name
+        self._label = label
+        self._pc = pc
+        self._default_pc: VaultPathConfig = getattr(_DEFAULTS, field_name)
+
+    def compose(self) -> ComposeResult:
+        fn = self._field_name
+        pc = self._pc
+        default_suffix = fn.replace("_", "-")
+        placeholder = f"<env>/{default_suffix}"
+
+        with Horizontal(classes="compact-field-row"):
+            yield LabeledSwitch(self._label, value=pc.enabled, id=f"vp-enabled-{fn}")
+            inp = Input(value=pc.path, placeholder=placeholder, id=f"vp-path-{fn}")
+            inp.styles.width = "1fr"
+            yield inp
+
+        effective_keys = pc.keys if pc.keys else self._default_pc.keys
+        with Vertical(id=f"vp-keys-section-{fn}", classes="compact-field-row"):
+            for key_name, vault_property in effective_keys.items():
+                with Horizontal(classes="compact-field-row"):
+                    lbl = Label(key_name, classes="field-label-compact")
+                    lbl.styles.width = "auto"
+                    lbl.styles.min_width = 20
+                    yield lbl
+                    key_inp = Input(
+                        value=vault_property,
+                        placeholder=key_name,
+                        id=f"vp-key-{fn}-{key_name}",
+                    )
+                    key_inp.styles.width = "1fr"
+                    yield key_inp
+
+    def on_mount(self) -> None: ...  # widgets are statically composed; no dynamic setup needed
+
+    def sync_values(self, pc: VaultPathConfig) -> None:
+        """Update widget values from config without rebuilding."""
+        fn = self._field_name
+        try:
+            self.query_one(f"#vp-enabled-{fn}", LabeledSwitch).value = pc.enabled
+            self.query_one(f"#vp-path-{fn}", Input).value = pc.path
+        except Exception:
+            pass
+
+        effective_keys = pc.keys if pc.keys else self._default_pc.keys
+        for key_name, vault_property in effective_keys.items():
+            try:
+                self.query_one(f"#vp-key-{fn}-{key_name}", Input).value = vault_property
+            except Exception:
+                pass
+
+    def collect(self) -> VaultPathConfig:
+        """Read current widget state into a VaultPathConfig."""
+        fn = self._field_name
+        try:
+            enabled = self.query_one(f"#vp-enabled-{fn}", LabeledSwitch).value
+            path = self.query_one(f"#vp-path-{fn}", Input).value
+        except Exception:
+            return getattr(_DEFAULTS, fn)
+
+        effective_keys = self._default_pc.keys.copy()
+        for key_name in effective_keys:
+            try:
+                key_input = self.query_one(f"#vp-key-{fn}-{key_name}", Input)
+                effective_keys[key_name] = key_input.value
+            except Exception:
+                pass
+
+        return VaultPathConfig(enabled=enabled, path=path, keys=effective_keys)
+
+
+class SecretsScreen(Container):
+    """Secrets management: method (ESO vs kubernetes), Vault settings, git tokens."""
+
+    def __init__(self, config: NVConfigManagerInstallConfig, **kwargs: object) -> None:
+        super().__init__(**kwargs)
+        self._config = config
+
+    @property
+    def _eso_mode(self) -> bool:
+        return self._config.secrets.method == SecretsMethod.ESO
+
+    def compose(self) -> ComposeResult:
+        s = self._config.secrets
+        yield Label("Application Secrets", classes="section-title")
+        yield Label("─" * 40, classes="section-divider")
+
+        yield Label("Secrets Method", classes="field-label")
+        with RadioSet(id="secrets-method"):
+            yield RadioButton(
+                "kubernetes (local K8s secrets)",
+                value=s.method == SecretsMethod.KUBERNETES,
+                id="method-kubernetes",
+            )
+            yield RadioButton(
+                "eso (External Secrets Operator / Vault)",
+                value=s.method == SecretsMethod.ESO,
+                id="method-eso",
+            )
+
+        with Container(id="vault-fields"):
+            yield Label("Vault Server", classes="field-label")
+            yield Input(
+                value=s.vault.server,
+                placeholder="https://vault.example.com",
+                id="vault-server",
+            )
+
+            yield Label("Vault Namespace (enterprise only)", classes="field-label")
+            yield Input(value=s.vault.namespace, placeholder="admin", id="vault-namespace")
+
+            yield Label("Secrets Engine Mount Path", classes="field-label")
+            yield Input(
+                value=s.vault.secrets_path, placeholder="nv-config-manager", id="vault-secrets-path"
+            )
+
+            yield Label("Config Secrets Engine Path (optional)", classes="field-label")
+            yield Input(
+                value=s.vault.config_secrets_path,
+                placeholder="same as secrets path if empty",
+                id="vault-config-secrets-path",
+            )
+
+            yield Label("Vault Auth Method", classes="field-label")
+            with RadioSet(id="vault-auth-method"):
+                yield RadioButton(
+                    "JWT (Kubernetes auth)",
+                    value=s.vault.auth.method == VaultAuthMethod.JWT,
+                    id="auth-jwt",
+                )
+                yield RadioButton(
+                    "Token (dev/testing only)",
+                    value=s.vault.auth.method == VaultAuthMethod.TOKEN,
+                    id="auth-token",
+                )
+
+            yield Label("JWT Auth Mount Path", classes="field-label")
+            yield Input(
+                value=s.vault.mount_path,
+                placeholder="auth/kubernetes/prod",
+                id="vault-mount-path",
+            )
+
+            yield Label("JWT Auth Role", classes="field-label")
+            yield Input(
+                value=s.vault.role,
+                placeholder="nv-config-manager",
+                id="vault-role",
+            )
+
+            yield Label("Token Secret Name (token auth only)", classes="field-label")
+            yield Input(
+                value=s.vault.auth.token_secret_name,
+                placeholder="openbao-token",
+                id="vault-token-secret-name",
+            )
+
+            yield Label("")
+            yield Label("Vault Secret Paths", classes="section-title")
+            yield Label("─" * 40, classes="section-divider")
+            yield Label(
+                "Each group maps to a Vault path where ESO reads secrets. "
+                "Disable groups you don't need; customize paths to match your Vault layout."
+            )
+
+            paths_cfg = s.vault.paths
+            for field_name, label in _PATH_GROUPS:
+                pc: VaultPathConfig = getattr(paths_cfg, field_name)
+                yield _VaultPathCard(field_name, label, pc)
+
+            yield Label("")
+            yield Label("Site Vault Paths", classes="section-title")
+            yield Label("─" * 40, classes="section-divider")
+            yield Label(
+                "Vault path for each site's config_secrets. "
+                "Required when ESO is enabled. "
+                "Sites are defined in the Cluster section."
+            )
+            yield Vertical(id="site-vault-paths")
+
+        with Container(id="k8s-secrets-section"):
+            yield Label("Secret Values", classes="section-title")
+            yield Label("─" * 40, classes="section-divider")
+            yield Label(
+                "Leave any field empty to auto-generate a password at deploy time. "
+                "Enable optional integrations (Slack, AIR, UFM, Jira, CNPG Backup) to configure their credentials."
+            )
+            for field_name, label, optional, keys in _K8S_GROUPS:
+                grp: K8sSecretGroup = getattr(s.k8s, field_name)
+                yield _K8sSecretCard(field_name, label, optional, keys, grp)
+
+        yield Label("")
+        yield Label("Git Repository Tokens", classes="section-title")
+        yield Label("─" * 40, classes="section-divider")
+        yield Label(
+            "Tokens for Nautobot git repository sync (e.g. Prismo). "
+            "Each creates a K8s secret and GIT_TOKEN_<NAME> env var in Nautobot.",
+        )
+        yield Button("+ Add Git Token", id="add-gt", classes="add-button")
+        yield Vertical(id="gt-list")
+
+    def on_mount(self) -> None:
+        self._toggle_vault_fields()
+        self._rebuild_git_token_cards()
+
+    def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
+        if event.radio_set.id == "secrets-method":
+            self._toggle_vault_fields()
+
+    def _toggle_vault_fields(self) -> None:
+        eso_selected = self.query_one("#method-eso", RadioButton).value
+        self.query_one("#vault-fields").display = eso_selected
+        self.query_one("#k8s-secrets-section").display = not eso_selected
+
+    # --- Vault Path Rows ---
+
+    def _collect_vault_paths(self) -> None:
+        """Read vault path UI state back into config."""
+        paths_cfg = self._config.secrets.vault.paths
+        for card in self.query(_VaultPathCard):
+            setattr(paths_cfg, card._field_name, card.collect())
+
+    def _sync_vault_path_values(self) -> None:
+        """Push current config values into existing vault path widgets."""
+        paths_cfg = self._config.secrets.vault.paths
+        for card in self.query(_VaultPathCard):
+            pc: VaultPathConfig = getattr(paths_cfg, card._field_name)
+            card.sync_values(pc)
+
+    # --- K8s Secret Cards ---
+
+    def _collect_k8s_secrets(self) -> None:
+        for card in self.query(_K8sSecretCard):
+            setattr(self._config.secrets.k8s, card._field_name, card.collect())
+
+    def _sync_k8s_secret_values(self) -> None:
+        for card in self.query(_K8sSecretCard):
+            grp: K8sSecretGroup = getattr(self._config.secrets.k8s, card._field_name)
+            card.sync_values(grp)
+
+    # --- Site Vault Paths (ESO only) ---
+
+    def _rebuild_site_vault_rows(self) -> None:
+        """Rebuild per-site vault path cards from config.sites."""
+        try:
+            container = self.query_one("#site-vault-paths", Vertical)
+        except Exception:
+            return
+        container.remove_children()
+        for i, site in enumerate(self._config.sites):
+            container.mount(_SiteVaultCard(site, i))
+
+    def _collect_site_vault_paths(self) -> None:
+        """Read vault path values from cards back into config.sites."""
+        for card in self.query(_SiteVaultCard):
+            try:
+                self._config.sites[card._index].vault_path = card.collect()
+            except Exception:
+                pass
+
+    # --- Git Token Cards ---
+
+    def _rebuild_git_token_cards(self) -> None:
+        container = self.query_one("#gt-list", Vertical)
+        container.remove_children()
+        for i, entry in enumerate(self._config.git_tokens):
+            container.mount(_GitTokenCard(entry, i, eso_mode=self._eso_mode))
+
+    def _collect_git_tokens(self) -> None:
+        cards = self.query(_GitTokenCard)
+        self._config.git_tokens = [card.collect() for card in cards]
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        bid = event.button.id or ""
+
+        if bid == "add-gt":
+            self._collect_git_tokens()
+            self._config.git_tokens.append(GitTokenEntry(name=""))
+            self._rebuild_git_token_cards()
+        elif bid.startswith("gt-") and bid.endswith("-remove"):
+            self._collect_git_tokens()
+            parts = bid.split("-")
+            try:
+                idx = int(parts[1])
+                if 0 <= idx < len(self._config.git_tokens):
+                    self._config.git_tokens.pop(idx)
+            except (ValueError, IndexError):
+                pass
+            self._rebuild_git_token_cards()
+
+    def write_to_config(self, config: NVConfigManagerInstallConfig) -> None:
+        """Collect widget values into the config model."""
+        method_k8s = self.query_one("#method-kubernetes", RadioButton)
+        config.secrets.method = SecretsMethod.KUBERNETES if method_k8s.value else SecretsMethod.ESO
+
+        config.secrets.vault.server = self.query_one("#vault-server", Input).value
+        config.secrets.vault.namespace = self.query_one("#vault-namespace", Input).value
+        config.secrets.vault.secrets_path = self.query_one("#vault-secrets-path", Input).value
+        config.secrets.vault.config_secrets_path = self.query_one(
+            "#vault-config-secrets-path", Input
+        ).value
+
+        auth_jwt = self.query_one("#auth-jwt", RadioButton)
+        config.secrets.vault.auth.method = (
+            VaultAuthMethod.JWT if auth_jwt.value else VaultAuthMethod.TOKEN
+        )
+        config.secrets.vault.mount_path = self.query_one("#vault-mount-path", Input).value
+        config.secrets.vault.role = self.query_one("#vault-role", Input).value
+        config.secrets.vault.auth.token_secret_name = self.query_one(
+            "#vault-token-secret-name", Input
+        ).value
+
+        self._collect_vault_paths()
+        config.secrets.vault.paths = self._config.secrets.vault.paths
+
+        self._collect_k8s_secrets()
+        config.secrets.k8s = self._config.secrets.k8s
+
+        self._collect_site_vault_paths()
+        config.sites = list(self._config.sites)
+
+        self._collect_git_tokens()
+        config.git_tokens = list(self._config.git_tokens)
+
+    def sync_from_config(self, config: NVConfigManagerInstallConfig) -> None:
+        """Refresh widget values from the config model."""
+        self._config = config
+        s = config.secrets
+        self.query_one("#vault-server", Input).value = s.vault.server
+        self.query_one("#vault-namespace", Input).value = s.vault.namespace
+        self.query_one("#vault-secrets-path", Input).value = s.vault.secrets_path
+        self.query_one("#vault-config-secrets-path", Input).value = s.vault.config_secrets_path
+        self.query_one("#vault-mount-path", Input).value = s.vault.mount_path
+        self.query_one("#vault-role", Input).value = s.vault.role
+        self.query_one("#vault-token-secret-name", Input).value = s.vault.auth.token_secret_name
+        self._toggle_vault_fields()
+        self._sync_vault_path_values()
+        self._sync_k8s_secret_values()
+        self._rebuild_site_vault_rows()
+        self._rebuild_git_token_cards()
+
+    def get_status(self, config: NVConfigManagerInstallConfig) -> str:
+        """Return sidebar status indicator."""
+        if config.secrets.method == SecretsMethod.ESO:
+            if not config.secrets.vault.server:
+                return "[!]"
+            if config.sites and not all(s.vault_path for s in config.sites):
+                return "[!]"
+        return "[*]"

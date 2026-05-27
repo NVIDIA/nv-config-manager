@@ -1,0 +1,197 @@
+---
+title: Upload Images to the ZTP Server
+sidebar-title: Upload Images
+position: 15
+---
+
+The ZTP server is where network devices fetch their firmware during ZTP — for new site bringup, for OS upgrades, and for NVLink firmware upgrades. Before any of those workflows can succeed, the right image has to be on the ZTP server for the device's platform and version. This guide covers how to put it there.
+
+## When you need to do this
+
+- **New site bringup.** Every Cumulus / NVOS / MLNX-OS version a site's switches will boot to must be present on the ZTP server before the switches power on.
+- **Switch OS upgrade pre-work.** Before running [Switch OS Upgrade](../user-guides/switch-os-upgrade/index.mdx), upload the target Cumulus Linux image for the platform you are upgrading to.
+- **NVLink firmware upgrade pre-work.** Before running [NVLink Switch Firmware Upgrade](../user-guides/nvlink-switch-firmware-upgrade/index.mdx), upload the bundle you intend to install.
+- **Refreshing or replacing an existing image** without re-running the installer.
+
+## How images are stored
+
+The ZTP server reads from an object-storage backend configured at install time. The backend is either an S3 / Ceph bucket or a file-backed PersistentVolumeClaim; see [TUI Wizard Reference - OS Images](../install/tui-wizard-reference.mdx#8-os-images) for which one your environment uses.
+
+Either way, files are laid out as:
+
+```text
+{platform}/{version}/{filename}
+```
+
+A `manifest.json` at the storage root tracks each entry's SHA256 checksum and an optional `firmware-image` tag. The tag marks which file in a `{platform}/{version}/` directory is the OS image the workflows should serve to devices — only one file per directory can hold the tag.
+
+## Choosing your approach
+
+There are three ways to get an image onto the ZTP server. Pick whichever fits the situation.
+
+| Approach | When to use |
+| :------- | :---------- |
+| [ZTP API upload endpoint](#upload-via-the-api) | The default — works against either storage backend and does not require restarting anything. |
+| [Re-run the installer](#re-run-the-installer) | You are adding a new image and you want the same image set on every iterative deploy. The image entry lives in `nv-config-manager-install.yaml`. |
+| [Copy directly into the PVC](#copy-directly-into-an-nfs-backed-pvc) | The PVC is NFS-backed (or otherwise externally accessible) and you cannot reach the API. You must update `manifest.json` by hand. |
+
+## Upload via the API
+
+### 1. Get the checksum
+
+Use the SHA256 published by the image's download source (for example, the checksum listed alongside the image on `enterprise.nvidia.com`). The upload endpoint requires the SHA256 as a query parameter and the server stores it in `manifest.json` so devices and workflows can verify the file is intact.
+
+If you do need to compute it locally as a sanity check against the published value:
+
+```bash
+sha256sum cumulus-linux-5.14.0-mlx-amd64.bin
+# 7c0a9f...  cumulus-linux-5.14.0-mlx-amd64.bin
+```
+
+### 2. POST to the upload endpoint
+
+```bash
+CHECKSUM=<sha256-from-download-source>
+TOKEN=<oidc-jwt-access-token>
+
+curl -X POST \
+  "https://svc-ztp.example.com/v1/files/cumulus-linux/5.14.0/cumulus-linux-5.14.0-mlx-amd64.bin?checksum=${CHECKSUM}&firmware_image=true" \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -F "file=@cumulus-linux-5.14.0-mlx-amd64.bin"
+```
+
+Path: `POST /v1/files/{platform}/{version}/{filename}`
+
+| Parameter | Where | Required | Description |
+| :-------- | :---- | :------- | :---------- |
+| `platform` | path | yes | Platform key — for example `cumulus-linux`, `mlnx-os`, `nvos`. Must match the platform value devices in Nautobot resolve to. |
+| `version` | path | yes | Version string the workflows will reference — for example `5.14.0`. Used directly in the `{platform}/{version}/` storage path. |
+| `filename` | path | yes | The on-disk filename to store. Devices fetch by this name. |
+| `checksum` | query | yes | SHA256 of the file you are uploading. |
+| `firmware_image` | query | no, default `false` | Tag this file as the OS image for the `{platform}/{version}/` directory. Only one file per directory can hold the tag. |
+| `overwrite` | query | no, default `false` | Allow replacing an existing file at this path. Without it, a duplicate path returns `400`. |
+| `file` | multipart body | yes | The image file. |
+
+Set `firmware_image=true` for the actual OS / firmware image. Leave it false for supporting files (vendor pre-install scripts, signed metadata, anything else a device or workflow needs alongside the image). If you upload a *different* filename into a directory that already has a firmware-tagged image, the request is rejected — remove the previous file first, or upload with the same filename and `overwrite=true`.
+
+### Authentication
+
+The upload endpoint is an admin endpoint. There are two supported ways to authenticate.
+
+**OpenAPI UI (easiest).** Open the ZTP service's Swagger UI in a browser (`https://ztp.<hostname>/docs`). You will already be authenticated through the OIDC session that loaded the page, so the **Try it out** flow for `POST /v1/files/{platform}/{version}/{filename}` will pick up your session automatically. No extra header is needed.
+
+**Direct API call.** Send the request to the `svc-ztp.<hostname>` JWT-only host and attach the OIDC access token as a bearer credential — the `svc-*` hostnames bypass the cookie/session path the browser uses and accept a JWT directly.
+
+Get the bearer token using `workflow-cli` from the `nv-config-manager` checkout:
+
+```bash
+cd ../nv-config-manager
+
+# Authenticate against your environment; opens a browser to complete the OIDC
+# PKCE flow and caches the access token at ~/.nv-config-manager/token.json.
+uv run workflow-cli login -H <hostname>
+
+# Pull the cached access token for use in curl:
+TOKEN=$(jq -r '.access_token' ~/.nv-config-manager/token.json)
+
+curl -X POST \
+  "https://svc-ztp.<hostname>/v1/files/cumulus-linux/5.14.0/cumulus-linux-5.14.0-mlx-amd64.bin?checksum=${CHECKSUM}&firmware_image=true" \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -F "file=@cumulus-linux-5.14.0-mlx-amd64.bin"
+```
+
+Tokens are short-lived. Re-run `uv run workflow-cli login -H <hostname> --force` to refresh; `uv run workflow-cli auth-status` reports the current cache state, and `uv run workflow-cli logout` clears it.
+
+Unauthenticated requests (or requests sent to the cookie-gated hostname without a session) get `403 Forbidden`.
+
+## Re-run the installer
+
+If your environment is file-backed (`ztp_storage.type: file` in `nv-config-manager-install.yaml`) and you want the image set checked into the install config, add it to `os_images`:
+
+```yaml
+infrastructure:
+  ztp_storage:
+    type: file
+    pvc_name: ztp-os-images
+    os_images:
+      - platform: cumulus-linux
+        version: "5.14.0"
+        path: /images/cumulus-linux-5.14.0-mlx-amd64.bin
+      - platform: mlnx-os
+        version: "3.10.4000"
+        path: /images/mlnx-os-3.10.4000.bin
+```
+
+Re-run:
+
+```bash
+uv run nv-config-manager-installer init nv-config-manager-install.yaml
+uv run nv-config-manager-installer deploy nv-config-manager-install.yaml
+```
+
+The installer computes the SHA256, writes the image into `{platform}/{version}/{filename}` on the PVC, and updates `manifest.json` — tagging the entry as the firmware image. See [Iterative Deployment → Add or Update OS Images](../install/index.mdx#add-or-update-os-images).
+
+## Copy directly into an NFS-backed PVC
+
+If the PVC is NFS-backed and the API is not reachable, you can write the image straight into the mount and update `manifest.json` by hand:
+
+1. Copy the file to `{nfs-root}/{platform}/{version}/{filename}`.
+1. Use the SHA256 published by the image's download source (e.g. `enterprise.nvidia.com`) — not one computed from the local copy — so the manifest matches what the vendor shipped.
+1. Edit `manifest.json` at the PVC root, adding (or updating) an entry:
+
+    ```json
+    {
+      "platform": "cumulus-linux",
+      "version": "5.14.0",
+      "filename": "cumulus-linux-5.14.0-mlx-amd64.bin",
+      "path": "cumulus-linux/5.14.0/cumulus-linux-5.14.0-mlx-amd64.bin",
+      "sha256": "7c0a9f...",
+      "tags": { "firmware-image": "" }
+    }
+    ```
+
+The `tags.firmware-image` field is what marks this file as the OS image for the directory. Omit it for supporting files.
+
+Reach for this approach only when the API path is unavailable. The API and the installer keep the manifest consistent for you; hand edits are easy to get wrong.
+
+## Verify the upload
+
+List what is currently on the server for a platform / version:
+
+```bash
+curl -s "https://ztp.example.com/v1/files/cumulus-linux/5.14.0/" | jq .
+```
+
+Confirm the checksum the server recorded matches the file you uploaded:
+
+```bash
+curl -s "https://ztp.example.com/v1/files/cumulus-linux/5.14.0/cumulus-linux-5.14.0-mlx-amd64.bin/checksum" | jq -r .checksum
+```
+
+For a global view, `GET /v1/files/` lists every file with metadata and tags.
+
+## Common errors
+
+**`400 Bad Request — File already exists`.**
+
+A file with that exact path is already on the server. Either upload with `overwrite=true` or pick a different `version` / `filename`.
+
+**`400 Bad Request — A different firmware image already exists`.**
+
+You tried to upload with `firmware_image=true` into a directory that already has a different filename tagged as the firmware image. Remove the previous file or re-upload using the existing filename with `overwrite=true`.
+
+**`403 Forbidden`.**
+
+The request did not arrive with an authenticated SSO identity. Confirm you are reaching the server through the Envoy gateway and that your credentials are current.
+
+**Devices fail to boot off the new image after upload.**
+
+Confirm the device's `intended-firmware.version` in Nautobot matches the `version` segment you uploaded under, and that `firmware_image=true` was set on the upload — otherwise the workflow will not pick it as the OS image. See [Switch OS Upgrade → Prerequisites](../user-guides/switch-os-upgrade/index.mdx#prerequisites) for the pairing.
+
+## Related guides
+
+- [Switch OS Upgrade](../user-guides/switch-os-upgrade/index.mdx) — Cumulus Linux upgrade workflow that consumes the uploaded image.
+- [NVLink Switch Firmware Upgrade](../user-guides/nvlink-switch-firmware-upgrade/index.mdx) — NVLink firmware bundle upgrade workflow.
+- [New Site Bringup](../user-guides/new-site-deployment/index.mdx) — the bringup procedure that depends on images being present before switches power on.
+- [Network ZTP API Reference](api-overview.mdx) — full endpoint reference, including the file endpoints used here.
+- [Install → Iterative Deployment](../install/index.mdx#add-or-update-os-images) — adding images via the installer instead of the API.

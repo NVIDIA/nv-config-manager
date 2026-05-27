@@ -1,0 +1,73 @@
+---
+title: VPC Deletion
+sidebar-title: VPC Deletion
+position: 20
+---
+
+The VPC Deletion workflow removes the VRF metadata for an existing VPC from Nautobot. It is the cleanup counterpart to [VPC Creation](../vpc-creation/index.mdx) and refuses to delete VRFs that are still in use — any VRF currently bound to interfaces on a device is reported in the result's `in_use_vrfs` list rather than deleted.
+
+<Warning title="Experimental">
+This workflow is experimental and not intended for general use. Use it only in test or pilot environments.
+</Warning>
+
+## Prerequisites
+
+Before running, confirm:
+
+- **VPC is no longer in use on any device.** Query Nautobot to confirm no interfaces remain bound to the VPC's VRFs. There is no automated unassign workflow today — unbind any remaining interfaces directly in Nautobot, then re-deploy affected devices so the running configuration drops the VRF. The workflow's `interface_count > 0` guard will refuse to delete any in-use VRF; resolving the bindings up front is easier than retrying after the fact.
+- **vpc_id and site are known.** These are the same identifiers used at creation time.
+
+## Running the workflow
+
+1. Navigate to the Config Manager URL for your environment.
+1. Click the **+** in the top right and select **VpcDeletionWorkflow**.
+1. Fill in the form using the field reference below and submit.
+
+| Field | Description | Required |
+| :---- | :---------- | :------- |
+| **Site** | The site the VPC belongs to. | Yes |
+| **VPC** | Identifier of the VPC to delete. | Yes |
+| **Namespace** | Tag used to identify the VPC namespace in Nautobot. | Yes |
+
+After submission, a status page shows the single `delete_vpc` stage. The result distinguishes `deleted_vrfs` from `in_use_vrfs` — the latter are VRFs the workflow refused to delete because they still had bound interfaces.
+
+## Execution stages
+
+The workflow runs one stage. No human approval is required.
+
+1. **`delete_vpc` — Delete the VPC's VRFs.**
+
+    Queries Nautobot for the VPC's VRFs by `vpc_id` + `namespace_tag` + `site`. If none exist, the stage short-circuits with the message "No VRFs exist for this VPC at the site" — a successful no-op for a VPC that was never created or is already gone. For each VRF that does exist:
+
+   - If the VRF's `interface_count > 0`, it is added to `in_use_vrfs` and skipped.
+   - Otherwise the workflow invokes `delete_vrf` against it.
+
+     All eligible VRF deletions run in parallel via `asyncio.gather`. The stage display reports the deleted and skipped VRF lists.
+
+## Verifying outcomes
+
+After the workflow reports success, confirm:
+
+- **`delete_vpc` shows green** and the result lists `deleted_vrfs` and `in_use_vrfs` as expected.
+- **Nautobot no longer shows the deleted VRFs.**
+- **Any `in_use_vrfs` entries** are VRFs still bound to interfaces. Unbind them directly in Nautobot, re-deploy the affected devices so the VRF is removed from the running config, then re-run VPC Deletion.
+
+## Common issues
+
+**Result lists VRFs as `in_use_vrfs`.**
+
+Those VRFs are still bound to interfaces on at least one device. There is no automated unassign workflow today — open Nautobot, remove the VRF binding from each interface, re-deploy the affected devices so the running configuration drops the VRF, then re-run VPC Deletion. (VPC Assignment is bind-only and will not perform the unbind.)
+
+**Workflow returns "No VRFs exist for this VPC at the site".**
+
+The VPC was never created at this site, or it has already been fully deleted. Treat as a successful no-op.
+
+**`delete_vpc` fails with a Nautobot write error.**
+
+A Nautobot transaction failed mid-delete. Some VRFs may have been deleted; others not. Re-run — the workflow is naturally idempotent because already-deleted VRFs are simply absent on the second pass.
+
+## Related guides
+
+- [VPC Creation](../vpc-creation/index.mdx) — provision the VRF metadata in the first place.
+- [VPC Assignment](../vpc-assignment/index.mdx) — bind VRFs to devices and ports (assignment is bind-only; unbinding is a direct Nautobot edit today).
+- [VPC Tenant Change](../vpc-tenant-change/index.mdx) — full assign + render + deploy lifecycle workflow.

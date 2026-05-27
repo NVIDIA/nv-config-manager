@@ -1,0 +1,288 @@
+# =============================================================================
+# Medium Environment Configuration
+# =============================================================================
+# Optimized for remote VMs with 24 CPU cores, 64GB RAM (single node).
+# This file overrides the production-heavy base values.yaml with settings
+# that fit within 64GB while still providing good performance.
+#
+# This file is automatically included when using --size medium.
+#
+# Key settings:
+#   - Single or reduced replicas
+#   - No nodeSelector/affinity (runs on single node)
+#   - Moderate resource requests
+#
+# NOTE: We use `null` instead of `{}` to clear nodeSelector/affinity because
+# Helm's deep merge does not replace non-empty maps with empty ones. Setting
+# a value to `null` removes the key entirely, allowing single-node scheduling.
+#
+# Usage:
+#   nv-config-manager-installer deploy <config-with-size-medium> \
+#     --size medium \
+#     --build-local-images --load-kind --kind-cluster nv-config-manager \
+#     --auto-generate-secrets --yes
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Nautobot - Largest memory consumer
+# Reduced from production 3×8Gi to 1×4Gi
+# Clear node scheduling (single-node cluster)
+# -----------------------------------------------------------------------------
+nautobot:
+  server:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 500m
+        memory: 4Gi
+      limits:
+        memory: 6Gi
+    uwsgi:
+      listen: 64
+      processes: 2
+      threads: 2
+    nodeSelector: null
+    affinity: null
+    topologySpreadConstraints: []
+  celery:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 500m
+        memory: 4Gi
+      limits:
+        memory: 8Gi
+    workers:
+      default:
+        taskConcurrency: "4"
+      beat:
+        resources:
+          requests:
+            cpu: "50m"
+            memory: "256Mi"
+          limits:
+            memory: "512Mi"
+    nodeSelector: null
+    affinity: null
+
+# -----------------------------------------------------------------------------
+# Render Service - Reduced replicas, clear node scheduling
+# -----------------------------------------------------------------------------
+renderService:
+  api:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        memory: 512Mi
+    nodeSelector: null
+    affinity: null
+  consumers:
+    nautobot:
+      replicas: 1
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          memory: 512Mi
+      nodeSelector: null
+      affinity: null
+    device:
+      replicas: 2
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          memory: 512Mi
+      nodeSelector: null
+      affinity: null
+
+# -----------------------------------------------------------------------------
+# Temporal - Single replicas, clear node scheduling
+# -----------------------------------------------------------------------------
+temporal:
+  devUi:
+    replicas: 1
+    nodeSelector: null
+  services:
+    frontend:
+      replicas: 1
+      nodeSelector: null
+      affinity: null
+    history:
+      replicas: 4  # Must match numHistoryShards (set by replicas) for Temporal to work
+      nodeSelector: null
+      affinity: null
+    matching:
+      replicas: 1
+      nodeSelector: null
+      affinity: null
+    worker:
+      replicas: 1
+      nodeSelector: null
+      affinity: null
+  configManagerWorker:
+    replicas: 1
+    nodeSelector: null
+    affinity: null
+    topologySpreadConstraints: []
+  scheduler:
+    nodeSelector: null
+  reactUI:
+    replicas: 1
+    nodeSelector: null
+    affinity: null
+
+# -----------------------------------------------------------------------------
+# Config Store - Single replica, clear node scheduling
+# -----------------------------------------------------------------------------
+configStore:
+  api:
+    replicas: 1
+    nodeSelector: null
+    affinity: null
+  ui:
+    replicas: 1
+    nodeSelector: null
+  cacheRefresh:
+    replicas: 1
+    nodeSelector: null
+
+# -----------------------------------------------------------------------------
+# UI - Single replica, clear node scheduling
+# -----------------------------------------------------------------------------
+ui:
+  replicas: 1
+  nodeSelector: null
+  affinity: null
+
+# -----------------------------------------------------------------------------
+# Network ZTP - Reduced resources, clear node scheduling
+# -----------------------------------------------------------------------------
+networkZtp:
+  replicas: 1
+  nodeSelector: null
+  affinity: null
+
+# -----------------------------------------------------------------------------
+# Network DHCP - Reduced resources, clear node scheduling
+# -----------------------------------------------------------------------------
+networkDhcp:
+  replicas: 1
+  nodeSelector: null
+  affinity: null
+
+# -----------------------------------------------------------------------------
+# Redis - Clear node scheduling
+# -----------------------------------------------------------------------------
+externalServices:
+  redis:
+    nodeSelector: null
+
+# -----------------------------------------------------------------------------
+# NATS JetStream - Larger streams, clear node scheduling
+# -----------------------------------------------------------------------------
+nautobotNats:
+  jetstream:
+    maxMem: 256M
+    maxFile: 1G
+  nodeSelector: null
+  natsReady:
+    streamMaxBytes: 268435456  # 256MB
+
+# -----------------------------------------------------------------------------
+# CloudNativePG Databases - Single instances, clear node scheduling
+# -----------------------------------------------------------------------------
+cnpg:
+  temporal:
+    instances: 1
+    postgresql:
+      maxConnections: "100"
+      sharedBuffers: "256MB"
+    storage:
+      size: 10Gi
+    resources:
+      limits:
+        cpu: '1'
+        memory: 2Gi
+      requests:
+        cpu: '250m'
+        memory: 1Gi
+    affinity:
+      nodeSelector: null
+      enablePodAntiAffinity: false
+  temporalVisibility:
+    instances: 1
+    postgresql:
+      maxConnections: "100"
+      sharedBuffers: "256MB"
+    storage:
+      size: 10Gi
+    resources:
+      limits:
+        cpu: '1'
+        memory: 2Gi
+      requests:
+        cpu: '250m'
+        memory: 1Gi
+    affinity:
+      nodeSelector: null
+      enablePodAntiAffinity: false
+  nautobot:
+    instances: 1
+    postgresql:
+      maxConnections: "200"
+      sharedBuffers: "512MB"
+    storage:
+      size: 50Gi
+    resources:
+      limits:
+        cpu: '2'
+        memory: 4Gi
+      requests:
+        cpu: '500m'
+        memory: 2Gi
+    affinity:
+      nodeSelector: null
+      enablePodAntiAffinity: false
+  configStore:
+    instances: 1
+    postgresql:
+      maxConnections: "100"
+      sharedBuffers: "256MB"
+    storage:
+      size: 50Gi
+    resources:
+      limits:
+        cpu: '1'
+        memory: 2Gi
+      requests:
+        cpu: '250m'
+        memory: 1Gi
+    affinity:
+      nodeSelector: null
+      enablePodAntiAffinity: false
+  dhcp:
+    instances: 1
+    postgresql:
+      maxConnections: "50"
+      sharedBuffers: "64MB"
+    storage:
+      size: 5Gi
+    resources:
+      limits:
+        cpu: '500m'
+        memory: 1Gi
+      requests:
+        cpu: '100m'
+        memory: 512Mi
+    affinity:
+      nodeSelector: null
+      enablePodAntiAffinity: false
+networkPolicy:
+  additionalAllowedNamespaces:
+    - cnpg-system

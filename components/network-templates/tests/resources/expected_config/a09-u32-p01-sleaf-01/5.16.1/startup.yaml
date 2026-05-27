@@ -1,0 +1,1049 @@
+- set:
+    bridge:
+      domain:
+        br_default:
+          stp:
+            priority: 28672
+            state:
+              up: {}
+          vlan:
+            '301':
+              vni:
+                '3001': {}
+    evpn:
+      enable: on
+      multihoming:
+        enable: on
+        startup-delay: 30
+      route-advertise: {}
+    interface:
+      eth0:
+        description: a08-u44-p01-mleaf-01_swp19
+        ipv4:
+          address:
+            192.0.2.30/23: {}
+        type: eth
+      lo:
+        ipv4:
+          address:
+            10.254.254.15/32: {}
+        type: loopback
+      swp1:
+        link:
+          breakout:
+            4x: {}
+        type: swp
+      swp1s0:
+        bridge:
+          domain:
+            br_default:
+              access: 301
+        description: a10-u06-p01-hss-01_eth1
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        type: swp
+      swp1s1:
+        bridge:
+          domain:
+            br_default:
+              access: 301
+        description: a10-u06-p01-hss-01_eth3
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        type: swp
+      swp1s2:
+        bridge:
+          domain:
+            br_default:
+              access: 301
+        description: a10-u08-p01-hss-02_eth1
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        type: swp
+      swp1s3:
+        bridge:
+          domain:
+            br_default:
+              access: 301
+        description: a10-u08-p01-hss-02_eth3
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        type: swp
+      swp2:
+        link:
+          breakout:
+            4x: {}
+        type: swp
+      swp2s0:
+        bridge:
+          domain:
+            br_default:
+              access: 301
+        description: a10-u11-p01-hss-03_eth1
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        type: swp
+      swp2s1:
+        bridge:
+          domain:
+            br_default:
+              access: 301
+        description: a10-u11-p01-hss-03_eth3
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        type: swp
+      swp2s2:
+        bridge:
+          domain:
+            br_default:
+              access: 301
+        description: a10-u13-p01-hss-04_eth1
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        type: swp
+      swp2s3:
+        bridge:
+          domain:
+            br_default:
+              access: 301
+        description: a10-u13-p01-hss-04_eth3
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        type: swp
+      swp3:
+        link:
+          breakout:
+            4x: {}
+        type: swp
+      swp3s0:
+        bridge:
+          domain:
+            br_default:
+              access: 301
+        description: b10-u06-p01-hss-05_eth1
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        type: swp
+      swp3s1:
+        bridge:
+          domain:
+            br_default:
+              access: 301
+        description: b10-u06-p01-hss-05_eth3
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        type: swp
+      swp3s2:
+        bridge:
+          domain:
+            br_default:
+              access: 301
+        description: b10-u08-p01-hss-06_eth1
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        type: swp
+      swp3s3:
+        bridge:
+          domain:
+            br_default:
+              access: 301
+        description: b10-u08-p01-hss-06_eth3
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        type: swp
+      swp4:
+        link:
+          breakout:
+            4x: {}
+        type: swp
+      swp4s0:
+        bridge:
+          domain:
+            br_default:
+              access: 301
+        description: b10-u11-p01-hss-07_eth1
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        type: swp
+      swp4s1:
+        bridge:
+          domain:
+            br_default:
+              access: 301
+        description: b10-u11-p01-hss-07_eth3
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        type: swp
+      swp4s2:
+        bridge:
+          domain:
+            br_default:
+              access: 301
+        description: b10-u13-p01-hss-08_eth1
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        type: swp
+      swp4s3:
+        bridge:
+          domain:
+            br_default:
+              access: 301
+        description: b10-u13-p01-hss-08_eth3
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        type: swp
+      swp5:
+        link:
+          breakout:
+            4x: {}
+        type: swp
+      swp5s0:
+        bridge:
+          domain:
+            br_default:
+              access: 301
+        description: a10-u06-p01-hss-01_eth5
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        type: swp
+      swp5s1:
+        bridge:
+          domain:
+            br_default:
+              access: 301
+        description: a10-u06-p01-hss-01_eth7
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        type: swp
+      swp5s2:
+        bridge:
+          domain:
+            br_default:
+              access: 301
+        description: a10-u08-p01-hss-02_eth5
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        type: swp
+      swp5s3:
+        bridge:
+          domain:
+            br_default:
+              access: 301
+        description: a10-u08-p01-hss-02_eth7
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        type: swp
+      swp6:
+        link:
+          breakout:
+            4x: {}
+        type: swp
+      swp6s0:
+        bridge:
+          domain:
+            br_default:
+              access: 301
+        description: a10-u11-p01-hss-03_eth5
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        type: swp
+      swp6s1:
+        bridge:
+          domain:
+            br_default:
+              access: 301
+        description: a10-u11-p01-hss-03_eth7
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        type: swp
+      swp6s2:
+        bridge:
+          domain:
+            br_default:
+              access: 301
+        description: a10-u13-p01-hss-04_eth5
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        type: swp
+      swp6s3:
+        bridge:
+          domain:
+            br_default:
+              access: 301
+        description: a10-u13-p01-hss-04_eth7
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        type: swp
+      swp7:
+        link:
+          breakout:
+            4x: {}
+        type: swp
+      swp7s0:
+        bridge:
+          domain:
+            br_default:
+              access: 301
+        description: b10-u06-p01-hss-05_eth5
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        type: swp
+      swp7s1:
+        bridge:
+          domain:
+            br_default:
+              access: 301
+        description: b10-u06-p01-hss-05_eth7
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        type: swp
+      swp7s2:
+        bridge:
+          domain:
+            br_default:
+              access: 301
+        description: b10-u08-p01-hss-06_eth5
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        type: swp
+      swp7s3:
+        bridge:
+          domain:
+            br_default:
+              access: 301
+        description: b10-u08-p01-hss-06_eth7
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        type: swp
+      swp8:
+        link:
+          breakout:
+            4x: {}
+        type: swp
+      swp8s0:
+        bridge:
+          domain:
+            br_default:
+              access: 301
+        description: b10-u11-p01-hss-07_eth5
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        type: swp
+      swp8s1:
+        bridge:
+          domain:
+            br_default:
+              access: 301
+        description: b10-u11-p01-hss-07_eth7
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        type: swp
+      swp8s2:
+        bridge:
+          domain:
+            br_default:
+              access: 301
+        description: b10-u13-p01-hss-08_eth5
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        type: swp
+      swp8s3:
+        bridge:
+          domain:
+            br_default:
+              access: 301
+        description: b10-u13-p01-hss-08_eth7
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        type: swp
+      swp57:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp57s0:
+        description: a09-u36-p01-spine-01_swp25s0
+        evpn:
+          multihoming:
+            uplink: enabled
+        ipv4:
+          address:
+            10.254.1.97/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            state: enabled
+        type: swp
+      swp57s1:
+        description: a09-u36-p01-spine-01_swp25s1
+        evpn:
+          multihoming:
+            uplink: enabled
+        ipv4:
+          address:
+            10.254.1.99/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            state: enabled
+        type: swp
+      swp58:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp58s0:
+        description: a09-u36-p01-spine-01_swp26s0
+        evpn:
+          multihoming:
+            uplink: enabled
+        ipv4:
+          address:
+            10.254.1.101/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            state: enabled
+        type: swp
+      swp58s1:
+        description: a09-u36-p01-spine-01_swp26s1
+        evpn:
+          multihoming:
+            uplink: enabled
+        ipv4:
+          address:
+            10.254.1.103/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            state: enabled
+        type: swp
+      swp59:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp59s0:
+        description: a09-u36-p01-spine-01_swp27s0
+        evpn:
+          multihoming:
+            uplink: enabled
+        ipv4:
+          address:
+            10.254.1.105/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            state: enabled
+        type: swp
+      swp59s1:
+        description: a09-u36-p01-spine-01_swp27s1
+        evpn:
+          multihoming:
+            uplink: enabled
+        ipv4:
+          address:
+            10.254.1.107/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            state: enabled
+        type: swp
+      swp60:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp60s0:
+        description: a09-u36-p01-spine-01_swp28s0
+        evpn:
+          multihoming:
+            uplink: enabled
+        ipv4:
+          address:
+            10.254.1.109/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            state: enabled
+        type: swp
+      swp60s1:
+        description: a09-u36-p01-spine-01_swp28s1
+        evpn:
+          multihoming:
+            uplink: enabled
+        ipv4:
+          address:
+            10.254.1.111/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            state: enabled
+        type: swp
+      swp61:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp61s0:
+        description: b09-u36-p01-spine-02_swp25s0
+        evpn:
+          multihoming:
+            uplink: enabled
+        ipv4:
+          address:
+            10.254.2.97/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            state: enabled
+        type: swp
+      swp61s1:
+        description: b09-u36-p01-spine-02_swp25s1
+        evpn:
+          multihoming:
+            uplink: enabled
+        ipv4:
+          address:
+            10.254.2.99/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            state: enabled
+        type: swp
+      swp62:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp62s0:
+        description: b09-u36-p01-spine-02_swp26s0
+        evpn:
+          multihoming:
+            uplink: enabled
+        ipv4:
+          address:
+            10.254.2.101/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            state: enabled
+        type: swp
+      swp62s1:
+        description: b09-u36-p01-spine-02_swp26s1
+        evpn:
+          multihoming:
+            uplink: enabled
+        ipv4:
+          address:
+            10.254.2.103/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            state: enabled
+        type: swp
+      swp63:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp63s0:
+        description: b09-u36-p01-spine-02_swp27s0
+        evpn:
+          multihoming:
+            uplink: enabled
+        ipv4:
+          address:
+            10.254.2.105/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            state: enabled
+        type: swp
+      swp63s1:
+        description: b09-u36-p01-spine-02_swp27s1
+        evpn:
+          multihoming:
+            uplink: enabled
+        ipv4:
+          address:
+            10.254.2.107/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            state: enabled
+        type: swp
+      swp64:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp64s0:
+        description: b09-u36-p01-spine-02_swp28s0
+        evpn:
+          multihoming:
+            uplink: enabled
+        ipv4:
+          address:
+            10.254.2.109/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            state: enabled
+        type: swp
+      swp64s1:
+        description: b09-u36-p01-spine-02_swp28s1
+        evpn:
+          multihoming:
+            uplink: enabled
+        ipv4:
+          address:
+            10.254.2.111/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            state: enabled
+        type: swp
+      vlan301:
+        ipv4:
+          address:
+            100.127.128.2/24: {}
+        vrf: STORAGE
+        vrr:
+          address:
+            100.127.128.1/24: {}
+          state: enabled
+        type: svi
+        vlan: 301
+    nve:
+      vxlan:
+        arp-nd-suppress: on
+        enable: on
+        source:
+          address: 10.254.254.15
+    qos:
+      pfc:
+        default-global:
+          port-buffer: 363000
+          switch-priority:
+            '3': {}
+          xoff-threshold: 75000
+          xon-threshold: 75000
+      roce:
+        state: enabled
+      traffic-pool:
+        default-lossy:
+          memory-percent: 10
+        roce-lossless:
+          memory-percent: 90
+    router:
+      adaptive-routing:
+        state: enabled
+      bgp:
+        autonomous-system: 4230000016
+        state: enabled
+        graceful-restart:
+          mode: full
+        router-id: 10.254.254.15
+      policy:
+        route-map:
+          RM_ADD_WECMP:
+            rule:
+              '10':
+                action:
+                  permit: {}
+                description: RM_ADD_WECMP_COMMUNITY
+                set:
+                  ext-community-bw: multipaths
+          RM_LOOPBACK:
+            rule:
+              '10':
+                action:
+                  permit: {}
+                description: permit_lo_ip
+                match:
+                  interface: lo
+                  type: ipv4
+          RM_SUM_WECMP:
+            rule:
+              '10':
+                action:
+                  permit: {}
+                description: RM_SUM_WECMP_COMMUNITY
+                set:
+                  ext-community-bw: cumulative
+      vrr:
+        state: enabled
+    system:
+      aaa:
+        user:
+          cumulus:
+            hashed-password: $6$H0QFj2rx$nZvUivJum/KP/YIvEu1iyuDUZcFGc48GMnoaAqrtW/dwbVtDsdqF1xCOD.eIR1ukFxwoLzze9PHGPDK0f2KHt.
+            role: system-admin
+          nv-config-manager:
+            hashed-password: $6$H0QFj2rx$Vz4idKh.iwlfraq9WAV5sy1STcsz75Bv9YDx3LrJEoeB7vvkg.VQwPpssmhZpNBgY9iTCTiUQnjeoqk261KYp.
+            role: system-admin
+      security:
+        password-hardening:
+          state: disabled
+      hostname: A09-U32-P01-SLEAF-01
+      date-time:
+        timezone: Etc/UTC
+      config:
+        auto-save:
+          state: enabled
+      dns:
+        server:
+          192.0.2.8: {}
+          192.0.2.9: {}
+      lldp:
+        dot1-tlv: enabled
+        mode: force-send-lldp
+      ntp:
+        server:
+          192.0.2.8:
+            iburst: enabled
+            state: enabled
+          192.0.2.9:
+            iburst: enabled
+            state: enabled
+    vrf:
+      STORAGE:
+        evpn:
+          enable: on
+          vlan: 4003
+          vni:
+            '3000': {}
+        loopback:
+          ip:
+            address:
+              100.127.255.226/32: {}
+        router:
+          bgp:
+            address-family:
+              ipv4-unicast:
+                enable: on
+                redistribute:
+                  connected:
+                    enable: on
+                route-export:
+                  to-evpn:
+                    enable: on
+              l2vpn-evpn:
+                enable: on
+            enable: on
+      default:
+        evpn:
+          enable: on
+        router:
+          bgp:
+            address-family:
+              ipv4-unicast:
+                enable: on
+                redistribute:
+                  connected:
+                    enable: on
+                    route-map: RM_LOOPBACK
+              l2vpn-evpn:
+                enable: on
+            enable: on
+            neighbor:
+              10.254.1.100:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.102:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.104:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.106:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.108:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.110:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.96:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.98:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.2.100:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.2.102:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.2.104:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.2.106:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.2.108:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.2.110:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.2.96:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.2.98:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.254.16:
+                peer-group: EVPN
+                type: numbered
+            path-selection:
+              multipath:
+                aspath-ignore: on
+            peer-group:
+              EVPN:
+                address-family:
+                  ipv4-unicast:
+                    enable: off
+                  l2vpn-evpn:
+                    enable: on
+                bfd:
+                  detect-multiplier: 3
+                  enable: on
+                  min-rx-interval: 1000
+                  min-tx-interval: 1000
+                description: evpn_vxlan_control_plane
+                multihop-ttl: 2
+                remote-as: external
+                update-source: lo
+              UNDERLAY:
+                address-family:
+                  ipv4-unicast:
+                    policy:
+                      outbound:
+                        route-map: RM_ADD_WECMP
+                bfd:
+                  detect-multiplier: 3
+                  enable: on
+                  min-rx-interval: 300
+                  min-tx-interval: 300
+                description: underlay_interconnect
+                remote-as: external
+      mgmt:
+        router:
+          static:
+            0.0.0.0/0:
+              address-family: ipv4-unicast
+              via:
+                192.0.2.1:
+                  type: ipv4-address

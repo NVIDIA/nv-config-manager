@@ -1,0 +1,38 @@
+---
+title: Which Interface Should I Use?
+sidebar-title: Interfaces
+position: 10
+---
+
+Config Manager exposes several interfaces because different users own different parts of the workflow. Start in the Config Manager UI for operations, use Nautobot when changing intent, and use Temporal Web only when you need low-level workflow diagnostics.
+
+| Interface | Best for | Typical user |
+| :-------- | :------- | :----------- |
+| Config Manager UI | Launch workflows, review stages, approve or reject changes, browse config and backup state. | Operators and network engineers |
+| Nautobot UI | Model devices, interfaces, IPs, cables, roles, tenants, config contexts, and device status. | Network engineers and architects |
+| Temporal Web | Inspect workflow event history, payloads, retries, child workflows, and worker-level failures. | Platform engineers and advanced operators |
+| REST APIs | Automate workflow execution, render/config-store access, DHCP/ZTP checks, and integration tests. | Automation and platform teams |
+
+## Config Manager UI
+
+Use the Config Manager UI for normal operational workflows. It is the right starting point when you need to run a backup, deploy a pending config, approve a batch change, validate cabling, rotate credentials, or inspect the status of a workflow already in progress.
+
+The UI is intentionally workflow-centric: it shows stage state, approval points, outputs, and links to related config artifacts.
+
+## Nautobot UI
+
+Use Nautobot when the intended network model needs to change. Config Manager renders configuration from Nautobot data, so device inventory, cabling, interface metadata, IP addressing, tenants, and config contexts should be corrected there before running device-facing workflows.
+
+For the data model, start with [Getting Started with Nautobot](../nautobot/index.mdx) and [DHCP Modeling in Nautobot](../dhcp/nautobot-modeling.mdx).
+
+## Temporal Web
+
+Use Temporal Web for diagnostics rather than day-to-day operations. It is useful when a workflow is retrying, a child workflow failed, or a stage output needs to be inspected at event-history level.
+
+Do not use Temporal Web as the primary approval or workflow-launch interface unless you are debugging behavior that is not visible in the Config Manager UI.
+
+## REST APIs
+
+Use the REST APIs for automation, integration tests, and scripted checks. Start with the API reference pages for [Config Store](../config-store/index.mdx#api-endpoints), [Render](../render/render-service.mdx#api-endpoints), [Temporal workflows](../temporal/temporal-api.mdx), [DHCP](../dhcp/index.mdx), and [ZTP](../network-ztp/api-overview.mdx).
+
+Common entry points include Config Store reads and writes under `/v1/config`, Render API calls for render requests, and workflow execution endpoints such as `POST /v1/workflow/ngc/backup`. Service Swagger UIs are available at each service host's `/docs` path when exposed by the deployment. In SSO-enabled environments, browser Swagger flows use the authenticated session; direct API calls generally use the `svc-*` hostnames with a bearer token.

@@ -1,0 +1,22 @@
+{% extends 'generic/object_create.html' %}
+{% load form_helpers %}
+{% load helpers %}
+
+{% block title %}Add Assignment to {{ obj.name }}{% endblock %}
+
+{% block form %}
+<div class="panel panel-default">
+    <div class="panel-heading">
+        <strong>Add Assignment to {{ obj.name }}</strong>
+        <span class="label label-default" style="margin-left: 8px;">{{ obj.get_isolation_type_display }}</span>
+    </div>
+    <div class="panel-body">
+        {% render_form form %}
+    </div>
+</div>
+{% endblock %}
+
+{% block buttons %}
+<button type="submit" name="_create" class="btn btn-primary">Save</button>
+<a href="{{ return_url }}" class="btn btn-default">Cancel</a>
+{% endblock %}

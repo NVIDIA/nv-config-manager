@@ -1,0 +1,42 @@
+{% extends "cumulus-linux/superpod-common/base/startup.yaml.j2" %}
+
+{% block acl %}
+{% include "cumulus-linux/converged-spine/include/acl.j2" %}
+{% endblock acl %}
+
+{% block bridge %}
+{% include "cumulus-linux/converged-spine/include/bridge.j2" %}
+{% endblock bridge %}
+
+{% block evpn %}
+{% include "cumulus-linux/converged-spine/include/evpn.j2" %}
+{% endblock evpn %}
+
+{% block interfaces %}
+{% include "cumulus-linux/converged-spine/include/interface.j2" %}
+{% endblock interfaces %}
+
+{% block nve %}
+{% include "cumulus-linux/converged-spine/include/nve.j2" %}
+{% endblock nve %}
+
+{% block qos %}
+{% include "cumulus-linux/converged-spine/include/qos.j2" %}
+{% endblock qos %}
+
+{% block router %}
+{% include "cumulus-linux/converged-spine/include/router.j2" %}
+{% endblock router %}
+
+{% block service %}
+{% include "cumulus-linux/converged-spine/include/service.j2" %}
+{% endblock service %}
+
+{% block system %}
+{% include "cumulus-linux/converged-spine/include/system.j2" %}
+{% endblock system %}
+
+{% block vrf %}
+{% include "cumulus-linux/converged-spine/include/vrf.j2" %}
+{% endblock vrf %}
+

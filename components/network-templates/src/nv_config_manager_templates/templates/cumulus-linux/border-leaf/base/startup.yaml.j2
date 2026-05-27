@@ -1,0 +1,42 @@
+{% extends "cumulus-linux/superpod-common/base/startup.yaml.j2" %}
+
+{% block acl %}
+{% include "cumulus-linux/border-leaf/include/acl.j2" %}
+{% endblock acl %}
+
+{% block bridge %}
+{% include "cumulus-linux/border-leaf/include/bridge.j2" %}
+{% endblock bridge %}
+
+{% block evpn %}
+{% include "cumulus-linux/border-leaf/include/evpn.j2" %}
+{% endblock evpn %}
+
+{% block interfaces %}
+{% include "cumulus-linux/border-leaf/include/interface.j2" %}
+{% endblock interfaces %}
+
+{% block nve %}
+{% include "cumulus-linux/border-leaf/include/nve.j2" %}
+{% endblock nve %}
+
+{% block qos %}
+{% include "cumulus-linux/border-leaf/include/qos.j2" %}
+{% endblock qos %}
+
+{% block router %}
+{% include "cumulus-linux/border-leaf/include/router.j2" %}
+{% endblock router %}
+
+{% block service %}
+{% include "cumulus-linux/border-leaf/include/service.j2" %}
+{% endblock service %}
+
+{% block system %}
+{% include "cumulus-linux/border-leaf/include/system.j2" %}
+{% endblock system %}
+
+{% block vrf %}
+{% include "cumulus-linux/border-leaf/include/vrf.j2" %}
+{% endblock vrf %}
+

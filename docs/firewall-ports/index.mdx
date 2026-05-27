@@ -1,0 +1,15 @@
+---
+title: Firewall Ports
+sidebar-title: Firewall Ports
+position: 0
+---
+
+Firewalls, security groups, and ACLs between the device network and Config Manager must permit the traffic below for the Config Manager DHCP and ZTP services to function correctly. DHCP and HTTPS are required for every deployment; the others are conditional on how ZTP and image distribution are configured.
+
+| Protocol / Port | Direction | Purpose |
+| --- | --- | --- |
+| UDP 67 | Bidirectional (DHCP relay ↔ Config Manager) | Relayed DHCP requests and server responses (`DISCOVER` / `REQUEST` / `OFFER` / `ACK`) |
+| TCP 443 | Device → Config Manager | HTTPS download of ZTP boot scripts, rendered configs, and images |
+| TCP 80 | Device → Config Manager | HTTP fallback for ZTP boot scripts, where HTTPS is not used |
+| TCP 22 | Device → Config Manager | SFTP image downloads, where SFTP is used instead of HTTPS |
+| UDP/TCP 53 | Device → DNS resolver | DNS resolution when ZTP/DHCP targets are referenced by hostname (e.g. `ztp.<hostname>`, `dhcp.<hostname>`) |

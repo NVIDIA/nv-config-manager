@@ -1,0 +1,113 @@
+---
+
+locations:
+  - name: Example Corp
+    location_type: Provider
+    
+  - name: Region-A
+    location_type: Region 
+    parent: Example Corp
+
+  - name: Country-A
+    location_type: Region
+    parent: Region-A
+
+  - name: Metro-A
+    location_type: Region
+    parent: Country-A
+
+  - name: DC01
+    location_type: Site
+    parent: Metro-A
+    ref: site
+
+  - name: "DC01 Module 1 - {{ deployment_name }}"
+    location_type: Module
+    parent: DC01
+    ref: location
+
+# Site-level config contexts
+config_contexts:
+  - name: "DC01 site-asn"
+    description: "Site-level BGP ASN configuration for DC01"
+    weight: 1000
+    is_active: true
+    locations:
+      - DC01
+    data:
+      site_asn: "4266000000"
+
+  - name: "DC01 Management Services"
+    description: "Management services configuration for DC01"
+    weight: 1000
+    is_active: true
+    locations:
+      - DC01
+    data:
+      ztp:
+        ipv4:
+          - "10.48.175.210"
+      dhcp:
+        nvConfigManager:
+          ipv4:
+            - "10.48.175.141"
+            - "10.48.175.211"
+        forge:
+          ipv4:
+            - "10.240.0.100"
+      management_prefixes:
+        ipv4:
+          - "10.48.135.64/26"
+          - "10.48.175.128/25"
+      provisioning_servers:
+        ipv4:
+          - "10.48.169.70"
+
+  # DHCP options config contexts (role-based)
+  - name: "SMN-dhcp-options"
+    description: "DHCP options for SMN network devices"
+    weight: 1000
+    is_active: true
+    roles:
+      - SMN-Aggleaf
+      - SMN-Core
+      - SMN-Leaf
+      - SMN-Spine
+    data:
+      dhcp:
+        options:
+          interface_roles:
+            Uplink:
+              subnet_config:
+                reservations-global: false
+                reservations-in-subnet: false
+              subnet_options:
+                boot-file-name: "http://{{ztp_server}}/v1/device/{{device_id}}/onie"
+                broadcast-address: "255.255.255.255"
+                cumulus-provision-url: "http://{{ztp_server}}/v1/device/{{device_id}}/boot-script"
+
+  - name: "TAN-CIN-dhcp-options"
+    description: "DHCP options for TAN and CIN network devices"
+    weight: 1000
+    is_active: true
+    roles:
+      - CIN-Core
+      - CIN-Leaf
+      - CIN-Spine
+      - TAN-Core
+      - TAN-Leaf
+      - TAN-Spine
+      - TAN-BBR
+      - TAN-Inet
+      - TAN-Firewall
+    data:
+      dhcp:
+        options:
+          interface_names:
+            eth0:
+              subnet_config:
+                reservations-global: true
+                reservations-in-subnet: false
+              reservation_options:
+                boot-file-name: "http://{{ztp_server}}/v1/device/{{device_id}}/onie"
+                cumulus-provision-url: "http://{{ztp_server}}/v1/device/{{device_id}}/boot-script"

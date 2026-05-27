@@ -1,0 +1,79 @@
+# Patterns to ignore when building packages.
+# This supports shell glob matching, relative path matching, and
+# negation (prefixed with !). Only one pattern per line.
+
+# Binary files
+*.bin
+*.exe
+*.dll
+*.so
+*.dylib
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+
+# Documentation
+*.md
+LICENSE
+docs/
+
+# Test files
+tests/
+*_test.go
+*_test.py
+
+# Build artifacts
+*.tar.gz
+*.zip
+# NOTE: *.tgz is NOT ignored here because Helm subchart dependencies
+# (deploy/helm/charts/*.tgz, resolved via `helm dependency update`) need to
+# remain visible to `helm template / install`.
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+*.egg
+
+# Node artifacts
+node_modules/
+
+# Backup files
+*.bak
+*.backup
+*.orig
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/
+
+# Large binary/firmware files
+*.iso
+*.img
+*.qcow2
+cumulus-*.bin

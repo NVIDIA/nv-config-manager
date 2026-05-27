@@ -1,0 +1,60 @@
+---
+title: Network Infrastructure Automation with Temporal
+sidebar-title: Network Infrastructure Automation with Temporal
+position: 0
+---
+
+NVIDIA Config Manager Temporal is a comprehensive network infrastructure automation platform built on [Temporal](https://temporal.io/). It provides robust, scalable workflows for managing network devices, validating configurations, and automating data center operations.
+
+## Key Features
+
+- **Network Validation**: Automated cable validation, hardware checks, and configuration verification
+- **Configuration Management**: Backup, deploy, and manage network device configurations
+- **Infrastructure Operations**: BMC provisioning, OS upgrades, and device reprovisioning
+- **Scalable Architecture**: Built on Temporal for reliability and observability
+
+## Workflow Categories
+
+### Network Validation
+
+Ensure network infrastructure integrity with automated validation workflows:
+
+- **Cable Validation**: Verify physical and logical network connections
+- **Hardware Validation**: Check device health and component status
+- **Infiniband Validation**: Specialized validation for high-performance networks
+
+### Network Operations
+
+Automate routine network management tasks:
+
+- **Configuration Backup & Deploy**: Manage device configurations safely
+- **OS Upgrades**: Automated operating system updates with rollback support
+- **Device Reprovisioning**: Complete device lifecycle management
+
+### Data Center Management
+
+Streamline data center operations:
+
+- **BMC Provisioning**: Automated baseboard management controller setup
+- **Host Metadata Discovery**: Automatic discovery and inventory management
+- **VPC Management**: Virtual private cloud provisioning and management
+
+## Supported Platforms
+
+- **Arista EOS**: Complete support for Arista network devices
+- **Cumulus Linux**: Full integration with Cumulus networking
+- **Mellanox/NVIDIA**: Infiniband and Ethernet switch support
+- **Generic BMC**: Redfish-compatible baseboard management controllers
+
+## Quick Start
+
+**Deploy to test and production environments using ArgoCD** - [Production Deployment](temporal-deployment.mdx)
+
+## Architecture
+
+Config Manager Temporal is built using:
+
+- **[Temporal](https://temporal.io/)**: Workflow orchestration engine
+- **[FastAPI](https://fastapi.tiangolo.com/)**: REST API interface
+- **[Kubernetes](https://kubernetes.io/)**: Container orchestration
+- **[Helm](https://helm.sh/)**: Deployment management

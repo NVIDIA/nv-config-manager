@@ -1,0 +1,489 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""Tests for new IB PKey update activities.
+
+Covers:
+- fetch_pkey_members
+- remove_guids_from_pkey
+- fetch_pkey_assignments
+- sync_pkey_assignments
+"""
+
+import re
+from configparser import ConfigParser
+from unittest.mock import patch
+
+import pytest
+from aioresponses import aioresponses
+from temporalio.exceptions import ApplicationError
+
+from nv_config_manager.temporal.common.secrets import clear_secrets_cache
+from nv_config_manager.temporal.ngc.activities.ib_nautobot import (
+    FetchPKeyAssignmentsInput,
+    ResolvedInterface,
+    SyncPKeyAssignmentsInput,
+    fetch_pkey_assignments,
+    sync_pkey_assignments,
+)
+from nv_config_manager.temporal.ngc.activities.ib_pkey import (
+    FetchPKeyMembersInput,
+    RemoveGuidsInput,
+    fetch_pkey_members,
+    remove_guids_from_pkey,
+)
+
+UFM_BASE = "https://ufm.example.com/ufmRest"
+NB_URL = "https://nautobot.example.com"
+NB_API = f"{NB_URL}/api"
+PLUGIN = f"{NB_API}/plugins/overlays"
+
+OVERLAY_UUID = "ddd-444"
+STATUS_UUID = "ccc-333"
+IFACE_UUID_1 = "iface-001"
+IFACE_UUID_2 = "iface-002"
+IFACE_UUID_3 = "iface-003"
+ASSIGNMENT_UUID_1 = "asgn-001"
+ASSIGNMENT_UUID_2 = "asgn-002"
+ASSIGNMENT_UUID_3 = "asgn-003"
+
+GUID_1 = "0002c903000e0b72"
+GUID_2 = "0002c903000e0b73"
+GUID_3 = "0002c903000e0b74"
+
+_NB_STATUSES = re.compile(rf"{re.escape(NB_API)}/extras/statuses/.*")
+_NB_ASSIGNMENTS = re.compile(rf"{re.escape(PLUGIN)}/overlay-assignments/.*")
+
+
+def _ufm_config() -> ConfigParser:
+    config = ConfigParser()
+    config.add_section("ufm")
+    config.set("ufm", "ufm_api_user", "admin")
+    config.set("ufm", "ufm_api_token_r1", "password")
+    return config
+
+
+def _nb_config() -> ConfigParser:
+    config = ConfigParser()
+    config.add_section("nautobot")
+    config.set("nautobot", "server", NB_URL)
+    config.set("nautobot", "token", "test-token")
+    config.set("nautobot", "verify", "false")
+    return config
+
+
+@pytest.fixture(autouse=True)
+def reset_secrets_cache():
+    clear_secrets_cache()
+    yield
+    clear_secrets_cache()
+
+
+@pytest.fixture()
+def mock_ufm_config():
+    with patch("nv_config_manager.temporal.client.ufm.load_config", return_value=_ufm_config()):
+        yield
+
+
+@pytest.fixture()
+def mock_nb_config():
+    with patch("nv_config_manager.temporal.client.nautobot.load_config", return_value=_nb_config()):
+        yield
+
+
+def _pkey_members_url(pkey: str) -> str:
+    return f"{UFM_BASE}/resources/pkeys/{pkey}?guids_data=true"
+
+
+# ---------------------------------------------------------------------------
+# fetch_pkey_members
+# ---------------------------------------------------------------------------
+
+
+class TestFetchPKeyMembers:
+    @pytest.mark.asyncio
+    async def test_returns_current_guids(self, mock_ufm_config):
+        with aioresponses() as m:
+            m.get(
+                _pkey_members_url("0x0005"),
+                payload={
+                    "guids": [
+                        {"guid": GUID_1, "membership": "full"},
+                        {"guid": GUID_2, "membership": "full"},
+                    ]
+                },
+            )
+
+            result = await fetch_pkey_members(
+                FetchPKeyMembersInput(host="ufm.example.com", pkey="0x0005")
+            )
+
+        assert result.pkey == "0x0005"
+        assert len(result.guids) == 2
+        assert GUID_1 in result.guids
+        assert GUID_2 in result.guids
+
+    @pytest.mark.asyncio
+    async def test_normalises_guid_case(self, mock_ufm_config):
+        """GUIDs returned by UFM are normalised to lowercase."""
+        with aioresponses() as m:
+            m.get(
+                _pkey_members_url("0x0005"),
+                payload={"guids": [{"guid": GUID_1.upper(), "membership": "full"}]},
+            )
+
+            result = await fetch_pkey_members(
+                FetchPKeyMembersInput(host="ufm.example.com", pkey="0x0005")
+            )
+
+        assert result.guids == [GUID_1.lower()]
+
+    @pytest.mark.asyncio
+    async def test_empty_pkey_returns_empty_list(self, mock_ufm_config):
+        with aioresponses() as m:
+            m.get(_pkey_members_url("0x0005"), payload={"guids": []})
+
+            result = await fetch_pkey_members(
+                FetchPKeyMembersInput(host="ufm.example.com", pkey="0x0005")
+            )
+
+        assert result.guids == []
+
+    @pytest.mark.asyncio
+    async def test_pkey_not_found_raises(self, mock_ufm_config):
+        with aioresponses() as m:
+            m.get(_pkey_members_url("0x0005"), payload=None)
+
+            with pytest.raises(ApplicationError, match="not found"):
+                await fetch_pkey_members(
+                    FetchPKeyMembersInput(host="ufm.example.com", pkey="0x0005")
+                )
+
+    @pytest.mark.asyncio
+    async def test_handles_plain_string_guids(self, mock_ufm_config):
+        """UFM may return guids as plain strings rather than dicts."""
+        with aioresponses() as m:
+            m.get(
+                _pkey_members_url("0x0005"),
+                payload={"guids": [GUID_1, GUID_2]},
+            )
+
+            result = await fetch_pkey_members(
+                FetchPKeyMembersInput(host="ufm.example.com", pkey="0x0005")
+            )
+
+        assert len(result.guids) == 2
+
+
+# ---------------------------------------------------------------------------
+# remove_guids_from_pkey
+# ---------------------------------------------------------------------------
+
+
+class TestRemoveGuidsFromPKey:
+    @pytest.mark.asyncio
+    async def test_removes_guids_successfully(self, mock_ufm_config):
+        guids_csv = f"{GUID_1},{GUID_2}"
+        with aioresponses() as m:
+            m.delete(f"{UFM_BASE}/resources/pkeys/0x0005/guids/{guids_csv}", payload={})
+
+            result = await remove_guids_from_pkey(
+                RemoveGuidsInput(
+                    host="ufm.example.com",
+                    pkey="0x0005",
+                    guids=[GUID_1, GUID_2],
+                )
+            )
+
+        assert result.pkey == "0x0005"
+        assert result.guids_removed == [GUID_1, GUID_2]
+
+    @pytest.mark.asyncio
+    async def test_empty_guid_list_is_noop(self, mock_ufm_config):
+        """No HTTP call should be made when the GUID list is empty."""
+        with aioresponses() as m:
+            result = await remove_guids_from_pkey(
+                RemoveGuidsInput(
+                    host="ufm.example.com",
+                    pkey="0x0005",
+                    guids=[],
+                )
+            )
+
+            assert result.guids_removed == []
+            assert len(m.requests) == 0
+
+    @pytest.mark.asyncio
+    async def test_ufm_error_raises(self, mock_ufm_config):
+        with aioresponses() as m:
+            m.delete(
+                f"{UFM_BASE}/resources/pkeys/0x0005/guids/{GUID_1}",
+                status=400,
+                payload={"error": "bad request"},
+            )
+
+            with pytest.raises(Exception):
+                await remove_guids_from_pkey(
+                    RemoveGuidsInput(
+                        host="ufm.example.com",
+                        pkey="0x0005",
+                        guids=[GUID_1],
+                    )
+                )
+
+
+# ---------------------------------------------------------------------------
+# fetch_pkey_assignments
+# ---------------------------------------------------------------------------
+
+
+class TestFetchPKeyAssignments:
+    @pytest.mark.asyncio
+    async def test_returns_current_assignments(self, mock_nb_config):
+        with aioresponses() as m:
+            m.get(
+                _NB_ASSIGNMENTS,
+                payload={
+                    "results": [
+                        {
+                            "id": ASSIGNMENT_UUID_1,
+                            "assigned_object_id": IFACE_UUID_1,
+                            "guid": GUID_1,
+                        },
+                        {
+                            "id": ASSIGNMENT_UUID_2,
+                            "assigned_object_id": IFACE_UUID_2,
+                            "guid": GUID_2,
+                        },
+                    ]
+                },
+            )
+
+            result = await fetch_pkey_assignments(
+                FetchPKeyAssignmentsInput(overlay_id=OVERLAY_UUID)
+            )
+
+        assert len(result.assignments) == 2
+        assert result.assignments[0].assignment_id == ASSIGNMENT_UUID_1
+        assert result.assignments[0].interface_id == IFACE_UUID_1
+        assert result.assignments[0].guid == GUID_1
+
+    @pytest.mark.asyncio
+    async def test_empty_overlay_returns_empty_list(self, mock_nb_config):
+        with aioresponses() as m:
+            m.get(_NB_ASSIGNMENTS, payload={"results": []})
+
+            result = await fetch_pkey_assignments(
+                FetchPKeyAssignmentsInput(overlay_id=OVERLAY_UUID)
+            )
+
+        assert result.assignments == []
+
+
+# ---------------------------------------------------------------------------
+# sync_pkey_assignments
+# ---------------------------------------------------------------------------
+
+
+def _make_resolved(interface_id: str, guid: str, interface: str = "mlx5_0") -> ResolvedInterface:
+    return ResolvedInterface(
+        device="hca01",
+        interface=interface,
+        interface_id=interface_id,
+        guid=guid,
+    )
+
+
+class TestSyncPKeyAssignments:
+    def _stub_status(self, m: aioresponses) -> None:
+        m.get(
+            _NB_STATUSES,
+            payload={"results": [{"id": STATUS_UUID, "name": "Active"}]},
+        )
+
+    @pytest.mark.asyncio
+    async def test_adds_new_members(self, mock_nb_config):
+        """When overlay has no assignments, desired members are all created."""
+        with aioresponses() as m:
+            self._stub_status(m)
+            m.get(_NB_ASSIGNMENTS, payload={"results": []})
+            m.post(
+                f"{PLUGIN}/overlay-assignments/",
+                payload={"id": ASSIGNMENT_UUID_1},
+            )
+            m.post(
+                f"{PLUGIN}/overlay-assignments/",
+                payload={"id": ASSIGNMENT_UUID_2},
+            )
+
+            result = await sync_pkey_assignments(
+                SyncPKeyAssignmentsInput(
+                    overlay_id=OVERLAY_UUID,
+                    desired=[
+                        _make_resolved(IFACE_UUID_1, GUID_1, "mlx5_0"),
+                        _make_resolved(IFACE_UUID_2, GUID_2, "mlx5_1"),
+                    ],
+                )
+            )
+
+        assert len(result.added) == 2
+        assert len(result.removed) == 0
+        assert len(result.unchanged) == 0
+
+    @pytest.mark.asyncio
+    async def test_removes_stale_members(self, mock_nb_config):
+        """When desired list is empty, all existing assignments are removed."""
+        with aioresponses() as m:
+            self._stub_status(m)
+            m.get(
+                _NB_ASSIGNMENTS,
+                payload={
+                    "results": [
+                        {
+                            "id": ASSIGNMENT_UUID_1,
+                            "assigned_object_id": IFACE_UUID_1,
+                            "guid": GUID_1,
+                        }
+                    ]
+                },
+            )
+            m.delete(
+                f"{PLUGIN}/overlay-assignments/{ASSIGNMENT_UUID_1}/",
+                status=204,
+            )
+
+            result = await sync_pkey_assignments(
+                SyncPKeyAssignmentsInput(
+                    overlay_id=OVERLAY_UUID,
+                    desired=[],
+                )
+            )
+
+        assert len(result.removed) == 1
+        assert ASSIGNMENT_UUID_1 in result.removed
+        assert len(result.added) == 0
+
+    @pytest.mark.asyncio
+    async def test_unchanged_members_not_touched(self, mock_nb_config):
+        """Members in both current and desired are left unchanged."""
+        with aioresponses() as m:
+            self._stub_status(m)
+            m.get(
+                _NB_ASSIGNMENTS,
+                payload={
+                    "results": [
+                        {
+                            "id": ASSIGNMENT_UUID_1,
+                            "assigned_object_id": IFACE_UUID_1,
+                            "guid": GUID_1,
+                        }
+                    ]
+                },
+            )
+
+            result = await sync_pkey_assignments(
+                SyncPKeyAssignmentsInput(
+                    overlay_id=OVERLAY_UUID,
+                    desired=[_make_resolved(IFACE_UUID_1, GUID_1)],
+                )
+            )
+
+        assert len(result.unchanged) == 1
+        assert ASSIGNMENT_UUID_1 in result.unchanged
+        assert len(result.added) == 0
+        assert len(result.removed) == 0
+
+    @pytest.mark.asyncio
+    async def test_mixed_add_remove_unchanged(self, mock_nb_config):
+        """Simultaneously adds new, removes stale, keeps unchanged."""
+        with aioresponses() as m:
+            self._stub_status(m)
+            m.get(
+                _NB_ASSIGNMENTS,
+                payload={
+                    "results": [
+                        # to be kept
+                        {
+                            "id": ASSIGNMENT_UUID_1,
+                            "assigned_object_id": IFACE_UUID_1,
+                            "guid": GUID_1,
+                        },
+                        # to be removed
+                        {
+                            "id": ASSIGNMENT_UUID_2,
+                            "assigned_object_id": IFACE_UUID_2,
+                            "guid": GUID_2,
+                        },
+                    ]
+                },
+            )
+            m.delete(
+                f"{PLUGIN}/overlay-assignments/{ASSIGNMENT_UUID_2}/",
+                status=204,
+            )
+            m.post(
+                f"{PLUGIN}/overlay-assignments/",
+                payload={"id": ASSIGNMENT_UUID_3},
+            )
+
+            result = await sync_pkey_assignments(
+                SyncPKeyAssignmentsInput(
+                    overlay_id=OVERLAY_UUID,
+                    desired=[
+                        _make_resolved(IFACE_UUID_1, GUID_1, "mlx5_0"),  # keep
+                        _make_resolved(IFACE_UUID_3, GUID_3, "mlx5_2"),  # add new
+                    ],
+                )
+            )
+
+        assert ASSIGNMENT_UUID_1 in result.unchanged
+        assert ASSIGNMENT_UUID_2 in result.removed
+        assert ASSIGNMENT_UUID_3 in result.added
+
+    @pytest.mark.asyncio
+    async def test_no_op_when_desired_matches_current(self, mock_nb_config):
+        """No writes when current state already matches desired."""
+        with aioresponses() as m:
+            self._stub_status(m)
+            m.get(
+                _NB_ASSIGNMENTS,
+                payload={
+                    "results": [
+                        {
+                            "id": ASSIGNMENT_UUID_1,
+                            "assigned_object_id": IFACE_UUID_1,
+                            "guid": GUID_1,
+                        },
+                        {
+                            "id": ASSIGNMENT_UUID_2,
+                            "assigned_object_id": IFACE_UUID_2,
+                            "guid": GUID_2,
+                        },
+                    ]
+                },
+            )
+
+            result = await sync_pkey_assignments(
+                SyncPKeyAssignmentsInput(
+                    overlay_id=OVERLAY_UUID,
+                    desired=[
+                        _make_resolved(IFACE_UUID_1, GUID_1, "mlx5_0"),
+                        _make_resolved(IFACE_UUID_2, GUID_2, "mlx5_1"),
+                    ],
+                )
+            )
+
+        assert len(result.added) == 0
+        assert len(result.removed) == 0
+        assert len(result.unchanged) == 2

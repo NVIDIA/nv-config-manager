@@ -1,0 +1,26 @@
+---
+
+{% if json.devices is defined and json.devices | length > 0 %}
+interfaces:
+  {% for device in json.devices %}
+  {% for intf in device.interfaces %}
+  {% if intf.connected_interface is defined and intf.connected_interface %}
+  {% set remote_device = intf.connected_interface.device.name %}
+  {% set remote_interface = intf.connected_interface.name %}
+  {% set local_device = device.name %}
+  {% set local_interface = intf.name %}
+  {% set remote_device_exists = remote_device in json.devices | map(attribute='name') | list %}
+  {% set should_create_cable = (local_device < remote_device) or (local_device == remote_device and local_interface < remote_interface) and local_interface != 'eth0'%}
+  {% if remote_device_exists and should_create_cable %}
+  - "!update:name": {{ local_interface }}
+    "!update:device": "!ref:device-{{ local_device }}"
+    "!connect_cable":
+      to: "!ref:intf-{{ remote_device }}-{{ remote_interface }}"
+      status__name: {{ global_defaults.cable_status }}
+  {% endif %}
+  {% endif %}
+  {% endfor %}
+  {% endfor %}
+{% else %}
+interfaces: []
+{% endif %}

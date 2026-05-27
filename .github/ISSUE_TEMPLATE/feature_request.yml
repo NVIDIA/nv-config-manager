@@ -1,0 +1,98 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+name: Feature Request
+description: Request new or improved NVIDIA Config Manager functionality
+title: "[FEA]: "
+labels: ["enhancement"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an improvement.
+        Concrete operator workflows and deployment constraints are especially useful.
+
+  - type: dropdown
+    id: request_type
+    attributes:
+      label: Request type
+      options:
+        - New feature
+        - Improvement to existing functionality
+        - Behavior change
+        - Documentation or examples
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - Critical (currently blocking usage)
+        - High
+        - Medium
+        - Low
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected component
+      multiple: true
+      options:
+        - Installer
+        - Helm/deployment
+        - Nautobot integration
+        - DHCP
+        - ZTP
+        - Render
+        - Config Store
+        - Temporal workflows
+        - UI
+        - Documentation
+        - CI/release automation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: Describe the operator, developer, or deployment problem this would solve.
+      placeholder: "As a ..., I want ..., so that ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the behavior or interface you want.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Describe other approaches, workarounds, or related tools you considered.
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Add diagrams, links, examples, or constraints that would help evaluate the request.
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Checklist
+      options:
+        - label: I have searched existing issues for related requests.
+          required: true
+        - label: I agree to follow this project's Code of Conduct.
+          required: true

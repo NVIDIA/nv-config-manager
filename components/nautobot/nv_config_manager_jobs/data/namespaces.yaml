@@ -1,0 +1,7 @@
+---
+# IP/VLAN Namespaces for NVIDIA Config Manager deployments
+
+- name: Global
+  description: Global namespace for IP addresses and VLANs
+  deployment_types: [all, superpod]
+

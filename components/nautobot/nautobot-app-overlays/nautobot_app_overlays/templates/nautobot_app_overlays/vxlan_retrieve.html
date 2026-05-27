@@ -1,0 +1,155 @@
+{% extends 'generic/object_retrieve.html' %}
+{% load helpers %}
+{% load render_table from django_tables2 %}
+
+{% block content_left_page %}
+<div class="panel panel-default">
+    <div class="panel-heading">
+        <strong>VXLAN</strong>
+    </div>
+    <table class="table table-hover panel-body attr-table">
+        <tr>
+            <td>Name</td>
+            <td>{{ object.name }}</td>
+        </tr>
+        <tr>
+            <td>Status</td>
+            <td>{{ object.status|hyperlinked_object_with_color }}</td>
+        </tr>
+        <tr>
+            <td>VNI</td>
+            <td>{{ object.vnid }}</td>
+        </tr>
+        <tr>
+            <td>VNI Type</td>
+            <td>{{ object.get_vni_type_display }}</td>
+        </tr>
+        <tr>
+            <td>L3 VLAN ID</td>
+            <td>{{ object.l3_vlan_id|placeholder }}</td>
+        </tr>
+        <tr>
+            <td>Namespace</td>
+            <td>{{ object.namespace|hyperlinked_object|placeholder }}</td>
+        </tr>
+        <tr>
+            <td>Overlay</td>
+            <td>{{ object.overlay|hyperlinked_object|placeholder }}</td>
+        </tr>
+        <tr>
+            <td>Tenant</td>
+            <td>{{ object.tenant|hyperlinked_object|placeholder }}</td>
+        </tr>
+        <tr>
+            <td>VLAN</td>
+            <td>{{ object.vlan|hyperlinked_object|placeholder }}</td>
+        </tr>
+        <tr>
+            <td>VRF</td>
+            <td>{{ object.vrf|hyperlinked_object|placeholder }}</td>
+        </tr>
+        <tr>
+            <td>Import route targets (VNI)</td>
+            <td>
+                {% if object.import_targets.exists %}
+                    {% for rt in object.import_targets.all %}
+                        {{ rt|hyperlinked_object }}{% if not forloop.last %}, {% endif %}
+                    {% endfor %}
+                {% else %}
+                    {{ None|placeholder }}
+                {% endif %}
+            </td>
+        </tr>
+        <tr>
+            <td>Export route targets (VNI)</td>
+            <td>
+                {% if object.export_targets.exists %}
+                    {% for rt in object.export_targets.all %}
+                        {{ rt|hyperlinked_object }}{% if not forloop.last %}, {% endif %}
+                    {% endfor %}
+                {% else %}
+                    {{ None|placeholder }}
+                {% endif %}
+            </td>
+        </tr>
+    </table>
+</div>
+{% endblock content_left_page %}
+
+{% block content_right_page %}
+{% if object.vrf %}
+<div class="panel panel-default">
+    <div class="panel-heading">
+        <strong>Linked VRF (L3)</strong>
+    </div>
+    <table class="table table-hover panel-body attr-table">
+        <tr>
+            <td>Route distinguisher</td>
+            <td>{{ object.vrf.rd|placeholder }}</td>
+        </tr>
+        <tr>
+            <td>Import route targets (VRF)</td>
+            <td>
+                {% if object.vrf.import_targets.exists %}
+                    {% for rt in object.vrf.import_targets.all %}
+                        {{ rt|hyperlinked_object }}{% if not forloop.last %}, {% endif %}
+                    {% endfor %}
+                {% else %}
+                    {{ None|placeholder }}
+                {% endif %}
+            </td>
+        </tr>
+        <tr>
+            <td>Export route targets (VRF)</td>
+            <td>
+                {% if object.vrf.export_targets.exists %}
+                    {% for rt in object.vrf.export_targets.all %}
+                        {{ rt|hyperlinked_object }}{% if not forloop.last %}, {% endif %}
+                    {% endfor %}
+                {% else %}
+                    {{ None|placeholder }}
+                {% endif %}
+            </td>
+        </tr>
+    </table>
+</div>
+{% endif %}
+{% if object.overlay %}
+<div class="panel panel-default">
+    <div class="panel-heading">
+        <strong>Overlay Details</strong>
+    </div>
+    <table class="table table-hover panel-body attr-table">
+        <tr>
+            <td>Overlay</td>
+            <td>{{ object.overlay|hyperlinked_object }}</td>
+        </tr>
+        <tr>
+            <td>Overlay Status</td>
+            <td>{{ object.overlay.status|hyperlinked_object_with_color }}</td>
+        </tr>
+        <tr>
+            <td>Location</td>
+            <td>{{ object.overlay.location|hyperlinked_object|placeholder }}</td>
+        </tr>
+        <tr>
+            <td>Isolation Type</td>
+            <td>{{ object.overlay.get_isolation_type_display|placeholder }}</td>
+        </tr>
+    </table>
+</div>
+{% endif %}
+
+<div class="panel panel-default">
+    <div class="panel-heading">
+        <strong>Overlay Assignments</strong>
+    </div>
+    <div class="panel-body">
+        {% if overlay_assignments_table.rows|length %}
+            {% render_table overlay_assignments_table %}
+        {% else %}
+            <p class="text-muted">This VXLAN is not assigned to any overlays.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock content_right_page %}

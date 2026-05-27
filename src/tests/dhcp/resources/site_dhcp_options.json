@@ -1,0 +1,24 @@
+{
+    "data": {
+        "config_contexts": [
+            {
+                "data": {
+                    "Dhcp4": {
+                        "option-def": [
+                            {
+                                "name": "cumulus-provision-url",
+                                "code": 239,
+                                "type": "string",
+                                "array": false,
+                                "record-types": "",
+                                "space": "dhcp4",
+                                "encapsulate": ""
+                            }
+                        ]
+                    }
+                }
+            }
+        ]
+    }
+}
+

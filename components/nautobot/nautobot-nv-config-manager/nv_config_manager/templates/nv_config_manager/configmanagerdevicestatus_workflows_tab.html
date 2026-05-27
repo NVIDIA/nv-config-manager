@@ -1,0 +1,165 @@
+{% extends 'generic/object_retrieve.html' %} {% load helpers %} {% block content %}
+
+<div class="row">
+  <div class="col-md-6">
+    <div class="panel panel-default">
+      <div class="panel-heading">
+        <strong>Start a Workflow</strong>
+      </div>
+      <table class="table table-hover panel-body attr-table">
+        <tr>
+          <td>Config Backup</td>
+          <td>
+            <a
+                href="{{ temporal_url }}/workflows/backupworkflow/form?site={{ site }}&device-id={{ device_id }}"
+              target="_blank"
+            >
+              <i
+                class="mdi mdi-rocket-launch-outline"
+                title="Run Backup Workflow"
+              ></i>
+            </a>
+          </td>
+        </tr>
+        <tr>
+          <td>Connected Host Metadata</td>
+          <td>
+            <a
+              href="{{ temporal_url }}/workflows/connectedhostmetadataworkflow/form?site={{ site }}&device-id={{ device_id }}"
+              target="_blank"
+            >
+              <i
+                class="mdi mdi-rocket-launch-outline"
+                title="Run Connected Host Metadata Workflow"
+              ></i>
+            </a>
+          </td>
+        </tr>
+        <tr>
+          <td>Config Deploy</td>
+          <td>
+            <a
+              href="{{ temporal_url }}/workflows/deployworkflow/form?site={{ site }}&device-id={{ device_id }}"
+              target="_blank"
+            >
+              <i
+                class="mdi mdi-rocket-launch-outline"
+                title="Run Config Deploy Workflow"
+              ></i>
+            </a>
+          </td>
+        </tr>
+        <tr>
+          <td>Device Cable Validation</td>
+          <td>
+            <a
+              href="{{ temporal_url }}/workflows/devicecablevalidationworkflow/form?site={{ site }}&device-id={{ device_id }}"
+              target="_blank"
+            >
+              <i
+                class="mdi mdi-rocket-launch-outline"
+                title="Run Device Cable Validation Workflow"
+              ></i>
+            </a>
+          </td>
+        </tr>
+        <tr>
+          <td>Site Cable Validation</td>
+          <td>
+            <a
+              href="{{ temporal_url }}/workflows/sitecablevalidationworkflow/form?site={{ site }}&device-id={{ device_id }}&tenant={{ tenant }}"
+              target="_blank"
+            >
+              <i
+                class="mdi mdi-rocket-launch-outline"
+                title="Run Site Cable Validation Workflow"
+              ></i>
+            </a>
+          </td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="col-md-6">
+    <div class="panel panel-default">
+      <div class="panel-heading">
+        <strong>View Running Workflows</strong>
+      </div>
+      <table class="table table-hover panel-body attr-table">
+        <tr>
+          <td>Config Backup</td>
+          <td>
+            <a
+              href="{{ temporal_url }}/workflows?devicename={{ managed_device }}&hidecompleted=true#configbackup"
+              target="_blank"
+            >
+              <i
+                class="mdi mdi-play-circle-outline"
+                title="View Running Backup Workflow"
+              ></i>
+            </a>
+          </td>
+        </tr>
+        <tr>
+          <td>Connected Host Metadata</td>
+          <td>
+            <a
+              href="{{ temporal_url }}/workflows?devicename={{ managed_device }}&hidecompleted=true#connectedhostmetadataworkflow"
+              target="_blank"
+            >
+              <i
+                class="mdi mdi-play-circle-outline"
+                title="View Running Connected Host Metadata Workflow"
+              ></i>
+            </a>
+          </td>
+        </tr>
+        <tr>
+          <td>Config Deploy</td>
+          <td>
+            <a
+              href="{{ temporal_url }}/workflows?devicename={{ managed_device }}&hidecompleted=true#configdeploy"
+              target="_blank"
+            >
+              <i
+                class="mdi mdi-play-circle-outline"
+                title="View Running Config Deploy Workflow"
+              ></i>
+            </a>
+          </td>
+        </tr>
+        <tr>
+          <td>Device Cable Validation</td>
+          <td>
+            <a
+              href="{{ temporal_url }}/workflows?devicename={{ managed_device }}&hidecompleted=true#devicecablevalidation"
+              target="_blank"
+            >
+              <i
+                class="mdi mdi-play-circle-outline"
+                title="View Running Device Cable Validation Workflow"
+              ></i>
+            </a>
+          </td>
+        </tr>
+        <tr>
+          <td>Site Cable Validation</td>
+          <td>
+            <a
+              href="{{ temporal_url }}/workflows?devicename={{ managed_device }}&hidecompleted=true#sitecablevalidation"
+              target="_blank"
+            >
+              <i
+                class="mdi mdi-play-circle-outline"
+                title="View Running Site Cable Validation Workflow"
+              ></i>
+            </a>
+          </td>
+        </tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% endblock content %}

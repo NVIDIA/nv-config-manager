@@ -1,0 +1,199 @@
+---
+# =============================================================================
+# Artifact-affecting paths - used to skip builds for non-artifact changes
+# =============================================================================
+# These paths affect the published artifacts (images and charts):
+#   - build/**          - Dockerfiles and build configurations
+#   - components/**     - Go code (nats-ready), Nautobot config
+#   - db/**             - Database migrations
+#   - deploy/helm/**    - Helm charts
+#   - src/**            - Python source code
+#   - ui/**             - Frontend code
+#   - pyproject.toml    - Python dependencies
+#   - uv.lock           - Python lock file
+# =============================================================================
+
+.artifact-paths: &artifact-paths
+  - "build/**/*"
+  - "components/**/*"
+  - "db/**/*"
+  - "deploy/helm/**/*"
+  - "src/**/*"
+  - "ui/**/*"
+  - pyproject.toml
+  - uv.lock
+
+.pulse-scan-config:
+  tags: &pulse-scan-tags
+    - dca
+    - linux/amd64
+    - docker
+  needs: &pulse-scan-needs
+    - job: docker-manifest-mr
+      optional: true
+    - job: docker-manifest-main
+      optional: true
+  rules: &pulse-scan-rules
+    - if: $CI_COMMIT_TAG
+      when: on_success
+    - if: $FORCE_PULSE_SCAN == "true" && ($CI_PIPELINE_SOURCE == "merge_request_event" || $CI_COMMIT_BRANCH)
+      when: on_success
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes: *artifact-paths
+      when: on_success
+    - if: $GITLAB_USER_EMAIL == $CI_PUSH_EMAIL
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes: *artifact-paths
+      when: on_success
+    - when: never
+  before_script: &pulse-scan-before-script
+    - mkdir -p /tmp/nv-config-manager-scan-policy
+    - |
+      policy_project="${NVCM_CONTAINER_SCAN_POLICY_PROJECT}"
+      policy_file="/tmp/nv-config-manager-scan-policy/${NVCM_CONTAINER_SCAN_POLICY_FILE}"
+      curl --silent --show-error --fail --location \
+        --header "PRIVATE-TOKEN: ${NV_CONFIG_MANAGER_CONTAINER_SCAN_POLICY_TOKEN:?Set NV_CONFIG_MANAGER_CONTAINER_SCAN_POLICY_TOKEN to a read token for ${NVCM_CONTAINER_SCAN_POLICY_PROJECT}}" \
+        "${CI_API_V4_URL}/projects/${policy_project}/repository/files/${NVCM_CONTAINER_SCAN_POLICY_FILE}/raw?ref=${NVCM_CONTAINER_SCAN_POLICY_REF}" \
+        --output "$policy_file"
+    - jq -e . /tmp/nv-config-manager-scan-policy/${NVCM_CONTAINER_SCAN_POLICY_FILE} >/dev/null
+
+include:
+  - component: &pulse-scan-component gitlab-master.nvidia.com/security/devops-tools/ci-cd-components/pulse-container-scanner/scan-image@2.0.1
+    inputs:
+      nspect_id: "$PULSE_NSPECT_ID"
+      container_image: "${NVCM_IMAGE_REPOSITORY}/nv-config-manager:${CI_COMMIT_SHORT_SHA}"
+      container_scan_policy: "/tmp/nv-config-manager-scan-policy/${NVCM_CONTAINER_SCAN_POLICY_FILE}"
+      before_script: *pulse-scan-before-script
+      job_prefix: pulse-scan-nv-config-manager
+      tags: *pulse-scan-tags
+      needs: *pulse-scan-needs
+      rules: *pulse-scan-rules
+      vault_auth_role: ""
+  - component: *pulse-scan-component
+    inputs:
+      nspect_id: "$PULSE_NSPECT_ID"
+      container_image: "${NVCM_IMAGE_REPOSITORY}/nv-config-manager-kea:${CI_COMMIT_SHORT_SHA}"
+      container_scan_policy: "/tmp/nv-config-manager-scan-policy/${NVCM_CONTAINER_SCAN_POLICY_FILE}"
+      before_script: *pulse-scan-before-script
+      job_prefix: pulse-scan-kea
+      tags: *pulse-scan-tags
+      needs: *pulse-scan-needs
+      rules: *pulse-scan-rules
+      vault_auth_role: ""
+  - component: *pulse-scan-component
+    inputs:
+      nspect_id: "$PULSE_NSPECT_ID"
+      container_image: "${NVCM_IMAGE_REPOSITORY}/nv-config-manager-kea-admin:${CI_COMMIT_SHORT_SHA}"
+      container_scan_policy: "/tmp/nv-config-manager-scan-policy/${NVCM_CONTAINER_SCAN_POLICY_FILE}"
+      before_script: *pulse-scan-before-script
+      job_prefix: pulse-scan-kea-admin
+      tags: *pulse-scan-tags
+      needs: *pulse-scan-needs
+      rules: *pulse-scan-rules
+      vault_auth_role: ""
+  - component: *pulse-scan-component
+    inputs:
+      nspect_id: "$PULSE_NSPECT_ID"
+      container_image: "${NVCM_IMAGE_REPOSITORY}/nv-config-manager-ui:${CI_COMMIT_SHORT_SHA}"
+      container_scan_policy: "/tmp/nv-config-manager-scan-policy/${NVCM_CONTAINER_SCAN_POLICY_FILE}"
+      before_script: *pulse-scan-before-script
+      job_prefix: pulse-scan-ui
+      tags: *pulse-scan-tags
+      needs: *pulse-scan-needs
+      rules: *pulse-scan-rules
+      vault_auth_role: ""
+  - component: *pulse-scan-component
+    inputs:
+      nspect_id: "$PULSE_NSPECT_ID"
+      container_image: "${NVCM_IMAGE_REPOSITORY}/nv-config-manager-nautobot:${CI_COMMIT_SHORT_SHA}"
+      container_scan_policy: "/tmp/nv-config-manager-scan-policy/${NVCM_CONTAINER_SCAN_POLICY_FILE}"
+      before_script: *pulse-scan-before-script
+      job_prefix: pulse-scan-nautobot
+      tags: *pulse-scan-tags
+      needs: *pulse-scan-needs
+      rules: *pulse-scan-rules
+      vault_auth_role: ""
+  - component: *pulse-scan-component
+    inputs:
+      nspect_id: "$PULSE_NSPECT_ID"
+      container_image: "${NVCM_IMAGE_REPOSITORY}/nv-config-manager-nats-ready:${CI_COMMIT_SHORT_SHA}"
+      container_scan_policy: "/tmp/nv-config-manager-scan-policy/${NVCM_CONTAINER_SCAN_POLICY_FILE}"
+      before_script: *pulse-scan-before-script
+      job_prefix: pulse-scan-nats-ready
+      tags: *pulse-scan-tags
+      needs: *pulse-scan-needs
+      rules: *pulse-scan-rules
+      vault_auth_role: ""
+  - component: *pulse-scan-component
+    inputs:
+      nspect_id: "$PULSE_NSPECT_ID"
+      container_image: "${NVCM_IMAGE_REPOSITORY}/nv-config-manager:${CI_COMMIT_SHORT_SHA}"
+      container_scan_policy: "/tmp/nv-config-manager-scan-policy/${NVCM_CONTAINER_SCAN_POLICY_FILE}"
+      before_script: *pulse-scan-before-script
+      job_prefix: pulse-scan-nv-config-manager-arm64
+      pulse_container_scan_platform: linux/arm64
+      tags: *pulse-scan-tags
+      needs: *pulse-scan-needs
+      rules: *pulse-scan-rules
+      vault_auth_role: ""
+  - component: *pulse-scan-component
+    inputs:
+      nspect_id: "$PULSE_NSPECT_ID"
+      container_image: "${NVCM_IMAGE_REPOSITORY}/nv-config-manager-kea:${CI_COMMIT_SHORT_SHA}"
+      container_scan_policy: "/tmp/nv-config-manager-scan-policy/${NVCM_CONTAINER_SCAN_POLICY_FILE}"
+      before_script: *pulse-scan-before-script
+      job_prefix: pulse-scan-kea-arm64
+      pulse_container_scan_platform: linux/arm64
+      tags: *pulse-scan-tags
+      needs: *pulse-scan-needs
+      rules: *pulse-scan-rules
+      vault_auth_role: ""
+  - component: *pulse-scan-component
+    inputs:
+      nspect_id: "$PULSE_NSPECT_ID"
+      container_image: "${NVCM_IMAGE_REPOSITORY}/nv-config-manager-kea-admin:${CI_COMMIT_SHORT_SHA}"
+      container_scan_policy: "/tmp/nv-config-manager-scan-policy/${NVCM_CONTAINER_SCAN_POLICY_FILE}"
+      before_script: *pulse-scan-before-script
+      job_prefix: pulse-scan-kea-admin-arm64
+      pulse_container_scan_platform: linux/arm64
+      tags: *pulse-scan-tags
+      needs: *pulse-scan-needs
+      rules: *pulse-scan-rules
+      vault_auth_role: ""
+  - component: *pulse-scan-component
+    inputs:
+      nspect_id: "$PULSE_NSPECT_ID"
+      container_image: "${NVCM_IMAGE_REPOSITORY}/nv-config-manager-ui:${CI_COMMIT_SHORT_SHA}"
+      container_scan_policy: "/tmp/nv-config-manager-scan-policy/${NVCM_CONTAINER_SCAN_POLICY_FILE}"
+      before_script: *pulse-scan-before-script
+      job_prefix: pulse-scan-ui-arm64
+      pulse_container_scan_platform: linux/arm64
+      tags: *pulse-scan-tags
+      needs: *pulse-scan-needs
+      rules: *pulse-scan-rules
+      vault_auth_role: ""
+  - component: *pulse-scan-component
+    inputs:
+      nspect_id: "$PULSE_NSPECT_ID"
+      container_image: "${NVCM_IMAGE_REPOSITORY}/nv-config-manager-nautobot:${CI_COMMIT_SHORT_SHA}"
+      container_scan_policy: "/tmp/nv-config-manager-scan-policy/${NVCM_CONTAINER_SCAN_POLICY_FILE}"
+      before_script: *pulse-scan-before-script
+      job_prefix: pulse-scan-nautobot-arm64
+      pulse_container_scan_platform: linux/arm64
+      tags: *pulse-scan-tags
+      needs: *pulse-scan-needs
+      rules: *pulse-scan-rules
+      vault_auth_role: ""
+  - component: *pulse-scan-component
+    inputs:
+      nspect_id: "$PULSE_NSPECT_ID"
+      container_image: "${NVCM_IMAGE_REPOSITORY}/nv-config-manager-nats-ready:${CI_COMMIT_SHORT_SHA}"
+      container_scan_policy: "/tmp/nv-config-manager-scan-policy/${NVCM_CONTAINER_SCAN_POLICY_FILE}"
+      before_script: *pulse-scan-before-script
+      job_prefix: pulse-scan-nats-ready-arm64
+      pulse_container_scan_platform: linux/arm64
+      tags: *pulse-scan-tags
+      needs: *pulse-scan-needs
+      rules: *pulse-scan-rules
+      vault_auth_role: ""

@@ -1,0 +1,342 @@
+# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
+#
+{{- $oauth2ProxyName := include "nv-config-manager.componentName" (dict "root" . "component" "oauth2-proxy") }}
+# =============================================================================
+# OIDC Authentication via oauth2-proxy (ingress-nginx mode only)
+# =============================================================================
+# oauth2-proxy is used for ingress-nginx mode because:
+#   - ingress-nginx uses auth-url/auth-signin annotations
+#   - oauth2-proxy handles the OIDC flow and session management
+#
+# For Envoy Gateway mode:
+#   - Native OIDC is used (SecurityPolicy.oidc)
+#   - oauth2-proxy is NOT needed
+# =============================================================================
+
+{{- if and .Values.oidc.enabled (eq .Values.ingress.type "ingressNginx") }}
+
+{{- if and (not .Values.oidc.oauth2Proxy.cookieSecret) (ne .Values.secrets.method "eso") }}
+  {{- fail "oidc.oauth2Proxy.cookieSecret is required when OIDC is enabled. Generate one with: openssl rand -base64 24" }}
+{{- end }}
+
+# =============================================================================
+# OAuth2 Proxy ConfigMap
+# =============================================================================
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $oauth2ProxyName }}-config
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: oauth2-proxy
+data:
+  oauth2_proxy.cfg: |
+    # Provider configuration (Azure AD / Entra ID via OIDC)
+    provider = "oidc"
+    provider_display_name = "NVIDIA SSO"
+    oidc_issuer_url = {{ .Values.oidc.issuerUrl | quote }}
+    client_id = {{ .Values.oidc.clientId | quote }}
+    {{- if .Values.oidc.clientSecret }}
+    # Client secret from environment variable
+    {{- else }}
+    # PKCE-only mode (no client secret) - use /dev/null as placeholder
+    client_secret_file = "/dev/null"
+    {{- end }}
+    
+    # PKCE for public clients
+    code_challenge_method = "S256"
+    
+    # Email/domain settings
+    email_domains = "*"
+    {{- if .Values.oidc.allowedGroups }}
+    allowed_groups = {{ .Values.oidc.allowedGroups | join "," | quote }}
+    {{- end }}
+    
+    # Scopes - request groups claim
+    scope = "openid email profile"
+    oidc_groups_claim = {{ .Values.oidc.groupsClaim | default "groups" | quote }}
+    
+    # Server configuration
+    http_address = "0.0.0.0:4180"
+    
+    # Upstream - file:///dev/null for auth-only mode
+    upstreams = "file:///dev/null"
+    
+    # Redirect URL - oauth2-proxy callback endpoint
+    {{- if .Values.oidc.callbackPort }}
+    redirect_url = "https://{{ .Values.oidc.hostname }}:{{ .Values.oidc.callbackPort }}/oauth2/callback"
+    {{- else }}
+    redirect_url = "https://{{ .Values.oidc.hostname }}/oauth2/callback"
+    {{- end }}
+    
+    # Cookie configuration
+    cookie_name = "_oauth2_proxy"
+    cookie_domains = {{ printf ".%s" .Values.gateway.baseHostname | quote }}
+    cookie_secure = true
+    cookie_samesite = "lax"
+    cookie_refresh = "1h"
+    cookie_expire = "24h"
+    cookie_path = "/"
+    cookie_csrf_per_request = false
+    
+    # Redis session storage (reduces cookie size, stores session data server-side)
+    # Uses the existing Redis configuration from externalServices.redis
+    {{- if .Values.externalServices.redis }}
+    session_store_type = "redis"
+    {{- $redisHost := include "nv-config-manager.redisHost" . }}
+    {{- $redisPort := .Values.externalServices.redis.port | default 6379 }}
+    {{- $redisScheme := .Values.externalServices.redis.ssl | ternary "rediss" "redis" }}
+    redis_connection_url = "{{ $redisScheme }}://{{ $redisHost }}:{{ $redisPort }}/{{ .Values.externalServices.redis.db | default 0 }}"
+    {{- end }}
+    
+    # Whitelist domains for redirects
+    whitelist_domains = {{ printf ".%s" .Values.gateway.baseHostname | quote }}
+    
+    # Skip provider selection button (go straight to IdP)
+    skip_provider_button = true
+    
+    # Reverse proxy mode - trust X-Forwarded-* headers
+    reverse_proxy = true
+    
+    # Header configuration for sidecar integration
+    pass_access_token = false
+    set_authorization_header = true
+    set_xauthrequest = true
+    pass_user_headers = true
+    skip_auth_strip_headers = false
+    skip_jwt_bearer_tokens = true
+    
+    # Paths to skip authentication
+    skip_auth_routes = [
+      "^/health",
+      "^/healthz", 
+      "^/ready",
+      "^/readyz",
+      "^/ping",
+      "^/oauth2/callback",
+      "^/oauth2/sign_in",
+      "^/oauth2/sign_out",
+      "^/oauth2/start"
+    ]
+    
+    # Logging
+    standard_logging = true
+    request_logging = true
+    auth_logging = true
+    errors_to_info_log = true
+    silence_ping_logging = true
+
+# =============================================================================
+# OAuth2 Proxy Secret (if not using Vault)
+# =============================================================================
+{{- if eq .Values.secrets.method "kubernetes" }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $oauth2ProxyName }}-secrets
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: oauth2-proxy
+type: Opaque
+stringData:
+  cookie-secret: {{ required "oidc.oauth2Proxy.cookieSecret is required" .Values.oidc.oauth2Proxy.cookieSecret | quote }}
+  {{- if .Values.oidc.clientSecret }}
+  client-secret: {{ .Values.oidc.clientSecret | quote }}
+  {{- end }}
+{{- end }}
+{{- /* When using ESO with oidc path configured, secrets come from oidc-client-secret ExternalSecret */}}
+{{- /* Otherwise if clientSecret is provided directly in values, create the secret */}}
+{{- if and (or (eq .Values.secrets.method "eso") (eq .Values.secrets.method "vault-agent")) (or (not .Values.secrets.vault.paths.oidc) (not .Values.secrets.vault.paths.oidc.path)) }}
+{{- if or .Values.oidc.clientSecret .Values.oidc.oauth2Proxy.cookieSecret }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $oauth2ProxyName }}-secrets
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: oauth2-proxy
+type: Opaque
+stringData:
+  cookie-secret: {{ required "oidc.oauth2Proxy.cookieSecret is required" .Values.oidc.oauth2Proxy.cookieSecret | quote }}
+  {{- if .Values.oidc.clientSecret }}
+  client-secret: {{ .Values.oidc.clientSecret | quote }}
+  {{- end }}
+{{- end }}
+{{- end }}
+
+# =============================================================================
+# OAuth2 Proxy Deployment
+# =============================================================================
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $oauth2ProxyName }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: oauth2-proxy
+    app: {{ $oauth2ProxyName }}
+spec:
+  replicas: {{ .Values.oidc.oauth2Proxy.replicas | default 2 }}
+  selector:
+    matchLabels:
+      app: {{ $oauth2ProxyName }}
+  template:
+    metadata:
+      labels:
+        app: {{ $oauth2ProxyName }}
+      annotations:
+        checksum/config: {{ .Values.oidc | toJson | sha256sum }}
+    spec:
+      {{- if .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range .Values.global.imagePullSecrets }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      containers:
+      - name: {{ $oauth2ProxyName }}
+        image: {{ .Values.oidc.oauth2Proxy.image.repository | default "quay.io/oauth2-proxy/oauth2-proxy" }}:{{ .Values.oidc.oauth2Proxy.image.tag | default "v7.6.0" }}
+        imagePullPolicy: {{ .Values.oidc.oauth2Proxy.image.pullPolicy | default "IfNotPresent" }}
+        args:
+          - --config=/etc/oauth2-proxy/oauth2_proxy.cfg
+        env:
+          {{- /* Determine secret name based on secrets method */}}
+          {{- $oidcSecretName := printf "%s-secrets" $oauth2ProxyName }}
+          {{- if and (or (eq .Values.secrets.method "eso") (eq .Values.secrets.method "vault-agent")) .Values.secrets.vault.paths.oidc .Values.secrets.vault.paths.oidc.path }}
+          {{- $oidcSecretName = (.Values.oidc.clientSecretName | default "oidc-client-secret") }}
+          {{- end }}
+          - name: OAUTH2_PROXY_COOKIE_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: {{ $oidcSecretName }}
+                key: cookie-secret
+          {{- /* Client secret: from ESO secret or values */}}
+          {{- if .Values.secrets.vault.paths.oidc.keys.clientSecret }}
+          - name: OAUTH2_PROXY_CLIENT_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: {{ $oidcSecretName }}
+                key: client-secret
+          {{- end }}
+          {{- if and .Values.externalServices.redis .Values.externalServices.redis.passwordAuth }}
+          - name: OAUTH2_PROXY_REDIS_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.externalServices.redis.passwordSecretName | default "redis-password" }}
+                key: {{ .Values.externalServices.redis.passwordSecretKey | default "password" }}
+          {{- end }}
+        ports:
+          - containerPort: 4180
+            name: http
+            protocol: TCP
+        resources:
+          {{- if .Values.oidc.oauth2Proxy.resources }}
+          {{- toYaml .Values.oidc.oauth2Proxy.resources | nindent 10 }}
+          {{- else }}
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 128Mi
+          {{- end }}
+        volumeMounts:
+          - name: config
+            mountPath: /etc/oauth2-proxy
+            readOnly: true
+        livenessProbe:
+          httpGet:
+            path: /ping
+            port: 4180
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ping
+            port: 4180
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 65534
+          capabilities:
+            drop:
+              - ALL
+      volumes:
+        - name: config
+          configMap:
+            name: {{ $oauth2ProxyName }}-config
+
+# =============================================================================
+# OAuth2 Proxy Service
+# =============================================================================
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $oauth2ProxyName }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: oauth2-proxy
+spec:
+  type: ClusterIP
+  ports:
+    - port: 4180
+      targetPort: 4180
+      protocol: TCP
+      name: http
+  selector:
+    app: {{ $oauth2ProxyName }}
+
+# =============================================================================
+# OAuth2 Proxy Ingress (ingress-nginx mode)
+# =============================================================================
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $oauth2ProxyName }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: oauth2-proxy
+  annotations:
+    # Increase buffer sizes for large Azure AD tokens/cookies
+    nginx.ingress.kubernetes.io/proxy-buffer-size: "128k"
+    nginx.ingress.kubernetes.io/proxy-buffers-number: "4"
+    {{- if .Values.ingress.nginx.annotations }}
+    {{- toYaml .Values.ingress.nginx.annotations | nindent 4 }}
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.nginx.className | default "nginx" }}
+  {{- if .Values.oidc.oauth2Proxy.tls.enabled }}
+  {{- $tlsSecretName := include "nv-config-manager.componentName" (dict "root" . "component" "gateway-tls") }}
+  tls:
+    - hosts:
+        - {{ .Values.oidc.hostname }}
+      secretName: {{ .Values.oidc.oauth2Proxy.tls.secretName | default $tlsSecretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.oidc.hostname }}
+      http:
+        paths:
+          - path: /oauth2
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $oauth2ProxyName }}
+                port:
+                  number: 4180
+
+{{- end }}

@@ -1,0 +1,28 @@
+---
+title: Site Cable Validation
+sidebar-title: Site Cable Validation
+position: 10
+---
+
+Validates network connections across an entire site by checking physical and logical connectivity between devices.
+
+## User Interface
+
+### Form Inputs
+
+The workflow presents a form with the following dropdown selections:
+
+| Field | Description | Selection Type | Required |
+| :---- | :---------- | :------------- | :------- |
+| **Site** | Choose the site to validate | Single dropdown from available sites | Yes |
+| **Roles** | Device types to include in validation | Multi-select from: switch, spine, leaf, mgmt | Yes |
+| **Device Status** | Filter devices by operational status | Multi-select from: active, planned, failed, maintenance | Yes |
+| **Tenant** | Tenant context, for multi-tenant sites | Single dropdown from available tenants | Yes |
+
+## Workflow Execution
+
+### Execution Stages
+
+1. Get network devices
+1. Validate devices
+1. Generate report

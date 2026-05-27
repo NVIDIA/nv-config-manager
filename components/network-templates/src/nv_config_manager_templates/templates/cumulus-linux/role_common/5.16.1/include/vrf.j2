@@ -1,0 +1,70 @@
+    vrf:
+      default:
+        router:
+          bgp:
+{% block address_family required %}{% endblock address_family %}
+            state: enabled
+{% block neighbor %}
+            neighbor:
+{% block multihop_peers %}{% endblock multihop_peers %}
+{# By default, assume all peers have /31s, Leaf switches will override where needed on downlinks #}
+{% block uplink_peers %}
+{% for interface in device_data 
+  | interfaces(interface_role="Uplink", prefix="swp") 
+  | rejectattr("connected_interface", "none") 
+  | rejectattr("connected_interface.device.peer_ipv4", "none")
+  | rejectattr("connected_interface.device.asn", "none")
+  | selectattr("vrf", "eq", "default")
+  | selectattr("enabled", "eq", True)
+  | sort(attribute="connected_interface.device.peer_ipv4")
+%}
+{% set neighbor = interface.connected_interface.device %}
+              {{ neighbor.peer_ipv4 }}:
+                peer-group: {{ neighbor.peer_group }}
+                description: {{ neighbor.name }}
+                type: numbered
+                remote-as: {{ neighbor.asn|asplain }}
+{% endfor %}
+{% endblock uplink_peers %}
+{% block downlink_peers %}
+{% for interface in device_data 
+  | interfaces(interface_role="Downlink", prefix="swp") 
+  | rejectattr("connected_interface", "none") 
+  | rejectattr("connected_interface.device.peer_ipv4", "none")
+  | rejectattr("connected_interface.device.asn", "none")
+  | selectattr("vrf", "eq", "default")
+  | selectattr("enabled", "eq", True)
+  | sort(attribute="connected_interface.device.peer_ipv4")
+%}
+{% set neighbor = interface.connected_interface.device %}
+              {{ neighbor.peer_ipv4 }}:
+                peer-group: {{ neighbor.peer_group }}
+                description: {{ neighbor.name }}
+                type: numbered
+                remote-as: {{ neighbor.asn|asplain }}
+{% endfor %}
+{% endblock downlink_peers %}
+{% endblock neighbor%}
+
+{% block route_servers_neighbors %} {% endblock route_servers_neighbors %}
+
+            path-selection:
+              multipath:
+                aspath-ignore: enabled
+{% block peer_group %}{% endblock peer_group %}
+{% block static_route %}{% endblock static_route %}
+{% block mgmt_vrf %}
+      mgmt:
+        router:
+          static:
+            0.0.0.0/0:
+              address-family: ipv4-unicast
+              via:
+{% for gateway_ip in device_data|default_gateways %}
+                {{ gateway_ip }}:
+                  type: ipv4-address
+{% endfor %}
+{% endblock mgmt_vrf %}
+{% block tenant_vrfs %}
+{% include "cumulus-linux/cin-leaf/5.16.1/include/tenant_vrf.j2" %}
+{% endblock tenant_vrfs %}

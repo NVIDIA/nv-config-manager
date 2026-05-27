@@ -1,0 +1,14 @@
+---
+
+{% if json.overlays is defined and json.overlays | length > 0 %}
+overlays:
+  {% for overlay in json.overlays %}
+  - "!create_or_update:name": {{ overlay.name }}
+    "!create_or_update:location": "!ref:location"
+    tenant__name: {{ global_defaults.tenant }}
+    isolation_type: vxlan_evpn
+    status__name: {{ global_defaults.status }}
+  {% endfor %}
+{% else %}
+overlays: []
+{% endif %}

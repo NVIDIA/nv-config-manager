@@ -1,0 +1,15 @@
+---
+
+{% if json.tags is defined and json.tags | length > 0 %}
+tags:
+{% for tag in json.tags %}
+- "!create_or_update:name": {{ tag.name }}
+  content_types:
+    {% for content_type in tag.content_types %}
+    - "!get:app_label": {{ content_type.split(".")[0] }}
+      "!get:model": {{ content_type.split(".")[1] }}
+    {% endfor %}
+{% endfor %}
+{% else %}
+tags: []
+{% endif %}

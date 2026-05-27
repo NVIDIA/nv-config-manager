@@ -1,0 +1,181 @@
+[project]
+name = "nautobot-app-overlays"
+dynamic = ["version"]
+description = "A Nautobot app that provides data models and UI for network overlay segregation and multi-tenancy."
+authors = [
+    {name = "Susan Hooks", email = "shooks@nvidia.com"}
+]
+readme = "README.md"
+requires-python = ">=3.10,<3.13"
+classifiers = [
+    "Intended Audience :: Information Technology",
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "nautobot>=2.4.20,<2.5.0",
+]
+keywords = ["nautobot", "nautobot-app", "nautobot-plugin", "multitenancy", "overlay", "network"]
+license = {text = "Apache-2.0"}
+
+[project.urls]
+"Homepage" = "https://github.com/NVIDIA/nv-config-manager/tree/main/components/nautobot/nautobot-app-overlays"
+"Repository" = "https://github.com/NVIDIA/nv-config-manager"
+
+[project.optional-dependencies]
+dev = [
+    "coverage",
+    "django-debug-toolbar",
+    "invoke",
+    "ipython",
+    "pylint",
+    "pylint-django",
+    "pylint-nautobot",
+    "ruff>=0.5.0",
+    "yamllint",
+    "toml",
+    "Markdown",
+    "mkdocs>=1.6.0",
+    "mkdocs-material>=9.5.0",
+    "mkdocstrings>=0.25.0",
+    "mkdocstrings-python>=1.10.0",
+    "towncrier~=23.6.0",
+]
+
+[tool.pylint.master]
+load-plugins = "pylint_django, pylint_nautobot"
+ignore = ".venv"
+
+[tool.pylint.basic]
+no-docstring-rgx = "^(_|test_|Meta$)"
+
+[tool.pylint.messages_control]
+disable = """,
+    line-too-long
+"""
+
+[tool.pylint.miscellaneous]
+notes = """,
+    FIXME,
+    XXX,
+    """
+
+[tool.pylint-nautobot]
+supported_nautobot_versions = ["2.4.0"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "D",  # pydocstyle
+    "F",  # pyflakes
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "S",  # bandit
+    "I",  # isort
+]
+ignore = [
+    "D203",  # 1 blank line required before class docstring
+    "D212",  # Multi-line docstring summary should start at the first line
+    "D213",  # Multi-line docstring summary should start at the second line
+    "D401",  # First line of docstring should be in imperative mood
+    "D407",  # Missing dashed underline after section
+    "D416",  # Section name ends in colon
+    "D107",  # Missing docstring in `__init__`
+    "E501",  # Line too long
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"nautobot_app_overlays/migrations/*" = ["D"]
+"nautobot_app_overlays/tests/*" = ["D", "S"]
+
+[build-system]
+requires = ["hatchling>=1.21.0", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "vcs"
+fallback-version = "1.2.2"
+
+[tool.hatch.version.raw-options]
+root = "../../.."
+
+[tool.hatch.build.targets.wheel]
+packages = ["nautobot_app_overlays"]
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+  ".uv-cache",
+  ".venv",
+  ".git",
+  ".gitlab-ci.yml",
+  "*.pyc",
+  "__pycache__",
+]
+
+[dependency-groups]
+dev = [
+    "ipdb>=0.13.13",
+    "python-dotenv>=1.1.0",
+]
+
+[tool.towncrier]
+package = "nautobot_app_overlays"
+directory = "changes"
+filename = "docs/admin/release_notes/version_X.Y.md"
+template = "development/towncrier_template.j2"
+start_string = "<!-- towncrier release notes start -->"
+issue_format = "[#{issue}](https://github.com/NVIDIA/nv-config-manager/issues/{issue})"
+
+[[tool.towncrier.type]]
+directory = "security"
+name = "Security"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "added"
+name = "Added"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "changed"
+name = "Changed"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "deprecated"
+name = "Deprecated"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "removed"
+name = "Removed"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "fixed"
+name = "Fixed"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "dependencies"
+name = "Dependencies"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "documentation"
+name = "Documentation"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "housekeeping"
+name = "Housekeeping"
+showcontent = true

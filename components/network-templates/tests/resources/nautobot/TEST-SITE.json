@@ -1,0 +1,198 @@
+{
+    "errors": [
+        {
+            "message": "{'role': ['Select a valid choice. FNN-Switch is not one of the available choices.']}",
+            "locations": [
+                {
+                    "line": 19,
+                    "column": 3
+                }
+            ],
+            "path": [
+                "fnn_devices"
+            ]
+        }
+    ],
+    "data": {
+        "wan_devices": [
+            {
+                "name": "example-wan-1",
+                "config_context": {
+                    "dns": {
+                        "ipv4": [
+                            "192.0.2.8",
+                            "192.0.2.9"
+                        ]
+                    },
+                    "ntp": {
+                        "ipv4": [
+                            "192.0.2.8",
+                            "192.0.2.9"
+                        ]
+                    },
+                    "ztp": {
+                        "ipv4": [
+                            "192.0.2.10"
+                        ]
+                    },
+                    "Dhcp4": {
+                        "option-def": [
+                            {
+                                "code": 239,
+                                "name": "cumulus-provision-url",
+                                "type": "string",
+                                "array": false,
+                                "space": "dhcp4",
+                                "encapsulate": "",
+                                "record-types": ""
+                            }
+                        ]
+                    }
+                },
+                "interfaces": []
+            },
+            {
+                "name": "example-wan-2",
+                "config_context": {
+                    "dns": {
+                        "ipv4": [
+                            "192.0.2.8",
+                            "192.0.2.9"
+                        ]
+                    },
+                    "ntp": {
+                        "ipv4": [
+                            "192.0.2.8",
+                            "192.0.2.9"
+                        ]
+                    },
+                    "ztp": {
+                        "ipv4": [
+                            "192.0.2.10"
+                        ]
+                    },
+                    "Dhcp4": {
+                        "option-def": [
+                            {
+                                "code": 239,
+                                "name": "cumulus-provision-url",
+                                "type": "string",
+                                "array": false,
+                                "space": "dhcp4",
+                                "encapsulate": "",
+                                "record-types": ""
+                            }
+                        ]
+                    }
+                },
+                "interfaces": []
+            }
+        ],
+        "route_servers": [],
+        "fnn_devices": null,
+        "prefixes": [
+            {
+                "prefix": "10.78.144.0/20",
+                "role": {
+                    "name": "Site-Aggregate"
+                },
+                "tags": [
+                    {
+                        "name": "role-aggregate"
+                    }
+                ]
+            }
+        ],
+        "uc_jumphost_prefixes": [],
+        "vlans": [
+            {
+                "vid": 11,
+                "rel_vlan_to_helper_address": []
+            },
+            {
+                "vid": 12,
+                "rel_vlan_to_helper_address": []
+            },
+            {
+                "vid": 13,
+                "rel_vlan_to_helper_address": []
+            },
+            {
+                "vid": 14,
+                "rel_vlan_to_helper_address": []
+            },
+            {
+                "vid": 101,
+                "rel_vlan_to_helper_address": [
+                    {
+                        "host": "10.78.144.8"
+                    },
+                    {
+                        "host": "10.78.144.9"
+                    }
+                ]
+            },
+            {
+                "vid": 102,
+                "rel_vlan_to_helper_address": [
+                    {
+                        "host": "10.78.144.8"
+                    },
+                    {
+                        "host": "10.78.144.9"
+                    }
+                ]
+            },
+            {
+                "vid": 103,
+                "rel_vlan_to_helper_address": [
+                    {
+                        "host": "10.78.144.8"
+                    },
+                    {
+                        "host": "10.78.144.9"
+                    }
+                ]
+            },
+            {
+                "vid": 150,
+                "rel_vlan_to_helper_address": []
+            },
+            {
+                "vid": 201,
+                "rel_vlan_to_helper_address": [
+                    {
+                        "host": "192.0.2.8"
+                    },
+                    {
+                        "host": "192.0.2.9"
+                    }
+                ]
+            },
+            {
+                "vid": 202,
+                "rel_vlan_to_helper_address": [
+                    {
+                        "host": "192.0.2.8"
+                    },
+                    {
+                        "host": "192.0.2.9"
+                    }
+                ]
+            },
+            {
+                "vid": 203,
+                "rel_vlan_to_helper_address": []
+            },
+            {
+                "vid": 301,
+                "rel_vlan_to_helper_address": []
+            }
+        ],
+        "locations": [
+            {
+                "tags": []
+            }
+        ]
+    }
+}

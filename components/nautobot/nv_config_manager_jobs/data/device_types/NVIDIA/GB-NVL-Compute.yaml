@@ -1,0 +1,23 @@
+---
+manufacturer: NVIDIA
+model: GB-NVL-Compute
+part_number: GB-NVL-Compute
+device_family: Compute
+u_height: 2
+is_full_depth: true
+weight: 31
+weight_unit: kg
+comments: "GB300 NVL Compute Tray with integrated GPU and NVLink switching"
+deployment_types: [all, superpod]
+power_ports:
+  - name: PSU[1-2]
+    type: iec-60320-c20
+    maximum_draw: 6784
+interfaces:
+  - name: bmc
+    type: 1000base-t
+    mgmt_only: true
+  - name: m1
+    type: 400gbase-x-osfp
+    label: Management/InBand port
+

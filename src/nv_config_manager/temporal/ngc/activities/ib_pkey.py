@@ -1,0 +1,502 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""InfiniBand PKey management activities."""
+
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+from pydantic import BaseModel
+from temporalio import activity
+from temporalio.exceptions import ApplicationError
+
+from nv_config_manager.temporal.client.ufm import UFMClient
+from nv_config_manager.temporal.common.mixins.stage import StageOutput
+
+log = logging.getLogger(__name__)
+
+PKEY_MIN = 0x0001
+PKEY_MAX = 0x7FFE
+PKEY_RESERVED = {0x7FFF}
+
+
+class ValidatePKeyInput(BaseModel):
+    """Check whether a specific PKey is free, or find the next available one."""
+
+    host: str
+    site: str | None = None
+    pkey: str | None = None
+    pkey_min: int = PKEY_MIN
+    pkey_max: int = PKEY_MAX
+
+
+class ValidatePKeyOutput(StageOutput):
+    """Resolved PKey value and whether it was auto-assigned."""
+
+    pkey: str
+    auto_assigned: bool
+    existing_pkeys: list[str]
+
+
+class CreatePKeyInput(BaseModel):
+    """Parameters for creating a new PKey partition on UFM."""
+
+    host: str
+    site: str | None = None
+    pkey: str
+    ip_over_ib: bool = True
+    index0: bool = False
+
+
+class CreatePKeyOutput(StageOutput):
+    """Confirmation that the PKey partition was created."""
+
+    pkey: str
+    created: bool
+
+
+class VerifyPKeyInput(BaseModel):
+    """Parameters for verifying a PKey exists on UFM after creation."""
+
+    host: str
+    site: str | None = None
+    pkey: str
+
+
+class VerifyPKeyOutput(StageOutput):
+    """Result of a post-creation PKey existence check."""
+
+    pkey: str
+    verified: bool
+    pkey_data: dict[str, Any]
+
+
+class AddGuidsInput(BaseModel):
+    """Parameters for adding port GUIDs to an existing PKey partition."""
+
+    host: str
+    site: str | None = None
+    pkey: str
+    guids: list[str]
+    membership: str = "full"
+    ip_over_ib: bool = True
+    index0: bool = False
+
+
+class AddGuidsOutput(StageOutput):
+    """GUIDs that were added to the PKey."""
+
+    pkey: str
+    guids_added: list[str]
+
+
+class VerifyPKeyMembersInput(BaseModel):
+    """Parameters for checking that expected GUIDs appear in a PKey's member list."""
+
+    host: str
+    site: str | None = None
+    pkey: str
+    expected_guids: list[str]
+
+
+class VerifyPKeyMembersOutput(StageOutput):
+    """Result of a PKey membership verification."""
+
+    pkey: str
+    verified: bool
+    present_guids: list[str]
+    missing_guids: list[str]
+
+
+def _parse_pkey_int(pkey_str: str) -> int:
+    """Parse a PKey hex string to an integer, stripping the high bit."""
+    return int(pkey_str, 16) & 0x7FFF
+
+
+def _extract_pkey_strings(raw: Any) -> list[str]:
+    """Extract PKey hex strings from the UFM response.
+
+    UFM may return pkeys as a dict (keys are pkey hex strings),
+    a list of strings, or a list of dicts with a 'pkey' field.
+    """
+    if isinstance(raw, dict):
+        return [str(k) for k in raw]
+    if isinstance(raw, list):
+        result: list[str] = []
+        for item in raw:
+            if isinstance(item, str):
+                result.append(item)
+            elif isinstance(item, dict) and "pkey" in item:
+                result.append(str(item["pkey"]))
+        return result
+    return []
+
+
+def _find_next_available_pkey(existing: set[int], pkey_min: int, pkey_max: int) -> int | None:
+    """Find the lowest available PKey value in the given range."""
+    for candidate in range(pkey_min, pkey_max + 1):
+        if candidate not in existing and candidate not in PKEY_RESERVED:
+            return candidate
+    return None
+
+
+@activity.defn
+async def validate_pkey_available(input: ValidatePKeyInput) -> ValidatePKeyOutput:
+    """Validate that the requested PKey is available, or auto-assign the next free one."""
+    async with UFMClient(host=input.host, site=input.site) as client:
+        raw_pkeys = await client.request("GET", "/resources/pkeys")
+
+    log.debug("UFM pkeys response type=%s, value=%r", type(raw_pkeys).__name__, raw_pkeys)
+
+    existing_keys: list[str] = _extract_pkey_strings(raw_pkeys)
+    existing_ints: set[int] = {_parse_pkey_int(k) for k in existing_keys}
+
+    log.debug(
+        "Parsed %d existing pkeys: %s",
+        len(existing_keys),
+        sorted(f"0x{v:04x}" for v in existing_ints),
+    )
+
+    if input.pkey is not None:
+        requested_int = _parse_pkey_int(input.pkey)
+        if requested_int in existing_ints:
+            raise ApplicationError(
+                f"PKey {input.pkey} is already in use on UFM at {input.host}",
+                non_retryable=True,
+            )
+        chosen = input.pkey
+        auto_assigned = False
+        log.info("PKey %s is available on %s", chosen, input.host)
+    else:
+        next_val = _find_next_available_pkey(existing_ints, input.pkey_min, input.pkey_max)
+        if next_val is None:
+            raise ApplicationError(
+                f"No available PKeys in range "
+                f"0x{input.pkey_min:04x}-0x{input.pkey_max:04x} "
+                f"on UFM at {input.host}",
+                non_retryable=True,
+            )
+        chosen = f"0x{next_val:04x}"
+        auto_assigned = True
+        log.info("Auto-assigned PKey %s on %s", chosen, input.host)
+
+    return ValidatePKeyOutput(
+        pkey=chosen,
+        auto_assigned=auto_assigned,
+        existing_pkeys=existing_keys,
+        display=f"PKey {chosen} is available" + (" (auto-assigned)" if auto_assigned else ""),
+    )
+
+
+@activity.defn
+async def create_pkey_on_ufm(input: CreatePKeyInput) -> CreatePKeyOutput:
+    """Create a PKey partition on UFM with zero GUID members."""
+    payload: dict[str, Any] = {
+        "pkey": input.pkey,
+        "ip_over_ib": input.ip_over_ib,
+        "index0": input.index0,
+    }
+
+    log.info("Creating PKey %s on UFM at %s", input.pkey, input.host)
+    log.debug("create payload=%r", payload)
+
+    async with UFMClient(host=input.host, site=input.site) as client:
+        result = await client.request("POST", "/resources/pkeys/add", json=payload)
+
+    log.debug("UFM create response: %r", result)
+
+    return CreatePKeyOutput(
+        pkey=input.pkey,
+        created=True,
+        display=f"PKey {input.pkey} created on UFM",
+    )
+
+
+@activity.defn
+async def verify_pkey_created(input: VerifyPKeyInput) -> VerifyPKeyOutput:
+    """Verify that a PKey exists on UFM after creation."""
+    log.info("Verifying PKey %s on UFM at %s", input.pkey, input.host)
+
+    async with UFMClient(host=input.host, site=input.site) as client:
+        pkey_data = await client.request("GET", f"/resources/pkeys/{input.pkey}")
+
+    log.debug("UFM verify response: %r", pkey_data)
+
+    if not pkey_data:
+        raise ApplicationError(
+            f"PKey {input.pkey} not found on UFM at {input.host} after creation",
+            non_retryable=True,
+        )
+
+    if not isinstance(pkey_data, dict):
+        pkey_data = {}
+
+    return VerifyPKeyOutput(
+        pkey=input.pkey,
+        verified=True,
+        pkey_data=pkey_data,
+        display=f"PKey {input.pkey} verified on UFM",
+    )
+
+
+@activity.defn
+async def add_guids_to_pkey(input: AddGuidsInput) -> AddGuidsOutput:
+    """Add port GUIDs to an existing PKey partition on UFM."""
+    if not input.guids:
+        log.info("No GUIDs to add to PKey %s — skipping", input.pkey)
+        return AddGuidsOutput(
+            pkey=input.pkey,
+            guids_added=[],
+            display=f"No GUIDs to add to PKey {input.pkey}",
+        )
+
+    payload: dict[str, Any] = {
+        "pkey": input.pkey,
+        "guids": input.guids,
+        "membership": input.membership,
+        "ip_over_ib": input.ip_over_ib,
+        "index0": input.index0,
+    }
+
+    log.info(
+        "Adding %d GUIDs to PKey %s on UFM at %s: %s",
+        len(input.guids),
+        input.pkey,
+        input.host,
+        input.guids,
+    )
+
+    async with UFMClient(host=input.host, site=input.site) as client:
+        await client.request("POST", "/resources/pkeys/", json=payload)
+
+    return AddGuidsOutput(
+        pkey=input.pkey,
+        guids_added=input.guids,
+        display=f"Added {len(input.guids)} GUID(s) to PKey {input.pkey}",
+    )
+
+
+class FetchPKeyMembersInput(BaseModel):
+    """Parameters for retrieving the current GUID member list of a PKey."""
+
+    host: str
+    site: str | None = None
+    pkey: str
+
+
+class FetchPKeyMembersOutput(StageOutput):
+    """Current GUID members of a PKey partition."""
+
+    pkey: str
+    guids: list[str]
+
+
+class RemoveGuidsInput(BaseModel):
+    """Parameters for removing specific port GUIDs from a PKey partition."""
+
+    host: str
+    site: str | None = None
+    pkey: str
+    guids: list[str]
+
+
+class RemoveGuidsOutput(StageOutput):
+    """GUIDs that were removed from the PKey."""
+
+    pkey: str
+    guids_removed: list[str]
+
+
+@activity.defn
+async def fetch_pkey_members(input: FetchPKeyMembersInput) -> FetchPKeyMembersOutput:
+    """Fetch the current GUID member list for a PKey from UFM."""
+    log.info("Fetching members for PKey %s on UFM at %s", input.pkey, input.host)
+
+    async with UFMClient(host=input.host, site=input.site) as client:
+        pkey_data = await client.request(
+            "GET",
+            f"/resources/pkeys/{input.pkey}",
+            params={"guids_data": "true"},
+        )
+
+    if not isinstance(pkey_data, dict):
+        raise ApplicationError(
+            f"PKey {input.pkey} not found on UFM at {input.host}",
+            non_retryable=True,
+        )
+
+    raw_guids = pkey_data.get("guids", [])
+    guids = [
+        (entry["guid"] if isinstance(entry, dict) else str(entry)).lower() for entry in raw_guids
+    ]
+
+    log.info("PKey %s has %d current member(s): %s", input.pkey, len(guids), guids)
+
+    return FetchPKeyMembersOutput(
+        pkey=input.pkey,
+        guids=guids,
+        display=f"PKey {input.pkey} has {len(guids)} current member(s)",
+    )
+
+
+@activity.defn
+async def remove_guids_from_pkey(input: RemoveGuidsInput) -> RemoveGuidsOutput:
+    """Remove specific port GUIDs from an existing PKey partition on UFM.
+
+    No-ops gracefully when the GUID list is empty.
+    """
+    if not input.guids:
+        log.info("No GUIDs to remove from PKey %s — skipping", input.pkey)
+        return RemoveGuidsOutput(
+            pkey=input.pkey,
+            guids_removed=[],
+            display=f"No GUIDs to remove from PKey {input.pkey}",
+        )
+
+    guids_csv = ",".join(input.guids)
+    path = f"/resources/pkeys/{input.pkey}/guids/{guids_csv}"
+
+    log.info(
+        "Removing %d GUID(s) from PKey %s on UFM at %s: %s",
+        len(input.guids),
+        input.pkey,
+        input.host,
+        input.guids,
+    )
+
+    async with UFMClient(host=input.host, site=input.site) as client:
+        await client.request("DELETE", path)
+
+    return RemoveGuidsOutput(
+        pkey=input.pkey,
+        guids_removed=input.guids,
+        display=f"Removed {len(input.guids)} GUID(s) from PKey {input.pkey}",
+    )
+
+
+@activity.defn
+async def verify_pkey_members(input: VerifyPKeyMembersInput) -> VerifyPKeyMembersOutput:
+    """Verify that all expected GUIDs are present as members of a PKey on UFM."""
+    log.info(
+        "Verifying %d GUID(s) in PKey %s on UFM at %s",
+        len(input.expected_guids),
+        input.pkey,
+        input.host,
+    )
+
+    async with UFMClient(host=input.host, site=input.site) as client:
+        pkey_data = await client.request(
+            "GET",
+            f"/resources/pkeys/{input.pkey}",
+            params={"guids_data": "true"},
+        )
+
+    log.info("UFM pkey member response: %r", pkey_data)
+
+    if not isinstance(pkey_data, dict):
+        raise ApplicationError(
+            f"PKey {input.pkey} not found on UFM at {input.host}",
+            non_retryable=True,
+        )
+
+    raw_guids = pkey_data.get("guids", [])
+    present_set = {
+        (entry["guid"] if isinstance(entry, dict) else str(entry)).lower() for entry in raw_guids
+    }
+    expected_set = {g.lower() for g in input.expected_guids}
+    missing = sorted(expected_set - present_set)
+
+    if missing:
+        raise ApplicationError(
+            f"PKey {input.pkey}: {len(missing)} GUID(s) not yet present on UFM: {missing}",
+            non_retryable=False,
+        )
+
+    log.info("All %d GUID(s) verified in PKey %s", len(input.expected_guids), input.pkey)
+
+    return VerifyPKeyMembersOutput(
+        pkey=input.pkey,
+        verified=True,
+        present_guids=sorted(present_set),
+        missing_guids=[],
+        display=f"All {len(input.expected_guids)} GUID(s) verified in PKey {input.pkey}",
+    )
+
+
+class VerifyPKeyMembersAbsentInput(BaseModel):
+    """Parameters for checking that a list of GUIDs is NOT present in a PKey."""
+
+    host: str
+    site: str | None = None
+    pkey: str
+    forbidden_guids: list[str]
+
+
+class VerifyPKeyMembersAbsentOutput(StageOutput):
+    """Result of a PKey membership-removal verification."""
+
+    pkey: str
+    verified: bool
+    still_present_guids: list[str]
+
+
+@activity.defn
+async def verify_pkey_members_absent(
+    input: VerifyPKeyMembersAbsentInput,
+) -> VerifyPKeyMembersAbsentOutput:
+    """Verify that none of the forbidden GUIDs remain as members of a PKey on UFM."""
+    log.info(
+        "Verifying %d GUID(s) absent from PKey %s on UFM at %s",
+        len(input.forbidden_guids),
+        input.pkey,
+        input.host,
+    )
+
+    async with UFMClient(host=input.host, site=input.site) as client:
+        pkey_data = await client.request(
+            "GET",
+            f"/resources/pkeys/{input.pkey}",
+            params={"guids_data": "true"},
+        )
+
+    if not isinstance(pkey_data, dict):
+        raise ApplicationError(
+            f"PKey {input.pkey} not found on UFM at {input.host}",
+            non_retryable=True,
+        )
+
+    raw_guids = pkey_data.get("guids", [])
+    present_set = {
+        (entry["guid"] if isinstance(entry, dict) else str(entry)).lower() for entry in raw_guids
+    }
+    forbidden_set = {g.lower() for g in input.forbidden_guids}
+    still_present = sorted(forbidden_set & present_set)
+
+    if still_present:
+        raise ApplicationError(
+            f"PKey {input.pkey}: {len(still_present)} GUID(s) still present on UFM: "
+            f"{still_present}",
+            non_retryable=False,
+        )
+
+    return VerifyPKeyMembersAbsentOutput(
+        pkey=input.pkey,
+        verified=True,
+        still_present_guids=[],
+        display=(
+            f"All {len(input.forbidden_guids)} GUID(s) confirmed absent from PKey {input.pkey}"
+        ),
+    )
