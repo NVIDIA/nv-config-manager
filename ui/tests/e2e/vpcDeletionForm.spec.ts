@@ -39,7 +39,24 @@ test.describe("VPC Deletion Workflow Form", () => {
 
   test("displays validation errors for empty submission", async ({ page }) => {
     // Clear the default values that are auto-populated
-    await page.getByLabel("Namespace").fill("");
+    const namespaceInput = page.getByLabel("Namespace");
+    await expect(
+      page.getByRole("button", { name: "Select a Site..." })
+    ).toBeEnabled({
+      timeout: TEST_TIMEOUT,
+    });
+    await expect(namespaceInput).toHaveValue("spectrumx", {
+      timeout: TEST_TIMEOUT,
+    });
+    await expect
+      .poll(
+        async () => {
+          await namespaceInput.fill("");
+          return namespaceInput.inputValue();
+        },
+        { timeout: TEST_TIMEOUT }
+      )
+      .toBe("");
 
     await page.getByRole("button", { name: "Submit" }).click();
 

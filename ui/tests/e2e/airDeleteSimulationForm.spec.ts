@@ -219,7 +219,7 @@ test.describe("AIR Delete Simulation Workflow Form", () => {
     await page.getByRole("button", { name: "Select a Simulation..." }).click();
 
     // Type in the search box to filter
-    await page.getByPlaceholder("Search Simulation").fill("RNO1");
+    await page.getByPlaceholder("Search Simulation").fill("SITEA");
 
     // Verify that only matching items are shown
     await expect(

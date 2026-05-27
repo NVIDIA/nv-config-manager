@@ -103,8 +103,12 @@ test.describe("Port LLDP Info Workflow Form", () => {
     page,
   }) => {
     // Fill MAC address
-    await page.getByLabel("MAC Address").waitFor({ state: "visible" });
-    await page.getByLabel("MAC Address").fill(SAMPLE_MAC_ADDRESS);
+    const macAddressInput = page.getByLabel("MAC Address");
+    await macAddressInput.waitFor({ state: "visible" });
+    await macAddressInput.fill(SAMPLE_MAC_ADDRESS);
+    await expect(macAddressInput).toHaveValue(SAMPLE_MAC_ADDRESS, {
+      timeout: TEST_TIMEOUT,
+    });
 
     // Verify device fields are disabled
     await expect(

@@ -191,7 +191,12 @@ test.describe("AIR Create Simulation Workflow Form", () => {
 
   test("shows error toast when formatting invalid JSON", async ({ page }) => {
     // Fill form with invalid JSON
-    await page.locator('textarea[name="topology"]').fill("invalid json");
+    const topologyInput = page.locator('textarea[name="topology"]');
+    await expect(topologyInput).toBeVisible({ timeout: TEST_TIMEOUT });
+    await topologyInput.fill("invalid json");
+    await expect(topologyInput).toHaveValue("invalid json", {
+      timeout: TEST_TIMEOUT,
+    });
 
     // Click format button
     await page.getByRole("button", { name: "Format JSON" }).click();
@@ -291,8 +296,17 @@ test.describe("AIR Create Simulation Workflow Form", () => {
     });
 
     // Fill form with valid data
-    await page.getByLabel("Simulation Name").fill(FORBIDDEN_SITE_ID);
-    await page.locator('textarea[name="topology"]').fill(SAMPLE_TOPOLOGY);
+    const nameInput = page.getByLabel("Simulation Name");
+    const topologyInput = page.locator('textarea[name="topology"]');
+    await expect(nameInput).toBeVisible({ timeout: TEST_TIMEOUT });
+    await nameInput.fill(FORBIDDEN_SITE_ID);
+    await topologyInput.fill(SAMPLE_TOPOLOGY);
+    await expect(nameInput).toHaveValue(FORBIDDEN_SITE_ID, {
+      timeout: TEST_TIMEOUT,
+    });
+    await expect(topologyInput).toHaveValue(SAMPLE_TOPOLOGY, {
+      timeout: TEST_TIMEOUT,
+    });
 
     await page.getByRole("button", { name: "Submit" }).click();
 
