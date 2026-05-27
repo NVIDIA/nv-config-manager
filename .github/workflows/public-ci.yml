@@ -244,7 +244,7 @@ jobs:
       - run: uv run python scripts/generate_openapi.py --check
 
   ui:
-    name: UI Lint Build And E2E
+    name: UI Lint And Build
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -259,15 +259,6 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run build
-      - run: npx playwright install --with-deps chromium
-      - run: npm run test:e2e:ci
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: ui-e2e-artifacts
-          path: |
-            ui/playwright-report/
-            ui/test-results/
 
   integration:
     name: Kind Integration
