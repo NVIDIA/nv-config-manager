@@ -22,7 +22,7 @@ concurrency:
 jobs:
   validate:
     name: Validate Promotion
-    runs-on: linux-amd64-cpu4
+    runs-on: ubuntu-24.04
     outputs:
       commit: ${{ steps.resolve.outputs.commit }}
       source_rc_tag: ${{ steps.resolve.outputs.source_rc_tag }}
@@ -109,7 +109,7 @@ jobs:
   promote:
     name: Create Stable Tag
     needs: validate
-    runs-on: linux-amd64-cpu4
+    runs-on: ubuntu-24.04
     environment: release-tagging
     permissions:
       contents: write
