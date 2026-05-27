@@ -1,16 +1,10 @@
 name: Docs
 
 on:
-  pull_request:
-    paths:
-      - "docs/**"
-      - "scripts/generate_openapi.py"
-      - "installer/scripts/screenshot_tui.py"
-      - "Makefile"
-      - ".github/workflows/docs.yml"
   push:
     branches:
       - main
+      - "pull-request/[0-9]+"
     paths:
       - "docs/**"
       - "scripts/generate_openapi.py"
@@ -33,9 +27,11 @@ env:
 jobs:
   lint:
     name: Lint Docs
-    runs-on: ubuntu-24.04
+    runs-on: linux-amd64-cpu4
     steps:
       - uses: actions/checkout@v4
+      - name: Setup proxy cache
+        uses: nv-gha-runners/setup-proxy-cache@main
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -53,14 +49,20 @@ jobs:
   preview:
     name: Preview Docs
     needs: lint
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-24.04
+    if: startsWith(github.ref, 'refs/heads/pull-request/')
+    runs-on: linux-amd64-cpu4
     continue-on-error: true
     permissions:
       contents: read
+      issues: write
       pull-requests: write
     steps:
+      - name: Get PR info
+        id: get-pr-info
+        uses: nv-gha-runners/get-pr-info@main
       - uses: actions/checkout@v4
+      - name: Setup proxy cache
+        uses: nv-gha-runners/setup-proxy-cache@main
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -70,7 +72,7 @@ jobs:
         id: preview
         env:
           FERN_TOKEN: ${{ secrets.FERN_TOKEN }}
-          PREVIEW_ID: ${{ github.event.repository.name }}-pr-${{ github.event.pull_request.number }}
+          PREVIEW_ID: ${{ github.event.repository.name }}-pr-${{ fromJSON(steps.get-pr-info.outputs.pr-info).number }}
         run: |
           set -euo pipefail
           if [ -z "${FERN_TOKEN:-}" ]; then
@@ -96,7 +98,7 @@ jobs:
         if: steps.preview.outputs.preview_url != ''
         env:
           GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_NUMBER: ${{ fromJSON(steps.get-pr-info.outputs.pr-info).number }}
           PREVIEW_URL: ${{ steps.preview.outputs.preview_url }}
         run: |
           set -euo pipefail
@@ -121,9 +123,11 @@ jobs:
     name: Publish Docs
     needs: lint
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-24.04
+    runs-on: linux-amd64-cpu4
     steps:
       - uses: actions/checkout@v4
+      - name: Setup proxy cache
+        uses: nv-gha-runners/setup-proxy-cache@main
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
