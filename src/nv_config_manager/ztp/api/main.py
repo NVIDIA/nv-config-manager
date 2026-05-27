@@ -81,4 +81,4 @@ def healthcheck() -> str:
     return "OK"
 
 
-install_identity_probe(app)
+install_identity_probe(app, deferred_auth_prefixes=("/v1/device/",))

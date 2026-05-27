@@ -106,8 +106,9 @@ async def load_configuration(
 # same DHCP boot-file-name option
 @router.get("/{device_uuid}/onie", response_class=PlainTextResponse)
 @router.get("/{device_uuid}/firmware", response_class=StreamingResponse)
-async def load_firmware(device_uuid: str) -> StreamingResponse:
+async def load_firmware(device_uuid: str, request: Request) -> StreamingResponse:
     """Load the firmware for the given device."""
+    await _authorize_request(request, device_uuid)
     try:
         nb_client = NautobotClient()
         async with nb_client:
@@ -130,8 +131,9 @@ async def load_firmware(device_uuid: str) -> StreamingResponse:
 
 
 @router.get("/{device_uuid}/firmware/checksum")
-async def load_firmware_checksum(device_uuid: str) -> ChecksumResponse:
+async def load_firmware_checksum(device_uuid: str, request: Request) -> ChecksumResponse:
     """Load the firmware checksum for the given device."""
+    await _authorize_request(request, device_uuid)
     try:
         nb_client = NautobotClient()
         async with nb_client:

@@ -15,18 +15,17 @@
 """Simple HealthCheck API for DHCP Server."""
 
 import argparse
-from collections.abc import Awaitable, Callable
 from typing import Any
 
 import uvicorn
 from aiohttp import ClientResponseError
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import Response
 from prometheus_client import CONTENT_TYPE_LATEST, Gauge, generate_latest
 from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_fastapi_instrumentator import metrics as instrumentator_metrics
 
-from nv_config_manager.common.auth import install_identity_probe, require_authenticated_identity
+from nv_config_manager.common.auth import install_identity_probe
 from nv_config_manager.common.config import load_config
 from nv_config_manager.common.log import configure_logging
 from nv_config_manager.dhcp.kea import KeaClient
@@ -43,8 +42,6 @@ CACHE_LAST_REFRESH = Gauge(
     namespace="nv-config-manager",
     subsystem="dhcp",
 )
-
-UNAUTHENTICATED_PATHS = {"/healthcheck", "/metrics"}
 
 instrumentator = Instrumentator(excluded_handlers=["/healthcheck", "/metrics"])
 instrumentator.add(
@@ -71,21 +68,6 @@ def main() -> None:
         proxy_headers=True,
         log_config=None,
     )
-
-
-@app.middleware("http")
-async def authorize_request(
-    request: Request, call_next: Callable[[Request], Awaitable[Response]]
-) -> Response:
-    """Determine if the request has a trusted user or workload identity."""
-    if request.url.path in UNAUTHENTICATED_PATHS:
-        return await call_next(request)
-
-    try:
-        await require_authenticated_identity(request)
-        return await call_next(request)
-    except HTTPException as exc:
-        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
 
 
 def sanitize_config(config: Any) -> None:

@@ -31,6 +31,8 @@ from nv_config_manager.ztp.s3 import (
     S3NotFoundException,
 )
 
+SSO_HEADERS = {"X-Auth-Request-Email": "test@nvidia.com"}
+
 
 @pytest.fixture
 def client():
@@ -47,6 +49,9 @@ def test_healthcheck(client):
 def test_docs(client):
     """Verify Swagger Doc endpoint."""
     rsp = client.get("/docs")
+    assert rsp.status_code == 403
+
+    rsp = client.get("/docs", headers=SSO_HEADERS)
     assert rsp.status_code == 200
 
 
@@ -198,7 +203,7 @@ def test_device_v1_firmware(mock_device_data, mock_not_found_data, client):
         with patch(
             "nv_config_manager.ztp.api.device_v1.get_storage_client", return_value=mock_s3_instance
         ):
-            rsp = client.get(f"/v1/device/{uuid4()}/firmware")
+            rsp = client.get(f"/v1/device/{uuid4()}/firmware", headers=SSO_HEADERS)
             assert rsp.status_code == 200
             assert rsp.content == mock_content
             assert rsp.headers["content-disposition"] == (
@@ -221,7 +226,7 @@ def test_device_v1_firmware(mock_device_data, mock_not_found_data, client):
         with patch(
             "nv_config_manager.ztp.api.device_v1.get_storage_client", return_value=mock_s3_instance
         ):
-            rsp = client.get(f"/v1/device/{uuid4()}/onie")
+            rsp = client.get(f"/v1/device/{uuid4()}/onie", headers=SSO_HEADERS)
             assert rsp.status_code == 200
             assert rsp.content == mock_content
             assert rsp.headers["content-disposition"] == (
@@ -234,14 +239,14 @@ def test_device_v1_firmware(mock_device_data, mock_not_found_data, client):
         with patch(
             "nv_config_manager.ztp.api.device_v1.get_storage_client", return_value=mock_s3_instance
         ):
-            rsp = client.get(f"/v1/device/{uuid4()}/firmware")
+            rsp = client.get(f"/v1/device/{uuid4()}/firmware", headers=SSO_HEADERS)
             assert rsp.status_code == 404
 
     with patch(
         "nv_config_manager.ztp.nautobot.NautobotClient.graphql_query",
         return_value=mock_not_found_data,
     ):
-        rsp = client.get(f"/v1/device/{uuid4()}/firmware")
+        rsp = client.get(f"/v1/device/{uuid4()}/firmware", headers=SSO_HEADERS)
         assert rsp.status_code == 404
 
 
@@ -263,7 +268,7 @@ def test_device_v1_firmware_checksum(mock_device_data, mock_not_found_data, clie
         with patch(
             "nv_config_manager.ztp.api.device_v1.get_storage_client", return_value=mock_s3_instance
         ):
-            rsp = client.get(f"/v1/device/{uuid4()}/firmware/checksum")
+            rsp = client.get(f"/v1/device/{uuid4()}/firmware/checksum", headers=SSO_HEADERS)
             assert rsp.status_code == 200
             assert rsp.json() == {"checksum": "testchecksum"}
 
@@ -273,14 +278,14 @@ def test_device_v1_firmware_checksum(mock_device_data, mock_not_found_data, clie
         with patch(
             "nv_config_manager.ztp.api.device_v1.get_storage_client", return_value=mock_s3_instance
         ):
-            rsp = client.get(f"/v1/device/{uuid4()}/firmware/checksum")
+            rsp = client.get(f"/v1/device/{uuid4()}/firmware/checksum", headers=SSO_HEADERS)
             assert rsp.status_code == 404
 
     with patch(
         "nv_config_manager.ztp.nautobot.NautobotClient.graphql_query",
         return_value=mock_not_found_data,
     ):
-        rsp = client.get(f"/v1/device/{uuid4()}/firmware/checksum")
+        rsp = client.get(f"/v1/device/{uuid4()}/firmware/checksum", headers=SSO_HEADERS)
         assert rsp.status_code == 404
 
 
@@ -443,7 +448,7 @@ def test_v1_firmware(client):
     with patch(
         "nv_config_manager.ztp.api.firmware_v1.get_storage_client", return_value=mock_s3_instance
     ):
-        rsp = client.get("/v1/firmware/arista_eos/4.29.3M")
+        rsp = client.get("/v1/firmware/arista_eos/4.29.3M", headers=SSO_HEADERS)
         assert rsp.status_code == 200
         assert rsp.content == mock_content
         assert rsp.headers["content-disposition"] == (
@@ -456,7 +461,7 @@ def test_v1_firmware(client):
     with patch(
         "nv_config_manager.ztp.api.firmware_v1.get_storage_client", return_value=mock_s3_instance
     ):
-        rsp = client.get("/v1/firmware/arista_eos/4.29.3M")
+        rsp = client.get("/v1/firmware/arista_eos/4.29.3M", headers=SSO_HEADERS)
         assert rsp.status_code == 404
 
 
@@ -474,7 +479,7 @@ def test_v1_firmware_checksum(client):
     with patch(
         "nv_config_manager.ztp.api.firmware_v1.get_storage_client", return_value=mock_s3_instance
     ):
-        rsp = client.get("/v1/firmware/arista_eos/4.29.3M/checksum")
+        rsp = client.get("/v1/firmware/arista_eos/4.29.3M/checksum", headers=SSO_HEADERS)
         assert rsp.status_code == 200
         assert rsp.json() == {"checksum": "testchecksum"}
 
@@ -484,7 +489,7 @@ def test_v1_firmware_checksum(client):
     with patch(
         "nv_config_manager.ztp.api.firmware_v1.get_storage_client", return_value=mock_s3_instance
     ):
-        rsp = client.get("/v1/firmware/arista_eos/4.29.3M/checksum")
+        rsp = client.get("/v1/firmware/arista_eos/4.29.3M/checksum", headers=SSO_HEADERS)
         assert rsp.status_code == 404
 
 
@@ -514,7 +519,7 @@ def test_v1_files_get(client):
     with patch(
         "nv_config_manager.ztp.api.files_v1.get_storage_client", return_value=mock_s3_instance
     ):
-        rsp = client.get("/v1/files/arista_eos/4.29.3M/image.bin")
+        rsp = client.get("/v1/files/arista_eos/4.29.3M/image.bin", headers=SSO_HEADERS)
         assert rsp.status_code == 200
         assert rsp.content == mock_content
         assert rsp.headers["content-disposition"] == (
@@ -527,7 +532,7 @@ def test_v1_files_get(client):
     with patch(
         "nv_config_manager.ztp.api.files_v1.get_storage_client", return_value=mock_s3_instance
     ):
-        rsp = client.get("/v1/files/arista_eos/4.29.3M/image.bin")
+        rsp = client.get("/v1/files/arista_eos/4.29.3M/image.bin", headers=SSO_HEADERS)
         assert rsp.status_code == 404
 
 
@@ -545,7 +550,10 @@ def test_v1_files_checksum(client):
     with patch(
         "nv_config_manager.ztp.api.files_v1.get_storage_client", return_value=mock_s3_instance
     ):
-        rsp = client.get("/v1/files/arista_eos/4.29.3M/image.bin/checksum")
+        rsp = client.get(
+            "/v1/files/arista_eos/4.29.3M/image.bin/checksum",
+            headers=SSO_HEADERS,
+        )
         assert rsp.status_code == 200
         assert rsp.json() == {"checksum": "testchecksum"}
 
@@ -555,7 +563,10 @@ def test_v1_files_checksum(client):
     with patch(
         "nv_config_manager.ztp.api.files_v1.get_storage_client", return_value=mock_s3_instance
     ):
-        rsp = client.get("/v1/files/arista_eos/4.29.3M/image.bin/checksum")
+        rsp = client.get(
+            "/v1/files/arista_eos/4.29.3M/image.bin/checksum",
+            headers=SSO_HEADERS,
+        )
         assert rsp.status_code == 404
 
 
@@ -595,7 +606,7 @@ def test_v1_files_list(client):
     with patch(
         "nv_config_manager.ztp.api.files_v1.get_storage_client", return_value=mock_s3_instance
     ):
-        rsp = client.get("/v1/files/arista_eos/4.29.3M")
+        rsp = client.get("/v1/files/arista_eos/4.29.3M", headers=SSO_HEADERS)
         assert rsp.json() == expected_rsp_json
 
 
@@ -715,6 +726,6 @@ def test_v1_files_list_all(client):
     with patch(
         "nv_config_manager.ztp.api.files_v1.get_storage_client", return_value=mock_s3_instance
     ):
-        rsp = client.get("/v1/files/")
+        rsp = client.get("/v1/files/", headers=SSO_HEADERS)
         assert rsp.status_code == 200
         assert rsp.json() == expected_rsp_json

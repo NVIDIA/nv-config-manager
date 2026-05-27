@@ -99,6 +99,7 @@ from typing import Any
 import jwt as pyjwt
 from cryptography import x509
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 from jwt.types import Options as JWTDecodeOptions
 from pydantic import BaseModel
 
@@ -112,6 +113,18 @@ SSO_EMAIL_HEADER = "X-Auth-Request-Email"
 SSO_USER_HEADER = "X-Auth-Request-User"
 SSO_GROUPS_HEADER = "X-Auth-Request-Groups"
 MTLS_CERT_HEADER = "ssl-client-cert"
+
+DEFAULT_UNAUTHENTICATED_PATHS = frozenset(
+    {
+        "/health",
+        "/healthz",
+        "/ready",
+        "/readyz",
+        "/ping",
+        "/healthcheck",
+        "/metrics",
+    }
+)
 
 
 # ── Configuration dataclasses ────────────────────────────────────────────
@@ -633,10 +646,12 @@ def extract_identity(
 
 
 def get_sso_user(request: Request) -> str:
-    """Return the short username from any auth source, or ``"unknown"``.
+    """Return the short username from any auth source.
 
     Suitable for audit trails and commit messages where a full
-    ``SSOIdentity`` is not needed.
+    ``SSOIdentity`` is not needed.  Returns ``"anonymous"`` when auth is
+    disabled and no identity is present, or ``"unknown"`` when auth is enabled
+    but identity extraction failed.
     """
     identity = extract_identity(request, include_request_headers=accept_request_headers())
     if identity:
@@ -664,6 +679,27 @@ def accept_request_headers() -> bool:
     Reads ``[auth] accept_request_headers`` from the INI.
     """
     return load_auth_config().accept_request_headers
+
+
+def _normalize_request_path(path: str) -> str:
+    """Normalize request paths for exact auth exemption checks."""
+    if path == "/":
+        return path
+    return path.rstrip("/")
+
+
+def _path_matches_prefix(path: str, prefix: str) -> bool:
+    """Return True when *path* equals or is below *prefix*."""
+    normalized_prefix = _normalize_request_path(prefix)
+    return path == normalized_prefix or path.startswith(f"{normalized_prefix}/")
+
+
+def _is_cors_preflight(request: Request) -> bool:
+    """Return True for CORS preflight requests handled by CORS middleware."""
+    return (
+        request.method == "OPTIONS"
+        and request.headers.get("access-control-request-method") is not None
+    )
 
 
 # ── FastAPI dependencies ──────────────────────────────────────────────────
@@ -793,14 +829,28 @@ class WhoamiResponse(BaseModel):
     roles: list[str]
 
 
-def install_identity_probe(app: FastAPI, *, require_auth: bool = True) -> None:
+def install_identity_probe(
+    app: FastAPI,
+    *,
+    require_auth: bool = True,
+    enforce_auth: bool = True,
+    unauthenticated_paths: frozenset[str] | set[str] | tuple[str, ...] = (
+        DEFAULT_UNAUTHENTICATED_PATHS
+    ),
+    deferred_auth_prefixes: tuple[str, ...] = (),
+) -> None:
     """Register ``normalize_auth_data`` middleware + ``GET /whoami`` on ``app``.
 
     Call this once from each FastAPI app's ``main.py``.  After installation:
 
+    - When ``enforce_auth`` is true, every request requires a trusted identity
+      unless the path is in ``unauthenticated_paths``.  This keeps healthchecks
+      as the explicit unauthenticated exception instead of requiring every route
+      author to remember an auth dependency.
     - Every request has ``request.state.user`` (str) and ``request.state.roles``
       (set[str]) populated from :func:`extract_identity`, falling back to
-      ``user="unknown"`` / ``roles={"all"}`` when no identity can be derived.
+      ``user="anonymous"`` when auth is disabled and ``user="unknown"`` when
+      auth is enabled but no identity can be derived.
     - ``GET /whoami`` returns the current caller's identity. By default this
       endpoint requires a trusted identity, matching the rest of the API
       surface; set ``require_auth=False`` only for local diagnostics.
@@ -810,6 +860,7 @@ def install_identity_probe(app: FastAPI, *, require_auth: bool = True) -> None:
     ``app.middleware`` registrations run first.  This probe does not depend on
     any other middleware so call order is not important.
     """
+    unauthenticated_path_set = frozenset(_normalize_request_path(p) for p in unauthenticated_paths)
 
     if require_auth:
 
@@ -857,9 +908,34 @@ def install_identity_probe(app: FastAPI, *, require_auth: bool = True) -> None:
         if identity is not None:
             request.state.user = identity.user
             request.state.roles = identity.groups
+        elif not auth_required():
+            request.state.user = ANONYMOUS_IDENTITY.user
+            request.state.roles = ANONYMOUS_IDENTITY.groups
         else:
             request.state.user = "unknown"
             request.state.roles = {"all"}
 
         response: Response = await call_next(request)
         return response
+
+    if enforce_auth:
+
+        @app.middleware("http")
+        async def require_auth_by_default(
+            request: Request, call_next: Callable[[Request], Any]
+        ) -> Response:
+            """Require auth on every route except explicit unauthenticated paths."""
+            path = _normalize_request_path(request.url.path)
+            if (
+                path in unauthenticated_path_set
+                or _is_cors_preflight(request)
+                or any(_path_matches_prefix(path, prefix) for prefix in deferred_auth_prefixes)
+            ):
+                return await call_next(request)
+
+            try:
+                await require_authenticated_identity(request)
+            except HTTPException as exc:
+                return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
+            return await call_next(request)
