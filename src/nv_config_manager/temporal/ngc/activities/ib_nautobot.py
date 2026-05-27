@@ -1,0 +1,729 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""Nautobot activities for InfiniBand overlay management."""
+
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+from pydantic import BaseModel
+from temporalio import activity
+from temporalio.exceptions import ApplicationError
+
+from nv_config_manager.temporal.client.nautobot import NautobotClient
+from nv_config_manager.temporal.common.mixins.stage import StageOutput
+
+log = logging.getLogger(__name__)
+
+PLUGIN_BASE = "plugins/overlays"
+ISOLATION_TYPE_IB_PKEY = "ib_pkey"
+DEFAULT_STATUS_NAME = "Active"
+
+
+class CreatePartitionInNautobotInput(BaseModel):
+    """Parameters for recording an IB overlay partition in Nautobot."""
+
+    pkey: str
+    partition_name: str | None = None
+    location_name: str
+    tenant_name: str | None = None
+    membership_type: str = "full"
+
+
+class CreatePartitionInNautobotOutput(StageOutput):
+    """Nautobot IDs for the created or reused overlay and PKey objects."""
+
+    partition_id: str
+    partition_name: str
+    pkey_id: str
+    pkey: str
+
+
+@activity.defn
+async def create_partition_in_nautobot(
+    input: CreatePartitionInNautobotInput,
+) -> CreatePartitionInNautobotOutput:
+    """Create an Overlay and InfiniBandPKey record in Nautobot."""
+    partition_name = input.partition_name or f"ib-pkey-{input.pkey}"
+
+    client = NautobotClient()
+    async with client:
+        location = await _lookup_by_name(client, "dcim/locations/", input.location_name, "Location")
+        location_id: str = location["id"]
+
+        tenant_id: str | None = None
+        if input.tenant_name:
+            tenant = await _lookup_by_name(client, "tenancy/tenants/", input.tenant_name, "Tenant")
+            tenant_id = tenant["id"]
+
+        status_id = await _resolve_status_id(client)
+
+        existing_overlay = await _find_existing_overlay(client, partition_name, location_id)
+        if existing_overlay:
+            partition_id: str = existing_overlay["id"]
+            log.info("Overlay '%s' already exists (%s), reusing", partition_name, partition_id)
+        else:
+            overlay_payload: dict[str, Any] = {
+                "name": partition_name,
+                "location": location_id,
+                "isolation_type": ISOLATION_TYPE_IB_PKEY,
+                "status": status_id,
+            }
+            if tenant_id:
+                overlay_payload["tenant"] = tenant_id
+            log.info("Creating Overlay '%s' in Nautobot", partition_name)
+            overlay = await client.post(f"{PLUGIN_BASE}/overlays/", data=overlay_payload)
+            partition_id = overlay["id"]
+
+        existing_pkey = await _find_existing_pkey(client, input.pkey, partition_id)
+        if existing_pkey:
+            pkey_id: str = existing_pkey["id"]
+            log.info("InfiniBandPKey '%s' already exists (%s), reusing", input.pkey, pkey_id)
+        else:
+            pkey_payload: dict[str, Any] = {
+                "pkey": input.pkey,
+                "name": f"PKey-{input.pkey}",
+                "overlay": partition_id,
+                "membership_type": input.membership_type,
+                "status": status_id,
+            }
+            if tenant_id:
+                pkey_payload["tenant"] = tenant_id
+            log.info("Creating InfiniBandPKey %s in Nautobot", input.pkey)
+            pkey_record = await client.post(f"{PLUGIN_BASE}/pkeys/", data=pkey_payload)
+            pkey_id = pkey_record["id"]
+
+    return CreatePartitionInNautobotOutput(
+        partition_id=partition_id,
+        partition_name=partition_name,
+        pkey_id=pkey_id,
+        pkey=input.pkey,
+        display=f"Partition '{partition_name}' and PKey {input.pkey} recorded in Nautobot",
+    )
+
+
+class RecordIBPKeyInNautobotInput(BaseModel):
+    """Parameters for creating an overlay and PKey in the overlays plugin."""
+
+    pkey: str
+    overlay_name: str | None = None
+    location_name: str
+    tenant_name: str
+    membership_type: str = "full"
+
+
+class RecordIBPKeyInNautobotOutput(StageOutput):
+    """Nautobot IDs for the created or reused overlay and PKey objects."""
+
+    overlay_id: str
+    overlay_name: str
+    pkey_id: str
+    pkey: str
+
+
+class InterfaceRef(BaseModel):
+    """A device/interface name pair used to look up an interface in Nautobot."""
+
+    device: str
+    interface: str
+
+
+class ResolvedInterface(BaseModel):
+    """An interface that has been resolved to its Nautobot UUID and IB GUID."""
+
+    device: str
+    interface: str
+    interface_id: str
+    guid: str
+
+
+class ResolveInterfaceGuidsInput(BaseModel):
+    """Device/interface pairs to resolve into GUIDs."""
+
+    interfaces: list[InterfaceRef]
+
+
+class ResolveInterfaceGuidsOutput(StageOutput):
+    """Resolved interfaces with their Nautobot UUIDs and IB GUIDs."""
+
+    resolved: list[ResolvedInterface]
+
+
+class ResolveGuidsToInterfacesInput(BaseModel):
+    """A list of IB GUIDs to resolve back to Nautobot interface records."""
+
+    guids: list[str]
+
+
+class ResolveGuidsToInterfacesOutput(StageOutput):
+    """Interfaces resolved from a list of IB GUIDs."""
+
+    resolved: list[ResolvedInterface]
+
+
+class RecordPKeyAssignmentsInput(BaseModel):
+    """Parameters for creating OverlayAssignment records for a set of resolved interfaces."""
+
+    overlay_id: str
+    resolved: list[ResolvedInterface]
+    membership_type: str = "full"
+
+
+class RecordPKeyAssignmentsOutput(StageOutput):
+    """IDs of the created or reused OverlayAssignment records."""
+
+    assignment_ids: list[str]
+
+
+class RemovePKeyAssignmentsInput(BaseModel):
+    """Parameters for deleting OverlayAssignment records by interface."""
+
+    overlay_id: str
+    interface_ids: list[str]
+
+
+class RemovePKeyAssignmentsOutput(StageOutput):
+    """IDs of the deleted OverlayAssignment records."""
+
+    assignment_ids_removed: list[str]
+    interface_ids_not_assigned: list[str]
+
+
+async def _lookup_by_name(
+    client: NautobotClient,
+    path: str,
+    name: str,
+    entity_label: str,
+) -> dict[str, Any]:
+    """Look up a single Nautobot object by name, raising on not-found."""
+    results = await client.get(path, params={"name": name})
+    items = results.get("results", [])
+    if not items:
+        raise ApplicationError(
+            f"{entity_label} '{name}' not found in Nautobot",
+            non_retryable=True,
+        )
+    result: dict[str, Any] = items[0]
+    return result
+
+
+async def _resolve_status_id(client: NautobotClient) -> str:
+    """Resolve the UUID of the 'Active' status."""
+    status = await _lookup_by_name(client, "extras/statuses/", DEFAULT_STATUS_NAME, "Status")
+    status_id: str = status["id"]
+    return status_id
+
+
+async def _find_existing_overlay(
+    client: NautobotClient,
+    name: str,
+    location_id: str,
+) -> dict[str, Any] | None:
+    """Return an existing Overlay if one matches name + location."""
+    results = await client.get(
+        f"{PLUGIN_BASE}/overlays/",
+        params={"name": name, "location": location_id},
+    )
+    items = results.get("results", [])
+    return items[0] if items else None
+
+
+async def _find_existing_pkey(
+    client: NautobotClient,
+    pkey: str,
+    overlay_id: str,
+) -> dict[str, Any] | None:
+    """Return an existing InfiniBandPKey if one matches pkey + overlay."""
+    results = await client.get(
+        f"{PLUGIN_BASE}/pkeys/",
+        params={"pkey": pkey, "overlay": overlay_id},
+    )
+    items = results.get("results", [])
+    return items[0] if items else None
+
+
+@activity.defn
+async def record_ib_pkey_in_nautobot(
+    input: RecordIBPKeyInNautobotInput,
+) -> RecordIBPKeyInNautobotOutput:
+    """Create an Overlay and InfiniBandPKey record in Nautobot."""
+    overlay_name = input.overlay_name or f"ib-pkey-{input.pkey}"
+
+    client = NautobotClient()
+    async with client:
+        location = await _lookup_by_name(client, "dcim/locations/", input.location_name, "Location")
+        location_id: str = location["id"]
+
+        tenant = await _lookup_by_name(client, "tenancy/tenants/", input.tenant_name, "Tenant")
+        tenant_id: str = tenant["id"]
+
+        status_id = await _resolve_status_id(client)
+
+        existing_overlay = await _find_existing_overlay(client, overlay_name, location_id)
+        if existing_overlay:
+            overlay_id: str = existing_overlay["id"]
+            log.info(
+                "Overlay '%s' already exists (%s), reusing",
+                overlay_name,
+                overlay_id,
+            )
+        else:
+            overlay_payload: dict[str, Any] = {
+                "name": overlay_name,
+                "location": location_id,
+                "isolation_type": ISOLATION_TYPE_IB_PKEY,
+                "status": status_id,
+                "tenant": tenant_id,
+            }
+
+            log.info("Creating Overlay '%s' in Nautobot", overlay_name)
+            overlay = await client.post(f"{PLUGIN_BASE}/overlays/", data=overlay_payload)
+            overlay_id = overlay["id"]
+
+        existing_pkey = await _find_existing_pkey(client, input.pkey, overlay_id)
+        if existing_pkey:
+            pkey_id: str = existing_pkey["id"]
+            log.info(
+                "InfiniBandPKey '%s' already exists (%s), reusing",
+                input.pkey,
+                pkey_id,
+            )
+        else:
+            pkey_payload: dict[str, Any] = {
+                "pkey": input.pkey,
+                "name": f"PKey-{input.pkey}",
+                "overlay": overlay_id,
+                "membership_type": input.membership_type,
+                "status": status_id,
+                "tenant": tenant_id,
+            }
+
+            log.info("Creating InfiniBandPKey %s in Nautobot", input.pkey)
+            pkey_record = await client.post(f"{PLUGIN_BASE}/pkeys/", data=pkey_payload)
+            pkey_id = pkey_record["id"]
+
+    return RecordIBPKeyInNautobotOutput(
+        overlay_id=overlay_id,
+        overlay_name=overlay_name,
+        pkey_id=pkey_id,
+        pkey=input.pkey,
+        display=(f"Overlay '{overlay_name}' and PKey {input.pkey} recorded in Nautobot"),
+    )
+
+
+class CurrentAssignment(BaseModel):
+    """A single OverlayAssignment record from Nautobot."""
+
+    assignment_id: str
+    interface_id: str
+    guid: str
+
+
+class FetchPKeyAssignmentsInput(BaseModel):
+    """Overlay ID whose assignments should be fetched."""
+
+    overlay_id: str
+
+
+class FetchPKeyAssignmentsOutput(StageOutput):
+    """Current OverlayAssignment records for the given overlay."""
+
+    assignments: list[CurrentAssignment]
+
+
+class SyncPKeyAssignmentsInput(BaseModel):
+    """Desired state for a PKey overlay's member list."""
+
+    overlay_id: str
+    desired: list[ResolvedInterface]
+    membership_type: str = "full"
+
+
+class SyncPKeyAssignmentsOutput(StageOutput):
+    """Counts of assignments added, removed, and left unchanged during sync."""
+
+    added: list[str]
+    removed: list[str]
+    unchanged: list[str]
+
+
+async def _find_existing_assignment(
+    client: NautobotClient,
+    overlay_id: str,
+    interface_id: str,
+) -> dict[str, Any] | None:
+    """Return an existing OverlayAssignment for this overlay + interface, if any."""
+    results = await client.get(
+        f"{PLUGIN_BASE}/overlay-assignments/",
+        params={"overlay": overlay_id, "assigned_object_id": interface_id},
+    )
+    items = results.get("results", [])
+    return items[0] if items else None
+
+
+@activity.defn
+async def resolve_interface_guids(
+    input: ResolveInterfaceGuidsInput,
+) -> ResolveInterfaceGuidsOutput:
+    """Resolve Nautobot interface records to their IB GUIDs."""
+    resolved: list[ResolvedInterface] = []
+
+    client = NautobotClient()
+    async with client:
+        for ref in input.interfaces:
+            results = await client.get(
+                "dcim/interfaces/",
+                params={"device": ref.device, "name": ref.interface},
+            )
+            items = results.get("results", [])
+
+            if not items:
+                raise ApplicationError(
+                    f"Interface '{ref.interface}' on device '{ref.device}' not found in Nautobot",
+                    non_retryable=True,
+                )
+
+            iface = items[0]
+            guid = (iface.get("custom_fields") or {}).get("ib_guid") or ""
+
+            if not guid:
+                raise ApplicationError(
+                    f"Interface '{ref.interface}' on device '{ref.device}' "
+                    "has no IB GUID (cf_ib_guid) set in Nautobot",
+                    non_retryable=True,
+                )
+
+            resolved.append(
+                ResolvedInterface(
+                    device=ref.device,
+                    interface=ref.interface,
+                    interface_id=iface["id"],
+                    guid=guid,
+                )
+            )
+            log.info(
+                "Resolved %s/%s → GUID %s (id=%s)",
+                ref.device,
+                ref.interface,
+                guid,
+                iface["id"],
+            )
+
+    return ResolveInterfaceGuidsOutput(
+        resolved=resolved,
+        display=f"Resolved {len(resolved)} interface GUID(s) from Nautobot",
+    )
+
+
+_RESOLVE_GUIDS_QUERY = """
+query ($guids: [String]) {
+  interfaces(cf_ib_guid__ie: $guids) {
+    id
+    name
+    cf_ib_guid
+    device {
+      name
+    }
+  }
+}
+"""
+
+
+def _index_resolved_interfaces(interfaces: list[dict[str, Any]]) -> dict[str, ResolvedInterface]:
+    """Group GraphQL interface results by lowercased GUID.
+
+    Skips entries with no ``cf_ib_guid`` set. Raises ``ApplicationError`` if
+    any GUID has more than one matching interface.
+    """
+    grouped: dict[str, list[ResolvedInterface]] = {}
+    for iface in interfaces:
+        original_guid = iface.get("cf_ib_guid") or ""
+        guid_key = original_guid.lower()
+        if not guid_key:
+            continue
+        device = (iface.get("device") or {}).get("name") or ""
+        grouped.setdefault(guid_key, []).append(
+            ResolvedInterface(
+                device=device,
+                interface=iface.get("name") or "",
+                interface_id=iface.get("id") or "",
+                guid=original_guid,
+            )
+        )
+
+    duplicates = {
+        g: [r.interface_id for r in matches] for g, matches in grouped.items() if len(matches) > 1
+    }
+    if duplicates:
+        raise ApplicationError(
+            f"GUID(s) matched multiple Nautobot interfaces: {duplicates}",
+            non_retryable=True,
+        )
+    return {g: matches[0] for g, matches in grouped.items()}
+
+
+@activity.defn
+async def resolve_guids_to_interfaces(
+    input: ResolveGuidsToInterfacesInput,
+) -> ResolveGuidsToInterfacesOutput:
+    """Reverse-lookup IB GUIDs to Nautobot interface records.
+
+    Each input GUID must map to exactly one Nautobot interface (via the
+    ``cf_ib_guid`` custom field). Missing or duplicate matches raise a
+    non-retryable error so the caller can surface the problem directly.
+    """
+    if not input.guids:
+        return ResolveGuidsToInterfacesOutput(
+            resolved=[],
+            display="No GUIDs to resolve",
+        )
+
+    deduped = sorted({g for g in input.guids if g})
+    if not deduped:
+        raise ApplicationError("All provided GUIDs were empty", non_retryable=True)
+
+    client = NautobotClient()
+    async with client:
+        data = await client.graphql_query(
+            _RESOLVE_GUIDS_QUERY,
+            {"guids": deduped},
+        )
+
+    interfaces = ((data.get("data") or {}).get("interfaces")) or []
+    by_guid = _index_resolved_interfaces(interfaces)
+
+    missing = [g for g in deduped if g.lower() not in by_guid]
+    if missing:
+        raise ApplicationError(
+            f"No Nautobot interface found for GUID(s): {missing}",
+            non_retryable=True,
+        )
+
+    resolved = [by_guid[g.lower()] for g in deduped]
+    for r in resolved:
+        log.info(
+            "Resolved GUID %s → %s/%s (id=%s)",
+            r.guid,
+            r.device,
+            r.interface,
+            r.interface_id,
+        )
+
+    return ResolveGuidsToInterfacesOutput(
+        resolved=resolved,
+        display=f"Resolved {len(resolved)} GUID(s) to Nautobot interface(s)",
+    )
+
+
+@activity.defn
+async def record_pkey_assignments(
+    input: RecordPKeyAssignmentsInput,
+) -> RecordPKeyAssignmentsOutput:
+    """Create OverlayAssignment records in Nautobot for each resolved interface."""
+
+    assignment_ids: list[str] = []
+
+    client = NautobotClient()
+    async with client:
+        status_id = await _resolve_status_id(client)
+
+        for resolved in input.resolved:
+            existing = await _find_existing_assignment(
+                client, input.overlay_id, resolved.interface_id
+            )
+            if existing:
+                log.info(
+                    "OverlayAssignment for %s/%s already exists (%s), reusing",
+                    resolved.device,
+                    resolved.interface,
+                    existing["id"],
+                )
+                assignment_ids.append(existing["id"])
+                continue
+
+            payload: dict[str, Any] = {
+                "overlay": input.overlay_id,
+                "assigned_object_type": "dcim.interface",
+                "assigned_object_id": resolved.interface_id,
+                "guid": resolved.guid,
+                "membership_type": input.membership_type,
+                "status": status_id,
+            }
+
+            log.info(
+                "Creating OverlayAssignment for %s/%s (guid=%s)",
+                resolved.device,
+                resolved.interface,
+                resolved.guid,
+            )
+            assignment = await client.post(f"{PLUGIN_BASE}/overlay-assignments/", data=payload)
+            assignment_ids.append(assignment["id"])
+
+    return RecordPKeyAssignmentsOutput(
+        assignment_ids=assignment_ids,
+        display=(f"Recorded {len(assignment_ids)} OverlayAssignment(s) in Nautobot"),
+    )
+
+
+@activity.defn
+async def remove_pkey_assignments(
+    input: RemovePKeyAssignmentsInput,
+) -> RemovePKeyAssignmentsOutput:
+    """Delete OverlayAssignment records for the given overlay + interface IDs."""
+
+    removed: list[str] = []
+    not_assigned: list[str] = []
+
+    client = NautobotClient()
+    async with client:
+        for interface_id in input.interface_ids:
+            existing = await _find_existing_assignment(client, input.overlay_id, interface_id)
+            if not existing:
+                log.info(
+                    "No OverlayAssignment for overlay=%s interface=%s, nothing to delete",
+                    input.overlay_id,
+                    interface_id,
+                )
+                not_assigned.append(interface_id)
+                continue
+
+            assignment_id = existing["id"]
+            log.info(
+                "Deleting OverlayAssignment %s (interface=%s)",
+                assignment_id,
+                interface_id,
+            )
+            await client.delete(f"{PLUGIN_BASE}/overlay-assignments/{assignment_id}/")
+            removed.append(assignment_id)
+
+    return RemovePKeyAssignmentsOutput(
+        assignment_ids_removed=removed,
+        interface_ids_not_assigned=not_assigned,
+        display=(
+            f"Removed {len(removed)} OverlayAssignment(s); "
+            f"{len(not_assigned)} interface(s) had no assignment"
+        ),
+    )
+
+
+@activity.defn
+async def fetch_pkey_assignments(
+    input: FetchPKeyAssignmentsInput,
+) -> FetchPKeyAssignmentsOutput:
+    """Fetch current OverlayAssignment records for a PKey overlay from Nautobot."""
+    client = NautobotClient()
+    assignments: list[CurrentAssignment] = []
+
+    async with client:
+        results = await client.get(
+            f"{PLUGIN_BASE}/overlay-assignments/",
+            params={"overlay": input.overlay_id},
+        )
+        for item in results.get("results", []):
+            assignments.append(
+                CurrentAssignment(
+                    assignment_id=item["id"],
+                    interface_id=item.get("assigned_object_id", ""),
+                    guid=item.get("guid", ""),
+                )
+            )
+
+    log.info(
+        "Found %d existing OverlayAssignment(s) for overlay %s",
+        len(assignments),
+        input.overlay_id,
+    )
+
+    return FetchPKeyAssignmentsOutput(
+        assignments=assignments,
+        display=f"Found {len(assignments)} existing assignment(s) for overlay {input.overlay_id}",
+    )
+
+
+@activity.defn
+async def sync_pkey_assignments(
+    input: SyncPKeyAssignmentsInput,
+) -> SyncPKeyAssignmentsOutput:
+    """Reconcile Nautobot OverlayAssignment records to match the desired member list."""
+
+    desired_by_iface: dict[str, ResolvedInterface] = {r.interface_id: r for r in input.desired}
+
+    client = NautobotClient()
+    added: list[str] = []
+    removed: list[str] = []
+    unchanged: list[str] = []
+
+    async with client:
+        status_id = await _resolve_status_id(client)
+
+        current_results = await client.get(
+            f"{PLUGIN_BASE}/overlay-assignments/",
+            params={"overlay": input.overlay_id},
+        )
+        current_items: list[dict[str, Any]] = current_results.get("results", [])
+        current_by_iface: dict[str, str] = {
+            item["assigned_object_id"]: item["id"] for item in current_items
+        }
+
+        for iface_id, assignment_id in current_by_iface.items():
+            if iface_id not in desired_by_iface:
+                log.info(
+                    "Removing stale OverlayAssignment %s (interface %s)",
+                    assignment_id,
+                    iface_id,
+                )
+                await client.delete(f"{PLUGIN_BASE}/overlay-assignments/{assignment_id}/")
+                removed.append(assignment_id)
+            else:
+                unchanged.append(assignment_id)
+
+        for iface_id, resolved in desired_by_iface.items():
+            if iface_id not in current_by_iface:
+                payload: dict[str, Any] = {
+                    "overlay": input.overlay_id,
+                    "assigned_object_type": "dcim.interface",
+                    "assigned_object_id": iface_id,
+                    "guid": resolved.guid,
+                    "membership_type": input.membership_type,
+                    "status": status_id,
+                }
+                log.info(
+                    "Creating OverlayAssignment for %s/%s (guid=%s)",
+                    resolved.device,
+                    resolved.interface,
+                    resolved.guid,
+                )
+                new_assignment = await client.post(
+                    f"{PLUGIN_BASE}/overlay-assignments/", data=payload
+                )
+                added.append(new_assignment["id"])
+
+    log.info(
+        "OverlayAssignment sync complete: +%d added, -%d removed, %d unchanged",
+        len(added),
+        len(removed),
+        len(unchanged),
+    )
+
+    return SyncPKeyAssignmentsOutput(
+        added=added,
+        removed=removed,
+        unchanged=unchanged,
+        display=(
+            f"Nautobot assignments synced: "
+            f"+{len(added)} added, -{len(removed)} removed, {len(unchanged)} unchanged"
+        ),
+    )

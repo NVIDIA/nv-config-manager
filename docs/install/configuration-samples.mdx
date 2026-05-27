@@ -1,0 +1,142 @@
+---
+title: Configuration Samples
+sidebar-title: Configuration Samples
+---
+
+The samples below show common starting points for `nv-config-manager-install.yaml`. Start with the minimal example, then add storage, SSO, ESO, and load balancer settings as needed for your environment.
+
+## Minimal in-cluster deployment
+
+```yaml
+version: "1"
+cluster:
+  hostname: config-manager.example.com
+  environment: test
+  namespace: nv-config-manager
+  airgapped: false
+  size: small
+secrets:
+  method: kubernetes
+  config_manager_service_username: nv-config-manager
+network_secrets:
+  - name: Hash Salt
+    secret_key: hash_salt
+  - name: BGP Password
+    secret_key: bgp_password
+    rotation: r1
+sites:
+  - name: dc01
+services:
+  nautobot: true
+```
+
+## File storage with OS images
+
+```yaml
+version: "1"
+cluster:
+  hostname: nv-config-manager.local
+  environment: local
+  namespace: nv-config-manager
+  size: small
+infrastructure:
+  ztp_storage:
+    type: file
+    pvc_name: ztp-os-images
+    pvc_size: 20Gi
+    os_images:
+      - platform: cumulus-linux
+        version: "5.14.0"
+        path: /images/cumulus-linux-5.14.0-mlx-amd64.bin
+      - platform: mlnx-os
+        version: "3.10.4000"
+        path: /images/mlnx-os-3.10.4000.bin
+secrets:
+  method: kubernetes
+sites:
+  - name: dc01
+services:
+  nautobot: true
+```
+
+## AWS with Keycloak SSO and ESO
+
+```yaml
+version: "1"
+cluster:
+  hostname: platform.nv-config-manager.example.com
+  environment: production
+  namespace: nv-config-manager-prod
+  release_name: nv-config-manager-platform
+  size: large
+secrets:
+  method: eso
+  config_manager_service_username: nv-config-manager
+  vault:
+    server: https://vault.example.com
+    namespace: engineering
+    secrets_path: nv-config-manager/secrets
+    mount_path: auth/kubernetes/prod
+    role: nv-config-manager-vault-agent
+    auth:
+      method: jwt
+sso:
+  enabled: true
+  provider: keycloak
+  issuer_url: https://keycloak.example.com/realms/nv-config-manager
+  client_id: nv-config-manager
+  client_secret: your-keycloak-client-secret
+spiffe:
+  enabled: true
+  provider: spire
+  auth_mode: jwt
+  trust_domain: example.com
+  group_prefixes:
+    - spiffe://example.com/ns/nv-config-manager-prod=nv-config-manager-admin
+infrastructure:
+  load_balancer:
+    provider: nlb
+    nlb_gateway:
+      type: external
+      target_type: ip
+      subnets: "subnet-abc123, subnet-def456"
+      dns_name: "platform.nv-config-manager.example.com,*.platform.nv-config-manager.example.com"
+    nlb_ztp:
+      type: external
+      target_type: ip
+      name: nv-config-manager-prod-ztp-lb
+      sg: "sg-111222, sg-333444"
+      subnets: "subnet-abc123, subnet-def456"
+      ips: "10.0.1.10, 10.0.1.20"
+      dns_name: ztp-ext.platform.nv-config-manager.example.com
+    nlb_dhcp:
+      type: external
+      target_type: ip
+      name: nv-config-manager-prod-dhcp-lb
+      sg: "sg-111222, sg-555666"
+      subnets: "subnet-abc123, subnet-def456"
+      ips: "10.0.1.30, 10.0.1.40"
+      dns_name: dhcp-ext.platform.nv-config-manager.example.com
+  cnpg_s3_backup:
+    enabled: true
+    bucket: nv-config-manager-postgres-backups
+    path: production
+    endpoint: https://s3.us-west-2.amazonaws.com
+images:
+  source: registry
+  registry: nvcr.io/nvidian/cfa
+  tag: v1.2.1
+network_secrets:
+  - name: Hash Salt
+    secret_key: hash_salt
+    source: vault
+  - name: BGP Password
+    secret_key: bgp_password
+    source: vault
+    rotation: r1
+sites:
+  - name: dc01
+    vault_path: secrets/nv-config-manager/site/dc01/config_secrets
+  - name: dc02
+    vault_path: secrets/nv-config-manager/site/dc02/config_secrets
+```

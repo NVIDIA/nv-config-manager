@@ -1,0 +1,7 @@
+    nve:
+      vxlan:
+        arp-nd-suppress: enabled
+        state: enabled
+        source:
+          address: {{ device_data|router_id }}
+

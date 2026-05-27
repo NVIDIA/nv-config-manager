@@ -1,0 +1,88 @@
+NVIDIA Config Manager
+Copyright 2024-2026 NVIDIA Corporation
+
+This product includes software developed at NVIDIA Corporation.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+===============================================================================
+THIRD-PARTY SOFTWARE NOTICES
+===============================================================================
+
+This software includes the following third-party components. Please see the
+THIRD_PARTY_LICENSES.md file for complete license texts and additional details.
+
+Python Dependencies
+-------------------
+See pyproject.toml for the complete list of Python dependencies.
+
+Key dependencies include:
+- FastAPI (MIT License) - https://github.com/tiangolo/fastapi
+- Pydantic (MIT License) - https://github.com/pydantic/pydantic
+- SQLAlchemy (MIT License) - https://github.com/sqlalchemy/sqlalchemy
+- Temporal SDK (MIT License) - https://github.com/temporalio/sdk-python
+- Click (BSD-3-Clause License) - https://github.com/pallets/click
+- Requests (Apache-2.0 License) - https://github.com/psf/requests
+- aiohttp (Apache-2.0 License) - https://github.com/aio-libs/aiohttp
+- boto3 (Apache-2.0 License) - https://github.com/boto/boto3
+- Redis-py (MIT License) - https://github.com/redis/redis-py
+- NATS-py (Apache-2.0 License) - https://github.com/nats-io/nats.py
+- Jinja2 (BSD-3-Clause License) - https://github.com/pallets/jinja
+- GitPython (BSD-3-Clause License) - https://github.com/gitpython-developers/GitPython
+- Paramiko (LGPL-2.1 License) - https://github.com/paramiko/paramiko
+- PyNaCl (Apache-2.0 License) - https://github.com/pyca/pynacl
+- cryptography (Apache-2.0/BSD-3-Clause License) - https://github.com/pyca/cryptography
+- PyJWT (MIT License) - https://github.com/jpadilla/pyjwt
+- protobuf (BSD-3-Clause License) - https://github.com/protocolbuffers/protobuf
+- Pandas (BSD-3-Clause License) - https://github.com/pandas-dev/pandas
+- NumPy (BSD-3-Clause License) - https://github.com/numpy/numpy
+- Elasticsearch (Apache-2.0 License) - https://github.com/elastic/elasticsearch-py
+- Slack SDK (MIT License) - https://github.com/slackapi/python-slack-sdk
+- pyeapi (BSD-3-Clause License) - https://github.com/arista-eosplus/pyeapi
+- pynautobot (Apache-2.0 License) - https://github.com/nautobot/pynautobot
+- netmiko (MIT License) - https://github.com/ktbyers/netmiko
+- Alembic (MIT License) - https://github.com/sqlalchemy/alembic
+- Uvicorn (BSD-3-Clause License) - https://github.com/encode/uvicorn
+- Nautobot (Apache-2.0 License) - https://github.com/nautobot/nautobot
+
+JavaScript/TypeScript Dependencies (UI)
+----------------------------------------
+See ui/package.json for the complete list of frontend dependencies.
+
+Key dependencies include:
+- Next.js (MIT License) - https://github.com/vercel/next.js
+- React (MIT License) - https://github.com/facebook/react
+- Radix UI (MIT License) - https://github.com/radix-ui
+- TanStack Table (MIT License) - https://github.com/TanStack/table
+- Tailwind CSS (MIT License) - https://github.com/tailwindlabs/tailwindcss
+- Zod (MIT License) - https://github.com/colinhacks/zod
+- Lucide React (ISC License) - https://github.com/lucide-icons/lucide
+- React Hook Form (MIT License) - https://github.com/react-hook-form/react-hook-form
+- SWR (MIT License) - https://github.com/vercel/swr
+- date-fns (MIT License) - https://github.com/date-fns/date-fns
+
+Go Dependencies
+---------------
+See components/nats-ready/go.mod for the complete list of Go dependencies.
+
+Key dependencies include:
+- nats.go (Apache-2.0 License) - https://github.com/nats-io/nats.go
+- zerolog (MIT License) - https://github.com/rs/zerolog
+
+===============================================================================
+NVIDIA TRADEMARKS
+===============================================================================
+
+NVIDIA, the NVIDIA logo, and other NVIDIA marks are trademarks of NVIDIA
+Corporation. All other trademarks or registered trademarks are property of
+their respective owners.

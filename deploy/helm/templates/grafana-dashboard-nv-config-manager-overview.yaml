@@ -1,0 +1,46 @@
+{{- /*
+ConfigMap picked up by the Grafana dashboard sidecar.
+
+Only rendered when the in-chart Grafana subchart is enabled (i.e. the
+local-dev observability overlay). The sidecar (configured in
+values-observability.yaml) watches for ConfigMaps labelled
+grafana_dashboard="1" in all namespaces and mounts them into Grafana.
+
+The dashboard JSON is read from deploy/helm/dashboards/nv-config-manager-overview.json
+(the real file, kept inside the chart so ArgoCD / `helm package` can stage
+just `deploy/helm` without out-of-tree references; developer-docs/logging.md links
+to it directly). That file is portable: it ships both `__inputs` (so
+internal Grafana imports via the "Upload JSON file" UI prompt-bind to
+whatever datasources the user has) and `templating.list` datasource
+variables (so users can switch datasources from a dropdown post-import).
+Every panel references `${DS_PROMETHEUS}` / `${DS_LOKI}`.
+
+For the local sidecar path we substitute those placeholders here at
+chart-render time to bake in the static UIDs declared in
+values-observability.yaml (grafana.datasources.datasources.yaml.
+datasources[].uid = `prometheus` / `loki`). Belt-and-suspenders with the
+runtime templating-var resolution: panels render correctly even on
+Grafana versions that briefly show "Datasource variable not selected"
+before auto-binding `templating.list` datasource vars on first load.
+
+Edit deploy/helm/dashboards/nv-config-manager-overview.json; the chart picks up the
+change automatically.
+*/ -}}
+{{- $grafana := default (dict) .Values.grafana -}}
+{{- if $grafana.enabled }}
+{{- $dashboardJson := .Files.Get "dashboards/nv-config-manager-overview.json"
+    | replace "${DS_PROMETHEUS}" "prometheus"
+    | replace "${DS_LOKI}" "loki" -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "nv-config-manager.fullname" . }}-grafana-dashboard-nv-config-manager-overview
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: grafana-dashboard
+    grafana_dashboard: "1"
+data:
+  nv-config-manager-overview.json: |-
+{{ $dashboardJson | indent 4 }}
+{{- end }}

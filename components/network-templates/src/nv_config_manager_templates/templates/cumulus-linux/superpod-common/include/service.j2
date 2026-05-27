@@ -1,0 +1,13 @@
+    service:
+{% block dhcp_relay %}{% endblock dhcp_relay %}
+{% block dns %}
+      dns:
+        mgmt:
+          server: {}
+{% endblock dns %}
+{% block ntp %}
+      ntp:
+        mgmt:
+          server: {}
+{% endblock ntp %}
+

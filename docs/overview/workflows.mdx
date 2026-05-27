@@ -1,0 +1,147 @@
+---
+title: Temporal Workflows
+sidebar-title: Temporal Workflows
+position: 40
+---
+
+NVIDIA Config Manager uses Temporal for workflow orchestration, providing durability, observability, and complex workflow capabilities. Refer to the Config Manager [Temporal documentation](../temporal/index.mdx) for more detailed information on workflows.
+
+<Warning>
+Device-facing workflows require reachable devices. A local deployment using mock data can show workflow forms and rendered artifacts, but it does not validate SSH/API device behavior, ZTP, cable validation, password rotation, deploy diffs, backups, reprovisioning, or hardware collection.
+</Warning>
+
+## Recommended First Workflows
+
+For a real lab or production site, start with workflows that prove reachability and visibility before making broad changes.
+
+| Workflow | Start here when... |
+| :------- | :----------------- |
+| [Configuration Backup](../user-guides/configuration-backup/index.mdx) | You need to confirm credentials, management reachability, and baseline running config capture. |
+| [Configuration Deploy](../user-guides/configuration-deploy/index.mdx) | You have one reviewed intended-config change to apply to one device. |
+| [Multi-Device Deploy](../user-guides/multi-deploy/index.mdx) | Single-device deploy is proven and you need grouped diff approval across a role. |
+| [Cable Validation](../user-guides/cable-validation/index.mdx) | Devices are reachable and Nautobot cabling needs to be compared against observed LLDP/FDB/ARP data. |
+
+Use [Controlling Running Workflows](../user-guides/workflow-lifecycle/index.mdx) before approving, rejecting, retrying, or terminating a live workflow.
+
+## Workflow Interface Features
+
+**Workflow Details View**
+
+- Workflow name and description
+- Site and user attribution
+- Start time and duration
+- Current state (IN PROGRESS, COMPLETE, FAILED)
+
+**Stage Tracking**
+
+- Multi-stage workflows with clear progression
+- Each stage shows:
+  - Stage name and description
+  - Start and end times
+  - Duration
+  - Status indicator (COMPLETE, IN PROGRESS)
+
+**Output and History**
+
+- Real-time output display
+- State history with timestamps
+- Configuration change summaries
+
+## Workflow Types
+
+Config Manager supports multiple workflow categories visible in the Temporal UI:
+
+- `BackupWorkflow`
+- `BatchDeployWorkflow`
+- `ConnectedHostMetadataWorkflow`
+- `DeployWorkflow`
+- `DeviceCableValidationWorkflow`
+- `DevicePasswordRotationWorkflow`
+- `HelloWorld` (example/test workflow)
+- `HelloWorldApproval` (example with approval)
+- `InfinibandCableValidationWorkflow`
+- `InfinibandGetUnhealthyPortsWorkflow`
+- `InfinibandMlnxOSUpgradeWorkflow`
+- `MultiDeployWorkflow`
+- `NVLinkSwitchFirmwareUpgradeWorkflow`
+- `PortLLDPInfoWorkflow`
+- `RedfishProvisioningWorkflow`
+- `ReprovisionWorkflow`
+- `SiteCableValidationWorkflow`
+- `SitePasswordRotationWorkflow`
+- `SwitchOSUpgradeWorkflow`
+- `TenantDeployWorkflow`
+- `ValidateHardwareWorkflow`
+- `VpcAssignmentWorkflow`
+- `VpcCreationWorkflow`
+- `VpcDeletionWorkflow`
+- `VpcTenantChangeWorkflow`
+
+## Workflow API Endpoints
+
+### Workflow Management
+
+Available through REST API at `/v1/workflow/`:
+
+| Endpoint | Method | Description |
+| :------- | :----- | :---------- |
+| `/` | GET | List workflows |
+| `/types` | GET | Get registered workflow types |
+| `/{workflow_id}` | GET | Get workflow execution details |
+| `/{workflow_id}/approve/{stage_name}` | POST | Approve a workflow stage |
+| `/{workflow_id}/reject/{stage_name}` | POST | Reject a workflow stage |
+| `/{workflow_id}/retry/{stage_name}` | POST | Retry a workflow stage |
+| `/{workflow_id}/terminate` | POST | Terminate a workflow |
+
+### Workflow Execution
+
+Each built-in workflow has a concrete POST endpoint, for example `POST /v1/workflow/ngc/backup`. Examples:
+
+| Endpoint | Description |
+| :------- | :---------- |
+| `/backup` | Execute BackupWorkflow |
+| `/batch_deploy` | Execute BatchDeployWorkflow |
+| `/connected_host_metadata` | Execute ConnectedHostMetadataWorkflow |
+| `/cumulus_hardware_validation` | Execute ValidateHardwareWorkflow |
+| `/deploy` | Execute DeployWorkflow |
+| `/device_cable_validation` | Execute DeviceCableValidationWorkflow |
+| `/device_password_rotation` | Execute DevicePasswordRotationWorkflow |
+| `/infiniband_cable_validation` | Execute InfinibandCableValidationWorkflow |
+| `/infiniband_get_unhealthy_ports` | Execute InfinibandGetUnhealthyPortsWorkflow |
+| `/infiniband_mlnx_os_upgrade` | Execute InfinibandMlnxOSUpgradeWorkflow |
+| `/multi_deploy` | Execute MultiDeployWorkflow |
+| `/nvlinkswitch_firmware_upgrade` | Execute NVLinkSwitchFirmwareUpgradeWorkflow |
+| `/port_lldp_info` | Execute PortLLDPInfoWorkflow |
+| `/redfish_provisioning` | Execute RedfishProvisioningWorkflow |
+| `/reprovision` | Execute ReprovisionWorkflow |
+| `/site_cable_validation` | Execute SiteCableValidationWorkflow |
+| `/site_password_rotation` | Execute SitePasswordRotationWorkflow |
+| `/switch_os_upgrade` | Execute SwitchOSUpgradeWorkflow |
+| `/tenant-deploy` | Execute TenantDeployWorkflow |
+| `/vpc-tenant-change` | Execute VpcTenantChangeWorkflow |
+| `/vpc_assignment` | Execute VpcAssignmentWorkflow |
+| `/vpc_creation` | Execute VpcCreationWorkflow |
+| `/vpc_deletion` | Execute VpcDeletionWorkflow |
+
+## Workflow CLI Commands
+
+Execute connected host metadata workflow:
+
+```bash
+uv run workflow-cli connected-host-metadata \
+  -H config-manager.example.com \
+  --device-name rno1-m04-c10-spine1-hss-tan-lab1 \
+  --verbose
+```
+
+Validate hardware components:
+
+```bash
+uv run workflow-cli validate-hardware \
+  -H config-manager.example.com \
+  --site datacenter01 \
+  --tenant tenant01 \
+  --roles leaf-switch,spine-switch \
+  --status active \
+  --raise-for-invalid true
+```

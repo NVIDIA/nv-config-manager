@@ -1,0 +1,23 @@
+{% if "nmx-controller" in device_data|device_tags %}
+    cluster:
+      state: enabled
+{% endif %}
+    interface:
+{% block management %}
+{% for intf in device_data|interfaces %}
+{% if intf.name.startswith("eth") %}
+      {{ intf.name }}:
+{% if intf.description %}
+        description: {{intf.description}}
+{% endif %}
+{% if intf.primary_ipv4 %}
+        ip:
+          address:
+            {{ intf.primary_ipv4 }}: {}
+          gateway:
+            {{ intf.primary_ipv4|gateway }}: {}
+{%endif%}
+        type: eth
+{% endif %}
+{% endfor %}
+{% endblock management %}

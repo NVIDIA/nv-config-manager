@@ -1,0 +1,31 @@
+# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
+{{- include "nv-config-manager.validateSecrets" . -}}
+{{- if .Values.global.createNamespace }}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.global.namespace }}
+  labels:
+    app.kubernetes.io/name: nv-config-manager
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    environment: {{ .Values.global.environment }}
+{{- end }}
+{{- if .Values.global.createServiceAccount }}
+---
+# Service Account for Vault access (used by ESO)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "nv-config-manager.serviceAccountName" . }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app.kubernetes.io/name: nv-config-manager
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  annotations:
+    {{- if .Values.global.serviceAccountEksRole }}
+    eks.amazonaws.com/role-arn: {{ .Values.global.serviceAccountEksRole }}
+    {{- end }}
+{{- end }}
+

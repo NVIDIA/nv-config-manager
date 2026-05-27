@@ -1,0 +1,16 @@
+{% extends "dcim/device.html" %}
+{% load helpers %}
+
+{% block content %}
+  <div class="panel panel-default">
+      <div class="panel-heading clearfix">
+          <strong>Config Manager Details</strong>
+          <a href="{{ edit_url }}" class="btn btn-warning pull-right" id="edit-button">
+            <span class="mdi mdi-pencil" aria-hidden="true"></span> Edit
+          </a>
+      </div>
+    <table class="table table-hover panel-body attr-table">
+      {% include "nv_config_manager/inc/managed_device_details.html" with object=managed_device_instance config_store_links=config_store_links %}
+    </table>
+  </div>
+{% endblock %}

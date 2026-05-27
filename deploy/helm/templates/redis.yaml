@@ -1,0 +1,155 @@
+# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
+#
+{{- $redisName := include "nv-config-manager.componentName" (dict "root" . "component" "redis") }}
+# =============================================================================
+# Shared Redis Deployment
+# =============================================================================
+# Deploys a shared Redis instance used by all NVIDIA Config Manager services and Nautobot
+# Enable with: externalServices.redis.local=true
+# =============================================================================
+
+{{- if .Values.externalServices.redis.local }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $redisName }}-config
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+data:
+  redis.conf: |
+    # Redis Configuration
+    maxmemory 256mb
+    maxmemory-policy allkeys-lru
+    appendonly no
+    save ""
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $redisName }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $redisName }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ $redisName }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      {{- if .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range .Values.global.imagePullSecrets }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      {{- include "nv-config-manager.scheduling" .Values.externalServices.redis | nindent 6 }}
+      securityContext:
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: {{ $redisName }}
+          image: "{{ .Values.global.images.redis.repository }}:{{ .Values.global.images.redis.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy | default "IfNotPresent" }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsUser: 999
+            runAsGroup: 1000
+            capabilities:
+              drop:
+                - ALL
+          ports:
+            - containerPort: 6379
+              name: redis
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-password
+                  key: password
+          command:
+            - redis-server
+            - --requirepass
+            - $(REDIS_PASSWORD)
+          resources:
+            {{- toYaml .Values.externalServices.redis.resources | nindent 12 }}
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - REDISCLI_AUTH=$REDIS_PASSWORD redis-cli ping | grep -q PONG
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - REDISCLI_AUTH=$REDIS_PASSWORD redis-cli ping | grep -q PONG
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+          volumeMounts:
+            - name: {{ $redisName }}-data
+              mountPath: /data
+      volumes:
+        - name: {{ $redisName }}-data
+          {{- if .Values.externalServices.redis.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ $redisName }}-data
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $redisName }}-master
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+spec:
+  type: ClusterIP
+  ports:
+    - port: 6379
+      targetPort: redis
+      name: redis
+  selector:
+    app.kubernetes.io/name: {{ $redisName }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+
+{{- if .Values.externalServices.redis.persistence.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $redisName }}-data
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.externalServices.redis.persistence.size }}
+{{- end }}
+
+{{- end }}
+

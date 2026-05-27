@@ -1,0 +1,440 @@
+/* NVIDIA Config Manager Install Wizard - Textual CSS */
+
+NVConfigManagerInstallerApp {
+    layout: grid;
+    grid-size: 2;
+    grid-columns: 28 1fr;
+    grid-rows: 1fr 3;
+}
+
+#sidebar {
+    width: 28;
+    height: 100%;
+    dock: left;
+    border-right: solid $primary-background-lighten-2;
+    padding: 0;
+    scrollbar-size: 0 0;
+}
+
+#sidebar-title {
+    text-align: center;
+    text-style: bold;
+    color: $text;
+    padding: 1 1 1 1;
+    border-bottom: solid $primary-background-lighten-2;
+    margin-bottom: 1;
+}
+
+/* Nav item base */
+.nav-item {
+    padding: 1 1 1 1;
+    height: auto;
+    margin: 0 1;
+    background: $surface;
+}
+
+/* Status backgrounds — subtle tints */
+.nav-item.--empty {
+    background: $surface;
+}
+
+.nav-item.--complete {
+    background: #0d1f0d;
+}
+
+.nav-item.--incomplete {
+    background: #1f1f0d;
+    text-style: italic;
+}
+
+.nav-item.--running {
+    background: #0d1520;
+}
+
+.nav-item.--skipped {
+    background: $surface;
+    color: $text-muted;
+    text-style: italic;
+}
+
+.nav-item:hover {
+    background: $surface-lighten-1;
+}
+
+/* Selected nav item — brighter highlight */
+.nav-item.--highlight.--complete {
+    background: #1a3a1a;
+    color: $text;
+    text-style: bold;
+}
+
+.nav-item.--highlight.--incomplete {
+    background: #3a3a1a;
+    color: $text;
+    text-style: bold italic;
+}
+
+.nav-item.--highlight.--empty {
+    background: $success 15%;
+    color: $text;
+    text-style: bold;
+}
+
+.nav-item.--highlight.--running {
+    background: #1a2a3a;
+    color: $text;
+    text-style: bold;
+}
+
+.nav-item.--highlight.--skipped {
+    background: $surface-lighten-1;
+    color: $text-muted;
+    text-style: italic bold;
+}
+
+#content-area {
+    height: 100%;
+    padding: 1 2;
+    overflow-y: auto;
+}
+
+#footer-bar {
+    dock: bottom;
+    height: 3;
+    column-span: 2;
+    padding: 0 1;
+    border-top: solid $primary-background-lighten-2;
+    layout: horizontal;
+}
+
+.footer-key {
+    margin: 0 2 0 0;
+    color: $text-muted;
+}
+
+.section-title {
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+.section-divider {
+    margin-bottom: 1;
+    color: $text-muted;
+}
+
+.field-label {
+    margin-top: 1;
+    margin-bottom: 0;
+}
+
+.field-group {
+    margin-bottom: 1;
+    height: auto;
+}
+
+/* Ensure all nested containers inside account cards size to content */
+.account-card Container {
+    height: auto;
+}
+
+#sites-list {
+    height: auto;
+}
+
+#accounts-list {
+    height: auto;
+}
+
+.account-card {
+    border: solid $primary-background-lighten-2;
+    padding: 0 1;
+    margin-bottom: 1;
+    height: auto;
+}
+
+.account-title-row {
+    height: auto;
+    margin-bottom: 0;
+}
+
+.account-header {
+    text-style: bold;
+    margin-bottom: 0;
+    width: 1fr;
+    height: auto;
+}
+
+.compact-field-row {
+    height: auto;
+}
+
+.compact-field {
+    width: 1fr;
+    margin-right: 1;
+    height: auto;
+}
+
+.field-label-compact {
+    margin-top: 0;
+    margin-bottom: 0;
+}
+
+.remove-button-inline {
+    margin: 0;
+}
+
+#platform-checkboxes {
+    height: auto;
+}
+
+#platform-checkboxes LabeledSwitch {
+    margin-right: 2;
+}
+
+.add-button {
+    margin-top: 1;
+}
+
+.remove-button {
+    margin-top: 1;
+}
+
+.error-text {
+    color: $error;
+    margin-top: 0;
+}
+
+.path-list {
+    margin-top: 1;
+}
+
+.path-item {
+    padding: 0 1;
+    height: 1;
+}
+
+/* Section screens must size to content so the VerticalScroll parent scrolls */
+#content-area > Container {
+    height: auto;
+}
+
+/* Infrastructure LB containers */
+#lb-ip-fields {
+    height: auto;
+}
+
+#nlb-fields {
+    height: auto;
+}
+
+#cnpg-backup-fields {
+    height: auto;
+}
+
+#ztp-s3-fields {
+    height: auto;
+}
+
+#ztp-file-fields {
+    height: auto;
+}
+
+.ztp-img-header {
+    height: auto;
+    margin-bottom: 0;
+    color: $text-muted;
+}
+
+#ztp-img-list {
+    height: auto;
+}
+
+#rbac-overrides-list {
+    height: auto;
+}
+
+.subsection-gap {
+    margin-top: 2;
+}
+
+#redfish-fields {
+    height: auto;
+}
+
+#redfish-vendor-list {
+    height: auto;
+}
+
+#vault-fields {
+    height: auto;
+}
+
+#k8s-secrets-section {
+    height: auto;
+}
+
+.k8s-field-group {
+    height: auto;
+}
+
+#ns-list {
+    height: auto;
+}
+
+#ns-content {
+    height: auto;
+}
+
+#ns-eso-notice {
+    height: auto;
+}
+
+/* Content screen: custom jobs / templates / post-deploy lists */
+#job-paths-list {
+    height: auto;
+}
+
+#template-paths-list {
+    height: auto;
+}
+
+#post-deploy-list {
+    height: auto;
+}
+
+/* SSO fields container */
+#sso-fields {
+    height: auto;
+}
+
+/* SPIFFE containers */
+#spiffe-fields {
+    height: auto;
+}
+
+#spiffe-teleport-fields {
+    height: auto;
+}
+
+#gp-list {
+    height: auto;
+}
+
+/* Vault: git token list */
+#gt-list {
+    height: auto;
+}
+
+/* Infrastructure: prefix list */
+#lb-prefix-list {
+    height: auto;
+}
+
+/* Images screen containers */
+#registry-fields {
+    height: auto;
+}
+
+#img-overrides-section {
+    height: auto;
+}
+
+#img-override-cards {
+    height: auto;
+}
+
+/* Deploy options panel */
+#deploy-options {
+    height: auto;
+    margin-bottom: 1;
+}
+
+#deploy-options LabeledSwitch {
+    margin-right: 2;
+    height: auto;
+}
+
+#deploy-options RadioSet {
+    height: auto;
+}
+
+/* Deploy dashboard layout */
+#deploy-dashboard {
+    height: 1fr;
+    margin-top: 1;
+}
+
+#deploy-top-panels {
+    height: auto;
+    max-height: 14;
+    overflow-y: auto;
+}
+
+#step-list-panel {
+    width: 1fr;
+    min-width: 30;
+    border-right: solid $primary-background-lighten-2;
+    padding: 0 1;
+    overflow-y: auto;
+}
+
+#step-list-panel Static {
+    height: 1;
+}
+
+#pod-status-panel {
+    width: 2fr;
+    padding: 0 1;
+    overflow-y: auto;
+}
+
+#log-viewer-panel {
+    height: 1fr;
+    border-top: solid $primary-background-lighten-2;
+    padding: 0 1;
+}
+
+#log-tabs {
+    height: 3;
+}
+
+#log-tabs Button {
+    margin: 0 1 0 0;
+}
+
+#log-filter-noise {
+    content-align: center middle;
+    height: auto;
+    margin-left: 1;
+}
+
+#log-output {
+    height: 1fr;
+    min-height: 8;
+    border: solid $primary-background-lighten-2;
+}
+
+.nav-item.--deploy-running {
+    color: $warning;
+}
+
+/* Switch slider: red when off, green when on */
+Switch > .switch--slider {
+    color: $error;
+    background: $error 30%;
+}
+
+Switch.-on > .switch--slider {
+    color: $success;
+    background: $success 30%;
+}
+
+/* Values Preview spacing */
+#values-status {
+    margin: 1 0;
+}
+
+#values-log {
+    margin-top: 1;
+    height: 1fr;
+}

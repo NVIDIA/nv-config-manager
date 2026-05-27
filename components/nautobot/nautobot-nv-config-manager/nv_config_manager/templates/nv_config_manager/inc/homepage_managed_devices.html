@@ -1,0 +1,12 @@
+<div>
+  {% if 'nv_config_manager.view_configmanagerdevicestatus' in perms %}
+  <span class="badge pull-right">{{ managed_devices_count }}</span>
+  <h4 class="list-group-item-heading">
+    <a href="{% url managed_devices_url %}{{query}}">{{ managed_devices_label }}</a>
+  </h4>
+  {% else %}
+  <span class="badge pull-right"><i class="mdi mdi-lock"></i></span>
+  <h4 class="list-group-item-heading">{{ managed_devices_label }}</h4>
+  {% endif %}
+  <p class="list-group-item-text text-muted">{{ managed_devices_description }}</p>
+</div>

@@ -1,0 +1,31 @@
+---
+title: Port LLDP Info
+sidebar-title: Port LLDP Info
+position: 10
+---
+
+Collects detailed LLDP (Link Layer Discovery Protocol) information from network ports for topology discovery and documentation.
+
+## User Interface
+
+### Form Inputs
+
+| Field | Description | Selection Type | Required |
+| :---- | :---------- | :------------- | :------- |
+| **Site** | Choose the site containing the device | Single dropdown from available sites | Conditional |
+| **Device** | Select the specific device to query | Single dropdown from devices in selected site | Conditional |
+| **Interface** | Target interface for LLDP information | Text input field | Conditional |
+| **Remote MAC Address** | MAC address to search for across the network | Text input field | Conditional |
+
+<Note>
+You must provide either complete device information (Site + Device + Interface) or a MAC address to search for. The form validates these requirements.
+</Note>
+
+## Workflow Execution
+
+### Execution Stages
+
+1. Validate input parameters
+1. Query LLDP information
+1. Process neighbor data
+1. Generate topology report

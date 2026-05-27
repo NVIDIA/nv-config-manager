@@ -1,0 +1,888 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""VPC Creation Workflow."""
+
+import asyncio
+from datetime import timedelta
+
+from pydantic import BaseModel
+from temporalio import workflow
+from temporalio.common import RetryPolicy
+from temporalio.exceptions import ApplicationError
+
+from nv_config_manager.temporal.common.decorators.workflow import run_nv_config_manager_workflow
+from nv_config_manager.temporal.common.mixins.metadata import WorkflowMetadataMixin
+from nv_config_manager.temporal.common.mixins.stage import (
+    StageInput,
+    StageMixin,
+    StageOutput,
+    StateEnum,
+    stage_executor,
+)
+
+with workflow.unsafe.imports_passed_through():
+    from nv_config_manager.temporal.client.nautobot import DeviceVrfInfo
+    from nv_config_manager.temporal.common.mixins.archive import ArchiveMixin
+    from nv_config_manager.temporal.common.mixins.device import DeviceMixin, NetworkDeviceData
+    from nv_config_manager.temporal.ngc.activities.deploy import (
+        WaitForTenantRenderInput,
+        wait_for_tenant_render,
+    )
+    from nv_config_manager.temporal.ngc.activities.nautobot import (
+        AssignVrfToDeviceInput,
+        AssignVrfToInterfaceInput,
+        GetAvailableRouteDistinguishersInput,
+        GetDeviceInterfacesInput,
+        GetDeviceVrfsInput,
+        GetNetworkDeviceInput,
+        ProvisionVrfInput,
+        QueryVRFByVPCInput,
+        Vrf,
+        VrfDeletionActivityInput,
+        assign_vrf_to_device,
+        assign_vrf_to_interface,
+        delete_vrf,
+        get_available_route_distinguishers,
+        get_device_interfaces,
+        get_device_vrfs,
+        get_network_device,
+        get_vrfs_by_vpc_id,
+        provision_vrf,
+    )
+    from nv_config_manager.temporal.ngc.activities.render import (
+        ExecuteRenderInput,
+        execute_render,
+    )
+    from nv_config_manager.temporal.ngc.workflows.deploy import (
+        TenantDeployInput,
+        TenantDeployWorkflow,
+    )
+
+
+RD_MIN = 60000
+
+
+RD_MAX = 65000
+
+
+NAMESPACE_TAG = "spectrumx"
+
+
+DEFAULT_ACTIVITY_RETRY_POLICY = RetryPolicy(
+    maximum_attempts=3,
+)
+
+
+class VpcCreationInput(BaseModel):
+    """VPC Creation Workflow Input Definition."""
+
+    site: str
+    vpc_id: str
+    namespace_tag: str = NAMESPACE_TAG
+    rd_min: int = RD_MIN
+    rd_max: int = RD_MAX
+
+
+class VpcCreationWorkflowOutput(BaseModel):
+    """VPC Workflow Output Definition."""
+
+    created_vrfs: list[Vrf]
+    existing_vrfs: list[Vrf]
+
+
+@workflow.defn
+class VpcCreationWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin):
+    """VPC creation workflow for network virtualization."""
+
+    # Workflow metadata
+    workflow_description = "Create VPC with route distinguisher assignment and VRF provisioning"
+    workflow_input_class = VpcCreationInput
+    workflow_api_endpoint = "/ngc/vpc_creation"
+    workflow_namespace = "ngc"
+
+    def __init__(self) -> None:
+        """Initialize workflow."""
+        StageMixin.__init__(self)
+        self.define_stage(
+            name="create_vpc",
+            description="Assign an RD and create VRF.",
+            requires_approval=False,
+            depends_on=[],
+        )
+
+    class CreateVpcStageInput(StageInput):
+        """Create VPC Stage Input."""
+
+        namespace_tag: str
+        vpc_id: str
+        site: str
+        rd_min: int
+        rd_max: int
+
+    class CreateVpcStageOutput(StageOutput):
+        """Create VPC Stage Output."""
+
+        created_vrfs: list[Vrf]
+        existing_vrfs: list[Vrf]
+
+    @stage_executor("create_vpc")
+    async def create_vpc(self, stage_input: CreateVpcStageInput) -> CreateVpcStageOutput:
+        """Create VPC Stage."""
+        # Ensure no existing VRFs with this VPC ID
+        existing_vrfs = await workflow.execute_activity(
+            get_vrfs_by_vpc_id,
+            QueryVRFByVPCInput(
+                vpc_id=stage_input.vpc_id,
+                namespace_tag=stage_input.namespace_tag,
+                site=stage_input.site,
+            ),
+            start_to_close_timeout=timedelta(minutes=1),
+            retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+        )
+        if existing_vrfs:
+            return self.CreateVpcStageOutput(
+                created_vrfs=[],
+                existing_vrfs=existing_vrfs,
+                display=(
+                    f"VRFs already exists for VPC ID {stage_input.vpc_id}:\n "
+                    f"{self.markdown_table(existing_vrfs, exclude={'interfaces'})}"
+                ),
+            )
+        rd_results = await workflow.execute_activity(
+            get_available_route_distinguishers,
+            GetAvailableRouteDistinguishersInput(
+                site=stage_input.site,
+                namespace_tag=stage_input.namespace_tag,
+                rd_min=stage_input.rd_min,
+                rd_max=stage_input.rd_max,
+            ),
+            start_to_close_timeout=timedelta(minutes=1),
+            retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+        )
+        await workflow.execute_activity(
+            provision_vrf,
+            ProvisionVrfInput(
+                namespaces=rd_results.namespaces,
+                route_distinguisher=rd_results.route_distinguisher,
+                vpc_id=stage_input.vpc_id,
+            ),
+            start_to_close_timeout=timedelta(minutes=5),
+            retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+        )
+        created_vrfs = await workflow.execute_activity(
+            get_vrfs_by_vpc_id,
+            QueryVRFByVPCInput(
+                vpc_id=stage_input.vpc_id,
+                namespace_tag=stage_input.namespace_tag,
+                site=stage_input.site,
+            ),
+            start_to_close_timeout=timedelta(minutes=1),
+            retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+        )
+        if created_vrfs:
+            return self.CreateVpcStageOutput(
+                created_vrfs=created_vrfs,
+                existing_vrfs=[],
+                display=(
+                    f"Created VRFs:\n{self.markdown_table(created_vrfs, exclude={'interfaces'})}"
+                ),
+            )
+        raise ApplicationError("Failed to create VRFs")
+
+    @run_nv_config_manager_workflow
+    async def run(  # type: ignore[override, ty:invalid-method-override]  # pyright: ignore
+        self, workflow_input: VpcCreationInput
+    ) -> VpcCreationWorkflowOutput:
+        """Execute the VPC Creation workflow."""
+        self.set_input(workflow_input)
+        vrf_output = await self.create_vpc(
+            self.CreateVpcStageInput(
+                namespace_tag=workflow_input.namespace_tag,
+                vpc_id=workflow_input.vpc_id,
+                site=workflow_input.site,
+                rd_min=workflow_input.rd_min,
+                rd_max=workflow_input.rd_max,
+            )
+        )
+
+        await self.archive_results()
+        return VpcCreationWorkflowOutput(
+            created_vrfs=vrf_output.created_vrfs, existing_vrfs=vrf_output.existing_vrfs
+        )
+
+
+class VpcDeletionInput(BaseModel):
+    """VPC Deletion Workflow Input Definition."""
+
+    site: str
+    vpc_id: str
+    namespace_tag: str = NAMESPACE_TAG
+
+
+class VpcDeletionWorkflowOutput(BaseModel):
+    """VPC Workflow Output Definition."""
+
+    deleted_vrfs: list[Vrf]
+    in_use_vrfs: list[Vrf]
+
+
+@workflow.defn
+class VpcDeletionWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin):
+    """VPC deletion workflow for network virtualization cleanup."""
+
+    # Workflow metadata
+    workflow_description = "Delete VPC and associated VRFs with validation checks"
+    workflow_input_class = VpcDeletionInput
+    workflow_api_endpoint = "/ngc/vpc_deletion"
+    workflow_namespace = "ngc"
+
+    def __init__(self) -> None:
+        """Initialize workflow."""
+        StageMixin.__init__(self)
+        self.define_stage(
+            name="delete_vpc",
+            description="Validate and delete Nautobot VRFs tied to the VPC.",
+            requires_approval=False,
+            depends_on=[],
+        )
+
+    class DeleteVpcStageInput(StageInput):
+        """Create VPC Stage Input."""
+
+        vpc_id: str
+        site: str
+        namespace_tag: str = NAMESPACE_TAG
+
+    class DeleteVpcStageOutput(StageOutput):
+        """Create VPC Stage Output."""
+
+        deleted_vrfs: list[Vrf]
+        in_use_vrfs: list[Vrf]
+
+    @stage_executor("delete_vpc")
+    async def delete_vpc(self, stage_input: DeleteVpcStageInput) -> DeleteVpcStageOutput:
+        """Delete VPC Stage."""
+        existing_vrfs = await workflow.execute_activity(
+            get_vrfs_by_vpc_id,
+            QueryVRFByVPCInput(
+                vpc_id=stage_input.vpc_id,
+                namespace_tag=stage_input.namespace_tag,
+                site=stage_input.site,
+            ),
+            start_to_close_timeout=timedelta(minutes=1),
+            retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+        )
+        if not existing_vrfs:
+            return self.DeleteVpcStageOutput(
+                deleted_vrfs=[],
+                in_use_vrfs=[],
+                display=f"No VRFs exist for VPC ID {stage_input.vpc_id}",
+            )
+
+        in_use_vrfs = [vrf for vrf in existing_vrfs if vrf.interface_count > 0]
+        if in_use_vrfs:
+            return self.DeleteVpcStageOutput(
+                in_use_vrfs=in_use_vrfs,
+                deleted_vrfs=[],
+                display=(
+                    f"Unable to delete VPC {stage_input.vpc_id}, "
+                    f"the following VRFs are in use:\n "
+                    f"{self.markdown_table(in_use_vrfs, exclude={'interfaces'})}"
+                ),
+            )
+
+        # Delete VRFS
+        tasks = []
+        for vrf in existing_vrfs:
+            task = workflow.execute_activity(
+                delete_vrf,
+                VrfDeletionActivityInput(vrf_id=vrf.id),
+                start_to_close_timeout=timedelta(minutes=1),
+                retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+            )
+            tasks.append(task)
+        await asyncio.gather(*tasks)
+
+        return self.DeleteVpcStageOutput(
+            deleted_vrfs=existing_vrfs,
+            in_use_vrfs=[],
+            display=(
+                f"VRFs deleted for VPC ID {stage_input.vpc_id}:\n "
+                f"{self.markdown_table(existing_vrfs, exclude={'interfaces'})}"
+            ),
+        )
+
+    @run_nv_config_manager_workflow
+    async def run(  # type: ignore[override, ty:invalid-method-override]  # pyright: ignore
+        self, workflow_input: VpcDeletionInput
+    ) -> VpcDeletionWorkflowOutput:
+        """Execute the VPC Deletion workflow."""
+        self.set_input(workflow_input)
+        vrf_output = await self.delete_vpc(
+            self.DeleteVpcStageInput(
+                vpc_id=workflow_input.vpc_id,
+                site=workflow_input.site,
+                namespace_tag=workflow_input.namespace_tag,
+            )
+        )
+
+        await self.archive_results()
+        return VpcDeletionWorkflowOutput(
+            deleted_vrfs=vrf_output.deleted_vrfs, in_use_vrfs=vrf_output.in_use_vrfs
+        )
+
+
+class VpcAssignmentInput(BaseModel):
+    """VPC Assignment Workflow Input Definition."""
+
+    vpc_id: str
+    device: str | NetworkDeviceData
+    port_names: list[str]
+    site: str
+    namespace_tag: str = NAMESPACE_TAG
+
+
+class VpcAssignmentWorkflowOutput(BaseModel):
+    """VPC Assignment Workflow Output Definition."""
+
+    assigned_ports: list[str]
+    vrf_assigned: bool
+    vrf: DeviceVrfInfo
+
+
+@workflow.defn
+class VpcAssignmentWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, ArchiveMixin):
+    """VPC assignment workflow for assigning VRFs to devices and ports."""
+
+    # Workflow metadata
+    workflow_description = "Assign VPC/VRF to a device and its specified ports"
+    workflow_input_class = VpcAssignmentInput
+    workflow_api_endpoint = "/ngc/vpc_assignment"
+    workflow_namespace = "ngc"
+
+    def __init__(self) -> None:
+        """Initialize workflow."""
+        StageMixin.__init__(self)
+        self.define_stage(
+            name="get_device_and_vrf",
+            description="Get device and VRF information from Nautobot.",
+            requires_approval=False,
+            depends_on=[],
+        )
+        self.define_stage(
+            name="assign_vrf_to_device",
+            description="Check if VRF is assigned to device, and assign if not.",
+            requires_approval=False,
+            depends_on=["get_device_and_vrf"],
+        )
+        self.define_stage(
+            name="assign_vrf_to_ports",
+            description="Assign VRF to specified ports on the device.",
+            requires_approval=False,
+            depends_on=["assign_vrf_to_device"],
+        )
+
+    class GetDeviceAndVrfStageInput(StageInput):
+        """Get Device and VRF Stage Input."""
+
+        vpc_id: str
+        device: str | NetworkDeviceData
+        site: str
+        namespace_tag: str
+
+    class GetDeviceAndVrfStageOutput(StageOutput):
+        """Get Device and VRF Stage Output."""
+
+        device: NetworkDeviceData
+        vrf: Vrf
+
+    @stage_executor("get_device_and_vrf")
+    async def get_device_and_vrf(
+        self, stage_input: GetDeviceAndVrfStageInput
+    ) -> GetDeviceAndVrfStageOutput:
+        """Get Device and VRF Stage."""
+        if isinstance(stage_input.device, str):
+            device_output = await workflow.execute_activity(
+                get_network_device,
+                GetNetworkDeviceInput(device_id=stage_input.device),
+                start_to_close_timeout=timedelta(minutes=1),
+                retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+            )
+            device = device_output.device
+        else:
+            device = stage_input.device
+
+        vrfs = await workflow.execute_activity(
+            get_vrfs_by_vpc_id,
+            QueryVRFByVPCInput(
+                vpc_id=stage_input.vpc_id,
+                namespace_tag=stage_input.namespace_tag,
+                site=stage_input.site,
+            ),
+            start_to_close_timeout=timedelta(minutes=1),
+            retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+        )
+
+        if not vrfs:
+            raise ApplicationError(
+                f"No VRF found for VPC ID {stage_input.vpc_id} in site {stage_input.site}"
+            )
+        if len(vrfs) > 1:
+            raise ApplicationError(
+                f"Multiple VRFs found for VPC ID {stage_input.vpc_id} in site {stage_input.site}"
+            )
+
+        return self.GetDeviceAndVrfStageOutput(
+            device=device,
+            vrf=vrfs[0],
+            display=f"Found device: {device.name} and VRF: {vrfs[0].name}",
+        )
+
+    class AssignVrfToDeviceStageInput(StageInput):
+        """Assign VRF to Device Stage Input."""
+
+        device_id: str
+        vrf_id: str
+        vrf_name: str
+
+    class AssignVrfToDeviceStageOutput(StageOutput):
+        """Assign VRF to Device Stage Output."""
+
+        already_assigned: bool
+
+    @stage_executor("assign_vrf_to_device")
+    async def assign_vrf_to_device_stage(
+        self, stage_input: AssignVrfToDeviceStageInput
+    ) -> AssignVrfToDeviceStageOutput:
+        """Assign VRF to Device Stage."""
+        device_vrfs = await workflow.execute_activity(
+            get_device_vrfs,
+            GetDeviceVrfsInput(device_id=stage_input.device_id),
+            start_to_close_timeout=timedelta(minutes=1),
+            retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+        )
+
+        already_assigned = stage_input.vrf_id in {vrf.vrf_id for vrf in device_vrfs.vrfs}
+
+        if not already_assigned:
+            await workflow.execute_activity(
+                assign_vrf_to_device,
+                AssignVrfToDeviceInput(
+                    device_id=stage_input.device_id,
+                    vrf_id=stage_input.vrf_id,
+                ),
+                start_to_close_timeout=timedelta(minutes=1),
+                retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+            )
+            display = f"VRF {stage_input.vrf_name} assigned to device"
+        else:
+            display = f"VRF {stage_input.vrf_name} already assigned to device"
+
+        return self.AssignVrfToDeviceStageOutput(
+            already_assigned=already_assigned,
+            display=display,
+        )
+
+    class AssignVrfToPortsStageInput(StageInput):
+        """Assign VRF to Ports Stage Input."""
+
+        device_id: str
+        vrf_id: str
+        vrf_name: str
+        port_names: list[str]
+
+    class AssignVrfToPortsStageOutput(StageOutput):
+        """Assign VRF to Ports Stage Output."""
+
+        assigned_ports: list[str]
+        already_assigned_ports: list[str]
+
+    @stage_executor("assign_vrf_to_ports")
+    async def assign_vrf_to_ports_stage(
+        self, stage_input: AssignVrfToPortsStageInput
+    ) -> AssignVrfToPortsStageOutput:
+        """Assign VRF to Ports Stage."""
+        interfaces_output = await workflow.execute_activity(
+            get_device_interfaces,
+            GetDeviceInterfacesInput(
+                device_id=stage_input.device_id,
+                interface_names=stage_input.port_names,
+            ),
+            start_to_close_timeout=timedelta(minutes=1),
+            retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+        )
+
+        tasks = []
+        assigned_ports = []
+        already_assigned_ports = []
+        for interface in interfaces_output.interfaces:
+            if interface.vrf_id == stage_input.vrf_id:
+                already_assigned_ports.append(interface.name)
+                continue
+            task = workflow.execute_activity(
+                assign_vrf_to_interface,
+                AssignVrfToInterfaceInput(
+                    interface_id=interface.id,
+                    vrf_id=stage_input.vrf_id,
+                ),
+                start_to_close_timeout=timedelta(minutes=1),
+                retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+            )
+            tasks.append(task)
+            assigned_ports.append(interface.name)
+
+        await asyncio.gather(*tasks)
+
+        return self.AssignVrfToPortsStageOutput(
+            assigned_ports=assigned_ports,
+            already_assigned_ports=already_assigned_ports,
+            display=(
+                f"VRF {stage_input.vrf_name} assigned "
+                f"to ports: {', '.join(assigned_ports)}\n"
+                f"Ports already assigned: {', '.join(already_assigned_ports)}"
+            ),
+        )
+
+    @run_nv_config_manager_workflow
+    async def run(  # type: ignore[override, ty:invalid-method-override]  # pyright: ignore
+        self, workflow_input: VpcAssignmentInput
+    ) -> VpcAssignmentWorkflowOutput:
+        """Execute the VPC Assignment workflow."""
+        self.set_input(workflow_input)
+
+        device_vrf_output = await self.get_device_and_vrf(
+            self.GetDeviceAndVrfStageInput(
+                vpc_id=workflow_input.vpc_id,
+                device=workflow_input.device,
+                site=workflow_input.site,
+                namespace_tag=workflow_input.namespace_tag,
+            )
+        )
+        DeviceMixin.attach_device_search_attributes(device_vrf_output.device)
+
+        device_output = await self.assign_vrf_to_device_stage(
+            self.AssignVrfToDeviceStageInput(
+                device_id=device_vrf_output.device.id,
+                vrf_id=device_vrf_output.vrf.id,
+                vrf_name=device_vrf_output.vrf.name,
+            )
+        )
+
+        ports_output = await self.assign_vrf_to_ports_stage(
+            self.AssignVrfToPortsStageInput(
+                device_id=device_vrf_output.device.id,
+                vrf_id=device_vrf_output.vrf.id,
+                vrf_name=device_vrf_output.vrf.name,
+                port_names=workflow_input.port_names,
+            )
+        )
+
+        await self.archive_results()
+        return VpcAssignmentWorkflowOutput(
+            assigned_ports=ports_output.assigned_ports,
+            vrf_assigned=not device_output.already_assigned,
+            vrf=DeviceVrfInfo(
+                vrf_id=device_vrf_output.vrf.id,
+                vrf_name=device_vrf_output.vrf.name,
+            ),
+        )
+
+
+class VpcTenantChangeInput(BaseModel):
+    """VPC Tenant Change Workflow Input Definition."""
+
+    vpc_id: str
+    device_id: str
+    port_names: list[str]
+    site: str
+    namespace_tag: str = NAMESPACE_TAG
+
+
+class VpcTenantChangeWorkflowOutput(BaseModel):
+    """VPC Tenant Change Workflow Output Definition."""
+
+    assigned_ports: list[str]
+    vrf_assigned: bool
+    vrf: DeviceVrfInfo | None
+    device_deployed: str | None
+
+
+@workflow.defn
+class VpcTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, ArchiveMixin):
+    """VPC tenant change workflow for assigning VPCs and deploying tenant config."""
+
+    workflow_description = "Assign VPC to device and deploy tenant configuration"
+    workflow_input_class = VpcTenantChangeInput
+    workflow_api_endpoint = "/ngc/vpc-tenant-change"
+    workflow_namespace = "ngc"
+
+    def __init__(self) -> None:
+        """Initialize workflow."""
+        StageMixin.__init__(self)
+        self.define_stage(
+            name="get_device",
+            description="Get device information from Nautobot",
+            requires_approval=False,
+            depends_on=[],
+        )
+
+        self.define_stage(
+            name="assign_vpc",
+            description="Assign VPC to device and ports",
+            requires_approval=False,
+            depends_on=["get_device"],
+        )
+
+        self.define_stage(
+            name="render_tenant_config",
+            description="Render tenant configuration",
+            requires_approval=False,
+            depends_on=["assign_vpc"],
+        )
+
+        self.define_stage(
+            name="wait_for_render",
+            description="Wait for tenant render to be updated",
+            requires_approval=False,
+            depends_on=["render_tenant_config"],
+        )
+
+        self.define_stage(
+            name="deploy",
+            description="Deploy tenant configuration to device",
+            requires_approval=False,
+            depends_on=["wait_for_render"],
+        )
+
+    class GetDeviceStageInput(StageInput):
+        """Get Device Stage Input."""
+
+        device_id: str
+
+    class GetDeviceStageOutput(StageOutput):
+        """Get Device Stage Output."""
+
+        device: NetworkDeviceData
+
+    @stage_executor("get_device")
+    async def get_device_stage(self, stage_input: GetDeviceStageInput) -> GetDeviceStageOutput:
+        """Get device information from Nautobot."""
+        device_output = await workflow.execute_activity(
+            get_network_device,
+            GetNetworkDeviceInput(device_id=stage_input.device_id),
+            start_to_close_timeout=timedelta(minutes=1),
+            retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+        )
+        return self.GetDeviceStageOutput(
+            device=device_output.device,
+            display=f"Retrieved device: {device_output.device.name}",
+        )
+
+    class AssignVpcStageInput(StageInput):
+        """Assign VPC Stage Input."""
+
+        vpc_id: str
+        device: NetworkDeviceData
+        port_names: list[str]
+        site: str
+        namespace_tag: str
+
+    class AssignVpcStageOutput(StageOutput):
+        """Assign VPC Stage Output."""
+
+        assigned_ports: list[str]
+        vrf_assigned: bool
+        vrf: DeviceVrfInfo
+
+    @stage_executor("assign_vpc")
+    async def assign_vpc_stage(self, stage_input: AssignVpcStageInput) -> AssignVpcStageOutput:
+        """Assign VPC to device and ports."""
+        result = await workflow.execute_child_workflow(
+            VpcAssignmentWorkflow.run,
+            VpcAssignmentInput(
+                vpc_id=stage_input.vpc_id,
+                device=stage_input.device,
+                port_names=stage_input.port_names,
+                site=stage_input.site,
+                namespace_tag=stage_input.namespace_tag,
+            ),
+            run_timeout=timedelta(minutes=10),
+        )
+
+        self.append_child_workflow("assign_vpc", workflow.info().workflow_id)
+
+        vrf_message = f" and VRF {result.vrf.vrf_name}" if result.vrf_assigned else ""
+        return self.AssignVpcStageOutput(
+            assigned_ports=result.assigned_ports,
+            vrf_assigned=result.vrf_assigned,
+            vrf=result.vrf,
+            display=f"Assigned {len(result.assigned_ports)} ports{vrf_message}",
+        )
+
+    class RenderStageInput(StageInput):
+        """Render Stage Input."""
+
+        device: NetworkDeviceData
+
+    class RenderStageOutput(StageOutput):
+        """Render Stage Output."""
+
+        config_id: str | None = None
+
+    @stage_executor("render_tenant_config")
+    async def render_stage(self, stage_input: RenderStageInput) -> RenderStageOutput:
+        """Render tenant configuration."""
+        result = await workflow.execute_activity(
+            execute_render,
+            ExecuteRenderInput(
+                device_id=stage_input.device.id,
+                workflow_id=workflow.info().workflow_id,
+            ),
+            start_to_close_timeout=timedelta(minutes=5),
+            retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+        )
+
+        # Get commit_id for tenant.yaml from the updated_files list
+        tenant_config_file = stage_input.device.tenant_config_file
+        config_id = result.get_commit(tenant_config_file)
+
+        display_message = "Rendered tenant configuration"
+        if config_id:
+            display_message += f" (config ID: {config_id})"
+
+        return self.RenderStageOutput(
+            config_id=config_id,
+            display=display_message,
+        )
+
+    class WaitForRenderStageInput(StageInput):
+        """Wait For Render Stage Input."""
+
+        device: NetworkDeviceData
+        config_id: str | None
+
+    class WaitForRenderStageOutput(StageOutput):
+        """Wait For Render Stage Output."""
+
+        config_id: str | None = None
+
+    @stage_executor("wait_for_render")
+    async def wait_for_render_stage(
+        self, stage_input: WaitForRenderStageInput
+    ) -> WaitForRenderStageOutput:
+        """Wait for tenant render to be updated with expected changes."""
+        result = await workflow.execute_activity(
+            wait_for_tenant_render,
+            WaitForTenantRenderInput(
+                device=stage_input.device,
+                config_id=stage_input.config_id,
+            ),
+            start_to_close_timeout=timedelta(minutes=15),
+            retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+        )
+
+        display_message = "Tenant render available"
+        if result.config_id:
+            display_message += f" (config ID: {result.config_id})"
+
+        return self.WaitForRenderStageOutput(
+            config_id=result.config_id,
+            display=display_message,
+        )
+
+    class DeployStageInput(StageInput):
+        """Deploy Stage Input."""
+
+        device: NetworkDeviceData
+
+    class DeployStageOutput(StageOutput):
+        """Deploy Stage Output."""
+
+        device_id: str
+
+    @stage_executor("deploy")
+    async def deploy_stage(self, stage_input: DeployStageInput) -> DeployStageOutput:
+        """Deploy tenant configuration to device."""
+        await workflow.execute_child_workflow(
+            TenantDeployWorkflow.run,
+            TenantDeployInput(device=stage_input.device),
+            run_timeout=timedelta(minutes=10),
+        )
+
+        self.append_child_workflow("deploy", workflow.info().workflow_id)
+
+        return self.DeployStageOutput(
+            device_id=stage_input.device.id,
+            display=f"Deployed tenant configuration to device {stage_input.device.id}",
+        )
+
+    @run_nv_config_manager_workflow
+    async def run(  # type: ignore[override, ty:invalid-method-override]  # pyright: ignore
+        self, workflow_input: VpcTenantChangeInput
+    ) -> VpcTenantChangeWorkflowOutput:
+        """Execute the VPC Tenant Change workflow."""
+        self.set_input(workflow_input)
+
+        device_output = await self.get_device_stage(
+            self.GetDeviceStageInput(device_id=workflow_input.device_id)
+        )
+        DeviceMixin.attach_device_search_attributes(device_output.device)
+        assign_output = await self.assign_vpc_stage(
+            self.AssignVpcStageInput(
+                vpc_id=workflow_input.vpc_id,
+                device=device_output.device,
+                port_names=workflow_input.port_names,
+                site=workflow_input.site,
+                namespace_tag=workflow_input.namespace_tag,
+            )
+        )
+
+        if not assign_output.assigned_ports and not assign_output.vrf_assigned:
+            self.set_stage_state("render", StateEnum.UNREACHABLE)
+            self.set_stage_state("wait_for_render", StateEnum.UNREACHABLE)
+            self.set_stage_state("deploy", StateEnum.UNREACHABLE)
+            assigned_ports = []
+            vrf_assigned = False
+            vrf = None
+            device_deployed = None
+        else:
+            render_output = await self.render_stage(
+                self.RenderStageInput(
+                    device=device_output.device,
+                )
+            )
+
+            await self.wait_for_render_stage(
+                self.WaitForRenderStageInput(
+                    device=device_output.device,
+                    config_id=render_output.config_id,
+                )
+            )
+
+            deploy_output = await self.deploy_stage(
+                self.DeployStageInput(device=device_output.device)
+            )
+            device_deployed = deploy_output.device_id
+            assigned_ports = assign_output.assigned_ports
+            vrf_assigned = assign_output.vrf_assigned
+            vrf = assign_output.vrf
+
+        await self.archive_results()
+        return VpcTenantChangeWorkflowOutput(
+            assigned_ports=assigned_ports,
+            vrf_assigned=vrf_assigned,
+            vrf=vrf,
+            device_deployed=device_deployed,
+        )

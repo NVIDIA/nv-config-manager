@@ -1,0 +1,233 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""External Services configuration screen — Nautobot, Redis, and PostgreSQL host overrides."""
+
+from __future__ import annotations
+
+from textual.app import ComposeResult
+from textual.containers import Container
+from textual.widgets import Input, Label
+
+from nv_config_manager_installer.schema import NVConfigManagerInstallConfig
+from nv_config_manager_installer.tui.widgets import LabeledSwitch
+
+_W_EXT_NAUTOBOT = "#ext-nautobot-enabled"
+_W_EXT_REDIS = "#ext-redis-enabled"
+_W_EXT_PG = "#ext-pg-enabled"
+_PG_HOST_PLACEHOLDER = "postgres.example.com  (leave empty to keep CNPG)"
+
+
+class ExternalServicesScreen(Container):
+    """Configure out-of-cluster Nautobot, Redis, and PostgreSQL instances."""
+
+    def __init__(self, config: NVConfigManagerInstallConfig, **kwargs: object) -> None:
+        super().__init__(**kwargs)
+        self._config = config
+
+    def compose(self) -> ComposeResult:
+        es = self._config.external_services
+        r = es.redis
+        pg = es.postgres
+        svc = self._config.services
+
+        yield Label("External Services", classes="section-title")
+        yield Label("─" * 40, classes="section-divider")
+        yield Label(
+            "Override in-cluster services with external instances. "
+            "Leave disabled to use the default in-cluster deployments."
+        )
+
+        # ── Nautobot ───────────────────────────────────────────────────────
+        yield Label("Nautobot", classes="field-label")
+        yield LabeledSwitch(
+            "Use external Nautobot",
+            value=not svc.nautobot,
+            id="ext-nautobot-enabled",
+        )
+        with Container(id="ext-nautobot-fields"):
+            yield Label("Nautobot URL", classes="field-label")
+            yield Input(
+                value=svc.external_nautobot_url,
+                placeholder="https://nautobot.example.com",
+                id="ext-nautobot-url",
+            )
+
+        # ── Redis ──────────────────────────────────────────────────────────
+        yield Label("Redis", classes="field-label")
+        yield LabeledSwitch("Use external Redis", value=r.enabled, id="ext-redis-enabled")
+        with Container(id="ext-redis-fields"):
+            yield Label("Host", classes="field-label")
+            yield Input(value=r.host, placeholder="redis.example.com", id="ext-redis-host")
+            yield Label("Port", classes="field-label")
+            yield Input(value=str(r.port), placeholder="6379", id="ext-redis-port")
+            yield LabeledSwitch("TLS / SSL", value=r.ssl, id="ext-redis-ssl")
+            yield LabeledSwitch(
+                "Password auth", value=r.password_auth, id="ext-redis-password-auth"
+            )
+
+        # ── Slack ──────────────────────────────────────────────────────────
+        yield Label("Slack", classes="field-label")
+        yield Label(
+            "Slack channel for NVIDIA Config Manager notifications (requires Slack token secret).",
+        )
+        yield Input(
+            value=es.slack.channel,
+            placeholder="#nv-config-manager-notifications",
+            id="ext-slack-channel",
+        )
+
+        # ── PostgreSQL ─────────────────────────────────────────────────────
+        yield Label("PostgreSQL", classes="field-label")
+        yield LabeledSwitch("Use external PostgreSQL", value=pg.enabled, id="ext-pg-enabled")
+        with Container(id="ext-pg-fields"):
+            yield Label("Port", classes="field-label")
+            yield Input(value=str(pg.port), placeholder="5432", id="ext-pg-port")
+
+            yield Label("Temporal host", classes="field-label")
+            yield Input(
+                value=pg.temporal_host,
+                placeholder=_PG_HOST_PLACEHOLDER,
+                id="ext-pg-temporal",
+            )
+            yield Label(
+                "Temporal visibility host (optional, defaults to temporal host)",
+                classes="field-label",
+            )
+            yield Input(
+                value=pg.temporal_visibility_host,
+                placeholder="",
+                id="ext-pg-temporal-vis",
+            )
+            yield Label("Config Store host", classes="field-label")
+            yield Input(
+                value=pg.config_store_host,
+                placeholder=_PG_HOST_PLACEHOLDER,
+                id="ext-pg-config-store",
+            )
+            yield Label("DHCP host", classes="field-label")
+            yield Input(
+                value=pg.dhcp_host,
+                placeholder=_PG_HOST_PLACEHOLDER,
+                id="ext-pg-dhcp",
+            )
+            yield Label("Nautobot host", classes="field-label")
+            yield Input(
+                value=pg.nautobot_host,
+                placeholder=_PG_HOST_PLACEHOLDER,
+                id="ext-pg-nautobot",
+            )
+
+    def on_mount(self) -> None:
+        self._toggle_nautobot_fields()
+        self._toggle_redis_fields()
+        self._toggle_pg_fields()
+
+    def on_labeled_switch_changed(self, event: LabeledSwitch.Changed) -> None:
+        sid = event.labeled_switch.id
+        if sid == "ext-nautobot-enabled":
+            self._toggle_nautobot_fields()
+        elif sid == "ext-redis-enabled":
+            self._toggle_redis_fields()
+        elif sid == "ext-pg-enabled":
+            self._toggle_pg_fields()
+
+    def _toggle_nautobot_fields(self) -> None:
+        self.query_one("#ext-nautobot-fields").display = self.query_one(
+            _W_EXT_NAUTOBOT, LabeledSwitch
+        ).value
+
+    def _toggle_redis_fields(self) -> None:
+        self.query_one("#ext-redis-fields").display = self.query_one(
+            _W_EXT_REDIS, LabeledSwitch
+        ).value
+
+    def _toggle_pg_fields(self) -> None:
+        self.query_one("#ext-pg-fields").display = self.query_one(_W_EXT_PG, LabeledSwitch).value
+
+    def _safe_int(self, widget_id: str, default: int) -> int:
+        try:
+            return int(self.query_one(widget_id, Input).value.strip())
+        except (ValueError, LookupError):
+            return default
+
+    def write_to_config(self, config: NVConfigManagerInstallConfig) -> None:
+        nautobot_external = self.query_one(_W_EXT_NAUTOBOT, LabeledSwitch).value
+        nautobot_url = self.query_one("#ext-nautobot-url", Input).value.strip()
+        config.services.nautobot = not nautobot_external
+        config.services.external_nautobot_url = nautobot_url if nautobot_external else ""
+
+        es = config.external_services
+        r = es.redis
+        r.enabled = self.query_one(_W_EXT_REDIS, LabeledSwitch).value
+        r.host = self.query_one("#ext-redis-host", Input).value.strip()
+        r.port = self._safe_int("#ext-redis-port", 6379)
+        r.ssl = self.query_one("#ext-redis-ssl", LabeledSwitch).value
+        r.password_auth = self.query_one("#ext-redis-password-auth", LabeledSwitch).value
+
+        es.slack.channel = self.query_one("#ext-slack-channel", Input).value.strip()
+
+        pg = es.postgres
+        pg.enabled = self.query_one(_W_EXT_PG, LabeledSwitch).value
+        pg.port = self._safe_int("#ext-pg-port", 5432)
+        pg.temporal_host = self.query_one("#ext-pg-temporal", Input).value.strip()
+        pg.temporal_visibility_host = self.query_one("#ext-pg-temporal-vis", Input).value.strip()
+        pg.config_store_host = self.query_one("#ext-pg-config-store", Input).value.strip()
+        pg.dhcp_host = self.query_one("#ext-pg-dhcp", Input).value.strip()
+        pg.nautobot_host = self.query_one("#ext-pg-nautobot", Input).value.strip()
+
+    def sync_from_config(self, config: NVConfigManagerInstallConfig) -> None:
+        self._config = config
+        es = config.external_services
+        r = es.redis
+        pg = es.postgres
+        svc = config.services
+        try:
+            self.query_one(_W_EXT_NAUTOBOT, LabeledSwitch).value = not svc.nautobot
+            self.query_one("#ext-nautobot-url", Input).value = svc.external_nautobot_url
+            self.query_one(_W_EXT_REDIS, LabeledSwitch).value = r.enabled
+            self.query_one("#ext-redis-host", Input).value = r.host
+            self.query_one("#ext-redis-port", Input).value = str(r.port)
+            self.query_one("#ext-redis-ssl", LabeledSwitch).value = r.ssl
+            self.query_one("#ext-redis-password-auth", LabeledSwitch).value = r.password_auth
+            self.query_one("#ext-slack-channel", Input).value = es.slack.channel
+            self.query_one(_W_EXT_PG, LabeledSwitch).value = pg.enabled
+            self.query_one("#ext-pg-port", Input).value = str(pg.port)
+            self.query_one("#ext-pg-temporal", Input).value = pg.temporal_host
+            self.query_one("#ext-pg-temporal-vis", Input).value = pg.temporal_visibility_host
+            self.query_one("#ext-pg-config-store", Input).value = pg.config_store_host
+            self.query_one("#ext-pg-dhcp", Input).value = pg.dhcp_host
+            self.query_one("#ext-pg-nautobot", Input).value = pg.nautobot_host
+        except LookupError:
+            pass  # widgets may not be mounted yet (called before compose)
+        self._toggle_nautobot_fields()
+        self._toggle_redis_fields()
+        self._toggle_pg_fields()
+
+    def get_status(self, config: NVConfigManagerInstallConfig) -> str:
+        es = config.external_services
+        if not config.services.nautobot and not config.services.external_nautobot_url:
+            return "[!]"
+        if es.redis.enabled and not es.redis.host:
+            return "[!]"
+        if es.postgres.enabled and not any(
+            [
+                es.postgres.temporal_host,
+                es.postgres.config_store_host,
+            ]
+        ):
+            return "[!]"
+        if not config.services.nautobot or es.redis.enabled or es.postgres.enabled:
+            return "[*]"
+        return "[ ]"

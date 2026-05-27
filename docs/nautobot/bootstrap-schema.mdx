@@ -1,0 +1,927 @@
+---
+title: Nautobot Bootstrap Data Reference
+sidebar-title: Nautobot Bootstrap Data Reference
+position: 30
+---
+
+This document provides a comprehensive reference for the YAML schema types used to populate Nautobot with baseline Config Manager data. The `LoadBootstrapData` job (located in `jobs/load_bootstrap_data.py`) processes these YAML files in a specific dependency order to create manufacturers, device types, platforms, roles, tags, statuses, locations, tenants, namespaces, relationships, and config contexts in Nautobot.
+
+The bootstrap data files are located in the `data/` directory and are organized by schema type. The job supports deployment type filtering using the `NV_CONFIG_MANAGER_DEPLOYMENT_TYPE` environment variable, allowing different data sets to be loaded for different deployment scenarios (for example, `superpod`, a site-specific label, or `all`).
+
+## Loading Order and Dependencies
+
+The `LoadBootstrapData` job processes schemas in the following order to ensure dependencies are satisfied:
+
+| Order | Schema Type | Dependencies | Notes |
+| :---- | :---------- | :----------- | :---- |
+| 1 | Manufacturers | None | Base dependency for device types and platforms |
+| 2 | Tenants | None | Used by locations |
+| 3 | Location Types | None (but can reference parent location types) | Must define parents before children |
+| 4 | Locations | Location Types, Statuses, Tenants | Status defaults to "Active" if not found |
+| 5 | Namespaces | None | Used by IP objects |
+| 6 | Statuses | None | Used by locations and other objects |
+| 7 | Roles | None | Used by config contexts |
+| 8 | Tags | None | Applied to various objects |
+| 9 | Platforms | Manufacturers (optional) | Manufacturer must exist if specified |
+| 10 | Device Types | Manufacturers | Manufacturer directory must exist |
+| 11 | Relationships | Content Types | Content types must exist in Nautobot |
+| 12 | Config Contexts | Roles, Platforms | Roles and platforms must exist if specified |
+
+**Notes**:
+
+- **Manufacturers** must be loaded first as they are required by Device Types and optionally by Platforms
+- **Location Types** should define parent types before child types in the YAML file
+- **Locations** are sorted by hierarchy (Provider → Region → Site → Module) before processing
+- **Statuses** should include "Active" as it is the default for locations
+- **Roles** and **Platforms** must exist before Config Contexts that reference them
+- Missing dependencies result in warnings, and the item is skipped (except for required fields which cause errors)
+
+## About the Data
+
+You must populate several key data structures to make Config Manager work.
+
+### Devices / Device Types / Device Roles / Interfaces
+
+**Devices** are the fundamental unit of configuration. They are the items you rack and configure, and in Config Manager, that usually means network switches. Device records contain hostnames, primary IPv4 addresses, and critical identifying attributes like MAC addresses and serial numbers. Create these operational records through the Nautobot UI, Nautobot API, bulk import, migration scripts, or Design Builder topology jobs so provisioning and rendering know which device gets what.
+
+**Device Types** are the manufacturer's model of what you are deploying. For example, NVIDIA SN5600.
+
+**Device Roles** define the function of an individual Device. The Role of a Device defines much of the base template applied by the Config Manager system, so this can be considered the base unit of Config Manager deployment. Examples may include "access-switch," "TOR," or "Spine."
+
+**Interfaces** are physical device ports, for things like Ethernet, Infiniband, BMC, and so on. These connect to Cables and link to IP addresses. There are also logical interface types, like VLAN Interfaces or Loopbacks. These connect to IP addresses, but not Cables.
+
+### Racks / Cables / Location Types / Locations
+
+**Racks** are where you rack your gear, and how you tell your datacenter operators where to put things.
+
+**Cables** define how you connect devices together. The full set of cables in your data set will be used to validate that the deployment has been properly cabled and powered up, in the Cable Validation workflow. Populating this precisely will help you bring up your fleet quickly and get accurate reports on any problems you need to fix.
+
+**Location Types** define the generic hierarchy of how your locations fit together. For example, Regions may be at your top level, with Sites nested under those, and perhaps Modules below that. At minimum, most operators likely want a Site Location Type.
+
+**Locations** are instances of Location Types. Racks belong to Locations.
+
+### Prefixes, IP Addresses, VLANs
+
+IPAM objects need to be populated and applied to Devices or Location objects respectively, to establish connectivity and routing for Devices.
+
+## Common Schema Patterns
+
+### Deployment Type Filtering
+
+Most schema types support a `deployment_types` field that controls when an item is loaded:
+
+- **Type**: Array of strings or single string
+- **Default**: `["all"]` if not specified
+- **Values**: Common values include `all`, `superpod`, or site-specific labels you define
+- **Behavior**: Item is loaded if `NV_CONFIG_MANAGER_DEPLOYMENT_TYPE` matches any value in the array, or if `all` is in the array
+
+Example:
+
+```yaml
+deployment_types: [all, superpod]
+# or
+deployment_types: superpod
+```
+
+### Content Types
+
+Roles, tags, and statuses can specify which Nautobot content types they apply to using the `content_types` field:
+
+- **Type**: Array of strings
+- **Format**: `{app_label}.{model}` (for example, `dcim.device`, `dcim.interface`, `ipam.prefix`)
+- **Common Content Types**:
+  - `dcim.device` - Devices
+  - `dcim.interface` - Interfaces
+  - `ipam.prefix` - IP Prefixes
+  - `ipam.ipaddress` - IP Addresses
+  - `ipam.vlan` - VLANs
+  - `ipam.vrf` - VRFs
+  - `circuits.circuit` - Circuits
+
+### Hierarchical References
+
+Some schemas support parent relationships using either:
+
+1. **String format**: Simple parent name lookup
+
+   ```yaml
+   parent: NVIDIA
+   ```
+
+2. **Dictionary format**: Nested lookup with multiple criteria
+
+   ```yaml
+   parent:
+     name: IPP5_Mississippi
+     parent__name: AMER
+     parent__parent__name: NVIDIA
+   ```
+
+### Field Naming Conventions
+
+- Field names use lowercase with underscores (snake_case)
+- Required fields are typically `name` or `model`
+- Optional fields often have sensible defaults
+- Boolean fields default to `true` when not specified
+
+## Schema Reference
+
+### 1. Manufacturers
+
+**File Location**: `data/manufacturers.yaml`
+
+**Description**: Network equipment vendors, server manufacturers, and infrastructure providers.
+
+#### Required Fields
+
+| Field | Type | Description |
+| :---- | :---- | :---------- |
+| `name` | string | Manufacturer name (must be unique) |
+
+#### Optional Fields
+
+| Field | Type | Default | Description |
+| :---- | :--- | :------ | :---------- |
+| `description` | string | `""` | Description of the manufacturer |
+| `deployment_types` | array/string | `["all"]` | Deployment types this manufacturer applies to |
+
+#### Relationships
+
+- **Used by**: Device Types (by directory structure), Platforms
+
+#### Example
+
+```yaml
+---
+# Network Equipment Vendors
+- name: NVIDIA
+  description: NVIDIA networking switches and systems
+  deployment_types: [all, superpod]
+
+- name: Mellanox
+  description: Mellanox networking equipment (now NVIDIA)
+  deployment_types: [all, superpod]
+
+- name: Arista
+  description: Arista ethernet switches
+  deployment_types: [all, superpod]
+```
+
+#### Notes
+
+- Manufacturer names must match directory names in `data/device_types/` for device types to be associated correctly.
+- The job uses a `get_or_create` upsert method, so existing manufacturers are not overwritten.
+
+---
+
+### 2. Device Types
+
+**File Location**: `data/device_types/{manufacturer}/*.yaml`
+
+**Description**: Physical device models organized by manufacturer in subdirectories.
+
+#### Required Fields
+
+| Field | Type | Description |
+| :---- | :--- | :---------- |
+| `model` | string | Device model name |
+| `manufacturer` | string | Manufacturer name (must match directory name) |
+
+#### Optional Fields
+
+| Field | Type | Default | Description |
+| :---- | :--- | :------ | :---------- |
+| `part_number` | string | `""` | Part number |
+| `u_height` | integer | `1` | Rack unit height |
+| `is_full_depth` | boolean | `true` | Whether device is full depth |
+| `weight` | float | - | Device weight |
+| `weight_unit` | string | - | Weight unit (such as `kg`) |
+| `comments` | string | - | Additional comments (supports markdown) |
+| `device_family` | string | - | Device family classification |
+| `deployment_types` | array/string | `["all"]` | Deployment types this device type applies to |
+| `console_ports` | array | - | List of console port definitions |
+| `power_ports` | array | - | List of power port definitions |
+| `interfaces` | array | - | List of interface definitions |
+| `module_bays` | array | - | List of module bay definitions |
+
+#### Console Ports Structure
+
+```yaml
+console_ports:
+  - name: con0
+    type: rj-45
+```
+
+#### Power Ports Structure
+
+```yaml
+power_ports:
+  - name: PSU1
+    type: iec-60320-c14
+    maximum_draw: 150
+```
+
+#### Interfaces Structure
+
+```yaml
+interfaces:
+  - name: eth0
+    type: 1000base-t
+    mgmt_only: true
+  - name: swp[1-48]
+    type: 1000base-t
+```
+
+#### Module Bays Structure
+
+```yaml
+module_bays:
+  - name: qsfp[1-4]
+    label: QSFP28 slot [1-4]
+    description: 100gbase-x-qsfp28
+    position: "[1-4]"
+```
+
+#### Relationships
+
+- **Requires**: Manufacturer (must exist)
+- **Used by**: Devices created through the Nautobot UI, Nautobot API, bulk import, migration scripts, or Design Builder topology jobs
+
+#### Example
+
+```yaml
+---
+manufacturer: NVIDIA
+model: SN2201
+part_number: SN2201
+device_family: Network
+u_height: 1
+is_full_depth: false
+weight: 7.4
+weight_unit: kg
+comments: "[Data Sheet](https://docs.nvidia.com/networking/display/sn2000pub/)"
+deployment_types: [all, superpod]
+console_ports:
+  - name: con0
+    type: rj-45
+power_ports:
+  - name: PSU1
+    type: iec-60320-c14
+    maximum_draw: 150
+  - name: PSU2
+    type: iec-60320-c14
+    maximum_draw: 150
+interfaces:
+  - name: eth0
+    type: 1000base-t
+    mgmt_only: true
+  - name: swp[1-48]
+    type: 1000base-t
+module_bays:
+  - name: qsfp[1-4]
+    label: QSFP28 slot [1-4]
+    description: 100gbase-x-qsfp28
+    position: "[1-4]"
+```
+
+#### Notes
+
+- Device type files must be placed in a subdirectory matching the manufacturer name
+- Interface names can use bracket notation for ranges (for example, `swp[1-48]`)
+- The `manufacturer` field in the YAML must match the directory name
+- Only `model`, `part_number`, `u_height`, and `is_full_depth` are stored in Nautobot; other fields are informational
+
+---
+
+### 3. Platforms
+
+**File Location**: `data/platforms.yaml`
+
+**Description**: Network operating systems and software platforms that run on devices.
+
+#### Required Fields
+
+| Field | Type | Description |
+| :---- | :--- | :---------- |
+| `name` | string | Platform name (must be unique) |
+
+#### Optional Fields
+
+| Field | Type | Default | Description |
+| :---- | :--- | :------ | :---------- |
+| `manufacturer` | string | - | Associated manufacturer name |
+| `description` | string | `""` | Platform description |
+| `deployment_types` | array/string | `["all"]` | Deployment types this platform applies to |
+
+#### Relationships
+
+- **Requires**: Manufacturer (optional, but must exist if specified)
+- **Used by**: Config Contexts, Devices
+
+#### Example
+
+```yaml
+---
+# Network OS Platforms for Config Manager deployments
+
+- name: Arista EOS
+  manufacturer: Arista
+  description: ""
+
+- name: Cumulus Linux
+  manufacturer: NVIDIA
+  description: ""
+
+- name: MLNX-OS
+  manufacturer: Mellanox
+  description: ""
+
+- name: NV-OS
+  manufacturer: NVIDIA
+  description: ""
+```
+
+#### Notes
+
+- If `manufacturer` is specified, it must exist in the manufacturers list.
+- Platforms are created with a `get_or_create` upsert method, so existing platforms are not overwritten
+
+---
+
+### 4. Roles
+
+**File Location**: `data/roles.yaml`
+
+**Description**: Functional roles assigned to devices and interfaces to categorize their purpose in the network.
+
+#### Required Fields
+
+| Field | Type | Description |
+| :---- | :--- | :---------- |
+| `name` | string | Role name (must be unique) |
+
+#### Optional Fields
+
+| Field | Type | Default | Description |
+| :---- | :--- | :------ | :---------- |
+| `description` | string | - | Role description |
+| `color` | string | `grey` | Hex color code (without #) or name of a Nautobot color |
+| `weight` | integer | - | Display weight/priority |
+| `content_types` | array | - | List of content types this role applies to (for example, `["dcim.device", "dcim.interface"]`) |
+| `deployment_types` | array/string | `["all"]` | Deployment types this role applies to |
+
+#### Relationships
+
+- **Used by**: Config Contexts (using the `roles` field), Devices, Interfaces
+
+#### Example
+
+```yaml
+---
+# Device and Interface Roles for Config Manager Superpod deployments
+
+- name: superpod-spine
+  description: Superpod spine switch
+  content_types:
+    - dcim.device
+  color: 2196f3
+  deployment_types: [all, superpod]
+
+- name: superpod-computeleaf
+  description: Superpod compute leaf switch
+  content_types:
+    - dcim.device
+  color: 2196f3
+  deployment_types: [all, superpod]
+
+- name: Uplink
+  description: Uplink interface
+  content_types:
+    - dcim.interface
+  color: 2196f3
+  deployment_types: [all, superpod]
+```
+
+#### Notes
+
+- The `content_types` field must be set for both new and existing roles.
+- Content type format is `{app_label}.{model}` (for example, `dcim.device`).
+- Roles are created with a `get_or_create` upsert method, but `content_types` are always updated.
+
+---
+
+### 5. Tags
+
+**File Location**: `data/tags.yaml`
+
+**Description**: Labels used to categorize and filter devices, interfaces, and other objects.
+
+#### Required Fields
+
+| Field | Type | Description |
+| :---- | :--- | :---------- |
+| `name` | string | Tag name (must be unique) |
+
+#### Optional Fields
+
+| Field | Type | Default | Description |
+| :---- | :--- | :------ | :---------- |
+| `description` | string | `""` | Tag description |
+| `color` | string | `9e9e9e` | Hex color code (without #) or name of a Nautobot color |
+| `content_types` | array | - | List of content types this tag applies to |
+| `deployment_types` | array/string | `["all"]` | Deployment types this tag applies to |
+
+#### Relationships
+
+- **Used by**: Any object type specified in `content_types`
+
+#### Example
+
+```yaml
+---
+# Tags for Config Manager deployments
+
+- name: dns-exempt
+  description: Interfaces exempt from DNS registration
+  color: c0c0c0
+  content_types:
+    - dcim.interface
+  deployment_types: [all, superpod]
+
+- name: spectrumx
+  description: Spectrum-X namespace tag for VPC workflows
+  color: 9e9e9e
+  content_types:
+    - ipam.namespace
+    - ipam.vrf
+  deployment_types: [all, superpod]
+```
+
+#### Notes
+
+- Tags use `update_or_create`, so color and description are always updated
+- `content_types` must be set for both new and existing tags
+- Tags are commonly used for automation workflows and filtering
+
+---
+
+### 6. Statuses
+
+**File Location**: `data/statuses.yaml`
+
+**Description**: Operational states for devices, interfaces, IP addresses, and other objects.
+
+#### Required Fields
+
+| Field | Type | Description |
+| :---- | :--- | :---------- |
+| `name` | string | Status name (must be unique) |
+
+#### Optional Fields
+
+| Field | Type | Default | Description |
+| :---- | :--- | :------ | :---------- |
+| `description` | string | `""` | Status description |
+| `color` | string | `9e9e9e` | Hex color code (without #) or name of a Nautobot color |
+| `content_types` | array | - | List of content types this status applies to |
+| `deployment_types` | array/string | `["all"]` | Deployment types this status applies to |
+
+#### Relationships
+
+- **Used by**: Locations (defaults to "Active" if not specified), Devices, Interfaces, IP objects
+
+#### Example
+
+```yaml
+---
+# Statuses for Config Manager deployments
+
+- name: Active
+  description: Active/operational status
+  color: 4caf50
+  content_types:
+    - dcim.device
+    - dcim.interface
+    - ipam.ipaddress
+    - ipam.prefix
+    - ipam.vlan
+    - ipam.vrf
+    - circuits.circuit
+  deployment_types: [all, superpod]
+
+- name: Planned
+  description: Planned but not yet deployed
+  color: 00bcd4
+  content_types:
+    - dcim.device
+    - dcim.interface
+    - ipam.ipaddress
+    - ipam.prefix
+    - ipam.vlan
+    - ipam.vrf
+    - circuits.circuit
+  deployment_types: [all, superpod]
+
+- name: Maintenance
+  description: Under maintenance
+  color: ff9800
+  content_types:
+    - dcim.device
+    - dcim.interface
+  deployment_types: [all, superpod]
+```
+
+#### Notes
+
+- Statuses use `update_or_create`, so color and description are always updated
+- `content_types` must be set for both new and existing statuses
+- Locations default to "Active" status if not specified or if the specified status does not exist
+
+---
+
+### 7. Location Types
+
+**File Location**: `data/location_types.yaml`
+
+**Description**: Hierarchical types that define the structure of physical locations (for example, Provider → Region → Site → Module).
+
+#### Required Fields
+
+| Field | Type | Description |
+| :---- | :--- | :---------- |
+| `name` | string | Location type name (must be unique) |
+
+#### Optional Fields
+
+| Field | Type | Default | Description |
+| :---- | :--- | :------ | :---------- |
+| `description` | string | `""` | Location type description |
+| `nestable` | boolean | `true` | Whether locations of this type can contain other locations |
+| `parent` | string | - | Parent location type name (must exist) |
+| `deployment_types` | array/string | `["all"]` | Deployment types this location type applies to |
+
+#### Relationships
+
+- **Requires**: Parent Location Type (optional, but must exist if specified)
+- **Used by**: Locations
+
+#### Example
+
+```yaml
+---
+# Location types for Config Manager hierarchical locations
+
+- name: Provider
+  description: Service provider or organization
+  nestable: true
+  deployment_types: [all, superpod]
+
+- name: Region
+  description: Geographic region
+  parent: Provider
+  nestable: true
+  deployment_types: [all, superpod]
+
+- name: Site
+  description: Physical datacenter site
+  parent: Region
+  nestable: true
+  deployment_types: [all, superpod]
+
+- name: Module
+  description: Module or pod within a site
+  parent: Site
+  nestable: false
+  deployment_types: [all, superpod]
+```
+
+#### Notes
+
+- Location types form a hierarchy using the `parent` field
+- Parent location types must be defined before child types
+- The `nestable` field controls whether locations of this type can contain other locations
+
+---
+
+### 8. Locations
+
+**File Location**: `data/locations.yaml`
+
+**Description**: Physical location instances organized in a hierarchical structure.
+
+#### Required Fields
+
+| Field | Type | Description |
+| :---- | :--- | :---------- |
+| `name` | string | Location name |
+| `location_type` | string | Location type name (must exist) |
+
+#### Optional Fields
+
+| Field | Type | Default | Description |
+| :---- | :--- | :------ | :---------- |
+| `parent` | string/dict | - | Parent location (string name or dict with lookup criteria) |
+| `status` | string | `Active` | Status name (must exist) |
+| `tenant` | string | - | Tenant name (must exist if specified) |
+| `description` | string | `""` | Location description |
+| `deployment_types` | array/string | `["all"]` | Deployment types this location applies to |
+
+#### Parent Reference Formats
+
+**String format** (simple name lookup):
+
+```yaml
+parent: NVIDIA
+```
+
+**Dictionary format** (nested lookup):
+
+```yaml
+parent:
+  name: IPP5_Mississippi
+  parent__name: AMER
+  parent__parent__name: NVIDIA
+```
+
+#### Relationships
+
+- **Requires**: Location Type (must exist), Status (defaults to "Active"), Tenant (optional), Parent Location (optional)
+- **Used by**: Devices, Racks, Circuits
+
+#### Example
+
+```yaml
+---
+# Location instances for Config Manager deployments
+# Hierarchical structure: Provider > Region > Site > Module
+
+- name: NVIDIA
+  location_type: Provider
+  status: Active
+  description: NVIDIA Corporation
+  deployment_types: [all, superpod]
+
+- name: AMER
+  parent: NVIDIA
+  location_type: Region
+  status: Active
+  tenant: Superpod
+  description: Americas region
+  deployment_types: [all, superpod]
+
+- name: IPP5_Mississippi
+  parent:
+    name: AMER
+    parent__name: NVIDIA
+  location_type: Site
+  status: Active
+  tenant: Superpod
+  description: Mississippi datacenter site
+  deployment_types: [all, superpod]
+
+- name: MISSISSIPPI SUPERPOD 1
+  parent:
+    name: IPP5_Mississippi
+    parent__name: AMER
+    parent__parent__name: NVIDIA
+  location_type: Module
+  status: Active
+  tenant: Superpod
+  description: Mississippi superpod module 1
+  deployment_types: [all, superpod]
+```
+
+#### Notes
+
+- Locations are processed in hierarchy order (Provider → Region → Site → Module) to ensure parents exist before children
+- If parent lookup fails, the location is created without a parent
+- If tenant lookup fails, the location is created without a tenant
+- Locations use `update_or_create` based on `name` and `location_type`
+
+---
+
+### 9. Tenants
+
+**File Location**: `data/tenants.yaml`
+
+**Description**: Organizational tenants for grouping and isolating resources.
+
+#### Required Fields
+
+| Field | Type | Description |
+| :---- | :--- | :---------- |
+| `name` | string | Tenant name (must be unique) |
+
+#### Optional Fields
+
+| Field | Type | Default | Description |
+| :---- | :--- | :------ | :---------- |
+| `description` | string | `""` | Tenant description |
+| `deployment_types` | array/string | `["all"]` | Deployment types this tenant applies to |
+
+#### Relationships
+
+- **Used by**: Locations, Devices, IP Addresses, Prefixes, VLANs, VRFs
+
+#### Example
+
+```yaml
+---
+# Tenants for Config Manager deployments
+
+- name: NGC
+  description: NVIDIA GPU Cloud tenant for superpod devices
+  deployment_types: [all, superpod]
+
+- name: Superpod
+  description: Superpod tenant for infrastructure devices
+  deployment_types: [all, superpod]
+```
+
+#### Notes
+
+- Tenants are created with a `get_or_create` upsert method, so existing tenants are not overwritten.
+- Tenants are commonly used for multi-tenant isolation.
+
+---
+
+### 10. Namespaces
+
+**File Location**: `data/namespaces.yaml`
+
+**Description**: IP address and VLAN namespaces for organizing network addressing.
+
+#### Required Fields
+
+| Field | Type | Description |
+| :---- | :--- | :---------- |
+| `name` | string | Namespace name (must be unique) |
+
+#### Optional Fields
+
+| Field | Type | Default | Description |
+| :---- | :--- | :------ | :---------- |
+| `description` | string | `""` | Namespace description |
+| `deployment_types` | array/string | `["all"]` | Deployment types this namespace applies to |
+
+#### Relationships
+
+- **Used by**: IP Addresses, Prefixes, VLANs, VRFs
+
+#### Example
+
+```yaml
+---
+# IP/VLAN Namespaces for Config Manager deployments
+
+- name: Global
+  description: Global namespace for IP addresses and VLANs
+  deployment_types: [all, superpod]
+
+- name: Superpod
+  description: Superpod namespace for IP addresses and VLANs
+  deployment_types: [all, superpod]
+```
+
+#### Notes
+
+- Namespaces are created with a `get_or_create` upsert method, so existing namespaces are not overwritten.
+- Namespaces provide logical separation of IP addressing schemes.
+
+---
+
+### 11. Relationships
+
+**File Location**: `data/relationships.yaml`
+
+**Description**: Custom relationships between different object types in Nautobot.
+
+#### Required Fields
+
+| Field | Type | Description |
+| :---- | :--- | :---------- |
+| `name` | string | Relationship name (for reference) |
+| `label` | string | Relationship label (used as unique identifier) |
+| `source_type` | string | Source content type (format: `{app_label}.{model}`) |
+| `destination_type` | string | Destination content type (format: `{app_label}.{model}`) |
+
+#### Optional Fields
+
+| Field | Type | Default | Description |
+| :---- | :--- | :------ | :---------- |
+| `description` | string | `""` | Relationship description |
+| `type` | string | `one-to-many` | Relationship type: `one-to-one`, `one-to-many`, or `many-to-many` |
+| `source_label` | string | `""` | Label for source side of relationship |
+| `destination_label` | string | `""` | Label for destination side of relationship |
+| `destination_hidden` | boolean | - | Whether destination side is hidden in UI |
+| `required_on` | string | `neither` | Where relationship is required: `neither`, `source`, `destination`, or `both` |
+| `deployment_types` | array/string | `["all"]` | Deployment types this relationship applies to |
+
+#### Relationships
+
+- **Requires**: Source and destination content types must exist in Nautobot
+
+#### Example
+
+```yaml
+---
+# Relationships for Config Manager deployments
+
+- name: prefix-to-gateway
+  label: prefix-to-gateway
+  description: Prefix to Gateway Relationship
+  type: one-to-one
+  source_type: ipam.prefix
+  source_label: Gateway
+  destination_type: ipam.ipaddress
+  destination_label: Gateway for Prefix
+  destination_hidden: true
+  required_on: neither
+  deployment_types: [all, superpod]
+```
+
+#### Notes
+
+- Relationships use a `update_or_create` upsert method based on `label`, so existing relationships are updated.
+- Content types must be valid Nautobot content types (for example, `dcim.device`, `ipam.prefix`).
+- The `name` field is for reference only; `label` is the unique identifier.
+
+---
+
+### 12. Config Contexts
+
+**File Location**: `data/config_contexts.yaml`
+
+**Description**: JSON data structures applied to devices based on roles and platforms for configuration management.
+
+#### Required Fields
+
+| Field | Type | Description |
+| :---- | :--- | :---------- |
+| `name` | string | Config context name (must be unique) |
+
+#### Optional Fields
+
+| Field | Type | Default | Description |
+| :---- | :--- | :------ | :---------- |
+| `description` | string | `""` | Config context description |
+| `weight` | integer | `1000` | Priority weight (lower = higher priority) |
+| `is_active` | boolean | `true` | Whether context is active |
+| `data` | object | `{}` | JSON data structure to apply |
+| `roles` | array | - | List of role names to apply this context to |
+| `platforms` | array | - | List of platform names to apply this context to |
+| `deployment_types` | array/string | `["all"]` | Deployment types this config context applies to |
+
+#### Relationships
+
+- **Requires**: Roles and Platforms (must exist if specified in `roles` or `platforms` arrays)
+- **Used by**: Devices (matched by role and/or platform)
+
+#### Example
+
+```yaml
+---
+# Global Config Contexts for Config Manager deployments
+
+- name: Cumulus Linux Password Mappings
+  description: Default password mappings for Cumulus Linux devices
+  weight: 1000
+  is_active: true
+  roles:
+    - superpod-spine
+    - Superpod TOR
+    - Superpod StorageLeaf
+    - Superpod PowerLeaf
+    - Superpod ManagementLeaf
+    - Superpod OOBSpine
+    - superpod-borderleaf
+    - superpod-computeleaf
+  platforms:
+    - Cumulus Linux
+  data:
+    password_mappings:
+      default:
+        cumulus:
+          password: root_password
+          rotation: r1
+  deployment_types: [all, superpod]
+
+- name: Cumulus Linux Firmware 5.14.0
+  description: Intended firmware version for Cumulus Linux switches
+  weight: 1000
+  is_active: true
+  platforms:
+    - Cumulus Linux
+  data:
+    intended-firmware:
+      version: "5.14.0"
+  deployment_types: [all, superpod]
+```
+
+#### Notes
+
+- Config contexts use an `update_or_create` upsert method based on `name`, so existing contexts are updated.
+- If a role or platform in the `roles` or `platforms` array does not exist, it is skipped with a warning.
+- The `data` field contains arbitrary JSON that is merged into device configuration contexts.
+- Config contexts are applied to devices that match the specified roles and/or platforms.
+- Multiple config contexts can apply to the same device; they are merged by weight.

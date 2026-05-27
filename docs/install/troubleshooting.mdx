@@ -1,0 +1,121 @@
+---
+title: Troubleshooting
+---
+
+This page lists common troubleshooting steps for NVIDIA Config Manager deployments.
+
+## Linux inotify Limit Errors
+
+On Ubuntu and other Linux hosts, low default inotify limits can cause Kubernetes workloads to fail during install.
+
+Check the current values:
+
+```bash
+sysctl fs.inotify.max_user_watches fs.inotify.max_user_instances
+```
+
+Set the recommended minimums:
+
+```bash
+sudo tee /etc/sysctl.d/99-nv-config-manager-inotify.conf >/dev/null <<'EOF'
+fs.inotify.max_user_watches=1048576
+fs.inotify.max_user_instances=8192
+EOF
+sudo sysctl --system
+```
+
+## Chart Upload Fails
+
+Confirm Helm can authenticate to the target OCI chart namespace. If you are using a local HTTP registry for testing, pass `--plain-http` to the airgapped bundle upload helper.
+
+## DNS not available
+
+If DNS is not already configured for the site, add the Config Manager hostnames to your local `/etc/hosts` file, replacing `<GATEWAY_IP>` with the IP address of the gateway ingress. For example:
+
+```bash wordWrap
+echo "<GATEWAY_IP> config-manager.example.com nautobot.config-manager.example.com render.config-manager.example.com ztp.config-manager.example.com dhcp.config-manager.example.com workflow.config-manager.example.com temporal.config-manager.example.com config-store.config-manager.example.com" | sudo tee -a /etc/hosts
+```
+
+For local SSH forwarding, replace `<GATEWAY_IP>` with `127.0.0.1` and forward the gateway port from the deployment host.
+
+## Browser Certificate Warnings
+
+When self-signed TLS is enabled, browsers and API clients must trust the generated certificate authority or explicitly accept the browser warning for every service hostname. Certificate trust is hostname-specific; accepting `config-manager.example.com` does not automatically trust `nautobot.config-manager.example.com`.
+
+## ESO Secrets Not Syncing
+
+```bash
+# Check ExternalSecret status
+kubectl get externalsecrets -n config-manager
+
+# Check SecretStore connection
+kubectl describe secretstore -n config-manager
+
+# Check ESO operator logs
+kubectl logs -n external-secrets -l app.kubernetes.io/name=external-secrets
+```
+
+## GatewayClass Already Exists
+
+Use the `--skip-gateway-class` flag with the deploy script to skip the creation of the GatewayClass.
+
+```text title="Sample error message" wordWrap
+Error: INSTALLATION FAILED: Unable to continue with install: GatewayClass "envoy-gateway" in namespace "" exists and cannot be imported into the current release: invalid ownership metadata; annotation validation error: key "meta.helm.sh/release-namespace" must equal "config-manager": current value is "config-manager-qa"
+```
+
+## Helm Timeout
+
+Increase `--helm-timeout`, inspect pod events, and verify storage class availability.
+
+```bash
+kubectl get pods -n <namespace>
+kubectl get events -n <namespace> --sort-by=.lastTimestamp
+kubectl get pvc -n <namespace>
+```
+
+The installer is designed to be re-run after you fix the underlying issue. Re-run the same config with a longer timeout or corrected values. If a failed install left an unusable partial deployment and you do not need to preserve data, uninstall the Helm release and delete the namespace before retrying.
+
+## Images Not Loading
+
+```bash
+# Verify images exist in containerd on nodes
+ssh admin@node1 "sudo ctr -n k8s.io images list | grep config-manager"
+
+# Check DaemonSet pod logs
+kubectl logs -n config-manager-airgapped -l app=config-manager-image-loader
+```
+
+## LoadBalancer Pending
+
+```bash
+# Check MetalLB speaker logs
+kubectl logs -n metallb-system -l app=metallb,component=speaker
+
+# Verify IPAddressPool has available IPs
+kubectl get ipaddresspool -n metallb-system -o yaml
+```
+
+## Operator install fails offline
+
+Confirm `manifests/`, `charts/`, and `operator-versions.env` are present in the bundle.
+
+## Pods Stuck in ImagePullBackOff
+
+Confirm image names and tags match `image-map.tsv`, registry credentials, or node containerd stores.
+
+```bash
+# Check the exact image being requested
+kubectl describe pod <pod-name> -n config-manager | grep -A5 "Events"
+
+# Verify image name in containerd matches exactly
+ssh admin@node1 "sudo ctr -n k8s.io images list -q | grep <partial-name>"
+```
+
+For Kind deployments that build images locally, confirm the images were loaded into the same Kind cluster used by `kubectl`:
+
+```bash
+kind get clusters
+kubectl config current-context
+```
+
+If the cluster name is not `nv-config-manager`, deploy with `--kind-cluster <name>`.

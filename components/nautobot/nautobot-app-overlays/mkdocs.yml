@@ -1,0 +1,66 @@
+---
+site_name: "Nautobot Overlays"
+site_url: "https://github.com/NVIDIA/nv-config-manager/tree/main/components/nautobot/nautobot-app-overlays/docs"
+repo_url: "https://github.com/NVIDIA/nv-config-manager"
+edit_uri: "edit/main/components/nautobot/nautobot-app-overlays/docs/"
+
+theme:
+  name: "material"
+  palette:
+    - scheme: "default"
+      primary: "indigo"
+      accent: "indigo"
+      toggle:
+        icon: "material/weather-sunny"
+        name: "Switch to dark mode"
+    - scheme: "slate"
+      primary: "indigo"
+      accent: "indigo"
+      toggle:
+        icon: "material/weather-night"
+        name: "Switch to light mode"
+  features:
+    - "navigation.instant"
+    - "navigation.tracking"
+    - "navigation.tabs"
+    - "navigation.tabs.sticky"
+    - "navigation.sections"
+    - "navigation.expand"
+    - "content.code.copy"
+
+nav:
+  - Home: "index.md"
+  - User Guide:
+      - Overview: "user/index.md"
+      - Overlays: "user/overlays.md"
+      - VXLAN Management: "user/vxlan.md"
+      - InfiniBand PKeys: "user/infiniband-pkey.md"
+      - InfiniBand MKeys: "user/infiniband-mkey.md"
+  - Administrator Guide:
+      - Installation: "admin/install.md"
+      - Compatibility Matrix: "admin/compatibility.md"
+      - Release Notes: "admin/release_notes/index.md"
+  - Developer Guide:
+      - Contributing: "dev/contributing.md"
+      - Code Reference: "dev/code_reference/index.md"
+
+plugins:
+  - "search"
+
+markdown_extensions:
+  - "admonition"
+  - "pymdownx.details"
+  - "pymdownx.highlight":
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - "pymdownx.inlinehilite"
+  - "pymdownx.snippets"
+  - "pymdownx.superfences"
+  - "pymdownx.tabbed":
+      alternate_style: true
+  - "toc":
+      permalink: true
+  - "tables"
+  - "attr_list"
+  - "md_in_html"

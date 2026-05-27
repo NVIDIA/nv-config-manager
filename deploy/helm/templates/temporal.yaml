@@ -1,0 +1,744 @@
+# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
+{{- if .Values.temporal.enabled }}
+{{- $temporalName := include "nv-config-manager.componentName" (dict "root" . "component" "temporal") }}
+---
+# RBAC ConfigMap for Temporal API
+{{- if .Values.rbac }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $temporalName }}-rbac-config
+  namespace: {{ .Values.global.namespace }}
+data:
+  {{- include "nv-config-manager.configmap.temporal-rbac" . | nindent 2 }}
+{{- end }}
+---
+# Temporal Server ConfigMap (PostgreSQL configuration)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $temporalName }}-config
+  namespace: {{ .Values.global.namespace }}
+data:
+  {{- include "nv-config-manager.configmap.temporal-config" . | nindent 2 }}
+---
+# Temporal Dynamic Config ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $temporalName }}-dynamic-config
+  namespace: {{ .Values.global.namespace }}
+data:
+  {{- include "nv-config-manager.configmap.temporal-dynamic-config" . | nindent 2 }}
+---
+{{- range $service := (list "frontend" "history" "matching" "worker") }}
+{{- $serviceValues := index $.Values.temporal.services $service }}
+# Temporal {{ $service | title }} Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $temporalName }}-{{ $service }}
+  namespace: {{ $.Values.global.namespace }}
+  labels:
+    app: {{ $temporalName }}
+    component: {{ $service }}
+    app.kubernetes.io/name: nv-config-manager
+    app.kubernetes.io/component: temporal
+spec:
+  replicas: {{ $serviceValues.replicas }}
+  selector:
+    matchLabels:
+      app: {{ $temporalName }}
+      component: {{ $service }}
+  template:
+    metadata:
+      labels:
+        app: {{ $temporalName }}
+        component: {{ $service }}
+        {{- include "nv-config-manager.spiffe.podLabels" $ | nindent 8 }}
+        {{- include "nv-config-manager.customPodLabels" $ | nindent 8 }}
+      annotations:
+        {{- include "nv-config-manager.authIniChecksum" $ | nindent 8 }}
+        checksum/temporal-config: {{ include "nv-config-manager.configmap.temporal-config" $ | sha256sum }}
+        checksum/temporal-dynamic-config: {{ include "nv-config-manager.configmap.temporal-dynamic-config" $ | sha256sum }}
+        {{- if include "nv-config-manager.spiffe.enabled" $ }}
+        {{- include "nv-config-manager.spiffe.annotations" (dict "root" $ "app" $temporalName) | nindent 8 }}
+        {{- end }}
+    spec:
+      securityContext:
+        fsGroup: 1000
+        runAsUser: 1000
+      {{- include "nv-config-manager.scheduling" $serviceValues | nindent 6 }}
+      initContainers:
+      # Wait for both PostgreSQL clusters to be ready (temporal and visibility)
+      - name: wait-for-postgres
+        image: "{{ $.Values.global.images.busybox.repository }}:{{ $.Values.global.images.busybox.tag }}"
+        command:
+        - sh
+        - -c
+        - |
+          echo "Waiting for temporal postgres..."
+          until nc -z {{ tpl $.Values.externalServices.postgres.temporal.host $ }} {{ $.Values.externalServices.postgres.port }}; do
+            echo "waiting for postgres at {{ tpl $.Values.externalServices.postgres.temporal.host $ }}:{{ $.Values.externalServices.postgres.port }}"
+            sleep 2
+          done
+          echo "Temporal postgres is ready"
+          
+          echo "Waiting for visibility postgres..."
+          until nc -z {{ tpl $.Values.externalServices.postgres.temporal.visibilityHost $ }} {{ $.Values.externalServices.postgres.port }}; do
+            echo "waiting for postgres at {{ tpl $.Values.externalServices.postgres.temporal.visibilityHost $ }}:{{ $.Values.externalServices.postgres.port }}"
+            sleep 2
+          done
+          echo "Visibility postgres is ready"
+      {{- if eq $service "frontend" }}
+      # Frontend runs schema setup before starting (other services wait for frontend)
+      - name: schema-setup
+        image: "{{ $.Values.global.images.temporalAdminTools.repository }}:{{ $.Values.global.images.temporalAdminTools.tag }}"
+        imagePullPolicy: {{ $.Values.global.imagePullPolicy | default "IfNotPresent" }}
+        command: ["sh", "-c"]
+        args:
+        - |
+          set -e
+          echo "Setting up temporal database schema..."
+          temporal-sql-tool --ep "${TEMPORAL_DB_HOST}" --user "${TEMPORAL_DB_USER}" --password "${TEMPORAL_DB_PASS}" --port {{ $.Values.externalServices.postgres.port }} --db {{ $.Values.externalServices.postgres.temporal.database }} --plugin postgres12 setup-schema -v 0.0 || echo "Schema may already exist"
+          temporal-sql-tool --ep "${TEMPORAL_DB_HOST}" --user "${TEMPORAL_DB_USER}" --password "${TEMPORAL_DB_PASS}" --port {{ $.Values.externalServices.postgres.port }} --db {{ $.Values.externalServices.postgres.temporal.database }} --plugin postgres12 update-schema -d /etc/temporal/schema/postgresql/v12/temporal/versioned
+          
+          echo "Setting up temporal visibility database schema..."
+          temporal-sql-tool --ep "${VISIBILITY_DB_HOST}" --user "${VISIBILITY_DB_USER}" --password "${VISIBILITY_DB_PASS}" --port {{ $.Values.externalServices.postgres.port }} --db {{ $.Values.externalServices.postgres.temporal.visibilityDatabase }} --plugin postgres12 setup-schema -v 0.0 || echo "Visibility schema may already exist"
+          temporal-sql-tool --ep "${VISIBILITY_DB_HOST}" --user "${VISIBILITY_DB_USER}" --password "${VISIBILITY_DB_PASS}" --port {{ $.Values.externalServices.postgres.port }} --db {{ $.Values.externalServices.postgres.temporal.visibilityDatabase }} --plugin postgres12 update-schema -d /etc/temporal/schema/postgresql/v12/visibility/versioned
+          
+          echo "Schema setup complete!"
+        env:
+        # Temporal database credentials
+        - name: TEMPORAL_DB_HOST
+          value: {{ tpl $.Values.externalServices.postgres.temporal.host $ | quote }}
+        - name: TEMPORAL_DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: cluster-temporal-app
+              key: username
+        - name: TEMPORAL_DB_PASS
+          valueFrom:
+            secretKeyRef:
+              name: cluster-temporal-app
+              key: password
+        # Visibility database credentials
+        - name: VISIBILITY_DB_HOST
+          value: {{ tpl $.Values.externalServices.postgres.temporal.visibilityHost $ | quote }}
+        - name: VISIBILITY_DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: cluster-temporal-visibility-app
+              key: username
+        - name: VISIBILITY_DB_PASS
+          valueFrom:
+            secretKeyRef:
+              name: cluster-temporal-visibility-app
+              key: password
+      {{- else }}
+      # Non-frontend services wait for frontend to be ready (which implies schema is set up)
+      - name: wait-for-frontend
+        image: "{{ $.Values.global.images.busybox.repository }}:{{ $.Values.global.images.busybox.tag }}"
+        command: ['sh', '-c', 'until nc -z {{ $temporalName }}-frontend-service {{ (index $.Values.temporal.services "frontend").port }}; do echo "waiting for {{ $temporalName }}-frontend-service"; sleep 2; done; echo "frontend is ready"']
+      {{- end }}
+      containers:
+      - name: temporal-{{ $service }}
+        image: "{{ $.Values.global.images.temporalServer.repository }}:{{ $.Values.global.images.temporalServer.tag }}"
+        imagePullPolicy: {{ $.Values.global.imagePullPolicy | default "IfNotPresent" }}
+        command: ["/etc/temporal/entrypoint.sh"]
+        env:
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: SERVICES
+          value: {{ $service }}
+        # Temporal database credentials
+        - name: POSTGRES_HOST
+          value: {{ tpl $.Values.externalServices.postgres.temporal.host $ | quote }}
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: cluster-temporal-app
+              key: username
+        - name: POSTGRES_PASS
+          valueFrom:
+            secretKeyRef:
+              name: cluster-temporal-app
+              key: password
+        # Visibility database credentials
+        - name: POSTGRES_VISIBILITY_HOST
+          value: {{ tpl $.Values.externalServices.postgres.temporal.visibilityHost $ | quote }}
+        - name: POSTGRES_VISIBILITY_USER
+          valueFrom:
+            secretKeyRef:
+              name: cluster-temporal-visibility-app
+              key: username
+        - name: POSTGRES_VISIBILITY_PASS
+          valueFrom:
+            secretKeyRef:
+              name: cluster-temporal-visibility-app
+              key: password
+        ports:
+        - name: rpc
+          containerPort: {{ $serviceValues.port }}
+          protocol: TCP
+        - name: metrics
+          containerPort: 8000
+          protocol: TCP
+        {{- if ne $service "worker" }}
+        livenessProbe:
+          initialDelaySeconds: 150
+          tcpSocket:
+            port: rpc
+        {{- end }}
+        volumeMounts:
+        - name: config
+          mountPath: "/etc/temporal/config/config_template.yaml"
+          subPath: config_template.yaml
+        - name: dynamic-config
+          mountPath: /etc/temporal/dynamic_config
+        resources:
+          {{- toYaml $serviceValues.resources | nindent 10 }}
+      volumes:
+      - name: config
+        configMap:
+          name: {{ $temporalName }}-config
+      - name: dynamic-config
+        configMap:
+          name: {{ $temporalName }}-dynamic-config
+          items:
+          - key: dynamic_config.yaml
+            path: dynamic_config.yaml
+      {{- /* SPIFFE volumes for identity (no sidecar for gRPC internal services) */ -}}
+      {{- include "nv-config-manager.authSidecar.volumes" (dict "root" $) | nindent 6 }}
+{{- if eq $service "frontend" }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $temporalName }}-{{ $service }}-service
+  namespace: {{ $.Values.global.namespace }}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+  - port: {{ $serviceValues.port }}
+    targetPort: rpc
+    protocol: TCP
+    name: grpc-rpc
+  selector:
+    app: {{ $temporalName }}
+    component: {{ $service }}
+{{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $temporalName }}-{{ $service }}-service-headless
+  namespace: {{ $.Values.global.namespace }}
+  annotations:
+    service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
+spec:
+  type: ClusterIP
+  clusterIP: None
+  publishNotReadyAddresses: true
+  ports:
+  - port: {{ $serviceValues.port }}
+    targetPort: rpc
+    protocol: TCP
+    name: grpc-rpc
+  selector:
+    app: {{ $temporalName }}
+    component: {{ $service }}
+---
+{{- end }}
+# NVIDIA Config Manager Temporal Worker Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "nv-config-manager.temporalWorkerName" . }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ $temporalName }}
+    component: worker
+spec:
+  replicas: {{ .Values.temporal.configManagerWorker.replicas }}
+  selector:
+    matchLabels:
+      app: {{ $temporalName }}
+      component: worker
+  template:
+    metadata:
+      labels:
+        app: {{ $temporalName }}
+        component: worker
+        {{- include "nv-config-manager.spiffe.podLabels" . | nindent 8 }}
+        {{- include "nv-config-manager.customPodLabels" . | nindent 8 }}
+      annotations:
+        {{- include "nv-config-manager.authIniChecksum" . | nindent 8 }}
+        {{- if eq .Values.secrets.method "vault-agent" }}
+        {{- include "nv-config-manager.vaultAgent.injectorAnnotations" . | nindent 8 }}
+        {{- end }}
+        {{- if include "nv-config-manager.spiffe.enabled" . }}
+        {{- include "nv-config-manager.spiffe.annotations" (dict "root" . "app" $temporalName) | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "nv-config-manager.serviceAccountName" . }}
+      {{- if .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range .Values.global.imagePullSecrets }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      {{- include "nv-config-manager.scheduling" .Values.temporal.configManagerWorker | nindent 6 }}
+      initContainers:
+      # Initialize Temporal namespace and search attributes
+      - name: temporal-setup
+        image: "{{ .Values.global.images.temporalAdminTools.repository }}:{{ .Values.global.images.temporalAdminTools.tag }}"
+        imagePullPolicy: {{ .Values.global.imagePullPolicy | default "IfNotPresent" }}
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -e
+          TEMPORAL_ADDR="{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc:{{ .Values.temporal.services.frontend.port }}"
+          MAX_RETRIES=30
+          RETRY_DELAY=5
+
+          echo "Waiting for temporal frontend..."
+          until nc -z {{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc {{ .Values.temporal.services.frontend.port }}; do
+            echo "waiting for {{ $temporalName }}-frontend-service..."
+            sleep 2
+          done
+          echo "Temporal frontend is ready!"
+
+          # Register default namespace with retries.
+          # The frontend may accept TCP connections before it is fully ready
+          # to serve gRPC requests, so the first few attempts can fail.
+          echo "Registering default namespace..."
+          for i in $(seq 1 $MAX_RETRIES); do
+            if tctl --address "$TEMPORAL_ADDR" --namespace default namespace register 2>&1; then
+              echo "Namespace registered."
+              break
+            fi
+            msg=$(tctl --address "$TEMPORAL_ADDR" --namespace default namespace register 2>&1 || true)
+            if echo "$msg" | grep -qi "already exist"; then
+              echo "Namespace default already exists."
+              break
+            fi
+            echo "Attempt $i/$MAX_RETRIES: namespace register failed, retrying in ${RETRY_DELAY}s..."
+            sleep $RETRY_DELAY
+          done
+
+          # Update retention (retry — namespace may take a moment to propagate)
+          echo "Setting namespace retention..."
+          for i in $(seq 1 $MAX_RETRIES); do
+            if tctl --address "$TEMPORAL_ADDR" --namespace default namespace update --retention 14 2>&1; then
+              echo "Namespace retention updated."
+              break
+            fi
+            echo "Attempt $i/$MAX_RETRIES: namespace update failed, retrying in ${RETRY_DELAY}s..."
+            sleep $RETRY_DELAY
+          done
+
+          # Create search attributes (idempotent — ignore "already exists" errors)
+          echo "Creating search attributes..."
+          temporal operator search-attribute create --address "$TEMPORAL_ADDR" --name User --type Keyword || true
+          temporal operator search-attribute create --address "$TEMPORAL_ADDR" --name DeviceID --type Keyword || true
+          temporal operator search-attribute create --address "$TEMPORAL_ADDR" --name DeviceRole --type Keyword || true
+          temporal operator search-attribute create --address "$TEMPORAL_ADDR" --name DeviceName --type Text || true
+          temporal operator search-attribute create --address "$TEMPORAL_ADDR" --name DevicePlatform --type Keyword || true
+          temporal operator search-attribute create --address "$TEMPORAL_ADDR" --name Site --type Text || true
+          temporal operator search-attribute create --address "$TEMPORAL_ADDR" --name ReadRoles --type KeywordList || true
+          temporal operator search-attribute create --address "$TEMPORAL_ADDR" --name ExecuteRoles --type KeywordList || true
+          temporal operator search-attribute create --address "$TEMPORAL_ADDR" --name IssueKey --type Keyword || true
+
+          echo "Temporal setup complete!"
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 50m
+            memory: 64Mi
+      containers:
+      - name: worker
+        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ .Values.global.images.nvConfigManager.tag }}"
+        imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
+        command: ["nv-config-manager-temporal-worker"]
+        args: []
+        env:
+        - name: NV_CONFIG_MANAGER_INI
+          value: {{ include "nv-config-manager.vaultAgent.configManagerIniPathApp" . | quote }}
+        - name: ENVIRONMENT
+          value: {{ .Values.global.environment }}
+        {{- include "nv-config-manager.customLabelsEnv" . | nindent 8 }}
+        - name: TEMPORAL_ADDRESS
+          value: "{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc:{{ .Values.temporal.services.frontend.port }}"
+        {{- if .Values.secrets.vault.configSecrets.enabled }}
+        - name: NV_CONFIG_MANAGER_CONFIG_SECRET_PATH
+          value: {{ include "nv-config-manager.vaultAgent.configSecretsFilePath" (dict "root" . "path" .Values.temporal.configManagerWorker.configSecrets.path) | quote }}
+        {{- end }}
+        {{- if and (eq .Values.secrets.method "vault-agent") .Values.temporal.redfish.enabled }}
+        - name: BMC_CREDS_PATH
+          value: "/vault/secrets/bmc-creds.json"
+        {{- end }}
+        resources:
+          {{- toYaml .Values.temporal.configManagerWorker.resources | nindent 10 }}
+        volumeMounts:
+        {{- include "nv-config-manager.vaultAgent.configManagerIniVolumeMount" . | nindent 8 }}
+        {{- include "nv-config-manager.vaultAgent.bmcVolumeMount" . | nindent 8 }}
+        {{- if .Values.secrets.vault.configSecrets.enabled }}
+        {{- include "nv-config-manager.vaultAgent.configSecretsVolumeMount" (dict "root" . "mountPath" .Values.temporal.configManagerWorker.configSecrets.mountPath) | nindent 8 }}
+        {{- end }}
+        {{- if .Values.spiffe.enabled }}
+        - name: spiffe-jwt-svid
+          mountPath: /var/run/secrets/spiffe
+          readOnly: true
+        {{- end }}
+      {{- include "nv-config-manager.spiffeClientSidecar" (dict "root" .) | nindent 6 }}
+      volumes:
+      {{- include "nv-config-manager.vaultAgent.projectedSATokenVolume" . | nindent 6 }}
+      {{- include "nv-config-manager.vaultAgent.configManagerIniVolume" . | nindent 6 }}
+      {{- include "nv-config-manager.vaultAgent.bmcVolume" . | nindent 6 }}
+      {{- if .Values.secrets.vault.configSecrets.enabled }}
+      {{- include "nv-config-manager.vaultAgent.configSecretsVolume" . | nindent 6 }}
+      {{- end }}
+      {{- /* SPIFFE volumes for outbound mTLS */ -}}
+      {{- include "nv-config-manager.spiffeClientVolumes" (dict "root" .) | nindent 6 }}
+---
+# NVIDIA Config Manager Temporal API Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $temporalName }}-api
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ $temporalName }}
+    component: api
+spec:
+  replicas: {{ .Values.temporal.api.replicas }}
+  selector:
+    matchLabels:
+      app: {{ $temporalName }}
+      component: api
+  template:
+    metadata:
+      labels:
+        app: {{ $temporalName }}
+        component: api
+        {{- include "nv-config-manager.spiffe.podLabels" . | nindent 8 }}
+        {{- include "nv-config-manager.customPodLabels" . | nindent 8 }}
+      annotations:
+        {{- include "nv-config-manager.authIniChecksum" . | nindent 8 }}
+        {{- if eq .Values.secrets.method "vault-agent" }}
+        {{- include "nv-config-manager.vaultAgent.injectorAnnotations" . | nindent 8 }}
+        {{- end }}
+        {{- if .Values.rbac }}
+        checksum/rbac-config: {{ include "nv-config-manager.configmap.temporal-rbac" . | sha256sum }}
+        {{- end }}
+        {{- if include "nv-config-manager.spiffe.enabled" . }}
+        {{- include "nv-config-manager.spiffe.annotations" (dict "root" . "app" $temporalName) | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "nv-config-manager.serviceAccountName" . }}
+      {{- if .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range .Values.global.imagePullSecrets }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      containers:
+      - name: api
+        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ .Values.global.images.nvConfigManager.tag }}"
+        imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
+        command: ["nv-config-manager-temporal-api"]
+        args: []
+        env:
+        - name: NV_CONFIG_MANAGER_INI
+          value: {{ include "nv-config-manager.vaultAgent.configManagerIniPathApp" . | quote }}
+        - name: NV_CONFIG_MANAGER_SERVICE
+          value: "temporal.api"
+        - name: ENVIRONMENT
+          value: {{ .Values.global.environment }}
+        {{- include "nv-config-manager.customLabelsEnv" . | nindent 8 }}
+        - name: TEMPORAL_ADDRESS
+          value: "{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc:{{ .Values.temporal.services.frontend.port }}"
+        ports:
+        - containerPort: 9000
+          name: http
+        resources:
+          {{- toYaml .Values.temporal.configManagerWorker.resources | nindent 10 }}
+        volumeMounts:
+        {{- include "nv-config-manager.vaultAgent.configManagerIniVolumeMount" . | nindent 8 }}
+        {{- if .Values.rbac }}
+        - name: rbac-config
+          mountPath: /etc/rbac
+          readOnly: true
+        {{- end }}
+        {{- include "nv-config-manager.authVolumeMounts" . | nindent 8 }}
+        livenessProbe:
+          httpGet:
+            path: /healthcheck
+            port: 9000
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+      {{- /* SPIFFE helper sidecar for outbound JWT-SVID */ -}}
+      {{- include "nv-config-manager.authSidecar" (dict "root" . "serviceName" "nv-config-manager-temporal-api") | nindent 6 }}
+      volumes:
+      {{- include "nv-config-manager.vaultAgent.projectedSATokenVolume" . | nindent 6 }}
+      {{- include "nv-config-manager.vaultAgent.configManagerIniVolume" . | nindent 6 }}
+      {{- if .Values.rbac }}
+      - name: rbac-config
+        configMap:
+          name: {{ $temporalName }}-rbac-config
+      {{- end }}
+      {{- /* SPIFFE volumes */ -}}
+      {{- include "nv-config-manager.authSidecar.volumes" (dict "root" .) | nindent 6 }}
+---
+# NVIDIA Config Manager Temporal API Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $temporalName }}-api
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ $temporalName }}
+    component: api
+spec:
+  type: ClusterIP
+  ports:
+  - port: 9000
+    targetPort: 9000
+    protocol: TCP
+    name: http
+  selector:
+    app: {{ $temporalName }}
+    component: api
+---
+# NVIDIA Config Manager Temporal Scheduler Deployment (for backup scheduling)
+{{- if .Values.temporal.scheduler.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $temporalName }}-scheduler
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ $temporalName }}
+    component: scheduler
+spec:
+  replicas: 1
+  progressDeadlineSeconds: 1800
+  selector:
+    matchLabels:
+      app: {{ $temporalName }}
+      component: scheduler
+  template:
+    metadata:
+      labels:
+        app: {{ $temporalName }}
+        component: scheduler
+        {{- include "nv-config-manager.spiffe.podLabels" . | nindent 8 }}
+        {{- include "nv-config-manager.customPodLabels" . | nindent 8 }}
+      annotations:
+        {{- include "nv-config-manager.authIniChecksum" . | nindent 8 }}
+        {{- if eq .Values.secrets.method "vault-agent" }}
+        {{- include "nv-config-manager.vaultAgent.injectorAnnotations" . | nindent 8 }}
+        {{- end }}
+        {{- if .Values.rbac }}
+        checksum/rbac-config: {{ include "nv-config-manager.configmap.temporal-rbac" . | sha256sum }}
+        {{- end }}
+        {{- if include "nv-config-manager.spiffe.enabled" . }}
+        {{- include "nv-config-manager.spiffe.annotations" (dict "root" . "app" $temporalName) | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "nv-config-manager.serviceAccountName" . }}
+      {{- if .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range .Values.global.imagePullSecrets }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      {{- include "nv-config-manager.scheduling" .Values.temporal.scheduler | nindent 6 }}
+      initContainers:
+      # Wait for Nautobot to be available before starting scheduler
+      {{- include "nv-config-manager.waitForNautobot" . | nindent 6 }}
+      # Wait for Temporal default namespace (created by nv-config-manager-worker init)
+      {{- include "nv-config-manager.waitForTemporalNamespace" . | nindent 6 }}
+      containers:
+      - name: scheduler
+        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ .Values.global.images.nvConfigManager.tag }}"
+        imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
+        command: ["nv-config-manager-temporal-scheduler"]
+        env:
+        - name: NV_CONFIG_MANAGER_INI
+          value: {{ include "nv-config-manager.vaultAgent.configManagerIniPathApp" . | quote }}
+        - name: ENVIRONMENT
+          value: {{ .Values.global.environment }}
+        - name: TEMPORAL_ADDRESS
+          value: "{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc:{{ .Values.temporal.services.frontend.port }}"
+        resources:
+          {{- toYaml .Values.temporal.scheduler.resources | nindent 10 }}
+        volumeMounts:
+        {{- include "nv-config-manager.vaultAgent.configManagerIniVolumeMount" . | nindent 8 }}
+        {{- if .Values.rbac }}
+        - name: rbac-config
+          mountPath: /etc/rbac
+          readOnly: true
+        {{- end }}
+      volumes:
+      {{- include "nv-config-manager.vaultAgent.projectedSATokenVolume" . | nindent 6 }}
+      {{- include "nv-config-manager.vaultAgent.configManagerIniVolume" . | nindent 6 }}
+      {{- if .Values.rbac }}
+      - name: rbac-config
+        configMap:
+          name: {{ $temporalName }}-rbac-config
+      {{- end }}
+      {{- /* SPIFFE volumes for outbound JWT-SVID */ -}}
+      {{- include "nv-config-manager.authSidecar.volumes" (dict "root" .) | nindent 6 }}
+{{- end }}
+---
+# Archive Service (if enabled)
+{{- if .Values.temporal.archive.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $temporalName }}-archive
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ $temporalName }}
+    component: archive
+spec:
+  replicas: {{ .Values.temporal.archive.replicas }}
+  selector:
+    matchLabels:
+      app: {{ $temporalName }}
+      component: archive
+  template:
+    metadata:
+      labels:
+        app: {{ $temporalName }}
+        component: archive
+        {{- include "nv-config-manager.spiffe.podLabels" . | nindent 8 }}
+      annotations:
+        {{- include "nv-config-manager.authIniChecksum" . | nindent 8 }}
+        {{- if eq .Values.secrets.method "vault-agent" }}
+        {{- include "nv-config-manager.vaultAgent.injectorAnnotations" . | nindent 8 }}
+        {{- end }}
+        {{- if include "nv-config-manager.spiffe.enabled" . }}
+        {{- include "nv-config-manager.spiffe.annotations" (dict "root" . "app" $temporalName) | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "nv-config-manager.serviceAccountName" . }}
+      {{- if .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range .Values.global.imagePullSecrets }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      containers:
+      - name: archive
+        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ .Values.global.images.nvConfigManager.tag }}"
+        imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
+        command: ["nv-config-manager-temporal-archive"]
+        args: ["-v"]
+        env:
+        - name: NV_CONFIG_MANAGER_INI
+          value: {{ include "nv-config-manager.vaultAgent.configManagerIniPathApp" . | quote }}
+        - name: ENVIRONMENT
+          value: {{ .Values.global.environment }}
+        - name: TEMPORAL_API_HOST
+          value: {{ tpl .Values.temporal.gateway.api.hostname . | quote }}
+        - name: TEMPORAL_ADDRESS
+          value: "{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc:{{ .Values.temporal.services.frontend.port }}"
+        volumeMounts:
+        {{- include "nv-config-manager.vaultAgent.configManagerIniVolumeMount" . | nindent 8 }}
+        {{- /* SPIFFE volume mount for outbound mTLS */ -}}
+        {{- include "nv-config-manager.spiffe.volumeMounts" . | nindent 8 }}
+      volumes:
+      {{- include "nv-config-manager.vaultAgent.projectedSATokenVolume" . | nindent 6 }}
+      {{- include "nv-config-manager.vaultAgent.configManagerIniVolume" . | nindent 6 }}
+      {{- /* SPIFFE volumes for outbound JWT-SVID */ -}}
+      {{- include "nv-config-manager.authSidecar.volumes" (dict "root" .) | nindent 6 }}
+{{- end }}
+---
+# Temporal Web UI Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $temporalName }}-web
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ $temporalName }}-web
+    app.kubernetes.io/name: nv-config-manager
+    app.kubernetes.io/component: temporal-web
+spec:
+  replicas: {{ .Values.temporal.devUi.replicas | default 1 }}
+  selector:
+    matchLabels:
+      app: {{ $temporalName }}-web
+  template:
+    metadata:
+      labels:
+        app: {{ $temporalName }}-web
+        {{- include "nv-config-manager.spiffe.podLabels" . | nindent 8 }}
+      annotations:
+        {{- include "nv-config-manager.authIniChecksum" . | nindent 8 }}
+        {{- if include "nv-config-manager.spiffe.enabled" . }}
+        {{- include "nv-config-manager.spiffe.annotations" (dict "root" . "app" (printf "%s-web" $temporalName)) | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- include "nv-config-manager.scheduling" .Values.temporal.devUi | nindent 6 }}
+      containers:
+      - name: {{ $temporalName }}-web
+        image: "{{ .Values.global.images.temporalUi.repository }}:{{ .Values.global.images.temporalUi.tag }}"
+        imagePullPolicy: {{ .Values.global.imagePullPolicy | default "IfNotPresent" }}
+        env:
+        - name: TEMPORAL_ADDRESS
+          value: "{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc:{{ .Values.temporal.services.frontend.port }}"
+        {{- $codecEndpoint := .Values.temporal.devUi.codecEndpoint }}
+        {{- if $codecEndpoint }}
+        - name: TEMPORAL_CODEC_ENDPOINT
+          value: {{ tpl $codecEndpoint . | quote }}
+        {{- end }}
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        resources:
+          {{- toYaml (.Values.temporal.devUi.resources | default (dict "requests" (dict "cpu" "50m" "memory" "64Mi") "limits" (dict "cpu" "200m" "memory" "128Mi"))) | nindent 10 }}
+      {{- /* Temporal Web is OIDC-only: no auth sidecar - Envoy Gateway handles auth at the edge */}}
+---
+# Temporal Web UI Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $temporalName }}-web-service
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ $temporalName }}-web
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app: {{ $temporalName }}-web
+{{- end }}

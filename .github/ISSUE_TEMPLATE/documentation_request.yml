@@ -1,0 +1,55 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+name: New Documentation Request
+description: Request new documentation, examples, or diagrams
+title: "[DOC]: "
+labels: ["documentation"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping identify documentation gaps.
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - Critical (currently preventing usage)
+        - High
+        - Medium
+        - Low
+    validations:
+      required: true
+
+  - type: textarea
+    id: need
+    attributes:
+      label: Missing documentation
+      description: What should be documented, and who needs it?
+    validations:
+      required: true
+
+  - type: textarea
+    id: searched
+    attributes:
+      label: Where have you looked?
+      description: List docs pages, README sections, examples, or code paths you already checked.
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Add links, examples, screenshots, or operator workflows that would help.
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Checklist
+      options:
+        - label: I have searched existing documentation issues for duplicates.
+          required: true
+        - label: I agree to follow this project's Code of Conduct.
+          required: true

@@ -1,0 +1,142 @@
+{{- if .Values.ui.enabled }}
+# =============================================================================
+{{- $uiName := include "nv-config-manager.componentName" (dict "root" . "component" "ui") }}
+# NVIDIA Config Manager UI - Unified React/Next.js Application
+# =============================================================================
+# Combined UI for workflows and config-store, accessible at the base hostname
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $uiName }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app: {{ $uiName }}
+    component: ui
+spec:
+  replicas: {{ .Values.ui.replicas }}
+  selector:
+    matchLabels:
+      app: {{ $uiName }}
+      component: ui
+  template:
+    metadata:
+      labels:
+        app: {{ $uiName }}
+        component: ui
+        {{- include "nv-config-manager.spiffe.podLabels" . | nindent 8 }}
+        {{- include "nv-config-manager.customPodLabels" . | nindent 8 }}
+      {{- if include "nv-config-manager.spiffe.enabled" . }}
+      annotations:
+        {{- include "nv-config-manager.spiffe.annotations" (dict "root" . "app" $uiName) | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "nv-config-manager.serviceAccountName" . }}
+      {{- if .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range .Values.global.imagePullSecrets }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      {{- include "nv-config-manager.scheduling" .Values.ui | nindent 6 }}
+      {{- include "nv-config-manager.podSecurityContext" . | nindent 6 }}
+      containers:
+      - name: ui
+        image: "{{ .Values.global.images.nvConfigManagerUi.repository }}:{{ .Values.global.images.nvConfigManagerUi.tag }}"
+        imagePullPolicy: {{ .Values.global.images.nvConfigManagerUi.pullPolicy }}
+        command: ["node", "server.js"]
+        env:
+        # Application version (matches image tag - git tag/semver)
+        - name: APP_VERSION
+          value: "{{ .Values.global.images.nvConfigManagerUi.tag }}"
+        # Workflow API URL
+        - name: WORKFLOW_API_URL
+          value: "https://{{ tpl .Values.temporal.gateway.api.hostname . }}"
+        # Config Store API URL
+        - name: CONFIG_STORE_API_URL
+          value: "https://{{ tpl .Values.configStore.gateway.api.hostname . }}"
+        # Nautobot URL
+        - name: NAUTOBOT_URL
+          {{- if .Values.externalServices.nautobot.local }}
+          value: "https://{{ tpl .Values.nautobot.gateway.hostname . }}"
+          {{- else }}
+          value: {{ required "externalServices.nautobot.server is required when nautobot.local=false" .Values.externalServices.nautobot.server | quote }}
+          {{- end }}
+        # Render Service URL
+        - name: RENDER_SERVICE_URL
+          value: "https://{{ tpl .Values.renderService.gateway.hostname . }}"
+        # ZTP URL
+        - name: ZTP_URL
+          value: "https://{{ tpl .Values.networkZtp.gateway.hostname . }}"
+        # DHCP URL
+        - name: DHCP_URL
+          value: "https://{{ tpl .Values.networkDhcp.gateway.hostname . }}"
+        # Temporal UI URL (native Temporal web interface)
+        {{- if .Values.temporal.enabled }}
+        - name: TEMPORAL_UI_URL
+          value: "https://{{ tpl .Values.temporal.gateway.devUi.hostname . }}"
+        {{- end }}
+        {{- if and .Values.monitoring .Values.monitoring.grafanaUrl }}
+        - name: GRAFANA_URL
+          value: {{ .Values.monitoring.grafanaUrl | quote }}
+        {{- end }}
+        ports:
+        - containerPort: 3000
+          name: http
+        volumeMounts:
+        - name: nextjs-cache
+          mountPath: /app/.next/cache
+        {{- include "nv-config-manager.containerSecurityContext" . | nindent 8 }}
+        resources:
+          {{- toYaml .Values.ui.resources | nindent 10 }}
+        startupProbe:
+          httpGet:
+            path: /api/health
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 30
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 3000
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 3000
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+      volumes:
+      - name: nextjs-cache
+        emptyDir: {}
+      {{- /* UI is OIDC-only: no auth sidecar - Envoy Gateway handles auth at the edge */}}
+      {{- /* API endpoints (render, temporal-api, etc.) retain sidecars for JWT; UIs do not */}}
+---
+# NVIDIA Config Manager UI Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $uiName }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app: {{ $uiName }}
+    component: ui
+spec:
+  type: ClusterIP
+  ports:
+  - port: 3000
+    targetPort: 3000
+    protocol: TCP
+    name: http
+  selector:
+    app: {{ $uiName }}
+    component: ui
+{{- end }}
+

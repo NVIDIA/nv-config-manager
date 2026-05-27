@@ -1,0 +1,26 @@
+{
+  "images": [
+    {
+      "platform": "cumulus-linux",
+      "version": "5.9.0",
+      "path": "cumulus-linux/5.9.0/cumulus.bin",
+      "filename": "cumulus.bin",
+      "sha256": "abc123def456789012345678901234567890123456789012345678901234"
+    },
+    {
+      "platform": "cumulus-linux",
+      "version": "5.14.0",
+      "path": "cumulus-linux/5.14.0/cumulus.bin",
+      "filename": "cumulus.bin",
+      "sha256": "def456789012345678901234567890123456789012345678901234567890"
+    },
+    {
+      "platform": "mlnx-os",
+      "version": "3.10.4000",
+      "path": "mlnx-os/3.10.4000/mlnx-os.bin",
+      "filename": "mlnx-os.bin",
+      "sha256": "789012345678901234567890123456789012345678901234567890123456"
+    }
+  ]
+}
+

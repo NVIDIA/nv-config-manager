@@ -1,0 +1,10 @@
+---
+
+global_defaults:
+  tenant: Example Cloud
+  namespace: Global
+  status: Active
+  cable_status: Connected
+  prefix_status: Active
+  device_status: Active
+  ip_address_status: Active

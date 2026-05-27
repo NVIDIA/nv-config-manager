@@ -1,0 +1,39 @@
+---
+manufacturer: NVIDIA
+model: SN2201
+part_number: SN2201
+device_family: Network
+u_height: 1
+is_full_depth: false
+weight: 7.4
+weight_unit: kg
+comments: "[Data Sheet](https://docs.nvidia.com/networking/display/sn2000pub/)"
+deployment_types: [all, superpod]
+console_ports:
+  - name: con0
+    type: rj-45
+power_ports:
+  - name: PSU1
+    type: iec-60320-c14
+    maximum_draw: 150
+  - name: PSU2
+    type: iec-60320-c14
+    maximum_draw: 150
+interfaces:
+  - name: eth0
+    type: 1000base-t
+    mgmt_only: true
+  - name: swp[1-48]
+    type: 1000base-t
+module_bays:
+  - name: qsfp[1-4]
+    label: QSFP28 slot [1-4]
+    description: 100gbase-x-qsfp28
+    position: "[1-4]"
+  - name: ps[1-2]
+    label: Power supply slot [1-2]
+    position: "[1-2]"
+  - name: fan[1-4]
+    label: Fan slot [1-4]
+    position: "[1-4]"
+

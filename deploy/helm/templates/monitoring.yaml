@@ -1,0 +1,656 @@
+# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
+#
+# PodMonitor resources for Prometheus Operator
+# Requires: --enable-monitoring flag and Prometheus Operator CRDs installed
+#
+# Service-specific configuration (selectors, ports, paths) is defined here.
+# Each probe is enabled when monitoring.probes.enabled AND the target service is enabled.
+# Each PodMonitor is enabled when monitoring.podMonitors.enabled AND the target service is enabled.
+#
+# =============================================================================
+# Probe Resources (Blackbox Exporter)
+# =============================================================================
+# These probes work with both Envoy Gateway (ingress.type=envoyGateway) and
+# nginx Ingress (ingress.type=ingressNginx). They use the same hostnames
+# configured in each service's gateway.hostname setting.
+#
+# The scheme (http/https) is determined by:
+#   1. monitoring.probes.scheme if explicitly set
+#   2. Otherwise, auto-detected from gateway.certificates.enabled
+# =============================================================================
+{{- if and .Values.monitoring .Values.monitoring.enabled }}
+
+{{- $namespace := .Values.global.namespace }}
+{{- $scrapeInterval := .Values.monitoring.podMonitors.interval | default "30s" }}
+{{- $scrapeTimeout := .Values.monitoring.podMonitors.scrapeTimeout | default "10s" }}
+{{- $monitoringCRLabels := .Values.global.customLabels | default dict }}
+
+{{- /* Component name helpers - must match the naming in deployment templates */}}
+{{- $renderName := include "nv-config-manager.componentName" (dict "root" . "component" "render") }}
+{{- $ztpName := include "nv-config-manager.componentName" (dict "root" . "component" "ztp") }}
+{{- $dhcpName := include "nv-config-manager.componentName" (dict "root" . "component" "dhcp") }}
+{{- $configStoreName := include "nv-config-manager.componentName" (dict "root" . "component" "config-store") }}
+{{- $temporalName := include "nv-config-manager.componentName" (dict "root" . "component" "temporal") }}
+{{- $nautobotName := include "nv-config-manager.componentName" (dict "root" . "component" "nautobot") }}
+{{- $uiName := include "nv-config-manager.componentName" (dict "root" . "component" "ui") }}
+
+{{- /* Determine ingress type and scheme for probes */}}
+{{- $ingressType := .Values.ingress.type | default "envoyGateway" }}
+{{- $hasIngress := or (eq $ingressType "envoyGateway") (eq $ingressType "ingressNginx") }}
+{{- $probeScheme := .Values.monitoring.probes.scheme | default (ternary "https" "http" .Values.gateway.certificates.enabled) }}
+
+{{- /*
+  Optional static `jobName` prefix prepended to every Probe resource's
+  `jobName`. The final `job` label is `<jobNamePrefix><componentName>-probe`
+  (e.g. with `jobNamePrefix: ""` and release `nv-config-manager-example01` the
+  render probe is `nv-config-manager-example01-render-probe`). Override
+  per-environment to match site-level alerting / dashboard regexes.
+*/}}
+{{- $probeJobPrefix := .Values.monitoring.probes.jobNamePrefix | default "" }}
+
+{{- if and .Values.monitoring.probes .Values.monitoring.probes.enabled .Values.monitoring.probes.blackboxExporterUrl $hasIngress }}
+{{- /* Render Service Probe */}}
+{{- if and .Values.monitoring.probes.enabled .Values.renderService.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: {{ $renderName }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: render-service
+    {{- with $monitoringCRLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  interval: 30s
+  module: http_2xx
+  jobName: {{ $probeJobPrefix }}{{ $renderName }}-probe
+  prober:
+    scheme: {{ $probeScheme }}
+    url: {{ .Values.monitoring.probes.blackboxExporterUrl }}
+  targets:
+    staticConfig:
+      static:
+      - {{ $probeScheme }}://{{ tpl .Values.renderService.gateway.hostname . }}/healthcheck
+{{- end }}
+
+{{- /* Network ZTP Probe */}}
+{{- if and .Values.monitoring.probes.enabled .Values.networkZtp.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: {{ $ztpName }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: network-ztp
+    {{- with $monitoringCRLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  interval: 30s
+  module: http_2xx
+  jobName: {{ $probeJobPrefix }}{{ $ztpName }}-probe
+  prober:
+    scheme: https
+    url: {{ .Values.monitoring.probes.blackboxExporterUrl }}
+  targets:
+    staticConfig:
+      static:
+      - {{ $probeScheme }}://{{ tpl .Values.networkZtp.gateway.hostname . }}/healthcheck
+{{- end }}
+
+{{- /* Network DHCP Probe */}}
+{{- if and .Values.monitoring.probes.enabled .Values.networkDhcp.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: {{ $dhcpName }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: network-dhcp
+    {{- with $monitoringCRLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  interval: 30s
+  module: http_2xx
+  jobName: {{ $probeJobPrefix }}{{ $dhcpName }}-probe
+  prober:
+    scheme: {{ $probeScheme }}
+    url: {{ .Values.monitoring.probes.blackboxExporterUrl }}
+  targets:
+    staticConfig:
+      static:
+      - {{ $probeScheme }}://{{ tpl .Values.networkDhcp.gateway.hostname . }}/healthcheck
+{{- end }}
+
+{{- /* Config Store Probe */}}
+{{- if and .Values.monitoring.probes.enabled .Values.configStore.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: {{ $configStoreName }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: config-store
+    {{- with $monitoringCRLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  interval: 30s
+  module: http_2xx
+  jobName: {{ $probeJobPrefix }}{{ $configStoreName }}-probe
+  prober:
+    scheme: {{ $probeScheme }}
+    url: {{ .Values.monitoring.probes.blackboxExporterUrl }}
+  targets:
+    staticConfig:
+      static:
+      - {{ $probeScheme }}://{{ tpl .Values.configStore.gateway.api.hostname . }}/healthcheck
+{{- end }}
+
+{{- /* Temporal API Probe */}}
+{{- if and .Values.monitoring.probes.enabled .Values.temporal.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: {{ $temporalName }}-api
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: temporal-api
+    {{- with $monitoringCRLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  interval: 30s
+  module: http_2xx
+  jobName: {{ $probeJobPrefix }}{{ $temporalName }}-api-probe
+  prober:
+    scheme: {{ $probeScheme }}
+    url: {{ .Values.monitoring.probes.blackboxExporterUrl }}
+  targets:
+    staticConfig:
+      static:
+      - {{ $probeScheme }}://{{ tpl .Values.temporal.gateway.api.hostname . }}/healthcheck
+{{- end }}
+
+{{- /* Temporal UI Probe */}}
+{{- if and .Values.monitoring.probes.enabled .Values.temporal.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: {{ $temporalName }}-ui
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: temporal-ui
+    {{- with $monitoringCRLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  interval: 30s
+  module: http_2xx
+  jobName: {{ $probeJobPrefix }}{{ $temporalName }}-ui-probe
+  prober:
+    scheme: {{ $probeScheme }}
+    url: {{ .Values.monitoring.probes.blackboxExporterUrl }}
+  targets:
+    staticConfig:
+      static:
+      - {{ $probeScheme }}://{{ tpl .Values.temporal.gateway.devUi.hostname . }}/healthz
+{{- end }}
+
+{{- /* NVIDIA Config Manager UI Probe */}}
+{{- if and .Values.monitoring.probes.enabled .Values.ui.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: {{ $uiName }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ui
+    {{- with $monitoringCRLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  interval: 30s
+  module: http_2xx
+  jobName: {{ $probeJobPrefix }}{{ $uiName }}-probe
+  prober:
+    scheme: {{ $probeScheme }}
+    url: {{ .Values.monitoring.probes.blackboxExporterUrl }}
+  targets:
+    staticConfig:
+      static:
+      - {{ $probeScheme }}://{{ tpl .Values.ui.gateway.hostname . }}/api/health
+{{- end }}
+
+{{- /* Nautobot Probe */}}
+{{- if and .Values.monitoring.probes.enabled .Values.nautobot.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: {{ $nautobotName }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: nautobot
+    {{- with $monitoringCRLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  interval: 30s
+  module: http_2xx
+  jobName: {{ $probeJobPrefix }}{{ $nautobotName }}-probe
+  prober:
+    scheme: {{ $probeScheme }}
+    url: {{ .Values.monitoring.probes.blackboxExporterUrl }}
+  targets:
+    staticConfig:
+      static:
+      - {{ $probeScheme }}://{{ tpl .Values.nautobot.gateway.hostname . }}/health
+{{- end }}
+
+{{- end }}{{- /* end hasIngress check */}}
+
+{{- if and .Values.monitoring.podMonitors .Values.monitoring.podMonitors.enabled }}
+{{- /* Render Service PodMonitor */}}
+{{- if and .Values.monitoring.podMonitors.enabled .Values.renderService.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ $renderName }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: render-service
+    {{- with $monitoringCRLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- include "nv-config-manager.podTargetLabels" . | nindent 2 }}
+  namespaceSelector:
+    matchNames:
+      - {{ $namespace }}
+  selector:
+    matchLabels:
+      app: {{ $renderName }}
+  podMetricsEndpoints:
+    - port: http
+      path: /metrics
+      interval: {{ $scrapeInterval }}
+      scrapeTimeout: {{ $scrapeTimeout }}
+      {{- if .Values.global.customLabels }}
+      metricRelabelings:
+        {{- include "nv-config-manager.podMonitorMetricRelabelings" . | nindent 8 }}
+      {{- end }}
+    - port: metrics
+      path: /metrics
+      interval: {{ $scrapeInterval }}
+      scrapeTimeout: {{ $scrapeTimeout }}
+      {{- if .Values.global.customLabels }}
+      metricRelabelings:
+        {{- include "nv-config-manager.podMonitorMetricRelabelings" . | nindent 8 }}
+      {{- end }}
+{{- end }}
+
+{{- /* Network ZTP PodMonitor */}}
+{{- if and .Values.monitoring.podMonitors.enabled .Values.networkZtp.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ $ztpName }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: network-ztp
+    {{- with $monitoringCRLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- include "nv-config-manager.podTargetLabels" . | nindent 2 }}
+  namespaceSelector:
+    matchNames:
+      - {{ $namespace }}
+  selector:
+    matchLabels:
+      app: {{ $ztpName }}
+  podMetricsEndpoints:
+    - port: http-api
+      path: /metrics
+      interval: {{ $scrapeInterval }}
+      scrapeTimeout: {{ $scrapeTimeout }}
+      {{- if .Values.global.customLabels }}
+      metricRelabelings:
+        {{- include "nv-config-manager.podMonitorMetricRelabelings" . | nindent 8 }}
+      {{- end }}
+{{- end }}
+
+{{- /* Network DHCP PodMonitor */}}
+{{- if and .Values.monitoring.podMonitors.enabled .Values.networkDhcp.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ $dhcpName }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: network-dhcp
+    {{- with $monitoringCRLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- include "nv-config-manager.podTargetLabels" . | nindent 2 }}
+  namespaceSelector:
+    matchNames:
+      - {{ $namespace }}
+  selector:
+    matchLabels:
+      app: {{ $dhcpName }}
+  podMetricsEndpoints:
+    - port: stork-agent
+      path: /metrics
+      interval: {{ $scrapeInterval }}
+      scrapeTimeout: {{ $scrapeTimeout }}
+      {{- if .Values.global.customLabels }}
+      metricRelabelings:
+        {{- include "nv-config-manager.podMonitorMetricRelabelings" . | nindent 8 }}
+      {{- end }}
+    - port: healthcheck
+      path: /metrics
+      interval: {{ $scrapeInterval }}
+      scrapeTimeout: {{ $scrapeTimeout }}
+      {{- if .Values.global.customLabels }}
+      metricRelabelings:
+        {{- include "nv-config-manager.podMonitorMetricRelabelings" . | nindent 8 }}
+      {{- end }}
+{{- end }}
+
+{{- /* Config Store PodMonitor */}}
+{{- if and .Values.monitoring.podMonitors.enabled .Values.configStore.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ $configStoreName }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: config-store
+    {{- with $monitoringCRLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- include "nv-config-manager.podTargetLabels" . | nindent 2 }}
+  namespaceSelector:
+    matchNames:
+      - {{ $namespace }}
+  selector:
+    matchLabels:
+      app: {{ $configStoreName }}
+      component: api
+  podMetricsEndpoints:
+    - port: http
+      path: /metrics
+      interval: {{ $scrapeInterval }}
+      scrapeTimeout: {{ $scrapeTimeout }}
+      {{- if .Values.global.customLabels }}
+      metricRelabelings:
+        {{- include "nv-config-manager.podMonitorMetricRelabelings" . | nindent 8 }}
+      {{- end }}
+{{- end }}
+
+{{- /* Temporal Frontend PodMonitor */}}
+{{- if and .Values.monitoring.podMonitors.enabled .Values.temporal.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ $temporalName }}-frontend
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: temporal-frontend
+    {{- with $monitoringCRLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- include "nv-config-manager.podTargetLabels" . | nindent 2 }}
+  namespaceSelector:
+    matchNames:
+      - {{ $namespace }}
+  selector:
+    matchLabels:
+      app: {{ $temporalName }}
+      component: frontend
+  podMetricsEndpoints:
+    - port: metrics
+      path: /metrics
+      interval: {{ $scrapeInterval }}
+      scrapeTimeout: {{ $scrapeTimeout }}
+      {{- if .Values.global.customLabels }}
+      metricRelabelings:
+        {{- include "nv-config-manager.podMonitorMetricRelabelings" . | nindent 8 }}
+      {{- end }}
+{{- end }}
+
+{{- /* Temporal History PodMonitor */}}
+{{- if and .Values.monitoring.podMonitors.enabled .Values.temporal.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ $temporalName }}-history
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: temporal-history
+    {{- with $monitoringCRLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- include "nv-config-manager.podTargetLabels" . | nindent 2 }}
+  namespaceSelector:
+    matchNames:
+      - {{ $namespace }}
+  selector:
+    matchLabels:
+      app: {{ $temporalName }}
+      component: history
+  podMetricsEndpoints:
+    - port: metrics
+      path: /metrics
+      interval: {{ $scrapeInterval }}
+      scrapeTimeout: {{ $scrapeTimeout }}
+      {{- if .Values.global.customLabels }}
+      metricRelabelings:
+        {{- include "nv-config-manager.podMonitorMetricRelabelings" . | nindent 8 }}
+      {{- end }}
+{{- end }}
+
+{{- /* Temporal Matching PodMonitor */}}
+{{- if and .Values.monitoring.podMonitors.enabled .Values.temporal.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ $temporalName }}-matching
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: temporal-matching
+    {{- with $monitoringCRLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- include "nv-config-manager.podTargetLabels" . | nindent 2 }}
+  namespaceSelector:
+    matchNames:
+      - {{ $namespace }}
+  selector:
+    matchLabels:
+      app: {{ $temporalName }}
+      component: matching
+  podMetricsEndpoints:
+    - port: metrics
+      path: /metrics
+      interval: {{ $scrapeInterval }}
+      scrapeTimeout: {{ $scrapeTimeout }}
+      {{- if .Values.global.customLabels }}
+      metricRelabelings:
+        {{- include "nv-config-manager.podMonitorMetricRelabelings" . | nindent 8 }}
+      {{- end }}
+{{- end }}
+
+{{- /* Temporal Worker PodMonitor */}}
+{{- if and .Values.monitoring.podMonitors.enabled .Values.temporal.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ $temporalName }}-worker
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: temporal-worker
+    {{- with $monitoringCRLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- include "nv-config-manager.podTargetLabels" . | nindent 2 }}
+  namespaceSelector:
+    matchNames:
+      - {{ $namespace }}
+  selector:
+    matchLabels:
+      app: {{ $temporalName }}
+      component: worker
+  podMetricsEndpoints:
+    - port: metrics
+      path: /metrics
+      interval: {{ $scrapeInterval }}
+      scrapeTimeout: {{ $scrapeTimeout }}
+      {{- if .Values.global.customLabels }}
+      metricRelabelings:
+        {{- include "nv-config-manager.podMonitorMetricRelabelings" . | nindent 8 }}
+      {{- end }}
+{{- end }}
+
+{{- /* Temporal API PodMonitor */}}
+{{- if and .Values.monitoring.podMonitors.enabled .Values.temporal.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ $temporalName }}-api
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: temporal-api
+    {{- with $monitoringCRLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- include "nv-config-manager.podTargetLabels" . | nindent 2 }}
+  namespaceSelector:
+    matchNames:
+      - {{ $namespace }}
+  selector:
+    matchLabels:
+      app: {{ $temporalName }}
+      component: api
+  podMetricsEndpoints:
+    - port: metrics
+      path: /metrics
+      interval: {{ $scrapeInterval }}
+      scrapeTimeout: {{ $scrapeTimeout }}
+      {{- if .Values.global.customLabels }}
+      metricRelabelings:
+        {{- include "nv-config-manager.podMonitorMetricRelabelings" . | nindent 8 }}
+      {{- end }}
+{{- end }}
+
+{{- /* Temporal Scheduler PodMonitor */}}
+{{- if and .Values.monitoring.podMonitors.enabled .Values.temporal.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ $temporalName }}-scheduler
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: temporal-scheduler
+    {{- with $monitoringCRLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- include "nv-config-manager.podTargetLabels" . | nindent 2 }}
+  namespaceSelector:
+    matchNames:
+      - {{ $namespace }}
+  selector:
+    matchLabels:
+      app: {{ $temporalName }}
+      component: scheduler
+  podMetricsEndpoints:
+    - port: metrics
+      path: /metrics
+      interval: {{ $scrapeInterval }}
+      scrapeTimeout: {{ $scrapeTimeout }}
+      {{- if .Values.global.customLabels }}
+      metricRelabelings:
+        {{- include "nv-config-manager.podMonitorMetricRelabelings" . | nindent 8 }}
+      {{- end }}
+{{- end }}
+{{- /* Nautobot PodMonitor */}}
+{{- if and .Values.monitoring.podMonitors.enabled .Values.nautobot.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ $nautobotName }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: nautobot
+    {{- with $monitoringCRLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- include "nv-config-manager.podTargetLabels" . | nindent 2 }}
+  namespaceSelector:
+    matchNames:
+      - {{ $namespace }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $nautobotName }}
+  podMetricsEndpoints:
+    - port: http
+      path: /metrics
+      interval: {{ $scrapeInterval }}
+      scrapeTimeout: {{ $scrapeTimeout }}
+      {{- if .Values.global.customLabels }}
+      metricRelabelings:
+        {{- include "nv-config-manager.podMonitorMetricRelabelings" . | nindent 8 }}
+      {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

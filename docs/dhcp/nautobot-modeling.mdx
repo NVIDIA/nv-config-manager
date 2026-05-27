@@ -1,0 +1,461 @@
+---
+title: DHCP Modeling in Nautobot
+sidebar-title: DHCP Modeling in Nautobot
+position: 10
+---
+
+This guide explains how to model DHCP configurations in Nautobot for NVIDIA Config Manager's automated DHCP reservation system.
+
+## Overview
+
+The Config Manager DHCP config refresh job reads data from Nautobot and generates ISC Kea DHCP server configurations. The configuration includes:
+
+- **DHCP subnets** - Network ranges that the DHCP server will manage
+- **DHCP reservations** - Static IP assignments for specific devices (by MAC address or client-id/serial)
+- **DHCP pools** - Ranges of IP addresses available for dynamic assignment
+- **DHCP options** - Custom options for device bootstrapping (like ZTP URLs)
+
+## Tags
+
+To find existing tags in Nautobot, expand Organization in the left sidebar, scroll to the Metadata section,and click Tags. Enter "dhcp" in the search to show only DHCP-related tags.
+
+Config Manager uses three specific tags to identify DHCP-related objects in Nautobot: `dhcp-subnet`, `dhcp-pool`, and `dhcp-reserve`.
+
+### dhcp-subnet
+
+The `dhcp-subnet` tag marks a prefix as a DHCP-managed subnet. Kea responds to DHCP requests on this network. All subnets that will serve DHCP must have this tag.
+
+This tag applies to network prefixes, which are objects of type `ipam.prefix`.
+
+You can also optionally specify a [prefix-to-gateway relationship](#prefix-to-gateway-relationship-optional) to specify the default gateway.
+
+The resulting Kea configuration is similar to the following:
+
+```json
+{
+  "subnet": "10.1.100.0/24",
+  "option-data": [
+    {"name": "routers", "data": "10.1.100.1"}
+  ],
+  "pools": [],
+  "id": 1
+}
+```
+
+### dhcp-pool
+
+The `dhcp-pool` tag marks IP addresses as available for dynamic assignment. Kea leases these addresses to devices that do not have reservations.
+
+This tag applies to individual IP addresses, which are objects of type `ipam.ipaddress`.
+
+For example, tag IP addresses 10.1.100.10 through 10.1.100.100 with `dhcp-pool` to create a dynamic allocation range of 10.1.100.10 to 10.1.100.100.
+
+<Note>
+If an IP tagged with `dhcp-pool` is assigned to an interface that has DHCP subnet options applied, those options will be applied to the DHCP pool subnet (see DHCP Options section below)
+</Note>
+
+A few behaviors to note:
+
+- Pool IPs are automatically grouped into contiguous ranges
+- Gateway IPs cannot be tagged as a pool IP
+- Ranges are calculated by the config generation job. Multiple non-contiguous pool ranges within one subnet are supported and formatted appropriately for Kea.
+
+The resulting Kea configuration is similar to the following:
+
+```json
+{
+  "pools": [
+    {"pool": "10.1.100.10-10.1.100.100"}
+  ]
+}
+```
+
+<Warning>
+Do not assign both `dhcp-pool` and `dhcp-reserve` tags to the same IP address.
+
+If an IP address has both tags, the `dhcp-reserve` tag is ignored, and the address is treated as a pool IP.
+</Warning>
+
+### dhcp-reserve
+
+The `dhcp-reserve` tag creates static DHCP reservations for specific devices. The device with the matching MAC address or serial number will always receive this IP address.
+
+This tag applies to individual IP addresses, which are objects of type `ipam.ipaddress`.
+
+For example, tag IP address `10.1.100.5` with `dhcp-reserve` and assign it to interface `eth0` on device `switch-01`.
+
+An address tagged with `dhcp-reserve` must meet the following requirements:
+
+- The IP address must belong to a prefix tagged with `dhcp-subnet`
+- The IP address must be assigned to exactly one interface
+- The interface's device must have one of the following:
+  - A MAC address on the interface
+  - A serial number on the device (used with the `client-id` template)
+
+The resulting Kea configuration is similar to the following:
+
+```json
+{
+  "reservations": [
+    {
+      "hw-address": "aa:bb:cc:dd:ee:ff",
+      "ip-address": "10.1.100.5",
+      "hostname": "switch-01",
+      "option-data": [
+        {
+          "name": "cumulus-provision-url",
+          "data": "http://ztp.example.com/v1/device/abc-123/boot-script"
+        }
+      ]
+    }
+  ]
+}
+```
+
+## Prefix-to-Gateway Relationship (Optional)
+
+Every DHCP subnet needs a default gateway. Config Manager uses an _optional_ custom Nautobot relationship called `prefix-to-gateway` to associate prefixes with their gateway IP addresses.
+
+If the relationship is not defined, the first usable IP address in the subnet is used as the default gateway.
+
+## Config Contexts
+
+Config contexts are JSON data structures in Nautobot that provide device-specific configuration data. For DHCP, config contexts control which DHCP options are included in reservations, and how devices are identified by the DHCP server.
+
+### DHCP Options
+
+You define DHCP options with config contexts. Config contexts can target devices based on their attributes:
+
+- **Platform**: Apply to all devices running a specific OS (such as "Cumulus Linux" or "Arista EOS")
+- **Role**: Apply to all devices with a specific role (such as "Spine", "Leaf", or "TOR")
+- **Location**: Apply to all devices in a location (such as a specific site or datacenter)
+- **Device**: Apply to a specific device by name or ID
+
+**Multiple contexts can apply** to the same device, and are merged together. Contexts have weights; a lower weight value means that context has higher priority when resolving conflicts.
+
+### Interface Filtering
+
+Within a config context's `dhcp.options` section, you can specify DHCP options that apply to specific interfaces or interface roles:
+
+#### `interface_names` - Exact Interface Match
+
+Applies options when the DHCP reservation is for a **specific interface name**. This is the most specific filter.
+
+**Example**: Options for interface `eth0` on any device this context targets:
+
+```json
+{
+  "dhcp": {
+    "options": {
+      "interface_names": {
+        "eth0": {
+          "reservation_options": {
+            "cumulus-provision-url": "http://ztp.example.com/boot-script"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+**Use case**: Management interfaces named `eth0` need ZTP URLs, but data interfaces do not.
+
+#### `interface_roles` - Role-Based Match
+
+Applies options when the DHCP reservation is for an interface with a **specific role**. This is more general than `interface_names`.
+
+**Example**: Options for any interface with role "management":
+
+```json
+{
+  "dhcp": {
+    "options": {
+      "interface_roles": {
+        "management": {
+          "reservation_options": {
+            "domain-name": "mgmt.example.com"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+**Use case**: All management interfaces across different device types (with varying interface names) need the same DHCP options.
+
+#### Priority Rules
+
+When generating DHCP options for a reservation:
+
+1. Config contexts are merged based on targeting (platform, role, location, and so on)
+2. Within the merged context, **`interface_names` options override `interface_roles` options** if both match
+3. `reservation_options` from different contexts are combined (conflicts raise errors)
+4. `subnet_options` from different contexts are combined (conflicts raise errors)
+
+**Example**: A device with platform "Cumulus Linux" has two contexts applied:
+
+- Context A (platform-wide): Sets `interface_roles.management` options
+- Context B (site-specific): Sets `interface_names.eth0` options
+
+For interface `eth0` with role "management": **Both** contexts apply, and options are merged with Context B's `interface_names.eth0` taking precedence over Context A's `interface_roles.management` for any conflicting keys.
+
+### DHCP Config Context Field Reference
+
+#### `client_id_template` (String, Jinja2 template)
+
+Defines how to generate the DHCP client-id from the device's serial number. Used when the interface has no MAC address.
+
+**Available variables**:
+
+- `serial` - Device serial number
+
+**Filters**:
+
+- `hex` - Converts string to colon-separated hex (e.g., `"ABC"` → `"41:42:43"`)
+
+**Example**:
+
+```json
+"client_id_template": "00:{{ serial | hex }}"
+```
+
+**Result** (for serial `MT2228X30294`):
+
+```json
+{
+  "client-id": "'00:4d:54:32:32:32:38:58:33:30:32:39:34'"
+}
+```
+
+#### Nested Option Types
+
+Within `interface_names` or `interface_roles`, you can specify three types of options:
+
+**Important**: Custom DHCP options must be defined by the bundled `nv-config-manager-site-dhcp-option-def` config context schema before they can be used in `reservation_options` or `subnet_options`.
+
+**Schema reference** (`nv-config-manager-site-dhcp-option-def`):
+
+The bootstrap job bundles this schema as `KEA Site DHCP Option Definition Schema` and creates the `NVIDIA Config Manager DHCP Custom Options` config context against it. Use this JSON structure when adding custom DHCP options.
+
+```json
+{
+  "Dhcp4": {
+    "option-def": [
+      {
+        "name": "cumulus-provision-url",
+        "code": 239,
+        "type": "string"
+      }
+    ]
+  }
+}
+```
+
+##### `reservation_options` (Dict)
+
+DHCP options applied to **individual reservations** only. These appear in the reservation's `option-data` array.
+
+**Common use cases**:
+
+- Boot scripts for ZTP: `cumulus-provision-url`, `boot-file-name`
+- Device-specific settings: `hostname`, `domain-name`
+
+**Jinja2 variables**:
+
+- `device_id` - Nautobot device UUID
+- `ztp_server` - Randomly selected from `ztp.ipv4` or `ztp.ipv6` list
+
+##### `subnet_options` (Dict)
+
+DHCP options applied at the **subnet level**. These appear in the subnet's `option-data` array and affect all clients on that subnet.
+
+**Common use cases**:
+
+- DNS servers: `domain-name-servers`
+- NTP servers: `ntp-servers`
+- Domain name: `domain-name`
+
+**Note**: You **cannot override** the `routers` option (it comes from `prefix-to-gateway`).
+
+##### `subnet_config` (Dict)
+
+Kea subnet-level **configuration directives** (not DHCP options). Control reservation behavior.
+
+**Common fields**:
+
+- `reservations-global`: Boolean, whether reservations apply globally across subnets
+- `reservations-in-subnet`: Boolean, whether reservations are included in the subnet definition
+
+**Default behavior** (if not specified):
+
+```json
+{
+  "reservations-global": true,
+  "reservations-in-subnet": true
+}
+```
+
+**Use case**: Set both to `false` to skip creating a reservation for specific interfaces.
+
+### ZTP Server List
+
+The `ztp` section defines ZTP server IP addresses. Config Manager randomly selects one when rendering ZTP URLs in DHCP options.
+
+```json
+"ztp": {
+  "ipv4": ["10.1.200.10", "10.1.200.11"],
+  "ipv6": ["2001:db8::10"]
+}
+```
+
+- **IPv4 subnets**: Use `ztp.ipv4` list
+- **IPv6 subnets**: Use `ztp.ipv6` list
+
+**Error handling**: If a DHCP option references `{{ ztp_server }}` but the list is empty, config generation fails:
+
+```text
+DhcpConfigGenerationError: No ZTP server found for 10.1.100.5 in DHCP context
+```
+
+### Example: Cumulus Linux Switch
+
+Here's a complete config context data structure for Cumulus Linux switches with ZTP support. This JSON would be entered in the "Data" field of a Nautobot config context targeted to platform "Cumulus Linux":
+
+```json
+{
+  "dhcp": {
+    "options": {
+      "client_id_template": "00:{{ serial | hex }}",
+      "interface_names": {
+        "eth0": {
+          "reservation_options": {
+            "cumulus-provision-url": "http://{{ ztp_server }}/v1/device/{{ device_id }}/boot-script"
+          },
+          "subnet_options": {
+            "domain-name-servers": "10.1.0.10, 10.1.0.11"
+          },
+          "subnet_config": {
+            "reservations-global": true,
+            "reservations-in-subnet": true
+          }
+        }
+      }
+    }
+  },
+  "ztp": {
+    "ipv4": ["10.1.200.10", "10.1.200.11"]
+  }
+}
+```
+
+This config context:
+
+- Should be targeted to all devices with platform "Cumulus Linux"
+- Uses serial-based client-id for DHCP identification
+- Adds ZTP boot script URL to reservations on `eth0`
+- Sets DNS servers for the entire subnet
+- Enables global and in-subnet reservations
+
+## Flags
+
+### ztp_enabled
+
+The `ztp_enabled` flag controls whether a device should receive ZTP-specific DHCP options, such as boot script URLs. This flag is part of the Config Manager Device Status extension in Nautobot.
+
+**Field location**: `device.configmanagerdevicestatus.ztp_enabled` (boolean)
+
+**Query**: Checked during DHCP config generation:
+
+```text
+device {
+  configmanagerdevicestatus {
+    ztp_enabled
+  }
+}
+```
+
+**Behavior**:
+
+- `ztp_enabled = true` or not present (default): Device reservations include ZTP-related DHCP options from config contexts
+- `ztp_enabled = false`: Device reservations are skipped entirely with a warning:
+
+```text
+WARNING: Reserved IP 10.1.100.5 is not ZTP enabled, skipping
+```
+
+**When to Use**:
+
+- Set `ztp_enabled = true` (or leave unset) for network switches that will bootstrap through ZTP
+- Set `ztp_enabled = false` for manually configured devices, devices outside Config Manager's management scope, and legacy equipment that does not support ZTP
+
+**Relationship to DHCP Reservations**:
+
+The `ztp_enabled` flag is separate from the `dhcp-reserve` tag:
+
+- `dhcp-reserve` tag (on IP address) controls whether a DHCP reservation is created
+- `ztp_enabled` flag (on device) controls whether ZTP options are included in the reservation
+
+**Possible combinations**:
+
+| IP has `dhcp-reserve` | Device `ztp_enabled` | Result |
+| :-------------------: | :------------------: | :----- |
+| Yes | `true` / omitted | Reservation created with ZTP options |
+| Yes | `false` | Reservation skipped (warning logged) |
+| No | `true` / omitted | No reservation (could get dynamic IP from pool) |
+| No | `false` | No reservation (could get dynamic IP from pool) |
+
+## Troubleshooting
+
+### Reserved IP X has no interfaces assigned
+
+An IP address tagged with `dhcp-reserve` is not assigned to any device interface.
+
+1. Navigate to the IP address in Nautobot.
+1. Assign the IP address to a specific device interface.
+1. Verify the interface is active and belongs to a device.
+
+### Reserved IP X has multiple interfaces assigned
+
+An IP address tagged with `dhcp-reserve` is assigned to more than one interface.
+
+Remove the IP from all but one interface. DHCP reservations must be one-to-one.
+
+### Interface X has no MAC address or serial number
+
+A reserved IP's interface lacks a MAC address, and the device also lacks a serial number or `client_id_template`.
+
+The preferred solution is to add a MAC address to the interface in Nautobot.
+
+The alternate solution is to add a serial number to the device _and_ define `client_id_template` in the device's config context.
+
+### Reserved IP X is not ZTP enabled, skipping
+
+The device has `ztp_enabled` set to `false` but its IP is tagged with `dhcp-reserve`.
+
+If the device **should** have a DHCP reservation, set `ztp_enabled` to `true` (or leave it unset).
+
+If the device **should not** have a DHCP reservation, remove the `dhcp-reserve` tag from the IP address.
+
+### No ZTP server found for X in DHCP context
+
+DHCP option template references `{{ ztp_server }}` but no ZTP servers are defined in config context.
+
+Add a `ztp.ipv4` or `ztp.ipv6` list to the device's config context.
+
+For example:
+
+```json
+{
+  "ztp": {
+    "ipv4": ["10.1.200.10"]
+  }
+}
+```
+
+### IPs appear in both pool and reservations
+
+An IP address has both a `dhcp-pool` tag and a `dhcp-reserve` tag.
+
+Remove one of the tags. Use [dhcp-reserve](#dhcp-reserve) for static assignments, or [dhcp-pool](#dhcp-pool) for dynamic ranges. Never use both tags on the same IP address.

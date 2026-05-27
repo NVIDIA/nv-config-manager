@@ -1,0 +1,15 @@
+---
+
+{# Only add network devices (Cumulus Linux) to NVIDIA Config Manager, not servers #}
+config_manager_devices:
+  {% for device in json.devices %}
+  {% if device.platform and device.platform.name == "Cumulus Linux" %}
+  - "!create_or_update:device":
+      "!get:name": "{{ device.name }}"
+      "!get:location": "!ref:location"
+    render_enabled: true
+    ztp_enabled: true
+    deploy_enabled: true
+    backup_enabled: true
+  {% endif %}
+  {% endfor %}

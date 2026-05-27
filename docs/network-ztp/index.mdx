@@ -1,0 +1,146 @@
+---
+title: Config Manager Network ZTP
+sidebar-title: Network ZTP
+position: 0
+---
+
+The NVIDIA Config Manager Network ZTP service is a FastAPI app that serves boot scripts, rendered configurations, and firmware images for network devices during Zero Touch Provisioning (ZTP).
+
+Zero Touch Provisioning (ZTP) is an automated method for configuring and deploying network devices without manual intervention. When a new device boots, it automatically retrieves its configuration, firmware, and boot scripts from a central server, enabling rapid deployment and consistent configuration across your network infrastructure.
+
+The Config Manager Network ZTP Server is a REST API service that facilitates Zero Touch Provisioning for network devices. It serves as the central point for devices to retrieve:
+
+- **Boot scripts** - Initialization scripts that guide the device through the provisioning process
+- **Configuration files** - Device-specific configurations rendered from templates
+- **Firmware images** - Platform-specific firmware versions required for device operation
+
+The ZTP server integrates with Nautobot for device management, ensuring that only authorized devices can access their configurations and that device status is properly tracked throughout the provisioning process.
+
+## Key Features
+
+**Automated Device Provisioning**:
+
+- Devices automatically retrieve their boot scripts, configurations, and firmware upon first boot
+- No manual configuration required on the device itself
+- Consistent configuration across all devices
+
+**Security**:
+
+- **Device and user authorization** - Device requests must come from registered IP addresses; user requests must come through the Envoy gateway as authenticated users when SSO is enabled
+- **Serial number validation** - Devices must validate their serial numbers before provisioning
+- **Secure file transfers** - All transfers use HTTPS with checksum verification
+
+**Integration with Nautobot**:
+
+- Device information and IP addresses are managed in Nautobot
+- Device status is automatically updated to "Provisioned" upon successful ZTP completion
+- Firmware versions are retrieved from device configuration context
+
+**Flexible File Management**:
+
+- Platform and version-based firmware organization
+- Support for multiple file types (firmware images, installers, configuration files)
+- SHA256 checksum verification for all files
+- Efficient streaming for large firmware files
+
+---
+
+## Getting Started
+
+### Prerequisites
+
+Before using the ZTP server, ensure:
+
+1. **Device Registration** - Devices are registered in Nautobot with:
+   - Device UUID
+   - Device serial number
+   - IP addresses
+   - Platform information
+   - Firmware version (in configuration context)
+
+1. **Network Configuration** - DHCP server is configured to provide:
+   - IP address assignment
+   - Boot file URL pointing to the ZTP server
+
+1. **Firmware Availability** - Firmware images are uploaded to the ZTP server for your device platforms
+
+### Quick Start
+
+1. **Review the API Documentation** - Familiarize yourself with available endpoints
+   - See [API Documentation](api-overview.mdx) for complete endpoint reference
+
+1. **Configure Your Device** - Set up DHCP and device registration
+   - See [Configuration Guide](configuration.mdx) for detailed setup instructions
+
+1. **Test Provisioning** - Deploy a test device to verify the setup
+   - Monitor device logs and ZTP server responses
+   - Verify device status updates in Nautobot (for example, status `Provisioned` after ZTP completes)
+
+1. **Deploy to Production** - Scale to production devices
+   - Ensure proper network security
+   - Monitor provisioning success rates
+   - Set up alerting for failures
+
+---
+
+## How It Works
+
+### Provisioning Workflow
+
+1. **Device Boots** - A new network device boots and requests network configuration through DHCP
+1. **DHCP Response** - DHCP server provides the device with an IP address and the ZTP boot file URL
+1. **Boot Script Retrieval** - Device downloads its boot script from the ZTP server
+1. **Firmware Download** - Device downloads the appropriate firmware image for its platform
+1. **Configuration Loading** - Device retrieves and applies its configuration files
+1. **Serial Validation** - Device validates its serial number matches Nautobot records
+1. **Provisioning Complete** - Device marks itself as provisioned, triggering backup workflows
+
+### Authorization Model
+
+The ZTP server accepts device endpoint requests from registered devices and, when SSO is enabled, from authenticated users through the Envoy gateway:
+
+- Device-originated requests must come from IP addresses registered in Nautobot for the device
+- User-originated requests must come through the Envoy gateway as authenticated users when SSO is enabled for the deployment
+- Admin endpoints require authenticated user access
+
+---
+
+## Use Cases
+
+### New Device Deployment
+
+When deploying new network devices:
+
+1. Register the device in Nautobot with its IP address and platform information
+1. Configure DHCP to provide the ZTP boot file URL
+1. Power on the device - it will automatically provision itself
+
+### Firmware Updates
+
+To update device firmware:
+
+1. Upload the new firmware image to the ZTP server — see [Upload Images to the ZTP Server](upload-images.mdx)
+1. Update the device's firmware version in Nautobot configuration context
+1. Reboot the device - it will automatically download and install the new firmware
+
+### Configuration Updates
+
+To update device configurations:
+
+1. Update configuration templates in the configuration store
+1. Reboot the device or trigger configuration reload
+1. Device retrieves and applies the updated configuration
+
+---
+
+## Next Steps
+
+1. **Read the API Documentation** - Understand available endpoints and how to use them
+1. **Review the Configuration Guide** - Learn how to set up devices for ZTP
+1. **Explore the Architecture** - Understand how the system works internally
+1. **Start Provisioning** - Begin deploying devices using ZTP
+
+- [Configuration](configuration.mdx)
+- [Upload Images to the ZTP Server](upload-images.mdx)
+- [Architecture](architecture.mdx)
+- [API Reference](api:ztp-api)

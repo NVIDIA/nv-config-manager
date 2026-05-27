@@ -1,0 +1,27 @@
+---
+title: Device Cable Validation
+sidebar-title: Device Cable Validation
+position: 10
+---
+
+Validates network connections for a specific device by checking physical and logical connectivity.
+
+## User Interface
+
+### Form Inputs
+
+Users interact with a simple two-step form:
+
+| Field | Description | Selection Type | Required |
+| :---- | :---------- | :------------- | :------- |
+| **Site** | Choose the site containing the device | Single dropdown from available sites | Yes |
+| **Device** | Select the specific device to validate | Single dropdown from devices in selected site | Yes |
+
+## Workflow Execution
+
+### Execution Stages
+
+1. Validate hostname
+1. Get device intended neighbors
+1. Get device actual neighbors
+1. Validate device neighbors

@@ -1,0 +1,203 @@
+name: Create RC Tag
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: "Branch, tag, or SHA to tag. Use main for normal RCs."
+        required: true
+        default: main
+        type: string
+      rc_tag:
+        description: "Optional exact RC tag, e.g. 1.2.3-rc.1. Leave empty to compute the next RC."
+        required: false
+        type: string
+      base_version:
+        description: "Optional X.Y.Z base used only when rc_tag is empty."
+        required: false
+        type: string
+      require_public_ci_success:
+        description: "Require Public CI to have succeeded on the tagged commit."
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: release-tagging-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate RC Tag
+    runs-on: ubuntu-24.04
+    outputs:
+      commit: ${{ steps.resolve.outputs.commit }}
+      rc_tag: ${{ steps.version.outputs.rc_tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require repository admin
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          permission="$(gh api "repos/${GITHUB_REPOSITORY}/collaborators/${GITHUB_ACTOR}/permission" --jq .permission)"
+          if [ "$permission" != "admin" ]; then
+            echo "Only repository admins may create release tags. ${GITHUB_ACTOR} has ${permission} permission."
+            exit 1
+          fi
+
+      - name: Resolve source commit
+        id: resolve
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          SOURCE_REF: ${{ inputs.source_ref }}
+        run: |
+          set -euo pipefail
+          git fetch --force --prune --tags origin '+refs/heads/*:refs/remotes/origin/*'
+
+          if git rev-parse --verify "origin/${SOURCE_REF}^{commit}" >/dev/null 2>&1; then
+            resolved_ref="origin/${SOURCE_REF}"
+          else
+            resolved_ref="${SOURCE_REF}"
+          fi
+
+          commit="$(git rev-parse "${resolved_ref}^{commit}")"
+          if ! git merge-base --is-ancestor "$commit" "origin/${DEFAULT_BRANCH}"; then
+            echo "Source commit ${commit} is not reachable from origin/${DEFAULT_BRANCH}."
+            exit 1
+          fi
+
+          echo "commit=${commit}" >> "$GITHUB_OUTPUT"
+          echo "Resolved ${SOURCE_REF} to ${commit}"
+
+      - name: Determine RC tag
+        id: version
+        env:
+          INPUT_BASE_VERSION: ${{ inputs.base_version }}
+          INPUT_RC_TAG: ${{ inputs.rc_tag }}
+        run: |
+          set -euo pipefail
+          stable_re='^[0-9]+\.[0-9]+\.[0-9]+$'
+          rc_re='^[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$'
+
+          if [ -n "$INPUT_RC_TAG" ]; then
+            rc_tag="$INPUT_RC_TAG"
+            if ! printf '%s\n' "$rc_tag" | grep -Eq "$rc_re"; then
+              echo "rc_tag must match X.Y.Z-rc.N. Got: ${rc_tag}"
+              exit 1
+            fi
+          else
+            if [ -n "$INPUT_BASE_VERSION" ]; then
+              base_version="$INPUT_BASE_VERSION"
+              if ! printf '%s\n' "$base_version" | grep -Eq "$stable_re"; then
+                echo "base_version must match X.Y.Z. Got: ${base_version}"
+                exit 1
+              fi
+            else
+              latest_stable="$(git tag --list | grep -E "$stable_re" | sort -V | tail -n 1 || true)"
+              latest_rc_base="$(git tag --list | grep -E "$rc_re" | sed -E 's/-rc\.[0-9]+$//' | sort -V | tail -n 1 || true)"
+
+              stable_next=""
+              if [ -n "$latest_stable" ]; then
+                IFS=. read -r major minor patch <<< "$latest_stable"
+                stable_next="${major}.${minor}.$((patch + 1))"
+              fi
+
+              base_version="$(printf '%s\n' "$stable_next" "$latest_rc_base" | grep -E "$stable_re" | sort -V | tail -n 1 || true)"
+              if [ -z "$base_version" ]; then
+                echo "No existing stable or RC tags found. Set rc_tag or base_version explicitly."
+                exit 1
+              fi
+            fi
+
+            existing_rc="$(git tag --list "${base_version}-rc.*" | sed -nE 's/^.*-rc\.([0-9]+)$/\1/p' | sort -n | tail -n 1 || true)"
+            if [ -z "$existing_rc" ]; then
+              rc_num=1
+            else
+              rc_num=$((existing_rc + 1))
+            fi
+            rc_tag="${base_version}-rc.${rc_num}"
+          fi
+
+          if git rev-parse --verify "refs/tags/${rc_tag}" >/dev/null 2>&1; then
+            echo "Tag ${rc_tag} already exists."
+            exit 1
+          fi
+
+          echo "rc_tag=${rc_tag}" >> "$GITHUB_OUTPUT"
+          echo "RC tag: ${rc_tag}"
+
+      - name: Require Public CI success
+        if: inputs.require_public_ci_success
+        env:
+          COMMIT: ${{ steps.resolve.outputs.commit }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          run="$(gh run list --workflow public-ci.yml --commit "$COMMIT" --limit 20 \
+            --json conclusion,databaseId,status,url \
+            --jq '.[] | select(.status == "completed" and .conclusion == "success") | .url' \
+            | head -n 1)"
+
+          if [ -z "$run" ]; then
+            echo "Public CI has not completed successfully for ${COMMIT}."
+            gh run list --workflow public-ci.yml --commit "$COMMIT" --limit 10
+            exit 1
+          fi
+
+          echo "Public CI succeeded for ${COMMIT}."
+
+      - name: Summary
+        env:
+          COMMIT: ${{ steps.resolve.outputs.commit }}
+          RC_TAG: ${{ steps.version.outputs.rc_tag }}
+        run: |
+          {
+            echo "### RC tag request"
+            echo ""
+            echo "- Tag: \`${RC_TAG}\`"
+            echo "- Commit: \`${COMMIT}\`"
+            echo "- Source ref: \`${{ inputs.source_ref }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  create-tag:
+    name: Create RC Tag
+    needs: validate
+    runs-on: ubuntu-24.04
+    environment: release-tagging
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create and push RC tag
+        env:
+          COMMIT: ${{ needs.validate.outputs.commit }}
+          RC_TAG: ${{ needs.validate.outputs.rc_tag }}
+          TAG_PUSH_TOKEN: ${{ secrets.RELEASE_TAG_TOKEN || github.token }}
+        run: |
+          set -euo pipefail
+          git fetch --force --prune --tags origin '+refs/heads/*:refs/remotes/origin/*'
+
+          if git rev-parse --verify "refs/tags/${RC_TAG}" >/dev/null 2>&1; then
+            echo "Tag ${RC_TAG} already exists."
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$RC_TAG" "$COMMIT" -m "Release candidate ${RC_TAG}"
+
+          git remote set-url origin "https://x-access-token:${TAG_PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push origin "refs/tags/${RC_TAG}"
+
+          echo "Created ${RC_TAG} at ${COMMIT}."

@@ -1,0 +1,47 @@
+# Kind cluster configuration for local laptop development
+#
+# Usage:
+#   kind create cluster --name nv-config-manager --config deploy/kind-config.yaml --wait 5m
+#
+# This configuration:
+#   - Single control-plane node (suitable for laptops)
+#   - Exposes NodePorts 30443/30080 as 443/80 for Envoy Gateway v1.6+
+#   - Exposes port 8443 for Keycloak (if using local Keycloak)
+#   - API server accessible from Docker-in-Docker environments (GitLab CI)
+#
+# After cluster creation, remove control-plane taint to allow scheduling:
+#   kubectl taint nodes nv-config-manager-control-plane node-role.kubernetes.io/control-plane:NoSchedule-
+#
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+networking:
+  # Bind API server to all interfaces so it's accessible from outside the DinD container
+  apiServerAddress: "0.0.0.0"
+kubeadmConfigPatches:
+- |
+  kind: ClusterConfiguration
+  apiVersion: kubeadm.k8s.io/v1beta3
+  apiServer:
+    certSANs:
+      - "docker"      # DinD service alias used in GitLab CI
+      - "0.0.0.0"     # For local access when apiServerAddress is 0.0.0.0
+      - "127.0.0.1"   # Localhost
+      - "localhost"
+nodes:
+- role: control-plane
+  extraPortMappings:
+  # Envoy Gateway HTTPS (NodePort 30443 → host 443)
+  - containerPort: 30443
+    hostPort: 443
+    listenAddress: "0.0.0.0"
+    protocol: TCP
+  # Envoy Gateway HTTP (NodePort 30080 → host 80)
+  - containerPort: 30080
+    hostPort: 80
+    listenAddress: "0.0.0.0"
+    protocol: TCP
+  # extraMounts:
+  # # Mount airgapped images from host into Kind node (same path for simplicity)
+  # - hostPath: /Users/daveshm/Downloads/nv-config-manager-airgapped-1.2.1-rc13-amd64/images
+  #   containerPath: /Users/daveshm/Downloads/nv-config-manager-airgapped-1.2.1-rc13-amd64/images
+  #   readOnly: true

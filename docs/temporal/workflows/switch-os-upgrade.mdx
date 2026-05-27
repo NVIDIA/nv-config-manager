@@ -1,0 +1,29 @@
+---
+title: Switch OS Upgrade
+sidebar-title: Switch OS Upgrade
+position: 10
+---
+
+Upgrades the operating system on network switches with automated backup, deployment, and validation procedures.
+
+<Note>
+This workflow does not support NVLink and NVLink Switches. See the [NVLink Switch Firmware Upgrade](nvlink-switch-firmware-upgrade.mdx) workflow for details on NVLink upgrades.
+</Note>
+
+## User Interface
+
+### Form Inputs
+
+| Field | Description | Selection Type | Required |
+| :---- | :---------- | :------------- | :------- |
+| **Site** | Choose the site containing the switch | Single dropdown from available sites | Yes |
+| **Device** | Select the switch to upgrade | Single dropdown from switches in selected site | Yes |
+
+## Workflow Execution
+
+### Execution Stages
+
+1. Pre-upgrade preparation
+1. Deploy OS image
+1. Perform system upgrade
+1. Post-upgrade validation

@@ -1,0 +1,6 @@
+---
+# Statuses are managed by the bootstrap job (nv_config_manager_jobs/data/statuses.yaml)
+# This file is kept empty to avoid conflicts with bootstrap-managed statuses.
+# Add only topology-specific statuses here that are not in bootstrap.
+
+statuses: []

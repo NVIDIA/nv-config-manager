@@ -1,0 +1,49 @@
+---
+# Global Config Contexts for NVIDIA Config Manager deployments
+# These are baseline configurations applied globally or to specific device roles
+
+- name: Cumulus Linux Password Mappings
+  description: Default password mappings for Cumulus Linux devices (username -> password_key + role for managed-users filter)
+  weight: 1000
+  is_active: true
+  platforms:
+    - Cumulus Linux
+  data:
+    password_mappings:
+      cumulus:
+        password: root_password
+        rotation: r1
+        role: system-admin
+      nvConfigManager:
+        password: api_user_key
+        rotation: r1
+        role: system-admin
+  deployment_types: [all]
+
+- name: Cumulus Linux Firmware 5.14.0
+  description: Intended firmware version for Cumulus Linux switches
+  weight: 1000
+  is_active: true
+  platforms:
+    - Cumulus Linux
+  data:
+    intended-firmware:
+      version: "5.14.0"
+  deployment_types: [all]
+
+- name: NVIDIA Config Manager DHCP Custom Options
+  description: Custom DHCP option definitions for KEA (cumulus-provision-url)
+  weight: 1000
+  is_active: true
+  schema: nv-config-manager-site-dhcp-option-def
+  data:
+    Dhcp4:
+      option-def:
+        - code: 239
+          name: cumulus-provision-url
+          type: string
+          array: false
+          space: dhcp4
+          encapsulate: ""
+          record-types: ""
+  deployment_types: [all]

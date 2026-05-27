@@ -1,0 +1,60 @@
+{{- if .Values.gateway.certificates.enabled }}
+{{- $selfsignedIssuerName := include "nv-config-manager.componentName" (dict "root" . "component" "selfsigned-issuer") }}
+{{- $tlsCertName := include "nv-config-manager.componentName" (dict "root" . "component" "gateway-tls") }}
+# =============================================================================
+# Self-Signed Issuer (for local development)
+# =============================================================================
+{{- if .Values.gateway.certificates.selfSigned }}
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ $selfsignedIssuerName }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+spec:
+  selfSigned: {}
+{{- end }}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $tlsCertName }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+spec:
+  secretName: {{ $tlsCertName }}
+  {{- if .Values.gateway.certificates.selfSigned }}
+  subject:
+    organizations:
+      - NVIDIA Config Manager
+    organizationalUnits:
+      - Local Development
+  commonName: "{{ .Values.gateway.baseHostname }}"
+  {{- end }}
+  issuerRef:
+    {{- if .Values.gateway.certificates.selfSigned }}
+    kind: Issuer
+    name: {{ $selfsignedIssuerName }}
+    {{- else }}
+    kind: {{ .Values.gateway.certificates.issuer.kind }}
+    name: {{ .Values.gateway.certificates.issuer.name }}
+    {{- end }}
+  dnsNames:
+  {{- if .Values.gateway.certificates.dnsNames }}
+  {{- range .Values.gateway.certificates.dnsNames }}
+  - {{ tpl . $ }}
+  {{- end }}
+  {{- else }}
+  # Base domain and wildcard for single-level subdomains
+  - {{ .Values.gateway.baseHostname }}
+  - "*.{{ .Values.gateway.baseHostname }}"
+  # All service hostnames are single-level subdomains covered by the wildcard above
+  # (render, workflow, temporal, ztp, dhcp, nautobot, config-store, svc-*)
+  {{- end }}
+  duration: 2160h  # 90 days
+  renewBefore: 720h  # 30 days
+{{- end }}
+

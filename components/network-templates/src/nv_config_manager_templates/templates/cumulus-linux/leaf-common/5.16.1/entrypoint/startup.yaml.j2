@@ -1,0 +1,33 @@
+{% extends "cumulus-linux/leaf-common/base/startup.yaml.j2" %}
+
+{% block service %}
+{% include "cumulus-linux/role_common/5.16.1/include/service.j2" %}
+{% endblock service %}
+
+
+{% block evpn %}
+{% include "cumulus-linux/leaf-common/5.16.1/include/evpn.j2" %}
+{% endblock evpn %}
+
+
+{% block interfaces %}
+{% include "cumulus-linux/leaf-common/5.16.1/include/interface.j2" %}
+{% endblock interfaces %}
+
+
+{% block nve %}
+{% include "cumulus-linux/leaf-common/5.16.1/include/nve.j2" %}
+{% endblock nve %}
+
+
+{% block vrf %}
+{% include "cumulus-linux/leaf-common/5.16.1/include/vrf.j2" %}
+{% endblock vrf %}
+
+
+{% block router %}
+{% include "cumulus-linux/leaf-common/5.16.1/include/router.j2" %}
+{% endblock router %}
+{% block system %}
+{% include "cumulus-linux/role_common/5.16.1/include/system.j2" %}
+{% endblock system %}

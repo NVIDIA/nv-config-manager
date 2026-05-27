@@ -1,0 +1,6 @@
+query ($hostname: String!){
+  devices(name__ie: [$hostname]) {
+    id
+    name
+  }
+}

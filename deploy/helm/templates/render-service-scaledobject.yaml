@@ -1,0 +1,117 @@
+# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
+# =============================================================================
+# KEDA ScaledObjects for Render Service Consumers
+# =============================================================================
+# Scales render-service consumers based on NATS JetStream pending message count.
+# Uses Prometheus to query nats_consumer_num_pending metrics.
+#
+# Consumer naming: {nats.queue}-{consumer_type} (e.g., nv-config-manager-test01-device)
+# Stream: nv-config-manager
+# =============================================================================
+{{- if and .Values.renderService.enabled .Values.renderService.autoscaling.enabled }}
+{{- $namespace := .Values.global.namespace }}
+{{- $environment := .Values.global.environment }}
+{{- $serviceName := include "nv-config-manager.componentName" (dict "root" . "component" "render") }}
+{{- $autoscaling := .Values.renderService.autoscaling }}
+{{- $prometheus := $autoscaling.prometheus }}
+
+{{- /* Iterate over each consumer type */ -}}
+{{- if $autoscaling.consumers }}
+{{- range $consumerType := list "device" "template" "nautobot" }}
+{{- $consumerConfig := index $autoscaling.consumers $consumerType }}
+{{- $streamName := ternary $.Values.externalServices.nats.streams.nautobot.name $.Values.externalServices.nats.streams.configManager.name (eq $consumerType "nautobot") }}
+{{- if $consumerConfig.enabled }}
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ $serviceName }}-consumer-{{ $consumerType }}
+  namespace: {{ $namespace }}
+  labels:
+    app: {{ $serviceName }}
+    component: consumer-{{ $consumerType }}
+    app.kubernetes.io/name: nv-config-manager
+    app.kubernetes.io/component: render-service-autoscaling
+spec:
+  scaleTargetRef:
+    name: {{ $serviceName }}-consumer-{{ $consumerType }}
+  minReplicaCount: {{ $consumerConfig.minReplicas | default 1 }}
+  maxReplicaCount: {{ $consumerConfig.maxReplicas | default 10 }}
+  pollingInterval: {{ $autoscaling.pollingInterval | default 30 }}
+  cooldownPeriod: {{ $autoscaling.cooldownPeriod | default 300 }}
+  triggers:
+    - type: prometheus
+      {{- if $prometheus.tls.enabled }}
+      authenticationRef:
+        name: {{ $serviceName }}-prometheus-auth
+      {{- end }}
+      metadata:
+        serverAddress: {{ $prometheus.serverAddress | quote }}
+        # Query NATS consumer pending messages
+        # consumer_name matches what the render service creates: {nats.queue}-{type}
+        # is_consumer_leader="true" avoids double-counting in HA
+        # namespace filter prevents cross-environment matching
+        query: |
+          max(nats_consumer_num_pending{is_consumer_leader="true", stream_name="{{ $streamName }}", consumer_name="{{ $.Values.externalServices.nats.queue }}-{{ $consumerType }}"{{- if $prometheus.natsMetricsNamespace }}, namespace="{{ $prometheus.natsMetricsNamespace }}"{{- end }}})
+        threshold: {{ $consumerConfig.targetPendingPerPod | default 10 | quote }}
+        {{- if $prometheus.ignoreNullValues }}
+        ignoreNullValues: {{ $prometheus.ignoreNullValues | quote }}
+        {{- end }}
+        {{- if $prometheus.unsafeSsl }}
+        unsafeSsl: {{ $prometheus.unsafeSsl | quote }}
+        {{- end }}
+        {{- if $prometheus.tls.enabled }}
+        authModes: "tls"
+        {{- end }}
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: {{ $consumerConfig.behavior.scaleUp.stabilizationWindowSeconds | default 0 }}
+          policies:
+            - type: Percent
+              value: {{ $consumerConfig.behavior.scaleUp.policies.percent | default 100 }}
+              periodSeconds: {{ $consumerConfig.behavior.scaleUp.policies.periodSeconds | default 15 }}
+            - type: Pods
+              value: {{ $consumerConfig.behavior.scaleUp.policies.pods | default 10 }}
+              periodSeconds: {{ $consumerConfig.behavior.scaleUp.policies.periodSeconds | default 15 }}
+          selectPolicy: Max
+        scaleDown:
+          stabilizationWindowSeconds: {{ $consumerConfig.behavior.scaleDown.stabilizationWindowSeconds | default 300 }}
+          policies:
+            - type: Percent
+              value: {{ $consumerConfig.behavior.scaleDown.policies.percent | default 50 }}
+              periodSeconds: {{ $consumerConfig.behavior.scaleDown.policies.periodSeconds | default 60 }}
+            - type: Pods
+              value: {{ $consumerConfig.behavior.scaleDown.policies.pods | default 5 }}
+              periodSeconds: {{ $consumerConfig.behavior.scaleDown.policies.periodSeconds | default 60 }}
+          selectPolicy: Min
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{- /* TriggerAuthentication for Prometheus mTLS */ -}}
+{{- if $prometheus.tls.enabled }}
+---
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: {{ $serviceName }}-prometheus-auth
+  namespace: {{ $namespace }}
+  labels:
+    app: {{ $serviceName }}
+    app.kubernetes.io/name: nv-config-manager
+    app.kubernetes.io/component: render-service-autoscaling
+spec:
+  secretTargetRef:
+    - parameter: ca
+      name: {{ $prometheus.tls.secretName }}
+      key: {{ include "nv-config-manager.vault.keyName" (dict "root" $ "secret" "kedaPrometheusCerts" "key" "caCert") }}
+    - parameter: cert
+      name: {{ $prometheus.tls.secretName }}
+      key: {{ include "nv-config-manager.vault.keyName" (dict "root" $ "secret" "kedaPrometheusCerts" "key" "tlsCert") }}
+    - parameter: key
+      name: {{ $prometheus.tls.secretName }}
+      key: {{ include "nv-config-manager.vault.keyName" (dict "root" $ "secret" "kedaPrometheusCerts" "key" "tlsKey") }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,43 @@
+---
+
+device_types:
+{% if json.device_types is defined and json.device_types | length > 0 %}
+{% for device_type in json.device_types %}
+  - "!create_or_update:model": {{ device_type.model }}
+    manufacturer__name: {{ device_type.manufacturer }}
+    {% set u_height = 0 if 'bluefield' in (device_type.model | lower) else (device_type.u_height | default(1)) %}
+    u_height: {{ u_height }}
+    is_full_depth: {{ device_type.is_full_depth | default(true) }}
+    {% if device_type.part_number is defined %}
+    part_number: {{ device_type.part_number }}
+    {% endif %}
+{% endfor %}
+
+{% endif %}
+{% for manufacturer, models in device_types.items() %}
+  {% for device_type in models %}
+  - "!create_or_update:model": {{ device_type.model }}
+    manufacturer__name: {{ manufacturer }}
+    u_height: {{ device_type.u_height }}
+    is_full_depth: {{ device_type.is_full_depth }}
+    {% if device_type.part_number is defined %}
+    part_number: {{ device_type.part_number }}
+    {% endif %}
+    {% if device_type.subdevice_role is defined %}
+    subdevice_role: {{ device_type.subdevice_role }}
+    {% endif %}
+  {% endfor %}
+{% endfor %}
+
+device_bay_templates:
+{% for manufacturer, models in device_types.items() %}
+  {% for device_type in models %}
+  {% if device_type.device_bays is defined %}
+  {% for bay in device_type.device_bays %}
+  - "!create_or_update:name": {{ bay.name }}
+    "!create_or_update:device_type__model": {{ device_type.model }}
+    label: {{ bay.label }}
+  {% endfor %}
+  {% endif %}
+  {% endfor %}
+{% endfor %}

@@ -1,0 +1,29 @@
+---
+title: Infiniband MLNX OS Upgrade
+sidebar-title: Infiniband MLNX OS Upgrade
+position: 10
+---
+
+Upgrades the operating system on Mellanox InfiniBand switches with specialized procedures for high-performance computing infrastructure.
+
+<Warning title="Experimental">
+This workflow is experimental and has not completed QA. Use it only in test or pilot environments.
+</Warning>
+
+## User Interface
+
+### Form Inputs
+
+| Field | Description | Selection Type | Required |
+| :---- | :---------- | :------------- | :------- |
+| **Site** | Choose the site containing the InfiniBand switch | Single dropdown with available sites | Yes |
+| **Device** | Select the Mellanox IB switch to upgrade | Single dropdown with MLNX devices in selected site | Yes |
+
+## Workflow Execution
+
+### Execution Stages
+
+1. Prepare InfiniBand fabric
+1. Deploy MLNX OS image
+1. Perform fabric-aware upgrade
+1. Validate InfiniBand operation

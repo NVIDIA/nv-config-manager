@@ -1,0 +1,10 @@
+#!/bin/bash
+# Check if any other failed ZTP steps
+if nv show system ztp | grep -q "failed"; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') Error: Found failed ZTP stages. Please check the ZTP status." | tee -a /var/log/NV-CONFIG-MANAGER-ZTP.log
+    exit 1
+else
+    echo "$(date '+%Y-%m-%d %H:%M:%S') No failed ZTP stages found. Finalizing Provisioning." | tee -a /var/log/NV-CONFIG-MANAGER-ZTP.log
+    curl --retry 5 --retry-delay 10 -X POST http://{{ (device_data|ztp_servers)[0] }}/v1/device/{{ device_data|uuid }}/provisioned
+    exit 0
+fi

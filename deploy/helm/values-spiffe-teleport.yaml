@@ -1,0 +1,51 @@
+# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
+#
+# =============================================================================
+# SPIFFE Configuration - Teleport Provider
+# =============================================================================
+# Use this values file overlay when deploying with Teleport as the SPIFFE provider.
+#
+# Prerequisites:
+#   1. Teleport cluster deployed with Machine ID enabled
+#   2. Teleport agent running on Kubernetes nodes with workload identity
+#   3. Join token configured for nv-config-manager workloads in Teleport
+#
+# Usage:
+#   helm install nv-config-manager . -f values.yaml -f values-spiffe-teleport.yaml
+#
+# tbot is deployed separately (e.g. as a DaemonSet by the platform team).
+# These values only configure how nv-config-manager pods consume the Workload API socket.
+# =============================================================================
+
+spiffe:
+  enabled: true
+  provider: teleport
+  
+  # Trust domain must match your Teleport cluster's SPIFFE trust domain
+  # Usually: <your-cluster>.teleport.example.com
+  trustDomain: "teleport.example.com"
+  
+  # Socket configuration for Teleport
+  socket:
+    # Mount path in container
+    mountPath: /var/run/teleport
+    # Socket filename (Teleport Machine ID uses this)
+    socketFile: workload-api.sock
+    # Host path where Teleport agent exposes the socket
+    hostPath: /var/run/teleport
+  
+  # Envoy sidecar configuration
+  envoy:
+    image:
+      repository: envoyproxy/envoy
+      tag: v1.31-latest
+      pullPolicy: IfNotPresent
+    inboundPort: 8443
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
+

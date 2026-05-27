@@ -1,0 +1,32 @@
+---
+title: Getting Started with Nautobot for NVIDIA Config Manager
+sidebar-title: Getting Started with Nautobot
+position: 0
+---
+
+Nautobot is the single source of truth for your network infrastructure&mdash;it is where you define what equipment you have, where it lives, how it is connected, and how it should be configured.
+
+The pages in this section walk you through the core concepts and objects you will work with. By the end, you will understand how all the pieces fit together and be ready to create your first dataset.
+
+## What is Nautobot, and Why Does Config Manager Use It?
+
+Nautobot is a network source of truth and network automation platform. In the Config Manager ecosystem, Nautobot serves as the central repository for all information about your network infrastructure:
+
+- **Physical Infrastructure**: What equipment you have (switches, servers), where it is located (datacenters, racks), and how it is connected (cables, interfaces)
+- **Logical Configuration**: IP addresses, VLANs, routing information, and device roles
+- **Configuration Data**: Device-specific settings through config contexts that drive template rendering
+
+Config Manager installs several Nautobot apps which extend the functionality of Nautobot to support Config Manager's specific needs. In particular, the [Field Serviceable Units (FSUs)](https://nvidia.github.io/nautobot-app-fsus/index.html) and [NVDataModels](https://github.com/NVIDIA/nautobot-app-nvdatamodels) apps model NVIDIA's high-performance compute resources.
+
+When you populate Nautobot, you create a structured, queryable representation of your network that Config Manager automation workflows can use to:
+
+- Generate device configurations
+- Validate cable connections
+- Provision new equipment through ZTP (Zero Touch Provisioning)
+- Monitor and report on infrastructure state
+
+## Next Steps
+
+- Continue to the [Nautobot Integration](nautobot-integration.mdx) page to learn how Config Manager interacts with Nautobot
+- Use [Design Builder Data Loading](design-builder-data-loading.mdx) to understand how the bundled mock topology jobs populate Nautobot and how to replace the sample context with your own topology data.
+- Continue to the [bootstrap data overview](bootstrap-intro.mdx) and [bootstrap data schema reference](bootstrap-schema.mdx) pages to learn about the data model used to populate Nautobot with baseline Config Manager data.

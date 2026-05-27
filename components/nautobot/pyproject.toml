@@ -1,0 +1,78 @@
+[project]
+name = "nautobot-nv-config-manager-deployment"
+version = "1.0.0"
+description = "NVIDIA Config Manager Nautobot - Pared down version for external customers"
+authors = [{ name = "NVIDIA", email = "support@nvidia.com" }]
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    # Security: Stay on Nautobot 2.x while fixing CVE-2026-44797/CVE-2026-44798
+    "nautobot==2.4.33",
+    "nautobot-fsus>=3.0.1",
+    "nautobot-broker-nats",
+    "nautobot-firewall-models>=2.2.0",
+    "nautobot-design-builder>=2.1.0",
+    "nautobot-nvdatamodels>=0.17.0",
+    "nautobot-bgp-models>=2.3.1",
+    "nautobot-app-overlays",
+    "nautobot-nv-config-manager",
+    # Security: Fix idna vulnerability (GHSA-65pc-fj4g-8rjx)
+    "idna>=3.15",
+    # Security: Fix requests header injection via malformed URLs (GHSA-gc5v-m9x4-r6x2)
+    "requests>=2.33.0",
+    # Security: Django>=4.2.30 floor (transitive via nautobot, pinned to prevent lockfile regression)
+    # (fixes GHSA-frmv-pr5f-9mcr, GHSA-mwm9-4648-f68q, GHSA-gvg8-93h5-g6qq, GHSA-qw25-v68c-qjf3,
+    #  GHSA-mvfq-ggxm-9mc5, GHSA-933h-hp56-hf7m)
+    "django>=4.2.30",
+    # Security: Fix libsodium incomplete disallowed inputs (GHSA-mrfv-m5wm-5w6w)
+    "pynacl>=1.6.2",
+    # Security: Fix urllib3 decompression chain vulnerabilities (GHSA-gm62-xv2j-4w53, GHSA-2xpw-w6gg-jr37, GHSA-38jv-5279-wg99)
+    # Security: Fix urllib3 vulnerabilities (CVE-2026-44431, CVE-2026-44432)
+    "urllib3>=2.7.0",
+    # Security: Fix GitPython vulnerability (GHSA-mv93-w799-cj2w)
+    "gitpython>=3.1.50",
+    # Security: cryptography>=46.0.5 enforced by nautobot>=2.4.28 (fixes GHSA-r6ph-v2qm-q3c2, GHSA-cfh3-3jmp-rvhc)
+    # Security: Fix uncontrolled resource consumption in Pillow (GHSA-whj4-6x5x-4v2j)
+    "pillow>=12.2.0",
+    # Security: Fix DoS via unbounded recursion (GHSA-jr27-m4p2-rc6r, GHSA-63vm-454h-vhhq)
+    "pyasn1>=0.6.3",
+    # Multi-provider JWT validation (external IdPs, Azure AD, SPIFFE JWT-SVIDs)
+    # cryptography is already a transitive dep of nautobot but pin for JWKS key support
+    "PyJWT[crypto]>=2.12.1",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.8.0",
+    "pytest>=8.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-mock>=3.14.0",
+    "pytest-xdist>=3.0.0",
+    "pyyaml>=6.0.1",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+nautobot-broker-nats = { git = "https://github.com/NVIDIA/nautobot-broker-nats.git", rev = "f8b46f8d3471157eaa64fe81e866e409076048dd" }
+nautobot-app-overlays = { path = "nautobot-app-overlays" }
+nautobot-nv-config-manager = { path = "nautobot-nv-config-manager" }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "UP",   # pyupgrade
+]

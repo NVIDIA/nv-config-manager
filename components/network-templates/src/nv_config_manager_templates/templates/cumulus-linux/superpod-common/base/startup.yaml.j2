@@ -1,0 +1,28 @@
+{% block header %}
+- set:
+{% endblock header %}
+
+{% block acl %}{% endblock acl %}
+
+{% block bridge %}{% endblock bridge %}
+
+{% block evpn %}{% endblock evpn %}
+
+{% block interfaces required %}{% endblock interfaces %}
+
+{% block nve %}{% endblock nve %}
+
+{% block qos %}{% endblock qos %}
+
+{% block router required %}{% endblock router %}
+
+{% block service %}
+{% include "cumulus-linux/superpod-common/include/service.j2" %}
+{% endblock service %}
+
+{% block system %}
+{% include "cumulus-linux/superpod-common/include/system.j2" %}
+{% endblock system %}
+
+{% block vrf required %}{% endblock vrf %}
+

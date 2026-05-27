@@ -1,0 +1,57 @@
+    interface:
+{% block management %}
+{% set intf = device_data|interface_by_name("eth0") %}
+      eth0:
+{% if intf.description %}
+        description: {{intf.description}}
+{% endif %}
+        ip:
+          address:
+            {{ intf.primary_ipv4 }}: {}
+          gateway:
+            {{ intf.primary_ipv4|gateway }}: {}
+          vrf: mgmt
+        type: eth
+{% endblock management %}
+
+{% block loopback %}
+{% set intf = device_data|interface_by_name("lo") %}
+      lo:
+{% if intf.description %}
+        description: {{intf.description}}
+{% endif %}
+        ip:
+          address:
+            {{ intf.primary_ipv4 }}: {}
+        type: loopback
+{% endblock loopback %}
+
+{% block bond %}{% endblock bond %}
+
+{% block swp required %} {% endblock swp %}
+
+{% block vlan %}
+{% for vlan in device_data|interfaces(prefix="vlan") %}
+      {{ vlan.name }}:
+{% if vlan.description %}
+        description: {{vlan.description}}
+{% endif %}
+{% if not vlan.enabled %}
+        link:
+          state:
+            down: {}
+{% endif %}
+{% if vlan.primary_ipv4 or vlan.vrf != "default" %}
+        ip:
+{% if vlan.primary_ipv4 %}
+          address:
+            {{ vlan.primary_ipv4 }}: {}
+{% endif %}
+{% if vlan.vrf != "default" %}
+          vrf: {{ vlan.vrf }}
+{% endif %}
+{% endif %}
+        type: svi
+        vlan: {{ vlan.vlan_number }}
+{% endfor %}
+{% endblock vlan %}

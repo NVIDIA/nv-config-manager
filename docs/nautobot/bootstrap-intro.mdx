@@ -1,0 +1,685 @@
+---
+title: Nautobot Bootstrap Data
+sidebar-title: Nautobot Bootstrap Data
+position: 20
+---
+
+If you are reading this, you are about to populate Nautobot with data that will power your NVIDIA Config Manager network automation. This guide walks you through the core concepts and objects you will work with, and by the end, you will understand how all the pieces fit together and be ready to create your first dataset.
+
+## What is Nautobot and Why Does Config Manager Use It?
+
+Nautobot is a network source of truth and network automation platform. In the Config Manager ecosystem, Nautobot serves as the central repository for all information about your network infrastructure:
+
+- **Physical Infrastructure**: What equipment you have (switches, servers), where it is located (datacenters, racks), and how it is connected (cables, interfaces)
+- **Logical Configuration**: IP addresses, VLANs, routing information, and device roles
+- **Configuration Data**: Device-specific settings through config contexts that drive template rendering
+
+Config Manager installs several Nautobot apps which extend the functionality of Nautobot to support Config Manager's specific needs. In particular, the [Field Serviceable Units (FSUs)](https://nvidia.github.io/nautobot-app-fsus/index.html) and [NVDataModels](https://github.com/NVIDIA/nautobot-app-nvdatamodels) apps model NVIDIA's high-performance compute resources.
+
+When you populate Nautobot, you create a structured, queryable representation of your network that Config Manager automation workflows can use to:
+
+- Generate device configurations
+- Validate cable connections
+- Serve DHCP/ZTP provisioning data for devices that already exist in Nautobot
+- Monitor and report on infrastructure state
+
+Continue to the [Nautobot Integration](nautobot-integration.mdx) page to learn how Config Manager interacts with Nautobot.
+
+## How Bootstrap Data Works
+
+Config Manager uses YAML files to define bootstrap data that gets loaded into Nautobot through the `LoadBootstrapData` job. Here is the flow:
+
+1. You create YAML files in the `data/` directory, organized by schema type (manufacturers, device types, locations, and so on)
+1. You run the `LoadBootstrapData` job in Nautobot
+1. The job reads your YAML files in a specific dependency order
+1. Objects are created or updated in Nautobot based on your data
+
+The beauty of this approach is that your infrastructure definition lives in version-controlled YAML files, making it easy to review changes, collaborate with teammates, and maintain consistency across environments.
+
+## Mapping the Physical World to Nautobot Objects
+
+Before diving into the details, take a moment to understand how the physical world maps to Nautobot objects.
+
+### The Physical Hierarchy
+
+Think about how you would describe your datacenter to someone:
+
+1. **Where is it?** → Locations (Provider → Region → Site → Module)
+1. **What racks do you have?** → Racks (belong to locations)
+1. **What equipment is in the racks?** → Devices (go in racks, have a type and role)
+1. **How is it connected?** → Interfaces (ports on devices) and Cables (connections between interfaces)
+1. **What are the IP addresses?** → IP Addresses (assigned to interfaces), Prefixes (network ranges), VLANs
+
+### The Configuration Hierarchy
+
+Beyond the physical, you need to define how devices are configured:
+
+1. **What kind of equipment?** → Manufacturers and Device Types
+1. **What software does it run?** → Platforms
+1. **What is its purpose?** → Roles (spine, leaf, TOR, and so on)
+1. **What state is it in?** → Statuses (Active, Planned, Maintenance, and so on)
+1. **What are its specific settings?** → Config Contexts (JSON data that drives configuration templates)
+
+## Building Blocks: Objects and Structures
+
+Let's walk through the building blocks. Understanding these objects and their attributes is key to working with Config Manager and Nautobot.
+
+### Devices & Device Types
+
+Schema reference: [Devices & Device Types](bootstrap-schema.mdx#2-device-types)
+
+**What they are**:
+
+- **Devices** are physical or virtual equipment instances in your infrastructure—network switches, routers, servers, GPU servers, and storage nodes. Each device has a hostname, serial number, location, and configuration. Nautobot tracks all devices to maintain a complete topology view, though Config Manager primarily manages and configures network switches.
+- **Device Types** are the specific models of equipment—like "SN5600" for switches, "DGX H100" for GPU servers, or "PowerEdge R750" for storage nodes. Think of these as the SKU or part number you would order.
+
+**Why they matter**: Devices are the core objects that everything else supports. They are what you are actually managing, configuring, and monitoring. When you create a device in Nautobot, you specify its device type, which defines physical characteristics like how many ports it has, what kind of ports (Ethernet, Infiniband, and so on), power requirements, rack space, and more.
+
+**Key distinction**:
+
+- **Network devices** (switches, routers) are Config Manager configuration targets—Config Manager generates and deploys configurations for these devices
+- **Compute and storage devices** (GPU servers, storage nodes) are tracked in Nautobot for complete topology visibility and cable validation, but Config Manager does not configure them
+
+**Example**: A network switch named "spine-01" with serial number ABC123, located in Rack 1, Site DataCenter-1, of device type "SN5600" (which defines it has 64 ports, specific power requirements, and 2U rack height), with role "Spine", running "Cumulus Linux". Config Manager would generate and deploy configuration for this switch. Or a GPU server named "dgx-01" with serial number XYZ789, located in Rack 2, of device type "DGX H100"—tracked for topology and cabling but not configured by Config Manager.
+
+**Quick tip**: Devices are not created by ZTP. Create device inventory before provisioning by using the Nautobot UI, Nautobot API, bulk import, migration scripts, or a Design Builder topology job. Device types ARE defined in bootstrap data and must exist before you can create devices. Device types are organized in subdirectories by manufacturer: `data/device_types/NVIDIA/SN5600.yaml`
+
+### Racks
+
+Schema reference: [Location Types](bootstrap-schema.mdx#7-location-types) and [Locations](bootstrap-schema.mdx#8-locations)
+
+**What they are**: Physical rack enclosures where you mount your equipment. Racks have a height (typically 42U), a location, and can track which rack units (RUs) are occupied by which devices.
+
+**Why they matter**: Racks are where devices physically live. They provide the connection between your location hierarchy and your actual equipment. When you create a device, you specify which rack it goes in and which rack units it occupies. This helps datacenter operators know exactly where to install equipment and helps you visualize rack elevation and space utilization.
+
+**Example**: "Rack-01" in location "DataCenter-1", 42U height, with "spine-01" occupying units 1-2 (because it is 2U high) and "leaf-01" occupying units 3-4.
+
+**Quick tip**: Racks belong to locations (typically Sites or Modules in your hierarchy). Define your location hierarchy before creating racks.
+
+### Roles
+
+Schema reference: [Roles](bootstrap-schema.mdx#4-roles)
+
+**What they are**: Functional roles that define what a device or interface does in your infrastructure. Device roles include network functions (Spine, Leaf, TOR, Border Leaf, Management Switch, and so on) and compute functions (GPU Server, Storage Node, and so on). Interface roles define port purposes (Uplink, Downlink, Management, Out-of-Band, and so on).
+
+**Why they matter**: Roles are fundamental in Config Manager. For network devices, the device role determines which base configuration template gets applied. This is the primary mechanism for differentiating device configurations&mdash;a Spine gets different config than a Leaf or TOR switch. For compute and storage devices, roles help organize topology and reporting even though Config Manager does not configure them.
+
+**Common Device Role Examples**:
+
+- **Network roles** (Config Manager configuration targets): Spine, Leaf, TOR (Top of Rack), Border Leaf, Management Leaf, Storage Leaf, Compute Leaf, Out-of-Band Spine
+- **Compute roles** (topology tracking): GPU Server, Compute Server, Storage Node, Management Server
+
+**Example**: A device with role "Spine" gets spine-specific configuration templates with BGP settings for a Clos fabric. A device with role "Leaf" gets leaf templates with server-facing port configurations. A device with role "GPU Server" is tracked for topology but not configured by Config Manager.
+
+**Quick tip**: Roles must specify the content types they apply to, including devices, interfaces, and so on. This is required in Nautobot.
+
+### Manufacturers
+
+Schema reference: [Manufacturers](bootstrap-schema.mdx#1-manufacturers)
+
+**What they are**: The companies that make your equipment—NVIDIA, Arista, Dell, and so on.
+
+**Why they matter**: Device types and platforms reference manufacturers, and Config Manager uses this to organize device-specific templates and configurations.
+
+**Example**: If you are deploying NVIDIA switches, you would create a manufacturer entry for "NVIDIA".
+
+**Quick tip**: Manufacturer names must match the directory names in your `data/device_types/` folder for device types to associate correctly.
+
+### Platforms
+
+Schema reference: [Platforms](bootstrap-schema.mdx#3-platforms)
+
+**What they are**: The operating systems or software platforms that run on your devices&mdash;Cumulus Linux, NV-OS, Arista EOS, and so on.
+
+**Why they matter**: Config Manager uses platforms to select the right configuration templates and apply platform-specific config contexts. A Cumulus Linux switch gets different template rendering than an Arista EOS switch.
+
+**Example**: "Cumulus Linux" platform associated with the NVIDIA manufacturer.
+
+**Quick tip**: Platforms are optional but highly recommended. They are crucial for template rendering and configuration management.
+
+### Tags
+
+Schema reference: [Tags](bootstrap-schema.mdx#5-tags)
+
+**What they are**: Flexible labels for categorization and filtering that can be applied to devices, interfaces, and other objects (production, test, dns-exempt, and so on).
+
+**Why they matter**: Tags provide a flexible way to organize and filter objects beyond their structural attributes. They are used in automation workflows to control which devices are included or excluded from operations.
+
+**Quick tip**: Tags can apply to multiple content types, making them versatile for cross-cutting concerns like operational state or automation control.
+
+### Statuses
+
+Schema reference: [Statuses](bootstrap-schema.mdx#6-statuses)
+
+**What they are**: Lifecycle states for your objects—Active, Planned, Maintenance, Decommissioned, Provisioning, Provisioned, and so on.
+
+**Why they matter**: Statuses help you track where devices are in their lifecycle and control which devices are included in automation workflows. For example, cable validation typically runs against "Provisioned" devices.
+
+**Example**: A device moves from "Planned" → "Provisioning" -> "Provisioned" (after ZTP) → "Active" (after validation).
+
+**Quick tip**: Make sure you have an "Active" status, as it is the default for many operations.
+
+### Location Types & Locations
+
+Schema reference: [Location Types](bootstrap-schema.mdx#7-location-types) and [Locations](bootstrap-schema.mdx#8-locations)
+
+**What they are**:
+
+- **Location Types** define your organizational hierarchy (for example, Provider, Region, Site, Module, and so on). There are no mandatory Location Types.
+- **Locations** are specific instances (like "MyCompany" → "Region-East" → "DataCenter-1" → "Pod-1")
+
+**Why they matter**: Locations organize your physical infrastructure and help with multi-site deployments. Racks belong to locations, and devices go in racks.
+
+**Example hierarchy**:
+
+```text
+Provider: MyCompany
+└── Region: Region-East
+    └── Site: DataCenter-1
+        └── Module: Pod-1
+            └── Racks: Rack01, Rack02, ...
+```
+
+**Quick tip**: Define your location types before your locations, and define parent locations before child locations.
+
+### Tenants
+
+Schema reference: [Tenants](bootstrap-schema.mdx#9-tenants)
+
+**What they are**: Organizational units for grouping and isolating resources—think business units, customers, or projects.
+
+**Why they matter**: If you are managing infrastructure for multiple teams or customers, tenants provide logical separation. Locations, devices, IP addresses, and other objects can be assigned to tenants.
+
+**Example**: "Superpod" tenant for infrastructure devices, "NGC" tenant for GPU Cloud workloads.
+
+**Quick tip**: Tenants are optional; if you are managing a single network, you might not need them.
+
+### Namespaces
+
+Schema reference: [Namespaces](bootstrap-schema.mdx#10-namespaces)
+
+**What they are**: Logical containers for IP addresses and VLANs that allow the same addresses to exist in different contexts.
+
+**Why they matter**: Namespaces enable network isolation. You can have the same IP prefix in different namespaces without conflict (think VRFs, but at the IPAM level).
+
+**Example**: "Global" namespace for shared infrastructure, "Superpod" namespace for pod-specific addressing.
+
+**Quick tip**: Start with a single "Global" namespace if you are unsure. You can always add more later.
+
+### VLANs
+
+Schema reference: [Namespaces](bootstrap-schema.mdx#10-namespaces)
+
+**What they are**: Virtual LANs that segment network traffic at Layer 2. VLANs have an ID (1-4094), a name, and belong to a namespace.
+
+**Why they matter**: VLANs are fundamental to network segmentation. They define broadcast domains and are used extensively in switch configurations. Devices interfaces are often tagged with VLANs, and IP prefixes can be associated with VLANs to define gateway addressing.
+
+**Example**: VLAN 100 named "Management" in namespace "Global", VLAN 200 named "Storage" in namespace "Global".
+
+**Quick tip**: Like IP addresses, VLANs exist within namespaces, allowing the same VLAN ID to be reused in different contexts.
+
+### VRFs (Virtual Routing and Forwarding)
+
+Schema reference: [Namespaces](bootstrap-schema.mdx#10-namespaces)
+
+**What they are**: Routing tables that provide network isolation at Layer 3. VRFs allow overlapping IP address spaces by creating separate routing domains.
+
+**Why they matter**: VRFs enable multi-tenancy and traffic isolation on the same physical infrastructure. They are commonly used to separate management, storage, and compute networks, or to provide isolated networks for different customers or tenants.
+
+**Example**: VRF "management" for out-of-band management traffic, VRF "tenant-a" for customer A's isolated network.
+
+**Quick tip**: VRFs work with namespaces—prefixes and IP addresses can be assigned to specific VRFs within a namespace for complete routing isolation.
+
+### Config Contexts
+
+Schema reference: [Config Contexts](bootstrap-schema.mdx#12-config-contexts)
+
+**What they are**: JSON data structures that get applied to devices based on their attributes (role, platform, location, and so on).
+
+**Why they matter**: Config contexts are the bridge between Nautobot data and your configuration templates. They provide device-specific variables that Jinja2 templates use to generate configurations.
+
+**Example**: A config context that applies to all "Cumulus Linux" devices, providing default password mappings and intended firmware versions.
+
+**Quick tip**: Config contexts have weights—lower weight = higher priority when multiple contexts apply to the same device.
+
+### Relationships
+
+Schema reference: [Relationships](bootstrap-schema.mdx#11-relationships)
+
+**What they are**: Custom associations between different object types in Nautobot beyond the built-in relationships.
+
+**Why they matter**: Relationships let you model domain-specific connections that are not covered by Nautobot standard relationships. For example, you might want to explicitly link a prefix to its gateway IP address, or connect devices to external management systems.
+
+**Example**: A "prefix-to-gateway" relationship that associates each prefix with its gateway IP address, making it easy to query which gateway serves which network.
+
+**When to use**: Only create custom relationships when the built-in associations do not meet your needs. Most deployments can rely on standard Nautobot relationships (device-to-interface, interface-to-cable, interface-to-IP, and so on).
+
+**Quick tip**: Relationships are advanced—start with built-in associations and add custom relationships only when you have a specific use case that requires them.
+
+## Your First Nautobot Dataset: A Practical Example
+
+Let's walk through creating a minimal dataset for a simple deployment: a small site with two spine switches.
+
+### Step 1: Define a Manufacturer
+
+Create `data/manufacturers.yaml`:
+
+```yaml
+---
+- name: NVIDIA
+  description: NVIDIA networking switches
+  deployment_types: [all]
+```
+
+### Step 2: Define a Device Type
+
+Create `data/device_types/NVIDIA/SN5600.yaml`:
+
+```yaml
+---
+manufacturer: NVIDIA
+model: SN5600
+part_number: SN5600
+u_height: 2
+is_full_depth: true
+deployment_types: [all]
+interfaces:
+  - name: eth0
+    type: 1000base-t
+    mgmt_only: true
+  - name: swp[1-64]
+    type: 100gbase-x-qsfp28
+```
+
+**About bracket notation**: The `swp[1-64]` syntax is a convenient shorthand that creates 64 interfaces named swp1, swp2, swp3, ... swp64. This bracket notation works anywhere you define interface names and saves you from listing each port individually. You can also use it for other components like `PSU[1-2]` or `qsfp[1-32]`.
+
+**About optional components**: Device types can include several optional components beyond interfaces: `console_ports` for serial console access, `power_ports` for power connections (PSU1, PSU2), and `module_bays` for modular expansion slots. These are useful for complete hardware modeling but not required for basic switch definitions. Note that only `model`, `part_number`, `u_height`, and `is_full_depth` are actually stored in Nautobot's device type; other fields like `weight`, `weight_unit`, and `comments` are informational only and used for documentation purposes.
+
+### Step 3: Define a Platform
+
+Create `data/platforms.yaml`:
+
+```yaml
+---
+- name: Cumulus Linux
+  manufacturer: NVIDIA
+  description: Cumulus Linux Network Operating System
+  deployment_types: [all]
+```
+
+### Step 4: Define Roles
+
+Create `data/roles.yaml`:
+
+```yaml
+---
+- name: spine
+  description: Spine switch
+  content_types:
+    - dcim.device
+  color: 2196f3
+  deployment_types: [all]
+```
+
+### Step 5: Define Statuses
+
+Create `data/statuses.yaml`:
+
+```yaml
+---
+- name: Active
+  description: Active and operational
+  color: 4caf50
+  content_types:
+    - dcim.device
+    - dcim.interface
+    - ipam.ipaddress
+    - ipam.prefix
+  deployment_types: [all]
+
+- name: Planned
+  description: Planned but not yet deployed
+  color: 00bcd4
+  content_types:
+    - dcim.device
+    - dcim.interface
+    - ipam.ipaddress
+    - ipam.prefix
+  deployment_types: [all]
+```
+
+### Step 6: Define a Location Hierarchy
+
+Create `data/location_types.yaml`:
+
+```yaml
+---
+- name: Provider
+  description: Service provider
+  nestable: true
+  deployment_types: [all]
+
+- name: Region
+  description: Geographic region
+  parent: Provider
+  nestable: true
+  deployment_types: [all]
+
+- name: Site
+  description: Physical datacenter
+  parent: Region
+  nestable: false
+  deployment_types: [all]
+```
+
+Create `data/locations.yaml`:
+
+```yaml
+---
+- name: MyCompany
+  location_type: Provider
+  status: Active
+  deployment_types: [all]
+
+- name: Region-West
+  parent: MyCompany
+  location_type: Region
+  status: Active
+  deployment_types: [all]
+
+- name: Site-1
+  parent:
+    name: Region-West
+    parent__name: MyCompany
+  location_type: Site
+  status: Active
+  deployment_types: [all]
+```
+
+### Step 7: Create a Tenant (Optional)
+
+Create `data/tenants.yaml`:
+
+```yaml
+---
+- name: Infrastructure
+  description: Core infrastructure devices
+  deployment_types: [all]
+```
+
+### Step 8: Create a Namespace
+
+Create `data/namespaces.yaml`:
+
+```yaml
+---
+- name: Global
+  description: Global namespace
+  deployment_types: [all]
+```
+
+### Step 9: Load Data
+
+Now that you have your YAML files:
+
+1. Ensure they are in the correct directory structure in your Nautobot repository
+1. Access your Nautobot instance
+1. Navigate to Jobs → LoadBootstrapData
+1. Select your deployment type (or use "all")
+1. Run the job
+
+The job will process your files in dependency order and create all the objects in Nautobot.
+
+### Step 10: Verify Data
+
+After the job completes:
+
+1. Check the job output for any errors or warnings
+1. Browse to Devices → Device Types and verify your SN5600 exists
+1. Browse to Organization → Locations and verify your location hierarchy
+1. Browse to Organization → Roles and verify your spine role
+
+## Common Patterns and Tips
+
+### Deployment Type Filtering
+
+Most schemas support a `deployment_types` field. This lets you maintain a single repository with data for multiple deployment scenarios:
+
+```yaml
+deployment_types: [all, superpod]  # Loads for "all" and "superpod" deployments
+deployment_types: superpod          # Only loads for "superpod" deployments
+```
+
+Set the `NV_CONFIG_MANAGER_DEPLOYMENT_TYPE` environment variable to control what gets loaded.
+
+### Field Naming Conventions
+
+All field names in bootstrap YAML files use lowercase with underscores (snake_case):
+
+```yaml
+location_type: Site         # Correct
+locationType: Site          # Incorrect
+deployment_types: [all]     # Correct
+deploymentTypes: [all]      # Incorrect
+```
+
+**Key conventions**:
+
+- Required fields are typically `name` or `model`
+- Optional fields often have sensible defaults (for example, `is_active: true` for config contexts)
+- Boolean fields default to `true` when not specified
+- Color fields accept hex codes without the `#` symbol (for example, `2196f3`) or Nautobot color names (for example, `grey`)
+
+### Understanding Update Behavior
+
+When you run the `LoadBootstrapData` job multiple times, different object types behave differently:
+
+**Get or Create** (creates only if it does not exist, does not update existing):
+
+- Manufacturers
+- Platforms
+- Tenants
+- Namespaces
+- Roles (but `content_types` are always updated even on existing roles)
+
+**Update or Create** (updates existing or creates new):
+
+- Tags (color and description are updated)
+- Statuses (color and description are updated)
+- Locations (matched by name and location_type)
+- Relationships (matched by label)
+- Config Contexts (matched by name)
+
+This means you can safely re-run the bootstrap job to add new items or update certain fields, but some objects will not be modified after they are created. If you need to change a manufacturer name or platform description, you will need to update it manually in Nautobot or delete and recreate it.
+
+### Hierarchical References
+
+When referencing parent objects, you can use simple or complex lookups:
+
+**Simple** (when names are unique):
+
+```yaml
+parent: MyCompany
+```
+
+**Complex** (when names might collide):
+
+```yaml
+parent:
+  name: DataCenter-1
+  parent__name: Region-East
+  parent__parent__name: MyCompany
+```
+
+### Content Types
+
+Roles, tags, and statuses must specify which Nautobot content types they apply to:
+
+```yaml
+content_types:
+  - dcim.device        # Devices
+  - dcim.interface     # Interfaces
+  - ipam.prefix        # IP Prefixes
+  - ipam.ipaddress     # IP Addresses
+```
+
+### Config Context Targeting
+
+Config contexts can target devices by role, platform, location, or any combination:
+
+```yaml
+- name: Cumulus Linux Defaults
+  platforms:
+    - Cumulus Linux
+  roles:
+    - spine
+    - leaf
+  data:
+    ntp_servers:
+      - 10.0.0.1
+      - 10.0.0.2
+```
+
+### File Organization
+
+Organize your data files logically:
+
+```text
+data/
+├── manufacturers.yaml
+├── platforms.yaml
+├── roles.yaml
+├── tags.yaml
+├── statuses.yaml
+├── location_types.yaml
+├── locations.yaml
+├── tenants.yaml
+├── namespaces.yaml
+├── relationships.yaml
+├── config_contexts.yaml
+└── device_types/
+    ├── NVIDIA/
+    │   ├── SN5600.yaml
+    │   └── SN2201.yaml
+    └── Arista/
+        └── DCS-7050SX3-48YC12.yaml
+```
+
+## Creating Devices, Cables, Prefixes, and IP Addresses
+
+You might notice that bootstrap data focuses on foundational objects like device types, roles, statuses, platforms, tenants, locations, and config contexts. Operational objects such as devices, interfaces, cables, prefixes, and IP addresses are usually loaded through a topology-specific workflow. For repeatable site data, use a Nautobot Design Builder job; for smaller changes, use the Nautobot UI, API scripts, CSV imports, or migration tooling.
+
+### Devices
+
+**How they are created**:
+
+- **Design Builder jobs**: Use ordered design files and context data to create devices, interfaces, IP addresses, cables, and Config Manager managed-device metadata together. This is the preferred repeatable path for planned topologies. See [Design Builder Data Loading](design-builder-data-loading.mdx).
+- **Manual creation**: Use the Nautobot UI (Devices → Add Device) for small labs, one-off corrections, or devices that are pre-staged by hand.
+- **Bulk import or API scripts**: Use CSV import or Nautobot API automation for large deployments when your source data already exists in another system.
+- **Migration scripts**: Convert existing network documentation, spreadsheets, or source-of-truth data into Nautobot objects.
+
+**What you need first**: Before creating a device, you must have the following objects defined:
+
+- **Device types** (so you can specify what model it is)
+- **Roles** (so you can specify its function)
+- **Locations** (so you can specify where it is racked)
+- **Statuses** (so you can specify its lifecycle state)
+- **Platforms, tenants, and config contexts** where your rendering or operational model requires them
+
+**ZTP relationship**: ZTP consumes existing Nautobot data; it does not create the device inventory. Before a switch boots for provisioning, Nautobot should already contain the device record, identifiers used by DHCP/ZTP, management interface data, and the config context required to render its startup configuration.
+
+**Example workflow**: Load bootstrap data → run a Design Builder topology job for the site → verify devices, interfaces, IP addresses, and cables in Nautobot → power on the switch → DHCP/ZTP matches the booting switch to the existing Nautobot data and serves the provisioning artifacts.
+
+### Cables
+
+**How they are created**:
+
+- **Manual creation**: Through the Nautobot UI (Devices → select device → Interfaces → Connect) to document physical cable connections
+- **Design Builder jobs**: Create planned cable relationships alongside the devices and interfaces they connect
+- **Bulk import**: Through CSV import for pre-planned cabling designs (common for new datacenter builds)
+- **API scripts**: For programmatic creation based on design documents
+
+**What you need first**: Devices and their interfaces must exist before you can cable them together.
+
+**Why they matter**: Cables define the physical topology. The cable validation workflow compares this documented design with LLDP neighbor information from devices and reports mismatches before they cause problems.
+
+**Example**: Connect interface "swp1" on "spine-01" to interface "swp49" on "leaf-01" with a cable labeled "CAB-001".
+
+### Prefixes
+
+**How they are created**:
+
+- **Manual creation**: Through the Nautobot UI (IPAM → Prefixes → Add Prefix) for network ranges
+- **Bootstrap YAML**: Prefixes CAN be included in bootstrap data if you have a standard addressing plan
+- **Design Builder jobs**: Create site-specific prefix, VLAN, VRF, and role assignments as part of the topology load
+- **Bulk import**: Through CSV or API for large addressing schemes
+- **Hierarchical creation**: Parent prefixes first (for example, 10.0.0.0/8), then subdivided into smaller child prefixes (for example, 10.1.0.0/16)
+
+**What you need first**:
+
+- Namespaces defined (to specify which IP namespace the prefix belongs to)
+- Optionally: VRFs, tenants, locations for organizational context
+
+**Why they matter**: Prefixes represent network ranges (like 10.1.0.0/24). They are essential for IP address management and help Config Manager understand your addressing scheme when generating configurations.
+
+**Example**: Create prefix 10.1.0.0/24 in namespace "Global", assigned to location "DataCenter-1", with role "Loopback addresses" and status "Active".
+
+### IP Addresses
+
+**How they are created**:
+
+- **Manual creation**: Through the Nautobot UI (IPAM → IP Addresses → Add IP Address)
+- **Design Builder jobs**: Assign planned management, loopback, point-to-point, and service addresses while creating devices and interfaces
+- **Allocation scripts or workflows**: Assign addresses from available prefixes when you explicitly run that automation
+- **Bulk import**: Through CSV or API for pre-planned addressing
+
+**What you need first**:
+
+- Prefixes defined (IP addresses must belong to a prefix)
+- Devices and interfaces (to assign the IP address to)
+
+**Why they matter**: IP addresses are assigned to device interfaces for management, routing, and connectivity. They are crucial for device reachability and are used in generated configurations.
+
+**Example**: Assign IP address 10.1.0.1/32 from prefix 10.1.0.0/24 to interface "lo" (loopback) on device "spine-01", with role "Loopback" and status "Active".
+
+### The Creation Order
+
+For a typical deployment, here is the order you would create these objects:
+
+1. **Load bootstrap data** (device types, roles, locations, statuses, config contexts, and so on)
+2. **Create or load the topology** with a Design Builder job, Nautobot API script, CSV import, migration script, or manual UI changes
+3. **Verify devices and identifiers** used by DHCP/ZTP, such as serial numbers, MAC addresses, management interfaces, and primary IPs
+4. **Verify prefixes and IP addresses** for management networks, loopback ranges, point-to-point links, and service networks
+5. **Verify cables** against the planned physical topology
+6. **Run cable validation** after devices are reachable to compare the documented topology with LLDP neighbor data
+7. **Power on or reprovision devices through DHCP/ZTP** after the Nautobot records and rendered configuration inputs exist
+8. **Generate and deploy configurations** using Config Manager's template rendering system and workflows
+
+The bootstrap data you have learned about in this guide provides the _foundation_&mdash;the device types, roles, locations, and config contexts that these operational objects will use when they are created.
+
+## Getting Help
+
+If you run into issues:
+
+1. **Check the job output**: The LoadBootstrapData job provides detailed logging about what succeeded and failed
+1. **Verify dependencies**: Make sure parent objects exist before child objects
+1. **Validate YAML syntax**: Use a YAML validator to catch formatting errors
+1. **Check content types**: Ensure roles, tags, and statuses specify valid content types
+1. **Review the Nautobot documentation**: The [Nautobot jobs documentation](https://docs.nautobot.com/projects/core/en/stable/user-guide/platform-functionality/jobs/) covers a great deal of functionality, including creating your own jobs.
+
+The key insight is that Nautobot data is _hierarchical_ and _interdependent_. Start with the foundation (manufacturers, platforms, roles, statuses, locations), then build up to more complex objects (config contexts, relationships). Each layer builds on the previous layers.
+
+## Next Steps
+
+Now that you understand the core concepts, here are some next steps:
+
+- Learn more about Config Manager's [Nautobot integration](nautobot-integration.mdx).
+- Learn more about the [bootstrap data](bootstrap-schema.mdx) used to populate Nautobot with baseline Config Manager data
+- Follow the [airgapped Config Manager deployment guide](../install/install-airgapped.mdx) to set up a complete Config Manager environment with Nautobot, then load your bootstrap data.
+
+### Explore Workflows
+
+Learn about Config Manager's [automation workflows](../overview/workflows.mdx):
+
+- [Cable validation](../user-guides/cable-validation/index.mdx) - Validate your cabling matches Nautobot
+- [Template rendering system](../render/index.mdx) - Generate device configurations from Nautobot data

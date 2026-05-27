@@ -1,0 +1,21 @@
+---
+description: Always use uv to run Python tools and utilities in this repo
+alwaysApply: true
+---
+
+# Python Tooling
+
+Always use `uv run` to execute Python tools and utilities (ruff, pytest, mypy, etc.) inside this repository. Do NOT invoke them directly or via `python -m`.
+
+```bash
+# ✅ Correct
+uv run ruff check src/
+uv run ruff format src/
+uv run pytest tests/
+uv run mypy src/
+
+# ❌ Wrong
+ruff check src/
+python -m ruff check src/
+python -m pytest tests/
+```

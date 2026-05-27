@@ -1,0 +1,47 @@
+# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
+#
+# =============================================================================
+# SPIFFE Helper Configuration for JWT-SVID Mode
+# =============================================================================
+# This ConfigMap provides the spiffe-helper configuration for fetching
+# JWT-SVIDs from the SPIFFE Workload API and writing them to a file
+# for application code to read when making service-to-service calls.
+# =============================================================================
+
+{{- $spiffe := .Values.spiffe | default dict }}
+{{- if and (index $spiffe "enabled") (eq (index $spiffe "authMode" | default "jwt") "jwt") }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spiffe-helper-config
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: spiffe-helper
+data:
+  helper.conf: |
+    # SPIFFE Helper configuration for JWT-SVID fetching
+    # See: https://github.com/spiffe/spiffe-helper
+    
+    # Agent address - full path to the SPIFFE Workload API socket
+    agent_address = "{{ include "nv-config-manager.spiffe.socketPath" . }}"
+    
+    # JWT-SVID configuration
+    jwt_svids = [
+      {
+        jwt_svid_file_name = "/var/run/secrets/spiffe/jwt-svid"
+        jwt_audience = "spiffe://{{ .Values.spiffe.trustDomain }}"
+      }
+    ]
+
+    # File permissions: 0644 so app containers (different uid) can read the JWT
+    jwt_svid_file_mode = 0644
+    jwt_bundle_file_mode = 0644
+    
+    renew_signal = ""
+    
+    # Trust bundle served as JWKS for inbound JWT validation
+    jwt_bundle_file_name = "/var/run/secrets/spiffe/bundle.json"
+{{- end }}
+

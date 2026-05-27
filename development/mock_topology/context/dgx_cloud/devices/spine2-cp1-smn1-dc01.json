@@ -1,0 +1,1262 @@
+{
+  "data": {
+    "device": {
+      "id": "anon-654304457417-0000-0000-000000000000",
+      "name": "spine2-cp1-smn1-dc01",
+      "tags": [
+        {
+          "name": "dns-exempt"
+        }
+      ],
+      "tenant": {
+        "name": "Example Cloud"
+      },
+      "role": {
+        "name": "SMN-Spine"
+      },
+      "device_type": {
+        "manufacturer": {
+          "name": "Mellanox"
+        },
+        "model": "MSN3700-CS2RC"
+      },
+      "platform": {
+        "name": "Cumulus Linux"
+      },
+      "serial": "ANON00001002",
+      "config_context": {
+        "bgp": {
+          "asn": 4266004100
+        },
+        "intended-firmware": {
+          "version": "5.11.0"
+        }
+      },
+      "location": {
+        "name": "DC01 Module 1",
+        "location_type": {
+          "name": "Module"
+        },
+        "parent": {
+          "name": "DC01",
+          "location_type": {
+            "name": "Site"
+          }
+        }
+      },
+      "bgp_routing_instances": [
+        {
+          "status": {
+            "name": "Active"
+          },
+          "autonomous_system": {
+            "asn": 4266004100
+          },
+          "router_id": {
+            "interfaces": [
+              {
+                "name": "lo",
+                "vrf": null
+              }
+            ]
+          },
+          "endpoints": []
+        }
+      ],
+      "interfaces": [
+        {
+          "role": {
+            "name": "Uplink"
+          },
+          "type": "A_1000BASE_T",
+          "mtu": 1500,
+          "enabled": true,
+          "tags": [
+            {
+              "name": "cable-validation-ignore"
+            }
+          ],
+          "name": "eth0",
+          "description": "ztpleaf2-cp1-smn1-dc01:ethernet2",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": null,
+          "tagged_vlans": [],
+          "ip_addresses": [],
+          "connected_interface": {
+            "ip_addresses": [],
+            "device": {
+              "name": "ztpleaf2-cp1-smn1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "SMN-ZTPleaf"
+              },
+              "tags": [
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                }
+              }
+            },
+            "module": null,
+            "name": "Ethernet2"
+          }
+        },
+        {
+          "role": {
+            "name": "Loopback"
+          },
+          "type": "VIRTUAL",
+          "mtu": null,
+          "enabled": true,
+          "tags": [],
+          "name": "lo",
+          "description": "",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": null,
+          "tagged_vlans": [],
+          "ip_addresses": [
+            {
+              "host": "10.240.169.4",
+              "mask_length": 32,
+              "address": "10.240.169.4/32",
+              "ip_version": 4,
+              "parent": {
+                "prefix": "10.240.169.0/24",
+                "parent": {
+                  "prefix": "10.240.0.0/16"
+                }
+              }
+            }
+          ],
+          "connected_interface": null
+        },
+        {
+          "role": {
+            "name": "Downlink"
+          },
+          "type": "A_100GBASE_X_QSFP28",
+          "mtu": 9200,
+          "enabled": true,
+          "tags": [],
+          "name": "swp1",
+          "description": "leaf1-cp1-smn1-dc01:swp51",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": null,
+          "tagged_vlans": [],
+          "ip_addresses": [
+            {
+              "host": "10.240.164.64",
+              "mask_length": 31,
+              "address": "10.240.164.64/31",
+              "ip_version": 4,
+              "parent": {
+                "prefix": "10.240.164.0/24",
+                "parent": {
+                  "prefix": "10.240.0.0/16"
+                }
+              }
+            }
+          ],
+          "connected_interface": {
+            "ip_addresses": [
+              {
+                "host": "10.240.164.65",
+                "mask_length": 31,
+                "address": "10.240.164.65/31",
+                "ip_version": 4
+              }
+            ],
+            "device": {
+              "name": "leaf1-cp1-smn1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "SMN-Leaf"
+              },
+              "tags": [
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                },
+                "bgp": {
+                  "asn": 4266004101
+                },
+                "intended-firmware": {
+                  "version": "5.11.0"
+                }
+              }
+            },
+            "module": null,
+            "name": "swp51"
+          }
+        },
+        {
+          "role": {
+            "name": "Downlink"
+          },
+          "type": "A_100GBASE_X_QSFP28",
+          "mtu": 9200,
+          "enabled": true,
+          "tags": [],
+          "name": "swp2",
+          "description": "leaf2-cp1-smn1-dc01:swp51",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": null,
+          "tagged_vlans": [],
+          "ip_addresses": [
+            {
+              "host": "10.240.164.66",
+              "mask_length": 31,
+              "address": "10.240.164.66/31",
+              "ip_version": 4,
+              "parent": {
+                "prefix": "10.240.164.0/24",
+                "parent": {
+                  "prefix": "10.240.0.0/16"
+                }
+              }
+            }
+          ],
+          "connected_interface": {
+            "ip_addresses": [
+              {
+                "host": "10.240.164.67",
+                "mask_length": 31,
+                "address": "10.240.164.67/31",
+                "ip_version": 4
+              }
+            ],
+            "device": {
+              "name": "leaf2-cp1-smn1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "SMN-Leaf"
+              },
+              "tags": [
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                },
+                "bgp": {
+                  "asn": 4266004102
+                },
+                "intended-firmware": {
+                  "version": "5.11.0"
+                }
+              }
+            },
+            "module": null,
+            "name": "swp51"
+          }
+        },
+        {
+          "role": {
+            "name": "Downlink"
+          },
+          "type": "A_100GBASE_X_QSFP28",
+          "mtu": 9200,
+          "enabled": true,
+          "tags": [],
+          "name": "swp3",
+          "description": "leaf3-cp1-smn1-dc01:swp51",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": null,
+          "tagged_vlans": [],
+          "ip_addresses": [
+            {
+              "host": "10.240.164.68",
+              "mask_length": 31,
+              "address": "10.240.164.68/31",
+              "ip_version": 4,
+              "parent": {
+                "prefix": "10.240.164.0/24",
+                "parent": {
+                  "prefix": "10.240.0.0/16"
+                }
+              }
+            }
+          ],
+          "connected_interface": {
+            "ip_addresses": [
+              {
+                "host": "10.240.164.69",
+                "mask_length": 31,
+                "address": "10.240.164.69/31",
+                "ip_version": 4
+              }
+            ],
+            "device": {
+              "name": "leaf3-cp1-smn1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "SMN-Leaf"
+              },
+              "tags": [
+                {
+                  "name": "dc-ops-install"
+                },
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                },
+                "bgp": {
+                  "asn": 4266004231
+                },
+                "intended-firmware": {
+                  "version": "5.11.0"
+                }
+              }
+            },
+            "module": null,
+            "name": "swp51"
+          }
+        },
+        {
+          "role": {
+            "name": "Downlink"
+          },
+          "type": "A_100GBASE_X_QSFP28",
+          "mtu": 9200,
+          "enabled": true,
+          "tags": [],
+          "name": "swp4",
+          "description": "leaf4-cp1-smn1-dc01:swp51",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": null,
+          "tagged_vlans": [],
+          "ip_addresses": [
+            {
+              "host": "10.240.164.70",
+              "mask_length": 31,
+              "address": "10.240.164.70/31",
+              "ip_version": 4,
+              "parent": {
+                "prefix": "10.240.164.0/24",
+                "parent": {
+                  "prefix": "10.240.0.0/16"
+                }
+              }
+            }
+          ],
+          "connected_interface": {
+            "ip_addresses": [
+              {
+                "host": "10.240.164.71",
+                "mask_length": 31,
+                "address": "10.240.164.71/31",
+                "ip_version": 4
+              }
+            ],
+            "device": {
+              "name": "leaf4-cp1-smn1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "SMN-Leaf"
+              },
+              "tags": [
+                {
+                  "name": "dc-ops-install"
+                },
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                },
+                "bgp": {
+                  "asn": 4266004232
+                },
+                "intended-firmware": {
+                  "version": "5.11.0"
+                }
+              }
+            },
+            "module": null,
+            "name": "swp51"
+          }
+        },
+        {
+          "role": {
+            "name": "Downlink"
+          },
+          "type": "A_100GBASE_X_QSFP28",
+          "mtu": 9200,
+          "enabled": true,
+          "tags": [],
+          "name": "swp5",
+          "description": "leaf5-cp1-smn1-dc01:swp51",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": null,
+          "tagged_vlans": [],
+          "ip_addresses": [
+            {
+              "host": "10.240.164.72",
+              "mask_length": 31,
+              "address": "10.240.164.72/31",
+              "ip_version": 4,
+              "parent": {
+                "prefix": "10.240.164.0/24",
+                "parent": {
+                  "prefix": "10.240.0.0/16"
+                }
+              }
+            }
+          ],
+          "connected_interface": {
+            "ip_addresses": [
+              {
+                "host": "10.240.164.73",
+                "mask_length": 31,
+                "address": "10.240.164.73/31",
+                "ip_version": 4
+              }
+            ],
+            "device": {
+              "name": "leaf5-cp1-smn1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "SMN-Leaf"
+              },
+              "tags": [
+                {
+                  "name": "dc-ops-install"
+                },
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                },
+                "bgp": {
+                  "asn": 4266004233
+                },
+                "intended-firmware": {
+                  "version": "5.11.0"
+                }
+              }
+            },
+            "module": null,
+            "name": "swp51"
+          }
+        },
+        {
+          "role": {
+            "name": "Downlink"
+          },
+          "type": "A_100GBASE_X_QSFP28",
+          "mtu": 9200,
+          "enabled": true,
+          "tags": [],
+          "name": "swp6",
+          "description": "leaf6-cp1-smn1-dc01:swp51",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": null,
+          "tagged_vlans": [],
+          "ip_addresses": [
+            {
+              "host": "10.240.164.74",
+              "mask_length": 31,
+              "address": "10.240.164.74/31",
+              "ip_version": 4,
+              "parent": {
+                "prefix": "10.240.164.0/24",
+                "parent": {
+                  "prefix": "10.240.0.0/16"
+                }
+              }
+            }
+          ],
+          "connected_interface": {
+            "ip_addresses": [
+              {
+                "host": "10.240.164.75",
+                "mask_length": 31,
+                "address": "10.240.164.75/31",
+                "ip_version": 4
+              }
+            ],
+            "device": {
+              "name": "leaf6-cp1-smn1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "SMN-Leaf"
+              },
+              "tags": [
+                {
+                  "name": "dc-ops-install"
+                },
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                },
+                "bgp": {
+                  "asn": 4266004234
+                },
+                "intended-firmware": {
+                  "version": "5.11.0"
+                }
+              }
+            },
+            "module": null,
+            "name": "swp51"
+          }
+        },
+        {
+          "role": {
+            "name": "Downlink"
+          },
+          "type": "A_100GBASE_X_QSFP28",
+          "mtu": 9200,
+          "enabled": true,
+          "tags": [],
+          "name": "swp7",
+          "description": "leaf7-cp1-smn1-dc01:swp51",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": null,
+          "tagged_vlans": [],
+          "ip_addresses": [
+            {
+              "host": "10.240.164.76",
+              "mask_length": 31,
+              "address": "10.240.164.76/31",
+              "ip_version": 4,
+              "parent": {
+                "prefix": "10.240.164.0/24",
+                "parent": {
+                  "prefix": "10.240.0.0/16"
+                }
+              }
+            }
+          ],
+          "connected_interface": {
+            "ip_addresses": [
+              {
+                "host": "10.240.164.77",
+                "mask_length": 31,
+                "address": "10.240.164.77/31",
+                "ip_version": 4
+              }
+            ],
+            "device": {
+              "name": "leaf7-cp1-smn1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "SMN-Leaf"
+              },
+              "tags": [
+                {
+                  "name": "dc-ops-install"
+                },
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                },
+                "bgp": {
+                  "asn": 4266004235
+                },
+                "intended-firmware": {
+                  "version": "5.11.0"
+                }
+              }
+            },
+            "module": null,
+            "name": "swp51"
+          }
+        },
+        {
+          "role": {
+            "name": "Downlink"
+          },
+          "type": "A_100GBASE_X_QSFP28",
+          "mtu": 9200,
+          "enabled": true,
+          "tags": [],
+          "name": "swp8",
+          "description": "leaf8-cp1-smn1-dc01:swp51",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": null,
+          "tagged_vlans": [],
+          "ip_addresses": [
+            {
+              "host": "10.240.164.78",
+              "mask_length": 31,
+              "address": "10.240.164.78/31",
+              "ip_version": 4,
+              "parent": {
+                "prefix": "10.240.164.0/24",
+                "parent": {
+                  "prefix": "10.240.0.0/16"
+                }
+              }
+            }
+          ],
+          "connected_interface": {
+            "ip_addresses": [
+              {
+                "host": "10.240.164.79",
+                "mask_length": 31,
+                "address": "10.240.164.79/31",
+                "ip_version": 4
+              }
+            ],
+            "device": {
+              "name": "leaf8-cp1-smn1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "SMN-Leaf"
+              },
+              "tags": [
+                {
+                  "name": "dc-ops-install"
+                },
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                },
+                "bgp": {
+                  "asn": 4266004236
+                },
+                "intended-firmware": {
+                  "version": "5.11.0"
+                }
+              }
+            },
+            "module": null,
+            "name": "swp51"
+          }
+        },
+        {
+          "role": {
+            "name": "Downlink"
+          },
+          "type": "A_100GBASE_X_QSFP28",
+          "mtu": 9200,
+          "enabled": true,
+          "tags": [],
+          "name": "swp9",
+          "description": "leaf9-cp1-smn1-dc01:swp51",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": null,
+          "tagged_vlans": [],
+          "ip_addresses": [
+            {
+              "host": "10.240.164.80",
+              "mask_length": 31,
+              "address": "10.240.164.80/31",
+              "ip_version": 4,
+              "parent": {
+                "prefix": "10.240.164.0/24",
+                "parent": {
+                  "prefix": "10.240.0.0/16"
+                }
+              }
+            }
+          ],
+          "connected_interface": {
+            "ip_addresses": [
+              {
+                "host": "10.240.164.81",
+                "mask_length": 31,
+                "address": "10.240.164.81/31",
+                "ip_version": 4
+              }
+            ],
+            "device": {
+              "name": "leaf9-cp1-smn1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "SMN-Leaf"
+              },
+              "tags": [
+                {
+                  "name": "dc-ops-install"
+                },
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                },
+                "bgp": {
+                  "asn": 4266004237
+                },
+                "intended-firmware": {
+                  "version": "5.11.0"
+                }
+              }
+            },
+            "module": null,
+            "name": "swp51"
+          }
+        },
+        {
+          "role": {
+            "name": "Downlink"
+          },
+          "type": "A_100GBASE_X_QSFP28",
+          "mtu": 9200,
+          "enabled": true,
+          "tags": [],
+          "name": "swp10",
+          "description": "leaf10-cp1-smn1-dc01:swp51",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": null,
+          "tagged_vlans": [],
+          "ip_addresses": [
+            {
+              "host": "10.240.164.82",
+              "mask_length": 31,
+              "address": "10.240.164.82/31",
+              "ip_version": 4,
+              "parent": {
+                "prefix": "10.240.164.0/24",
+                "parent": {
+                  "prefix": "10.240.0.0/16"
+                }
+              }
+            }
+          ],
+          "connected_interface": {
+            "ip_addresses": [
+              {
+                "host": "10.240.164.83",
+                "mask_length": 31,
+                "address": "10.240.164.83/31",
+                "ip_version": 4
+              }
+            ],
+            "device": {
+              "name": "leaf10-cp1-smn1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "SMN-Leaf"
+              },
+              "tags": [
+                {
+                  "name": "dc-ops-install"
+                },
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                },
+                "bgp": {
+                  "asn": 4266004238
+                },
+                "intended-firmware": {
+                  "version": "5.11.0"
+                }
+              }
+            },
+            "module": null,
+            "name": "swp51"
+          }
+        },
+        {
+          "role": {
+            "name": "Uplink"
+          },
+          "type": "A_100GBASE_X_QSFP28",
+          "mtu": 9200,
+          "enabled": true,
+          "tags": [],
+          "name": "swp31",
+          "description": "core2-cp1-smn1-dc01:swp2",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": null,
+          "tagged_vlans": [],
+          "ip_addresses": [
+            {
+              "host": "10.240.168.67",
+              "mask_length": 31,
+              "address": "10.240.168.67/31",
+              "ip_version": 4,
+              "parent": {
+                "prefix": "10.240.168.0/24",
+                "parent": {
+                  "prefix": "10.240.0.0/16"
+                }
+              }
+            }
+          ],
+          "connected_interface": {
+            "ip_addresses": [
+              {
+                "host": "10.240.168.66",
+                "mask_length": 31,
+                "address": "10.240.168.66/31",
+                "ip_version": 4
+              }
+            ],
+            "device": {
+              "name": "core2-cp1-smn1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "SMN-Core"
+              },
+              "tags": [
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "bgp": {
+                  "asn": 4266004040
+                },
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                },
+                "intended-firmware": {
+                  "version": "5.11.0"
+                }
+              }
+            },
+            "module": null,
+            "name": "swp2"
+          }
+        },
+        {
+          "role": {
+            "name": "Uplink"
+          },
+          "type": "A_100GBASE_X_QSFP28",
+          "mtu": 9200,
+          "enabled": true,
+          "tags": [],
+          "name": "swp32",
+          "description": "core1-cp1-smn1-dc01:swp2",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": null,
+          "tagged_vlans": [],
+          "ip_addresses": [
+            {
+              "host": "10.240.168.5",
+              "mask_length": 31,
+              "address": "10.240.168.5/31",
+              "ip_version": 4,
+              "parent": {
+                "prefix": "10.240.168.0/24",
+                "parent": {
+                  "prefix": "10.240.0.0/16"
+                }
+              }
+            }
+          ],
+          "connected_interface": {
+            "ip_addresses": [
+              {
+                "host": "10.240.168.4",
+                "mask_length": 31,
+                "address": "10.240.168.4/31",
+                "ip_version": 4
+              }
+            ],
+            "device": {
+              "name": "core1-cp1-smn1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "SMN-Core"
+              },
+              "tags": [
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "bgp": {
+                  "asn": 4266004040
+                },
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                },
+                "intended-firmware": {
+                  "version": "5.11.0"
+                }
+              }
+            },
+            "module": null,
+            "name": "swp2"
+          }
+        }
+      ],
+      "console_server_ports": []
+    }
+  }
+}

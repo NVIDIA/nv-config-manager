@@ -1,0 +1,1102 @@
+# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
+#
+{{- $nautobotName := include "nv-config-manager.componentName" (dict "root" . "component" "nautobot") }}
+{{- $natsName := include "nv-config-manager.componentName" (dict "root" . "component" "nats") }}
+{{- $natsUser := include "nv-config-manager.natsUser" . }}
+{{- $natsSecretName := include "nv-config-manager.natsSecretName" . }}
+{{- $redisName := include "nv-config-manager.componentName" (dict "root" . "component" "redis") }}
+# =============================================================================
+# Local Nautobot Stack Deployment
+# =============================================================================
+# This template deploys a local Nautobot instance within the nv-config-manager namespace
+# for environments without full Cerebro deployment.
+# Includes: Nautobot Server, Celery Workers, Redis, NATS, PostgreSQL (via CNPG)
+#
+# NOTE: Secrets (nautobot-admin, nautobot-django-secret, nats-*) are created
+# by the installer before Helm install when using vault.method=kubernetes.
+# =============================================================================
+
+{{- if and .Values.nautobot.enabled .Values.externalServices.nautobot.local }}
+
+# =============================================================================
+# NATS for Nautobot
+# =============================================================================
+{{- if or .Values.nautobotNats.enabled .Values.nautobot.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $natsName }}-config
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.nautobot-nats.labels" . | nindent 4 }}
+data:
+  {{- include "nv-config-manager.configmap.nats-config" . | nindent 2 }}
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $natsName }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.nautobot-nats.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $natsName }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ $natsName }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+      annotations:
+        checksum/nats-config: {{ include "nv-config-manager.configmap.nats-config" . | sha256sum }}
+    spec:
+      {{- if .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range .Values.global.imagePullSecrets }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      containers:
+        - name: {{ $natsName }}
+          image: "{{ .Values.global.images.nats.repository }}:{{ .Values.global.images.nats.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy | default "IfNotPresent" }}
+          ports:
+            - containerPort: 4222
+              name: client
+            - containerPort: 8222
+              name: monitor
+          env:
+            - name: SYS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: nats-sys
+                  key: password
+            - name: NV_CONFIG_MANAGER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $natsSecretName }}
+                  key: password
+            - name: NAUTOBOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: nats-nautobot
+                  key: password
+          args:
+            - "-c"
+            - "/etc/nats/nats.conf"
+          resources:
+            {{- toYaml .Values.nautobotNats.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/nats
+            - name: data
+              mountPath: /data
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: monitor
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: monitor
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: config
+          configMap:
+            name: {{ $natsName }}-config
+        - name: data
+          emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $natsName }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.nautobot-nats.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: 4222
+      targetPort: client
+      name: client
+    - port: 8222
+      targetPort: monitor
+      name: monitor
+  selector:
+    app.kubernetes.io/name: {{ $natsName }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+
+# =============================================================================
+# NATS Box with nats-ready init container (JetStream stream setup)
+# =============================================================================
+{{- if .Values.nautobotNats.natsReady.enabled }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $natsName }}-box-contexts
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.nautobot-nats.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  default.json: |
+    {
+      "url": "nats://{{ $natsName }}:4222"
+    }
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $natsName }}-box
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: {{ $natsName }}-box
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: {{ $natsName }}-box
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/name: {{ $natsName }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: {{ $natsName }}-box
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/managed-by: {{ .Release.Service }}
+        app.kubernetes.io/name: {{ $natsName }}
+        helm.sh/chart: {{ include "nv-config-manager.chart" . }}
+    spec:
+      {{- if .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range .Values.global.imagePullSecrets }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      initContainers:
+      - name: {{ $natsName }}-ready
+        {{- if .Values.nautobotNats.natsReady.useNatsCli }}
+        # Use nats CLI for local dev with configurable stream sizes
+        # Note: Streams are account-scoped in NATS, so we must create each stream
+        # while connected as the user for that account
+        image: "{{ .Values.global.images.natsBox.repository }}:{{ .Values.global.images.natsBox.tag }}"
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          set -e
+          NV_CONFIG_MANAGER_SERVER="nats://${NATS_USER}:${NATS_PASSWORD}@{{ $natsName }}:4222"
+          NAUTOBOT_SERVER="nats://${NAUTOBOT_USER}:${NAUTOBOT_PASSWORD}@{{ $natsName }}:4222"
+          CONFIG_MANAGER_STREAM="{{ .Values.externalServices.nats.streams.configManager.name }}"
+          CONFIG_MANAGER_SUBJECTS="{{ join "," .Values.externalServices.nats.streams.configManager.subjects }}"
+          NAUTOBOT_STREAM="{{ .Values.externalServices.nats.streams.nautobot.name }}"
+          NAUTOBOT_SUBJECTS="{{ join "," .Values.externalServices.nats.streams.nautobot.subjects }}"
+          MAX_BYTES="{{ .Values.nautobotNats.natsReady.streamMaxBytes | default 104857600 | int64 }}"
+          
+          echo "Waiting for NATS server..."
+          until nats rtt -s "$NV_CONFIG_MANAGER_SERVER" >/dev/null 2>&1; do
+            echo "NATS not ready, waiting..."
+            sleep 2
+          done
+          echo "NATS server is ready"
+          
+          # Create configured NVIDIA Config Manager stream in the configured account
+          echo "Creating/updating ${CONFIG_MANAGER_STREAM} stream..."
+          if ! nats stream add "$CONFIG_MANAGER_STREAM" \
+            --server="$NV_CONFIG_MANAGER_SERVER" \
+            --subjects="$CONFIG_MANAGER_SUBJECTS" \
+            --retention=limits \
+            --storage=file \
+            --replicas=1 \
+            --max-bytes="$MAX_BYTES" \
+            --discard=old \
+            --dupe-window=2m \
+            --no-deny-delete \
+            --no-deny-purge \
+            --defaults 2>&1; then
+            echo "Stream exists, updating..."
+            nats stream edit "$CONFIG_MANAGER_STREAM" \
+              --server="$NV_CONFIG_MANAGER_SERVER" \
+              --max-bytes="$MAX_BYTES" \
+              --force
+          fi
+          
+          # Create nautobot stream (all users share the same account when bundled together)
+          echo "Creating/updating ${NAUTOBOT_STREAM} stream..."
+          if ! nats stream add "$NAUTOBOT_STREAM" \
+            --server="$NV_CONFIG_MANAGER_SERVER" \
+            --subjects="$NAUTOBOT_SUBJECTS" \
+            --retention=limits \
+            --storage=file \
+            --replicas=1 \
+            --max-bytes="$MAX_BYTES" \
+            --discard=old \
+            --dupe-window=2m \
+            --no-deny-delete \
+            --no-deny-purge \
+            --defaults 2>&1; then
+            echo "Stream exists, updating..."
+            nats stream edit "$NAUTOBOT_STREAM" \
+              --server="$NV_CONFIG_MANAGER_SERVER" \
+              --max-bytes="$MAX_BYTES" \
+              --force
+          fi
+          
+          # Verify streams were created
+          echo "Verifying streams..."
+          nats stream ls -s "$NV_CONFIG_MANAGER_SERVER"
+          STREAM_COUNT=$(nats stream ls -s "$NV_CONFIG_MANAGER_SERVER" --json 2>/dev/null | grep -c '"name"' || echo "0")
+          if [ "$STREAM_COUNT" -lt 2 ]; then
+            echo "ERROR: Expected 2 streams but found $STREAM_COUNT"
+            exit 1
+          fi
+          echo "NATS streams ready"
+        {{- else }}
+        # Use nats-ready binary for production (streams have 20GB max_bytes)
+        # Note: Production nats-ready creates both streams using nv-config-manager account
+        # For local dev, we use nats CLI which creates streams in each account
+        image: {{ .Values.global.images.natsReady.repository }}:{{ .Values.global.images.natsReady.tag }}
+        imagePullPolicy: {{ .Values.global.imagePullPolicy | default .Values.global.images.natsReady.pullPolicy }}
+        command: ["/nats-ready"]
+        args: ["--address", "nats://$(NATS_USER):$(NATS_PASSWORD)@{{ $natsName }}:4222"]
+        {{- end }}
+        env:
+        - name: NATS_USER
+          value: {{ $natsUser | quote }}
+        - name: NATS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ $natsSecretName }}
+              key: password
+        - name: NV_CONFIG_MANAGER_NATS_STREAM_NAME
+          value: {{ .Values.externalServices.nats.streams.configManager.name | quote }}
+        - name: NV_CONFIG_MANAGER_NATS_STREAM_SUBJECTS
+          value: {{ join "," .Values.externalServices.nats.streams.configManager.subjects | quote }}
+        - name: NAUTOBOT_NATS_STREAM_NAME
+          value: {{ .Values.externalServices.nats.streams.nautobot.name | quote }}
+        - name: NAUTOBOT_NATS_STREAM_SUBJECTS
+          value: {{ join "," .Values.externalServices.nats.streams.nautobot.subjects | quote }}
+        - name: NAUTOBOT_USER
+          value: "nautobot"
+        - name: NAUTOBOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: nats-nautobot
+              key: password
+        resources:
+          {{- toYaml .Values.nautobotNats.natsReady.resources | nindent 10 }}
+      containers:
+      - name: {{ $natsName }}-box
+        image: "{{ .Values.global.images.natsBox.repository }}:{{ .Values.global.images.natsBox.tag }}"
+        command:
+        - sh
+        - -ec
+        - |
+          work_dir="$(pwd)"
+          mkdir -p "$XDG_CONFIG_HOME/nats"
+          cd "$XDG_CONFIG_HOME/nats"
+          if ! [ -s context ]; then
+            ln -s /etc/nats-contexts context
+          fi
+          if ! [ -f context.txt ]; then
+            echo -n "default" > context.txt
+          fi
+          cd "$work_dir"
+          exec /entrypoint.sh "$@"
+        - --
+        args:
+        - sh
+        - -ec
+        - trap true INT TERM; sleep infinity & wait
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 128Mi
+        volumeMounts:
+        - mountPath: /etc/nats-contexts
+          name: contexts
+      enableServiceLinks: false
+      volumes:
+      - name: contexts
+        secret:
+          secretName: {{ $natsName }}-box-contexts
+{{- end }}
+{{- end }}
+
+# =============================================================================
+# Nautobot ConfigMaps
+# =============================================================================
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $nautobotName }}-env
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.nautobot.labels" . | nindent 4 }}
+data:
+  {{- include "nv-config-manager.configmap.nautobot-env" . | nindent 2 }}
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $nautobotName }}-config
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.nautobot.labels" . | nindent 4 }}
+data:
+  {{- include "nv-config-manager.configmap.nautobot-config" . | nindent 2 }}
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $nautobotName }}-group-mapping
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.nautobot.labels" . | nindent 4 }}
+data:
+  group-mapping.yaml: |
+    # SSO Group Mapping for Nautobot
+    # Maps Azure AD groups to Nautobot permissions
+    groups: {}
+
+# =============================================================================
+# NGINX ConfigMap for Nautobot
+# =============================================================================
+{{- if .Values.nautobot.nginx.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $nautobotName }}-nginx-config
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.nautobot.labels" . | nindent 4 }}
+data:
+  default.conf: |
+    upstream nautobot {
+      server 127.0.0.1:8003;
+    }
+    
+    server {
+      listen 8080;
+      server_name _;
+      
+      location /static/ {
+        alias /opt/nautobot/static/;
+      }
+      
+      location / {
+        include uwsgi_params;
+        proxy_pass http://nautobot;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 1200;
+        proxy_connect_timeout 300;
+      }
+      
+      location /health {
+        proxy_pass http://nautobot/health/;
+        proxy_set_header Host $http_host;
+      }
+    }
+    
+    # Metrics endpoint
+    server {
+      listen 8002;
+      server_name _;
+      
+      location /stub_status {
+        stub_status on;
+        access_log off;
+      }
+    }
+{{- end }}
+
+# =============================================================================
+# Nautobot Server Deployment
+# =============================================================================
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $nautobotName }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.nautobot.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.nautobot.server.replicas }}
+  progressDeadlineSeconds: 1800
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $nautobotName }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ $nautobotName }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        {{- include "nv-config-manager.customPodLabels" . | nindent 8 }}
+      annotations:
+        checksum/nautobot-env: {{ include "nv-config-manager.configmap.nautobot-env" . | sha256sum }}
+        checksum/nautobot-config: {{ include "nv-config-manager.configmap.nautobot-config" . | sha256sum }}
+    spec:
+      {{- if .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range .Values.global.imagePullSecrets }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      serviceAccountName: {{ include "nv-config-manager.serviceAccountName" . }}
+      {{- $serverScheduling := deepCopy .Values.nautobot.server }}
+      {{- if and .Values.nautobot.customJobs.enabled .Values.nautobot.customJobs.nodeSelector }}
+      {{- $_ := set $serverScheduling "nodeSelector" .Values.nautobot.customJobs.nodeSelector }}
+      {{- end }}
+      {{- include "nv-config-manager.scheduling" $serverScheduling | nindent 6 }}
+      {{- include "nv-config-manager.podSecurityContext" . | nindent 6 }}
+      initContainers:
+        # Wait for Redis to be ready
+        - name: wait-redis
+          image: "{{ .Values.global.images.busybox.repository }}:{{ .Values.global.images.busybox.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy | default "IfNotPresent" }}
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z {{ $redisName }}-master 6379; do
+                echo "Waiting for Redis..."
+                sleep 2
+              done
+              echo "Redis is ready!"
+          {{- include "nv-config-manager.containerSecurityContext" . | nindent 10 }}
+        # Wait for PostgreSQL to be ready
+        - name: wait-postgres
+          image: "{{ .Values.global.images.busybox.repository }}:{{ .Values.global.images.busybox.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy | default "IfNotPresent" }}
+          command:
+            - sh
+            - -c
+            - |
+              DB_HOST="{{ tpl .Values.nautobot.server.db.host . }}"
+              until nc -z $DB_HOST {{ .Values.nautobot.server.db.port }}; do
+                echo "Waiting for PostgreSQL at $DB_HOST..."
+                sleep 2
+              done
+              echo "PostgreSQL is ready!"
+          {{- include "nv-config-manager.containerSecurityContext" . | nindent 10 }}
+        # Run database migrations with PostgreSQL advisory lock to prevent races
+        # Only ONE pod will acquire the lock and run migrations; others wait.
+        # IMPORTANT: Lock is held by a single Python process for the entire duration
+        # to prevent the session-level advisory lock from being released on disconnect.
+        - name: run-migrations
+          image: {{ .Values.global.images.nautobot.repository }}:{{ .Values.global.images.nautobot.tag }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy | default .Values.global.images.nautobot.pullPolicy }}
+          # Use the migration runner script (distroless-compatible, no shell needed)
+          command: ["python", "/opt/nautobot/jobs/nv_config_manager_jobs/migration_runner.py"]
+          {{- include "nv-config-manager.containerSecurityContext" . | nindent 10 }}
+          env:
+            - name: NAUTOBOT_RUN_BOOTSTRAP
+              value: "{{ .Values.nautobot.bootstrap.enabled | default true }}"
+            - name: NAUTOBOT_DB_HOST
+              value: "{{ tpl .Values.nautobot.server.db.host . }}"
+            - name: NAUTOBOT_DB_PORT
+              value: "{{ .Values.nautobot.server.db.port }}"
+            - name: NAUTOBOT_DB_NAME
+              value: "{{ .Values.nautobot.server.db.name }}"
+            - name: NAUTOBOT_DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: cluster-nautobot-app
+                  key: username
+            - name: NAUTOBOT_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: cluster-nautobot-app
+                  key: password
+            - name: NAUTOBOT_REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-password
+                  key: password
+            - name: NAUTOBOT_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: nautobot-django-secret
+                  key: secret_key
+            - name: NAUTOBOT_SUPERUSER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: nautobot-admin
+                  key: password
+            - name: NAUTOBOT_SUPERUSER_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: nautobot-admin
+                  key: api_token
+            {{- range .Values.secrets.vault.paths.gitTokens }}
+            - name: GIT_TOKEN_{{ .name | upper }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .secretName }}
+                  key: token
+            {{- if .hasUsername }}
+            - name: GIT_USERNAME_{{ .name | upper }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .secretName }}
+                  key: username
+            {{- end }}
+            {{- end }}
+          envFrom:
+            - configMapRef:
+                name: {{ $nautobotName }}-env
+          volumeMounts:
+            - name: nautobot-static
+              mountPath: /opt/nautobot/static
+            {{- if .Values.nautobot.customJobs.enabled }}
+            - name: custom-jobs
+              mountPath: /opt/nautobot/jobs
+              readOnly: true
+            {{- end }}
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              memory: 2Gi
+      containers:
+        - name: nautobot
+          image: {{ .Values.global.images.nautobot.repository }}:{{ .Values.global.images.nautobot.tag }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy | default .Values.global.images.nautobot.pullPolicy }}
+          command:
+            - nautobot-server
+            - start
+            - --ini
+            - /opt/nautobot/uwsgi.ini
+          {{- include "nv-config-manager.containerSecurityContext" . | nindent 10 }}
+          ports:
+            - containerPort: 8003
+              name: http
+          env:
+            - name: NAUTOBOT_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: cluster-nautobot-app
+                  key: password
+            - name: NAUTOBOT_REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-password
+                  key: password
+            - name: NAUTOBOT_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: nautobot-django-secret
+                  key: secret_key
+            - name: NAUTOBOT_SUPERUSER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: nautobot-admin
+                  key: password
+            - name: NAUTOBOT_SUPERUSER_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: nautobot-admin
+                  key: api_token
+            - name: NATS_USER
+              value: nautobot
+            - name: NATS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: nats-nautobot
+                  key: password
+            {{- range .Values.secrets.vault.paths.gitTokens }}
+            - name: GIT_TOKEN_{{ .name | upper }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .secretName }}
+                  key: token
+            {{- if .hasUsername }}
+            - name: GIT_USERNAME_{{ .name | upper }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .secretName }}
+                  key: username
+            {{- end }}
+            {{- end }}
+          envFrom:
+            - configMapRef:
+                name: {{ $nautobotName }}-env
+          resources:
+            {{- toYaml .Values.nautobot.server.resources | nindent 12 }}
+          livenessProbe:
+            exec:
+              command:
+                - nautobot-server
+                - health_check
+            initialDelaySeconds: 60
+            periodSeconds: 120
+            timeoutSeconds: 60
+            failureThreshold: 5
+          readinessProbe:
+            exec:
+              command:
+                - nautobot-server
+                - health_check
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 60
+            failureThreshold: 3
+          volumeMounts:
+            - name: nautobot-config
+              mountPath: /opt/nautobot/uwsgi.ini
+              subPath: uwsgi.ini
+            - name: nautobot-static
+              mountPath: /opt/nautobot/static
+            - name: nautobot-media
+              mountPath: /opt/nautobot/media
+            - name: group-mapping
+              mountPath: /app/config/group-mapping.yaml
+              subPath: group-mapping.yaml
+            {{- if .Values.nautobot.customJobs.enabled }}
+            - name: custom-jobs
+              mountPath: /opt/nautobot/jobs
+              readOnly: true
+            {{- end }}
+            {{- if .Values.spiffe.enabled }}
+            - name: spiffe-workload-api
+              mountPath: {{ .Values.spiffe.socket.mountPath | default "/spiffe-workload-api" }}
+              readOnly: true
+            {{- end }}
+        {{- if .Values.nautobot.nginx.enabled }}
+        - name: nginx
+          image: {{ .Values.nautobot.nginx.image.registry }}/{{ .Values.nautobot.nginx.image.repository }}:{{ .Values.nautobot.nginx.image.tag }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy | default .Values.nautobot.nginx.image.pullPolicy }}
+          command:
+            - /bin/sh
+            - -c
+            - |
+              sed -i 's/worker_processes.*auto/worker_processes {{ .Values.nautobot.nginx.workerProcesses }}/' /etc/nginx/nginx.conf
+              exec nginx -g 'daemon off;'
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            runAsUser: 101
+            capabilities:
+              drop:
+                - ALL
+              add:
+                - NET_BIND_SERVICE
+          ports:
+            - containerPort: 8080
+              name: http-nginx
+            - containerPort: 8002
+              name: metrics
+          resources:
+            {{- toYaml .Values.nautobot.nginx.resources | nindent 12 }}
+          livenessProbe:
+            tcpSocket:
+              port: http-nginx
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /stub_status
+              port: metrics
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          volumeMounts:
+            - name: nginx-config
+              mountPath: /etc/nginx/conf.d
+              readOnly: true
+            - name: nautobot-static
+              mountPath: /opt/nautobot/static
+              readOnly: true
+        {{- end }}
+      terminationGracePeriodSeconds: 30
+      volumes:
+        - name: nautobot-config
+          configMap:
+            name: {{ $nautobotName }}-config
+        - name: group-mapping
+          configMap:
+            name: {{ $nautobotName }}-group-mapping
+        {{- if .Values.nautobot.nginx.enabled }}
+        - name: nginx-config
+          configMap:
+            name: {{ $nautobotName }}-nginx-config
+        {{- end }}
+        - name: nautobot-static
+          {{- if .Values.nautobot.persistence.staticFiles.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ $nautobotName }}-static
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: nautobot-media
+          {{- if .Values.nautobot.persistence.mediaFiles.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ $nautobotName }}-media
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        {{- if .Values.nautobot.customJobs.enabled }}
+        - name: custom-jobs
+          persistentVolumeClaim:
+            claimName: {{ .Values.nautobot.customJobs.pvcName }}
+        {{- end }}
+        {{- if .Values.spiffe.enabled }}
+        {{- $provider := .Values.spiffe.provider | default "spire" }}
+        - name: spiffe-workload-api
+        {{- if eq $provider "spire" }}
+          csi:
+            driver: {{ .Values.spiffe.spire.csiDriver | default "csi.spiffe.io" | quote }}
+            readOnly: true
+        {{- else if eq $provider "teleport" }}
+          hostPath:
+            path: {{ .Values.spiffe.socket.hostPath | default "/var/run/teleport" }}
+            type: Directory
+        {{- end }}
+        {{- end }}
+
+# =============================================================================
+# Nautobot Service
+# =============================================================================
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $nautobotName }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.nautobot.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    {{- if .Values.nautobot.nginx.enabled }}
+    - port: 80
+      targetPort: http-nginx
+      name: http
+    {{- else }}
+    - port: 80
+      targetPort: http
+      name: http
+    {{- end }}
+  selector:
+    app.kubernetes.io/name: {{ $nautobotName }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+
+# =============================================================================
+# Celery Worker Deployment
+# =============================================================================
+{{- if .Values.nautobot.celery.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $nautobotName }}-celery
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.nautobot.labels" . | nindent 4 }}
+    app.kubernetes.io/component: celery
+spec:
+  replicas: {{ .Values.nautobot.celery.replicas }}
+  progressDeadlineSeconds: 1800
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $nautobotName }}-celery
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ $nautobotName }}-celery
+        app.kubernetes.io/instance: {{ .Release.Name }}
+      annotations:
+        checksum/nautobot-env: {{ include "nv-config-manager.configmap.nautobot-env" . | sha256sum }}
+    spec:
+      {{- if .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range .Values.global.imagePullSecrets }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      serviceAccountName: {{ include "nv-config-manager.serviceAccountName" . }}
+      {{- $celeryScheduling := deepCopy .Values.nautobot.celery }}
+      {{- if and .Values.nautobot.customJobs.enabled .Values.nautobot.customJobs.nodeSelector }}
+      {{- $_ := set $celeryScheduling "nodeSelector" .Values.nautobot.customJobs.nodeSelector }}
+      {{- end }}
+      {{- include "nv-config-manager.scheduling" $celeryScheduling | nindent 6 }}
+      {{- include "nv-config-manager.podSecurityContext" . | nindent 6 }}
+      initContainers:
+        - name: wait-redis
+          image: "{{ .Values.global.images.busybox.repository }}:{{ .Values.global.images.busybox.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy | default "IfNotPresent" }}
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z {{ $redisName }}-master 6379; do
+                echo "Waiting for Redis..."
+                sleep 2
+              done
+              echo "Redis is ready!"
+          {{- include "nv-config-manager.containerSecurityContext" . | nindent 10 }}
+        # Wait for Nautobot to be ready (migrations complete)
+        {{- include "nv-config-manager.waitForNautobot" . | nindent 8 }}
+      containers:
+        - name: celery
+          image: {{ .Values.global.images.nautobot.repository }}:{{ .Values.global.images.nautobot.tag }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy | default .Values.global.images.nautobot.pullPolicy }}
+          command:
+            - nautobot-server
+            - celery
+            - worker
+            - --loglevel
+            - $(NAUTOBOT_LOG_LEVEL)
+            - --queues
+            - $(CELERY_TASK_QUEUES)
+            - --events
+            - --concurrency
+            - $(CELERY_TASK_CONCURRENCY)
+          {{- include "nv-config-manager.containerSecurityContext" . | nindent 10 }}
+          env:
+            - name: CELERY_TASK_QUEUES
+              value: "{{ .Values.nautobot.celery.workers.default.taskQueues }}"
+            - name: CELERY_TASK_CONCURRENCY
+              value: "{{ .Values.nautobot.celery.workers.default.taskConcurrency }}"
+            - name: NAUTOBOT_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: cluster-nautobot-app
+                  key: password
+            - name: NAUTOBOT_REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-password
+                  key: password
+            - name: NAUTOBOT_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: nautobot-django-secret
+                  key: secret_key
+            - name: NATS_USER
+              value: nautobot
+            - name: NATS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: nats-nautobot
+                  key: password
+            {{- range .Values.secrets.vault.paths.gitTokens }}
+            - name: GIT_TOKEN_{{ .name | upper }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .secretName }}
+                  key: token
+            {{- if .hasUsername }}
+            - name: GIT_USERNAME_{{ .name | upper }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .secretName }}
+                  key: username
+            {{- end }}
+            {{- end }}
+          envFrom:
+            - configMapRef:
+                name: {{ $nautobotName }}-env
+          resources:
+            {{- toYaml .Values.nautobot.celery.resources | nindent 12 }}
+          {{- if .Values.nautobot.customJobs.enabled }}
+          volumeMounts:
+            - name: custom-jobs
+              mountPath: /opt/nautobot/jobs
+              readOnly: true
+          {{- end }}
+          livenessProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - "import os, subprocess, sys; sys.exit(subprocess.call(['nautobot-server', 'celery', 'inspect', 'ping', '--destination', 'celery@' + os.environ.get('HOSTNAME', '')]))"
+            initialDelaySeconds: 60
+            periodSeconds: 120
+            timeoutSeconds: 60
+            failureThreshold: 10
+          readinessProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - "import os, subprocess, sys; sys.exit(subprocess.call(['nautobot-server', 'celery', 'inspect', 'ping', '--destination', 'celery@' + os.environ.get('HOSTNAME', '')]))"
+            initialDelaySeconds: 60
+            periodSeconds: 120
+            timeoutSeconds: 60
+            failureThreshold: 10
+      {{- if .Values.nautobot.customJobs.enabled }}
+      volumes:
+        - name: custom-jobs
+          persistentVolumeClaim:
+            claimName: {{ .Values.nautobot.customJobs.pvcName }}
+      {{- end }}
+      terminationGracePeriodSeconds: 120
+
+# =============================================================================
+# Celery Beat Deployment (single replica scheduler)
+# =============================================================================
+{{- if .Values.nautobot.celery.workers.beat.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $nautobotName }}-celery-beat
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.nautobot.labels" . | nindent 4 }}
+    app.kubernetes.io/component: celery-beat
+spec:
+  replicas: 1  # Beat must be single instance
+  progressDeadlineSeconds: 1800
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $nautobotName }}-celery-beat
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ $nautobotName }}-celery-beat
+        app.kubernetes.io/instance: {{ .Release.Name }}
+      annotations:
+        checksum/nautobot-env: {{ include "nv-config-manager.configmap.nautobot-env" . | sha256sum }}
+    spec:
+      {{- if .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range .Values.global.imagePullSecrets }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      serviceAccountName: {{ include "nv-config-manager.serviceAccountName" . }}
+      {{- include "nv-config-manager.podSecurityContext" . | nindent 6 }}
+      initContainers:
+        {{- include "nv-config-manager.waitForNautobot" . | nindent 8 }}
+      containers:
+        - name: celery-beat
+          image: {{ .Values.global.images.nautobot.repository }}:{{ .Values.global.images.nautobot.tag }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy | default .Values.global.images.nautobot.pullPolicy }}
+          command: ["nautobot-server", "celery", "beat", "--loglevel", "INFO"]
+          {{- include "nv-config-manager.containerSecurityContext" . | nindent 10 }}
+          env:
+            - name: NAUTOBOT_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: cluster-nautobot-app
+                  key: password
+            - name: NAUTOBOT_REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-password
+                  key: password
+            - name: NAUTOBOT_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: nautobot-django-secret
+                  key: secret_key
+          envFrom:
+            - configMapRef:
+                name: {{ $nautobotName }}-env
+          resources:
+            {{- toYaml .Values.nautobot.celery.workers.beat.resources | nindent 12 }}
+          livenessProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - "import os, time, sys; f='/tmp/nautobot_celery_beat_heartbeat'; sys.exit(0 if os.path.exists(f) and (time.time() - os.path.getmtime(f)) < 6 else 1)"
+            initialDelaySeconds: 30
+            periodSeconds: 60
+            failureThreshold: 5
+      terminationGracePeriodSeconds: 30
+{{- end }}
+{{- end }}
+
+# =============================================================================
+# Persistent Volume Claims
+# =============================================================================
+{{- if .Values.nautobot.persistence.staticFiles.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $nautobotName }}-static
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.nautobot.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.nautobot.persistence.staticFiles.size }}
+{{- end }}
+
+{{- if .Values.nautobot.persistence.mediaFiles.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $nautobotName }}-media
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.nautobot.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.nautobot.persistence.mediaFiles.size }}
+{{- end }}
+
+{{- if and .Values.nautobot.customJobs.enabled .Values.nautobot.customJobs.createPvc }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Values.nautobot.customJobs.pvcName }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.nautobot.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.nautobot.customJobs.accessMode | default "ReadWriteOnce" }}
+  {{- if .Values.nautobot.customJobs.storageClass }}
+  storageClassName: {{ .Values.nautobot.customJobs.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.nautobot.customJobs.size }}
+{{- end }}
+
+
+{{- end }}

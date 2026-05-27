@@ -1,0 +1,222 @@
+---
+title: Nautobot Integration
+sidebar-title: Nautobot Integration
+position: 10
+---
+
+Nautobot serves as the network Source of Truth for NVIDIA Config Manager, providing device inventory, IP address management, and configuration context. Config Manager includes a custom Nautobot image with pre-installed Nautobot apps and NATS event streaming to be deployed where Nautobot does not already exist in the environment.
+
+## Overview
+
+The Config Manager Nautobot deployment includes:
+
+- Core Nautobot with PostgreSQL and Redis
+- NVIDIA Config Manager Nautobot app and required supporting Nautobot apps
+- NATS event broker integration for real-time event streaming
+- Bootstrap jobs for initial data loading
+
+## Enabled Nautobot Apps
+
+The Config Manager Nautobot image enables the following Nautobot apps in `nautobot_config.py`:
+
+| Nautobot app | Description |
+| :----------- | :---------- |
+| `nv_config_manager` | Config Manager-specific models, jobs, and integration points |
+| `nautobot_fsus` | Field-serviceable unit tracking |
+| `nautobot_firewall_models` | Firewall and security policy data models |
+| `nautobot_design_builder` | Design and job framework used by bootstrap and custom data-loading flows |
+| `nautobot_nvdatamodels` | NVIDIA-specific data models |
+| `nautobot_bgp_models` | BGP data models |
+| `nautobot_app_overlays` | Overlay network data models |
+
+The image also includes the `nautobot-broker-nats` package for Nautobot event broker integration. That package is not listed in `PLUGINS`; it is registered by the Nautobot configuration when NATS is configured.
+
+## NATS Event Streaming
+
+The `nautobot-broker-nats` package provides the NATS event broker used by Nautobot. The Nautobot configuration registers the broker when `NATS_HOST` is present:
+
+```python
+if "NATS_HOST" in os.environ:
+    connect = {}
+
+    if "NATS_CRED" in os.environ:
+        connect["user_credentials"] = os.environ["NATS_CRED"]
+    elif "NATS_USER" in os.environ and "NATS_PASSWORD" in os.environ:
+        connect["user"] = os.environ["NATS_USER"]
+        connect["password"] = os.environ["NATS_PASSWORD"]
+
+    register_event_broker(
+        NATSEventBroker(
+            servers=os.environ["NATS_HOST"],
+            stream="nautobot",
+            **connect,
+        )
+    )
+```
+
+## Config Manager Jobs
+
+### Bootstrap Data Job
+
+Loads foundational data into Nautobot:
+
+```bash
+# Run via Nautobot UI: Jobs > Load Bootstrap Data
+# Or via API:
+curl -X POST https://nautobot.config-manager.example.com/api/extras/jobs/run/ \
+    -H "Authorization: Token $TOKEN" \
+    -d '{"module": "nv_config_manager_jobs.bootstrap.load_bootstrap_data.LoadBootstrapData", "data": {}}'
+```
+
+Bootstrap data includes:
+
+- Manufacturers (NVIDIA, Arista, Cisco, and so on)
+- Device Types (switches, routers, servers)
+- Roles (spine, leaf, tor, core)
+- Platforms (Cumulus, SONiC, EOS)
+- Custom Fields
+
+#### Loading Order and Dependencies
+
+You do not need to worry about the order within your YAML files, as the job handles dependencies automatically. However, understanding the order helps you troubleshoot if something goes wrong.
+
+The `LoadBootstrapData` job processes schemas in the following order to ensure dependencies are satisfied:
+
+| Order | Schema Type | Dependencies | Notes |
+| :---- | :---------- | :----------- | :---- |
+| 1 | Manufacturers | None | Base dependency for device types and platforms |
+| 2 | Tenants | None | Used by locations |
+| 3 | Location Types | None (but can reference parent location types) | Must define parents before children |
+| 4 | Locations | Location Types, Statuses, Tenants | Status defaults to "Active" if not found |
+| 5 | Namespaces | None | Used by IP objects |
+| 6 | Statuses | None | Used by locations and other objects |
+| 7 | Roles | None | Used by config contexts |
+| 8 | Tags | None | Applied to various objects |
+| 9 | Platforms | Manufacturers (optional) | Manufacturer must exist if specified |
+| 10 | Device Types | Manufacturers | Manufacturer directory must exist |
+| 11 | Relationships | Content Types | Content types must exist in Nautobot |
+| 12 | Config Contexts | Roles, Platforms | Roles and platforms must exist if specified |
+
+**Notes**:
+
+- **Manufacturers** must be loaded first as they are required by Device Types and optionally by Platforms
+- **Location Types** should define parent types before child types in the YAML file
+- **Locations** are sorted by hierarchy (Provider, Region, Site, Module) before processing
+- **Statuses** should include "Active" as it is the default for locations
+- **Roles** and **Platforms** must exist before Config Contexts that reference them
+- **Missing dependencies** result in warnings, and the item is skipped (except for required fields which cause errors)
+
+## GraphQL API
+
+Config Manager services use GraphQL for efficient data queries. The GraphQL API is available at `/api/graphql/`, and the interactive GraphQL explorer is available at `https://nautobot.<hostname>/graphql/`.
+
+```bash
+# Programmatic access
+curl -X POST https://nautobot.config-manager.example.com/api/graphql/ \
+    -H "Authorization: Token $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"query": "{ devices { name } }"}'
+```
+
+## NATS-Ready Init Container
+
+The NATS-ready init container ensures the configured JetStream streams exist before Nautobot starts. Stream names and subjects come from the Helm values:
+
+```yaml
+externalServices:
+  nats:
+    streams:
+      configManager:
+        name: nv-config-manager
+        subjects:
+          - nv-config-manager.nautobotchange
+          - nv-config-manager.devicechange
+          - nv-config-manager.workflow.result
+      nautobot:
+        name: nautobot
+        subjects:
+          - nautobot
+```
+
+## Custom Jobs Directory
+
+Stage custom Nautobot jobs through the installer by adding job paths to `content.jobs` in `nv-config-manager-install.yaml`.
+
+```yaml
+content:
+  jobs:
+    - path: ../my-nautobot-jobs
+    - path: ../another-jobs-repo
+```
+
+Jobs are bundled into a PVC and mounted at `/opt/nautobot/jobs/`.
+
+For repeatable topology loading, prefer a Nautobot Design Builder job with ordered design files and explicit context data. The bundled mock topology job can be reused with your own context data; see [Design Builder Data Loading](design-builder-data-loading.mdx).
+
+## Accessing Nautobot
+
+### Web UI
+
+```bash
+# Get admin password
+kubectl get secret nautobot-admin -n nv-config-manager -o jsonpath='{.data.password}' | base64 -d
+
+# Access UI
+https://nautobot.config-manager.example.com
+# Login: admin / <password from above>
+```
+
+### REST API
+
+```bash
+# Get API token
+kubectl get secret nautobot-admin -n nv-config-manager -o jsonpath='{.data.api_token}' | base64 -d
+
+# List devices
+curl -H "Authorization: Token $TOKEN" \
+    https://nautobot.config-manager.example.com/api/dcim/devices/
+
+# Create device
+curl -X POST -H "Authorization: Token $TOKEN" \
+    -H "Content-Type: application/json" \
+    https://nautobot.config-manager.example.com/api/dcim/devices/ \
+    -d '{"name": "switch-01", "role": "...", "device_type": "..."}'
+```
+
+### Django Shell
+
+```bash
+kubectl exec -it -n nv-config-manager deployment/nautobot -- nautobot-server nbshell
+
+>>> from nautobot.dcim.models import Device
+>>> Device.objects.count()
+150
+>>> device = Device.objects.first()
+>>> device.interfaces.all()
+```
+
+## Metrics
+
+Nautobot metrics are controlled by the chart's `nautobot.metrics` settings and Nautobot's built-in Prometheus metrics support. No capacity-metrics plugin is installed in the Config Manager Nautobot image. Refer to the [Nautobot documentation](https://docs.nautobot.com/projects/core/en/stable/user-guide/administration/guides/prometheus-metrics/) for available metrics.
+
+## Git Integration
+
+Nautobot can sync with Git repositories for:
+
+- Configuration contexts
+- Export templates
+- Custom jobs
+
+## Related Services
+
+The following Config Manager services interact with Nautobot:
+
+- [Config Store Service](../config-store/index.mdx) — Gets device metadata
+- [Network Template Rendering System](../render/index.mdx) — Consumes Nautobot events
+- [DHCP Service](../dhcp/index.mdx) — Queries device data
+- [Network ZTP Service](../network-ztp/index.mdx) — Gets device metadata
+- [Temporal Infrastructure Automation](../temporal/index.mdx) — Workflows interact with Nautobot
+
+## Next Steps
+
+Continue to the [Bootstrap Data Overview](bootstrap-intro.mdx) and [Bootstrap Data Reference](bootstrap-schema.mdx) pages to learn about the data model used to populate Nautobot with baseline Config Manager data.

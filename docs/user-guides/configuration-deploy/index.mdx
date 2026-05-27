@@ -1,0 +1,110 @@
+---
+title: Configuration Deploy
+sidebar-title: Configuration Deploy
+position: 10
+---
+
+The Configuration Deploy workflow applies a single device's intended configuration to that device, with a human approval step that lets an operator review the diff before any change is applied. It is the workflow to use when you need to push a configuration change to one device — for example, after a Nautobot edit on a specific switch, or to converge a single device that has drifted from its intended state.
+
+For fabric-wide changes across many devices, use [Multi-Device Deploy](../multi-deploy/index.mdx) instead. For tenant-scoped configuration changes that should run without human approval, use [Tenant Deploy](../tenant-deploy/index.mdx).
+
+## Prerequisites
+
+Before running Configuration Deploy, confirm the following are in place:
+
+- **Device exists in Nautobot** with a current intended configuration in the [Config Store](../../config-store/index.mdx). The intended config is produced by the [Render Service](../../render/index.mdx) — if it is stale, re-render before running deploy.
+- **Device is reachable** from Config Manager on its management address and credentials are present in the secrets store.
+- **Device is deploy-enabled in Nautobot.** Switches marked deploy-disabled (typically Kubernetes-attached management switches on shared-network deployments) should never have Deploy run against them directly — see [Hosting Options](../../hosting-options/index.mdx).
+- **Approval to change a traffic-bearing device.** The workflow blocks at the diff-approval stage until a human acts.
+
+## Running the workflow
+
+1. Navigate to the Config Manager URL for your environment.
+1. Click the **+** in the top right and select **DeployWorkflow**.
+1. Fill in the form using the field reference below and submit.
+
+| Field | Description | Required |
+| :---- | :---------- | :------- |
+| **Site** | The site of the target device. Drives the device list below. | Yes |
+| **Tenant** | Optional Nautobot tenant filter to narrow the device list. | No |
+| **Status** | Optional device-status filter to narrow the device list. | No |
+| **Device** | The target device. The list is filtered by the selections above. | Yes |
+| **Use commit-confirm** | When checked (default), the apply uses NVUE `commit confirm` so a broken change auto-rolls back if the device loses connectivity. Uncheck only for changes that are expected to interrupt connectivity. | No |
+
+After submission, a status page appears showing the four stages. The workflow blocks at the diff-approval stage; review and act there to continue.
+
+## Execution stages
+
+The workflow runs four stages. Only `perform_configuration_diff` requires manual approval.
+
+1. **`load_intended_configuration` — Load the device's intended config from the Config Store.**
+
+    Pulls the rendered configuration plus its commit SHA for the device. A missing intended config fails the workflow at this stage.
+
+1. **`perform_configuration_diff` — Compute the diff and request approval.**
+
+    Runs a candidate diff between the intended configuration and the device's running configuration, renders the diff on the stage page, and transitions to `PENDING_APPROVAL`. The stage has three outcomes:
+
+   - **Empty diff** — nothing to apply. The stage auto-clears its approval requirement and the workflow proceeds straight to `perform_backup`; `apply_configuration` is marked UNREACHABLE.
+   - **Approved diff** — the workflow records the approver and proceeds to `apply_configuration`.
+   - **Rejected diff** — the workflow records the rejecter and marks both `apply_configuration` and `perform_backup` as UNREACHABLE. No change is made.
+
+1. **`apply_configuration` — Apply the approved diff to the device.**
+
+    Pushes the approved configuration through `apply_approved_configuration` with the device's commit SHA attached and `commit_confirm` honored. Three error types are non-retryable and surface immediately:
+
+   - `ConfigSyntaxException` — the rendered config does not parse on the device.
+   - `ConfigApplyFailureException` — apply failed mid-flight.
+   - `DiffChangedException` — the device's running config changed between diff and apply, invalidating the approved diff.
+
+1. **`perform_backup` — Capture a fresh backup of the device.**
+
+    Starts the [Configuration Backup](../configuration-backup/index.mdx) workflow as a child workflow with `trigger=WORKFLOW` and the just-applied commit SHA, so the new backup is correlated with the configuration version that was just deployed. Runs after a successful apply, or after the empty-diff path to record the unchanged state.
+
+## Verifying outcomes
+
+After the workflow reports success, confirm:
+
+- **All four stages green** on the Config Manager run page (or `perform_configuration_diff` green and the apply / backup stages UNREACHABLE on the rejected or empty-diff paths).
+- **Device running configuration** matches the intended configuration. Re-run Configuration Deploy against the same device; if the diff stage reports empty, the device is converged.
+- **A fresh backup exists** in the Config Store, dated after the apply and tagged with the commit SHA the workflow used.
+
+## Rollback
+
+If the applied config introduced a problem:
+
+- **`commit_confirm` did its job.** When `commit_confirm=True` (default) and the apply broke management connectivity, the device auto-rolls back to the prior committed configuration after the confirm window expires. No operator action is needed beyond confirming the device is back.
+- **Apply succeeded but the change is wrong.** Update the upstream data in Nautobot (or revert the template change), re-render via the [Render Service](../../render/index.mdx), and re-run Configuration Deploy. The diff stage will show the corrective change for review.
+- **The device is unreachable after a successful apply.** Use the device's console or an upstream SSH path to investigate. The [Options for logging into a stuck device](../new-site-deployment/index.mdx#options-for-logging-into-a-stuck-device) section of New Site Bringup covers this path.
+
+## Common issues
+
+**Stage is stuck on "Waiting for approval".**
+
+`perform_configuration_diff` blocks indefinitely until a reviewer acts. Review the diff on the stage page and approve or reject.
+
+**`DiffChangedException` after approval.**
+
+The device's running configuration changed between when the diff was computed and when the apply ran — another deploy workflow, a manual change, or an out-of-band agent. The exception is non-retryable; re-run the workflow so a fresh diff is captured.
+
+**`ConfigSyntaxException` at apply.**
+
+The rendered intended configuration is malformed for this device. Do not retry — fix the upstream template or Nautobot data, re-render via the [Render Service](../../render/index.mdx), and re-run the workflow.
+
+**Apply succeeded but `perform_backup` failed.**
+
+The device is configured; only the post-deploy backup is missing. Run [Configuration Backup](../configuration-backup/index.mdx) against the device once the underlying issue is resolved.
+
+**Workflow refuses to start because the device is deploy-disabled.**
+
+Deploy-disabled is enforced as a safeguard for Kubernetes-attached management switches. If the switch genuinely needs a configuration change, follow the manual change process described in [Hosting Options](../../hosting-options/index.mdx) instead.
+
+## Related guides
+
+- [Controlling Running Workflows](../workflow-lifecycle/index.mdx) — approve, reject, retry, and terminate behavior for this and every other workflow.
+- [Multi-Device Deploy](../multi-deploy/index.mdx) — fabric-wide deploy with diff-grouped approvals.
+- [Batch Deploy](../batch-deploy/index.mdx) — the per-batch child workflow used by Multi-Deploy.
+- [Tenant Deploy](../tenant-deploy/index.mdx) — tenant-scoped deploy with automated diff validation instead of human approval.
+- [Configuration Backup](../configuration-backup/index.mdx) — the child workflow triggered after a successful apply.
+- [Render Service](../../render/index.mdx) — produces the intended configurations this workflow deploys.
+- [Config Store](../../config-store/index.mdx) — where intended and backup configurations are versioned.

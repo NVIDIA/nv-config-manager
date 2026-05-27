@@ -1,0 +1,1188 @@
+{{/*
+Expand the name of the chart.
+*/}}
+{{- define "nv-config-manager.name" -}}
+{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
+Create chart name and version as used by the chart label.
+*/}}
+{{- define "nv-config-manager.chart" -}}
+{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
+Common labels
+*/}}
+{{- define "nv-config-manager.labels" -}}
+helm.sh/chart: {{ include "nv-config-manager.chart" . }}
+{{ include "nv-config-manager.selectorLabels" . }}
+{{- if .Chart.AppVersion }}
+app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+{{- end }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+app.kubernetes.io/part-of: nv-config-manager
+{{- end }}
+
+{{/*
+Selector labels
+*/}}
+{{- define "nv-config-manager.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "nv-config-manager.name" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}
+
+{{/*
+Workload ServiceAccount (Vault K8s/JWT auth binds to this identity; must match Vault role).
+*/}}
+{{- define "nv-config-manager.serviceAccountName" -}}
+{{- .Values.global.serviceAccountName | default "vault-access-sa" -}}
+{{- end }}
+
+{{/*
+Generate the base hostname for the gateway
+*/}}
+{{- define "nv-config-manager.hostname" -}}
+{{- .Values.gateway.baseHostname }}
+{{- end }}
+
+{{/*
+Get the Nautobot server URL based on whether local deployment is enabled
+(internal URL for in-cluster API calls)
+*/}}
+{{- define "nv-config-manager.nautobotServer" -}}
+{{- if .Values.externalServices.nautobot.local -}}
+{{- $nautobotName := include "nv-config-manager.componentName" (dict "root" . "component" "nautobot") -}}
+http://{{ $nautobotName }}
+{{- else -}}
+{{- required "externalServices.nautobot.server is required when nautobot.local=false" .Values.externalServices.nautobot.server -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Get the Nautobot public URL for user-facing links (e.g. device metadata in config-store API).
+When local=true this is the gateway hostname; when local=false this is the external server URL.
+*/}}
+{{- define "nv-config-manager.nautobotPublicUrl" -}}
+{{- if .Values.externalServices.nautobot.local -}}
+https://{{ tpl .Values.nautobot.gateway.hostname . }}
+{{- else -}}
+{{- required "externalServices.nautobot.server is required when nautobot.local=false" .Values.externalServices.nautobot.server -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Get the Redis host based on whether local deployment is enabled
+*/}}
+{{- define "nv-config-manager.redisHost" -}}
+{{- if .Values.externalServices.redis.local -}}
+{{- $redisName := include "nv-config-manager.componentName" (dict "root" . "component" "redis") -}}
+{{ $redisName }}-master
+{{- else -}}
+{{- required "externalServices.redis.host is required when redis.local=false" .Values.externalServices.redis.host -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Get the NATS server URL based on whether local deployment is enabled
+*/}}
+{{- define "nv-config-manager.natsServer" -}}
+{{- if or .Values.externalServices.nats.local .Values.nautobot.enabled -}}
+{{- $natsName := include "nv-config-manager.componentName" (dict "root" . "component" "nats") -}}
+nats://{{ $natsName }}:4222
+{{- else -}}
+{{- required "externalServices.nats.server is required when nats.local=false" .Values.externalServices.nats.server -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Nautobot common labels
+*/}}
+{{- define "nv-config-manager.nautobot.labels" -}}
+{{ include "nv-config-manager.labels" . }}
+app.kubernetes.io/component: nautobot
+{{- end -}}
+
+{{/*
+Nautobot NATS common labels
+*/}}
+{{- define "nv-config-manager.nautobot-nats.labels" -}}
+{{ include "nv-config-manager.labels" . }}
+app.kubernetes.io/component: nautobot-nats
+{{- end -}}
+
+{{/*
+=============================================================================
+SPIFFE/Envoy Sidecar Helpers
+=============================================================================
+Supports both SPIRE and Teleport as SPIFFE providers.
+- SPIRE: Uses CSI driver (csi.spiffe.io) to mount workload API socket
+- Teleport: Uses hostPath to access Teleport Machine ID socket
+
+Authentication modes:
+- jwt: JWT-SVID based authentication (recommended, simpler)
+- mtls: X.509-SVID based mutual TLS
+=============================================================================
+*/}}
+
+{{/*
+Get the full SPIFFE socket path (mount path + socket file)
+*/}}
+{{- define "nv-config-manager.spiffe.socketPath" -}}
+{{- $spiffe := .Values.spiffe | default dict -}}
+{{- $socket := index $spiffe "socket" | default dict -}}
+{{- $mountPath := index $socket "mountPath" | default "/spiffe-workload-api" -}}
+{{- $socketFile := index $socket "socketFile" | default "spire-agent.sock" -}}
+{{- printf "%s/%s" $mountPath $socketFile -}}
+{{- end -}}
+
+{{/*
+Return "true" if spiffe is enabled (nil-safe). Use in conditionals.
+*/}}
+{{- define "nv-config-manager.spiffe.enabled" -}}
+{{- $spiffe := .Values.spiffe | default dict }}
+{{- if eq (index $spiffe "enabled") true }}
+true
+{{- end }}
+{{- end -}}
+
+{{/*
+SPIFFE pod label - added alongside the annotation on every pod that opts in
+to SPIFFE identity.  Used as the ClusterSPIFFEID podSelector so the selector
+exactly matches the set of pods that have the spiffe.io/spiffe-id annotation,
+eliminating render failures for pods like CNPG clusters that share the
+namespace but are not nv-config-manager workloads.
+Only emitted for the SPIRE provider; Teleport uses join-token registration.
+*/}}
+{{- define "nv-config-manager.spiffe.podLabels" -}}
+{{- if include "nv-config-manager.spiffe.enabled" . }}
+{{- $provider := index (.Values.spiffe | default dict) "provider" | default "spire" }}
+{{- if eq $provider "spire" }}
+spiffe.nv-config-manager.io/inject: "true"
+{{- end }}
+{{- end }}
+{{- end -}}
+
+{{/*
+SPIFFE pod annotations for workload registration
+- For SPIRE: Uses spiffe.io annotations for spire-controller-manager
+- For Teleport: No annotations needed (uses join token based registration)
+Pass app (pod's app label value); defaults to "nv-config-manager".
+*/}}
+{{- define "nv-config-manager.spiffe.annotations" -}}
+{{- if include "nv-config-manager.spiffe.enabled" .root }}
+{{- $spiffe := .root.Values.spiffe | default dict }}
+{{- $provider := index $spiffe "provider" | default "spire" }}
+{{- $global := .root.Values.global | default dict }}
+{{- $app := .app | default "nv-config-manager" }}
+{{- if eq $provider "spire" }}
+spiffe.io/spiffe-id: "spiffe://{{ index $spiffe "trustDomain" }}/ns/{{ index $global "namespace" }}/sa/{{ $app }}"
+{{- else if eq $provider "teleport" }}
+teleport.dev/workload-identity: "true"
+{{- end }}
+{{- end }}
+{{- end -}}
+
+{{/*
+SPIFFE volume mounts for main container (if app needs direct SPIFFE access)
+*/}}
+{{- define "nv-config-manager.spiffe.volumeMounts" -}}
+{{- if include "nv-config-manager.spiffe.enabled" . }}
+{{- $socket := index (.Values.spiffe | default dict) "socket" | default dict }}
+- name: spiffe-workload-api
+  mountPath: {{ index $socket "mountPath" | default "/spiffe-workload-api" }}
+  readOnly: true
+{{- end }}
+{{- end -}}
+
+{{/*
+Auth sidecar -- renders spiffe-helper for outbound JWT-SVID fetching.
+API pods that receive inbound SPIFFE calls also get the Workload API socket
+mounted so py-spiffe can validate incoming JWTs.
+Usage: {{ include "nv-config-manager.authSidecar" (dict "root" . "serviceName" "render-service" "allowedGroups" (list "group1")) | nindent 6 }}
+*/}}
+{{- define "nv-config-manager.authSidecar" -}}
+{{- $useExternalJwt := .root.Values.gateway.auth.jwt.enabled }}
+{{- $spiffe := .root.Values.spiffe | default dict }}
+{{- $useSpiffe := include "nv-config-manager.spiffe.enabled" .root }}
+{{- $useSso := .root.Values.oidc.enabled }}
+{{- $authMode := index $spiffe "authMode" | default "jwt" }}
+{{- $spiffeHelper := index $spiffe "helper" | default dict }}
+{{- $spiffeHelperImage := index $spiffeHelper "image" | default dict }}
+{{- $spiffeSocket := index $spiffe "socket" | default dict }}
+{{- $spiffeEnvoy := index $spiffe "envoy" | default dict }}
+{{- $spiffeEnvoyImage := index $spiffeEnvoy "image" | default dict }}
+{{- if or $useExternalJwt $useSso (and $useSpiffe (eq $authMode "jwt")) }}
+{{- /* Use unified sidecar for external JWT or SPIFFE JWT mode */ -}}
+{{- if and $useSpiffe (eq $authMode "jwt") }}
+# SPIFFE Helper -- fetches JWT-SVIDs for outbound service-to-service calls
+- name: spiffe-helper
+  image: {{ index $spiffeHelperImage "repository" | default "ghcr.io/spiffe/spiffe-helper" }}:{{ index $spiffeHelperImage "tag" | default "0.8.0" }}
+  imagePullPolicy: {{ index $spiffeHelperImage "pullPolicy" | default "IfNotPresent" }}
+  args:
+    - -config
+    - /etc/spiffe-helper/helper.conf
+  env:
+    - name: SPIFFE_ENDPOINT_SOCKET
+      value: "unix://{{ include "nv-config-manager.spiffe.socketPath" .root }}"
+  resources:
+    {{- if index $spiffeHelper "resources" }}
+    {{- toYaml (index $spiffeHelper "resources") | nindent 4 }}
+    {{- else }}
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi
+    {{- end }}
+  volumeMounts:
+    - name: spiffe-workload-api
+      mountPath: {{ index $spiffeSocket "mountPath" | default "/spiffe-workload-api" }}
+      readOnly: true
+    - name: spiffe-helper-config
+      mountPath: /etc/spiffe-helper
+      readOnly: true
+    - name: spiffe-jwt-svid
+      mountPath: /var/run/secrets/spiffe
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    runAsUser: 1000
+    capabilities:
+      drop:
+        - ALL
+{{- end }}
+{{- end }}
+{{- end -}}
+
+{{/*
+Auth sidecar volumes -- SPIFFE Workload API socket, helper config, JWT emptyDir.
+No Envoy config volume needed (JWT validation is in-app).
+Usage: {{ include "nv-config-manager.authSidecar.volumes" (dict "root" .) | nindent 6 }}
+*/}}
+{{- define "nv-config-manager.authSidecar.volumes" -}}
+{{- $spiffe := .root.Values.spiffe | default dict }}
+{{- $useSpiffe := include "nv-config-manager.spiffe.enabled" .root }}
+{{- $authMode := index $spiffe "authMode" | default "jwt" }}
+{{- if and $useSpiffe (eq $authMode "jwt") }}
+{{- $provider := index $spiffe "provider" | default "spire" }}
+{{- $spiffeMock := index $spiffe "mock" | default dict }}
+{{- $spiffeSpire := index $spiffe "spire" | default dict }}
+{{- $spiffeSocket := index $spiffe "socket" | default dict }}
+- name: spiffe-workload-api
+{{- if index $spiffeMock "enabled" }}
+  emptyDir: {}
+{{- else if eq $provider "spire" }}
+  csi:
+    driver: {{ index $spiffeSpire "csiDriver" | default "csi.spiffe.io" | quote }}
+    readOnly: true
+{{- else if eq $provider "teleport" }}
+  hostPath:
+    path: {{ index $spiffeSocket "hostPath" | default "/var/run/teleport" }}
+    type: Directory
+{{- end }}
+- name: spiffe-helper-config
+  configMap:
+    name: spiffe-helper-config
+- name: spiffe-jwt-svid
+  emptyDir:
+    medium: Memory
+    sizeLimit: 1Mi
+{{- end }}
+{{- end -}}
+
+{{/*
+Auth sidecar inbound port (for Service targetPort, Envoy config). Default 8443.
+Nil-safe when .Values.spiffe or .Values.spiffe.envoy is missing.
+Usage: {{ include "nv-config-manager.authSidecar.inboundPort" . }}
+*/}}
+{{- define "nv-config-manager.authSidecar.inboundPort" -}}
+9000
+{{- end -}}
+
+{{/*
+SPIFFE client sidecar -- spiffe-helper only (no envoy).
+Used by caller pods (consumers, workers, refresh jobs) that need to present
+JWT-SVIDs when calling API services but don't receive inbound requests.
+Usage: {{- include "nv-config-manager.spiffeClientSidecar" (dict "root" .) | nindent 8 }}
+*/}}
+{{- define "nv-config-manager.spiffeClientSidecar" -}}
+{{- $spiffe := .root.Values.spiffe | default dict }}
+{{- if and (index $spiffe "enabled") (eq (index $spiffe "authMode" | default "jwt") "jwt") }}
+- name: spiffe-helper
+  image: {{ (index $spiffe "helper" | default dict).image.repository | default "ghcr.io/spiffe/spiffe-helper" }}:{{ (index $spiffe "helper" | default dict).image.tag | default "0.8.0" }}
+  imagePullPolicy: {{ (index $spiffe "helper" | default dict).image.pullPolicy | default "IfNotPresent" }}
+  args:
+    - -config
+    - /etc/spiffe-helper/helper.conf
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi
+  volumeMounts:
+    - name: spiffe-workload-api
+      mountPath: {{ (index $spiffe "socket" | default dict).mountPath | default "/spiffe-workload-api" }}
+      readOnly: true
+    - name: spiffe-helper-config
+      mountPath: /etc/spiffe-helper
+      readOnly: true
+    - name: spiffe-jwt-svid
+      mountPath: /var/run/secrets/spiffe
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    runAsUser: 1000
+    capabilities:
+      drop:
+        - ALL
+{{- end }}
+{{- end -}}
+
+{{/*
+SPIFFE client volumes -- socket + helper config + JWT emptyDir.
+Used alongside spiffeClientSidecar for caller pods that don't need envoy.
+Usage: {{- include "nv-config-manager.spiffeClientVolumes" (dict "root" .) | nindent 6 }}
+*/}}
+{{- define "nv-config-manager.spiffeClientVolumes" -}}
+{{- $spiffe := .root.Values.spiffe | default dict }}
+{{- if and (index $spiffe "enabled") (eq (index $spiffe "authMode" | default "jwt") "jwt") }}
+{{- $provider := index $spiffe "provider" | default "spire" }}
+- name: spiffe-workload-api
+{{- if eq $provider "spire" }}
+  csi:
+    driver: {{ index (index $spiffe "spire" | default dict) "csiDriver" | default "csi.spiffe.io" | quote }}
+    readOnly: true
+{{- else if eq $provider "teleport" }}
+  hostPath:
+    path: {{ index (index $spiffe "socket" | default dict) "hostPath" | default "/var/run/teleport" }}
+    type: Directory
+{{- end }}
+- name: spiffe-helper-config
+  configMap:
+    name: spiffe-helper-config
+- name: spiffe-jwt-svid
+  emptyDir:
+    medium: Memory
+    sizeLimit: 1Mi
+{{- end }}
+{{- end -}}
+
+{{/*
+Volume mounts for the app container to read SPIFFE JWT-SVIDs (outbound)
+and access the Workload API socket (inbound validation via py-spiffe).
+Usage: {{- include "nv-config-manager.authVolumeMounts" . | nindent 8 }}
+*/}}
+{{- define "nv-config-manager.authVolumeMounts" -}}
+{{- if and .Values.spiffe.enabled (eq (.Values.spiffe.authMode | default "jwt") "jwt") }}
+- name: spiffe-jwt-svid
+  mountPath: /var/run/secrets/spiffe
+  readOnly: true
+- name: spiffe-workload-api
+  mountPath: {{ .Values.spiffe.socket.mountPath | default "/spiffe-workload-api" }}
+  readOnly: true
+{{- end }}
+{{- end -}}
+
+{{/*
+Return "true" or "false" for the AUTH_REQUIRED env var.
+Auth is required when any auth layer (JWT, OIDC, SPIFFE) is enabled.
+When no auth layer is configured, services should allow unauthenticated access.
+Usage: value: {{ include "nv-config-manager.authRequired" . | quote }}
+*/}}
+{{- define "nv-config-manager.authRequired" -}}
+{{- if or .Values.gateway.auth.jwt.enabled (include "nv-config-manager.spiffe.enabled" .) .Values.oidc.enabled -}}
+true
+{{- else -}}
+false
+{{- end -}}
+{{- end -}}
+
+{{/*
+Auth INI sections for nv-config-manager.ini (replaces env-var–based auth config).
+Generates [auth], [auth.jwt.*], and [auth.spiffe] sections.
+Usage: {{ include "nv-config-manager.authIniSections" . }}
+*/}}
+{{- define "nv-config-manager.authIniSections" -}}
+# -----------------------------------------------------------------
+# Authentication Configuration
+# -----------------------------------------------------------------
+[auth]
+required = {{ include "nv-config-manager.authRequired" . }}
+accept_request_headers = true
+{{- if .Values.oidc.enabled }}
+cookie_name = {{ .Values.oidc.cookieName | default "NVConfigManagerAccessToken" }}
+{{- end }}
+{{- if .Values.oidc.enabled }}
+
+[auth.jwt.oidc]
+issuer = {{ .Values.oidc.issuerUrl }}
+audiences = {{ (concat (list (.Values.oidc.clientId | default "account")) (.Values.oidc.audiences | default list)) | join "," }}
+{{- if .Values.oidc.jwksUri }}
+jwks_uri = {{ .Values.oidc.jwksUri }}
+{{- else if .Values.oidc.internalIssuerUrl }}
+jwks_uri = {{ printf "%s/protocol/openid-connect/certs" (trimSuffix "/" .Values.oidc.internalIssuerUrl) }}
+{{- end }}
+{{- if .Values.oidc.groupsClaim }}
+claim_groups = {{ .Values.oidc.groupsClaim }}
+{{- end }}
+{{- end }}
+{{- range .Values.gateway.auth.jwt.providers }}
+
+[auth.jwt.{{ .name }}]
+issuer = {{ .issuer }}
+audiences = {{ .audiences | join "," }}
+{{- if .jwksUri }}
+jwks_uri = {{ .jwksUri }}
+{{- end }}
+{{- if .claimMappings }}
+{{- if .claimMappings.email }}
+claim_email = {{ .claimMappings.email }}
+{{- end }}
+{{- if .claimMappings.user }}
+claim_user = {{ .claimMappings.user }}
+{{- end }}
+{{- if .claimMappings.groups }}
+claim_groups = {{ .claimMappings.groups }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if and (index (.Values.spiffe | default dict) "enabled") (eq (index (.Values.spiffe | default dict) "authMode" | default "jwt") "jwt") }}
+
+[auth.spiffe]
+jwks_uri = {{ .Values.spiffe.jwksUri | default "/var/run/secrets/spiffe/bundle.json" }}
+audiences = spiffe://{{ .Values.spiffe.trustDomain }}
+jwt_svid_path = /var/run/secrets/spiffe/jwt-svid
+
+{{- if .Values.spiffe.rbac.groupPrefixes }}
+[auth.spiffe.groups]
+{{- range $prefix, $group := .Values.spiffe.rbac.groupPrefixes }}
+{{ $prefix }} = {{ $group }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end -}}
+
+{{/*
+Checksum annotation for the auth INI content.
+Add to pod template annotations so pods restart when auth config changes.
+Usage: {{ include "nv-config-manager.authIniChecksum" . | nindent 8 }}
+*/}}
+{{- define "nv-config-manager.authIniChecksum" -}}
+checksum/auth-ini: {{ include "nv-config-manager.authIniSections" . | sha256sum }}
+{{- end -}}
+
+{{/*
+Generate a JSON array of JWT provider configs for the Nautobot
+nv_config_manager_auth.jwt_authentication module.  Includes:
+  - OIDC provider (user_provider: true) for browser users
+  - gateway.auth.jwt.providers for service-to-service issuers
+Usage: {{ include "nv-config-manager.nautobot.jwtProviders" . }}
+*/}}
+{{- define "nv-config-manager.nautobot.jwtProviders" -}}
+{{- $providers := list }}
+{{- /* OIDC provider (browser users) -- creates individual Django users */ -}}
+{{- if .Values.oidc.enabled }}
+{{- $oidcAudiences := concat (list (.Values.oidc.clientId | default "account")) (.Values.oidc.audiences | default list) }}
+{{- $oidc := dict "name" "oidc" "issuer" .Values.oidc.issuerUrl "audiences" $oidcAudiences "user_provider" true }}
+{{- if .Values.oidc.jwksUri }}
+{{- $oidc = merge $oidc (dict "jwks_uri" .Values.oidc.jwksUri) }}
+{{- else if .Values.oidc.internalIssuerUrl }}
+{{- $oidc = merge $oidc (dict "jwks_uri" (printf "%s/protocol/openid-connect/certs" (trimSuffix "/" .Values.oidc.internalIssuerUrl))) }}
+{{- end }}
+{{- if .Values.oidc.groupsClaim }}
+{{- $oidc = merge $oidc (dict "claim_groups" .Values.oidc.groupsClaim) }}
+{{- end }}
+{{- $providers = append $providers $oidc }}
+{{- end }}
+{{- /* Service JWT providers */ -}}
+{{- range .Values.gateway.auth.jwt.providers }}
+{{- $p := dict "name" .name "issuer" .issuer "audiences" .audiences }}
+{{- if .jwksUri }}
+{{- $p = merge $p (dict "jwks_uri" .jwksUri) }}
+{{- end }}
+{{- if .claimMappings }}
+{{- if .claimMappings.email }}
+{{- $p = merge $p (dict "claim_email" .claimMappings.email) }}
+{{- end }}
+{{- if .claimMappings.user }}
+{{- $p = merge $p (dict "claim_user" .claimMappings.user) }}
+{{- end }}
+{{- if .claimMappings.groups }}
+{{- $p = merge $p (dict "claim_groups" .claimMappings.groups) }}
+{{- end }}
+{{- end }}
+{{- $providers = append $providers $p }}
+{{- end }}
+{{- $providers | toJson }}
+{{- end -}}
+
+{{/*
+=============================================================================
+Wait-For Init Container Helpers
+=============================================================================
+Init containers that wait for dependent services to be ready before
+allowing the main containers to start.
+=============================================================================
+*/}}
+
+{{/*
+Wait-for-Nautobot init container
+Waits for Nautobot service to be available via HTTP health check.
+Usage: {{ include "nv-config-manager.waitForNautobot" . | nindent 6 }}
+*/}}
+{{- define "nv-config-manager.waitForNautobot" -}}
+- name: wait-for-nautobot
+  image: "{{ .Values.global.images.busybox.repository }}:{{ .Values.global.images.busybox.tag }}"
+  imagePullPolicy: {{ .Values.global.imagePullPolicy | default "IfNotPresent" }}
+  command:
+    - sh
+    - -c
+    - |
+      {{- if .Values.externalServices.nautobot.local }}
+      NAUTOBOT_HOST="{{ include "nv-config-manager.componentName" (dict "root" . "component" "nautobot") }}"
+      NAUTOBOT_PORT="80"
+      NAUTOBOT_SCHEME="http"
+      {{- else }}
+      # Extract host and port from server URL
+      NAUTOBOT_URL="{{ tpl .Values.externalServices.nautobot.server . }}"
+      NAUTOBOT_SCHEME=$(echo "$NAUTOBOT_URL" | sed -n 's|^\(https\?\)://.*|\1|p')
+      NAUTOBOT_SCHEME=${NAUTOBOT_SCHEME:-http}
+      # Remove protocol prefix
+      NAUTOBOT_HOST=$(echo "$NAUTOBOT_URL" | sed -e 's|^https\?://||' -e 's|/.*||' -e 's|:.*||')
+      # Extract port if present, default to 443 for https, 80 for http
+      if echo "$NAUTOBOT_URL" | grep -q 'https://'; then
+        NAUTOBOT_PORT=$(echo "$NAUTOBOT_URL" | sed -n 's|.*:\([0-9]*\).*|\1|p')
+        NAUTOBOT_PORT=${NAUTOBOT_PORT:-443}
+      else
+        NAUTOBOT_PORT=$(echo "$NAUTOBOT_URL" | sed -n 's|.*:\([0-9]*\).*|\1|p')
+        NAUTOBOT_PORT=${NAUTOBOT_PORT:-80}
+      fi
+      {{- end }}
+      NAUTOBOT_HEALTH_URL="${NAUTOBOT_SCHEME}://${NAUTOBOT_HOST}:${NAUTOBOT_PORT}/health"
+      echo "Waiting for Nautobot at ${NAUTOBOT_HEALTH_URL}..."
+      until wget -q -O- "$NAUTOBOT_HEALTH_URL" >/dev/null 2>&1; do
+        echo "Nautobot not ready, waiting..."
+        sleep 5
+      done
+      echo "Nautobot is ready!"
+  securityContext:
+    allowPrivilegeEscalation: false
+    runAsNonRoot: true
+    runAsUser: 65534
+    capabilities:
+      drop:
+        - ALL
+  resources:
+    requests:
+      cpu: 10m
+      memory: 16Mi
+    limits:
+      cpu: 50m
+      memory: 32Mi
+{{- end -}}
+
+{{/*
+Wait-for-Redis init container
+Waits for Redis service to be available via TCP check.
+Usage: {{ include "nv-config-manager.waitForRedis" . | nindent 6 }}
+*/}}
+{{- define "nv-config-manager.waitForRedis" -}}
+- name: wait-for-redis
+  image: "{{ .Values.global.images.busybox.repository }}:{{ .Values.global.images.busybox.tag }}"
+  imagePullPolicy: {{ .Values.global.imagePullPolicy | default "IfNotPresent" }}
+  command:
+    - sh
+    - -c
+    - |
+      {{- if .Values.externalServices.redis.local }}
+      REDIS_HOST="{{ include "nv-config-manager.redisHost" . }}"
+      REDIS_PORT="{{ .Values.externalServices.redis.port }}"
+      {{- else }}
+      REDIS_HOST="{{ .Values.externalServices.redis.host }}"
+      REDIS_PORT="{{ .Values.externalServices.redis.port }}"
+      {{- end }}
+      echo "Waiting for Redis at ${REDIS_HOST}:${REDIS_PORT}..."
+      until nc -z "$REDIS_HOST" "$REDIS_PORT"; do
+        echo "Redis not ready, waiting..."
+        sleep 2
+      done
+      echo "Redis is ready!"
+  securityContext:
+    allowPrivilegeEscalation: false
+    runAsNonRoot: true
+    runAsUser: 65534
+    capabilities:
+      drop:
+        - ALL
+  resources:
+    requests:
+      cpu: 10m
+      memory: 16Mi
+    limits:
+      cpu: 50m
+      memory: 32Mi
+{{- end -}}
+
+{{/*
+Wait-for-NATS init container
+Waits for NATS service to be available via health check endpoint.
+Usage: {{ include "nv-config-manager.waitForNats" . | nindent 6 }}
+*/}}
+{{- define "nv-config-manager.waitForNats" -}}
+{{- $natsName := include "nv-config-manager.componentName" (dict "root" . "component" "nats") -}}
+- name: wait-for-nats
+  image: "{{ .Values.global.images.busybox.repository }}:{{ .Values.global.images.busybox.tag }}"
+  imagePullPolicy: {{ .Values.global.imagePullPolicy | default "IfNotPresent" }}
+  command:
+    - sh
+    - -c
+    - |
+      {{- if or .Values.externalServices.nats.local .Values.nautobot.enabled }}
+      NATS_HOST="{{ $natsName }}"
+      NATS_MONITOR_PORT="8222"
+      {{- else }}
+      # Extract host and port from NATS server URL (supports nats://, wss://, ws://)
+      NATS_URL="{{ .Values.externalServices.nats.server }}"
+      # Detect protocol for default port and health check scheme
+      if echo "$NATS_URL" | grep -q '^wss://'; then
+        DEFAULT_PORT="443"
+        HEALTH_SCHEME="https"
+      elif echo "$NATS_URL" | grep -q '^ws://'; then
+        DEFAULT_PORT="80"
+        HEALTH_SCHEME="http"
+      else
+        DEFAULT_PORT="8222"
+        HEALTH_SCHEME="http"
+      fi
+      # Remove protocol prefix and extract host (strip path and port)
+      NATS_HOST=$(echo "$NATS_URL" | sed -e 's|^[a-z]*://||' -e 's|/.*||' -e 's|:.*||')
+      # Extract port if specified in URL, otherwise use default
+      NATS_PORT=$(echo "$NATS_URL" | sed -e 's|^[a-z]*://||' -e 's|/.*||' | grep -o ':[0-9]*' | tr -d ':')
+      NATS_MONITOR_PORT="${NATS_PORT:-$DEFAULT_PORT}"
+      {{- end }}
+      echo "Waiting for NATS at ${NATS_HOST}:${NATS_MONITOR_PORT}..."
+      until wget -q -O- "${HEALTH_SCHEME:-http}://${NATS_HOST}:${NATS_MONITOR_PORT}/healthz" 2>/dev/null | grep -q "ok"; do
+        echo "NATS not ready, waiting..."
+        sleep 2
+      done
+      echo "NATS is ready!"
+  securityContext:
+    allowPrivilegeEscalation: false
+    runAsNonRoot: true
+    runAsUser: 65534
+    capabilities:
+      drop:
+        - ALL
+  resources:
+    requests:
+      cpu: 10m
+      memory: 16Mi
+    limits:
+      cpu: 50m
+      memory: 32Mi
+{{- end -}}
+
+{{/*
+Wait-for-Temporal-namespace init container
+Polls the Temporal frontend until the default namespace is registered.
+This must run after the nv-config-manager-worker "temporal-setup" init container has
+created the namespace; use it in deployments that depend on the namespace
+existing (e.g. the scheduler).
+Usage: {{ include "nv-config-manager.waitForTemporalNamespace" . | nindent 6 }}
+*/}}
+{{- define "nv-config-manager.waitForTemporalNamespace" -}}
+{{- $temporalName := include "nv-config-manager.componentName" (dict "root" . "component" "temporal") -}}
+- name: wait-for-temporal-namespace
+  image: "{{ .Values.global.images.temporalAdminTools.repository }}:{{ .Values.global.images.temporalAdminTools.tag }}"
+  imagePullPolicy: {{ .Values.global.imagePullPolicy | default "IfNotPresent" }}
+  command:
+    - /bin/bash
+    - -c
+    - |
+      TEMPORAL_ADDR="{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc:{{ .Values.temporal.services.frontend.port }}"
+
+      echo "Waiting for Temporal default namespace..."
+      until tctl --address "$TEMPORAL_ADDR" --namespace default namespace describe >/dev/null 2>&1; do
+        echo "Temporal default namespace not ready yet, retrying in 5s..."
+        sleep 5
+      done
+      echo "Temporal default namespace is available."
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 50m
+      memory: 64Mi
+{{- end -}}
+
+{{/*
+=============================================================================
+Vault/ESO Secret Path Helpers
+=============================================================================
+*/}}
+
+{{/*
+Get the Vault secret path from secrets.vault.paths configuration
+Usage: {{ include "nv-config-manager.vault.secretPath" (dict "root" . "secret" "nautobot") }}
+
+Each secret must have an explicit path configured in values.
+*/}}
+{{- define "nv-config-manager.vault.secretPath" -}}
+{{- if hasKey .root.Values.secrets.vault.paths .secret -}}
+{{- $secretConfig := index .root.Values.secrets.vault.paths .secret -}}
+{{- required (printf "secrets.vault.paths.%s.path is required" .secret) $secretConfig.path -}}
+{{- else -}}
+{{- fail (printf "Secret '%s' not found in secrets.vault.paths" .secret) -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Get a key name from secrets.vault.paths configuration
+Usage: {{ include "nv-config-manager.vault.keyName" (dict "root" . "secret" "nautobot" "key" "token") }}
+*/}}
+{{- define "nv-config-manager.vault.keyName" -}}
+{{- $defaultKey := .key -}}
+{{- if hasKey .root.Values.secrets.vault.paths .secret -}}
+{{- $secretConfig := index .root.Values.secrets.vault.paths .secret -}}
+{{- if and (hasKey $secretConfig "keys") (hasKey $secretConfig.keys .key) -}}
+{{- index $secretConfig.keys .key -}}
+{{- else -}}
+{{- $defaultKey -}}
+{{- end -}}
+{{- else -}}
+{{- $defaultKey -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+=============================================================================
+Template Plugins Init Container Helper
+=============================================================================
+Installs template plugins from a PVC or plugin source images into a target
+directory for discovery by the render service via Python entry points.
+=============================================================================
+*/}}
+
+{{/*
+Copy template plugin source images into the shared staging directory.
+Usage: {{ include "nv-config-manager.copyTemplatePluginImages" . | nindent 6 }}
+*/}}
+{{- define "nv-config-manager.copyTemplatePluginImages" -}}
+{{- if and .Values.renderService.templatePlugins.enabled .Values.renderService.templatePlugins.images }}
+{{- $mountPath := .Values.renderService.templatePlugins.mountPath -}}
+{{- range .Values.renderService.templatePlugins.images }}
+{{- $name := .name | lower | replace "_" "-" | trunc 45 | trimSuffix "-" }}
+- name: copy-template-plugin-{{ $name }}
+  image: {{ required "renderService.templatePlugins.images[].image is required" .image }}
+  imagePullPolicy: {{ .pullPolicy | default "IfNotPresent" }}
+  command: ["/bin/sh", "-c"]
+  args:
+  - |
+    set -e
+    target="{{ $mountPath }}/{{ $name }}"
+    mkdir -p "$target"
+    if [ -d /plugin-wheels ]; then
+      mkdir -p "$target/wheels"
+      cp -R /plugin-wheels/. "$target/wheels/"
+    fi
+    if [ -d /plugin-source ]; then
+      mkdir -p "$target/source"
+      cp -R /plugin-source/. "$target/source/"
+    fi
+  volumeMounts:
+  - name: template-plugins-source
+    mountPath: {{ $mountPath }}
+{{- end }}
+{{- end }}
+{{- end -}}
+
+{{/*
+Install template plugins init container
+Uses a Python image with pip to install plugin wheels or source.
+Usage: {{ include "nv-config-manager.installTemplatePlugins" . | nindent 6 }}
+*/}}
+{{- define "nv-config-manager.installTemplatePlugins" -}}
+{{- if .Values.renderService.templatePlugins.enabled }}
+- name: install-template-plugins
+  image: {{ .Values.renderService.templatePlugins.installerImage | default "python:3.13-alpine" }}
+  imagePullPolicy: IfNotPresent
+  command: ["/bin/sh", "-c"]
+  args:
+  - |
+    set -e
+    echo "Installing build dependencies..."
+    pip install --quiet hatchling
+    echo "Installing template plugins from {{ .Values.renderService.templatePlugins.mountPath }}..."
+    for plugin_dir in {{ .Values.renderService.templatePlugins.mountPath }}/*; do
+      if [ ! -d "$plugin_dir" ]; then
+        continue
+      fi
+      if ls "$plugin_dir"/wheels/*.whl >/dev/null 2>&1; then
+        echo "Installing plugin wheel(s): $plugin_dir/wheels"
+        pip install --target=/opt/plugins --no-deps "$plugin_dir"/wheels/*.whl
+      elif [ -f "$plugin_dir/source/pyproject.toml" ]; then
+        echo "Installing plugin source: $plugin_dir/source"
+        pip install --target=/opt/plugins --no-deps "$plugin_dir/source"
+      elif [ -f "$plugin_dir/pyproject.toml" ]; then
+        echo "Installing plugin source: $plugin_dir"
+        pip install --target=/opt/plugins --no-deps "$plugin_dir"
+      fi
+    done
+    echo "Template plugins installation complete"
+    ls -la /opt/plugins/ 2>/dev/null || echo "No plugins installed"
+  volumeMounts:
+  - name: template-plugins-source
+    mountPath: {{ .Values.renderService.templatePlugins.mountPath }}
+    readOnly: true
+  - name: template-plugins-installed
+    mountPath: /opt/plugins
+{{- end }}
+{{- end -}}
+
+{{/*
+Template plugin source and install volumes.
+Usage: {{ include "nv-config-manager.templatePluginVolumes" . | nindent 6 }}
+*/}}
+{{- define "nv-config-manager.templatePluginVolumes" -}}
+{{- if .Values.renderService.templatePlugins.enabled }}
+- name: template-plugins-source
+  {{- if .Values.renderService.templatePlugins.images }}
+  emptyDir: {}
+  {{- else }}
+  persistentVolumeClaim:
+    claimName: {{ .Values.renderService.templatePlugins.pvcName }}
+  {{- end }}
+- name: template-plugins-installed
+  emptyDir: {}
+{{- end }}
+{{- end -}}
+
+{{/*
+Create a default fully qualified app name.
+We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
+If release name contains chart name it will be used as a full name.
+*/}}
+{{- define "nv-config-manager.fullname" -}}
+{{- if .Values.fullnameOverride }}
+{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- $name := default .Chart.Name .Values.nameOverride }}
+{{- if contains $name .Release.Name }}
+{{- .Release.Name | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{/*
+Generate a component resource name using the fullname pattern.
+Usage: {{ include "nv-config-manager.componentName" (dict "root" . "component" "ui") }}
+
+Result depends on configuration:
+- Default: <release>-<chart>-<component> (e.g., "my-release-nv-config-manager-ui")
+- With fullnameOverride: <override>-<component> (e.g., "custom-ui")
+- With nameOverride: <release>-<nameOverride>-<component>
+
+*/}}
+{{- define "nv-config-manager.componentName" -}}
+{{- $fullname := include "nv-config-manager.fullname" .root -}}
+{{- printf "%s-%s" $fullname .component | trunc 63 | trimSuffix "-" -}}
+{{- end }}
+
+{{/*
+Common secret names
+*/}}
+{{- define "nv-config-manager.iniSecretName" -}}
+{{- include "nv-config-manager.componentName" (dict "root" . "component" "ini") -}}
+{{- end }}
+
+{{- define "nv-config-manager.networkSecretsName" -}}
+{{- include "nv-config-manager.componentName" (dict "root" . "component" "network-secrets") -}}
+{{- end }}
+
+{{- define "nv-config-manager.natsUser" -}}
+{{- .Values.externalServices.nats.user | default "nv-config-manager" -}}
+{{- end }}
+
+{{- define "nv-config-manager.natsSecretName" -}}
+{{- .Values.externalServices.nats.secretName | default (printf "nats-%s" (include "nv-config-manager.natsUser" .)) -}}
+{{- end }}
+
+{{- define "nv-config-manager.natsExternalSecretName" -}}
+{{- .Values.externalServices.nats.externalSecretName | default (printf "%s-eso" (include "nv-config-manager.natsSecretName" .)) -}}
+{{- end }}
+
+{{- define "nv-config-manager.vaultSecretStoreName" -}}
+{{- .Values.secrets.vault.secretStoreName | default "vault-secretstore-nv-config-manager" -}}
+{{- end }}
+
+{{- define "nv-config-manager.vaultNetworkSecretStoreName" -}}
+{{- .Values.secrets.vault.networkSecretStoreName | default "vault-secretstore-nv-config-manager-network" -}}
+{{- end }}
+
+{{- define "nv-config-manager.temporalWorkerName" -}}
+{{- if .Values.temporal.configManagerWorker.nameOverride -}}
+{{- .Values.temporal.configManagerWorker.nameOverride | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- $temporalName := include "nv-config-manager.componentName" (dict "root" . "component" "temporal") -}}
+{{- $suffix := .Values.temporal.configManagerWorker.nameSuffix | default "nv-config-manager-worker" -}}
+{{- printf "%s-%s" $temporalName $suffix | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Self-signed CA certificate environment variables for Python/Node.js
+Usage: {{ include "nv-config-manager.selfSignedCA.env" . }}
+*/}}
+{{- define "nv-config-manager.selfSignedCA.env" -}}
+{{- if .Values.gateway.certificates.selfSigned }}
+# Trust self-signed CA certificate
+- name: REQUESTS_CA_BUNDLE
+  value: /etc/ssl/certs/nv-config-manager-ca.crt
+- name: SSL_CERT_FILE
+  value: /etc/ssl/certs/nv-config-manager-ca.crt
+- name: CURL_CA_BUNDLE
+  value: /etc/ssl/certs/nv-config-manager-ca.crt
+- name: NODE_EXTRA_CA_CERTS
+  value: /etc/ssl/certs/nv-config-manager-ca.crt
+{{- end }}
+{{- end -}}
+
+{{/*
+Self-signed CA certificate volume mount
+Usage: {{ include "nv-config-manager.selfSignedCA.volumeMount" . | nindent 8 }}
+*/}}
+{{- define "nv-config-manager.selfSignedCA.volumeMount" -}}
+{{- if .Values.gateway.certificates.selfSigned }}
+- name: ca-cert
+  mountPath: /etc/ssl/certs/nv-config-manager-ca.crt
+  subPath: ca.crt
+  readOnly: true
+{{- end }}
+{{- end -}}
+
+{{/*
+Self-signed CA certificate volume definition
+Usage: {{ include "nv-config-manager.selfSignedCA.volume" . | nindent 6 }}
+*/}}
+{{- define "nv-config-manager.selfSignedCA.volume" -}}
+{{- if .Values.gateway.certificates.selfSigned }}
+{{- $tlsCertName := include "nv-config-manager.componentName" (dict "root" . "component" "gateway-tls") }}
+- name: ca-cert
+  secret:
+    secretName: {{ $tlsCertName }}
+    items:
+    - key: ca.crt
+      path: ca.crt
+{{- end }}
+{{- end -}}
+
+{{/*
+=============================================================================
+Pod Scheduling Helpers (nodeSelector, affinity, topologySpreadConstraints)
+=============================================================================
+These helpers support multi-node deployments by allowing workloads to be
+distributed across nodes based on labels and constraints.
+
+Node labels expected (when using --size large):
+  - nv-config-manager.nvidia.com/node-type=control-plane (Temporal, Gateway, etc.)
+  - nv-config-manager.nvidia.com/node-type=worker (workers, consumers)
+  - nv-config-manager.nvidia.com/node-type=database (CNPG clusters)
+=============================================================================
+*/}}
+
+{{/*
+Node selector helper
+Renders nodeSelector if defined in the service configuration.
+To disable nodeSelector, set it to `null` in your values override:
+  networkZtp:
+    nodeSelector: null
+Usage: {{ include "nv-config-manager.nodeSelector" .Values.renderService.api | nindent 6 }}
+*/}}
+{{- define "nv-config-manager.nodeSelector" -}}
+{{- if .nodeSelector }}
+nodeSelector:
+  {{- toYaml .nodeSelector | nindent 2 }}
+{{- end }}
+{{- end -}}
+
+{{/*
+Affinity helper
+Renders affinity (nodeAffinity, podAffinity, podAntiAffinity) if defined.
+Usage: {{ include "nv-config-manager.affinity" .Values.renderService.api | nindent 6 }}
+*/}}
+{{- define "nv-config-manager.affinity" -}}
+{{- if .affinity }}
+affinity:
+  {{- toYaml .affinity | nindent 2 }}
+{{- end }}
+{{- end -}}
+
+{{/*
+Topology spread constraints helper
+Renders topologySpreadConstraints if defined for even distribution across nodes.
+Usage: {{ include "nv-config-manager.topologySpreadConstraints" .Values.renderService.api | nindent 6 }}
+*/}}
+{{- define "nv-config-manager.topologySpreadConstraints" -}}
+{{- if .topologySpreadConstraints }}
+topologySpreadConstraints:
+  {{- toYaml .topologySpreadConstraints | nindent 2 }}
+{{- end }}
+{{- end -}}
+
+{{/*
+Combined scheduling helper (nodeSelector + affinity + topologySpreadConstraints)
+Renders all scheduling constraints in one call.
+Usage: {{ include "nv-config-manager.scheduling" .Values.renderService.api | nindent 6 }}
+*/}}
+{{- define "nv-config-manager.scheduling" -}}
+{{- include "nv-config-manager.nodeSelector" . }}
+{{- include "nv-config-manager.affinity" . }}
+{{- include "nv-config-manager.topologySpreadConstraints" . }}
+{{- end -}}
+
+{{/*
+Custom labels env var -- emits a NV_CONFIG_MANAGER_CUSTOM_LABELS env entry (JSON string)
+when global.customLabels is non-empty.
+Usage: {{ include "nv-config-manager.customLabelsEnv" . | nindent 8 }}
+*/}}
+{{- define "nv-config-manager.customLabelsEnv" -}}
+{{- if .Values.global.customLabels }}
+- name: NV_CONFIG_MANAGER_CUSTOM_LABELS
+  value: {{ .Values.global.customLabels | toJson | quote }}
+{{- end }}
+{{- end -}}
+
+{{/*
+Custom pod labels -- emits global.customLabels as pod labels for
+PodMonitor podTargetLabels to promote onto Prometheus metrics.
+Usage: {{ include "nv-config-manager.customPodLabels" . | nindent 8 }}
+*/}}
+{{- define "nv-config-manager.customPodLabels" -}}
+{{- with .Values.global.customLabels }}
+{{- toYaml . }}
+{{- end }}
+{{- end -}}
+
+{{/*
+PodMonitor podTargetLabels -- lists global.customLabels keys so Prometheus
+copies them from the pod onto every scraped metric.
+Usage: {{ include "nv-config-manager.podTargetLabels" . | nindent 2 }}
+*/}}
+{{- define "nv-config-manager.podTargetLabels" -}}
+{{- if .Values.global.customLabels }}
+podTargetLabels:
+  {{- range $key, $val := .Values.global.customLabels }}
+  - {{ $key }}
+  {{- end }}
+{{- end }}
+{{- end -}}
+
+{{/*
+PodMonitor podMetricsEndpoints metricRelabelings -- copies global.customLabels onto scraped samples
+using sourceLabels job (same pattern as nv-config-manager-network-dhcp Helm chart).
+Outputs list items only (no metricRelabelings: key).
+Usage under each endpoint:
+      {{- if .Values.global.customLabels }}
+      metricRelabelings:
+        {{- include "nv-config-manager.podMonitorMetricRelabelings" . | nindent 8 }}
+      {{- end }}
+*/}}
+{{- define "nv-config-manager.podMonitorMetricRelabelings" }}
+{{- range $k, $v := (.Values.global.customLabels | default dict) -}}
+- action: replace
+  sourceLabels: [job]
+  regex: .*
+  targetLabel: {{ $k }}
+  replacement: {{ $v | toString | quote }}
+{{ end }}
+{{- end }}
+
+{{/*
+=============================================================================
+Security Context Helpers
+=============================================================================
+Standard pod and container security contexts for NVIDIA Config Manager workloads.
+Apply to all Deployments/Jobs that don't have specific overrides.
+=============================================================================
+*/}}
+
+{{/*
+Pod-level securityContext — applies seccomp profile.
+Usage: {{- include "nv-config-manager.podSecurityContext" . | nindent 6 }}
+*/}}
+{{- define "nv-config-manager.podSecurityContext" -}}
+securityContext:
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+{{- end -}}
+
+{{/*
+Container-level securityContext for distroless (nonroot) containers.
+Drops all capabilities, prevents privilege escalation.
+Usage: {{- include "nv-config-manager.containerSecurityContext" . | nindent 8 }}
+*/}}
+{{- define "nv-config-manager.containerSecurityContext" -}}
+securityContext:
+  allowPrivilegeEscalation: false
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  capabilities:
+    drop:
+      - ALL
+{{- end -}}
+
+{{/*
+Validate secrets configuration.
+Call once at the top of any template that branches on secrets.method.
+Fails with a clear message when method is missing or unrecognised,
+which is the symptom of a duplicate top-level `secrets:` key in the
+generated values file.
+*/}}
+{{/*
+Resolve the external-dns hostname for a service's ingress configuration.
+Checks nlb.dns_name, cilium.hostname, and metallb.hostname in order.
+Usage: {{ include "nv-config-manager.externalDnsHostname" .Values.networkZtp.ingress }}
+*/}}
+{{- define "nv-config-manager.externalDnsHostname" -}}
+{{- $hostname := "" -}}
+{{- if and .nlb .nlb.dns_name -}}
+  {{- $hostname = .nlb.dns_name -}}
+{{- else if and .cilium .cilium.hostname -}}
+  {{- $hostname = .cilium.hostname -}}
+{{- else if and .metallb .metallb.hostname -}}
+  {{- $hostname = .metallb.hostname -}}
+{{- end -}}
+{{- if $hostname }}
+    external-dns.alpha.kubernetes.io/hostname: {{ $hostname }}
+{{- end -}}
+{{- end -}}
+
+{{- define "nv-config-manager.validateSecrets" -}}
+{{- if not .Values.secrets.method -}}
+  {{- fail "secrets.method is not set. This usually means values-generated.yaml contains a duplicate top-level 'secrets:' key — check installer-generated values output." -}}
+{{- end -}}
+{{- if not (or (eq .Values.secrets.method "eso") (eq .Values.secrets.method "kubernetes") (eq .Values.secrets.method "vault-agent")) -}}
+  {{- fail (printf "secrets.method must be 'eso', 'kubernetes', or 'vault-agent', got '%s'" .Values.secrets.method) -}}
+{{- end -}}
+{{- if and (eq .Values.secrets.method "vault-agent") .Values.secrets.vault.tokenAuth.enabled -}}
+  {{- fail "secrets.method=vault-agent requires Kubernetes auth to Vault (set secrets.vault.tokenAuth.enabled=false)" -}}
+{{- end -}}
+{{- if and (eq .Values.secrets.method "vault-agent") .Values.customConfig.enabled .Values.customConfig.vaultSecrets -}}
+  {{- fail "customConfig.vaultSecrets is not supported when secrets.method=vault-agent (remove vaultSecrets or use secrets.method=eso)" -}}
+{{- end -}}
+{{- if and (eq .Values.secrets.method "vault-agent") (eq (.Values.secrets.vaultAgent.autoAuthMethod | default "kubernetes") "jwt") (not .Values.secrets.vaultAgent.serviceAccountTokenAudience) -}}
+  {{- fail "secrets.vaultAgent.serviceAccountTokenAudience is required when secrets.vaultAgent.autoAuthMethod=jwt (projected SA token / ESO kubernetesServiceAccountToken audiences)" -}}
+{{- end -}}
+{{- end -}}

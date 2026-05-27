@@ -1,0 +1,109 @@
+---
+title: Hardware Validation
+sidebar-title: Hardware Validation
+position: 10
+---
+
+The Hardware Validation workflow performs health checks on Cumulus Linux network devices in a site, collecting platform, environmental, and inventory data from each device in parallel and consolidating the results into a single Excel report. It is the standard tool for spotting hardware issues, such as failed fans, bad PSUs, off-spec voltages, non-green status LEDs, and unexpected inventory, across a fleet of switches without logging into each device by hand.
+
+The workflow runs end-to-end against the devices Nautobot already knows about; no per-device input is required.
+
+## Prerequisites
+
+Before running Hardware Validation, confirm the following are in place:
+
+- **Devices exist in Nautobot** with platform set to a Cumulus Linux value, a primary IPv4, and any required config contexts. The workflow filters its target list down to Cumulus devices, so non-Cumulus platforms are silently skipped.
+- **Devices are reachable** from Config Manager over the management network, and credentials for the site are present in the secrets store. Each collector uses NVUE / NV CLI over the device's management API to read platform and environment data.
+- **Devices are provisioned.** The collectors expect to talk to a configured device. Devices still in ZTP, in maintenance with the management interface down, or otherwise unreachable will return errors rather than results and will appear in the report's error section.
+- **Filter criteria are known.** You need a site, a tenant, and the set of roles, statuses, and (optionally) device types to include. These are the standard Nautobot filter fields used across Config Manager workflows.
+
+## Running the workflow
+
+1. Navigate to the Config Manager URL for your environment.
+1. Click the **+** in the top right and select **ValidateHardwareWorkflow**.
+1. Fill in the form using the field reference below and submit.
+
+| Field | Description | Required |
+| :---- | :---------- | :------- |
+| **Site** | The site to validate. | Yes |
+| **Roles** | Device roles to include (multi-select). | Yes |
+| **Device Status** | Device statuses to include (multi-select). Typically `Provisioned`. | Yes |
+| **Tenant** | Nautobot tenant for the run. | Yes |
+
+After submission, a status page appears showing each stage as it runs. The six collector stages run in parallel against every device in scope, so total runtime is roughly the slowest device's collection time plus the report-generation stage, typically a few minutes for a normal-sized site.
+
+## What gets checked
+
+The six collector stages each query a different NVUE / NV CLI endpoint on the device. State values other than `ok` (or, for LEDs, colors other than `green`) are flagged in the per-stage display and surface in the consolidated report.
+
+- **Device info** — Pulled from Nautobot. Provides device name, rack, rack position, role, and platform; used to label every row in the report.
+- **Platform** — `nv show platform`. Model, serial number, ASIC, system memory, and other top-level platform attributes.
+- **Fan** — `nv show platform environment fan`. Per-fan state, speed, and min/max thresholds. Anything not reporting `ok` is flagged.
+- **LED** — `nv show platform environment led`. Per-LED color. Anything not `green` is flagged (typically amber/red indicating a hardware fault).
+- **PSU** — `nv show platform environment psu`. Per-PSU state and electrical readings. Non-`ok` states (failed, missing, unpowered) are flagged.
+- **Voltage** — `nv show platform environment voltage`. Per-rail voltage measurements with min/max thresholds. Out-of-range rails are flagged with actual/min/max details.
+- **Inventory** — `nv show platform inventory`. Optics, modules, and other field-replaceable units present on the device.
+
+## Execution stages
+
+The workflow defines nine stages. The first two run sequentially to build the device set; the six collectors then run in parallel; the report stage waits on all six. None of the stages require manual approval.
+
+1. **`get_devices_to_validate` — Query devices by filter criteria.** Calls Nautobot with the supplied site, tenant, roles, statuses, and device-type IDs, then filters the result to devices whose platform contains `cumulus`. The display reports how many Cumulus Linux devices were found.
+
+1. **`get_device_info` — Index device records by ID.** Builds the in-memory map of device IDs to Nautobot device data that every collector stage iterates over.
+
+1. **`get_platform` — Collect platform info.** Runs the platform query against every device in parallel and records device name, model, serial, and platform attributes.
+
+1. **`get_environment_fan` — Collect fan state.** Per-fan state, speed, and thresholds; flags non-`ok` fans.
+
+1. **`get_environment_led` — Collect LED state.** Per-LED color; flags non-`green` LEDs.
+
+1. **`get_environment_psu` — Collect PSU state.** Per-PSU state and electrical readings; flags non-`ok` PSUs.
+
+1. **`get_environment_voltage` — Collect voltage readings.** Per-rail voltage with min/max; flags out-of-range readings.
+
+1. **`get_inventory` — Collect inventory.** Optics, modules, and other replaceable parts present on each device.
+
+1. **`generate_consolidated_report` — Build the Excel report.** Combines all collector outputs into a single workbook with one worksheet per category and returns it as a downloadable attachment on the workflow status page.
+
+Each collector activity has a 30-second start-to-close timeout and retries up to 5 times on transient errors. A device that fails all retries on a given collector appears in that stage's error section but does not block the rest of the workflow.
+
+## Interpreting the consolidated report
+
+The final stage attaches an Excel workbook to the workflow status page. The workbook has one worksheet per collector category (Platform, Fan, LED, PSU, Voltage, Inventory). Every worksheet uses the same first three columns — **Device name**, **Rack name**, **Rack position** — followed by the category-specific fields, and every column has AutoFilters enabled so you can sort or filter without opening the file in a separate tool.
+
+**For a quick pass over a fresh run:**
+
+- **Filter the LED sheet on Color** and look for anything that is not `green`.
+- **Filter Fan, PSU, and Voltage on State** and look for anything that is not `ok`. For voltage, the Actual/Min/Max columns show by how much a rail is out of range.
+- **Compare the Inventory sheet** against the bill of materials for the site — missing optics or modules show up here.
+- **Cross-reference flagged rows with the per-stage display** on the workflow status page. The stage display has already grouped flags by device and includes the rack name and rack position so a DC Ops walk-down is straightforward.
+
+The display for each collector stage also surfaces three error buckets up front: **Unsupported endpoints** (the device does not implement that NVUE / NV CLI endpoint), **Connectivity issues** (the device was unreachable), and **Other errors** (everything else). Devices in any of those buckets are excluded from the worksheet for that category — re-run the workflow against just those devices once the underlying issue is fixed.
+
+## Common issues
+
+**No devices found.**
+
+The filter returned no Cumulus Linux devices. Confirm the site, tenant, roles, and statuses match what is in Nautobot, and that the devices have their platform field populated to a Cumulus value. Devices on other NOS platforms are intentionally skipped.
+
+**A collector reports `Unsupported endpoints` for some devices.**
+
+Older Cumulus releases (or certain platforms) do not implement every NVUE endpoint the collectors call. Those devices succeed on the categories they support and surface here on the ones they do not. Upgrade the device to a supported Cumulus Linux release if the missing data is needed.
+
+**A collector reports `Connectivity issues` for some devices.**
+
+The device was not reachable from Config Manager over the management network during the run. Re-run the workflow once the device is back; if it persists, troubleshoot reachability and credentials. See the [Monitoring DHCP and ZTP](../new-site-deployment/index.mdx#monitoring-dhcp-and-ztp) section of the New Site Bringup guide for the canonical troubleshooting path.
+
+**Flagged hardware that turns out to be a false positive.**
+
+Re-run the workflow first; transient sensor reads occasionally trip the threshold check. If a rail or fan continues to flag, log into the device and re-run the underlying `nv show platform environment ...` command interactively to confirm the reading before opening a vendor RMA.
+
+**The Excel attachment is missing from the report stage.**
+
+The report stage failed after the collectors succeeded — collector data is still visible on each stage's display. Re-run only the report stage, or re-run the full workflow; the collectors are read-only and safe to repeat.
+
+## Related guides
+
+- [New Site Bringup](../new-site-deployment/index.mdx) — full bringup procedure; Hardware Validation is the final hardware error-check step after cable validation.
+- [Cable Validation](../cable-validation/index.mdx) — sibling validation workflow that checks cabling against the Nautobot intended topology.

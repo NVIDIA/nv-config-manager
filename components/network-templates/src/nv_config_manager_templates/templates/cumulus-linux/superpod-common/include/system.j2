@@ -1,0 +1,65 @@
+    system:
+      aaa:
+        class:
+          nvapply:
+            action: allow
+            command-path:
+              /:
+                permission: all
+          nvshow:
+            action: allow
+            command-path:
+              /:
+                permission: ro
+          sudo:
+            action: allow
+            command-path:
+              /:
+                permission: all
+        role:
+          nvue-admin:
+            class:
+              nvapply: {}
+          nvue-monitor:
+            class:
+              nvshow: {}
+          system-admin:
+            class:
+              nvapply: {}
+              sudo: {}
+        user:
+{% for user in device_data|users %}
+          {{ user.username }}:
+{% if user.username == "cumulus" %}
+            full-name: cumulus,,,
+{% endif %}
+            hashed-password: {{ (user.password_key|load_secret(site=device_data|site_name))|encrypt("sha512", site=device_data|site_name) }}
+{% if user.role %}            role: {{ user.role }}
+{% endif %}{% endfor %}
+      api:
+        state: enabled
+      config:
+        auto-save:
+          state: enabled
+      control-plane:
+        acl:
+          acl-default-dos:
+            inbound: {}
+{% block global_fabric_mac %}
+      global:
+        fabric-mac: 00:00:5E:00:01:69
+{% endblock global_fabric_mac %}
+      hostname: {{ device_data|hostname }}
+      reboot:
+        mode: cold
+      ssh-server:
+        state: enabled
+      wjh:
+        channel:
+          forwarding:
+            trigger:
+              l2: {}
+              l3: {}
+              tunnel: {}
+        enable: on
+

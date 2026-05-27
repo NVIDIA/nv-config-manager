@@ -1,0 +1,89 @@
+---
+title: Config Manager ZTP APIs
+sidebar-title: ZTP APIs
+position: 10
+---
+
+## Overview
+
+The NVIDIA Config Manager ZTP Server provides REST API endpoints for network device Zero Touch Provisioning (ZTP). The API serves boot scripts, rendered configurations, firmware images, and manages the provisioning workflow.
+
+API endpoints are organized into three main endpoint groups, detailed below. Refer to the [API Reference](api:ztp-api) for complete endpoint reference.
+
+### Device Endpoints
+
+Device-specific endpoints for boot scripts, configurations, firmware, and provisioning status:
+
+- `GET /v1/device/{device_uuid}/boot-script` - Retrieve boot script
+- `GET /v1/device/{device_uuid}/config/{configlet}` - Retrieve configuration file
+- `GET /v1/device/{device_uuid}/firmware` - Download firmware image
+- `GET /v1/device/{device_uuid}/firmware/checksum` - Get firmware checksum
+- `POST /v1/device/{device_uuid}/provisioned` - Mark device as provisioned
+- `POST /v1/device/{device_uuid}/validate_serial` - Validate device serial number
+
+### Firmware Endpoints
+
+Platform and version-based firmware access:
+
+- `GET /v1/firmware/{platform}/{version}` - Download firmware by platform/version
+- `GET /v1/firmware/{platform}/{version}/checksum` - Get firmware checksum
+
+### File Endpoints
+
+Generic file storage and retrieval:
+
+- `GET /v1/files/{platform}/{version}/{filename}` - Download file
+- `GET /v1/files/{platform}/{version}/{filename}/checksum` - Get file checksum
+- `GET /v1/files/{platform}/{version}/` - List files for platform/version
+- `GET /v1/files/` - List all files
+- `POST /v1/files/{platform}/{version}/{filename}` - Upload file
+
+## Base URL
+
+Contact your system administrator for the ZTP server URL for your environment.
+
+## Authentication & Authorization
+
+### Device Endpoints
+
+The device-specific endpoints listed above accept either a device-originated request or an authenticated user request:
+
+- Device-originated requests must come from an IP address associated with the device in Nautobot
+- User-originated requests must come through the Envoy gateway as an authenticated user when SSO is enabled for the deployment
+
+### Admin Endpoints
+
+Admin endpoints (file uploads, sync triggers) require an authenticated user request through the Envoy gateway when SSO is enabled for the deployment.
+
+## Error Responses
+
+All endpoints may return standard HTTP error codes:
+
+- `400 Bad Request`: Invalid request parameters or body
+- `403 Forbidden`: Authorization failure
+- `404 Not Found`: Resource not found
+- `500 Internal Server Error`: Server error
+
+Error responses include a JSON body with error details:
+
+```json
+{
+  "detail": "Error message describing what went wrong"
+}
+```
+
+## Streaming Responses
+
+Endpoints that return large files (firmware images, files) use streaming responses:
+
+- Files are streamed efficiently for optimal performance
+- Proper cleanup occurs even if the client disconnects
+
+## OpenAPI Documentation
+
+Interactive API documentation is available at:
+
+- Swagger UI: `https://ztp.example.com/docs`
+- ReDoc: `https://ztp.example.com/redoc`
+
+The OpenAPI schema is automatically generated from the FastAPI application.

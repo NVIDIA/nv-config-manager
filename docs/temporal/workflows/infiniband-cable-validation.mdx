@@ -1,0 +1,30 @@
+---
+title: InfiniBand Cable Validation
+sidebar-title: InfiniBand Cable Validation
+position: 10
+---
+
+Validates InfiniBand network cabling for high-performance computing and GPU interconnect infrastructure. This workflow checks the _connectivity_ of hosts against intended cabling defined in Nautobot. The workflow **does not verify traffic flows**, but does verify that each device has the expected neighbors.
+
+<Warning title="Experimental">
+This workflow is experimental and has not completed QA. Use it only in test or pilot environments.
+</Warning>
+
+## User Interface
+
+### Form Inputs
+
+| Field | Description | Selection Type | Required |
+| :---- | :---------- | :------------- | :------- |
+| **Site** | Choose the site containing InfiniBand infrastructure | Single dropdown from available sites | Yes |
+| **Device** | Primary device for validation scope | Single dropdown from InfiniBand-capable devices | Yes |
+| **Device IDs** | Additional devices to include in validation | Multi-select from InfiniBand devices in site | Yes |
+
+## Workflow Execution
+
+### Execution Stages
+
+1. Discover InfiniBand fabric
+1. Validate link connectivity
+1. Check fabric routing
+1. Generate fabric report

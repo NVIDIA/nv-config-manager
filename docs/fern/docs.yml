@@ -1,0 +1,237 @@
+# yaml-language-server: $schema=https://schema.buildwithfern.dev/docs-yml.json
+
+global-theme: nvidia
+
+instances:
+  - url: config-manager.docs.buildwithfern.com
+    # custom-domain: docs.nvidia.com/switch-infrastructure/config-manager
+    multi-source: true
+
+title: NVIDIA Switch Infrastructure
+
+announcement:
+  message: "🔔 NVIDIA Config Manager is a <strong>developer preview</strong>. APIs and behavior may change without notice."
+
+check:
+  rules:
+    broken-links: error
+
+settings:
+  folder-title-source: frontmatter
+
+layout:
+  searchbar-placement: header
+  switcher-placement: header
+  page-width: 1376px
+  sidebar-width: 248px
+  content-width: 812px
+  tabs-placement: header
+  hide-feedback: true
+
+#==============================================================================
+# For now, the /switch-infrastructure/ slug isn't something we want to
+# populate, so redirect it to Config Manager.
+#==============================================================================
+redirects:
+  - source: /switch-infrastructure/
+    destination: /switch-infrastructure/config-manager
+
+#==============================================================================
+# Content navigation from here down
+#==============================================================================
+
+navigation:
+  - page: NVIDIA Config Manager
+    path: ../index.mdx
+    slug: /
+
+  - page: I want to...
+    path: ../i-want-to.mdx
+    slug: i-want-to
+
+  - section: Quick Start
+    slug: getting-started
+    contents:
+    - page: Start Here
+      path: ../getting-started/index.mdx
+    - page: Getting Started with Config Manager
+      path: ../install/index.mdx
+    - page: TUI Wizard Reference
+      path: ../install/tui-wizard-reference.mdx
+    - page: Configuration Samples
+      path: ../install/configuration-samples.mdx
+    - page: Which Interface Should I Use?
+      path: ../getting-started/interfaces.mdx
+    - page: Local Development Quick Start
+      path: ../getting-started/local-development-quick-start.mdx
+    - page: First Run Tour
+      path: ../getting-started/first-run-tour.mdx
+
+  - section: Config Manager Overview
+    slug: config-manager
+    contents:
+    - folder: ../overview
+      collapsible: true
+      collapsed-by-default: true
+    - folder: ../nautobot
+      title: Nautobot Overview
+      collapsible: true
+      collapsed-by-default: true
+
+  - section: User Guides
+    collapsible: true
+    collapsed-by-default: true
+    contents:
+    - page: New Site Bringup
+      path: ../user-guides/new-site-deployment/index.mdx
+    - page: Controlling Running Workflows
+      path: ../user-guides/workflow-lifecycle/index.mdx
+
+    - section: Configuration & Deploy
+      collapsible: true
+      collapsed-by-default: true
+      contents:
+      - page: Configuration Backup
+        path: ../user-guides/configuration-backup/index.mdx
+      - page: Configuration Deploy
+        path: ../user-guides/configuration-deploy/index.mdx
+      - page: Multi-Device Deploy
+        path: ../user-guides/multi-deploy/index.mdx
+      - page: Batch Deploy
+        path: ../user-guides/batch-deploy/index.mdx
+      - page: Tenant Deploy
+        path: ../user-guides/tenant-deploy/index.mdx
+
+    - section: Validation
+      collapsible: true
+      collapsed-by-default: true
+      contents:
+      - page: Cable Validation
+        path: ../user-guides/cable-validation/index.mdx
+      - page: Hardware Validation
+        path: ../user-guides/hardware-validation/index.mdx
+      - page: Connected Host Metadata
+        path: ../user-guides/connected-host-metadata/index.mdx
+
+    - section: Lifecycle
+      collapsible: true
+      collapsed-by-default: true
+      contents:
+      - page: Switch OS Upgrade
+        path: ../user-guides/switch-os-upgrade/index.mdx
+      - page: NVLink Firmware Upgrade
+        path: ../user-guides/nvlink-switch-firmware-upgrade/index.mdx
+      - page: Device Reprovision
+        path: ../user-guides/reprovision/index.mdx
+      - page: Device Password Rotation
+        path: ../user-guides/device-password-rotation/index.mdx
+      - page: Site Password Rotation
+        path: ../user-guides/site-password-rotation/index.mdx
+
+    - section: VPC Lifecycle
+      collapsible: true
+      collapsed-by-default: true
+      contents:
+      - page: VPC Creation
+        path: ../user-guides/vpc-creation/index.mdx
+      - page: VPC Deletion
+        path: ../user-guides/vpc-deletion/index.mdx
+      - page: VPC Assignment
+        path: ../user-guides/vpc-assignment/index.mdx
+      - page: VPC Tenant Change
+        path: ../user-guides/vpc-tenant-change/index.mdx
+
+  - section: Deployment
+    contents:
+    - page: Hosting Options
+      path: ../hosting-options/index.mdx
+    - page: Network Topology Requirements
+      path: ../network-topology-requirements/index.mdx
+    - page: Firewall Ports
+      path: ../firewall-ports/index.mdx
+    - page: Airgapped Deployment
+      path: ../install/install-airgapped.mdx
+      slug: /airgapped
+    - page: Troubleshooting
+      path: ../install/troubleshooting.mdx
+
+  - section: Services
+    contents:
+    - section: Config Store Service
+      slug: config-store
+      collapsible: true
+      collapsed-by-default: true
+      contents:
+      - page: Overview
+        path: ../config-store/index.mdx
+      - page: Architecture
+        path: ../config-store/config-store-architecture.mdx
+      - api: Config Store API
+        api-name: config-store-api
+        display-errors: true
+
+    - section: DHCP Service
+      slug: dhcp
+      collapsible: true
+      collapsed-by-default: true
+      contents:
+      - page: Overview
+        path: ../dhcp/index.mdx
+      - page: DHCP Modeling in Nautobot
+        path: ../dhcp/nautobot-modeling.mdx
+      - api: DHCP API
+        api-name: dhcp-api
+        display-errors: true
+
+    - section: Network ZTP Service
+      slug: network-ztp
+      collapsible: true
+      collapsed-by-default: true
+      contents:
+      - page: Overview
+        path: ../network-ztp/index.mdx
+      - page: Architecture
+        path: ../network-ztp/architecture.mdx
+      - page: Configuration
+        path: ../network-ztp/configuration.mdx
+      - page: Upload Images
+        path: ../network-ztp/upload-images.mdx
+      - api: ZTP API
+        api-name: ztp-api
+        display-errors: true
+        summary: ../network-ztp/api-overview.mdx
+
+    - section: Template Rendering Service
+      slug: render
+      collapsible: true
+      collapsed-by-default: true
+      contents:
+      - page: Overview
+        path: ../render/index.mdx
+      - page: Config Manager Render Service
+        path: ../render/render-service.mdx
+      - page: Filter Quick Reference
+        path: ../render/filter-quick-reference.mdx
+      - page: Template Expansion
+        path: ../render/template-expansion.mdx
+      - api: Render Service API
+        api-name: render-api
+        display-errors: true
+
+    - section: Temporal Service
+      slug: temporal
+      collapsible: true
+      collapsed-by-default: true
+      contents:
+      - page: Overview
+        path: ../temporal/index.mdx
+      - page: Deployment
+        path: ../temporal/temporal-deployment.mdx
+      - page: CLI Reference
+        path: ../temporal/temporal-cli.mdx
+      - folder: ../temporal/workflows
+        title: Workflow Templates
+      - api: Temporal API
+        api-name: temporal-api
+        display-errors: true
+        summary: ../temporal/temporal-api.mdx

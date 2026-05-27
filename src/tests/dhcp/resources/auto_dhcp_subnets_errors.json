@@ -1,0 +1,111 @@
+{
+    "data": {
+        "prefixes": [
+            {
+                "id": "prefix-error-1",
+                "prefix": "192.168.1.0/24",
+                "ip_version": 4,
+                "rel_prefix_to_gateway": {
+                    "address": "192.168.1.1/24"
+                }
+            }
+        ],
+        "pool_ips": [],
+        "reserved_ips": [
+            {
+                "address": "192.168.1.10",
+                "ip_version": 4,
+                "parent": {
+                    "id": "prefix-error-1"
+                },
+                "interfaces": [
+                    {
+                        "name": "eth0",
+                        "mac_address": "00:00:00:00:00:01",
+                        "role": {
+                            "name": "management"
+                        },
+                        "device": {
+                            "id": "device-error-1",
+                            "name": "error-device-1",
+                            "serial": "ERR001",
+                            "platform": {
+                                "name": "Cumulus Linux"
+                            },
+                            "status": {
+                                "name": "active"
+                            },
+                            "configmanagerdevicestatus": {
+                                "ztp_enabled": true,
+                                "is_aggregate_managed": false
+                            }
+                        }
+                    }
+                ]
+            },
+            {
+                "address": "192.168.1.11",
+                "ip_version": 4,
+                "parent": {
+                    "id": "prefix-error-1"
+                },
+                "interfaces": [
+                    {
+                        "name": "eth0",
+                        "mac_address": null,
+                        "role": {
+                            "name": "management"
+                        },
+                        "device": {
+                            "id": "device-error-no-serial",
+                            "name": "error-device-no-serial",
+                            "serial": null,
+                            "platform": {
+                                "name": "Cumulus Linux"
+                            },
+                            "status": {
+                                "name": "active"
+                            },
+                            "configmanagerdevicestatus": {
+                                "ztp_enabled": true,
+                                "is_aggregate_managed": false
+                            }
+                        }
+                    }
+                ]
+            },
+            {
+                "address": "192.168.1.12",
+                "ip_version": 4,
+                "parent": {
+                    "id": "prefix-error-1"
+                },
+                "interfaces": [
+                    {
+                        "name": "eth0",
+                        "mac_address": "00:00:00:00:00:02",
+                        "role": {
+                            "name": "management"
+                        },
+                        "device": {
+                            "id": "device-error-2",
+                            "name": "error-device-2",
+                            "serial": "ERR002",
+                            "platform": {
+                                "name": "Cumulus Linux"
+                            },
+                            "status": {
+                                "name": "active"
+                            },
+                            "configmanagerdevicestatus": {
+                                "ztp_enabled": true,
+                                "is_aggregate_managed": false
+                            }
+                        }
+                    }
+                ]
+            }
+        ]
+    }
+}
+

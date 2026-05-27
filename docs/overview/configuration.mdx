@@ -1,0 +1,58 @@
+---
+title: Configuration Management
+sidebar-title: Configuration Management
+position: 30
+---
+
+NVIDIA Config Manager stores device configurations in the [Config Store service](../config-store/index.mdx). Config Manager [renders](../render/index.mdx) per-device configurations using version-controlled templates and device data from Nautobot. It then writes the intended configuration to the Config Store service. When a device boots, Config Manager retrieves the intended configuration from the Config Store service and a [Temporal workflow](../temporal/index.mdx) (or [ZTP](../network-ztp/index.mdx) on day zero) applies it to the device.
+
+The Config Store interface provides a comparison view of the intended and backup configurations:
+
+- **Diff statistics**: Line additions and deletions count
+- **Side-by-side comparison**: Old versus new configuration
+- **Color-coded changes**: Indicates which lines have been added, removed, or unchanged
+
+## Example Configuration Files
+
+### boot-script
+
+- Performs OS/Firmware Upgrades
+- Loads the intended configuration onto the device
+- Loads any additional files/services (such as node exporter)
+- Phones home on success
+
+### Intended Configuration
+
+The running network configuration for the device is in a vendor-specific format. It may include information such as:
+
+- Interface definitions
+- Addressing
+- Services configuration
+- Platform settings
+- BGP routing instances
+- Autonomous system configuration
+- Router ID settings
+- VRF definitions
+- Source interfaces
+- ACL configurations
+
+## File Metadata
+
+Each configuration file tracks:
+
+- **Version**: Semantic version number (for example, v3)
+- **Author**: User who made the change
+- **Modified**: Timestamp of last modification
+- **Hash**: Git commit hash for verification
+- **Commit message**: One of the following:
+  - A description of the Nautobot object that was changed and by whom
+  - A Template Version change and the version used for the render
+  - A user generated commit message for manually triggered renders
+
+## Template Change Deployment
+
+1. Template changes committed to Git
+1. Render Service regenerates all configurations with the new template version
+1. Workflow engine orchestrates deployment
+1. Changes applied to devices
+1. Backup workflow captures new state

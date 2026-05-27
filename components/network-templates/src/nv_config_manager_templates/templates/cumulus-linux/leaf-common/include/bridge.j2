@@ -1,0 +1,13 @@
+    bridge:
+      domain:
+        br_default:
+          stp:
+            priority: 28672
+            state:
+              up: {}
+          vlan:
+{% for vlan_intf in device_data|interfaces(prefix="vlan") %}
+            '{{ vlan_intf.vlan_number }}':
+              vni:
+                '{{ device_data | vni_mappings(vlan_intf.vlan_number) }}': {}
+{% endfor %}

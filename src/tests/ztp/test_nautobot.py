@@ -1,0 +1,42 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+from unittest.mock import AsyncMock, patch
+from uuid import uuid4
+
+import pytest
+
+from nv_config_manager.ztp.nautobot import DeviceData, NautobotClient
+
+
+@pytest.mark.asyncio
+async def test_device_data(mock_device_data):
+    with patch(
+        "nv_config_manager.ztp.nautobot.NautobotClient.graphql_query",
+        new_callable=AsyncMock,
+        return_value=mock_device_data,
+    ):
+        nb = NautobotClient()
+        async with nb:
+            device_data = await nb.get_device_data(uuid4())
+        expected = DeviceData(
+            id="80ce0a9a-d3c8-5b8e-b755-e9c16d92237b",
+            name="rno1-m04-c10-spine1-hss-tan-lab1",
+            addresses=["10.180.166.13", "10.180.166.130"],
+            platform_name="Cumulus Linux",
+            version="5.7.0",
+            config_store_instance="https://api-mtls.config-store.config-manager.example.com/",
+        )
+
+        assert device_data == expected

@@ -1,0 +1,21 @@
+{{- if and .Values.referenceGrants.enabled .Values.referenceGrants.allowedNamespaces }}
+{{- range .Values.referenceGrants.allowedNamespaces }}
+---
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: {{ . }}-to-gateway
+  namespace: {{ . }}
+  labels:
+    {{- include "nv-config-manager.labels" $ | nindent 4 }}
+spec:
+  # Allow HTTPRoutes in gateway namespace to reference Services in this namespace
+  from:
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    namespace: {{ $.Values.global.namespace }}
+  to:
+  - group: ""
+    kind: Service
+{{- end }}
+{{- end }}

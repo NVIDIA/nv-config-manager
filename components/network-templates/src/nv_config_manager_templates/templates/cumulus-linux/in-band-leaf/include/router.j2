@@ -1,0 +1,8 @@
+{% extends "cumulus-linux/spine-common/include/router.j2" %}
+
+{% block adaptive_routing %}
+{% if device_data|interfaces(vrf="STORAGE") %}
+      adaptive-routing:
+        enable: on
+{% endif %}
+{% endblock adaptive_routing %}

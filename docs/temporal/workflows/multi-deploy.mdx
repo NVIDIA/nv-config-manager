@@ -1,0 +1,277 @@
+---
+title: Multi-Deploy Workflow
+sidebar-title: Multi-Deploy Workflow
+position: 10
+---
+
+The multi-deploy workflow enables efficient deployment of configuration changes across multiple network devices with the same role. It groups devices by shared configuration diffs and batches them for parallel processing while ensuring proper approval controls.
+
+Use this Python workflow as a multi-device optimization of the [configuration deployment workflow](deploy.mdx).
+
+## Overview
+
+The workflow consists of two main components:
+
+- **MultiDeployWorkflow**: The parent workflow that discovers devices, collects diffs, groups them, and orchestrates batch deployments
+- **BatchDeployWorkflow**: Child workflows that handle deployment to groups of devices with identical configuration changes
+
+## Key Features
+
+- **Role-based device discovery**: Automatically discovers all devices with a specified role from Nautobot
+- **Intelligent diff grouping**: Groups devices with identical configuration changes together
+- **Batch processing**: Splits large groups into manageable batches based on configurable batch size
+- **Shared diff approval**: Single approval process for all devices with the same configuration changes
+- **Fault tolerance**: Continues processing even if individual devices fail
+- **Parallel execution**: Applies configurations to multiple devices simultaneously within each batch
+- **Automatic backups**: Creates configuration backups for successfully deployed devices
+
+## Architecture Notes
+
+**Individual device configurations**: Each device has its own intended configuration file with its own commit SHA. The workflow groups devices based solely on **identical diff content**, not configuration file identity. This means:
+
+- Devices can have different intended configuration files but produce the same diff
+- Each device maintains its own commit SHA for backup and audit purposes
+- Grouping is purely based on the similarity of configuration changes
+- This enables efficient batch processing while preserving individual device configuration integrity
+
+## Workflow Input
+
+```python
+class MultiDeployInput(BaseModel):
+    role: str                          # Required: Device role to target (e.g., "spine", "leaf")
+    max_batch_size: int = 10           # Optional: Maximum devices per batch (default: 10)
+    location: str | None = None        # Optional: Limit to specific location
+    status: list[str] | None = None    # Optional: Device status filter
+    tenant: str | None = None          # Optional: Tenant filter
+```
+
+## Workflow Stages
+
+### 1. Discover Devices
+
+- Queries Nautobot for all devices matching the specified role and filters
+- Returns early if no devices are found
+
+### 2. Collect Diffs
+
+- Loads intended configuration for each device
+- Generates configuration diffs in parallel
+- Filters out devices with no changes
+- Collects errors for devices that fail diff generation
+
+### 3. Group and Batch
+
+- Groups devices by identical configuration diffs using SHA256 hash
+- Splits large groups into batches based on `max_batch_size`
+- Creates batch execution plan
+
+### 4. Execute Batches
+
+- Spawns child workflows for each batch
+- Each child workflow handles:
+  - Shared diff review and approval
+  - Parallel configuration application
+  - Backup execution for successful devices
+
+## Child Workflow (BatchDeployWorkflow)
+
+A separate child workflow handles each batch and provides:
+
+### Review Shared Diff Stage
+
+- Displays the shared configuration diff for all devices in the batch
+- Requires manual approval before proceeding
+- Shows device list and change summary
+
+### Apply Configurations Stage
+
+- Applies approved configuration to all devices in parallel
+- Continues processing even if individual devices fail
+- Reports success and failure counts
+
+### Perform Backups Stage
+
+- Creates configuration backups for successfully deployed devices
+- Runs backup workflows as child processes
+
+## Error Handling
+
+The workflow is designed to be fault-tolerant:
+
+- **Discovery Failures**: Reports if no devices found for the role
+- **Diff Collection Failures**: Individual device failures do not stop the workflow
+- **Application Failures**: Failed devices are reported but do not affect other devices
+- **Child Workflow Failures**: Handled gracefully with error reporting
+
+## Usage Example
+
+```python
+from nv_config_manager.temporal.ngc.workflows.multi_deploy import MultiDeployInput, MultiDeployWorkflow
+
+# Deploy to all spine switches with max 5 devices per batch
+workflow_input = MultiDeployInput(
+    role="TAN-Spine",
+    max_batch_size=5,
+    site="SITEA",
+    status=["Active"]
+)
+
+# Start the workflow
+handle = await client.start_workflow(
+    MultiDeployWorkflow.run,
+    workflow_input,
+    id="multi-deploy-tan-spine-20240101",
+    task_queue="nv-config-manager-temporal"
+)
+
+result = await handle.result()
+```
+
+## Workflow Results
+
+The workflow returns comprehensive results:
+
+```python
+{
+    "total_devices": 15,          # Total devices discovered
+    "successful_devices": 12,     # Successfully configured devices
+    "failed_devices": 2,          # Devices that failed configuration
+    "rejected_devices": 1,        # Devices in rejected batches
+    "discovery_failures": {},     # Devices that failed diff collection
+    "diff_groups": 3,             # Number of unique diff groups
+    "total_batches": 5,           # Total batch workflows created
+    "batch_results": {            # Detailed results per batch
+        "batch_0_abc123": {
+            "approved": true,
+            "successful_devices": ["spine-01", "spine-02"],
+            "failed_devices": {}
+        }
+    }
+}
+```
+
+## Best Practices
+
+**Batch sizing**: Choose appropriate batch sizes based on your environment.
+
+- Small batches (5-10): Better error isolation, more granular approval
+- Large batches (20-50): Fewer approval steps, faster deployment
+
+**Role selection**: Use specific device roles to ensure only intended devices are targeted.
+
+**Pre-deployment validation**: Run validation workflows before you run the multi-deploy workflow.
+
+**Monitoring**: Monitor child workflows for approval status and completion.
+
+**Rollback planning**: Have rollback procedures ready for failed deployments.
+
+## Approval Workflow
+
+The multi-deploy workflow provides seamless navigation between parent and child workflows.
+
+### Parent Workflow (MultiDeployWorkflow)
+
+1. **Execute batches stage**: Displays clickable links to each child workflow batch
+1. **Real-time updates**: Shows batch status as workflows progress
+1. **Navigation**: Click on batch links to review and approve individual diffs
+
+### Child Workflows (BatchDeployWorkflow)
+
+Each batch requires manual approval:
+
+1. **Review Shared Diff**: Detailed view of configuration changes with:
+   - Device list for the batch
+   - Configuration diff hash for tracking
+   - Commit ID information
+   - Full diff content
+1. **Approve or reject**: Manual approval gate for each batch
+1. **Deployment**: Parallel configuration application to all devices in batch
+1. **Backup**: Automatic backup creation for successful deployments
+
+### Navigation Example
+
+The parent workflow displays clickable links with full UI URLs like:
+
+```text
+Started 2 batch workflows for approval:
+
+- [Batch 2](https://config-manager.example.com/workflows/a1b2c3d4-5e6f-7890-1234-567890abcdef) - 1 devices (spine-03)
+- [Batch 1](https://config-manager.example.com/workflows/23292a68-4a9d-4f15-bac6-6d3c1520d602) - 2 devices (spine-01, spine-02)
+
+Click on the batch links above to review and approve configuration diffs.
+```
+
+After completion, status is shown with full UI URLs:
+
+```text
+Batch deployment completed:
+- 3 devices configured successfully
+- 0 devices failed
+- 0 devices rejected (not configured)
+
+Child Workflows (click to view details):
+- [Batch 1](https://config-manager.example.com/workflows/23292a68-4a9d-4f15-bac6-6d3c1520d602) - 2 devices (spine-01, spine-02) - Completed (2 success, 0 failed)
+- [Batch 2](https://config-manager.example.com/workflows/a1b2c3d4-5e6f-7890-1234-567890abcdef) - 1 devices (spine-03) - Completed (1 success, 0 failed)
+```
+
+### UI URL Construction
+
+The workflow automatically constructs full UI URLs using the configured UI hostname:
+
+- **Configuration Source**: Reads `ui_url` from the Temporal section of the Config Manager INI configuration
+- **URL Format**: `https://{ui_url}/workflows/{workflow_id}`
+- **Example**: For `ui_url = config-manager.example.com`, links will point to `https://config-manager.example.com/workflows/...`
+- **Environment Specific**: Each environment has its own UI URL configured in the Helm values file and injected into the configuration through Vault
+- **Configuration Path**: generated Helm values to the rendered Config Manager INI to `ui_url`
+- **Workflow Safe**: UI URL is retrieved through a dedicated activity to maintain workflow determinism and avoid configuration loading in workflow code
+
+#### Configuration Example
+
+In `helm/values-example.yaml`:
+
+```yaml
+services:
+  react_ui:
+    ingress:
+      browser:
+        hostname: config-manager.example.com
+```
+
+This becomes part of the rendered Config Manager INI:
+
+```ini
+[temporal]
+ui_url = config-manager.example.com
+```
+
+The workflow then constructs URLs like:
+
+```text
+https://config-manager.example.com/workflows/workflow-id-123
+```
+
+#### Technical Implementation
+
+The workflow uses a dedicated `get_ui_base_url()` activity to retrieve the UI URL:
+
+1. Activity reads the rendered Config Manager INI
+1. Returns the `ui_url` value to the workflow
+1. Workflow uses this URL throughout its execution for child workflow links
+1. This approach maintains Temporal's deterministic execution requirements by avoiding configuration file access within workflow code
+
+## Integration
+
+The Multi-Deploy Workflow integrates with:
+
+- **Nautobot**: Device discovery and metadata
+- **GitLab**: Configuration storage and versioning
+- **Backup Workflow**: Automatic post-deployment backups
+- **NATS**: Event notifications
+- **NVIDIA Config Manager UI**: Approval and monitoring interface
+
+## Limitations
+
+- All devices in a batch must have identical configuration changes
+- Requires manual approval for each unique diff group
+- No automatic rollback on partial failures
+- Limited to network devices supported by existing device clients

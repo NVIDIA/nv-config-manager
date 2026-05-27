@@ -1,0 +1,2103 @@
+{
+  "data": {
+    "device": {
+      "id": "anon-919666972564-0000-0000-000000000000",
+      "name": "leaf2-cp1-smn1-dc01",
+      "tags": [
+        {
+          "name": "dns-exempt"
+        }
+      ],
+      "tenant": {
+        "name": "Example Cloud"
+      },
+      "role": {
+        "name": "SMN-Leaf"
+      },
+      "device_type": {
+        "manufacturer": {
+          "name": "NVIDIA"
+        },
+        "model": "MSN2201-CB2RC"
+      },
+      "platform": {
+        "name": "Cumulus Linux"
+      },
+      "serial": "ANON00001024",
+      "config_context": {
+        "bgp": {
+          "asn": 4266004102
+        },
+        "intended-firmware": {
+          "version": "5.11.0"
+        }
+      },
+      "location": {
+        "name": "DC01 Module 1",
+        "location_type": {
+          "name": "Module"
+        },
+        "parent": {
+          "name": "DC01",
+          "location_type": {
+            "name": "Site"
+          }
+        }
+      },
+      "bgp_routing_instances": [
+        {
+          "status": {
+            "name": "Active"
+          },
+          "autonomous_system": {
+            "asn": 4266004102
+          },
+          "router_id": {
+            "interfaces": [
+              {
+                "name": "lo",
+                "vrf": null
+              }
+            ]
+          },
+          "endpoints": [
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.0/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "core1-cp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Core"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004040
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.1/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "core2-cp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Core"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004040
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "interfaces": [
+        {
+          "role": null,
+          "type": "VIRTUAL",
+          "mtu": null,
+          "enabled": true,
+          "tags": [],
+          "name": "Vlan1001",
+          "description": "",
+          "vrf": {
+            "name": "DC01-SMN1_TAN1",
+            "rd": "*:1001",
+            "export_targets": [
+              {
+                "name": "4266000000:1000"
+              },
+              {
+                "name": "4266000000:1001"
+              }
+            ],
+            "import_targets": [
+              {
+                "name": "4266000000:1"
+              },
+              {
+                "name": "4266000000:101"
+              },
+              {
+                "name": "4266000000:666"
+              }
+            ]
+          },
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": {
+            "vid": 1001,
+            "name": "vlan-1001"
+          },
+          "tagged_vlans": [],
+          "ip_addresses": [
+            {
+              "host": "10.240.128.33",
+              "mask_length": 27,
+              "address": "10.240.128.33/27",
+              "ip_version": 4,
+              "parent": {
+                "prefix": "10.240.0.0/16",
+                "parent": {
+                  "prefix": "10.0.0.0/8"
+                }
+              }
+            },
+            {
+              "host": "10.240.128.161",
+              "mask_length": 27,
+              "address": "10.240.128.161/27",
+              "ip_version": 4,
+              "parent": {
+                "prefix": "10.240.0.0/16",
+                "parent": {
+                  "prefix": "10.0.0.0/8"
+                }
+              }
+            }
+          ],
+          "connected_interface": null
+        },
+        {
+          "role": null,
+          "type": "VIRTUAL",
+          "mtu": null,
+          "enabled": true,
+          "tags": [],
+          "name": "Vlan1002",
+          "description": "",
+          "vrf": {
+            "name": "DC01-SMN1_CIN1",
+            "rd": "*:1002",
+            "export_targets": [
+              {
+                "name": "4266000000:1000"
+              },
+              {
+                "name": "4266000000:1002"
+              }
+            ],
+            "import_targets": [
+              {
+                "name": "4266000000:1"
+              },
+              {
+                "name": "4266000000:101"
+              },
+              {
+                "name": "4266000000:666"
+              }
+            ]
+          },
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": {
+            "vid": 1002,
+            "name": "vlan-1002"
+          },
+          "tagged_vlans": [],
+          "ip_addresses": [
+            {
+              "host": "10.240.144.161",
+              "mask_length": 27,
+              "address": "10.240.144.161/27",
+              "ip_version": 4,
+              "parent": {
+                "prefix": "10.240.0.0/16",
+                "parent": {
+                  "prefix": "10.0.0.0/8"
+                }
+              }
+            }
+          ],
+          "connected_interface": null
+        },
+        {
+          "role": {
+            "name": "Uplink"
+          },
+          "type": "A_1000BASE_T",
+          "mtu": 1500,
+          "enabled": true,
+          "tags": [
+            {
+              "name": "cable-validation-ignore"
+            }
+          ],
+          "name": "eth0",
+          "description": "ztpleaf2-cp1-smn1-dc01:ethernet3",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": null,
+          "tagged_vlans": [],
+          "ip_addresses": [],
+          "connected_interface": {
+            "ip_addresses": [],
+            "device": {
+              "name": "ztpleaf2-cp1-smn1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "SMN-ZTPleaf"
+              },
+              "tags": [
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                }
+              }
+            },
+            "module": null,
+            "name": "Ethernet3"
+          }
+        },
+        {
+          "role": {
+            "name": "Loopback"
+          },
+          "type": "VIRTUAL",
+          "mtu": null,
+          "enabled": true,
+          "tags": [],
+          "name": "lo",
+          "description": "",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": null,
+          "tagged_vlans": [],
+          "ip_addresses": [
+            {
+              "host": "10.240.169.7",
+              "mask_length": 32,
+              "address": "10.240.169.7/32",
+              "ip_version": 4,
+              "parent": {
+                "prefix": "10.240.169.0/24",
+                "parent": {
+                  "prefix": "10.240.0.0/16"
+                }
+              }
+            }
+          ],
+          "connected_interface": null
+        },
+        {
+          "role": {
+            "name": "Downlink"
+          },
+          "type": "A_1000BASE_T",
+          "mtu": 1500,
+          "enabled": true,
+          "tags": [],
+          "name": "swp1",
+          "description": "core1-cg3-cp1-cin1-dc01:eth0",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": {
+            "vid": 1002,
+            "name": "vlan-1002"
+          },
+          "tagged_vlans": [],
+          "ip_addresses": [],
+          "connected_interface": {
+            "ip_addresses": [
+              {
+                "host": "10.240.144.162",
+                "mask_length": 27,
+                "address": "10.240.144.162/27",
+                "ip_version": 4
+              }
+            ],
+            "device": {
+              "name": "core1-cg3-cp1-cin1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "CIN-Core"
+              },
+              "tags": [
+                {
+                  "name": "dns-exempt"
+                },
+                {
+                  "name": "route-server"
+                }
+              ],
+              "config_context": {
+                "bgp": {
+                  "asn": 4266990042
+                },
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                },
+                "intended-firmware": {
+                  "version": "5.11.0"
+                }
+              }
+            },
+            "module": null,
+            "name": "eth0"
+          }
+        },
+        {
+          "role": {
+            "name": "Downlink"
+          },
+          "type": "A_1000BASE_T",
+          "mtu": 1500,
+          "enabled": true,
+          "tags": [],
+          "name": "swp2",
+          "description": "core2-cg3-cp1-cin1-dc01:eth0",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": {
+            "vid": 1002,
+            "name": "vlan-1002"
+          },
+          "tagged_vlans": [],
+          "ip_addresses": [],
+          "connected_interface": {
+            "ip_addresses": [
+              {
+                "host": "10.240.144.163",
+                "mask_length": 27,
+                "address": "10.240.144.163/27",
+                "ip_version": 4
+              }
+            ],
+            "device": {
+              "name": "core2-cg3-cp1-cin1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "CIN-Core"
+              },
+              "tags": [
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "bgp": {
+                  "asn": 4266990042
+                },
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                },
+                "intended-firmware": {
+                  "version": "5.11.0"
+                }
+              }
+            },
+            "module": null,
+            "name": "eth0"
+          }
+        },
+        {
+          "role": {
+            "name": "Downlink"
+          },
+          "type": "A_1000BASE_T",
+          "mtu": 1500,
+          "enabled": true,
+          "tags": [],
+          "name": "swp3",
+          "description": "core3-cg3-cp1-cin1-dc01:eth0",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": {
+            "vid": 1002,
+            "name": "vlan-1002"
+          },
+          "tagged_vlans": [],
+          "ip_addresses": [],
+          "connected_interface": {
+            "ip_addresses": [
+              {
+                "host": "10.240.144.164",
+                "mask_length": 27,
+                "address": "10.240.144.164/27",
+                "ip_version": 4
+              }
+            ],
+            "device": {
+              "name": "core3-cg3-cp1-cin1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "CIN-Core"
+              },
+              "tags": [
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "bgp": {
+                  "asn": 4266990042
+                },
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                },
+                "intended-firmware": {
+                  "version": "5.11.0"
+                }
+              }
+            },
+            "module": null,
+            "name": "eth0"
+          }
+        },
+        {
+          "role": {
+            "name": "Downlink"
+          },
+          "type": "A_1000BASE_T",
+          "mtu": 1500,
+          "enabled": true,
+          "tags": [],
+          "name": "swp4",
+          "description": "core4-cg3-cp1-cin1-dc01:eth0",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": {
+            "vid": 1002,
+            "name": "vlan-1002"
+          },
+          "tagged_vlans": [],
+          "ip_addresses": [],
+          "connected_interface": {
+            "ip_addresses": [
+              {
+                "host": "10.240.144.165",
+                "mask_length": 27,
+                "address": "10.240.144.165/27",
+                "ip_version": 4
+              }
+            ],
+            "device": {
+              "name": "core4-cg3-cp1-cin1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "CIN-Core"
+              },
+              "tags": [
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "bgp": {
+                  "asn": 4266990042
+                },
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                },
+                "intended-firmware": {
+                  "version": "5.11.0"
+                }
+              }
+            },
+            "module": null,
+            "name": "eth0"
+          }
+        },
+        {
+          "role": {
+            "name": "Downlink"
+          },
+          "type": "A_1000BASE_T",
+          "mtu": 1500,
+          "enabled": true,
+          "tags": [],
+          "name": "swp5",
+          "description": "core1-cg4-cp1-cin1-dc01:eth0",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": {
+            "vid": 1002,
+            "name": "vlan-1002"
+          },
+          "tagged_vlans": [],
+          "ip_addresses": [],
+          "connected_interface": {
+            "ip_addresses": [
+              {
+                "host": "10.240.144.166",
+                "mask_length": 27,
+                "address": "10.240.144.166/27",
+                "ip_version": 4
+              }
+            ],
+            "device": {
+              "name": "core1-cg4-cp1-cin1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "CIN-Core"
+              },
+              "tags": [
+                {
+                  "name": "dns-exempt"
+                },
+                {
+                  "name": "route-server"
+                }
+              ],
+              "config_context": {
+                "bgp": {
+                  "asn": 4266990043
+                },
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                },
+                "intended-firmware": {
+                  "version": "5.11.0"
+                }
+              }
+            },
+            "module": null,
+            "name": "eth0"
+          }
+        },
+        {
+          "role": {
+            "name": "Downlink"
+          },
+          "type": "A_1000BASE_T",
+          "mtu": 1500,
+          "enabled": true,
+          "tags": [],
+          "name": "swp6",
+          "description": "core2-cg4-cp1-cin1-dc01:eth0",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": {
+            "vid": 1002,
+            "name": "vlan-1002"
+          },
+          "tagged_vlans": [],
+          "ip_addresses": [],
+          "connected_interface": {
+            "ip_addresses": [
+              {
+                "host": "10.240.144.167",
+                "mask_length": 27,
+                "address": "10.240.144.167/27",
+                "ip_version": 4
+              }
+            ],
+            "device": {
+              "name": "core2-cg4-cp1-cin1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "CIN-Core"
+              },
+              "tags": [
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "bgp": {
+                  "asn": 4266990043
+                },
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                },
+                "intended-firmware": {
+                  "version": "5.11.0"
+                }
+              }
+            },
+            "module": null,
+            "name": "eth0"
+          }
+        },
+        {
+          "role": {
+            "name": "Downlink"
+          },
+          "type": "A_1000BASE_T",
+          "mtu": 1500,
+          "enabled": true,
+          "tags": [],
+          "name": "swp7",
+          "description": "core3-cg4-cp1-cin1-dc01:eth0",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": {
+            "vid": 1002,
+            "name": "vlan-1002"
+          },
+          "tagged_vlans": [],
+          "ip_addresses": [],
+          "connected_interface": {
+            "ip_addresses": [
+              {
+                "host": "10.240.144.168",
+                "mask_length": 27,
+                "address": "10.240.144.168/27",
+                "ip_version": 4
+              }
+            ],
+            "device": {
+              "name": "core3-cg4-cp1-cin1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "CIN-Core"
+              },
+              "tags": [
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "bgp": {
+                  "asn": 4266990043
+                },
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                },
+                "intended-firmware": {
+                  "version": "5.11.0"
+                }
+              }
+            },
+            "module": null,
+            "name": "eth0"
+          }
+        },
+        {
+          "role": {
+            "name": "Downlink"
+          },
+          "type": "A_1000BASE_T",
+          "mtu": 1500,
+          "enabled": true,
+          "tags": [],
+          "name": "swp8",
+          "description": "core4-cg4-cp1-cin1-dc01:eth0",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": {
+            "vid": 1002,
+            "name": "vlan-1002"
+          },
+          "tagged_vlans": [],
+          "ip_addresses": [],
+          "connected_interface": {
+            "ip_addresses": [
+              {
+                "host": "10.240.144.169",
+                "mask_length": 27,
+                "address": "10.240.144.169/27",
+                "ip_version": 4
+              }
+            ],
+            "device": {
+              "name": "core4-cg4-cp1-cin1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "CIN-Core"
+              },
+              "tags": [
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "bgp": {
+                  "asn": 4266990043
+                },
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                },
+                "intended-firmware": {
+                  "version": "5.11.0"
+                }
+              }
+            },
+            "module": null,
+            "name": "eth0"
+          }
+        },
+        {
+          "role": {
+            "name": "Downlink"
+          },
+          "type": "A_1000BASE_T",
+          "mtu": 1500,
+          "enabled": true,
+          "tags": [],
+          "name": "swp10",
+          "description": "inet2-cp1-tan1-dc01:management1",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": {
+            "vid": 1001,
+            "name": "vlan-1001"
+          },
+          "tagged_vlans": [],
+          "ip_addresses": [],
+          "connected_interface": {
+            "ip_addresses": [
+              {
+                "host": "10.240.128.35",
+                "mask_length": 27,
+                "address": "10.240.128.35/27",
+                "ip_version": 4
+              }
+            ],
+            "device": {
+              "name": "inet2-cp1-tan1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "TAN-Inet"
+              },
+              "tags": [
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                }
+              }
+            },
+            "module": null,
+            "name": "Management1"
+          }
+        },
+        {
+          "role": {
+            "name": "Downlink"
+          },
+          "type": "A_1000BASE_T",
+          "mtu": 1500,
+          "enabled": true,
+          "tags": [],
+          "name": "swp11",
+          "description": "fw2-cp1-tan1-dc01:mgmt1",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": {
+            "vid": 1001,
+            "name": "vlan-1001"
+          },
+          "tagged_vlans": [],
+          "ip_addresses": [],
+          "connected_interface": {
+            "ip_addresses": [
+              {
+                "host": "10.240.128.52",
+                "mask_length": 27,
+                "address": "10.240.128.52/27",
+                "ip_version": 4
+              }
+            ],
+            "device": {
+              "name": "fw2-cp1-tan1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "TAN-Firewall"
+              },
+              "tags": [
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                }
+              }
+            },
+            "module": null,
+            "name": "mgmt1"
+          }
+        },
+        {
+          "role": {
+            "name": "Downlink"
+          },
+          "type": "A_1000BASE_T",
+          "mtu": 1500,
+          "enabled": true,
+          "tags": [],
+          "name": "swp12",
+          "description": "bbr2-cp1-tan1-dc01:management1/1",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": {
+            "vid": 1001,
+            "name": "vlan-1001"
+          },
+          "tagged_vlans": [],
+          "ip_addresses": [],
+          "connected_interface": {
+            "ip_addresses": [
+              {
+                "host": "10.240.128.53",
+                "mask_length": 27,
+                "address": "10.240.128.53/27",
+                "ip_version": 4
+              }
+            ],
+            "device": {
+              "name": "bbr2-cp1-tan1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "TAN-BBR"
+              },
+              "tags": [
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                },
+                "bgp": {
+                  "asn": 398037
+                },
+                "intended-firmware": {
+                  "version": "4.29.5M"
+                }
+              }
+            },
+            "module": null,
+            "name": "Management1/1"
+          }
+        },
+        {
+          "role": {
+            "name": "Downlink"
+          },
+          "type": "A_1000BASE_T",
+          "mtu": 1500,
+          "enabled": true,
+          "tags": [],
+          "name": "swp13",
+          "description": "core1-cg2-cp1-tan1-dc01:eth0",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": {
+            "vid": 1001,
+            "name": "vlan-1001"
+          },
+          "tagged_vlans": [],
+          "ip_addresses": [],
+          "connected_interface": {
+            "ip_addresses": [
+              {
+                "host": "10.240.128.38",
+                "mask_length": 27,
+                "address": "10.240.128.38/27",
+                "ip_version": 4
+              }
+            ],
+            "device": {
+              "name": "core1-cg2-cp1-tan1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "TAN-Core"
+              },
+              "tags": [
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "bgp": {
+                  "asn": 4266000040
+                },
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                },
+                "intended-firmware": {
+                  "version": "5.11.0"
+                }
+              }
+            },
+            "module": null,
+            "name": "eth0"
+          }
+        },
+        {
+          "role": {
+            "name": "Downlink"
+          },
+          "type": "A_1000BASE_T",
+          "mtu": 1500,
+          "enabled": true,
+          "tags": [],
+          "name": "swp14",
+          "description": "core2-cg2-cp1-tan1-dc01:eth0",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": {
+            "vid": 1001,
+            "name": "vlan-1001"
+          },
+          "tagged_vlans": [],
+          "ip_addresses": [],
+          "connected_interface": {
+            "ip_addresses": [
+              {
+                "host": "10.240.128.39",
+                "mask_length": 27,
+                "address": "10.240.128.39/27",
+                "ip_version": 4
+              }
+            ],
+            "device": {
+              "name": "core2-cg2-cp1-tan1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "TAN-Core"
+              },
+              "tags": [
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "bgp": {
+                  "asn": 4266000040
+                },
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                },
+                "intended-firmware": {
+                  "version": "5.11.0"
+                }
+              }
+            },
+            "module": null,
+            "name": "eth0"
+          }
+        },
+        {
+          "role": {
+            "name": "Downlink"
+          },
+          "type": "A_1000BASE_T",
+          "mtu": 1500,
+          "enabled": true,
+          "tags": [],
+          "name": "swp15",
+          "description": "spine2-cno1-cp1-tan1-dc01:eth0",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": {
+            "vid": 1001,
+            "name": "vlan-1001"
+          },
+          "tagged_vlans": [],
+          "ip_addresses": [],
+          "connected_interface": {
+            "ip_addresses": [
+              {
+                "host": "10.240.128.34",
+                "mask_length": 27,
+                "address": "10.240.128.34/27",
+                "ip_version": 4
+              }
+            ],
+            "device": {
+              "name": "spine2-cno1-cp1-tan1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "TAN-Spine"
+              },
+              "tags": [
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                },
+                "bgp": {
+                  "asn": 4266000101
+                },
+                "intended-firmware": {
+                  "version": "5.11.0"
+                }
+              }
+            },
+            "module": null,
+            "name": "eth0"
+          }
+        },
+        {
+          "role": {
+            "name": "Downlink"
+          },
+          "type": "A_1000BASE_T",
+          "mtu": 1500,
+          "enabled": true,
+          "tags": [],
+          "name": "swp16",
+          "description": "spine4-cno1-cp1-tan1-dc01:eth0",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": {
+            "vid": 1001,
+            "name": "vlan-1001"
+          },
+          "tagged_vlans": [],
+          "ip_addresses": [],
+          "connected_interface": {
+            "ip_addresses": [
+              {
+                "host": "10.240.128.40",
+                "mask_length": 27,
+                "address": "10.240.128.40/27",
+                "ip_version": 4
+              }
+            ],
+            "device": {
+              "name": "spine4-cno1-cp1-tan1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "TAN-Spine"
+              },
+              "tags": [
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                },
+                "bgp": {
+                  "asn": 4266000101
+                },
+                "intended-firmware": {
+                  "version": "5.11.0"
+                }
+              }
+            },
+            "module": null,
+            "name": "eth0"
+          }
+        },
+        {
+          "role": {
+            "name": "Downlink"
+          },
+          "type": "A_1000BASE_T",
+          "mtu": 1500,
+          "enabled": true,
+          "tags": [],
+          "name": "swp17",
+          "description": "spine2-hss1-cp1-tan1-dc01:eth0",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": {
+            "vid": 1001,
+            "name": "vlan-1001"
+          },
+          "tagged_vlans": [],
+          "ip_addresses": [],
+          "connected_interface": {
+            "ip_addresses": [
+              {
+                "host": "10.240.128.41",
+                "mask_length": 27,
+                "address": "10.240.128.41/27",
+                "ip_version": 4
+              }
+            ],
+            "device": {
+              "name": "spine2-hss1-cp1-tan1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "TAN-Spine"
+              },
+              "tags": [
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                },
+                "bgp": {
+                  "asn": 4266000100
+                },
+                "intended-firmware": {
+                  "version": "5.11.0"
+                }
+              }
+            },
+            "module": null,
+            "name": "eth0"
+          }
+        },
+        {
+          "role": {
+            "name": "Downlink"
+          },
+          "type": "A_1000BASE_T",
+          "mtu": 1500,
+          "enabled": true,
+          "tags": [],
+          "name": "swp18",
+          "description": "spine4-hss1-cp1-tan1-dc01:eth0",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": {
+            "vid": 1001,
+            "name": "vlan-1001"
+          },
+          "tagged_vlans": [],
+          "ip_addresses": [],
+          "connected_interface": {
+            "ip_addresses": [
+              {
+                "host": "10.240.128.42",
+                "mask_length": 27,
+                "address": "10.240.128.42/27",
+                "ip_version": 4
+              }
+            ],
+            "device": {
+              "name": "spine4-hss1-cp1-tan1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "TAN-Spine"
+              },
+              "tags": [
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                },
+                "bgp": {
+                  "asn": 4266000100
+                },
+                "intended-firmware": {
+                  "version": "5.11.0"
+                }
+              }
+            },
+            "module": null,
+            "name": "eth0"
+          }
+        },
+        {
+          "role": {
+            "name": "Downlink"
+          },
+          "type": "A_1000BASE_T",
+          "mtu": 1500,
+          "enabled": true,
+          "tags": [],
+          "name": "swp19",
+          "description": "leaf2-hss1-cp1-tan1-dc01:eth0",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": {
+            "vid": 1001,
+            "name": "vlan-1001"
+          },
+          "tagged_vlans": [],
+          "ip_addresses": [],
+          "connected_interface": {
+            "ip_addresses": [
+              {
+                "host": "10.240.128.43",
+                "mask_length": 27,
+                "address": "10.240.128.43/27",
+                "ip_version": 4
+              }
+            ],
+            "device": {
+              "name": "leaf2-hss1-cp1-tan1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "TAN-Leaf"
+              },
+              "tags": [
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                },
+                "bgp": {
+                  "asn": 4266000104
+                },
+                "intended-firmware": {
+                  "version": "5.11.0"
+                }
+              }
+            },
+            "module": null,
+            "name": "eth0"
+          }
+        },
+        {
+          "role": {
+            "name": "Downlink"
+          },
+          "type": "A_1000BASE_T",
+          "mtu": 1500,
+          "enabled": true,
+          "tags": [],
+          "name": "swp20",
+          "description": "leaf4-hss1-cp1-tan1-dc01:eth0",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": {
+            "vid": 1001,
+            "name": "vlan-1001"
+          },
+          "tagged_vlans": [],
+          "ip_addresses": [],
+          "connected_interface": {
+            "ip_addresses": [
+              {
+                "host": "10.240.128.44",
+                "mask_length": 27,
+                "address": "10.240.128.44/27",
+                "ip_version": 4
+              }
+            ],
+            "device": {
+              "name": "leaf4-hss1-cp1-tan1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "TAN-Leaf"
+              },
+              "tags": [
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                },
+                "bgp": {
+                  "asn": 4266000105
+                },
+                "intended-firmware": {
+                  "version": "5.11.0"
+                }
+              }
+            },
+            "module": null,
+            "name": "eth0"
+          }
+        },
+        {
+          "role": {
+            "name": "Downlink"
+          },
+          "type": "A_1000BASE_T",
+          "mtu": 1500,
+          "enabled": true,
+          "tags": [],
+          "name": "swp48",
+          "description": "console2-cp1-smn1-dc01:lan",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": {
+            "vid": 1001,
+            "name": "vlan-1001"
+          },
+          "tagged_vlans": [],
+          "ip_addresses": [],
+          "connected_interface": {
+            "ip_addresses": [
+              {
+                "host": "10.240.128.37",
+                "mask_length": 27,
+                "address": "10.240.128.37/27",
+                "ip_version": 4
+              }
+            ],
+            "device": {
+              "name": "console2-cp1-smn1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "SMN-Console"
+              },
+              "tags": [
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                }
+              }
+            },
+            "module": null,
+            "name": "eth1"
+          }
+        },
+        {
+          "role": {
+            "name": "Uplink"
+          },
+          "type": "A_100GBASE_X_QSFP28",
+          "mtu": 9200,
+          "enabled": true,
+          "tags": [],
+          "name": "swp51",
+          "description": "spine2-cp1-smn1-dc01:swp2",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": null,
+          "tagged_vlans": [],
+          "ip_addresses": [
+            {
+              "host": "10.240.164.67",
+              "mask_length": 31,
+              "address": "10.240.164.67/31",
+              "ip_version": 4,
+              "parent": {
+                "prefix": "10.240.164.0/24",
+                "parent": {
+                  "prefix": "10.240.0.0/16"
+                }
+              }
+            }
+          ],
+          "connected_interface": {
+            "ip_addresses": [
+              {
+                "host": "10.240.164.66",
+                "mask_length": 31,
+                "address": "10.240.164.66/31",
+                "ip_version": 4
+              }
+            ],
+            "device": {
+              "name": "spine2-cp1-smn1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "SMN-Spine"
+              },
+              "tags": [
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                },
+                "bgp": {
+                  "asn": 4266004100
+                },
+                "intended-firmware": {
+                  "version": "5.11.0"
+                }
+              }
+            },
+            "module": null,
+            "name": "swp2"
+          }
+        },
+        {
+          "role": {
+            "name": "Uplink"
+          },
+          "type": "A_100GBASE_X_QSFP28",
+          "mtu": 9200,
+          "enabled": true,
+          "tags": [],
+          "name": "swp52",
+          "description": "spine1-cp1-smn1-dc01:swp2",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": null,
+          "tagged_vlans": [],
+          "ip_addresses": [
+            {
+              "host": "10.240.164.3",
+              "mask_length": 31,
+              "address": "10.240.164.3/31",
+              "ip_version": 4,
+              "parent": {
+                "prefix": "10.240.164.0/24",
+                "parent": {
+                  "prefix": "10.240.0.0/16"
+                }
+              }
+            }
+          ],
+          "connected_interface": {
+            "ip_addresses": [
+              {
+                "host": "10.240.164.2",
+                "mask_length": 31,
+                "address": "10.240.164.2/31",
+                "ip_version": 4
+              }
+            ],
+            "device": {
+              "name": "spine1-cp1-smn1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "SMN-Spine"
+              },
+              "tags": [
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                },
+                "bgp": {
+                  "asn": 4266004100
+                },
+                "intended-firmware": {
+                  "version": "5.11.0"
+                }
+              }
+            },
+            "module": null,
+            "name": "swp2"
+          }
+        }
+      ],
+      "console_server_ports": []
+    }
+  }
+}

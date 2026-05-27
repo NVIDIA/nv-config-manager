@@ -1,0 +1,143 @@
+name: Promote Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_rc_tag:
+        description: "Existing RC tag to promote, e.g. 1.2.3-rc.4."
+        required: true
+        type: string
+      target_tag:
+        description: "Optional stable tag, e.g. 1.2.3. Leave empty to derive it from source_rc_tag."
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-tagging-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate Promotion
+    runs-on: ubuntu-24.04
+    outputs:
+      commit: ${{ steps.resolve.outputs.commit }}
+      source_rc_tag: ${{ steps.resolve.outputs.source_rc_tag }}
+      target_tag: ${{ steps.resolve.outputs.target_tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require repository admin
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          permission="$(gh api "repos/${GITHUB_REPOSITORY}/collaborators/${GITHUB_ACTOR}/permission" --jq .permission)"
+          if [ "$permission" != "admin" ]; then
+            echo "Only repository admins may promote release tags. ${GITHUB_ACTOR} has ${permission} permission."
+            exit 1
+          fi
+
+      - name: Resolve promotion
+        id: resolve
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          SOURCE_RC_TAG: ${{ inputs.source_rc_tag }}
+          INPUT_TARGET_TAG: ${{ inputs.target_tag }}
+        run: |
+          set -euo pipefail
+          git fetch --force --prune --tags origin '+refs/heads/*:refs/remotes/origin/*'
+
+          rc_re='^[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$'
+          stable_re='^[0-9]+\.[0-9]+\.[0-9]+$'
+
+          if ! printf '%s\n' "$SOURCE_RC_TAG" | grep -Eq "$rc_re"; then
+            echo "source_rc_tag must match X.Y.Z-rc.N. Got: ${SOURCE_RC_TAG}"
+            exit 1
+          fi
+
+          if [ -n "$INPUT_TARGET_TAG" ]; then
+            target_tag="$INPUT_TARGET_TAG"
+          else
+            target_tag="${SOURCE_RC_TAG%%-rc.*}"
+          fi
+
+          if ! printf '%s\n' "$target_tag" | grep -Eq "$stable_re"; then
+            echo "target_tag must match X.Y.Z. Got: ${target_tag}"
+            exit 1
+          fi
+
+          if [ "${SOURCE_RC_TAG%%-rc.*}" != "$target_tag" ]; then
+            echo "target_tag ${target_tag} does not match RC base ${SOURCE_RC_TAG%%-rc.*}."
+            exit 1
+          fi
+
+          commit="$(git rev-parse "${SOURCE_RC_TAG}^{commit}")"
+          if git rev-parse --verify "refs/tags/${target_tag}" >/dev/null 2>&1; then
+            echo "Tag ${target_tag} already exists."
+            exit 1
+          fi
+
+          if ! git merge-base --is-ancestor "$commit" "origin/${DEFAULT_BRANCH}"; then
+            echo "Source RC commit ${commit} is not reachable from origin/${DEFAULT_BRANCH}."
+            exit 1
+          fi
+
+          echo "commit=${commit}" >> "$GITHUB_OUTPUT"
+          echo "source_rc_tag=${SOURCE_RC_TAG}" >> "$GITHUB_OUTPUT"
+          echo "target_tag=${target_tag}" >> "$GITHUB_OUTPUT"
+
+      - name: Summary
+        env:
+          COMMIT: ${{ steps.resolve.outputs.commit }}
+          SOURCE_RC_TAG: ${{ steps.resolve.outputs.source_rc_tag }}
+          TARGET_TAG: ${{ steps.resolve.outputs.target_tag }}
+        run: |
+          {
+            echo "### Release promotion request"
+            echo ""
+            echo "- Source RC: \`${SOURCE_RC_TAG}\`"
+            echo "- Stable tag: \`${TARGET_TAG}\`"
+            echo "- Commit: \`${COMMIT}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  promote:
+    name: Create Stable Tag
+    needs: validate
+    runs-on: ubuntu-24.04
+    environment: release-tagging
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create and push stable tag
+        env:
+          COMMIT: ${{ needs.validate.outputs.commit }}
+          SOURCE_RC_TAG: ${{ needs.validate.outputs.source_rc_tag }}
+          TARGET_TAG: ${{ needs.validate.outputs.target_tag }}
+          TAG_PUSH_TOKEN: ${{ secrets.RELEASE_TAG_TOKEN || github.token }}
+        run: |
+          set -euo pipefail
+          git fetch --force --prune --tags origin '+refs/heads/*:refs/remotes/origin/*'
+
+          if git rev-parse --verify "refs/tags/${TARGET_TAG}" >/dev/null 2>&1; then
+            echo "Tag ${TARGET_TAG} already exists."
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TARGET_TAG" "$COMMIT" -m "Promote ${SOURCE_RC_TAG} to ${TARGET_TAG}"
+
+          git remote set-url origin "https://x-access-token:${TAG_PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push origin "refs/tags/${TARGET_TAG}"
+
+          echo "Promoted ${SOURCE_RC_TAG} to ${TARGET_TAG} at ${COMMIT}."

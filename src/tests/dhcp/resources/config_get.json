@@ -1,0 +1,14 @@
+[
+    {
+        "arguments": {
+            "Dhcp4": {
+                "lease-database": {
+                    "host": "dhcp-db.example.local",
+                    "name": "kea_dhcp",
+                    "type": "postgresql"
+                }
+            }
+        },
+        "result": 0
+    }
+]

@@ -1,0 +1,43 @@
+{{- if and .Values.gateway.enabled (eq (.Values.ingress.type | default "envoyGateway") "envoyGateway") }}
+{{- $tlsCertName := include "nv-config-manager.componentName" (dict "root" . "component" "gateway-tls") }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: {{ .Values.gateway.name }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+  {{- $envoyImage := dig "envoyProxy" "image" "" .Values.gateway }}
+  {{- $useOwnProxy := or .Values.gateway.hostNetwork.enabled .Values.gateway.hostPorts.enabled (dig "nodePort" "enabled" false .Values.gateway) .Values.gateway.nlb (dig "envoyProxy" "enabled" false .Values.gateway) $envoyImage }}
+  {{- $proxyName := .Values.gateway.envoyProxy.name | default (printf "%s-proxy" .Values.gateway.name) }}
+  {{- if $useOwnProxy }}
+  annotations:
+    gateway.envoyproxy.io/envoy-proxy: {{ $proxyName }}
+  {{- end }}
+spec:
+  gatewayClassName: {{ .Values.gateway.className }}
+  {{- if $useOwnProxy }}
+  infrastructure:
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: {{ $proxyName }}
+  {{- end }}
+  listeners:
+  {{- range .Values.gateway.listeners }}
+  - name: {{ .name }}
+    protocol: {{ .protocol }}
+    port: {{ .port }}
+    {{- if and (eq .protocol "HTTPS") .tls }}
+    tls:
+      mode: {{ .tls.mode }}
+      certificateRefs:
+      - kind: {{ .tls.certificateRef.kind }}
+        name: {{ $tlsCertName }}
+        namespace: {{ $.Values.global.namespace }}
+    {{- end }}
+    allowedRoutes:
+      namespaces:
+        from: Same
+  {{- end }}
+{{- end }}

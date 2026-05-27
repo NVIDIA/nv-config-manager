@@ -1,0 +1,61 @@
+stages:
+  - lint
+  - build
+  - security
+  - test
+  - sonar
+  - deploy
+  - release
+  # Airgapped bundle stages (manual trigger)
+  - prepare-airgapped
+  - build-airgapped
+  - test-airgapped
+  - publish-airgapped
+
+# Switch between merge request and branch pipelines
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS && $CI_PIPELINE_SOURCE == "push"
+      when: never
+    - if: $CI_COMMIT_BRANCH
+    - if: $CI_COMMIT_TAG
+
+variables:
+  NVCM_CI_IMAGE_ALPINE: "alpine:3.21"
+  NVCM_CI_IMAGE_AWS_CLI: "amazon/aws-cli:latest"
+  NVCM_CI_IMAGE_DOCKER: "docker:27"
+  NVCM_CI_IMAGE_DOCKER_DIND: "docker:27-dind"
+  NVCM_CI_IMAGE_GO: "golang:1.25-alpine"
+  NVCM_CI_IMAGE_NODE: "node:24-alpine"
+  NVCM_CI_IMAGE_PLAYWRIGHT: "mcr.microsoft.com/playwright:v1.56.1-noble"
+  NVCM_CI_IMAGE_PYTHON_311_BOOKWORM: "python:3.11-bookworm"
+  NVCM_CI_IMAGE_PYTHON_313: "python:3.13"
+  NVCM_CI_IMAGE_SONAR: "sonarsource/sonar-scanner-cli:11"
+  NVCM_CI_IMAGE_UBUNTU: "ubuntu:24.04"
+  NVCM_CONTAINER_SCAN_POLICY_REF: "main"
+  APT_MIRROR: "$NVCM_APT_MIRROR"
+  APT_MIRROR_DEBIAN: "$NVCM_APT_MIRROR_DEBIAN"
+  APT_MIRROR_GPG_KEY_URL: "$NVCM_APT_MIRROR_GPG_KEY_URL"
+  PULSE_REGISTRY_NGC_PASSWORD: $NGC_REGISTRY_TOKEN
+
+# Always-run job to ensure pipeline has at least one job
+# Prevents GitLab UI confusion when all other jobs are skipped
+pipeline-status:
+  stage: lint
+  tags:
+    - dca
+    - linux/amd64
+    - docker
+  needs: []
+  image: $NVCM_CI_IMAGE_ALPINE
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: always
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: always
+    - if: $CI_COMMIT_TAG
+      when: always
+    - when: never
+  script:
+    - echo "✅ Pipeline running for commit ${CI_COMMIT_SHORT_SHA}"

@@ -1,0 +1,255 @@
+# Maximal values file for image extraction via helm template
+# This file enables ALL possible features to extract every container image
+# Used by create-airgapped.sh to extract image references
+
+global:
+  environment: bootstrap
+  baseDomain: bootstrap.local
+  namespace: nv-config-manager
+
+gateway:
+  enabled: true
+  baseHostname: bootstrap.local
+  certificates:
+    enabled: false
+  auth:
+    jwt:
+      enabled: false
+
+# =============================================================================
+# UI Service - explicitly enable to capture nv-config-manager-ui image
+# =============================================================================
+ui:
+  enabled: true
+
+# =============================================================================
+# Enable OIDC to capture oauth2-proxy image
+# =============================================================================
+oidc:
+  enabled: true
+  hostname: sso.bootstrap.local
+  issuerUrl: "https://login.example.com"
+  clientId: "dummy-client-id"
+  oauth2Proxy:
+    image:
+      repository: quay.io/oauth2-proxy/oauth2-proxy
+      tag: v7.6.0
+      pullPolicy: IfNotPresent
+
+# =============================================================================
+# Enable SPIFFE to capture envoy and spiffe-helper images
+# =============================================================================
+spiffe:
+  enabled: true
+  provider: spire
+  authMode: jwt
+  trustDomain: "config-manager.example.com"
+  socket:
+    mountPath: /spiffe-workload-api
+    socketFile: spire-agent.sock
+
+networkPolicy:
+  enabled: false
+
+ingress:
+  type: envoyGateway
+
+externalServices:
+  nautobot:
+    local: true
+    localServer: "http://nautobot-nv-config-manager"
+  nats:
+    server: "nats://nv-config-manager@nats:4222"
+    authMethod: password
+    local: true
+    streams:
+      configManager:
+        name: kiwi
+        subjects:
+          - kiwi.nautobotchange
+          - kiwi.devicechange
+          - kiwi.workflow.result
+        renderChangeSubject: kiwi.nautobotchange
+        deviceChangeSubject: kiwi.devicechange
+        archiveSubject: kiwi.workflow.result
+      nautobot:
+        name: nautobot
+        subjects:
+          - nautobot
+        subject: nautobot
+  redis:
+    # Enable local redis to capture redis:7-alpine image
+    local: true
+    localHost: "redis-master"
+  postgres:
+    port: 5432
+    temporal:
+      host: "cluster-temporal-rw"
+      database: temporal
+      visibilityHost: "cluster-temporal-visibility-rw"
+      visibilityDatabase: temporal_visibility
+    configStore:
+      host: "cluster-config-store-rw"
+      database: config_store
+
+vault:
+  method: kubernetes
+
+# Use kubernetes secrets method to capture alpine/kubectl:latest image
+secrets:
+  method: kubernetes
+  vault:
+    server: "https://vault.example.com"
+    secretsPath: "nv-config-manager"
+    mountPath: "auth/kubernetes"
+    paths:
+      nautobot:
+        path: "nv-config-manager/nautobot"
+      redis:
+        path: "nv-config-manager/redis"
+      postgres:
+        path: "nv-config-manager/postgres"
+      network:
+        path: "nv-config-manager/network"
+      redfish:
+        path: "nv-config-manager/redfish"
+      bmc:
+        path: "nv-config-manager/bmc"
+      slack:
+        path: "nv-config-manager/slack"
+      air:
+        path: "nv-config-manager/air"
+      ufm:
+        path: "nv-config-manager/ufm"
+      nautobotApp:
+        path: "nv-config-manager/nautobot-app"
+
+# =============================================================================
+# Render Service - enable template plugins to capture python:3.13-alpine image
+# =============================================================================
+renderService:
+  enabled: true
+  templatePlugins:
+    enabled: true
+    pvcName: render-service-template-plugins
+
+# =============================================================================
+# Network ZTP
+# =============================================================================
+networkZtp:
+  enabled: true
+  # Enable file storage to include any PVC-related init containers
+  storage:
+    type: file
+    file:
+      pvcName: ztp-os-images
+
+# =============================================================================
+# Network DHCP
+# =============================================================================
+networkDhcp:
+  enabled: true
+
+# =============================================================================
+# Temporal - enable all sub-components including archive
+# =============================================================================
+temporal:
+  enabled: true
+  # Enable archive service to capture its image
+  archive:
+    enabled: true
+    replicas: 1
+
+# =============================================================================
+# Config Store - all components
+# =============================================================================
+configStore:
+  enabled: true
+  # Cache refresh is enabled by default when configStore is enabled
+  cacheRefresh:
+    enabled: true
+
+# =============================================================================
+# Nautobot - enable all sub-components
+# =============================================================================
+nautobot:
+  enabled: true
+  admin:
+    username: admin
+    email: admin@example.com
+  server:
+    db:
+      host: "cluster-nautobot-rw"
+      port: 5432
+      name: nautobot
+  celery:
+    enabled: true
+    workers:
+      default:
+        enabled: true
+      beat:
+        enabled: true
+  nginx:
+    enabled: true
+  initJob:
+    enabled: true
+  # Enable custom jobs (no extra image, just mount config)
+  customJobs:
+    enabled: true
+    pvcName: nautobot-custom-jobs
+  # Enable metrics
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+
+# =============================================================================
+# NATS - enable all modes to capture all images
+# =============================================================================
+nautobotNats:
+  enabled: true
+  jetstream:
+    enabled: true
+  # Enable nats-ready with both modes to capture images
+  natsReady:
+    enabled: true
+    # This captures nv-config-manager-nats-ready image
+    useNatsCli: false
+
+# =============================================================================
+# CNPG - enable all clusters
+# =============================================================================
+cnpg:
+  enabled: true
+  monitoring:
+    enabled: true
+  temporal:
+    enabled: true
+  temporalVisibility:
+    enabled: true
+  configStore:
+    enabled: true
+  dhcp:
+    enabled: true
+  nautobot:
+    enabled: true
+  # Enable backup config (doesn't add images but ensures full template render)
+  backup:
+    destinationType: s3
+    s3:
+      endpoint: "https://s3.example.com"
+      bucket: "backups"
+
+# =============================================================================
+# Config Secrets (no extra images, just template config)
+# =============================================================================
+configSecrets:
+  enabled: false
+
+# =============================================================================
+# Reference Grants (no extra images)
+# =============================================================================
+referenceGrants:
+  enabled: true
+  allowedNamespaces:
+    - other-namespace

@@ -1,0 +1,253 @@
+# NVIDIA Config Manager Airgapped Image Loader DaemonSet
+#
+# This DaemonSet loads container images from tarball files into containerd
+# on all nodes in the cluster. Use this for air-gapped deployments.
+#
+# Usage:
+#   1. Extract airgapped tarball to shared storage accessible by all nodes
+#   2. Update the hostPath below to point to the images directory
+#   3. kubectl apply -f image-loader-daemonset.yaml
+#   4. Wait for all pods to show "All images imported successfully!" in logs
+#   5. Delete when done: kubectl delete namespace nv-config-manager-airgapped
+#
+# The images persist in containerd after the DaemonSet is deleted.
+#
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: nv-config-manager-airgapped
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: image-loader-script
+  namespace: nv-config-manager-airgapped
+data:
+  load-images.sh: |
+    #!/bin/sh
+    set -euo pipefail
+    
+    echo "=== NVIDIA Config Manager Airgapped Image Loader ==="
+    echo "Node: $(hostname)"
+    echo "Started at: $(date)"
+    
+    # Paths - configure these based on your environment
+    CONTAINERD_SOCKET="${CONTAINERD_SOCKET:-/host/run/containerd/containerd.sock}"
+    CTR_BINARY="${CTR_BINARY:-/host/usr/bin/ctr}"
+    IMAGES_DIR="${IMAGES_DIR:-/images}"
+    NAMESPACE="${NAMESPACE:-k8s.io}"
+    
+    # Check if containerd socket exists
+    if [ ! -S "$CONTAINERD_SOCKET" ]; then
+      echo "ERROR: containerd socket not found at $CONTAINERD_SOCKET"
+      echo "Looking for socket in common locations..."
+      for sock in /host/run/containerd/containerd.sock /host/var/run/containerd/containerd.sock; do
+        if [ -S "$sock" ]; then
+          CONTAINERD_SOCKET="$sock"
+          echo "Found socket at: $CONTAINERD_SOCKET"
+          break
+        fi
+      done
+      if [ ! -S "$CONTAINERD_SOCKET" ]; then
+        echo "ERROR: No containerd socket found"
+        exit 1
+      fi
+    fi
+    
+    # Check if ctr binary exists
+    if [ ! -f "$CTR_BINARY" ]; then
+      echo "ERROR: ctr binary not found at $CTR_BINARY"
+      echo "Make sure --airgapped-ctr-bin-path points to the directory containing ctr"
+      exit 1
+    fi
+    
+    # Verify ctr can access containerd
+    echo "Testing containerd connection..."
+    if ! "$CTR_BINARY" --address "$CONTAINERD_SOCKET" version &>/dev/null; then
+      echo "ERROR: Cannot connect to containerd at $CONTAINERD_SOCKET"
+      exit 1
+    fi
+    echo "✓ Connected to containerd"
+    
+    # Check if images directory exists
+    if [ ! -d "$IMAGES_DIR" ]; then
+      echo "ERROR: Images directory not found at $IMAGES_DIR"
+      exit 1
+    fi
+    
+    # Count image files
+    IMAGE_COUNT=$(find "$IMAGES_DIR" -name "*.tar" -type f | wc -l)
+    echo "Found $IMAGE_COUNT image tarball(s) to import"
+    
+    if [ "$IMAGE_COUNT" -eq 0 ]; then
+      echo "WARNING: No image tarballs found in $IMAGES_DIR"
+      echo "Nothing to do - sleeping briefly then exiting"
+      sleep 30
+      exit 0
+    fi
+    
+    # Show node architecture for reference
+    NODE_ARCH=$(uname -m)
+    echo "Node architecture: $NODE_ARCH"
+    
+    # Import each image
+    SUCCESS_COUNT=0
+    FAILED_COUNT=0
+    SKIPPED_COUNT=0
+    
+    for image_tar in "$IMAGES_DIR"/*.tar; do
+      [ -f "$image_tar" ] || continue
+      
+      # Skip macOS extended attribute files
+      case "$(basename "$image_tar")" in
+        ._*) continue ;;
+      esac
+      
+      IMAGE_FILE=$(basename "$image_tar")
+      echo ""
+      echo "--- Importing $IMAGE_FILE ---"
+      
+      # Import the image (bundles are single-arch, so no --platform needed)
+      IMPORT_OUTPUT=$("$CTR_BINARY" --address "$CONTAINERD_SOCKET" -n "$NAMESPACE" images import "$image_tar" 2>&1)
+      IMPORT_EXIT=$?
+      
+      if [ $IMPORT_EXIT -eq 0 ]; then
+        echo "✓ Successfully imported $IMAGE_FILE"
+        SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
+      else
+        # Check for specific error conditions
+        if echo "$IMPORT_OUTPUT" | grep -q "already exists"; then
+          echo "⚠ Image already exists (skipping): $IMAGE_FILE"
+          SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
+        else
+          echo "✗ Failed to import $IMAGE_FILE: $IMPORT_OUTPUT"
+          FAILED_COUNT=$((FAILED_COUNT + 1))
+        fi
+      fi
+    done
+    
+    echo ""
+    echo "=== Import Summary ==="
+    echo "Successful: $SUCCESS_COUNT"
+    echo "Skipped (already exists): $SKIPPED_COUNT"
+    echo "Failed: $FAILED_COUNT"
+    echo "Total: $IMAGE_COUNT"
+    echo ""
+    
+    # List imported images
+    echo "=== Images in containerd ==="
+    "$CTR_BINARY" --address "$CONTAINERD_SOCKET" -n "$NAMESPACE" images ls 2>/dev/null | head -50 || true
+    
+    echo ""
+    echo "Completed at: $(date)"
+    
+    # Exit with error if any imports failed
+    if [ "$FAILED_COUNT" -gt 0 ]; then
+      echo "ERROR: Some imports failed"
+      echo "Sleeping to allow log inspection before restart..."
+      sleep 300
+      exit 1
+    fi
+    
+    echo "All images imported successfully!"
+    echo "Pod will now sleep - waiting for cleanup by deploy script..."
+    
+    # Sleep indefinitely to prevent restart (DaemonSets always restart)
+    # The deploy script will delete the namespace when done
+    sleep infinity
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nv-config-manager-image-loader
+  namespace: nv-config-manager-airgapped
+  labels:
+    app: nv-config-manager-image-loader
+spec:
+  selector:
+    matchLabels:
+      app: nv-config-manager-image-loader
+  template:
+    metadata:
+      labels:
+        app: nv-config-manager-image-loader
+    spec:
+      # This pod doesn't need K8s API access
+      automountServiceAccountToken: false
+      # Run on all nodes including control plane
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+        - key: node-role.kubernetes.io/master
+          operator: Exists
+          effect: NoSchedule
+      
+      # Privileged to access host containerd
+      hostNetwork: true
+      hostPID: true
+      containers:
+      - name: image-loader
+        image: busybox:1.36
+        imagePullPolicy: IfNotPresent
+        command: ["/bin/sh", "/scripts/load-images.sh"]
+        securityContext:
+          privileged: true
+        env:
+        - name: CONTAINERD_SOCKET
+          value: "/host/run/containerd/containerd.sock"
+        - name: CTR_BINARY
+          value: "/host/ctr-bin/ctr"
+        - name: IMAGES_DIR
+          value: "/images"
+        - name: NAMESPACE
+          value: "k8s.io"
+        volumeMounts:
+        - name: containerd-sock
+          mountPath: /host/run/containerd
+        - name: containerd-bin
+          mountPath: /host/ctr-bin
+          readOnly: true
+        - name: images
+          mountPath: /images
+          readOnly: true
+        - name: loader-script
+          mountPath: /scripts
+          readOnly: true
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 1000m
+            memory: 512Mi
+            ephemeral-storage: 1Gi
+      volumes:
+      - name: containerd-sock
+        hostPath:
+          path: /run/containerd
+          type: DirectoryOrCreate
+      - name: containerd-bin
+        hostPath:
+          # Directory containing the ctr binary
+          # Common locations: /usr/local/bin, /usr/bin
+          # Configurable by editing the manifest or image-loader command
+          path: /usr/local/bin
+          type: Directory
+      - name: images
+        hostPath:
+          # =====================================================
+          # UPDATE THIS PATH to where you extracted the airgapped
+          # tarball's images directory
+          # =====================================================
+          path: /mnt/nfs/nv-config-manager-airgapped-v1.0.0/images
+          type: Directory
+      - name: loader-script
+        configMap:
+          name: image-loader-script
+          defaultMode: 0755
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+

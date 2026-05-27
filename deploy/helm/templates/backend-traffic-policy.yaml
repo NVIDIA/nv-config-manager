@@ -1,0 +1,96 @@
+{{- if and .Values.gateway.enabled (eq .Values.ingress.type "envoyGateway") }}
+{{- $policyName := include "nv-config-manager.componentName" (dict "root" . "component" "global-traffic-policy") }}
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: {{ $policyName }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+spec:
+  # Attach to Gateway - this policy will be inherited by all HTTPRoutes
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: {{ .Values.gateway.name }}
+  
+  # Global timeout settings
+  timeout:
+    http:
+      requestTimeout: {{ .Values.gateway.timeout.requestTimeout | default "300s" }}
+      connectionIdleTimeout: {{ .Values.gateway.timeout.connectionIdleTimeout | default "60s" }}
+      maxConnectionDuration: {{ .Values.gateway.timeout.maxConnectionDuration | default "0s" }}
+    tcp:
+      connectTimeout: {{ .Values.gateway.timeout.connectTimeout | default "10s" }}
+  
+  {{- if .Values.gateway.rateLimit.enabled }}
+  rateLimit:
+    type: Global
+    global:
+      rules:
+      # Global rate limit for all traffic
+      - clientSelectors:
+        - sourceCIDR:
+            value: 0.0.0.0/0
+            type: {{ if .Values.gateway.rateLimit.global.perClient.enabled }}Distinct{{ else }}All{{ end }}
+        limit:
+          requests: {{ .Values.gateway.rateLimit.global.requests }}
+          unit: {{ .Values.gateway.rateLimit.global.unit }}
+  {{- end }}
+{{- /* -----------------------------------------------------------------------
+  ZTP upload policy — overrides the global timeout for the ZTP HTTPRoutes.
+  OS image uploads can be up to 5GB and need significantly longer timeouts
+  than the default 300s.  This policy targets the ZTP HTTPRoute(s) and
+  takes precedence over the Gateway-level policy.
+  ----------------------------------------------------------------------- */}}
+{{- if .Values.networkZtp.enabled }}
+{{- $ztpName := include "nv-config-manager.componentName" (dict "root" . "component" "ztp") }}
+{{- $uploadTimeout := .Values.networkZtp.upload.timeout | default "3600s" }}
+{{- $uploadIdleTimeout := .Values.networkZtp.upload.idleTimeout | default "300s" }}
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: {{ $ztpName }}-upload-policy
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+spec:
+  # Attach to the ZTP HTTPRoute (SSO/browser access)
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: {{ $ztpName }}
+  timeout:
+    http:
+      # Allow up to 1 hour for 5GB uploads on slower connections
+      requestTimeout: {{ $uploadTimeout }}
+      connectionIdleTimeout: {{ $uploadIdleTimeout }}
+      maxConnectionDuration: "0s"
+    tcp:
+      connectTimeout: {{ .Values.gateway.timeout.connectTimeout | default "10s" }}
+{{- if and .Values.oidc.enabled (.Values.networkZtp.gateway.svcHostname | default "") }}
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: {{ $ztpName }}-svc-upload-policy
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+spec:
+  # Attach to the ZTP svc-* HTTPRoute (JWT-only, CLI/machine access)
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: {{ $ztpName }}-svc
+  timeout:
+    http:
+      requestTimeout: {{ $uploadTimeout }}
+      connectionIdleTimeout: {{ $uploadIdleTimeout }}
+      maxConnectionDuration: "0s"
+    tcp:
+      connectTimeout: {{ .Values.gateway.timeout.connectTimeout | default "10s" }}
+{{- end }}
+{{- end }}
+{{- end }}

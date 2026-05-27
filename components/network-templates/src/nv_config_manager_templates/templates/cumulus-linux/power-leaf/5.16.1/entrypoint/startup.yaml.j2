@@ -1,0 +1,14 @@
+{% extends "cumulus-linux/power-leaf/base/startup.yaml.j2" %}
+
+{% block service %}
+{% include "cumulus-linux/role_common/5.16.1/include/service.j2" %}
+{% endblock service %}
+
+
+{% block interfaces %}
+{% include "cumulus-linux/power-leaf/5.16.1/include/interface.j2" %}
+{% endblock interfaces %}
+
+{% block system %}
+{% include "cumulus-linux/role_common/5.16.1/include/system.j2" %}
+{% endblock system %}

@@ -1,0 +1,161 @@
+# Local Development Values
+# Deploy with: helm install nv-config-manager ./chart -f chart/values-local.yaml -n nv-config-manager --create-namespace
+#
+# Prerequisites:
+#   - ingress-nginx or gateway controller installed
+#   - Add to /etc/hosts: 127.0.0.1 config-manager.local api.config-manager.local
+#
+# Access:
+#   - UI:               https://config-manager.local
+#   - Workflow API:     https://api.config-manager.local/workflow
+#   - Config Store API: https://api.config-manager.local/config-store
+#   - Render API:       https://api.config-manager.local/render
+#   - ZTP API:          https://api.config-manager.local/ztp
+#   - DHCP API:         https://api.config-manager.local/dhcp
+
+global:
+  environment: local
+  replicas: 1
+  domain: config-manager.local
+
+# =============================================================================
+# Mock SSO Authentication for Local Development
+# =============================================================================
+# Injects X-Auth-Request-* headers as if the user went through SSO.
+# Works with both ingress-nginx (configuration-snippet) and Envoy sidecar.
+# =============================================================================
+localDev:
+  mockAuth:
+    enabled: true
+    email: "dev@localhost"
+    user: "dev@localhost"
+    name: "Local Developer"
+    groups: "nv-config-manager,nv-config-manager-admin"
+    preferredUsername: "dev"
+  mockDevices: true
+
+externalServices:
+  # Jira for local dev — api-token comes from the jira-creds K8s secret
+  # kubectl create secret generic jira-creds --from-literal=api-token=<your-token> -n nv-config-manager
+  jira:
+    enabled: true
+    baseUrl: "https://jirasw.nvidia.com"
+
+# All services run with single replicas for local dev
+ztp:
+  enabled: true
+  replicas: 1
+  api:
+    replicas: 1
+  sftp:
+    replicas: 1
+
+dhcp:
+  enabled: true
+  replicas: 1
+  api:
+    replicas: 1
+  kea:
+    replicas: 1
+
+temporal:
+  enabled: true
+  replicas: 1
+  api:
+    replicas: 1
+  worker:
+    replicas: 1
+  ui:
+    replicas: 1
+  configManagerWorker:
+    resources:
+      requests:
+        memory: 512Mi
+        cpu: 250m
+      limits:
+        memory: 1Gi
+        cpu: 500m
+
+renderService:
+  enabled: true
+  replicas: 1
+  api:
+    replicas: 1
+  consumer:
+    replicas: 1
+
+configStore:
+  enabled: true
+  replicas: 1
+  api:
+    replicas: 1
+  ui:
+    replicas: 1
+  cacheRefresh:
+    replicas: 1
+
+# Local infrastructure - single replicas
+redis:
+  enabled: true
+  replicas: 1
+
+postgres:
+  enabled: true
+  replicas: 1
+
+nats:
+  enabled: true
+  replicas: 1
+
+# Ingress configuration for local dev
+ingress:
+  enabled: true
+  className: nginx  # or "gateway" for gateway controller
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+  hosts:
+    ui: config-manager.local
+    api: api.config-manager.local
+
+# Gateway configuration (alternative to ingress-nginx)
+gateway:
+  enabled: false
+  className: envoy-gateway  # or your gateway class
+  hosts:
+    ui: config-manager.local
+    api: api.config-manager.local
+  # Disable JWT auth for local dev (mock auth handles identity)
+  auth:
+    jwt:
+      enabled: false
+  # Enable hostPorts for Kind deployments to bind to host ports 80/443
+  hostPorts:
+    enabled: true
+    https: 443
+    containerPort: 10443
+
+# Disable OIDC/SSO since we're using mock auth
+oidc:
+  enabled: false
+
+tls:
+  enabled: false  # Set to true if using cert-manager locally
+
+monitoring:
+  enabled: false
+
+# Use local images
+image:
+  repository: nv-config-manager
+  tag: local
+  pullPolicy: Never
+
+uiImage:
+  repository: nv-config-manager-ui
+  tag: local
+  pullPolicy: Never
+
+
+networkPolicy:
+  additionalAllowedNamespaces:
+    - cnpg-system

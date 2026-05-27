@@ -1,0 +1,23 @@
+{% extends "cumulus-linux/superpod-common/include/service.j2" %}
+
+{% block dns %}
+{% if device_data|dns_servers %}
+      dns:
+        mgmt:
+          server:
+{% for dns_server in device_data|dns_servers %}
+            {{ dns_server }}: {}
+{% endfor %}
+{% endif %}
+{% endblock dns %}
+
+{% block ntp %}
+{% if device_data|ntp_servers %}
+      ntp:
+        mgmt:
+          server:
+{% for ntp_server in device_data|ntp_servers %}
+            {{ ntp_server }}: {}
+{% endfor %}
+{% endif %}
+{% endblock ntp %}

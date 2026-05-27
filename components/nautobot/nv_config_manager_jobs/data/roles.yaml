@@ -1,0 +1,702 @@
+---
+# Device, Interface, and IPAM Roles for NVIDIA Config Manager deployments
+# Required for superpod infrastructure, render service, and automation workflows
+
+# ============================================================================
+# WAN / Border Roles
+# ============================================================================
+
+- name: WAN
+  description: WAN router or border device
+  content_types:
+    - dcim.device
+  color: ff5722
+  deployment_types: [all]
+
+- name: TAN-BBR
+  description: Tenant Access Network Border Router
+  content_types:
+    - dcim.device
+  color: ff5722
+  deployment_types: [all]
+
+- name: TAN-Inet
+  description: Tenant Access Network Internet Gateway
+  content_types:
+    - dcim.device
+  color: ff5722
+  deployment_types: [all]
+
+- name: TAN-Firewall
+  description: Tenant Access Network Firewall
+  content_types:
+    - dcim.device
+  color: ff5722
+  deployment_types: [all]
+
+# ============================================================================
+# Superpod Network Device Roles
+# ============================================================================
+
+- name: OOB-Spine
+  description: Out-of-Band spine switch
+  content_types:
+    - dcim.device
+  color: ff9800
+  deployment_types: [all, superpod]
+
+- name: Mgmt-Leaf
+  description: Management leaf switch
+  content_types:
+    - dcim.device
+  color: 2196f3
+  deployment_types: [all, superpod]
+
+- name: Power-Leaf
+  description: Power leaf switch
+  content_types:
+    - dcim.device
+  color: 2196f3
+  deployment_types: [all, superpod]
+
+- name: In-Band-Leaf
+  description: In-band leaf switch
+  content_types:
+    - dcim.device
+  color: 2196f3
+  deployment_types: [all, superpod]
+
+- name: Storage-Leaf
+  description: Storage leaf switch
+  content_types:
+    - dcim.device
+  color: 2196f3
+  deployment_types: [all, superpod]
+
+- name: Border-Leaf
+  description: Border leaf switch
+  content_types:
+    - dcim.device
+  color: 2196f3
+  deployment_types: [all, superpod]
+
+- name: Converged-Spine
+  description: Converged spine switch
+  content_types:
+    - dcim.device
+  color: 2196f3
+  deployment_types: [all, superpod]
+
+# ============================================================================
+# Superpod IPAM Prefix Roles
+# ============================================================================
+
+- name: superpod-spine-p2p
+  description: Superpod spine point-to-point prefix
+  content_types:
+    - ipam.prefix
+  color: 2196f3
+  deployment_types: [all, superpod]
+
+- name: superpod-loopback
+  description: Superpod loopback prefix
+  content_types:
+    - ipam.prefix
+  color: 2196f3
+  deployment_types: [all, superpod]
+
+# ============================================================================
+# DGX Cloud Network Device Roles
+# ============================================================================
+
+- name: NSV Device
+  description: Network Services Virtual Device
+  content_types:
+    - dcim.device
+  color: 9c27b0
+  deployment_types: [all]
+
+- name: CIN-Core
+  description: Compute Interconnect Network Core switch
+  content_types:
+    - dcim.device
+  color: 2196f3
+  deployment_types: [all]
+
+- name: CIN-Spine
+  description: Compute Interconnect Network Spine switch
+  content_types:
+    - dcim.device
+  color: 2196f3
+  deployment_types: [all]
+
+- name: CIN-Leaf
+  description: Compute Interconnect Network Leaf switch
+  content_types:
+    - dcim.device
+  color: 2196f3
+  deployment_types: [all]
+
+- name: TAN-Core
+  description: Tenant Access Network Core switch
+  content_types:
+    - dcim.device
+  color: 2196f3
+  deployment_types: [all]
+
+- name: TAN-Spine
+  description: Tenant Access Network Spine switch
+  content_types:
+    - dcim.device
+  color: 2196f3
+  deployment_types: [all]
+
+- name: TAN-Leaf
+  description: Tenant Access Network Leaf switch
+  content_types:
+    - dcim.device
+  color: 2196f3
+  deployment_types: [all]
+
+- name: SMN-Core
+  description: Storage Management Network Core switch
+  content_types:
+    - dcim.device
+  color: 2196f3
+  deployment_types: [all]
+
+- name: SMN-Spine
+  description: Storage Management Network Spine switch
+  content_types:
+    - dcim.device
+  color: 2196f3
+  deployment_types: [all]
+
+- name: SMN-Leaf
+  description: Storage Management Network Leaf switch
+  content_types:
+    - dcim.device
+  color: 2196f3
+  deployment_types: [all]
+
+- name: SMN-Aggleaf
+  description: Storage Management Network Aggregate Leaf switch
+  content_types:
+    - dcim.device
+  color: 2196f3
+  deployment_types: [all]
+
+- name: SMN-ZTPLeaf
+  description: Storage Management Network ZTP Leaf switch
+  content_types:
+    - dcim.device
+  color: 2196f3
+  deployment_types: [all]
+
+- name: OOB-Switch
+  description: Out-of-Band management switch
+  content_types:
+    - dcim.device
+  color: ff9800
+  deployment_types: [all]
+
+- name: UC-Leaf
+  description: Unified Communications Leaf switch
+  content_types:
+    - dcim.device
+  color: 2196f3
+  deployment_types: [all]
+
+- name: UC-BMCLeaf
+  description: Unified Communications BMC Leaf switch
+  content_types:
+    - dcim.device
+  color: 2196f3
+  deployment_types: [all]
+
+# ============================================================================
+# InfiniBand Roles (for Q3400 switches)
+# ============================================================================
+
+- name: InfiniBand Spine
+  description: InfiniBand spine switch
+  content_types:
+    - dcim.device
+  color: 9c27b0
+  deployment_types: [all, superpod]
+
+- name: InfiniBand Leaf
+  description: InfiniBand leaf switch
+  content_types:
+    - dcim.device
+  color: 9c27b0
+  deployment_types: [all, superpod]
+
+# ============================================================================
+# Compute and Server Roles
+# ============================================================================
+
+- name: GPU
+  description: GPU compute nodes (DGX, GB300, etc.)
+  content_types:
+    - dcim.device
+  color: 4caf50
+  deployment_types: [all, superpod]
+
+- name: UFM
+  description: Unified Fabric Manager servers
+  content_types:
+    - dcim.device
+  color: 00bcd4
+  deployment_types: [all, superpod]
+
+- name: Console Server
+  description: Console server for out-of-band management
+  content_types:
+    - dcim.device
+  color: ff9800
+  deployment_types: [all, superpod]
+
+# ============================================================================
+# Interface Roles
+# ============================================================================
+
+- name: Uplink
+  description: Uplink interface
+  content_types:
+    - dcim.interface
+  color: 2196f3
+  deployment_types: [all, superpod]
+
+- name: Downlink
+  description: Downlink interface
+  content_types:
+    - dcim.interface
+  color: 2196f3
+  deployment_types: [all, superpod]
+
+- name: Loopback
+  description: Loopback interface
+  content_types:
+    - dcim.interface
+  color: 2196f3
+  deployment_types: [all, superpod]
+
+# ============================================================================
+# IPAM Prefix Roles - Site Aggregates
+# ============================================================================
+
+- name: Site-Aggregate
+  description: Site-level aggregate prefix
+  content_types:
+    - ipam.prefix
+  color: 607d8b
+  deployment_types: [all]
+
+# ============================================================================
+# IPAM Prefix Roles - Backbone/WAN
+# ============================================================================
+
+- name: Backbone-p2p
+  description: Backbone point-to-point prefix
+  content_types:
+    - ipam.prefix
+  color: ff5722
+  deployment_types: [all]
+
+- name: BBR-Loopback-Vtep
+  description: Border Router Loopback VTEP prefix
+  content_types:
+    - ipam.prefix
+  color: ff5722
+  deployment_types: [all]
+
+# ============================================================================
+# IPAM Prefix Roles - TAN (Tenant Access Network)
+# ============================================================================
+
+- name: TAN-Core-p2p
+  description: TAN Core point-to-point prefix
+  content_types:
+    - ipam.prefix
+  color: 4caf50
+  deployment_types: [all]
+
+- name: TAN-Spine-p2p
+  description: TAN Spine point-to-point prefix
+  content_types:
+    - ipam.prefix
+  color: 4caf50
+  deployment_types: [all]
+
+- name: TAN-Leaf-p2p
+  description: TAN Leaf point-to-point prefix
+  content_types:
+    - ipam.prefix
+  color: 4caf50
+  deployment_types: [all]
+
+- name: TAN-BBR-p2p
+  description: TAN Border Router point-to-point prefix
+  content_types:
+    - ipam.prefix
+  color: 4caf50
+  deployment_types: [all]
+
+- name: TAN-loopback
+  description: TAN loopback prefix
+  content_types:
+    - ipam.prefix
+  color: 4caf50
+  deployment_types: [all]
+
+- name: TAN-Loopback
+  description: TAN loopback prefix (alternate case)
+  content_types:
+    - ipam.prefix
+  color: 4caf50
+  deployment_types: [all]
+
+- name: TAN-Leaf-VLAN
+  description: TAN Leaf VLAN prefix
+  content_types:
+    - ipam.prefix
+  color: 4caf50
+  deployment_types: [all]
+
+# ============================================================================
+# IPAM Prefix Roles - CIN (Compute Interconnect Network)
+# ============================================================================
+
+- name: CIN-Core-p2p
+  description: CIN Core point-to-point prefix
+  content_types:
+    - ipam.prefix
+  color: 2196f3
+  deployment_types: [all]
+
+- name: CIN-Spine-p2p
+  description: CIN Spine point-to-point prefix
+  content_types:
+    - ipam.prefix
+  color: 2196f3
+  deployment_types: [all]
+
+- name: CIN-Leaf-p2p
+  description: CIN Leaf point-to-point prefix
+  content_types:
+    - ipam.prefix
+  color: 2196f3
+  deployment_types: [all]
+
+- name: CIN-loopback
+  description: CIN loopback prefix
+  content_types:
+    - ipam.prefix
+  color: 2196f3
+  deployment_types: [all]
+
+# ============================================================================
+# IPAM Prefix Roles - SMN (Storage Management Network)
+# ============================================================================
+
+- name: SMN-Core-p2p
+  description: SMN Core point-to-point prefix
+  content_types:
+    - ipam.prefix
+  color: 9c27b0
+  deployment_types: [all]
+
+- name: SMN-Spine-p2p
+  description: SMN Spine point-to-point prefix
+  content_types:
+    - ipam.prefix
+  color: 9c27b0
+  deployment_types: [all]
+
+- name: SMN-Aggleaf-p2p
+  description: SMN Aggregate Leaf point-to-point prefix
+  content_types:
+    - ipam.prefix
+  color: 9c27b0
+  deployment_types: [all]
+
+- name: SMN-loopback
+  description: SMN loopback prefix
+  content_types:
+    - ipam.prefix
+  color: 9c27b0
+  deployment_types: [all]
+
+- name: SMN-Leaf-VLAN
+  description: SMN Leaf VLAN prefix
+  content_types:
+    - ipam.prefix
+  color: 9c27b0
+  deployment_types: [all]
+
+- name: SMN-ZTPleaf-Prefix
+  description: SMN ZTP Leaf prefix
+  content_types:
+    - ipam.prefix
+  color: 9c27b0
+  deployment_types: [all]
+
+# ============================================================================
+# IPAM Prefix Roles - OOB (Out-of-Band)
+# ============================================================================
+
+- name: OOB-loopback
+  description: OOB loopback prefix
+  content_types:
+    - ipam.prefix
+  color: ff9800
+  deployment_types: [all]
+
+- name: OOB-Aggregate
+  description: OOB aggregate prefix
+  content_types:
+    - ipam.prefix
+  color: ff9800
+  deployment_types: [all]
+
+- name: OOB-VLAN
+  description: OOB VLAN prefix
+  content_types:
+    - ipam.prefix
+  color: ff9800
+  deployment_types: [all]
+
+# ============================================================================
+# IPAM Prefix Roles - UC (Unified Communications)
+# ============================================================================
+
+- name: UC-Leaf-p2p
+  description: UC Leaf point-to-point prefix
+  content_types:
+    - ipam.prefix
+  color: 00bcd4
+  deployment_types: [all]
+
+- name: UC-Leaf-P2P
+  description: UC Leaf point-to-point prefix (alternate case)
+  content_types:
+    - ipam.prefix
+  color: 00bcd4
+  deployment_types: [all]
+
+- name: UC-BMCLeaf-p2p
+  description: UC BMC Leaf point-to-point prefix
+  content_types:
+    - ipam.prefix
+  color: 00bcd4
+  deployment_types: [all]
+
+- name: UC-BMCLeaf-P2P
+  description: UC BMC Leaf point-to-point prefix (alternate case)
+  content_types:
+    - ipam.prefix
+  color: 00bcd4
+  deployment_types: [all]
+
+- name: UC-BMCLeaf-VLAN
+  description: UC BMC Leaf VLAN prefix
+  content_types:
+    - ipam.prefix
+  color: 00bcd4
+  deployment_types: [all]
+
+- name: UC-Loopback
+  description: UC loopback prefix
+  content_types:
+    - ipam.prefix
+  color: 00bcd4
+  deployment_types: [all]
+
+- name: UC-Server-Loopback
+  description: UC Server loopback prefix
+  content_types:
+    - ipam.prefix
+  color: 00bcd4
+  deployment_types: [all]
+
+- name: UC-Site-Prefix
+  description: UC site prefix
+  content_types:
+    - ipam.prefix
+  color: 00bcd4
+  deployment_types: [all]
+
+- name: UC-VIPs
+  description: UC Virtual IP prefix
+  content_types:
+    - ipam.prefix
+  color: 00bcd4
+  deployment_types: [all]
+
+# ============================================================================
+# IPAM Prefix Roles - DPU
+# ============================================================================
+
+- name: DPU-loopback
+  description: DPU loopback prefix
+  content_types:
+    - ipam.prefix
+  color: 673ab7
+  deployment_types: [all]
+
+- name: DPU-Loopback
+  description: DPU loopback prefix (alternate case)
+  content_types:
+    - ipam.prefix
+  color: 673ab7
+  deployment_types: [all]
+
+- name: DPU-Admin
+  description: DPU admin prefix
+  content_types:
+    - ipam.prefix
+  color: 673ab7
+  deployment_types: [all]
+
+- name: DPU-admin
+  description: DPU admin prefix (alternate case)
+  content_types:
+    - ipam.prefix
+  color: 673ab7
+  deployment_types: [all]
+
+# ============================================================================
+# IPAM Prefix Roles - Forge
+# ============================================================================
+
+- name: Forge-Breakfix
+  description: Forge breakfix prefix
+  content_types:
+    - ipam.prefix
+  color: e91e63
+  deployment_types: [all]
+
+- name: Forge-Control-Plane
+  description: Forge control plane prefix
+  content_types:
+    - ipam.prefix
+  color: e91e63
+  deployment_types: [all]
+
+- name: Forge-Control-Plane-Vips
+  description: Forge control plane VIPs prefix
+  content_types:
+    - ipam.prefix
+  color: e91e63
+  deployment_types: [all]
+
+- name: Forge-Tenants
+  description: Forge tenants prefix
+  content_types:
+    - ipam.prefix
+  color: e91e63
+  deployment_types: [all]
+
+# ============================================================================
+# IPAM Prefix Roles - SCP (Service Control Plane)
+# ============================================================================
+
+- name: Scp-Anycast-Vips
+  description: SCP anycast VIPs prefix
+  content_types:
+    - ipam.prefix
+  color: 795548
+  deployment_types: [all]
+
+- name: Scp-Dhcp-Allocations
+  description: SCP DHCP allocations prefix
+  content_types:
+    - ipam.prefix
+  color: 795548
+  deployment_types: [all]
+
+- name: Scp-Server-Loopbacks
+  description: SCP server loopbacks prefix
+  content_types:
+    - ipam.prefix
+  color: 795548
+  deployment_types: [all]
+
+- name: Scp-Site-Prefix
+  description: SCP site prefix
+  content_types:
+    - ipam.prefix
+  color: 795548
+  deployment_types: [all]
+
+- name: Scp-Temp-Hosts
+  description: SCP temporary hosts prefix
+  content_types:
+    - ipam.prefix
+  color: 795548
+  deployment_types: [all]
+
+- name: Scp-Uc-Cgnat
+  description: SCP UC CGNAT prefix
+  content_types:
+    - ipam.prefix
+  color: 795548
+  deployment_types: [all]
+
+# ============================================================================
+# IPAM Prefix Roles - UserStorage
+# ============================================================================
+
+- name: UserStorage-Server-Loopbacks
+  description: UserStorage server loopbacks prefix
+  content_types:
+    - ipam.prefix
+  color: 009688
+  deployment_types: [all]
+
+- name: UserStorage-Server-P2P
+  description: UserStorage server point-to-point prefix
+  content_types:
+    - ipam.prefix
+  color: 009688
+  deployment_types: [all]
+
+- name: UserStorage-Server-VIPs
+  description: UserStorage server VIPs prefix
+  content_types:
+    - ipam.prefix
+  color: 009688
+  deployment_types: [all]
+
+- name: UserStorage-Site-Prefix
+  description: UserStorage site prefix
+  content_types:
+    - ipam.prefix
+  color: 009688
+  deployment_types: [all]
+
+# ============================================================================
+# IPAM Prefix Roles - Azure / NMX
+# ============================================================================
+
+- name: AZ-Delegated
+  description: Azure delegated prefix
+  content_types:
+    - ipam.prefix
+  color: 03a9f4
+  deployment_types: [all]
+
+- name: AZ-IPMI
+  description: Azure IPMI prefix
+  content_types:
+    - ipam.prefix
+  color: 03a9f4
+  deployment_types: [all]
+
+- name: NMX-M-Prefix
+  description: NMX management prefix
+  content_types:
+    - ipam.prefix
+  color: 03a9f4
+  deployment_types: [all]

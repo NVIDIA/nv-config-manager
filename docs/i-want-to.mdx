@@ -1,0 +1,98 @@
+---
+title: I want to...
+sidebar-title: I want to...
+position: 1
+---
+
+A scenario-first index into the docs. Pick the row that describes what you are trying to accomplish, and follow the link.
+
+## Get oriented
+
+| I want to... | Go to |
+| :----------- | :---- |
+| Understand what Config Manager is and which path to start with. | [Start Here](getting-started/index.mdx) |
+| Know whether to use the Config Manager UI, Nautobot UI, Temporal Web, or an API. | [Which Interface Should I Use?](getting-started/interfaces.mdx) |
+| Preview Config Manager locally without touching real devices. | [Local Development Quick Start](getting-started/local-development-quick-start.mdx) |
+| Decide what to inspect after the first install. | [First Run Tour](getting-started/first-run-tour.mdx) |
+
+## Bootstrap and provisioning
+
+| I want to... | Go to |
+| :----------- | :---- |
+| Bootstrap a freshly racked switch automatically once it has power and a management cable. | [New Site Bringup](user-guides/new-site-deployment/index.mdx), [Network ZTP](network-ztp/index.mdx) |
+| Understand how ZTP loads firmware, configuration, and user accounts onto a device. | [Network ZTP → How It Works](network-ztp/index.mdx#how-it-works), [Render Service](render/index.mdx), [Nautobot Bootstrap](nautobot/bootstrap-intro.mdx) |
+| Know how Config Manager learns that ZTP has finished on a device. | [Network ZTP → Provisioning Workflow](network-ztp/architecture.mdx#provisioning-workflow) |
+| Re-run ZTP on an existing switch (recover a stuck or drifted device). | [Device Reprovision](user-guides/reprovision/index.mdx) |
+| Investigate why a device has not reached the **Provisioned** status. | [New Site Bringup → Monitoring DHCP and ZTP](user-guides/new-site-deployment/index.mdx#monitoring-dhcp-and-ztp) |
+
+## Validate cabling
+
+| I want to... | Go to |
+| :----------- | :---- |
+| Compare what the switches report over LLDP against the cabling in Nautobot. | [Cable Validation](user-guides/cable-validation/index.mdx) |
+| Get a per-interface report of cabling mismatches I can hand to DC Ops. | [Cable Validation](user-guides/cable-validation/index.mdx) |
+
+## Day-2 configuration
+
+| I want to... | Go to |
+| :----------- | :---- |
+| Have a device's intended configuration regenerated automatically when Nautobot changes. | [Render Service](render/render-service.mdx) |
+| Push an intended-config change from Nautobot to a single live device. | [Configuration Deploy](user-guides/configuration-deploy/index.mdx) |
+| Review the configuration diff and approve (or reject) it before anything reaches the device. | [Configuration Deploy → Execution stages](user-guides/configuration-deploy/index.mdx) |
+| Apply a single change to many devices in one orchestrated run, with per-batch approval. | [Multi-Deploy](user-guides/multi-deploy/index.mdx), [Batch Deploy](user-guides/batch-deploy/index.mdx) |
+
+## Backup and recovery
+
+| I want to... | Go to |
+| :----------- | :---- |
+| Make sure every change Config Manager applies is backed up automatically. | [Configuration Backup](user-guides/configuration-backup/index.mdx) |
+| Take an ad-hoc backup of a device or a site. | [Configuration Backup → Running the workflow](user-guides/configuration-backup/index.mdx) |
+| Restore a device from a previous backup. | [Device Reprovision](user-guides/reprovision/index.mdx) (factory reset + re-ZTP), [Configuration Deploy](user-guides/configuration-deploy/index.mdx) (re-apply a target revision) |
+
+## Credentials
+
+| I want to... | Go to |
+| :----------- | :---- |
+| Rotate a user account's password on every device at a site. | [Site Password Rotation](user-guides/site-password-rotation/index.mdx) |
+| Rotate a user account's password on one device. | [Device Password Rotation](user-guides/device-password-rotation/index.mdx) |
+| Understand the pre-work (Vault / K8s secret update + re-render) before running a rotation. | [Site Password Rotation → Prerequisites](user-guides/site-password-rotation/index.mdx#prerequisites) |
+
+## OS and firmware upgrades
+
+| I want to... | Go to |
+| :----------- | :---- |
+| Upgrade Cumulus Linux on a switch. | [Switch OS Upgrade](user-guides/switch-os-upgrade/index.mdx) |
+| Upgrade firmware on an NVLink switch. | [NVLink Switch Firmware Upgrade](user-guides/nvlink-switch-firmware-upgrade/index.mdx) |
+| Understand the pre-work (firmware target in Nautobot for the role at the site) before an OS upgrade. | [Switch OS Upgrade → Prerequisites](user-guides/switch-os-upgrade/index.mdx#prerequisites) |
+
+## ZTP file management
+
+| I want to... | Go to |
+| :----------- | :---- |
+| Upload a firmware image to the ZTP server for a platform / version. | [Upload Images to the ZTP Server](network-ztp/upload-images.mdx) |
+| List what's currently on the ZTP server and verify a file's checksum. | [Upload Images → Verify the upload](network-ztp/upload-images.mdx#verify-the-upload) |
+| Replace or remove an existing image without redeploying. | [Upload Images → Upload via the API](network-ztp/upload-images.mdx#upload-via-the-api) |
+
+## Workflow lifecycle
+
+| I want to... | Go to |
+| :----------- | :---- |
+| Approve, reject, retry, or terminate a workflow. | [Controlling Running Workflows](user-guides/workflow-lifecycle/index.mdx) |
+| Reject a workflow at its approval stage. | [Controlling Running Workflows → Reject](user-guides/workflow-lifecycle/index.mdx#reject) |
+| Terminate a workflow that's already past approval. | [Controlling Running Workflows → Terminate](user-guides/workflow-lifecycle/index.mdx#terminate) |
+| Re-run or retry a failed workflow. | [Controlling Running Workflows → Retry](user-guides/workflow-lifecycle/index.mdx#retry) |
+
+## Security and access control
+
+| I want to... | Go to |
+| :----------- | :---- |
+| Understand how RBAC gates each workflow and admin endpoint, and query the current RBAC mapping. | [Workflow API Reference](api:temporal-api) — the `/rbac-config-status` endpoint returns the active per-workflow `read_roles` / `execute_roles` mapping; per-workflow endpoints document the role each one requires. |
+| Configure workflow RBAC at install time (admin roles, default read/execute roles, per-workflow overrides). | [TUI Wizard Reference - Workflows](install/tui-wizard-reference.mdx#9-workflows) |
+
+## Hosting and offline operation
+
+| I want to... | Go to |
+| :----------- | :---- |
+| Keep operating against a site when the WAN to corp is down. | [Hosting Options](hosting-options/index.mdx) — on-prem cell hosting models |
+| Deploy Config Manager into a site with no internet egress. | [Airgapped Install](install/install-airgapped.mdx) |
+| Validate that a serial / provisioning-state endpoint is reachable for ZTP. | [Network ZTP → API Reference](network-ztp/api-overview.mdx) |

@@ -1,0 +1,64 @@
+    interface:
+{% block bond %}
+{% endblock bond %}
+
+{% if device_data|interface_by_name("eth0", fail_if_missing=False) %}
+{% block management %}
+{% set intf = device_data|interface_by_name("eth0") %}
+      eth0:
+{% if intf.description %}
+        description: {{ intf.description }}
+{% endif %}
+        ip:
+          address:
+            {{ intf.primary_ipv4 }}: {}
+          gateway:
+            {{ intf.primary_ipv4|gateway }}: {}
+          vrf: mgmt
+        type: eth
+{% endblock management %}
+{% endif %}
+
+{% block link_state %}{% endblock link_state %}
+{% set lo_intf = device_data|interface_by_name("lo") %}
+      lo:
+        ip:
+          address:
+            {{ lo_intf.primary_ipv4 }}: {}
+        type: loopback
+{% block breakouts %}
+{# Interface breakouts #}
+{% for intf in device_data|interfaces(prefix="swp") %}
+{% if not intf.parent %}
+{% set breakout = device_data|breakout_count(intf.name) %}
+{% if breakout > 0 %}
+      {{ intf.name }}:
+        link:
+          breakout: {{ breakout }}x
+{% endif %}
+{% endif %}
+{% endfor %}
+{% endblock breakouts %}
+{% block swp %}
+{# Standard switch ports #}
+{% for intf in device_data|interfaces(prefix="swp") %}
+{% if intf.parent %}
+      {{ intf.name }}:
+{% if intf.description %}
+        description: {{ intf.description }}
+{% endif %}
+{% if intf.primary_ipv4 %}
+        ip:
+          address:
+            {{ intf.primary_ipv4 }}: {}
+{% if intf.vrf and intf.vrf != "default" %}
+          vrf: {{ intf.vrf }}
+{% endif %}
+{% endif %}
+        type: swp
+{% endif %}
+{% endfor %}
+{% endblock swp %}
+{% block bridge_interfaces %}{% endblock bridge_interfaces %}
+{% block svi %}{% endblock svi %}
+

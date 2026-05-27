@@ -1,0 +1,7 @@
+---
+
+namespaces:
+{% for namespace in namespaces %}
+  - "!create_or_update:name": {{ namespace }}
+    "!ref": namespace-{{ namespace | lower | replace(" ", "-") }}
+{% endfor %}

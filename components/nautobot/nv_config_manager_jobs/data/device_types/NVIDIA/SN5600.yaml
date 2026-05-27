@@ -1,0 +1,37 @@
+---
+manufacturer: NVIDIA
+model: SN5600
+part_number: 920-9N42F-00RI-7C0
+device_family: Network
+u_height: 2
+is_full_depth: true
+weight: 23.5
+weight_unit: kg
+airflow: front-to-rear
+comments: "[Data Sheet](https://docs.nvidia.com/networking/display/sn5000/)"
+deployment_types: [all, superpod]
+console_ports:
+  - name: con0
+    type: rj-45
+power_ports:
+  - name: PSU1
+    type: iec-60320-c20
+    maximum_draw: 2000
+  - name: PSU2
+    type: iec-60320-c20
+    maximum_draw: 2000
+interfaces:
+  - name: eth0
+    type: 1000base-t
+    mgmt_only: true
+module_bays:
+  - name: osfp[1-64]
+    label: OSFP slot [1-64]
+    description: 800gbase-x-osfp
+    position: "[1-64]"
+  - name: ps[1-2]
+    label: Power supply slot [1-2]
+    position: "[1-2]"
+  - name: fan[1-4]
+    label: Fan slot [1-4]
+    position: "[1-4]"

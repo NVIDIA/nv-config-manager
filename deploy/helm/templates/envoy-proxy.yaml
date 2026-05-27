@@ -1,0 +1,117 @@
+{{- if eq (.Values.ingress.type | default "envoyGateway") "envoyGateway" }}
+{{- $envoyImage := dig "envoyProxy" "image" "" .Values.gateway }}
+{{- $createOwnProxy := or .Values.gateway.hostNetwork.enabled .Values.gateway.hostPorts.enabled (dig "nodePort" "enabled" false .Values.gateway) .Values.gateway.nlb (dig "envoyProxy" "enabled" false .Values.gateway) $envoyImage }}
+{{- $proxyName := .Values.gateway.envoyProxy.name | default (printf "%s-proxy" .Values.gateway.name) }}
+{{- $needsPortPatch := or .Values.gateway.hostNetwork.enabled .Values.gateway.hostPorts.enabled (dig "nodePort" "enabled" false .Values.gateway) }}
+{{- $needsContainerPatch := or $envoyImage (and (not .Values.gateway.hostNetwork.enabled) (or .Values.gateway.hostPorts.enabled (dig "nodePort" "enabled" false .Values.gateway))) }}
+{{- if $createOwnProxy }}
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: {{ $proxyName }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+spec:
+  {{- if and (dig "envoyProxy" "enabled" false .Values.gateway) (dig "envoyProxy" "logging" "level" "default" nil .Values.gateway) }}
+  logging:
+    level:
+      default: {{ .Values.gateway.envoyProxy.logging.level.default | default "warn" }}
+  {{- end }}
+  provider:
+    type: Kubernetes
+    kubernetes:
+      {{- if .Values.gateway.nlb }}
+      # AWS NLB annotations
+      envoyService:
+        annotations:
+          service.beta.kubernetes.io/aws-load-balancer-type: {{ .Values.gateway.nlb.type | default "external" }}
+          service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: {{ .Values.gateway.nlb.target_type | default "ip" }}
+          {{- if .Values.gateway.nlb.name }}
+          service.beta.kubernetes.io/aws-load-balancer-name: {{ .Values.gateway.nlb.name }}
+          {{- end }}
+          {{- if .Values.gateway.nlb.sg }}
+          service.beta.kubernetes.io/aws-load-balancer-security-groups: {{ .Values.gateway.nlb.sg }}
+          {{- end }}
+          {{- if .Values.gateway.nlb.subnets }}
+          service.beta.kubernetes.io/aws-load-balancer-subnets: {{ .Values.gateway.nlb.subnets }}
+          {{- end }}
+          {{- if .Values.gateway.nlb.ips }}
+          service.beta.kubernetes.io/aws-load-balancer-private-ipv4-addresses: {{ .Values.gateway.nlb.ips }}
+          {{- end }}
+          service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+          {{- if .Values.gateway.nlb.dns_name }}
+          external-dns.alpha.kubernetes.io/hostname: {{ .Values.gateway.nlb.dns_name }}
+          {{- end }}
+      {{- else if (dig "envoyProxy" "enabled" false .Values.gateway) }}
+      envoyService:
+        type: {{ .Values.gateway.envoyProxy.envoyService.type | default "LoadBalancer" }}
+        {{- if (dig "envoyProxy" "envoyService" "externalTrafficPolicy" nil .Values.gateway) }}
+        externalTrafficPolicy: {{ .Values.gateway.envoyProxy.envoyService.externalTrafficPolicy }}
+        {{- end }}
+        {{- if (dig "envoyProxy" "envoyService" "labels" nil .Values.gateway) }}
+        labels:
+          {{- toYaml .Values.gateway.envoyProxy.envoyService.labels | nindent 10 }}
+        {{- end }}
+      {{- end }}
+      {{- if or $needsPortPatch $envoyImage }}
+      envoyDeployment:
+        patch:
+          type: StrategicMerge
+          value:
+            spec:
+              template:
+                spec:
+                  {{- if $needsPortPatch }}
+                  nodeSelector:
+                    node-role.kubernetes.io/control-plane: ""
+                  tolerations:
+                  - key: node-role.kubernetes.io/control-plane
+                    operator: Exists
+                    effect: NoSchedule
+                  {{- if .Values.gateway.hostNetwork.enabled }}
+                  hostNetwork: true
+                  dnsPolicy: ClusterFirstWithHostNet
+                  {{- end }}
+                  {{- end }}
+                  {{- if $needsContainerPatch }}
+                  containers:
+                  - name: envoy
+                    {{- if $envoyImage }}
+                    image: {{ $envoyImage | quote }}
+                    {{- end }}
+                    {{- if and (not .Values.gateway.hostNetwork.enabled) (or .Values.gateway.hostPorts.enabled (dig "nodePort" "enabled" false .Values.gateway)) }}
+                    ports:
+                    {{- if dig "nodePort" "enabled" false .Values.gateway }}
+                    # NodePort mode: Envoy Gateway uses OFFSET PORTS for privileged ports
+                    # Gateway listener 80 -> Envoy internal port 10080
+                    # Gateway listener 443 -> Envoy internal port 10443
+                    # hostPort binds to NodePort values (30080/30443)
+                    # Kind extraPortMappings then maps these to 80/443 on the VM
+                    - containerPort: 10080
+                      hostPort: {{ .Values.gateway.nodePort.http | default 30080 }}
+                      name: http
+                      protocol: TCP
+                    - containerPort: 10443
+                      hostPort: {{ .Values.gateway.nodePort.https | default 30443 }}
+                      name: https
+                      protocol: TCP
+                    {{- else if .Values.gateway.hostPorts.enabled }}
+                    # Legacy hostPorts mode: Envoy Gateway uses OFFSET PORTS for privileged ports
+                    # Gateway listener 80 -> Envoy internal port 10080
+                    # Gateway listener 443 -> Envoy internal port 10443
+                    # hostPort provides direct binding to 80/443
+                    - containerPort: 10080
+                      hostPort: 80
+                      name: http-80
+                      protocol: TCP
+                    - containerPort: 10443
+                      hostPort: {{ .Values.gateway.hostPorts.https | default 443 }}
+                      name: https-443
+                      protocol: TCP
+                    {{- end }}
+                    {{- end }}
+                  {{- end }}
+      {{- end }}
+{{- end }}
+{{- end }}

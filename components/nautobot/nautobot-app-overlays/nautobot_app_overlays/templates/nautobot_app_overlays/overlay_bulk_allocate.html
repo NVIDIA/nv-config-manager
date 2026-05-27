@@ -1,0 +1,19 @@
+{% extends 'generic/object_create.html' %}
+{% load form_helpers %}
+{% load helpers %}
+
+{% block title %}Bulk Allocate Assignments to {{ obj.name }}{% endblock %}
+
+{% block form %}
+<div class="panel panel-default">
+    <div class="panel-heading"><strong>Bulk Allocate Assignments to {{ obj.name }}</strong></div>
+    <div class="panel-body">
+        {% render_form form %}
+    </div>
+</div>
+{% endblock %}
+
+{% block buttons %}
+<button type="submit" name="_create" class="btn btn-primary">Allocate</button>
+<a href="{{ return_url }}" class="btn btn-default">Cancel</a>
+{% endblock %}

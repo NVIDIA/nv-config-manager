@@ -1,0 +1,13 @@
+---
+
+{% if tenants is defined and tenants | length > 0 %}
+  tenants:
+  {% for tenant in tenants %}
+    - "!create_or_update:name": {{ tenant.name }}
+      {% if tenant.ref is defined %}
+      "!ref": {{ tenant.ref }}
+      {% endif %}
+  {% endfor %}
+{% else %}
+tenants: []
+{% endif %}

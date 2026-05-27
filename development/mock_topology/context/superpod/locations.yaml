@@ -1,0 +1,76 @@
+---
+
+locations:
+  - name: Example Corp
+    location_type: Provider
+
+  - name: Region-A
+    location_type: Region
+    parent: Example Corp
+
+  - name: Country-A
+    location_type: Region
+    parent: Region-A
+
+  - name: TEST-SITE
+    location_type: Site
+    parent: Country-A
+
+  - name: "TEST-SITE SUPERPOD 1 - {{ deployment_name }}"
+    location_type: Module
+    parent: TEST-SITE
+    ref: location
+
+config_contexts:
+  - name: "TEST-SITE site-asn"
+    description: "Site-level BGP ASN configuration for TEST-SITE"
+    weight: 1000
+    is_active: true
+    locations:
+      - TEST-SITE
+    data:
+      site_asn: "4230000001"
+
+  - name: "TEST-SITE Management Services"
+    description: "Management services configuration for TEST-SITE"
+    weight: 1000
+    is_active: true
+    locations:
+      - TEST-SITE
+    data:
+      dns:
+        ipv4:
+          - "192.0.2.8"
+          - "192.0.2.9"
+      ntp:
+        ipv4:
+          - "192.0.2.8"
+          - "192.0.2.9"
+      ztp:
+        ipv4:
+          - "192.0.2.10"
+      Dhcp4:
+        option-def:
+          - code: 239
+            name: cumulus-provision-url
+            type: string
+            array: false
+            space: dhcp4
+            encapsulate: ""
+            record-types: ""
+      dhcp:
+        nvConfigManager:
+          ipv4:
+            - "192.0.2.8"
+            - "192.0.2.9"
+        superpod:
+          ipv4:
+            - "192.0.2.8"
+            - "192.0.2.9"
+      management_prefixes:
+        ipv4:
+          - "192.0.2.0/23"
+          - "10.78.144.0/20"
+      provisioning_servers:
+        ipv4:
+          - "192.0.2.10"

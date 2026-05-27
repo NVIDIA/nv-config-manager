@@ -1,0 +1,24 @@
+---
+# Network OS Platforms for NVIDIA Config Manager deployments
+# Note: Some platforms like Cumulus Linux run on multiple manufacturers' hardware
+# so we don't always restrict by manufacturer
+
+- name: Arista EOS
+  manufacturer: Arista
+  description: Arista Extensible Operating System
+  napalm_driver: eos
+
+- name: Cumulus Linux
+  # No manufacturer - runs on both NVIDIA and Mellanox switches
+  description: NVIDIA Cumulus Linux Network OS
+  napalm_driver: ""
+
+- name: MLNX-OS
+  # No manufacturer - Mellanox is now part of NVIDIA
+  description: Mellanox NOS
+  napalm_driver: ""
+
+- name: NV-OS
+  description: NVIDIA Network OS
+  napalm_driver: ""
+

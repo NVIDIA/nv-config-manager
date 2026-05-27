@@ -1,0 +1,60 @@
+# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
+#
+# =============================================================================
+# ClusterSPIFFEID for nv-config-manager workloads
+# =============================================================================
+# This ClusterSPIFFEID instructs spire-controller-manager to register a SPIRE
+# workload entry for each nv-config-manager pod.  The SPIFFE ID is derived directly from
+# the pod's `app` label (set by the chart to the component name), producing:
+#
+#   spiffe://<trustDomain>/ns/<namespace>/sa/<app-label-value>
+#
+# Pods are selected via the `spiffe.nv-config-manager.io/inject: "true"` label, which the
+# chart sets on every pod that participates in SPIFFE identity (same set that
+# gets the spiffe-helper sidecar).
+#
+# The spiffe.io/spiffe-id pod annotation is kept for compatibility with SPIRE
+# setups that read annotations directly, but this resource does not depend on it.
+#
+# Disable with spiffe.spire.clusterSPIFFEID.enabled=false if your SPIRE
+# installation already handles workload registration for nv-config-manager pods.
+# =============================================================================
+
+{{- $spiffe := .Values.spiffe | default dict }}
+{{- $provider := index $spiffe "provider" | default "spire" }}
+{{- $clusterSPIFFEID := index ($spiffe.spire | default dict) "clusterSPIFFEID" | default dict }}
+{{- if and (include "nv-config-manager.spiffe.enabled" .) (eq $provider "spire") (ne (index $clusterSPIFFEID "enabled" | toString) "false") }}
+{{- $className := index $clusterSPIFFEID "className" | default "" }}
+---
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterSPIFFEID
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: spiffe-identity
+spec:
+  {{- if $className }}
+  className: {{ $className }}
+  {{- end }}
+  # Build the SPIFFE ID from built-in controller variables plus the pod's `app`
+  # label (set by the chart to the component name, e.g. nv-config-manager-render).
+  # Using .TrustDomain and .PodMeta.Namespace avoids hardcoding cluster-specific
+  # values in the template and matches the pattern used by the default ClusterSPIFFEID.
+  spiffeIDTemplate: "spiffe://{{"{{"}} .TrustDomain {{"}}"}}/ns/{{"{{"}} .PodMeta.Namespace {{"}}"}}/sa/{{"{{"}} .PodMeta.Labels.app {{"}}"}}"
+  # Non-fallback: takes precedence over any cluster-wide fallback ClusterSPIFFEID,
+  # ensuring nv-config-manager pods always get their per-component identity.
+  fallback: false
+  # Restrict to the nv-config-manager namespace so this resource does not affect workloads
+  # in other namespaces on the shared SPIRE server.
+  namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: {{ .Values.global.namespace }}
+  # Select only pods that opted in to SPIFFE identity via the
+  # nv-config-manager.spiffe.podLabels helper.
+  podSelector:
+    matchExpressions:
+      - key: "spiffe.nv-config-manager.io/inject"
+        operator: In
+        values: ["true"]
+{{- end }}

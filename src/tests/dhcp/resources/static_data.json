@@ -1,0 +1,137 @@
+{
+    "data": {
+        "config_contexts": [
+            {
+                "data": {
+                    "Dhcp4": {
+                        "reservations": [
+                            {
+                                "hw-address": "c8:4b:d6:7a:e9:e2",
+                                "hostname": "rno1-m04-c10-server1.lab1",
+                                "ip-address": "10.180.166.60",
+                                "option-data": []
+                            },
+                            {
+                                "hw-address": "58:a2:e1:72:dd:c5",
+                                "hostname": "rno1-m04-c10-server1-dpu1.lab1",
+                                "ip-address": "10.180.166.41",
+                                "option-data": []
+                            },
+                            {
+                                "hw-address": "58:a2:e1:72:b9:1b",
+                                "hostname": "rno1-m04-c10-server1-dpu2.lab1",
+                                "ip-address": "10.180.166.42",
+                                "option-data": []
+                            },
+                            {
+                                "hw-address": "c8:4b:d6:7a:e8:f2",
+                                "hostname": "rno1-m04-c10-server2.lab1",
+                                "ip-address": "10.180.166.61",
+                                "option-data": []
+                            },
+                            {
+                                "hw-address": "58:a2:e1:72:ca:2d",
+                                "hostname": "rno1-m04-c10-server2-dpu1.lab1",
+                                "ip-address": "10.180.166.43",
+                                "option-data": []
+                            },
+                            {
+                                "hw-address": "58:a2:e1:72:c9:6f",
+                                "hostname": "rno1-m04-c10-server2-dpu2.lab1",
+                                "ip-address": "10.180.166.44",
+                                "option-data": []
+                            },
+                            {
+                                "hw-address": "d0:8e:79:f8:92:44",
+                                "hostname": "rno1-m04-c10-server3.lab1",
+                                "ip-address": "10.180.166.62",
+                                "option-data": []
+                            },
+                            {
+                                "hw-address": "58:a2:e1:72:c9:e0",
+                                "hostname": "rno1-m04-c10-server3-dpu1.lab1",
+                                "ip-address": "10.180.166.45",
+                                "option-data": []
+                            },
+                            {
+                                "hw-address": "58:a2:e1:72:dd:52",
+                                "hostname": "rno1-m04-c10-server3-dpu2.lab1",
+                                "ip-address": "10.180.166.46",
+                                "option-data": []
+                            },
+                            {
+                                "hw-address": "38:7c:76:8d:6f:13",
+                                "hostname": "rno1-m04-c10-server4.lab1",
+                                "ip-address": "10.180.166.54",
+                                "option-data": []
+                            },
+                            {
+                                "hw-address": "58:a2:e1:84:74:fb",
+                                "hostname": "rno1-m04-c10-server4-dpu1.lab1",
+                                "ip-address": "10.180.166.55",
+                                "option-data": []
+                            },
+                            {
+                                "hw-address": "5c:ed:8c:39:23:80",
+                                "hostname": "no1-m04-c10-server5.lab1",
+                                "ip-address": "10.180.166.56",
+                                "option-data": []
+                            },
+                            {
+                                "hw-address": "5c:ed:8c:3a:34:f8",
+                                "hostname": "no1-m04-c10-server6.lab1",
+                                "ip-address": "10.180.166.57",
+                                "option-data": []
+                            },
+                            {
+                                "hw-address": "5c:ed:8c:39:13:7e",
+                                "hostname": "no1-m04-c10-server7.lab1",
+                                "ip-address": "10.180.166.58",
+                                "option-data": []
+                            },
+                            {
+                                "hostname": "WIWYNN-QS1-NVLINK2",
+                                "client-id": "4E:56:4F:53:23:23:4E:35:31:31:30:5F:4C:44:23:23:41:31:4E:4A:34:32:43:30:30:31:39",
+                                "option-data": [
+                                    {
+                                        "data": "DUMMY STATIC DATA TO CONFIRM OVERRIDE BY GENERATED RESERVATION",
+                                        "name": "boot-file-name"
+                                    }
+                                ],
+                                "ip-address": "172.16.2.102"
+                            }
+                        ],
+                        "subnet4": [
+                            {
+                                "subnet": "10.180.166.0/26",
+                                "id": 1,
+                                "option-data": [
+                                    {
+                                        "data": "10.180.166.2",
+                                        "name": "routers"
+                                    }
+                                ],
+                                "pools": [],
+                                "reservations-global": true,
+                                "reservations-in-subnet": true
+                            },
+                            {
+                                "subnet": "10.91.36.0/25",
+                                "id": 4,
+                                "option-data": [
+                                    {
+                                        "data": "10.91.36.1",
+                                        "name": "routers"
+                                    }
+                                ],
+                                "pools": [],
+                                "reservations-global": true,
+                                "reservations-in-subnet": false
+                            }
+                        ]
+                    }
+                }
+            }
+        ]
+    }
+}

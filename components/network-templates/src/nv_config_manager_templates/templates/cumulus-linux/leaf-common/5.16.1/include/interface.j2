@@ -1,0 +1,78 @@
+{% extends "cumulus-linux/superpod-common/5.16.1/include/interface.j2" %}
+
+{% block management %}
+{% set intf = device_data|interface_by_name("eth0") %}
+      eth0:
+{% if intf.description %}
+        description: {{ intf.description }}
+{% elif intf.connected_interface %}
+        description: {{ intf.connected_interface.device.name }}_{{ intf.connected_interface.name }}
+{% endif %}
+{% if intf.primary_ipv4 %}
+        ipv4:
+          address:
+            {{ intf.primary_ipv4 }}: {}
+{% endif %}
+        type: eth
+{% endblock management %}
+
+{% block breakouts %}
+{% endblock breakouts %}
+
+{% block swp %}
+{% for intf in device_data|interfaces(prefix="swp") %}
+      {{ intf.name }}:
+{% if intf.untagged_vlan and intf.role != "Uplink"%}
+        bridge:
+          domain:
+            br_default:
+              access: {{ intf.untagged_vlan }}
+              stp:
+                admin-edge: enabled
+                auto-edge: enabled
+                bpdu-guard: enabled
+{% endif %}
+{% if intf.description %}
+        description: {{ intf.description }}
+{% elif intf.connected_interface %}
+        description: {{ intf.connected_interface.device.name }}_{{ intf.connected_interface.name }}
+{% endif %}
+{% if device_data|role in ["Mgmt-Leaf", "OOB-Leaf", "Power-Leaf"] and intf.connected_interface and intf.connected_interface.device.role in ["OOB-Spine"] %}
+        evpn:
+          multihoming:
+            uplink: enabled
+{% endif %}
+{% if intf.primary_ipv4 %}
+        ipv4:
+          address:
+            {{ intf.primary_ipv4 }}: {}
+{% endif %}
+        link:
+          state:
+            up: {}
+        type: swp
+{% endfor %}
+{% endblock swp %}
+
+{% block svi %}
+{% for vlan_intf in device_data|interfaces(prefix="Vlan") %}
+      {{ vlan_intf.name }}:
+{% if vlan_intf.description %}
+        description: {{ vlan_intf.description }}
+{% endif %}
+{% if vlan_intf.primary_ipv4 %}
+        ipv4:
+          address:
+            {{ vlan_intf.primary_ipv4 }}: {}
+{% if vlan_intf.vrf %}
+        vrf: {{ vlan_intf.vrf }}
+        vrr:
+          address:
+            {{ vlan_intf.primary_ipv4|gateway }}/{{ vlan_intf.primary_ipv4.split('/')[1] }}: {}
+          state: enabled
+{% endif %}
+{% endif %}
+        type: svi
+        vlan: {{ vlan_intf.vlan_number }}
+{% endfor %}
+{% endblock svi %}

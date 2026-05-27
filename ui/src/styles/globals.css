@@ -1,0 +1,221 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Light theme - inspired by nv-config-manager colors */
+    --background: 200 100% 97%;
+    --foreground: 142 45% 25%;
+    --card: 0 0% 100%;
+    --card-foreground: 142 45% 25%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 142 45% 25%;
+    --primary: 142 76% 45%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 200 100% 85%;
+    --secondary-foreground: 142 45% 25%;
+    --muted: 200 40% 94%;
+    --muted-foreground: 142 25% 45%;
+    --accent: 48 100% 52%;
+    --accent-foreground: 142 45% 25%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 200 30% 88%;
+    --input: 200 30% 88%;
+    --ring: 142 76% 45%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    /* Dark theme - inspired by nv-config-manager colors with darker tones */
+    --background: 142 40% 8%;
+    --foreground: 200 90% 90%;
+    --card: 142 35% 12%;
+    --card-foreground: 200 90% 90%;
+    --popover: 142 35% 12%;
+    --popover-foreground: 200 90% 90%;
+    --primary: 142 70% 50%;
+    --primary-foreground: 142 45% 10%;
+    --secondary: 200 60% 25%;
+    --secondary-foreground: 200 90% 90%;
+    --muted: 142 30% 18%;
+    --muted-foreground: 200 30% 65%;
+    --accent: 48 95% 55%;
+    --accent-foreground: 142 45% 10%;
+    --destructive: 0 62.8% 50%;
+    --destructive-foreground: 200 90% 90%;
+    --border: 142 30% 20%;
+    --input: 142 30% 20%;
+    --ring: 142 70% 50%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+  a {
+    @apply text-foreground;
+    text-decoration: none;
+    border-bottom: 2px dotted hsl(var(--primary));
+  }
+  a:hover {
+    border-bottom: 2px solid hsl(var(--primary));
+  }
+  /* Exclude header and card links from underline styling */
+  header a,
+  a.card-link {
+    border-bottom: 2px solid transparent;
+  }
+  header a:hover,
+  a.card-link:hover {
+    @apply text-foreground;
+    border-bottom: 2px solid transparent;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-block px-4 py-2 bg-primary text-white font-semibold text-center rounded-lg shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 hover:shadow-md transition-all transform active:scale-95;
+  }
+}
+
+/* Diff viewer styling for light mode */
+.diff-light {
+  --diff-gutter-background: #f6f8fa;
+  --diff-gutter-insert-background: #e6ffed;
+  --diff-gutter-delete-background: #ffeef0;
+  --diff-code-background: #ffffff;
+  --diff-code-insert-background: #e6ffed;
+  --diff-code-delete-background: #ffeef0;
+  --diff-code-insert-edit-background: #acf2bd;
+  --diff-code-delete-edit-background: #fdb8c0;
+  --diff-line-number-color: #57606a;
+  --diff-code-color: #24292f;
+}
+
+.diff-light .diff-gutter {
+  background-color: var(--diff-gutter-background);
+}
+
+.diff-light .diff-gutter-insert {
+  background-color: var(--diff-gutter-insert-background);
+}
+
+.diff-light .diff-gutter-delete {
+  background-color: var(--diff-gutter-delete-background);
+}
+
+.diff-light .diff-code {
+  background-color: var(--diff-code-background);
+  color: var(--diff-code-color);
+}
+
+.diff-light .diff-code-insert {
+  background-color: var(--diff-code-insert-background);
+}
+
+.diff-light .diff-code-delete {
+  background-color: var(--diff-code-delete-background);
+}
+
+.diff-light .diff-code-insert-edit {
+  background-color: var(--diff-code-insert-edit-background);
+}
+
+.diff-light .diff-code-delete-edit {
+  background-color: var(--diff-code-delete-edit-background);
+}
+
+.diff-light .diff-line-number {
+  color: var(--diff-line-number-color);
+}
+
+/* Diff viewer styling for dark mode with better contrast */
+.diff-dark {
+  --diff-gutter-background: #1c2128;
+  --diff-gutter-insert-background: #1a3a27;
+  --diff-gutter-delete-background: #3a1f1f;
+  --diff-code-background: #0d1117;
+  --diff-code-insert-background: #1a3a27;
+  --diff-code-delete-background: #3a1f1f;
+  --diff-code-insert-edit-background: #2d6a3f;
+  --diff-code-delete-edit-background: #6a2d2d;
+  --diff-line-number-color: #8b949e;
+  --diff-code-color: #e6edf3;
+}
+
+.diff-dark .diff-gutter {
+  background-color: var(--diff-gutter-background);
+  border-color: #30363d;
+}
+
+.diff-dark .diff-gutter-insert {
+  background-color: var(--diff-gutter-insert-background);
+  border-color: #2d6a3f;
+}
+
+.diff-dark .diff-gutter-delete {
+  background-color: var(--diff-gutter-delete-background);
+  border-color: #6a2d2d;
+}
+
+.diff-dark .diff-code {
+  background-color: var(--diff-code-background);
+  color: var(--diff-code-color);
+  border-color: #30363d;
+}
+
+.diff-dark .diff-code-insert {
+  background-color: var(--diff-code-insert-background);
+}
+
+.diff-dark .diff-code-delete {
+  background-color: var(--diff-code-delete-background);
+}
+
+.diff-dark .diff-code-insert-edit {
+  background-color: var(--diff-code-insert-edit-background);
+}
+
+.diff-dark .diff-code-delete-edit {
+  background-color: var(--diff-code-delete-edit-background);
+}
+
+.diff-dark .diff-line-number {
+  color: var(--diff-line-number-color);
+}
+
+/* Common styling for both themes */
+.diff-dark .diff-line,
+.diff-light .diff-line {
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.diff-dark .diff-gutter,
+.diff-light .diff-gutter {
+  width: 40px;
+  min-width: 40px;
+  padding: 0 8px;
+  text-align: right;
+  user-select: none;
+}
+
+.diff-dark table,
+.diff-light table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.diff-dark td,
+.diff-light td {
+  padding: 0;
+  vertical-align: top;
+}

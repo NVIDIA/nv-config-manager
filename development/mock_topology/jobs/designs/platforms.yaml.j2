@@ -1,0 +1,13 @@
+---
+
+{% if platforms is defined and platforms | length > 0 %}
+platforms:
+  {% for platform in platforms %}
+  - "!create_or_update:name": {{ platform.name }}
+    {% if platform.manufacturer is defined %}
+    manufacturer__name: {{ platform.manufacturer }}
+    {% endif %}
+  {% endfor %}
+{% else %}
+platforms: []
+{% endif %}

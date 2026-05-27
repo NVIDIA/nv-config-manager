@@ -1,0 +1,168 @@
+---
+title: NVLink Switch Firmware Upgrade
+sidebar-title: NVLink Switch Firmware Upgrade
+position: 10
+---
+
+The NVLink Switch firmware upgrade workflow safely upgrades firmware on NVIDIA NVLink switches (NVLink Switch NVL and future iterations) running NV-OS, using a vendor-supplied firmware bundle.
+
+<Tip>
+This workflow is a component of a full rack-level automation pipeline for upgrading NVLink domain GPU systems. These systems require a coordinated upgrade of all compute and NVLink shelves.
+</Tip>
+
+## Workflow Stages
+
+### 1. Get Current State
+
+- **Purpose**: Query the device to get current OS and firmware versions
+- **Activities**:
+  - `get_network_device`: Retrieves device data from Nautobot
+  - `get_current_os`: Gets the running OS version using the NVUE API
+  - `get_running_firmware`: Gets all firmware component versions through `/nvue_v1/platform/firmware`
+- **Validation**: Checks if the device platform is supported (NV-OS only)
+
+### 2. Compare Versions
+
+- **Purpose**: Compare running versions against desired versions from config context
+- **Activities**:
+  - `compare_running_desired`: Compares current vs desired firmware/OS versions
+- **Logic**:
+  - Extracts desired versions from device config context using `firmware_bundle_version`
+  - Identifies which components need updates
+  - Determines if any upgrade is needed
+
+### 3. Perform Backup
+
+- **Purpose**: Create configuration backup before firmware changes
+- **Activities**: Runs the standard `BackupWorkflow` as a child workflow
+- **Validation**: Checks for configuration drift and halts if detected
+
+### 4. Update Context and Validate
+
+- **Purpose**: Prepare the device context and validate upgrade readiness
+- **Activities**:
+  - `update_device_context`: Updates the device's firmware_bundle_version and intended-firmware context
+  - `validate_render_targets`: Ensures render service generates correct firmware commands with polling
+  - `validate_target_files`: ⚠️ **Temporarily disabled** (MTLS ingress not enabled in utility clusters)
+- **Validation**:
+  - Updates both `firmware_bundle_version` and `intended-firmware` context for template compatibility
+  - Polls rendered `fwupdate-commands.txt` to confirm the device will request the correct files
+
+### 5. Execute Firmware Upgrade
+
+- **Purpose**: Trigger factory reset and wait for ZTP completion
+- **Activities**:
+  - `execute_ztp`: Triggers factory reset using the NVUE API
+  - `poll_ztp_status`: Polls ZTP status with extended 120-minute timeout for firmware upgrades
+- **Timeout**: Extended to 120 minutes to accommodate firmware installation time
+
+### 6. Validate Firmware Upgrade
+
+- **Purpose**: Verify firmware upgrade success and handle conditional reboot
+- **Activities**:
+  - `get_current_os`: Gets OS version after upgrade
+  - `get_running_firmware`: Gets firmware versions after upgrade
+  - `compare_running_desired`: Validates firmware matches expected versions
+  - `reboot_device`: Conditionally reboots device if firmware mismatch detected
+  - `wait_reboot`: Waits for device to come back online using uptime comparison
+- **Logic**:
+  - If all firmware matches: Success
+  - If mismatch after upgrade: Attempt reboot and wait for device recovery (10-minute timeout)
+  - If still mismatched after reboot: Fail workflow (repeated reboots will not solve the problem)
+
+## Key Features
+
+### Firmware Version Mapping
+
+- Reads `firmware_bundle_version` from device config context
+- Maps to firmware bundle definitions in site context
+- Extracts expected firmware versions for comparison
+
+### Extended Timeouts
+
+Firmware upgrades take longer than OS upgrades:
+
+- ZTP wait extended to **120 minutes**
+- Firmware polling with appropriate timeouts
+- Conditional reboot with **10-minute** device recovery timeout using proper uptime detection
+
+### Comprehensive Validation
+
+- **Pre-upgrade**:
+  - Validates rendered firmware commands are correct
+  - Validates target files exist on ZTP server (⚠️ temporarily disabled)
+- **Post-upgrade**: Validates actual firmware matches expected
+- **Conditional reboot**: Handles cases where firmware is installed but not active
+
+### Error Handling
+
+- **Platform validation**: Only supports NV-OS
+- **Configuration drift detection**: Halts workflow if drift detected
+- **ZTP failure handling**: Extended timeouts with proper error reporting
+- **Persistent firmware mismatch detection**: Fails after conditional reboot attempt
+
+## Configuration Requirements
+
+### Device Config Context
+
+`firmware_bundles` is inherited from the site level config context tied to the NVSwitch role.
+
+```json
+{
+  "firmware_bundle_version": "1.2.2",
+  "firmware_bundles": {
+    "1.2.2": {
+      "nv_os": {
+        "version": "25.02.2344",
+        "image_file": "nvos-amd64-25.02.2344.bin"
+      },
+      "firmware": {
+        "bios": {
+          "file": "nvfw_GB200-P4978_0006_250710.1.1_prod-signed.fwpkg",
+          "s3_path": "ytl-bundles/1.2.2/nvfw_GB200-P4978_0006_250710.1.1_prod-signed.fwpkg",
+          "reported_version": "0ACTV_00.01.018"
+        },
+        "bmc": {
+          "file": "nvfw_GB200-P4978_0004_250608.1.0_prod-signed.fwpkg",
+          "s3_path": "ytl-bundles/1.2.2/nvfw_GB200-P4978_0004_250608.1.0_prod-signed.fwpkg",
+          "reported_version": "88.0002.1140"
+        },
+        "cpld": {
+          "file": "CPLD_Prod_000370_REV0600_000377_REV1300_000373_REV1000_000390_REV0400_image.bin",
+          "s3_path": "ytl-bundles/1.2.2/CPLD_Prod_000370_REV0600_000377_REV1300_000373_REV1000_000390_REV0400_image.bin",
+          "reported_version": "CPLD000370_REV0600"
+        }
+      }
+    }
+  }
+}
+```
+
+## Usage
+
+### Input
+
+```json
+{
+  "device_id": "uuid-of-gb200-device",
+  "bundle_version": "1.2.2"
+}
+```
+
+### Prerequisites
+
+1. Device must be running NV-OS platform
+1. Device must have firmware_bundles configured in config context
+1. Firmware files must be available on ZTP server
+1. Device must be reachable using the NVUE API
+
+### Execution
+
+You can trigger this workflow using the Config Manager Temporal API:
+
+```bash
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"device_id": "your-device-uuid", "bundle_version": "1.2.2"}' \
+  https://temporal.example.com/api/v1/workflow/ngc/nvlinkswitch_firmware_upgrade
+```

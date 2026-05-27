@@ -1,0 +1,55 @@
+{
+  "ztp": {
+{% set seq = 0 %}
+{# Check if device has firmware bundle configuration #}
+{% set has_firmware_bundle = device_data|has_firmware_bundle %}
+{% if 'bypass-os-upgrade' not in device_data|device_tags %}
+{# Include firmware update step if firmware bundle is configured #}
+{% if has_firmware_bundle %}
+{% set seq = seq + 1 %}
+    "0{{ seq }}-commands-list": {
+        "url": "http://{{ (device_data|ztp_servers)[0] }}/v1/device/{{ device_data|uuid }}/config/fwupdate-commands.txt",
+        "clear-config": false,
+        "ignore-result": false
+    },
+{% endif %}
+{% set seq = seq + 1 %}
+    "0{{ seq }}-image": {
+      "install": {
+        "url": "http://{{ (device_data|firmware_cache)[0] }}/v1/files/nv-os/{{ device_data|nv_os_version }}/{{ device_data|nv_os_image_file }}"
+      }
+    },
+{% endif %}
+{% set seq = seq + 1 %}
+    "0{{ seq }}-commands-list": {
+      "url": "http://{{ (device_data|ztp_servers)[0] }}/v1/device/{{ device_data|uuid }}/config/pre-provisioning-commands.txt",
+      "clear-config": true,
+      "save-config": true
+    },
+{% set seq = seq + 1 %}
+    "0{{ seq }}-startup-file": {
+      "url": "http://{{ (device_data|ztp_servers)[0] }}/v1/device/{{ device_data|uuid }}/config/startup.yaml",
+      "clear-config": false,
+      "restart-ztp-no-config": true,
+      "save-config": true,
+      "halt-on-failure": false
+    },
+{% if 'nmx-controller' in device_data|device_tags %}
+{% set seq = seq + 1 %}
+    "0{{ seq }}-commands-list": {
+      "url": "http://{{ (device_data|ztp_servers)[0] }}/v1/device/{{ device_data|uuid }}/config/nmx-commands.txt",
+      "clear-config": false,
+      "save-config": true
+    },
+{% endif %}
+{% set seq = seq + 1 %}
+    "0{{ seq }}-provisioning-script": {
+{# If we don't know what OS versions we're on, we can't assume this directive will work #}
+{% if 'bypass-os-upgrade' in device_data|device_tags %}
+        "ignore-result": true,
+{% endif %}
+        "url": "http://{{ (device_data|ztp_servers)[0] }}/v1/device/{{ device_data|uuid }}/config/provisioning-complete.sh",
+        "timeout" : 300
+      }
+  }
+}

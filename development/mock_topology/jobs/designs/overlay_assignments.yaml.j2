@@ -1,0 +1,14 @@
+---
+
+{% if json.overlay_assignments is defined and json.overlay_assignments | length > 0 %}
+overlay_assignments:
+  {% for assignment in json.overlay_assignments %}
+  - "!create_or_update:overlay__name": {{ assignment.overlay.name }}
+    "!create_or_update:assigned_object_type__app_label": {{ assignment.assigned_object_type.app_label }}
+    "!create_or_update:assigned_object_type__model": {{ assignment.assigned_object_type.model }}
+    "!create_or_update:assigned_object_id": {{ assignment.assigned_object_id }}
+    status__name: {{ global_defaults.status }}
+  {% endfor %}
+{% else %}
+overlay_assignments: []
+{% endif %}

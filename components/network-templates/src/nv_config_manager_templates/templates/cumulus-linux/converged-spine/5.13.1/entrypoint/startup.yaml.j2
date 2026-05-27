@@ -1,0 +1,5 @@
+{% extends "cumulus-linux/converged-spine/base/startup.yaml.j2" %}
+
+{% block service %}
+{% include "cumulus-linux/spine-common/5.13.1/include/service.j2" %}
+{% endblock service %}

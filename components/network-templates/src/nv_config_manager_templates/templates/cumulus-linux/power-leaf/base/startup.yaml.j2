@@ -1,0 +1,34 @@
+{% extends "cumulus-linux/superpod-common/base/startup.yaml.j2" %}
+
+{% block bridge %}
+{% include "cumulus-linux/power-leaf/include/bridge.j2" %}
+{% endblock bridge %}
+
+{% block evpn %}
+{% include "cumulus-linux/power-leaf/include/evpn.j2" %}
+{% endblock evpn %}
+
+{% block interfaces %}
+{% include "cumulus-linux/power-leaf/include/interface.j2" %}
+{% endblock interfaces %}
+
+{% block nve %}
+{% include "cumulus-linux/power-leaf/include/nve.j2" %}
+{% endblock nve %}
+
+{% block router %}
+{% include "cumulus-linux/power-leaf/include/router.j2" %}
+{% endblock router %}
+
+{% block service %}
+{% include "cumulus-linux/power-leaf/include/service.j2" %}
+{% endblock service %}
+
+{% block system %}
+{% include "cumulus-linux/power-leaf/include/system.j2" %}
+{% endblock system %}
+
+{% block vrf %}
+{% include "cumulus-linux/power-leaf/include/vrf.j2" %}
+{% endblock vrf %}
+

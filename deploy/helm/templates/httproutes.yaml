@@ -1,0 +1,436 @@
+# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
+#
+# =============================================================================
+# HTTPRoutes for NVIDIA Config Manager Services
+# =============================================================================
+# This template creates HTTPRoutes for all enabled services in the platform
+# Uses subdomain-based routing (each service gets its own hostname)
+#
+# When auth sidecar is enabled (gateway.auth.jwt.enabled), routes point to
+# the sidecar port (8443) instead of the app port for JWT validation.
+#
+# Auth Bypass Routes:
+# For services that need to support both OIDC/JWT and native token auth,
+# separate HTTPRoutes are created for bypass paths. These routes get a
+# SecurityPolicy with jwt.optional=true but NO oidc block, allowing:
+#   - Valid JWT: claims extracted to headers (for remote user auth)
+#   - No JWT: request passes through (service handles its own auth)
+# =============================================================================
+
+# =============================================================================
+# Service (svc-*) HTTPRoute Helper Template
+# =============================================================================
+# Creates an HTTPRoute for the svc-* hostname (JWT-only, no OIDC).
+# These routes allow CLI/machine clients to authenticate with just a JWT
+# bearer token without being redirected to the OIDC login flow.
+# A SecurityPolicy (in security-policy.yaml) attaches to this route with
+# jwt.optional=true and no oidc block.
+# =============================================================================
+{{- define "nv-config-manager.svcHTTPRoute" }}
+{{- if and $.root.Values.oidc.enabled $.svcHostname }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $.routeName }}-svc
+  namespace: {{ $.root.Values.global.namespace }}
+  annotations:
+    # JWT-only service route - OIDC disabled, CLI/machine access
+    nv-config-manager.nvidia.com/svc-route: "true"
+spec:
+  parentRefs:
+  - name: {{ $.root.Values.gateway.name }}
+    namespace: {{ $.root.Values.global.namespace }}
+  hostnames:
+  - {{ $.svcHostname | quote }}
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: {{ $.backendName }}
+      port: {{ $.backendPort }}
+{{- end }}
+{{- end }}
+
+# =============================================================================
+# Auth Bypass HTTPRoute Helper Template
+# =============================================================================
+# Creates a separate HTTPRoute for paths that bypass OIDC but still support
+# optional JWT auth. A SecurityPolicy (in security-policy.yaml) attaches to
+# this route with jwt.optional=true and no oidc block.
+# =============================================================================
+{{- define "nv-config-manager.authBypassHTTPRoute" }}
+{{- if and $.root.Values.oidc.enabled $.root.Values.gateway.authBypass.enabled $.enabled (gt (len $.paths) 0) }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $.routeName }}-auth-bypass
+  namespace: {{ $.root.Values.global.namespace }}
+  annotations:
+    # Auth bypass route - OIDC disabled, JWT optional with claim extraction
+    nv-config-manager.nvidia.com/auth-bypass: "true"
+spec:
+  parentRefs:
+  - name: {{ $.root.Values.gateway.name }}
+    namespace: {{ $.root.Values.global.namespace }}
+  hostnames:
+  - {{ $.hostname | quote }}
+  rules:
+  {{- range $.paths }}
+  - matches:
+    - path:
+        type: PathPrefix
+        value: {{ . }}
+    backendRefs:
+    - name: {{ $.backendName }}
+      port: {{ $.backendPort }}
+  {{- end }}
+{{- end }}
+{{- end }}
+
+{{- $renderName := include "nv-config-manager.componentName" (dict "root" . "component" "render") }}
+{{- $ztpName := include "nv-config-manager.componentName" (dict "root" . "component" "ztp") }}
+{{- $dhcpName := include "nv-config-manager.componentName" (dict "root" . "component" "dhcp") }}
+{{- $temporalName := include "nv-config-manager.componentName" (dict "root" . "component" "temporal") }}
+{{- $uiName := include "nv-config-manager.componentName" (dict "root" . "component" "ui") }}
+{{- $nautobotName := include "nv-config-manager.componentName" (dict "root" . "component" "nautobot") }}
+{{- $configStoreName := include "nv-config-manager.componentName" (dict "root" . "component" "config-store") }}
+
+{{- if and .Values.gateway.enabled (eq (.Values.ingress.type | default "envoyGateway") "envoyGateway") }}
+
+# Render Service svc-* HTTPRoute (JWT-only)
+{{- if .Values.renderService.enabled }}
+{{- include "nv-config-manager.svcHTTPRoute" (dict
+    "root" .
+    "routeName" $renderName
+    "svcHostname" (tpl (.Values.renderService.gateway.svcHostname | default "") .)
+    "backendName" (printf "%s-api" $renderName)
+    "backendPort" 9000
+) }}
+{{- end }}
+
+# Render Service HTTPRoute
+{{- if .Values.renderService.enabled }}
+{{- if .Values.renderService.gateway.authBypass }}
+{{- include "nv-config-manager.authBypassHTTPRoute" (dict
+    "root" .
+    "routeName" $renderName
+    "enabled" (.Values.renderService.gateway.authBypass.enabled | default false)
+    "paths" (.Values.renderService.gateway.authBypass.paths | default list)
+    "hostname" (tpl .Values.renderService.gateway.hostname .)
+    "backendName" (printf "%s-api" $renderName)
+    "backendPort" 9000
+) }}
+{{- end }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $renderName }}
+  namespace: {{ .Values.global.namespace }}
+spec:
+  parentRefs:
+  - name: {{ .Values.gateway.name }}
+    namespace: {{ .Values.global.namespace }}
+  hostnames:
+  - {{ tpl .Values.renderService.gateway.hostname . | quote }}
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: {{ $renderName }}-api
+      port: 9000
+{{- end }}
+
+# Network ZTP svc-* HTTPRoute (JWT-only)
+{{- if .Values.networkZtp.enabled }}
+{{- include "nv-config-manager.svcHTTPRoute" (dict
+    "root" .
+    "routeName" $ztpName
+    "svcHostname" (tpl (.Values.networkZtp.gateway.svcHostname | default "") .)
+    "backendName" (printf "%s-api" $ztpName)
+    "backendPort" 9000
+) }}
+{{- end }}
+
+# Network ZTP HTTPRoute (for user/SSO access via gateway)
+{{- if .Values.networkZtp.enabled }}
+{{- if .Values.networkZtp.gateway.authBypass }}
+{{- include "nv-config-manager.authBypassHTTPRoute" (dict
+    "root" .
+    "routeName" $ztpName
+    "enabled" (.Values.networkZtp.gateway.authBypass.enabled | default false)
+    "paths" (.Values.networkZtp.gateway.authBypass.paths | default list)
+    "hostname" (tpl .Values.networkZtp.gateway.hostname .)
+    "backendName" (printf "%s-api" $ztpName)
+    "backendPort" 9000
+) }}
+{{- end }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $ztpName }}
+  namespace: {{ .Values.global.namespace }}
+spec:
+  parentRefs:
+  - name: {{ .Values.gateway.name }}
+    namespace: {{ .Values.global.namespace }}
+  hostnames:
+  - {{ tpl .Values.networkZtp.gateway.hostname . | quote }}
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: {{ $ztpName }}-api
+      port: 9000
+{{- end }}
+
+# Network DHCP svc-* HTTPRoute (JWT-only)
+{{- if .Values.networkDhcp.enabled }}
+{{- include "nv-config-manager.svcHTTPRoute" (dict
+    "root" .
+    "routeName" $dhcpName
+    "svcHostname" (tpl (.Values.networkDhcp.gateway.svcHostname | default "") .)
+    "backendName" (printf "%s-internal" $dhcpName)
+    "backendPort" 9000
+) }}
+{{- end }}
+
+# Network DHCP HTTPRoute (for user/SSO access via gateway)
+{{- if .Values.networkDhcp.enabled }}
+{{- if .Values.networkDhcp.gateway.authBypass }}
+{{- include "nv-config-manager.authBypassHTTPRoute" (dict
+    "root" .
+    "routeName" $dhcpName
+    "enabled" (.Values.networkDhcp.gateway.authBypass.enabled | default false)
+    "paths" (.Values.networkDhcp.gateway.authBypass.paths | default list)
+    "hostname" (tpl .Values.networkDhcp.gateway.hostname .)
+    "backendName" (printf "%s-internal" $dhcpName)
+    "backendPort" 9000
+) }}
+{{- end }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $dhcpName }}
+  namespace: {{ .Values.global.namespace }}
+spec:
+  parentRefs:
+  - name: {{ .Values.gateway.name }}
+    namespace: {{ .Values.global.namespace }}
+  hostnames:
+  - {{ tpl .Values.networkDhcp.gateway.hostname . | quote }}
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: {{ $dhcpName }}-internal
+      port: 9000
+{{- end }}
+
+# Temporal API svc-* HTTPRoute (JWT-only)
+{{- if .Values.temporal.enabled }}
+{{- include "nv-config-manager.svcHTTPRoute" (dict
+    "root" .
+    "routeName" (printf "%s-api" $temporalName)
+    "svcHostname" (tpl (.Values.temporal.gateway.api.svcHostname | default "") .)
+    "backendName" (printf "%s-api" $temporalName)
+    "backendPort" 9000
+) }}
+{{- end }}
+
+# Temporal API HTTPRoute
+{{- if .Values.temporal.enabled }}
+{{- if .Values.temporal.gateway.api.authBypass }}
+{{- include "nv-config-manager.authBypassHTTPRoute" (dict
+    "root" .
+    "routeName" (printf "%s-api" $temporalName)
+    "enabled" (.Values.temporal.gateway.api.authBypass.enabled | default false)
+    "paths" (.Values.temporal.gateway.api.authBypass.paths | default list)
+    "hostname" (tpl .Values.temporal.gateway.api.hostname .)
+    "backendName" (printf "%s-api" $temporalName)
+    "backendPort" 9000
+) }}
+{{- end }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $temporalName }}-api
+  namespace: {{ .Values.global.namespace }}
+spec:
+  parentRefs:
+  - name: {{ .Values.gateway.name }}
+    namespace: {{ .Values.global.namespace }}
+  hostnames:
+  - {{ tpl .Values.temporal.gateway.api.hostname . | quote }}
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: {{ $temporalName }}-api
+      port: 9000
+---
+# Temporal Web UI HTTPRoute (temporal.<base>) - OIDC-only, direct to app port
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $temporalName }}-web
+  namespace: {{ .Values.global.namespace }}
+spec:
+  parentRefs:
+  - name: {{ .Values.gateway.name }}
+    namespace: {{ .Values.global.namespace }}
+  hostnames:
+  - {{ tpl .Values.temporal.gateway.devUi.hostname . | quote }}
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: {{ $temporalName }}-web-service
+      port: 8080
+{{- end }}
+
+---
+# Unified UI HTTPRoute (at base hostname) - OIDC-only, direct to app port
+{{- if .Values.ui.enabled }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $uiName }}
+  namespace: {{ .Values.global.namespace }}
+spec:
+  parentRefs:
+  - name: {{ .Values.gateway.name }}
+    namespace: {{ .Values.global.namespace }}
+  hostnames:
+  - {{ .Values.gateway.baseHostname | quote }}
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: {{ $uiName }}
+      port: 3000
+{{- end }}
+
+# Nautobot svc-* HTTPRoute (JWT-only)
+{{- if and .Values.nautobot.enabled .Values.externalServices.nautobot.local }}
+{{- include "nv-config-manager.svcHTTPRoute" (dict
+    "root" .
+    "routeName" $nautobotName
+    "svcHostname" (tpl (.Values.nautobot.gateway.svcHostname | default "") .)
+    "backendName" $nautobotName
+    "backendPort" 80
+) }}
+{{- end }}
+
+# Nautobot HTTPRoute (when deployed locally)
+{{- if and .Values.nautobot.enabled .Values.externalServices.nautobot.local }}
+# -----------------------------------------------------------------------------
+# Nautobot Auth Bypass HTTPRoute (for /api/)
+# -----------------------------------------------------------------------------
+# Nautobot supports multiple auth methods:
+#   - OIDC/JWT (browser users via SSO)
+#   - Native API tokens (Authorization: Token <token>)
+#   - Remote user auth (trusts X-Auth-Request-User header from gateway)
+#
+# This route bypasses OIDC redirect but still extracts JWT claims if present,
+# enabling Nautobot's remote user auth for SSO users while allowing native
+# tokens for API clients.
+# -----------------------------------------------------------------------------
+{{- include "nv-config-manager.authBypassHTTPRoute" (dict
+    "root" .
+    "routeName" $nautobotName
+    "enabled" .Values.nautobot.gateway.authBypass.enabled
+    "paths" .Values.nautobot.gateway.authBypass.paths
+    "hostname" (tpl .Values.nautobot.gateway.hostname .)
+    "backendName" $nautobotName
+    "backendPort" 80
+) }}
+# Main Nautobot HTTPRoute (for UI/browser access with OIDC)
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $nautobotName }}
+  namespace: {{ .Values.global.namespace }}
+spec:
+  parentRefs:
+  - name: {{ .Values.gateway.name }}
+    namespace: {{ .Values.global.namespace }}
+  hostnames:
+  - {{ tpl .Values.nautobot.gateway.hostname . | quote }}
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: {{ $nautobotName }}
+      port: 80
+{{- end }}
+
+# Config Store API svc-* HTTPRoute (JWT-only)
+{{- if .Values.configStore.enabled }}
+{{- include "nv-config-manager.svcHTTPRoute" (dict
+    "root" .
+    "routeName" (printf "%s-api" $configStoreName)
+    "svcHostname" (tpl (.Values.configStore.gateway.api.svcHostname | default "") .)
+    "backendName" (printf "%s-api" $configStoreName)
+    "backendPort" 9000
+) }}
+{{- end }}
+
+# Config Store API HTTPRoute
+{{- if .Values.configStore.enabled }}
+{{- if .Values.configStore.gateway.api.authBypass }}
+{{- include "nv-config-manager.authBypassHTTPRoute" (dict
+    "root" .
+    "routeName" (printf "%s-api" $configStoreName)
+    "enabled" (.Values.configStore.gateway.api.authBypass.enabled | default false)
+    "paths" (.Values.configStore.gateway.api.authBypass.paths | default list)
+    "hostname" (tpl .Values.configStore.gateway.api.hostname .)
+    "backendName" (printf "%s-api" $configStoreName)
+    "backendPort" 9000
+) }}
+{{- end }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $configStoreName }}-api
+  namespace: {{ .Values.global.namespace }}
+spec:
+  parentRefs:
+  - name: {{ .Values.gateway.name }}
+    namespace: {{ .Values.global.namespace }}
+  hostnames:
+  - {{ tpl .Values.configStore.gateway.api.hostname . | quote }}
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: {{ $configStoreName }}-api
+      port: 9000
+{{- end }}
+
+{{- end }}

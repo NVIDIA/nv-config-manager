@@ -1,0 +1,327 @@
+# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
+{{- if .Values.networkZtp.enabled }}
+{{- $ztpName := include "nv-config-manager.componentName" (dict "root" . "component" "ztp") }}
+---
+# Network ZTP Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $ztpName }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ $ztpName }}
+    app.kubernetes.io/name: nv-config-manager
+    app.kubernetes.io/component: network-ztp
+spec:
+  replicas: {{ .Values.networkZtp.replicas }}
+  selector:
+    matchLabels:
+      app: {{ $ztpName }}
+  template:
+    metadata:
+      labels:
+        app: {{ $ztpName }}
+        {{- include "nv-config-manager.spiffe.podLabels" . | nindent 8 }}
+        {{- include "nv-config-manager.customPodLabels" . | nindent 8 }}
+      annotations:
+        {{- include "nv-config-manager.authIniChecksum" . | nindent 8 }}
+        {{- if eq .Values.secrets.method "vault-agent" }}
+        {{- include "nv-config-manager.vaultAgent.injectorAnnotations" . | nindent 8 }}
+        {{- end }}
+        {{- if include "nv-config-manager.spiffe.enabled" . }}
+        {{- include "nv-config-manager.spiffe.annotations" (dict "root" . "app" $ztpName) | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "nv-config-manager.serviceAccountName" . }}
+      {{- if .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range .Values.global.imagePullSecrets }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      {{- include "nv-config-manager.scheduling" .Values.networkZtp | nindent 6 }}
+      {{- include "nv-config-manager.podSecurityContext" . | nindent 6 }}
+      containers:
+      # HTTP API container for user access (via envoy/gateway with SSO/mTLS headers)
+      # ACCEPT_REQUEST_HEADERS=true allows SSO/mTLS header-based authorization
+      # Mounts os-images read-write so uploads can write files and update manifest.json
+      - name: http-api
+        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ .Values.global.images.nvConfigManager.tag }}"
+        imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
+        {{- include "nv-config-manager.containerSecurityContext" . | nindent 8 }}
+        command: ["nv-config-manager-ztp-api"]
+        args: []
+        env:
+        - name: NV_CONFIG_MANAGER_INI
+          value: {{ include "nv-config-manager.vaultAgent.configManagerIniPathApp" . | quote }}
+        - name: NV_CONFIG_MANAGER_SERVICE
+          value: "ztp"
+        - name: ENVIRONMENT
+          value: {{ .Values.global.environment }}
+        {{- include "nv-config-manager.customLabelsEnv" . | nindent 8 }}
+        - name: ACCEPT_REQUEST_HEADERS
+          value: "true"
+        {{- if eq .Values.networkZtp.storage.type "file" }}
+        - name: STORAGE_TYPE
+          value: "file"
+        - name: FILE_STORE_PATH
+          value: "{{ .Values.networkZtp.storage.file.mountPath | default "/mnt/images" }}"
+        {{- else }}
+        - name: STORAGE_TYPE
+          value: "s3"
+        {{- end }}
+        ports:
+        - containerPort: 9000
+          name: http
+        resources:
+          {{- toYaml .Values.networkZtp.resources.http | nindent 10 }}
+        volumeMounts:
+        {{- include "nv-config-manager.vaultAgent.configManagerIniVolumeMount" . | nindent 8 }}
+        {{- if eq .Values.networkZtp.storage.type "file" }}
+        - name: os-images
+          mountPath: {{ .Values.networkZtp.storage.file.mountPath | default "/mnt/images" }}
+        {{- end }}
+        {{- include "nv-config-manager.authVolumeMounts" . | nindent 8 }}
+        livenessProbe:
+          httpGet:
+            path: /healthcheck
+            port: 9000
+        readinessProbe:
+          httpGet:
+            path: /healthcheck
+            port: 9000
+
+      # HTTP API container for device access via LoadBalancer (IP-based authorization)
+      # No ACCEPT_REQUEST_HEADERS - uses client IP validation against Nautobot device addresses
+      {{- if or .Values.networkZtp.ingress.nlb .Values.networkZtp.ingress.cilium .Values.networkZtp.ingress.metallb }}
+      - name: http-lb
+        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ .Values.global.images.nvConfigManager.tag }}"
+        imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
+        {{- include "nv-config-manager.containerSecurityContext" . | nindent 8 }}
+        command: ["nv-config-manager-ztp-api"]
+        args: ["--port", "8000"]
+        env:
+        - name: NV_CONFIG_MANAGER_INI
+          value: {{ include "nv-config-manager.vaultAgent.configManagerIniPathApp" . | quote }}
+        - name: ENVIRONMENT
+          value: {{ .Values.global.environment }}
+        {{- include "nv-config-manager.customLabelsEnv" . | nindent 8 }}
+        {{- if eq .Values.networkZtp.storage.type "file" }}
+        - name: STORAGE_TYPE
+          value: "file"
+        - name: FILE_STORE_PATH
+          value: "{{ .Values.networkZtp.storage.file.mountPath | default "/mnt/images" }}"
+        {{- else }}
+        - name: STORAGE_TYPE
+          value: "s3"
+        {{- end }}
+        ports:
+        - containerPort: 8000
+          name: http-lb
+        resources:
+          {{- toYaml .Values.networkZtp.resources.http | nindent 10 }}
+        volumeMounts:
+        {{- include "nv-config-manager.vaultAgent.configManagerIniVolumeMount" . | nindent 8 }}
+        {{- if eq .Values.networkZtp.storage.type "file" }}
+        - name: os-images
+          mountPath: {{ .Values.networkZtp.storage.file.mountPath | default "/mnt/images" }}
+          readOnly: true
+        {{- end }}
+        livenessProbe:
+          httpGet:
+            path: /healthcheck
+            port: 8000
+        readinessProbe:
+          httpGet:
+            path: /healthcheck
+            port: 8000
+      {{- end }}
+
+      # SFTP server container
+      - name: sftp
+        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ .Values.global.images.nvConfigManager.tag }}"
+        imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
+        {{- include "nv-config-manager.containerSecurityContext" . | nindent 8 }}
+        command: ["nv-config-manager-ztp-sftp", "--host", "0.0.0.0", "--port", "2222", "--level", "INFO"]
+        env:
+        - name: NV_CONFIG_MANAGER_INI
+          value: {{ include "nv-config-manager.vaultAgent.configManagerIniPathApp" . | quote }}
+        - name: ENVIRONMENT
+          value: {{ .Values.global.environment }}
+        {{- include "nv-config-manager.customLabelsEnv" . | nindent 8 }}
+        {{- if eq .Values.networkZtp.storage.type "file" }}
+        - name: STORAGE_TYPE
+          value: "file"
+        - name: FILE_STORE_PATH
+          value: "{{ .Values.networkZtp.storage.file.mountPath | default "/mnt/images" }}"
+        {{- else }}
+        - name: STORAGE_TYPE
+          value: "s3"
+        {{- end }}
+        ports:
+        - containerPort: 2222
+          name: sftp
+        resources:
+          {{- toYaml .Values.networkZtp.resources.sftp | nindent 10 }}
+        volumeMounts:
+        {{- include "nv-config-manager.vaultAgent.configManagerIniVolumeMount" . | nindent 8 }}
+        {{- if eq .Values.networkZtp.storage.type "file" }}
+        - name: os-images
+          mountPath: {{ .Values.networkZtp.storage.file.mountPath | default "/mnt/images" }}
+          readOnly: true
+        {{- end }}
+        livenessProbe:
+          exec:
+            command:
+            - sshpass
+            - -p
+            - ""
+            - sftp
+            - -o
+            - StrictHostKeyChecking=no
+            - -o
+            - UserKnownHostsFile=/dev/null
+            - -P
+            - "2222"
+            - healthcheck@localhost:/healthcheck
+            - /dev/null
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+        readinessProbe:
+          exec:
+            command:
+            - sshpass
+            - -p
+            - ""
+            - sftp
+            - -o
+            - StrictHostKeyChecking=no
+            - -o
+            - UserKnownHostsFile=/dev/null
+            - -P
+            - "2222"
+            - healthcheck@localhost:/healthcheck
+            - /dev/null
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+      
+      {{- /* SPIFFE helper sidecar for outbound JWT-SVID */ -}}
+      {{- include "nv-config-manager.authSidecar" (dict "root" . "serviceName" "network-ztp") | nindent 6 }}
+      volumes:
+      {{- include "nv-config-manager.vaultAgent.projectedSATokenVolume" . | nindent 6 }}
+      {{- include "nv-config-manager.vaultAgent.configManagerIniVolume" . | nindent 6 }}
+      {{- if eq .Values.networkZtp.storage.type "file" }}
+      - name: os-images
+        persistentVolumeClaim:
+          claimName: {{ .Values.networkZtp.storage.file.pvcName | default "ztp-os-images" }}
+      {{- end }}
+      {{- /* SPIFFE volumes */ -}}
+      {{- include "nv-config-manager.authSidecar.volumes" (dict "root" .) | nindent 6 }}
+---
+# Network ZTP Internal Service (ClusterIP for Ingress/Gateway user access)
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $ztpName }}-api
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ $ztpName }}
+    component: api
+spec:
+  type: ClusterIP
+  ports:
+  - port: 9000
+    targetPort: 9000
+    protocol: TCP
+    name: http
+  selector:
+    app: {{ $ztpName }}
+---
+# Network ZTP Service (LoadBalancer for device access)
+# Exposes HTTP (80), HTTPS (443), and SFTP (2222) to network devices on OOB network.
+# Only created when an LB provider is configured (nlb, cilium, or metallb).
+{{- if or .Values.networkZtp.ingress.nlb .Values.networkZtp.ingress.cilium .Values.networkZtp.ingress.metallb }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $ztpName }}-service
+  namespace: {{ .Values.global.namespace }}
+  {{- if .Values.networkZtp.ingress.cilium }}
+  labels:
+    app: {{ $ztpName }}
+    component: ztp
+    bgp.scp.nvidia.com/scope: site-local
+  {{- else }}
+  labels:
+    app: {{ $ztpName }}
+    component: ztp
+  {{- end }}
+  annotations:
+    {{- /* AWS NLB annotations */ -}}
+    {{- if .Values.networkZtp.ingress.nlb }}
+    service.beta.kubernetes.io/aws-load-balancer-type: {{ .Values.networkZtp.ingress.nlb.type | default "external" }}
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: {{ .Values.networkZtp.ingress.nlb.target_type | default "ip" }}
+    service.beta.kubernetes.io/aws-load-balancer-name: {{ .Values.networkZtp.ingress.nlb.name }}
+    service.beta.kubernetes.io/aws-load-balancer-target-group-attributes: preserve_client_ip.enabled=true
+    service.beta.kubernetes.io/aws-load-balancer-security-groups: {{ .Values.networkZtp.ingress.nlb.sg }}
+    service.beta.kubernetes.io/aws-load-balancer-subnets: {{ .Values.networkZtp.ingress.nlb.subnets }}
+    {{- if .Values.networkZtp.ingress.nlb.ips }}
+    service.beta.kubernetes.io/aws-load-balancer-private-ipv4-addresses: {{ .Values.networkZtp.ingress.nlb.ips }}
+    {{- end }}
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-protocol: http
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-port: "8000"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-path: /healthcheck
+    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+    {{- end }}
+    {{- /* Cilium annotations */ -}}
+    {{- if and .Values.networkZtp.ingress.cilium .Values.networkZtp.ingress.cilium.staticIP }}
+    lbipam.cilium.io/ips: {{ .Values.networkZtp.ingress.cilium.staticIP }}
+    {{- end }}
+    {{- /* MetalLB annotations */ -}}
+    {{- if and .Values.networkZtp.ingress.metallb .Values.networkZtp.ingress.metallb.staticIP }}
+    metallb.io/loadBalancerIPs: {{ .Values.networkZtp.ingress.metallb.staticIP }}
+    {{- end }}
+    {{- include "nv-config-manager.externalDnsHostname" .Values.networkZtp.ingress }}
+spec:
+  type: LoadBalancer
+  {{- /* Cilium-specific settings */ -}}
+  {{- if .Values.networkZtp.ingress.cilium }}
+  externalTrafficPolicy: Local
+  loadBalancerClass: io.cilium/bgp-control-plane
+  {{- if .Values.networkZtp.ingress.cilium.allowedPrefixes }}
+  loadBalancerSourceRanges:
+  {{- range $prefix := .Values.networkZtp.ingress.cilium.allowedPrefixes }}
+  - {{ $prefix }}
+  {{- end }}
+  {{- end }}
+  {{- end }}
+  {{- /* MetalLB-specific settings */ -}}
+  {{- if .Values.networkZtp.ingress.metallb }}
+  externalTrafficPolicy: Local
+  {{- if .Values.networkZtp.ingress.metallb.allowedPrefixes }}
+  loadBalancerSourceRanges:
+  {{- range $prefix := .Values.networkZtp.ingress.metallb.allowedPrefixes }}
+  - {{ $prefix }}
+  {{- end }}
+  {{- end }}
+  {{- end }}
+  ports:
+  - port: 80
+    targetPort: 8000
+    protocol: TCP
+    name: http
+  - port: 443
+    targetPort: 8443
+    protocol: TCP
+    name: https
+  - port: 2222
+    targetPort: 2222
+    protocol: TCP
+    name: sftp
+  selector:
+    app: {{ $ztpName }}
+{{- end }}
+{{- end }}
+

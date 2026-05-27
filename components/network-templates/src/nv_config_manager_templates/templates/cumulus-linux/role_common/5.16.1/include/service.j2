@@ -1,0 +1,23 @@
+{% set _svc_body %}
+{% block dhcp_relay %}{% endblock dhcp_relay %}
+{% block dns %}{% endblock dns %}
+{% block lldp %}{% endblock lldp %}
+{% block syslog %}
+{% if device_data|syslog_servers %}
+      syslog:
+        mgmt:
+          server:
+{% for syslog_server in device_data|syslog_servers %}
+            {{ syslog_server }}:
+              port: 32365
+              protocol: udp
+{% endfor %}
+{% endif %}
+{% endblock syslog %}
+{% block service_telemetry %}{% endblock service_telemetry %}
+{% endset %}
+{% if _svc_body.strip() %}
+    service:
+{{ _svc_body }}
+{% endif %}
+

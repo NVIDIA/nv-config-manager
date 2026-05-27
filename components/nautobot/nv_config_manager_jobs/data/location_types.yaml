@@ -1,0 +1,48 @@
+---
+# Location types for NVIDIA Config Manager hierarchical locations
+
+- name: Provider
+  description: Service provider or organization
+  nestable: true
+  deployment_types: [all, superpod]
+
+- name: Region
+  description: Geographic region
+  parent: Provider
+  nestable: true
+  deployment_types: [all, superpod]
+
+- name: Site
+  description: Physical datacenter site
+  parent: Region
+  nestable: true
+  content_types:
+    - dcim.device
+    - dcim.rack
+    - dcim.powerpanel
+    - dcim.rackgroup
+    - ipam.prefix
+    - ipam.vlan
+    - ipam.namespace
+    - circuits.circuittermination
+    - virtualization.cluster
+    - nautobot_nvdatamodels.nvlinkdomain
+  deployment_types: [all, superpod]
+
+- name: Module
+  description: Module or pod within a site
+  parent: Site
+  nestable: false
+  content_types:
+    - dcim.device
+    - dcim.rack
+    - dcim.powerpanel
+    - dcim.rackgroup
+    - ipam.prefix
+    - ipam.vlan
+    - ipam.namespace
+    - circuits.circuittermination
+    - virtualization.cluster
+    - nautobot_nvdatamodels.nvlinkdomain
+  deployment_types: [all, superpod]
+

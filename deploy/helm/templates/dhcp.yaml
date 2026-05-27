@@ -1,0 +1,376 @@
+# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
+{{- if .Values.networkDhcp.enabled }}
+{{- $dhcpName := include "nv-config-manager.componentName" (dict "root" . "component" "dhcp") }}
+---
+# Network DHCP Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $dhcpName }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ $dhcpName }}
+    app.kubernetes.io/name: nv-config-manager
+    app.kubernetes.io/component: network-dhcp
+spec:
+  replicas: {{ .Values.networkDhcp.replicas }}
+  selector:
+    matchLabels:
+      app: {{ $dhcpName }}
+  template:
+    metadata:
+      labels:
+        app: {{ $dhcpName }}
+        {{- include "nv-config-manager.spiffe.podLabels" . | nindent 8 }}
+        {{- include "nv-config-manager.customPodLabels" . | nindent 8 }}
+      annotations:
+        {{- include "nv-config-manager.authIniChecksum" . | nindent 8 }}
+        {{- if eq .Values.secrets.method "vault-agent" }}
+        {{- include "nv-config-manager.vaultAgent.injectorAnnotations" . | nindent 8 }}
+        {{- end }}
+        {{- if include "nv-config-manager.spiffe.enabled" . }}
+        {{- include "nv-config-manager.spiffe.annotations" (dict "root" . "app" $dhcpName) | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "nv-config-manager.serviceAccountName" . }}
+      {{- if .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range .Values.global.imagePullSecrets }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      {{- include "nv-config-manager.scheduling" .Values.networkDhcp | nindent 6 }}
+      {{- include "nv-config-manager.podSecurityContext" . | nindent 6 }}
+      initContainers:
+      # Initialize Kea DHCP schema
+      # The kea-admin image entrypoint:
+      #   1. Waits for PostgreSQL to be ready
+      #   2. Checks if schema already exists (queries schema_version table)
+      #   3. If exists: checks for upgrades and exits
+      #   4. If not exists: runs kea-admin db-init to create schema
+      - name: init-schema
+        image: "{{ .Values.global.images.keaAdmin.repository }}:{{ .Values.global.images.keaAdmin.tag }}"
+        imagePullPolicy: {{ .Values.global.images.keaAdmin.pullPolicy }}
+        env:
+        - name: INI_FILE
+          value: {{ include "nv-config-manager.vaultAgent.configManagerIniPathDhcp" . | quote }}
+        volumeMounts:
+        {{- include "nv-config-manager.vaultAgent.configManagerIniFileMountEtcVault" . | nindent 8 }}
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+      containers:
+      # Kea DHCP server container
+      - name: kea
+        image: "{{ .Values.global.images.kea.repository }}:{{ .Values.global.images.kea.tag }}"
+        imagePullPolicy: {{ .Values.global.images.kea.pullPolicy }}
+        env:
+        - name: NV_CONFIG_MANAGER_INI
+          value: {{ include "nv-config-manager.vaultAgent.configManagerIniPathDhcp" . | quote }}
+        ports:
+        - containerPort: 67
+          protocol: UDP
+          name: dhcp
+        - containerPort: 8000
+          name: kea-api
+        - containerPort: {{ .Values.networkDhcp.kea.storkAgentPort }}
+          name: stork-agent
+        # supervisord (PID 1) doesn't exit when kea-dhcp4 enters FATAL state after
+        # exhausting startretries, so kubelet has no way to detect a dead DHCP server
+        # without an explicit probe. Reuse the nv-config-manager-dhcp-api /healthcheck endpoint
+        # served by the healthcheck sidecar (same pod = shared network namespace,
+        # so 127.0.0.1:9090 reaches it). When kea-dhcp4 is dead, kea-ctrl-agent
+        # reports it offline, /healthcheck returns 500, and kubelet recycles the
+        # kea container so supervisord starts kea-dhcp4 fresh.
+        livenessProbe:
+          failureThreshold: 10
+          httpGet:
+            path: /healthcheck
+            port: 9090
+          initialDelaySeconds: 120
+          periodSeconds: 10
+          timeoutSeconds: 3
+        resources:
+          {{- toYaml .Values.networkDhcp.resources.dhcp | nindent 10 }}
+        volumeMounts:
+        {{- include "nv-config-manager.vaultAgent.configManagerIniFileMountEtcVault" . | nindent 8 }}
+      # Healthcheck container for external NLB
+      - name: healthcheck
+        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ .Values.global.images.nvConfigManager.tag }}"
+        imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
+        {{- include "nv-config-manager.containerSecurityContext" . | nindent 8 }}
+        command: ["nv-config-manager-dhcp-api"]
+        args: ["--port", "9090"]
+        env:
+        - name: NV_CONFIG_MANAGER_INI
+          value: {{ include "nv-config-manager.vaultAgent.configManagerIniPathDhcp" . | quote }}
+        {{- include "nv-config-manager.customLabelsEnv" . | nindent 8 }}
+        ports:
+        - containerPort: 9090
+          name: healthcheck
+        livenessProbe:
+          failureThreshold: 10
+          httpGet:
+            path: /healthcheck
+            port: 9090
+          initialDelaySeconds: 120
+          periodSeconds: 10
+          timeoutSeconds: 3
+        readinessProbe:
+          failureThreshold: 10
+          httpGet:
+            path: /healthcheck
+            port: 9090
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: 200m
+          limits:
+            memory: "128Mi"
+            cpu: 200m
+        volumeMounts:
+        {{- include "nv-config-manager.vaultAgent.configManagerSecretsDirEtcVault" . | nindent 8 }}
+      # API container
+      - name: api
+        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ .Values.global.images.nvConfigManager.tag }}"
+        imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
+        {{- include "nv-config-manager.containerSecurityContext" . | nindent 8 }}
+        command: ["nv-config-manager-dhcp-api"]
+        args: []
+        env:
+        - name: NV_CONFIG_MANAGER_INI
+          value: {{ include "nv-config-manager.vaultAgent.configManagerIniPathDhcp" . | quote }}
+        - name: NV_CONFIG_MANAGER_SERVICE
+          value: "dhcp"
+        - name: ACCEPT_REQUEST_HEADERS
+          value: "true"
+        {{- include "nv-config-manager.customLabelsEnv" . | nindent 8 }}
+        ports:
+        - containerPort: 9000
+          name: api
+        livenessProbe:
+          failureThreshold: 10
+          httpGet:
+            path: /healthcheck
+            port: 9000
+          initialDelaySeconds: 120
+          periodSeconds: 10
+          timeoutSeconds: 3
+        readinessProbe:
+          failureThreshold: 10
+          httpGet:
+            path: /healthcheck
+            port: 9000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: 200m
+          limits:
+            memory: "128Mi"
+            cpu: 200m
+        volumeMounts:
+        {{- include "nv-config-manager.vaultAgent.configManagerSecretsDirEtcVault" . | nindent 8 }}
+        {{- include "nv-config-manager.authVolumeMounts" . | nindent 8 }}
+      # Config sync container
+      - name: config-sync-v4
+        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ .Values.global.images.nvConfigManager.tag }}"
+        imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
+        {{- include "nv-config-manager.containerSecurityContext" . | nindent 8 }}
+        command: ["nv-config-manager-dhcp-confgen", "sync-kea-configuration", "--ip-version", "4", "--refresh-interval", "10"]
+        env:
+        - name: NV_CONFIG_MANAGER_INI
+          value: {{ include "nv-config-manager.vaultAgent.configManagerIniPathDhcp" . | quote }}
+        {{- include "nv-config-manager.customLabelsEnv" . | nindent 8 }}
+        resources:
+          {{- toYaml .Values.networkDhcp.resources.confgen | nindent 10 }}
+        volumeMounts:
+        {{- include "nv-config-manager.vaultAgent.configManagerIniFileMountEtcVault" . | nindent 8 }}
+      {{- /* SPIFFE helper sidecar for outbound JWT-SVID */ -}}
+      {{- include "nv-config-manager.authSidecar" (dict "root" . "serviceName" "network-dhcp") | nindent 6 }}
+      volumes:
+      {{- include "nv-config-manager.vaultAgent.projectedSATokenVolume" . | nindent 6 }}
+      {{- include "nv-config-manager.vaultAgent.configManagerIniVolume" . | nindent 6 }}
+      {{- /* SPIFFE volumes */ -}}
+      {{- include "nv-config-manager.authSidecar.volumes" (dict "root" .) | nindent 6 }}
+---
+# DHCP Refresh Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $dhcpName }}-refresh
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ $dhcpName }}-refresh
+    app.kubernetes.io/name: nv-config-manager
+    app.kubernetes.io/component: network-dhcp-refresh
+spec:
+  replicas: 1
+  progressDeadlineSeconds: 1800
+  selector:
+    matchLabels:
+      app: {{ $dhcpName }}-refresh
+  template:
+    metadata:
+      labels:
+        app: {{ $dhcpName }}-refresh
+        {{- include "nv-config-manager.spiffe.podLabels" . | nindent 8 }}
+        {{- include "nv-config-manager.customPodLabels" . | nindent 8 }}
+      annotations:
+        {{- include "nv-config-manager.authIniChecksum" . | nindent 8 }}
+        {{- if eq .Values.secrets.method "vault-agent" }}
+        {{- include "nv-config-manager.vaultAgent.injectorAnnotations" . | nindent 8 }}
+        {{- end }}
+        {{- if include "nv-config-manager.spiffe.enabled" . }}
+        {{- include "nv-config-manager.spiffe.annotations" (dict "root" . "app" (printf "%s-refresh" $dhcpName)) | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "nv-config-manager.serviceAccountName" . }}
+      {{- if .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range .Values.global.imagePullSecrets }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      {{- include "nv-config-manager.podSecurityContext" . | nindent 6 }}
+      initContainers:
+      # Wait for Nautobot to be available before starting refresh
+      {{- include "nv-config-manager.waitForNautobot" . | nindent 6 }}
+      containers:
+      - name: config-refresh-v4
+        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ .Values.global.images.nvConfigManager.tag }}"
+        imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
+        {{- include "nv-config-manager.containerSecurityContext" . | nindent 8 }}
+        command: ["nv-config-manager-dhcp-confgen", "refresh-kea-configuration", "--ip-version", "4", "--refresh-interval", "300"]
+        env:
+        - name: NV_CONFIG_MANAGER_INI
+          value: {{ include "nv-config-manager.vaultAgent.configManagerIniPathDhcp" . | quote }}
+        {{- include "nv-config-manager.customLabelsEnv" . | nindent 8 }}
+        resources:
+          {{- toYaml .Values.networkDhcp.resources.confgen | nindent 10 }}
+        volumeMounts:
+        {{- include "nv-config-manager.vaultAgent.configManagerIniFileMountEtcVault" . | nindent 8 }}
+        {{- if .Values.spiffe.enabled }}
+        - name: spiffe-jwt-svid
+          mountPath: /var/run/secrets/spiffe
+          readOnly: true
+        {{- end }}
+      {{- include "nv-config-manager.spiffeClientSidecar" (dict "root" .) | nindent 6 }}
+      volumes:
+      {{- include "nv-config-manager.vaultAgent.projectedSATokenVolume" . | nindent 6 }}
+      {{- include "nv-config-manager.vaultAgent.configManagerIniVolume" . | nindent 6 }}
+      {{- /* SPIFFE volumes for outbound mTLS */ -}}
+      {{- include "nv-config-manager.spiffeClientVolumes" (dict "root" .) | nindent 6 }}
+---
+# Network DHCP Service (LoadBalancer for device access)
+# Exposes DHCP (UDP 67) and healthcheck (9090) to network devices on OOB network.
+# NOTE: API is NOT exposed here - use Ingress/Gateway for user access.
+# Only created when an LB provider is configured (nlb, cilium, or metallb).
+{{- if or .Values.networkDhcp.ingress.nlb .Values.networkDhcp.ingress.cilium .Values.networkDhcp.ingress.metallb }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $dhcpName }}-service
+  namespace: {{ .Values.global.namespace }}
+  {{- if .Values.networkDhcp.ingress.cilium }}
+  labels:
+    app: {{ $dhcpName }}
+    component: dhcp
+    bgp.scp.nvidia.com/scope: site-local
+  {{- else }}
+  labels:
+    app: {{ $dhcpName }}
+    component: dhcp
+  {{- end }}
+  annotations:
+    {{- /* AWS NLB annotations */ -}}
+    {{- if .Values.networkDhcp.ingress.nlb }}
+    service.beta.kubernetes.io/aws-load-balancer-type: {{ .Values.networkDhcp.ingress.nlb.type | default "external" }}
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: {{ .Values.networkDhcp.ingress.nlb.target_type | default "ip" }}
+    service.beta.kubernetes.io/aws-load-balancer-name: {{ .Values.networkDhcp.ingress.nlb.name }}
+    service.beta.kubernetes.io/aws-load-balancer-target-group-attributes: preserve_client_ip.enabled=true
+    service.beta.kubernetes.io/aws-load-balancer-security-groups: {{ .Values.networkDhcp.ingress.nlb.sg }}
+    service.beta.kubernetes.io/aws-load-balancer-subnets: {{ .Values.networkDhcp.ingress.nlb.subnets }}
+    {{- if .Values.networkDhcp.ingress.nlb.ips }}
+    service.beta.kubernetes.io/aws-load-balancer-private-ipv4-addresses: {{ .Values.networkDhcp.ingress.nlb.ips }}
+    {{- end }}
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-protocol: http
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-port: "9090"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-path: /healthcheck
+    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+    {{- end }}
+    {{- /* Cilium annotations */ -}}
+    {{- if and .Values.networkDhcp.ingress.cilium .Values.networkDhcp.ingress.cilium.staticIP }}
+    lbipam.cilium.io/ips: {{ .Values.networkDhcp.ingress.cilium.staticIP }}
+    {{- end }}
+    {{- /* MetalLB annotations */ -}}
+    {{- if and .Values.networkDhcp.ingress.metallb .Values.networkDhcp.ingress.metallb.staticIP }}
+    metallb.io/loadBalancerIPs: {{ .Values.networkDhcp.ingress.metallb.staticIP }}
+    {{- end }}
+    {{- include "nv-config-manager.externalDnsHostname" .Values.networkDhcp.ingress }}
+spec:
+  type: LoadBalancer
+  {{- /* Cilium-specific settings */ -}}
+  {{- if .Values.networkDhcp.ingress.cilium }}
+  externalTrafficPolicy: Local
+  loadBalancerClass: io.cilium/bgp-control-plane
+  {{- if .Values.networkDhcp.ingress.cilium.allowedPrefixes }}
+  loadBalancerSourceRanges:
+  {{- range $prefix := .Values.networkDhcp.ingress.cilium.allowedPrefixes }}
+  - {{ $prefix }}
+  {{- end }}
+  {{- end }}
+  {{- end }}
+  {{- /* MetalLB-specific settings */ -}}
+  {{- if .Values.networkDhcp.ingress.metallb }}
+  externalTrafficPolicy: Local
+  {{- if .Values.networkDhcp.ingress.metallb.allowedPrefixes }}
+  loadBalancerSourceRanges:
+  {{- range $prefix := .Values.networkDhcp.ingress.metallb.allowedPrefixes }}
+  - {{ $prefix }}
+  {{- end }}
+  {{- end }}
+  {{- end }}
+  ports:
+  - port: 67
+    protocol: UDP
+    name: dhcp
+  - port: 80
+    name: healthcheck
+    targetPort: 9090
+  selector:
+    app: {{ $dhcpName }}
+{{- end }}
+---
+# Network DHCP Internal Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $dhcpName }}-internal
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ $dhcpName }}
+    component: api
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8000
+    targetPort: 8000
+    name: kea
+  - port: 9000
+    name: api
+    targetPort: 9000
+  - port: {{ .Values.networkDhcp.kea.storkAgentPort }}
+    name: stork-agent
+  selector:
+    app: {{ $dhcpName }}
+{{- end }}

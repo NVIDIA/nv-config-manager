@@ -1,0 +1,150 @@
+---
+title: Building Nautobot Data with Design Builder
+sidebar-title: Design Builder Data Loading
+position: 25
+---
+
+Use Nautobot Design Builder jobs when you want a repeatable way to populate Nautobot with site or lab topology data. A Design Builder job combines Python context code with ordered YAML/Jinja design files. The job renders the design files and creates or updates Nautobot objects such as locations, devices, interfaces, IP addresses, prefixes, VLANs, VRFs, cables, and Config Manager managed-device metadata.
+
+Config Manager ships a mock topology Design Builder job for local development. Treat it as an implementation reference, not production input data:
+
+- Job class: `development/mock_topology/jobs/mock_topology_design.py`
+- Design files: `development/mock_topology/jobs/designs/*.yaml.j2`
+- Shared context: `development/mock_topology/context/common/*.yaml`
+- SuperPOD context: `development/mock_topology/context/superpod/`
+- Device payload examples: `development/mock_topology/context/superpod/devices/*.json`
+
+## How the Mock Topology Job Works
+
+The mock job is a `DesignJob` with two runtime inputs:
+
+| Input | Purpose |
+| :---- | :------ |
+| `blueprint` | Selects the source directory under `mock_topology/context/`. |
+| `deployment_name` | Adds a unique suffix to generated location names so repeated test deployments do not collide. |
+
+The job sets `Meta.design_files` to an ordered list of design fragments. Order matters because later objects reference earlier objects. For example, locations and roles are created before devices, devices before interfaces, and interfaces before cables.
+
+The context classes load shared YAML defaults and blueprint-specific data before Design Builder renders the YAML/Jinja fragments:
+
+```text
+development/mock_topology/
+├── context/
+│   ├── common/                 # shared roles, statuses, tenants, platforms, defaults
+│   └── superpod/               # SuperPOD locations, prefixes, device JSON
+└── jobs/
+    ├── mock_topology_design.py # DesignJob class
+    └── designs/                # ordered YAML/Jinja Design Builder files
+```
+
+## Reusing the Existing Job with Your Own Topology
+
+If your topology can fit the same context shape as the shipped SuperPOD mock data, you do not need to write a new job. Copy the `development/mock_topology` package into a mountable location, keep the job and design files unchanged, and add a context directory for your topology:
+
+```text
+mock_topology/
+├── context/
+│   ├── common/                 # keep or adjust shared defaults
+│   └── site_a/
+│       ├── locations.yaml      # your location hierarchy and config contexts
+│       ├── prefixes.yaml       # your aggregate prefixes and roles
+│       └── devices/*.json      # your devices, interfaces, IPs, links, overlays
+└── jobs/
+    ├── mock_topology_design.py # unchanged
+    └── designs/*.yaml.j2      # unchanged unless your object model changes
+```
+
+Set `blueprint` to the context directory name when you run the job. You can set this in the installer's TUI on the content/post-deploy job screen, or edit the installer YAML directly:
+
+```yaml
+content:
+  jobs:
+    - path: path/to/mock_topology
+  include_bootstrap_jobs: true
+  run_after_deploy:
+    - job: mock_topology.jobs.mock_topology_design.MockTopologyDesign
+      input: '{"blueprint": "site_a", "deployment_name": "site-a"}'
+```
+
+If you rename the copied Python package directory, update the `job` import path to match the new directory name.
+
+## Running a Design Job after Deployment
+
+Stage the job directory with `content.jobs`, then run the job with `content.run_after_deploy` in your installer config:
+
+```yaml
+content:
+  jobs:
+    - path: development/mock_topology
+  include_bootstrap_jobs: true
+  run_after_deploy:
+    - job: mock_topology.jobs.mock_topology_design.MockTopologyDesign
+      input: '{"blueprint": "superpod", "deployment_name": "test"}'
+```
+
+The local profile in `deploy/configs/local-superpod.yaml` uses this pattern. `make kind-up` deploys the selected profile, and `make topology` re-runs the configured post-deploy jobs against an existing deployment.
+
+## When to Change the Job
+
+Change the job code or design files only when the context-only path is not enough. Typical reasons include loading a different source format, adding custom validation, changing object creation order, or generating Nautobot objects not covered by the existing design fragments.
+
+Use the mock topology job as a starting point:
+
+1. Copy `development/mock_topology` to a new Python package directory.
+1. Update the `DesignJob` class if you need new runtime inputs, validation, or behavior.
+1. Add or edit ordered `designs/*.yaml.j2` files for each object group you need to create.
+1. Add context files or Python context code that describes your topology shape.
+1. Stage the directory with `content.jobs`.
+1. Run the job with `content.run_after_deploy` during deployment, or run it from the Nautobot Jobs UI.
+
+Minimal layout:
+
+```text
+my_topology/
+├── __init__.py
+├── context/
+│   ├── common/defaults.yaml
+│   └── site_a/devices/*.json
+├── jobs/
+│   ├── __init__.py
+│   ├── my_site_design.py
+│   └── designs/
+│       ├── locations.yaml.j2
+│       ├── devices.yaml.j2
+│       ├── interfaces.yaml.j2
+│       └── cables.yaml.j2
+```
+
+A design fragment uses Design Builder actions such as `!create_or_update`, `!get`, `!ref`, and extensions such as `!connect_cable`:
+
+```yaml
+---
+devices:
+  - "!create_or_update:name": {{ device.name }}
+    "!create_or_update:location": "!ref:location"
+    status__name: Active
+    device_type__model: {{ device.device_type.model }}
+    role__name: {{ device.role.name }}
+    platform__name: {{ device.platform.name }}
+    "!ref": device-{{ device.name }}
+```
+
+```yaml
+---
+interfaces:
+  - "!update:name": {{ local_interface }}
+    "!update:device": "!ref:device-{{ local_device }}"
+    "!connect_cable":
+      to: "!ref:intf-{{ remote_device }}-{{ remote_interface }}"
+      status__name: Connected
+```
+
+For Config Manager, make sure your design creates enough Nautobot data for the services you enable:
+
+- Devices with stable serial numbers or other identifiers used by DHCP and ZTP.
+- Interfaces with management addresses, roles, tags, and cable relationships.
+- Prefixes and IP addresses tagged for DHCP where reservations or pools should be generated.
+- Config contexts with firmware, ZTP, DNS, NTP, BGP, and password-mapping data required by your templates.
+- Managed-device metadata used by Config Manager workflows and rendering.
+
+After the job runs, Config Manager cache-refresh services and render consumers read the new Nautobot data. If a post-deploy job fails, fix the job code, design files, or context data and re-run deployment with the same `content.run_after_deploy` entry.

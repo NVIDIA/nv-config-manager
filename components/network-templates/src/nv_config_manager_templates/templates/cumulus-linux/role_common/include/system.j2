@@ -1,0 +1,41 @@
+    system:
+      aaa:
+        authentication-order:
+{% if device_data|tacacs_servers %}
+          '5':
+            tacacs: {}
+{% endif %}
+          '10':
+            local: {}
+{% if device_data|tacacs_servers %}
+        tacacs:
+          enable: on
+          server:
+{% for tacacs_server in device_data|tacacs_servers %}
+            '{{ loop.index }}':
+              host: {{ tacacs_server }}
+              secret: '{{ "tacacs_key_r1"|load_secret(site=device_data|site_name) }}'
+{% endfor %}
+          vrf: mgmt
+{% endif %}
+        user:
+{% for user in device_data|users %}
+          {{ user.username }}:
+            hashed-password: {{ (user.password_key|load_secret(site=device_data|site_name))|encrypt("sha512", site=device_data|site_name) }}
+{% if user.role %}            role: {{ user.role }}
+{% endif %}{% endfor %}
+{% block password_hardening %}
+      security:
+        password-hardening:
+          state: disabled
+{% endblock %}
+      hostname: {{ device_data|hostname|upper }}
+      timezone: Etc/UTC
+{% block config_autosave %}
+      config:
+        auto-save:
+          state: enabled
+{% endblock %}
+{% block frr_config %}{% endblock frr_config %}
+{% block system_telemetry %}{% endblock system_telemetry %}
+{% block system_reboot %}{% endblock system_reboot %}

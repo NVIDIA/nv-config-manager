@@ -1,0 +1,51 @@
+---
+# Aggregate prefixes for the public SuperPod mock topology.
+
+aggregate_prefixes:
+  - prefix: "10.78.144.0/20"
+    role: Site-Aggregate
+    tags: [role-aggregate]
+
+  - prefix: "192.0.2.0/23"
+    role: ipminet0
+    tags: [role-aggregate]
+
+  - prefix: "10.78.154.128/25"
+    role: ipminet2
+    tags: [role-aggregate]
+
+  - prefix: "10.78.156.0/22"
+    role: ipminet1
+    tags: [role-aggregate]
+
+  - prefix: "10.254.1.0/24"
+    role: superpod-spine-p2p
+    tags: [role-aggregate]
+
+  - prefix: "10.254.2.0/24"
+    role: superpod-spine-p2p
+    tags: [role-aggregate]
+
+  - prefix: "10.254.32.0/23"
+    role: OOB-Fabric-P2P
+    tags: [role-aggregate]
+
+  - prefix: "10.254.34.0/23"
+    role: OOB-Fabric-P2P
+    tags: [role-aggregate]
+
+  - prefix: "10.254.254.0/23"
+    role: superpod-loopback
+    tags: [role-aggregate]
+
+  - prefix: "100.127.1.0/24"
+    role: superpod-storage-p2p
+    tags: [role-aggregate]
+
+  - prefix: "100.127.128.0/24"
+    role: superpod-storage-vlan
+    tags: [role-aggregate]
+
+  - prefix: "100.127.255.0/24"
+    role: superpod-storage-loopback
+    tags: [role-aggregate]

@@ -1,154 +1,360 @@
-# __NVIDIA_OSS__ Standard Repo Template
+# NVIDIA Config Manager
 
-This README file is from the NVIDIA_OSS standard repo template of [PLC-OSS-Template](https://github.com/NVIDIA-GitHub-Management/PLC-OSS-Template?tab=readme-ov-file). It provides a list of files in the PLC-OSS-Template and guidelines on how to use (clone and customize) them.
+NVIDIA Config Manager is an open-source network automation and configuration management platform for large-scale datacenter operations. It combines Nautobot inventory, event-driven rendering, ZTP, DHCP, workflow automation, and configuration storage behind a single Helm deployment.
 
-**Upon completing the customization for the project repo, the repo admin should replace this README template with the project specific README file.**
+## Overview
 
-- Files (org-wide templates in the NVIDIA .github org repo; per-repo overrides allowed) in [PLC-OSS-Template](https://github.com/NVIDIA-GitHub-Management/PLC-OSS-Template?tab=readme-ov-file)
+| Service | Description |
+| :------ | :---------- |
+| **[ZTP](developer-docs/ztp.md)** | Zero Touch Provisioning, boot scripts, OS image delivery, and provisioning status updates |
+| **[DHCP](developer-docs/dhcp.md)** | Kea DHCP configuration generation from Nautobot data |
+| **[Temporal](developer-docs/temporal.md)** | Long-running network operations and approval workflows |
+| **[Render](developer-docs/render.md)** | Template rendering and event processing from Nautobot and workflow events |
+| **[Config Store](developer-docs/config-store.md)** | PostgreSQL-backed rendered, intended, and backup configuration storage |
+| **[UI](developer-docs/ui.md)** | React/Next.js interface for workflows and configuration browsing |
+| **[Nautobot](developer-docs/nautobot.md)** | Network source of truth, custom jobs, and event publication |
 
-   - Root 
-     - README.md skeleton (CTA + Quickstart + Support/Security/Governance links) 
-     - LICENSE (Apache 2.0 by default)
-        - For other licenses, see the [Confluence page](https://confluence.nvidia.com/pages/viewpage.action?pageId=788418816) for other licenses
-        - CLA.md file (delete if not using MIT or BSD licenses)
-     - CODE_OF_CONDUCT.md 
-     - SECURITY.md (vuln reporting path) 
-     - CONTRIBUTING.md (base; repo can add specifics)
-     - SUPPORT.md (Support levels/channels)
-     - GOVERNANCE.md (baseline; repo may extend)
-     - CITATION.md (for projects that need citation)
+## Installer
 
-   - .github/ 
-     - ISSUE_TEMPLATE/ (<https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/configuring-issue-templates-for-your-repository>)
-       - bug.yml, feature.yml, task.yml, config.yml 
-     - PULL_REQUEST_TEMPLATE.md (<https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/creating-a-pull-request-template-for-your-repository>)
-     - workflows/
-     - Note: workflow-templates/ for starter workflows should live in the org-level .github repo, not per-repo
+The [NVIDIA Config Manager Installer](installer/README.md) is the supported deployment entry point. It provides an interactive TUI and a headless CLI that both use the same `nv-config-manager-install.yaml` configuration file.
 
-   - Repo-specific (not org-template, maintained by the team)
-     - CODEOWNERS (place at .github/CODEOWNERS or repo root)
-     - CHANGELOG.md (or RELEASE.md) 
-     - ROADMAP.md 
-     - MAINTAINERS.md 
-     - NOTICE or THIRD_PARTY_NOTICES / THIRD_PARTY_LICENSES (dependency specific)
-     - Build/package files (CMake, pyproject, Dockerfile, etc.)
-
-   - Recommended structure and hygiene
-     - docs/
-     - examples/
-     - tests/
-     - scripts/
-     - Container/dev env: Dockerfile, docker/, .devcontainer/ (optional)
-     - Build/package (language-specific):
-       - Python: pyproject.toml, setup.cfg/setup.py, requirements.txt, environment.yml
-       - C++: CMakeLists.txt, cmake/, vcpkg.json
-     - Repo hygiene: .gitignore, .gitattributes, .editorconfig, .pre-commit-config.yaml, .clang-format
-
-
-## Usage of [PLC-OSS-Template](https://github.com/NVIDIA-GitHub-Management/PLC-OSS-Template?tab=readme-ov-file) for NEW NVIDIA OSS repos
-
-1. Clone the [PLC-OSS-Template](https://github.com/NVIDIA-GitHub-Management/PLC-OSS-Template?tab=readme-ov-file)
-2. Find/replace all in the clone of `___PROJECT___` and `__PROJECT_NAME__` with the name of the specific project.
-3. Inspect all files to make sure all replacements work and update text as needed
-
-
-**What you can reuse immediately**
-- CODE_OF_CONDUCT.md
-- SECURITY.md
-- CONTRIBUTING.md (base)
-- .github/ISSUE_TEMPLATE/.yml (bug/feature/task + config.yml)
-- .github/PULL_REQUEST_TEMPLATE.md
-- Reusable workflows 
-
-**What you must customize per repo**
-- README.md: copy the skeleton and fill in product-specific details (Quickstart, Requirements, Usage, Support level, links)
-- LICENSE: check file is correct, update year, consult Confluence for alternatives https://confluence.nvidia.com/pages/viewpage.action?pageId=788418816, add CLA.md only if your license/process requires it
-- CODEOWNERS: replace <TEAM> with your GitHub team handle(s). Place at .github/CODEOWNERS (or repo root)
-- MAINTAINERS.md: list maintainers names/roles, escalation path
-- CHANGELOG.md (or RELEASE.md): track releases/changes
-- SUPPORT.md: Update for your project
-- ROADMAP.md (optional): upcoming milestones
-- NOTICE / THIRD_PARTY_NOTICES (if you ship third‑party content)
-- Build/package files (CMake/pyproject/Dockerfile/etc.), tests/, docs/, examples/, scripts/ as appropriate
-- Workflows: Edit if you need custom behavior 
-
-
-4. Change git origin to point to new repo and push
-5. Remove the line break below and everything above it
-
-## Usage for existing NVIDIA OSS repos
-
-1. Follow the steps above, but add the files to your existing repo and merge
-
-<!-- REMOVE THE LINE BELOW AND EVERYTHING ABOVE -->
------------------------------------------
-# [Project Title]
-One-sentence value proposition for users. Who is it for, and why it matters. 
-
-# Overview
-What the project does? Why the project is useful?
-Provide a brief overview, highlighting key features or problem-solving capabilities.
-
-# Getting Started
-Guide users on how they can get started with the project. This should include basic installation step, quick-start examples 
 ```bash
-# Option A: Package manager (pip/conda/npm/etc.)
-<copy-paste install>
-
-# Option B: Container
-docker run <image> <args>
-
-# Verify (hello world)
-<one-liner or ~10-line example>
+cd installer
+uv sync
+uv run nv-config-manager-installer init
 ```
-# Requirements
-Include a list of pre-requisites. 
-- OS/Arch: <summary or link to full matrix>
-- Runtime/Compiler: <versions>
-- GPU/Drivers (if applicable): CUDA <ver>, driver <ver>, etc.
 
-# Usage
+Common non-interactive commands:
+
 ```bash
-# Minimal runnable snippet (≤20 lines)
-<code>
+cd installer
+uv run nv-config-manager-installer validate ../deploy/configs/local-superpod.yaml
+uv run nv-config-manager-installer generate-values ../deploy/configs/local-superpod.yaml --output-dir ../generated
+uv run nv-config-manager-installer deploy ../deploy/configs/local-superpod.yaml \
+  --image-source local \
+  --build-images \
+  --load-kind \
+  --kind-cluster nv-config-manager \
+  --install-envoy-gateway \
+  --install-cnpg-operator \
+  --install-cert-manager
 ```
-- More examples/tutorials: <link>
-- API reference: <link>
 
-# Performance (Optional)
-Summary of benchmarks; link to detailed results and hardware used.
+The installer handles Helm values generation, Kubernetes secrets, optional operator installation, image builds, Kind image loading, content PVC staging, ZTP OS image staging, post-deploy Nautobot jobs, and endpoint reporting.
 
-## Releases & Roadmap 
-- Releases/Changelog: <link>
-- (Optional) Next milestones or link to `ROADMAP.md`.
-  
-# Contribution Guidelines
-- Start here: `CONTRIBUTING.md`
-- Code of Conduct: `CODE_OF_CONDUCT.md`
-- Development quickstart (build/test):
+## Local Development Setup
+
+Install project tools and dependencies before running tests or local deployments.
+
 ```bash
-<clone> && <deps> && <build/test>
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv sync --dev
+./scripts/install-hooks.sh
 ```
-## Governance & Maintainers
-- Governance: `GOVERNANCE.md`
-- Maintainers: <team/handles>
-- Labeling/triage policy: <link>
+
+For UI work:
+
+```bash
+cd ui
+npm install
+```
+
+Validation commands:
+
+```bash
+uv run pytest
+uv run ruff check src/
+uv run mypy src/
+uv run ruff format src/
+```
+
+## Kubernetes Deployment
+
+Prerequisites:
+
+- Docker or a compatible container runtime
+- Kind for local clusters, or a reachable Kubernetes cluster
+- Helm 3.x
+- kubectl configured for the target cluster
+- Python 3.11 or newer, managed through `uv`
+- Node.js 23 or newer for UI development
+
+### Resource Profiles
+
+Resource sizing is selected in installer config at `cluster.size`.
+
+| Size | Environment | Suggested Capacity | Notes |
+| ---- | ----------- | ------------------ | ----- |
+| `small` | Local laptop or CI | 8 vCPU, 24 GB RAM | Single replica development profile |
+| `medium` | Remote VM or staging | 16 vCPU, 64 GB RAM | Larger requests for a shared development VM |
+| `large` | Production | 96 vCPU, 256 GB RAM, 3+ nodes | HA-oriented replica counts and resource requests |
+
+The bundled profiles in `deploy/configs/` are ready-to-run examples. Override the selected profile with `cluster.size` in a copied installer config.
+
+### Local Kind Deployment
+
+```bash
+make kind-up
+```
+
+The default `make kind-up` target creates the Kind cluster if needed, builds local images, loads them into Kind, installs required operators, and deploys using `deploy/configs/local-superpod.yaml`.
+
+Populate or refresh mock topology data:
+
+```bash
+make topology
+```
+
+### Local Hostnames
+
+The local SuperPOD profile uses `config-manager.local` as the base hostname. Add these entries when accessing the Envoy Gateway directly from your workstation:
+
+```text
+127.0.0.1 config-manager.local
+127.0.0.1 nautobot.config-manager.local
+127.0.0.1 render.config-manager.local
+127.0.0.1 ztp.config-manager.local
+127.0.0.1 dhcp.config-manager.local
+127.0.0.1 workflow.config-manager.local
+127.0.0.1 config-store.config-manager.local
+127.0.0.1 temporal.config-manager.local
+127.0.0.1 svc-workflow.config-manager.local
+127.0.0.1 svc-config-store.config-manager.local
+127.0.0.1 svc-render.config-manager.local
+127.0.0.1 svc-ztp.config-manager.local
+127.0.0.1 svc-dhcp.config-manager.local
+127.0.0.1 svc-nautobot.config-manager.local
+```
+
+Local endpoints:
+
+- UI: <https://config-manager.local>
+- Nautobot: <https://nautobot.config-manager.local>
+- Workflow API: <https://workflow.config-manager.local>
+- Config Store API: <https://config-store.config-manager.local>
+
+For the local SuperPOD profile, Nautobot login is `admin` / `admin`. For generated credentials:
+
+```bash
+kubectl get secret nautobot-admin -n nv-config-manager -o jsonpath='{.data.password}' | base64 -d && echo
+kubectl get secret nautobot-admin -n nv-config-manager -o jsonpath='{.data.api_token}' | base64 -d && echo
+```
+
+## Makefile Commands
+
+```bash
+make kind-up                  # Create a Kind cluster and deploy the platform
+make kind-up-with-topology    # Alias for kind-up when the config runs topology jobs
+make topology                 # Run configured mock topology jobs against an existing deployment
+make kind-down                # Delete the Kind cluster
+make local-up                 # Deploy to the current Kubernetes context
+make local-down               # Remove the Helm release and namespace
+make local-status             # Show pods, services, and gateway state
+make local-logs               # Tail deployment logs
+make port-forward             # Forward Nautobot and Temporal UI locally
+make docker-build             # Build all local container images
+make test                     # Run Python tests
+make lint                     # Run Python linters and type checks
+make openapi                  # Regenerate OpenAPI specs
+make openapi-check            # Check OpenAPI specs are current
+make docs-lint                # Lint documentation markdown
+make docs-lint-fern           # Validate Fern docs configuration
+```
+
+## Air-Gapped Deployment
+
+Air-gapped bundles are built from `deploy/airgapped/create-airgapped.sh`. The bundle contains the Helm chart, container images, dependency charts and manifests, image loader manifests, operator version pins, the offline installer package, and an OCI registry upload helper.
+
+On an internet-connected build host:
+
+```bash
+cd deploy/airgapped
+export NGC_API_KEY="your-ngc-api-key"
+./create-airgapped.sh --version v1.0.0 --arch amd64
+```
+
+On the target environment, upload the images and packaged chart to an OCI-compliant registry first:
+
+```bash
+tar -xzf nv-config-manager-airgapped-v1.0.0-amd64.tar.gz
+cd nv-config-manager-airgapped-v1.0.0-amd64
+./upload-to-registry.sh \
+  --registry registry.example.com/nv-config-manager \
+  --chart-registry registry.example.com/nv-config-manager/charts \
+  --username '<user>' \
+  --password-stdin
+```
+
+Then install from the bundled chart and offline installer:
+
+```bash
+./installer/install.sh
+./installer/nv-config-manager-installer init --config install.yaml
+./installer/nv-config-manager-installer deploy install.yaml \
+  --chart-dir helm \
+  --image-source registry \
+  --install-envoy-gateway \
+  --install-cert-manager \
+  --install-cnpg-operator
+```
+
+For demos or clusters without a registry, preload image tarballs onto the target nodes instead:
+
+```bash
+./manifests/load-airgapped-images.sh ./images --daemonset
+```
+
+See [Air-Gapped Installation](developer-docs/airgapped-install.md) for the full offline workflow.
+
+## Repository Structure
+
+```text
+nv-config-manager/
+├── src/nv_config_manager/       # Python services and shared libraries
+├── src/tests/                   # Python test suites
+├── ui/                          # React/Next.js UI
+├── components/                  # Nautobot image assets and helper containers
+├── development/mock_topology/   # Local development topology job data
+├── installer/                   # Interactive and headless installer package
+├── deploy/helm/                 # Helm chart and values overlays
+├── deploy/airgapped/            # Offline bundle tooling
+├── docs/                        # Fern documentation site and generated API specs
+├── developer-docs/              # Developer and operator documentation
+├── build/                       # Dockerfiles
+├── db/                          # Alembic migrations
+├── Makefile                     # Development commands
+└── pyproject.toml               # Python project configuration
+```
+
+## Service Architecture
+
+```text
+Envoy Gateway / Ingress
+  |-- UI
+  |-- Nautobot
+  |-- Workflow API and Temporal UI
+  |-- Render API
+  |-- Config Store API
+  |-- ZTP and DHCP device-facing services
+
+Nautobot -- NATS JetStream --> Render and workflow consumers
+Render --> Config Store
+ZTP and DHCP --> Nautobot and Config Store
+Temporal workers --> Nautobot, Render, Config Store, and managed devices
+```
+
+## Testing
+
+```bash
+make test
+make test-cov
+uv run pytest src/tests/ztp/
+uv run pytest src/tests/temporal/
+uv run pytest src/tests/render/
+make lint
+make format
+```
+
+Integration tests require a running deployment:
+
+```bash
+make test-integration
+uv run pytest src/tests/integration/ -v \
+  --nv-config-manager-namespace nv-config-manager \
+  --base-hostname config-manager.local
+```
+
+With real OIDC authentication:
+
+```bash
+uv run pytest src/tests/integration/ -v \
+  --base-hostname qa.config-manager.example.com \
+  --sso
+```
+
+## Configuration
+
+Runtime service configuration is delivered through the `nv-config-manager-ini` Kubernetes secret. The installer generates the secret content from `nv-config-manager-install.yaml`, selected size profile overlays, and generated or user-supplied secrets.
+
+OpenAPI specs live in [docs/api-specs](docs/api-specs/README.md). Run `make openapi-check` before changing API handlers.
+
+## Releases and Roadmap
+
+- Release notes are tracked in [CHANGELOG.md](CHANGELOG.md).
+- Release tags are promoted through protected release workflows in
+  `.github/workflows/`.
+- Roadmap and planning details are tracked through project issues and maintainer
+  planning until a public roadmap is published.
+
+## Authentication
+
+The shared `nv_config_manager.common.auth.OIDCAuth` helper implements browser-based OIDC PKCE for CLIs, tests, scripts, and notebooks.
+
+```python
+from nv_config_manager.common.auth import OIDCAuth
+
+auth = OIDCAuth.discover_from_gateway(
+    "https://workflow.qa.config-manager.example.com/whoami",
+    verify=False,
+)
+token = auth.get_access_token()
+```
+
+The `svc-*` hostnames, such as `svc-workflow.<base-hostname>`, accept bearer tokens directly and are intended for CLI and machine access.
+
+## Component Documentation
+
+- [Fern docs source](docs/README.md)
+- [Installer](installer/README.md)
+- [Architecture](developer-docs/architecture.md)
+- [ZTP](developer-docs/ztp.md)
+- [DHCP](developer-docs/dhcp.md)
+- [Temporal](developer-docs/temporal.md)
+- [Render](developer-docs/render.md)
+- [Config Store](developer-docs/config-store.md)
+- [UI](developer-docs/ui.md)
+- [Nautobot](developer-docs/nautobot.md)
+- [Logging and Observability](developer-docs/logging.md)
+- [Remote VM Deployment](developer-docs/remote-vm-deployment.md)
+- [Air-Gapped Installation](developer-docs/airgapped-install.md)
+
+## External Dependencies
+
+These packages are published separately:
+
+- `nv-config-manager-templates`: Network configuration Jinja2 templates
+- `nautobot-plugin-nv-config-manager`: Nautobot plugin for NVIDIA Config Manager integration
+- `nautobot-broker-nats`: NATS event broker for Nautobot
+
+## Contributing
+
+Start with [CONTRIBUTING.md](CONTRIBUTING.md). Contributions must follow the
+Developer Certificate of Origin sign-off process described there.
+
+1. Fork the repository.
+2. Create a feature branch.
+3. Make changes.
+4. Run tests and linting with `make test lint`.
+5. Submit a pull request using the repository PR template.
+
+Please also follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+## Governance and Maintainers
+
+- Governance: [GOVERNANCE.md](GOVERNANCE.md)
+- Maintainers: [MAINTAINERS.md](MAINTAINERS.md)
+- Support: [SUPPORT.md](SUPPORT.md)
 
 ## Security
-- Vulnerability disclosure: `SECURITY.md`
-- Do not file public issues for security reports.
 
-## Support
-- Level: <Experimental | Maintained | Stable>
-- How to get help: Issues/Discussions/<channel link>
-- Response expectations (if any).
+Do not report security vulnerabilities through public GitHub issues. Follow the
+private disclosure process in [SECURITY.md](SECURITY.md).
 
-# Community
-Provide the channel for community communications.
+## Citation
 
-# References
-Provide a list of related references
+Citation guidance is available in [CITATION.md](CITATION.md).
 
-# License
-This project is licensed under the [NAME HERE] License - see the LICENSE.md file for details
-- License: <link>
+## License
+
+NVIDIA Config Manager is licensed under [Apache 2.0](LICENSE). See
+[NOTICE](NOTICE) for attribution notices.

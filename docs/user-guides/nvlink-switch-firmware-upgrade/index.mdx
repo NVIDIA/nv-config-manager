@@ -1,0 +1,103 @@
+---
+title: NVLink Switch Firmware Upgrade
+sidebar-title: NVLink Firmware Upgrade
+position: 10
+---
+
+The NVLink Switch Firmware Upgrade workflow upgrades the firmware on a single NVLink switch to a specified bundle version. It captures the current firmware state, compares against the requested target, takes a pre-upgrade backup, updates the device configuration context, drives the firmware install and reboot, and validates the post-upgrade version. Multiple early-exit paths exit safely when no work is required or when the device is on an unsupported platform.
+
+For Cumulus Linux switches, use [Switch OS Upgrade](../switch-os-upgrade/index.mdx) instead.
+
+## Prerequisites
+
+Before running, confirm the following are in place:
+
+- **Target bundle version is decided and the firmware bundle is uploaded.** This is the pre-work that drives the upgrade — the workflow does nothing until the target moves. Pick the bundle intentionally for the device's role at the site, confirm it matches the platform, and upload it to the ZTP service (see [Upload Images to the ZTP Server](../../network-ztp/upload-images.mdx)). The bundle version is then passed in at workflow start; the upgrade itself updates the device's `intended-firmware` context as part of `update_context_and_validate`.
+- **Device exists in Nautobot** with platform set to an NVOS value and a current intended configuration in the [Config Store](../../config-store/index.mdx).
+- **Device is reachable** from Config Manager on its management address and credentials are current.
+- **Maintenance window aligned with the rest of the fabric.** Firmware upgrade reboots the NVLink switch — plan for the impact on GPU interconnect availability.
+
+## Running the workflow
+
+This workflow is not exposed in the Config Manager UI today. Start it through the workflow API by submitting the target NVLink switch and the bundle version to install. The bundle must already be uploaded to the ZTP service for the device's platform.
+
+After submission, a status page appears showing the six stages. There is no human approval gate; early-exit gates cover the safety cases.
+
+## Execution stages
+
+The workflow runs six stages in order. None require manual approval — the workflow relies on early-exit logic for safety.
+
+1. **`get_current_state` — Read the running firmware.**
+
+    Queries the device for its current firmware version. Early-exits if the device platform is unsupported (not NVOS) by marking downstream stages UNREACHABLE.
+
+1. **`compare_versions` — Compare running vs requested.**
+
+    Compares the current firmware against the requested `bundle_version`. If they match, the workflow short-circuits — downstream stages are marked UNREACHABLE and the result reflects "no upgrade needed."
+
+1. **`perform_backup` — Capture a pre-upgrade backup.**
+
+    Starts the [Configuration Backup](../configuration-backup/index.mdx) workflow as a child workflow so the device's pre-upgrade configuration is preserved.
+
+1. **`update_context_and_validate` — Refresh device context and validate config drift.**
+
+    Updates Config Manager's internal device-context state to track the new firmware, then validates that the rendered configuration is consistent with the upgrade. Halts the workflow on configuration drift (similar to Switch OS Upgrade's drift gate).
+
+1. **`execute_firmware_upgrade` — Install the bundle and reboot.**
+
+    Pushes the firmware bundle and triggers the install. ZTP poll waits up to 110 minutes for the device to come back; an extended timeout reflects the longer install + reboot cycle on NVLink hardware.
+
+1. **`validate_firmware_upgrade` — Confirm the post-upgrade firmware.**
+
+    Queries the device after it comes back and confirms the running firmware now matches `bundle_version`. A persistent mismatch raises `NVLinkSwitchFirmwareUpgradeException` (non-retryable) — this is a hard failure indicating the install did not take effect.
+
+Retry policy: 3 attempts, with `NVLinkSwitchFirmwareUpgradeException` non-retryable.
+
+The post-reboot validation has a 10-minute additional grace window after the main ZTP poll to allow the firmware-validation activity to confirm the new version.
+
+## Verifying outcomes
+
+After the workflow reports success, confirm:
+
+- **All six stages green** on the Config Manager run page (or `get_current_state` / `compare_versions` green and the downstream stages UNREACHABLE for the no-upgrade-needed and unsupported-platform paths).
+- **NVOS version on the device** reports the requested bundle version. Use the platform's `nv show` (or equivalent) command interactively to confirm.
+- **A pre-upgrade backup** is in the Config Store, tagged with the commit SHA the workflow used.
+- **The NVLink fabric is healthy** after the device rejoins — confirm peers are up and traffic has resumed on the upgraded device's links.
+
+## Rollback
+
+NVOS does not have a single-command rollback. The recovery options are:
+
+- **Set the prior bundle version as the target** and re-run NVLink Switch Firmware Upgrade. The workflow will install the older bundle.
+- **Reprovision the device** if the post-upgrade state is unrecoverable — [Device Reprovision](../reprovision/index.mdx) factory-resets and re-runs ZTP onto whatever firmware Nautobot currently has configured.
+- **Restore from the pre-upgrade backup** in the Config Store once the device is back on the prior firmware.
+
+## Common issues
+
+**Workflow exits with downstream UNREACHABLE — "unsupported platform".**
+
+The device's platform is not NVOS. NVLink Firmware Upgrade only supports NVOS; for Cumulus, use [Switch OS Upgrade](../switch-os-upgrade/index.mdx).
+
+**Workflow exits with downstream UNREACHABLE — "running matches requested".**
+
+The device is already on the requested bundle. Successful no-op; confirm by checking the device's running firmware.
+
+**`update_context_and_validate` halts with config drift.**
+
+The device's running configuration has diverged from what Config Manager last knew. Investigate the source of drift (out-of-band change, automated agent), reconcile it via a fresh [Configuration Backup](../configuration-backup/index.mdx), and re-run the upgrade.
+
+**`execute_firmware_upgrade` times out.**
+
+The ZTP poll waited 110 minutes and the device did not converge. Use [Monitoring DHCP and ZTP](../new-site-deployment/index.mdx#monitoring-dhcp-and-ztp) from New Site Bringup to investigate; the firmware may have installed but ZTP could be blocked elsewhere.
+
+**`validate_firmware_upgrade` reports a persistent mismatch.**
+
+The device rebooted but the running firmware does not match the requested bundle — typically because the wrong bundle was uploaded for the platform, or because a hardware-specific install quirk prevented the new image from taking effect. `NVLinkSwitchFirmwareUpgradeException` is non-retryable; resolve the underlying issue (confirm the right bundle was uploaded; check vendor advisories) before re-running.
+
+## Related guides
+
+- [Controlling Running Workflows](../workflow-lifecycle/index.mdx) — approve, reject, retry, and terminate behavior, including how to recover if the upgrade is terminated mid-install.
+- [Switch OS Upgrade](../switch-os-upgrade/index.mdx) — sibling workflow for Cumulus Linux switches.
+- [Configuration Backup](../configuration-backup/index.mdx) — child workflow used for the pre-upgrade snapshot.
+- [Device Reprovision](../reprovision/index.mdx) — recovery path for unrecoverable post-upgrade state.
+- [Network ZTP](../../network-ztp/index.mdx) — bundle / image management for the ZTP service.

@@ -1,0 +1,87 @@
+---
+title: Connected Host Metadata
+sidebar-title: Connected Host Metadata
+position: 10
+---
+
+The Connected Host Metadata workflow joins a switch's MAC forwarding table and LLDP neighbor table against Nautobot's host inventory to produce a per-interface picture of what is connected to the device. It is the standard tool for spot-checking what is actually plugged into a switch — useful when bringing up a new device, debugging a host that is not appearing where expected, or validating that Nautobot's modeled hosts match reality.
+
+## Prerequisites
+
+Before running the workflow, confirm the following are in place:
+
+- **Device exists in Nautobot** with a primary IPv4 and a supported platform. The workflow queries the device's FDB and LLDP tables directly, so the platform field drives which CLI dialect is used.
+- **Device is reachable** from Config Manager on its management address, and credentials are present in the secrets store.
+- **LLDP is enabled** on the switch ports you want covered. The workflow falls back to MAC-only matches for ports without LLDP, but LLDP gives far cleaner results.
+- **Hosts are modeled in Nautobot** for the matches you want resolved. Hosts whose MAC addresses are not in Nautobot appear with empty host columns; the row still shows the MAC and the port.
+
+## Running the workflow
+
+1. Navigate to the Config Manager URL for your environment.
+1. Click the **+** in the top right and select **ConnectedHostMetadataWorkflow**.
+1. Fill in the form using the field reference below and submit.
+
+| Field | Description | Required |
+| :---- | :---------- | :------- |
+| **Site** | The site whose device you want to inspect. Drives the device list below. | Yes |
+| **Tenant** | Optional Nautobot tenant filter to narrow the device list. | No |
+| **Status** | Optional device-status filter to narrow the device list. | No |
+| **Device** | The target device. The list is filtered by the selections above. | Yes |
+
+After submission, a status page appears showing the three stages. A typical run completes in well under a minute.
+
+## Execution stages
+
+The workflow runs three stages. The first two are independent and run in parallel; the third waits on both. None of the stages require manual approval.
+
+1. **`get_device_mac_table` — Read the FDB from the device.**
+
+    Queries the device for its MAC forwarding table, drops entries without a VLAN (typically CPU/local MACs), and renders the result as a Markdown table of (Interface, MAC, VLAN). On an empty FDB the stage display reads "No MAC Addresses found on device." rather than failing.
+
+1. **`get_device_neighbors` — Read the LLDP neighbor table from the device.**
+
+    Queries the device for its LLDP neighbors and renders (Interface, Neighbor Device, Neighbor Interface, Link Status). On an empty table the stage display reads "No LLDP neighbors found on device." rather than failing.
+
+1. **`get_connected_host_data` — Join MAC + LLDP against Nautobot.**
+
+    Depends on the prior two stages. For each interface with a MAC or LLDP entry, the workflow:
+
+   - Looks up hosts by MAC via `get_host_data_by_macs`.
+   - Looks up hosts by device name via `get_host_data_by_names` (used when the LLDP neighbor name resolves to a Nautobot host).
+   - For each interface with multiple MAC candidates, prefers the entry whose MAC matches a known Nautobot host; otherwise prefers the youngest FDB entry.
+   - Emits a final table with columns: Network Interface, Host, LLDP Name, Alias, Connected Interface, MAC Address, Tenant, VLAN.
+
+     If both the FDB and LLDP stages returned empty data, this stage short-circuits to UNREACHABLE rather than running a join.
+
+The workflow archives the result before completing. Activity timeouts are short (1 minute) with up to 3 retries on transient errors.
+
+## Verifying outcomes
+
+After the workflow reports success, confirm:
+
+- **All three stages green** on the Config Manager run page.
+- **Every up interface has at least one row** in the consolidated table, or appears in the LLDP-only / MAC-only fallback. Missing interfaces almost always indicate either an LLDP-disabled port with no traffic flowing, or an interface that is administratively down.
+- **Host columns are populated** for hosts you expect to be in Nautobot. Empty host columns next to a valid MAC mean the host is reachable but not modeled in Nautobot.
+
+## Common issues
+
+**Stage 1 or 2 reports `UNREACHABLE`.**
+
+The device was not reachable or the management credentials were wrong. Verify the device is up on its management IP and that Config Manager's site credentials are current. The [Monitoring DHCP and ZTP](../new-site-deployment/index.mdx#monitoring-dhcp-and-ztp) section of New Site Bringup has the canonical reachability troubleshooting path.
+
+**Host columns are empty (`--`) for interfaces where I expect a host.**
+
+Either the MAC on the wire does not match any host in Nautobot, or the host has been renamed/moved. Confirm the MAC the FDB reports and reconcile it against Nautobot. For hosts modeled by name (LLDP-derived), confirm the LLDP system name matches the Nautobot device name exactly.
+
+**An interface shows different MACs across runs.**
+
+The FDB is unstable — typically a trunk port where multiple hosts share the segment, or a server churning through MACs (PXE retries, link flap). Investigate the neighbor rather than retrying the workflow.
+
+**Both stages return empty data.**
+
+The workflow short-circuits and marks `get_connected_host_data` as UNREACHABLE. Confirm the device has any live ports — a switch with no traffic and LLDP disabled has nothing to report.
+
+## Related guides
+
+- [New Site Bringup](../new-site-deployment/index.mdx) — bringup procedure that often calls this workflow after physical cabling is complete.
+- [Cable Validation](../cable-validation/index.mdx) — sibling workflow that compares observed cabling against the Nautobot intended topology.

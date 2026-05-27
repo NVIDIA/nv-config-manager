@@ -1,0 +1,25 @@
+# Byte-compiled / optimized files
+__pycache__/
+*.py[cod]
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# Unit test / coverage reports
+.coverage
+.coverage.*
+.pytest_cache/
+.ruff_cache/
+coverage.xml
+htmlcov/
+
+# Environments
+.env
+.venv
+env/
+venv/
+
+# Local uv lockfiles are generated during component-only checks.
+uv.lock

@@ -1,0 +1,1905 @@
+- set:
+    acl:
+      acl-edge-urpf:
+        rule:
+          '10':
+            action:
+              deny: {}
+            match:
+              ip:
+                source-ip: 10.78.144.0/20
+        type: ipv4
+    bridge:
+      domain:
+        br_default:
+          stp:
+            priority: 28672
+            state:
+              up: {}
+          vlan:
+            '101':
+              vni:
+                '1001': {}
+            '150':
+              vni:
+                '1050': {}
+    evpn:
+      enable: on
+      multihoming:
+        enable: on
+        startup-delay: 30
+      route-advertise: {}
+    interface:
+      bond1:
+        bond:
+          lacp-bypass: on
+          member:
+            swp1s0: {}
+        bridge:
+          domain:
+            br_default:
+              access: 101
+        evpn:
+          multihoming:
+            segment:
+              df-preference: 50000
+              enable: on
+              local-id: 1
+              mac-address: 44:38:39:ff:69:01
+        link:
+          mtu: 9000
+        type: bond
+      bond3:
+        bond:
+          lacp-bypass: on
+          member:
+            swp1s1: {}
+        bridge:
+          domain:
+            br_default:
+              access: 101
+        evpn:
+          multihoming:
+            segment:
+              df-preference: 50000
+              enable: on
+              local-id: 3
+              mac-address: 44:38:39:ff:69:03
+        link:
+          mtu: 9000
+        type: bond
+      bond5:
+        bond:
+          lacp-bypass: on
+          member:
+            swp1s2: {}
+        bridge:
+          domain:
+            br_default:
+              access: 101
+        evpn:
+          multihoming:
+            segment:
+              df-preference: 50000
+              enable: on
+              local-id: 5
+              mac-address: 44:38:39:ff:69:05
+        link:
+          mtu: 9000
+        type: bond
+      bond6:
+        bond:
+          lacp-bypass: on
+          member:
+            swp1s3: {}
+        bridge:
+          domain:
+            br_default:
+              access: 150
+        evpn:
+          multihoming:
+            segment:
+              df-preference: 50000
+              enable: on
+              local-id: 6
+              mac-address: 44:38:39:ff:69:06
+        link:
+          mtu: 9000
+        type: bond
+      bond7:
+        bond:
+          lacp-bypass: on
+          member:
+            swp7s0: {}
+        bridge:
+          domain:
+            br_default:
+              access: 150
+        evpn:
+          multihoming:
+            segment:
+              df-preference: 50000
+              enable: on
+              local-id: 7
+              mac-address: 44:38:39:ff:69:07
+        link:
+          mtu: 9000
+        type: bond
+      bond9:
+        bond:
+          lacp-bypass: on
+          member:
+            swp7s1: {}
+        bridge:
+          domain:
+            br_default:
+              access: 150
+        evpn:
+          multihoming:
+            segment:
+              df-preference: 50000
+              enable: on
+              local-id: 9
+              mac-address: 44:38:39:ff:69:09
+        link:
+          mtu: 9000
+        type: bond
+      bond11:
+        bond:
+          lacp-bypass: on
+          member:
+            swp7s2: {}
+        bridge:
+          domain:
+            br_default:
+              access: 150
+        evpn:
+          multihoming:
+            segment:
+              df-preference: 50000
+              enable: on
+              local-id: 11
+              mac-address: 44:38:39:ff:69:0b
+        link:
+          mtu: 9000
+        type: bond
+      bond12:
+        bond:
+          lacp-bypass: on
+          member:
+            swp7s3: {}
+        bridge:
+          domain:
+            br_default:
+              access: 150
+        evpn:
+          multihoming:
+            segment:
+              df-preference: 50000
+              enable: on
+              local-id: 12
+              mac-address: 44:38:39:ff:69:0c
+        link:
+          mtu: 9000
+        type: bond
+      bond13:
+        bond:
+          lacp-bypass: on
+          member:
+            swp2s0: {}
+        bridge:
+          domain:
+            br_default:
+              access: 101
+        evpn:
+          multihoming:
+            segment:
+              df-preference: 50000
+              enable: on
+              local-id: 13
+              mac-address: 44:38:39:ff:69:0d
+        link:
+          mtu: 9000
+        type: bond
+      bond15:
+        bond:
+          lacp-bypass: on
+          member:
+            swp2s1: {}
+        bridge:
+          domain:
+            br_default:
+              access: 101
+        evpn:
+          multihoming:
+            segment:
+              df-preference: 50000
+              enable: on
+              local-id: 15
+              mac-address: 44:38:39:ff:69:0f
+        link:
+          mtu: 9000
+        type: bond
+      bond16:
+        bond:
+          lacp-bypass: on
+          member:
+            swp2s2: {}
+        bridge:
+          domain:
+            br_default:
+              access: 101
+        evpn:
+          multihoming:
+            segment:
+              df-preference: 50000
+              enable: on
+              local-id: 16
+              mac-address: 44:38:39:ff:69:10
+        link:
+          mtu: 9000
+        type: bond
+      bond17:
+        bond:
+          lacp-bypass: on
+          member:
+            swp2s3: {}
+        bridge:
+          domain:
+            br_default:
+              access: 150
+        evpn:
+          multihoming:
+            segment:
+              df-preference: 50000
+              enable: on
+              local-id: 17
+              mac-address: 44:38:39:ff:69:11
+        link:
+          mtu: 9000
+        type: bond
+      bond18:
+        bond:
+          lacp-bypass: on
+          member:
+            swp8s0: {}
+        bridge:
+          domain:
+            br_default:
+              access: 150
+        evpn:
+          multihoming:
+            segment:
+              df-preference: 50000
+              enable: on
+              local-id: 18
+              mac-address: 44:38:39:ff:69:12
+        link:
+          mtu: 9000
+        type: bond
+      bond20:
+        bond:
+          lacp-bypass: on
+          member:
+            swp8s1: {}
+        bridge:
+          domain:
+            br_default:
+              access: 150
+        evpn:
+          multihoming:
+            segment:
+              df-preference: 50000
+              enable: on
+              local-id: 20
+              mac-address: 44:38:39:ff:69:14
+        link:
+          mtu: 9000
+        type: bond
+      bond21:
+        bond:
+          lacp-bypass: on
+          member:
+            swp8s2: {}
+        bridge:
+          domain:
+            br_default:
+              access: 150
+        evpn:
+          multihoming:
+            segment:
+              df-preference: 50000
+              enable: on
+              local-id: 21
+              mac-address: 44:38:39:ff:69:15
+        link:
+          mtu: 9000
+        type: bond
+      bond22:
+        bond:
+          lacp-bypass: on
+          member:
+            swp8s3: {}
+        bridge:
+          domain:
+            br_default:
+              access: 150
+        evpn:
+          multihoming:
+            segment:
+              df-preference: 50000
+              enable: on
+              local-id: 22
+              mac-address: 44:38:39:ff:69:16
+        link:
+          mtu: 9000
+        type: bond
+      bond23:
+        bond:
+          lacp-bypass: on
+          member:
+            swp13s0: {}
+        bridge:
+          domain:
+            br_default:
+              access: 101
+        evpn:
+          multihoming:
+            segment:
+              df-preference: 50000
+              enable: on
+              local-id: 23
+              mac-address: 44:38:39:ff:69:17
+        link:
+          mtu: 9000
+        type: bond
+      bond24:
+        bond:
+          lacp-bypass: on
+          member:
+            swp21s0: {}
+        bridge:
+          domain:
+            br_default:
+              access: 101
+        evpn:
+          multihoming:
+            segment:
+              df-preference: 50000
+              enable: on
+              local-id: 24
+              mac-address: 44:38:39:ff:69:18
+        link:
+          mtu: 9000
+        type: bond
+      bond25:
+        bond:
+          lacp-bypass: on
+          member:
+            swp21s1: {}
+        bridge:
+          domain:
+            br_default:
+              access: 101
+        evpn:
+          multihoming:
+            segment:
+              df-preference: 50000
+              enable: on
+              local-id: 25
+              mac-address: 44:38:39:ff:69:19
+        link:
+          mtu: 9000
+        type: bond
+      bond26:
+        bond:
+          lacp-bypass: on
+          member:
+            swp3s0: {}
+        bridge:
+          domain:
+            br_default:
+              access: 101
+        evpn:
+          multihoming:
+            segment:
+              df-preference: 50000
+              enable: on
+              local-id: 26
+              mac-address: 44:38:39:ff:69:1a
+        link:
+          mtu: 9000
+        type: bond
+      bond28:
+        bond:
+          lacp-bypass: on
+          member:
+            swp3s1: {}
+        bridge:
+          domain:
+            br_default:
+              access: 101
+        evpn:
+          multihoming:
+            segment:
+              df-preference: 50000
+              enable: on
+              local-id: 28
+              mac-address: 44:38:39:ff:69:1c
+        link:
+          mtu: 9000
+        type: bond
+      bond30:
+        bond:
+          lacp-bypass: on
+          member:
+            swp3s2: {}
+        bridge:
+          domain:
+            br_default:
+              access: 150
+        evpn:
+          multihoming:
+            segment:
+              df-preference: 50000
+              enable: on
+              local-id: 30
+              mac-address: 44:38:39:ff:69:1e
+        link:
+          mtu: 9000
+        type: bond
+      bond31:
+        bond:
+          lacp-bypass: on
+          member:
+            swp3s3: {}
+        bridge:
+          domain:
+            br_default:
+              access: 150
+        evpn:
+          multihoming:
+            segment:
+              df-preference: 50000
+              enable: on
+              local-id: 31
+              mac-address: 44:38:39:ff:69:1f
+        link:
+          mtu: 9000
+        type: bond
+      bond32:
+        bond:
+          lacp-bypass: on
+          member:
+            swp9s0: {}
+        bridge:
+          domain:
+            br_default:
+              access: 150
+        evpn:
+          multihoming:
+            segment:
+              df-preference: 50000
+              enable: on
+              local-id: 32
+              mac-address: 44:38:39:ff:69:20
+        link:
+          mtu: 9000
+        type: bond
+      bond34:
+        bond:
+          lacp-bypass: on
+          member:
+            swp9s1: {}
+        bridge:
+          domain:
+            br_default:
+              access: 150
+        evpn:
+          multihoming:
+            segment:
+              df-preference: 50000
+              enable: on
+              local-id: 34
+              mac-address: 44:38:39:ff:69:22
+        link:
+          mtu: 9000
+        type: bond
+      bond36:
+        bond:
+          lacp-bypass: on
+          member:
+            swp9s2: {}
+        bridge:
+          domain:
+            br_default:
+              access: 150
+        evpn:
+          multihoming:
+            segment:
+              df-preference: 50000
+              enable: on
+              local-id: 36
+              mac-address: 44:38:39:ff:69:24
+        link:
+          mtu: 9000
+        type: bond
+      bond37:
+        bond:
+          lacp-bypass: on
+          member:
+            swp9s3: {}
+        bridge:
+          domain:
+            br_default:
+              access: 150
+        evpn:
+          multihoming:
+            segment:
+              df-preference: 50000
+              enable: on
+              local-id: 37
+              mac-address: 44:38:39:ff:69:25
+        link:
+          mtu: 9000
+        type: bond
+      bond38:
+        bond:
+          lacp-bypass: on
+          member:
+            swp4s0: {}
+        bridge:
+          domain:
+            br_default:
+              access: 101
+        evpn:
+          multihoming:
+            segment:
+              df-preference: 50000
+              enable: on
+              local-id: 38
+              mac-address: 44:38:39:ff:69:26
+        link:
+          mtu: 9000
+        type: bond
+      bond39:
+        bond:
+          lacp-bypass: on
+          member:
+            swp4s1: {}
+        bridge:
+          domain:
+            br_default:
+              access: 101
+        evpn:
+          multihoming:
+            segment:
+              df-preference: 50000
+              enable: on
+              local-id: 39
+              mac-address: 44:38:39:ff:69:27
+        link:
+          mtu: 9000
+        type: bond
+      bond40:
+        bond:
+          lacp-bypass: on
+          member:
+            swp4s2: {}
+        bridge:
+          domain:
+            br_default:
+              access: 150
+        evpn:
+          multihoming:
+            segment:
+              df-preference: 50000
+              enable: on
+              local-id: 40
+              mac-address: 44:38:39:ff:69:28
+        link:
+          mtu: 9000
+        type: bond
+      bond41:
+        bond:
+          lacp-bypass: on
+          member:
+            swp10s0: {}
+        bridge:
+          domain:
+            br_default:
+              access: 150
+        evpn:
+          multihoming:
+            segment:
+              df-preference: 50000
+              enable: on
+              local-id: 41
+              mac-address: 44:38:39:ff:69:29
+        link:
+          mtu: 9000
+        type: bond
+      bond42:
+        bond:
+          lacp-bypass: on
+          member:
+            swp10s1: {}
+        bridge:
+          domain:
+            br_default:
+              access: 150
+        evpn:
+          multihoming:
+            segment:
+              df-preference: 50000
+              enable: on
+              local-id: 42
+              mac-address: 44:38:39:ff:69:2a
+        link:
+          mtu: 9000
+        type: bond
+      bond43:
+        bond:
+          lacp-bypass: on
+          member:
+            swp10s2: {}
+        bridge:
+          domain:
+            br_default:
+              access: 150
+        evpn:
+          multihoming:
+            segment:
+              df-preference: 50000
+              enable: on
+              local-id: 43
+              mac-address: 44:38:39:ff:69:2b
+        link:
+          mtu: 9000
+        type: bond
+      bond44:
+        bond:
+          lacp-bypass: on
+          member:
+            swp13s1: {}
+        bridge:
+          domain:
+            br_default:
+              access: 101
+        evpn:
+          multihoming:
+            segment:
+              df-preference: 50000
+              enable: on
+              local-id: 44
+              mac-address: 44:38:39:ff:69:2c
+        link:
+          mtu: 9000
+        type: bond
+      eth0:
+        description: a08-u44-p01-mleaf-01_swp18
+        ip:
+          address:
+            192.0.2.29/23: {}
+        type: eth
+      lo:
+        ip:
+          address:
+            10.254.254.14/32: {}
+        type: loopback
+      swp1:
+        link:
+          breakout:
+            4x: {}
+        type: swp
+      swp1s0:
+        description: a08-u04-p01-bcm-01_enP4s4np0
+        type: swp
+      swp1s1:
+        description: a08-u06-p01-k8s-admin-01_ens1np0
+        type: swp
+      swp1s2:
+        description: a08-u08-p01-k8s-runai-03_enP4s4np0
+        type: swp
+      swp1s3:
+        description: a08-u11-p01-c2-bk-01_ens1np0
+        type: swp
+      swp2:
+        link:
+          breakout:
+            4x: {}
+        type: swp
+      swp2s0:
+        description: a09-u04-p01-k8s-admin-03_ens1np0
+        type: swp
+      swp2s1:
+        description: a09-u06-p01-slurm-01_enP4s4np0
+        type: swp
+      swp2s2:
+        description: a09-u08-p01-k8s-runai-01_enP4s4np0
+        type: swp
+      swp2s3:
+        description: a09-u11-p01-c2-bk-03_ens1np0
+        type: swp
+      swp3:
+        link:
+          breakout:
+            4x: {}
+        type: swp
+      swp3s0:
+        description: b08-u04-p01-bcm-02_enP4s4np0
+        type: swp
+      swp3s1:
+        description: b08-u06-p01-k8s-admin-02_ens1np0
+        type: swp
+      swp3s2:
+        description: b08-u08-p01-x86-bk-02_ens1np0
+        type: swp
+      swp3s3:
+        description: b08-u11-p01-c2-bk-02_ens1np0
+        type: swp
+      swp4:
+        link:
+          breakout:
+            4x: {}
+        type: swp
+      swp4s0:
+        description: b09-u04-p01-slurm-02_enP4s4np0
+        type: swp
+      swp4s1:
+        description: b09-u06-p01-k8s-runai-02_enP4s4np0
+        type: swp
+      swp4s2:
+        description: b09-u08-p01-x86-bk-01_ens1np0
+        type: swp
+      swp4s3:
+        type: swp
+      swp5:
+        link:
+          breakout:
+            4x: {}
+        type: swp
+      swp5s0:
+        description: a08-u08-p01-k8s-runai-03_enP18s18np0
+        ip:
+          address:
+            100.127.1.33/31: {}
+          vrf: STORAGE
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        type: swp
+      swp5s1:
+        type: swp
+      swp5s2:
+        description: a09-u06-p01-slurm-01_enP18s18np0
+        ip:
+          address:
+            100.127.1.35/31: {}
+          vrf: STORAGE
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        type: swp
+      swp5s3:
+        description: a09-u08-p01-k8s-runai-01_enP18s18np0
+        ip:
+          address:
+            100.127.1.37/31: {}
+          vrf: STORAGE
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        type: swp
+      swp6:
+        link:
+          breakout:
+            4x: {}
+        type: swp
+      swp6s0:
+        description: b09-u04-p01-slurm-02_enP18s18np0
+        ip:
+          address:
+            100.127.1.39/31: {}
+          vrf: STORAGE
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        type: swp
+      swp6s1:
+        description: b09-u06-p01-k8s-runai-02_enP18s18np0
+        ip:
+          address:
+            100.127.1.41/31: {}
+          vrf: STORAGE
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        type: swp
+      swp6s2:
+        type: swp
+      swp6s3:
+        type: swp
+      swp7:
+        link:
+          breakout:
+            4x: {}
+        type: swp
+      swp7s0:
+        description: a08-u15-p01-2bcm-01_enP4s4np0
+        type: swp
+      swp7s1:
+        description: a08-u17-p01-2k8s-admin-01_ens1np0
+        type: swp
+      swp7s2:
+        description: a08-u19-p01-2k8s-runai-03_enP4s4np0
+        type: swp
+      swp7s3:
+        description: a08-u21-p01-2c2-bk-01_ens1np0
+        type: swp
+      swp8:
+        link:
+          breakout:
+            4x: {}
+        type: swp
+      swp8s0:
+        description: a09-u15-p01-2k8s-admin-03_ens1np0
+        type: swp
+      swp8s1:
+        description: a09-u17-p01-2slurm-01_enP4s4np0
+        type: swp
+      swp8s2:
+        description: a09-u19-p01-2k8s-runai-01_enP4s4np0
+        type: swp
+      swp8s3:
+        description: a09-u21-p01-2c2-bk-03_ens1np0
+        type: swp
+      swp9:
+        link:
+          breakout:
+            4x: {}
+        type: swp
+      swp9s0:
+        description: b08-u15-p01-2bcm-02_enP4s4np0
+        type: swp
+      swp9s1:
+        description: b08-u17-p01-2k8s-admin-02_ens1np0
+        type: swp
+      swp9s2:
+        description: b08-u19-p01-2x86-bk-02_ens1np0
+        type: swp
+      swp9s3:
+        description: b08-u21-p01-2c2-bk-02_ens1np0
+        type: swp
+      swp10:
+        link:
+          breakout:
+            4x: {}
+        type: swp
+      swp10s0:
+        description: b09-u15-p01-2slurm-02_enP4s4np0
+        type: swp
+      swp10s1:
+        description: b09-u17-p01-2k8s-runai-02_enP4s4np0
+        type: swp
+      swp10s2:
+        description: b09-u19-p01-2x86-bk-01_ens1np0
+        type: swp
+      swp10s3:
+        type: swp
+      swp11:
+        link:
+          breakout:
+            4x: {}
+        type: swp
+      swp11s0:
+        description: a08-u19-p01-2k8s-runai-03_enP18s18np0
+        ip:
+          address:
+            100.127.1.43/31: {}
+          vrf: STORAGE
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        type: swp
+      swp11s1:
+        type: swp
+      swp11s2:
+        description: a09-u17-p01-2slurm-01_enP18s18np0
+        ip:
+          address:
+            100.127.1.45/31: {}
+          vrf: STORAGE
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        type: swp
+      swp11s3:
+        description: a09-u19-p01-2k8s-runai-01_enP18s18np0
+        ip:
+          address:
+            100.127.1.47/31: {}
+          vrf: STORAGE
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        type: swp
+      swp12:
+        link:
+          breakout:
+            4x: {}
+        type: swp
+      swp12s0:
+        description: b09-u15-p01-2slurm-02_enP18s18np0
+        ip:
+          address:
+            100.127.1.49/31: {}
+          vrf: STORAGE
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        type: swp
+      swp12s1:
+        description: b09-u17-p01-2k8s-runai-02_enP18s18np0
+        ip:
+          address:
+            100.127.1.51/31: {}
+          vrf: STORAGE
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        type: swp
+      swp12s2:
+        type: swp
+      swp12s3:
+        type: swp
+      swp13:
+        link:
+          breakout:
+            4x: {}
+        type: swp
+      swp13s0:
+        description: a09-u23-p01-ufm-01_enp171s0f0np0
+        type: swp
+      swp13s1:
+        description: b09-u23-p01-ufm-02_enp171s0f0np0
+        type: swp
+      swp13s2:
+        type: swp
+      swp13s3:
+        type: swp
+      swp21:
+        link:
+          breakout:
+            8x: {}
+        type: swp
+      swp21s0:
+        description: a10-u17-p01-nfs-01_S1
+        type: swp
+      swp21s1:
+        description: a10-u17-p01-nfs-01_S3
+        type: swp
+      swp21s2:
+        type: swp
+      swp21s3:
+        type: swp
+      swp21s4:
+        acl:
+          acl-edge-urpf:
+            inbound: {}
+        description: example-wan-1_49
+        ip:
+          address:
+            10.76.245.69/31: {}
+          vrf: EXIT
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        type: swp
+      swp21s5:
+        type: swp
+      swp21s6:
+        type: swp
+      swp21s7:
+        type: swp
+      swp22:
+        link:
+          breakout:
+            disabled: {}
+        type: swp
+      swp54:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp54s0:
+        description: a09-u36-p01-spine-01_swp33s0
+        evpn:
+          multihoming:
+            uplink: on
+        ip:
+          address:
+            10.254.1.129/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp54s1:
+        description: a09-u36-p01-spine-01_swp33s1
+        evpn:
+          multihoming:
+            uplink: on
+        ip:
+          address:
+            10.254.1.131/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp55:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp55s0:
+        description: a09-u36-p01-spine-01_swp34s0
+        evpn:
+          multihoming:
+            uplink: on
+        ip:
+          address:
+            10.254.1.133/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp55s1:
+        description: a09-u36-p01-spine-01_swp34s1
+        evpn:
+          multihoming:
+            uplink: on
+        ip:
+          address:
+            10.254.1.135/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp56:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp56s0:
+        description: a09-u36-p01-spine-01_swp35s0
+        evpn:
+          multihoming:
+            uplink: on
+        ip:
+          address:
+            10.254.1.137/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp56s1:
+        description: a09-u36-p01-spine-01_swp35s1
+        evpn:
+          multihoming:
+            uplink: on
+        ip:
+          address:
+            10.254.1.139/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp57:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp57s0:
+        description: a09-u36-p01-spine-01_swp36s0
+        evpn:
+          multihoming:
+            uplink: on
+        ip:
+          address:
+            10.254.1.141/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp57s1:
+        description: a09-u36-p01-spine-01_swp36s1
+        evpn:
+          multihoming:
+            uplink: on
+        ip:
+          address:
+            10.254.1.143/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp58:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp58s0:
+        description: a09-u36-p01-spine-01_swp37s0
+        evpn:
+          multihoming:
+            uplink: on
+        ip:
+          address:
+            10.254.1.145/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp58s1:
+        description: a09-u36-p01-spine-01_swp37s1
+        evpn:
+          multihoming:
+            uplink: on
+        ip:
+          address:
+            10.254.1.147/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp59:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp59s0:
+        description: a09-u36-p01-spine-01_swp38s0
+        evpn:
+          multihoming:
+            uplink: on
+        ip:
+          address:
+            10.254.1.149/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp59s1:
+        description: b09-u36-p01-spine-02_swp33s0
+        evpn:
+          multihoming:
+            uplink: on
+        ip:
+          address:
+            10.254.2.129/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp60:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp60s0:
+        description: b09-u36-p01-spine-02_swp33s1
+        evpn:
+          multihoming:
+            uplink: on
+        ip:
+          address:
+            10.254.2.131/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp60s1:
+        description: b09-u36-p01-spine-02_swp34s0
+        evpn:
+          multihoming:
+            uplink: on
+        ip:
+          address:
+            10.254.2.133/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp61:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp61s0:
+        description: b09-u36-p01-spine-02_swp34s1
+        evpn:
+          multihoming:
+            uplink: on
+        ip:
+          address:
+            10.254.2.135/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp61s1:
+        description: b09-u36-p01-spine-02_swp35s0
+        evpn:
+          multihoming:
+            uplink: on
+        ip:
+          address:
+            10.254.2.137/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp62:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp62s0:
+        description: b09-u36-p01-spine-02_swp35s1
+        evpn:
+          multihoming:
+            uplink: on
+        ip:
+          address:
+            10.254.2.139/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp62s1:
+        description: b09-u36-p01-spine-02_swp36s0
+        evpn:
+          multihoming:
+            uplink: on
+        ip:
+          address:
+            10.254.2.141/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp63:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp63s0:
+        description: b09-u36-p01-spine-02_swp36s1
+        evpn:
+          multihoming:
+            uplink: on
+        ip:
+          address:
+            10.254.2.143/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp63s1:
+        description: b09-u36-p01-spine-02_swp37s0
+        evpn:
+          multihoming:
+            uplink: on
+        ip:
+          address:
+            10.254.2.145/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp64:
+        link:
+          breakout:
+            2x: {}
+        type: swp
+      swp64s0:
+        description: b09-u36-p01-spine-02_swp37s1
+        evpn:
+          multihoming:
+            uplink: on
+        ip:
+          address:
+            10.254.2.147/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      swp64s1:
+        description: b09-u36-p01-spine-02_swp38s0
+        evpn:
+          multihoming:
+            uplink: on
+        ip:
+          address:
+            10.254.2.149/31: {}
+        link:
+          state:
+            up: {}
+        qos:
+          pfc-watchdog:
+            state: enable
+        router:
+          adaptive-routing:
+            enable: on
+        type: swp
+      vlan101:
+        ip:
+          address:
+            10.78.144.2/24: {}
+          vrf: INBAND
+          vrr:
+            address:
+              10.78.144.1/24: {}
+            enable: on
+            state:
+              up: {}
+        type: svi
+        vlan: 101
+      vlan150:
+        ip:
+          address:
+            10.78.146.2/24: {}
+          vrf: INBAND
+          vrr:
+            address:
+              10.78.146.1/24: {}
+            enable: on
+            state:
+              up: {}
+        type: svi
+        vlan: 150
+    nve:
+      vxlan:
+        arp-nd-suppress: on
+        enable: on
+        source:
+          address: 10.254.254.14
+    qos:
+      pfc:
+        default-global:
+          port-buffer: 363000
+          switch-priority:
+            '3': {}
+          xoff-threshold: 75000
+          xon-threshold: 75000
+      roce:
+        enable: on
+      traffic-pool:
+        default-lossy:
+          memory-percent: 10
+        roce-lossless:
+          memory-percent: 90
+    router:
+      adaptive-routing:
+        enable: on
+      bgp:
+        autonomous-system: 4265355095
+        enable: on
+        graceful-restart:
+          mode: full
+        router-id: 10.254.254.14
+      policy:
+        prefix-list:
+          pl-default-only:
+            rule:
+              '10':
+                action: permit
+                match:
+                  0.0.0.0/0:
+                    max-prefix-len: 0
+          pl-edge-egress:
+            rule:
+              '10':
+                action: permit
+                match:
+                  10.78.144.0/20:
+                    max-prefix-len: 32
+        route-map:
+          RM_ADD_WECMP:
+            rule:
+              '10':
+                action:
+                  permit: {}
+                description: RM_ADD_WECMP_COMMUNITY
+                set:
+                  ext-community-bw: multipaths
+          RM_LOOPBACK:
+            rule:
+              '10':
+                action:
+                  permit: {}
+                description: permit_lo_ip
+                match:
+                  interface: lo
+                  type: ipv4
+          RM_SUM_WECMP:
+            rule:
+              '10':
+                action:
+                  permit: {}
+                description: RM_SUM_WECMP_COMMUNITY
+                set:
+                  ext-community-bw: cumulative
+          rm-default-only:
+            rule:
+              '10':
+                action:
+                  permit: {}
+                match:
+                  ip-prefix-list: pl-default-only
+                  type: ipv4
+          rm-edge-egress:
+            rule:
+              '10':
+                action:
+                  permit: {}
+                match:
+                  ip-prefix-list: pl-edge-egress
+                  type: ipv4
+      vrr:
+        enable: on
+    service:
+      dhcp-relay:
+        INBAND:
+          interface:
+            vlan101: {}
+            vlan4001_l3: {}
+          server:
+            10.78.144.8: {}
+            10.78.144.9: {}
+      dns:
+        mgmt:
+          server:
+            192.0.2.8: {}
+            192.0.2.9: {}
+      ntp:
+        mgmt:
+          server:
+            192.0.2.8: {}
+            192.0.2.9: {}
+    system:
+      aaa:
+        class:
+          nvapply:
+            action: allow
+            command-path:
+              /:
+                permission: all
+          nvshow:
+            action: allow
+            command-path:
+              /:
+                permission: ro
+          sudo:
+            action: allow
+            command-path:
+              /:
+                permission: all
+        role:
+          nvue-admin:
+            class:
+              nvapply: {}
+          nvue-monitor:
+            class:
+              nvshow: {}
+          system-admin:
+            class:
+              nvapply: {}
+              sudo: {}
+        user:
+          cumulus:
+            full-name: cumulus,,,
+            hashed-password: $6$H0QFj2rx$nZvUivJum/KP/YIvEu1iyuDUZcFGc48GMnoaAqrtW/dwbVtDsdqF1xCOD.eIR1ukFxwoLzze9PHGPDK0f2KHt.
+            role: system-admin
+          nv-config-manager:
+            hashed-password: $6$H0QFj2rx$Vz4idKh.iwlfraq9WAV5sy1STcsz75Bv9YDx3LrJEoeB7vvkg.VQwPpssmhZpNBgY9iTCTiUQnjeoqk261KYp.
+            role: system-admin
+      api:
+        state: enabled
+      config:
+        auto-save:
+          state: enabled
+      control-plane:
+        acl:
+          acl-default-dos:
+            inbound: {}
+      global:
+        fabric-mac: 00:00:5E:00:01:69
+      hostname: a09-u28-p01-bleaf-01
+      reboot:
+        mode: cold
+      ssh-server:
+        state: enabled
+      wjh:
+        channel:
+          forwarding:
+            trigger:
+              l2: {}
+              l3: {}
+              tunnel: {}
+        enable: on
+    vrf:
+      EXIT:
+        loopback:
+          ip:
+            address:
+              10.78.151.225/32: {}
+        router:
+          bgp:
+            address-family:
+              ipv4-unicast:
+                enable: on
+                redistribute:
+                  connected:
+                    enable: on
+                route-export:
+                  to-evpn:
+                    enable: on
+                route-import:
+                  from-vrf:
+                    enable: on
+                    list:
+                      INBAND: {}
+              l2vpn-evpn:
+                enable: on
+            enable: on
+            neighbor:
+              10.76.245.68:
+                address-family:
+                  ipv4-unicast:
+                    aspath:
+                      private-as: remove
+                    policy:
+                      inbound:
+                        route-map: rm-default-only
+                      outbound:
+                        route-map: rm-edge-egress
+                remote-as: external
+                type: numbered
+      INBAND:
+        evpn:
+          enable: on
+          vlan: 4001
+          vni:
+            '1000': {}
+        loopback:
+          ip:
+            address:
+              10.78.151.193/32: {}
+        router:
+          bgp:
+            address-family:
+              ipv4-unicast:
+                enable: on
+                redistribute:
+                  connected:
+                    enable: on
+                route-export:
+                  to-evpn:
+                    enable: on
+                route-import:
+                  from-vrf:
+                    enable: on
+                    list:
+                      EXIT: {}
+              l2vpn-evpn:
+                enable: on
+            enable: on
+      STORAGE:
+        evpn:
+          enable: on
+          vlan: 4003
+          vni:
+            '3000': {}
+        loopback:
+          ip:
+            address:
+              100.127.255.225/32: {}
+        router:
+          bgp:
+            address-family:
+              ipv4-unicast:
+                enable: on
+                redistribute:
+                  connected:
+                    enable: on
+                route-export:
+                  to-evpn:
+                    enable: on
+              l2vpn-evpn:
+                enable: on
+            enable: on
+      default:
+        evpn:
+          enable: on
+        router:
+          bgp:
+            address-family:
+              ipv4-unicast:
+                enable: on
+                redistribute:
+                  connected:
+                    enable: on
+                    route-map: RM_LOOPBACK
+              l2vpn-evpn:
+                enable: on
+            enable: on
+            neighbor:
+              10.254.1.128:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.130:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.132:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.134:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.136:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.138:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.140:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.142:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.144:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.146:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.1.148:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.2.128:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.2.130:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.2.132:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.2.134:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.2.136:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.2.138:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.2.140:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.2.142:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.2.144:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.2.146:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.2.148:
+                peer-group: UNDERLAY
+                type: numbered
+              10.254.254.16:
+                peer-group: EVPN
+                type: numbered
+            path-selection:
+              multipath:
+                aspath-ignore: on
+            peer-group:
+              EVPN:
+                address-family:
+                  ipv4-unicast:
+                    enable: off
+                  l2vpn-evpn:
+                    enable: on
+                bfd:
+                  detect-multiplier: 3
+                  enable: on
+                  min-rx-interval: 1000
+                  min-tx-interval: 1000
+                description: evpn_vxlan_control_plane
+                multihop-ttl: 2
+                remote-as: external
+                update-source: lo
+              UNDERLAY:
+                address-family:
+                  ipv4-unicast:
+                    policy:
+                      outbound:
+                        route-map: RM_ADD_WECMP
+                bfd:
+                  detect-multiplier: 3
+                  enable: on
+                  min-rx-interval: 300
+                  min-tx-interval: 300
+                description: underlay_interconnect
+                remote-as: external
+      mgmt:
+        router:
+          static:
+            0.0.0.0/0:
+              address-family: ipv4-unicast
+              via:
+                192.0.2.1:
+                  type: ipv4-address

@@ -1,0 +1,64 @@
+---
+# Network Equipment Vendors
+- name: NVIDIA
+  description: NVIDIA networking switches and systems
+  deployment_types: [all, superpod]
+
+- name: Mellanox
+  description: Mellanox networking equipment (now NVIDIA)
+  deployment_types: [all, superpod]
+
+- name: Opengear
+  description: Console servers and out-of-band management
+  deployment_types: [all, superpod]
+
+- name: Arista
+  description: Arista ethernet switches
+  deployment_types: [all, superpod]
+
+- name: Juniper
+  description: Juniper networking equipment
+  deployment_types: [all, superpod]
+
+# Server Vendors
+- name: Dell
+  description: Dell servers and storage
+  deployment_types: [all, superpod]
+
+- name: HPE
+  description: HPE servers and storage
+  deployment_types: [all, superpod]
+
+- name: Lenovo
+  description: Lenovo servers
+  deployment_types: [all, superpod]
+
+- name: Supermicro
+  description: Supermicro servers and storage
+  deployment_types: [all, superpod]
+
+# Power and Infrastructure
+- name: APC
+  description: APC power distribution units and UPS
+  deployment_types: [all, superpod]
+
+- name: Eaton
+  description: Eaton power distribution and UPS
+  deployment_types: [all, superpod]
+
+- name: Raritan
+  description: Raritan PDUs and environmental monitoring
+  deployment_types: [all, superpod]
+
+- name: Vertiv
+  description: Vertiv power and cooling infrastructure
+  deployment_types: [all, superpod]
+
+# Storage Vendors (if needed)
+- name: NetApp
+  description: NetApp storage systems
+  deployment_types: [all, superpod]
+
+- name: Pure
+  description: Pure Storage systems
+  deployment_types: [all, superpod]

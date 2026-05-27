@@ -1,0 +1,13 @@
+{% load helpers %}
+
+{% if is_pending_deployment %}
+  <button type="button" class="btn btn-warning">
+    <a href="{{ temporal_url }}/workflows/deployworkflow/form?site={{ site }}&device-id={{ device_id }}" target="_blank">
+      <i class="mdi mdi-rocket-launch-outline" title="Run Backup Workflow"></i> Deploy
+    </a>
+  </button>
+{% else %}
+  <div>
+    No Pending Deployment
+  </div>
+{% endif %}

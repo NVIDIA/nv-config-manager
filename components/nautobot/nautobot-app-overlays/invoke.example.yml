@@ -1,0 +1,10 @@
+---
+nautobot_app_overlays:
+  nautobot_ver: "2.4.5"
+  python_ver: "3.11"
+  local: false
+  compose_files:
+    - "docker-compose.base.yml"
+    - "docker-compose.redis.yml"
+    - "docker-compose.postgres.yml"
+    - "docker-compose.dev.yml"

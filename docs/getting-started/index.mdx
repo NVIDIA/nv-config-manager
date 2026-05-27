@@ -1,0 +1,49 @@
+---
+title: Start Here
+sidebar-title: Start Here
+position: 0
+---
+
+NVIDIA Config Manager is a Helm-deployed platform for rendering, deploying, and operating NVIDIA network configuration at scale. It combines APIs, workers, Nautobot, data stores, eventing, and device-facing services behind one deployment.
+
+Use Config Manager when you need to:
+
+- Bootstrap new switch fabrics from modeled intent.
+- Keep rendered intended configuration tied to Nautobot data.
+- Review and approve Day-2 configuration changes before they reach devices.
+- Run operational workflows such as backup, deploy, cable validation, password rotation, OS upgrades, and reprovisioning.
+
+## Primary Personas
+
+| Persona | Primary work |
+| :------ | :----------- |
+| Network Infrastructure Administrator | Stands up and maintains the platform. This includes the Helm release, Nautobot integration, identity provider integration, secrets, registries, observability, ZTP exposure, and workflow defaults. |
+| Network Infrastructure Operator | Uses a running platform to drive network outcomes. This includes launching workflows, approving changes, browsing rendered or backed-up configs, provisioning devices through ZTP/DHCP, and watching dashboards or logs. |
+
+## Feature Areas
+
+| Feature area | Administrator focus | Operator focus |
+| :----------- | :------------------ | :------------- |
+| [Getting Started with Config Manager](../install/index.mdx) | Deploy the Helm release on Kind or a target Kubernetes cluster, choose sizing, hostnames, services, and TLS. | Confirm the running UIs and APIs are reachable after install. |
+| [Airgapped Deployment](../install/install-airgapped.mdx) | Build, transfer, and install the offline bundle through an internal registry. | Use the installed platform the same way as a connected deployment. |
+| [Nautobot Integration](../nautobot/index.mdx) | Configure bundled or external Nautobot, bootstrap jobs, tokens, and source-of-truth data loading. | Treat Nautobot as the source of truth for device, interface, cabling, IPAM, VLAN, and config context data. |
+| Device authentication | Seed per-site network secrets and plan rotations through Kubernetes secrets or ESO. | Run and review [device](../user-guides/device-password-rotation/index.mdx) or [site password rotation](../user-guides/site-password-rotation/index.mdx) workflows. |
+| [Render Service](../render/index.mdx) | Enable template plugin paths, storage, and event plumbing. | Review intended config output and trigger safe render checks through Nautobot changes. |
+| [Config Store](../config-store/index.mdx) | Provision storage, API, and UI exposure. | Browse intended and backup configs, inspect diffs, and confirm rendered output exists. |
+| [Temporal Workflows](../temporal/index.mdx) | Configure Temporal, worker pools, and workflow RBAC. | Launch, approve, retry, reject, or terminate workflow runs. |
+| [ZTP Provisioning](../network-ztp/index.mdx) | Configure OS image storage, boot URLs, DHCP/ZTP exposure, and Nautobot readiness. | Watch device boot and callback progress during bring-up. |
+| [DHCP Service](../dhcp/index.mdx) | Enable Kea-backed DHCP and model reservations/options in Nautobot. | Inspect reservations, leases, and generated DHCP config when provisioning stalls. |
+| [Config Manager UI](interfaces.mdx) | Set `global.baseHostname`, SSO callbacks, and gateway/TLS access. | Use workflow and config views for day-0 and day-2 operations. |
+| Observability and troubleshooting | Enable monitoring resources and the local observability stack when appropriate. | Use [Troubleshooting](../install/troubleshooting.mdx), pod logs, and workflow status to investigate failed operations. |
+
+## Recommended first path
+
+1. Administrators should start with [Config Manager Concepts](../overview/index.mdx), then follow [Getting Started with Config Manager](../install/index.mdx) or [Airgapped Deployment](../install/install-airgapped.mdx).
+1. Before pointing Config Manager at real devices, confirm network secrets, DHCP/ZTP exposure, device authentication prerequisites, and maintenance controls.
+1. Operators should start with [Which Interface Should I Use?](interfaces.mdx), then review [Temporal Workflows](../temporal/index.mdx), [Workflow Lifecycle](../user-guides/workflow-lifecycle/index.mdx), and [Config Store](../config-store/index.mdx).
+1. To preview Config Manager locally without a real lab, use [Local Development Quick Start](local-development-quick-start.mdx).
+1. After installation, follow [First Run Tour](first-run-tour.mdx) to verify the deployment and choose the first workflows to run.
+
+<Warning>
+The local development quick start is not a deployment path and is not a workflow validation environment. It exists only to help developers preview rendered configuration, inspect UI flows, and understand Nautobot modeling shape without touching real devices.
+</Warning>

@@ -1,0 +1,82 @@
+# Kind cluster configuration optimized for remote VMs
+# Use this configuration when deploying to a VM with substantial CPU/memory
+#
+# Usage:
+#   kind create cluster --name nv-config-manager --config deploy/kind-config-vm.yaml --wait 5m
+#
+# This configuration:
+#   - Exposes ports 80, 443, and 8443 on control-plane for gateway access
+#   - Creates a 4-node cluster (1 control-plane + 3 workers)
+#   - Tunes kubelet memory settings for high-memory environments
+#   - Mounts NFS path for air-gapped images and shared storage
+#
+# After cluster creation, remove control-plane taint to allow scheduling:
+#   kubectl taint nodes nv-config-manager-control-plane node-role.kubernetes.io/control-plane:NoSchedule-
+#
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+# Control plane - Gateway and control services run here
+# With Envoy Gateway v1.6+, use NodePort mode for reliable external access.
+# NodePorts are mapped to standard ports (443→443, 80→80) on the host.
+- role: control-plane
+  extraPortMappings:
+  # Envoy Gateway HTTPS (NodePort 30443 → host 443)
+  - containerPort: 30443
+    hostPort: 443
+    listenAddress: "0.0.0.0"
+    protocol: TCP
+  # Envoy Gateway HTTP (NodePort 30080 → host 80)
+  - containerPort: 30080
+    hostPort: 80
+    listenAddress: "0.0.0.0"
+    protocol: TCP
+  extraMounts:
+  - hostPath: /srv/nfs/kubedata
+    containerPath: /srv/nfs/kubedata
+  kubeadmConfigPatches:
+  - |
+    kind: InitConfiguration
+    nodeRegistration:
+      kubeletExtraArgs:
+        system-reserved: memory=2Gi
+        kube-reserved: memory=2Gi
+        eviction-hard: memory.available<1Gi
+
+# Worker nodes - Application workloads and databases
+- role: worker
+  extraMounts:
+  - hostPath: /srv/nfs/kubedata
+    containerPath: /srv/nfs/kubedata
+  kubeadmConfigPatches:
+  - |
+    kind: JoinConfiguration
+    nodeRegistration:
+      kubeletExtraArgs:
+        system-reserved: memory=2Gi
+        kube-reserved: memory=2Gi
+        eviction-hard: memory.available<1Gi
+- role: worker
+  extraMounts:
+  - hostPath: /srv/nfs/kubedata
+    containerPath: /srv/nfs/kubedata
+  kubeadmConfigPatches:
+  - |
+    kind: JoinConfiguration
+    nodeRegistration:
+      kubeletExtraArgs:
+        system-reserved: memory=2Gi
+        kube-reserved: memory=2Gi
+        eviction-hard: memory.available<1Gi
+- role: worker
+  extraMounts:
+  - hostPath: /srv/nfs/kubedata
+    containerPath: /srv/nfs/kubedata
+  kubeadmConfigPatches:
+  - |
+    kind: JoinConfiguration
+    nodeRegistration:
+      kubeletExtraArgs:
+        system-reserved: memory=2Gi
+        kube-reserved: memory=2Gi
+        eviction-hard: memory.available<1Gi

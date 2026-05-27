@@ -1,0 +1,103 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""Device Locks."""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from redis.asyncio.lock import Lock as AsyncRedisLock
+
+from nv_config_manager.common.config import is_local_environment, redis_client
+
+if TYPE_CHECKING:
+    from types import TracebackType
+
+    from nv_config_manager.common.client import RedisClient
+
+
+class _FakeLock:
+    """Fake Lock object for local single-threaded runs."""
+
+    async def acquire(  # pylint: disable=unused-argument
+        self,
+        blocking: bool | None = None,
+        blocking_timeout: int | None = None,
+        token: str | bytes | None = None,
+    ) -> bool:
+        """Acquire the lock."""
+        return True
+
+    async def release(self) -> bool:
+        """Release the lock."""
+        return True
+
+    async def __aenter__(self) -> _FakeLock:
+        """Async context manager entry."""
+        await self.acquire()
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        """Async context manager exit."""
+        await self.release()
+
+
+# Module-level Redis client for lock operations (reused across calls)
+_lock_redis_client: RedisClient | None = None
+
+
+def _get_lock_redis_client() -> RedisClient | None:
+    """Get or create a shared async Redis client for locking."""
+    global _lock_redis_client
+
+    if is_local_environment():
+        return None
+
+    if _lock_redis_client is not None:
+        return _lock_redis_client
+
+    _lock_redis_client = redis_client(db_key="lock_db")
+    return _lock_redis_client
+
+
+async def create_lock(
+    name: str,
+    timeout: int = 180,
+    blocking: bool = True,
+    blocking_timeout: int | None = None,
+) -> AsyncRedisLock | _FakeLock:
+    """Initialize an async lock object for this environment.
+
+    Args:
+        name: Lock name (typically device UUID)
+        timeout: Lock timeout in seconds (auto-releases after this time)
+        blocking: Whether acquire() should block waiting for the lock
+        blocking_timeout: Max time to wait for lock acquisition (None = wait forever)
+
+    Returns:
+        AsyncRedisLock for distributed locking, or _FakeLock for local development
+    """
+    client = _get_lock_redis_client()
+    if client is None:
+        return _FakeLock()
+
+    return AsyncRedisLock(
+        client.redis, name, timeout=timeout, blocking=blocking, blocking_timeout=blocking_timeout
+    )

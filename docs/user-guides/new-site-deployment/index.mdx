@@ -1,0 +1,281 @@
+---
+title: New Site Bringup
+sidebar-title: New Site Bringup
+position: 10
+---
+
+This guide walks operators through bringing up a new site managed by Config Manager — from initial power-up through ZTP, cable validation, and the troubleshooting steps to apply when something fails.
+
+The guide assumes Nautobot has already been populated with the site's device data (serial numbers, MAC addresses, IP addresses, cabling, and config contexts).
+
+## Prerequisites
+
+Before starting bringup, confirm the following are in place:
+
+- **Hosting** — A Config Manager cell instance has been deployed for this site. See [Hosting Options](../../hosting-options/index.mdx).
+- **Network topology** — The site's management network satisfies the requirements in [Network Topology Requirements](../../network-topology-requirements/index.mdx), and a clear ZTP provisioning order has been documented.
+- **Firewall / security group rules** — All required ports are open between the device network and Config Manager. See [Firewall Ports](../../firewall-ports/index.mdx).
+- **Nautobot data** — Devices are registered in Nautobot with serial number, MAC addresses, primary IPv4, platform, and any required config contexts. See [DHCP Modeling in Nautobot](../../dhcp/nautobot-modeling.mdx).
+- **Racking and cabling complete** — All switches are physically racked and cabled per the site design, with serial numbers and MAC addresses captured in the inventory system.
+- **OS images uploaded to the ZTP server** — Every Cumulus / NVOS / MLNX-OS version the site's switches will ZTP onto must be present on the ZTP server before the switches power on. See [Upload Images to the ZTP Server](../../network-ztp/upload-images.mdx).
+
+<Note>
+**Cumulus Linux version requirement:** Cumulus ZTP requires the switch to arrive on Cumulus 5.x. If a switch arrives on an older release, perform an OS upgrade first; ZTP and DHCP will then proceed as expected.
+</Note>
+
+## Bringup sequence
+
+Follow these steps in order. Each step assumes the previous one has completed successfully.
+
+1. **Power up all network switches.** All switches can be powered up at once. Each switch will boot, attempt DHCP, and retry in a boot loop until it receives a response — so downstream switches will simply keep trying until the relay chain through their upstream neighbors is operational. Provisioning will naturally fan out from Config Manager along the documented [ZTP provisioning order](../../network-topology-requirements/index.mdx#defined-ztp-provisioning-order) as each upstream layer comes online.
+
+    <Tip>
+    **Stuck boot loop:** if a switch fails to leave the DHCP retry loop after its upstream relay path is up, power-cycle the switch to restart the boot process.
+    </Tip>
+
+1. **ZTP device configurations from Config Manager.** Each switch boots with factory defaults, requests an IP via DHCP, and downloads its boot script and rendered configuration from the Config Manager ZTP service. See [Network ZTP](../../network-ztp/index.mdx) for how this works under the hood.
+
+    When ZTP completes successfully, the device's status in Nautobot transitions to **Provisioned**. If a switch does not reach Provisioned within a reasonable window, work through the [Monitoring DHCP and ZTP](#monitoring-dhcp-and-ztp) and [Common errors](#common-errors-and-troubleshooting) sections below. Where the underlying issue is physical (miscabled, unpowered, factory reset required), DC Ops will need to investigate on-site.
+
+1. **Run the Cable Validation workflow.** Once switches have reached Provisioned, run the cable validation workflow to confirm cabling matches the design. See the [Cable Validation Guide](../cable-validation/index.mdx) for how to run the workflow and interpret the report.
+
+    Incorrect cabling typically surfaces as a MAC mismatch or a down link. The report identifies the device and port to investigate. Devices that do not respond require DC Ops to confirm power and connectivity.
+
+1. **Run the hardware error check workflow.** This collects hardware diagnostic command output from each switch into a per-device file for review by DC Ops.
+
+## Monitoring DHCP and ZTP
+
+When a device fails to provision, the first step is to look at the DHCP and ZTP logs to determine where in the chain it stalled.
+
+Config Manager streams DHCP (Kea), ZTP, and render-service logs to whatever observability stack the deployment uses. Filtering by MAC address, IP address, or device UUID is the fastest way to isolate a single device's activity.
+
+Deployments without an aggregated log backend can read the same logs directly with `kubectl logs`. Each section below shows both the aggregated-query form and the `kubectl` equivalent.
+
+### Filtering DHCP logs by MAC address
+
+In your log explorer, filter the Kea container logs in the Config Manager namespace and search for the device's eth0 MAC address. A typical aggregated-log query:
+
+```text
+{cluster="<cluster>", k8s_namespace_name="<config-manager-namespace>", k8s_container_name="kea"} |= `b0:cf:0e:61:2c:c8`
+```
+
+Or directly via `kubectl`:
+
+```bash
+kubectl -n <config-manager-namespace> logs \
+  -l app.kubernetes.io/component=network-dhcp -c kea \
+  --tail=-1 | grep -i 'b0:cf:0e:61:2c:c8'
+```
+
+**Query options:**
+
+- **By MAC address** (lowercase) — for devices that provision over the management interface, the eth0 MAC is the right identifier.
+- **By uplink network address** — for management-network switches that provision via Front Panel Ports (FPP) using a /31 DHCP pool of size 1, the MAC is not known ahead of time. Instead query by the /31 prefix; for example, an uplink of `10.0.0.1/31` is searchable as `10.0.0.0/31`.
+- **By serial number (hex)** — Cumulus 5.10+ switches send the serial number as DHCP client ID. Convert the serial to colon-separated hex and query for it:
+
+    ```bash
+    python3 -c "import sys; print(':'.join(f'{ord(c):02x}' for c in sys.argv[1]))" "MT2519J002PD"
+    # 4d:54:32:35:31:39:4a:30:30:32:50:44
+    ```
+
+### ZTP logs by device ID
+
+Filter the ZTP service logs by the Nautobot device UUID:
+
+```text
+{cluster="<cluster>", k8s_namespace_name="<config-manager-namespace>", k8s_container_name=~"ztp.*"} |= `<device-uuid>`
+```
+
+Or directly via `kubectl`:
+
+```bash
+kubectl -n <config-manager-namespace> logs \
+  -l app.kubernetes.io/component=network-ztp --all-containers \
+  --tail=-1 | grep '<device-uuid>'
+```
+
+A successfully provisioned device always ends with a `POST` to the provisioned endpoint. If you do not see this log, ZTP did not complete — see [Common errors](#common-errors-and-troubleshooting) below.
+
+### Render logs
+
+Filter the render-service logs by namespace and device UUID:
+
+```text
+{cluster="<cluster>", k8s_namespace_name="<config-manager-namespace>", k8s_container_name=~"render-service-api|render-service-render-service-device-consumer|render-service-template-consumer"} |= `<device-uuid>`
+```
+
+Or directly via `kubectl`:
+
+```bash
+kubectl -n <config-manager-namespace> logs \
+  -l app.kubernetes.io/component=render-service --all-containers \
+  --tail=-1 | grep '<device-uuid>'
+```
+
+Renders are triggered by Nautobot change events or by template version changes, and rendered configs are written to the [Config Store](../../config-store/index.mdx). You can navigate to a device's current render from the Config Manager Device Status tab in Nautobot.
+
+## Common errors and troubleshooting
+
+### DHCP errors
+
+**`No pools were available for the address allocation`** *(or the device received a dynamic IP from a pool instead of a static reservation)*
+
+This means no static reservation is tied to the device's MAC or client-id. Walk through the following checks in Nautobot:
+
+- **Confirm ZTP is enabled.** On the device's Config Manager Info tab, verify the `ztp_enabled` flag is set. If it was just enabled, allow up to 10 minutes for the DHCP config to refresh.
+- **Confirm device status** is one of Provisioning, Provisioned, or Active — set it to Provisioning if not.
+- **Confirm the device has a Primary IPv4 and Platform set** — without these the reservation will not be generated.
+- **For Cumulus pre-5.10 devices** (which cannot send serial as DHCP client ID): the eth0 MAC address must be populated in Nautobot for non-management devices. Management-network switches provision via the /31 uplink IP using a pool-of-size-one, so neither MAC nor client ID is required. In DHCP logs, pre-5.10 instances appear with `cid=[no info]`.
+
+See [DHCP Modeling in Nautobot](../../dhcp/nautobot-modeling.mdx) for the full data model behind reservations and pools.
+
+**`Failed to select a subnet for incoming packet`**
+
+This occurs for /31 allocations on the management network when ZTP is not enabled on the device. Enable ZTP and wait up to 10 minutes.
+
+**No DHCP requests incoming for a specific MAC**
+
+- The device may not be cabled to the upstream router. Check interface status on the upstream port.
+- The MAC supplied by the vendor or DC Ops may be incorrect. Check LLDP data on the upstream switch: if the serial matches but the MAC does not, update the MAC in Nautobot.
+
+**No DHCP requests incoming for any device**
+
+Likely a firewall, security group, or routing issue. Confirm that the device subnets (IPMI/management/OOB) are permitted UDP 67/68 to and from Config Manager at every layer between the device and Config Manager. See [Firewall Ports](../../firewall-ports/index.mdx).
+
+To isolate where DHCP traffic is being lost, capture on UDP 67/68 at each hop along the relay chain. On Cumulus (and most Linux devices) `tcpdump` is the quickest tool:
+
+```bash
+# On the device itself — confirm the switch is actually sending DHCP discovers on eth0
+sudo tcpdump -i eth0 -nn -vv 'port 67 or port 68'
+
+# On an upstream relay agent — confirm requests arrive and are relayed toward Config Manager
+sudo tcpdump -i any -nn 'port 67 or port 68'
+```
+
+You should see a `BOOTP/DHCP` `Request from` the device's MAC, followed by a relayed copy whose source becomes the relay agent's IP and whose destination is the Config Manager DHCP VIP. If the discover appears on the device but never reaches the relay (or never leaves the relay), the gap identifies which hop is dropping the traffic.
+
+For local reproduction of DHCP config generation issues, run the DHCP config-gen tooling against a copy of the Nautobot data — see the DHCP service README for the procedure.
+
+### ZTP errors
+
+**HTTP 500 on any ZTP call**
+
+A transient backend issue, most often a Nautobot timeout. Engage the platform team to investigate.
+
+**HTTP 400 on `POST /v1/device/<device-uuid>/validate_serial`**
+
+The device's reported serial number does not match the serial Nautobot expects for this configuration. This almost always indicates miscabling — the device is trying to claim a /31 that does not belong to it. Check LLDP on the upstream switch to identify the actual neighbor; for example, on Cumulus:
+
+```bash
+nv show interface <port> lldp nei cumulus
+```
+
+**HTTP 403 unauthorized**
+
+The source IP of the request does not match any IP Nautobot has for the device. Either Nautobot data is wrong, the DHCP-generated pool is wrong, or — more commonly — the device is miscabled and is sending from an IP that belongs to a different device. Check Nautobot IPs, the rendered DHCP config, and LLDP on the upstream switch.
+
+**Stuck requesting `startup.yaml` and not progressing**
+
+The rendered configuration is failing to apply or has broken connectivity back to Config Manager. Access the switch via [console or upstream SSH](#options-for-logging-into-a-stuck-device) and inspect `/var/log/autoprovision`.
+
+**Device received a DHCP lease but no ZTP traffic follows**
+
+- Confirm TCP 443 (or 80, depending on configuration) is open from the device subnets to Config Manager at every firewall and security-group layer. See [Firewall Ports](../../firewall-ports/index.mdx).
+- Routing between the device and Config Manager may be broken. Access via console or upstream SSH to investigate.
+- The device may be on Cumulus pre-5.x, which cannot ZTP. Upgrade and retry.
+
+    From the Cumulus shell, you can verify that the ZTP URL is reachable by fetching the boot script directly. On a non-management switch, run the request in the management VRF so it leaves the switch over eth0:
+
+    ```bash
+    sudo ip vrf exec mgmt curl -v http://<ztp-server>/v1/device/<device-uuid>/boot-script
+    ```
+
+    A 200 response (or a 403, which still confirms the network path is open) means HTTP reachability is fine and the problem is elsewhere. A connection refused, timeout, or no route to host indicates a firewall, security-group, or routing issue between the device and Config Manager.
+
+### Render errors
+
+**No render occurs after a Nautobot change**
+
+Some Nautobot changes (for example, site-prefix updates) do not trigger a render. To force one, either call the render service API directly or make a no-op change (e.g. add whitespace) to the device's config context in Nautobot.
+
+**Render failure**
+
+The most common causes are:
+
+- The device is missing the `platform` field, or no `intended-firmware` is set in its config context. Populate both.
+- A template bug or filter bug. Run a local render against the template repo with `--debug` to identify the failing line.
+
+After committing a template change, follow the template repo's release process and bump the template package version in the render service to pick up the new release. Deployment of the render service is then handled through the cluster's GitOps workflow (e.g. ArgoCD).
+
+## Device swaps
+
+When two devices end up swapped in the inventory system — for example, racked in each other's positions — it is usually faster to swap them in Nautobot and let Config Manager swap their configurations than to ask DC Ops to re-rack or re-cable.
+
+To perform the swap:
+
+1. Ensure the inventory-system owner renames the devices in their system to match the new physical positions.
+1. In Nautobot, swap the **serial number, asset tag, and eth0 MAC address** between the two device records.
+
+    <Warning>
+    **Do not rename the devices in Nautobot** — renaming forces you to rebuild all of the cabling relationships.
+    </Warning>
+
+1. On the console for both switches, reset the DHCP/ZTP state and reboot:
+
+    ```bash
+    nv unset interface eth0
+    nv set interface eth0 ip address dhcp
+    nv config apply
+    nv config save
+    sudo ztp -X
+    nv action enable system ztp force
+    sudo reboot
+    ```
+
+After reboot, each switch will ZTP again and pick up the configuration that now corresponds to its physical position.
+
+## Rerunning ZTP on a live device
+
+The Cumulus user account can occasionally be dropped during ZTP — for example, if ZTP was triggered via `ztp -r` (which does not pass through DHCP) and the user-creation step failed. This leaves the switch with no sudo-capable account.
+
+On Cumulus 5.11+, you can re-run the ZTP boot script without sudo using:
+
+```bash
+nv action run system ztp
+```
+
+This re-executes the boot script — including the cumulus-user creation steps — and restores the cumulus user with the latest password from the secrets store. If the device is already on the correct firmware version, this will not trigger a reboot.
+
+## Options for logging into a stuck device
+
+If a device has not attempted ZTP yet, log in with the factory default credentials (`cumulus` / `cumulus`) and set the password to the current site root password from your secrets store.
+
+If a device has already attempted ZTP, it will have either the `cumulus` user or the `breakglass` user installed. Try the site root password against `cumulus` first, then fall back to `breakglass`.
+
+<Warning>
+The final step of ZTP is to remove the breakglass user. If you log in as breakglass and stay logged in, ZTP will loop indefinitely waiting to remove the account. Once you have diagnosed the issue, **you must log out** of breakglass to allow ZTP to complete.
+</Warning>
+
+You can reach a stuck device by either of the following paths:
+
+### Console
+
+1. Look up the device's Console Port in Nautobot to find the attached console server.
+1. Reach the console server via its OOB VIP (typically accessed through the OOB firewall).
+1. Authenticate using the console server credentials from your secrets store.
+
+### Upstream SSH (uplink port)
+
+If a device directly upstream of the stuck switch has already provisioned, you can SSH to that upstream device and then SSH across the /31 link to the stuck switch.
+
+1. Identify the uplink interfaces and IPs in Nautobot for the stuck device.
+1. SSH to one of the upstream device's loopback IPs.
+1. Drop into the appropriate VRF on the upstream device:
+
+    ```bash
+    ip vrf exec <vrf> bash
+    ```
+
+    For management-network devices this is the `default` VRF; for non-management devices, choose the VRF that carries the eth0 management connection.
+
+1. SSH to the uplink IP on the stuck device's interface.

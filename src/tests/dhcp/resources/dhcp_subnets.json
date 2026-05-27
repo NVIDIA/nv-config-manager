@@ -1,0 +1,72 @@
+{
+    "data": {
+        "devices": [
+            {
+                "interfaces": [
+                    {
+                        "name": "Vlan20",
+                        "ip_addresses": [
+                            {
+                                "address": "10.22.160.66/26",
+                                "ip_version": 4
+                            }
+                        ]
+                    },
+                    {
+                        "name": "Vlan50",
+                        "ip_addresses": [
+                            {
+                                "address": "10.22.160.2/26",
+                                "ip_version": 4
+                            }
+                        ]
+                    },
+                    {
+                        "name": "Vlan60",
+                        "ip_addresses": [
+                            {
+                                "address": "10.22.161.2/26",
+                                "ip_version": 4
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                "interfaces": [
+                  {
+                    "name": "lo",
+                    "ip_addresses": [
+                      {
+                        "address": "10.91.32.202/32",
+                        "ip_version": 4
+                      }
+                    ]
+                  },
+                  {
+                    "name": "vlan13",
+                    "ip_addresses": [
+                      {
+                        "address": "10.91.36.1/25",
+                        "ip_version": 4
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "interfaces": [
+                  {
+                    "name": "vlan13",
+                    "ip_addresses": [
+                      {
+                        "address": "10.91.50.193/25",
+                        "ip_version": 4
+                      }
+                    ]
+                  }
+                ]
+              }
+        ]
+    }
+}

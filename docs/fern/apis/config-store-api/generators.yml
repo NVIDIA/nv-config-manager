@@ -1,0 +1,5 @@
+api:
+  specs:
+    - openapi: ../../../api-specs/config-store.openapi.json
+groups:
+  # SDK generator configuration

@@ -1,0 +1,23 @@
+{{/*
+GatewayClass - Only create if:
+  - ingress.type is envoyGateway
+  - gateway.createGatewayClass is not explicitly false
+
+Set gateway.createGatewayClass=false when using an existing Envoy Gateway
+installation (e.g., shared infrastructure, pre-installed by platform team).
+*/}}
+{{- $createGatewayClass := true }}
+{{- if hasKey .Values.gateway "createGatewayClass" }}
+  {{- $createGatewayClass = .Values.gateway.createGatewayClass }}
+{{- end }}
+{{- if and (eq (.Values.ingress.type | default "envoyGateway") "envoyGateway") $createGatewayClass }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: {{ .Values.gateway.className }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+  description: "Envoy Gateway for NVIDIA Config Manager"
+{{- end }}

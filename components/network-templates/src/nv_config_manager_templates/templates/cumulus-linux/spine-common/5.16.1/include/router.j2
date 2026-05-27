@@ -1,0 +1,49 @@
+{% extends "cumulus-linux/superpod-common/5.16.1/include/router.j2" %}
+
+{% block adaptive_routing %}
+{% if device_data|role in ["Border-Leaf", "Converged-Spine", "Storage-Leaf"] %}
+      adaptive-routing:
+        state: enabled
+{% endif %}
+{% endblock adaptive_routing %}
+{% block prefix_list %}
+{% if device_data|role in ["Border-Leaf", "OOB-Spine"] %}
+        prefix-list:
+          pl-default-only:
+            rule:
+              '10':
+                action: permit
+                match:
+                  0.0.0.0/0:
+                    max-prefix-len: 0
+          pl-edge-egress:
+            rule:
+              '10':
+                action: permit
+                match:
+                  {{ (location_data|site_aggregates("Site-Aggregate"))[0] }}:
+                    max-prefix-len: 32
+{% endif %}
+{% endblock prefix_list %}
+
+{% block route_map %}
+{{ super() }}
+{% if device_data|role in ["Border-Leaf", "OOB-Spine"] %}
+          rm-default-only:
+            rule:
+              '10':
+                action:
+                  permit: {}
+                match:
+                  ip-prefix-list: pl-default-only
+                  type: ipv4
+          rm-edge-egress:
+            rule:
+              '10':
+                action:
+                  permit: {}
+                match:
+                  ip-prefix-list: pl-edge-egress
+                  type: ipv4
+{% endif %}
+{% endblock route_map %}

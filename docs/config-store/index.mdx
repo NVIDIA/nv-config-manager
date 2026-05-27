@@ -1,0 +1,344 @@
+---
+title: Config Store Service
+sidebar-title: Overview
+position: 0
+---
+
+The Config Store service provides PostgreSQL-backed configuration storage with versioning, compression, and fine-grained locking.
+
+## Overview
+
+The Config Store service:
+
+- Stores versioned device configurations (intended and backup)
+- Integrates with Nautobot for device metadata enrichment
+- Provides a REST API for configuration management
+- Includes a web UI for browsing and comparing configurations
+
+## Features
+
+- **Versioned Storage**: Full version history with configurable retention
+- **File Types**: Separate `intended` and `backup` configurations
+- **Diff Generation**: Compare any two versions
+- **Batch Operations**: Bulk writes for multiple files on one device
+- **Modern Web UI**: Browse, search, and compare configurations
+
+For detailed feature descriptions and system architecture, see [Config Store Architecture](config-store-architecture.mdx#components).
+
+## File Types
+
+The service tracks two distinct file types:
+
+| Type | Description | Source |
+| :--- | :---------- | :----- |
+| `intended` | Rendered/desired configurations | Render Service |
+| `backup` | Actual device backups | Temporal Workflows |
+
+This separation enables:
+
+- **Drift Detection**: Compare intended vs backup
+- **Independent Locking**: Writes do not block each other
+- **Compliance Auditing**: Track both desired and actual state
+
+See [Concurrent Write Handling](config-store-architecture.mdx#concurrent-write-handling) for locking mechanism details.
+
+## API Endpoints
+
+### Configuration Operations
+
+`file_type` separates intended configuration from backup configuration. For `GET /v1/config/{device_uuid}/{filename}`, `GET /v1/config/{device_uuid}/{filename}/versions`, and `GET /v1/config/{device_uuid}/{filename}/diff`, pass `file_type` as an optional query parameter. It defaults to `intended` when omitted.
+
+For `POST /v1/config/{device_uuid}/{filename}`, pass `file_type` in the request body as `ConfigCreateRequest.file_type`. It also defaults to `intended` when omitted.
+
+```bash
+# Write an intended config file
+POST /v1/config/{device_uuid}/{filename}
+{
+    "content": "hostname device01\n...",
+    "author": "user@example.com",
+    "commit_message": "Triggered from nb dcim.device update on leaf01 by netops at 2026-05-26T18:42:00Z",
+    "file_type": "intended"
+}
+
+# Read latest version
+GET /v1/config/{device_uuid}/{filename}
+GET /v1/config/{device_uuid}/{filename}?file_type=backup
+
+# Read specific version
+GET /v1/config/{device_uuid}/{filename}?version=5
+
+# List all intended versions
+GET /v1/config/{device_uuid}/{filename}/versions
+
+# List all backup versions
+GET /v1/config/{device_uuid}/{filename}/versions?file_type=backup
+
+# Get diff between intended versions
+GET /v1/config/{device_uuid}/{filename}/diff?from_version=4&to_version=5
+
+# Get diff between backup versions
+GET /v1/config/{device_uuid}/{filename}/diff?from_version=4&to_version=5&file_type=backup
+
+# Get all configs for a device
+GET /v1/config/device/{device_uuid}
+
+# Batch write multiple intended files for one device
+POST /v1/config/{device_uuid}/batch
+{
+    "files": [
+        {
+            "filename": "boot-script",
+            "content": "...",
+            "author": "user@example.com",
+            "commit_message": "Triggered from nb dcim.device update on leaf01 by netops at 2026-05-26T18:42:00Z",
+            "file_type": "intended"
+        },
+        {
+            "filename": "startup.yaml",
+            "content": "...",
+            "author": "user@example.com",
+            "commit_message": "Triggered from nb dcim.device update on leaf01 by netops at 2026-05-26T18:42:00Z",
+            "file_type": "intended"
+        }
+    ]
+}
+```
+
+Batch requests should be a single config type in normal operation. Intended config batches typically write `boot-script` and `startup.yaml` together. The render service passes the same Nautobot-change-derived `commit_message` for every file in the batch. Backup captures are typically single-file writes to `POST /v1/config/{device_uuid}/{filename}` with `"file_type": "backup"`.
+
+The batch endpoint returns version metadata for files that were created or updated and a list of filenames that were skipped because their content already matched the latest stored version:
+
+```json
+{
+  "created": [
+    {
+      "version": 7,
+      "file_type": "intended",
+      "author": "user@example.com",
+      "commit_message": "Triggered from nb dcim.device update on leaf01 by netops at 2026-05-26T18:42:00Z",
+      "created_at": "2026-05-26T18:42:00Z",
+      "content_hash": "4c9f..."
+    }
+  ],
+  "skipped": ["boot-script"]
+}
+```
+
+Full success example:
+
+```json
+{
+  "created": [
+    {
+      "version": 3,
+      "file_type": "intended",
+      "author": "render@config-manager.example.com",
+      "commit_message": "Triggered from nb dcim.device update on leaf01 by netops at 2026-05-26T18:42:00Z",
+      "created_at": "2026-05-26T18:42:00Z",
+      "content_hash": "f2a1..."
+    },
+    {
+      "version": 3,
+      "file_type": "intended",
+      "author": "render@config-manager.example.com",
+      "commit_message": "Triggered from nb dcim.device update on leaf01 by netops at 2026-05-26T18:42:00Z",
+      "created_at": "2026-05-26T18:42:00Z",
+      "content_hash": "9d31..."
+    }
+  ],
+  "skipped": []
+}
+```
+
+Idempotent no-op example:
+
+```json
+{
+  "created": [],
+  "skipped": ["boot-script", "startup.yaml"]
+}
+```
+
+Failure example:
+
+```json
+{
+  "detail": "Failed to batch create configs"
+}
+```
+
+The batch operation is atomic at the database transaction level. If any file in the batch fails during processing, the service returns a non-2xx error and rolls back the whole request; it does not commit a subset of files from the failed batch. Request validation errors return before any write occurs.
+
+For retry behavior, treat identical content as idempotent. If a request fails with a server error or the client loses the connection before reading the response, retry the full same-type batch. Files that were already committed with identical content are skipped, and files that were not committed are written. If you need to recover a backup capture, retry the single backup file write rather than mixing it into an intended config batch.
+
+### Admin Operations
+
+```bash
+# Database statistics
+GET /v1/admin/stats
+
+# List all devices with configs
+GET /v1/admin/devices
+
+# Search devices by name with latest config metadata
+GET /v1/admin/devices/search?q=leaf&file_type=intended&include_inactive=false
+
+# Permanently delete all config versions for a device
+DELETE /v1/admin/devices/{device_uuid}
+
+# Check Nautobot metadata cache state
+GET /v1/admin/cache/status
+
+# Test whether one device is present in the metadata cache
+GET /v1/admin/cache/test/{device_uuid}
+
+# Confirm the caller identity seen by the service
+GET /whoami
+```
+
+## Web UI
+
+The Config Store includes a Next.js web interface.
+
+### Features
+
+- **Device Browser**: Search and browse by device UUID or name
+- **Version History**: View all versions with metadata
+- **Diff Viewer**: Side-by-side comparison of any versions
+- **Device Search**: Find devices by name and switch between intended and backup config views
+- **Nautobot Integration**: Rich device metadata display
+
+### Accessing the UI
+
+```bash
+# Via ingress (unified UI)
+https://config-manager.example.com
+
+# Via port-forward
+kubectl port-forward -n nv-config-manager svc/nv-config-manager-ui 3000:80
+# Open http://localhost:3000
+```
+
+## Configuration
+
+### INI Configuration
+
+Relevant sections of the Config Manager INI are as follows:
+
+```ini
+[config_store]
+# Database connection
+database_url = postgresql+asyncpg://user:pass@localhost:5432/configstore
+database_pool_size = 20
+database_max_overflow = 10
+
+# Compression
+compression_level = 6
+
+# Retention
+max_version_history = 1000
+retention_days = 365
+
+[redis]
+# For device metadata caching
+host = redis.nv-config-manager.svc.cluster.local
+port = 6379
+db = 0
+
+[nautobot]
+# For metadata enrichment
+url = https://nautobot.config-manager.example.com
+token = your-api-token
+```
+
+## Cache Refresh Service
+
+A background service keeps Redis cache in sync with Nautobot:
+
+```bash
+# View cache refresh logs
+kubectl logs -n nv-config-manager deployment/nv-config-manager-config-store-cache-refresh -f
+
+# Force cache refresh
+kubectl exec -n nv-config-manager deployment/nv-config-manager-config-store-api -- \
+    python -c "from nv_config_manager.config_store.cache_refresh_service import refresh; refresh()"
+```
+
+## Metrics
+
+Prometheus metrics are available at the operational `/metrics` endpoint. See [Prometheus Metrics](config-store-architecture.mdx#prometheus-metrics) for available metrics and their descriptions.
+
+## Troubleshooting
+
+In general:
+
+- If you are seeing a large number of 503 errors, or high latency, scale up the number of replicas.
+
+- Check pod status and logs:
+
+    ```bash
+    # Get pod status
+    kubectl get pods -n $NAMESPACE
+
+    # Describe problematic pod
+    kubectl describe pod -n $NAMESPACE <pod-name>
+
+    # View logs
+    kubectl logs -n $NAMESPACE <pod-name>
+    ```
+
+- Check an application's (for example, `redis` or `postgres`) status and logs:
+
+    ```bash
+    # Get pod status
+    kubectl get pods -n $NAMESPACE -l app=<app-name>
+
+    # View logs
+    kubectl logs -n $NAMESPACE -l app=<app-name>
+    ```
+
+### Nautobot Integration Issues
+
+Check the service logs for Nautobot connection errors:
+
+```bash
+kubectl logs -n $NAMESPACE -l app.kubernetes.io/component=config-store --all-containers | grep -i nautobot
+```
+
+### Gateway Not Working
+
+Check that the gateway has an address and is programmed:
+
+```bash
+$ kubectl get gateway -n $NAMESPACE
+
+NAME           CLASS           ADDRESS      PROGRAMMED   AGE
+config-manager-gateway   envoy-gateway   172.18.0.7   True         96m
+```
+
+Ensure that all routes are properly installed:
+
+```bash
+$ kubectl get httproutes -n $NAMESPACE
+
+# This should produce output similar to:
+
+NAME                    HOSTNAMES                         AGE
+config-store-api        ["config-store.config-manager.example.com"]   96m
+nautobot                ["nautobot.config-manager.example.com"]       96m
+network-dhcp            ["dhcp.config-manager.example.com"]           96m
+network-ztp             ["ztp.config-manager.example.com"]            96m
+render-service          ["render.config-manager.example.com"]         96m
+workflow-api            ["workflow.config-manager.example.com"]       96m
+config-manager-ui       ["config-manager.example.com"]                96m
+temporal-web            ["temporal.config-manager.example.com"]       96m
+```
+
+For further information on the Envoy gateway, see the [Envoy documentation](https://gateway.envoyproxy.io/latest/).
+
+## Related Documentation
+
+- [Render Service](../render/render-service.mdx) — Writes intended configs
+- [Temporal](../temporal/index.mdx) — Writes backup configs
+- [ZTP Service](../network-ztp/index.mdx) — Reads configs for devices
+- [API Reference](api:config-store-api)

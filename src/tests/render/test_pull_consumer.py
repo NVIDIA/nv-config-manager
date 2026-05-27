@@ -1,0 +1,571 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""Tests for the NATS pull consumer module."""
+
+import json
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+from nats.aio.msg import Msg
+from redis.asyncio.lock import Lock as AsyncRedisLock
+
+from nv_config_manager.render.pull_consumer import (
+    PullConsumer,
+    PullDeviceChangeConsumer,
+    PullNautobotConsumer,
+)
+
+# Test NATS configuration - mock credentials for testing only
+TEST_NATS_CONFIG = """
+[nats]
+server=nats://ruser:T0pS3cr3t@nats.nv-config-manager-render-service.svc.cluster.local:4222
+queue=nv-config-manager-render-service-local
+password=T0pS3cr3t  # NOSONAR - mock password for testing
+auth_method=password
+local=false
+config_manager_stream=nv-config-manager
+config_manager_subjects=nv-config-manager.nautobotchange,nv-config-manager.devicechange,nv-config-manager.workflow.result
+render_change_stream=nv-config-manager
+render_change_subject=nv-config-manager.nautobotchange
+device_change_stream=nv-config-manager
+device_change_subject=nv-config-manager.devicechange
+nautobot_stream=nautobot
+nautobot_subjects=nautobot
+nautobot_subject=nautobot
+"""
+
+
+@pytest.fixture
+def mock_dispatcher():
+    """Mock event dispatcher."""
+    with patch("nv_config_manager.render.pull_consumer.EventDispatcher") as mock:
+        mock_instance = MagicMock()
+        mock_instance.nautobot_event_dispatch = AsyncMock()
+        mock_instance.nautobot_change_dispatch = MagicMock()
+        mock.return_value = mock_instance
+        yield mock_instance
+
+
+@pytest.fixture
+def mock_lock():
+    """Mock async lock."""
+    with patch("nv_config_manager.render.pull_consumer.create_lock") as mock:
+        mock_lock_instance = MagicMock(spec=AsyncRedisLock)
+        mock_lock_instance.acquire = AsyncMock(return_value=True)
+        mock_lock_instance.release = AsyncMock(return_value=True)
+        # create_lock is now async, so we need an AsyncMock
+        mock.return_value = mock_lock_instance
+        yield mock_lock_instance
+
+
+@pytest.fixture
+def mock_jetstream():
+    """Mock JetStream context."""
+    mock_js = MagicMock()
+    mock_js.pull_subscribe = AsyncMock()
+    mock_js.consumer_info = AsyncMock()
+    mock_js.add_consumer = AsyncMock()
+    return mock_js
+
+
+@pytest.fixture
+def mock_pull_subscription():
+    """Mock pull subscription."""
+    mock_sub = MagicMock()
+    mock_sub.fetch = AsyncMock()
+    mock_sub.unsubscribe = AsyncMock()
+    return mock_sub
+
+
+@pytest.mark.asyncio
+async def test_pull_consumer_initialization(custom_ini):
+    """Test pull consumer initialization."""
+    custom_ini(TEST_NATS_CONFIG)
+    consumer = PullConsumer(
+        stream="test_stream",
+        subject="test_subject",
+        queue_suffix="test_queue",
+    )
+    assert consumer.stream == "test_stream"
+    assert consumer.subject == "test_subject"
+    assert "test_queue" in consumer.queue
+    assert consumer.running is False
+    assert consumer.heartbeat_interval == 1.0
+    assert consumer.idle_wait == 1.0
+    assert consumer.error_backoff == 2.0
+
+
+@pytest.mark.asyncio
+async def test_pull_consumer_can_process_message(custom_ini):
+    """Test default can_process_message behavior."""
+    custom_ini(TEST_NATS_CONFIG)
+    consumer = PullConsumer(
+        stream="test_stream",
+        subject="test_subject",
+        queue_suffix="test_queue",
+    )
+
+    # Default implementation should always return True
+    assert await consumer.can_process_message() is True
+
+
+@pytest.mark.asyncio
+async def test_pull_consumer_message_handler_not_implemented(custom_ini):
+    """Test that message_handler raises NotImplementedError in base class."""
+    custom_ini(TEST_NATS_CONFIG)
+    consumer = PullConsumer(
+        stream="test_stream",
+        subject="test_subject",
+        queue_suffix="test_queue",
+    )
+
+    mock_msg = AsyncMock(spec=Msg)
+
+    with pytest.raises(NotImplementedError):
+        await consumer.message_handler(mock_msg)
+
+
+@pytest.mark.asyncio
+async def test_pull_nautobot_consumer_initialization(custom_ini):
+    """Test PullNautobotConsumer initialization."""
+    custom_ini(TEST_NATS_CONFIG)
+    consumer = PullNautobotConsumer()
+    assert consumer.stream == "nautobot"
+    assert consumer.subject == "nautobot"
+    assert "nautobot" in consumer.queue
+
+
+@pytest.mark.asyncio
+async def test_pull_nautobot_consumer_message_handler_success(mock_dispatcher, custom_ini):
+    """Test PullNautobotConsumer successful message handling."""
+    custom_ini(TEST_NATS_CONFIG)
+    consumer = PullNautobotConsumer()
+    mock_msg = AsyncMock(spec=Msg)
+    mock_msg.data = json.dumps({"test": "data"}).encode()
+    mock_msg.ack = AsyncMock()
+
+    await consumer.message_handler(mock_msg)
+
+    mock_dispatcher.nautobot_event_dispatch.assert_called_once_with({"test": "data"})
+    mock_msg.ack.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_pull_nautobot_consumer_device_not_enabled_error(mock_dispatcher, custom_ini):
+    """Test PullNautobotConsumer handles DeviceNotEnabledError."""
+    custom_ini(TEST_NATS_CONFIG)
+    from nv_config_manager.render.events.util import DeviceNotEnabledError
+
+    consumer = PullNautobotConsumer()
+    mock_msg = AsyncMock(spec=Msg)
+    mock_msg.data = json.dumps({"test": "data"}).encode()
+    mock_msg.ack = AsyncMock()
+
+    # Make dispatcher raise DeviceNotEnabledError
+    mock_dispatcher.nautobot_event_dispatch.side_effect = DeviceNotEnabledError(
+        "Device not enabled"
+    )
+
+    await consumer.message_handler(mock_msg)
+
+    mock_dispatcher.nautobot_event_dispatch.assert_called_once_with({"test": "data"})
+    mock_msg.ack.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_pull_nautobot_consumer_exception_handling(mock_dispatcher, custom_ini):
+    """Test PullNautobotConsumer handles general exceptions."""
+    custom_ini(TEST_NATS_CONFIG)
+    consumer = PullNautobotConsumer()
+    mock_msg = AsyncMock(spec=Msg)
+    mock_msg.data = json.dumps({"test": "data"}).encode()
+    mock_msg.nak = AsyncMock()
+
+    # Make dispatcher raise a general exception
+    mock_dispatcher.nautobot_event_dispatch.side_effect = Exception("Processing error")
+
+    await consumer.message_handler(mock_msg)
+
+    mock_dispatcher.nautobot_event_dispatch.assert_called_once_with({"test": "data"})
+    mock_msg.nak.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_pull_device_change_consumer_initialization(custom_ini):
+    """Test PullDeviceChangeConsumer initialization."""
+    custom_ini(TEST_NATS_CONFIG)
+    consumer = PullDeviceChangeConsumer()
+    assert consumer.stream == "nv-config-manager"
+    assert consumer.subject == "nv-config-manager.nautobotchange"
+    assert "device" in consumer.queue
+
+
+@pytest.mark.asyncio
+async def test_pull_device_change_consumer_success(mock_dispatcher, mock_lock, custom_ini):
+    """Test PullDeviceChangeConsumer successful message handling."""
+    custom_ini(TEST_NATS_CONFIG)
+    consumer = PullDeviceChangeConsumer()
+    mock_msg = AsyncMock(spec=Msg)
+    mock_msg.data = json.dumps({"device_id": "test-device"}).encode()
+    mock_msg.ack = AsyncMock()
+    mock_lock.acquire.return_value = True
+
+    with patch(
+        "nv_config_manager.render.pull_consumer.clear_queued", new_callable=AsyncMock
+    ) as mock_clear_queued:
+        # Mock the async dispatch method
+        mock_dispatcher.nautobot_change_dispatch = AsyncMock()
+        await consumer.message_handler(mock_msg)
+
+    mock_clear_queued.assert_awaited_once_with("test-device")
+    mock_msg.ack.assert_called_once()
+    mock_dispatcher.nautobot_change_dispatch.assert_called_once_with({"device_id": "test-device"})
+    mock_lock.release.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_pull_device_change_consumer_lock_failure(mock_dispatcher, mock_lock, custom_ini):
+    """Test PullDeviceChangeConsumer when lock cannot be acquired."""
+    custom_ini(TEST_NATS_CONFIG)
+    consumer = PullDeviceChangeConsumer()
+    mock_msg = AsyncMock(spec=Msg)
+    mock_msg.data = json.dumps({"device_id": "test-device"}).encode()
+    mock_msg.nak = AsyncMock()
+    mock_lock.acquire.return_value = False
+
+    with patch(
+        "nv_config_manager.render.pull_consumer.clear_queued", new_callable=AsyncMock
+    ) as mock_clear_queued:
+        await consumer.message_handler(mock_msg)
+
+    # clear_queued should NOT be called when lock acquisition fails
+    mock_clear_queued.assert_not_awaited()
+    mock_msg.nak.assert_called_once_with(delay=5)
+    # Lock release should NOT be called since acquire failed
+    mock_lock.release.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_pull_device_change_consumer_render_exception(mock_dispatcher, mock_lock, custom_ini):
+    """Test PullDeviceChangeConsumer handles RenderException."""
+    custom_ini(TEST_NATS_CONFIG)
+    from nv_config_manager.render.exceptions import RenderException
+
+    consumer = PullDeviceChangeConsumer()
+    mock_msg = AsyncMock(spec=Msg)
+    mock_msg.data = json.dumps({"device_id": "test-device"}).encode()
+    mock_msg.ack = AsyncMock()
+    mock_lock.acquire.return_value = True
+
+    with patch("nv_config_manager.render.pull_consumer.clear_queued", new_callable=AsyncMock):
+        # Mock the async dispatch method to raise exception
+        mock_dispatcher.nautobot_change_dispatch = AsyncMock(
+            side_effect=RenderException("Render failed")
+        )
+        await consumer.message_handler(mock_msg)
+
+    # Should still ack the message for RenderException
+    mock_msg.ack.assert_called_once()
+    mock_lock.release.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_pull_device_change_consumer_general_exception(
+    mock_dispatcher, mock_lock, custom_ini
+):
+    """Test PullDeviceChangeConsumer handles general exceptions."""
+    custom_ini(TEST_NATS_CONFIG)
+    consumer = PullDeviceChangeConsumer()
+    mock_msg = AsyncMock(spec=Msg)
+    mock_msg.data = json.dumps({"device_id": "test-device"}).encode()
+    mock_msg.nak = AsyncMock()
+    mock_lock.acquire.return_value = True
+
+    with patch("nv_config_manager.render.pull_consumer.clear_queued", new_callable=AsyncMock):
+        # Mock the async dispatch method to raise exception
+        mock_dispatcher.nautobot_change_dispatch = AsyncMock(
+            side_effect=Exception("Processing error")
+        )
+        await consumer.message_handler(mock_msg)
+
+    # Should nak the message for general exception
+    mock_msg.nak.assert_called_once()
+    mock_lock.release.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_resilient_message_handler_success(custom_ini):
+    """Test _resilient_message_handler with successful processing."""
+    custom_ini(TEST_NATS_CONFIG)
+    consumer = PullConsumer(
+        stream="test_stream",
+        subject="test_subject",
+        queue_suffix="test_queue",
+    )
+
+    mock_msg = AsyncMock(spec=Msg)
+
+    # Mock the message_handler method to succeed
+    consumer.message_handler = AsyncMock()
+
+    await consumer._resilient_message_handler(mock_msg)
+
+    consumer.message_handler.assert_called_once_with(mock_msg)
+
+
+@pytest.mark.asyncio
+async def test_resilient_message_handler_consumer_error(custom_ini):
+    """Test _resilient_message_handler naks message on any error."""
+    custom_ini(TEST_NATS_CONFIG)
+    consumer = PullConsumer(
+        stream="test_stream",
+        subject="test_subject",
+        queue_suffix="test_queue",
+    )
+
+    mock_msg = AsyncMock(spec=Msg)
+
+    # Mock the message_handler method to raise any error
+    consumer.message_handler = AsyncMock(side_effect=Exception("processing error"))
+    consumer.nak = AsyncMock()
+
+    # Should not raise, should nak the message instead
+    await consumer._resilient_message_handler(mock_msg)
+
+    consumer.nak.assert_called_once_with(mock_msg)
+
+
+@pytest.mark.asyncio
+async def test_resilient_message_handler_general_error(custom_ini):
+    """Test _resilient_message_handler with general error."""
+    custom_ini(TEST_NATS_CONFIG)
+    consumer = PullConsumer(
+        stream="test_stream",
+        subject="test_subject",
+        queue_suffix="test_queue",
+    )
+
+    mock_msg = AsyncMock(spec=Msg)
+    mock_msg.nak = AsyncMock()
+
+    # Mock the message_handler method to raise a general error
+    consumer.message_handler = AsyncMock(side_effect=Exception("general error"))
+
+    await consumer._resilient_message_handler(mock_msg)
+
+    # Should attempt to nak the message
+    mock_msg.nak.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_ensure_consumer_exists_new_consumer(custom_ini, mock_jetstream):
+    """Test _ensure_consumer_exists when consumer doesn't exist."""
+    custom_ini(TEST_NATS_CONFIG)
+    consumer = PullConsumer(
+        stream="test_stream",
+        subject="test_subject",
+        queue_suffix="test_queue",
+    )
+    consumer.jetstream = mock_jetstream
+
+    # Mock consumer_info to raise exception (consumer doesn't exist)
+    mock_jetstream.consumer_info.side_effect = Exception("consumer not found")
+
+    await consumer._ensure_consumer_exists()
+
+    # Should call consumer_info and add_consumer
+    mock_jetstream.consumer_info.assert_called_once_with("test_stream", consumer.queue)
+    mock_jetstream.add_consumer.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_ensure_consumer_exists_existing_consumer(custom_ini, mock_jetstream):
+    """Test _ensure_consumer_exists when consumer already exists."""
+    custom_ini(TEST_NATS_CONFIG)
+    consumer = PullConsumer(
+        stream="test_stream",
+        subject="test_subject",
+        queue_suffix="test_queue",
+    )
+    consumer.jetstream = mock_jetstream
+
+    # Mock consumer_info to succeed (consumer exists)
+    mock_jetstream.consumer_info.return_value = {"name": consumer.queue}
+
+    await consumer._ensure_consumer_exists()
+
+    # Should call consumer_info but NOT add_consumer
+    mock_jetstream.consumer_info.assert_called_once_with("test_stream", consumer.queue)
+    mock_jetstream.add_consumer.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_resilient_ack_success(custom_ini):
+    """Test resilient_ack with successful acknowledgment."""
+    custom_ini(TEST_NATS_CONFIG)
+    consumer = PullConsumer(
+        stream="test_stream",
+        subject="test_subject",
+        queue_suffix="test_queue",
+    )
+
+    mock_msg = AsyncMock(spec=Msg)
+    mock_msg.ack = AsyncMock()
+
+    await consumer.ack(mock_msg)
+
+    mock_msg.ack.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_resilient_ack_no_responders_error(custom_ini):
+    """Test resilient_ack handles NoRespondersError gracefully."""
+    custom_ini(TEST_NATS_CONFIG)
+    import nats.errors
+
+    consumer = PullConsumer(
+        stream="test_stream",
+        subject="test_subject",
+        queue_suffix="test_queue",
+    )
+
+    mock_msg = AsyncMock(spec=Msg)
+    mock_msg.ack = AsyncMock(side_effect=nats.errors.NoRespondersError("no responders"))
+
+    # Should not raise an exception
+    await consumer.ack(mock_msg)
+
+    mock_msg.ack.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_resilient_ack_other_error(custom_ini):
+    """Test resilient_ack re-raises other errors."""
+    custom_ini(TEST_NATS_CONFIG)
+    consumer = PullConsumer(
+        stream="test_stream",
+        subject="test_subject",
+        queue_suffix="test_queue",
+    )
+
+    mock_msg = AsyncMock(spec=Msg)
+    mock_msg.ack = AsyncMock(side_effect=Exception("other error"))
+
+    with pytest.raises(Exception, match="other error"):
+        await consumer.ack(mock_msg)
+
+
+@pytest.mark.asyncio
+async def test_resilient_nak_success(custom_ini):
+    """Test resilient_nak with successful negative acknowledgment."""
+    custom_ini(TEST_NATS_CONFIG)
+    consumer = PullConsumer(
+        stream="test_stream",
+        subject="test_subject",
+        queue_suffix="test_queue",
+    )
+
+    mock_msg = AsyncMock(spec=Msg)
+    mock_msg.nak = AsyncMock()
+
+    await consumer.nak(mock_msg)
+
+    mock_msg.nak.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_resilient_nak_with_delay(custom_ini):
+    """Test resilient_nak with delay parameter."""
+    custom_ini(TEST_NATS_CONFIG)
+    consumer = PullConsumer(
+        stream="test_stream",
+        subject="test_subject",
+        queue_suffix="test_queue",
+    )
+
+    mock_msg = AsyncMock(spec=Msg)
+    mock_msg.nak = AsyncMock()
+
+    await consumer.nak(mock_msg, delay=10)
+
+    mock_msg.nak.assert_called_once_with(delay=10)
+
+
+@pytest.mark.asyncio
+async def test_resilient_nak_no_responders_error(custom_ini):
+    """Test resilient_nak handles NoRespondersError gracefully."""
+    custom_ini(TEST_NATS_CONFIG)
+    import nats.errors
+
+    consumer = PullConsumer(
+        stream="test_stream",
+        subject="test_subject",
+        queue_suffix="test_queue",
+    )
+
+    mock_msg = AsyncMock(spec=Msg)
+    mock_msg.nak = AsyncMock(side_effect=nats.errors.NoRespondersError("no responders"))
+
+    # Should not raise an exception
+    await consumer.nak(mock_msg)
+
+    mock_msg.nak.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_resilient_nak_other_error(custom_ini):
+    """Test resilient_nak does re-raise other errors."""
+    custom_ini(TEST_NATS_CONFIG)
+    consumer = PullConsumer(
+        stream="test_stream",
+        subject="test_subject",
+        queue_suffix="test_queue",
+    )
+
+    mock_msg = AsyncMock(spec=Msg)
+    mock_msg.nak = AsyncMock(side_effect=Exception("other error"))
+
+    with pytest.raises(Exception, match="other error"):
+        await consumer.nak(mock_msg)
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_configuration(custom_ini):
+    """Test that consumer is configured with heartbeat interval."""
+    custom_ini(TEST_NATS_CONFIG)
+    consumer = PullConsumer(
+        stream="test_stream",
+        subject="test_subject",
+        queue_suffix="test_queue",
+    )
+
+    # Check that heartbeat interval is configured
+    assert consumer.heartbeat_interval == 1.0
+
+
+@pytest.mark.asyncio
+async def test_simplified_fetch_with_heartbeat_no_timeout(custom_ini):
+    """Test that fetch uses heartbeat without timeout for simplified error handling."""
+    custom_ini(TEST_NATS_CONFIG)
+    consumer = PullConsumer(
+        stream="test_stream",
+        subject="test_subject",
+        queue_suffix="test_queue",
+    )
+
+    # Verify heartbeat interval is configured
+    assert consumer.heartbeat_interval == 1.0
+    # Verify timeout was removed
+    assert not hasattr(consumer, "pull_timeout")

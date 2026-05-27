@@ -1,0 +1,27 @@
+---
+title: Configuration Deploy
+sidebar-title: Configuration Deploy
+position: 10
+---
+
+Deploys a configuration to a network device with approval workflows and verification steps.
+
+## User Interface
+
+### Form Inputs
+
+Users interact with a device selection form:
+
+| Field | Description | Selection Type | Required |
+| :---- | :---------- | :------------- | :------- |
+| **Site** | Choose the site containing the device | Single dropdown from available sites | Yes |
+| **Device** | Select the device to configure | Single dropdown from devices in selected site | Yes |
+
+## Workflow Execution
+
+### Multi-Stage Approval Process
+
+1. Load intended configuration
+1. Configuration diff review (approval required)
+1. Apply configuration
+1. Post-deployment backup

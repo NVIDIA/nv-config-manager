@@ -1,0 +1,136 @@
+{% extends 'generic/object_retrieve.html' %}
+{% load helpers %}
+{% load buttons %}
+{% load static %}
+{% load render_table from django_tables2 %}
+{% block content_left_page %}
+<div class="panel panel-default">
+    <div class="panel-heading">
+        <strong>Overlay</strong>
+    </div>
+    <table class="table table-hover panel-body attr-table">
+        <tr>
+            <td>Name</td>
+            <td>{{ object.name }}</td>
+        </tr>
+        <tr>
+            <td>Status</td>
+            <td>{{ object.status|hyperlinked_object_with_color }}</td>
+        </tr>
+        <tr>
+            <td>Tenant</td>
+            <td>{{ object.tenant|hyperlinked_object|placeholder }}</td>
+        </tr>
+        <tr>
+            <td>Location</td>
+            <td>{{ object.location|hyperlinked_object }}</td>
+        </tr>
+        <tr>
+            <td>Isolation Type</td>
+            <td>{{ object.get_isolation_type_display }}</td>
+        </tr>
+        {% if object.partition_id %}
+        <tr>
+            <td>Partition ID</td>
+            <td>{{ object.partition_id }}</td>
+        </tr>
+        {% endif %}
+    </table>
+</div>
+{% endblock content_left_page %}
+{% block content_right_page %}
+
+{# VXLAN Assignments panel (VXLAN/EVPN overlays only) #}
+{% if vxlan_assignments_table %}
+<div class="panel panel-default">
+    <div class="panel-heading">
+        <strong>VXLAN Assignments</strong>
+    </div>
+    <div class="panel-body">
+        {% render_table vxlan_assignments_table %}
+    </div>
+    {% if perms.nautobot_app_overlays.add_overlayassignment %}
+    <div class="panel-footer noprint text-right">
+        <a href="{% url 'plugins:nautobot_app_overlays:overlay_assignment_create' pk=object.pk %}" class="btn btn-primary btn-xs">
+            <span class="mdi mdi-plus-thick" aria-hidden="true"></span> Assign VXLAN
+        </a>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
+{# InfiniBand PKeys panel #}
+{% if pkeys_table %}
+<div class="panel panel-default">
+    <div class="panel-heading">
+        <strong>InfiniBand PKeys</strong>
+    </div>
+    <div class="panel-body">
+        {% render_table pkeys_table %}
+    </div>
+    {% if perms.nautobot_app_overlays.add_infinibandpkey %}
+    <div class="panel-footer noprint text-right">
+        <a href="{% url 'plugins:nautobot_app_overlays:infinibandpkey_add' %}?overlay={{ object.pk }}" class="btn btn-primary btn-xs">
+            <span class="mdi mdi-plus-thick" aria-hidden="true"></span> Add PKey
+        </a>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
+{# InfiniBand MKeys panel (IB MKey overlays only) #}
+{% if mkeys_table %}
+<div class="panel panel-default">
+    <div class="panel-heading">
+        <strong>InfiniBand MKeys</strong>
+    </div>
+    <div class="panel-body">
+        {% render_table mkeys_table %}
+    </div>
+    {% if perms.nautobot_app_overlays.add_infinibandmkey %}
+    <div class="panel-footer noprint text-right">
+        <a href="{% url 'plugins:nautobot_app_overlays:infinibandmkey_add' %}?overlay={{ object.pk }}" class="btn btn-primary btn-xs">
+            <span class="mdi mdi-plus-thick" aria-hidden="true"></span> Add MKey
+        </a>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
+{# Device / Interface Assignments Table #}
+<div class="panel panel-default">
+    <div class="panel-heading">
+        <strong>Member Assignments</strong>
+    </div>
+    <div class="panel-body">
+        {% if assignments_table %}
+            {% render_table assignments_table %}
+        {% else %}
+            <p class="text-muted">No assignments for this overlay.</p>
+        {% endif %}
+    </div>
+    {% if perms.nautobot_app_overlays.add_overlayassignment or perms.nautobot_app_overlays.delete_overlayassignment %}
+    <div class="panel-footer noprint">
+        <div class="pull-right">
+            {% if perms.nautobot_app_overlays.add_overlayassignment %}
+            <a href="{% url 'plugins:nautobot_app_overlays:overlay_assignment_create' pk=object.pk %}" class="btn btn-primary btn-xs">
+                <span class="mdi mdi-plus-thick" aria-hidden="true"></span> Add Assignment
+            </a>
+            <a href="{% url 'plugins:nautobot_app_overlays:overlay_bulk_allocate' pk=object.pk %}" class="btn btn-default btn-xs">
+                <span class="mdi mdi-layers-plus" aria-hidden="true"></span> Bulk Allocate
+            </a>
+            {% endif %}
+        </div>
+        {% if perms.nautobot_app_overlays.delete_overlayassignment %}
+        <button type="submit" name="_remove" class="btn btn-danger btn-xs">
+            <span class="mdi mdi-trash-can-outline" aria-hidden="true"></span> Remove Assignments
+        </button>
+        {% endif %}
+    </div>
+    {% endif %}
+    {% if perms.nautobot_app_overlays.delete_overlayassignment %}
+        </form>
+    {% endif %}
+</div>
+
+{% endblock content_right_page %}

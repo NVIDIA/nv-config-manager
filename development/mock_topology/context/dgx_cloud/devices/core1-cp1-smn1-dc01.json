@@ -1,0 +1,5681 @@
+{
+  "data": {
+    "device": {
+      "id": "anon-195062103120-0000-0000-000000000000",
+      "name": "core1-cp1-smn1-dc01",
+      "tags": [
+        {
+          "name": "dns-exempt"
+        }
+      ],
+      "tenant": {
+        "name": "Example Cloud"
+      },
+      "role": {
+        "name": "SMN-Core"
+      },
+      "device_type": {
+        "manufacturer": {
+          "name": "Mellanox"
+        },
+        "model": "MSN3700-CS2RC"
+      },
+      "platform": {
+        "name": "Cumulus Linux"
+      },
+      "serial": "ANON00001004",
+      "config_context": {
+        "bgp": {
+          "asn": 4266004040
+        },
+        "intended-firmware": {
+          "version": "5.11.0"
+        }
+      },
+      "location": {
+        "name": "DC01 Module 1",
+        "location_type": {
+          "name": "Module"
+        },
+        "parent": {
+          "name": "DC01",
+          "location_type": {
+            "name": "Site"
+          }
+        }
+      },
+      "bgp_routing_instances": [
+        {
+          "status": {
+            "name": "Active"
+          },
+          "autonomous_system": {
+            "asn": 4266004040
+          },
+          "router_id": {
+            "interfaces": [
+              {
+                "name": "lo",
+                "vrf": null
+              }
+            ]
+          },
+          "endpoints": [
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.51/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf38-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004144
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.6/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf1-cp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004101
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.17/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf1-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004110
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.93/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf1-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004177
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.7/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf2-cp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004102
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.18/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf2-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004111
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.94/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf2-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004178
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.151/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf3-cp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004231
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.19/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf3-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004112
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.95/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf3-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004179
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.152/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf4-cp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004232
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.20/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf4-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004113
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.96/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf4-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004180
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.153/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf5-cp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004233
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.21/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf5-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004114
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.97/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf5-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004181
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.154/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf6-cp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004234
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.22/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf6-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004115
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.98/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf6-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004182
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.155/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf7-cp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004235
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.23/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf7-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004116
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.99/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf7-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004183
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.156/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf8-cp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004236
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.24/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf8-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004117
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.100/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf8-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004184
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.157/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf9-cp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004237
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.25/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf9-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004118
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.101/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf9-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004185
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.158/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf10-cp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004238
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.29/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf13-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004122
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.26/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf10-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004119
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.109/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf13-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004189
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.128/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf35-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004208
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.30/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf14-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004123
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.31/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf15-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004124
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.49/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf36-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004142
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.111/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf15-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004191
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.129/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf36-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004209
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.112/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf16-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004192
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.131/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf38-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004211
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.113/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf17-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004193
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.116/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf20-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004196
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.117/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf21-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004197
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.52/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf39-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004145
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.38/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf22-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004131
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.118/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf22-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004198
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.132/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf39-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004212
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.39/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf23-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004132
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.40/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf24-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004133
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.53/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf40-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004146
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.41/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf25-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004134
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.42/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf26-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004135
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.133/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf40-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004213
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.126/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf33-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004206
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.47/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf34-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004140
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.54/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf41-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004147
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.48/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf35-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004141
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.134/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf41-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004214
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.55/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf42-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004148
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.135/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf42-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004215
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.56/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf43-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004149
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.136/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf43-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004216
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.106/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf10-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004186
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.27/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf11-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004120
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.107/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf11-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004187
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.28/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf12-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004121
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.110/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf14-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004190
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.32/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf16-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004125
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.33/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf17-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004126
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.34/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf18-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004127
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.35/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf19-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004128
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.36/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf20-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004129
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.119/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf23-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004199
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.120/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf24-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004200
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.121/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf25-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004201
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.122/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf26-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004202
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.43/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf27-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004136
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.123/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf27-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004203
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.8/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf28-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004103
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.159/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf28-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004239
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.10/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf30-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004105
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.44/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf31-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004137
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.125/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf32-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004205
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.127/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf34-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004207
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.108/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf12-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004188
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.50/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf37-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004143
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.114/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf18-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004194
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.130/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf37-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004210
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.115/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf19-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004195
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.37/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf21-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004130
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.9/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf29-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004104
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.57/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf44-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004150
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.160/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf29-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004240
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.161/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf30-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004241
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.137/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf44-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004217
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.124/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf31-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004204
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.45/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf32-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004138
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.46/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf33-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004139
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.58/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf45-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004151
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.138/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf45-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004218
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.59/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf46-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004152
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.139/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf46-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004219
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.60/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf47-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004153
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.140/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf47-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004220
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.61/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf48-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004154
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.141/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf48-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004221
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.62/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf49-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004155
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.142/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf49-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004222
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.63/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf50-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004156
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.143/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf50-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004223
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.64/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf51-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004157
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.144/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf51-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004224
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.66/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf53-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004159
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.146/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf53-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004226
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.67/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf54-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004160
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.147/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf54-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004227
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.68/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf55-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004161
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.148/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf55-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004228
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.69/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf56-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004162
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.149/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf56-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004229
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.70/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf57-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004163
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.150/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf57-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004230
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.71/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf58-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004164
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.162/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf58-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004242
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.72/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf59-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004165
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.163/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf59-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004243
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.73/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf60-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004166
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.164/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf60-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004244
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.74/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf61-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004167
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.165/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf61-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004245
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.75/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf62-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004168
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.166/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf62-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004246
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.167/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf63-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004247
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.77/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf64-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004170
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.168/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf64-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004248
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.78/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf65-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004171
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.169/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf65-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004249
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.79/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf66-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004172
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.170/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf66-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004250
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.65/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf52-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004158
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.145/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf52-gp2-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Planned"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004225
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": null
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": null,
+                "source_interface": {
+                  "name": "lo",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.169.76/32",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "leaf63-gp1-smn1-dc01",
+                    "role": {
+                      "name": "SMN-Leaf"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266004169
+                  }
+                }
+              }
+            },
+            {
+              "source_interface": {
+                "vrf": {
+                  "name": "DC01-SMN1_TO-TAN"
+                }
+              },
+              "peer_group": null,
+              "peer": {
+                "source_ip": {
+                  "address": "10.240.168.16/31",
+                  "ip_version": 4
+                },
+                "source_interface": {
+                  "name": "Ethernet49/1.4001",
+                  "ip_addresses": [
+                    {
+                      "address": "10.240.168.16/31",
+                      "ip_version": 4
+                    }
+                  ]
+                },
+                "routing_instance": {
+                  "device": {
+                    "name": "oobsw1-cp1-smn1-dc01",
+                    "role": {
+                      "name": "OOB-Switch"
+                    }
+                  },
+                  "status": {
+                    "name": "Active"
+                  },
+                  "autonomous_system": {
+                    "asn": 4266008000
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "interfaces": [
+        {
+          "role": {
+            "name": "Uplink"
+          },
+          "type": "A_1000BASE_T",
+          "mtu": 1500,
+          "enabled": true,
+          "tags": [
+            {
+              "name": "cable-validation-ignore"
+            }
+          ],
+          "name": "eth0",
+          "description": "ztpleaf1-cp1-smn1-dc01:ethernet1",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": null,
+          "tagged_vlans": [],
+          "ip_addresses": [],
+          "connected_interface": {
+            "ip_addresses": [],
+            "device": {
+              "name": "ztpleaf1-cp1-smn1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "SMN-ZTPleaf"
+              },
+              "tags": [
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                },
+                "intended-firmware": {
+                  "version": "5.6.0"
+                }
+              }
+            },
+            "module": null,
+            "name": "Ethernet1"
+          }
+        },
+        {
+          "role": {
+            "name": "Loopback"
+          },
+          "type": "VIRTUAL",
+          "mtu": null,
+          "enabled": true,
+          "tags": [],
+          "name": "lo",
+          "description": "",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": null,
+          "tagged_vlans": [],
+          "ip_addresses": [
+            {
+              "host": "10.240.169.0",
+              "mask_length": 32,
+              "address": "10.240.169.0/32",
+              "ip_version": 4,
+              "parent": {
+                "prefix": "10.240.169.0/24",
+                "parent": {
+                  "prefix": "10.240.0.0/16"
+                }
+              }
+            }
+          ],
+          "connected_interface": null
+        },
+        {
+          "role": {
+            "name": "Downlink"
+          },
+          "type": "A_100GBASE_X_QSFP28",
+          "mtu": 9200,
+          "enabled": true,
+          "tags": [],
+          "name": "swp1",
+          "description": "spine1-cp1-smn1-dc01:swp32",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": null,
+          "tagged_vlans": [],
+          "ip_addresses": [
+            {
+              "host": "10.240.168.2",
+              "mask_length": 31,
+              "address": "10.240.168.2/31",
+              "ip_version": 4,
+              "parent": {
+                "prefix": "10.240.168.0/24",
+                "parent": {
+                  "prefix": "10.240.0.0/16"
+                }
+              }
+            }
+          ],
+          "connected_interface": {
+            "ip_addresses": [
+              {
+                "host": "10.240.168.3",
+                "mask_length": 31,
+                "address": "10.240.168.3/31",
+                "ip_version": 4
+              }
+            ],
+            "device": {
+              "name": "spine1-cp1-smn1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "SMN-Spine"
+              },
+              "tags": [
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                },
+                "bgp": {
+                  "asn": 4266004100
+                },
+                "intended-firmware": {
+                  "version": "5.11.0"
+                }
+              }
+            },
+            "module": null,
+            "name": "swp32"
+          }
+        },
+        {
+          "role": {
+            "name": "Downlink"
+          },
+          "type": "A_100GBASE_X_QSFP28",
+          "mtu": 9200,
+          "enabled": true,
+          "tags": [],
+          "name": "swp2",
+          "description": "spine2-cp1-smn1-dc01:swp32",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": null,
+          "tagged_vlans": [],
+          "ip_addresses": [
+            {
+              "host": "10.240.168.4",
+              "mask_length": 31,
+              "address": "10.240.168.4/31",
+              "ip_version": 4,
+              "parent": {
+                "prefix": "10.240.168.0/24",
+                "parent": {
+                  "prefix": "10.240.0.0/16"
+                }
+              }
+            }
+          ],
+          "connected_interface": {
+            "ip_addresses": [
+              {
+                "host": "10.240.168.5",
+                "mask_length": 31,
+                "address": "10.240.168.5/31",
+                "ip_version": 4
+              }
+            ],
+            "device": {
+              "name": "spine2-cp1-smn1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "SMN-Spine"
+              },
+              "tags": [
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                },
+                "bgp": {
+                  "asn": 4266004100
+                },
+                "intended-firmware": {
+                  "version": "5.11.0"
+                }
+              }
+            },
+            "module": null,
+            "name": "swp32"
+          }
+        },
+        {
+          "role": {
+            "name": "Downlink"
+          },
+          "type": "A_100GBASE_X_QSFP28",
+          "mtu": 9200,
+          "enabled": true,
+          "tags": [],
+          "name": "swp3",
+          "description": "spine1-gp1-smn1-dc01:swp32",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": null,
+          "tagged_vlans": [],
+          "ip_addresses": [
+            {
+              "host": "10.240.168.6",
+              "mask_length": 31,
+              "address": "10.240.168.6/31",
+              "ip_version": 4,
+              "parent": {
+                "prefix": "10.240.168.0/24",
+                "parent": {
+                  "prefix": "10.240.0.0/16"
+                }
+              }
+            }
+          ],
+          "connected_interface": {
+            "ip_addresses": [
+              {
+                "host": "10.240.168.7",
+                "mask_length": 31,
+                "address": "10.240.168.7/31",
+                "ip_version": 4
+              }
+            ],
+            "device": {
+              "name": "spine1-gp1-smn1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "SMN-Spine"
+              },
+              "tags": [
+                {
+                  "name": "dc-ops-install"
+                },
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                },
+                "bgp": {
+                  "asn": 4266004108
+                },
+                "intended-firmware": {
+                  "version": "5.11.0"
+                }
+              }
+            },
+            "module": null,
+            "name": "swp32"
+          }
+        },
+        {
+          "role": {
+            "name": "Downlink"
+          },
+          "type": "A_100GBASE_X_QSFP28",
+          "mtu": 9200,
+          "enabled": true,
+          "tags": [],
+          "name": "swp4",
+          "description": "spine2-gp1-smn1-dc01:swp32",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": null,
+          "tagged_vlans": [],
+          "ip_addresses": [
+            {
+              "host": "10.240.168.12",
+              "mask_length": 31,
+              "address": "10.240.168.12/31",
+              "ip_version": 4,
+              "parent": {
+                "prefix": "10.240.168.0/24",
+                "parent": {
+                  "prefix": "10.240.0.0/16"
+                }
+              }
+            }
+          ],
+          "connected_interface": {
+            "ip_addresses": [
+              {
+                "host": "10.240.168.13",
+                "mask_length": 31,
+                "address": "10.240.168.13/31",
+                "ip_version": 4
+              }
+            ],
+            "device": {
+              "name": "spine2-gp1-smn1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "SMN-Spine"
+              },
+              "tags": [
+                {
+                  "name": "dc-ops-install"
+                },
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                },
+                "bgp": {
+                  "asn": 4266004108
+                },
+                "intended-firmware": {
+                  "version": "5.11.0"
+                }
+              }
+            },
+            "module": null,
+            "name": "swp32"
+          }
+        },
+        {
+          "role": {
+            "name": "Downlink"
+          },
+          "type": "A_100GBASE_X_QSFP28",
+          "mtu": 9200,
+          "enabled": false,
+          "tags": [
+            {
+              "name": "cable-validation-ignore"
+            }
+          ],
+          "name": "swp5",
+          "description": "spine1-gp2-smn1-dc01:swp32",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": null,
+          "tagged_vlans": [],
+          "ip_addresses": [
+            {
+              "host": "10.240.168.8",
+              "mask_length": 31,
+              "address": "10.240.168.8/31",
+              "ip_version": 4,
+              "parent": {
+                "prefix": "10.240.168.0/24",
+                "parent": {
+                  "prefix": "10.240.0.0/16"
+                }
+              }
+            }
+          ],
+          "connected_interface": {
+            "ip_addresses": [
+              {
+                "host": "10.240.168.9",
+                "mask_length": 31,
+                "address": "10.240.168.9/31",
+                "ip_version": 4
+              }
+            ],
+            "device": {
+              "name": "spine1-gp2-smn1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "SMN-Spine"
+              },
+              "tags": [
+                {
+                  "name": "dc-ops-install"
+                },
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                },
+                "bgp": {
+                  "asn": 4266004173
+                },
+                "intended-firmware": {
+                  "version": "5.11.0"
+                }
+              }
+            },
+            "module": null,
+            "name": "swp32"
+          }
+        },
+        {
+          "role": {
+            "name": "Downlink"
+          },
+          "type": "A_100GBASE_X_QSFP28",
+          "mtu": 9200,
+          "enabled": false,
+          "tags": [
+            {
+              "name": "cable-validation-ignore"
+            }
+          ],
+          "name": "swp6",
+          "description": "spine2-gp2-smn1-dc01:swp32",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": null,
+          "tagged_vlans": [],
+          "ip_addresses": [
+            {
+              "host": "10.240.168.10",
+              "mask_length": 31,
+              "address": "10.240.168.10/31",
+              "ip_version": 4,
+              "parent": {
+                "prefix": "10.240.168.0/24",
+                "parent": {
+                  "prefix": "10.240.0.0/16"
+                }
+              }
+            }
+          ],
+          "connected_interface": {
+            "ip_addresses": [
+              {
+                "host": "10.240.168.11",
+                "mask_length": 31,
+                "address": "10.240.168.11/31",
+                "ip_version": 4
+              }
+            ],
+            "device": {
+              "name": "spine2-gp2-smn1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "SMN-Spine"
+              },
+              "tags": [
+                {
+                  "name": "dc-ops-install"
+                },
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                },
+                "bgp": {
+                  "asn": 4266004173
+                },
+                "intended-firmware": {
+                  "version": "5.11.0"
+                }
+              }
+            },
+            "module": null,
+            "name": "swp32"
+          }
+        },
+        {
+          "role": {
+            "name": "Uplink"
+          },
+          "type": "A_100GBASE_X_QSFP28",
+          "mtu": 9200,
+          "enabled": true,
+          "tags": [],
+          "name": "swp29",
+          "description": "oobsw1-cp1-smn1-dc01:ethernet49/1",
+          "vrf": null,
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": null,
+          "tagged_vlans": [],
+          "ip_addresses": [
+            {
+              "host": "10.240.168.0",
+              "mask_length": 31,
+              "address": "10.240.168.0/31",
+              "ip_version": 4,
+              "parent": {
+                "prefix": "10.240.168.0/24",
+                "parent": {
+                  "prefix": "10.240.0.0/16"
+                }
+              }
+            }
+          ],
+          "connected_interface": {
+            "ip_addresses": [
+              {
+                "host": "10.240.168.1",
+                "mask_length": 31,
+                "address": "10.240.168.1/31",
+                "ip_version": 4
+              }
+            ],
+            "device": {
+              "name": "oobsw1-cp1-smn1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "OOB-Switch"
+              },
+              "tags": [
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                },
+                "bgp": {
+                  "asn": 4266008000
+                },
+                "intended-firmware": {
+                  "version": "4.29.3M"
+                }
+              }
+            },
+            "module": null,
+            "name": "Ethernet49/1"
+          }
+        },
+        {
+          "role": {
+            "name": "Uplink"
+          },
+          "type": "VIRTUAL",
+          "mtu": 1500,
+          "enabled": true,
+          "tags": [],
+          "name": "swp29.4001",
+          "description": "",
+          "vrf": {
+            "name": "DC01-SMN1_TO-TAN",
+            "rd": "*:98",
+            "export_targets": [
+              {
+                "name": "4266000000:98"
+              }
+            ],
+            "import_targets": [
+              {
+                "name": "4266000000:1000"
+              },
+              {
+                "name": "4266000000:900"
+              },
+              {
+                "name": "4266000000:901"
+              },
+              {
+                "name": "4266000000:998"
+              }
+            ]
+          },
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": {
+            "name": "swp29"
+          },
+          "untagged_vlan": null,
+          "tagged_vlans": [
+            {
+              "vid": 4001,
+              "name": "vlan-4001"
+            }
+          ],
+          "ip_addresses": [
+            {
+              "host": "10.240.168.16",
+              "mask_length": 31,
+              "address": "10.240.168.16/31",
+              "ip_version": 4,
+              "parent": {
+                "prefix": "10.240.168.0/24",
+                "parent": {
+                  "prefix": "10.240.0.0/16"
+                }
+              }
+            }
+          ],
+          "connected_interface": null
+        },
+        {
+          "role": {
+            "name": "Uplink"
+          },
+          "type": "A_100GBASE_X_QSFP28",
+          "mtu": 9200,
+          "enabled": true,
+          "tags": [],
+          "name": "swp31",
+          "description": "bbr2-cp1-tan1-dc01:ethernet3/3/1",
+          "vrf": {
+            "name": "DC01-SMN1_TO-TAN",
+            "rd": "*:98",
+            "export_targets": [
+              {
+                "name": "4266000000:98"
+              }
+            ],
+            "import_targets": [
+              {
+                "name": "4266000000:1000"
+              },
+              {
+                "name": "4266000000:900"
+              },
+              {
+                "name": "4266000000:901"
+              },
+              {
+                "name": "4266000000:998"
+              }
+            ]
+          },
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": null,
+          "tagged_vlans": [],
+          "ip_addresses": [
+            {
+              "host": "10.240.237.133",
+              "mask_length": 31,
+              "address": "10.240.237.133/31",
+              "ip_version": 4,
+              "parent": {
+                "prefix": "10.240.237.0/24",
+                "parent": {
+                  "prefix": "10.240.0.0/16"
+                }
+              }
+            }
+          ],
+          "connected_interface": {
+            "ip_addresses": [
+              {
+                "host": "10.240.237.132",
+                "mask_length": 31,
+                "address": "10.240.237.132/31",
+                "ip_version": 4
+              }
+            ],
+            "device": {
+              "name": "bbr2-cp1-tan1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "TAN-BBR"
+              },
+              "tags": [
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                },
+                "bgp": {
+                  "asn": 398037
+                },
+                "intended-firmware": {
+                  "version": "4.29.5M"
+                }
+              }
+            },
+            "module": null,
+            "name": "Ethernet3/3/1"
+          }
+        },
+        {
+          "role": {
+            "name": "Uplink"
+          },
+          "type": "A_100GBASE_X_QSFP28",
+          "mtu": 9200,
+          "enabled": true,
+          "tags": [],
+          "name": "swp32",
+          "description": "bbr1-cp1-tan1-dc01:ethernet3/3/1",
+          "vrf": {
+            "name": "DC01-SMN1_TO-TAN",
+            "rd": "*:98",
+            "export_targets": [
+              {
+                "name": "4266000000:98"
+              }
+            ],
+            "import_targets": [
+              {
+                "name": "4266000000:1000"
+              },
+              {
+                "name": "4266000000:900"
+              },
+              {
+                "name": "4266000000:901"
+              },
+              {
+                "name": "4266000000:998"
+              }
+            ]
+          },
+          "mgmt_only": false,
+          "member_interfaces": [],
+          "parent_interface": null,
+          "untagged_vlan": null,
+          "tagged_vlans": [],
+          "ip_addresses": [
+            {
+              "host": "10.240.237.5",
+              "mask_length": 31,
+              "address": "10.240.237.5/31",
+              "ip_version": 4,
+              "parent": {
+                "prefix": "10.240.237.0/24",
+                "parent": {
+                  "prefix": "10.240.0.0/16"
+                }
+              }
+            }
+          ],
+          "connected_interface": {
+            "ip_addresses": [
+              {
+                "host": "10.240.237.4",
+                "mask_length": 31,
+                "address": "10.240.237.4/31",
+                "ip_version": 4
+              }
+            ],
+            "device": {
+              "name": "bbr1-cp1-tan1-dc01",
+              "tenant": {
+                "name": "Example Cloud"
+              },
+              "role": {
+                "name": "TAN-BBR"
+              },
+              "tags": [
+                {
+                  "name": "dns-exempt"
+                }
+              ],
+              "config_context": {
+                "ztp": {
+                  "ipv4": [
+                    "10.48.175.210"
+                  ]
+                },
+                "dhcp": {
+                  "nv-config-manager": {
+                    "ipv4": [
+                      "10.48.175.141",
+                      "10.48.175.211"
+                    ]
+                  },
+                  "forge": {
+                    "ipv4": [
+                      "10.240.0.100"
+                    ]
+                  }
+                },
+                "management_prefixes": {
+                  "ipv4": [
+                    "10.48.135.64/26",
+                    "10.48.175.128/25"
+                  ]
+                },
+                "bgp": {
+                  "asn": 398037
+                },
+                "intended-firmware": {
+                  "version": "4.29.5M"
+                }
+              }
+            },
+            "module": null,
+            "name": "Ethernet3/3/1"
+          }
+        }
+      ],
+      "console_server_ports": []
+    }
+  }
+}

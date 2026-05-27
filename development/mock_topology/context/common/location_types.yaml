@@ -1,0 +1,18 @@
+---
+
+location_types:
+  - name: Provider
+
+  - name: Region
+    parent: Provider
+    nestable: true
+
+  - name: Site
+    parent: Region
+    content_types:
+      - dcim.device
+
+  - name: Module
+    parent: Site
+    content_types:
+      - dcim.device

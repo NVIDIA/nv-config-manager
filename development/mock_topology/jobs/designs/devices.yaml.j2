@@ -1,0 +1,33 @@
+---
+
+{% if json.devices is defined and json.devices | length > 0 %}
+devices:
+  {% for device in json.devices %}
+  - "!create_or_update:name": {{ device.name }}
+    "!create_or_update:location": "!ref:location"
+    status__name: {{ device.status.name if device.status is defined else global_defaults.device_status }}
+    device_type__model: {{ device.device_type.model }}
+    {% if device.tenant is defined %}
+    tenant__name: {{ device.tenant.name }}
+    {% endif %}
+    {% if device.platform is defined and device.platform %}
+    platform__name: {{ device.platform.name }}
+    {% endif %}
+    {% if device.role is defined and device.role %}
+    role__name: {{ device.role.name }}
+    {% endif %}
+    {% if device.serial is defined and device.serial %}
+    serial: {{ device.serial }}
+    {% endif %}
+    {% if device.config_context is defined and device.config_context %}
+    local_config_context_data: {{ device.config_context | tojson }}
+    {% endif %}
+    {% for tag in device.tags %}
+    tags:
+      - "!get:name": {{ tag.name }}
+    {% endfor %}
+    "!ref": device-{{ device.name }}
+  {% endfor %}
+{% else %}
+devices: []
+{% endif %}

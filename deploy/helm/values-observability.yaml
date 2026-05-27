@@ -1,0 +1,177 @@
+# =============================================================================
+# LOCAL-DEV-ONLY observability overlay
+# =============================================================================
+# Enables prometheus-operator-crds (CRDs only) + standalone Prometheus +
+# Grafana Alloy as in-namespace subcharts of nv-config-manager, all installed
+# in the nv-config-manager release namespace.
+#
+# Architecture:
+#
+#   prometheus-operator-crds subchart
+#    \-- installs PodMonitor / ServiceMonitor / Probe / PrometheusRule /
+#        Alertmanager / Prometheus / ThanosRuler CRDs only. No Operator pod.
+#
+#   Alloy DaemonSet
+#    |-- prometheus.operator.podmonitors    \
+#    |-- prometheus.operator.servicemonitors  >-- watches CRs, scrapes targets
+#    |-- prometheus.operator.probes         /
+#    |     |
+#    |     \-> prometheus.remote_write -> standalone Prometheus (storage)
+#
+# This intentionally swaps the kube-prometheus-stack pattern (Operator pod
+# generates prometheus.yaml, Prometheus reads it) for the Alloy-native
+# pattern (Alloy itself watches the CRs and produces scrape jobs in-process,
+# remote_writes to a vanilla Prometheus). One fewer component, same
+# user-facing PodMonitor API. Alloy clustering (not enabled here, single
+# replica is fine for local dev) is the equivalent of OTel's Target Allocator
+# if you ever scale this out.
+#
+# Layer this on top of values-local.yaml (or values-ci.yaml for template
+# tests):
+#
+#   helm template test . --values values-ci.yaml --values values-observability.yaml
+#
+# Or via the TUI installer: toggle "Enable local observability stack" on the
+# Infrastructure screen. The TUI auto-flips monitoring.enabled so the
+# PodMonitor resources in templates/monitoring.yaml are rendered.
+#
+# DO NOT use in shared clusters (nv-config-manager-qa, prod, or any cluster
+# with a separately managed production monitoring stack):
+#
+#   * prometheus-operator-crds installs cluster-scoped CRDs. If a cluster
+#     already has another kube-prometheus-stack or prometheus-operator-crds
+#     release, helm can fail with CRD-ownership errors. Pick one CRD owner
+#     per cluster.
+#   * The bundle uses emptyDir storage; restarts lose all metrics.
+# =============================================================================
+
+# NOTE: prometheus-operator-crds is NOT configured here. It's installed
+# as a sibling Helm release by the deployer (Deployer._install_crds) before
+# this chart, to avoid the helm validation deadlock where the parent chart
+# references PodMonitor before its CRD is registered. See the long note in
+# deploy/helm/Chart.yaml for details.
+
+# -----------------------------------------------------------------------------
+# Prometheus (storage only, accepts remote_write from Alloy)
+# -----------------------------------------------------------------------------
+# Standalone Prometheus server. All its default scrape jobs are disabled
+# (Helm-merge gotcha: must turn each off individually, a bare {} doesn't
+# wipe the chart's default map). Metrics arrive via remote_write from
+# Alloy at /api/v1/write.
+prometheus:
+  enabled: true
+
+  alertmanager:
+    enabled: false
+  prometheus-pushgateway:
+    enabled: false
+  prometheus-node-exporter:
+    enabled: false
+  kube-state-metrics:
+    enabled: false
+
+  server:
+    fullnameOverride: prometheus-server
+    persistentVolume:
+      enabled: false
+    retention: "24h"
+    extraArgs:
+      # The chart treats falsy values as "boolean flag, no value" and emits
+      # `--web.enable-remote-write-receiver` (no `=`). The chart's own README
+      # suggests `null` here, but Helm's release-value merger strips null
+      # entries on subsequent upgrades, silently dropping the flag and
+      # leaving Alloy's remote_write returning 404s. `false` is falsy in
+      # the same `if` check but survives serialization through the release
+      # secret, so the flag stays put across `helm upgrade` calls.
+      web.enable-remote-write-receiver: false
+    service:
+      type: ClusterIP
+      servicePort: 9090
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        memory: 512Mi
+
+  # Disable every default scrape job so the rendered prometheus.yml has zero
+  # scrape_configs entries. Alloy pushes everything via remote_write.
+  # Caveat: do NOT also set serverFiles.prometheus.yml.scrape_configs here —
+  # the chart renders both blocks into the same YAML document, producing a
+  # duplicate `scrape_configs:` key and "field scrape_configs already set"
+  # at Prometheus startup. scrapeConfigs.<job>.enabled: false alone is enough.
+  scrapeConfigs:
+    prometheus:
+      enabled: false
+    kubernetes-api-servers:
+      enabled: false
+    kubernetes-nodes:
+      enabled: false
+    kubernetes-nodes-cadvisor:
+      enabled: false
+    kubernetes-service-endpoints:
+      enabled: false
+    kubernetes-service-endpoints-slow:
+      enabled: false
+    prometheus-pushgateway:
+      enabled: false
+    kubernetes-services:
+      enabled: false
+    kubernetes-pods:
+      enabled: false
+    kubernetes-pods-slow:
+      enabled: false
+  extraScrapeConfigs: ""
+
+# -----------------------------------------------------------------------------
+# Grafana Alloy (DaemonSet metrics scraper)
+# -----------------------------------------------------------------------------
+# The Alloy chart's default RBAC already grants
+# get/list/watch on monitoring.coreos.com podmonitors/servicemonitors/probes
+# (see chart values.yaml comments "Rules required for the prometheus.operator.*
+# components"), so no RBAC overrides are needed.
+alloy:
+  enabled: true
+  fullnameOverride: alloy
+
+  controller:
+    type: daemonset
+
+  alloy:
+    mounts:
+      varlog: false
+      dockercontainers: false
+
+    configMap:
+      create: true
+      content: |-
+        logging {
+          level  = "info"
+          format = "logfmt"
+        }
+
+        // prometheus.operator.podmonitors / servicemonitors / probes watch
+        // the corresponding CRDs cluster-wide and emit scrape targets, then
+        // prometheus.remote_write pushes them to the standalone Prometheus.
+
+        prometheus.operator.podmonitors "nv_config_manager" {
+          forward_to = [prometheus.remote_write.local.receiver]
+        }
+
+        prometheus.operator.servicemonitors "nv_config_manager" {
+          forward_to = [prometheus.remote_write.local.receiver]
+        }
+
+        prometheus.operator.probes "nv_config_manager" {
+          forward_to = [prometheus.remote_write.local.receiver]
+        }
+
+        prometheus.remote_write "local" {
+          endpoint {
+            url = "http://prometheus-server:9090/api/v1/write"
+          }
+        }
+
+  configReloader:
+    image:
+      tag: v0.90.1

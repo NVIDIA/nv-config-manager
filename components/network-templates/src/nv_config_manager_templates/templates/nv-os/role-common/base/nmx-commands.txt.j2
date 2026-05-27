@@ -1,0 +1,13 @@
+# start the nmx-controller 
+nv action start cluster app nmx-controller
+
+# Fetch and install the fm_config file
+nv action fetch sdn config app nmx-controller type fm_config sftp://user:password@{{ (device_data|ztp_servers)[0] }}:2222/device/{{ device_data|uuid }}/fm-config.cfg
+nv action install sdn config app nmx-controller type fm_config files fm-config.cfg
+
+# stop and then start the nmx-controller
+nv action stop cluster app nmx-controller
+nv action start cluster app nmx-controller
+
+# start the nmx-telemetry service 
+nv action start cluster app nmx-telemetry

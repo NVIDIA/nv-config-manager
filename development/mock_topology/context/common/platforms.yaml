@@ -1,0 +1,13 @@
+---
+
+# Platforms for mock topology designs
+# Note: Cumulus Linux runs on both NVIDIA and Mellanox switches
+# so we don't restrict it to a single manufacturer
+
+platforms:
+  - name: Cumulus Linux
+    # No manufacturer restriction - runs on NVIDIA and Mellanox hardware
+  - name: MLNX-OS
+    # No manufacturer restriction - Mellanox is now part of NVIDIA
+  - name: Arista EOS
+  - name: Opengear Firmware

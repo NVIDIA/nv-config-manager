@@ -1,0 +1,82 @@
+{% extends 'generic/object_retrieve.html' %}
+{% load helpers %}
+
+{% block content_left_page %}
+<div class="panel panel-default">
+    <div class="panel-heading">
+        <strong>InfiniBand PKey</strong>
+    </div>
+    <table class="table table-hover panel-body attr-table">
+        <tr>
+            <td>Name</td>
+            <td>{{ object.name }}</td>
+        </tr>
+        <tr>
+            <td>Status</td>
+            <td>{{ object.status|hyperlinked_object_with_color }}</td>
+        </tr>
+        <tr>
+            <td>PKey</td>
+            <td>
+                <span class="hover_copy">
+                    <span id="copy_title">{{ object.pkey }}</span>
+                    <button type="button" class="btn btn-inline btn-default hover_copy_button" data-clipboard-text="{{ object.pkey }}">
+                        <span class="mdi mdi-content-copy"></span>
+                    </button>
+                </span>
+            </td>
+        </tr>
+        <tr>
+            <td>Membership Type</td>
+            <td>{{ object.get_membership_type_display|placeholder }}</td>
+        </tr>
+        <tr>
+            <td>Overlay</td>
+            <td>{{ object.overlay|hyperlinked_object|placeholder }}</td>
+        </tr>
+        <tr>
+            <td>Tenant</td>
+            <td>{{ object.tenant|hyperlinked_object|placeholder }}</td>
+        </tr>
+    </table>
+</div>
+
+{% if object.qos_config %}
+<div class="panel panel-default">
+    <div class="panel-heading">
+        <strong>QoS Configuration</strong>
+    </div>
+    <div class="panel-body">
+        <pre class="p-3 bg-light rounded mb-0"><code>{{ object.qos_config|render_json }}</code></pre>
+    </div>
+</div>
+{% endif %}
+{% endblock content_left_page %}
+
+{% block content_right_page %}
+{% if object.overlay %}
+<div class="panel panel-default">
+    <div class="panel-heading">
+        <strong>Overlay Details</strong>
+    </div>
+    <table class="table table-hover panel-body attr-table">
+        <tr>
+            <td>Overlay</td>
+            <td>{{ object.overlay|hyperlinked_object }}</td>
+        </tr>
+        <tr>
+            <td>Overlay Status</td>
+            <td>{{ object.overlay.status|hyperlinked_object_with_color }}</td>
+        </tr>
+        <tr>
+            <td>Location</td>
+            <td>{{ object.overlay.location|hyperlinked_object|placeholder }}</td>
+        </tr>
+        <tr>
+            <td>Isolation Type</td>
+            <td>{{ object.overlay.get_isolation_type_display|placeholder }}</td>
+        </tr>
+    </table>
+</div>
+{% endif %}
+{% endblock content_right_page %}

@@ -1,0 +1,118 @@
+---
+# Config Context Schemas for NVIDIA Config Manager deployments
+# These define JSON schemas for validating config context data
+
+- name: nv-config-manager-kea-static-data
+  description: Schema for KEA DHCP static reservations and subnet configuration
+  deployment_types: [all]
+  data_schema:
+    $schema: "http://json-schema.org/draft-07/schema#"
+    title: "KEA Static Data Schema"
+    type: object
+    properties:
+      Dhcp4:
+        type: object
+        properties:
+          reservations:
+            type: array
+            items:
+              type: object
+              properties:
+                hostname:
+                  type: string
+                hw-address:
+                  type: string
+                option-data:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      data:
+                        type: string
+                      code:
+                        type: number
+                    required:
+                      - name
+                      - data
+                ip-address:
+                  type: string
+                client-id:
+                  type: string
+              required:
+                - hostname
+                - ip-address
+          subnet4:
+            type: array
+            items:
+              type: object
+              properties:
+                option-data:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      data:
+                        type: string
+                      name:
+                        type: string
+                    required:
+                      - data
+                      - name
+                pools:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      pool:
+                        type: string
+                    required:
+                      - pool
+                reservations-global:
+                  type: boolean
+                reservations-in-subnet:
+                  type: boolean
+                subnet:
+                  type: string
+              required:
+                - option-data
+                - reservations-global
+                - reservations-in-subnet
+                - subnet
+
+- name: nv-config-manager-site-dhcp-option-def
+  description: Schema for KEA DHCP custom option definitions
+  deployment_types: [all]
+  data_schema:
+    $schema: "http://json-schema.org/draft-07/schema#"
+    title: "KEA Site DHCP Option Definition Schema"
+    type: object
+    properties:
+      Dhcp4:
+        type: object
+        properties:
+          option-def:
+            type: array
+            items:
+              type: object
+              properties:
+                name:
+                  type: string
+                code:
+                  type: integer
+                type:
+                  type: string
+                array:
+                  type: boolean
+                record-types:
+                  type: string
+                space:
+                  type: string
+                encapsulate:
+                  type: string
+              required:
+                - name
+                - code
+                - type
+

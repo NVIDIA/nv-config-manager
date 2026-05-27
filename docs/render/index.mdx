@@ -1,0 +1,980 @@
+---
+title: Network Template Rendering System
+sidebar-title: Network Template Rendering System
+position: 0
+---
+
+## Overview
+
+This template rendering system provides a flexible, inheritance-based approach to generating network device configurations. It queries structured data from Nautobot (a network source of truth) and renders device configurations using Jinja2 templates with custom filters.
+
+### Key Features
+
+* **Multi-platform Support**: Templates for Cumulus Linux, Arista EOS, Mellanox MLNX-OS, and NVIDIA NV-OS
+* **Role-based Templates**: Different device roles (leaf, spine, core, and so on) have customized configurations
+* **Version Management**: Support for multiple firmware versions per platform/role
+* **Template Inheritance**: DRY (Don't Repeat Yourself) principle with multi-level template inheritance
+* **Custom Filters**: Powerful Jinja2 filters to extract and transform Nautobot data
+* **Type Safety**: Python dataclasses provide structured, validated data objects
+
+## System Architecture
+
+### High-Level Flow
+
+```text
+Nautobot (Source of Truth)
+    ↓ (GraphQL Query)
+Device Data + Location Data
+    ↓ (Pass to Renderer)
+Jinja2 Template Engine
+    ↓ (Apply Filters & Render)
+Device Configuration Files
+```
+
+### Components
+
+1. **Renderer**: Main orchestration class that:
+
+   * Queries Nautobot through GraphQL
+   * Loads and configures Jinja2 environment
+   * Dynamically registers custom filters
+   * Renders templates with device and location data
+
+2. **Filters**: Python functions that transform data within templates
+
+   * Located in `filters/` modules (bgp, device, ip, isis, location, vault)
+   * Automatically loaded and registered as Jinja2 filters
+   * Must have unique names across all modules
+
+3. **Templates**: Jinja2 templates organized by platform, role, and version
+
+   * **Entrypoint templates**: Top-level templates that generate final configs
+   * **Base templates**: Define configuration structure with named blocks
+   * **Include templates**: Implement specific configuration sections
+
+4. **Dataclasses**: Structured Python objects for type-safe data handling
+
+   * `Interface`: Network interface representation
+   * `BGPPeer`: BGP peering information
+   * `VRF`: Virtual routing and forwarding instance
+   * `ConnectedDevice`: Details about connected neighbors
+
+## Template Structure
+
+Templates are organized in a hierarchical directory structure:
+
+```text maxLines=0
+templates/
+├── {platform}/                      # e.g., "cumulus-linux", "arista-eos"
+│   ├── role_common/                 # Shared across all roles for this platform
+│   │   ├── base/                    # Base templates
+│   │   │   └── startup.yaml.j2
+│   │   └── include/                 # Common include templates
+│   │       ├── interface.j2
+│   │       ├── service.j2
+│   │       └── system.j2
+│   └── {role}/                      # e.g., "tan-leaf", "smn-spine", "wan"
+│       ├── base/                    # Role-specific base templates
+│       │   └── startup.yaml.j2
+│       ├── include/                 # Role-specific includes
+│       │   ├── interface.j2
+│       │   ├── router.j2
+│       │   └── qos.j2
+│       └── {version}/               # e.g., "5.6.0", "4.29.3M"
+│           └── entrypoint/          # Version-specific entrypoints
+│               ├── startup.yaml.j2
+│               └── boot-script.j2
+```
+
+### Template Lookup
+
+The renderer determines which entrypoint templates to use based on device attributes:
+
+1. **Platform**: Extracted from device's platform field (e.g., "Cumulus Linux" → `cumulus-linux`)
+2. **Role**: Extracted from device's role field (e.g., "TAN-Leaf" → `tan-leaf`)
+3. **Version**: Extracted from device's config context `intended-firmware.version`
+
+**Example Path**: `cumulus-linux/tan-leaf/5.6.0/entrypoint/startup.yaml.j2`
+
+## template-cli
+
+`template-cli` is a local template development command, not a command exposed by a running Config Manager deployment or by the installer on the target host. It is installed into any Python environment that installs the `nv-config-manager-templates` package; from the Config Manager source tree, run it with `uv run template-cli` from `components/network-templates`.
+
+Use `template-cli` to iterate on built-in templates or external template plugins before packaging them for the render service. Deployed environments use the same render engine through the Config Manager UI, render API, event consumers, and staged template plugin content.
+
+Common commands:
+
+| Command | Purpose |
+| :------ | :------ |
+| `cache-query` | Pull device and location GraphQL payloads once; write JSON fixtures for fast iteration and pytest. Supports `--output-plugin-file` when plugins add queries. |
+| `list-entrypoints` | Show which entrypoint templates match a device (live Nautobot, cached JSON, or test fixtures). |
+| `render` | Render an `--entrypoint` name or a full `--template` path. Accepts `--cached-data`, `--cached-location-data`, `--cached-plugin-data`, optional `--output-file`, and `--vault` to perform real Vault lookups instead of dummy secrets. |
+
+Without `--vault`, encrypted fields in CLI output are placeholders. Use `--vault` before copying rendered configs to lab hardware. For render regression tests, add expected files under `tests/resources/expected_config/` and matching Nautobot JSON under `tests/resources/nautobot/`, then run `uv run pytest` (see the `nv-config-manager-templates` README).
+
+## Template Inheritance
+
+The system uses Jinja2's template inheritance to enable code reuse and maintainability.
+
+### Three-Tier Inheritance Model
+
+```text
+Level 1: Platform Common (role_common)
+    ↓ extends
+Level 2: Role-Specific Base
+    ↓ extends
+Level 3: Version-Specific Entrypoint
+```
+
+### Example: Cumulus Linux TAN-Leaf
+
+**Level 1: `cumulus-linux/role_common/base/startup.yaml.j2`**
+
+```jinja
+{% block header %}
+- set:
+{% endblock header %}
+
+{% block acl %}{% endblock acl %}
+{% block bridge %}{% endblock bridge %}
+{% block evpn %}{% endblock evpn %}
+{% block interfaces required %}{% endblock interfaces %}
+{% block nve %}{% endblock nve %}
+{% block qos required %}{% endblock qos %}
+{% block router required %}{% endblock router %}
+
+{% block service %}
+{% include "cumulus-linux/role_common/include/service.j2" %}
+{% endblock service %}
+
+{% block system %}
+{% include "cumulus-linux/role_common/include/system.j2" %}
+{% endblock system %}
+
+{% block vrf required %}{% endblock vrf %}
+```
+
+This defines the overall structure with named blocks. The `required` keyword ensures child templates must implement these blocks.
+
+**Level 2: `cumulus-linux/tan-leaf/base/startup.yaml.j2`**
+
+```jinja
+{% extends "cumulus-linux/role_common/base/startup.yaml.j2" %}
+
+{% block bridge %}
+{% include "cumulus-linux/tan-leaf/include/bridge.j2" %}
+{% endblock bridge %}
+
+{% block interfaces %}
+{% include "cumulus-linux/tan-leaf/include/interface.j2" %}
+{% endblock interfaces %}
+
+{% block qos %}
+{% include "cumulus-linux/tan-leaf/include/qos.j2" %}
+{% endblock qos %}
+
+{% block router %}
+{% include "cumulus-linux/tan-leaf/include/router.j2" %}
+{% endblock router %}
+
+{% block vrf %}
+{% include "cumulus-linux/tan-leaf/include/vrf.j2" %}
+{% endblock vrf %}
+```
+
+This implements role-specific blocks by including role-specific templates.
+
+**Level 3: `cumulus-linux/tan-leaf/5.6.0/entrypoint/startup.yaml.j2`**
+
+```jinja
+{% extends "cumulus-linux/tan-leaf/base/startup.yaml.j2" %}
+```
+
+This simply extends the role base. If version 5.6.0 needs specific changes, blocks can be overridden here.
+
+### Include Template Inheritance
+
+Include templates can also inherit from each other:
+
+**Common Interface Template: `cumulus-linux/role_common/include/interface.j2`**
+
+```jinja
+    interface:
+{% block management %}
+{% set intf = device_data|interface_by_name("eth0") %}
+      eth0:
+        description: {{intf.description}}
+        ip:
+          address:
+            {{ intf.primary_ipv4 }}: {}
+          gateway:
+            {{ intf.primary_ipv4|gateway }}: {}
+        type: eth
+{% endblock management %}
+
+{% block loopback %}
+{% set intf = device_data|interface_by_name("lo") %}
+      lo:
+        ip:
+          address:
+            {{ intf.primary_ipv4 }}: {}
+        type: loopback
+{% endblock loopback %}
+
+{% block swp required %}{% endblock swp %}
+{% block vlan %}...{% endblock vlan %}
+```
+
+**Role-Specific Interface Template: `cumulus-linux/tan-leaf/include/interface.j2`**
+
+```jinja
+{% extends "cumulus-linux/role_common/include/interface.j2" %}
+
+{% block swp %}
+{% for intf in device_data|interfaces(prefix="swp") %}
+      {{ intf.name }}:
+        description: {{intf.description}}
+        qos:
+          congestion-control:
+            profile: tan-ecn-profile
+        type: swp
+{% endfor %}
+{% endblock swp %}
+```
+
+This inherits management and loopback blocks from common, only implementing swp-specific logic.
+
+## Jinja2 Filters
+
+Filters are the primary mechanism for extracting and transforming Nautobot data within templates. All filters are pure Python functions that take data as input and return processed output.
+
+### Filter Organization
+
+Filters are organized into modules by functionality:
+
+* **device.py**: Device-level attributes and interface operations
+* **bgp.py**: BGP-specific data transformations
+* **ip.py**: IP address and network calculations
+* **isis.py**: IS-IS protocol helpers
+* **location.py**: Site/location-level data (aggregates, ASNs, peers)
+* **vault.py**: Secret management and encryption
+
+### Device Filters
+
+Extract device attributes from Nautobot GraphQL data.
+
+#### Basic Device Information
+
+| Filter | Input | Output | Description | Nautobot Field |
+| :----- | :---- | :----- | :---------- | :------------- |
+| `hostname` | device_data | string | Device hostname | `device.name` |
+| `site_name` | device_data | string | Site name (handles nested locations) | `device.location` hierarchy |
+| `platform` | device_data | string | Platform name | `device.platform.name` |
+| `role` | device_data | string | Device role | `device.role.name` |
+| `model` | device_data | string | Device model | `device.device_type.model` |
+| `uuid` | device_data | string | Nautobot UUID | `device.id` |
+| `device_tags` | device_data | list[str] | List of device tags | `device.tags[].name` |
+| `has_tag` | device_data, tag | bool | Check if device has specific tag | `device.tags[].name` |
+| `desired_firmware` | device_data | string | Target firmware version | `device.config_context['intended-firmware']['version']` |
+
+**Example Usage:**
+
+```jinja
+hostname {{ device_data|hostname }}
+! Running {{ device_data|platform }} {{ device_data|desired_firmware }}
+! Role: {{ device_data|role }}
+```
+
+#### Routing & BGP
+
+| Filter | Input | Output | Description | Nautobot Field |
+| :----- | :---- | :----- | :---------- | :------------- |
+| `router_id` | device_data | string | Router ID (IPv4 without mask) | Loopback interface IP |
+| `asn` | device_data, vrf="default" | string | BGP ASN for device/VRF | `device.bgp_routing_instances[].autonomous_system.asn` or config context |
+| `local_asn` | device_data | string | Local ASN for Azure devices | `device.config_context['bgp']['local-asn']` |
+| `bgp_peers` | device_data, vrf="default" | list[BGPPeer] | List of BGP peers | `device.bgp_routing_instances[].endpoints` |
+
+**Example Usage:**
+
+```jinja
+router bgp {{ device_data|asn }}
+  router-id {{ device_data|router_id }}
+  {% for peer in device_data|bgp_peers %}
+  neighbor {{ peer.peer_ipv4 }} remote-as {{ peer.asn }}
+  {% endfor %}
+```
+
+#### Interface Operations
+
+| Filter | Input | Output | Description | Nautobot Field |
+| :----- | :---- | :----- | :---------- | :------------- |
+| `interfaces` | device_data, prefix=None, role=None, tags=None | list[Interface] | Filter interfaces by prefix/role/tags | `device.interfaces[]` |
+| `interface_by_name` | device_data, name, fail_if_missing=True | Interface or None | Get specific interface; set `fail_if_missing=False` to avoid raising when missing | `device.interfaces[]` where `name` matches |
+| `breakout_count` | device_data, interface_name | int | Number of breakout ports | Derived from child interfaces |
+| `loopback_prefix` | device_data | string | Parent prefix of loopback | `interfaces[name='lo'].ip_addresses[0].parent.parent.prefix` |
+
+**Interface Object Properties:**
+
+```python
+Interface(
+    name: str                           # Interface name (e.g., "swp1", "Ethernet1")
+    primary_ipv4: str | None            # Primary IPv4 address with prefix
+    primary_ipv6: str | None            # Primary IPv6 address with prefix
+    enabled: bool                       # Interface admin state
+    mtu: int                            # MTU size
+    tags: list[str]                     # Interface tags
+    untagged_vlan: int | None           # Untagged VLAN ID
+    tagged_vlans: list[int]             # List of tagged VLAN IDs
+    vrf: str                            # VRF name (default if none)
+    description: str                    # Interface description
+    role: str                           # Interface role
+    connected_interface: ConnectedInterface  # Details about connected device
+)
+```
+
+**Example Usage:**
+
+```jinja
+{% for intf in device_data|interfaces(prefix="swp", role="Uplink") %}
+interface {{ intf.name }}
+  description {{ intf.description }}
+  mtu {{ intf.mtu }}
+  {% if intf.primary_ipv4 %}
+  ip address {{ intf.primary_ipv4 }}
+  {% endif %}
+{% endfor %}
+```
+
+#### Specialized Filters
+
+| Filter | Input | Output | Description |
+| :----- | :---- | :----- | :---------- |
+| `spx_subnets` | device_data, ip_version=4 | list[dict] | Spectrum-X downlink /31 subnets with rail prefixes |
+| `tenant_vrfs` | device_data | list[VRF] | Tenant VRFs configured on device |
+| `console_server_ports` | device_data | list[ConsoleServerPort] | Console connections |
+| `helper_addresses_by_vlan` | device_data, location_data | dict | DHCP helper addresses keyed by VLAN ID |
+| `helper_addresses_by_vrf` | device_data, location_data | dict | Helper configuration grouped by VRF |
+| `users` | device_data | list[dict] | Usernames, optional roles, and password key references for templated local or AAA users |
+
+### BGP Filters
+
+Transform BGP ASN formats.
+
+| Filter | Input | Output | Description |
+| :----- | :---- | :----- | :---------- |
+| `asplain` | asdot_string | int | Convert ASDOT notation to ASPLAIN (e.g., "1.1" → 65537) |
+
+**Example:**
+
+```jinja
+router bgp {{ "1.100"|asplain }}  {# Results in: router bgp 65636 #}
+```
+
+### IP Filters
+
+Network calculations and IP address manipulations.
+
+| Filter | Input | Output | Description |
+| :----- | :---- | :----- | :---------- |
+| `gateway` | cidr | string | First usable IP in subnet |
+| `subnet` | cidr, prefix_len | list[str] | Subdivide network into smaller subnets |
+| `supernet` | cidr, prefix_len | string | Get parent supernet |
+| `ips` | cidr | list[str] | List all IPs in network |
+| `netmask_notation` | cidr | tuple[str, str] | Convert CIDR to (address, netmask) |
+| `get_peer_ip` | cidr | string | Get the other IP in a /31 point-to-point link |
+| `network_address` | cidr | string | Extract network address from host IP |
+| `host_range` | cidr | tuple[str, str] | Get (first_host, last_host) for DHCP ranges |
+| `rfc3442_classless_static_route` | cidr, next_hop | string | Format RFC3442 static route for DHCP |
+
+**Example Usage:**
+
+```jinja
+{# Gateway calculation #}
+ip route 0.0.0.0/0 {{ intf.primary_ipv4|gateway }}
+
+{# Subnet division #}
+{% for subnet in "10.0.0.0/16"|subnet(24) %}
+ip prefix-list SUBNETS permit {{ subnet }}
+{% endfor %}
+
+{# Peer IP for /31 links #}
+{% set peer_ip = intf.primary_ipv4|get_peer_ip %}
+neighbor {{ peer_ip }} remote-as {{ peer_asn }}
+
+{# DHCP host range #}
+{% set first, last = subnet|host_range %}
+range {{ first }} {{ last }};
+```
+
+### ISIS Filters
+
+IS-IS protocol helpers.
+
+| Filter | Input | Output | Description |
+| :----- | :---- | :----- | :---------- |
+| `isis_system_id` | loopback_ip | string | Generate IS-IS system ID from loopback (e.g., "1.2.3.4" → "49.0039.8037.0001.0002.0003.0004.00") |
+
+**Example:**
+
+```jinja
+router isis CORE
+  net {{ device_data|router_id|isis_system_id }}
+```
+
+### Location Filters
+
+Extract site/location-level data (operates on `location_data`, not `device_data`).
+
+| Filter | Input | Output | Description | Nautobot Field |
+| :----- | :---- | :----- | :---------- | :------------- |
+| `site_aggregates` | location_data, role_name, tags=None, exclude_tags=None | list[str] | Prefixes with specific role; optional tag include/exclude lists | `location.prefixes[]` filtered by role |
+| `site_asn` | location_data | string | Site-level BGP ASN | `location.config_contexts[0].data.site_asn` |
+| `route_server_peers` | location_data | list[BGPPeer] | BGP route server peers at site | `location.route_servers[]` |
+| `wan_loopbacks` | location_data | list[tuple] | WAN router names and loopbacks | `location.wan_devices[].interfaces[]` |
+| `uc_jumphost_prefixes` | location_data | list[str] | UC jumphost prefixes | `location.uc_jumphost_prefixes[]` |
+
+**Example Usage:**
+
+```jinja
+{# Get site aggregates for advertisement #}
+{% for aggregate in location_data|site_aggregates("Aggregate", tags=["bgp-advertise"]) %}
+network {{ aggregate }}
+{% endfor %}
+
+{# Peer with route servers #}
+{% for rs in location_data|route_server_peers %}
+neighbor {{ rs.peer_ipv4 }} remote-as {{ rs.asn }}
+neighbor {{ rs.peer_ipv4 }} peer-group {{ rs.peer_group }}
+{% endfor %}
+```
+
+### Vault Filters
+
+Secret management and encryption (for passwords, keys, and so on).
+
+| Filter | Input | Output | Description |
+| :----- | :---- | :----- | :---------- |
+| `load_secret` | key, region=None, site=None | string | Load secret from Hashicorp Vault |
+| `encrypt` | plaintext, algo, site=None | string | Encrypt using "sha512", "md5", or "ciscot7"; optional `site` for salt lookup |
+| `get_password_key` | device_data, username | string | Get password key for user from config context |
+
+**Secret Loading Modes:**
+
+1. **Production**: Queries Hashicorp Vault directly
+2. **Kubernetes**: Reads from injected secret files
+3. **Development**: Returns dummy value (`{path}:{key}`) when `NV_CONFIG_MANAGER_SKIP_VAULT=1`
+
+**Example Usage:**
+
+```jinja
+{# Load and encrypt password #}
+{% set admin_key = device_data|get_password_key("admin") %}
+{% set admin_pass = admin_key|load_secret(site=device_data|site_name) %}
+username admin secret {{ admin_pass|encrypt("sha512") }}
+
+{# Load TACACS key #}
+{% set tacacs_key = "tacacs_key"|load_secret(region="US-WEST") %}
+tacacs-server key {{ tacacs_key|encrypt("ciscot7") }}
+```
+
+## Nautobot Data Model
+
+The system queries Nautobot using GraphQL to retrieve comprehensive device and location data.
+
+### Device Query Structure
+
+The device query (`query_config_data_by_device_id_v2.graphql`) retrieves:
+
+```text maxLines=0
+device
+├── Basic Attributes: id, name, serial, role, platform, device_type, tenant
+├── tags[]: List of device tags
+├── location: Site/location hierarchy
+├── config_context: Custom JSON data (intended firmware, BGP config, and so on)
+├── interfaces[]
+│   ├── Basic: name, type, mtu, enabled, description, mgmt_only
+│   ├── role: Interface role
+│   ├── tags[]: Interface tags
+│   ├── vrf: VRF assignment with RD and route targets
+│   ├── ip_addresses[]: IPv4/IPv6 addresses with parent prefix hierarchy
+│   ├── member_interfaces[]: LAG members
+│   ├── parent_interface: Parent for sub-interfaces
+│   ├── untagged_vlan: Access VLAN
+│   ├── tagged_vlans[]: Trunk VLANs
+│   └── connected_interface
+│       ├── name, ip_addresses[]
+│       └── device: Connected device details (name, role, tenant, tags, config_context)
+├── bgp_routing_instances[]
+│   ├── status, autonomous_system (ASN)
+│   ├── router_id (with interface and VRF)
+│   └── endpoints[] (BGP peers)
+│       ├── peer_group
+│       ├── source_interface
+│       └── peer: Remote device routing instance
+├── console_server_ports[]
+│   └── connected_console_port
+│       └── device: Connected device
+└── nvlink_domain: NVLink topology data
+```
+
+### Location Query Structure
+
+The location query (`query_location_data.graphql`) retrieves site-level data:
+
+```text maxLines=0
+location
+├── name, location_type
+├── config_contexts[]: Site-level configuration (ASN, and so on)
+├── prefixes[]: IP prefixes at this site
+│   ├── prefix, role
+│   └── tags[]
+├── route_servers[]: BGP route servers
+│   ├── name, config_context
+│   └── interfaces[].ip_addresses[]
+├── wan_devices[]: WAN routers
+│   ├── name
+│   └── interfaces[] (for loopback IPs)
+└── uc_jumphost_prefixes[]: Jumphost prefixes
+```
+
+### Config Context
+
+The `config_context` field contains custom JSON data defined in Nautobot:
+
+```json
+{
+  "intended-firmware": {
+    "version": "5.6.0",
+    "image": "cumulus-linux-5.6.0.bin"
+  },
+  "bgp": {
+    "asn": 65100,
+    "local-asn": 65200
+  },
+  "password_mappings": {
+    "default": {
+      "admin": {
+        "password": "admin_password",
+        "rotation": "v1",
+        "role": "admin"
+      }
+    }
+  }
+}
+```
+
+Allowed password-mapping roles are `admin`, `ro`, and `rw`.
+
+## Creating Templates
+
+### Determine Template Location
+
+Based on your device, identify:
+
+1. **Platform**: `cumulus-linux`, `arista-eos`, `mlnx-os`, `nv-os`
+2. **Role**: `tan-leaf`, `smn-spine`, `wan`, `oob-switch`, and so on
+3. **Version**: Firmware version like `5.6.0`, `4.29.3M`
+
+### Create or Extend Base Template
+
+If creating a new role, start with a base template:
+
+**File**: `{platform}/{role}/base/{config-file}.j2`
+
+```jinja
+{% extends "{platform}/role_common/base/{config-file}.j2" %}
+
+{% block interfaces %}
+{% include "{platform}/{role}/include/interface.j2" %}
+{% endblock interfaces %}
+
+{% block router %}
+{% include "{platform}/{role}/include/router.j2" %}
+{% endblock router %}
+
+{# Override other blocks as needed #}
+```
+
+### Create Include Templates
+
+Implement specific configuration sections:
+
+**File**: `{platform}/{role}/include/interface.j2`
+
+```jinja
+{# Can extend common if desired #}
+{% extends "{platform}/role_common/include/interface.j2" %}
+
+{% block swp %}
+{% for intf in device_data|interfaces(prefix="swp") %}
+interface {{ intf.name }}
+  description {{ intf.description }}
+  {% if intf.primary_ipv4 %}
+  ip address {{ intf.primary_ipv4 }}
+  {% endif %}
+  {% if not intf.enabled %}
+  shutdown
+  {% endif %}
+{% endfor %}
+{% endblock swp %}
+```
+
+### Create Entrypoint Template
+
+**File**: `{platform}/{role}/{version}/entrypoint/{config-file}.j2`
+
+```jinja
+{% extends "{platform}/{role}/base/{config-file}.j2" %}
+
+{# Override blocks if version-specific changes needed #}
+{% block new_feature %}
+{% if device_data|has_tag("enable-new-feature") %}
+! New feature configuration for version {{ device_data|desired_firmware }}
+new-feature enable
+{% endif %}
+{% endblock new_feature %}
+```
+
+### Configure Nautobot
+
+Ensure the device in Nautobot has:
+
+1. **Platform** set correctly
+2. **Role** set correctly
+3. **Config Context** with `intended-firmware.version` matching your template path
+4. Required interface, IP, and BGP data populated
+
+### Test your template
+
+1. Cache device data:
+
+   ```bash
+   uv run template-cli cache-query --hostname my-device \
+     --output-file tests/resources/nautobot/my-device.json \
+     --output-location-file tests/resources/nautobot/MY-SITE.json
+   ```
+
+2. Render locally:
+
+   ```bash
+   uv run template-cli render \
+     --cached-data tests/resources/nautobot/my-device.json \
+     --cached-location-data tests/resources/nautobot/MY-SITE.json \
+     --entrypoint startup.yaml.j2
+   ```
+
+3. Add expected output: save the rendered output to `tests/resources/expected_config/my-device_startup.yaml` (naming convention is `{hostname}_{entrypoint}`).
+
+4. Run tests: `uv run pytest tests/nv_config_manager_templates/test_render.py`.
+
+## Best Practices
+
+### Template Design
+
+1. **Use Inheritance**: Do not duplicate configuration. Extend base templates and override only what differs.
+
+2. **Keep Includes Focused**: Each include template should handle one logical section (interfaces, routing, QoS, and so on).
+
+3. **Fail Explicitly**: Use filters with `fail_if_missing=True` (default) to catch data issues early.
+
+4. **Handle Optional Data**: Check for None before using optional fields:
+
+    ```jinja
+    {% if intf.description %}
+    description {{ intf.description }}
+    {% endif %}
+    ```
+
+5. **Use Filters for Logic**: Move complex logic into filters rather than templates:
+
+    ```jinja
+    {# Bad - complex logic in template #}
+    {% if intf.connected_interface and not intf.primary_ipv4 and not intf.untagged_vlan %}
+
+    {# Good - logic in filter #}
+    {% if intf.has_bgp_peer() %}
+    ```
+
+6. **Whitespace Management**: Jinja2 `trim_blocks=True` is enabled. Use `{%-` and `-%}` for additional control:
+
+    ```jinja
+    {%- for item in items %}
+    line {{ item }}
+    {%- endfor %}
+    ```
+
+### Filter Development
+
+1. **Single Responsibility**: Each filter should do one thing well.
+
+2. **Type Hints**: Use type hints for clarity:
+
+    ```python
+    def my_filter(value: dict[str, Any], option: str = "default") -> list[str]:
+        """Clear docstring explaining purpose."""
+        ...
+    ```
+
+3. **Error Handling**: Raise `FilterException` with clear messages:
+
+    ```python
+    if not result:
+        raise FilterException(f"No data found for {identifier}")
+    ```
+
+4. **Test Coverage**: Every filter must have unit tests:
+
+    ```python
+    def test_my_filter(device_fixture):
+        result = my_filter(device_fixture, "option")
+        assert result == expected_value
+    ```
+
+5. **Immutable Data**: Use `frozen=True` dataclasses to prevent accidental mutations.
+
+### Nautobot Data Management
+
+1. **Consistent Naming**: Follow consistent naming conventions for devices, interfaces, VLANs, and so on.
+
+2. **Config Context**: Use config context for:
+
+   * Intended firmware versions
+   * BGP ASNs and configuration
+   * Password key mappings
+   * Feature flags
+
+3. **Interface Roles**: Define and use interface roles consistently (Uplink, Downlink, Management, and so on)
+
+4. **Tags**: Use tags for:
+
+   * Feature enablement (`enable-feature-x`)
+   * Grouping devices (`production`, `staging`)
+   * Interface classification
+
+5. **IP Hierarchy**: Maintain proper prefix parent-child relationships:
+
+   * Rail aggregates → Device prefixes → /31 point-to-point links
+
+### Version Management
+
+1. **Version-Specific Changes Only**: Only create version-specific templates when absolutely necessary.
+
+2. **Feature Detection**: When possible, use tags rather than version checks:
+
+    ```jinja
+    {# Better #}
+    {% if device_data|has_tag("supports-feature-x") %}
+
+    {# Avoid #}
+    {% if device_data|desired_firmware >= "5.0.0" %}
+    ```
+
+3. **Deprecation Path**: When deprecating old versions, keep templates for graceful migration.
+
+## Examples
+
+### Simple Interface Configuration
+
+**Template**: `my-platform/my-role/include/interface.j2`
+
+```jinja
+{% for intf in device_data|interfaces(prefix="Ethernet") %}
+interface {{ intf.name }}
+  description {{ intf.description }}
+  mtu {{ intf.mtu }}
+  {% if intf.primary_ipv4 %}
+  ip address {{ intf.primary_ipv4 }}
+  {% endif %}
+  {% if intf.enabled %}
+  no shutdown
+  {% else %}
+  shutdown
+  {% endif %}
+{% endfor %}
+```
+
+### BGP Configuration with Peer Groups
+
+**Template**: `my-platform/my-role/include/bgp.j2`
+
+```jinja
+router bgp {{ device_data|asn }}
+  router-id {{ device_data|router_id }}
+
+  {# Define peer groups #}
+  neighbor SPINE peer-group
+  neighbor SPINE remote-as {{ location_data|site_asn }}
+  neighbor SPINE send-community extended
+
+  {# Configure individual peers #}
+  {% for peer in device_data|bgp_peers %}
+  {% if peer.peer_group == "SPINE" %}
+  neighbor {{ peer.peer_ipv4 }} peer-group SPINE
+  neighbor {{ peer.peer_ipv4 }} description {{ peer.description }}
+  {% endif %}
+  {% endfor %}
+
+  {# Address families #}
+  address-family ipv4 unicast
+    {% for aggregate in location_data|site_aggregates("Aggregate") %}
+    network {{ aggregate }}
+    {% endfor %}
+  exit-address-family
+```
+
+### Conditional Configuration Based on Tags
+
+**Template**: `my-platform/my-role/include/features.j2`
+
+```jinja
+{# Enable LLDP only on devices with the tag #}
+{% if device_data|has_tag("enable-lldp") %}
+lldp run
+{% for intf in device_data|interfaces(prefix="Ethernet") %}
+interface {{ intf.name }}
+  lldp transmit
+  lldp receive
+{% endfor %}
+{% endif %}
+
+{# Configure QoS on tagged interfaces #}
+{% for intf in device_data|interfaces(tags=["qos-enabled"]) %}
+interface {{ intf.name }}
+  qos trust dscp
+  qos cos {{ intf.tags|select("match", "^cos-\\d+$")|first|replace("cos-", "") }}
+{% endfor %}
+```
+
+### DHCP Server Configuration
+
+**Template**: `cumulus-linux/cin-leaf/base/dhcpd.conf.j2`
+
+```jinja
+default-lease-time 600;
+max-lease-time 7200;
+ddns-update-style none;
+authoritative;
+
+{% for intf in device_data|interfaces(role="Tenant") %}
+{% if intf.primary_ipv4 %}
+subnet {{ intf.primary_ipv4|network_address|netmask_notation|first }}
+       netmask {{ intf.primary_ipv4|network_address|netmask_notation|last }} {
+  {% set first_host, last_host = intf.primary_ipv4|network_address|host_range %}
+  range {{ first_host }} {{ last_host }};
+  option routers {{ intf.primary_ipv4|gateway }};
+  option domain-name-servers 8.8.8.8, 8.8.4.4;
+
+  {# Static routes via RFC3442 #}
+  {% set routes = [] %}
+  {% for aggregate in location_data|site_aggregates("Aggregate") %}
+  {% set _ = routes.append(aggregate|rfc3442_classless_static_route(intf.primary_ipv4|gateway)) %}
+  {% endfor %}
+  option rfc3442-classless-static-routes {{ routes|join(', ') }};
+}
+{% endif %}
+{% endfor %}
+```
+
+### Multi-VRF BGP Configuration
+
+**Template**: `my-platform/my-role/include/bgp-vrf.j2`
+
+```jinja
+{% for vrf in device_data|tenant_vrfs %}
+router bgp {{ device_data|asn("default") }}
+  vrf {{ vrf.name }}
+    router-id {{ device_data|router_id }}
+
+    {# VRF-specific peers #}
+    {% for peer in device_data|bgp_peers(vrf=vrf.name) %}
+    neighbor {{ peer.peer_ipv4 }} remote-as {{ peer.asn }}
+    neighbor {{ peer.peer_ipv4 }} description {{ peer.description }}
+    {% endfor %}
+
+    {# L3 VNI for EVPN #}
+    address-family ipv4 unicast
+      redistribute connected
+      redistribute static
+    exit-address-family
+
+    address-family l2vpn evpn
+      advertise ipv4 unicast
+    exit-address-family
+  exit-vrf
+{% endfor %}
+```
+
+### Secret Management
+
+**Template**: `my-platform/my-role/include/management.j2`
+
+```jinja
+{# Load site-specific secrets #}
+{% set site = device_data|site_name %}
+
+{# Admin user with encrypted password #}
+{% set admin_key = device_data|get_password_key("admin") %}
+{% set admin_password = admin_key|load_secret(site=site) %}
+username admin privilege 15 secret {{ admin_password|encrypt("sha512") }}
+
+{# TACACS configuration #}
+{% set tacacs_key = "tacacs_shared_key"|load_secret(site=site) %}
+tacacs-server host 10.0.0.10 key {{ tacacs_key|encrypt("ciscot7") }}
+tacacs-server host 10.0.0.11 key {{ tacacs_key|encrypt("ciscot7") }}
+
+{# SNMP community string #}
+{% set snmp_community = "snmp_ro_community"|load_secret(site=site) %}
+snmp-server community {{ snmp_community }} ro
+```
+
+### Interface with Connected Device Context
+
+**Template**: `my-platform/my-role/include/interface-advanced.j2`
+
+```jinja
+{% for intf in device_data|interfaces(prefix="Ethernet") %}
+interface {{ intf.name }}
+  description {{ intf.description }}
+
+  {% if intf.connected_interface %}
+  {# We know what's on the other end #}
+  {% set peer = intf.connected_interface.device %}
+
+  {# Configure based on peer role #}
+  {% if peer.role == "Spine" %}
+  {# Uplink to spine #}
+  no switchport
+  ip address {{ intf.primary_ipv4 }}
+
+  {% elif peer.role == "GPU" %}
+  {# Downlink to GPU server #}
+  switchport mode access
+  switchport access vlan {{ intf.untagged_vlan }}
+  spanning-tree portfast
+
+  {% elif peer.role in ["Storage-Server", "Control-Server"] %}
+  {# Downlink to server with LAG #}
+  channel-group {{ intf.name|regex_replace('Ethernet(\\d+)', '\\1') }} mode active
+
+  {% endif %}
+  {% endif %}
+{% endfor %}
+```
+
+## Conclusion
+
+This template rendering system provides a powerful, maintainable approach to network configuration management. By leveraging:
+
+* **Jinja2 inheritance** for code reuse
+* **Custom filters** for data transformation
+* **Nautobot as source of truth** for structured data
+* **Python dataclasses** for type safety
+
+You can build scalable configuration templates that adapt to diverse network environments while maintaining consistency and reliability.
+
+For support or questions about template development, contact the CFA team or the `nv-config-manager-templates` README.
+
+* [Filter quick reference](filter-quick-reference.mdx)
+* [Template expansion walkthrough](template-expansion.mdx)
+* [Render Service](render-service.mdx)
+* [API Reference](api:render-api)
