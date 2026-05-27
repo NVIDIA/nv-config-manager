@@ -90,7 +90,7 @@ import json
 import os
 import threading
 import urllib.parse
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from configparser import ConfigParser
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -922,7 +922,7 @@ def install_identity_probe(
 
         @app.middleware("http")
         async def require_auth_by_default(
-            request: Request, call_next: Callable[[Request], Any]
+            request: Request, call_next: Callable[[Request], Awaitable[Response]]
         ) -> Response:
             """Require auth on every route except explicit unauthenticated paths."""
             path = _normalize_request_path(request.url.path)
