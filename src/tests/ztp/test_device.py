@@ -16,6 +16,7 @@
 
 from unittest.mock import MagicMock, patch
 
+from nv_config_manager.common.config import get_internal_auth_headers
 from nv_config_manager.ztp.device import DeviceData
 
 
@@ -48,6 +49,7 @@ def test_config_store_client():
         assert call_args[0][1] == "intended"
         assert call_args[1]["verify"] is False  # No SSL verification for internal HTTP
         assert call_args[1]["client_certificate"] is None  # No mTLS for internal communication
+        assert call_args[1]["headers"] is get_internal_auth_headers
         assert client == mock_client_instance
 
 
