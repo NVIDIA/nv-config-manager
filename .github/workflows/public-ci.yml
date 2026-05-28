@@ -4,9 +4,7 @@ on:
   push:
     branches:
       - main
-      - "zb/ci-cd"
       - "pull-request/*"
-  workflow_dispatch:
 
 permissions:
   contents: read

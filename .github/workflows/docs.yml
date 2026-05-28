@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - "zb/ci-cd"
       - "pull-request/*"
     paths:
       - "docs/**"
@@ -12,7 +11,6 @@ on:
       - "installer/scripts/screenshot_tui.py"
       - "Makefile"
       - ".github/workflows/docs.yml"
-  workflow_dispatch:
 
 permissions:
   contents: read

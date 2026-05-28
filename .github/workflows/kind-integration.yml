@@ -30,6 +30,7 @@ env:
 jobs:
   integration:
     name: Kind Integration
+    if: startsWith(github.ref, 'refs/heads/pull-request/')
     runs-on: linux-amd64-cpu32m
     timeout-minutes: 90
     env:
