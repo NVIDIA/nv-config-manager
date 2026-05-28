@@ -8,7 +8,7 @@ grafana_dashboard="1" in all namespaces and mounts them into Grafana.
 
 The dashboard JSON is read from deploy/helm/dashboards/nv-config-manager-overview.json
 (the real file, kept inside the chart so ArgoCD / `helm package` can stage
-just `deploy/helm` without out-of-tree references; developer-docs/logging.md links
+just `deploy/helm` without out-of-tree references; docs/overview/observability.mdx links
 to it directly). That file is portable: it ships both `__inputs` (so
 internal Grafana imports via the "Upload JSON file" UI prompt-bind to
 whatever datasources the user has) and `templating.list` datasource

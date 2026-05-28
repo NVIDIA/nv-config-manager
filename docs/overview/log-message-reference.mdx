@@ -1,0 +1,370 @@
+---
+title: Log Message Reference
+sidebar-title: Log Message Reference
+position: 70
+---
+
+This page is an operational reference for Config Manager log categories and
+common warning or error messages. Use it when a dashboard, Loki query, or pod
+log stream surfaces a message and you need to map it back to the owning service
+and likely subsystem.
+
+The structured log fields most useful for triage are:
+
+| Field | Use |
+| :---- | :-- |
+| `service` | Service that emitted the log, such as `render`, `dhcp`, `ztp`, `temporal`, or `config-store`. |
+| `category` | Subsystem label used for filtering and dashboard panels. |
+| `levelname` | Severity: `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL`. |
+| `message` | Human-readable message template. |
+| `exc_info` | Python traceback or exception detail when present. |
+
+## Category Index
+
+| Category | Description | Services |
+| :------- | :---------- | :------- |
+| `render` | Config rendering operations, including template execution and commits | Render |
+| `render.event` | NATS event processing in the render pipeline | Render |
+| `render.api` | Render service HTTP API and consumer management | Render |
+| `dhcp` | DHCP config generation and Kea interactions | DHCP |
+| `dhcp.data` | DHCP data validation issues from Nautobot modeling | DHCP |
+| `config_store` | Config storage and retrieval operations | Config Store |
+| `config_store.api` | Config Store HTTP API and startup | Config Store |
+| `ztp` | ZTP file serving, SFTP, sync, and firmware streaming | ZTP |
+| `ztp.api` | ZTP HTTP API, provisioning callbacks, and serial validation | ZTP |
+| `temporal.workflow` | Workflow orchestration, stages, and schedulers | Temporal |
+| `temporal.activity` | Activity implementations and supporting clients | Temporal |
+| `temporal.api` | Temporal HTTP API, codec server, dynamic endpoints, and RBAC | Temporal |
+| `nautobot` | Nautobot API, GraphQL, and plugin interactions | Render, DHCP, Config Store, Temporal |
+| `auth` | Authentication, authorization, and OIDC token management | All |
+| `nats` | NATS messaging infrastructure | Render, Temporal |
+| `cache` | Redis cache and Nautobot device-cache refresh operations | Config Store |
+
+## Message Reference
+
+### `render`
+
+Representative INFO messages:
+
+- `"Rendering configuration for %s with commit message '%s'"`
+- `"Produced commit %s for %s, affected files: %s"`
+
+### `render.event`
+
+Representative INFO messages:
+
+- `"Consumer %s connected to NATS."`
+- `"No event handler implemented for %s, ignoring message."`
+
+Warning and error messages:
+
+| Level | Message |
+| :---- | :------ |
+| WARNING | `"Error during task cleanup: %s"` |
+| WARNING | `"No responders available for ack (likely during shutdown), treating as success"` |
+| ERROR | `"Error acknowledging message: %s"` |
+| WARNING | `"No responders available for nak (likely during shutdown), ignoring"` |
+| ERROR | `"Error nacking message: %s"` |
+| ERROR | `"Unhandled NATS error"` |
+| WARNING | `"NATS connection disconnected."` |
+| WARNING | `"NATS connection reconnected."` |
+| ERROR | `"NATS connection or JetStream is None, cannot run consumer"` |
+| WARNING | `"Consumer %s cycle failed, recreating: %s"` |
+| WARNING | `"Fetch error for consumer %s, recreating: %s"` |
+| WARNING | `"Error unsubscribing: %s"` |
+| ERROR | `"Failed to ensure consumer exists: %s"` |
+| ERROR | `"Error in message handler: %s"` |
+| ERROR | `"Failed to nak message after handler error: %s"` |
+| WARNING | `"Error closing NATS connection: %s"` |
+| WARNING | `"Could not schedule close_connection task: %s"` |
+| ERROR | `"Error processing nautobot message"` |
+| ERROR | `"Error processing device change message: %s"` |
+| ERROR | `"Error releasing lock for %s"` |
+| ERROR | `"Error processing template change message"` |
+| ERROR | `"Error processing event: %s"` |
+| ERROR | `"Error queuing render jobs for %s update %s"` |
+| WARNING | `"Failed to queue device %s: %s"` |
+
+### `render.api`
+
+Representative INFO messages:
+
+- `"Consumer %s has %s pending messages"`
+- `"Successfully deleted consumer %s"`
+
+Warning and error messages:
+
+| Level | Message |
+| :---- | :------ |
+| WARNING | `"Could not get info for consumer %s: %s"` |
+| ERROR | `"Error listing consumers: %s"` |
+| ERROR | `"Error resetting consumer %s: %s"` |
+| ERROR | `"Failed to delete consumer '%s': %s"` |
+| ERROR | `"Error processing consumer %s: %s"` |
+| ERROR | `"Error resetting all consumers: %s"` |
+| ERROR | `"Error getting consumer info for %s: %s"` |
+
+### `dhcp`
+
+Representative INFO messages:
+
+- `"Generating configuration from nautobot data."`
+- `"KEA DHCP{ip_version} Configuration Refresh Complete."`
+
+Warning and error messages:
+
+| Level | Message |
+| :---- | :------ |
+| WARNING | `"Could not fetch current Kea config, using defaults: {exc}"` |
+| ERROR | `"Error refreshing the KEA config: {exc}"` |
+
+### `dhcp.data`
+
+This category mostly reports bad or conflicting Nautobot data.
+
+Warning and error messages:
+
+| Level | Message |
+| :---- | :------ |
+| WARNING | `"Reserved IP %s is not ZTP enabled, skipping"` |
+| WARNING | `"Reserved IP %s is aggregate status mismatch, skipping"` |
+| WARNING | `"Static reservation for %s is being overwritten by a generated reservation"` |
+| WARNING | `"IP address conflict: automatic reservation for %s (%s) has the same IP %s as %s reservation for %s. Using automatic reservation."` |
+| WARNING | `"IP address %s in subnet %s has both dhcp-pool and dhcp-reserve tags; ignoring dhcp-reserve and treating as pool only"` |
+| WARNING | `"Undefined variable in option %s: %s, leaving template as is."` |
+| WARNING | `"Template syntax error in option %s: %s, leaving as is."` |
+| WARNING | `"Subnet conflict: auto-generated subnet %s conflicts with existing subnet. Using auto-generated subnet."` |
+| ERROR | `"Conflicting values for option '{opt}': '{value1}' vs '{value2}'"` |
+| ERROR | `"Subnet {prefix} {label} for {address} conflicts with existing option {opt}: ..."` |
+
+### `config_store`
+
+Representative INFO messages:
+
+- `"No diff for %s/%s"`
+
+Warning and error messages:
+
+| Level | Message |
+| :---- | :------ |
+| ERROR | `"Failed to enrich device %s: %s"` |
+
+### `config_store.api`
+
+Representative INFO messages:
+
+- `"Initializing Redis-based Nautobot cache service (read-only)"`
+- `"API service shutting down"`
+
+Warning and error messages:
+
+| Level | Message |
+| :---- | :------ |
+| ERROR | `"Redis search failed, falling back to DB query: %s"` |
+| ERROR | `"Failed to initialize Nautobot cache service: %s"` |
+
+### `ztp`
+
+Representative INFO messages:
+
+- `"Streaming file: %s"`
+- `"Starting file sync process"`
+
+Warning and error messages:
+
+| Level | Message |
+| :---- | :------ |
+| ERROR | `"Unexpected error: {exc}"` |
+| ERROR | `"Error closing file handle: %s"` |
+| ERROR | `"Error reading from file: %s"` |
+| ERROR | `"Error loading file %s for stat: %s"` |
+| ERROR | `"S3 file not found: %s/%s/%s"` |
+| ERROR | `"Error getting S3 metadata: %s"` |
+| ERROR | `"Error loading file %s: %s"` |
+| ERROR | `"Error creating SFTP handle: %s"` |
+| ERROR | `"No channel established"` |
+| WARNING | `"Socket error from %s: %s"` |
+| ERROR | `"Error handling connection: %s"` |
+| ERROR | `"Error accepting connection: %s"` |
+| ERROR | `"Server error: %s"` |
+| ERROR | `"Error during streaming: %s"` |
+
+### `ztp.api`
+
+Warning and error messages:
+
+| Level | Message |
+| :---- | :------ |
+| ERROR | `"Error invoking backup workflow: %s"` |
+| ERROR | `"Serial number mismatch observed on device %s, expected: %s, observed: %s."` |
+
+### `temporal.workflow`
+
+Representative INFO messages:
+
+- `"Scheduling backups for %s"`
+- `"Backup scheduling updates complete."`
+
+Warning and error messages:
+
+| Level | Message |
+| :---- | :------ |
+| ERROR | `"Received approve signal for non-existent stage: %s"` |
+| ERROR | `"Received reject signal for non-existent stage: %s"` |
+| ERROR | `"Received retry signal for non-existent stage: %s"` |
+| WARNING | `"Ignoring retry request for non-retryable stage."` |
+| WARNING | `"Ignoring retry request for non-failed stage."` |
+| ERROR | `"No RBAC configuration found for %s"` |
+| ERROR | `"Error querying desired devices from Nautobot, leaving schedules unchanged."` |
+
+### `temporal.activity`
+
+Representative INFO messages:
+
+- `"Scanning range %s-%s for Redfish hosts"`
+- `"Creating eth0 interface for %s"`
+
+Warning and error messages:
+
+| Level | Message |
+| :---- | :------ |
+| WARNING | `"Redfish vendor %s not supported for host %s, skipping"` |
+| WARNING | `"Server %s has %s installed devices but %s DPUs, skipping"` |
+| WARNING | `"ARP entry missing data, skipping: %s"` |
+| WARNING | `"Authentication failed for %s@%s (attempt %d/%d): %s"` |
+| WARNING | `"Duplicate MAC address %s on device %s: using newest entry"` |
+| WARNING | `"Error querying %s, rebuilding: %s"` |
+| WARNING | `"UFM authentication failed for %s (attempt %d/%d): HTTP %d"` |
+| ERROR | `"Failed to invoke backup workflow for device %s: %s"` |
+| ERROR | `"Failed to post batch. HTTP status: %d"` |
+| ERROR | `"Request failed with status %d: %s"` |
+| ERROR | `"Request error: %s"` |
+| WARNING | `"Server error (500). Retry attempt %d/%d in %d seconds..."` |
+
+### `temporal.api`
+
+Representative INFO messages:
+
+- `"RBAC configuration loaded: %s workflows found"`
+- `"Registered dynamic endpoint: %s -> %s"`
+
+Warning and error messages:
+
+| Level | Message |
+| :---- | :------ |
+| ERROR | `"Workflow %s of type %s has not implemented the %s query."` |
+| ERROR | `"Workflow %s of type %s is in a bad state and cannot accept queries."` |
+| ERROR | `"User %s with roles %s is not authorized to execute workflow %s"` |
+| ERROR | `"No RBAC configuration found for workflow %s"` |
+| ERROR | `"Workflow %s of type %s does not have %s search attributes"` |
+| ERROR | `"User %s with roles %s does not have permission to %s workflow %s of type %s"` |
+| WARNING | `"Workflow %s does not use WorkflowMetadataMixin, skipping dynamic registration"` |
+| WARNING | `"Workflow %s has incomplete metadata, skipping dynamic registration"` |
+| WARNING | `"Workflow %s missing endpoint path or input class"` |
+| ERROR | `"Failed to register endpoint for %s: %s"` |
+| ERROR | `"Codec server failed to parse request body"` |
+| ERROR | `"Codec server decode failed"` |
+| ERROR | `"Codec server encode failed"` |
+
+### `nautobot`
+
+Representative INFO messages:
+
+- `"Fetched %d devices in current page (offset: %d)"`
+- `"Found namespaces: %s"`
+
+Warning and error messages:
+
+| Level | Message |
+| :---- | :------ |
+| WARNING | `"Device %s not found in Nautobot"` |
+| ERROR | `"Failed to get device %s: %s"` |
+| ERROR | `"Failed to parse device %s: %s"` |
+| ERROR | `"Failed to get all devices: %s"` |
+| ERROR | `"Error parsing interface %s"` |
+| ERROR | `"Failed to create VRFs"` |
+
+### `auth`
+
+Representative INFO messages:
+
+- `"Opening browser for OIDC authentication..."`
+- `"Authentication successful!"`
+
+Warning and error messages:
+
+| Level | Message |
+| :---- | :------ |
+| WARNING | `"Unexpected error validating JWT with provider %s"` |
+| WARNING | `"Failed to parse mTLS certificate from header"` |
+| WARNING | `"User %s denied: not in any allowed group"` |
+| WARNING | `"User %s denied: missing required group (needs one of %s, has %s)"` |
+| WARNING | `"Error loading cached token: %s"` |
+| ERROR | `"Token exchange failed: %s"` |
+
+### `nats`
+
+Representative INFO messages:
+
+- `"Publishing to NATS subject=%s (message_len=%d)"`
+- `"Connected to NATS %s"`
+
+Warning and error messages:
+
+| Level | Message |
+| :---- | :------ |
+| ERROR | `"NATS publish failed: subject=%s server=%s error=%s"` |
+| ERROR | `"NATS error: %s"` |
+| ERROR | `"NATS connection failed: server=%s error=%s"` |
+| ERROR | `"NVIDIA Config Manager JetStream stream not found (publish will fail): server=%s"` |
+
+### `cache`
+
+Representative INFO messages:
+
+- `"Redis connection established: %s:%d (db=%d) ssl=%s timeout=%ds"`
+- `"Starting background cache refresh loop (interval=%ds)"`
+
+Warning and error messages:
+
+| Level | Message |
+| :---- | :------ |
+| ERROR | `"Failed to connect to Redis at %s:%d - connection timeout after %ds"` |
+| ERROR | `"Failed to connect to Redis at %s:%d - %s"` |
+| ERROR | `"Failed to get device %s from cache: %s"` |
+| WARNING | `"Device %s not found in Nautobot"` |
+| ERROR | `"Failed to refresh device %s: %s"` |
+| WARNING | `"No devices returned from Nautobot"` |
+| ERROR | `"Failed to cache device %s: %s"` |
+| ERROR | `"Failed to refresh all devices: %s"` |
+| ERROR | `"Failed to search devices by name: %s"` |
+| ERROR | `"Error in background refresh loop: %s"` |
+| ERROR | `"Nautobot token is not configured"` |
+| ERROR | `"Fatal error in cache refresh service: %s"` |
+
+## Metric Error Labels
+
+Some services also expose Prometheus error counters. These labels are useful
+when a dashboard shows an error rate but the matching logs have aged out.
+
+### DHCP Config Generation Errors
+
+Metric: `nv_config_manager_dhcp_config_generation_errors_total`
+
+| `error_type` | Meaning |
+| :----------- | :------ |
+| `missing_serial` | Serial number required for client ID but not present |
+| `template_error` | Jinja2 template rendering error in `client_id_template` |
+| `router_override` | Attempt to override the routers DHCP option |
+| `no_ztp_server` | No ZTP server found in DHCP context |
+
+### DHCP Query Errors
+
+Metric: `nv_config_manager_dhcp_query_errors_total`
+
+| `error_type` | Meaning |
+| :----------- | :------ |
+| `gateway_outside_subnet` | Gateway IP is not within the subnet |
+| `no_interfaces` | Reserved IP has no interfaces assigned |
+| `multiple_interfaces` | Reserved IP has multiple interfaces assigned |
+| `missing_mac_serial` | Interface has no MAC address or serial number |

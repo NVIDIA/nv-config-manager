@@ -1,0 +1,131 @@
+---
+title: Device Authentication
+sidebar-title: Device Authentication
+position: 50
+---
+
+Config Manager uses a dedicated service account to connect to managed devices. The default username is `nv-config-manager`. For production deployments, keep the account password in Vault or OpenBao and expose it to Config Manager through External Secrets Operator. Kubernetes secrets are useful for local development and constrained lab installs, but they are not the preferred production source of truth.
+
+Render uses the service account secret to write the hashed device account into intended configuration. ZTP applies that configuration during bootstrap. Temporal later uses the same secret to authenticate to the device for workflows such as backup, deploy, reprovision, and password rotation.
+
+## Recommended Secret Source
+
+Use `secrets.method: eso` with Vault or OpenBao for production:
+
+```yaml
+secrets:
+  method: eso
+  vault:
+    server: https://vault.example.com
+    secrets_path: nv-config-manager/secrets
+    mount_path: auth/kubernetes/prod
+    role: nv-config-manager-vault-agent
+    auth:
+      method: jwt
+    paths:
+      network:
+        path: secrets/nv-config-manager/global/network
+        keys:
+          user: user
+          password: password
+network_secrets:
+  - name: Config Manager Service Account Password
+    secret_key: api_user_key
+    source: vault
+    rotation: r1
+  - name: Hash Salt
+    secret_key: hash_salt
+    source: vault
+    rotation: ""
+sites:
+  - name: dc01
+    vault_path: secrets/nv-config-manager/site/dc01/config_secrets
+```
+
+The Vault/OpenBao network path provides the global device username and fallback password for the runtime `[device]` config section:
+
+```text
+user = nv-config-manager
+password = <service-account-password>
+```
+
+Each site's `vault_path` points to a separate Vault/OpenBao KV path containing site-scoped network secrets. The keys are the final config-secret field names, including rotation suffixes when used:
+
+```text
+api_user_key_r1 = <service-account-password>
+root_password_r1 = <breakglass-or-root-password>
+bgp_password_r1 = <bgp-password>
+hash_salt = <random-salt>
+```
+
+External Secrets Operator reads those Vault paths and creates the runtime projections mounted by Config Manager. Treat those mounted files as projections of Vault data, not the source of truth.
+
+## Credential Flow
+
+In Vault/OpenBao mode, the credential lifecycle has three stages:
+
+1. **Vault/OpenBao**: the network path stores the global device username and fallback password, while each site path stores rotation-aware keys such as `api_user_key_r1`.
+1. **Render and ZTP**: render reads the projected site secrets, hashes the site password for each platform, and writes the account into the intended configuration that ZTP applies during bootstrap.
+1. **Temporal**: device-facing workflows read the projected site secrets first, then fall back to the Vault-projected `[device]` password when no site rotation keys are present.
+
+This keeps Vault/OpenBao as the production source of truth while still giving the pods the file formats expected by the render templates and workflow workers. Do not mix this with installer-created `device-creds`; that path belongs to Kubernetes secret mode.
+
+## Render And ZTP
+
+Device account creation is controlled by each device's Nautobot config context. The `password_mappings` block maps an OS username to a base secret key, rotation suffix, and platform role:
+
+```yaml
+password_mappings:
+  nvConfigManager:
+    password: api_user_key
+    rotation: r1
+    role: system-admin
+  cumulus:
+    password: root_password
+    rotation: r1
+    role: system-admin
+```
+
+During render, `password: api_user_key` plus `rotation: r1` becomes `password_key: api_user_key_r1`. The platform templates then load that key from the device site's projected `config-secrets.ini`, hash it with the site's `hash_salt` when the platform expects a hashed password, and write the user into startup configuration.
+
+When the device boots, DHCP points it at the ZTP service. The ZTP boot script fetches the intended startup configuration from Config Store, applies it on the device, and then calls the provisioned endpoint. At that point, the device has the service account installed and Config Manager can authenticate with the matching secret from Vault/OpenBao.
+
+## Workflow Authentication
+
+Temporal workers resolve device credentials at connection time:
+
+1. The username comes from `nv-config-manager.ini [device] username`.
+1. The device site comes from Nautobot data passed into the workflow.
+1. Password revisions are read from the matching `[site.<slug>]` section in `config-secrets.ini`.
+1. The worker tries the newest `api_user_key_rN` password first, then older revisions during a rotation window.
+
+This lets workflows tolerate staged rotations. A device that has already received the new rendered configuration accepts the newest password; a device that has not yet received the update can still accept the previous revision until the rollout is complete.
+
+## Password Rotation Workflows
+
+Password rotation is a render-driven workflow. The workflow does not generate the new secret. Operators first write the new value to Vault/OpenBao, then update the device password mapping so render points at the new revision.
+
+For the Config Manager service account, a typical rotation is:
+
+1. Add `api_user_key_r2` to each affected site's Vault/OpenBao path.
+1. Update the applicable `password_mappings` config context from `rotation: r1` to `rotation: r2` for the target username.
+1. Let render regenerate intended configuration for the affected devices.
+1. Run [Device Password Rotation](../user-guides/device-password-rotation/index.mdx) for one device, or [Site Password Rotation](../user-guides/site-password-rotation/index.mdx) for a filtered site-wide rotation.
+1. Confirm the workflow completed and a fresh backup exists.
+1. Remove `api_user_key_r1` from Vault/OpenBao after every device has accepted the new credential and the rollback window has closed.
+
+The device workflow validates that the candidate diff only changes the selected user's password and auto-approves that password-only change. The site workflow fans out one device rotation child workflow per matching device and aggregates the results.
+
+## Kubernetes Secret Mode
+
+`secrets.method: kubernetes` creates the same `config-secrets.ini` shape directly as a Kubernetes secret. Use it for local development, CI, and small lab installs where Vault/OpenBao is not available. The render, ZTP, Temporal, and password rotation behavior is the same after the secret is mounted, but the operational ownership is different: rotation means updating the Kubernetes-managed secret material instead of updating Vault/OpenBao.
+
+In this mode, the installer also creates `device-creds` for the service account username. This is mutually exclusive with the Vault/OpenBao path above: choose Vault/OpenBao or Kubernetes-managed `device-creds`, not both.
+
+## Troubleshooting
+
+If render output does not include the expected account, check the device's `password_mappings` config context and confirm the mapped key exists at the site's Vault/OpenBao path.
+
+If a workflow cannot connect, confirm External Secrets Operator synced the runtime secret, `NV_CONFIG_MANAGER_CONFIG_SECRET_PATH` is mounted in the Temporal worker pod, the `[site.<slug>]` section exists, and the device's Nautobot site slug matches the section name.
+
+If a password rotation reports no diff, the intended configuration probably still points at the old secret revision. Confirm the new Vault/OpenBao key exists, the config context rotation changed, and render has regenerated the intended configuration before re-running the rotation workflow.
