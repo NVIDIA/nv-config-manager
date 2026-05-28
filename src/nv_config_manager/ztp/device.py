@@ -24,7 +24,7 @@ from nv_config_manager.common.client import (
     ConfigStoreClient,
     ConfigStoreFileNotFound,
 )
-from nv_config_manager.common.config import load_config
+from nv_config_manager.common.config import get_internal_auth_headers, load_config
 
 
 @dataclass
@@ -60,6 +60,7 @@ class DeviceData:  # pylint: disable=too-many-instance-attributes
                 ui_url,
                 verify=False,
                 client_certificate=None,
+                headers=get_internal_auth_headers,
             )
         else:
             # External mTLS communication
