@@ -827,7 +827,7 @@ class TestContentAddressedTags:
             returncode=0, stdout="sha256:a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6\n"
         )
         tag = _get_image_digest_tag("nv-config-manager:local")
-        assert tag == "a1b2c3d4e5f6"
+        assert tag == "sha-a1b2c3d4e5f6"
         mock_run.assert_called_once()
 
     @patch("nv_config_manager_installer.deployer.subprocess.run")
@@ -839,6 +839,12 @@ class TestContentAddressedTags:
     @patch("nv_config_manager_installer.deployer.subprocess.run")
     def test_get_image_digest_tag_no_docker(self, mock_run):
         mock_run.side_effect = FileNotFoundError("docker not found")
+        tag = _get_image_digest_tag("nv-config-manager:local")
+        assert tag == ""
+
+    @patch("nv_config_manager_installer.deployer.subprocess.run")
+    def test_get_image_digest_tag_empty_id(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0, stdout="\n")
         tag = _get_image_digest_tag("nv-config-manager:local")
         assert tag == ""
 
