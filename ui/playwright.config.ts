@@ -1,5 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
+const webServerCommand = process.env.CI ? "npm run start" : "npm run dev";
+
 /**
  * Read environment variables from file.
  * https://github.com/motdotla/dotenv
@@ -93,7 +95,7 @@ export default defineConfig({
 
   /* Run your local dev server before starting the tests */
   webServer: {
-    command: "npm run dev",
+    command: process.env.PLAYWRIGHT_WEB_SERVER_COMMAND || webServerCommand,
     url: process.env.BASE_URL || "http://127.0.0.1:3000",
     reuseExistingServer: !process.env.CI,
     timeout: 120000,
