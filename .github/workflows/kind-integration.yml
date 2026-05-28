@@ -1,0 +1,119 @@
+name: Kind Integration
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_path:
+        description: Pytest path to run
+        required: true
+        default: src/tests/integration/
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kind-integration-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PYTHON_VERSION: "3.13"
+  KIND_VERSION: "v0.25.0"
+  HELM_VERSION: "v3.15.3"
+
+jobs:
+  integration:
+    name: Kind Integration
+    runs-on: linux-amd64-cpu32m
+    timeout-minutes: 90
+    env:
+      KIND_CLUSTER_NAME: nv-config-manager-${{ github.run_id }}
+      NV_CONFIG_MANAGER_NAMESPACE: nv-config-manager
+      NV_CONFIG_MANAGER_HOSTNAME: config-manager.local
+      TEST_PATH: ${{ inputs.test_path }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup proxy cache
+        uses: nv-gha-runners/setup-proxy-cache@main
+        with:
+          enable-apt: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends curl jq rsync ca-certificates gnupg make
+
+          curl --retry 3 --retry-delay 5 --retry-connrefused -fsSL "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-amd64" -o kind
+          chmod +x kind
+          sudo mv kind /usr/local/bin/kind
+
+          curl --retry 3 --retry-delay 5 --retry-connrefused -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz" | tar -xz
+          sudo mv linux-amd64/helm /usr/local/bin/helm
+
+          curl --retry 3 --retry-delay 5 --retry-connrefused -fsSL "https://dl.k8s.io/release/$(curl --retry 3 --retry-delay 5 --retry-connrefused -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" -o kubectl
+          chmod +x kubectl
+          sudo mv kubectl /usr/local/bin/kubectl
+
+          curl --retry 3 --retry-delay 5 --retry-connrefused -fsSL https://github.com/mikefarah/yq/releases/download/v4.44.1/yq_linux_amd64 -o yq
+          chmod +x yq
+          sudo mv yq /usr/local/bin/yq
+
+          docker info
+      - name: Install Python dependencies
+        run: |
+          uv sync --frozen
+          cd installer
+          uv sync --frozen
+      - name: Configure hostnames
+        run: |
+          HOSTS="config-manager.local nautobot.config-manager.local render.config-manager.local ztp.config-manager.local dhcp.config-manager.local workflow.config-manager.local temporal.config-manager.local config-store.config-manager.local svc-workflow.config-manager.local svc-render.config-manager.local svc-ztp.config-manager.local svc-dhcp.config-manager.local svc-nautobot.config-manager.local svc-config-store.config-manager.local"
+          echo "127.0.0.1 ${HOSTS}" | sudo tee -a /etc/hosts
+      - name: Deploy to Kind
+        run: |
+          sudo sysctl -w fs.inotify.max_user_instances=512
+          sudo sysctl -w fs.inotify.max_user_watches=524288
+          make kind-up \
+            KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME}" \
+            INSTALL_CONFIG=deploy/configs/ci-integration-test.yaml \
+            HELM_TIMEOUT=20m
+          kubectl get pods -n "${NV_CONFIG_MANAGER_NAMESPACE}" -o wide
+      - name: Run integration tests
+        run: |
+          for attempt in 1 2 3; do
+            echo "Attempt ${attempt} of 3"
+            if uv run pytest "${TEST_PATH}" -v \
+              --ci \
+              --nv-config-manager-namespace "${NV_CONFIG_MANAGER_NAMESPACE}" \
+              --tb=short \
+              --junitxml=integration-test-results.xml; then
+              exit 0
+            fi
+            if [ "${attempt}" -lt 3 ]; then
+              sleep 10
+            fi
+          done
+          exit 1
+      - name: Collect integration logs
+        if: always()
+        run: |
+          mkdir -p integration-test-logs
+          kubectl get pods -n "${NV_CONFIG_MANAGER_NAMESPACE}" -o wide > integration-test-logs/pods.txt 2>&1 || true
+          kubectl get events -n "${NV_CONFIG_MANAGER_NAMESPACE}" --sort-by='.lastTimestamp' > integration-test-logs/events.txt 2>&1 || true
+          for pod in $(kubectl get pods -n "${NV_CONFIG_MANAGER_NAMESPACE}" -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
+            kubectl logs -n "${NV_CONFIG_MANAGER_NAMESPACE}" "$pod" --all-containers > "integration-test-logs/${pod}.log" 2>&1 || true
+          done
+      - name: Delete Kind cluster
+        if: always()
+        run: kind delete cluster --name "${KIND_CLUSTER_NAME}" || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: integration-test-artifacts
+          path: |
+            integration-test-logs/
+            integration-test-results.xml
