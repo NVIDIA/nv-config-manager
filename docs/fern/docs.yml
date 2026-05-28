@@ -4,7 +4,7 @@ global-theme: nvidia
 
 instances:
   - url: config-manager.docs.buildwithfern.com/switch-infrastructure/config-manager
-    # custom-domain: docs.nvidia.com/switch-infrastructure/config-manager
+    custom-domain: docs.nvidia.com/switch-infrastructure/config-manager
     multi-source: true
 
 title: NVIDIA Switch Infrastructure
