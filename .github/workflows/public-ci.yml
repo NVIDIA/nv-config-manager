@@ -18,7 +18,6 @@ concurrency:
 env:
   PYTHON_VERSION: "3.13"
   NAUTOBOT_PYTHON_VERSION: "3.11"
-  NODE_VERSION: "24"
   HELM_VERSION: "v3.15.3"
 
 jobs:
@@ -28,7 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Setup proxy cache
-        uses: nv-gha-runners/setup-proxy-cache@14229018fe157c83e03c008f27d183d8e99bc67c
+        uses: &setup_proxy_cache nv-gha-runners/setup-proxy-cache@14229018fe157c83e03c008f27d183d8e99bc67c
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -61,7 +60,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Setup proxy cache
-        uses: nv-gha-runners/setup-proxy-cache@14229018fe157c83e03c008f27d183d8e99bc67c
+        uses: *setup_proxy_cache
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.NAUTOBOT_PYTHON_VERSION }}
@@ -86,7 +85,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Setup proxy cache
-        uses: nv-gha-runners/setup-proxy-cache@14229018fe157c83e03c008f27d183d8e99bc67c
+        uses: *setup_proxy_cache
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.NAUTOBOT_PYTHON_VERSION }}
@@ -109,7 +108,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Setup proxy cache
-        uses: nv-gha-runners/setup-proxy-cache@14229018fe157c83e03c008f27d183d8e99bc67c
+        uses: *setup_proxy_cache
       - name: Check source headers
         run: |
           SPDX_ID="SPDX-License-Identifier: Apache-2.0"
@@ -137,7 +136,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Setup proxy cache
-        uses: nv-gha-runners/setup-proxy-cache@14229018fe157c83e03c008f27d183d8e99bc67c
+        uses: *setup_proxy_cache
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -165,7 +164,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Setup proxy cache
-        uses: nv-gha-runners/setup-proxy-cache@14229018fe157c83e03c008f27d183d8e99bc67c
+        uses: *setup_proxy_cache
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -189,7 +188,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Setup proxy cache
-        uses: nv-gha-runners/setup-proxy-cache@14229018fe157c83e03c008f27d183d8e99bc67c
+        uses: *setup_proxy_cache
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -210,7 +209,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Setup proxy cache
-        uses: nv-gha-runners/setup-proxy-cache@14229018fe157c83e03c008f27d183d8e99bc67c
+        uses: *setup_proxy_cache
       - uses: actions/setup-go@v5
         with:
           go-version-file: components/nats-ready/go.mod
@@ -227,7 +226,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Setup proxy cache
-        uses: nv-gha-runners/setup-proxy-cache@14229018fe157c83e03c008f27d183d8e99bc67c
+        uses: *setup_proxy_cache
       - name: Install Helm
         run: |
           curl --retry 3 --retry-delay 5 --retry-connrefused -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz" | tar -xz
@@ -247,7 +246,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Setup proxy cache
-        uses: nv-gha-runners/setup-proxy-cache@14229018fe157c83e03c008f27d183d8e99bc67c
+        uses: *setup_proxy_cache
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -257,27 +256,56 @@ jobs:
       - run: uv sync --frozen
       - run: uv run python scripts/generate_openapi.py --check
 
-  ui:
-    name: UI Lint Build And E2E
-    runs-on: linux-amd64-cpu16
+  ui-lint:
+    name: UI Lint
+    runs-on: linux-amd64-cpu8
+    container:
+      image: mcr.microsoft.com/playwright:v1.56.1-noble
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
     defaults:
       run:
         working-directory: ui
     steps:
       - uses: actions/checkout@v4
       - name: Setup proxy cache
-        uses: nv-gha-runners/setup-proxy-cache@14229018fe157c83e03c008f27d183d8e99bc67c
+        uses: *setup_proxy_cache
+      - name: Cache npm
+        uses: &actions_cache actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
-          enable-apt: true
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: ui/package-lock.json
-      - run: npm ci
+          path: ~/.npm
+          key: ui-npm-${{ runner.os }}-${{ hashFiles('ui/package-lock.json') }}
+      - run: npm ci --prefer-offline
       - run: npm run lint
+
+  ui-e2e:
+    name: UI Build And E2E
+    runs-on: linux-amd64-cpu16
+    container:
+      image: mcr.microsoft.com/playwright:v1.56.1-noble
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup proxy cache
+        uses: *setup_proxy_cache
+      - name: Cache npm
+        uses: *actions_cache
+        with:
+          path: ~/.npm
+          key: ui-npm-${{ runner.os }}-${{ hashFiles('ui/package-lock.json') }}
+      - name: Cache Next.js
+        uses: *actions_cache
+        with:
+          path: ui/.next/cache
+          key: ui-next-${{ runner.os }}-${{ hashFiles('ui/package-lock.json') }}-${{ hashFiles('ui/src/**', 'ui/public/**', 'ui/*.config.*', 'ui/tsconfig.json') }}
+          restore-keys: |
+            ui-next-${{ runner.os }}-${{ hashFiles('ui/package-lock.json') }}-
+      - run: npm ci --prefer-offline
       - run: npm run build
-      - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e:ci
       - uses: actions/upload-artifact@v4
         if: always()
@@ -293,7 +321,8 @@ jobs:
       - python-tests
       - installer-tests
       - network-template-tests
-      - ui
+      - ui-lint
+      - ui-e2e
     runs-on: linux-amd64-cpu4
     permissions:
       contents: read
@@ -320,7 +349,7 @@ jobs:
           fetch-depth: 0
       - name: Setup proxy cache
         if: steps.sonar-token.outputs.has-token == 'true'
-        uses: nv-gha-runners/setup-proxy-cache@14229018fe157c83e03c008f27d183d8e99bc67c
+        uses: *setup_proxy_cache
         with:
           enable-apt: true
       - name: Install SonarQube scanner dependencies
@@ -380,12 +409,12 @@ jobs:
             /tmp/sonar-coverage/network/components/network-templates/coverage.xml
       - name: SonarQube branch scan
         if: steps.sonar-token.outputs.has-token == 'true' && !startsWith(github.ref, 'refs/heads/pull-request/')
-        uses: SonarSource/sonarqube-scan-action@c7ee0f9df90b7aa20e8dcf9695dcfe2e7da5b4f2
+        uses: &sonarqube_scan SonarSource/sonarqube-scan-action@c7ee0f9df90b7aa20e8dcf9695dcfe2e7da5b4f2
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       - name: SonarQube pull request scan
         if: steps.sonar-token.outputs.has-token == 'true' && startsWith(github.ref, 'refs/heads/pull-request/')
-        uses: SonarSource/sonarqube-scan-action@c7ee0f9df90b7aa20e8dcf9695dcfe2e7da5b4f2
+        uses: *sonarqube_scan
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:
