@@ -1,17 +1,12 @@
 name: Public CI
 
 on:
-  pull_request:
   push:
     branches:
       - main
+      - "zb/ci-cd"
+      - "pull-request/[0-9]+"
   workflow_dispatch:
-    inputs:
-      run_integration:
-        description: "Run Kind integration tests. Disabled by default on standard GitHub runners."
-        required: false
-        default: false
-        type: boolean
 
 permissions:
   contents: read
@@ -30,9 +25,11 @@ env:
 jobs:
   python-lint:
     name: Python Lint And Types
-    runs-on: ubuntu-24.04
+    runs-on: linux-amd64-cpu8
     steps:
       - uses: actions/checkout@v4
+      - name: Setup proxy cache
+        uses: nv-gha-runners/setup-proxy-cache@main
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -59,11 +56,13 @@ jobs:
 
   nautobot-app-overlays:
     name: Nautobot Overlays Lint And Build
-    runs-on: ubuntu-24.04
+    runs-on: linux-amd64-cpu4
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Setup proxy cache
+        uses: nv-gha-runners/setup-proxy-cache@main
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.NAUTOBOT_PYTHON_VERSION }}
@@ -82,11 +81,13 @@ jobs:
 
   nautobot-nv-config-manager:
     name: Nautobot NV Config Manager Lint And Build
-    runs-on: ubuntu-24.04
+    runs-on: linux-amd64-cpu4
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Setup proxy cache
+        uses: nv-gha-runners/setup-proxy-cache@main
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.NAUTOBOT_PYTHON_VERSION }}
@@ -105,9 +106,11 @@ jobs:
 
   spdx:
     name: SPDX Headers
-    runs-on: ubuntu-24.04
+    runs-on: linux-amd64-cpu4
     steps:
       - uses: actions/checkout@v4
+      - name: Setup proxy cache
+        uses: nv-gha-runners/setup-proxy-cache@main
       - name: Check source headers
         run: |
           SPDX_ID="SPDX-License-Identifier: Apache-2.0"
@@ -131,9 +134,11 @@ jobs:
 
   python-tests:
     name: Python Tests
-    runs-on: ubuntu-24.04
+    runs-on: linux-amd64-cpu16
     steps:
       - uses: actions/checkout@v4
+      - name: Setup proxy cache
+        uses: nv-gha-runners/setup-proxy-cache@main
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -157,9 +162,11 @@ jobs:
 
   installer-tests:
     name: Installer Tests
-    runs-on: ubuntu-24.04
+    runs-on: linux-amd64-cpu8
     steps:
       - uses: actions/checkout@v4
+      - name: Setup proxy cache
+        uses: nv-gha-runners/setup-proxy-cache@main
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -179,9 +186,11 @@ jobs:
 
   network-template-tests:
     name: Network Template Tests
-    runs-on: ubuntu-24.04
+    runs-on: linux-amd64-cpu8
     steps:
       - uses: actions/checkout@v4
+      - name: Setup proxy cache
+        uses: nv-gha-runners/setup-proxy-cache@main
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -198,9 +207,11 @@ jobs:
 
   go-lint:
     name: Go Module Check
-    runs-on: ubuntu-24.04
+    runs-on: linux-amd64-cpu4
     steps:
       - uses: actions/checkout@v4
+      - name: Setup proxy cache
+        uses: nv-gha-runners/setup-proxy-cache@main
       - uses: actions/setup-go@v5
         with:
           go-version-file: components/nats-ready/go.mod
@@ -213,9 +224,11 @@ jobs:
 
   helm:
     name: Helm Lint And Template
-    runs-on: ubuntu-24.04
+    runs-on: linux-amd64-cpu4
     steps:
       - uses: actions/checkout@v4
+      - name: Setup proxy cache
+        uses: nv-gha-runners/setup-proxy-cache@main
       - name: Install Helm
         run: |
           curl --retry 3 --retry-delay 5 --retry-connrefused -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz" | tar -xz
@@ -231,9 +244,11 @@ jobs:
 
   openapi:
     name: OpenAPI Check
-    runs-on: ubuntu-24.04
+    runs-on: linux-amd64-cpu4
     steps:
       - uses: actions/checkout@v4
+      - name: Setup proxy cache
+        uses: nv-gha-runners/setup-proxy-cache@main
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -245,12 +260,14 @@ jobs:
 
   ui:
     name: UI Lint And Build
-    runs-on: ubuntu-24.04
+    runs-on: linux-amd64-cpu16
     defaults:
       run:
         working-directory: ui
     steps:
       - uses: actions/checkout@v4
+      - name: Setup proxy cache
+        uses: nv-gha-runners/setup-proxy-cache@main
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -262,9 +279,7 @@ jobs:
 
   integration:
     name: Kind Integration
-    # Disabled until larger or internal runner capacity is available.
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_integration }}
-    runs-on: ubuntu-24.04
+    runs-on: linux-amd64-cpu32m
     timeout-minutes: 90
     env:
       KIND_CLUSTER_NAME: nv-config-manager
@@ -272,6 +287,10 @@ jobs:
       NV_CONFIG_MANAGER_HOSTNAME: config-manager.local
     steps:
       - uses: actions/checkout@v4
+      - name: Setup proxy cache
+        uses: nv-gha-runners/setup-proxy-cache@main
+        with:
+          enable-apt: true
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
