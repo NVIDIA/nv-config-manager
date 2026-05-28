@@ -19,6 +19,8 @@ from typing import Any
 
 import pytest
 
+from nv_config_manager.common.auth import AuthConfig
+
 # Check if nv_config_manager_templates is available
 try:
     import nv_config_manager_templates  # noqa: F401
@@ -62,3 +64,12 @@ def base_message() -> dict[str, Any]:
         "model": None,
         "record": {"id": None, "name": None},
     }
+
+
+@pytest.fixture(autouse=True)
+def disable_app_auth_for_render_api_unit_tests(mocker):
+    """Keep render API unit tests focused on endpoint behavior."""
+    mocker.patch(
+        "nv_config_manager.common.auth._auth_config",
+        AuthConfig(required=False, accept_request_headers=True),
+    )

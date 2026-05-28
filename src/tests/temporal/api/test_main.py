@@ -180,7 +180,7 @@ async def test_approve(mock_signal):
         ANY,
         workflow_id,
         "approve",
-        ReviewSignalInput(stage_name="prompt", user="unknown"),
+        ReviewSignalInput(stage_name="prompt", user="anonymous"),
     )
 
 
@@ -201,7 +201,7 @@ async def test_reject(mock_signal):
         ANY,
         workflow_id,
         "reject",
-        ReviewSignalInput(stage_name="prompt", user="unknown"),
+        ReviewSignalInput(stage_name="prompt", user="anonymous"),
     )
 
 
