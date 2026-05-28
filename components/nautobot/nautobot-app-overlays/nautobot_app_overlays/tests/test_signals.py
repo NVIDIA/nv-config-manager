@@ -15,6 +15,7 @@
 
 """Tests for signal handlers that create custom fields."""
 
+from django.apps import apps as django_apps
 from django.contrib.contenttypes.models import ContentType
 from django.test import TestCase
 from nautobot.extras.models import CustomField
@@ -25,11 +26,16 @@ from nautobot_app_overlays.signals import ensure_custom_fields
 class EnsureCustomFieldsTestCase(TestCase):
     """Test that ensure_custom_fields creates the expected custom fields."""
 
+    @classmethod
+    def setUpTestData(cls):
+        """Resolve our own AppConfig once; the handler gates on sender.name."""
+        cls.sender = django_apps.get_app_config("nautobot_app_overlays")
+
     def test_creates_ib_guid_field(self):
         """Test that the ib_guid custom field is created."""
         CustomField.objects.filter(key="ib_guid").delete()
 
-        ensure_custom_fields(sender=None)
+        ensure_custom_fields(sender=self.sender)
 
         cf = CustomField.objects.get(key="ib_guid")
         self.assertEqual(cf.type, "text")
@@ -39,7 +45,7 @@ class EnsureCustomFieldsTestCase(TestCase):
         """Test that the ib_guid field is attached to dcim.interface."""
         CustomField.objects.filter(key="ib_guid").delete()
 
-        ensure_custom_fields(sender=None)
+        ensure_custom_fields(sender=self.sender)
 
         cf = CustomField.objects.get(key="ib_guid")
         interface_ct = ContentType.objects.get(app_label="dcim", model="interface")
@@ -49,8 +55,8 @@ class EnsureCustomFieldsTestCase(TestCase):
         """Test that calling ensure_custom_fields twice doesn't duplicate."""
         CustomField.objects.filter(key="ib_guid").delete()
 
-        ensure_custom_fields(sender=None)
-        ensure_custom_fields(sender=None)
+        ensure_custom_fields(sender=self.sender)
+        ensure_custom_fields(sender=self.sender)
 
         self.assertEqual(CustomField.objects.filter(key="ib_guid").count(), 1)
 
@@ -66,8 +72,17 @@ class EnsureCustomFieldsTestCase(TestCase):
         )
         cf.content_types.add(interface_ct)
 
-        ensure_custom_fields(sender=None)
+        ensure_custom_fields(sender=self.sender)
 
         cf.refresh_from_db()
         self.assertEqual(cf.description, "User-modified description")
         self.assertEqual(cf.label, "My Custom Label")
+
+    def test_skips_for_other_app_sender(self):
+        """Test that the handler early-exits for senders other than this app."""
+        CustomField.objects.filter(key="ib_guid").delete()
+        other = django_apps.get_app_config("dcim")
+
+        ensure_custom_fields(sender=other)
+
+        self.assertFalse(CustomField.objects.filter(key="ib_guid").exists())

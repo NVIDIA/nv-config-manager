@@ -17,7 +17,10 @@
 
 import logging
 
+from django.apps import apps as global_apps
 from django.contrib.contenttypes.models import ContentType
+from django.db.models.signals import post_migrate
+from django.dispatch import receiver
 from nautobot.extras.models import CustomField, Status
 
 logger = logging.getLogger(__name__)
@@ -28,36 +31,36 @@ CUSTOM_FIELDS = [
         "type": "text",
         "label": "InfiniBand GUID",
         "description": "InfiniBand GUID.",
-        "content_type_app_label": "dcim",
-        "content_type_model": "interface",
+        "target_app_label": "dcim",
+        "target_model": "Interface",
     },
 ]
 
-# Status names to assign to each overlay model so they can be set on creation.
-OVERLAY_MODELS = [
-    ("nautobot_app_overlays", "overlay"),
-    ("nautobot_app_overlays", "infinibandpkey"),
-    ("nautobot_app_overlays", "infinibandmkey"),
-    ("nautobot_app_overlays", "vxlan"),
-    ("nautobot_app_overlays", "overlayassignment"),
+OVERLAY_MODEL_NAMES = [
+    "Overlay",
+    "InfiniBandPKey",
+    "InfiniBandMKey",
+    "VXLAN",
+    "OverlayAssignment",
 ]
 
 STATUS_NAMES = ["Active", "Deprecated", "Planned"]
 
 
-def ensure_custom_fields(sender, **kwargs):  # noqa: ARG001 - sender required by signal
-    """Create custom fields and assign status content types for the Overlays app."""
-    _ensure_ib_guid_custom_field()
-    _ensure_overlay_status_content_types()
+@receiver(post_migrate)
+def ensure_custom_fields(sender, apps=global_apps, **kwargs):  # noqa: ARG001 - kwargs required by signal
+    """Create custom fields and attach status content types after our app's migrations."""
+    if sender.name != "nautobot_app_overlays":
+        return
+    _ensure_ib_guid_custom_field(apps)
+    _ensure_overlay_status_content_types(sender)
 
 
-def _ensure_ib_guid_custom_field():
+def _ensure_ib_guid_custom_field(apps):
     """Create the ib_guid custom field on dcim.Interface if absent."""
     for field_def in CUSTOM_FIELDS:
-        ct = ContentType.objects.get(
-            app_label=field_def["content_type_app_label"],
-            model=field_def["content_type_model"],
-        )
+        target_model = apps.get_model(field_def["target_app_label"], field_def["target_model"])
+        ct = ContentType.objects.get_for_model(target_model)
 
         cf, created = CustomField.objects.get_or_create(
             key=field_def["key"],
@@ -77,18 +80,9 @@ def _ensure_ib_guid_custom_field():
             logger.debug("Custom field '%s' already exists", cf.key)
 
 
-def _ensure_overlay_status_content_types():
-    """Assign overlay model content types to the required statuses."""
-    overlay_cts = []
-    for app_label, model in OVERLAY_MODELS:
-        try:
-            ct = ContentType.objects.get(app_label=app_label, model=model)
-            overlay_cts.append(ct)
-        except ContentType.DoesNotExist:
-            logger.debug("Content type %s.%s not found, skipping", app_label, model)
-
-    if not overlay_cts:
-        return
+def _ensure_overlay_status_content_types(sender):
+    """Attach overlay model content types to the default Statuses."""
+    overlay_cts = [ContentType.objects.get_for_model(sender.get_model(name)) for name in OVERLAY_MODEL_NAMES]
 
     for status_name in STATUS_NAMES:
         try:

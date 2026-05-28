@@ -40,14 +40,13 @@ class NautobotAppOverlaysConfig(NautobotAppConfig):
     docs_view_name = "plugins:nautobot_app_overlays:docs"
 
     def ready(self):
-        """Import GraphQL types, connect signals, and register custom fields."""
+        """Import GraphQL types and register post_migrate signal handlers."""
         super().ready()
-        from nautobot.core.signals import nautobot_database_ready  # avoid Django app-loading circular import
 
-        from nautobot_app_overlays import graphql  # noqa: F401  # avoid Django app-loading circular import
-        from nautobot_app_overlays.signals import ensure_custom_fields  # avoid Django app-loading circular import
-
-        nautobot_database_ready.connect(ensure_custom_fields, sender=self)
+        from nautobot_app_overlays import (  # noqa: F401
+            graphql,
+            signals,
+        )
 
 
 config = NautobotAppOverlaysConfig  # pylint:disable=invalid-name
