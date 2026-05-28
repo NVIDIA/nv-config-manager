@@ -198,9 +198,7 @@ def _hash_content_dir(
 def _get_image_digest_tag(image: str) -> str:
     """Extract a short content-addressed tag from a local Docker image.
 
-    Runs ``docker inspect`` to get the image ID (sha256 digest) and
-    returns the first 12 hex characters.  Returns an empty string if
-    the inspect fails (e.g. Docker not available).
+    Returns the first 12 hex characters of the image ID. Returns an empty string if the inspect fails or the image ID is empty.
     """
     try:
         result = subprocess.run(
@@ -211,9 +209,10 @@ def _get_image_digest_tag(image: str) -> str:
             timeout=30,
         )
         image_id = result.stdout.strip()
-        # image_id looks like "sha256:a1b2c3d4..."
         hex_part = image_id.split(":")[-1]
-        return hex_part[:12]
+        if not hex_part:
+            return ""
+        return f"sha-{hex_part[:12]}"
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
         return ""
 
