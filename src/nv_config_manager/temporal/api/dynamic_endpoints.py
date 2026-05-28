@@ -21,6 +21,7 @@ from typing import Any, cast
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, computed_field
 
+from nv_config_manager.common.auth import get_sso_user
 from nv_config_manager.common.log import LogCategory, get_logger
 from nv_config_manager.temporal.common.mixins.metadata import WorkflowMetadataMixin
 from nv_config_manager.temporal.hello_world.workflows import (
@@ -70,7 +71,7 @@ def create_workflow_endpoint(
             )
 
         # Auto-populate user fields from request auth data if they exist and are None
-        user = getattr(request.state, "user", "unknown")
+        user = getattr(request.state, "user", None) or get_sso_user(request)
 
         # Auto-populate common user fields if they exist in the input model and are None
         if hasattr(body, "user") and not body.user:  # type: ignore[attr-defined]

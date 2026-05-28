@@ -3,7 +3,7 @@
 global-theme: nvidia
 
 instances:
-  - url: config-manager.docs.buildwithfern.com
+  - url: config-manager.docs.buildwithfern.com/switch-infrastructure/config-manager
     # custom-domain: docs.nvidia.com/switch-infrastructure/config-manager
     multi-source: true
 
@@ -27,14 +27,6 @@ layout:
   content-width: 812px
   tabs-placement: header
   hide-feedback: true
-
-#==============================================================================
-# For now, the /switch-infrastructure/ slug isn't something we want to
-# populate, so redirect it to Config Manager.
-#==============================================================================
-redirects:
-  - source: /switch-infrastructure/
-    destination: /switch-infrastructure/config-manager
 
 #==============================================================================
 # Content navigation from here down

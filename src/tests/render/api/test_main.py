@@ -52,12 +52,14 @@ def test_render(mock_execute_render):
             {"filename": "tenant.yaml", "commit": commit_2},
         ]
     }
-    mock_execute_render.assert_called_with("test", "Manual render initiated by unknown", "unknown")
+    mock_execute_render.assert_called_with(
+        "test", "Manual render initiated by anonymous", "anonymous"
+    )
 
     # Test with custom commit message
     custom_message = "Custom commit message"
     rsp = client.post("/v1/render/test/render", json={"commit_message": custom_message})
-    mock_execute_render.assert_called_with("test", custom_message, "unknown")
+    mock_execute_render.assert_called_with("test", custom_message, "anonymous")
     assert rsp.status_code == 201
 
     # Test with no changes (empty list)
@@ -95,8 +97,8 @@ def test_render_all_success(mock_get_devices, mock_queue_render_batch):
     assert mock_queue_render_batch.call_count == 1
     call = mock_queue_render_batch.call_args_list[0]
     assert call[0][0] == device_uuids  # device_uuids list
-    assert call[0][1] == "Bulk render initiated by unknown"  # commit_message
-    assert call[0][2] == "unknown"  # user
+    assert call[0][1] == "Bulk render initiated by anonymous"  # commit_message
+    assert call[0][2] == "anonymous"  # user
     # call[0][3] is timestamp - just verify it's a string
     assert isinstance(call[0][3], str)
 

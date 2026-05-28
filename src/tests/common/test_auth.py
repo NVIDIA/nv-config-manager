@@ -26,7 +26,9 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import Depends, FastAPI, Request
 from fastapi.testclient import TestClient
+from starlette.testclient import TestClient as StarletteClient
 
+import nv_config_manager.common.auth as auth_mod
 from nv_config_manager.common.auth import (
     SSOIdentity,
     _derive_jwks_uri,
@@ -34,6 +36,7 @@ from nv_config_manager.common.auth import (
     _spiffe_id_to_workload_name,
     extract_identity,
     identity_from_sso_headers,
+    install_identity_probe,
     load_auth_config,
     require_authenticated_identity,
     require_group,
@@ -62,8 +65,6 @@ def _make_config(**sections: dict[str, str]) -> ConfigParser:
 
 def _inject_config(config: ConfigParser):
     """Patch load_auth_config so it uses the given ConfigParser."""
-    import nv_config_manager.common.auth as auth_mod
-
     auth_mod._auth_config = None
     return patch.object(
         auth_mod, "load_auth_config", lambda cfg=None: auth_mod.load_auth_config(config)
@@ -76,8 +77,6 @@ def _inject_config(config: ConfigParser):
 @pytest.fixture(autouse=True)
 def _clear_caches():
     """Reset module-level caches between tests."""
-    import nv_config_manager.common.auth as auth_mod
-
     _jwks_clients.clear()
     auth_mod._auth_config = None
     yield
@@ -241,6 +240,64 @@ class TestConfigLoading:
         assert len(cfg.jwt_providers) == 0
 
 
+# ── install_identity_probe enforcement tests ─────────────────────────────
+
+
+class TestInstallIdentityProbe:
+    """Tests for shared identity probe auth enforcement middleware."""
+
+    def _make_app(self):
+        app = FastAPI()
+
+        @app.get("/healthcheck")
+        async def healthcheck():
+            return "OK"
+
+        @app.get("/protected")
+        async def protected():
+            return {"ok": True}
+
+        @app.get("/state-user")
+        async def state_user(request: Request):
+            return {"user": request.state.user}
+
+        install_identity_probe(app)
+        return app
+
+    def test_auth_required_by_default_except_healthchecks(self):
+        auth_mod._auth_config = load_auth_config(
+            _make_config(auth={"required": "true", "accept_request_headers": "true"})
+        )
+        client = TestClient(self._make_app())
+
+        assert client.get("/healthcheck").status_code == 200
+        assert client.get("/protected").status_code == 403
+
+        resp = client.get("/protected", headers={"X-Auth-Request-Email": "alice@example.com"})
+        assert resp.status_code == 200
+        assert resp.json() == {"ok": True}
+
+    def test_docs_are_protected(self):
+        auth_mod._auth_config = load_auth_config(
+            _make_config(auth={"required": "true", "accept_request_headers": "true"})
+        )
+        client = TestClient(self._make_app())
+
+        assert client.get("/docs").status_code == 403
+
+    def test_auth_disabled_allows_non_healthcheck_paths(self):
+        auth_mod._auth_config = load_auth_config(_make_config(auth={"required": "false"}))
+        client = TestClient(self._make_app())
+
+        resp = client.get("/protected")
+        assert resp.status_code == 200
+        assert resp.json() == {"ok": True}
+
+        resp = client.get("/state-user")
+        assert resp.status_code == 200
+        assert resp.json() == {"user": "anonymous"}
+
+
 # ── JWKS URI derivation tests ────────────────────────────────────────────
 
 
@@ -264,16 +321,12 @@ class TestIdentityFromJwt:
 
     def test_no_config_returns_none(self, client):
         """When no JWT providers are configured, identity_from_jwt returns None."""
-        import nv_config_manager.common.auth as auth_mod
-
         auth_mod._auth_config = load_auth_config(ConfigParser())
         resp = client.get("/whoami")
         assert resp.json() == {"identity": None}
 
     def test_no_token_returns_none(self, client):
         """When no Authorization header, returns None."""
-        import nv_config_manager.common.auth as auth_mod
-
         cp = _make_config(
             **{
                 "auth.jwt.test": {
@@ -289,8 +342,6 @@ class TestIdentityFromJwt:
 
     def test_valid_jwt_returns_identity(self, rsa_keypair, make_jwt, client):
         """A valid JWT should return an identity with extracted claims."""
-        import nv_config_manager.common.auth as auth_mod
-
         claims = {
             "iss": "https://idp.example.com",
             "aud": "my-app",
@@ -334,8 +385,6 @@ class TestIdentityFromJwt:
 
     def test_invalid_jwt_returns_none(self, client):
         """An invalid JWT should return None, not raise."""
-        import nv_config_manager.common.auth as auth_mod
-
         cp = _make_config(
             **{
                 "auth.jwt.test": {
@@ -359,8 +408,6 @@ class TestIdentityFromJwt:
 
     def test_jwt_from_cookie(self, rsa_keypair, make_jwt, client):
         """JWT can be extracted from the NVConfigManagerAccessToken cookie."""
-        import nv_config_manager.common.auth as auth_mod
-
         claims = {
             "iss": "https://idp.example.com",
             "aud": "my-app",
@@ -398,8 +445,6 @@ class TestIdentityFromJwt:
 
     def test_custom_claim_mappings(self, rsa_keypair, make_jwt, client):
         """Custom claim mappings from INI should be respected."""
-        import nv_config_manager.common.auth as auth_mod
-
         claims = {
             "iss": "https://idp.example.com",
             "aud": "my-app",
@@ -442,8 +487,6 @@ class TestIdentityFromJwt:
 
     def test_multi_issuer_first_match_wins(self, rsa_keypair, make_jwt, client):
         """With multiple providers, the first one whose issuer matches wins."""
-        import nv_config_manager.common.auth as auth_mod
-
         claims = {
             "iss": "https://ssa.example.com",
             "aud": "s:my-aud",
@@ -517,16 +560,12 @@ class TestIdentityFromSpiffe:
 
     def test_no_spiffe_config_returns_none(self, client):
         """When [auth.spiffe] is not configured, returns None."""
-        import nv_config_manager.common.auth as auth_mod
-
         auth_mod._auth_config = load_auth_config(ConfigParser())
         resp = client.get("/whoami")
         assert resp.json() == {"identity": None}
 
     def test_valid_spiffe_jwt(self, rsa_keypair, make_jwt, client):
         """A valid SPIFFE JWT-SVID should return a workload identity with mapped group."""
-        import nv_config_manager.common.auth as auth_mod
-
         cp = _make_config(
             **{
                 "auth.spiffe": {
@@ -563,8 +602,6 @@ class TestIdentityFromSpiffe:
 
     def test_invalid_spiffe_jwt(self, client):
         """An invalid SPIFFE JWT should return None."""
-        import nv_config_manager.common.auth as auth_mod
-
         cp = _make_config(
             **{
                 "auth.spiffe": {
@@ -585,8 +622,6 @@ class TestIdentityFromSpiffe:
 
     def test_teleport_spiffe_id_format(self, rsa_keypair, make_jwt, client):
         """Teleport-style SPIFFE IDs should be parsed correctly."""
-        import nv_config_manager.common.auth as auth_mod
-
         cp = _make_config(
             **{
                 "auth.spiffe": {
@@ -617,8 +652,6 @@ class TestIdentityFromSpiffe:
 
     def test_group_prefix_mapping(self, rsa_keypair, make_jwt, client):
         """[auth.spiffe.groups] mapping controls the assigned group."""
-        import nv_config_manager.common.auth as auth_mod
-
         cp = _make_config(
             **{
                 "auth.spiffe": {
@@ -684,8 +717,6 @@ class TestExtractIdentityPriority:
 
     def test_spiffe_takes_priority_over_headers(self, rsa_keypair, make_jwt, client):
         """SPIFFE identity should take priority over SSO headers."""
-        import nv_config_manager.common.auth as auth_mod
-
         cp = _make_config(
             **{
                 "auth.spiffe": {
@@ -725,8 +756,6 @@ class TestExtractIdentityPriority:
 
     def test_sso_headers_used_as_fallback(self, client):
         """SSO headers should work when no JWT or SPIFFE is configured."""
-        import nv_config_manager.common.auth as auth_mod
-
         auth_mod._auth_config = load_auth_config(ConfigParser())
         resp = client.get(
             "/whoami",
@@ -752,8 +781,6 @@ class TestBackwardCompatibility:
 
     def test_identity_from_sso_headers_unchanged(self):
         """identity_from_sso_headers should still work as before."""
-        from starlette.testclient import TestClient as StarletteClient
-
         app = FastAPI()
 
         @app.get("/test")
@@ -770,8 +797,6 @@ class TestBackwardCompatibility:
 
     def test_require_authenticated_identity_with_auth_disabled(self):
         """require_authenticated_identity returns anonymous when auth is disabled."""
-        import nv_config_manager.common.auth as auth_mod
-
         cp = _make_config(auth={"required": "false"})
         auth_mod._auth_config = load_auth_config(cp)
 
@@ -807,8 +832,6 @@ class TestAllowedGroups:
 
     def test_no_service_section_no_restriction(self):
         """Without NV_CONFIG_MANAGER_SERVICE env var, allowed_groups is empty — no restriction."""
-        import nv_config_manager.common.auth as auth_mod
-
         cp = _make_config(auth={"required": "true"})
         with patch.dict("os.environ", {}, clear=False):
             os.environ.pop("NV_CONFIG_MANAGER_SERVICE", None)
@@ -818,8 +841,6 @@ class TestAllowedGroups:
 
     def test_allowed_groups_parsed_from_service_section(self):
         """allowed_groups is read from the service's own INI section."""
-        import nv_config_manager.common.auth as auth_mod
-
         cp = _make_config(
             auth={"required": "true"},
             render={"allowed_groups": "group-a, group-b"},
@@ -832,8 +853,6 @@ class TestAllowedGroups:
 
     def test_user_in_allowed_group_passes(self):
         """A user whose groups overlap with allowed_groups is permitted."""
-        import nv_config_manager.common.auth as auth_mod
-
         cp = _make_config(
             auth={"required": "true", "accept_request_headers": "true"},
             render={"allowed_groups": "eng-team"},
@@ -856,8 +875,6 @@ class TestAllowedGroups:
 
     def test_user_not_in_allowed_group_denied(self):
         """A user not in any allowed group gets 403."""
-        import nv_config_manager.common.auth as auth_mod
-
         cp = _make_config(
             auth={"required": "true", "accept_request_headers": "true"},
             render={"allowed_groups": "eng-team"},
@@ -879,8 +896,6 @@ class TestAllowedGroups:
 
     def test_spiffe_identity_bypasses_allowed_groups(self, rsa_keypair, make_jwt):
         """SPIFFE identities (source=spiffe) are not subject to allowed_groups."""
-        import nv_config_manager.common.auth as auth_mod
-
         cp = _make_config(
             **{
                 "auth": {"required": "true"},
@@ -918,8 +933,6 @@ class TestAllowedGroups:
 
     def test_empty_allowed_groups_no_restriction(self):
         """An empty allowed_groups in the service section means no restriction."""
-        import nv_config_manager.common.auth as auth_mod
-
         cp = _make_config(
             auth={"required": "true"},
             render={"api_service": "http://render:9000"},
@@ -969,8 +982,6 @@ class TestSpiffeGroupPrefixes:
 
     def test_no_mapping_only_all_group(self, rsa_keypair, make_jwt):
         """Without [auth.spiffe.groups], callers only get the 'all' group."""
-        import nv_config_manager.common.auth as auth_mod
-
         cp = _make_config(
             **{
                 "auth.spiffe": {
@@ -1002,8 +1013,6 @@ class TestSpiffeGroupPrefixes:
 
     def test_matching_prefix_adds_mapped_group(self, rsa_keypair, make_jwt):
         """A SPIFFE ID matching a prefix gets the mapped group."""
-        import nv_config_manager.common.auth as auth_mod
-
         cp = _make_config(
             **{
                 "auth.spiffe": {
@@ -1039,8 +1048,6 @@ class TestSpiffeGroupPrefixes:
 
     def test_nonmatching_prefix_no_mapped_group(self, rsa_keypair, make_jwt):
         """A SPIFFE ID not matching any prefix does not get the mapped group."""
-        import nv_config_manager.common.auth as auth_mod
-
         cp = _make_config(
             **{
                 "auth.spiffe": {
@@ -1076,8 +1083,6 @@ class TestSpiffeGroupPrefixes:
 
     def test_multiple_prefixes_multiple_groups(self, rsa_keypair, make_jwt):
         """Multiple prefix mappings can coexist; matching ones all apply."""
-        import nv_config_manager.common.auth as auth_mod
-
         cp = _make_config(
             **{
                 "auth.spiffe": {
@@ -1149,8 +1154,6 @@ class TestRequireGroup:
 
     def test_user_with_matching_group_passes(self):
         """A user in a required group passes the gate."""
-        import nv_config_manager.common.auth as auth_mod
-
         auth_mod._auth_config = load_auth_config(
             _make_config(auth={"accept_request_headers": "true"})
         )
@@ -1168,8 +1171,6 @@ class TestRequireGroup:
 
     def test_user_without_required_group_denied(self):
         """A user missing all required groups gets 403."""
-        import nv_config_manager.common.auth as auth_mod
-
         auth_mod._auth_config = load_auth_config(
             _make_config(auth={"accept_request_headers": "true"})
         )
@@ -1186,8 +1187,6 @@ class TestRequireGroup:
 
     def test_any_of_multiple_groups_passes(self):
         """Having any one of the specified groups is sufficient."""
-        import nv_config_manager.common.auth as auth_mod
-
         auth_mod._auth_config = load_auth_config(
             _make_config(auth={"accept_request_headers": "true"})
         )
@@ -1204,8 +1203,6 @@ class TestRequireGroup:
 
     def test_spiffe_non_allowed_denied_by_require_group_config_manager(self, rsa_keypair, make_jwt):
         """A SPIFFE workload not matching any prefix is denied by require_group('nv-config-manager')."""
-        import nv_config_manager.common.auth as auth_mod
-
         cp = _make_config(
             **{
                 "auth.spiffe": {

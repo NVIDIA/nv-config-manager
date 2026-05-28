@@ -89,8 +89,9 @@ spec:
     maxAge: {{ $.root.Values.gateway.cors.maxAge | quote }}
   {{- end }}
   
-  # JWT validation - validate if present, extract claims to headers
-  # NO oidc block - requests without valid JWT get 401 (no redirect)
+  # JWT validation - validate if present, extract claims to headers.
+  # NO oidc block - requests without valid JWT are left to the service's
+  # own auth middleware, avoiding browser redirects on svc-* hostnames.
   jwt:
     optional: true
     providers:
