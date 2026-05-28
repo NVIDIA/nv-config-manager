@@ -5,7 +5,7 @@ on:
     branches:
       - main
       - "zb/ci-cd"
-      - "pull-request/[0-9]+"
+      - "pull-request/*"
     paths:
       - "docs/**"
       - "scripts/generate_openapi.py"
@@ -30,9 +30,11 @@ jobs:
     name: Lint Docs
     runs-on: linux-amd64-cpu4
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
       - name: Setup proxy cache
-        uses: nv-gha-runners/setup-proxy-cache@main
+        uses: nv-gha-runners/setup-proxy-cache@14229018fe157c83e03c008f27d183d8e99bc67c
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -60,10 +62,12 @@ jobs:
     steps:
       - name: Get PR info
         id: get-pr-info
-        uses: nv-gha-runners/get-pr-info@main
-      - uses: actions/checkout@v4
+        uses: nv-gha-runners/get-pr-info@090577647b8ddc4e06e809e264f7881650ecdccf
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
       - name: Setup proxy cache
-        uses: nv-gha-runners/setup-proxy-cache@main
+        uses: nv-gha-runners/setup-proxy-cache@14229018fe157c83e03c008f27d183d8e99bc67c
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -126,9 +130,11 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: linux-amd64-cpu4
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
       - name: Setup proxy cache
-        uses: nv-gha-runners/setup-proxy-cache@main
+        uses: nv-gha-runners/setup-proxy-cache@14229018fe157c83e03c008f27d183d8e99bc67c
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}

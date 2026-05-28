@@ -5,7 +5,7 @@ on:
     branches:
       - main
       - "zb/ci-cd"
-      - "pull-request/[0-9]+"
+      - "pull-request/*"
   workflow_dispatch:
 
 permissions:
@@ -28,7 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Setup proxy cache
-        uses: nv-gha-runners/setup-proxy-cache@main
+        uses: nv-gha-runners/setup-proxy-cache@14229018fe157c83e03c008f27d183d8e99bc67c
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -61,7 +61,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Setup proxy cache
-        uses: nv-gha-runners/setup-proxy-cache@main
+        uses: nv-gha-runners/setup-proxy-cache@14229018fe157c83e03c008f27d183d8e99bc67c
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.NAUTOBOT_PYTHON_VERSION }}
@@ -86,7 +86,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Setup proxy cache
-        uses: nv-gha-runners/setup-proxy-cache@main
+        uses: nv-gha-runners/setup-proxy-cache@14229018fe157c83e03c008f27d183d8e99bc67c
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.NAUTOBOT_PYTHON_VERSION }}
@@ -109,7 +109,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Setup proxy cache
-        uses: nv-gha-runners/setup-proxy-cache@main
+        uses: nv-gha-runners/setup-proxy-cache@14229018fe157c83e03c008f27d183d8e99bc67c
       - name: Check source headers
         run: |
           SPDX_ID="SPDX-License-Identifier: Apache-2.0"
@@ -137,7 +137,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Setup proxy cache
-        uses: nv-gha-runners/setup-proxy-cache@main
+        uses: nv-gha-runners/setup-proxy-cache@14229018fe157c83e03c008f27d183d8e99bc67c
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -165,7 +165,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Setup proxy cache
-        uses: nv-gha-runners/setup-proxy-cache@main
+        uses: nv-gha-runners/setup-proxy-cache@14229018fe157c83e03c008f27d183d8e99bc67c
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -189,7 +189,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Setup proxy cache
-        uses: nv-gha-runners/setup-proxy-cache@main
+        uses: nv-gha-runners/setup-proxy-cache@14229018fe157c83e03c008f27d183d8e99bc67c
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -210,7 +210,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Setup proxy cache
-        uses: nv-gha-runners/setup-proxy-cache@main
+        uses: nv-gha-runners/setup-proxy-cache@14229018fe157c83e03c008f27d183d8e99bc67c
       - uses: actions/setup-go@v5
         with:
           go-version-file: components/nats-ready/go.mod
@@ -227,7 +227,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Setup proxy cache
-        uses: nv-gha-runners/setup-proxy-cache@main
+        uses: nv-gha-runners/setup-proxy-cache@14229018fe157c83e03c008f27d183d8e99bc67c
       - name: Install Helm
         run: |
           curl --retry 3 --retry-delay 5 --retry-connrefused -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz" | tar -xz
@@ -247,7 +247,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Setup proxy cache
-        uses: nv-gha-runners/setup-proxy-cache@main
+        uses: nv-gha-runners/setup-proxy-cache@14229018fe157c83e03c008f27d183d8e99bc67c
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -266,7 +266,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Setup proxy cache
-        uses: nv-gha-runners/setup-proxy-cache@main
+        uses: nv-gha-runners/setup-proxy-cache@14229018fe157c83e03c008f27d183d8e99bc67c
         with:
           enable-apt: true
       - uses: actions/setup-node@v4
@@ -313,14 +313,14 @@ jobs:
       - name: Get PR info
         id: get-pr-info
         if: steps.sonar-token.outputs.has-token == 'true' && startsWith(github.ref, 'refs/heads/pull-request/')
-        uses: nv-gha-runners/get-pr-info@main
+        uses: nv-gha-runners/get-pr-info@090577647b8ddc4e06e809e264f7881650ecdccf
       - uses: actions/checkout@v4
         if: steps.sonar-token.outputs.has-token == 'true'
         with:
           fetch-depth: 0
       - name: Setup proxy cache
         if: steps.sonar-token.outputs.has-token == 'true'
-        uses: nv-gha-runners/setup-proxy-cache@main
+        uses: nv-gha-runners/setup-proxy-cache@14229018fe157c83e03c008f27d183d8e99bc67c
         with:
           enable-apt: true
       - name: Install SonarQube scanner dependencies
@@ -380,12 +380,12 @@ jobs:
             /tmp/sonar-coverage/network/components/network-templates/coverage.xml
       - name: SonarQube branch scan
         if: steps.sonar-token.outputs.has-token == 'true' && !startsWith(github.ref, 'refs/heads/pull-request/')
-        uses: SonarSource/sonarqube-scan-action@v7
+        uses: SonarSource/sonarqube-scan-action@c7ee0f9df90b7aa20e8dcf9695dcfe2e7da5b4f2
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       - name: SonarQube pull request scan
         if: steps.sonar-token.outputs.has-token == 'true' && startsWith(github.ref, 'refs/heads/pull-request/')
-        uses: SonarSource/sonarqube-scan-action@v7
+        uses: SonarSource/sonarqube-scan-action@c7ee0f9df90b7aa20e8dcf9695dcfe2e7da5b4f2
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:
