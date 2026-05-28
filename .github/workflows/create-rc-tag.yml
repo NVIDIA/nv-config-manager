@@ -33,7 +33,7 @@ concurrency:
 jobs:
   validate:
     name: Validate RC Tag
-    runs-on: ubuntu-24.04
+    runs-on: linux-amd64-cpu4
     outputs:
       commit: ${{ steps.resolve.outputs.commit }}
       rc_tag: ${{ steps.version.outputs.rc_tag }}
@@ -170,7 +170,7 @@ jobs:
   create-tag:
     name: Create RC Tag
     needs: validate
-    runs-on: ubuntu-24.04
+    runs-on: linux-amd64-cpu4
     environment: release-tagging
     permissions:
       contents: write
