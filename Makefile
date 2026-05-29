@@ -726,6 +726,8 @@ local-up:
 # Uses a pre-built config profile (default: local-superpod.yaml).
 # Override INSTALL_CONFIG with a copied installer config when needed.
 HELM_TIMEOUT ?= 15m
+HELM_DEBUG ?=
+HELM_DEBUG_FLAG = $(if $(HELM_DEBUG),--helm-debug,)
 
 kind-up:
 	@echo "🚀 Deploying NVIDIA Config Manager with installer to Kind (config: $(INSTALL_CONFIG))..."
@@ -741,7 +743,7 @@ kind-up:
 		--install-envoy-gateway \
 		--install-cnpg-operator \
 		--install-cert-manager \
-		--helm-timeout $(HELM_TIMEOUT)
+		$(HELM_DEBUG_FLAG) --helm-timeout $(HELM_TIMEOUT)
 
 # Create Kind cluster, deploy NVIDIA Config Manager, and populate with mock topology.
 # The topology job is declared in the config profile's content.run_after_deploy,

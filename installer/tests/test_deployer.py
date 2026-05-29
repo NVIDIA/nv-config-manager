@@ -366,6 +366,7 @@ class TestDeployOptions:
         assert opts.build_images is False
         assert opts.load_kind is False
         assert opts.helm_timeout == "15m"
+        assert opts.helm_debug is False
         assert opts.dry_run is False
 
     def test_custom_options(self):
@@ -373,10 +374,12 @@ class TestDeployOptions:
             build_images=True,
             load_kind=True,
             kind_cluster="test-cluster",
+            helm_debug=True,
             dry_run=True,
         )
         assert opts.build_images is True
         assert opts.kind_cluster == "test-cluster"
+        assert opts.helm_debug is True
 
 
 class TestImageBuilds:
@@ -542,6 +545,82 @@ class TestKindImageLoading:
             "--name",
             "test-cluster",
         ] in logged_commands
+
+
+class TestHelmInstall:
+    def test_kind_deploy_does_not_enable_helm_debug_without_flag(self, monkeypatch, tmp_path):
+        logged_commands: list[list[str]] = []
+
+        def fake_run_logged(cmd, step, callback, **kwargs):
+            logged_commands.append(cmd)
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        monkeypatch.setattr("nv_config_manager_installer.deployer._run_logged", fake_run_logged)
+
+        config = _make_config()
+        config.cluster.airgapped = True
+        deployer = Deployer(
+            config,
+            DeployOptions(load_kind=True, chart_dir="deploy/helm"),
+            RecordingCallback(),
+        )
+        deployer._values_file = tmp_path / "values-generated.yaml"
+        deployer._values_file.write_text("global: {}\n")
+
+        deployer._helm_install()
+
+        helm_cmd = next(
+            cmd for cmd in logged_commands if cmd[:3] == ["helm", "upgrade", "--install"]
+        )
+        assert "--debug" not in helm_cmd
+
+    def test_helm_debug_can_be_enabled_without_kind(self, monkeypatch, tmp_path):
+        logged_commands: list[list[str]] = []
+
+        def fake_run_logged(cmd, step, callback, **kwargs):
+            logged_commands.append(cmd)
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        monkeypatch.setattr("nv_config_manager_installer.deployer._run_logged", fake_run_logged)
+
+        config = _make_config()
+        config.cluster.airgapped = True
+        deployer = Deployer(
+            config,
+            DeployOptions(helm_debug=True, chart_dir="deploy/helm"),
+            RecordingCallback(),
+        )
+        deployer._values_file = tmp_path / "values-generated.yaml"
+        deployer._values_file.write_text("global: {}\n")
+
+        deployer._helm_install()
+
+        helm_cmd = next(
+            cmd for cmd in logged_commands if cmd[:3] == ["helm", "upgrade", "--install"]
+        )
+        assert "--debug" in helm_cmd
+
+    def test_helm_debug_stays_off_by_default(self, monkeypatch, tmp_path):
+        logged_commands: list[list[str]] = []
+
+        def fake_run_logged(cmd, step, callback, **kwargs):
+            logged_commands.append(cmd)
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        monkeypatch.setattr("nv_config_manager_installer.deployer._run_logged", fake_run_logged)
+
+        config = _make_config()
+        config.cluster.airgapped = True
+        deployer = Deployer(config, DeployOptions(chart_dir="deploy/helm"), RecordingCallback())
+        deployer._values_file = tmp_path / "values-generated.yaml"
+        deployer._values_file.write_text("global: {}\n")
+
+        deployer._helm_install()
+
+        helm_cmd = next(
+            cmd for cmd in logged_commands if cmd[:3] == ["helm", "upgrade", "--install"]
+        )
+        assert "--debug" not in helm_cmd
 
 
 class TestContentHashing:

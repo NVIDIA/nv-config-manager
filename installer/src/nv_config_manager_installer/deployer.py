@@ -154,6 +154,7 @@ class DeployOptions:
     install_cert_manager: bool = False
     install_cnpg_operator: bool = False
     helm_timeout: str = "15m"
+    helm_debug: bool = False
     recreate_secrets: bool = False
     run_tests: bool = False
     dry_run: bool = False
@@ -2052,6 +2053,9 @@ class Deployer:
             self.options.helm_timeout,
         ]
 
+        if self.options.helm_debug:
+            helm_args.append("--debug")
+
         if size_values.exists():
             helm_args.extend(["-f", str(size_values)])
 
@@ -2069,7 +2073,8 @@ class Deployer:
                     f"WARNING: observability enabled but {observability_values} not found"
                 )
 
-        self.callback.on_log(f"Running: helm upgrade --install {release} ...")
+        debug_suffix = " --debug" if "--debug" in helm_args else ""
+        self.callback.on_log(f"Running: helm upgrade --install {release}{debug_suffix} ...")
         _run_logged(helm_args, step, self.callback, timeout=1200)
         self._finish_step(step)
 

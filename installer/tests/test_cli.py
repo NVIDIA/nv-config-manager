@@ -110,3 +110,4 @@ class TestDeployCommand:
         assert "--load-kind" in result.output
         assert "--dry-run" in result.output
         assert "--helm-timeout" in result.output
+        assert "--helm-debug" in result.output
