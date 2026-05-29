@@ -1,0 +1,100 @@
+---
+title: Observability
+sidebar-title: Observability
+position: 60
+---
+
+Config Manager exposes structured logs, Prometheus metrics, optional PodMonitor resources, and a local development observability stack. Production deployments can integrate these signals with an existing Prometheus, Loki, or Grafana environment.
+
+## Structured Logs
+
+Python services emit JSON logs by default. Each service calls `configure_logging(service="<name>")` at startup, and modules get a categorized logger with `get_logger(__name__, category=LogCategory.<CATEGORY>)`.
+
+The main environment variables are:
+
+| Variable | Default | Description |
+| :------- | :------ | :---------- |
+| `LOG_FORMAT` | `json` | Set to `text` for human-readable local logs. |
+| `LOG_LEVEL` | `INFO` | Standard Python log level. If unset, the legacy `DEBUG=1` flag is still honored. |
+
+JSON log records include the message, level, logger name, timestamp, module, line number, service name, and category. Categories use dotted names so downstream tooling can filter broadly or narrowly.
+
+Common categories include:
+
+| Category | Used for |
+| :------- | :------- |
+| `render`, `render.event`, `render.api` | Template rendering, NATS consumers, and render admin API calls |
+| `dhcp`, `dhcp.data` | Kea configuration generation and Nautobot data validation |
+| `config_store`, `config_store.api` | Config storage, metadata enrichment, and API traffic |
+| `ztp`, `ztp.api` | ZTP file delivery, firmware streaming, and provisioning callbacks |
+| `temporal.workflow`, `temporal.activity`, `temporal.api` | Workflow orchestration, activity code, and workflow API traffic |
+| `nautobot`, `auth`, `nats`, `cache` | Shared Nautobot, authentication, eventing, and cache operations |
+
+For the detailed warning and error message catalog, see the
+[Log Message Reference](log-message-reference.mdx).
+
+## Custom Labels
+
+Set `global.customLabels` in Helm values to attach deployment-specific labels to every Config Manager log line and every scraped Prometheus metric:
+
+```yaml
+global:
+  customLabels:
+    environment: prod
+    region: us_west
+```
+
+The chart serializes the map into `NV_CONFIG_MANAGER_CUSTOM_LABELS` for service containers and also applies those values as pod labels. PodMonitor resources promote the pod labels onto scraped samples.
+
+Custom label keys must work as Kubernetes labels, Prometheus labels, and Python log-record attributes. Use letters, numbers, and underscores, and avoid reserved fields such as `service`, `category`, `message`, `levelname`, `name`, `module`, and `lineno`. Values are truncated to 63 characters to stay within Kubernetes label limits.
+
+## Metrics
+
+Services expose Prometheus metrics on their operational `/metrics` endpoints. Enable chart monitoring resources with `monitoring.enabled` and `monitoring.podMonitors.enabled` when the target cluster has Prometheus Operator CRDs installed.
+
+The chart can also render HTTP probes for gateway-facing endpoints when `monitoring.probes.enabled` is set and a Blackbox Exporter is available. Set `monitoring.grafanaUrl` to display a Grafana link in the Config Manager UI.
+
+Key service metrics include:
+
+| Service | Examples |
+| :------ | :------- |
+| Render | Event processing duration, received events, processed events, skipped events, failed events |
+| DHCP | Config generation duration, config generation errors, Nautobot query errors, cache refresh failures, last refresh timestamp |
+| Config Store, ZTP, Temporal | FastAPI request metrics and service-specific metrics exposed by each component |
+
+## Local Observability Stack
+
+For Kind and airgapped demo environments, the installer can deploy a local observability stack by setting `infrastructure.monitoring.observability_enabled: true` or by toggling **Enable local observability stack** on the TUI Infrastructure screen.
+
+This path is for local development and demos only. It installs:
+
+| Component | Purpose |
+| :-------- | :------ |
+| `prometheus-operator-crds` | Installs only the `monitoring.coreos.com` CRDs. No Prometheus Operator pod runs. |
+| Prometheus | Stores metrics and accepts remote write from Alloy. It does not scrape targets directly. |
+| Grafana Alloy | Watches PodMonitor, ServiceMonitor, and Probe resources, scrapes targets, and remote-writes samples to Prometheus. |
+
+The stack uses ephemeral storage and cluster-scoped CRDs. Do not enable it in a shared cluster that already has a production monitoring stack or another owner for the Prometheus Operator CRDs.
+
+To inspect the local stack:
+
+```bash
+kubectl port-forward -n nv-config-manager svc/prometheus-server 9090:9090
+kubectl port-forward -n nv-config-manager ds/alloy 12345:12345
+```
+
+Use Prometheus at `http://localhost:9090` to query `{namespace="nv-config-manager"}`. Use Alloy at `http://localhost:12345` to inspect discovered targets.
+
+## Grafana Dashboard
+
+A reference dashboard is included in the Helm chart and available here for download:
+
+<Download src="../assets/static/nv-config-manager-overview.json">
+  <Button intent="primary">Download JSON</Button>
+</Download>
+
+The dashboard contains panels for error logs, service logs, render event throughput, DHCP config age, and HTTP request rate.
+
+Import the dashboard into Grafana and select the Prometheus and Loki data sources for the environment. The Loki stream selector depends on your log shipper; common selectors use labels such as `namespace`, `k8s_namespace_name`, or `cluster`.
+
+For the in-chart local Grafana path, the chart also renders a dashboard ConfigMap when the local observability overlay enables Grafana.

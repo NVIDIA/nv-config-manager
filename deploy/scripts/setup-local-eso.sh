@@ -352,14 +352,6 @@ main() {
         echo "  ./scripts/setup-local-eso.sh --deploy"
     fi
     
-    echo ""
-    log_info "To copy real secrets from prod Vault (requires auth):"
-    echo "  export VAULT_ADDR=https://prod.vault.nvidia.com"
-    echo "  export VAULT_NAMESPACE=<your-namespace>"
-    echo "  vault login -method=oidc"
-    echo "  ./scripts/copy-vault-secrets.sh copy <source-vault-path>"
-    echo ""
 }
 
 main "$@"
-

@@ -6,13 +6,13 @@ NVIDIA Config Manager is an open-source network automation and configuration man
 
 | Service | Description |
 | :------ | :---------- |
-| **[ZTP](developer-docs/ztp.md)** | Zero Touch Provisioning, boot scripts, OS image delivery, and provisioning status updates |
-| **[DHCP](developer-docs/dhcp.md)** | Kea DHCP configuration generation from Nautobot data |
-| **[Temporal](developer-docs/temporal.md)** | Long-running network operations and approval workflows |
-| **[Render](developer-docs/render.md)** | Template rendering and event processing from Nautobot and workflow events |
-| **[Config Store](developer-docs/config-store.md)** | PostgreSQL-backed rendered, intended, and backup configuration storage |
-| **[UI](developer-docs/ui.md)** | React/Next.js interface for workflows and configuration browsing |
-| **[Nautobot](developer-docs/nautobot.md)** | Network source of truth, custom jobs, and event publication |
+| **[ZTP](docs/network-ztp/index.mdx)** | Zero Touch Provisioning, boot scripts, OS image delivery, and provisioning status updates |
+| **[DHCP](docs/dhcp/index.mdx)** | Kea DHCP configuration generation from Nautobot data |
+| **[Temporal](docs/temporal/index.mdx)** | Long-running network operations and approval workflows |
+| **[Render](docs/render/index.mdx)** | Template rendering and event processing from Nautobot and workflow events |
+| **[Config Store](docs/config-store/index.mdx)** | PostgreSQL-backed rendered, intended, and backup configuration storage |
+| **[UI](docs/getting-started/interfaces.mdx)** | React/Next.js interface for workflows and configuration browsing |
+| **[Nautobot](docs/nautobot/index.mdx)** | Network source of truth, custom jobs, and event publication |
 
 ## Installer
 
@@ -204,7 +204,7 @@ For demos or clusters without a registry, preload image tarballs onto the target
 ./manifests/load-airgapped-images.sh ./images --daemonset
 ```
 
-See [Air-Gapped Installation](developer-docs/airgapped-install.md) for the full offline workflow.
+See [Air-Gapped Installation](docs/install/install-airgapped.mdx) for the full offline workflow.
 
 ## Repository Structure
 
@@ -219,7 +219,6 @@ nv-config-manager/
 ├── deploy/helm/                 # Helm chart and values overlays
 ├── deploy/airgapped/            # Offline bundle tooling
 ├── docs/                        # Fern documentation site and generated API specs
-├── developer-docs/              # Developer and operator documentation
 ├── build/                       # Dockerfiles
 ├── db/                          # Alembic migrations
 ├── Makefile                     # Development commands
@@ -306,17 +305,18 @@ The `svc-*` hostnames, such as `svc-workflow.<base-hostname>`, accept bearer tok
 
 - [Fern docs source](docs/README.md)
 - [Installer](installer/README.md)
-- [Architecture](developer-docs/architecture.md)
-- [ZTP](developer-docs/ztp.md)
-- [DHCP](developer-docs/dhcp.md)
-- [Temporal](developer-docs/temporal.md)
-- [Render](developer-docs/render.md)
-- [Config Store](developer-docs/config-store.md)
-- [UI](developer-docs/ui.md)
-- [Nautobot](developer-docs/nautobot.md)
-- [Logging and Observability](developer-docs/logging.md)
-- [Remote VM Deployment](developer-docs/remote-vm-deployment.md)
-- [Air-Gapped Installation](developer-docs/airgapped-install.md)
+- [Architecture](docs/overview/architecture.mdx)
+- [ZTP](docs/network-ztp/index.mdx)
+- [DHCP](docs/dhcp/index.mdx)
+- [Temporal](docs/temporal/index.mdx)
+- [Render](docs/render/index.mdx)
+- [Config Store](docs/config-store/index.mdx)
+- [UI and API interfaces](docs/getting-started/interfaces.mdx)
+- [Nautobot](docs/nautobot/index.mdx)
+- [Device Authentication](docs/overview/device-authentication.mdx)
+- [Observability](docs/overview/observability.mdx)
+- [Local Development Quick Start](docs/getting-started/local-development-quick-start.mdx)
+- [Air-Gapped Installation](docs/install/install-airgapped.mdx)
 
 ## External Dependencies
 
