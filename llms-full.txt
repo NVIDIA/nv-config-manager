@@ -147,14 +147,6 @@ Test coverage includes:
 - React/Next.js user interface
 - Fern documentation tooling
 
-## External Related Projects
-
-The platform integrates with companion repositories and packages:
-
-- `nv-config-manager-templates` - Jinja2 templates used by render workflows
-- `nautobot-plugin-nv-config-manager` - Nautobot integration plugin
-- `nautobot-broker-nats` - NATS broker integration for Nautobot events
-
 ## Governance and Project Metadata
 
 - Release notes: `CHANGELOG.md`
