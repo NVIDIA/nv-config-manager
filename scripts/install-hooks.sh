@@ -27,20 +27,23 @@ echo "Installing git hooks..."
 
 mkdir -p "$HOOKS_DIR"
 
-if [[ -f "$SOURCE_HOOKS_DIR/pre-commit" ]]; then
-    cp "$SOURCE_HOOKS_DIR/pre-commit" "$HOOKS_DIR/pre-commit"
-    chmod +x "$HOOKS_DIR/pre-commit"
-    echo "  ✓ Installed pre-commit hook"
-else
-    echo "  ✗ pre-commit hook not found at $SOURCE_HOOKS_DIR/pre-commit"
-    exit 1
-fi
+for hook in pre-commit commit-msg; do
+    if [[ -f "$SOURCE_HOOKS_DIR/$hook" ]]; then
+        cp "$SOURCE_HOOKS_DIR/$hook" "$HOOKS_DIR/$hook"
+        chmod +x "$HOOKS_DIR/$hook"
+        echo "  ✓ Installed $hook hook"
+    else
+        echo "  ✗ $hook hook not found at $SOURCE_HOOKS_DIR/$hook"
+        exit 1
+    fi
+done
 
 echo ""
 echo "Git hooks installed successfully!"
 echo ""
 echo "Hooks installed:"
-echo "  - pre-commit: Auto-formats Python files with ruff, checks SPDX license headers"
+echo "  - pre-commit: Auto-formats staged Python files with ruff, checks SPDX license headers"
+echo "  - commit-msg: Requires a DCO Signed-off-by trailer"
 echo ""
-echo "To skip the pre-commit hook for a specific commit, use:"
+echo "To skip local hooks for a specific commit, use:"
 echo "  git commit --no-verify"
