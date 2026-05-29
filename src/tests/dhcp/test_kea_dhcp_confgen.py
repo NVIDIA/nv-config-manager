@@ -181,6 +181,7 @@ async def test_subnet_id_preservation():
     assert 2 in subnet_ids.values()
 
 
+@pytest.mark.timeout(120)
 @pytest.mark.asyncio
 async def test_kea_config_valid():
     """Validate that KEA accepts our generated configuration."""
