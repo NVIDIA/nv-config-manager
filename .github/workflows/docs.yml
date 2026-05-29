@@ -91,11 +91,13 @@ jobs:
           }
           printf '%s\n' "$output"
 
-          preview_url="$(printf '%s\n' "$output" | sed -nE 's#.*(https://[^[:space:]]+-preview-[^[:space:]]+).*#\1#p' | head -n 1)"
+          preview_url="$(printf '%s\n' "$output" | sed -nE 's#.*(https://[^[:space:])]+-preview-[^[:space:])]+).*#\1#p' | head -n 1)"
           if [ -z "$preview_url" ]; then
             echo "Fern preview completed, but no preview URL was found."
             exit 1
           fi
+          # Remove accidental zero-width space bytes if present in CLI output.
+          preview_url="$(printf '%s' "$preview_url" | tr -d '\342\200\213')"
 
           echo "preview_url=${preview_url}" >> "$GITHUB_OUTPUT"
           echo "Preview URL: ${preview_url}"

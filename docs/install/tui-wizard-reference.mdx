@@ -44,6 +44,8 @@ Each size profile selects a matching Helm values overlay, such as `values-local-
 
 Sites represent data centers managed by this Config Manager deployment. Each site name must match the slug of the corresponding Nautobot Location. Sites scope per-site network secrets such as device login credentials and BGP passwords.
 
+![Cluster section screen](../assets/images/installer/01-cluster.svg)
+
 ## 2. Services
 
 Choose which Config Manager services this deployment should run.
@@ -58,6 +60,8 @@ Choose which Config Manager services this deployment should run.
 
 To use an existing Nautobot instance, configure it on the [External Services](#3-external-services) screen.
 
+![Services section screen](../assets/images/installer/02-services.svg)
+
 ## 3. External Services
 
 Connect Config Manager to existing Nautobot, Redis, Slack, or PostgreSQL services. Leave a service disabled to use the default in-cluster deployment.
@@ -68,6 +72,8 @@ Connect Config Manager to existing Nautobot, Redis, Slack, or PostgreSQL service
 | Redis | Use external Redis, host, port, TLS, password authentication |
 | Slack | Configure a Slack channel for notifications |
 | PostgreSQL | Use external PostgreSQL, port, Temporal host, Temporal Visibility host, Config Store host, DHCP host, Nautobot host |
+
+![External Services section screen](../assets/images/installer/03-external-services.svg)
 
 ## 4. App Secrets
 
@@ -94,6 +100,8 @@ Git tokens create `git-token-<name>` Kubernetes secrets or ESO-backed Vault refe
   If you are using local Kubernetes secrets, you can optionally supply manual values for each secret, or leave them blank to auto-generate a random secret.
 </Note>
 
+![App Secrets section screen](../assets/images/installer/04-app-secrets.svg)
+
 ## 5. Network Secrets
 
 Configure network protocol and workflow secrets written to `config-secrets.ini`. Common entries are pre-seeded on first run, including `hash_salt`, `bgp_password`, `root_password`, and `api_user_key`.
@@ -106,6 +114,8 @@ Configure network protocol and workflow secrets written to `config-secrets.ini`.
 | Value | Secret value; leave empty to auto-generate |
 
 The **Scan Plugin Templates** button inspects Jinja2 templates from Content plugin paths to discover additional required secrets. Add template plugin locations on the [Template Plugins](#7-template-plugins) screen.
+
+![Network Secrets section screen](../assets/images/installer/05-network-secrets.svg)
 
 ## 6. Ingest Data
 
@@ -124,6 +134,10 @@ Custom jobs and bootstrap jobs require local Nautobot (`services.nautobot: true`
 
 For a concrete Design Builder example, see [Design Builder Data Loading](../nautobot/design-builder-data-loading.mdx).
 
+![Ingest Data section screen](../assets/images/installer/06-ingest-data.svg)
+
+![Ingest Data file picker](../assets/images/installer/16-ingest-data-file-picker.svg)
+
 ## 7. Template Plugins
 
 Configure Jinja2 template plugin directories used by the Render service. The node browser lets you pin plugin PVCs to a Kubernetes node on multi-node clusters that do not have shared RWX storage.
@@ -136,6 +150,10 @@ Configure Jinja2 template plugin directories used by the Render service. The nod
 | Node Selector | `key=value` labels that pin the plugin PVC to a node |
 
 If a PVC is `ReadWriteOnce`, it can only mount on the node where it was first bound. Pin the pod to that node on multi-node clusters without shared NFS or RWX storage.
+
+![Template Plugins section screen](../assets/images/installer/07-template-plugins.svg)
+
+![Template Plugins node browser](../assets/images/installer/17-template-plugins-node-browser.svg)
 
 ## 8. OS Images
 
@@ -161,6 +179,8 @@ For file storage, configure the PVC name, size, storage class, access mode, and 
 
 If a PVC is `ReadWriteOnce`, it can only mount on the node where it was first bound. Pin the pod to that node on multi-node clusters without shared NFS or RWX storage.
 
+![OS Images section screen](../assets/images/installer/08-os-images.svg)
+
 ## 9. Workflows
 
 Configure Temporal workflow RBAC defaults and per-workflow overrides.
@@ -173,6 +193,10 @@ Configure Temporal workflow RBAC defaults and per-workflow overrides.
 | Per-Workflow Overrides | Override read or execute roles for specific workflows |
 
 The workflow list is generated from the Helm RBAC values file.
+
+![Workflows section screen](../assets/images/installer/09-workflows.svg)
+
+![Workflows override dropdown](../assets/images/installer/18-workflows-dropdown.svg)
 
 ## 10. Container Images
 
@@ -190,6 +214,12 @@ Configure image source and registry settings.
 When **Pull from registry** is selected, the installer can fetch available tags from the Docker V2 API.
 
 Per-image overrides can set a custom repository or tag for individual components. For local builds, images are tagged with a short content hash derived from the Docker image ID. Helm only restarts pods when image content changes.
+
+![Container Images section screen](../assets/images/installer/10-container-images.svg)
+
+![Container Images tags panel](../assets/images/installer/20-container-images-tags.svg)
+
+![Container Images tag select dialog](../assets/images/installer/21-container-images-tag-select.svg)
 
 ## 11. SSO
 
@@ -209,6 +239,8 @@ Configure OIDC Single Sign-On for Config Manager services.
 
 The configuration samples use Keycloak as the example OIDC provider, but the installer accepts any OIDC provider that supplies the required issuer, client, secret, JWKS, audience, and scope settings.
 
+![SSO section screen](../assets/images/installer/11-sso.svg)
+
 ## 12. SPIFFE
 
 Configure SPIFFE identity for service-to-service authentication.
@@ -223,6 +255,8 @@ Configure SPIFFE identity for service-to-service authentication.
 | Socket File | Agent socket filename |
 | Socket Host Path | Host socket path for Teleport |
 | Group Prefix Mappings | Maps SPIFFE ID prefixes to authorization groups. Use "Auto-generate Default" to populate from the current namespace. |
+
+![SPIFFE section screen](../assets/images/installer/12-spiffe.svg)
 
 ## 13. Infrastructure
 
@@ -241,6 +275,8 @@ Load balancer providers include None, MetalLB, Cilium, and AWS NLB. MetalLB and 
   For local or lab deployments using self-signed TLS, the browser and any API clients must trust the generated certificate authority or explicitly accept the warning for each service hostname.
 </Info>
 
+![Infrastructure section screen](../assets/images/installer/13-infrastructure.svg)
+
 ## 14. Values Preview
 
 Generate and inspect the complete Helm values YAML before deploying. Use this screen to review exactly what the installer will pass to Helm.
@@ -249,6 +285,10 @@ Generate and inspect the complete Helm values YAML before deploying. Use this sc
 | :----- | :----- |
 | Generate | Build values from the current configuration |
 | Write to File | Save generated values to the configured output path |
+
+![Values Preview section screen](../assets/images/installer/14-values-preview.svg)
+
+![Values Preview generated output](../assets/images/installer/19-values-preview-generated.svg)
 
 ## 15. Deploy
 
@@ -269,3 +309,5 @@ Run deployment orchestration with live monitoring.
 Once you have set up your configuration, click the **Start Deployment** button to begin the deployment process. The deploy screen shows a step list, live pod status, deployment logs, individual pod/container log streams, and integration test output.
 
 If anything goes wrong, correct the error and click the **Retry Deployment** button to try again.
+
+![Deploy section screen](../assets/images/installer/15-deploy.svg)
