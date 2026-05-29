@@ -4,9 +4,9 @@ sidebar-title: Device Authentication
 position: 50
 ---
 
-Config Manager uses a dedicated service account to connect to managed devices. The default username is `nv-config-manager`. For production deployments, keep the account password in Vault or OpenBao and expose it to Config Manager through External Secrets Operator. Kubernetes secrets are useful for local development and constrained lab installs, but they are not the preferred production source of truth.
+Config Manager uses a dedicated service account to connect to managed devices. The default service account username is `nv-config-manager`. For production deployments, keep the account password in Vault or OpenBao and expose it to Config Manager through External Secrets Operator. Kubernetes secrets are useful for local development and constrained lab installs, but they are not the preferred production source of truth.
 
-Render uses the service account secret to write the hashed device account into intended configuration. ZTP applies that configuration during bootstrap. Temporal later uses the same secret to authenticate to the device for workflows such as backup, deploy, reprovision, and password rotation.
+Render uses the service account secret to write the hashed device account into intended configuration. ZTP applies that configuration during bootstrap. Temporal workers use the same secret to authenticate to devices for workflows such as backup, deploy, reprovision, and password rotation.
 
 ## Recommended Secret Source
 
@@ -45,7 +45,7 @@ sites:
 The Vault/OpenBao network path provides the global device username and fallback password for the runtime `[device]` config section:
 
 ```text
-user = nv-config-manager
+username = nv-config-manager
 password = <service-account-password>
 ```
 
@@ -70,7 +70,7 @@ In Vault/OpenBao mode, the credential lifecycle has three stages:
 
 This keeps Vault/OpenBao as the production source of truth while still giving the pods the file formats expected by the render templates and workflow workers. Do not mix this with installer-created `device-creds`; that path belongs to Kubernetes secret mode.
 
-## Render And ZTP
+## Render and ZTP
 
 Device account creation is controlled by each device's Nautobot config context. The `password_mappings` block maps an OS username to a base secret key, rotation suffix, and platform role:
 

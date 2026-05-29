@@ -4,20 +4,19 @@ sidebar-title: Log Message Reference
 position: 70
 ---
 
-This page is an operational reference for Config Manager log categories and
-common warning or error messages. Use it when a dashboard, Loki query, or pod
-log stream surfaces a message and you need to map it back to the owning service
-and likely subsystem.
+This page is an operational reference for Config Manager log categories and common warning or error messages. Use it when a dashboard, Loki query, or pod log stream surfaces a message and you need to map it back to the owning service and subsystem.
 
 The structured log fields most useful for triage are:
 
 | Field | Use |
 | :---- | :-- |
-| `service` | Service that emitted the log, such as `render`, `dhcp`, `ztp`, `temporal`, or `config-store`. |
+| `service` | Service that emitted the log, such as `render`, `dhcp`, `ztp`, `temporal-api`, `temporal-worker`, or `config-store`. |
 | `category` | Subsystem label used for filtering and dashboard panels. |
 | `levelname` | Severity: `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL`. |
 | `message` | Human-readable message template. |
 | `exc_info` | Python traceback or exception detail when present. |
+
+For broad triage, filter on `category` first. Use `service` to narrow to a specific process where needed.
 
 ## Category Index
 

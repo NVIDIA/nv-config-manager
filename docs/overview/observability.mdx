@@ -15,7 +15,7 @@ The main environment variables are:
 | Variable | Default | Description |
 | :------- | :------ | :---------- |
 | `LOG_FORMAT` | `json` | Set to `text` for human-readable local logs. |
-| `LOG_LEVEL` | `INFO` | Standard Python log level. The legacy `DEBUG=1` flag is also supported. |
+| `LOG_LEVEL` | `INFO` | Standard Python log level. If unset, the legacy `DEBUG=1` flag is still honored. |
 
 JSON log records include the message, level, logger name, timestamp, module, line number, service name, and category. Categories use dotted names so downstream tooling can filter broadly or narrowly.
 
@@ -33,6 +33,8 @@ Common categories include:
 For the detailed warning and error message catalog, see the
 [Log Message Reference](log-message-reference.mdx).
 
+When building dashboards and alerts, prefer filtering on `category` first. Service names can be more granular (for example, `temporal-api` and `temporal-worker`) and are best used as a secondary filter.
+
 ## Custom Labels
 
 Set `global.customLabels` in Helm values to attach deployment-specific labels to every Config Manager log line and every scraped Prometheus metric:
@@ -46,7 +48,7 @@ global:
 
 The chart serializes the map into `NV_CONFIG_MANAGER_CUSTOM_LABELS` for service containers and also applies those values as pod labels. PodMonitor resources promote the pod labels onto scraped samples.
 
-Custom label keys must work as Kubernetes labels, Prometheus labels, and Python log-record attributes. Use letters, numbers, and underscores; avoid reserved fields such as `service`, `category`, `message`, `levelname`, `name`, `module`, and `lineno`. Values are truncated to 63 characters to stay within Kubernetes label limits.
+Custom label keys must work as Kubernetes labels, Prometheus labels, and Python log-record attributes. Use letters, numbers, and underscores, and avoid reserved fields such as `service`, `category`, `message`, `levelname`, `name`, `module`, and `lineno`. Values are truncated to 63 characters to stay within Kubernetes label limits.
 
 ## Metrics
 
