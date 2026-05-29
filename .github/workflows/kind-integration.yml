@@ -112,8 +112,7 @@ jobs:
           make kind-up \
             KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME}" \
             INSTALL_CONFIG=deploy/configs/ci-integration-test.yaml \
-            HELM_TIMEOUT=20m \
-            HELM_DEBUG=1
+            HELM_TIMEOUT=20m
           kubectl get pods -n "${NV_CONFIG_MANAGER_NAMESPACE}" -o wide
       - name: Run integration tests
         timeout-minutes: 50

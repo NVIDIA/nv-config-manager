@@ -33,6 +33,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import threading
 import time
 import traceback
 from dataclasses import dataclass, field
@@ -155,6 +156,7 @@ class DeployOptions:
     install_cnpg_operator: bool = False
     helm_timeout: str = "15m"
     helm_debug: bool = False
+    watch_pods: bool = False
     recreate_secrets: bool = False
     run_tests: bool = False
     dry_run: bool = False
@@ -453,6 +455,194 @@ def _run_logged(
         raise subprocess.CalledProcessError(proc.returncode, cmd, stdout_text, stderr_text)
 
     return subprocess.CompletedProcess(cmd, proc.returncode, stdout_text, stderr_text)
+
+
+def _short_pod_text(value: str, *, limit: int = 140) -> str:
+    """Return a compact single-line pod status detail."""
+    value = " ".join(value.split())
+    if len(value) <= limit:
+        return value
+    return f"{value[: limit - 3]}..."
+
+
+def _pod_ready_counts(pod: Any) -> tuple[int, int]:
+    statuses = (pod.status.container_statuses if pod.status else None) or []
+    total = len(statuses)
+    ready = sum(1 for status in statuses if status.ready)
+    return ready, total
+
+
+def _pod_restart_count(pod: Any) -> int:
+    statuses = []
+    if pod.status:
+        statuses.extend(pod.status.init_container_statuses or [])
+        statuses.extend(pod.status.container_statuses or [])
+    return sum(status.restart_count or 0 for status in statuses)
+
+
+def _pod_is_ready(pod: Any) -> bool:
+    if pod.status and pod.status.phase == "Succeeded":
+        return True
+    conditions = (pod.status.conditions if pod.status else None) or []
+    for condition in conditions:
+        if condition.type == "Ready":
+            return condition.status == "True"
+    ready, total = _pod_ready_counts(pod)
+    return total > 0 and ready == total
+
+
+def _container_waiting_details(statuses: list[Any] | None, *, prefix: str) -> list[str]:
+    details: list[str] = []
+    for status in statuses or []:
+        if status.ready:
+            continue
+        name = status.name or "<unknown>"
+        state = status.state
+        if state and state.waiting:
+            reason = state.waiting.reason or "Waiting"
+            message = state.waiting.message or ""
+            text = f"{prefix} {name}: {reason}"
+            if message:
+                text = f"{text} ({_short_pod_text(message)})"
+            details.append(text)
+        elif state and state.terminated:
+            reason = state.terminated.reason or "Terminated"
+            details.append(f"{prefix} {name}: {reason} exitCode={state.terminated.exit_code}")
+        elif state and state.running:
+            details.append(f"{prefix} {name}: Running but not ready")
+        else:
+            details.append(f"{prefix} {name}: status unknown")
+    return details
+
+
+def _pod_waiting_details(pod: Any) -> list[str]:
+    details: list[str] = []
+    if pod.status:
+        for condition in pod.status.conditions or []:
+            if condition.type in {"Ready", "ContainersReady"} or condition.status == "True":
+                continue
+            text = f"condition {condition.type}={condition.status}"
+            if condition.reason:
+                text = f"{text} ({condition.reason})"
+            if condition.message:
+                text = f"{text}: {_short_pod_text(condition.message)}"
+            details.append(text)
+
+        details.extend(
+            _container_waiting_details(
+                pod.status.init_container_statuses,
+                prefix="init",
+            )
+        )
+        details.extend(
+            _container_waiting_details(
+                pod.status.container_statuses,
+                prefix="container",
+            )
+        )
+
+        if not details and (pod.status.reason or pod.status.message):
+            text = pod.status.reason or "Waiting"
+            if pod.status.message:
+                text = f"{text}: {_short_pod_text(pod.status.message)}"
+            details.append(text)
+    return details or ["waiting for readiness"]
+
+
+def _unready_pod_summary_lines(k8s: K8sClient, namespace: str, *, limit: int = 8) -> list[str]:
+    """Return concise status lines for pods that are not ready."""
+    try:
+        pods = k8s.v1.list_namespaced_pod(namespace).items
+    except Exception as exc:
+        return [f"pod summary unavailable: {exc}"]
+
+    if not pods:
+        return ["no pods found yet"]
+
+    unready = [pod for pod in pods if not _pod_is_ready(pod)]
+    unready.sort(key=lambda pod: pod.metadata.name or "")
+    if not unready:
+        return ["all pods ready"]
+
+    visible = unready[:limit]
+    lines = [
+        f"{len(unready)} pod(s) not ready"
+        + (f"; showing first {limit}" if len(unready) > limit else "")
+    ]
+    for pod in visible:
+        name = pod.metadata.name or "<unknown>"
+        ready, total = _pod_ready_counts(pod)
+        phase = pod.status.phase if pod.status and pod.status.phase else "Unknown"
+        restarts = _pod_restart_count(pod)
+        details = "; ".join(_pod_waiting_details(pod)[:3])
+        lines.append(f"{name} ready={ready}/{total} phase={phase} restarts={restarts}: {details}")
+    return lines
+
+
+def _emit_pod_summary(lines: list[str], step: DeployStep, callback: DeployCallback) -> None:
+    for line in lines:
+        msg = f"[pods] {line}"
+        step.output.append(msg)
+        callback.on_log(msg)
+
+
+def _poll_pod_summary(
+    k8s: K8sClient,
+    namespace: str,
+    step: DeployStep,
+    callback: DeployCallback,
+    stop_event: threading.Event,
+    *,
+    interval: float,
+    heartbeat_interval: float,
+) -> None:
+    """Poll and emit changed pod readiness summaries until stopped."""
+    last_signature = ""
+    last_emit = 0.0
+    while not stop_event.is_set():
+        lines = _unready_pod_summary_lines(k8s, namespace)
+        signature = "\n".join(lines)
+        now = time.monotonic()
+        has_blockers = lines != ["all pods ready"]
+        if signature != last_signature or (has_blockers and now - last_emit >= heartbeat_interval):
+            _emit_pod_summary(lines, step, callback)
+            last_signature = signature
+            last_emit = now
+        if stop_event.wait(interval):
+            break
+
+
+def _run_logged_with_pod_summary(
+    cmd: list[str],
+    k8s: K8sClient | None,
+    namespace: str,
+    step: DeployStep,
+    callback: DeployCallback,
+    *,
+    check: bool = True,
+    timeout: int | None = 600,
+    poll_interval: float = 10.0,
+    heartbeat_interval: float = 60.0,
+) -> subprocess.CompletedProcess[str]:
+    """Run a command while periodically logging unready pod summaries."""
+    if k8s is None:
+        callback.on_log("Pod readiness summaries unavailable: Kubernetes client is not initialized")
+        return _run_logged(cmd, step, callback, check=check, timeout=timeout)
+
+    callback.on_log("Streaming pod readiness summaries while Helm waits...")
+    stop_event = threading.Event()
+    poll_thread = threading.Thread(
+        target=_poll_pod_summary,
+        args=(k8s, namespace, step, callback, stop_event),
+        kwargs={"interval": poll_interval, "heartbeat_interval": heartbeat_interval},
+        daemon=True,
+    )
+    poll_thread.start()
+    try:
+        return _run_logged(cmd, step, callback, check=check, timeout=timeout)
+    finally:
+        stop_event.set()
+        poll_thread.join(timeout=2)
 
 
 def _format_elapsed(seconds: float) -> str:
@@ -2077,7 +2267,17 @@ class Deployer:
 
         debug_suffix = " --debug" if "--debug" in helm_args else ""
         self.callback.on_log(f"Running: helm upgrade --install {release}{debug_suffix} ...")
-        _run_logged(helm_args, step, self.callback, timeout=1200)
+        if self.options.watch_pods:
+            _run_logged_with_pod_summary(
+                helm_args,
+                self._k8s,
+                ns,
+                step,
+                self.callback,
+                timeout=1200,
+            )
+        else:
+            _run_logged(helm_args, step, self.callback, timeout=1200)
         self._finish_step(step)
 
     def _patch_gateway(self) -> None:

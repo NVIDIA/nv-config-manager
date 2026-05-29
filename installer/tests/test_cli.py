@@ -111,3 +111,5 @@ class TestDeployCommand:
         assert "--dry-run" in result.output
         assert "--helm-timeout" in result.output
         assert "--helm-debug" in result.output
+        assert "--watch-pods" in result.output
+        assert "--no-watch-pods" in result.output

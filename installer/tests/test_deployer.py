@@ -20,6 +20,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -36,6 +37,7 @@ from nv_config_manager_installer.deployer import (
     _ParallelCommand,
     _RerunState,
     _run_logged_parallel,
+    _unready_pod_summary_lines,
 )
 from nv_config_manager_installer.k8s import LOADER_POD_IMAGE
 from nv_config_manager_installer.schema import (
@@ -367,6 +369,7 @@ class TestDeployOptions:
         assert opts.load_kind is False
         assert opts.helm_timeout == "15m"
         assert opts.helm_debug is False
+        assert opts.watch_pods is False
         assert opts.dry_run is False
 
     def test_custom_options(self):
@@ -375,11 +378,13 @@ class TestDeployOptions:
             load_kind=True,
             kind_cluster="test-cluster",
             helm_debug=True,
+            watch_pods=True,
             dry_run=True,
         )
         assert opts.build_images is True
         assert opts.kind_cluster == "test-cluster"
         assert opts.helm_debug is True
+        assert opts.watch_pods is True
 
 
 class TestImageBuilds:
@@ -655,6 +660,88 @@ class TestHelmInstall:
             cmd for cmd in logged_commands if cmd[:3] == ["helm", "upgrade", "--install"]
         )
         assert "--debug" not in helm_cmd
+
+    def test_watch_pods_summarizes_readiness_during_helm_install(self, monkeypatch, tmp_path):
+        watched_commands: list[tuple[list[str], str]] = []
+
+        def fake_run_logged(cmd, step, callback, **kwargs):
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        def fake_run_logged_with_pod_summary(cmd, k8s, namespace, step, callback, **kwargs):
+            watched_commands.append((cmd, namespace))
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        monkeypatch.setattr("nv_config_manager_installer.deployer._run_logged", fake_run_logged)
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer._run_logged_with_pod_summary",
+            fake_run_logged_with_pod_summary,
+        )
+
+        config = _make_config()
+        config.cluster.airgapped = True
+        deployer = Deployer(
+            config,
+            DeployOptions(watch_pods=True, chart_dir="deploy/helm"),
+            RecordingCallback(),
+        )
+        deployer._values_file = tmp_path / "values-generated.yaml"
+        deployer._values_file.write_text("global: {}\n")
+
+        deployer._helm_install()
+
+        helm_cmd, namespace = watched_commands[0]
+        assert helm_cmd[:3] == ["helm", "upgrade", "--install"]
+        assert namespace == "nv-config-manager"
+
+    def test_unready_pod_summary_includes_waiting_reasons(self):
+        waiting_state = SimpleNamespace(
+            waiting=SimpleNamespace(reason="ImagePullBackOff", message="pull access denied"),
+            running=None,
+            terminated=None,
+        )
+        running_state = SimpleNamespace(waiting=None, running=object(), terminated=None)
+        pod = SimpleNamespace(
+            metadata=SimpleNamespace(name="api-123"),
+            status=SimpleNamespace(
+                phase="Pending",
+                reason=None,
+                message=None,
+                conditions=[
+                    SimpleNamespace(type="Ready", status="False", reason=None, message=None),
+                    SimpleNamespace(
+                        type="PodScheduled",
+                        status="False",
+                        reason="Unschedulable",
+                        message="0/1 nodes are available",
+                    ),
+                ],
+                init_container_statuses=[],
+                container_statuses=[
+                    SimpleNamespace(
+                        name="api",
+                        ready=False,
+                        restart_count=2,
+                        state=waiting_state,
+                    ),
+                    SimpleNamespace(
+                        name="sidecar",
+                        ready=False,
+                        restart_count=0,
+                        state=running_state,
+                    ),
+                ],
+            ),
+        )
+        k8s = SimpleNamespace(
+            v1=SimpleNamespace(list_namespaced_pod=lambda namespace: SimpleNamespace(items=[pod]))
+        )
+
+        lines = _unready_pod_summary_lines(k8s, "nv-config-manager")
+
+        assert lines[0] == "1 pod(s) not ready"
+        assert "api-123 ready=0/2 phase=Pending restarts=2" in lines[1]
+        assert "PodScheduled=False (Unschedulable)" in lines[1]
+        assert "container api: ImagePullBackOff (pull access denied)" in lines[1]
 
 
 class TestContentHashing:
