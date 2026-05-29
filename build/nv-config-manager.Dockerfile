@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 # NVIDIA Config Manager - Unified Python Image
 # Build with: docker build -t nv-config-manager .
 # Run different services by changing the entrypoint
@@ -46,7 +47,8 @@ COPY db/alembic.ini /code/nv-config-manager/db/
 # Create venv and install dependencies (--no-editable ensures package is in site-packages, not linked to source)
 # --group integration-test includes pytest so tests can run from any nv-config-manager component
 RUN uv venv /code/nv-config-manager/.venv
-RUN set -eux; \
+RUN --mount=type=cache,id=nvcm-uv-cache,target=/root/.cache/uv \
+    set -eux; \
     if [ -n "$TEMPLATE_ENGINE_VERSION" ]; then \
         export SETUPTOOLS_SCM_PRETEND_VERSION="$TEMPLATE_ENGINE_VERSION"; \
     fi; \

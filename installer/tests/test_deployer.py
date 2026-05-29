@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -31,7 +32,10 @@ from nv_config_manager_installer.deployer import (
     StepStatus,
     _get_image_digest_tag,
     _hash_content_dir,
+    _parallel_build_limit,
+    _ParallelCommand,
     _RerunState,
+    _run_logged_parallel,
 )
 from nv_config_manager_installer.k8s import LOADER_POD_IMAGE
 from nv_config_manager_installer.schema import (
@@ -373,6 +377,117 @@ class TestDeployOptions:
         )
         assert opts.build_images is True
         assert opts.kind_cluster == "test-cluster"
+
+
+class TestImageBuilds:
+    def test_parallel_build_limit_defaults_and_env_override(self, monkeypatch):
+        monkeypatch.delenv("NVCM_DOCKER_BUILD_PARALLELISM", raising=False)
+        assert _parallel_build_limit(6) >= 1
+        assert _parallel_build_limit(6) <= 4
+
+        monkeypatch.setenv("NVCM_DOCKER_BUILD_PARALLELISM", "2")
+        assert _parallel_build_limit(6) == 2
+
+        monkeypatch.setenv("NVCM_DOCKER_BUILD_PARALLELISM", "99")
+        assert _parallel_build_limit(6) == 6
+
+        monkeypatch.setenv("NVCM_DOCKER_BUILD_PARALLELISM", "not-an-int")
+        assert _parallel_build_limit(6) >= 1
+
+    def test_run_logged_parallel_prefixes_logs_and_reports_progress(self):
+        step = DeployStep("build-images", "Build local images")
+        callback = RecordingCallback()
+        commands = [
+            _ParallelCommand(
+                "one",
+                [
+                    sys.executable,
+                    "-c",
+                    (
+                        "import time; "
+                        "print('one start', flush=True); "
+                        "time.sleep(0.4); "
+                        "print('one done', flush=True)"
+                    ),
+                ],
+                timeout=5,
+            ),
+            _ParallelCommand(
+                "two",
+                [
+                    sys.executable,
+                    "-c",
+                    (
+                        "import time; "
+                        "print('two start', flush=True); "
+                        "time.sleep(0.4); "
+                        "print('two done', flush=True)"
+                    ),
+                ],
+                timeout=5,
+            ),
+        ]
+
+        _run_logged_parallel(commands, step, callback, max_parallel=2, progress_interval=0.05)
+
+        one_start = callback.logs.index("[one] one start")
+        two_start = callback.logs.index("[two] two start")
+        one_done = callback.logs.index("[one] one done")
+
+        assert one_start < one_done
+        assert two_start < one_done
+        assert any(
+            "[one] running" in line and "latest: one start" in line for line in callback.logs
+        )
+        assert any(line.startswith("[one] completed in ") for line in callback.logs)
+        assert any(line.startswith("[two] completed in ") for line in callback.logs)
+
+    def test_build_images_runs_parallel_builds_and_tags(self, monkeypatch):
+        parallel_calls: list[tuple[list[_ParallelCommand], int]] = []
+        run_commands: list[list[str]] = []
+
+        def fake_run_logged_parallel(commands, step, callback, *, max_parallel, **kwargs):
+            parallel_calls.append((commands, max_parallel))
+            for command in commands:
+                callback.on_log(f"[{command.label}] completed in 0s")
+
+        def fake_digest(image: str) -> str:
+            return f"sha-{image.removeprefix('nv-config-manager-')[:8]}"
+
+        def fake_run(cmd, **kwargs):
+            run_commands.append(cmd)
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        monkeypatch.setenv("NVCM_DOCKER_BUILD_PARALLELISM", "2")
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer._run_logged_parallel",
+            fake_run_logged_parallel,
+        )
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer._get_image_digest_tag",
+            fake_digest,
+        )
+        monkeypatch.setattr("nv_config_manager_installer.deployer._run", fake_run)
+
+        deployer = Deployer(
+            _make_config(),
+            DeployOptions(build_images=True),
+            RecordingCallback(),
+        )
+        deployer._build_images()
+
+        commands, max_parallel = parallel_calls[0]
+        assert max_parallel == 2
+        assert len(commands) == 6
+        assert all(
+            command.cmd[:4] == ["docker", "build", "--provenance=false", "--progress=plain"]
+            for command in commands
+        )
+        assert all(command.timeout == 900 for command in commands)
+        assert all(command.env and command.env["DOCKER_BUILDKIT"] == "1" for command in commands)
+        assert len(run_commands) == 6
+        assert all(cmd[:2] == ["docker", "tag"] for cmd in run_commands)
+        assert deployer._local_image_tags["nv-config-manager-ui"].startswith("sha-")
 
 
 class TestKindImageLoading:

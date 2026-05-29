@@ -101,6 +101,29 @@ class DeployStep:
     error: str = ""
 
 
+@dataclass(frozen=True)
+class _ParallelCommand:
+    """A subprocess command that can run alongside other commands."""
+
+    label: str
+    cmd: list[str]
+    timeout: int | None = 600
+    env: dict[str, str] | None = None
+
+
+@dataclass
+class _RunningCommand:
+    """Runtime state for a command managed by _run_logged_parallel."""
+
+    command: _ParallelCommand
+    proc: subprocess.Popen[str]
+    started_at: float
+    stdout_lines: list[str] = field(default_factory=list)
+    stderr_lines: list[str] = field(default_factory=list)
+    latest_line: str = "waiting for output"
+    open_streams: int = 0
+
+
 class DeployCallback(Protocol):
     """Protocol for deployment progress callbacks."""
 
@@ -431,6 +454,173 @@ def _run_logged(
     return subprocess.CompletedProcess(cmd, proc.returncode, stdout_text, stderr_text)
 
 
+def _format_elapsed(seconds: float) -> str:
+    """Return a compact elapsed-time string for long-running command status."""
+    seconds_int = max(0, int(seconds))
+    minutes, sec = divmod(seconds_int, 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours}h{minutes:02d}m{sec:02d}s"
+    if minutes:
+        return f"{minutes}m{sec:02d}s"
+    return f"{sec}s"
+
+
+def _command_summary(cmd: list[str]) -> str:
+    """Return a concise shell-style command summary for logs."""
+    return " ".join(cmd[:4]) + ("..." if len(cmd) > 4 else "")
+
+
+def _parallel_build_limit(command_count: int) -> int:
+    """Return how many Docker builds to run at once."""
+    configured = os.environ.get("NVCM_DOCKER_BUILD_PARALLELISM", "").strip()
+    if configured:
+        try:
+            return max(1, min(command_count, int(configured)))
+        except ValueError:
+            pass
+    cpu_count = os.cpu_count() or 2
+    return max(1, min(command_count, 4, cpu_count))
+
+
+def _append_command_line(
+    state: _RunningCommand,
+    stream: str,
+    line: str,
+    step: DeployStep,
+    callback: DeployCallback,
+) -> None:
+    """Record and emit one line from a parallel subprocess."""
+    for part in line.replace("\r", "\n").splitlines():
+        text = part.strip()
+        if not text:
+            continue
+        if stream == "stdout":
+            state.stdout_lines.append(text)
+        else:
+            state.stderr_lines.append(text)
+        state.latest_line = text
+        msg = f"[{state.command.label}] {text}"
+        step.output.append(msg)
+        callback.on_log(msg)
+
+
+def _kill_running_commands(states: list[_RunningCommand]) -> None:
+    """Terminate all still-running commands."""
+    for state in states:
+        if state.proc.poll() is None:
+            state.proc.kill()
+    for state in states:
+        if state.proc.poll() is None:
+            state.proc.wait()
+
+
+def _emit_parallel_status(
+    states: list[_RunningCommand],
+    step: DeployStep,
+    callback: DeployCallback,
+) -> None:
+    """Emit elapsed-time status for each currently running command."""
+    now = time.monotonic()
+    for state in states:
+        elapsed = _format_elapsed(now - state.started_at)
+        msg = f"[{state.command.label}] running {elapsed} | latest: {state.latest_line}"
+        step.output.append(msg)
+        callback.on_log(msg)
+
+
+def _run_logged_parallel(
+    commands: list[_ParallelCommand],
+    step: DeployStep,
+    callback: DeployCallback,
+    *,
+    max_parallel: int,
+    progress_interval: float = 15.0,
+) -> None:
+    """Run subprocess commands concurrently, streaming prefixed output to callback."""
+    if not commands:
+        return
+
+    pending = list(commands)
+    running: dict[subprocess.Popen[str], _RunningCommand] = {}
+    selector = selectors.DefaultSelector()
+    next_progress = time.monotonic() + progress_interval
+
+    def start_available() -> None:
+        while pending and len(running) < max_parallel:
+            command = pending.pop(0)
+            callback.on_log(f"[{command.label}] $ {_command_summary(command.cmd)}")
+            proc = subprocess.Popen(
+                command.cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                env=command.env,
+            )
+            state = _RunningCommand(command=command, proc=proc, started_at=time.monotonic())
+            if proc.stdout:
+                selector.register(proc.stdout, selectors.EVENT_READ, (state, "stdout"))
+                state.open_streams += 1
+            if proc.stderr:
+                selector.register(proc.stderr, selectors.EVENT_READ, (state, "stderr"))
+                state.open_streams += 1
+            running[proc] = state
+
+    def finish_completed() -> None:
+        completed: list[subprocess.Popen[str]] = []
+        for proc, state in running.items():
+            if proc.poll() is not None and state.open_streams == 0:
+                completed.append(proc)
+
+        for proc in completed:
+            state = running.pop(proc)
+            elapsed = _format_elapsed(time.monotonic() - state.started_at)
+            if proc.returncode != 0:
+                _kill_running_commands(list(running.values()))
+                raise subprocess.CalledProcessError(
+                    proc.returncode,
+                    state.command.cmd,
+                    "\n".join(state.stdout_lines),
+                    "\n".join(state.stderr_lines),
+                )
+            msg = f"[{state.command.label}] completed in {elapsed}"
+            step.output.append(msg)
+            callback.on_log(msg)
+
+    try:
+        start_available()
+        while running or pending:
+            now = time.monotonic()
+            for state in list(running.values()):
+                if state.command.timeout is not None and (
+                    now - state.started_at > state.command.timeout
+                ):
+                    _kill_running_commands(list(running.values()))
+                    raise subprocess.TimeoutExpired(state.command.cmd, state.command.timeout)
+
+            if now >= next_progress and running:
+                _emit_parallel_status(list(running.values()), step, callback)
+                next_progress = now + progress_interval
+
+            timeout = max(0.1, min(1.0, next_progress - now))
+            for key, _ in selector.select(timeout=timeout):
+                state, stream = key.data
+                line = key.fileobj.readline()  # type: ignore[union-attr]
+                if line:
+                    _append_command_line(state, stream, line.rstrip("\n"), step, callback)
+                    continue
+                selector.unregister(key.fileobj)
+                state.open_streams -= 1
+
+            finish_completed()
+            start_available()
+    except BaseException:
+        _kill_running_commands(list(running.values()))
+        raise
+    finally:
+        selector.close()
+
+
 class Deployer:
     """Orchestrates the full NVIDIA Config Manager deployment pipeline."""
 
@@ -733,27 +923,46 @@ class Deployer:
             if val:
                 apt_mirror_args += ["--build-arg", f"{env_var}={val}"]
 
+        build_env = {**os.environ, "DOCKER_BUILDKIT": "1"}
+        build_commands: list[_ParallelCommand] = []
         for name, dockerfile, context in images:
             build_tag = f"{name}:local"
-            self.callback.on_log(f"Building {build_tag}...")
-            _run_logged(
-                [
-                    "docker",
-                    "build",
-                    "--provenance=false",
-                    "--build-context",
-                    "scripts=build/",
-                    *apt_mirror_args,
-                    "-t",
-                    build_tag,
-                    "-f",
-                    dockerfile,
-                    context,
-                ],
-                step,
-                self.callback,
-                timeout=900,
+            build_commands.append(
+                _ParallelCommand(
+                    label=name,
+                    cmd=[
+                        "docker",
+                        "build",
+                        "--provenance=false",
+                        "--progress=plain",
+                        "--build-context",
+                        "scripts=build/",
+                        *apt_mirror_args,
+                        "-t",
+                        build_tag,
+                        "-f",
+                        dockerfile,
+                        context,
+                    ],
+                    timeout=900,
+                    env=build_env,
+                )
             )
+
+        max_parallel = _parallel_build_limit(len(build_commands))
+        self.callback.on_log(
+            f"Building {len(build_commands)} local image(s) with up to "
+            f"{max_parallel} parallel Docker build(s)..."
+        )
+        _run_logged_parallel(
+            build_commands,
+            step,
+            self.callback,
+            max_parallel=max_parallel,
+        )
+
+        for name, _, _ in images:
+            build_tag = f"{name}:local"
             digest_tag = _get_image_digest_tag(build_tag)
             if digest_tag:
                 content_tag = f"{name}:{digest_tag}"
