@@ -1,5 +1,17 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 """Tests for nv_config_manager_installer.deployer -- step sequencing, callbacks, and re-run detection."""
 
 from __future__ import annotations
@@ -21,6 +33,7 @@ from nv_config_manager_installer.deployer import (
     _hash_content_dir,
     _RerunState,
 )
+from nv_config_manager_installer.k8s import LOADER_POD_IMAGE
 from nv_config_manager_installer.schema import (
     ClusterConfig,
     ContentConfig,
@@ -360,6 +373,60 @@ class TestDeployOptions:
         )
         assert opts.build_images is True
         assert opts.kind_cluster == "test-cluster"
+
+
+class TestKindImageLoading:
+    def test_load_kind_tags_arch_specific_loader_image_as_canonical(self, monkeypatch):
+        run_commands: list[list[str]] = []
+        logged_commands: list[list[str]] = []
+
+        def fake_run(cmd, **kwargs):
+            run_commands.append(cmd)
+            if cmd[:3] == ["docker", "version", "--format"]:
+                return MagicMock(returncode=0, stdout="linux/amd64\n", stderr="")
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        def fake_run_logged(cmd, step, callback, **kwargs):
+            logged_commands.append(cmd)
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        monkeypatch.setattr("nv_config_manager_installer.deployer._run", fake_run)
+        monkeypatch.setattr("nv_config_manager_installer.deployer._run_logged", fake_run_logged)
+
+        deployer = Deployer(
+            _make_config(),
+            DeployOptions(load_kind=True, kind_cluster="test-cluster"),
+            RecordingCallback(),
+        )
+        deployer._load_kind()
+
+        assert [
+            "docker",
+            "version",
+            "--format",
+            "{{.Server.Os}}/{{.Server.Arch}}",
+        ] in run_commands
+        assert [
+            "docker",
+            "pull",
+            "--platform",
+            "linux/amd64",
+            "docker.io/amd64/busybox:1.36",
+        ] in logged_commands
+        assert [
+            "docker",
+            "tag",
+            "docker.io/amd64/busybox:1.36",
+            LOADER_POD_IMAGE,
+        ] in logged_commands
+        assert [
+            "kind",
+            "load",
+            "docker-image",
+            LOADER_POD_IMAGE,
+            "--name",
+            "test-cluster",
+        ] in logged_commands
 
 
 class TestContentHashing:

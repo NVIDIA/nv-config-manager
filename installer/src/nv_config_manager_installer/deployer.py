@@ -26,6 +26,7 @@ import hashlib
 import io
 import json
 import os
+import platform
 import selectors
 import shutil
 import subprocess
@@ -42,6 +43,7 @@ from typing import Any, Protocol
 from nv_config_manager_installer.accounts import build_config_secrets_ini
 from nv_config_manager_installer.helm_values import generate_helm_values
 from nv_config_manager_installer.k8s import (
+    LOADER_POD_IMAGE,
     K8sClient,
     ServiceProxy,
     kubectl_current_context,
@@ -234,9 +236,41 @@ def _run(
     )
 
 
+def _docker_server_platform() -> str:
+    """Return Docker server OS/architecture for platform-specific image pulls."""
+    result = _run(
+        ["docker", "version", "--format", "{{.Server.Os}}/{{.Server.Arch}}"],
+        check=False,
+    )
+    value = result.stdout.strip()
+    if result.returncode == 0 and "/" in value:
+        return value
+
+    arch = platform.machine().lower()
+    arch = {
+        "aarch64": "arm64",
+        "arm64": "arm64",
+        "x86_64": "amd64",
+        "amd64": "amd64",
+    }.get(arch, arch)
+    return f"linux/{arch}"
+
+
 _DEFAULT_IMAGE_REGISTRY = "nvcr.io/nvidian/cfa"
 _CNPG_OPERATOR_IMAGE_TAG = "1.29.0"
 _PROMETHEUS_OPERATOR_CRDS_CHART_VERSION = "28.0.1"
+_KIND_PRELOAD_IMAGES = (LOADER_POD_IMAGE,)
+_KIND_PRELOAD_PLATFORM_IMAGES: dict[str, dict[str, str]] = {
+    LOADER_POD_IMAGE: {
+        "linux/amd64": "docker.io/amd64/busybox:1.36",
+        "linux/arm64": "docker.io/arm64v8/busybox:1.36",
+    },
+}
+
+
+def _kind_preload_source_image(image: str, platform_name: str) -> str:
+    """Return a single-platform source image to tag as *image* before Kind import."""
+    return _KIND_PRELOAD_PLATFORM_IMAGES.get(image, {}).get(platform_name, image)
 
 
 def _strip_image_registry(repository: str) -> str:
@@ -750,6 +784,36 @@ class Deployer:
             tag = self._local_image_tags.get(name, "local")
             img = f"{name}:{tag}"
             self.callback.on_log(f"Loading {img} into Kind cluster {cluster}...")
+            _run_logged(
+                ["kind", "load", "docker-image", img, "--name", cluster],
+                step,
+                self.callback,
+                timeout=300,
+            )
+        platform_name = _docker_server_platform()
+        for img in _KIND_PRELOAD_IMAGES:
+            # Pull arch-scoped official images when available. Docker can keep
+            # multi-platform tags as manifest lists even after --platform,
+            # which makes kind's image import fail on missing platform content.
+            source_img = _kind_preload_source_image(img, platform_name)
+            self.callback.on_log(
+                f"Pulling helper image {source_img} for platform {platform_name}..."
+            )
+            _run_logged(
+                ["docker", "pull", "--platform", platform_name, source_img],
+                step,
+                self.callback,
+                timeout=300,
+            )
+            if source_img != img:
+                self.callback.on_log(f"Tagging helper image {source_img} as {img}...")
+                _run_logged(
+                    ["docker", "tag", source_img, img],
+                    step,
+                    self.callback,
+                    timeout=300,
+                )
+            self.callback.on_log(f"Loading helper image {img} into Kind cluster {cluster}...")
             _run_logged(
                 ["kind", "load", "docker-image", img, "--name", cluster],
                 step,
