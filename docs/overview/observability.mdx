@@ -87,10 +87,13 @@ Use Prometheus at `http://localhost:9090` to query `{namespace="nv-config-manage
 
 ## Grafana Dashboard
 
-A reference dashboard is included in the Helm chart and mirrored into the docs as
-[nv-config-manager-overview.json](../assets/static/nv-config-manager-overview.json).
-It contains panels for error logs, service logs, render event throughput,
-DHCP config age, and HTTP request rate.
+A reference dashboard is included in the Helm chart and available here for download:
+
+<Download src="../assets/static/nv-config-manager-overview.json">
+  <Button intent="primary">Download JSON</Button>
+</Download>
+
+The dashboard contains panels for error logs, service logs, render event throughput, DHCP config age, and HTTP request rate.
 
 Import the dashboard into Grafana and select the Prometheus and Loki data sources for the environment. The Loki stream selector depends on your log shipper; common selectors use labels such as `namespace`, `k8s_namespace_name`, or `cluster`.
 
