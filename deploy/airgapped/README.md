@@ -1,6 +1,6 @@
 # Air-Gapped Bundle Tooling
 
-This directory builds offline installation bundles for NVIDIA Config Manager. For production installation steps, see [Air-Gapped Installation](../../developer-docs/airgapped-install.md).
+This directory builds offline installation bundles for NVIDIA Config Manager. For production installation steps, see [Air-Gapped Installation](../../docs/install/install-airgapped.mdx).
 
 ## Build
 
@@ -26,7 +26,7 @@ Useful options:
 | `--local-image-fallback` | For pre-release E2E tests, save a locally tagged image when its source registry pull fails |
 | `--allow-missing-images` | Continue after missing images; use only for diagnostics because the bundle may not install offline |
 | `--skip-chart` | Skip Helm chart packaging |
-| `--skip-docs` | Skip copying developer docs |
+| `--skip-docs` | Skip copying documentation source |
 
 Default bundles exclude Grafana and Loki charts/images because their OSS distributions are AGPLv3. Pass `--include-agpl-observability` only when that license is acceptable for the target environment.
 
@@ -38,7 +38,7 @@ charts/                  # Dependency charts
 images/                  # Image tarballs and image-list.txt
 manifests/               # Image loader and operator manifests
 installer/               # Offline installer package and install.sh
-developer-docs/          # Optional developer documentation
+docs/                    # Optional documentation source
 tools/skopeo/            # Optional bundled Skopeo binary
 upload-to-registry.sh    # OCI registry image and chart upload helper
 operator-versions.env    # Dependency version pins
@@ -202,6 +202,6 @@ Use direct node loading only for demos or clusters where an OCI registry is not 
 
 ## Related Documentation
 
-- [Air-Gapped Installation](../../developer-docs/airgapped-install.md)
-- [Air-Gapped Demo Environment](../../developer-docs/airgapped-demo-environment.md)
+- [Air-Gapped Installation](../../docs/install/install-airgapped.mdx)
+- [Local Development Quick Start](../../docs/getting-started/local-development-quick-start.mdx)
 - [Installer](../../installer/README.md)

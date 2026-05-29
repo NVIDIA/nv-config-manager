@@ -1,6 +1,6 @@
 .PHONY: help install dev test lint format clean docker-build docker-push ui-install ui-dev ui-build \
         local-up local-down local-destroy local-status local-logs deploy kind-up kind-down topology install-cert \
-        openapi openapi-check docs-format docs-lint docs-lint-fern docs-live docs-preview docs-publish docs-publish-in-ci docs-screenshots \
+        openapi openapi-check docs-assets docs-assets-check docs-format docs-lint docs-lint-fern docs-live docs-preview docs-publish docs-publish-in-ci docs-screenshots \
         obs-grafana obs-prometheus obs-loki obs-alloy obs-port-forward obs-port-forward-stop
 
 # Configuration
@@ -89,6 +89,8 @@ help:
 	@echo "Documentation:"
 	@echo "  make openapi          - Generate OpenAPI specs for all FastAPI services"
 	@echo "  make openapi-check    - Check if OpenAPI specs are up-to-date"
+	@echo "  make docs-assets      - Mirror source assets into Fern docs assets"
+	@echo "  make docs-assets-check - Check if mirrored docs assets are up-to-date"
 	@echo "  make docs-lint        - Lint documentation markdown with rumdl"
 	@echo "  make docs-lint-fern   - Validate Fern docs configuration and markdown"
 	@echo "  make docs-live        - Start the Fern docs dev server"
@@ -236,6 +238,12 @@ openapi-check:
 	uv run python scripts/generate_openapi.py --check
 
 # Documentation targets
+docs-assets:
+	cp -p deploy/helm/dashboards/nv-config-manager-overview.json docs/assets/static/nv-config-manager-overview.json
+
+docs-assets-check:
+	diff -q deploy/helm/dashboards/nv-config-manager-overview.json docs/assets/static/nv-config-manager-overview.json
+
 docs-lint:
 	@set -e; \
 	echo "Linting documentation markdown with rumdl..."; \
