@@ -25,7 +25,7 @@
 #   --local-image-fallback  Save a locally tagged image when pulling its source ref fails
 #   --allow-missing-images  Continue even if one or more images cannot be pulled or saved
 #   --skip-chart            Skip chart/dependency chart packaging
-#   --skip-docs             Skip copying local developer docs
+#   --skip-docs             Skip copying documentation source
 #   --include-skopeo        Include the build host Skopeo binary in tools/skopeo/
 #   --include-agpl-observability Include AGPL Grafana/Loki observability charts and related images
 #   --skopeo-binary PATH    Skopeo binary to include (default: command -v skopeo)
@@ -1120,13 +1120,13 @@ create_documentation() {
         return
     fi
 
-    local docs_src="$REPO_ROOT/developer-docs"
-    local docs_dest="$BUILD_DIR/developer-docs"
+    local docs_src="$REPO_ROOT/docs"
+    local docs_dest="$BUILD_DIR/docs"
     if [[ -d "$docs_src" ]]; then
         cp -r "$docs_src" "$docs_dest"
-        log_success "Included developer-docs/ in tarball"
+        log_success "Included docs/ in tarball"
     else
-        log_warn "developer-docs/ not found; documentation will not be included"
+        log_warn "docs/ not found; documentation will not be included"
     fi
 }
 
@@ -1455,7 +1455,7 @@ create_tarball() {
     mkdir -p "$content_dir"
 
     [[ -d "$BUILD_DIR/helm" ]] && cp -r "$BUILD_DIR/helm" "$content_dir/"
-    [[ -d "$BUILD_DIR/developer-docs" ]] && cp -r "$BUILD_DIR/developer-docs" "$content_dir/"
+    [[ -d "$BUILD_DIR/docs" ]] && cp -r "$BUILD_DIR/docs" "$content_dir/"
     [[ -d "$BUILD_DIR/manifests" ]] && cp -r "$BUILD_DIR/manifests" "$content_dir/"
     [[ -d "$BUILD_DIR/charts" ]] && cp -r "$BUILD_DIR/charts" "$content_dir/"
     [[ -d "$BUILD_DIR/components" ]] && cp -r "$BUILD_DIR/components" "$content_dir/"
@@ -1482,7 +1482,7 @@ create_tarball() {
     cat > "$content_dir/README.md" << 'BUNDLE_README'
 # NVIDIA Config Manager Air-Gapped Bundle
 
-This bundle contains the Helm chart, dependency charts, dependency manifests, offline installer, optional developer docs, image archives, and a registry upload helper.
+This bundle contains the Helm chart, dependency charts, dependency manifests, offline installer, optional docs, image archives, and a registry upload helper.
 
 ## Upload Images And Chart To An OCI Registry
 

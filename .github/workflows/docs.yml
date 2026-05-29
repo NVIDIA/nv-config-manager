@@ -6,6 +6,7 @@ on:
       - main
       - "pull-request/*"
     paths:
+      - "deploy/helm/dashboards/**"
       - "docs/**"
       - "scripts/generate_openapi.py"
       - "installer/scripts/screenshot_tui.py"
@@ -44,6 +45,7 @@ jobs:
           enable-cache: true
       - run: uv sync --frozen
       - run: make openapi-check
+      - run: make docs-assets-check
       - run: make docs-lint
       - run: make docs-lint-fern
 
