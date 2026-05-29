@@ -925,6 +925,7 @@ class Deployer:
                 apt_mirror_args += ["--build-arg", f"{env_var}={val}"]
 
         build_env = {**os.environ, "DOCKER_BUILDKIT": "1"}
+        build_output_args = ["--load"] if build_env.get("BUILDX_BUILDER") else []
         build_commands: list[_ParallelCommand] = []
         for name, dockerfile, context in images:
             build_tag = f"{name}:local"
@@ -936,6 +937,7 @@ class Deployer:
                         "build",
                         "--provenance=false",
                         "--progress=plain",
+                        *build_output_args,
                         "--build-context",
                         "scripts=build/",
                         *apt_mirror_args,

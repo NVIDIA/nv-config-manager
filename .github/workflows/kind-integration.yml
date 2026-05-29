@@ -120,15 +120,36 @@ jobs:
         run: |
           for attempt in 1 2 3; do
             echo "Attempt ${attempt} of 3"
-            if timeout --kill-after=1m 15m uv run pytest "${TEST_PATH}" -v \
+            results_file="integration-test-results-${attempt}.xml"
+            set +e
+            timeout --kill-after=1m 15m uv run pytest "${TEST_PATH}" -v \
               --ci \
               --nv-config-manager-namespace "${NV_CONFIG_MANAGER_NAMESPACE}" \
               --tb=short \
-              --junitxml=integration-test-results.xml; then
+              --junitxml="${results_file}"
+            test_status=$?
+            set -e
+
+            if [ "${test_status}" -eq 0 ]; then
+              cp -f "${results_file}" integration-test-results.xml
               exit 0
             fi
-            if [ "${attempt}" -lt 3 ]; then
-              sleep 10
+
+            if [ -f "${results_file}" ]; then
+              cp -f "${results_file}" integration-test-results.xml
+            fi
+
+            if [ "${test_status}" -eq 124 ] || \
+              { [ "${test_status}" -ge 128 ] && [ "${test_status}" -le 192 ]; }; then
+              echo "Attempt ${attempt} failed with retryable status ${test_status}"
+              if [ "${attempt}" -lt 3 ]; then
+                sleep 10
+                continue
+              fi
+              exit "${test_status}"
+            else
+              echo "Attempt ${attempt} failed with non-retryable status ${test_status}"
+              exit "${test_status}"
             fi
           done
           exit 1

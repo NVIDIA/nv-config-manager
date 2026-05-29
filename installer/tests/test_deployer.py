@@ -462,6 +462,7 @@ class TestImageBuilds:
             return MagicMock(returncode=0, stdout="", stderr="")
 
         monkeypatch.setenv("NVCM_DOCKER_BUILD_PARALLELISM", "2")
+        monkeypatch.delenv("BUILDX_BUILDER", raising=False)
         monkeypatch.setattr(
             "nv_config_manager_installer.deployer._run_logged_parallel",
             fake_run_logged_parallel,
@@ -486,11 +487,44 @@ class TestImageBuilds:
             command.cmd[:4] == ["docker", "build", "--provenance=false", "--progress=plain"]
             for command in commands
         )
+        assert all("--load" not in command.cmd for command in commands)
         assert all(command.timeout == 900 for command in commands)
         assert all(command.env and command.env["DOCKER_BUILDKIT"] == "1" for command in commands)
         assert len(run_commands) == 6
         assert all(cmd[:2] == ["docker", "tag"] for cmd in run_commands)
         assert deployer._local_image_tags["nv-config-manager-ui"].startswith("sha-")
+
+    def test_build_images_loads_buildx_container_outputs(self, monkeypatch):
+        parallel_calls: list[list[_ParallelCommand]] = []
+
+        def fake_run_logged_parallel(commands, step, callback, *, max_parallel, **kwargs):
+            parallel_calls.append(commands)
+            for command in commands:
+                callback.on_log(f"[{command.label}] completed in 0s")
+
+        monkeypatch.setenv("BUILDX_BUILDER", "ci-builder")
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer._run_logged_parallel",
+            fake_run_logged_parallel,
+        )
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer._get_image_digest_tag",
+            lambda image: "",
+        )
+
+        deployer = Deployer(
+            _make_config(),
+            DeployOptions(build_images=True),
+            RecordingCallback(),
+        )
+        deployer._build_images()
+
+        commands = parallel_calls[0]
+        assert len(commands) == 6
+        assert all("--load" in command.cmd for command in commands)
+        assert all(
+            command.env and command.env["BUILDX_BUILDER"] == "ci-builder" for command in commands
+        )
 
 
 class TestKindImageLoading:
