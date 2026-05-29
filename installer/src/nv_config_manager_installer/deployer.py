@@ -282,9 +282,16 @@ def _docker_server_platform() -> str:
     return f"linux/{arch}"
 
 
+def _docker_image_id(image: str) -> str:
+    """Return Docker's local image ID for an image reference."""
+    result = _run(["docker", "image", "inspect", "--format", "{{.Id}}", image], check=True)
+    return result.stdout.strip()
+
+
 _DEFAULT_IMAGE_REGISTRY = "nvcr.io/nvidian/cfa"
 _CNPG_OPERATOR_IMAGE_TAG = "1.29.0"
 _PROMETHEUS_OPERATOR_CRDS_CHART_VERSION = "28.0.1"
+_KIND_PRELOAD_IMAGES_ENV = "NVCM_KIND_PRELOAD_IMAGES"
 _KIND_PRELOAD_IMAGES = (LOADER_POD_IMAGE,)
 _KIND_PRELOAD_PLATFORM_IMAGES: dict[str, dict[str, str]] = {
     LOADER_POD_IMAGE: {
@@ -297,6 +304,36 @@ _KIND_PRELOAD_PLATFORM_IMAGES: dict[str, dict[str, str]] = {
 def _kind_preload_source_image(image: str, platform_name: str) -> str:
     """Return a single-platform source image to tag as *image* before Kind import."""
     return _KIND_PRELOAD_PLATFORM_IMAGES.get(image, {}).get(platform_name, image)
+
+
+def _env_kind_preload_images() -> list[str]:
+    """Return additional Kind preload images from the environment."""
+    value = os.environ.get(_KIND_PRELOAD_IMAGES_ENV, "")
+    return [part for part in value.replace(",", " ").split() if part]
+
+
+def _kind_preload_images(config: NVConfigManagerInstallConfig) -> list[str]:
+    """Return the effective ordered list of images to preload into Kind."""
+    images: list[str] = []
+    seen: set[str] = set()
+    for image in (
+        *_KIND_PRELOAD_IMAGES,
+        *config.images.kind_preload_images,
+        *_env_kind_preload_images(),
+    ):
+        image = image.strip()
+        if not image or image in seen:
+            continue
+        seen.add(image)
+        images.append(image)
+    return images
+
+
+def _kind_node_names(cluster: str) -> list[str]:
+    """Return Docker container names for nodes in a Kind cluster."""
+    result = _run(["kind", "get", "nodes", "--name", cluster], check=True)
+    nodes = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    return nodes or [f"{cluster}-control-plane"]
 
 
 def _strip_image_registry(repository: str) -> str:
@@ -455,6 +492,90 @@ def _run_logged(
         raise subprocess.CalledProcessError(proc.returncode, cmd, stdout_text, stderr_text)
 
     return subprocess.CompletedProcess(cmd, proc.returncode, stdout_text, stderr_text)
+
+
+def _run_logged_pipe(
+    source_cmd: list[str],
+    sink_cmd: list[str],
+    step: DeployStep,
+    callback: DeployCallback,
+    *,
+    check: bool = True,
+    timeout: int | None = 600,
+) -> subprocess.CompletedProcess[str]:
+    """Run source_cmd with stdout piped to sink_cmd, streaming command output."""
+    source_str = " ".join(source_cmd[:4]) + ("..." if len(source_cmd) > 4 else "")
+    sink_str = " ".join(sink_cmd[:4]) + ("..." if len(sink_cmd) > 4 else "")
+    callback.on_log(f"$ {source_str} | {sink_str}")
+
+    source = subprocess.Popen(source_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    sink = subprocess.Popen(
+        sink_cmd,
+        stdin=source.stdout,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    if source.stdout:
+        source.stdout.close()
+
+    stdout_lines: list[str] = []
+    stderr_lines: list[str] = []
+    source_stderr_lines: list[str] = []
+    deadline = time.monotonic() + timeout if timeout else None
+    sel = selectors.DefaultSelector()
+    try:
+        if source.stderr:
+            sel.register(source.stderr, selectors.EVENT_READ, "source-stderr")
+        if sink.stdout:
+            sel.register(sink.stdout, selectors.EVENT_READ, "sink-stdout")
+        if sink.stderr:
+            sel.register(sink.stderr, selectors.EVENT_READ, "sink-stderr")
+
+        while sel.get_map():
+            for proc, cmd in ((source, source_cmd), (sink, sink_cmd)):
+                _check_deadline(deadline, proc, cmd, timeout)
+            wait = None if deadline is None else max(0.0, deadline - time.monotonic())
+            for key, _ in sel.select(timeout=wait):
+                line_bytes = key.fileobj.readline()  # type: ignore[union-attr]
+                if not line_bytes:
+                    sel.unregister(key.fileobj)
+                    continue
+                line = line_bytes.decode(errors="replace").rstrip("\n")
+                step.output.append(line)
+                callback.on_log(line)
+                if key.data == "sink-stdout":
+                    stdout_lines.append(line)
+                elif key.data == "sink-stderr":
+                    stderr_lines.append(line)
+                else:
+                    source_stderr_lines.append(line)
+
+        source.wait()
+        sink.wait()
+    except BaseException:
+        source.kill()
+        sink.kill()
+        source.wait()
+        sink.wait()
+        raise
+    finally:
+        sel.close()
+
+    stdout_text = "\n".join(stdout_lines)
+    stderr_text = "\n".join(stderr_lines)
+    source_stderr_text = "\n".join(source_stderr_lines)
+
+    if check and sink.returncode != 0:
+        raise subprocess.CalledProcessError(sink.returncode, sink_cmd, stdout_text, stderr_text)
+    if check and source.returncode != 0:
+        raise subprocess.CalledProcessError(
+            source.returncode,
+            source_cmd,
+            "",
+            source_stderr_text,
+        )
+
+    return subprocess.CompletedProcess(sink_cmd, sink.returncode, stdout_text, stderr_text)
 
 
 def _short_pod_text(value: str, *, limit: int = 140) -> str:
@@ -1193,10 +1314,13 @@ class Deployer:
                 timeout=300,
             )
         platform_name = _docker_server_platform()
-        for img in _KIND_PRELOAD_IMAGES:
+        for img in _kind_preload_images(self.config):
             # Pull arch-scoped official images when available. Docker can keep
             # multi-platform tags as manifest lists even after --platform,
-            # which makes kind's image import fail on missing platform content.
+            # which makes kind's default --all-platforms import fail on missing
+            # platform content. Import helper images directly into node
+            # containerd with the selected platform instead. Avoid ctr's
+            # digest refs here; the tag is what Kubernetes needs to resolve.
             source_img = _kind_preload_source_image(img, platform_name)
             self.callback.on_log(
                 f"Pulling helper image {source_img} for platform {platform_name}..."
@@ -1207,22 +1331,49 @@ class Deployer:
                 self.callback,
                 timeout=300,
             )
-            if source_img != img:
-                self.callback.on_log(f"Tagging helper image {source_img} as {img}...")
-                _run_logged(
-                    ["docker", "tag", source_img, img],
-                    step,
-                    self.callback,
-                    timeout=300,
-                )
-            self.callback.on_log(f"Loading helper image {img} into Kind cluster {cluster}...")
+            image_id = _docker_image_id(source_img)
+            self.callback.on_log(f"Tagging selected-platform helper image {image_id} as {img}...")
             _run_logged(
-                ["kind", "load", "docker-image", img, "--name", cluster],
+                ["docker", "tag", image_id, img],
                 step,
                 self.callback,
                 timeout=300,
             )
+            self._load_kind_helper_image(img, cluster, platform_name, step)
         self._finish_step(step)
+
+    def _load_kind_helper_image(
+        self,
+        image: str,
+        cluster: str,
+        platform_name: str,
+        step: DeployStep,
+    ) -> None:
+        """Load a helper image into Kind node containerd for one platform."""
+        nodes = _kind_node_names(cluster)
+        for node in nodes:
+            self.callback.on_log(f"Loading helper image {image} into Kind node {node}...")
+            _run_logged_pipe(
+                ["docker", "save", image],
+                [
+                    "docker",
+                    "exec",
+                    "--privileged",
+                    "-i",
+                    node,
+                    "ctr",
+                    "--namespace=k8s.io",
+                    "images",
+                    "import",
+                    "--platform",
+                    platform_name,
+                    "--snapshotter=overlayfs",
+                    "-",
+                ],
+                step,
+                self.callback,
+                timeout=300,
+            )
 
     def _operator_bundle_root(self) -> Path | None:
         """Return the airgap bundle root if local charts/manifests are available."""

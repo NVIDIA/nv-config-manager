@@ -299,6 +299,7 @@ class TestImagesConfig:
         assert img.pull_secret.server == "nvcr.io"
         assert img.pull_secret.username == "$oauthtoken"
         assert img.pull_secret.password == ""
+        assert img.kind_preload_images == []
         assert img.overrides == {}
 
     def test_local_source(self):
@@ -362,6 +363,27 @@ class TestImagesConfig:
             assert loaded.images.overrides["nvConfigManager"].tag == "special"
         finally:
             path.unlink(missing_ok=True)
+
+    def test_kind_preload_images_roundtrip_for_local_source(self):
+        config = NVConfigManagerInstallConfig(
+            images=ImagesConfig(
+                source=ImageSource.LOCAL,
+                registry="old.example.com/nv-config-manager",
+                tag="old",
+                kind_preload_images=["docker.io/library/redis:7-alpine"],
+                pull_secret=ImagePullSecret(password="secret"),
+                overrides={"nvConfigManager": ImageOverride(tag="old")},
+            )
+        )
+
+        data = yaml.safe_load(config.to_yaml_str())
+        assert data["images"] == {
+            "source": "local",
+            "kind_preload_images": ["docker.io/library/redis:7-alpine"],
+        }
+
+        loaded = NVConfigManagerInstallConfig.model_validate(data)
+        assert loaded.images.kind_preload_images == ["docker.io/library/redis:7-alpine"]
 
     def test_empty_password_optional(self):
         config = NVConfigManagerInstallConfig(

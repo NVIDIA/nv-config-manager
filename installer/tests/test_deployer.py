@@ -33,6 +33,7 @@ from nv_config_manager_installer.deployer import (
     StepStatus,
     _get_image_digest_tag,
     _hash_content_dir,
+    _kind_preload_images,
     _parallel_build_limit,
     _ParallelCommand,
     _RerunState,
@@ -533,22 +534,50 @@ class TestImageBuilds:
 
 
 class TestKindImageLoading:
+    def test_kind_preload_images_include_defaults_config_and_env(self, monkeypatch):
+        config = _make_config()
+        config.images.kind_preload_images = [
+            "docker.io/library/redis:7-alpine",
+            "docker.io/library/busybox:1.36",
+        ]
+        monkeypatch.setenv(
+            "NVCM_KIND_PRELOAD_IMAGES",
+            "docker.io/library/nats:2.10-alpine,docker.io/library/redis:7-alpine",
+        )
+
+        assert _kind_preload_images(config) == [
+            "docker.io/library/busybox:1.36",
+            "docker.io/library/redis:7-alpine",
+            "docker.io/library/nats:2.10-alpine",
+        ]
+
     def test_load_kind_tags_arch_specific_loader_image_as_canonical(self, monkeypatch):
         run_commands: list[list[str]] = []
         logged_commands: list[list[str]] = []
+        pipe_commands: list[tuple[list[str], list[str]]] = []
 
         def fake_run(cmd, **kwargs):
             run_commands.append(cmd)
             if cmd[:3] == ["docker", "version", "--format"]:
                 return MagicMock(returncode=0, stdout="linux/amd64\n", stderr="")
+            if cmd[:4] == ["docker", "image", "inspect", "--format"]:
+                return MagicMock(returncode=0, stdout="sha256:busyboxid\n", stderr="")
             return MagicMock(returncode=0, stdout="", stderr="")
 
         def fake_run_logged(cmd, step, callback, **kwargs):
             logged_commands.append(cmd)
             return MagicMock(returncode=0, stdout="", stderr="")
 
+        def fake_run_logged_pipe(source_cmd, sink_cmd, step, callback, **kwargs):
+            pipe_commands.append((source_cmd, sink_cmd))
+            return MagicMock(returncode=0, stdout="", stderr="")
+
         monkeypatch.setattr("nv_config_manager_installer.deployer._run", fake_run)
         monkeypatch.setattr("nv_config_manager_installer.deployer._run_logged", fake_run_logged)
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer._run_logged_pipe",
+            fake_run_logged_pipe,
+        )
 
         deployer = Deployer(
             _make_config(),
@@ -573,17 +602,98 @@ class TestKindImageLoading:
         assert [
             "docker",
             "tag",
-            "docker.io/amd64/busybox:1.36",
+            "sha256:busyboxid",
             LOADER_POD_IMAGE,
+        ] in logged_commands
+        assert ["kind", "get", "nodes", "--name", "test-cluster"] in run_commands
+        assert (
+            ["docker", "save", LOADER_POD_IMAGE],
+            [
+                "docker",
+                "exec",
+                "--privileged",
+                "-i",
+                "test-cluster-control-plane",
+                "ctr",
+                "--namespace=k8s.io",
+                "images",
+                "import",
+                "--platform",
+                "linux/amd64",
+                "--snapshotter=overlayfs",
+                "-",
+            ],
+        ) in pipe_commands
+
+    def test_load_kind_loads_configured_preload_images(self, monkeypatch):
+        run_commands: list[list[str]] = []
+        logged_commands: list[list[str]] = []
+        pipe_commands: list[tuple[list[str], list[str]]] = []
+
+        def fake_run(cmd, **kwargs):
+            run_commands.append(cmd)
+            if cmd[:3] == ["docker", "version", "--format"]:
+                return MagicMock(returncode=0, stdout="linux/amd64\n", stderr="")
+            if cmd[:4] == ["docker", "image", "inspect", "--format"]:
+                return MagicMock(returncode=0, stdout="sha256:redisid\n", stderr="")
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        def fake_run_logged(cmd, step, callback, **kwargs):
+            logged_commands.append(cmd)
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        def fake_run_logged_pipe(source_cmd, sink_cmd, step, callback, **kwargs):
+            pipe_commands.append((source_cmd, sink_cmd))
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        monkeypatch.delenv("NVCM_KIND_PRELOAD_IMAGES", raising=False)
+        monkeypatch.setattr("nv_config_manager_installer.deployer._run", fake_run)
+        monkeypatch.setattr("nv_config_manager_installer.deployer._run_logged", fake_run_logged)
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer._run_logged_pipe",
+            fake_run_logged_pipe,
+        )
+
+        config = _make_config()
+        config.images.kind_preload_images = ["docker.io/library/redis:7-alpine"]
+        deployer = Deployer(
+            config,
+            DeployOptions(load_kind=True, kind_cluster="test-cluster"),
+            RecordingCallback(),
+        )
+        deployer._load_kind()
+
+        assert [
+            "docker",
+            "pull",
+            "--platform",
+            "linux/amd64",
+            "docker.io/library/redis:7-alpine",
         ] in logged_commands
         assert [
-            "kind",
-            "load",
-            "docker-image",
-            LOADER_POD_IMAGE,
-            "--name",
-            "test-cluster",
+            "docker",
+            "tag",
+            "sha256:redisid",
+            "docker.io/library/redis:7-alpine",
         ] in logged_commands
+        assert (
+            ["docker", "save", "docker.io/library/redis:7-alpine"],
+            [
+                "docker",
+                "exec",
+                "--privileged",
+                "-i",
+                "test-cluster-control-plane",
+                "ctr",
+                "--namespace=k8s.io",
+                "images",
+                "import",
+                "--platform",
+                "linux/amd64",
+                "--snapshotter=overlayfs",
+                "-",
+            ],
+        ) in pipe_commands
 
 
 class TestHelmInstall:
