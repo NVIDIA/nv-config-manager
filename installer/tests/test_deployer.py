@@ -584,6 +584,7 @@ class TestImageBuilds:
         commands = parallel_calls[0]
         assert len(commands) == 6
         assert all("--load" in command.cmd for command in commands)
+        assert all(command.cmd[:3] == ["docker", "buildx", "build"] for command in commands)
         assert all(
             command.env and command.env["BUILDX_BUILDER"] == "ci-builder" for command in commands
         )

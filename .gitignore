@@ -87,6 +87,10 @@ local_dev.ini
 values-generated.yaml
 nv-config-manager-install.yaml
 installer/nv-config-manager-install.yaml
+.nvcm-air-sim.yaml
+installer/.nvcm-air-sim.yaml
+nvcm-air-sim.yaml
+installer/nvcm-air-sim.yaml
 
 # Spyder project settings
 .spyderproject

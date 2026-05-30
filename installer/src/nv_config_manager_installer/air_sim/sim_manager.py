@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 import os
 import platform
@@ -47,9 +48,15 @@ from nv_config_manager_installer.air_sim.constants import (
     DEFAULT_AIR_INTERNAL_URL,
     DEFAULT_AIR_ORG,
     DEFAULT_CONFIG_MANAGER_REPO,
+    DEFAULT_NAUTOBOT_DEMO_PASSWORD,
+    DEFAULT_NAUTOBOT_DEMO_USERNAME,
+    NODE_EXPORTER_BASE_URL,
+    NODE_EXPORTER_SHA256,
+    NODE_EXPORTER_VERSION,
     NVCM_BOX_PASSWORD,
     NVCM_BOX_USER,
     NVCM_KIND_CONFIG,
+    NVCM_NETWORK_SECRETS,
     NVCM_SECRETS,
     NVCM_SERVER_SETUP_SCRIPT,
 )
@@ -462,7 +469,7 @@ class AirSimulationManager:
                     "Could not find interface with MAC %s",
                     internal_mac,
                 )
-                return False
+                return None
             LOG.info(
                 "Internal interface: %s (MAC %s)",
                 iface_name,
@@ -477,7 +484,7 @@ class AirSimulationManager:
             )
             _ssh(f"sudo ip addr add {internal_ip} dev {iface_name} 2>/dev/null || true")
             _ssh(f"sudo ip link set {iface_name} up")
-            internal_network = internal_ip.rsplit(".", 1)[0] + ".0/" + internal_ip.split("/")[1]
+            internal_network = str(ipaddress.ip_network(internal_ip, strict=False))
             _ssh(f"sudo ip route add {internal_network} dev {iface_name} 2>/dev/null || true")
             for rr_net in rr_nets:
                 _ssh(
@@ -487,6 +494,7 @@ class AirSimulationManager:
 
             # -- 2. FRR/BGP with password --------------------------------------
             LOG.info("Configuring FRR/BGP (ASN %s, neighbor %s)...", bgp_asn, gw)
+            bgp_password = NVCM_NETWORK_SECRETS["bgp_password"]
             kind_subnet = _ssh(
                 "sudo docker network inspect kind"
                 " -f '{{range .IPAM.Config}}{{.Subnet}} {{end}}' 2>/dev/null"
@@ -523,7 +531,7 @@ class AirSimulationManager:
                 f" bgp router-id {ztp_url_host}\n"
                 " no bgp ebgp-requires-policy\n"
                 f" neighbor {gw} remote-as external\n"
-                f" neighbor {gw} password NVCMBgp1!\n"
+                f" neighbor {gw} password {bgp_password}\n"
                 " !\n"
                 " address-family ipv4 unicast\n"
                 "  redistribute kernel route-map RM-EXPORT\n"
@@ -551,9 +559,9 @@ class AirSimulationManager:
 
             # -- 4. Node-exporter staging + ZTP helper -------------------------
             LOG.info("Staging node-exporter binaries for ZTP...")
-            ne_version = "1.8.2"
+            ne_version = NODE_EXPORTER_VERSION
             ne_dir = f"/home/{user}/ztp-files/node-exporter/{ne_version}"
-            ne_base = "https://github.com/prometheus/node_exporter/releases/download"
+            ne_base = NODE_EXPORTER_BASE_URL
             _ssh(f"mkdir -p {ne_dir}")
 
             for gh_arch, out_name in [
@@ -562,8 +570,10 @@ class AirSimulationManager:
             ]:
                 tarball = f"node_exporter-{ne_version}.linux-{gh_arch}.tar.gz"
                 url = f"{ne_base}/v{ne_version}/{tarball}"
+                expected_sha = NODE_EXPORTER_SHA256[gh_arch]
                 _ssh(
                     f"curl -fsSL '{url}' -o /tmp/{tarball}"
+                    f" && echo '{expected_sha}  /tmp/{tarball}' | sha256sum -c -"
                     f" && tar -xzf /tmp/{tarball} -C /tmp"
                     f" 'node_exporter-{ne_version}.linux-{gh_arch}/node_exporter'"
                     f" && mv '/tmp/node_exporter-{ne_version}.linux-{gh_arch}/node_exporter'"
@@ -577,15 +587,15 @@ class AirSimulationManager:
 
             manifest_json = (
                 '{"images": ['
-                '{"platform": "node-exporter", "version": "1.8.2",'
+                f'{{"platform": "node-exporter", "version": "{NODE_EXPORTER_VERSION}",'
                 ' "filename": "node_exporter_amd64",'
-                ' "path": "node-exporter/1.8.2/node_exporter_amd64",'
-                ' "sha256": "0c9219b9860c6250c0bc3da5d79bd79c17f3938345fa7503f95cfa2ad7c3ba1d",'
+                f' "path": "node-exporter/{NODE_EXPORTER_VERSION}/node_exporter_amd64",'
+                f' "sha256": "{NODE_EXPORTER_SHA256["amd64"]}",'
                 ' "tags": {}},'
-                '{"platform": "node-exporter", "version": "1.8.2",'
+                f'{{"platform": "node-exporter", "version": "{NODE_EXPORTER_VERSION}",'
                 ' "filename": "node_exporter_armv5",'
-                ' "path": "node-exporter/1.8.2/node_exporter_armv5",'
-                ' "sha256": "d639498cdb3a12205ed40bed27b11a0bd6d32b247dfebabc36c1ae76cc87131f",'
+                f' "path": "node-exporter/{NODE_EXPORTER_VERSION}/node_exporter_armv5",'
+                f' "sha256": "{NODE_EXPORTER_SHA256["armv5"]}",'
                 ' "tags": {}}'
                 "]}"
             )
@@ -1339,8 +1349,8 @@ class AirSimulationManager:
         self,
         host: str,
         port: int,
-        username: str = "demo",
-        password: str = "demo",
+        username: str = DEFAULT_NAUTOBOT_DEMO_USERNAME,
+        password: str = DEFAULT_NAUTOBOT_DEMO_PASSWORD,
         namespace: str = CONFIG_MANAGER_NAMESPACE,
         deployment: str = CONFIG_MANAGER_NAUTOBOT_DEPLOYMENT,
         timeout: int = 60,

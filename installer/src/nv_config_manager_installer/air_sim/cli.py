@@ -21,14 +21,13 @@ from pathlib import Path
 
 import click
 
+from nv_config_manager_installer.air_sim.constants import DEFAULT_AIR_SIM_CONFIG_PATH
 from nv_config_manager_installer.air_sim.orchestrator import (
     SimOrchestrator,
     StepStatus,
 )
 from nv_config_manager_installer.air_sim.sim_config import SimConfig
 from nv_config_manager_installer.tui.air_sim.app import NVCMAirSimApp
-
-_DEFAULT_CONFIG_PATH = Path("nvcm-air-sim.yaml")
 
 
 @click.group("air-sim")
@@ -42,7 +41,7 @@ def air_sim() -> None:
     "-c",
     "config_path",
     type=click.Path(dir_okay=False, path_type=Path),
-    default=_DEFAULT_CONFIG_PATH,
+    default=DEFAULT_AIR_SIM_CONFIG_PATH,
     help="Path to AIR simulation YAML config.",
 )
 def init_air_sim(config_path: Path) -> None:

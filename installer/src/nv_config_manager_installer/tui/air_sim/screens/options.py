@@ -158,11 +158,11 @@ class OptionsScreen(Container):
         try:
             config.wait_timeout = int(self.query_one("#wait-timeout", Input).value)
         except ValueError:
-            pass
+            self.app.notify("Invalid wait timeout - must be an integer", severity="warning")
         try:
             config.deploy_timeout = int(self.query_one("#deploy-timeout", Input).value)
         except ValueError:
-            pass
+            self.app.notify("Invalid deploy timeout - must be an integer", severity="warning")
 
     def sync_from_config(self, config: SimConfig) -> None:
         self.query_one("#ngc-api-key", Input).value = config.ngc_api_key

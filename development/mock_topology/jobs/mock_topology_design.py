@@ -18,6 +18,7 @@ This job creates mock network topologies for testing purposes using
 the Design Builder pattern compatible with Nautobot git repository mounts.
 """
 
+import logging
 from typing import Any
 
 from django.contrib.contenttypes.models import ContentType
@@ -31,6 +32,7 @@ from nautobot_design_builder.design_job import DesignJob
 from ..context import BaseContext, get_mock_topology_context_class
 
 name = "Mock Topology"
+logger = logging.getLogger(__name__)
 
 
 class MockTopologyDesign(DesignJob):
@@ -95,7 +97,8 @@ class MockTopologyDesign(DesignJob):
         try:
             app_label, model = content_type.split(".")
             return ContentType.objects.get(app_label=app_label, model=model)
-        except (ValueError, ContentType.DoesNotExist):
+        except (ValueError, ContentType.DoesNotExist) as exc:
+            logger.warning("Could not resolve content type %r: %s", content_type, exc)
             return None
 
     class Meta:

@@ -298,7 +298,7 @@ class AirTopologyBuilder:
             device_name = intf.get("device")
             intf_name = intf.get("name")
             intf_type = intf.get("type", "")
-            description = intf.get("description", "")
+            description = intf.get("description") or ""
             raw_mac = intf.get("mac_address")
             if raw_mac is not None and not isinstance(raw_mac, str):
                 raise ValueError(

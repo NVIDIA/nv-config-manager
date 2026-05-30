@@ -27,6 +27,10 @@ import yaml
 from nv_config_manager_installer.air_sim.constants import (
     CONFIG_MANAGER_NAMESPACE,
     CONFIG_MANAGER_REMOTE_DIR,
+    NODE_EXPORTER_BASE_URL,
+    NODE_EXPORTER_SHA256,
+    NODE_EXPORTER_VERSION,
+    NVCM_NETWORK_SECRETS,
     _BlockStyleDumper,
 )
 
@@ -61,9 +65,13 @@ _SETUP_SCRIPT_TEMPLATE = textwrap.dedent("""\
     exec > >(tee -a /var/log/nvcm-setup.log) 2>&1
     export HOME=/root
 
-    DEPLOY_SIZE="__DEPLOY_SIZE__"
-    INTERNAL_IP="__INTERNAL_IP__"
-    INTERNAL_MAC="__INTERNAL_MAC__"
+    DEPLOY_SIZE=__DEPLOY_SIZE__
+    INTERNAL_IP=__INTERNAL_IP__
+    INTERNAL_MAC=__INTERNAL_MAC__
+    OOB_SWITCH_GW=__OOB_SWITCH_GW__
+    BGP_ASN=__BGP_ASN__
+    BGP_PASSWORD=__BGP_PASSWORD__
+    RELAY_RETURN_NETWORKS=(__RELAY_RETURN_NETWORKS__)
     echo "========================================"
     echo "  NVCM AIR Setup"
     echo "========================================"
@@ -165,8 +173,8 @@ _SETUP_SCRIPT_TEMPLATE = textwrap.dedent("""\
         ip link set "$INT_IFACE" up
         INTERNAL_NETWORK=$(echo "$INTERNAL_IP" | sed 's|\\.[0-9]*/|.0/|')
         ip route add "$INTERNAL_NETWORK" dev "$INT_IFACE" 2>/dev/null || true
-        for _rr_net in __RELAY_RETURN_NETWORKS__; do
-            ip route replace "$_rr_net" via __OOB_SWITCH_GW__ \\
+        for _rr_net in "${RELAY_RETURN_NETWORKS[@]}"; do
+            ip route replace "$_rr_net" via "$OOB_SWITCH_GW" \\
                 dev "$INT_IFACE" 2>/dev/null || true
         done
     else
@@ -287,22 +295,22 @@ _SETUP_SCRIPT_TEMPLATE = textwrap.dedent("""\
      match ip address prefix-list PL-METALLB
     route-map RM-EXPORT deny 9999
     !
-    router bgp __BGP_ASN__
+    router bgp ${BGP_ASN}
      bgp router-id __ZTP_URL_HOST__
      no bgp ebgp-requires-policy
-     neighbor __OOB_SWITCH_GW__ remote-as external
-     neighbor __OOB_SWITCH_GW__ password NVCMBgp1!
+     neighbor ${OOB_SWITCH_GW} remote-as external
+     neighbor ${OOB_SWITCH_GW} password ${BGP_PASSWORD}
      !
      address-family ipv4 unicast
       redistribute kernel route-map RM-EXPORT
-      neighbor __OOB_SWITCH_GW__ route-map RM-EXPORT out
+      neighbor ${OOB_SWITCH_GW} route-map RM-EXPORT out
      exit-address-family
     !
     FRREOF
 
     systemctl enable frr
     systemctl restart frr
-    echo "  FRR BGP configured: ASN __BGP_ASN__, neighbor __OOB_SWITCH_GW__"
+    echo "  FRR BGP configured: ASN ${BGP_ASN}, neighbor ${OOB_SWITCH_GW}"
     echo "  Advertising ${FRR_METALLB_PREFIX}"
 
     # ==========================================================================
@@ -325,9 +333,13 @@ _SETUP_SCRIPT_TEMPLATE = textwrap.dedent("""\
     # ==========================================================================
     # STAGE NODE-EXPORTER BINARIES FOR ZTP
     # ==========================================================================
-    NE_VERSION="1.8.2"
+    NE_VERSION="__NODE_EXPORTER_VERSION__"
     NE_DIR="/home/nvcm/ztp-files/node-exporter/${NE_VERSION}"
-    NE_BASE="https://github.com/prometheus/node_exporter/releases/download"
+    NE_BASE="__NODE_EXPORTER_BASE_URL__"
+    declare -A NE_SHA256=(
+        [amd64]="__NODE_EXPORTER_AMD64_SHA256__"
+        [armv5]="__NODE_EXPORTER_ARMV5_SHA256__"
+    )
     echo ">>> Downloading node-exporter ${NE_VERSION} binaries..."
     mkdir -p "$NE_DIR"
 
@@ -338,6 +350,13 @@ _SETUP_SCRIPT_TEMPLATE = textwrap.dedent("""\
         url="${NE_BASE}/v${NE_VERSION}/${tarball}"
         echo "  Fetching ${tarball}..."
         curl -fsSL "$url" -o "/tmp/${tarball}"
+        expected_sha="${NE_SHA256[$gh_arch]}"
+        actual_sha="$(sha256sum "/tmp/${tarball}" | awk '{print $1}')"
+        if [[ "$actual_sha" != "$expected_sha" ]]; then
+            echo "ERROR: checksum mismatch for ${tarball}: expected ${expected_sha}, got ${actual_sha}" >&2
+            rm -f "/tmp/${tarball}"
+            exit 1
+        fi
         tar -xzf "/tmp/${tarball}" -C /tmp \\
             "node_exporter-${NE_VERSION}.linux-${gh_arch}/node_exporter"
         mv "/tmp/node_exporter-${NE_VERSION}.linux-${gh_arch}/node_exporter" \\
@@ -351,15 +370,15 @@ _SETUP_SCRIPT_TEMPLATE = textwrap.dedent("""\
 
     jq -n '
       {images: [
-        {platform: "node-exporter", version: "1.8.2",
+        {platform: "node-exporter", version: "__NODE_EXPORTER_VERSION__",
          filename: "node_exporter_amd64",
-         path: "node-exporter/1.8.2/node_exporter_amd64",
-         sha256: "0c9219b9860c6250c0bc3da5d79bd79c17f3938345fa7503f95cfa2ad7c3ba1d",
+         path: "node-exporter/__NODE_EXPORTER_VERSION__/node_exporter_amd64",
+         sha256: "__NODE_EXPORTER_AMD64_SHA256__",
          tags: {}},
-        {platform: "node-exporter", version: "1.8.2",
+        {platform: "node-exporter", version: "__NODE_EXPORTER_VERSION__",
          filename: "node_exporter_armv5",
-         path: "node-exporter/1.8.2/node_exporter_armv5",
-         sha256: "d639498cdb3a12205ed40bed27b11a0bd6d32b247dfebabc36c1ae76cc87131f",
+         path: "node-exporter/__NODE_EXPORTER_VERSION__/node_exporter_armv5",
+         sha256: "__NODE_EXPORTER_ARMV5_SHA256__",
          tags: {}}
       ]}
     ' > /home/nvcm/ztp-files/manifest.json
@@ -523,23 +542,31 @@ def generate_setup_script(
     """
     config_manager_auth = _repo_url_with_optional_token(config_manager_repo, git_token)
 
+    def _quote_shell_words(words: str) -> str:
+        return " ".join(shlex.quote(word) for word in words.split())
+
     clone_lines = (
         f'su - nvcm -c "git clone -b {shlex.quote(config_manager_ref)}'
         f' {shlex.quote(config_manager_auth)} {shlex.quote(CONFIG_MANAGER_REMOTE_DIR)}"'
     )
 
     script = _SETUP_SCRIPT_TEMPLATE
-    script = script.replace("__DEPLOY_SIZE__", deploy_size)
-    script = script.replace("__INTERNAL_IP__", internal_ip)
-    script = script.replace("__INTERNAL_MAC__", internal_mac)
+    script = script.replace("__DEPLOY_SIZE__", shlex.quote(deploy_size))
+    script = script.replace("__INTERNAL_IP__", shlex.quote(internal_ip))
+    script = script.replace("__INTERNAL_MAC__", shlex.quote(internal_mac))
     ztp_url_host = internal_ip.split("/")[0]
     script = script.replace("__ZTP_URL_HOST__", ztp_url_host)
     script = script.replace("__SITE_NAME__", site_name)
     script = script.replace("__CONFIG_MANAGER_NAMESPACE__", CONFIG_MANAGER_NAMESPACE)
-    script = script.replace("__OOB_SWITCH_GW__", oob_gateway or "UNSET")
-    script = script.replace("__LB_ALLOWED_PREFIXES__", lb_allowed_prefixes)
-    script = script.replace("__RELAY_RETURN_NETWORKS__", relay_return_networks)
-    script = script.replace("__BGP_ASN__", bgp_asn)
+    script = script.replace("__OOB_SWITCH_GW__", shlex.quote(oob_gateway or "UNSET"))
+    script = script.replace("__LB_ALLOWED_PREFIXES__", _quote_shell_words(lb_allowed_prefixes))
+    script = script.replace("__RELAY_RETURN_NETWORKS__", _quote_shell_words(relay_return_networks))
+    script = script.replace("__BGP_ASN__", shlex.quote(bgp_asn))
+    script = script.replace("__BGP_PASSWORD__", shlex.quote(NVCM_NETWORK_SECRETS["bgp_password"]))
+    script = script.replace("__NODE_EXPORTER_VERSION__", NODE_EXPORTER_VERSION)
+    script = script.replace("__NODE_EXPORTER_BASE_URL__", NODE_EXPORTER_BASE_URL)
+    script = script.replace("__NODE_EXPORTER_AMD64_SHA256__", NODE_EXPORTER_SHA256["amd64"])
+    script = script.replace("__NODE_EXPORTER_ARMV5_SHA256__", NODE_EXPORTER_SHA256["armv5"])
     script = script.replace("__CLONE_COMMANDS__", clone_lines)
     return script
 

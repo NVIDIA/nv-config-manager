@@ -57,7 +57,10 @@ _STATUS_ICON = {
 
 _COPY_ICON = "⧉"
 _COPIED_ICON = "✓"
-_VISIBLE_LOG_LINES = 500
+_VISIBLE_LOG_LINES = 200
+_LOG_FLUSH_INTERVAL = 0.25
+_MAX_LOG_DRAIN_PER_FLUSH = 5000
+_MAX_ACTIVE_RENDER_LINES_PER_FLUSH = 80
 
 
 def _copy_button(
@@ -496,6 +499,12 @@ class _LogViewerWidget(Vertical):
             if stream == self._active_tab:
                 active_lines.append(line)
         if active_lines:
+            if len(active_lines) > _MAX_ACTIVE_RENDER_LINES_PER_FLUSH:
+                skipped = len(active_lines) - _MAX_ACTIVE_RENDER_LINES_PER_FLUSH
+                active_lines = [
+                    f"... {skipped} log lines skipped in live view - use log clipboard for full content ...",
+                    *active_lines[-_MAX_ACTIVE_RENDER_LINES_PER_FLUSH:],
+                ]
             self._ensure_log(self._active_tab).write_lines(active_lines)
             self._rendered_lengths[self._active_tab] = len(self._buffers[self._active_tab])
 
@@ -722,6 +731,8 @@ class _PodStatusWidget(Vertical):
         self._stop = threading.Event()
         self._polling = False
         self._prov_polling = False
+        self._last_pod_rows: tuple[tuple[str, str, str, str, str], ...] = ()
+        self._last_prov: tuple[int, int, tuple[str, ...]] = (0, 0, ())
 
     def compose(self) -> ComposeResult:
         yield Label("Pod Status", classes="section-title")
@@ -763,7 +774,8 @@ class _PodStatusWidget(Vertical):
     def _do_refresh(self) -> None:
         self._polling = True
         try:
-            assert isinstance(self._manager, AirSimulationManager)
+            if not isinstance(self._manager, AirSimulationManager):
+                raise TypeError("expected AirSimulationManager for self._manager")
             pods = self._manager.get_pod_status(self._host, self._port)
             self.app.call_from_thread(self._update_table, pods)
         finally:
@@ -773,13 +785,18 @@ class _PodStatusWidget(Vertical):
     def _do_prov_refresh(self) -> None:
         self._prov_polling = True
         try:
-            assert isinstance(self._manager, AirSimulationManager)
+            if not isinstance(self._manager, AirSimulationManager):
+                raise TypeError("expected AirSimulationManager for self._manager")
             prov, total, remaining = self._manager.get_provisioning_status(self._host, self._port)
             self.app.call_from_thread(self._update_prov, prov, total, remaining)
         finally:
             self._prov_polling = False
 
     def _update_prov(self, prov: int, total: int, remaining: list[str]) -> None:
+        next_state = (prov, total, tuple(remaining))
+        if next_state == self._last_prov:
+            return
+        self._last_prov = next_state
         try:
             self.query_one("#prov-count", Static).update(
                 f"Provisioned: {prov}/{total}" if total else "Provisioned: —"
@@ -792,16 +809,26 @@ class _PodStatusWidget(Vertical):
             pass
 
     def _update_table(self, pods: list[dict[str, str]]) -> None:
+        rows = tuple(
+            (
+                p["name"][:39] + "..." if len(p["name"]) > 42 else p["name"],
+                p["ready"],
+                p["status"],
+                p["restarts"],
+                p["age"],
+            )
+            for p in pods
+        )
+        if rows == self._last_pod_rows:
+            return
+        self._last_pod_rows = rows
         try:
             table = self.query_one("#pod-table", DataTable)
         except Exception:
             return
         table.clear()
-        for p in pods:
-            name = p["name"]
-            if len(name) > 42:
-                name = name[:39] + "..."
-            table.add_row(name, p["ready"], p["status"], p["restarts"], p["age"])
+        for row in rows:
+            table.add_row(*row)
 
 
 # ── Launch screen ─────────────────────────────────────────────────────────────
@@ -893,7 +920,7 @@ class LaunchScreen(Container):
     @work(thread=True, exclusive=False)
     def _run_orchestrator(self) -> None:
         log_path = self._deploy_log_path
-        with open(log_path, "w") if log_path else open(os.devnull, "w") as lf:
+        with open(log_path if log_path else os.devnull, "w") as lf:
             cb = _TuiCallback(self, log_file=lf)
             orchestrator = SimOrchestrator(self._config, cb)
             orchestrator.run()
@@ -960,7 +987,7 @@ class LaunchScreen(Container):
             self._log_flush_scheduled = True
 
         def schedule() -> None:
-            self.set_timer(0.03, self._flush_log_lines)
+            self.set_timer(_LOG_FLUSH_INTERVAL, self._flush_log_lines)
 
         if threading.current_thread() is threading.main_thread():
             schedule()
@@ -978,7 +1005,7 @@ class LaunchScreen(Container):
 
         batch: list[tuple[str, str]] = []
         processed = 0
-        while processed < 250:
+        while processed < _MAX_LOG_DRAIN_PER_FLUSH:
             try:
                 line, stream = self._pending_log_lines.get_nowait()
             except Empty:

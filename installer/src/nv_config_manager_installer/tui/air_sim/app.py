@@ -27,6 +27,7 @@ from textual.containers import Container, Horizontal, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Button, Footer, Label, Static
 
+from nv_config_manager_installer.air_sim.constants import DEFAULT_AIR_SIM_CONFIG_PATH
 from nv_config_manager_installer.air_sim.sim_config import SimConfig
 from nv_config_manager_installer.tui.air_sim.screens.launch import LaunchScreen
 from nv_config_manager_installer.tui.air_sim.screens.options import OptionsScreen
@@ -39,8 +40,6 @@ SECTION_LABELS: list[tuple[str, str]] = [
 ]
 
 CSS_PATH = Path(__file__).parent / "app.tcss"
-
-_DEFAULT_CONFIG_PATH = Path.home() / ".nvcm-air-sim.yaml"
 
 _STATUS_CLASS_MAP = {
     "[*]": "--complete",
@@ -130,7 +129,7 @@ class NVCMAirSimApp(App[None]):
     ) -> None:
         super().__init__()
         self.config = config or SimConfig()
-        self.config_path = config_path or _DEFAULT_CONFIG_PATH
+        self.config_path = config_path or DEFAULT_AIR_SIM_CONFIG_PATH
         self.active_section = "topology"
         self._nav_items: dict[str, NavItem] = {}
         self._screens: dict[str, Container] = {}
@@ -263,7 +262,7 @@ def _resolve_config_path(argv: list[str] | None = None) -> Path:
     )
     args = parser.parse_args(argv)
     path = args.config_path_flag or args.config_path or os.environ.get("NVCM_AIR_CONFIG")
-    return Path(path).expanduser() if path else _DEFAULT_CONFIG_PATH
+    return Path(path).expanduser() if path else DEFAULT_AIR_SIM_CONFIG_PATH
 
 
 def run(argv: list[str] | None = None) -> None:

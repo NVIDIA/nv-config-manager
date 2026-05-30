@@ -171,6 +171,8 @@ async def test_log_flood_does_not_block_tabs_or_save_key(tmp_path) -> None:
         viewer = launch.query_one("#log-viewer", _LogViewerWidget)
         viewer.add_tab("dhcp", "DHCP")
         viewer.add_tab("ztp", "ZTP")
+        ssh_command = f"sshpass -p {NVCM_BOX_PASSWORD} ssh -p 17117 nvcm@{PUBLIC_AIR_WORKER}"
+        launch._show_ssh_command(ssh_command)
         launch._show_proxy_panel(PUBLIC_AIR_WORKER, 17117)
         await pilot.pause(0.1)
 
@@ -182,9 +184,11 @@ async def test_log_flood_does_not_block_tabs_or_save_key(tmp_path) -> None:
             launch.enqueue_log_line(f"ztp line {i:04d}", "ztp")
 
         await pilot.click("#log-tab-access")
+        await pilot.click("#copy-ssh")
         await pilot.press("f2")
         await pilot.pause(0.2)
 
         assert viewer._active_tab == "access"
+        assert app.copied_text == ssh_command
         assert app.config_path.exists()
         assert app.query_one("#log-tabs", Tabs).active == "log-tab-access"

@@ -33,16 +33,16 @@ From the Config Manager repository:
 ```bash
 cd installer
 uv sync
-uv run nvcm-installer air-sim init --config nvcm-air-sim.yaml
+uv run nvcm-installer air-sim init
 ```
 
-The TUI writes `nvcm-air-sim.yaml`. Treat the file as sensitive if it contains your NGC API key.
+The TUI writes `~/.nvcm-air-sim.yaml` by default so API keys are not saved inside the Git checkout. Treat the file as sensitive if it contains your NGC API key. To use a different location outside the repository, pass `--config /path/to/config.yaml` or set `NVCM_AIR_CONFIG`.
 
 You can also run a saved simulation config headlessly:
 
 ```bash
 cd installer
-uv run nvcm-installer air-sim deploy --config nvcm-air-sim.yaml
+uv run nvcm-installer air-sim deploy --config ~/.nvcm-air-sim.yaml
 ```
 
 ## TUI Walkthrough

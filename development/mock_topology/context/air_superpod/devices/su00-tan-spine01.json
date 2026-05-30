@@ -65,32 +65,6 @@
             "name": "Active"
           },
           "enabled": true,
-          "mgmt_only": true,
-          "ip_addresses": [
-            {
-              "address": "10.100.1.17/25",
-              "mask_length": 25,
-              "ip_version": 4
-            }
-          ],
-          "mac_address": "44:38:39:00:00:08",
-          "connected_interface": {
-            "name": "swp2",
-            "device": {
-              "name": "su01-oob-mleaf01",
-              "role": {
-                "name": "OOB-MLEAF"
-              }
-            }
-          }
-        },
-        {
-          "name": "eth0",
-          "type": "1000base-t",
-          "status": {
-            "name": "Active"
-          },
-          "enabled": true,
           "mgmt_only": false,
           "ip_addresses": [
             {
@@ -99,11 +73,6 @@
               "ip_version": 4
             }
           ],
-          "description": "su01-oob-mleaf01:swp2",
-          "mtu": 9216,
-          "role": {
-            "name": "Management"
-          },
           "mac_address": "44:38:39:00:00:08",
           "connected_interface": {
             "name": "swp2",
@@ -113,6 +82,11 @@
                 "name": "OOB-MLEAF"
               }
             }
+          },
+          "description": "su01-oob-mleaf01:swp2",
+          "mtu": 9216,
+          "role": {
+            "name": "Management"
           }
         },
         {
