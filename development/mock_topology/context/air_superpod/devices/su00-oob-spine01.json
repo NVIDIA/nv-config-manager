@@ -1,0 +1,198 @@
+{
+  "data": {
+    "device": {
+      "id": "air-superpod-su00-oob-spine01",
+      "name": "su00-oob-spine01",
+      "tags": [
+        {
+          "name": "demo"
+        },
+        {
+          "name": "ztp"
+        }
+      ],
+      "tenant": {
+        "name": "Public Demo"
+      },
+      "role": {
+        "name": "OOB-SPINE"
+      },
+      "device_type": {
+        "manufacturer": {
+          "name": "NVIDIA"
+        },
+        "model": "SN5600"
+      },
+      "status": {
+        "name": "Provisioning"
+      },
+      "serial": "44:38:39:00:00:06",
+      "config_context": {
+        "intended-firmware": {
+          "version": "5.16.1"
+        },
+        "bgp": {
+          "asn": 65121
+        }
+      },
+      "location": {
+        "name": "SPO01"
+      },
+      "interfaces": [
+        {
+          "name": "lo",
+          "type": "virtual",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "ip_addresses": [
+            {
+              "address": "10.255.0.5/32",
+              "mask_length": 32,
+              "ip_version": 4
+            }
+          ],
+          "role": {
+            "name": "Loopback"
+          }
+        },
+        {
+          "name": "eth0",
+          "type": "1000base-t",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": true,
+          "ip_addresses": [],
+          "mac_address": "44:38:39:00:00:06"
+        },
+        {
+          "name": "swp1",
+          "type": "100gbase-x-qsfp28",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "ip_addresses": [
+            {
+              "address": "10.101.0.1/31",
+              "mask_length": 31,
+              "ip_version": 4
+            }
+          ],
+          "description": "su01-oob-mleaf01:swp49",
+          "mtu": 9216,
+          "role": {
+            "name": "Downlink"
+          },
+          "connected_interface": {
+            "name": "swp49",
+            "device": {
+              "name": "su01-oob-mleaf01",
+              "role": {
+                "name": "OOB-MLEAF"
+              }
+            }
+          }
+        },
+        {
+          "name": "swp2",
+          "type": "100gbase-x-qsfp28",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "ip_addresses": [
+            {
+              "address": "10.101.0.5/31",
+              "mask_length": 31,
+              "ip_version": 4
+            }
+          ],
+          "description": "su01-oob-mleaf02:swp49",
+          "mtu": 9216,
+          "role": {
+            "name": "Downlink"
+          },
+          "connected_interface": {
+            "name": "swp49",
+            "device": {
+              "name": "su01-oob-mleaf02",
+              "role": {
+                "name": "OOB-MLEAF"
+              }
+            }
+          }
+        },
+        {
+          "name": "swp3",
+          "type": "100gbase-x-qsfp28",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "ip_addresses": [
+            {
+              "address": "10.101.0.9/31",
+              "mask_length": 31,
+              "ip_version": 4
+            }
+          ],
+          "description": "su01-oob-hleaf01:swp49",
+          "mtu": 9216,
+          "role": {
+            "name": "Downlink"
+          },
+          "connected_interface": {
+            "name": "swp49",
+            "device": {
+              "name": "su01-oob-hleaf01",
+              "role": {
+                "name": "OOB-HLEAF"
+              }
+            }
+          }
+        },
+        {
+          "name": "swp4",
+          "type": "100gbase-x-qsfp28",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "ip_addresses": [
+            {
+              "address": "10.101.0.13/31",
+              "mask_length": 31,
+              "ip_version": 4
+            }
+          ],
+          "description": "su01-oob-hleaf02:swp49",
+          "mtu": 9216,
+          "role": {
+            "name": "Downlink"
+          },
+          "connected_interface": {
+            "name": "swp49",
+            "device": {
+              "name": "su01-oob-hleaf02",
+              "role": {
+                "name": "OOB-HLEAF"
+              }
+            }
+          }
+        }
+      ],
+      "platform": {
+        "name": "Cumulus Linux"
+      }
+    }
+  }
+}

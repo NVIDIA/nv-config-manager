@@ -770,7 +770,6 @@ def _run_logged_with_pod_summary(
         stop_event.set()
         poll_thread.join(timeout=2)
 
-
 def _format_elapsed(seconds: float) -> str:
     """Return a compact elapsed-time string for long-running command status."""
     seconds_int = max(0, int(seconds))
@@ -1951,7 +1950,7 @@ class Deployer:
             self.callback.on_log(msg)
 
     def _create_optional_integration_secrets(self, step: DeployStep, s: dict[str, str]) -> None:
-        """Create Kubernetes secrets for optional integrations (Slack, AIR, Jira, CNPG backup)."""
+        """Create Kubernetes secrets for optional integrations (Slack, Jira, CNPG backup)."""
         k8s = self.config.secrets.k8s
 
         if k8s.slack.enabled:
@@ -1959,17 +1958,6 @@ class Deployer:
             if not token:
                 raise ValueError("Slack is enabled but slack_token is empty")
             self._apply_secret(step, "slack-token", {"token": token})
-
-        if k8s.air.enabled:
-            client_id = s.get("air_ssa_client_id", "")
-            client_secret = s.get("air_ssa_client_secret", "")
-            if not client_secret:
-                raise ValueError("AIR is enabled but air_ssa_client_secret is empty")
-            self._apply_secret(
-                step,
-                "air-creds",
-                {"ssa-client-id": client_id, "ssa-client-secret": client_secret},
-            )
 
         if k8s.jira.enabled:
             api_token = s.get("jira_api_token", "")

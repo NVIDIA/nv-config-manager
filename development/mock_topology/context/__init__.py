@@ -79,6 +79,7 @@ class BaseContext(Context):
         self._load_device_types()
         self._load_aggregate_prefixes()
         self._load_prefixes()
+        self._assign_ip_address_parent_prefixes()
         self._load_vrfs()
         self._load_vlans()
         self._load_overlays()
@@ -103,7 +104,8 @@ class BaseContext(Context):
                         device = data.get("device")
                         if not device:
                             continue
-                        self._ensure_mock_device_serial(device)
+                        self._ensure_mock_device_serial(device, json_file)
+                        self._require_cumulus_eth0_mac(device, json_file)
                         self.json["devices"].append(device)
                         self.json["overlay_payloads"].append(
                             {
@@ -116,12 +118,41 @@ class BaseContext(Context):
                     print(f"Warning: Could not load {json_file}: {e}")
 
     @staticmethod
-    def _ensure_mock_device_serial(device: dict[str, Any]) -> None:
-        """Give mock devices stable serials so ZTP/DHCP can identify them."""
+    def _ensure_mock_device_serial(device: dict[str, Any], source: Path) -> None:
+        """Require Cumulus serials and give other mock devices stable serials."""
         if device.get("serial"):
             return
+        platform_name = (device.get("platform") or {}).get("name", "")
+        if "Cumulus" in platform_name:
+            device_name = device.get("name") or source.name
+            raise ValueError(
+                f"Mock Cumulus device {device_name} in {source} must define "
+                "serial for ZTP validation"
+            )
         device_name = device.get("name") or str(device.get("id") or "device")
         device["serial"] = f"MOCK-{slugify(device_name).upper().replace('-', '')}"
+
+    @staticmethod
+    def _require_cumulus_eth0_mac(device: dict[str, Any], source: Path) -> None:
+        """Require explicit eth0 MACs for Cumulus mock devices."""
+        platform_name = (device.get("platform") or {}).get("name", "")
+        if "Cumulus" not in platform_name:
+            return
+        eth0 = next(
+            (
+                interface
+                for interface in device.get("interfaces", [])
+                if interface.get("name") == "eth0"
+            ),
+            None,
+        )
+        if eth0 and eth0.get("mac_address"):
+            return
+        device_name = device.get("name") or source.name
+        raise ValueError(
+            f"Mock Cumulus device {device_name} in {source} must define "
+            "interfaces[].name=eth0 mac_address for DHCP/ZTP reservations"
+        )
 
     def _prune_dangling_connected_interfaces(self) -> None:
         """Remove interfaces connected to devices that are not in this mock sample."""
@@ -273,6 +304,40 @@ class BaseContext(Context):
         prefix_list.sort(key=lambda x: int(x["prefix"].split("/")[1]))
 
         self.json["prefixes"] = prefix_list
+
+    def _assign_ip_address_parent_prefixes(self) -> None:
+        """Annotate interface IPs with their most specific containing prefix."""
+        prefixes = []
+        for prefix in self.json.get("prefixes", []):
+            try:
+                prefixes.append(
+                    (
+                        ipaddress.ip_network(prefix["prefix"], strict=False),
+                        prefix["prefix"],
+                    )
+                )
+            except ValueError:
+                continue
+
+        for device in self.json["devices"]:
+            for interface in device.get("interfaces", []):
+                for address in interface.get("ip_addresses", []):
+                    ip_address = address.get("address")
+                    if not ip_address:
+                        continue
+                    try:
+                        host = ipaddress.ip_interface(ip_address).ip
+                    except ValueError:
+                        continue
+
+                    containing_prefixes = [
+                        (prefix.prefixlen, prefix_str)
+                        for prefix, prefix_str in prefixes
+                        if host in prefix
+                    ]
+                    if containing_prefixes:
+                        containing_prefixes.sort(reverse=True)
+                        address["parent_prefix"] = containing_prefixes[0][1]
 
     def _load_vrfs(self) -> None:
         """Load VRF data referenced by devices and interfaces."""
@@ -573,24 +638,28 @@ class BaseContext(Context):
 
         Excludes roles that are managed by the bootstrap job to avoid conflicts.
         """
-        # Get roles from devices and interfaces
-        roles = self._extract_content_type_data("role")
-        # Filter out bootstrap-managed roles
-        roles = [r for r in roles if r["name"] not in self.BOOTSTRAP_MANAGED_ROLES]
-        role_names = {r["name"] for r in roles}
+        role_content_types = {
+            role["name"]: set(role["content_types"])
+            for role in self._extract_content_type_data("role")
+        }
 
-        # Add roles from aggregate prefixes (excluding bootstrap-managed ones)
+        # Add prefix role membership from aggregate prefixes. This can extend an
+        # existing role such as Loopback from dcim.interface to ipam.prefix.
         for agg in self.json.get("aggregate_prefixes", []):
             role_name = agg.get("role")
-            if (
-                role_name
-                and role_name not in role_names
-                and role_name not in self.BOOTSTRAP_MANAGED_ROLES
-            ):
-                roles.append({"name": role_name, "content_types": ["ipam.prefix"]})
-                role_names.add(role_name)
+            if role_name:
+                role_content_types.setdefault(role_name, set()).add("ipam.prefix")
 
-        self.json["roles"] = roles
+        self.json["roles"] = [
+            {"name": name, "content_types": sorted(content_types)}
+            for name, content_types in sorted(role_content_types.items())
+            if name not in self.BOOTSTRAP_MANAGED_ROLES
+        ]
+        self.json["role_content_type_extensions"] = [
+            {"name": name, "content_types": sorted(content_types)}
+            for name, content_types in sorted(role_content_types.items())
+            if name in self.BOOTSTRAP_MANAGED_ROLES
+        ]
 
     # Tags managed by bootstrap job - skip creating these in designs
     BOOTSTRAP_MANAGED_TAGS = {
@@ -650,9 +719,36 @@ class BaseContext(Context):
             try:
                 with open(locations_file) as f:
                     data = yaml.safe_load(f)
-                    self.json["config_contexts"] = data.get("config_contexts", [])
+                    self.json["config_contexts"] = [
+                        self._render_config_context_metadata(config_context)
+                        for config_context in data.get("config_contexts", [])
+                    ]
             except (OSError, yaml.YAMLError) as e:
                 print(f"Warning: Could not load config contexts from {locations_file}: {e}")
+
+    def _render_config_context_metadata(self, config_context: dict[str, Any]) -> dict[str, Any]:
+        """Render deployment-scoped config context lookups without touching data."""
+        rendered = dict(config_context)
+
+        for key in ("name", "description"):
+            if isinstance(rendered.get(key), str):
+                rendered[key] = self._render_deployment_name(rendered[key])
+
+        for key in ("locations", "roles", "tenants", "tags"):
+            if isinstance(rendered.get(key), list):
+                rendered[key] = [
+                    self._render_deployment_name(value) if isinstance(value, str) else value
+                    for value in rendered[key]
+                ]
+
+        return rendered
+
+    def _render_deployment_name(self, value: str) -> str:
+        """Render the deployment name placeholder used by static context YAML."""
+        deployment_name = getattr(self, "deployment_name", "")
+        return value.replace("{{ deployment_name }}", deployment_name).replace(
+            "{{deployment_name}}", deployment_name
+        )
 
     def get_device_ref(self, manufacturer: str, model: str) -> str:
         """Get the device reference for a given manufacturer and model."""

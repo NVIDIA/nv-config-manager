@@ -1,0 +1,157 @@
+global_defaults:
+  tenant: Public Demo
+  namespace: SuperPOD Demo
+  status: Active
+  cable_status: Connected
+  prefix_status: Active
+  device_status: Active
+  ip_address_status: Active
+tenants:
+- name: Public Demo
+namespaces:
+- SuperPOD Demo
+locations:
+- name: Public Demo
+  location_type: Region
+- name: SuperPOD Demo
+  location_type: Region
+  parent: Public Demo
+- name: SPO01
+  location_type: Site
+  parent: SuperPOD Demo
+  ref: location
+config_contexts:
+- name: superpod-demo-dhcp-option-def
+  weight: 1000
+  is_active: true
+  data:
+    Dhcp4:
+      option-def:
+      - code: 239
+        name: cumulus-provision-url
+        type: string
+        array: false
+        space: dhcp4
+        encapsulate: ''
+        record-types: ''
+  locations:
+  - SPO01
+  tags:
+  - no-propagate
+- name: superpod-demo-oob-dhcp-options
+  weight: 1000
+  is_active: true
+  data:
+    dhcp:
+      options:
+        interface_roles:
+          Downlink:
+            subnet_config:
+              reservations-global: false
+              reservations-in-subnet: false
+            subnet_options:
+              boot-file-name: http://{{ztp_server}}/v1/device/{{device_id}}/onie
+              broadcast-address: 255.255.255.255
+              cumulus-provision-url: http://{{ztp_server}}/v1/device/{{device_id}}/boot-script
+          Uplink:
+            subnet_config:
+              reservations-global: false
+              reservations-in-subnet: false
+            subnet_options:
+              boot-file-name: http://{{ztp_server}}/v1/device/{{device_id}}/onie
+              broadcast-address: 255.255.255.255
+              cumulus-provision-url: http://{{ztp_server}}/v1/device/{{device_id}}/boot-script
+  roles:
+  - OOB-HLEAF
+  - OOB-MLEAF
+  - OOB-SPINE
+- name: superpod-demo-dhcp-options
+  weight: 1000
+  is_active: true
+  data:
+    dhcp:
+      options:
+        interface_names:
+          eth0:
+            subnet_config:
+              reservations-global: true
+              reservations-in-subnet: false
+            reservation_options:
+              boot-file-name: http://{{ztp_server}}/v1/device/{{device_id}}/onie
+              cumulus-provision-url: http://{{ztp_server}}/v1/device/{{device_id}}/boot-script
+  roles:
+  - TAN-BLEAF
+  - TAN-HLEAF
+  - TAN-SLEAF
+  - TAN-SPINE
+  - CIN-LEAF
+  - CIN-SPINE
+- name: superpod-demo-firmware-targets
+  weight: 1000
+  is_active: true
+  data:
+    oob-hleaf:
+      Cumulus Linux: 5.16.1
+    oob-mleaf:
+      Cumulus Linux: 5.16.1
+    tan-bleaf:
+      Cumulus Linux: 5.16.1
+    tan-hleaf:
+      Cumulus Linux: 5.16.1
+    tan-sleaf:
+      Cumulus Linux: 5.16.1
+    oob-spine:
+      Cumulus Linux: 5.16.1
+    tan-spine:
+      Cumulus Linux: 5.16.1
+    cin-leaf:
+      Cumulus Linux: 5.16.1
+    cin-spine:
+      Cumulus Linux: 5.16.1
+  locations:
+  - SPO01
+  tenants:
+  - Public Demo
+  tags:
+  - no-propagate
+- name: superpod-demo-network-management-services
+  weight: 1000
+  is_active: true
+  data:
+    ztp:
+      ipv4:
+      - 172.18.255.201
+    dhcp:
+      nvcm:
+        ipv4:
+        - 172.18.255.202
+    management_prefixes:
+      ipv4:
+      - 172.18.0.0/16
+    provisioning_servers:
+      ipv4:
+      - 10.100.0.0
+  description: Network management services for the public SuperPOD demo
+  locations:
+  - SPO01
+  tenants:
+  - Public Demo
+  tags:
+  - no-propagate
+- name: Intended Password Mappings
+  weight: 1000
+  is_active: true
+  data:
+    password_mappings:
+      cumulus:
+        role: system-admin
+        password: root_password
+        rotation: r1
+      nvConfigManager:
+        role: system-admin
+        password: api_user_key
+        rotation: r1
+  locations:
+  - SPO01
+  tenants:
+  - Public Demo

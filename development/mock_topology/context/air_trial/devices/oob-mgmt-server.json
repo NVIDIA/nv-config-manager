@@ -1,0 +1,73 @@
+{
+  "data": {
+    "device": {
+      "id": "air-trial-oob-mgmt-server",
+      "name": "oob-mgmt-server",
+      "tags": [],
+      "tenant": {
+        "name": "Public Demo"
+      },
+      "role": {
+        "name": "OOB-Server"
+      },
+      "device_type": {
+        "manufacturer": {
+          "name": "Generic"
+        },
+        "model": "Generic Server"
+      },
+      "status": {
+        "name": "Active"
+      },
+      "serial": "44:38:39:00:00:01",
+      "config_context": {
+        "bgp": {
+          "asn": 65000
+        }
+      },
+      "interfaces": [
+        {
+          "name": "eth0",
+          "type": "1000base-t",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "description": "exit",
+          "ip_addresses": []
+        },
+        {
+          "name": "eth1",
+          "type": "1000base-t",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "description": "oob-mleaf-01:swp1",
+          "mac_address": "44:38:39:01:00:01",
+          "role": {
+            "name": "OOB-Uplink"
+          },
+          "ip_addresses": [
+            {
+              "address": "10.120.0.0/31",
+              "mask_length": 31,
+              "ip_version": 4
+            }
+          ],
+          "connected_interface": {
+            "name": "swp1",
+            "device": {
+              "name": "oob-mleaf-01",
+              "role": {
+                "name": "OOB-MLEAF"
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

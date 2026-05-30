@@ -29,15 +29,19 @@ from typing import TYPE_CHECKING
 import click
 
 from nv_config_manager_installer import __version__
+from nv_config_manager_installer.air_sim.cli import air_sim
 
 if TYPE_CHECKING:
     from nv_config_manager_installer.schema import NVConfigManagerInstallConfig
 
 
 @click.group()
-@click.version_option(version=__version__, prog_name="nv-config-manager-installer")
+@click.version_option(version=__version__)
 def main() -> None:
     """NVIDIA Config Manager Install Wizard."""
+
+
+main.add_command(air_sim)
 
 
 @main.command()

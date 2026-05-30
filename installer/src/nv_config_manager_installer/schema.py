@@ -176,11 +176,6 @@ class VaultPathsConfig(BaseModel):
         default_factory=lambda: _path(clientSecret="client_secret", cookieSecret="cookie_secret")
     )
     slack: VaultPathConfig = Field(default_factory=lambda: _path(enabled=False, token="token"))
-    air: VaultPathConfig = Field(
-        default_factory=lambda: _path(
-            enabled=False, ssaClientId="ssa_client_id", ssaClientSecret="ssa_client_secret"
-        )
-    )
     jira: VaultPathConfig = Field(
         default_factory=lambda: _path(enabled=False, baseUrl="base_url", apiToken="api_token")
     )
@@ -234,7 +229,6 @@ class KubernetesSecretsConfig(BaseModel):
     network: K8sSecretGroup = Field(default_factory=K8sSecretGroup)
     nautobot_app: K8sSecretGroup = Field(default_factory=K8sSecretGroup)
     slack: K8sSecretGroup = Field(default_factory=lambda: K8sSecretGroup(enabled=False))
-    air: K8sSecretGroup = Field(default_factory=lambda: K8sSecretGroup(enabled=False))
     jira: K8sSecretGroup = Field(default_factory=lambda: K8sSecretGroup(enabled=False))
     cnpg_backup: K8sSecretGroup = Field(default_factory=lambda: K8sSecretGroup(enabled=False))
 

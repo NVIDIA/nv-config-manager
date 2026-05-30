@@ -1,0 +1,145 @@
+{% set spectrumx = superpod_spectrumx|default(false) %}
+{% set cin_leaf = superpod_cin_leaf|default(false) %}
+{% set routed_swp = [] %}
+{% set management_prefixes = device_data|management_prefixes %}
+{% set management_next_hops = [] %}
+{% for intf in device_data|interfaces(prefix="swp") %}
+{% if intf.primary_ipv4 %}
+{% set _ = routed_swp.append(intf.name) %}
+{% endif %}
+{% if intf.connected_interface and intf.connected_interface.device.role == "OOB-Server" and intf.connected_interface.device.peer_ipv4 and intf.connected_interface.device.peer_ipv4 not in management_next_hops %}
+{% set _ = management_next_hops.append(intf.connected_interface.device.peer_ipv4) %}
+{% endif %}
+{% endfor %}
+    vrf:
+{% if routed_swp or spectrumx or (management_prefixes and management_next_hops) %}
+      default:
+{% if spectrumx %}
+        evpn:
+          state: enabled
+{% endif %}
+{% if routed_swp or (management_prefixes and management_next_hops) %}
+        router:
+{% if routed_swp %}
+          bgp:
+            address-family:
+              ipv4-unicast:
+                state: enabled
+                redistribute:
+                  connected:
+                    state: enabled
+{% if spectrumx %}
+                    route-map: SUPERPOD-CIN-UNDERLAY
+              l2vpn-evpn:
+                state: enabled
+{% endif %}
+            state: enabled
+{% set ns = namespace(has_neighbors=false) %}
+{% for intf in device_data|interfaces(prefix="swp") %}
+{% if intf.vrf == "default" and intf.connected_interface and intf.connected_interface.device.peer_ipv4 and intf.connected_interface.device.asn %}
+{% set ns.has_neighbors = true %}
+{% endif %}
+{% endfor %}
+{% if ns.has_neighbors %}
+            neighbor:
+{% for intf in device_data|interfaces(prefix="swp") %}
+{% if intf.vrf == "default" and intf.connected_interface and intf.connected_interface.device.peer_ipv4 and intf.connected_interface.device.asn %}
+{% set neighbor = intf.connected_interface.device %}
+              {{ neighbor.peer_ipv4 }}:
+                description: {{ neighbor.name }}
+{% if spectrumx %}
+                peer-group: {{ neighbor.peer_group }}
+{% endif %}
+                remote-as: {{ neighbor.asn|asplain }}
+                type: numbered
+{% endif %}
+{% endfor %}
+{% endif %}
+            path-selection:
+              multipath:
+                aspath-ignore: enabled
+{% if spectrumx and ns.has_neighbors %}
+            peer-group:
+{% set peer_groups = [] %}
+{% for intf in device_data|interfaces(prefix="swp") %}
+{% if intf.vrf == "default" and intf.connected_interface and intf.connected_interface.device.peer_ipv4 and intf.connected_interface.device.asn and intf.connected_interface.device.peer_group not in peer_groups %}
+{% set _ = peer_groups.append(intf.connected_interface.device.peer_group) %}
+{% endif %}
+{% endfor %}
+{% for peer_group in peer_groups|sort %}
+              {{ peer_group }}:
+                address-family:
+                  ipv4-unicast:
+                    community-advertise: {}
+{% if peer_group == "CIN-LEAF" %}
+                    policy:
+                      outbound:
+                        route-map: SUPERPOD-WECMP-CUMULATIVE
+{% elif peer_group == "CIN-SPINE" %}
+                    policy:
+                      outbound:
+                        route-map: SUPERPOD-WECMP-ORIGIN
+{% endif %}
+                    soft-reconfiguration: enabled
+                  l2vpn-evpn:
+                    state: enabled
+                bfd:
+                  profile: default-bfd
+{% endfor %}
+{% endif %}
+{% endif %}
+{% if management_prefixes and management_next_hops %}
+          static:
+{% for prefix in management_prefixes|sort %}
+            {{ prefix }}:
+              address-family: ipv4-unicast
+              via:
+{% for next_hop in management_next_hops|sort %}
+                {{ next_hop }}:
+                  type: ipv4-address
+{% endfor %}
+{% endfor %}
+{% endif %}
+{% endif %}
+{% endif %}
+{% set eth0 = device_data|interface_by_name("eth0", false) %}
+{% if eth0 and eth0.primary_ipv4 %}
+      mgmt:
+        router:
+          static:
+            0.0.0.0/0:
+              address-family: ipv4-unicast
+              via:
+                {{ eth0.primary_ipv4|gateway }}:
+                  type: ipv4-address
+{% endif %}
+{% if cin_leaf %}
+{% for vrf in device_data|attached_vrfs %}
+      {{ vrf.name }}:
+        evpn:
+          state: enabled
+          vni:
+            '{{ vrf.vni }}': {}
+        router:
+          bgp:
+            address-family:
+              ipv4-unicast:
+                state: enabled
+                redistribute:
+                  connected:
+                    state: enabled
+                    route-map: SUPERPOD-CIN-HOSTS
+                route-export:
+                  to-evpn:
+                    state: enabled
+              l2vpn-evpn:
+                state: enabled
+            autonomous-system: {{ device_data|asn|asplain }}
+            path-selection:
+              multipath:
+                aspath-ignore: enabled
+            rd: {{ device_data|router_id }}:{{ vrf.vni }}
+            router-id: {{ device_data|router_id }}
+            state: enabled
+{% endfor %}
+{% endif %}

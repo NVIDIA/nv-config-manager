@@ -28,7 +28,7 @@
             "platform": {
                 "name": "Cumulus Linux"
             },
-            "serial": "",
+            "serial": "44:38:39:20:00:01",
             "config_context": {
                 "intended-firmware": {
                     "version": "5.13.1"
@@ -267,7 +267,7 @@
                     },
                     "type": "A_1000BASE_T",
                     "mtu": null,
-                    "mac_address": null,
+                    "mac_address": "44:38:39:20:00:01",
                     "enabled": true,
                     "tags": [],
                     "name": "eth0",

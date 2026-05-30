@@ -20,7 +20,7 @@ interfaces:
     description: {{ intf.description }}
     {% endif %}
     {% if intf.mac_address is defined and intf.mac_address %}
-    mac_address: {{ intf.mac_address }}
+    mac_address: "{{ intf.mac_address }}"
     {% endif %}
     {% if intf.mode is defined and intf.mode %}
     mode: {{ intf.mode }}

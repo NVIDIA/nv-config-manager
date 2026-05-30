@@ -1,0 +1,117 @@
+{
+  "data": {
+    "device": {
+      "id": "air-superpod-su01-compute-tray-r01",
+      "name": "su01-compute-tray-r01",
+      "tags": [],
+      "tenant": {
+        "name": "Public Demo"
+      },
+      "role": {
+        "name": "Compute-Tray"
+      },
+      "device_type": {
+        "manufacturer": {
+          "name": "Generic"
+        },
+        "model": "Generic Server"
+      },
+      "status": {
+        "name": "Active"
+      },
+      "serial": "auto",
+      "config_context": {},
+      "location": {
+        "name": "SPO01"
+      },
+      "interfaces": [
+        {
+          "name": "bmc0",
+          "type": "1000base-t",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "ip_addresses": [],
+          "description": "su01-oob-hleaf01:swp1",
+          "mtu": 9216,
+          "role": {
+            "name": "Management"
+          },
+          "connected_interface": {
+            "name": "swp1",
+            "device": {
+              "name": "su01-oob-hleaf01",
+              "role": {
+                "name": "OOB-HLEAF"
+              }
+            }
+          }
+        },
+        {
+          "name": "ens1",
+          "type": "400gbase-x-qsfpdd",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "ip_addresses": [],
+          "description": "su01-tan-hleaf01:swp1",
+          "mtu": 9216,
+          "role": {
+            "name": "Data"
+          },
+          "connected_interface": {
+            "name": "swp1",
+            "device": {
+              "name": "su01-tan-hleaf01",
+              "role": {
+                "name": "TAN-HLEAF"
+              }
+            }
+          }
+        },
+        {
+          "name": "ens3",
+          "type": "400gbase-x-qsfpdd",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "ip_addresses": [
+            {
+              "address": "172.16.0.0/31",
+              "mask_length": 31,
+              "ip_version": 4
+            }
+          ],
+          "description": "su01-cin-leaf-r01:swp1",
+          "mtu": 9216,
+          "role": {
+            "name": "Data"
+          },
+          "connected_interface": {
+            "name": "swp1",
+            "device": {
+              "name": "su01-cin-leaf-r01",
+              "role": {
+                "name": "CIN-LEAF"
+              }
+            }
+          }
+        }
+      ],
+      "platform": {
+        "name": "Ubuntu"
+      },
+      "_air": {
+        "os": "generic/ubuntu2404",
+        "cpu": 2,
+        "memory": 4096
+      }
+    }
+  }
+}

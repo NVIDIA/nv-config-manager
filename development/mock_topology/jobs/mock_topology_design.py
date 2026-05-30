@@ -20,7 +20,10 @@ the Design Builder pattern compatible with Nautobot git repository mounts.
 
 from typing import Any
 
+from django.contrib.contenttypes.models import ContentType
+from django.db import transaction
 from nautobot.apps.jobs import StringVar, register_jobs
+from nautobot.extras.models import Role
 from nautobot_design_builder.choices import DesignModeChoices
 from nautobot_design_builder.contrib.ext import CableConnectionExtension, LookupExtension
 from nautobot_design_builder.design_job import DesignJob
@@ -50,7 +53,50 @@ class MockTopologyDesign(DesignJob):
         self.Meta.context_class = get_mock_topology_context_class(
             kwargs.get("blueprint", "superpod")
         )
-        return super().run(*args, **kwargs)
+        with transaction.atomic():
+            self._ensure_role_content_type_memberships(kwargs)
+            return super().run(*args, **kwargs)
+
+    def _ensure_role_content_type_memberships(self, data: dict[str, Any]) -> None:
+        """Add required role content types without removing existing memberships."""
+        try:
+            job_result = self.job_result
+        except AttributeError:
+            job_result = None
+
+        context = self.Meta.context_class(data=data, job_result=job_result)
+        role_data = [
+            *context.json.get("role_content_type_extensions", []),
+            *context.json.get("roles", []),
+        ]
+
+        seen_roles = set()
+        for role in role_data:
+            name = role.get("name")
+            if not name or name in seen_roles:
+                continue
+            seen_roles.add(name)
+
+            content_types = [
+                self._get_content_type(content_type)
+                for content_type in role.get("content_types", [])
+            ]
+            content_types = [content_type for content_type in content_types if content_type]
+            if not content_types:
+                continue
+
+            role_obj, _ = Role.objects.get_or_create(name=name, defaults={"color": "2196f3"})
+            role_obj.content_types.add(*content_types)
+            role_obj.validated_save()
+
+    @staticmethod
+    def _get_content_type(content_type: str) -> ContentType | None:
+        """Resolve an app.model content type string."""
+        try:
+            app_label, model = content_type.split(".")
+            return ContentType.objects.get(app_label=app_label, model=model)
+        except (ValueError, ContentType.DoesNotExist):
+            return None
 
     class Meta:
         """Metadata."""

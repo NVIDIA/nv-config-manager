@@ -958,7 +958,6 @@ class TestHelmInstall:
         assert not any(msg.startswith("[pods]") for msg in step.output)
         assert not any(msg.startswith("[pods]") for msg in callback.logs)
 
-
 class TestContentHashing:
     def test_deterministic_hash(self):
         with tempfile.TemporaryDirectory() as d:

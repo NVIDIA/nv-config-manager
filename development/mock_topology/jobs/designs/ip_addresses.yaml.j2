@@ -7,6 +7,10 @@ ip_addresses:
   {% for ip in intf.ip_addresses %}
   {% if ip.address %}
   - "!create_or_update:address": {{ ip.address }}
+    {% if ip.parent_prefix is defined and ip.parent_prefix %}
+    "!create_or_update:parent__prefix": {{ ip.parent_prefix }}
+    "!create_or_update:parent__namespace__name": {{ global_defaults.namespace }}
+    {% endif %}
     status__name: {{ global_defaults.ip_address_status }}
     {% set is_mgmt = intf.name == 'eth0' or intf.name.startswith('Management') or intf.mgmt_only %}
     {% set is_uplink = intf.role is defined and intf.role and intf.role.name == 'Uplink' %}

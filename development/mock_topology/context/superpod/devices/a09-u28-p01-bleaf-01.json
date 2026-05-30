@@ -42,7 +42,7 @@
             "platform": {
                 "name": "Cumulus Linux"
             },
-            "serial": "",
+            "serial": "E8:9E:49:CF:4E:90",
             "config_context": {
                 "intended-firmware": {
                     "version": "5.13.1"

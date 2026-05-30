@@ -1,0 +1,126 @@
+{% set spectrumx = superpod_spectrumx|default(false) %}
+{% set routed_swp = [] %}
+{% for intf in device_data|interfaces(prefix="swp") %}
+{% if intf.primary_ipv4 %}
+{% set _ = routed_swp.append(intf.name) %}
+{% endif %}
+{% endfor %}
+{% if routed_swp %}
+    router:
+      bfd:
+        state: enabled
+        profile:
+          default-bfd:
+            detect-multiplier: 3
+            min-rx-interval: 300
+            min-tx-interval: 300
+          default-bfd-multihop:
+            detect-multiplier: 3
+            min-rx-interval: 1000
+            min-tx-interval: 1000
+{% if spectrumx %}
+      adaptive-routing:
+        state: enabled
+        profile: profile-custom
+{% endif %}
+      bgp:
+        autonomous-system: {{ device_data|asn|asplain }}
+        graceful-restart:
+          mode: full
+{% if spectrumx %}
+          path-selection-deferral-time: 180
+          restart-time: 180
+          stale-routes-time: 180
+{% endif %}
+        router-id: {{ device_data|router_id }}
+        state: enabled
+{% if spectrumx %}
+      policy:
+        prefix-list:
+          SUPERPOD-CIN-HOST-LINKS:
+            rule:
+{% set host_ns = namespace(index=0) %}
+{% for intf in device_data|interfaces(prefix="swp") %}
+{% if intf.vrf != "default" and intf.primary_ipv4 %}
+{% set host_ns.index = host_ns.index + 1 %}
+              '{{ host_ns.index * 10 }}':
+                action: permit
+                match:
+                  {{ intf.primary_ipv4|network_address }}:
+                    max-prefix-len: 31
+                    min-prefix-len: 31
+{% endif %}
+{% endfor %}
+              '9999':
+                action: deny
+                match:
+                  any: {}
+            type: ipv4
+          SUPERPOD-CIN-LOOPBACK:
+            rule:
+              '10':
+                action: permit
+                match:
+                  {{ device_data|router_id }}/32:
+                    max-prefix-len: 32
+                    min-prefix-len: 32
+              '9999':
+                action: deny
+                match:
+                  any: {}
+            type: ipv4
+        route-map:
+          SUPERPOD-CIN-HOSTS:
+            rule:
+              '10':
+                action:
+                  permit: {}
+                match:
+                  ip-prefix-list: SUPERPOD-CIN-HOST-LINKS
+                  type: ipv4
+              '9999':
+                action:
+                  deny: {}
+                match:
+                  type: ipv4
+          SUPERPOD-CIN-UNDERLAY:
+            rule:
+              '10':
+                action:
+                  permit: {}
+                match:
+                  ip-prefix-list: SUPERPOD-CIN-LOOPBACK
+                  type: ipv4
+              '9999':
+                action:
+                  deny: {}
+                match:
+                  type: ipv4
+          SUPERPOD-WECMP-CUMULATIVE:
+            rule:
+              '10':
+                action:
+                  permit: {}
+                set:
+                  ext-community-bw: cumulative
+              '9999':
+                action:
+                  deny: {}
+                match:
+                  type: ipv4
+          SUPERPOD-WECMP-ORIGIN:
+            rule:
+              '10':
+                action:
+                  permit: {}
+                set:
+                  ext-community-bw: multipaths
+              '9999':
+                action:
+                  deny: {}
+                match:
+                  type: ipv4
+{% else %}
+      policy: {}
+{% endif %}
+{% endif %}

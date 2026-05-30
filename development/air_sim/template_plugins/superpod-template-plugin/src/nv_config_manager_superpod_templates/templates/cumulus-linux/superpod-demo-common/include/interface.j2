@@ -1,0 +1,97 @@
+    interface:
+{% set spectrumx = superpod_spectrumx|default(false) %}
+{% set eth0 = device_data|interface_by_name("eth0", false) %}
+{% if eth0 %}
+      eth0:
+{% if eth0.description %}
+        description: {{ eth0.description }}
+{% endif %}
+{% if eth0.primary_ipv4 %}
+        ipv4:
+          address:
+            {{ eth0.primary_ipv4 }}: {}
+          gateway:
+            {{ eth0.primary_ipv4|gateway }}: {}
+{% endif %}
+        type: eth
+        vrf: mgmt
+{% endif %}
+{% set lo = device_data|interface_by_name("lo", false) %}
+{% if lo %}
+      lo:
+{% if lo.description %}
+        description: {{ lo.description }}
+{% endif %}
+{% if lo.primary_ipv4 %}
+        ipv4:
+          address:
+            {{ lo.primary_ipv4 }}: {}
+{% endif %}
+        type: loopback
+{% endif %}
+{% for intf in device_data|interfaces(prefix="swp") %}
+{% set breakout = device_data|breakout_count(intf.name) if not intf.parent and not intf.primary_ipv4 and not intf.untagged_vlan else 0 %}
+      {{ intf.name }}:
+{% if intf.description %}
+        description: {{ intf.description }}
+{% endif %}
+{% if intf.primary_ipv4 %}
+        ipv4:
+          address:
+            {{ intf.primary_ipv4 }}: {}
+{% endif %}
+{% if intf.primary_ipv6 %}
+        ipv6:
+          address:
+            {{ intf.primary_ipv6 }}: {}
+{% endif %}
+{% if intf.vrf != "default" %}
+        vrf: {{ intf.vrf }}
+{% endif %}
+{% if intf.untagged_vlan %}
+        bridge:
+          domain:
+            br_default:
+              access: {{ intf.untagged_vlan }}
+{% endif %}
+{% if spectrumx %}
+        qos:
+          pfc-watchdog:
+            state: enable
+{% endif %}
+        link:
+{% if breakout %}
+          breakout:
+            {{ breakout }}x: {}
+{% else %}
+          mtu: {{ intf.mtu or 9216 }}
+          state:
+{% if intf.enabled %}
+            up: {}
+{% else %}
+            down: {}
+{% endif %}
+{% endif %}
+{% if spectrumx and intf.connected_interface and intf.connected_interface.device.peer_group in ["CIN-LEAF", "CIN-SPINE"] %}
+        router:
+          adaptive-routing:
+            state: enabled
+{% endif %}
+        type: swp
+{% endfor %}
+{% for vlan in device_data|interfaces(prefix="vlan") %}
+      {{ vlan.name }}:
+{% if vlan.description %}
+        description: {{ vlan.description }}
+{% endif %}
+{% if vlan.primary_ipv4 %}
+        ipv4:
+          address:
+            {{ vlan.primary_ipv4 }}: {}
+{% endif %}
+{% if vlan.vrf != "default" %}
+        vrf: {{ vlan.vrf }}
+{% endif %}
+        type: svi
+        vlan: {{ vlan.vlan_number }}
+{% endfor %}

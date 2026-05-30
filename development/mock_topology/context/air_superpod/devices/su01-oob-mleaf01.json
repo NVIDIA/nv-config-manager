@@ -1,0 +1,414 @@
+{
+  "data": {
+    "device": {
+      "id": "air-superpod-su01-oob-mleaf01",
+      "name": "su01-oob-mleaf01",
+      "tags": [
+        {
+          "name": "demo"
+        },
+        {
+          "name": "ztp"
+        }
+      ],
+      "tenant": {
+        "name": "Public Demo"
+      },
+      "role": {
+        "name": "OOB-MLEAF"
+      },
+      "device_type": {
+        "manufacturer": {
+          "name": "NVIDIA"
+        },
+        "model": "SN2201"
+      },
+      "status": {
+        "name": "Provisioning"
+      },
+      "serial": "44:38:39:00:00:10",
+      "config_context": {
+        "intended-firmware": {
+          "version": "5.16.1"
+        },
+        "bgp": {
+          "asn": 65101
+        }
+      },
+      "location": {
+        "name": "SPO01"
+      },
+      "interfaces": [
+        {
+          "name": "lo",
+          "type": "virtual",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "ip_addresses": [
+            {
+              "address": "10.255.0.1/32",
+              "mask_length": 32,
+              "ip_version": 4
+            }
+          ],
+          "role": {
+            "name": "Loopback"
+          }
+        },
+        {
+          "name": "eth0",
+          "type": "1000base-t",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": true,
+          "ip_addresses": [],
+          "mac_address": "44:38:39:00:00:10"
+        },
+        {
+          "name": "Vlan100",
+          "type": "virtual",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "ip_addresses": [
+            {
+              "address": "10.100.1.1/25",
+              "mask_length": 25,
+              "ip_version": 4
+            }
+          ],
+          "description": "OOB management gateway for devices cabled to su01-oob-mleaf01",
+          "mode": "access",
+          "role": {
+            "name": "Management"
+          },
+          "untagged_vlan": {
+            "vid": 100,
+            "name": "OOB-MGMT"
+          }
+        },
+        {
+          "name": "swp1",
+          "type": "1000base-t",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "ip_addresses": [
+            {
+              "address": "10.100.0.1/31",
+              "mask_length": 31,
+              "ip_version": 4
+            }
+          ],
+          "description": "oob-mgmt-server:eth1",
+          "role": {
+            "name": "Downlink"
+          },
+          "connected_interface": {
+            "name": "eth1",
+            "device": {
+              "name": "oob-mgmt-server",
+              "role": {
+                "name": "OOB-Server"
+              }
+            }
+          }
+        },
+        {
+          "name": "swp2",
+          "type": "1000base-t",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "ip_addresses": [],
+          "description": "su00-tan-spine01:eth0",
+          "mode": "access",
+          "mtu": 9216,
+          "role": {
+            "name": "Downlink"
+          },
+          "untagged_vlan": {
+            "vid": 100,
+            "name": "OOB-MGMT"
+          },
+          "connected_interface": {
+            "name": "eth0",
+            "device": {
+              "name": "su00-tan-spine01",
+              "role": {
+                "name": "TAN-SPINE"
+              }
+            }
+          }
+        },
+        {
+          "name": "swp3",
+          "type": "1000base-t",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "ip_addresses": [],
+          "description": "su01-tan-bleaf01:eth0",
+          "mode": "access",
+          "mtu": 9216,
+          "role": {
+            "name": "Downlink"
+          },
+          "untagged_vlan": {
+            "vid": 100,
+            "name": "OOB-MGMT"
+          },
+          "connected_interface": {
+            "name": "eth0",
+            "device": {
+              "name": "su01-tan-bleaf01",
+              "role": {
+                "name": "TAN-BLEAF"
+              }
+            }
+          }
+        },
+        {
+          "name": "swp4",
+          "type": "1000base-t",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "ip_addresses": [],
+          "description": "su01-tan-hleaf01:eth0",
+          "mode": "access",
+          "mtu": 9216,
+          "role": {
+            "name": "Downlink"
+          },
+          "untagged_vlan": {
+            "vid": 100,
+            "name": "OOB-MGMT"
+          },
+          "connected_interface": {
+            "name": "eth0",
+            "device": {
+              "name": "su01-tan-hleaf01",
+              "role": {
+                "name": "TAN-HLEAF"
+              }
+            }
+          }
+        },
+        {
+          "name": "swp5",
+          "type": "1000base-t",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "ip_addresses": [],
+          "description": "su01-tan-sleaf01:eth0",
+          "mode": "access",
+          "mtu": 9216,
+          "role": {
+            "name": "Downlink"
+          },
+          "untagged_vlan": {
+            "vid": 100,
+            "name": "OOB-MGMT"
+          },
+          "connected_interface": {
+            "name": "eth0",
+            "device": {
+              "name": "su01-tan-sleaf01",
+              "role": {
+                "name": "TAN-SLEAF"
+              }
+            }
+          }
+        },
+        {
+          "name": "swp6",
+          "type": "1000base-t",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "ip_addresses": [],
+          "description": "su00-cin-spine01:eth0",
+          "mode": "access",
+          "mtu": 9216,
+          "role": {
+            "name": "Downlink"
+          },
+          "untagged_vlan": {
+            "vid": 100,
+            "name": "OOB-MGMT"
+          },
+          "connected_interface": {
+            "name": "eth0",
+            "device": {
+              "name": "su00-cin-spine01",
+              "role": {
+                "name": "CIN-SPINE"
+              }
+            }
+          }
+        },
+        {
+          "name": "swp7",
+          "type": "1000base-t",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "ip_addresses": [],
+          "description": "su01-cin-leaf-r01:eth0",
+          "mode": "access",
+          "mtu": 9216,
+          "role": {
+            "name": "Downlink"
+          },
+          "untagged_vlan": {
+            "vid": 100,
+            "name": "OOB-MGMT"
+          },
+          "connected_interface": {
+            "name": "eth0",
+            "device": {
+              "name": "su01-cin-leaf-r01",
+              "role": {
+                "name": "CIN-LEAF"
+              }
+            }
+          }
+        },
+        {
+          "name": "swp49",
+          "type": "100gbase-x-qsfp28",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "ip_addresses": [
+            {
+              "address": "10.101.0.0/31",
+              "mask_length": 31,
+              "ip_version": 4
+            }
+          ],
+          "description": "su00-oob-spine01:swp1",
+          "mtu": 9216,
+          "role": {
+            "name": "Uplink"
+          },
+          "connected_interface": {
+            "name": "swp1",
+            "device": {
+              "name": "su00-oob-spine01",
+              "role": {
+                "name": "OOB-SPINE"
+              }
+            }
+          }
+        },
+        {
+          "name": "swp50",
+          "type": "100gbase-x-qsfp28",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "ip_addresses": [
+            {
+              "address": "10.101.0.2/31",
+              "mask_length": 31,
+              "ip_version": 4
+            }
+          ],
+          "description": "su00-oob-spine02:swp1",
+          "mtu": 9216,
+          "role": {
+            "name": "Uplink"
+          },
+          "connected_interface": {
+            "name": "swp1",
+            "device": {
+              "name": "su00-oob-spine02",
+              "role": {
+                "name": "OOB-SPINE"
+              }
+            }
+          }
+        },
+        {
+          "name": "swp10",
+          "type": "1000base-t",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "ip_addresses": [],
+          "description": "su00-control01:bmc0",
+          "mtu": 9216,
+          "role": {
+            "name": "Downlink"
+          },
+          "connected_interface": {
+            "name": "bmc0",
+            "device": {
+              "name": "su00-control01",
+              "role": {
+                "name": "Control-Server"
+              }
+            }
+          }
+        },
+        {
+          "name": "swp11",
+          "type": "1000base-t",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "ip_addresses": [],
+          "description": "su01-storage01:bmc0",
+          "mtu": 9216,
+          "role": {
+            "name": "Downlink"
+          },
+          "connected_interface": {
+            "name": "bmc0",
+            "device": {
+              "name": "su01-storage01",
+              "role": {
+                "name": "Storage-Server"
+              }
+            }
+          }
+        }
+      ],
+      "platform": {
+        "name": "Cumulus Linux"
+      }
+    }
+  }
+}

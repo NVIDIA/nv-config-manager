@@ -252,6 +252,7 @@
             }
           ],
           "name": "eth0",
+          "mac_address": "44:38:39:10:03:fe",
           "description": "ztpleaf1-cp1-smn1-dc01:ethernet3",
           "vrf": null,
           "mgmt_only": false,

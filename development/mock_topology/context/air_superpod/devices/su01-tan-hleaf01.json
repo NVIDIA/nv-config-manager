@@ -1,0 +1,208 @@
+{
+  "data": {
+    "device": {
+      "id": "air-superpod-su01-tan-hleaf01",
+      "name": "su01-tan-hleaf01",
+      "tags": [
+        {
+          "name": "demo"
+        },
+        {
+          "name": "ztp"
+        }
+      ],
+      "tenant": {
+        "name": "Public Demo"
+      },
+      "role": {
+        "name": "TAN-HLEAF"
+      },
+      "device_type": {
+        "manufacturer": {
+          "name": "NVIDIA"
+        },
+        "model": "SN5600"
+      },
+      "status": {
+        "name": "Provisioning"
+      },
+      "serial": "44:38:39:00:00:15",
+      "config_context": {
+        "intended-firmware": {
+          "version": "5.16.1"
+        },
+        "bgp": {
+          "asn": 65221
+        }
+      },
+      "location": {
+        "name": "SPO01"
+      },
+      "interfaces": [
+        {
+          "name": "lo",
+          "type": "virtual",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "ip_addresses": [
+            {
+              "address": "10.255.0.11/32",
+              "mask_length": 32,
+              "ip_version": 4
+            }
+          ],
+          "role": {
+            "name": "Loopback"
+          }
+        },
+        {
+          "name": "eth0",
+          "type": "1000base-t",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": true,
+          "ip_addresses": [
+            {
+              "address": "10.100.1.21/25",
+              "mask_length": 25,
+              "ip_version": 4
+            }
+          ],
+          "mac_address": "44:38:39:00:00:15",
+          "connected_interface": {
+            "name": "swp4",
+            "device": {
+              "name": "su01-oob-mleaf01",
+              "role": {
+                "name": "OOB-MLEAF"
+              }
+            }
+          }
+        },
+        {
+          "name": "eth0",
+          "type": "1000base-t",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "ip_addresses": [
+            {
+              "address": "10.100.1.21/25",
+              "mask_length": 25,
+              "ip_version": 4
+            }
+          ],
+          "description": "su01-oob-mleaf01:swp4",
+          "mtu": 9216,
+          "role": {
+            "name": "Management"
+          },
+          "mac_address": "44:38:39:00:00:15",
+          "connected_interface": {
+            "name": "swp4",
+            "device": {
+              "name": "su01-oob-mleaf01",
+              "role": {
+                "name": "OOB-MLEAF"
+              }
+            }
+          }
+        },
+        {
+          "name": "swp1",
+          "type": "400gbase-x-qsfpdd",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "ip_addresses": [],
+          "description": "su01-compute-tray-r01:ens1",
+          "mtu": 9216,
+          "role": {
+            "name": "Downlink"
+          },
+          "connected_interface": {
+            "name": "ens1",
+            "device": {
+              "name": "su01-compute-tray-r01",
+              "role": {
+                "name": "Compute-Tray"
+              }
+            }
+          }
+        },
+        {
+          "name": "swp49",
+          "type": "400gbase-x-qsfpdd",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "ip_addresses": [
+            {
+              "address": "10.102.0.0/31",
+              "mask_length": 31,
+              "ip_version": 4
+            }
+          ],
+          "description": "su00-tan-spine01:swp1",
+          "mtu": 9216,
+          "role": {
+            "name": "Uplink"
+          },
+          "connected_interface": {
+            "name": "swp1",
+            "device": {
+              "name": "su00-tan-spine01",
+              "role": {
+                "name": "TAN-SPINE"
+              }
+            }
+          }
+        },
+        {
+          "name": "swp50",
+          "type": "400gbase-x-qsfpdd",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "ip_addresses": [
+            {
+              "address": "10.102.0.2/31",
+              "mask_length": 31,
+              "ip_version": 4
+            }
+          ],
+          "description": "su00-tan-spine02:swp1",
+          "mtu": 9216,
+          "role": {
+            "name": "Uplink"
+          },
+          "connected_interface": {
+            "name": "swp1",
+            "device": {
+              "name": "su00-tan-spine02",
+              "role": {
+                "name": "TAN-SPINE"
+              }
+            }
+          }
+        }
+      ],
+      "platform": {
+        "name": "Cumulus Linux"
+      }
+    }
+  }
+}

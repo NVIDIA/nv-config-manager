@@ -1,0 +1,38 @@
+{% extends "cumulus-linux/role_common/5.16.1/include/service.j2" %}
+
+{% block dhcp_relay %}
+{% set dhcp_helpers = device_data|dhcp_servers("nvcm", true) %}
+{% set downstream = [] %}
+{% set upstream = [] %}
+{% for intf in device_data|interfaces(prefix="vlan") %}
+{% if intf.primary_ipv4 %}
+{% set _ = downstream.append(intf.name) %}
+{% endif %}
+{% endfor %}
+{% for intf in device_data|interfaces(prefix="swp") %}
+{% if intf.primary_ipv4 %}
+{% set _ = upstream.append(intf.name) %}
+{% endif %}
+{% endfor %}
+{% if dhcp_helpers and downstream and upstream %}
+      dhcp-relay:
+        default:
+          downstream-interface:
+{% for intf_name in downstream|sort %}
+            {{ intf_name }}:
+              server-group-name: group_1
+{% endfor %}
+          server-group:
+            group_1:
+              server:
+{% for helper_ip in dhcp_helpers %}
+                {{ helper_ip }}: {}
+{% endfor %}
+              upstream-interface:
+{% for intf_name in upstream|sort %}
+                {{ intf_name }}: {}
+{% endfor %}
+{% else %}
+      dhcp-relay: {}
+{% endif %}
+{% endblock dhcp_relay %}
