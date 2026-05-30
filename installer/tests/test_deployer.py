@@ -592,6 +592,7 @@ class TestKindImageLoading:
             "--format",
             "{{.Server.Os}}/{{.Server.Arch}}",
         ] in run_commands
+        assert ["docker", "system", "prune", "-af"] in logged_commands
         assert [
             "docker",
             "pull",
@@ -663,6 +664,7 @@ class TestKindImageLoading:
         )
         deployer._load_kind()
 
+        assert ["docker", "system", "prune", "-af"] in logged_commands
         assert [
             "docker",
             "pull",

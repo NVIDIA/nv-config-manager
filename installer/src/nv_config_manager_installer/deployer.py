@@ -1321,6 +1321,23 @@ class Deployer:
             # platform content. Import helper images directly into node
             # containerd with the selected platform instead. Avoid ctr's
             # digest refs here; the tag is what Kubernetes needs to resolve.
+            #
+            # Prune the host daemon's content store between iterations so the
+            # next pull cannot share blobs with the previous one. Diagnostic
+            # for docker/cli#6457: Docker's containerd image store sometimes
+            # refuses to `docker save --platform <p>` a freshly pulled
+            # multi-arch tag ("no suitable export target found ... does not
+            # provide the specified platform"); shared layers from a sibling
+            # image pulled earlier in the loop are one suspected trigger.
+            # Running containers (the kind node) keep their images, so this
+            # only drops the previous helper image and its dangling content.
+            self.callback.on_log("Pruning host docker content store before next helper pull...")
+            _run_logged(
+                ["docker", "system", "prune", "-af"],
+                step,
+                self.callback,
+                timeout=120,
+            )
             source_img = _kind_preload_source_image(img, platform_name)
             self.callback.on_log(
                 f"Pulling helper image {source_img} for platform {platform_name}..."
