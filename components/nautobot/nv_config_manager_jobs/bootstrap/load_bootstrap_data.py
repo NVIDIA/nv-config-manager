@@ -106,6 +106,12 @@ class LoadBootstrapData(Job):
                 self.logger.warning(f"Could not find content type: {ct_string}")
         return content_types
 
+    def add_content_types(self, obj, content_type_strings):
+        """Add content type memberships without removing existing memberships."""
+        content_types = self.get_content_types(content_type_strings)
+        if content_types:
+            obj.content_types.add(*content_types)
+
     def run(self):
         """Execute the job to load bootstrap data.
 
@@ -314,10 +320,10 @@ class LoadBootstrapData(Job):
                         },
                     )
 
-                    # Set content_types for both new and existing roles
+                    # Add content_types for both new and existing roles without
+                    # removing memberships created by other jobs.
                     if "content_types" in role_data:
-                        content_types = self.get_content_types(role_data["content_types"])
-                        role.content_types.set(content_types)
+                        self.add_content_types(role, role_data["content_types"])
                         role.validated_save()
 
                     if created:
@@ -380,10 +386,9 @@ class LoadBootstrapData(Job):
                         },
                     )
 
-                    # Set content_types for both new and existing tags
+                    # Add content_types without removing memberships created by other jobs.
                     if "content_types" in tag_data:
-                        content_types = self.get_content_types(tag_data["content_types"])
-                        tag.content_types.set(content_types)
+                        self.add_content_types(tag, tag_data["content_types"])
 
                     if created:
                         self.logger.success(
@@ -585,10 +590,9 @@ class LoadBootstrapData(Job):
                         },
                     )
 
-                    # Set content_types for both new and existing location types
+                    # Add content_types without removing memberships created by other jobs.
                     if "content_types" in lt_data:
-                        content_types = self.get_content_types(lt_data["content_types"])
-                        lt.content_types.set(content_types)
+                        self.add_content_types(lt, lt_data["content_types"])
 
                     if created:
                         self.logger.success(
@@ -709,10 +713,9 @@ class LoadBootstrapData(Job):
                         },
                     )
 
-                    # Set content_types for both new and existing statuses
+                    # Add content_types without removing memberships created by other jobs.
                     if "content_types" in status_data:
-                        content_types = self.get_content_types(status_data["content_types"])
-                        status.content_types.set(content_types)
+                        self.add_content_types(status, status_data["content_types"])
 
                     if created:
                         self.logger.success(

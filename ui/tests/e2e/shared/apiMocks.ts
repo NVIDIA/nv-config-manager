@@ -75,10 +75,7 @@ export async function setupApiMocks(page: Page) {
   await mockIbOsUpgradeEndpoint(page);
   await mockInfinibandCableValidationEndpoint(page);
   await mockReprovisionEndpoint(page);
-  await mockAirValidateSiteEndpoint(page);
   await mockSwitchOsUpgradeEndpoint(page);
-  await mockAirCreateSimulationEndpoint(page);
-  await mockAirDeleteSimulationEndpoint(page);
   await mockCumulusHardwareValidationEndpoint(page);
   await mockMultiDeployEndpoint(page);
 
@@ -90,7 +87,6 @@ export async function setupApiMocks(page: Page) {
   await mockDeviceTypesEndpoint(page);
   await mockDevicesEndpoint(page);
   await mockPasswordUsersEndpoint(page);
-  await mockSimulationsEndpoint(page);
 
   // Workflow listing endpoints
   await mockWorkflowTypesEndpoint(page);
@@ -753,42 +749,6 @@ export async function mockReprovisionEndpoint(page: Page) {
   });
 }
 
-export async function mockAirValidateSiteEndpoint(page: Page) {
-  await page.route(`**/v1/workflow/ngc/air_validate_site`, async (route) => {
-    const request = route.request();
-    const body = JSON.parse((await request.postData()) || "{}");
-
-    if (body.site_name === FORBIDDEN_SITE_ID) {
-      await route.fulfill({
-        status: 403,
-        json: {
-          error: "Forbidden: You do not have permission to run this workflow",
-        },
-      });
-      return;
-    }
-
-    if (!body.site_name) {
-      await route.fulfill({
-        status: 400,
-        json: { error: "Missing required fields" },
-      });
-      return;
-    }
-
-    await delay(100);
-
-    await route.fulfill({
-      status: 201,
-      json: {
-        id: body.site_name,
-        href: `https://url-to-temporal.com/namespaces/default/workflows/${body.site_name}`,
-        submitted_data: body,
-      },
-    });
-  });
-}
-
 export async function mockSwitchOsUpgradeEndpoint(page: Page) {
   await page.route(`**/v1/workflow/ngc/switch_os_upgrade`, async (route) => {
     const request = route.request();
@@ -819,81 +779,6 @@ export async function mockSwitchOsUpgradeEndpoint(page: Page) {
       json: {
         id: body.device_id,
         href: `https://url-to-temporal.com/namespaces/default/workflows/${body.device_id}`,
-        submitted_data: body,
-      },
-    });
-  });
-}
-
-export async function mockAirCreateSimulationEndpoint(page: Page) {
-  await page.route(
-    `**/v1/workflow/ngc/air_create_simulation`,
-    async (route) => {
-      const request = route.request();
-      const body = JSON.parse((await request.postData()) || "{}");
-
-      if (body.name === FORBIDDEN_SITE_ID) {
-        await route.fulfill({
-          status: 403,
-          json: {
-            error: "Forbidden: You do not have permission to run this workflow",
-          },
-        });
-        return;
-      }
-
-      if (!body.name || !body.topology) {
-        await route.fulfill({
-          status: 400,
-          json: { error: "Missing required fields" },
-        });
-        return;
-      }
-
-      await delay(100);
-
-      await route.fulfill({
-        status: 201,
-        json: {
-          id: body.name,
-          href: `https://url-to-temporal.com/namespaces/default/workflows/${body.name}`,
-          submitted_data: body,
-        },
-      });
-    }
-  );
-}
-
-export async function mockAirDeleteSimulationEndpoint(page: Page) {
-  await page.route(`**/v1/workflow/ngc/air_delete`, async (route) => {
-    const request = route.request();
-    const body = JSON.parse((await request.postData()) || "{}");
-
-    if (body.simulation_id === FORBIDDEN_SITE_ID) {
-      await route.fulfill({
-        status: 403,
-        json: {
-          error: "Forbidden: You do not have permission to run this workflow",
-        },
-      });
-      return;
-    }
-
-    if (!body.simulation_id) {
-      await route.fulfill({
-        status: 400,
-        json: { error: "Missing required fields" },
-      });
-      return;
-    }
-
-    await delay(100);
-
-    await route.fulfill({
-      status: 201,
-      json: {
-        id: body.simulation_id,
-        href: `https://url-to-temporal.com/namespaces/default/workflows/${body.simulation_id}`,
         submitted_data: body,
       },
     });
@@ -1022,37 +907,6 @@ export async function mockPasswordUsersEndpoint(page: Page) {
   });
 }
 
-export async function mockSimulationsEndpoint(page: Page) {
-  await page.route(`**/v1/parameter/simulations`, async (route) => {
-    const simulationsData = [
-      {
-        id: "4dce8367-aaea-4965-924e-34647be0a630",
-        name: "SITEA Validation",
-        state: "LOADING",
-      },
-      {
-        id: "1a048166-42f0-4da9-82e9-761a10ddb0e3",
-        name: "test",
-        state: "LOADED",
-      },
-      {
-        id: "test-simulation-123",
-        name: "Test Simulation 123",
-        state: "LOADED",
-      },
-      {
-        id: FORBIDDEN_SITE_ID,
-        name: "Forbidden Simulation",
-        state: "LOADED",
-      },
-    ];
-
-    await route.fulfill({
-      json: simulationsData,
-    });
-  });
-}
-
 // Workflow listing endpoints
 export async function mockWorkflowTypesEndpoint(page: Page) {
   const workflowTypes = [
@@ -1075,9 +929,6 @@ export async function mockWorkflowTypesEndpoint(page: Page) {
     "ReprovisionWorkflow",
     "SwitchOsUpgradeWorkflow",
     "CumulusHardwareValidationWorkflow",
-    "AIRCreateSimulationWorkflow",
-    "AIRValidateSiteWorkflow",
-    "AIRDeleteSimulationWorkflow",
   ];
 
   await page.route(`**/v1/workflow/types`, async (route) => {

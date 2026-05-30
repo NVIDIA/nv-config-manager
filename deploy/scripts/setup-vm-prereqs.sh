@@ -1666,13 +1666,6 @@ secrets:
     keys:
       password: "password"
 
-  # AIR service credentials
-  air:
-    path: ${ENVIRONMENT_PATH}/air
-    keys:
-      ssaClientId: "ssa_client_id"
-      ssaClientSecret: "ssa_client_secret"
-
   # UFM API credentials
   ufm:
     path: ${ENVIRONMENT_PATH}/ufm

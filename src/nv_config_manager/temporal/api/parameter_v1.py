@@ -19,7 +19,6 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from nv_config_manager.temporal.client.air import AirClient, Simulation
 from nv_config_manager.temporal.client.nautobot import NautobotClient
 from nv_config_manager.temporal.common.mixins.device import NetworkDeviceData, Platform
 from nv_config_manager.temporal.ngc.activities.diagnostics import get_available_commands
@@ -392,16 +391,6 @@ async def get_diagnostics_commands(
                 seen[name] = description
 
     return [CommandEntry(name=name, description=desc) for name, desc in sorted(seen.items())]
-
-
-@router.get(
-    "/simulations",
-    summary="Get AIR Simulations",
-)
-async def get_simulations() -> list[Simulation]:
-    """Return a list of NVIDIA Config Manager-managed AIR simulations."""
-    air_client = AirClient()
-    return air_client.list_simulations()
 
 
 @router.get("/device/{device_id}/secrets")

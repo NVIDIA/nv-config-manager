@@ -111,21 +111,6 @@ export const siteConfig = {
       enabled: true,
     },
     {
-      title: "AIR Validate Site",
-      slug: "airvalidatesiteworkflow",
-      enabled: true,
-    },
-    {
-      title: "AIR Create Simulation",
-      slug: "aircreatesimulationworkflow",
-      enabled: true,
-    },
-    {
-      title: "AIR Delete Simulation",
-      slug: "airdeletesimulationworkflow",
-      enabled: true,
-    },
-    {
       title: "Switch OS Upgrade",
       slug: "switchosupgradeworkflow",
       enabled: true,
