@@ -76,7 +76,7 @@ NVCM_SERVER_OS = "generic/ubuntu2404"
 DEFAULT_NVCM_SERVER_NAME = "nvcm-server"
 
 NVCM_BOX_USER = "nvcm"
-NVCM_BOX_PASSWORD = "NVCMDemo1!"
+NVCM_BOX_PASSWORD = "NVCMDemo1!"  # trufflehog:ignore - public AIR demo VM password
 NVCM_BOX_DIR = "/opt/nvcm-box"
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]

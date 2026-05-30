@@ -1,6 +1,6 @@
 .PHONY: help install dev test lint format clean docker-build docker-push ui-install ui-dev ui-build \
         local-up local-down local-destroy local-status local-logs deploy kind-up kind-down topology install-cert \
-        openapi openapi-check docs-assets docs-assets-check docs-format docs-lint docs-lint-fern docs-live docs-preview docs-publish docs-publish-in-ci docs-screenshots \
+        openapi openapi-check docs-assets docs-assets-check docs-format docs-lint docs-lint-fern docs-live docs-preview docs-publish docs-publish-in-ci docs-screenshots docs-air-sim-screenshots \
         obs-grafana obs-prometheus obs-loki obs-alloy obs-port-forward obs-port-forward-stop
 
 # Configuration
@@ -97,6 +97,7 @@ help:
 	@echo "  make docs-preview     - Generate a Fern docs preview"
 	@echo "  make docs-publish     - Publish the Fern docs"
 	@echo "  make docs-screenshots - Regenerate installer TUI screenshots for docs"
+	@echo "  make docs-air-sim-screenshots - Regenerate AIR sim TUI screenshots for docs"
 	@echo ""
 	@echo "Observability (local-dev stack only — requires observability to be enabled in installer config):"
 	@echo "  make obs-grafana             - Port-forward Grafana       -> http://localhost:3000  (admin/admin)"
@@ -323,6 +324,9 @@ docs-publish-in-ci:
 
 docs-screenshots:
 	cd installer && uv run python scripts/screenshot_tui.py
+
+docs-air-sim-screenshots:
+	cd installer && uv run python scripts/screenshot_air_sim_tui.py
 
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true

@@ -46,9 +46,9 @@ class OptionsScreen(Container):
             id="ngc-api-key",
         )
         yield LabeledSwitch(
-            "Use internal AIR instance  (public AIR is the default)",
-            value=self._config.use_internal,
-            id="use-internal",
+            "Use Public Air",
+            value=not self._config.use_internal,
+            id="use-public-air",
         )
 
         yield Label("─" * 40, classes="section-divider")
@@ -142,7 +142,7 @@ class OptionsScreen(Container):
 
     def write_to_config(self, config: SimConfig) -> None:
         config.ngc_api_key = self.query_one("#ngc-api-key", Input).value.strip()
-        config.use_internal = self.query_one("#use-internal", LabeledSwitch).value
+        config.use_internal = not self.query_one("#use-public-air", LabeledSwitch).value
         config.auto_configure = self.query_one("#auto-configure", LabeledSwitch).value
         config.git_token = self.query_one("#git-token", Input).value.strip()
         config.config_manager_repo = self.query_one("#config-manager-repo", Input).value.strip()
@@ -166,7 +166,7 @@ class OptionsScreen(Container):
 
     def sync_from_config(self, config: SimConfig) -> None:
         self.query_one("#ngc-api-key", Input).value = config.ngc_api_key
-        self.query_one("#use-internal", LabeledSwitch).value = config.use_internal
+        self.query_one("#use-public-air", LabeledSwitch).value = not config.use_internal
         self.query_one("#auto-configure", LabeledSwitch).value = config.auto_configure
         self.query_one("#git-token", Input).value = config.git_token
         self.query_one("#config-manager-repo", Input).value = config.config_manager_repo

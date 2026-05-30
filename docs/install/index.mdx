@@ -22,7 +22,7 @@ Before you start, install the following tools and confirm you have access to the
 | :-------- | :------ |
 | `kubectl` | Connects to the Kubernetes cluster where Config Manager will be installed |
 | Helm 3.x | Installs and upgrades the Config Manager chart and optional operators |
-| Python 3.11+ and `uv` | Runs or installs the `nv-config-manager-installer` CLI |
+| Python 3.11+ and `uv` | Runs or installs the `nvcm-installer` CLI |
 | Docker | Builds local images when using the local image workflow |
 | Kind | Loads locally built images into a Kind cluster when using a local or remote-VM Kubernetes test environment |
 | Vault or OpenBao access | Required only when using External Secrets Operator instead of Kubernetes secrets |
@@ -78,43 +78,45 @@ cd installer
 uv sync
 
 # Launch the interactive wizard.
-uv run nv-config-manager-installer init
+uv run nvcm-installer init
 
 # Re-open an existing configuration.
-uv run nv-config-manager-installer init nv-config-manager-install.yaml
+uv run nvcm-installer init nv-config-manager-install.yaml
 
 # Validate the configuration without deploying.
-uv run nv-config-manager-installer validate nv-config-manager-install.yaml
+uv run nvcm-installer validate nv-config-manager-install.yaml
 
 # Generate Helm values without deploying.
-uv run nv-config-manager-installer generate-values nv-config-manager-install.yaml -o ./generated
+uv run nvcm-installer generate-values nv-config-manager-install.yaml -o ./generated
 ```
 
 The wizard writes `nv-config-manager-install.yaml` with owner-only permissions (`0600`). Treat the file as sensitive because it can contain secrets.
 
 ## Choose a CLI Workflow
 
+`nvcm-installer` is the short command name for the installer. The longer `nv-config-manager-installer` command remains available for compatibility and accepts the same subcommands and flags.
+
 For one-time use from the platform repository, run the CLI with `uv`.
 
 ```bash
 cd installer
 uv sync
-uv run nv-config-manager-installer --help
+uv run nvcm-installer --help
 ```
 
-To make `nv-config-manager-installer` available as a standalone shell command from the installer package, run:
+To make `nvcm-installer` available as a standalone shell command from the installer package, run:
 
 ```bash
 cd installer
 uv tool install .
-nv-config-manager-installer --help
+nvcm-installer --help
 ```
 
 ## CLI Command Reference
 
 ### init
 
-Run `nv-config-manager-installer init` to launch the interactive TUI wizard.
+Run `nvcm-installer init` to launch the interactive TUI wizard.
 
 | Flag | Default | Description |
 | :--- | :------ | :---------- |
@@ -124,10 +126,10 @@ The wizard walks through every configuration section, saves the configuration to
 
 ### validate
 
-Run `nv-config-manager-installer validate` to validate a configuration file without deploying.
+Run `nvcm-installer validate` to validate a configuration file without deploying.
 
 ```bash
-nv-config-manager-installer validate nv-config-manager-install.yaml
+nvcm-installer validate nv-config-manager-install.yaml
 ```
 
 Validation checks include:
@@ -140,10 +142,10 @@ Validation checks include:
 
 ### generate-values
 
-Using ArgoCD? Generate a values file to use instead of managing the full deployment lifecycle with the TUI. Run `nv-config-manager-installer generate-values` to generate deployment artifacts without running a deployment.
+Using ArgoCD? Generate a values file to use instead of managing the full deployment lifecycle with the TUI. Run `nvcm-installer generate-values` to generate deployment artifacts without running a deployment.
 
 ```bash
-nv-config-manager-installer generate-values nv-config-manager-install.yaml --output-dir ./generated
+nvcm-installer generate-values nv-config-manager-install.yaml --output-dir ./generated
 ```
 
 | Flag | Default | Description |
@@ -156,12 +158,12 @@ The command writes a `values-generated.yaml` file to the output directory, combi
 
 ### deploy
 
-Run `nv-config-manager-installer deploy` to run a headless, non-interactive deployment from an existing configuration file.
+Run `nvcm-installer deploy` to run a headless, non-interactive deployment from an existing configuration file.
 
 Use this command for repeatable deploys after you have created and reviewed `nv-config-manager-install.yaml`.
 
 ```bash
-nv-config-manager-installer deploy nv-config-manager-install.yaml \
+nvcm-installer deploy nv-config-manager-install.yaml \
   --image-source local \
   --build-images \
   --load-kind \
@@ -202,7 +204,7 @@ Common `nv-config-manager-install.yaml` examples are documented in [Configuratio
 
 ## Deployment Steps
 
-When you deploy from the TUI or with `nv-config-manager-installer deploy`, the installer runs the following steps. Steps are skipped when they do not apply to the selected configuration.
+When you deploy from the TUI or with `nvcm-installer deploy`, the installer runs the following steps. Steps are skipped when they do not apply to the selected configuration.
 
 | # | Step | Description |
 | :- | :--- | :---------- |
@@ -323,7 +325,7 @@ kubectl logs -n <namespace> -l app.kubernetes.io/component=network-dhcp -c confi
 
 ## Iterative Deployment and Post-Deploy Changes
 
-You do not need to redeploy from scratch when you change data, add images, update templates, or upgrade versions. Treat `nv-config-manager-install.yaml` as the source of truth: re-open it with `nv-config-manager-installer init nv-config-manager-install.yaml`, adjust the configuration, and deploy again. The deployer applies updates through Helm and only restarts services when relevant inputs have changed.
+You do not need to redeploy from scratch when you change data, add images, update templates, or upgrade versions. Treat `nv-config-manager-install.yaml` as the source of truth: re-open it with `nvcm-installer init nv-config-manager-install.yaml`, adjust the configuration, and deploy again. The deployer applies updates through Helm and only restarts services when relevant inputs have changed.
 
 ### Update Nautobot or Site Data
 

@@ -63,7 +63,7 @@ The following Python packages are dependencies of NVIDIA Config Manager. See `py
 | requests-aws4auth | MIT | https://github.com/tedder/requests-aws4auth |
 | brotli | MIT | https://github.com/google/brotli |
 | slack-sdk | MIT | https://github.com/slackapi/python-slack-sdk |
-| air-sdk | MIT | https://pypi.org/project/air-sdk/ |
+| nv-air-sdk | MIT | https://pypi.org/project/nv-air-sdk/ |
 | python-json-logger | BSD-2-Clause | https://github.com/madzak/python-json-logger |
 | py-markdown-table | MIT | https://github.com/hvalev/py-markdown-table |
 | mkdocs | BSD-2-Clause | https://github.com/mkdocs/mkdocs |

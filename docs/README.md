@@ -25,5 +25,6 @@ make docs-preview
 - Navigation is defined in `docs/fern/docs.yml`.
 - OpenAPI specs are generated into `docs/api-specs/` with `make openapi`.
 - Installer TUI screenshots are generated into `docs/assets/images/installer/` with `make docs-screenshots`.
+- AIR sim TUI screenshots are generated into `docs/assets/images/air-sim/` with `make docs-air-sim-screenshots`.
 
 Fern publishing in GitHub Actions uses a repository secret named `FERN_TOKEN`.

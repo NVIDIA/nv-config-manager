@@ -125,8 +125,8 @@ infrastructure:
 Re-run:
 
 ```bash
-uv run nv-config-manager-installer init nv-config-manager-install.yaml
-uv run nv-config-manager-installer deploy nv-config-manager-install.yaml
+uv run nvcm-installer init nv-config-manager-install.yaml
+uv run nvcm-installer deploy nv-config-manager-install.yaml
 ```
 
 The installer computes the SHA256, writes the image into `{platform}/{version}/{filename}` on the PVC, and updates `manifest.json` — tagging the entry as the firmware image. See [Iterative Deployment → Add or Update OS Images](../install/index.mdx#add-or-update-os-images).

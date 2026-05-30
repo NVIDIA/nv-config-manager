@@ -10,7 +10,7 @@ auto_configure: true
 git_token: ''
 config_manager_repo: https://github.com/NVIDIA/nv-config-manager
 size: small
-config_manager_ref: main
+config_manager_ref: port-air
 cumulus_version: ''
 deploy: true
 run_mock_topology_job: true

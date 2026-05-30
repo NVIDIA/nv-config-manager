@@ -12,7 +12,7 @@ The bundled mock topology data is not production data and must never be used for
 Real device interaction is not meaningfully mocked today. Workflows such as ZTP, cable validation, deploy, multi-deploy, backup, reprovision, password rotation, hardware validation, and LLDP-based discovery require reachable real devices to be useful.
 </Warning>
 
-Future work will include a more robust mocking infrastructure for local development. Until then, treat the local quick start as a render and interface preview only.
+Future work will include a more robust mocking infrastructure for local development. Until then, treat the local quick start as a render and interface preview only. To exercise workflows against simulated Cumulus switches, use the [AIR Simulation User Guide](../user-guides/air-simulation/index.mdx).
 
 ## What this gives you
 
@@ -50,7 +50,7 @@ Equivalent headless installer command:
 
 ```bash
 cd installer
-uv run nv-config-manager-installer deploy ../deploy/configs/local-superpod.yaml \
+uv run nvcm-installer deploy ../deploy/configs/local-superpod.yaml \
   --image-source local \
   --build-images \
   --load-kind \

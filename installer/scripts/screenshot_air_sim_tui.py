@@ -39,18 +39,18 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from textual.widgets import Button, Static
 
 from nv_config_manager_installer.air_sim.constants import (
-    DEFAULT_AIR_DEMO_TEMPLATE_PLUGIN_PATH,
-    DEFAULT_CONFIG_MANAGER_REPO,
-    DEFAULT_MOCK_TOPOLOGY_PATH,
     NVCM_BOX_PASSWORD,
     NVCM_BOX_USER,
 )
 from nv_config_manager_installer.air_sim.orchestrator import STEPS, StepStatus
+from nv_config_manager_installer.air_sim.prebuilt_configs import load_prebuilt_config
 from nv_config_manager_installer.air_sim.proxy import ProxyInfo
 from nv_config_manager_installer.air_sim.sim_config import SimConfig
 from nv_config_manager_installer.tui.air_sim.app import SECTION_LABELS, NVCMAirSimApp
 from nv_config_manager_installer.tui.air_sim.screens.launch import (
     LaunchScreen,
+    _clean_dhcp_line,
+    _clean_ztp_line,
     _FollowLog,
     _LogViewerWidget,
     _PodStatusWidget,
@@ -63,9 +63,9 @@ ROWS = 70
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUT_DIR = REPO_ROOT / "docs" / "assets" / "images" / "air-sim"
 
-MOCK_HOST = "ngc-worker55.air-inside.nvidia.com"
+MOCK_HOST = "eb515e50.workers.ngc.air.nvidia.com"
 MOCK_PORT = 17117
-MOCK_SIM_NAME = "nv-config-manager-superpod-demo"
+TRUFFLEHOG_IGNORE_COMMENT = "<!-- trufflehog:ignore - public AIR demo VM password -->"
 
 
 def _slug(label: str) -> str:
@@ -73,8 +73,28 @@ def _slug(label: str) -> str:
 
 
 def _save(output_dir: Path, name: str, svg: str) -> None:
-    (output_dir / name).write_text(svg)
+    (output_dir / name).write_text(_allowlist_demo_password(svg))
     print(f"  {name}")
+
+
+def _allowlist_demo_password(svg: str) -> str:
+    """Mark generated SVG lines containing the public demo password for scanners."""
+    lines: list[str] = []
+    for line in svg.splitlines(keepends=True):
+        if NVCM_BOX_PASSWORD not in line or "trufflehog:ignore" in line:
+            lines.append(line)
+            continue
+
+        ending = ""
+        body = line
+        if line.endswith("\r\n"):
+            ending = "\r\n"
+            body = line[:-2]
+        elif line.endswith("\n"):
+            ending = "\n"
+            body = line[:-1]
+        lines.append(f"{body}{TRUFFLEHOG_IGNORE_COMMENT}{ending}")
+    return "".join(lines)
 
 
 def _shot(app: NVCMAirSimApp, title: str) -> str:
@@ -93,32 +113,10 @@ async def _stabilize(pilot: object, pauses: int = 2, delay: float = 0.1) -> None
 
 
 def _example_config() -> SimConfig:
-    """Return a fully populated AIR demo config for screenshots."""
-    return SimConfig(
-        topology_path="",
-        mock_blueprint="air_superpod",
-        deployment_name="demo",
-        simulation_name=MOCK_SIM_NAME,
-        oob_server_name="oob-mgmt-server",
-        server_mode="use-existing",
-        auto_configure=True,
-        git_token="ghp_mock_private_fork_token",
-        config_manager_repo=DEFAULT_CONFIG_MANAGER_REPO,
-        config_manager_ref="port-air",
-        cumulus_version="5.14.0",
-        size="small",
-        deploy=True,
-        run_mock_topology_job=True,
-        mock_topology_path=str(DEFAULT_MOCK_TOPOLOGY_PATH),
-        template_plugin_paths=[str(DEFAULT_AIR_DEMO_TEMPLATE_PLUGIN_PATH)],
-        use_internal=True,
-        org_id="nv-ai-infra",
-        ngc_api_key="nvapi-mock-key-for-screenshots",
-        wait_timeout=1800,
-        deploy_timeout=3600,
-        no_aggressive_dhcp=False,
-        no_reset_before_dhcp=False,
-    )
+    """Return the public AIR trial demo config with screenshot-only auth filled in."""
+    cfg = load_prebuilt_config("air-trial")
+    cfg.ngc_api_key = "nvapi-demo-key-for-screenshots"
+    return cfg
 
 
 def _ssh_cmd(host: str = MOCK_HOST, port: int = MOCK_PORT) -> str:
@@ -295,14 +293,11 @@ _DEPLOY_LOG_LINES = [
     ),
     "23:52:44  Built topology with 7 nodes and 8 links",
     "23:52:45  Created simulation: 9e1f8be2-43a0-4797-9e14-91e5b170b656",
-    (
-        "23:53:31  Created SSH service for oob-mgmt-server:eth0 -> "
-        "ngc-worker55.air-inside.nvidia.com:17117"
-    ),
-    "SSH ready: nvcm@ngc-worker55.air-inside.nvidia.com:17117",
+    (f"23:53:31  Created SSH service for oob-mgmt-server:eth0 -> {MOCK_HOST}:17117"),
+    f"SSH ready: nvcm@{MOCK_HOST}:17117",
     (
         "23:56:03  Uploading /tmp/nv-config-manager-install-sujopgqf.yaml -> "
-        "ngc-worker55.air-inside.nvidia.com:/home/nvcm/nv-config-manager-install.yaml ..."
+        f"{MOCK_HOST}:/home/nvcm/nv-config-manager-install.yaml ..."
     ),
     "23:56:03  Upload complete: /home/nvcm/nv-config-manager-install.yaml",
     "Uploaded nv-config-manager-install.yaml",
@@ -340,7 +335,7 @@ _DEPLOY_LOG_LINES = [
 ]
 
 
-_DHCP_LOG_LINES = [
+_RAW_DHCP_LOG_LINES = [
     (
         "2026-05-30 00:57:54.424 INFO  [kea-dhcp4.packets/14.139514333066944] "
         "DHCP4_PACKET_RECEIVED [hwtype=1 44:38:39:00:00:08], cid=[no info], "
@@ -391,7 +386,7 @@ _DHCP_LOG_LINES = [
 ]
 
 
-_ZTP_LOG_LINES = [
+_RAW_ZTP_LOG_LINES = [
     (
         r'{"message": "10.120.0.1:40294 - \"GET /v1/device/'
         r'8f5a1532-e155-4119-937e-86e8aa8f4007/boot-script HTTP/1.1\" 200", '
@@ -478,6 +473,9 @@ _ZTP_LOG_LINES = [
     ),
 ]
 
+_DHCP_LOG_LINES = [_clean_dhcp_line(line) for line in _RAW_DHCP_LOG_LINES]
+_ZTP_LOG_LINES = [_clean_ztp_line(line) for line in _RAW_ZTP_LOG_LINES]
+
 
 def _populate_logs(launch: LaunchScreen, *, active_tab: str = "deploy") -> None:
     viewer = launch.query_one("#log-viewer", _LogViewerWidget)
@@ -512,7 +510,7 @@ def _populate_ssh_and_pods(
 def _populate_ready_launch(launch: LaunchScreen) -> None:
     launch.query_one("#btn-launch", Button).disabled = False
     launch.query_one("#launch-status", Static).update(
-        "[green]Ready to create AIR simulation from mock topology air_superpod.[/green]"
+        "[green]Ready to create AIR simulation from mock topology air_trial.[/green]"
     )
 
 
@@ -568,20 +566,34 @@ def _populate_complete_launch(launch: LaunchScreen) -> None:
 
 def _populate_failure_launch(launch: LaunchScreen) -> None:
     launch._bringup_running = False
-    launch._show_ssh_command(_ssh_cmd())
     launch.query_one("#btn-launch", Button).disabled = False
     launch.query_one("#launch-status", Static).update(
         "[bold red][!] Bringup failed - check the deploy log above[/bold red]"
     )
-    _set_step_states(launch, failed_step="wait-setup")
+    _set_step_states(launch, failed_step="post-deploy")
+    _populate_ssh_and_pods(
+        launch,
+        provisioned="0/6",
+        pending="Post-deploy topology job failed",
+    )
     viewer = launch.query_one("#log-viewer", _LogViewerWidget)
     viewer._buffers.clear()
     viewer.query_one("#log-output", _FollowLog).clear()
     for line in [
-        "00:03:21  Created AIR simulation nv-config-manager-superpod-demo",
-        "00:07:58  SSH ready on ngc-worker55.air-inside.nvidia.com:17117",
-        "00:12:01  Waiting for cloud-init setup marker",
-        "00:30:00  ERROR setup marker was not found before timeout",
+        "00:13:27  [oob-mgmt-server] [>]  Run post-deploy jobs",
+        "00:13:27  [oob-mgmt-server]   Port-forward to Nautobot established",
+        "00:13:27  [oob-mgmt-server]   Waiting for Nautobot API...",
+        (
+            "00:13:27  [oob-mgmt-server]   Job 1/1: "
+            "mock_topology.jobs.mock_topology_design.MockTopologyDesign"
+        ),
+        "00:13:27  [oob-mgmt-server]     Found job ID: 9ceddbd3-d1a2-4e52-a977-24209d29fed6",
+        "00:13:27  [oob-mgmt-server]     Enabling job...",
+        "00:13:27  [oob-mgmt-server]     Starting job execution...",
+        "00:13:27  [oob-mgmt-server]     Job started, result ID: c32499ba-5292-4ca1-ad39-5112b1b5ca9b",
+        "00:13:27  [oob-mgmt-server]     [INFO] [initialization] Running job",
+        "00:13:27  [oob-mgmt-server]     Job failed (status: failure)",
+        "00:13:27  [oob-mgmt-server] [!]  Run post-deploy jobs",
     ]:
         viewer.append_line(line, "deploy")
     viewer._activate_tab("deploy")
@@ -604,6 +616,8 @@ async def _capture_launch(
 
 async def _capture_all(output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
+    for stale_svg in output_dir.glob("*.svg"):
+        stale_svg.unlink()
 
     cfg = _example_config()
     app = NVCMAirSimApp(config=cfg)
@@ -626,7 +640,6 @@ async def _capture_all(output_dir: Path) -> None:
         ("launch-dhcp-log", "Launch / DHCP Log", _populate_dhcp_log_launch),
         ("launch-ztp-log", "Launch / ZTP Log", _populate_ztp_log_launch),
         ("launch-access", "Launch / Access", _populate_complete_launch),
-        ("launch-failed", "Launch / Failed", _populate_failure_launch),
     ]
     for offset, (slug, title, populate) in enumerate(launch_shots, start=1):
         n = len(SECTION_LABELS) + offset
@@ -643,9 +656,14 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    total = len(SECTION_LABELS) + 6
+    total = len(SECTION_LABELS) + 5
     print(f"Capturing {total} AIR sim screenshots at {COLS}x{ROWS}...")
-    asyncio.run(_capture_all(args.output_dir))
+    no_color = os.environ.pop("NO_COLOR", None)
+    try:
+        asyncio.run(_capture_all(args.output_dir))
+    finally:
+        if no_color is not None:
+            os.environ["NO_COLOR"] = no_color
     print(f"\n{total} screenshots saved to {args.output_dir}/")
 
 

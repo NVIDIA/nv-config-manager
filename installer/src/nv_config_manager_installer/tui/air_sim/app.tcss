@@ -180,20 +180,24 @@ LabeledSwitch .labeled-switch--label {
     padding: 0 1;
 }
 
-#log-tabs {
+#log-toolbar {
     height: auto;
     margin-top: 1;
     margin-bottom: 1;
     align: left middle;
 }
 
-#log-tabs Button {
-    min-width: 14;
+#log-tabs {
+    width: auto;
+    height: 3;
     margin-right: 1;
+}
+
+#log-toolbar Button {
     height: 3;
 }
 
-#log-tabs .copy-icon-btn {
+#log-toolbar .copy-icon-btn {
     min-width: 5;
 }
 
@@ -304,7 +308,8 @@ LabeledSwitch .labeled-switch--label {
     height: 1fr;
 }
 
-#log-output {
+#log-output,
+.log-output {
     height: 1fr;
     border: solid $primary-background-lighten-2;
 }

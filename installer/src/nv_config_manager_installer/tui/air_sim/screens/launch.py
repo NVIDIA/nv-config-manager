@@ -25,6 +25,7 @@ import threading
 import time
 from datetime import datetime
 from pathlib import Path
+from queue import Empty, SimpleQueue
 from typing import IO
 
 from textual import events, work
@@ -32,7 +33,7 @@ from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.message import Message
 from textual.reactive import reactive
-from textual.widgets import Button, DataTable, Label, RichLog, Static
+from textual.widgets import Button, DataTable, Label, RichLog, Static, Tab, Tabs
 from textual.worker import Worker, WorkerState
 
 from nv_config_manager_installer.air_sim.constants import NVCM_BOX_PASSWORD, NVCM_BOX_USER
@@ -56,6 +57,7 @@ _STATUS_ICON = {
 
 _COPY_ICON = "⧉"
 _COPIED_ICON = "✓"
+_VISIBLE_LOG_LINES = 500
 
 
 def _copy_button(
@@ -164,7 +166,7 @@ class _TuiCallback(OrchestratorCallback):
             stream = "dhcp"
         elif line.startswith("[ZTP]"):
             stream = "ztp"
-        self._screen.post_message(_LogLine(line, stream))
+        self._screen.enqueue_log_line(line, stream)
         if self._log_file:
             self._log_file.write(line + "\n")
             self._log_file.flush()
@@ -256,6 +258,7 @@ class _FollowLog(RichLog):
     def __init__(self, **kwargs: object) -> None:
         super().__init__(**kwargs)
         self._line_count = 0
+        self._scroll_pending = False
 
     @property
     def line_count(self) -> int:
@@ -263,34 +266,79 @@ class _FollowLog(RichLog):
 
     def clear(self) -> None:
         self._line_count = 0
+        self._scroll_pending = False
         super().clear()
-
-    def write(self, content: object, *args: object, **kwargs: object) -> object:
-        if isinstance(content, str):
-            for line in content.splitlines():
-                self.write_line(line)
-            return self
-        self._line_count += 1
-        return super().write(content, *args, **kwargs)
 
     def write_line(self, line: str) -> None:
         self._line_count += 1
-        super().write(line)
+        super().write(line, scroll_end=False)
+        if self.following:
+            self._schedule_scroll_end()
+
+    def write_lines(self, lines: list[str]) -> None:
+        if not lines:
+            return
+        self._line_count += len(lines)
+        super().write("\n".join(lines), scroll_end=False)
+        if self.following:
+            self._schedule_scroll_end()
 
     def replace_lines(self, lines: list[str]) -> None:
         self._line_count = len(lines)
+        self._scroll_pending = False
         super().clear()
         if lines:
-            super().write("\n".join(lines))
+            super().write("\n".join(lines), scroll_end=False)
+        self.follow_end()
+
+    def follow_end(self) -> None:
+        """Resume following the newest log line."""
+        self.auto_scroll = True
+        self.following = True
+        self._schedule_scroll_end()
+
+    def _pause_following(self) -> None:
+        self.auto_scroll = False
+        self.following = False
+
+    def _schedule_scroll_end(self) -> None:
+        if self._scroll_pending:
+            return
+        self._scroll_pending = True
+
+        def _scroll() -> None:
+            self._scroll_pending = False
+            if self.following:
+                self.scroll_end(animate=False, immediate=True, x_axis=False)
+
+        self.call_after_refresh(_scroll)
+
+    def on_mouse_scroll_up(self, event: events.MouseScrollUp) -> None:
+        self._pause_following()
+
+    def action_scroll_up(self) -> None:
+        self._pause_following()
+        super().action_scroll_up()
+
+    def action_page_up(self) -> None:
+        self._pause_following()
+        super().action_page_up()
+
+    def action_scroll_home(self) -> None:
+        self._pause_following()
+        super().action_scroll_home()
+
+    def action_scroll_end(self) -> None:
+        self.follow_end()
+        super().action_scroll_end()
 
     def watch_scroll_y(self, old: float, new: float) -> None:
+        super().watch_scroll_y(old, new)
         at_bottom = self.max_scroll_y <= 0 or new >= self.max_scroll_y - 1
-        if at_bottom and not self.auto_scroll:
-            self.auto_scroll = True
-            self.following = True
-        elif not at_bottom and new < old - 0.5 and self.auto_scroll:
-            self.auto_scroll = False
-            self.following = False
+        if at_bottom and not self.following:
+            self.follow_end()
+        elif not at_bottom and new < old - 0.5 and self.following:
+            self._pause_following()
 
 
 # ── Tabbed log viewer ─────────────────────────────────────────────────────────
@@ -307,58 +355,112 @@ class _LogViewerWidget(Vertical):
         height: 1fr;
         overflow-y: auto;
     }
-    _LogViewerWidget #log-output { height: 1fr; }
+    _LogViewerWidget .log-output { height: 1fr; }
     """
 
     def __init__(self, **kwargs: object) -> None:
         super().__init__(**kwargs)
         self._buffers: dict[str, list[str]] = {}
         self._active_tab = "deploy"
+        self._logs: dict[str, _FollowLog] = {}
+        self._log_ids: dict[str, str] = {"deploy": "log-output"}
+        self._rendered_lengths: dict[str, int] = {}
 
     def compose(self) -> ComposeResult:
         yield Label("Output", classes="section-title")
-        with Horizontal(id="log-tabs"):
-            yield Button("Deploy Log", id="log-tab-deploy", variant="primary")
+        with Horizontal(id="log-toolbar"):
+            yield Tabs(
+                Tab("Deploy Log", id="log-tab-deploy"), id="log-tabs", active="log-tab-deploy"
+            )
             yield _copy_button("log-copy", "Copy active log")
             yield Button("↓ Follow", id="log-follow", variant="warning", classes="log-follow-btn")
         with Container(id="log-pane"):
-            yield _FollowLog(id="log-output", highlight=False, auto_scroll=True)
+            yield _FollowLog(
+                id="log-output",
+                classes="log-output",
+                highlight=False,
+                max_lines=_VISIBLE_LOG_LINES + 1,
+                wrap=True,
+                auto_scroll=True,
+            )
         with VerticalScroll(id="access-pane"):
             yield Static("Access details will appear after deployment completes.")
 
     def on_mount(self) -> None:
         log = self.query_one("#log-output", _FollowLog)
+        self._logs["deploy"] = log
         self.watch(log, "following", self._on_following_changed)
         self.query_one("#log-pane").display = True
         self.query_one("#access-pane").display = False
 
     def _on_following_changed(self, following: bool) -> None:
         self.query_one("#log-follow", Button).display = (
-            self._active_tab != "access" and not following
+            self._active_tab != "access" and not self._active_log().following
         )
 
     def add_tab(self, tab_id: str, tab_label: str) -> None:
         """Add a new log tab if it doesn't already exist."""
-        tab_bar = self.query_one("#log-tabs", Horizontal)
+        tab_bar = self.query_one("#log-tabs", Tabs)
         btn_id = f"log-tab-{tab_id}"
         if tab_bar.query(f"#{btn_id}"):
             return
-        copy_btn = tab_bar.query_one("#log-copy", Button)
-        tab_bar.mount(Button(tab_label, id=btn_id, variant="default"), before=copy_btn)
+        tab_bar.add_tab(Tab(tab_label, id=btn_id))
+
+    def _active_log(self) -> _FollowLog:
+        return self._ensure_log(self._active_tab)
+
+    def _ensure_log(self, tab_id: str) -> _FollowLog:
+        if tab_id in self._logs:
+            return self._logs[tab_id]
+
+        log_id = f"log-output-{tab_id}"
+        log = _FollowLog(
+            id=log_id,
+            classes="log-output",
+            highlight=False,
+            max_lines=_VISIBLE_LOG_LINES + 1,
+            wrap=True,
+            auto_scroll=True,
+        )
+        log.display = False
+        self._log_ids[tab_id] = log_id
+        self._logs[tab_id] = log
+        self.query_one("#log-pane", Container).mount(log)
+        self.watch(log, "following", self._on_following_changed)
+        return log
+
+    def _shown_lines(self, buf: list[str]) -> list[str]:
+        lines = buf[-_VISIBLE_LOG_LINES:]
+        if len(buf) > _VISIBLE_LOG_LINES:
+            hidden = len(buf) - _VISIBLE_LOG_LINES
+            note = f"... {hidden} earlier lines not shown - use log clipboard for full content ..."
+            lines = [note, *lines]
+        return lines
+
+    def _sync_log(self, tab_id: str) -> _FollowLog:
+        log = self._ensure_log(tab_id)
+        buf = self._buffers.get(tab_id, [])
+        if self._rendered_lengths.get(tab_id) != len(buf):
+            log.replace_lines(self._shown_lines(buf))
+            self._rendered_lengths[tab_id] = len(buf)
+        return log
 
     def _activate_tab(self, tab_id: str) -> None:
         self._active_tab = tab_id
-        for btn in self.query("#log-tabs Button"):
-            if isinstance(btn, Button) and btn.id not in {"log-copy", "log-follow"}:
-                btn.variant = "primary" if btn.id == f"log-tab-{tab_id}" else "default"
+        tabs = self.query_one("#log-tabs", Tabs)
+        tab_widget_id = f"log-tab-{tab_id}"
+        if tabs.active != tab_widget_id and tabs.query(f"#{tab_widget_id}"):
+            tabs.active = tab_widget_id
         self.query_one("#log-pane").display = tab_id != "access"
         self.query_one("#access-pane").display = tab_id == "access"
         self.query_one("#log-copy", Button).display = tab_id != "access"
-        follow = self.query_one("#log-output", _FollowLog).following
-        self.query_one("#log-follow", Button).display = tab_id != "access" and not follow
         if tab_id == "access":
+            self.query_one("#log-follow", Button).display = False
             return
-        self._flush_buffer(self._buffers.get(tab_id, []))
+        active_log = self._sync_log(tab_id)
+        for stream, log in self._logs.items():
+            log.display = stream == tab_id
+        self.query_one("#log-follow", Button).display = not active_log.following
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         bid = event.button.id or ""
@@ -367,38 +469,35 @@ class _LogViewerWidget(Vertical):
             event.stop()
             return
         if bid == "log-follow":
-            log = self.query_one("#log-output", _FollowLog)
-            log.auto_scroll = True
-            log.following = True
-            log.scroll_end(animate=False)
+            self._active_log().follow_end()
             event.stop()
             return
-        if not bid.startswith("log-tab-"):
+
+    def on_tabs_tab_activated(self, event: Tabs.TabActivated) -> None:
+        if event.tabs.id != "log-tabs":
             return
-        tab_id = bid.removeprefix("log-tab-")
+        tab_id = (event.tab.id or "").removeprefix("log-tab-")
+        if not tab_id:
+            return
         self._activate_tab(tab_id)
         event.stop()
 
-    def _flush_buffer(self, buf: list[str]) -> None:
-        log = self.query_one("#log-output", _FollowLog)
-        _MAX = 500
-        lines = buf[-_MAX:]
-        if len(buf) > _MAX:
-            hidden = len(buf) - _MAX
-            note = f"... {hidden} earlier lines not shown - use log clipboard for full content ..."
-            lines = [note, *lines]
-        log.replace_lines(lines)
-        log.auto_scroll = True
-        log.following = True
-        log.scroll_end(animate=False)
-
     def append_line(self, line: str, stream: str = "deploy") -> None:
         """Buffer a line and write it to the Log widget if its tab is active."""
-        if stream not in self._buffers:
-            self._buffers[stream] = []
-        self._buffers[stream].append(line)
-        if stream == self._active_tab:
-            self.query_one("#log-output", _FollowLog).write_line(line)
+        self.append_lines([(line, stream)])
+
+    def append_lines(self, entries: list[tuple[str, str]]) -> None:
+        """Buffer log lines and render the active stream in one batch."""
+        active_lines: list[str] = []
+        for line, stream in entries:
+            if stream not in self._buffers:
+                self._buffers[stream] = []
+            self._buffers[stream].append(line)
+            if stream == self._active_tab:
+                active_lines.append(line)
+        if active_lines:
+            self._ensure_log(self._active_tab).write_lines(active_lines)
+            self._rendered_lengths[self._active_tab] = len(self._buffers[self._active_tab])
 
     def _copy_log(self) -> None:
         button = self.query_one("#log-copy", Button)
@@ -720,6 +819,9 @@ class LaunchScreen(Container):
         self._ssh_cmd_text = ""
         self._monitor_stop = threading.Event()
         self._deploy_log_path: Path | None = None
+        self._pending_log_lines: SimpleQueue[tuple[str, str]] = SimpleQueue()
+        self._log_flush_lock = threading.Lock()
+        self._log_flush_scheduled = False
 
     def compose(self) -> ComposeResult:
         yield Label("Launch", classes="section-title")
@@ -818,7 +920,7 @@ class LaunchScreen(Container):
                 elif "[ZTP]" in line:
                     stream = "ztp"
                     line = _clean_ztp_line(line)
-                self._s.app.call_from_thread(self._s.post_message, _LogLine(line, stream))
+                self._s.enqueue_log_line(line, stream)
 
         pkg_logger = logging.getLogger("nv_config_manager_installer.air_sim")
         prev_level = pkg_logger.level
@@ -844,7 +946,51 @@ class LaunchScreen(Container):
         self.query_one("#step-list", _StepListWidget).update_step(event.step_id, event.status)
 
     def on__log_line(self, event: _LogLine) -> None:
-        self.query_one("#log-viewer", _LogViewerWidget).append_line(event.line, event.stream)
+        self.enqueue_log_line(event.line, event.stream)
+
+    def enqueue_log_line(self, line: str, stream: str = "deploy") -> None:
+        """Queue a log line from any thread and batch UI refresh work."""
+        self._pending_log_lines.put((line, stream))
+        self._schedule_log_flush()
+
+    def _schedule_log_flush(self) -> None:
+        with self._log_flush_lock:
+            if self._log_flush_scheduled:
+                return
+            self._log_flush_scheduled = True
+
+        def schedule() -> None:
+            self.set_timer(0.03, self._flush_log_lines)
+
+        if threading.current_thread() is threading.main_thread():
+            schedule()
+        else:
+            self.app.call_from_thread(schedule)
+
+    def _flush_log_lines(self) -> None:
+        with self._log_flush_lock:
+            self._log_flush_scheduled = False
+
+        try:
+            viewer = self.query_one("#log-viewer", _LogViewerWidget)
+        except Exception:
+            return
+
+        batch: list[tuple[str, str]] = []
+        processed = 0
+        while processed < 250:
+            try:
+                line, stream = self._pending_log_lines.get_nowait()
+            except Empty:
+                break
+            batch.append((line, stream))
+            processed += 1
+
+        if batch:
+            viewer.append_lines(batch)
+
+        if not self._pending_log_lines.empty():
+            self._schedule_log_flush()
 
     def on__ssh_ready(self, event: _SshReady) -> None:
         self._host = event.host
