@@ -1350,11 +1350,18 @@ class Deployer:
         step: DeployStep,
     ) -> None:
         """Load a helper image into Kind node containerd for one platform."""
+        # Pass --platform to `docker save` so the OCI archive only contains the
+        # selected platform's index/manifest/config/layers. With Docker's
+        # containerd image store, a plain `docker save` of a multi-arch tag
+        # exports an index that still references the other platforms (and may
+        # even drop the selected platform's config blob), causing
+        # `ctr images import` to later fail with
+        # `failed to resolve rootfs: content digest ...: not found`.
         nodes = _kind_node_names(cluster)
         for node in nodes:
             self.callback.on_log(f"Loading helper image {image} into Kind node {node}...")
             _run_logged_pipe(
-                ["docker", "save", image],
+                ["docker", "save", "--platform", platform_name, image],
                 [
                     "docker",
                     "exec",

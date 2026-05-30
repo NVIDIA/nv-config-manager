@@ -607,7 +607,7 @@ class TestKindImageLoading:
         ] in logged_commands
         assert ["kind", "get", "nodes", "--name", "test-cluster"] in run_commands
         assert (
-            ["docker", "save", LOADER_POD_IMAGE],
+            ["docker", "save", "--platform", "linux/amd64", LOADER_POD_IMAGE],
             [
                 "docker",
                 "exec",
@@ -677,7 +677,13 @@ class TestKindImageLoading:
             "docker.io/library/redis:7-alpine",
         ] in logged_commands
         assert (
-            ["docker", "save", "docker.io/library/redis:7-alpine"],
+            [
+                "docker",
+                "save",
+                "--platform",
+                "linux/amd64",
+                "docker.io/library/redis:7-alpine",
+            ],
             [
                 "docker",
                 "exec",
