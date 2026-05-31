@@ -44,17 +44,14 @@ from nv_config_manager_installer.air_sim.constants import (
 )
 from nv_config_manager_installer.air_sim.orchestrator import STEPS, StepStatus
 from nv_config_manager_installer.air_sim.prebuilt_configs import load_prebuilt_config
-from nv_config_manager_installer.air_sim.proxy import ProxyInfo
 from nv_config_manager_installer.air_sim.sim_config import SimConfig
 from nv_config_manager_installer.tui.air_sim.app import SECTION_LABELS, NVCMAirSimApp
 from nv_config_manager_installer.tui.air_sim.screens.launch import (
     LaunchScreen,
+    _ActivityWidget,
     _clean_dhcp_line,
     _clean_ztp_line,
-    _FollowLog,
-    _LogViewerWidget,
     _PodStatusWidget,
-    _ProxyAccessWidget,
     _StepListWidget,
 )
 
@@ -65,6 +62,8 @@ DEFAULT_OUT_DIR = REPO_ROOT / "docs" / "assets" / "images" / "air-sim"
 
 MOCK_HOST = "eb515e50.workers.ngc.air.nvidia.com"
 MOCK_PORT = 17117
+MOCK_SIM_ID = "7dfde74b-ce46-4a29-97dc-58294ee39390"
+MOCK_DEPLOY_LOG = Path("/tmp/nvcm-deploy-20260530-000000.log")
 TRUFFLEHOG_IGNORE_COMMENT = "<!-- trufflehog:ignore - public AIR demo VM password -->"
 
 
@@ -477,19 +476,33 @@ _DHCP_LOG_LINES = [_clean_dhcp_line(line) for line in _RAW_DHCP_LOG_LINES]
 _ZTP_LOG_LINES = [_clean_ztp_line(line) for line in _RAW_ZTP_LOG_LINES]
 
 
-def _populate_logs(launch: LaunchScreen, *, active_tab: str = "deploy") -> None:
-    viewer = launch.query_one("#log-viewer", _LogViewerWidget)
-    viewer._buffers.clear()
-    viewer.query_one("#log-output", _FollowLog).clear()
-    viewer.add_tab("dhcp", "DHCP")
-    viewer.add_tab("ztp", "ZTP")
-    for line in _DEPLOY_LOG_LINES:
-        viewer.append_line(line, "deploy")
-    for line in _DHCP_LOG_LINES:
-        viewer.append_line(line, "dhcp")
-    for line in _ZTP_LOG_LINES:
-        viewer.append_line(line, "ztp")
-    viewer._activate_tab(active_tab)
+def _set_launch_identity(launch: LaunchScreen) -> None:
+    launch._deploy_log_path = MOCK_DEPLOY_LOG
+    launch.set_simulation_id(MOCK_SIM_ID)
+
+
+def _populate_logs(launch: LaunchScreen, *, focus: str = "deploy") -> None:
+    viewer = launch.query_one("#activity-viewer", _ActivityWidget)
+    viewer._lines.clear()
+    viewer._seen.clear()
+    viewer.query_one("#activity-lines", Static).update("Waiting for activity...")
+
+    deploy_lines = _DEPLOY_LOG_LINES
+    dhcp_lines = _DHCP_LOG_LINES
+    ztp_lines = _ZTP_LOG_LINES
+    if focus == "dhcp":
+        entries = [(line, "deploy") for line in deploy_lines[-6:]]
+        entries.extend((line, "dhcp") for line in dhcp_lines)
+        entries.extend((line, "ztp") for line in ztp_lines[:2])
+    elif focus == "ztp":
+        entries = [(line, "deploy") for line in deploy_lines[-5:]]
+        entries.extend((line, "dhcp") for line in dhcp_lines[-3:])
+        entries.extend((line, "ztp") for line in ztp_lines)
+    else:
+        entries = [(line, "deploy") for line in deploy_lines]
+        entries.extend((line, "dhcp") for line in dhcp_lines[:3])
+        entries.extend((line, "ztp") for line in ztp_lines[:2])
+    viewer.append_lines(entries)
 
 
 def _populate_ssh_and_pods(
@@ -501,9 +514,10 @@ def _populate_ssh_and_pods(
     launch._host = MOCK_HOST
     launch._port = MOCK_PORT
     launch._show_ssh_command(_ssh_cmd())
+    launch._show_proxy_panel(MOCK_HOST, MOCK_PORT)
     pod_panel = launch.query_one("#pod-status-panel", _PodStatusWidget)
     pod_panel._update_table(_MOCK_PODS)
-    pod_panel.query_one("#prov-count", Static).update(f"Provisioned: {provisioned}")
+    pod_panel.query_one("#prov-count", Static).update(f"Switches Provisioned: {provisioned}")
     pod_panel.query_one("#prov-detail", Static).update(pending)
 
 
@@ -517,8 +531,9 @@ def _populate_ready_launch(launch: LaunchScreen) -> None:
 def _populate_running_launch(launch: LaunchScreen) -> None:
     launch._bringup_running = True
     launch.query_one("#btn-launch", Button).disabled = True
+    _set_launch_identity(launch)
     launch.query_one("#launch-status", Static).update(
-        "[yellow]Running...  log -> /tmp/nvcm-deploy-20260530-000000.log[/yellow]"
+        launch._status_text("[yellow]Running...[/yellow]")
     )
     _set_step_states(launch, running_step="run-deploy")
     _populate_ssh_and_pods(launch, provisioned="0/6", pending="Waiting for first ZTP callback")
@@ -526,8 +541,11 @@ def _populate_running_launch(launch: LaunchScreen) -> None:
 
 
 def _populate_pods_launch(launch: LaunchScreen) -> None:
+    _set_launch_identity(launch)
     launch.query_one("#launch-status", Static).update(
-        "[yellow]Deployment running - monitoring Kubernetes pods over SSH.[/yellow]"
+        launch._status_text(
+            "[yellow]Deployment running - monitoring Kubernetes pods over SSH.[/yellow]"
+        )
     )
     _set_step_states(launch, running_step="post-deploy")
     _populate_ssh_and_pods(launch, provisioned="4/6", pending="Pending: tan-leaf-04, tan-leaf-05")
@@ -536,39 +554,41 @@ def _populate_pods_launch(launch: LaunchScreen) -> None:
 
 def _populate_dhcp_log_launch(launch: LaunchScreen) -> None:
     _populate_pods_launch(launch)
-    _populate_logs(launch, active_tab="dhcp")
+    _populate_logs(launch, focus="dhcp")
 
 
 def _populate_ztp_log_launch(launch: LaunchScreen) -> None:
+    _set_launch_identity(launch)
     launch.query_one("#launch-status", Static).update(
-        "[yellow]Deployment running - watching ZTP callbacks over SSH.[/yellow]"
+        launch._status_text(
+            "[yellow]Deployment running - watching ZTP callbacks over SSH.[/yellow]"
+        )
     )
     _set_step_states(launch, running_step="post-deploy")
     _populate_ssh_and_pods(launch, provisioned="6/6", pending="All devices reported provisioned")
-    _populate_logs(launch, active_tab="ztp")
+    _populate_logs(launch, focus="ztp")
 
 
 def _populate_complete_launch(launch: LaunchScreen) -> None:
     launch._bringup_running = False
     launch.query_one("#btn-launch", Button).disabled = False
+    _set_launch_identity(launch)
     launch.query_one("#launch-status", Static).update(
-        "[bold green][*] Bringup complete![/bold green]"
+        launch._status_text("[bold green][*] Bringup complete![/bold green]")
     )
     _set_step_states(launch)
     _populate_ssh_and_pods(launch, provisioned="6/6", pending="")
     launch.query_one("#prov-detail", Static).update("")
     _populate_logs(launch)
-    viewer = launch.query_one("#log-viewer", _LogViewerWidget)
-    viewer.set_access_widget(
-        _ProxyAccessWidget(ProxyInfo(host=MOCK_HOST, port=MOCK_PORT), id="proxy-access")
-    )
+    launch._show_proxy_panel(MOCK_HOST, MOCK_PORT)
 
 
 def _populate_failure_launch(launch: LaunchScreen) -> None:
     launch._bringup_running = False
     launch.query_one("#btn-launch", Button).disabled = False
+    _set_launch_identity(launch)
     launch.query_one("#launch-status", Static).update(
-        "[bold red][!] Bringup failed - check the deploy log above[/bold red]"
+        launch._status_text("[bold red][!] Bringup failed - check the deploy log[/bold red]")
     )
     _set_step_states(launch, failed_step="post-deploy")
     _populate_ssh_and_pods(
@@ -576,27 +596,37 @@ def _populate_failure_launch(launch: LaunchScreen) -> None:
         provisioned="0/6",
         pending="Post-deploy topology job failed",
     )
-    viewer = launch.query_one("#log-viewer", _LogViewerWidget)
-    viewer._buffers.clear()
-    viewer.query_one("#log-output", _FollowLog).clear()
-    for line in [
-        "00:13:27  [oob-mgmt-server] [>]  Run post-deploy jobs",
-        "00:13:27  [oob-mgmt-server]   Port-forward to Nautobot established",
-        "00:13:27  [oob-mgmt-server]   Waiting for Nautobot API...",
-        (
-            "00:13:27  [oob-mgmt-server]   Job 1/1: "
-            "mock_topology.jobs.mock_topology_design.MockTopologyDesign"
-        ),
-        "00:13:27  [oob-mgmt-server]     Found job ID: 9ceddbd3-d1a2-4e52-a977-24209d29fed6",
-        "00:13:27  [oob-mgmt-server]     Enabling job...",
-        "00:13:27  [oob-mgmt-server]     Starting job execution...",
-        "00:13:27  [oob-mgmt-server]     Job started, result ID: c32499ba-5292-4ca1-ad39-5112b1b5ca9b",
-        "00:13:27  [oob-mgmt-server]     [INFO] [initialization] Running job",
-        "00:13:27  [oob-mgmt-server]     Job failed (status: failure)",
-        "00:13:27  [oob-mgmt-server] [!]  Run post-deploy jobs",
-    ]:
-        viewer.append_line(line, "deploy")
-    viewer._activate_tab("deploy")
+    viewer = launch.query_one("#activity-viewer", _ActivityWidget)
+    viewer._lines.clear()
+    viewer._seen.clear()
+    viewer.query_one("#activity-lines", Static).update("Waiting for activity...")
+    viewer.append_lines(
+        [
+            (line, "deploy")
+            for line in [
+                "00:13:27  [oob-mgmt-server] [>]  Run post-deploy jobs",
+                "00:13:27  [oob-mgmt-server]   Port-forward to Nautobot established",
+                "00:13:27  [oob-mgmt-server]   Waiting for Nautobot API...",
+                (
+                    "00:13:27  [oob-mgmt-server]   Job 1/1: "
+                    "mock_topology.jobs.mock_topology_design.MockTopologyDesign"
+                ),
+                (
+                    "00:13:27  [oob-mgmt-server]     Found job ID: "
+                    "9ceddbd3-d1a2-4e52-a977-24209d29fed6"
+                ),
+                "00:13:27  [oob-mgmt-server]     Enabling job...",
+                "00:13:27  [oob-mgmt-server]     Starting job execution...",
+                (
+                    "00:13:27  [oob-mgmt-server]     Job started, result ID: "
+                    "c32499ba-5292-4ca1-ad39-5112b1b5ca9b"
+                ),
+                "00:13:27  [oob-mgmt-server]     [INFO] [initialization] Running job",
+                "00:13:27  [oob-mgmt-server]     Job failed (status: failure)",
+                "00:13:27  [oob-mgmt-server] [!]  Run post-deploy jobs",
+            ]
+        ]
+    )
 
 
 async def _capture_launch(

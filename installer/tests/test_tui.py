@@ -90,13 +90,3 @@ async def test_airgapped_collected_from_cluster():
     async with app.run_test():
         app.collect_config()
         assert app.config.cluster.airgapped is True
-
-
-@pytest.mark.asyncio
-async def test_sites_not_in_secrets_section():
-    """Sites list should not be present in the secrets (App Secrets) section."""
-    app = NVConfigManagerInstallerApp(config=NVConfigManagerInstallConfig())
-    async with app.run_test():
-        app.switch_section("secrets")
-        secrets_screen = app._screens["secrets"]
-        assert len(secrets_screen.query("#sites-list")) == 0

@@ -46,6 +46,8 @@ def _is_release_tag(ref: str) -> bool:
 
 DEFAULT_AIR_API_URL = "https://api.air-ngc.nvidia.com/api/"
 DEFAULT_AIR_INTERNAL_URL = "https://api.air-inside.nvidia.com/api/"
+DEFAULT_AIR_FRONTEND_URL = "https://air.nvidia.com"
+DEFAULT_AIR_INTERNAL_FRONTEND_URL = "https://ngc.air-inside.nvidia.com"
 DEFAULT_AIR_ORG = ""
 DEFAULT_AIR_SIM_CONFIG_PATH = Path.home() / ".nvcm-air-sim.yaml"
 
@@ -152,13 +154,6 @@ NVCM_NETWORK_SECRETS = {
     "bgp_password": "NVCMBgp1!",  # trufflehog:ignore - public AIR demo BGP password
     "isis_password": "NVCMIsis1!",  # trufflehog:ignore - public AIR demo ISIS password
     "tacacs_key": "NVCMTacacs1!",  # trufflehog:ignore - public AIR demo TACACS key
-}
-
-NODE_EXPORTER_VERSION = "1.8.2"
-NODE_EXPORTER_BASE_URL = "https://github.com/prometheus/node_exporter/releases/download"
-NODE_EXPORTER_SHA256 = {
-    "amd64": "0c9219b9860c6250c0bc3da5d79bd79c17f3938345fa7503f95cfa2ad7c3ba1d",
-    "armv5": "d639498cdb3a12205ed40bed27b11a0bd6d32b247dfebabc36c1ae76cc87131f",
 }
 
 NVCM_SERVER_SETUP_SCRIPT = """#!/bin/bash

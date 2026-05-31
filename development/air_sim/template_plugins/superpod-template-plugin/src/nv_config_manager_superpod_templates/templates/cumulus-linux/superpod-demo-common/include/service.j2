@@ -9,9 +9,30 @@
 {% set _ = downstream.append(intf.name) %}
 {% endif %}
 {% endfor %}
+{% set has_vlan_downstream = downstream|length > 0 %}
+{% set server_upstream = [] %}
 {% for intf in device_data|interfaces(prefix="swp") %}
 {% if intf.primary_ipv4 %}
+{% set peer_role = intf.connected_interface.device.role if intf.connected_interface else "" %}
+{% if peer_role == "OOB-Server" %}
 {% set _ = upstream.append(intf.name) %}
+{% set _ = server_upstream.append(intf.name) %}
+{% endif %}
+{% endif %}
+{% endfor %}
+{% for intf in device_data|interfaces(prefix="swp") %}
+{% if intf.primary_ipv4 %}
+{% set peer_role = intf.connected_interface.device.role if intf.connected_interface else "" %}
+{% if peer_role == "OOB-Server" %}
+{% elif has_vlan_downstream and server_upstream %}
+{% set _ = downstream.append(intf.name) %}
+{% elif has_vlan_downstream %}
+{% set _ = upstream.append(intf.name) %}
+{% elif intf.name == "swp1" %}
+{% set _ = upstream.append(intf.name) %}
+{% else %}
+{% set _ = downstream.append(intf.name) %}
+{% endif %}
 {% endif %}
 {% endfor %}
 {% if dhcp_helpers and downstream and upstream %}
@@ -32,6 +53,7 @@
 {% for intf_name in upstream|sort %}
                 {{ intf_name }}: {}
 {% endfor %}
+          source-ip: giaddress
 {% else %}
       dhcp-relay: {}
 {% endif %}

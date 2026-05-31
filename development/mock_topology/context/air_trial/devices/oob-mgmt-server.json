@@ -20,11 +20,7 @@
         "name": "Active"
       },
       "serial": "44:38:39:00:00:01",
-      "config_context": {
-        "bgp": {
-          "asn": 65000
-        }
-      },
+      "config_context": {},
       "interfaces": [
         {
           "name": "eth0",

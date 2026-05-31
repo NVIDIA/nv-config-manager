@@ -50,13 +50,9 @@ from nv_config_manager_installer.air_sim.constants import (
     DEFAULT_CONFIG_MANAGER_REPO,
     DEFAULT_NAUTOBOT_DEMO_PASSWORD,
     DEFAULT_NAUTOBOT_DEMO_USERNAME,
-    NODE_EXPORTER_BASE_URL,
-    NODE_EXPORTER_SHA256,
-    NODE_EXPORTER_VERSION,
     NVCM_BOX_PASSWORD,
     NVCM_BOX_USER,
     NVCM_KIND_CONFIG,
-    NVCM_NETWORK_SECRETS,
     NVCM_SECRETS,
     NVCM_SERVER_SETUP_SCRIPT,
 )
@@ -428,7 +424,6 @@ class AirSimulationManager:
         1. Internal interface IP + routes (resolved by MAC address)
         2. FRR/BGP config for OOB switch peering
         3. IP forwarding + MASQUERADE
-        4. Node-exporter binary staging + manifest + populate-ztp helper
 
         Args:
             host: SSH hostname (from AIR service).
@@ -448,7 +443,6 @@ class AirSimulationManager:
         gw = oob_gateway or "UNSET"
         rr_nets = relay_return_networks or []
         ztp_url_host = internal_ip.split("/")[0]
-        user = NVCM_BOX_USER
 
         def _ssh(cmd: str, timeout: int = 30) -> subprocess.CompletedProcess[str]:
             return subprocess.run(
@@ -492,9 +486,8 @@ class AirSimulationManager:
                 )
             LOG.info("  %s configured", iface_name)
 
-            # -- 2. FRR/BGP with password --------------------------------------
+            # -- 2. FRR/BGP ----------------------------------------------------
             LOG.info("Configuring FRR/BGP (ASN %s, neighbor %s)...", bgp_asn, gw)
-            bgp_password = NVCM_NETWORK_SECRETS["bgp_password"]
             kind_subnet = _ssh(
                 "sudo docker network inspect kind"
                 " -f '{{range .IPAM.Config}}{{.Subnet}} {{end}}' 2>/dev/null"
@@ -531,7 +524,6 @@ class AirSimulationManager:
                 f" bgp router-id {ztp_url_host}\n"
                 " no bgp ebgp-requires-policy\n"
                 f" neighbor {gw} remote-as external\n"
-                f" neighbor {gw} password {bgp_password}\n"
                 " !\n"
                 " address-family ipv4 unicast\n"
                 "  redistribute kernel route-map RM-EXPORT\n"
@@ -556,117 +548,6 @@ class AirSimulationManager:
                 " || sudo iptables -t nat -A POSTROUTING -d 172.18.0.0/16 -j MASQUERADE"
             )
             LOG.info("  Forwarding enabled")
-
-            # -- 4. Node-exporter staging + ZTP helper -------------------------
-            LOG.info("Staging node-exporter binaries for ZTP...")
-            ne_version = NODE_EXPORTER_VERSION
-            ne_dir = f"/home/{user}/ztp-files/node-exporter/{ne_version}"
-            ne_base = NODE_EXPORTER_BASE_URL
-            _ssh(f"mkdir -p {ne_dir}")
-
-            for gh_arch, out_name in [
-                ("amd64", "node_exporter_amd64"),
-                ("armv5", "node_exporter_armv5"),
-            ]:
-                tarball = f"node_exporter-{ne_version}.linux-{gh_arch}.tar.gz"
-                url = f"{ne_base}/v{ne_version}/{tarball}"
-                expected_sha = NODE_EXPORTER_SHA256[gh_arch]
-                _ssh(
-                    f"curl -fsSL '{url}' -o /tmp/{tarball}"
-                    f" && echo '{expected_sha}  /tmp/{tarball}' | sha256sum -c -"
-                    f" && tar -xzf /tmp/{tarball} -C /tmp"
-                    f" 'node_exporter-{ne_version}.linux-{gh_arch}/node_exporter'"
-                    f" && mv '/tmp/node_exporter-{ne_version}.linux-{gh_arch}/node_exporter'"
-                    f" '{ne_dir}/{out_name}'"
-                    f" && rm -rf /tmp/{tarball}"
-                    f" '/tmp/node_exporter-{ne_version}.linux-{gh_arch}'",
-                    timeout=120,
-                )
-            _ssh(f"chmod +x {ne_dir}/*")
-            _ssh(f"sudo chown -R {user}:{user} /home/{user}/ztp-files")
-
-            manifest_json = (
-                '{"images": ['
-                f'{{"platform": "node-exporter", "version": "{NODE_EXPORTER_VERSION}",'
-                ' "filename": "node_exporter_amd64",'
-                f' "path": "node-exporter/{NODE_EXPORTER_VERSION}/node_exporter_amd64",'
-                f' "sha256": "{NODE_EXPORTER_SHA256["amd64"]}",'
-                ' "tags": {}},'
-                f'{{"platform": "node-exporter", "version": "{NODE_EXPORTER_VERSION}",'
-                ' "filename": "node_exporter_armv5",'
-                f' "path": "node-exporter/{NODE_EXPORTER_VERSION}/node_exporter_armv5",'
-                f' "sha256": "{NODE_EXPORTER_SHA256["armv5"]}",'
-                ' "tags": {}}'
-                "]}"
-            )
-            _ssh(f"echo '{manifest_json}' | jq . > /home/{user}/ztp-files/manifest.json")
-            _ssh(f"chown {user}:{user} /home/{user}/ztp-files/manifest.json")
-
-            populate_script = (
-                "#!/bin/bash\n"
-                "set -euo pipefail\n"
-                "export KUBECONFIG=/home/nvcm/.kube/config\n"
-                "\n"
-                f'NAMESPACE="{CONFIG_MANAGER_NAMESPACE}"\n'
-                'PVC_NAME="ztp-os-images"\n'
-                'SRC_DIR="/home/nvcm/ztp-files"\n'
-                'POD_NAME="populate-ztp-files-$(date +%s)"\n'
-                "\n"
-                'echo "Creating temporary pod to populate ZTP PVC..."\n'
-                'kubectl run "$POD_NAME" \\\n'
-                '    --namespace="$NAMESPACE" \\\n'
-                "    --image=busybox:1.36 \\\n"
-                "    --restart=Never \\\n"
-                "    --overrides='{\n"
-                '        "spec": {\n'
-                '            "containers": [{\n'
-                '                "name": "populate",\n'
-                '                "image": "busybox:1.36",\n'
-                '                "command": ["sleep", "300"],\n'
-                '                "volumeMounts": [{\n'
-                '                    "name": "ztp-files",\n'
-                '                    "mountPath": "/images"\n'
-                "                }]\n"
-                "            }],\n"
-                '            "volumes": [{\n'
-                '                "name": "ztp-files",\n'
-                '                "persistentVolumeClaim": {\n'
-                '                    "claimName": "'
-                "$PVC_NAME"
-                '"\n'
-                "                }\n"
-                "            }]\n"
-                "        }\n"
-                "    }'\n"
-                "\n"
-                'echo "Waiting for pod..."\n'
-                'kubectl wait --for=condition=Ready "pod/$POD_NAME" \\\n'
-                '    -n "$NAMESPACE" --timeout=120s\n'
-                "\n"
-                'echo "Copying files to PVC..."\n'
-                'cd "$SRC_DIR"\n'
-                "tar czf /tmp/ztp-files.tar.gz .\n"
-                "kubectl cp /tmp/ztp-files.tar.gz \\\n"
-                '    "$NAMESPACE/$POD_NAME:/tmp/ztp-files.tar.gz"\n'
-                'kubectl exec -n "$NAMESPACE" "$POD_NAME" -- \\\n'
-                '    sh -c "cd /images && tar -xzf /tmp/ztp-files.tar.gz"\n'
-                'kubectl exec -n "$NAMESPACE" "$POD_NAME" -- \\\n'
-                '    sh -c "chmod -R a+rX /images"\n'
-                "\n"
-                'echo "Files in PVC:"\n'
-                'kubectl exec -n "$NAMESPACE" "$POD_NAME" -- \\\n'
-                "    find /images -type f 2>/dev/null || true\n"
-                "\n"
-                'echo "Cleaning up..."\n'
-                'kubectl delete pod "$POD_NAME" -n "$NAMESPACE" --wait=false\n'
-                "rm -f /tmp/ztp-files.tar.gz\n"
-                "\n"
-                'echo "ZTP PVC population complete"\n'
-            )
-            _ssh(f"cat > /home/{user}/populate-ztp-files.sh << 'ZTPEOF'\n{populate_script}ZTPEOF")
-            _ssh(f"chmod +x /home/{user}/populate-ztp-files.sh")
-            _ssh(f"chown {user}:{user} /home/{user}/populate-ztp-files.sh")
-            LOG.info("  Node-exporter staged, populate-ztp-files.sh created")
 
             LOG.info("Server preparation complete (internal iface: %s)", iface_name)
             return iface_name
@@ -1035,7 +916,7 @@ class AirSimulationManager:
         relay_return_networks: list[str] | None = None,
         internal_iface: str = "eth1",
     ) -> bool:
-        """Set up forwarding, routing, MASQUERADE, and isc-dhcp-relay.
+        """Set up forwarding, routing, MASQUERADE, and DHCP reply SNAT.
 
         Mirrors ``nvcm-box-setup.sh configure_forwarding()`` (standard
         mode) with AIR-specific additions for relay-return networks.
@@ -1046,10 +927,10 @@ class AirSimulationManager:
         3. MASQUERADE   -- general to 172.18.0.0/16, with exemptions
                            for relay source IP (UDP 67) and per-rr_net
                            ZTP client IP preservation
-        4. DHCP reply MASQUERADE -- per relay-return network
+        4. DHCP reply SNAT -- per relay-return network, to Kea MetalLB IP
         5. Kind node routes -- relay-return prefixes via host
         6. Host route   -- relay-return prefixes via OOB switch
-        7. isc-dhcp-relay -- broadcast DHCP on internal -> Kea MetalLB IP
+        7. Local DHCP relay disabled; switches relay directly to Kea
 
         Args:
             internal_iface: Resolved name of the internal interface
@@ -1114,7 +995,7 @@ class AirSimulationManager:
             # Before switches have BGP routes to the MetalLB prefix, ZTP
             # traffic arrives on the internal iface destined for the server IP.
             # DNAT redirects it to the ZTP service.  No DNAT for UDP 67 --
-            # the relay handles DHCP and preserves giaddr.
+            # the switch relay sends DHCP directly to Kea and preserves giaddr.
             _ssh("sudo iptables -t nat -N ZTP-FWD 2>/dev/null || true")
             _ssh("sudo iptables -t nat -F ZTP-FWD")
             _ssh(
@@ -1154,13 +1035,17 @@ class AirSimulationManager:
                 " -j MASQUERADE"
             )
 
-            # -- 4. MASQUERADE for DHCP replies (pod -> relay-return nets) -----
+            # -- 4. SNAT for DHCP replies (pod -> relay-return nets) ----------
             for rr_net in rr_nets:
                 _ssh(
+                    f"while sudo iptables -t nat -D POSTROUTING -d {rr_net}"
+                    " -p udp --dport 67 -j MASQUERADE 2>/dev/null; do true; done"
+                )
+                _ssh(
                     f"sudo iptables -t nat -C POSTROUTING -d {rr_net}"
-                    " -p udp --dport 67 -j MASQUERADE 2>/dev/null ||"
-                    f" sudo iptables -t nat -I POSTROUTING -d {rr_net}"
-                    " -p udp --dport 67 -j MASQUERADE"
+                    f" -p udp --dport 67 -j SNAT --to-source {dhcp_ip} 2>/dev/null ||"
+                    f" sudo iptables -t nat -I POSTROUTING 1 -d {rr_net}"
+                    f" -p udp --dport 67 -j SNAT --to-source {dhcp_ip}"
                 )
 
             # -- 5. Kind node routes (return path for DHCP/ZTP replies) -------
@@ -1182,19 +1067,9 @@ class AirSimulationManager:
             for rr_net in rr_nets:
                 _ssh(f"sudo ip route replace {rr_net} via {gw} dev {internal_iface}")
 
-            # -- 7. isc-dhcp-relay (broadcast DHCP -> Kea) --------------------
-            # Pre-installed on the nvcm-box image.  The relay converts
-            # broadcast DHCP discovers into unicast toward Kea, setting
-            # giaddr so Kea matches the correct subnet.
-            if br_iface:
-                _ssh(
-                    f'printf \'SERVERS="{dhcp_ip}"\\n'
-                    f'INTERFACES="{internal_iface} {br_iface}"\\n'
-                    f'OPTIONS=""\\n\''
-                    " | sudo tee /etc/default/isc-dhcp-relay"
-                )
-                _ssh("sudo systemctl enable isc-dhcp-relay")
-                _ssh("sudo systemctl restart isc-dhcp-relay")
+            # -- 7. Local relay suppression -----------------------------------
+            # SuperPOD switch configs relay directly to the Kea MetalLB IP.
+            _ssh("sudo systemctl disable --now isc-dhcp-relay 2>/dev/null || true")
 
             # Flush stale DHCP conntrack
             _ssh("sudo conntrack -D -p udp --dport 67 2>/dev/null || true")
@@ -1208,22 +1083,21 @@ class AirSimulationManager:
                 "\n  MASQUERADE skip: -s %s -d %s (ZTP client IP preserved)"
                 "\n  MASQUERADE skip: -d 172.18.0.0/16 UDP 67 (relay source)"
                 "\n  MASQUERADE:      -d 172.18.0.0/16 (general Kind traffic)"
-                "\n  MASQUERADE:      -d %s UDP 67 (DHCP reply)"
+                "\n  SNAT:            -d %s UDP 67 -> %s (DHCP reply)"
                 "\n  Kind routes:     %s via 172.18.0.1"
                 "\n  Host route:      %s via %s dev %s"
-                "\n  isc-dhcp-relay:  %s + %s -> %s",
+                "\n  isc-dhcp-relay:  disabled (switches relay to %s)",
                 ifc,
                 ifc,
                 ztp_ip,
                 rr_str,
                 ztp_ip,
                 rr_str,
+                dhcp_ip,
                 rr_str,
                 rr_str,
                 gw,
                 ifc,
-                ifc,
-                br_iface or "(no bridge)",
                 dhcp_ip,
             )
             return True
@@ -1231,23 +1105,6 @@ class AirSimulationManager:
         except Exception as exc:
             LOG.warning("Failed to configure forwarding/routing: %s", exc)
             return False
-
-    def run_populate_ztp(
-        self,
-        host: str,
-        port: int,
-        timeout: int = 300,
-    ) -> bool:
-        """Run ~/populate-ztp-files.sh on the remote server."""
-        LOG.info("Running populate-ztp-files.sh to stage node-exporter in ZTP PVC...")
-        return self._ssh_run_and_tail(
-            host,
-            port,
-            "sudo /home/nvcm/populate-ztp-files.sh",
-            marker="ZTP PVC population complete",
-            label="populate-ztp",
-            timeout=timeout,
-        )
 
     def queue_render_all(
         self,
@@ -1917,6 +1774,49 @@ class AirSimulationManager:
             return pods
         except Exception:
             return []
+
+    def get_service_log_snapshots(
+        self,
+        host: str,
+        port: int,
+        namespace: str = CONFIG_MANAGER_NAMESPACE,
+        tail: int = 200,
+        since: str = "30m",
+    ) -> dict[str, list[str]]:
+        """Return recent DHCP and ZTP log lines without opening streaming tails."""
+        ssh_base = self._ssh_cmd(host, port)
+        kube = "KUBECONFIG=/home/nvcm/.kube/config"
+        commands = {
+            "dhcp": (
+                f"sudo {kube} kubectl logs -n {namespace}"
+                f" deployment/{CONFIG_MANAGER_DHCP_DEPLOYMENT}"
+                f" -c kea --tail={tail} --since={since} 2>/dev/null"
+            ),
+            "ztp": (
+                f"sudo {kube} kubectl logs -n {namespace}"
+                f" deployment/{CONFIG_MANAGER_ZTP_DEPLOYMENT}"
+                f" -c http-lb --tail={tail} --since={since} 2>/dev/null"
+            ),
+        }
+        snapshots: dict[str, list[str]] = {"dhcp": [], "ztp": []}
+        for stream, cmd in commands.items():
+            try:
+                result = subprocess.run(
+                    [*ssh_base, cmd],
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                )
+            except Exception:
+                continue
+            if result.returncode != 0:
+                continue
+            snapshots[stream] = [
+                _ANSI_ESCAPE.sub("", line).rstrip("\n").rstrip("\r")
+                for line in result.stdout.splitlines()
+                if line.strip()
+            ]
+        return snapshots
 
     def monitor_services(
         self,

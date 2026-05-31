@@ -139,3 +139,6 @@ def test_demo_template_plugin_is_static_and_public_named() -> None:
     assert "generate_template_plugin" not in plugin_text
     assert "kiwi" not in plugin_text.lower()
     assert 'dhcp_servers("nvcm", true)' in plugin_text
+    assert "REDISTRIBUTE-CONNECTED" in plugin_text
+    assert "OOB-SERVER-P2P" in plugin_text
+    assert "source-ip: giaddress" in plugin_text

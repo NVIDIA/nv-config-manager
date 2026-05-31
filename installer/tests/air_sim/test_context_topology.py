@@ -58,3 +58,6 @@ def test_air_superpod_builds_non_empty_topology_source() -> None:
     assert site_design["ip_addresses"]
     assert site_design["cabling_assignments"]["connections"]
     assert "oob-mgmt-server" in _devices_by_name(site_design)
+    assert "bgp" not in _devices_by_name(site_design)["oob-mgmt-server"][
+        "local_config_context_data"
+    ]

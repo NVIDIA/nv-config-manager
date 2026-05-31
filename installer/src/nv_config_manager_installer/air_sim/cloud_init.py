@@ -27,10 +27,6 @@ import yaml
 from nv_config_manager_installer.air_sim.constants import (
     CONFIG_MANAGER_NAMESPACE,
     CONFIG_MANAGER_REMOTE_DIR,
-    NODE_EXPORTER_BASE_URL,
-    NODE_EXPORTER_SHA256,
-    NODE_EXPORTER_VERSION,
-    NVCM_NETWORK_SECRETS,
     _BlockStyleDumper,
 )
 
@@ -299,7 +295,6 @@ _SETUP_SCRIPT_TEMPLATE = textwrap.dedent("""\
      bgp router-id __ZTP_URL_HOST__
      no bgp ebgp-requires-policy
      neighbor ${OOB_SWITCH_GW} remote-as external
-     neighbor ${OOB_SWITCH_GW} password ${BGP_PASSWORD}
      !
      address-family ipv4 unicast
       redistribute kernel route-map RM-EXPORT
@@ -331,122 +326,6 @@ _SETUP_SCRIPT_TEMPLATE = textwrap.dedent("""\
     __CLONE_COMMANDS__
 
     # ==========================================================================
-    # STAGE NODE-EXPORTER BINARIES FOR ZTP
-    # ==========================================================================
-    NE_VERSION="__NODE_EXPORTER_VERSION__"
-    NE_DIR="/home/nvcm/ztp-files/node-exporter/${NE_VERSION}"
-    NE_BASE="__NODE_EXPORTER_BASE_URL__"
-    declare -A NE_SHA256=(
-        [amd64]="__NODE_EXPORTER_AMD64_SHA256__"
-        [armv5]="__NODE_EXPORTER_ARMV5_SHA256__"
-    )
-    echo ">>> Downloading node-exporter ${NE_VERSION} binaries..."
-    mkdir -p "$NE_DIR"
-
-    for arch_pair in "amd64:amd64" "armv5:armv5"; do
-        gh_arch="${arch_pair%%:*}"
-        out_name="node_exporter_${arch_pair##*:}"
-        tarball="node_exporter-${NE_VERSION}.linux-${gh_arch}.tar.gz"
-        url="${NE_BASE}/v${NE_VERSION}/${tarball}"
-        echo "  Fetching ${tarball}..."
-        curl -fsSL "$url" -o "/tmp/${tarball}"
-        expected_sha="${NE_SHA256[$gh_arch]}"
-        actual_sha="$(sha256sum "/tmp/${tarball}" | awk '{print $1}')"
-        if [[ "$actual_sha" != "$expected_sha" ]]; then
-            echo "ERROR: checksum mismatch for ${tarball}: expected ${expected_sha}, got ${actual_sha}" >&2
-            rm -f "/tmp/${tarball}"
-            exit 1
-        fi
-        tar -xzf "/tmp/${tarball}" -C /tmp \\
-            "node_exporter-${NE_VERSION}.linux-${gh_arch}/node_exporter"
-        mv "/tmp/node_exporter-${NE_VERSION}.linux-${gh_arch}/node_exporter" \\
-            "${NE_DIR}/${out_name}"
-        rm -rf "/tmp/${tarball}" \\
-            "/tmp/node_exporter-${NE_VERSION}.linux-${gh_arch}"
-    done
-    chmod +x "${NE_DIR}"/*
-    chown -R nvcm:nvcm /home/nvcm/ztp-files
-    echo "  Staged at ${NE_DIR}"
-
-    jq -n '
-      {images: [
-        {platform: "node-exporter", version: "__NODE_EXPORTER_VERSION__",
-         filename: "node_exporter_amd64",
-         path: "node-exporter/__NODE_EXPORTER_VERSION__/node_exporter_amd64",
-         sha256: "__NODE_EXPORTER_AMD64_SHA256__",
-         tags: {}},
-        {platform: "node-exporter", version: "__NODE_EXPORTER_VERSION__",
-         filename: "node_exporter_armv5",
-         path: "node-exporter/__NODE_EXPORTER_VERSION__/node_exporter_armv5",
-         sha256: "__NODE_EXPORTER_ARMV5_SHA256__",
-         tags: {}}
-      ]}
-    ' > /home/nvcm/ztp-files/manifest.json
-    chown nvcm:nvcm /home/nvcm/ztp-files/manifest.json
-
-    cat > /home/nvcm/populate-ztp-files.sh << 'ZTPEOF'
-    #!/bin/bash
-    set -euo pipefail
-    export KUBECONFIG=/home/nvcm/.kube/config
-
-    NAMESPACE="__CONFIG_MANAGER_NAMESPACE__"
-    PVC_NAME="ztp-os-images"
-    SRC_DIR="/home/nvcm/ztp-files"
-    POD_NAME="populate-ztp-files-$(date +%s)"
-
-    echo "Creating temporary pod to populate ZTP PVC..."
-    kubectl run "$POD_NAME" \\
-        --namespace="$NAMESPACE" \\
-        --image=busybox:1.36 \\
-        --restart=Never \\
-        --overrides="{
-            \\"spec\\": {
-                \\"containers\\": [{
-                    \\"name\\": \\"populate\\",
-                    \\"image\\": \\"busybox:1.36\\",
-                    \\"command\\": [\\"sleep\\", \\"300\\"],
-                    \\"volumeMounts\\": [{
-                        \\"name\\": \\"ztp-files\\",
-                        \\"mountPath\\": \\"/images\\"
-                    }]
-                }],
-                \\"volumes\\": [{
-                    \\"name\\": \\"ztp-files\\",
-                    \\"persistentVolumeClaim\\": {
-                        \\"claimName\\": \\"$PVC_NAME\\"
-                    }
-                }]
-            }
-        }"
-
-    echo "Waiting for pod..."
-    kubectl wait --for=condition=Ready "pod/$POD_NAME" \\
-        -n "$NAMESPACE" --timeout=120s
-
-    echo "Copying files to PVC..."
-    cd "$SRC_DIR"
-    tar czf /tmp/ztp-files.tar.gz .
-    kubectl cp /tmp/ztp-files.tar.gz \\
-        "$NAMESPACE/$POD_NAME:/tmp/ztp-files.tar.gz"
-    kubectl exec -n "$NAMESPACE" "$POD_NAME" -- \\
-        sh -c "cd /images && tar -xzf /tmp/ztp-files.tar.gz"
-    kubectl exec -n "$NAMESPACE" "$POD_NAME" -- \\
-        sh -c "chmod -R a+rX /images"
-
-    echo "Files in PVC:"
-    kubectl exec -n "$NAMESPACE" "$POD_NAME" -- \\
-        find /images -type f 2>/dev/null || true
-
-    echo "Cleaning up..."
-    kubectl delete pod "$POD_NAME" -n "$NAMESPACE" --wait=false
-    rm -f /tmp/ztp-files.tar.gz
-
-    echo "ZTP PVC population complete"
-    ZTPEOF
-    chmod +x /home/nvcm/populate-ztp-files.sh
-    chown nvcm:nvcm /home/nvcm/populate-ztp-files.sh
-
-    # ==========================================================================
     # DONE
     # ==========================================================================
     echo ""
@@ -466,9 +345,6 @@ _SETUP_SCRIPT_TEMPLATE = textwrap.dedent("""\
     echo "    --chart-dir /home/nvcm/nv-config-manager/deploy/helm \\\\"
     echo "    --kind-cluster nvcm \\\\"
     echo "    --install-envoy-gateway --install-cnpg-operator --install-cert-manager"
-    echo ""
-    echo "After deploy, populate ZTP files:"
-    echo "  ~/populate-ztp-files.sh"
 """)
 
 
@@ -562,11 +438,6 @@ def generate_setup_script(
     script = script.replace("__LB_ALLOWED_PREFIXES__", _quote_shell_words(lb_allowed_prefixes))
     script = script.replace("__RELAY_RETURN_NETWORKS__", _quote_shell_words(relay_return_networks))
     script = script.replace("__BGP_ASN__", shlex.quote(bgp_asn))
-    script = script.replace("__BGP_PASSWORD__", shlex.quote(NVCM_NETWORK_SECRETS["bgp_password"]))
-    script = script.replace("__NODE_EXPORTER_VERSION__", NODE_EXPORTER_VERSION)
-    script = script.replace("__NODE_EXPORTER_BASE_URL__", NODE_EXPORTER_BASE_URL)
-    script = script.replace("__NODE_EXPORTER_AMD64_SHA256__", NODE_EXPORTER_SHA256["amd64"])
-    script = script.replace("__NODE_EXPORTER_ARMV5_SHA256__", NODE_EXPORTER_SHA256["armv5"])
     script = script.replace("__CLONE_COMMANDS__", clone_lines)
     return script
 
@@ -674,9 +545,9 @@ def generate_server_cloud_init(
                 "passwd": (
                     "$6$nvcmsalt$lHuZ5gth0uLkQEy.uz47oeG85XNZwA8AIHmFEKf98ZBs0S4b5M69JX2DyqQKTD05Hlek39poAyNJgN1J.0A.y/"
                 ),
-                "ssh_pwauth": True,
             },
         ],
+        "ssh_pwauth": True,
         "chpasswd": {"expire": False},
         "write_files": write_files,
         "runcmd": runcmd,

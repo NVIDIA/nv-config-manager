@@ -1,0 +1,31 @@
+#cloud-config
+users:
+- name: nvcm
+  gecos: NVCM Demo User
+  groups: sudo,adm
+  shell: /bin/bash
+  lock_passwd: false
+  passwd: $6$nvcmsalt$lHuZ5gth0uLkQEy.uz47oeG85XNZwA8AIHmFEKf98ZBs0S4b5M69JX2DyqQKTD05Hlek39poAyNJgN1J.0A.y/
+ssh_pwauth: true
+chpasswd:
+  expire: false
+write_files:
+- path: /etc/netplan/99-air-config.yaml
+  permissions: '0600'
+  content: |
+    network:
+      version: 2
+      ethernets:
+        eth1-internal:
+          match:
+            macaddress: '44:38:39:00:00:01'
+          dhcp4: false
+          addresses:
+          - 10.100.1.2/25
+          optional: true
+- path: /etc/sudoers.d/99-nvcm-nopasswd
+  content: |
+    nvcm ALL=(ALL) NOPASSWD:ALL
+runcmd:
+- - netplan
+  - apply

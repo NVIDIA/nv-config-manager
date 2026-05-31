@@ -332,7 +332,6 @@ class SimOrchestrator:
             relay_return_networks=builder.relay_return_prefixes,
             internal_iface=resolved_iface or "eth1",
         )
-        manager.run_populate_ztp(host, port)
 
         cumulus_reset = [d.name for d in builder.devices.values() if "Cumulus" in d.platform]
         manager.queue_render_all(host, port)

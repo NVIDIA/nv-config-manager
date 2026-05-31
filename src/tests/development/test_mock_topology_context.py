@@ -17,6 +17,8 @@
 import json
 from pathlib import Path
 
+import yaml
+
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 MOCK_TOPOLOGY_CONTEXT = PROJECT_ROOT / "development" / "mock_topology" / "context"
 MOCK_TOPOLOGY_DESIGNS = PROJECT_ROOT / "development" / "mock_topology" / "jobs" / "designs"
@@ -87,6 +89,36 @@ def test_cumulus_mock_devices_define_intended_firmware() -> None:
             missing_firmware.append(f"{path.name}:{device.get('name')}")
 
     assert missing_firmware == []
+
+
+def test_mock_topology_uses_bgp_model_seed_data() -> None:
+    context_bgp_devices = []
+
+    for path in sorted(MOCK_TOPOLOGY_CONTEXT.glob("*/devices/*.json")):
+        with path.open() as f:
+            payload = json.load(f)
+
+        def visit(value: object) -> None:
+            if isinstance(value, dict):
+                config_context = value.get("config_context")
+                if isinstance(config_context, dict) and config_context.get("bgp"):
+                    context_bgp_devices.append(str(path.relative_to(PROJECT_ROOT)))
+                for child in value.values():
+                    visit(child)
+            elif isinstance(value, list):
+                for child in value:
+                    visit(child)
+
+        visit(payload)
+
+    with (MOCK_TOPOLOGY_CONTEXT / "air_trial" / "bgp_routing_instances.yaml").open() as f:
+        air_trial_routing_instances = yaml.safe_load(f)["bgp_routing_instances"]
+    with (MOCK_TOPOLOGY_CONTEXT / "air_superpod" / "bgp_routing_instances.yaml").open() as f:
+        air_superpod_routing_instances = yaml.safe_load(f)["bgp_routing_instances"]
+
+    assert context_bgp_devices == []
+    assert {"device": "oob-mleaf-01", "asn": 65101} in air_trial_routing_instances
+    assert {"device": "su01-oob-mleaf01", "asn": 65101} in air_superpod_routing_instances
 
 
 def test_mock_topology_templates_quote_string_identifiers() -> None:

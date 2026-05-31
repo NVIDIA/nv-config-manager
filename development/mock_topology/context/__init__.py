@@ -75,10 +75,12 @@ class BaseContext(Context):
         self._load_devices()
         if self.prune_dangling_connected_interfaces:
             self._prune_dangling_connected_interfaces()
+        self._load_bgp_routing_instances()
         self._load_manufacturers()
         self._load_device_types()
         self._load_aggregate_prefixes()
         self._load_prefixes()
+        self._load_prefix_gateway_relationships()
         self._assign_ip_address_parent_prefixes()
         self._load_vrfs()
         self._load_vlans()
@@ -173,6 +175,19 @@ class BaseContext(Context):
                 interfaces.append(interface)
             device["interfaces"] = interfaces
 
+    def _load_bgp_routing_instances(self) -> None:
+        """Load BGP plugin routing-instance seed data from the context directory."""
+        bgp_file = Path(__file__).parent / self.context_dir / "bgp_routing_instances.yaml"
+        self.json["bgp_routing_instances"] = []
+
+        if bgp_file.exists():
+            try:
+                with open(bgp_file) as f:
+                    data = yaml.safe_load(f) or {}
+                    self.json["bgp_routing_instances"] = data.get("bgp_routing_instances", [])
+            except (yaml.YAMLError, OSError) as e:
+                print(f"Warning: Could not load {bgp_file}: {e}")
+
     def _load_manufacturers(self) -> None:
         """Load manufacturer data from JSON files in the context_dir/manufacturers directory."""
         manufacturers = set()
@@ -230,7 +245,7 @@ class BaseContext(Context):
         # Collect /31 p2p prefixes from device interfaces
         # Track which prefixes should get dhcp-subnet tag:
         # - management networks with dhcp-reserve IPs
-        # - SMN uplink /31s with dhcp-pool IPs
+        # - explicit dhcp-pool / dhcp-reserve interfaces
         dhcp_subnet_prefixes = set()
 
         for device in self.json["devices"]:
@@ -247,13 +262,16 @@ class BaseContext(Context):
                     or intf_name.startswith("Management")
                     or bool(interface.get("mgmt_only"))
                 )
+                is_explicit_dhcp = bool(interface.get("dhcp_pool")) or bool(
+                    interface.get("dhcp_reserve")
+                )
                 is_uplink = intf_role == "Uplink"
 
                 for ip in interface.get("ip_addresses", []):
                     mask_length = ip.get("mask_length", 32)
                     address = ip.get("address", "")
 
-                    if address and (is_mgmt or (is_smn_device and is_uplink)):
+                    if address and (is_mgmt or is_explicit_dhcp or (is_smn_device and is_uplink)):
                         try:
                             dhcp_subnet_prefixes.add(
                                 str(ipaddress.ip_network(address, strict=False))
@@ -304,6 +322,48 @@ class BaseContext(Context):
         prefix_list.sort(key=lambda x: int(x["prefix"].split("/")[1]))
 
         self.json["prefixes"] = prefix_list
+
+    def _load_prefix_gateway_relationships(self) -> None:
+        """Load explicit prefix-to-gateway relationships from DHCP pool links."""
+        relationships = {}
+
+        for device in self.json["devices"]:
+            for interface in device.get("interfaces", []):
+                if not interface.get("dhcp_pool"):
+                    continue
+
+                for address_data in interface.get("ip_addresses", []):
+                    address = address_data.get("address")
+                    if not address:
+                        continue
+
+                    try:
+                        interface_ip = ipaddress.ip_interface(address)
+                        network = ipaddress.ip_network(address, strict=False)
+                    except ValueError:
+                        continue
+
+                    if network.prefixlen not in (31, 127):
+                        continue
+
+                    gateway = next(
+                        str(candidate) for candidate in network if candidate != interface_ip.ip
+                    )
+                    prefix = str(network)
+                    existing_gateway = relationships.get(prefix)
+                    if existing_gateway and existing_gateway != gateway:
+                        print(
+                            "Warning: conflicting prefix gateway for "
+                            f"{prefix}: {existing_gateway} vs {gateway}"
+                        )
+                        continue
+
+                    relationships[prefix] = gateway
+
+        self.json["prefix_gateway_relationships"] = [
+            {"prefix": prefix, "gateway": gateway}
+            for prefix, gateway in sorted(relationships.items())
+        ]
 
     def _assign_ip_address_parent_prefixes(self) -> None:
         """Annotate interface IPs with their most specific containing prefix."""

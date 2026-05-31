@@ -12,12 +12,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Options screen - auto-configure settings, size, nvcm branch, etc."""
+"""Options screen - AIR auth, source settings, and advanced timing."""
 
 from __future__ import annotations
 
 from textual.app import ComposeResult
-from textual.containers import Container, Vertical
+from textual.containers import Container
 from textual.widgets import Input, Label, RadioButton, RadioSet, Static
 
 from nv_config_manager_installer.air_sim.sim_config import SimConfig
@@ -27,7 +27,7 @@ _SIZES = ["small", "medium", "large"]
 
 
 class OptionsScreen(Container):
-    """Configure deployment options: auto-configure, size, branch, tokens."""
+    """Configure AIR auth, source settings, size, branch, and timeouts."""
 
     def __init__(self, config: SimConfig, **kwargs: object) -> None:
         super().__init__(**kwargs)
@@ -52,25 +52,19 @@ class OptionsScreen(Container):
         )
 
         yield Label("─" * 40, classes="section-divider")
-        yield Label("Auto-Configure", classes="subsection-label")
-        yield LabeledSwitch(
-            "Auto-configure server on boot  (attach cloud-init)",
-            value=self._config.auto_configure,
-            id="auto-configure",
+        yield Label("Source", classes="subsection-label")
+        yield Label(
+            "Git Token  (optional; only needed for private forks)",
+            classes="field-label",
         )
-        with Vertical(id="autocfg-fields"):
-            yield Label(
-                "Git Token  (optional; only needed for private forks)",
-                classes="field-label",
-            )
-            yield Input(
-                value=self._config.git_token,
-                password=True,
-                placeholder="token for a private fork",
-                id="git-token",
-            )
-            yield Label("nv-config-manager repo URL", classes="field-label")
-            yield Input(value=self._config.config_manager_repo, id="config-manager-repo")
+        yield Input(
+            value=self._config.git_token,
+            password=True,
+            placeholder="token for a private fork",
+            id="git-token",
+        )
+        yield Label("nv-config-manager repo URL", classes="field-label")
+        yield Input(value=self._config.config_manager_repo, id="config-manager-repo")
 
         yield Label("─" * 40, classes="section-divider")
         yield Label("Deployment", classes="subsection-label")
@@ -87,45 +81,23 @@ class OptionsScreen(Container):
             id="cumulus-version",
         )
 
+        yield Label("─" * 40, classes="section-divider")
+        yield Label("Advanced", classes="subsection-label")
         yield Label("Deployment Size", classes="field-label")
         with RadioSet(id="size-radio"):
             for s in _SIZES:
                 yield RadioButton(s, id=f"size-{s}", value=self._config.size == s)
-
-        yield LabeledSwitch(
-            "Run nv-config-manager-installer deploy after setup",
-            value=self._config.deploy,
-            id="deploy",
-        )
-
-        yield Label("─" * 40, classes="section-divider")
-        yield Label("Advanced", classes="subsection-label")
-        yield LabeledSwitch(
-            "Disable aggressive DHCP tuning on Cumulus switches",
-            value=self._config.no_aggressive_dhcp,
-            id="no-aggressive-dhcp",
-        )
-        yield LabeledSwitch(
-            "Skip reset of Cumulus nodes before DHCP refresh",
-            value=self._config.no_reset_before_dhcp,
-            id="no-reset-dhcp",
-        )
         yield Label("Cloud-init Wait Timeout (seconds)", classes="field-label")
         yield Input(value=str(self._config.wait_timeout), id="wait-timeout")
         yield Label("Deploy Timeout (seconds)", classes="field-label")
         yield Input(value=str(self._config.deploy_timeout), id="deploy-timeout")
 
     def on_mount(self) -> None:
-        self._update_autocfg_fields()
         self._update_build_mode_hint()
 
     def on_input_changed(self, event: Input.Changed) -> None:
         if event.input.id == "config-manager-ref":
             self._update_build_mode_hint()
-
-    def on_labeled_switch_changed(self, event: LabeledSwitch.Changed) -> None:
-        if event.labeled_switch.id == "auto-configure":
-            self._update_autocfg_fields()
 
     def _update_build_mode_hint(self) -> None:
         branch = self.query_one("#config-manager-ref", Input).value.strip()
@@ -136,14 +108,9 @@ class OptionsScreen(Container):
             "registry pulls are disabled for AIR demos.[/dim]"
         )
 
-    def _update_autocfg_fields(self) -> None:
-        enabled = self.query_one("#auto-configure", LabeledSwitch).value
-        self.query_one("#autocfg-fields").display = enabled
-
     def write_to_config(self, config: SimConfig) -> None:
         config.ngc_api_key = self.query_one("#ngc-api-key", Input).value.strip()
         config.use_internal = not self.query_one("#use-public-air", LabeledSwitch).value
-        config.auto_configure = self.query_one("#auto-configure", LabeledSwitch).value
         config.git_token = self.query_one("#git-token", Input).value.strip()
         config.config_manager_repo = self.query_one("#config-manager-repo", Input).value.strip()
         config.config_manager_ref = self.query_one("#config-manager-ref", Input).value.strip()
@@ -152,9 +119,6 @@ class OptionsScreen(Container):
             if self.query_one(f"#size-{s}", RadioButton).value:
                 config.size = s
                 break
-        config.deploy = self.query_one("#deploy", LabeledSwitch).value
-        config.no_aggressive_dhcp = self.query_one("#no-aggressive-dhcp", LabeledSwitch).value
-        config.no_reset_before_dhcp = self.query_one("#no-reset-dhcp", LabeledSwitch).value
         try:
             config.wait_timeout = int(self.query_one("#wait-timeout", Input).value)
         except ValueError:
@@ -167,19 +131,14 @@ class OptionsScreen(Container):
     def sync_from_config(self, config: SimConfig) -> None:
         self.query_one("#ngc-api-key", Input).value = config.ngc_api_key
         self.query_one("#use-public-air", LabeledSwitch).value = not config.use_internal
-        self.query_one("#auto-configure", LabeledSwitch).value = config.auto_configure
         self.query_one("#git-token", Input).value = config.git_token
         self.query_one("#config-manager-repo", Input).value = config.config_manager_repo
         self.query_one("#config-manager-ref", Input).value = config.config_manager_ref
         self.query_one("#cumulus-version", Input).value = config.cumulus_version
         for s in _SIZES:
             self.query_one(f"#size-{s}", RadioButton).value = config.size == s
-        self.query_one("#deploy", LabeledSwitch).value = config.deploy
-        self.query_one("#no-aggressive-dhcp", LabeledSwitch).value = config.no_aggressive_dhcp
-        self.query_one("#no-reset-dhcp", LabeledSwitch).value = config.no_reset_before_dhcp
         self.query_one("#wait-timeout", Input).value = str(config.wait_timeout)
         self.query_one("#deploy-timeout", Input).value = str(config.deploy_timeout)
-        self._update_autocfg_fields()
         self._update_build_mode_hint()
 
     def get_status(self, config: SimConfig) -> str:

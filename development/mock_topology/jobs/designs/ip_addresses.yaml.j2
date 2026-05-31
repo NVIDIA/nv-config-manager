@@ -14,10 +14,16 @@ ip_addresses:
     status__name: {{ global_defaults.ip_address_status }}
     {% set is_mgmt = intf.name == 'eth0' or intf.name.startswith('Management') or intf.mgmt_only %}
     {% set is_uplink = intf.role is defined and intf.role and intf.role.name == 'Uplink' %}
-    {% if is_mgmt %}
+    {% set is_smn = device.role is defined and device.role and device.role.name.startswith('SMN') %}
+    {% set is_dhcp_pool = intf.dhcp_pool | default(false) %}
+    {% set is_dhcp_reserve = intf.dhcp_reserve | default(false) %}
+    {% if is_dhcp_pool %}
+    tags:
+      - "!get:name": dhcp-pool
+    {% elif is_dhcp_reserve or is_mgmt %}
     tags:
       - "!get:name": dhcp-reserve
-    {% elif is_uplink %}
+    {% elif is_smn and is_uplink %}
     {# SMN uplinks use pools, not reservations #}
     tags:
       - "!get:name": dhcp-pool

@@ -30,9 +30,6 @@
       "config_context": {
         "intended-firmware": {
           "version": "5.16.1"
-        },
-        "bgp": {
-          "asn": 65102
         }
       },
       "location": {
@@ -276,6 +273,7 @@
           },
           "enabled": true,
           "mgmt_only": false,
+          "dhcp_pool": true,
           "ip_addresses": [
             {
               "address": "10.101.0.4/31",
@@ -306,6 +304,7 @@
           },
           "enabled": true,
           "mgmt_only": false,
+          "dhcp_pool": true,
           "ip_addresses": [
             {
               "address": "10.101.0.6/31",

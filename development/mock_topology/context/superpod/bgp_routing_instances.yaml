@@ -1,0 +1,17 @@
+bgp_routing_instances:
+- device: a04-u44-p01-tor-01
+  asn: 4230000004
+- device: a08-u28-p01-oobspine-01
+  asn: 4265355097
+- device: a08-u32-p01-cleaf-01
+  asn: 4230000012
+- device: a08-u44-p01-mleaf-01
+  asn: 4230000014
+- device: a09-u28-p01-bleaf-01
+  asn: 4265355095
+- device: a09-u32-p01-sleaf-01
+  asn: 4230000016
+- device: a09-u36-p01-spine-01
+  asn: 4230000001
+- device: a09-u44-p01-pleaf-01
+  asn: 4230000017

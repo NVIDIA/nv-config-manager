@@ -30,9 +30,6 @@
       "config_context": {
         "intended-firmware": {
           "version": "5.16.1"
-        },
-        "bgp": {
-          "asn": 65302
         }
       },
       "location": {

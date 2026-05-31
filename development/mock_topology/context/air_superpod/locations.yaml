@@ -12,7 +12,7 @@ namespaces:
 - SuperPOD Demo
 locations:
 - name: Public Demo
-  location_type: Region
+  location_type: Provider
 - name: SuperPOD Demo
   location_type: Region
   parent: Public Demo

@@ -76,9 +76,6 @@
                             "record-types": ""
                         }
                     ]
-                },
-                "bgp": {
-                    "asn": 4230000004
                 }
             },
             "nvlink_domain": [],
@@ -357,9 +354,6 @@
                                             "record-types": ""
                                         }
                                     ]
-                                },
-                                "bgp": {
-                                    "asn": 4230000014
                                 }
                             }
                         },
@@ -3483,9 +3477,6 @@
                                         }
                                     ]
                                 },
-                                "bgp": {
-                                    "asn": 4265355097
-                                },
                                 "evpn": {
                                     "df-preference": 50000
                                 }
@@ -3593,9 +3584,6 @@
                                             "record-types": ""
                                         }
                                     ]
-                                },
-                                "bgp": {
-                                    "asn": 4265355098
                                 },
                                 "evpn": {
                                     "df-preference": 40000

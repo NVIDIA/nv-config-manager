@@ -17,7 +17,6 @@
 from __future__ import annotations
 
 import json
-import logging
 import os
 import subprocess
 import tempfile
@@ -28,15 +27,21 @@ from pathlib import Path
 from queue import Empty, SimpleQueue
 from typing import IO
 
+from rich.text import Text
 from textual import events, work
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.message import Message
-from textual.reactive import reactive
-from textual.widgets import Button, DataTable, Label, RichLog, Static, Tab, Tabs
+from textual.widgets import Button, Label, Static
 from textual.worker import Worker, WorkerState
 
-from nv_config_manager_installer.air_sim.constants import NVCM_BOX_PASSWORD, NVCM_BOX_USER
+from nv_config_manager_installer.air_sim.constants import (
+    CONFIG_MANAGER_NAUTOBOT_DEPLOYMENT,
+    DEFAULT_AIR_FRONTEND_URL,
+    DEFAULT_AIR_INTERNAL_FRONTEND_URL,
+    NVCM_BOX_PASSWORD,
+    NVCM_BOX_USER,
+)
 from nv_config_manager_installer.air_sim.orchestrator import (
     STEPS,
     OrchestratorCallback,
@@ -57,10 +62,33 @@ _STATUS_ICON = {
 
 _COPY_ICON = "⧉"
 _COPIED_ICON = "✓"
-_VISIBLE_LOG_LINES = 200
-_LOG_FLUSH_INTERVAL = 0.25
-_MAX_LOG_DRAIN_PER_FLUSH = 5000
-_MAX_ACTIVE_RENDER_LINES_PER_FLUSH = 80
+_VISIBLE_ACTIVITY_LINES = 80
+_LOG_FLUSH_INTERVAL = 0.5
+_MAX_LOG_DRAIN_PER_FLUSH = 250
+_MAX_SERVICE_EVENTS_PER_POLL = 25
+_SERVICE_POLL_INTERVAL = 10.0
+_POD_READY_STATES = {"Running", "Completed", "Succeeded"}
+_DHCP_ACTIVITY_KEYWORDS = (
+    "DHCPDISCOVER",
+    "DHCPOFFER",
+    "DHCPREQUEST",
+    "DHCPACK",
+    "DHCPNAK",
+    "DHCP4_LEASE",
+    "DHCP4_PACKET",
+    "error",
+    "failed",
+    "warning",
+)
+_ZTP_SKIP_KEYWORDS = ("health", "metrics", "readiness", "livez")
+_NAUTOBOT_DEPENDENT_PREFIXES = (
+    "nv-config-manager-nautobot-celery",
+    "nv-config-manager-nautobot-celery-beat",
+    "nv-config-manager-render-",
+    "nv-config-manager-temporal-",
+    "nv-config-manager-ztp",
+    "nv-config-manager-dhcp",
+)
 
 
 def _copy_button(
@@ -91,6 +119,53 @@ def _clean_ztp_line(line: str) -> str:
         except json.JSONDecodeError:
             pass
     return line
+
+
+def _is_interesting_dhcp_line(line: str) -> bool:
+    """Return true for DHCP lines that help explain provisioning progress."""
+    lowered = line.lower()
+    return any(keyword in line or keyword.lower() in lowered for keyword in _DHCP_ACTIVITY_KEYWORDS)
+
+
+def _is_interesting_ztp_line(line: str) -> bool:
+    """Return true for ZTP access/API lines, excluding health/readiness noise."""
+    lowered = line.lower()
+    if any(keyword in lowered for keyword in _ZTP_SKIP_KEYWORDS):
+        return False
+    return " /v1/" in line or "/v1/" in line or "error" in lowered or "failed" in lowered
+
+
+def _activity_prefix(stream: str) -> str:
+    if stream == "dhcp":
+        return "[DHCP]"
+    if stream == "ztp":
+        return "[ZTP]"
+    return "[DEPLOY]"
+
+
+def _is_ready_pod(pod: dict[str, str]) -> bool:
+    ready_count, _, ready_total = pod.get("ready", "").partition("/")
+    return (
+        bool(ready_count)
+        and bool(ready_total)
+        and ready_count == ready_total
+        and pod.get("status") in _POD_READY_STATES
+    )
+
+
+def _is_nautobot_web_pod(pod: dict[str, str]) -> bool:
+    name = pod.get("name", "")
+    return name.startswith(f"{CONFIG_MANAGER_NAUTOBOT_DEPLOYMENT}-") and not name.startswith(
+        f"{CONFIG_MANAGER_NAUTOBOT_DEPLOYMENT}-celery"
+    )
+
+
+def _pod_state_text(pod: dict[str, str]) -> str:
+    return f"{pod.get('ready', '—')} {pod.get('status', 'Unknown')}"
+
+
+def _pod_attention_text(pod: dict[str, str]) -> str:
+    return f"{pod.get('name', 'unknown')} ({_pod_state_text(pod)})"
 
 
 # Rough typical durations shown as hints for pending/running steps.
@@ -152,6 +227,12 @@ class _BringupComplete(Message):
         self.port = port
 
 
+class _SimulationCreated(Message):
+    def __init__(self, simulation_id: str) -> None:
+        super().__init__()
+        self.simulation_id = simulation_id
+
+
 # ── Callback bridge ───────────────────────────────────────────────────────────
 
 
@@ -162,6 +243,9 @@ class _TuiCallback(OrchestratorCallback):
 
     def on_step(self, step_id: str, status: StepStatus, message: str = "") -> None:
         self._screen.post_message(_StepUpdated(step_id, status, message))
+        label = dict(STEPS).get(step_id, step_id)
+        suffix = f" - {message}" if message else ""
+        self._screen.enqueue_log_line(f"{_STATUS_ICON[status]} {label}{suffix}", "deploy")
 
     def on_log(self, line: str) -> None:
         stream = "deploy"
@@ -169,7 +253,21 @@ class _TuiCallback(OrchestratorCallback):
             stream = "dhcp"
         elif line.startswith("[ZTP]"):
             stream = "ztp"
-        self._screen.enqueue_log_line(line, stream)
+        ui_line = line
+        if stream == "dhcp":
+            ui_line = _clean_dhcp_line(line)
+            show_line = _is_interesting_dhcp_line(ui_line)
+        elif stream == "ztp":
+            ui_line = _clean_ztp_line(line)
+            show_line = _is_interesting_ztp_line(ui_line)
+        else:
+            show_line = True
+            if line.startswith("Simulation: "):
+                self._screen.post_message(
+                    _SimulationCreated(line.removeprefix("Simulation: ").strip())
+                )
+        if show_line:
+            self._screen.enqueue_log_line(ui_line, stream)
         if self._log_file:
             self._log_file.write(line + "\n")
             self._log_file.flush()
@@ -250,284 +348,46 @@ class _StepListWidget(Vertical):
         return f"{icon}  {label}{timing}{hint}"
 
 
-# ── Log widget with scroll-to-follow tracking ─────────────────────────────────
-
-
-class _FollowLog(RichLog):
-    """Log widget that pauses auto-scroll when the user scrolls up."""
-
-    following: reactive[bool] = reactive(True)
+class _ActivityWidget(Vertical):
+    """Compact bounded activity feed for deploy, DHCP, and ZTP progress."""
 
     def __init__(self, **kwargs: object) -> None:
         super().__init__(**kwargs)
-        self._line_count = 0
-        self._scroll_pending = False
-
-    @property
-    def line_count(self) -> int:
-        return self._line_count
-
-    def clear(self) -> None:
-        self._line_count = 0
-        self._scroll_pending = False
-        super().clear()
-
-    def write_line(self, line: str) -> None:
-        self._line_count += 1
-        super().write(line, scroll_end=False)
-        if self.following:
-            self._schedule_scroll_end()
-
-    def write_lines(self, lines: list[str]) -> None:
-        if not lines:
-            return
-        self._line_count += len(lines)
-        super().write("\n".join(lines), scroll_end=False)
-        if self.following:
-            self._schedule_scroll_end()
-
-    def replace_lines(self, lines: list[str]) -> None:
-        self._line_count = len(lines)
-        self._scroll_pending = False
-        super().clear()
-        if lines:
-            super().write("\n".join(lines), scroll_end=False)
-        self.follow_end()
-
-    def follow_end(self) -> None:
-        """Resume following the newest log line."""
-        self.auto_scroll = True
-        self.following = True
-        self._schedule_scroll_end()
-
-    def _pause_following(self) -> None:
-        self.auto_scroll = False
-        self.following = False
-
-    def _schedule_scroll_end(self) -> None:
-        if self._scroll_pending:
-            return
-        self._scroll_pending = True
-
-        def _scroll() -> None:
-            self._scroll_pending = False
-            if self.following:
-                self.scroll_end(animate=False, immediate=True, x_axis=False)
-
-        self.call_after_refresh(_scroll)
-
-    def on_mouse_scroll_up(self, event: events.MouseScrollUp) -> None:
-        self._pause_following()
-
-    def action_scroll_up(self) -> None:
-        self._pause_following()
-        super().action_scroll_up()
-
-    def action_page_up(self) -> None:
-        self._pause_following()
-        super().action_page_up()
-
-    def action_scroll_home(self) -> None:
-        self._pause_following()
-        super().action_scroll_home()
-
-    def action_scroll_end(self) -> None:
-        self.follow_end()
-        super().action_scroll_end()
-
-    def watch_scroll_y(self, old: float, new: float) -> None:
-        super().watch_scroll_y(old, new)
-        at_bottom = self.max_scroll_y <= 0 or new >= self.max_scroll_y - 1
-        if at_bottom and not self.following:
-            self.follow_end()
-        elif not at_bottom and new < old - 0.5 and self.following:
-            self._pause_following()
-
-
-# ── Tabbed log viewer ─────────────────────────────────────────────────────────
-
-
-class _LogViewerWidget(Vertical):
-    """Log panel with phase-aware log tabs plus an access-details tab."""
-
-    DEFAULT_CSS = """
-    _LogViewerWidget { height: 1fr; }
-    _LogViewerWidget #log-pane { height: 1fr; }
-    _LogViewerWidget #access-pane {
-        display: none;
-        height: 1fr;
-        overflow-y: auto;
-    }
-    _LogViewerWidget .log-output { height: 1fr; }
-    """
-
-    def __init__(self, **kwargs: object) -> None:
-        super().__init__(**kwargs)
-        self._buffers: dict[str, list[str]] = {}
-        self._active_tab = "deploy"
-        self._logs: dict[str, _FollowLog] = {}
-        self._log_ids: dict[str, str] = {"deploy": "log-output"}
-        self._rendered_lengths: dict[str, int] = {}
+        self._lines: list[str] = []
+        self._seen: set[str] = set()
 
     def compose(self) -> ComposeResult:
-        yield Label("Output", classes="section-title")
-        with Horizontal(id="log-toolbar"):
-            yield Tabs(
-                Tab("Deploy Log", id="log-tab-deploy"), id="log-tabs", active="log-tab-deploy"
-            )
-            yield _copy_button("log-copy", "Copy active log")
-            yield Button("↓ Follow", id="log-follow", variant="warning", classes="log-follow-btn")
-        with Container(id="log-pane"):
-            yield _FollowLog(
-                id="log-output",
-                classes="log-output",
-                highlight=False,
-                max_lines=_VISIBLE_LOG_LINES + 1,
-                wrap=True,
-                auto_scroll=True,
-            )
-        with VerticalScroll(id="access-pane"):
-            yield Static("Access details will appear after deployment completes.")
-
-    def on_mount(self) -> None:
-        log = self.query_one("#log-output", _FollowLog)
-        self._logs["deploy"] = log
-        self.watch(log, "following", self._on_following_changed)
-        self.query_one("#log-pane").display = True
-        self.query_one("#access-pane").display = False
-
-    def _on_following_changed(self, following: bool) -> None:
-        self.query_one("#log-follow", Button).display = (
-            self._active_tab != "access" and not self._active_log().following
+        yield Label("Activity", classes="section-title")
+        yield Static(
+            "Showing deploy output. DHCP/ZTP events appear here after install completes.",
+            classes="field-hint",
         )
-
-    def add_tab(self, tab_id: str, tab_label: str) -> None:
-        """Add a new log tab if it doesn't already exist."""
-        tab_bar = self.query_one("#log-tabs", Tabs)
-        btn_id = f"log-tab-{tab_id}"
-        if tab_bar.query(f"#{btn_id}"):
-            return
-        tab_bar.add_tab(Tab(tab_label, id=btn_id))
-
-    def _active_log(self) -> _FollowLog:
-        return self._ensure_log(self._active_tab)
-
-    def _ensure_log(self, tab_id: str) -> _FollowLog:
-        if tab_id in self._logs:
-            return self._logs[tab_id]
-
-        log_id = f"log-output-{tab_id}"
-        log = _FollowLog(
-            id=log_id,
-            classes="log-output",
-            highlight=False,
-            max_lines=_VISIBLE_LOG_LINES + 1,
-            wrap=True,
-            auto_scroll=True,
+        yield Static(
+            "Waiting for activity...",
+            id="activity-lines",
+            classes="activity-lines",
+            markup=False,
         )
-        log.display = False
-        self._log_ids[tab_id] = log_id
-        self._logs[tab_id] = log
-        self.query_one("#log-pane", Container).mount(log)
-        self.watch(log, "following", self._on_following_changed)
-        return log
-
-    def _shown_lines(self, buf: list[str]) -> list[str]:
-        lines = buf[-_VISIBLE_LOG_LINES:]
-        if len(buf) > _VISIBLE_LOG_LINES:
-            hidden = len(buf) - _VISIBLE_LOG_LINES
-            note = f"... {hidden} earlier lines not shown - use log clipboard for full content ..."
-            lines = [note, *lines]
-        return lines
-
-    def _sync_log(self, tab_id: str) -> _FollowLog:
-        log = self._ensure_log(tab_id)
-        buf = self._buffers.get(tab_id, [])
-        if self._rendered_lengths.get(tab_id) != len(buf):
-            log.replace_lines(self._shown_lines(buf))
-            self._rendered_lengths[tab_id] = len(buf)
-        return log
-
-    def _activate_tab(self, tab_id: str) -> None:
-        self._active_tab = tab_id
-        tabs = self.query_one("#log-tabs", Tabs)
-        tab_widget_id = f"log-tab-{tab_id}"
-        if tabs.active != tab_widget_id and tabs.query(f"#{tab_widget_id}"):
-            tabs.active = tab_widget_id
-        self.query_one("#log-pane").display = tab_id != "access"
-        self.query_one("#access-pane").display = tab_id == "access"
-        self.query_one("#log-copy", Button).display = tab_id != "access"
-        if tab_id == "access":
-            self.query_one("#log-follow", Button).display = False
-            return
-        active_log = self._sync_log(tab_id)
-        for stream, log in self._logs.items():
-            log.display = stream == tab_id
-        self.query_one("#log-follow", Button).display = not active_log.following
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        bid = event.button.id or ""
-        if bid == "log-copy":
-            self._copy_log()
-            event.stop()
-            return
-        if bid == "log-follow":
-            self._active_log().follow_end()
-            event.stop()
-            return
-
-    def on_tabs_tab_activated(self, event: Tabs.TabActivated) -> None:
-        if event.tabs.id != "log-tabs":
-            return
-        tab_id = (event.tab.id or "").removeprefix("log-tab-")
-        if not tab_id:
-            return
-        self._activate_tab(tab_id)
-        event.stop()
-
-    def append_line(self, line: str, stream: str = "deploy") -> None:
-        """Buffer a line and write it to the Log widget if its tab is active."""
-        self.append_lines([(line, stream)])
 
     def append_lines(self, entries: list[tuple[str, str]]) -> None:
-        """Buffer log lines and render the active stream in one batch."""
-        active_lines: list[str] = []
-        for line, stream in entries:
-            if stream not in self._buffers:
-                self._buffers[stream] = []
-            self._buffers[stream].append(line)
-            if stream == self._active_tab:
-                active_lines.append(line)
-        if active_lines:
-            if len(active_lines) > _MAX_ACTIVE_RENDER_LINES_PER_FLUSH:
-                skipped = len(active_lines) - _MAX_ACTIVE_RENDER_LINES_PER_FLUSH
-                active_lines = [
-                    f"... {skipped} log lines skipped in live view - use log clipboard for full content ...",
-                    *active_lines[-_MAX_ACTIVE_RENDER_LINES_PER_FLUSH:],
-                ]
-            self._ensure_log(self._active_tab).write_lines(active_lines)
-            self._rendered_lengths[self._active_tab] = len(self._buffers[self._active_tab])
-
-    def _copy_log(self) -> None:
-        button = self.query_one("#log-copy", Button)
-        text = "\n".join(self._buffers.get(self._active_tab, []))
-        self.app.copy_to_clipboard(text)
-        button.label = _COPIED_ICON
-        self.app.notify("Copied to clipboard")
-        self.set_timer(1.0, self._restore_copy_button)
-
-    def _restore_copy_button(self) -> None:
-        button = self.query_one("#log-copy", Button)
-        if str(button.label) == _COPIED_ICON:
-            button.label = _COPY_ICON
-
-    def set_access_widget(self, widget: _ProxyAccessWidget) -> None:
-        """Install access details and expose them as a first-class tab."""
-        pane = self.query_one("#access-pane", VerticalScroll)
-        pane.remove_children()
-        pane.mount(widget)
-        self.add_tab("access", "Access")
-        self._activate_tab("access")
+        changed = False
+        for raw_line, stream in entries:
+            line = raw_line.strip()
+            if not line:
+                continue
+            display_line = f"{_activity_prefix(stream)} {line}"
+            if stream != "deploy" and display_line in self._seen:
+                continue
+            if stream != "deploy":
+                self._seen.add(display_line)
+            self._lines.append(display_line)
+            changed = True
+        if not changed:
+            return
+        if len(self._lines) > _VISIBLE_ACTIVITY_LINES:
+            self._lines = self._lines[-_VISIBLE_ACTIVITY_LINES:]
+            self._seen = set(self._lines)
+        self.query_one("#activity-lines", Static).update("\n".join(self._lines))
 
 
 class _CopyCommandPanel(Container):
@@ -622,6 +482,51 @@ class _SshCommandBar(Horizontal):
             button.label = _COPY_ICON
 
 
+class _AirLinkBar(Horizontal):
+    """Copyable AIR simulation URL shown once the simulation exists."""
+
+    def __init__(self, **kwargs: object) -> None:
+        super().__init__(**kwargs)
+        self._url = ""
+        self.tooltip = "Copy AIR simulation link"
+
+    def compose(self) -> ComposeResult:
+        yield Label("AIR", classes="ssh-badge")
+        yield Static("", id="air-link", classes="ssh-cmd")
+        yield _copy_button(
+            "copy-air-link",
+            "Copy AIR simulation link",
+            classes="copy-icon-btn ssh-copy-btn",
+        )
+
+    def set_url(self, url: str) -> None:
+        self._url = url
+        self.query_one("#air-link", Static).update(Text(url, style=f"link {url}"))
+        self.display = True
+
+    def on_click(self, event: events.Click) -> None:
+        self._copy_url()
+        event.stop()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "copy-air-link":
+            self._copy_url()
+            event.stop()
+
+    def _copy_url(self) -> None:
+        if not self._url:
+            return
+        self.app.copy_to_clipboard(self._url)
+        button = self.query_one("#copy-air-link", Button)
+        button.label = _COPIED_ICON
+        self.app.notify("Copied to clipboard")
+        self.set_timer(1.0, lambda: self._restore_copy_button(button))
+
+    def _restore_copy_button(self, button: Button) -> None:
+        if str(button.label) == _COPIED_ICON:
+            button.label = _COPY_ICON
+
+
 # ── Proxy access widget ───────────────────────────────────────────────────────
 
 
@@ -636,9 +541,9 @@ class _ProxyAccessWidget(Container):
     def compose(self) -> ComposeResult:
         p = self._proxy
 
-        yield Label("Proxy Access", classes="subsection-label")
+        yield Label("Access", classes="subsection-label")
         yield Label(
-            "Start the SOCKS tunnel, then open the browser with the proxy.",
+            "Start the SOCKS tunnel, then open the browser with the proxy after deploy is ready.",
             classes="field-hint",
         )
 
@@ -721,7 +626,7 @@ class _ProxyAccessWidget(Container):
 
 
 class _PodStatusWidget(Vertical):
-    """Polls `kubectl get pods -n nvcm` over SSH every 5 s and shows a DataTable."""
+    """Polls lightweight deployment health and provisioning status over SSH."""
 
     def __init__(self, **kwargs: object) -> None:
         super().__init__(**kwargs)
@@ -731,20 +636,17 @@ class _PodStatusWidget(Vertical):
         self._stop = threading.Event()
         self._polling = False
         self._prov_polling = False
-        self._last_pod_rows: tuple[tuple[str, str, str, str, str], ...] = ()
-        self._last_prov: tuple[int, int, tuple[str, ...]] = (0, 0, ())
+        self._last_pod_summary = ""
+        self._last_prov: tuple[int, int, tuple[str, ...]] | None = None
 
     def compose(self) -> ComposeResult:
-        yield Label("Pod Status", classes="section-title")
+        yield Label("Progress", classes="section-title")
         yield Label("─" * 30, classes="section-divider")
-        yield Static("Provisioned: —", id="prov-count")
+        yield Static("Switches Provisioned: —", id="prov-count")
         yield Static("", id="prov-detail")
         yield Label("─" * 30, classes="section-divider")
-        yield DataTable(id="pod-table", show_cursor=False)
-
-    def on_mount(self) -> None:
-        table = self.query_one("#pod-table", DataTable)
-        table.add_columns("NAME", "READY", "STATUS", "RESTARTS", "AGE")
+        yield Static("Pods: waiting for cluster", id="pod-summary")
+        yield Static("", id="pod-detail")
 
     def start_polling(self, host: str, port: int, manager: object) -> None:
         self._host = host
@@ -753,7 +655,9 @@ class _PodStatusWidget(Vertical):
         self._stop.clear()
         self._polling = False
         self._prov_polling = False
-        self.set_interval(5.0, self._tick)
+        self.query_one("#prov-count", Static).update("Switches Provisioned: waiting for Nautobot")
+        self._tick()
+        self.set_interval(15.0, self._tick)
         self._prov_tick()
         self.set_interval(30.0, self._prov_tick)
 
@@ -799,7 +703,9 @@ class _PodStatusWidget(Vertical):
         self._last_prov = next_state
         try:
             self.query_one("#prov-count", Static).update(
-                f"Provisioned: {prov}/{total}" if total else "Provisioned: —"
+                f"Switches Provisioned: {prov}/{total}"
+                if total
+                else "Switches Provisioned: waiting for Nautobot"
             )
             detail = ""
             if remaining and total and prov < total:
@@ -809,26 +715,44 @@ class _PodStatusWidget(Vertical):
             pass
 
     def _update_table(self, pods: list[dict[str, str]]) -> None:
-        rows = tuple(
-            (
-                p["name"][:39] + "..." if len(p["name"]) > 42 else p["name"],
-                p["ready"],
-                p["status"],
-                p["restarts"],
-                p["age"],
-            )
-            for p in pods
-        )
-        if rows == self._last_pod_rows:
+        total = len(pods)
+        if not total:
+            summary = "Pods: waiting for cluster"
+            detail = ""
+        else:
+            nautobot = next((pod for pod in pods if _is_nautobot_web_pod(pod)), None)
+            if nautobot is None:
+                summary = "Nautobot: waiting for pod"
+            elif _is_ready_pod(nautobot):
+                summary = f"Nautobot: ready ({_pod_state_text(nautobot)})"
+            else:
+                summary = f"Nautobot: {_pod_state_text(nautobot)}"
+
+            remaining = [pod for pod in pods if pod is not nautobot]
+            remaining_not_ready = [pod for pod in remaining if not _is_ready_pod(pod)]
+            dependent_not_ready = [
+                pod
+                for pod in remaining_not_ready
+                if pod.get("name", "").startswith(_NAUTOBOT_DEPENDENT_PREFIXES)
+            ]
+            other_not_ready = [pod for pod in remaining_not_ready if pod not in dependent_not_ready]
+            ready_remaining = len(remaining) - len(remaining_not_ready)
+            detail = f"Other pods ready: {ready_remaining}/{len(remaining)}"
+
+            attention = [*dependent_not_ready, *other_not_ready]
+            if attention:
+                detail += " | Remaining: " + ", ".join(
+                    _pod_attention_text(pod) for pod in attention[:4]
+                )
+                if len(attention) > 4:
+                    detail += f", +{len(attention) - 4} more"
+
+        next_summary = f"{summary}\n{detail}"
+        if next_summary == self._last_pod_summary:
             return
-        self._last_pod_rows = rows
-        try:
-            table = self.query_one("#pod-table", DataTable)
-        except Exception:
-            return
-        table.clear()
-        for row in rows:
-            table.add_row(*row)
+        self._last_pod_summary = next_summary
+        self.query_one("#pod-summary", Static).update(summary)
+        self.query_one("#pod-detail", Static).update(detail)
 
 
 # ── Launch screen ─────────────────────────────────────────────────────────────
@@ -843,12 +767,17 @@ class LaunchScreen(Container):
         self._bringup_running = False
         self._host = ""
         self._port = 0
+        self._simulation_id = ""
+        self._simulation_url = ""
         self._ssh_cmd_text = ""
         self._monitor_stop = threading.Event()
         self._deploy_log_path: Path | None = None
         self._pending_log_lines: SimpleQueue[tuple[str, str]] = SimpleQueue()
         self._log_flush_lock = threading.Lock()
         self._log_flush_scheduled = False
+        self._service_polling = False
+        self._seen_service_events: set[str] = set()
+        self._proxy_access_target: tuple[str, int] | None = None
 
     def compose(self) -> ComposeResult:
         yield Label("Launch", classes="section-title")
@@ -860,14 +789,17 @@ class LaunchScreen(Container):
 
         yield Label("─" * 40, classes="section-divider")
 
+        yield _AirLinkBar(id="air-link-bar", classes="ssh-info-bar")
         yield _SshCommandBar(id="ssh-info-bar", classes="ssh-info-bar")
+        with VerticalScroll(id="access-pane"):
+            yield Static("Access details will appear after SSH is ready.")
 
         with Vertical(id="launch-dashboard"):
             with Horizontal(id="dashboard-top"):
                 with VerticalScroll(id="step-panel"):
                     yield _StepListWidget(id="step-list")
                 yield _PodStatusWidget(id="pod-status-panel")
-            yield _LogViewerWidget(id="log-viewer")
+            yield _ActivityWidget(id="activity-viewer")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-launch" and not self._bringup_running:
@@ -876,6 +808,27 @@ class LaunchScreen(Container):
 
     def _set_status(self, markup: str) -> None:
         self.query_one("#launch-status", Static).update(markup)
+
+    def _status_text(self, state: str) -> str:
+        parts = [state]
+        if self._deploy_log_path:
+            parts.append(f"log -> {self._deploy_log_path}")
+        return "\n".join(parts)
+
+    def _air_frontend_url(self) -> str:
+        return (
+            DEFAULT_AIR_INTERNAL_FRONTEND_URL
+            if self._config.use_internal
+            else DEFAULT_AIR_FRONTEND_URL
+        ).rstrip("/")
+
+    def set_simulation_id(self, simulation_id: str) -> None:
+        if not simulation_id or simulation_id == self._simulation_id:
+            return
+        self._simulation_id = simulation_id
+        self._simulation_url = f"{self._air_frontend_url()}/simulations/{simulation_id}"
+        self.query_one("#air-link-bar", _AirLinkBar).set_url(self._simulation_url)
+        self._set_status(self._status_text("[yellow]Running...[/yellow]"))
 
     def _show_ssh_command(self, ssh_cmd: str) -> None:
         self._ssh_cmd_text = ssh_cmd
@@ -914,7 +867,7 @@ class LaunchScreen(Container):
         self._bringup_running = True
         self._monitor_stop.clear()
         self.query_one("#btn-launch", Button).disabled = True
-        self._set_status(f"[yellow]Running...  log → {self._deploy_log_path}[/yellow]")
+        self._set_status(self._status_text("[yellow]Running...[/yellow]"))
         self._run_orchestrator()
 
     @work(thread=True, exclusive=False)
@@ -927,46 +880,48 @@ class LaunchScreen(Container):
 
     @work(thread=True, exclusive=False)
     def _run_monitoring(self, host: str, port: int) -> None:
-        manager = AirSimulationManager(
-            ngc_api_key=self._config.ngc_api_key,
-            use_internal=self._config.use_internal,
-            org_id=self._config.org_id,
-        )
-
-        class _Fwd(logging.Handler):
-            def __init__(self, screen: LaunchScreen) -> None:
-                super().__init__()
-                self._s = screen
-
-            def emit(self, record: logging.LogRecord) -> None:
-                line = self.format(record)
-                stream = "deploy"
-                if "[DHCP]" in line:
-                    stream = "dhcp"
-                    line = _clean_dhcp_line(line)
-                elif "[ZTP]" in line:
-                    stream = "ztp"
-                    line = _clean_ztp_line(line)
-                self._s.enqueue_log_line(line, stream)
-
-        pkg_logger = logging.getLogger("nv_config_manager_installer.air_sim")
-        prev_level = pkg_logger.level
-        fwd = _Fwd(self)
-        fwd.setFormatter(logging.Formatter("%(asctime)s  %(message)s", datefmt="%H:%M:%S"))
-        pkg_logger.addHandler(fwd)
-        pkg_logger.setLevel(logging.DEBUG)
         try:
-            manager.monitor_services(host, port, stop_event=self._monitor_stop)
+            manager = AirSimulationManager(
+                ngc_api_key=self._config.ngc_api_key,
+                use_internal=self._config.use_internal,
+                org_id=self._config.org_id,
+            )
+            while not self._monitor_stop.is_set():
+                snapshots = manager.get_service_log_snapshots(host, port)
+                entries: list[tuple[str, str]] = []
+                for stream, lines in snapshots.items():
+                    for line in lines:
+                        if stream == "dhcp":
+                            clean = _clean_dhcp_line(line)
+                            interesting = _is_interesting_dhcp_line(clean)
+                        else:
+                            clean = _clean_ztp_line(line)
+                            interesting = _is_interesting_ztp_line(clean)
+                        key = f"{stream}:{clean}"
+                        if not interesting or key in self._seen_service_events:
+                            continue
+                        self._seen_service_events.add(key)
+                        entries.append((clean, stream))
+                for line, stream in entries[-_MAX_SERVICE_EVENTS_PER_POLL:]:
+                    self.enqueue_log_line(line, stream)
+                self._monitor_stop.wait(_SERVICE_POLL_INTERVAL)
         finally:
-            pkg_logger.removeHandler(fwd)
-            pkg_logger.setLevel(prev_level)
+            self._service_polling = False
+
+    def _start_monitoring(self, host: str, port: int) -> None:
+        if self._service_polling:
+            return
+        self._service_polling = True
+        self._run_monitoring(host, port)
 
     def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
         if event.worker.name == "_run_orchestrator" and event.state == WorkerState.ERROR:
             self._bringup_running = False
             self.query_one("#btn-launch", Button).disabled = False
             self._set_status(
-                "[bold red][!] Worker crashed — check the Textual log for details.[/bold red]"
+                self._status_text(
+                    "[bold red][!] Worker crashed - check the Textual log for details.[/bold red]"
+                )
             )
 
     def on__step_updated(self, event: _StepUpdated) -> None:
@@ -999,7 +954,7 @@ class LaunchScreen(Container):
             self._log_flush_scheduled = False
 
         try:
-            viewer = self.query_one("#log-viewer", _LogViewerWidget)
+            viewer = self.query_one("#activity-viewer", _ActivityWidget)
         except Exception:
             return
 
@@ -1029,6 +984,7 @@ class LaunchScreen(Container):
             f" -p {event.port} {NVCM_BOX_USER}@{event.host}"
         )
         self._show_ssh_command(ssh_cmd)
+        self._show_proxy_panel(event.host, event.port)
         manager = AirSimulationManager(
             ngc_api_key=self._config.ngc_api_key,
             use_internal=self._config.use_internal,
@@ -1039,7 +995,8 @@ class LaunchScreen(Container):
         )
 
     def on__deploy_started(self, event: _DeployStarted) -> None:
-        pass
+        self._host = event.host
+        self._port = event.port
 
     def on__bringup_complete(self, event: _BringupComplete) -> None:
         self._bringup_running = False
@@ -1047,22 +1004,38 @@ class LaunchScreen(Container):
         if event.success:
             self._host = event.host
             self._port = event.port
-            self._set_status("[bold green][*] Bringup complete![/bold green]")
+            self.enqueue_log_line(
+                "Bringup complete - monitoring DHCP and ZTP events.",
+                "deploy",
+            )
+            self._set_status(self._status_text("[bold green][*] Bringup complete![/bold green]"))
             self.app.notify("Simulation bringup complete!", severity="information")
-            viewer = self.query_one("#log-viewer", _LogViewerWidget)
-            viewer.add_tab("dhcp", "DHCP")
-            viewer.add_tab("ztp", "ZTP")
             if event.host:
                 self._show_proxy_panel(event.host, event.port)
-                self._run_monitoring(event.host, event.port)
+                self._start_monitoring(event.host, event.port)
         else:
-            self._set_status("[bold red][!] Bringup failed — check the log above[/bold red]")
+            self.enqueue_log_line(
+                "Bringup failed - check the deploy log for details.",
+                "deploy",
+            )
+            self._set_status(
+                self._status_text("[bold red][!] Bringup failed - check the deploy log[/bold red]")
+            )
             self.app.notify("Bringup failed. See log for details.", severity="error")
 
+    def on__simulation_created(self, event: _SimulationCreated) -> None:
+        self.set_simulation_id(event.simulation_id)
+
     def _show_proxy_panel(self, host: str, port: int) -> None:
+        if self._proxy_access_target == (host, port):
+            return
         proxy = ProxyInfo(host=host, port=port)
         widget = _ProxyAccessWidget(proxy, id="proxy-access")
-        self.query_one("#log-viewer", _LogViewerWidget).set_access_widget(widget)
+        pane = self.query_one("#access-pane", VerticalScroll)
+        pane.remove_children()
+        pane.mount(widget)
+        pane.display = True
+        self._proxy_access_target = (host, port)
 
     def on_unmount(self) -> None:
         self._monitor_stop.set()
