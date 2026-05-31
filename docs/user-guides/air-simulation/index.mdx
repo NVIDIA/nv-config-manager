@@ -69,6 +69,145 @@ Important fields:
 | **Simulation Name** | Name shown in DSX Air. Leave blank to auto-generate. |
 | **OOB Management Server Name** | Existing AIR server node that receives Config Manager, usually `oob-mgmt-server`. |
 
+### AIR trial topology
+
+```mermaid
+flowchart TB
+  AIR["DSX Air SSH service"]
+  OOBSRV["oob-mgmt-server<br/>eth0: AIR exit<br/>eth1: 10.120.0.0/31"]
+
+  subgraph OOB["OOB management"]
+    OOBML01["oob-mleaf-01<br/>OOB-MLEAF"]
+  end
+
+  subgraph TAN["TAN leaf multi-deploy target"]
+    TANL01["tan-leaf-01<br/>TAN-HLEAF"]
+    TANL02["tan-leaf-02<br/>TAN-HLEAF"]
+    TANL03["tan-leaf-03<br/>TAN-HLEAF"]
+    TANL04["tan-leaf-04<br/>TAN-HLEAF"]
+    TANL05["tan-leaf-05<br/>TAN-HLEAF"]
+  end
+
+  AIR -. "SSH to eth0" .-> OOBSRV
+  OOBSRV -- "eth1 <-> swp1<br/>10.120.0.0/31" --> OOBML01
+  OOBML01 -- "swp2 <-> eth0<br/>VLAN 100" --> TANL01
+  OOBML01 -- "swp3 <-> eth0<br/>VLAN 100" --> TANL02
+  OOBML01 -- "swp4 <-> eth0<br/>VLAN 100" --> TANL03
+  OOBML01 -- "swp5 <-> eth0<br/>VLAN 100" --> TANL04
+  OOBML01 -- "swp6 <-> eth0<br/>VLAN 100" --> TANL05
+
+  classDef oob fill:#eaf4ff,stroke:#2b6cb0,color:#111;
+  classDef tan fill:#edf7ed,stroke:#2f855a,color:#111;
+  classDef host fill:#f7f7f7,stroke:#666,color:#111;
+  class OOBSRV,OOBML01 oob;
+  class TANL01,TANL02,TANL03,TANL04,TANL05 tan;
+  class AIR host;
+```
+
+### SuperPOD demo topology
+
+```mermaid
+flowchart TB
+  AIR["DSX Air SSH service"]
+  OOBSRV["oob-mgmt-server<br/>eth0: AIR exit<br/>eth1: 10.100.0.0/31"]
+
+  subgraph OOB["OOB management fabric"]
+    OOBML01["su01-oob-mleaf01<br/>OOB-MLEAF"]
+    OOBML02["su01-oob-mleaf02<br/>OOB-MLEAF"]
+    OOBSP01["su00-oob-spine01<br/>OOB-SPINE"]
+    OOBSP02["su00-oob-spine02<br/>OOB-SPINE"]
+    OOBHL01["su01-oob-hleaf01<br/>OOB-HLEAF"]
+    OOBHL02["su01-oob-hleaf02<br/>OOB-HLEAF"]
+  end
+
+  subgraph TAN["TAN north/south fabric"]
+    TANSP01["su00-tan-spine01<br/>TAN-SPINE"]
+    TANSP02["su00-tan-spine02<br/>TAN-SPINE"]
+    TANBL01["su01-tan-bleaf01<br/>TAN-BLEAF"]
+    TANBL02["su01-tan-bleaf02<br/>TAN-BLEAF"]
+    TANHL01["su01-tan-hleaf01<br/>TAN-HLEAF"]
+    TANHL02["su01-tan-hleaf02<br/>TAN-HLEAF"]
+    TANSL01["su01-tan-sleaf01<br/>TAN-SLEAF"]
+    TANSL02["su01-tan-sleaf02<br/>TAN-SLEAF"]
+  end
+
+  subgraph CIN["CIN Spectrum-X fabric"]
+    CINSP01["su00-cin-spine01<br/>CIN-SPINE"]
+    CINSP02["su00-cin-spine02<br/>CIN-SPINE"]
+    CINL01["su01-cin-leaf-r01<br/>CIN-LEAF"]
+    CINL02["su01-cin-leaf-r02<br/>CIN-LEAF"]
+  end
+
+  subgraph HOSTS["Demo servers and rack mocks"]
+    TRAY01["su01-compute-tray-r01<br/>single tray mock"]
+    TRAY02["su01-compute-tray-r02<br/>single tray mock"]
+    CTRL01["su00-control01<br/>control"]
+    CTRL02["su00-control02<br/>control"]
+    STORAGE01["su01-storage01<br/>storage"]
+  end
+
+  AIR -. "SSH to eth0" .-> OOBSRV
+  OOBSRV -- "eth1 <-> swp1<br/>10.100.0.0/31" --> OOBML01
+
+  OOBML01 --- OOBSP01
+  OOBML01 --- OOBSP02
+  OOBML02 --- OOBSP01
+  OOBML02 --- OOBSP02
+  OOBHL01 --- OOBSP01
+  OOBHL01 --- OOBSP02
+  OOBHL02 --- OOBSP01
+  OOBHL02 --- OOBSP02
+  OOBML01 -- "swp2 <-> eth0" --> TANSP01
+  OOBML02 -- "swp2 <-> eth0" --> TANSP02
+  OOBML01 -- "swp3 <-> eth0" --> TANBL01
+  OOBML02 -- "swp3 <-> eth0" --> TANBL02
+  OOBML01 -- "swp4 <-> eth0" --> TANHL01
+  OOBML02 -- "swp4 <-> eth0" --> TANHL02
+  OOBML01 -- "swp5 <-> eth0" --> TANSL01
+  OOBML02 -- "swp5 <-> eth0" --> TANSL02
+  OOBML01 -- "swp6 <-> eth0" --> CINSP01
+  OOBML02 -- "swp6 <-> eth0" --> CINSP02
+  OOBML01 -- "swp7 <-> eth0" --> CINL01
+  OOBML02 -- "swp7 <-> eth0" --> CINL02
+  OOBHL01 -- "BMC/OOB" --> TRAY01
+  OOBHL02 -- "BMC/OOB" --> TRAY02
+
+  TANSP01 --- TANBL01
+  TANSP01 --- TANBL02
+  TANSP01 --- TANHL01
+  TANSP01 --- TANHL02
+  TANSP01 --- TANSL01
+  TANSP01 --- TANSL02
+  TANSP02 --- TANBL01
+  TANSP02 --- TANBL02
+  TANSP02 --- TANHL01
+  TANSP02 --- TANHL02
+  TANSP02 --- TANSL01
+  TANSP02 --- TANSL02
+  TANBL01 --- CTRL01
+  TANBL02 --- CTRL02
+  TANHL01 -- "ens1" --> TRAY01
+  TANHL02 -- "ens1" --> TRAY02
+  TANSL01 --- STORAGE01
+  TANSL02 --- STORAGE01
+
+  CINSP01 --- CINL01
+  CINSP01 --- CINL02
+  CINSP02 --- CINL01
+  CINSP02 --- CINL02
+  CINL01 -- "CIN-RDMA /31<br/>ens3" --> TRAY01
+  CINL02 -- "CIN-RDMA /31<br/>ens3" --> TRAY02
+
+  classDef oob fill:#eaf4ff,stroke:#2b6cb0,color:#111;
+  classDef tan fill:#edf7ed,stroke:#2f855a,color:#111;
+  classDef cin fill:#fff3e8,stroke:#c05621,color:#111;
+  classDef host fill:#f7f7f7,stroke:#666,color:#111;
+  class OOBSRV,OOBML01,OOBML02,OOBSP01,OOBSP02,OOBHL01,OOBHL02 oob;
+  class TANSP01,TANSP02,TANBL01,TANBL02,TANHL01,TANHL02,TANSL01,TANSL02 tan;
+  class CINSP01,CINSP02,CINL01,CINL02 cin;
+  class AIR,TRAY01,TRAY02,CTRL01,CTRL02,STORAGE01 host;
+```
+
 ### Options
 
 Use **Options** to set AIR authentication, source settings, and advanced timing values.
@@ -96,14 +235,13 @@ Click **Launch Simulation** and leave the TUI open. The launch can take a while 
 During launch:
 
 - **Steps** shows high-level orchestration progress.
-- **Pod Status** polls Kubernetes pods inside the AIR server over SSH.
-- **Deploy Log** streams installer output.
-- **DHCP** and **ZTP** tabs appear when service monitoring starts.
-- **SSH** appears once the AIR worker exposes the management server.
+- **Progress** highlights the Nautobot pod first, then the remaining Kubernetes pods, and labels the ZTP count as **Switches Provisioned**.
+- **Activity** streams the full deploy log until installation completes. After bringup, DHCP and ZTP events appear in the same stream.
+- **AIR**, **SSH**, and **Access** panels appear as soon as the TUI has enough information to show them. The deploy log path remains visible after completion or failure.
 
-![AIR sim pod status](../../assets/images/air-sim/05-launch-pod-status.svg)
+![AIR sim launch running](../../assets/images/air-sim/04-launch-running.svg)
 
-When bringup completes, the **Access** tab shows commands for reaching the simulation.
+When bringup completes, the **Access** panel shows commands for reaching the simulation.
 
 ![AIR sim access screen](../../assets/images/air-sim/08-launch-access.svg)
 
@@ -113,7 +251,7 @@ Config Manager runs inside the `oob-mgmt-server` node in AIR. The TUI creates an
 
 For Linux and macOS:
 
-1. Copy the **Linux / macOS - SOCKS tunnel** command from the Access tab and run it in a terminal.
+1. Copy the **Linux / macOS - SOCKS tunnel** command from the Access panel and run it in a terminal.
 1. Copy the **Linux / macOS - browser** command, or manually launch a browser with `socks5://localhost:8080`.
 1. Open the Config Manager and Nautobot URLs through that browser session.
 
@@ -145,7 +283,7 @@ After launch completes:
 1. Open Config Manager and confirm workflow forms are available.
 1. Open Config Store and confirm intended configs exist for `tan-leaf-01` through `tan-leaf-05`.
 1. In Nautobot, confirm the TAN leaf devices have status **Provisioned** after ZTP completes.
-1. In the TUI, use the **DHCP** and **ZTP** tabs to inspect service activity if a device is still provisioning.
+1. In the TUI, use the **Activity** panel to inspect DHCP and ZTP service activity if a device is still provisioning.
 
 ## Workflow Support
 
@@ -229,6 +367,11 @@ Example data with a demo DNS server:
 1. Click the **+** button and select **MultiDeployWorkflow**.
 1. Set **Role** to `TAN-HLEAF`.
 1. Set **Max Batch Size** to `5` so all demo TAN leaf devices can be approved together when they share one diff.
+
+The populated AIR trial form should look similar to this:
+
+![AIR trial Multi-Deploy workflow form](../../assets/images/workflows/multideployworkflow-form.png)
+
 1. Submit the workflow.
 1. When the parent reaches the batch execution stage, open the child Batch Deploy link.
 1. Review the shared diff. It should show the DNS server addition on each `tan-leaf-*` device.
@@ -249,6 +392,11 @@ Reprovision intentionally takes the selected switch offline and wipes its runnin
 1. Click the **+** button and select **ReprovisionWorkflow**.
 1. Select the AIR trial site, such as `TRIAL01 - demo`.
 1. Select a TAN leaf device, such as `tan-leaf-01`.
+
+The populated AIR trial form should look similar to this:
+
+![AIR trial Reprovision workflow form](../../assets/images/workflows/reprovisionworkflow-form.png)
+
 1. Submit the workflow.
 1. In the DSX Air UI, open the simulation topology.
 1. Double-click the same switch node to open its console.
@@ -263,7 +411,7 @@ Reprovision intentionally takes the selected switch offline and wipes its runnin
 1. In the Config Manager UI, watch the Reprovision workflow stages. The workflow completes after ZTP succeeds and the backup child workflow finishes.
 1. In Nautobot, confirm the device status returns to **Provisioned**.
 
-You can also watch the TUI **ZTP** tab or the ZTP service logs if the switch stalls. For the full production workflow details, see [Device Reprovision](../reprovision/index.mdx).
+You can also watch the TUI **Activity** panel or the ZTP service logs if the switch stalls. For the full production workflow details, see [Device Reprovision](../reprovision/index.mdx).
 
 ## Other Useful Exercises
 

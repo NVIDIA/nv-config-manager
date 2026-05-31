@@ -76,6 +76,12 @@ _DHCP_ACTIVITY_KEYWORDS = (
     "DHCPNAK",
     "DHCP4_LEASE",
     "DHCP4_PACKET",
+    "DHCPSRV_CFGMGR_NEW_SUBNET4",
+    "DHCP4_CONFIG_COMPLETE",
+    "Generating configuration from nautobot data",
+    "Validating configuration against KEA API",
+    "Persisting configuration to Redis",
+    "KEA DHCP4 Configuration Refresh Complete",
     "error",
     "failed",
     "warning",
@@ -104,21 +110,36 @@ def _copy_button(
 
 
 def _clean_dhcp_line(line: str) -> str:
-    """Trim a kea-dhcp4 log line to start at the DHCP4 message identifier."""
-    idx = line.find("DHCP4")
-    return line[idx:] if idx >= 0 else line
+    """Extract the useful DHCP event text from Kea or refresh logs."""
+    message = _json_log_message(line)
+    if message:
+        return message
+    for marker in ("DHCP4", "DHCPSRV"):
+        idx = line.find(marker)
+        if idx >= 0:
+            return line[idx:]
+    return line
 
 
 def _clean_ztp_line(line: str) -> str:
     """Extract the msg/message field from a JSON-structured ZTP log line."""
+    message = _json_log_message(line)
+    if message:
+        return message
+    return line
+
+
+def _json_log_message(line: str) -> str | None:
+    """Extract msg/message from a JSON-structured service log line."""
     idx = line.find("{")
     if idx >= 0:
         try:
             data = json.loads(line[idx:])
-            return str(data.get("msg") or data.get("message") or line)
+            message = data.get("msg") or data.get("message")
+            return str(message) if message else None
         except json.JSONDecodeError:
-            pass
-    return line
+            return None
+    return None
 
 
 def _is_interesting_dhcp_line(line: str) -> bool:

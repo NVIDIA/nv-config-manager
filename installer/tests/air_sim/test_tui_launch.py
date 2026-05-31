@@ -16,16 +16,22 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 from textual.widgets import Input
 
+import nv_config_manager_installer.air_sim.sim_manager as sim_manager_module
 from nv_config_manager_installer.air_sim.constants import NVCM_BOX_PASSWORD
 from nv_config_manager_installer.air_sim.sim_config import SimConfig
+from nv_config_manager_installer.air_sim.sim_manager import AirSimulationManager
 from nv_config_manager_installer.tui.air_sim.app import NVCMAirSimApp
 from nv_config_manager_installer.tui.air_sim.screens.launch import (
     LaunchScreen,
     _ActivityWidget,
+    _clean_dhcp_line,
     _DeployStarted,
+    _is_interesting_dhcp_line,
     _PodStatusWidget,
     _TuiCallback,
 )
@@ -138,6 +144,68 @@ def test_tui_callback_streams_unfiltered_deploy_log_lines() -> None:
     callback.on_log("ordinary docker build output with no activity keyword")
 
     assert recorder.entries == [("ordinary docker build output with no activity keyword", "deploy")]
+
+
+def test_dhcp_activity_helpers_include_refresh_and_config_events() -> None:
+    refresh_line = (
+        '{"levelname": "INFO", "message": "KEA DHCP4 Configuration Refresh Complete."}'
+    )
+    config_line = (
+        "2026-05-31 00:50:03 DHCPSRV_CFGMGR_NEW_SUBNET4 a new subnet has been added"
+    )
+
+    clean_refresh = _clean_dhcp_line(refresh_line)
+    clean_config = _clean_dhcp_line(config_line)
+
+    assert clean_refresh == "KEA DHCP4 Configuration Refresh Complete."
+    assert _is_interesting_dhcp_line(clean_refresh)
+    assert clean_config.startswith("DHCPSRV_CFGMGR_NEW_SUBNET4")
+    assert _is_interesting_dhcp_line(clean_config)
+
+
+def test_service_log_snapshots_include_dhcp_refresh_logs(monkeypatch: pytest.MonkeyPatch) -> None:
+    manager = AirSimulationManager.__new__(AirSimulationManager)
+    commands: list[str] = []
+
+    def fake_ssh_cmd(host: str, port: int) -> list[str]:
+        assert host == PUBLIC_AIR_WORKER
+        assert port == 17117
+        return ["ssh", "nvcm@worker"]
+
+    def fake_run(
+        cmd: list[str],
+        *,
+        capture_output: bool,
+        text: bool,
+        timeout: int,
+    ) -> SimpleNamespace:
+        assert capture_output is True
+        assert text is True
+        assert timeout == 15
+        remote_command = cmd[-1]
+        commands.append(remote_command)
+        if sim_manager_module.CONFIG_MANAGER_DHCP_REFRESH_DEPLOYMENT in remote_command:
+            return SimpleNamespace(
+                returncode=0,
+                stdout='{"message": "KEA DHCP4 Configuration Refresh Complete."}\n',
+            )
+        if sim_manager_module.CONFIG_MANAGER_DHCP_DEPLOYMENT in remote_command:
+            return SimpleNamespace(returncode=0, stdout="DHCP4_LEASE_ALLOC allocated lease\n")
+        return SimpleNamespace(returncode=0, stdout="")
+
+    monkeypatch.setattr(manager, "_ssh_cmd", fake_ssh_cmd)
+    monkeypatch.setattr(sim_manager_module.subprocess, "run", fake_run)
+
+    snapshots = manager.get_service_log_snapshots(PUBLIC_AIR_WORKER, 17117)
+
+    assert any(
+        sim_manager_module.CONFIG_MANAGER_DHCP_REFRESH_DEPLOYMENT in command
+        for command in commands
+    )
+    assert snapshots["dhcp"] == [
+        "DHCP4_LEASE_ALLOC allocated lease",
+        '{"message": "KEA DHCP4 Configuration Refresh Complete."}',
+    ]
 
 
 @pytest.mark.asyncio

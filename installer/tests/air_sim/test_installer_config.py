@@ -32,7 +32,7 @@ from nv_config_manager_installer.air_sim.prebuilt_configs import load_prebuilt_c
 from nv_config_manager_installer.air_sim.sim_config import SimConfig
 
 
-def test_install_config_uses_mock_topology_without_ingest_or_template_plugin_paths() -> None:
+def test_install_config_uses_mock_topology_with_paired_template_plugin() -> None:
     cfg = SimConfig(
         mock_blueprint="air_trial",
         deployment_name="demo",
@@ -46,7 +46,14 @@ def test_install_config_uses_mock_topology_without_ingest_or_template_plugin_pat
     )
 
     content = install_config["content"]
-    assert content["template_plugins"] == []
+    assert content["template_plugins"] == [
+        {
+            "path": (
+                f"{CONFIG_MANAGER_REMOTE_DIR}/"
+                f"{DEFAULT_AIR_DEMO_TEMPLATE_PLUGIN_PATH.as_posix()}"
+            )
+        }
+    ]
     assert content["jobs"] == [{"path": f"{CONFIG_MANAGER_REMOTE_DIR}/development/mock_topology"}]
     assert content["run_after_deploy"] == [
         {
@@ -55,7 +62,6 @@ def test_install_config_uses_mock_topology_without_ingest_or_template_plugin_pat
         }
     ]
     assert "ingest" not in json.dumps(content).lower()
-    assert "superpod-template" not in json.dumps(content).lower()
 
 
 def test_build_content_jobs_appends_extra_jobs() -> None:
@@ -98,6 +104,7 @@ def test_custom_jobs_do_not_infer_mock_topology() -> None:
 
 def test_template_plugin_paths_are_included_without_generation() -> None:
     cfg = SimConfig(
+        run_mock_topology_job=False,
         template_plugin_paths=[
             "development/template_plugins/demo",
             "/opt/external/template-plugin.tar.gz",
@@ -127,6 +134,15 @@ def test_prebuilt_demos_include_static_template_plugin() -> None:
         cfg = load_prebuilt_config(config_id)
         assert cfg.template_plugin_paths == [expected]
         assert build_template_plugins(cfg) == [{"path": f"{CONFIG_MANAGER_REMOTE_DIR}/{expected}"}]
+
+
+def test_default_superpod_mock_topology_includes_static_template_plugin() -> None:
+    expected = DEFAULT_AIR_DEMO_TEMPLATE_PLUGIN_PATH.as_posix()
+
+    cfg = SimConfig()
+
+    assert cfg.mock_blueprint == "air_superpod"
+    assert build_template_plugins(cfg) == [{"path": f"{CONFIG_MANAGER_REMOTE_DIR}/{expected}"}]
 
 
 def test_demo_template_plugin_is_static_and_public_named() -> None:

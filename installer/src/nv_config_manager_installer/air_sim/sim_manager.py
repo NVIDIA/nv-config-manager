@@ -916,7 +916,7 @@ class AirSimulationManager:
         relay_return_networks: list[str] | None = None,
         internal_iface: str = "eth1",
     ) -> bool:
-        """Set up forwarding, routing, MASQUERADE, and DHCP reply SNAT.
+        """Set up forwarding, routing, MASQUERADE, and isc-dhcp-relay.
 
         Mirrors ``nvcm-box-setup.sh configure_forwarding()`` (standard
         mode) with AIR-specific additions for relay-return networks.
@@ -930,7 +930,7 @@ class AirSimulationManager:
         4. DHCP reply SNAT -- per relay-return network, to Kea MetalLB IP
         5. Kind node routes -- relay-return prefixes via host
         6. Host route   -- relay-return prefixes via OOB switch
-        7. Local DHCP relay disabled; switches relay directly to Kea
+        7. isc-dhcp-relay -- broadcast DHCP on internal -> Kea MetalLB IP
 
         Args:
             internal_iface: Resolved name of the internal interface
@@ -995,7 +995,7 @@ class AirSimulationManager:
             # Before switches have BGP routes to the MetalLB prefix, ZTP
             # traffic arrives on the internal iface destined for the server IP.
             # DNAT redirects it to the ZTP service.  No DNAT for UDP 67 --
-            # the switch relay sends DHCP directly to Kea and preserves giaddr.
+            # isc-dhcp-relay handles initial broadcast DHCP and preserves giaddr.
             _ssh("sudo iptables -t nat -N ZTP-FWD 2>/dev/null || true")
             _ssh("sudo iptables -t nat -F ZTP-FWD")
             _ssh(
@@ -1067,9 +1067,19 @@ class AirSimulationManager:
             for rr_net in rr_nets:
                 _ssh(f"sudo ip route replace {rr_net} via {gw} dev {internal_iface}")
 
-            # -- 7. Local relay suppression -----------------------------------
-            # SuperPOD switch configs relay directly to the Kea MetalLB IP.
-            _ssh("sudo systemctl disable --now isc-dhcp-relay 2>/dev/null || true")
+            # -- 7. isc-dhcp-relay (broadcast DHCP -> Kea) --------------------
+            # The first OOB switch has no config yet, so it broadcasts DHCP on
+            # its server-facing link. The server relay bootstraps that switch;
+            # later switch-side relays handle downstream device DHCP.
+            if br_iface:
+                _ssh(
+                    f'printf \'SERVERS="{dhcp_ip}"\\n'
+                    f'INTERFACES="{internal_iface} {br_iface}"\\n'
+                    f'OPTIONS=""\\n\''
+                    " | sudo tee /etc/default/isc-dhcp-relay"
+                )
+                _ssh("sudo systemctl enable isc-dhcp-relay")
+                _ssh("sudo systemctl restart isc-dhcp-relay")
 
             # Flush stale DHCP conntrack
             _ssh("sudo conntrack -D -p udp --dport 67 2>/dev/null || true")
@@ -1086,7 +1096,7 @@ class AirSimulationManager:
                 "\n  SNAT:            -d %s UDP 67 -> %s (DHCP reply)"
                 "\n  Kind routes:     %s via 172.18.0.1"
                 "\n  Host route:      %s via %s dev %s"
-                "\n  isc-dhcp-relay:  disabled (switches relay to %s)",
+                "\n  isc-dhcp-relay:  %s + %s -> %s",
                 ifc,
                 ifc,
                 ztp_ip,
@@ -1098,6 +1108,8 @@ class AirSimulationManager:
                 rr_str,
                 gw,
                 ifc,
+                ifc,
+                br_iface or "(no bridge)",
                 dhcp_ip,
             )
             return True
@@ -1788,34 +1800,44 @@ class AirSimulationManager:
         kube = "KUBECONFIG=/home/nvcm/.kube/config"
         commands = {
             "dhcp": (
-                f"sudo {kube} kubectl logs -n {namespace}"
-                f" deployment/{CONFIG_MANAGER_DHCP_DEPLOYMENT}"
-                f" -c kea --tail={tail} --since={since} 2>/dev/null"
+                (
+                    f"sudo {kube} kubectl logs -n {namespace}"
+                    f" deployment/{CONFIG_MANAGER_DHCP_DEPLOYMENT}"
+                    f" -c kea --tail={tail} --since={since} 2>/dev/null"
+                ),
+                (
+                    f"sudo {kube} kubectl logs -n {namespace}"
+                    f" deployment/{CONFIG_MANAGER_DHCP_REFRESH_DEPLOYMENT}"
+                    f" --tail={tail} --since={since} 2>/dev/null"
+                ),
             ),
             "ztp": (
-                f"sudo {kube} kubectl logs -n {namespace}"
-                f" deployment/{CONFIG_MANAGER_ZTP_DEPLOYMENT}"
-                f" -c http-lb --tail={tail} --since={since} 2>/dev/null"
+                (
+                    f"sudo {kube} kubectl logs -n {namespace}"
+                    f" deployment/{CONFIG_MANAGER_ZTP_DEPLOYMENT}"
+                    f" -c http-lb --tail={tail} --since={since} 2>/dev/null"
+                ),
             ),
         }
         snapshots: dict[str, list[str]] = {"dhcp": [], "ztp": []}
-        for stream, cmd in commands.items():
-            try:
-                result = subprocess.run(
-                    [*ssh_base, cmd],
-                    capture_output=True,
-                    text=True,
-                    timeout=15,
+        for stream, stream_commands in commands.items():
+            for cmd in stream_commands:
+                try:
+                    result = subprocess.run(
+                        [*ssh_base, cmd],
+                        capture_output=True,
+                        text=True,
+                        timeout=15,
+                    )
+                except Exception:
+                    continue
+                if result.returncode != 0:
+                    continue
+                snapshots[stream].extend(
+                    _ANSI_ESCAPE.sub("", line).rstrip("\n").rstrip("\r")
+                    for line in result.stdout.splitlines()
+                    if line.strip()
                 )
-            except Exception:
-                continue
-            if result.returncode != 0:
-                continue
-            snapshots[stream] = [
-                _ANSI_ESCAPE.sub("", line).rstrip("\n").rstrip("\r")
-                for line in result.stdout.splitlines()
-                if line.strip()
-            ]
         return snapshots
 
     def monitor_services(

@@ -71,3 +71,17 @@ aggregate_prefixes:
   tags:
   - relay-return
   - role-aggregate
+
+prefix_gateway_relationships:
+- prefix: 10.101.0.4/31
+  gateway: 10.101.0.5
+- prefix: 10.101.0.6/31
+  gateway: 10.101.0.7
+- prefix: 10.101.0.8/31
+  gateway: 10.101.0.9
+- prefix: 10.101.0.10/31
+  gateway: 10.101.0.11
+- prefix: 10.101.0.12/31
+  gateway: 10.101.0.13
+- prefix: 10.101.0.14/31
+  gateway: 10.101.0.15

@@ -29,6 +29,7 @@ from nv_config_manager_installer.air_sim.constants import (
     CONFIG_MANAGER_NAMESPACE,
     CONFIG_MANAGER_RELEASE,
     CONFIG_MANAGER_REMOTE_DIR,
+    DEFAULT_AIR_DEMO_TEMPLATE_PLUGIN_PATH,
     NVCM_BOX_USER,
     NVCM_NETWORK_SECRETS,
     NVCM_SECRETS,
@@ -45,6 +46,7 @@ _NETWORK_SECRET_KEYS = [
 ]
 
 _MOCK_TOPOLOGY_JOB = "mock_topology.jobs.mock_topology_design.MockTopologyDesign"
+_DEMO_TEMPLATE_BLUEPRINTS = {"air_trial", "air_superpod"}
 
 
 def _remote_repo_path(path: str) -> str:
@@ -103,7 +105,15 @@ def build_content_jobs(cfg: SimConfig) -> tuple[list[dict[str, str]], list[dict[
 
 def build_template_plugins(cfg: SimConfig) -> list[dict[str, str]]:
     """Return installer content.template_plugins entries."""
-    return [{"path": _remote_repo_path(path)} for path in cfg.template_plugin_paths if path]
+    paths = [path for path in cfg.template_plugin_paths if path]
+
+    if cfg.run_mock_topology_job and cfg.mock_blueprint in _DEMO_TEMPLATE_BLUEPRINTS:
+        default_path = DEFAULT_AIR_DEMO_TEMPLATE_PLUGIN_PATH.as_posix()
+        default_remote_path = _remote_repo_path(default_path)
+        if all(_remote_repo_path(path) != default_remote_path for path in paths):
+            paths.append(default_path)
+
+    return [{"path": _remote_repo_path(path)} for path in paths]
 
 
 def generate_air_sim_install_config(
