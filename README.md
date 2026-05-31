@@ -52,6 +52,29 @@ uv sync --dev
 ./scripts/install-hooks.sh
 ```
 
+### Git Hooks
+
+Install the repository hooks after cloning and whenever hook scripts change:
+
+```bash
+./scripts/install-hooks.sh
+```
+
+Installed hooks:
+
+- `pre-commit`: formats all staged Python files outside ignored/generated
+  directories with `uv run ruff format`, re-stages those files, and checks SPDX
+  license headers for supported source files (`.py`, `.ts`, `.tsx`, `.js`,
+  `.jsx`, `.mjs`, `.cjs`, and `.go`) under `src/`, `ui/src/`, `ui/tests/`,
+  `components/`, `db/migrations/`, `scripts/`, `development/`,
+  `installer/src/`, `installer/tests/`, and `installer/scripts/`.
+- `commit-msg`: rejects commits that do not include a valid DCO
+  `Signed-off-by: Name <email>` trailer. Use `git commit -s` or
+  `git commit --amend -s` to add the trailer automatically.
+
+Local hooks can be skipped with `git commit --no-verify`, so the organization DCO
+app remains the merge-time enforcement gate in CI.
+
 For UI work:
 
 ```bash
@@ -334,8 +357,9 @@ Developer Certificate of Origin sign-off process described there.
 1. Fork the repository.
 2. Create a feature branch.
 3. Make changes.
-4. Run tests and linting with `make test lint`.
-5. Submit a pull request using the repository PR template.
+4. Install local hooks with `./scripts/install-hooks.sh`.
+5. Run tests and linting with `make test lint`.
+6. Submit a pull request using the repository PR template.
 
 Please also follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
