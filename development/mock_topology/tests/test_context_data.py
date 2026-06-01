@@ -14,14 +14,35 @@
 # limitations under the License.
 """Validation tests for development mock topology source data."""
 
+from __future__ import annotations
+
 import json
 from pathlib import Path
+from typing import Any
 
 import yaml
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-MOCK_TOPOLOGY_CONTEXT = PROJECT_ROOT / "development" / "mock_topology" / "context"
-MOCK_TOPOLOGY_DESIGNS = PROJECT_ROOT / "development" / "mock_topology" / "jobs" / "designs"
+MOCK_TOPOLOGY_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = MOCK_TOPOLOGY_ROOT.parents[1]
+MOCK_TOPOLOGY_CONTEXT = MOCK_TOPOLOGY_ROOT / "context"
+MOCK_TOPOLOGY_DESIGNS = MOCK_TOPOLOGY_ROOT / "jobs" / "designs"
+
+
+def _load_device(path: Path) -> dict[str, Any]:
+    with path.open() as f:
+        return json.load(f).get("data", {}).get("device") or {}
+
+
+def _load_yaml(path: Path) -> dict[str, Any]:
+    with path.open() as f:
+        return yaml.safe_load(f) or {}
+
+
+def _interface_by_name(device: dict[str, Any], name: str) -> dict[str, Any]:
+    return next(
+        (interface for interface in device.get("interfaces", []) if interface.get("name") == name),
+        {},
+    )
 
 
 def test_cumulus_mock_devices_define_explicit_ztp_identifiers() -> None:
@@ -29,8 +50,7 @@ def test_cumulus_mock_devices_define_explicit_ztp_identifiers() -> None:
     missing_serial = []
 
     for path in sorted(MOCK_TOPOLOGY_CONTEXT.glob("*/devices/*.json")):
-        with path.open() as f:
-            device = json.load(f).get("data", {}).get("device") or {}
+        device = _load_device(path)
 
         platform_name = (device.get("platform") or {}).get("name", "")
         if "Cumulus" not in platform_name:
@@ -39,11 +59,8 @@ def test_cumulus_mock_devices_define_explicit_ztp_identifiers() -> None:
         if not device.get("serial"):
             missing_serial.append(f"{path.name}:{device.get('name')}")
 
-        eth0 = next(
-            (interface for interface in device.get("interfaces", []) if interface.get("name") == "eth0"),
-            None,
-        )
-        if not eth0 or not eth0.get("mac_address"):
+        eth0 = _interface_by_name(device, "eth0")
+        if not eth0.get("mac_address"):
             missing_eth0_mac.append(f"{path.name}:{device.get('name')}")
 
     assert missing_serial == []
@@ -54,37 +71,61 @@ def test_air_trial_cumulus_serials_match_eth0_mac_addresses() -> None:
     mismatches = []
 
     for path in sorted((MOCK_TOPOLOGY_CONTEXT / "air_trial" / "devices").glob("*.json")):
-        with path.open() as f:
-            device = json.load(f).get("data", {}).get("device") or {}
+        device = _load_device(path)
 
         platform_name = (device.get("platform") or {}).get("name", "")
         if "Cumulus" not in platform_name:
             continue
 
-        eth0 = next(
-            (interface for interface in device.get("interfaces", []) if interface.get("name") == "eth0"),
-            {},
-        )
+        eth0 = _interface_by_name(device, "eth0")
         if device.get("serial") != eth0.get("mac_address"):
             mismatches.append(f"{path.name}:{device.get('name')}")
 
     assert mismatches == []
 
 
+def test_air_trial_keeps_only_oob_chain_as_dhcp_pool() -> None:
+    oob_mleaf = _load_device(
+        MOCK_TOPOLOGY_CONTEXT / "air_trial" / "devices" / "oob-mleaf-01.json"
+    )
+    oob_uplink = _interface_by_name(oob_mleaf, "swp1")
+
+    tan_leaf_pools = []
+    for path in sorted((MOCK_TOPOLOGY_CONTEXT / "air_trial" / "devices").glob("tan-*.json")):
+        device = _load_device(path)
+        eth0 = _interface_by_name(device, "eth0")
+        if eth0.get("dhcp_pool"):
+            tan_leaf_pools.append(f"{path.name}:eth0")
+
+    assert oob_uplink["dhcp_pool"] is True
+    assert oob_uplink["ip_addresses"][0]["mask_length"] == 31
+    assert tan_leaf_pools == []
+
+
+def test_air_trial_tan_leaf_management_interfaces_use_vlan_subnet() -> None:
+    wrong_masks = []
+
+    for path in sorted((MOCK_TOPOLOGY_CONTEXT / "air_trial" / "devices").glob("tan-*.json")):
+        device = _load_device(path)
+        eth0 = _interface_by_name(device, "eth0")
+        addresses = eth0.get("ip_addresses", [])
+        if not addresses or addresses[0].get("mask_length") != 24:
+            wrong_masks.append(f"{path.name}:eth0")
+
+    assert wrong_masks == []
+
+
 def test_cumulus_mock_devices_define_intended_firmware() -> None:
     missing_firmware = []
 
     for path in sorted(MOCK_TOPOLOGY_CONTEXT.glob("*/devices/*.json")):
-        with path.open() as f:
-            device = json.load(f).get("data", {}).get("device") or {}
+        device = _load_device(path)
 
         platform_name = (device.get("platform") or {}).get("name", "")
         if "Cumulus" not in platform_name:
             continue
 
-        firmware = (
-            device.get("config_context", {}).get("intended-firmware", {}).get("version")
-        )
+        firmware = device.get("config_context", {}).get("intended-firmware", {}).get("version")
         if not firmware:
             missing_firmware.append(f"{path.name}:{device.get('name')}")
 
@@ -95,29 +136,31 @@ def test_mock_topology_uses_bgp_model_seed_data() -> None:
     context_bgp_devices = []
 
     for path in sorted(MOCK_TOPOLOGY_CONTEXT.glob("*/devices/*.json")):
-        with path.open() as f:
-            payload = json.load(f)
+        payload = json.loads(path.read_text())
+        relative_path = str(path.relative_to(PROJECT_ROOT))
+        stack: list[object] = [payload]
 
-        def visit(value: object) -> None:
+        while stack:
+            value = stack.pop()
             if isinstance(value, dict):
                 config_context = value.get("config_context")
                 if isinstance(config_context, dict) and config_context.get("bgp"):
-                    context_bgp_devices.append(str(path.relative_to(PROJECT_ROOT)))
-                for child in value.values():
-                    visit(child)
+                    context_bgp_devices.append(relative_path)
+                stack.extend(value.values())
             elif isinstance(value, list):
-                for child in value:
-                    visit(child)
+                stack.extend(value)
 
-        visit(payload)
-
-    with (MOCK_TOPOLOGY_CONTEXT / "air_trial" / "bgp_routing_instances.yaml").open() as f:
-        air_trial_routing_instances = yaml.safe_load(f)["bgp_routing_instances"]
-    with (MOCK_TOPOLOGY_CONTEXT / "air_superpod" / "bgp_routing_instances.yaml").open() as f:
-        air_superpod_routing_instances = yaml.safe_load(f)["bgp_routing_instances"]
+    air_trial_routing_instances = _load_yaml(
+        MOCK_TOPOLOGY_CONTEXT / "air_trial" / "bgp_routing_instances.yaml"
+    )["bgp_routing_instances"]
+    air_superpod_routing_instances = _load_yaml(
+        MOCK_TOPOLOGY_CONTEXT / "air_superpod" / "bgp_routing_instances.yaml"
+    )["bgp_routing_instances"]
 
     assert context_bgp_devices == []
+    assert {"device": "oob-mgmt-server", "asn": 65000} in air_trial_routing_instances
     assert {"device": "oob-mleaf-01", "asn": 65101} in air_trial_routing_instances
+    assert {"device": "oob-mgmt-server", "asn": 4266000000} in air_superpod_routing_instances
     assert {"device": "su01-oob-mleaf01", "asn": 65101} in air_superpod_routing_instances
 
 

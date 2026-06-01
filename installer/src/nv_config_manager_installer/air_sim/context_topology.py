@@ -72,6 +72,14 @@ def build_site_design_from_mock_context(
     prefixes_doc = _render_deployment_name(
         _load_yaml(context_dir / "prefixes.yaml"), deployment_name
     )
+    bgp_doc = _render_deployment_name(
+        _load_yaml(context_dir / "bgp_routing_instances.yaml"), deployment_name
+    )
+    bgp_asns = {
+        str(instance.get("device")): instance.get("asn")
+        for instance in bgp_doc.get("bgp_routing_instances", [])
+        if instance.get("device") and instance.get("asn") is not None
+    }
 
     location_hierarchy = []
     for loc in locations_doc.get("locations", []):
@@ -120,6 +128,8 @@ def build_site_design_from_mock_context(
             "local_config_context_data": device.get("config_context", {}),
             "tags": [_name(tag) for tag in device.get("tags", [])],
         }
+        if device_name in bgp_asns:
+            normalized_device["bgp_asn"] = bgp_asns[device_name]
         if device.get("_air"):
             normalized_device["_air"] = device["_air"]
         devices.append(normalized_device)
@@ -136,6 +146,8 @@ def build_site_design_from_mock_context(
                 "mac_address": intf.get("mac_address"),
                 "role": _name(intf.get("role")),
                 "mgmt_only": bool(intf.get("mgmt_only", False)),
+                "dhcp_pool": bool(intf.get("dhcp_pool", False)),
+                "dhcp_reserve": bool(intf.get("dhcp_reserve", False)),
                 "mode": intf.get("mode"),
                 "mtu": intf.get("mtu"),
             }

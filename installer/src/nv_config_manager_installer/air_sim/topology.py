@@ -188,9 +188,15 @@ class AirTopologyBuilder:
         return "Unknown"
 
     def resolve_device_bgp_asn(self, device_name: str) -> str | None:
-        """Return the BGP ASN for *device_name* from local_config_context_data."""
+        """Return the BGP ASN for *device_name* from topology metadata."""
         for dev in self.site_design.get("devices", []):
             if dev.get("name") == device_name:
+                asn = dev.get("bgp_asn")
+                if asn is not None:
+                    return str(asn)
+                asn = (dev.get("bgp") or {}).get("asn")
+                if asn is not None:
+                    return str(asn)
                 ctx = dev.get("local_config_context_data", {})
                 asn = (ctx.get("bgp") or {}).get("asn")
                 if asn is not None:

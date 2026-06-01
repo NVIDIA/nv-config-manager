@@ -100,6 +100,7 @@
           "enabled": true,
           "mgmt_only": false,
           "mtu": 9216,
+          "dhcp_pool": true,
           "description": "oob-mgmt-server:eth1",
           "role": {
             "name": "Uplink"

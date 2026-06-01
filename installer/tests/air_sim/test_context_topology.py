@@ -12,52 +12,167 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Tests for AIR topology generation from mock_topology context."""
+"""Tests for AIR topology generation from mock_topology-shaped context data."""
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
+
+import yaml
 
 from nv_config_manager_installer.air_sim.context_topology import (
     build_site_design_from_mock_context,
 )
+from nv_config_manager_installer.air_sim.topology import AirTopologyBuilder
+
+
+def _write_yaml(path: Path, data: dict[str, Any]) -> None:
+    path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+
+def _write_json(path: Path, data: dict[str, Any]) -> None:
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+
+def _write_context(context_root: Path) -> None:
+    context_dir = context_root / "demo_blueprint"
+    devices_dir = context_dir / "devices"
+    devices_dir.mkdir(parents=True)
+
+    _write_yaml(
+        context_dir / "locations.yaml",
+        {
+            "global_defaults": {"tenant": "Public Demo"},
+            "locations": [{"name": "SITE01 - {{ deployment_name }}", "location_type": "Site"}],
+        },
+    )
+    _write_yaml(
+        context_dir / "prefixes.yaml",
+        {
+            "aggregate_prefixes": [
+                {"prefix": "172.18.0.0/16", "role": "Service-LB-Source", "tags": ["lb-allowed"]},
+                {"prefix": "10.120.0.0/16", "role": "OOB-Aggregate", "tags": ["relay-return"]},
+            ]
+        },
+    )
+    _write_yaml(
+        context_dir / "bgp_routing_instances.yaml",
+        {"bgp_routing_instances": [{"device": "oob-mgmt-server", "asn": 65000}]},
+    )
+    _write_json(
+        devices_dir / "oob-mgmt-server.json",
+        {
+            "data": {
+                "device": {
+                    "name": "oob-mgmt-server",
+                    "role": {"name": "OOB-Server"},
+                    "device_type": {"manufacturer": {"name": "Generic"}, "model": "Server"},
+                    "status": {"name": "Active"},
+                    "serial": "44:38:39:00:00:01",
+                    "config_context": {},
+                    "interfaces": [
+                        {
+                            "name": "eth1",
+                            "type": "1000base-t",
+                            "mac_address": "44:38:39:01:00:01",
+                            "ip_addresses": [
+                                {
+                                    "address": "10.120.0.0/31",
+                                    "mask_length": 31,
+                                    "ip_version": 4,
+                                }
+                            ],
+                        }
+                    ],
+                }
+            }
+        },
+    )
+    _write_json(
+        devices_dir / "oob-mleaf-01.json",
+        {
+            "data": {
+                "device": {
+                    "name": "oob-mleaf-01",
+                    "role": {"name": "OOB-MLEAF"},
+                    "device_type": {"manufacturer": {"name": "NVIDIA"}, "model": "SN2201"},
+                    "platform": {"name": "Cumulus Linux"},
+                    "status": {"name": "Provisioning"},
+                    "serial": "44:38:39:00:00:02",
+                    "config_context": {"intended-firmware": {"version": "5.16.1"}},
+                    "tags": [{"name": "ztp"}],
+                    "interfaces": [
+                        {
+                            "name": "eth0",
+                            "type": "1000base-t",
+                            "mgmt_only": True,
+                            "mac_address": "44:38:39:00:00:02",
+                            "ip_addresses": [],
+                        },
+                        {
+                            "name": "swp1",
+                            "type": "1000base-t",
+                            "role": {"name": "Uplink"},
+                            "dhcp_pool": True,
+                            "dhcp_reserve": True,
+                            "ip_addresses": [
+                                {
+                                    "address": "10.120.0.1/31",
+                                    "mask_length": 31,
+                                    "ip_version": 4,
+                                }
+                            ],
+                            "connected_interface": {
+                                "name": "eth1",
+                                "device": {"name": "oob-mgmt-server"},
+                            },
+                        },
+                    ],
+                }
+            }
+        },
+    )
 
 
 def _devices_by_name(site_design: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return {device["name"]: device for device in site_design["devices"]}
 
 
-def test_air_trial_builds_devices_and_explicit_eth0_macs() -> None:
-    site_design = build_site_design_from_mock_context("air_trial", "demo")
+def test_context_builder_preserves_topology_metadata(tmp_path: Path) -> None:
+    _write_context(tmp_path)
 
+    site_design = build_site_design_from_mock_context(
+        "demo_blueprint", "demo", context_root=tmp_path
+    )
     devices = _devices_by_name(site_design)
-    assert "oob-mgmt-server" in devices
-    assert len(devices) >= 6
-
-    cumulus_names = {
-        device["name"]
-        for device in site_design["devices"]
-        if "Cumulus" in device.get("platform", "")
-    }
-    assert cumulus_names
-
-    eth0_macs = {
-        interface["device"]: interface.get("mac_address")
+    oob_uplink = next(
+        interface
         for interface in site_design["interfaces"]
-        if interface["device"] in cumulus_names and interface["name"] == "eth0"
+        if interface["device"] == "oob-mleaf-01" and interface["name"] == "swp1"
+    )
+
+    assert devices["oob-mgmt-server"]["bgp_asn"] == 65000
+    assert devices["oob-mleaf-01"]["local_config_context_data"] == {
+        "intended-firmware": {"version": "5.16.1"}
     }
-    assert set(eth0_macs) == cumulus_names
-    assert all(isinstance(mac, str) and mac for mac in eth0_macs.values())
-
-
-def test_air_superpod_builds_non_empty_topology_source() -> None:
-    site_design = build_site_design_from_mock_context("air_superpod", "demo")
-
-    assert site_design["devices"]
-    assert site_design["interfaces"]
-    assert site_design["ip_addresses"]
-    assert site_design["cabling_assignments"]["connections"]
-    assert "oob-mgmt-server" in _devices_by_name(site_design)
-    assert "bgp" not in _devices_by_name(site_design)["oob-mgmt-server"][
-        "local_config_context_data"
+    assert oob_uplink["dhcp_pool"] is True
+    assert oob_uplink["dhcp_reserve"] is True
+    assert site_design["prefixes"] == [
+        {"prefix": "172.18.0.0/16", "role": "Service-LB-Source", "tags": ["lb-allowed"]},
+        {"prefix": "10.120.0.0/16", "role": "OOB-Aggregate", "tags": ["relay-return"]},
     ]
+
+
+def test_air_topology_builder_resolves_oob_server_bgp_asn(tmp_path: Path) -> None:
+    _write_context(tmp_path)
+    site_design = build_site_design_from_mock_context(
+        "demo_blueprint", "demo", context_root=tmp_path
+    )
+    topology_path = tmp_path / "site-design.yaml"
+    _write_yaml(topology_path, site_design)
+
+    builder = AirTopologyBuilder(str(topology_path))
+
+    assert builder.resolve_device_bgp_asn("oob-mgmt-server") == "65000"
