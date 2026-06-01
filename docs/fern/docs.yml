@@ -28,6 +28,10 @@ layout:
   tabs-placement: header
   hide-feedback: true
 
+redirects:
+  - source: /switch-infrastructure
+    destination: /switch-infrastructure/config-manager
+
 #==============================================================================
 # Content navigation from here down
 #==============================================================================
