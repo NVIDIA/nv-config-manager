@@ -19,6 +19,7 @@ from __future__ import annotations
 import subprocess
 import sys
 import tempfile
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -36,6 +37,7 @@ from nv_config_manager_installer.deployer import (
     _kind_preload_images,
     _parallel_build_limit,
     _ParallelCommand,
+    _poll_pod_summary,
     _RerunState,
     _run_logged_parallel,
     _unready_pod_summary_lines,
@@ -914,6 +916,47 @@ class TestHelmInstall:
         assert "api-123 ready=0/2 phase=Pending restarts=2" in lines[1]
         assert "PodScheduled=False (Unschedulable)" in lines[1]
         assert "container api: ImagePullBackOff (pull access denied)" in lines[1]
+
+    def test_poll_pod_summary_skips_emit_when_stop_event_set_during_list(self):
+        # list_namespaced_pod() can block for seconds; if shutdown sets
+        # stop_event while it's in-flight, the poller must not emit one final
+        # batch after _run_logged_with_pod_summary() has already returned.
+        stop_event = threading.Event()
+
+        pod = SimpleNamespace(
+            metadata=SimpleNamespace(name="api-1"),
+            status=SimpleNamespace(
+                phase="Pending",
+                reason=None,
+                message=None,
+                conditions=[
+                    SimpleNamespace(type="Ready", status="False", reason=None, message=None),
+                ],
+                init_container_statuses=[],
+                container_statuses=[],
+            ),
+        )
+
+        def slow_list(namespace):
+            stop_event.set()
+            return SimpleNamespace(items=[pod])
+
+        k8s = SimpleNamespace(v1=SimpleNamespace(list_namespaced_pod=slow_list))
+        step = DeployStep(id="test", label="test")
+        callback = RecordingCallback()
+
+        _poll_pod_summary(
+            k8s,
+            "ns",
+            step,
+            callback,
+            stop_event,
+            interval=0.01,
+            heartbeat_interval=60.0,
+        )
+
+        assert not any(msg.startswith("[pods]") for msg in step.output)
+        assert not any(msg.startswith("[pods]") for msg in callback.logs)
 
 
 class TestContentHashing:

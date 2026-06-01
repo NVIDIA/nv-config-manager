@@ -722,6 +722,11 @@ def _poll_pod_summary(
     last_emit = 0.0
     while not stop_event.is_set():
         lines = _unready_pod_summary_lines(k8s, namespace)
+        # list_namespaced_pod() can take seconds; re-check stop_event before
+        # emitting so a shutdown that races the in-flight list doesn't produce
+        # one last batch after _run_logged_with_pod_summary() has returned.
+        if stop_event.is_set():
+            break
         signature = "\n".join(lines)
         now = time.monotonic()
         has_blockers = lines != ["all pods ready"]
