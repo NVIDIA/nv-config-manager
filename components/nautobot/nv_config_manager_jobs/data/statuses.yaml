@@ -22,6 +22,8 @@
     - nautobot_app_overlays.overlay
     - nautobot_app_overlays.overlayassignment
     - nautobot_app_overlays.vxlan
+    - nautobot_app_overlays.infinibandpkey
+    - nautobot_app_overlays.infinibandmkey
   deployment_types: [all, superpod]
 
 - name: Connected
@@ -46,6 +48,11 @@
     - nautobot_bgp_models.autonomoussystem
     - nautobot_bgp_models.bgproutinginstance
     - nautobot_bgp_models.peering
+    - nautobot_app_overlays.overlay
+    - nautobot_app_overlays.overlayassignment
+    - nautobot_app_overlays.vxlan
+    - nautobot_app_overlays.infinibandpkey
+    - nautobot_app_overlays.infinibandmkey
   deployment_types: [all, superpod]
 
 - name: Provisioning
