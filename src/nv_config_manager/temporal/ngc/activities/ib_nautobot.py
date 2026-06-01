@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from pydantic import BaseModel
@@ -31,6 +32,9 @@ log = logging.getLogger(__name__)
 PLUGIN_BASE = "plugins/overlays"
 ISOLATION_TYPE_IB_PKEY = "ib_pkey"
 DEFAULT_STATUS_NAME = "Active"
+
+_IPV4_PATTERN = re.compile(r"^\d{1,3}(\.\d{1,3}){3}$")
+_PKEY_PATTERN = re.compile(r"^0[xX][0-9a-fA-F]{1,4}$")
 
 
 class CreatePartitionInNautobotInput(BaseModel):
@@ -726,4 +730,200 @@ async def sync_pkey_assignments(
             f"Nautobot assignments synced: "
             f"+{len(added)} added, -{len(removed)} removed, {len(unchanged)} unchanged"
         ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# IB context resolver
+#
+# Lets clients call ib_pkey_member_{add,delete,update} with just (host, pkey)
+# and have the workflow derive the location and overlay from Nautobot.
+# ---------------------------------------------------------------------------
+
+
+class ResolveIBContextInput(BaseModel):
+    """Inputs for resolving the Nautobot context of an IB PKey operation."""
+
+    host: str
+    pkey: str
+
+
+class ResolveIBContextOutput(StageOutput):
+    """UFM device, location, and overlay context for an IB PKey operation."""
+
+    ufm_device_id: str
+    ufm_device_name: str
+    ufm_device_primary_ip: str | None
+    location_id: str
+    location_name: str
+    overlay_id: str
+    overlay_name: str
+    pkey_id: str
+    pkey: str
+
+
+_RESOLVE_BY_NAME_QUERY = """
+query ($host: [String]) {
+  devices(name: $host) {
+    id
+    name
+    primary_ip4 { host }
+    location {
+      id
+      name
+      overlays(isolation_type: ["ib_pkey"]) {
+        id
+        name
+        pkeys {
+          id
+          pkey
+        }
+      }
+    }
+  }
+}
+"""
+
+_RESOLVE_BY_IP_QUERY = """
+query ($ip: [String]) {
+  ip_addresses(address: $ip) {
+    address
+    interfaces {
+      device {
+        id
+        name
+        primary_ip4 { host }
+        location {
+          id
+          name
+          overlays(isolation_type: ["ib_pkey"]) {
+            id
+            name
+            pkeys {
+              id
+              pkey
+            }
+          }
+        }
+      }
+    }
+  }
+}
+"""
+
+
+def _normalize_pkey(value: str) -> str:
+    """Canonicalize an IB PKey to '0x' + 4 lowercase hex digits."""
+    if not value or not _PKEY_PATTERN.match(value):
+        raise ApplicationError(
+            f"pkey {value!r} does not match required format (e.g. '0x8001')",
+            non_retryable=True,
+        )
+    return f"0x{int(value, 16):04x}"
+
+
+async def _find_device_by_name(client: NautobotClient, host: str) -> list[dict[str, Any]]:
+    """Query Nautobot for devices with the given name."""
+    data = await client.graphql_query(_RESOLVE_BY_NAME_QUERY, {"host": [host]})
+    return ((data.get("data") or {}).get("devices")) or []
+
+
+async def _find_device_by_ip(client: NautobotClient, host: str) -> list[dict[str, Any]]:
+    """Query Nautobot for devices reachable via the given IPv4 address."""
+    data = await client.graphql_query(_RESOLVE_BY_IP_QUERY, {"ip": [host]})
+    devices: list[dict[str, Any]] = []
+    for ip_record in ((data.get("data") or {}).get("ip_addresses")) or []:
+        for iface in ip_record.get("interfaces") or []:
+            if device := iface.get("device"):
+                devices.append(device)
+    return devices
+
+
+async def _find_device(client: NautobotClient, host: str) -> dict[str, Any]:
+    """Resolve a UFM device by name OR primary IPv4 address."""
+    if _IPV4_PATTERN.match(host):
+        devices = await _find_device_by_ip(client, host)
+        attempted = "IPv4 address"
+    else:
+        devices = await _find_device_by_name(client, host)
+        attempted = "name"
+
+    if not devices:
+        raise ApplicationError(
+            f"UFM device {host!r} not found in Nautobot (tried as {attempted})",
+            non_retryable=True,
+        )
+
+    by_id = {d["id"]: d for d in devices}
+    if len(by_id) > 1:
+        raise ApplicationError(
+            f"Multiple UFM devices match {host!r}: {sorted(by_id.keys())}",
+            non_retryable=True,
+        )
+    return next(iter(by_id.values()))
+
+
+def _select_pkey_match(
+    device: dict[str, Any], canonical_pkey: str
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Select the (overlay, pkey_record) pair matching canonical_pkey."""
+    location = device.get("location") or {}
+    overlays = location.get("overlays") or []
+    matches: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    for overlay in overlays:
+        for pkey_record in overlay.get("pkeys") or []:
+            stored = pkey_record.get("pkey") or ""
+            if _PKEY_PATTERN.match(stored) and f"0x{int(stored, 16):04x}" == canonical_pkey:
+                matches.append((overlay, pkey_record))
+
+    location_name = location.get("name") or "<unknown>"
+    if not matches:
+        raise ApplicationError(
+            f"PKey {canonical_pkey!r} not found at location {location_name!r}",
+            non_retryable=True,
+        )
+    if len(matches) > 1:
+        candidates = ", ".join(f"{o.get('id')}:{o.get('name', '<unnamed>')}" for o, _ in matches)
+        raise ApplicationError(
+            f"PKey {canonical_pkey!r} ambiguous at location {location_name!r}: "
+            f"matches overlays [{candidates}]. Specify overlay_id explicitly.",
+            non_retryable=True,
+        )
+    return matches[0]
+
+
+@activity.defn
+async def resolve_ib_context(
+    input: ResolveIBContextInput,
+) -> ResolveIBContextOutput:
+    """Resolve UFM device, location, overlay, and PKey records from (host, pkey)."""
+    canonical_pkey = _normalize_pkey(input.pkey)
+
+    client = NautobotClient()
+    async with client:
+        device = await _find_device(client, input.host)
+
+    overlay, pkey_record = _select_pkey_match(device, canonical_pkey)
+    primary_ip = (device.get("primary_ip4") or {}).get("host")
+
+    log.info(
+        "Resolved IB context for host=%s pkey=%s -> device=%s location=%s overlay=%s",
+        input.host,
+        canonical_pkey,
+        device.get("name"),
+        (device.get("location") or {}).get("name"),
+        overlay.get("name"),
+    )
+
+    return ResolveIBContextOutput(
+        ufm_device_id=device["id"],
+        ufm_device_name=device["name"],
+        ufm_device_primary_ip=primary_ip,
+        location_id=device["location"]["id"],
+        location_name=device["location"]["name"],
+        overlay_id=overlay["id"],
+        overlay_name=overlay["name"],
+        pkey_id=pkey_record["id"],
+        pkey=canonical_pkey,
+        display=f"Resolved {input.host}+{canonical_pkey} -> overlay {overlay.get('name')}",
     )

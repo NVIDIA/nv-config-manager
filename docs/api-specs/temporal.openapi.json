@@ -581,7 +581,7 @@
         "type": "object"
       },
       "IBPKeyMemberAddInput": {
-        "description": "InfiniBand PKey Member Add Workflow Input.",
+        "description": "InfiniBand PKey Member Add Workflow Input.\n\n``site`` and ``overlay_id`` are optional. If omitted they are resolved\nfrom Nautobot using ``host`` and ``pkey``.",
         "properties": {
           "guids": {
             "default": [],
@@ -614,8 +614,15 @@
             "type": "string"
           },
           "overlay_id": {
-            "title": "Overlay Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overlay Id"
           },
           "pkey": {
             "title": "Pkey",
@@ -635,14 +642,13 @@
         },
         "required": [
           "host",
-          "pkey",
-          "overlay_id"
+          "pkey"
         ],
         "title": "IBPKeyMemberAddInput",
         "type": "object"
       },
       "IBPKeyMemberDeleteInput": {
-        "description": "InfiniBand PKey Member Delete Workflow Input.\n\nProvide either ``interfaces`` (resolved to GUIDs via Nautobot) or\n``guids`` directly, but not both.",
+        "description": "InfiniBand PKey Member Delete Workflow Input.\n\nProvide either ``interfaces`` (resolved to GUIDs via Nautobot) or\n``guids`` directly, but not both. ``site`` and ``overlay_id`` are\noptional; resolved from Nautobot via ``host`` and ``pkey`` if omitted.",
         "properties": {
           "guids": {
             "default": [],
@@ -665,8 +671,15 @@
             "type": "array"
           },
           "overlay_id": {
-            "title": "Overlay Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overlay Id"
           },
           "pkey": {
             "title": "Pkey",
@@ -686,14 +699,13 @@
         },
         "required": [
           "host",
-          "pkey",
-          "overlay_id"
+          "pkey"
         ],
         "title": "IBPKeyMemberDeleteInput",
         "type": "object"
       },
       "IBPKeyMemberUpdateInput": {
-        "description": "InfiniBand PKey Member Update Workflow Input.",
+        "description": "InfiniBand PKey Member Update Workflow Input.\n\n``site`` and ``overlay_id`` are optional; resolved from Nautobot via\n``host`` and ``pkey`` if omitted.",
         "properties": {
           "guids": {
             "default": [],
@@ -726,8 +738,15 @@
             "type": "string"
           },
           "overlay_id": {
-            "title": "Overlay Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overlay Id"
           },
           "pkey": {
             "title": "Pkey",
@@ -747,8 +766,7 @@
         },
         "required": [
           "host",
-          "pkey",
-          "overlay_id"
+          "pkey"
         ],
         "title": "IBPKeyMemberUpdateInput",
         "type": "object"

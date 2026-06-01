@@ -94,6 +94,7 @@ from nv_config_manager.temporal.ngc.activities.ib_nautobot import (
     record_pkey_assignments,
     remove_pkey_assignments,
     resolve_guids_to_interfaces,
+    resolve_ib_context,
     resolve_interface_guids,
     sync_pkey_assignments,
 )
@@ -261,6 +262,7 @@ REGISTERED_ACTIVITIES = [
     create_partition_in_nautobot,
     resolve_interface_guids,
     resolve_guids_to_interfaces,
+    resolve_ib_context,
     record_pkey_assignments,
     fetch_pkey_assignments,
     sync_pkey_assignments,
