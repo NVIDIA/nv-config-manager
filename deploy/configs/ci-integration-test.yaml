@@ -80,7 +80,11 @@ services:
 images:
   # CI preloads third-party runtime images into Kind through the host Docker daemon.
   # This avoids anonymous in-cluster pulls from Docker Hub during Helm's --wait window.
+  # Note: docker.io/library/busybox:1.36 is also preloaded as a code default via
+  # _KIND_PRELOAD_IMAGES in deployer.py (used by the installer's PVC loader pods);
+  # it's listed here for documentation. The effective list is deduplicated.
   kind_preload_images:
+    - docker.io/library/busybox:1.36
     - docker.io/hashicorp/http-echo:1.0
     - docker.io/alpine/kubectl:1.35.4
     - docker.io/library/redis:7-alpine
