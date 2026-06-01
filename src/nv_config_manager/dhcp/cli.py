@@ -208,6 +208,44 @@ def refresh_kea_configuration(
     asyncio.run(_refresh_loop_async(ip_version, check, refresh_interval))
 
 
+async def _kea_running_config_diverged(
+    kea_client: KeaClient,
+    ip_version: int,
+    remote_lease_db: bool,
+) -> bool:
+    """Detect whether the running KEA config has drifted from what we last applied.
+
+    This handles the case where the ``kea`` container is recycled (e.g. by its
+    livenessProbe after a transient postgres outage) and reloads the baked-in
+    bootstrap ``/etc/kea/kea-dhcp4.conf`` from the image, which lacks the
+    ``lease-database`` section (and any subnets/reservations) that
+    ``inject_lease_db_config`` adds at sync time. Without this check the sync
+    loop would never re-apply (Redis is unchanged) and the pod would deadlock
+    with ``/healthcheck`` returning 500.
+
+    Returns True if the running config looks like the bootstrap (or is
+    otherwise unreachable in a way that warrants re-applying).
+    """
+    if not remote_lease_db:
+        # Local memfile configurations don't depend on the injected lease-db,
+        # and a bootstrap reload would still serve leases without us noticing.
+        # In that case we rely on the existing Redis-change-driven re-apply.
+        return False
+    try:
+        running = await kea_client.get_config(version=ip_version)
+    except Exception as exc:
+        # Best-effort probe; if we can't query KEA, the existing Redis-change
+        # path will pick up a re-apply on the next genuine refresh.
+        logger.debug(f"Could not query KEA running config for divergence check: {exc}")
+        return False
+    if not running:
+        return False
+    arguments = running[0].get("arguments", {}) if isinstance(running[0], dict) else {}
+    dhcp_section = arguments.get(f"Dhcp{ip_version}", {})
+    lease_db_type = dhcp_section.get("lease-database", {}).get("type")
+    return bool(lease_db_type != "postgresql")
+
+
 async def _sync_kea_configuration_async(
     ip_version: int,
     refresh_interval: int,
@@ -218,6 +256,7 @@ async def _sync_kea_configuration_async(
     ini_config = load_config()
     kea_client = KeaClient.from_config(ini_config, attached=True)
     redis_client = RedisClient.from_config(ini_config)
+    remote_lease_db = not ini_config["dhcp.lease_db"].getboolean("local")
 
     try:
         config = await redis_client.load_kea_config(ip_version)
@@ -252,7 +291,17 @@ async def _sync_kea_configuration_async(
                         await asyncio.sleep(refresh_interval)
                         continue
                     new_config = inject_lease_db_config(new_config, ip_version)
-                    if new_config != previous_config:
+                    diverged = await _kea_running_config_diverged(
+                        kea_client, ip_version, remote_lease_db
+                    )
+                    if diverged:
+                        logger.warning(
+                            "KEA running config is missing the remote lease-database "
+                            "(likely a kea container restart). Re-applying configuration."
+                        )
+                        await kea_client.set_config(new_config, version=ip_version)
+                        previous_config = new_config
+                    elif new_config != previous_config:
                         logger.info("Configuration changed, updating KEA DHCP Configuration.")
                         await kea_client.set_config(new_config, version=ip_version)
                         previous_config = new_config
