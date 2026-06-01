@@ -56,11 +56,13 @@ def _ensure_ib_guid_custom_field():
 def _ensure_overlay_status_content_types():
     """Attach overlay-app content types to the default Active/Deprecated/Planned Statuses."""
     logger.info("Adding overlay models to Statuses")
-    status_name = ""
-    try:
-        for model in OVERLAY_MODELS:
-            ct = ContentType.objects.get_for_model(model)
-            for status_name in DEFAULT_STATUSES:
+    for model in OVERLAY_MODELS:
+        ct = ContentType.objects.get_for_model(model)
+        for status_name in DEFAULT_STATUSES:
+            try:
                 Status.objects.get(name=status_name).content_types.add(ct)
-    except Status.DoesNotExist:
-        logger.warning("Status '%s' does not exist; skipping overlay content_types linkage", status_name)
+            except Status.DoesNotExist:
+                logger.warning(
+                    "Status '%s' does not exist; skipping overlay content_types linkage",
+                    status_name,
+                )

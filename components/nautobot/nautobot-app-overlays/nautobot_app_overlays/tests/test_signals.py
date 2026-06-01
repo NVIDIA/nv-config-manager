@@ -113,3 +113,20 @@ class EnsureOverlayStatusContentTypesTestCase(TestCase):
         Status.objects.filter(name="Planned").delete()
 
         post_migrate_create_defaults()
+
+    def test_missing_status_does_not_block_other_links(self):
+        """A missing Status must not abort linkage for the remaining Statuses or models."""
+        self._strip_overlay_cts()
+        Status.objects.filter(name="Planned").delete()
+
+        post_migrate_create_defaults()
+
+        expected_model_names = {model._meta.model_name for model in self.EXPECTED_MODELS}
+        for status_name in ("Active", "Deprecated"):
+            status = Status.objects.get(name=status_name)
+            attached = {ct.model for ct in status.content_types.all() if ct.app_label == "nautobot_app_overlays"}
+            self.assertEqual(
+                attached,
+                expected_model_names,
+                f"Status '{status_name}' is missing overlay content types after a sibling Status was removed",
+            )
