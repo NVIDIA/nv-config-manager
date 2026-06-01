@@ -1,0 +1,168 @@
+# Copyright (c) 2026, NVIDIA CORPORATION.  All rights reserved.
+#
+# =============================================================================
+# Local kind cluster + Azure Entra ID SSO (example overlay)
+# =============================================================================
+# Example overlay for exercising the Nautobot RBAC group-mapping feature
+# against a real Azure Entra ID OIDC provider on a local kind cluster.
+#
+# This file is a GENERIC TEMPLATE -- replace every <placeholder> with values
+# from your own Entra App Registration.  It contains no real tenant IDs,
+# client IDs, or secrets.
+#
+# Usage:
+#   # 1. Create the OIDC client secret (one-time) from your App Registration:
+#   kubectl -n nv-config-manager create secret generic oidc-client-secret \
+#       --from-literal=client-secret='<your-entra-client-secret>'
+#
+#   # 2. Apply the overlay:
+#   helm upgrade nv-config-manager deploy/helm \
+#       --reuse-values \
+#       -f deploy/helm/values-local-azure-sso.yaml \
+#       -n nv-config-manager
+#
+#   # 3. Port-forward the gateway for localhost access:
+#   kubectl -n envoy-gateway-system port-forward svc/<your-envoy-gateway-svc> 8080:80
+#
+#   # 4. Browse to http://localhost:8080 -> Entra login -> redirected back with
+#   #    the Nautobot permissions mapped from your Entra App Role(s).
+#
+# Browser host resolution:
+#   /etc/hosts must include::
+#       127.0.0.1 config-manager.local nautobot.config-manager.local
+#   The gateway's TLS Secret ``nv-config-manager-gateway-tls`` must hold a cert
+#   valid for ``*.config-manager.local`` (provision a self-signed one with::
+#       openssl req -x509 -nodes -newkey rsa:2048 -days 365 \
+#           -keyout local.key -out local.crt \
+#           -subj '/O=NVIDIA Config Manager/OU=Local Development/CN=config-manager.local' \
+#           -addext 'subjectAltName=DNS:config-manager.local,DNS:*.config-manager.local'
+#       kubectl -n nv-config-manager delete secret nv-config-manager-gateway-tls --ignore-not-found
+#       kubectl -n nv-config-manager create secret tls nv-config-manager-gateway-tls \
+#           --cert=local.crt --key=local.key
+#   ).  Browsers will warn the cert is untrusted -- click through.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Disable mock auth -- we want the real JWT path so the RBAC sync runs.
+# -----------------------------------------------------------------------------
+localDev:
+  mockAuth:
+    enabled: false
+
+# -----------------------------------------------------------------------------
+# Gateway hostnames -- *.config-manager.local resolves to 127.0.0.1 via
+# /etc/hosts (see header).
+# -----------------------------------------------------------------------------
+gateway:
+  baseHostname: "config-manager.local"
+  # We provide our own self-signed *.config-manager.local cert in the
+  # ``nv-config-manager-gateway-tls`` Secret, so disable the cert-manager
+  # Certificate the chart would otherwise create.
+  certificates:
+    enabled: false
+
+  auth:
+    jwt:
+      enabled: true
+      providers:
+        - name: azure-ad
+          issuer: "https://login.microsoftonline.com/<azure-tenant-id>/v2.0"
+          audiences:
+            - "api://<azure-client-id>"
+            - "<azure-client-id>"
+      forwardToken: true
+      claimToHeaders:
+        - claim: email
+          header: X-Auth-Request-Email
+        - claim: preferred_username
+          header: X-Auth-Request-Preferred-Username
+        - claim: name
+          header: X-Auth-Request-Name
+        - claim: roles
+          header: X-Auth-Request-Groups
+        - claim: sub
+          header: X-Auth-Request-Subject
+
+# -----------------------------------------------------------------------------
+# Envoy Gateway OIDC filter (browser redirect flow).
+# -----------------------------------------------------------------------------
+oidc:
+  enabled: true
+  issuerUrl: "https://login.microsoftonline.com/<azure-tenant-id>/v2.0"
+  jwksUri: "https://login.microsoftonline.com/<azure-tenant-id>/discovery/v2.0/keys"
+  authorizationEndpoint: "https://login.microsoftonline.com/<azure-tenant-id>/oauth2/v2.0/authorize"
+  tokenEndpoint: "https://login.microsoftonline.com/<azure-tenant-id>/oauth2/v2.0/token"
+  clientId: "<azure-client-id>"
+  clientSecretName: "oidc-client-secret"
+  audiences:
+    - "api://<azure-client-id>"
+    - "<azure-client-id>"
+  scopes:
+    - "api://<azure-client-id>/.default"
+    - "openid"
+    - "profile"
+  groupsClaim: "roles"
+  disableTokenEncryption: true
+  # The chart auto-derives ``https://<baseHostname>/oauth2/callback`` -- i.e.
+  # ``https://config-manager.local/oauth2/callback``.  Register that exact URL
+  # as a Redirect URI on your Entra App Registration.  No explicit
+  # ``redirectURL`` needed.
+  claimToHeaders:
+    - claim: email
+      header: X-Auth-Request-Email
+    - claim: preferred_username
+      header: X-Auth-Request-Preferred-Username
+    - claim: name
+      header: X-Auth-Request-Name
+    - claim: roles
+      header: X-Auth-Request-Groups
+    - claim: sub
+      header: X-Auth-Request-Subject
+
+# -----------------------------------------------------------------------------
+# Override ``global.images.nautobot.{repository,tag}`` separately on the helm
+# command line if you're testing a locally-built Nautobot image, e.g.::
+#     helm upgrade nv-config-manager deploy/helm \
+#         -f deploy/helm/values-local-azure-sso.yaml \
+#         --set global.images.nautobot.repository=<your-local-nautobot-image> \
+#         --set global.images.nautobot.tag=$(git rev-parse --short HEAD)
+# -----------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# RBAC features under test.
+#
+# ``superuserGroups`` is the simple-case shortcut: any user whose JWT 'roles'
+# claim contains any name in this list gets is_superuser=is_staff=True; users
+# without one of these roles are demoted on their next login.  Empty here on
+# purpose so we exercise *only* the group-mapping path below.
+#
+# ``groupMapping`` is the richer counterpart consumed by
+# ``nv_config_manager_auth.rbac``.  The matching Django Group must already
+# exist in Nautobot (operator-managed lifecycle); on each login we reconcile
+# the user's group membership against the JWT roles claim and re-apply the
+# listed ObjectPermissions.
+# -----------------------------------------------------------------------------
+nautobot:
+  rbac:
+    superuserGroups: []
+    # Default ``false`` keeps the operator-managed lifecycle: a referenced
+    # Django Group must exist in Nautobot (admin UI / fixture / Job) before
+    # ``nv_config_manager_auth.rbac`` will attach permissions or memberships
+    # to it.  Flip to ``true`` here when you want the chart to manage Group
+    # creation too -- handy for a from-scratch local kind cluster.
+    autoCreateGroups: true
+    groupMapping:
+      # Example fine-grained, non-superuser mapping.  Replace
+      # ``<your-entra-app-role>`` with an App Role name assigned to your test
+      # users: read-only across the board, plus job execution and IPAM writes
+      # restricted to objects whose status is ``Active``.
+      - name: <your-entra-app-role>
+        nautobot_permissions:
+          view:
+            content_types: ["all"]
+          run:
+            content_types: ["extras.job"]
+          change:
+            content_types: ["ipam.*"]
+            constraints:
+              status__name: "Active"
