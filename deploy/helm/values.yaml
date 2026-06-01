@@ -2536,6 +2536,86 @@ nautobot:
     #     - nautobot-admins
     #     - nv-config-manager-admins
     superuserGroups: []
+
+    # ------------------------------------------------------------------
+    # IdP-group -> Django Group + ObjectPermission mapping consumed by
+    # ``nv_config_manager_auth.rbac``.  For each matching login, the user is added to
+    # (or removed from) the named Django Group, and the Group's per-action
+    # ObjectPermissions are reconciled against ``nautobot_permissions``.
+    #
+    # Django Group lifecycle is **operator-managed by default**: this
+    # chart never creates Groups on its own; matching ``Group`` rows must
+    # be created up-front (admin UI / fixture / one-shot Job).  Mapping
+    # entries whose Group does not yet exist are logged at WARNING and
+    # skipped.  Set ``autoCreateGroups: true`` (below) to flip into a
+    # self-service mode where missing Groups are created on the fly.
+    #
+    # Compared to ``superuserGroups`` (which only toggles is_superuser),
+    # ``groupMapping`` lets you express fine-grained, non-admin RBAC.
+    # Both can be set; ``superuserGroups`` continues to win for the
+    # simple admin shortcut, and ``is_superuser: true`` entries here are
+    # folded into the same promote/demote decision.
+    #
+    # Rendered into a ConfigMap mounted into Nautobot pods at the path
+    # NV_CONFIG_MANAGER_GROUP_MAPPING_PATH (defaults to /app/config/group-mapping.yaml).
+    # Reloaded on every login -- edits take effect without a restart.
+    #
+    # Revocation: removing a whole entry (``- name: foo``) revokes access
+    # automatically on each affected user's next login -- they are removed
+    # from the Django Group and its ``<group>_<action>`` ObjectPermissions
+    # are detached and (when no other group references them) deleted.  The
+    # Django Group row itself is left in place so operators retain final
+    # say over the group catalog; purely-manual groups (no managed
+    # ``<group>_<action>`` perms attached) are never touched.
+    #
+    # Limitation: removing *the last* ``is_superuser: true`` entry from the
+    # mapping leaves no marker on the Django Group, so users previously
+    # promoted by that entry must be demoted manually via the admin UI.
+    # As long as at least one ``is_superuser: true`` entry remains, the
+    # promote/demote reconciliation runs on every login.  See
+    # ``components/nautobot/nv_config_manager_auth/rbac.py`` module docstring for
+    # full details.
+    #
+    # Schema (per entry):
+    #   name:           required string, matches a value in the JWT
+    #                   ``roles`` claim (or whichever claim the provider
+    #                   uses, via JwtProviderConfig.claim_groups).
+    #   is_superuser:   optional bool; when true, the user is promoted to
+    #                   Django superuser as long as they hold this group.
+    #                   Per-action permissions are then irrelevant.
+    #   nautobot_permissions:
+    #     view / add / change / delete / run:
+    #       content_types: list of "app_label.model" (or the shortcuts
+    #                      "all" and "app_label.*").  Unknown models are
+    #                      logged and skipped, not raised.
+    #       constraints:   optional dict of Django-ORM lookups applied to
+    #                      the ObjectPermission (see Nautobot's
+    #                      ObjectPermission.constraints docs).
+    #
+    # Example:
+    #   groupMapping:
+    #     - name: "ipam-rw"
+    #       nautobot_permissions:
+    #         view:
+    #           content_types: ["all"]
+    #         change:
+    #           content_types: ["ipam.*"]
+    #         delete:
+    #           content_types: ["ipam.ipaddress"]
+    #           constraints:
+    #             status__name: "Active"
+    #     - name: "nv-config-manager-admins"
+    #       is_superuser: true
+    groupMapping: []
+
+    # ------------------------------------------------------------------
+    # When ``true``, nv_config_manager_auth.rbac creates any Django Group referenced
+    # by ``groupMapping`` if it does not already exist (the first time
+    # a logging-in user matches it).  Default ``false`` -- Group creation
+    # is treated as an explicit operator action so the catalog stays
+    # auditable.  Renders to the ``NV_CONFIG_MANAGER_AUTO_CREATE_GROUPS`` env var; only
+    # honoured when ``groupMapping`` is non-empty.
+    autoCreateGroups: false
   # Nautobot Server Configuration
   server:
     replicas: 3

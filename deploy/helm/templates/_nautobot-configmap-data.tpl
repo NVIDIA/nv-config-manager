@@ -79,6 +79,18 @@ NV_CONFIG_MANAGER_JWT_COOKIE: {{ .Values.oidc.cookieName | default "NVConfigMana
 # Reconciled against the JWT groups claim on every login.
 NV_CONFIG_MANAGER_SUPERUSER_GROUPS: {{ join "," . | quote }}
 {{- end }}
+{{- if .Values.nautobot.rbac.groupMapping }}
+# Path to the group-mapping YAML consumed by nv_config_manager_auth.rbac on every JWT
+# login.  Rendered by the chart into the nautobot group-mapping ConfigMap and
+# mounted at the path below.
+NV_CONFIG_MANAGER_GROUP_MAPPING_PATH: "/app/config/group-mapping.yaml"
+{{- if .Values.nautobot.rbac.autoCreateGroups }}
+# Opt-in: nv_config_manager_auth.rbac will create Django Groups referenced in the
+# mapping on the fly the first time a logging-in user matches them.  Default off --
+# operators are normally expected to create the Group rows up-front.
+NV_CONFIG_MANAGER_AUTO_CREATE_GROUPS: "true"
+{{- end }}
+{{- end }}
 {{- end -}}
 
 {{/*
@@ -119,4 +131,36 @@ uwsgi.ini: |
   
   ; Enable stats
   stats = 127.0.0.1:1717
+{{- end -}}
+
+{{/*
+Nautobot RBAC group-mapping ConfigMap data.
+
+Rendered into ``<nautobot>-group-mapping`` and also fed into the
+pod-template checksum annotation so ``helm upgrade`` rolls the server
+pods on any change.  The pod mounts this ConfigMap as a directory (no
+subPath), so live ``kubectl edit configmap`` edits propagate to the
+running pod within the kubelet sync window without a restart.
+
+See ``components/nautobot/nv_config_manager_auth/rbac.py`` for the consumer.
+*/}}
+{{- define "nv-config-manager.configmap.nautobot-group-mapping" -}}
+group-mapping.yaml: |
+  # IdP-group → Nautobot Django Group + ObjectPermission mapping consumed
+  # by nv_config_manager_auth.rbac on every JWT login.  See nautobot.rbac.groupMapping
+  # in values.yaml for the schema.  When the ``groups`` list is empty the
+  # feature is a no-op and NV_CONFIG_MANAGER_SUPERUSER_GROUPS continues to govern
+  # is_superuser on its own.
+  groups:
+  {{- range .Values.nautobot.rbac.groupMapping }}
+    - name: {{ required "nautobot.rbac.groupMapping[].name is required" .name | quote }}
+      {{- if hasKey . "is_superuser" }}
+      is_superuser: {{ .is_superuser }}
+      {{- end }}
+      {{- with .nautobot_permissions }}
+      nautobot_permissions:
+{{ toYaml . | indent 8 }}
+      {{- end }}
+  {{- else }} []
+  {{- end }}
 {{- end -}}

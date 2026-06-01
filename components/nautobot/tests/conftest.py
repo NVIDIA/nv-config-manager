@@ -73,12 +73,40 @@ def _django_stubs(monkeypatch):
         "django.contrib.auth",
         {"get_user_model": _get_user_model, "login": MagicMock()},
     )
+    # django.contrib.auth.models.Group + User (for nv_config_manager_auth.rbac)
+    mock_group_cls = MagicMock()
+    mock_group_cls.DoesNotExist = type("DoesNotExist", (Exception,), {})
+    mock_group_cls.objects = MagicMock()
+    stubs["django.contrib.auth.models"] = _stub_module(
+        "django.contrib.auth.models",
+        {"Group": mock_group_cls, "User": mock_user_cls},
+    )
     stubs["django.contrib.contenttypes"] = _stub_module("django.contrib.contenttypes")
     mock_ct = MagicMock()
     mock_ct.DoesNotExist = type("DoesNotExist", (Exception,), {})
     stubs["django.contrib.contenttypes.models"] = _stub_module(
         "django.contrib.contenttypes.models",
         {"ContentType": mock_ct},
+    )
+    # django.db.transaction (nv_config_manager_auth.rbac uses @transaction.atomic as a decorator)
+    stubs["django.db"] = _stub_module("django.db")
+
+    def _passthrough_atomic(func=None, *_a, **_kw):
+        if callable(func):
+            return func
+        return lambda f: f
+
+    stubs["django.db.transaction"] = _stub_module(
+        "django.db.transaction",
+        {"atomic": _passthrough_atomic},
+    )
+    # nautobot.users.models.ObjectPermission
+    mock_obj_perm = MagicMock()
+    mock_obj_perm.objects = MagicMock()
+    stubs["nautobot.users"] = _stub_module("nautobot.users")
+    stubs["nautobot.users.models"] = _stub_module(
+        "nautobot.users.models",
+        {"ObjectPermission": mock_obj_perm},
     )
     stubs["django.http"] = _stub_module(
         "django.http",

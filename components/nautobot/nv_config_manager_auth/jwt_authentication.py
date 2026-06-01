@@ -60,6 +60,11 @@ Configuration (environment variables on the Nautobot pod)::
     # superuser access on their next login.  When unset (default) the
     # feature is disabled and no user's privileges are touched.
     NV_CONFIG_MANAGER_SUPERUSER_GROUPS     = nautobot-admins,nv-config-manager-admins
+    # Optional path to a YAML group-mapping file (see :mod:`nv_config_manager_auth.rbac`)
+    # that drives Django Group + ObjectPermission sync per JWT login.  When
+    # missing or unset, group sync is disabled and only the
+    # ``NV_CONFIG_MANAGER_SUPERUSER_GROUPS`` superuser shortcut applies.
+    NV_CONFIG_MANAGER_GROUP_MAPPING_PATH   = /app/config/group-mapping.yaml
 
 Provider flags:
 
@@ -231,20 +236,51 @@ def _extract_groups(claims: dict[str, Any], claim: str) -> set[str]:
     return set()
 
 
-def _sync_superuser_status(user: Any, user_groups: set[str]) -> None:
+def _sync_superuser_status(
+    user: Any,
+    user_groups: set[str],
+    *,
+    extra_superuser_match: bool = False,
+    extra_superuser_enabled: bool = False,
+) -> None:
     """Reconcile Django ``is_superuser``/``is_staff`` against ``NV_CONFIG_MANAGER_SUPERUSER_GROUPS``.
 
     Called on every JWT login so privilege changes in the IdP propagate
-    without manual intervention.  No-op when the env var is unset, which
-    leaves any pre-existing superusers (e.g. the bootstrap ``admin`` user
-    created by the migration init container) untouched.
+    without manual intervention.  The function is a no-op only when
+    *neither* superuser source is configured -- i.e.
+    ``NV_CONFIG_MANAGER_SUPERUSER_GROUPS`` is unset **and**
+    ``extra_superuser_enabled`` is False -- so any pre-existing superusers
+    (e.g. the bootstrap ``admin`` user created by the migration init
+    container) are left untouched.
+
+    The two extra-source flags decouple "mapping-based RBAC is operational"
+    from "this specific user matches a superuser entry on this login", so
+    revocation works correctly: an operator who opts into group-mapping
+    RBAC gets ``extra_superuser_enabled=True`` regardless of whether the
+    *current* mapping happens to declare superuser entries, and a logging-in
+    user who no longer matches any superuser source flips
+    ``extra_superuser_match`` to False -- which together drive demotion.
+    Conflating these is how someone promoted on a previous login can stay
+    an accidental superuser after the IdP group is revoked or the entire
+    mapping is wiped.
+
+    ``extra_superuser_match`` -- this user matched an ``is_superuser: true``
+    mapping entry on this login.  Folded into the same promote-or-demote
+    decision as the env-var list.
+
+    ``extra_superuser_enabled`` -- the operator has opted into group-mapping
+    RBAC (see :func:`nv_config_manager_auth.rbac.mapping_is_configured`).
+    When True we reconcile ``is_superuser`` even if the loaded mapping is
+    currently empty (operator wrote ``groupMapping: []`` to revoke everyone)
+    or failed to parse (fail-closed): the demotion path must run so
+    previously-granted superusers cannot persist.
     """
     superuser_groups = _get_superuser_groups()
-    if not superuser_groups:
+    if not superuser_groups and not extra_superuser_enabled:
         return
 
     matched = user_groups & superuser_groups
-    should_be_superuser = bool(matched)
+    should_be_superuser = bool(matched) or extra_superuser_match
 
     fields: list[str] = []
     if user.is_superuser != should_be_superuser:
@@ -309,7 +345,45 @@ def _get_or_create_user_from_claims(
         user.save(update_fields=["email"])
 
     user_groups = _extract_groups(claims, provider.claim_groups)
-    _sync_superuser_status(user, user_groups)
+
+    # Avoid an import cycle at module load: ``rbac`` pulls in Nautobot/Django
+    # models which can't be imported until the app registry is ready.
+    from nv_config_manager_auth import rbac  # noqa: PLC0415 -- defer until first login
+
+    # Three states we must distinguish (truthiness of ``mapping`` alone is
+    # not enough -- valid-empty and load-failed both look "falsy" but mean
+    # different things):
+    #
+    # * unconfigured: operator never opted in -> skip sync, preserve any
+    #   manual is_superuser / Django Group state set outside the SSO flow.
+    # * configured + loaded OK: run sync.  Empty content means "operator
+    #   wrote ``groupMapping: []`` to revoke everyone"; pass 3 prunes
+    #   everything previously managed.
+    # * configured + load failed: fail closed.  Treat as empty so the
+    #   revoke/demote paths run -- a corrupt YAML must NOT silently
+    #   preserve previously-granted access.  Loud log helps the operator
+    #   spot it; once they fix the YAML, valid grants come back on the
+    #   next login.
+    mapping_configured = rbac.mapping_is_configured()
+    mapping: dict[str, dict[str, Any]] = {}
+    if mapping_configured:
+        try:
+            mapping = rbac.load_group_mapping()
+        except rbac.GroupMappingError:
+            log.exception(
+                "rbac: failed to load group mapping; treating as empty "
+                "(previously-granted access will be revoked on this login)"
+            )
+
+    extra_super = rbac.is_superuser_per_mapping(user_groups, mapping) if mapping else False
+    _sync_superuser_status(
+        user,
+        user_groups,
+        extra_superuser_match=extra_super,
+        extra_superuser_enabled=mapping_configured,
+    )
+    if mapping_configured:
+        rbac.sync_groups_and_permissions(user, user_groups, mapping=mapping)
 
     return user
 

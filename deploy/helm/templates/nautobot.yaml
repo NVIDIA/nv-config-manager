@@ -374,10 +374,7 @@ metadata:
   labels:
     {{- include "nv-config-manager.nautobot.labels" . | nindent 4 }}
 data:
-  group-mapping.yaml: |
-    # SSO Group Mapping for Nautobot
-    # Maps Azure AD groups to Nautobot permissions
-    groups: {}
+  {{- include "nv-config-manager.configmap.nautobot-group-mapping" . | nindent 2 }}
 
 # =============================================================================
 # NGINX ConfigMap for Nautobot
@@ -462,6 +459,15 @@ spec:
       annotations:
         checksum/nautobot-env: {{ include "nv-config-manager.configmap.nautobot-env" . | sha256sum }}
         checksum/nautobot-config: {{ include "nv-config-manager.configmap.nautobot-config" . | sha256sum }}
+        # Rolls the server pods deterministically on ``helm upgrade`` when
+        # nautobot.rbac.groupMapping changes.  We mount the ConfigMap as a
+        # directory now (no subPath, see ``volumes``/``volumeMounts``) so
+        # live edits also propagate within the kubelet sync window, but
+        # this annotation guarantees Helm-driven changes are picked up
+        # with predictable timing.  Celery worker and beat deployments
+        # don't process JWT logins and don't mount the ConfigMap, so they
+        # intentionally omit this checksum.
+        checksum/nautobot-group-mapping: {{ include "nv-config-manager.configmap.nautobot-group-mapping" . | sha256sum }}
     spec:
       {{- if .Values.global.imagePullSecrets }}
       imagePullSecrets:
@@ -675,9 +681,16 @@ spec:
               mountPath: /opt/nautobot/static
             - name: nautobot-media
               mountPath: /opt/nautobot/media
+            # Mount as a directory (not subPath) so kubelet syncs file
+            # updates in-place: ConfigMap edits propagate to the running
+            # pod within the kubelet sync window (~60s default) without a
+            # restart.  subPath bindmounts would freeze the content at pod
+            # start.  ``nv_config_manager_auth.rbac.load_group_mapping`` re-reads
+            # ``/app/config/group-mapping.yaml`` on every JWT login, so
+            # the new contents take effect on the next login post-sync.
             - name: group-mapping
-              mountPath: /app/config/group-mapping.yaml
-              subPath: group-mapping.yaml
+              mountPath: /app/config
+              readOnly: true
             {{- if .Values.nautobot.customJobs.enabled }}
             - name: custom-jobs
               mountPath: /opt/nautobot/jobs
