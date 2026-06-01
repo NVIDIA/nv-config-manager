@@ -106,7 +106,13 @@ git rebase --signoff HEAD~<number_of_commits>
    ```bash
    ./scripts/install-hooks.sh
    ```
-   This installs a pre-commit hook that auto-formats staged Python files with `ruff format` and verifies SPDX license headers are present in all source files.
+   This installs:
+
+   - `pre-commit`, which auto-formats staged Python files outside ignored/generated
+     directories with `ruff format` and verifies SPDX license headers in supported
+     source files.
+   - `commit-msg`, which rejects commit messages missing a DCO
+     `Signed-off-by: Name <email>` trailer.
 
 5. **Create a branch** for your changes:
    ```bash

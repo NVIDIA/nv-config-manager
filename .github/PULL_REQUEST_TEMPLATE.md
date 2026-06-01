@@ -6,6 +6,17 @@
 
 <!-- List the commands, manual checks, or screenshots used to validate the change. -->
 
+- [ ] Standard CI passes.
+- [ ] Kind integration passes, or this PR explains why it was not run.
+
+The kind integration test is manual due to taking ~30 min to complete. When the PR is ready for review,
+run Actions -> Kind Integration -> Run workflow against the copy-pr-bot generated
+`pull-request/<PR_NUMBER>` branch. Use the default `test_path` for the full suite,
+or narrow it only while debugging.
+
+Passing Kind Integration run:
+<!-- Paste the workflow run URL here. -->
+
 ## Checklist
 
 - [ ] I am familiar with the contributing guidelines in `CONTRIBUTING.md`.

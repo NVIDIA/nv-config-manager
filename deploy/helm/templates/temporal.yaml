@@ -139,7 +139,7 @@ spec:
       # Non-frontend services wait for frontend to be ready (which implies schema is set up)
       - name: wait-for-frontend
         image: "{{ $.Values.global.images.busybox.repository }}:{{ $.Values.global.images.busybox.tag }}"
-        command: ['sh', '-c', 'until nc -z {{ $temporalName }}-frontend-service {{ (index $.Values.temporal.services "frontend").port }}; do echo "waiting for {{ $temporalName }}-frontend-service"; sleep 2; done; echo "frontend is ready"']
+        command: ['sh', '-c', 'until nc -z {{ $temporalName }}-frontend-service.{{ $.Values.global.namespace }}.svc.cluster.local {{ (index $.Values.temporal.services "frontend").port }}; do echo "waiting for {{ $temporalName }}-frontend-service.{{ $.Values.global.namespace }}.svc.cluster.local"; sleep 2; done; echo "frontend is ready"']
       {{- end }}
       containers:
       - name: temporal-{{ $service }}
@@ -302,12 +302,12 @@ spec:
         - -c
         - |
           set -e
-          TEMPORAL_ADDR="{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc:{{ .Values.temporal.services.frontend.port }}"
+          TEMPORAL_ADDR="{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.temporal.services.frontend.port }}"
           MAX_RETRIES=30
           RETRY_DELAY=5
 
           echo "Waiting for temporal frontend..."
-          until nc -z {{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc {{ .Values.temporal.services.frontend.port }}; do
+          until nc -z {{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc.cluster.local {{ .Values.temporal.services.frontend.port }}; do
             echo "waiting for {{ $temporalName }}-frontend-service..."
             sleep 2
           done
@@ -375,7 +375,7 @@ spec:
           value: {{ .Values.global.environment }}
         {{- include "nv-config-manager.customLabelsEnv" . | nindent 8 }}
         - name: TEMPORAL_ADDRESS
-          value: "{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc:{{ .Values.temporal.services.frontend.port }}"
+          value: "{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.temporal.services.frontend.port }}"
         {{- if .Values.secrets.vault.configSecrets.enabled }}
         - name: NV_CONFIG_MANAGER_CONFIG_SECRET_PATH
           value: {{ include "nv-config-manager.vaultAgent.configSecretsFilePath" (dict "root" . "path" .Values.temporal.configManagerWorker.configSecrets.path) | quote }}
@@ -464,7 +464,7 @@ spec:
           value: {{ .Values.global.environment }}
         {{- include "nv-config-manager.customLabelsEnv" . | nindent 8 }}
         - name: TEMPORAL_ADDRESS
-          value: "{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc:{{ .Values.temporal.services.frontend.port }}"
+          value: "{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.temporal.services.frontend.port }}"
         ports:
         - containerPort: 9000
           name: http
@@ -579,7 +579,7 @@ spec:
         - name: ENVIRONMENT
           value: {{ .Values.global.environment }}
         - name: TEMPORAL_ADDRESS
-          value: "{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc:{{ .Values.temporal.services.frontend.port }}"
+          value: "{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.temporal.services.frontend.port }}"
         resources:
           {{- toYaml .Values.temporal.scheduler.resources | nindent 10 }}
         volumeMounts:
@@ -653,7 +653,7 @@ spec:
         - name: TEMPORAL_API_HOST
           value: {{ tpl .Values.temporal.gateway.api.hostname . | quote }}
         - name: TEMPORAL_ADDRESS
-          value: "{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc:{{ .Values.temporal.services.frontend.port }}"
+          value: "{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.temporal.services.frontend.port }}"
         volumeMounts:
         {{- include "nv-config-manager.vaultAgent.configManagerIniVolumeMount" . | nindent 8 }}
         {{- /* SPIFFE volume mount for outbound mTLS */ -}}
@@ -698,7 +698,7 @@ spec:
         imagePullPolicy: {{ .Values.global.imagePullPolicy | default "IfNotPresent" }}
         env:
         - name: TEMPORAL_ADDRESS
-          value: "{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc:{{ .Values.temporal.services.frontend.port }}"
+          value: "{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.temporal.services.frontend.port }}"
         {{- $codecEndpoint := .Values.temporal.devUi.codecEndpoint }}
         {{- if $codecEndpoint }}
         - name: TEMPORAL_CODEC_ENDPOINT

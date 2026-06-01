@@ -53,9 +53,10 @@ A scenario-first index into the docs. Pick the row that describes what you are t
 
 | I want to... | Go to |
 | :----------- | :---- |
+| Understand how the Config Manager service account is created, rendered onto devices, and used by workflows. | [Device Authentication](overview/device-authentication.mdx) |
 | Rotate a user account's password on every device at a site. | [Site Password Rotation](user-guides/site-password-rotation/index.mdx) |
 | Rotate a user account's password on one device. | [Device Password Rotation](user-guides/device-password-rotation/index.mdx) |
-| Understand the pre-work (Vault / K8s secret update + re-render) before running a rotation. | [Site Password Rotation → Prerequisites](user-guides/site-password-rotation/index.mdx#prerequisites) |
+| Understand the pre-work (Vault/OpenBao update, mapping change, and re-render) before running a rotation. | [Device Authentication](overview/device-authentication.mdx#password-rotation-workflows), [Site Password Rotation → Prerequisites](user-guides/site-password-rotation/index.mdx#prerequisites) |
 
 ## OS and firmware upgrades
 
@@ -88,6 +89,7 @@ A scenario-first index into the docs. Pick the row that describes what you are t
 | :----------- | :---- |
 | Understand how RBAC gates each workflow and admin endpoint, and query the current RBAC mapping. | [Workflow API Reference](api:temporal-api) — the `/rbac-config-status` endpoint returns the active per-workflow `read_roles` / `execute_roles` mapping; per-workflow endpoints document the role each one requires. |
 | Configure workflow RBAC at install time (admin roles, default read/execute roles, per-workflow overrides). | [TUI Wizard Reference - Workflows](install/tui-wizard-reference.mdx#9-workflows) |
+| Configure or troubleshoot logs, metrics, PodMonitors, and the local observability stack. | [Observability](overview/observability.mdx) |
 
 ## Hosting and offline operation
 

@@ -30,7 +30,7 @@ async def test_healthcheck(client):
 @pytest.mark.asyncio
 async def test_whoami_requires_auth(client):
     """Test authenticated identity probe endpoint."""
-    response = await client.get("/whoami")
+    response = await client.get("/whoami", headers={"X-Auth-Request-Email": ""})
     assert response.status_code == 403
 
     response = await client.get("/whoami", headers={"X-Auth-Request-Email": "admin@example.com"})

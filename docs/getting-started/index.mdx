@@ -13,6 +13,8 @@ Use Config Manager when you need to:
 - Review and approve Day-2 configuration changes before they reach devices.
 - Run operational workflows such as backup, deploy, cable validation, password rotation, OS upgrades, and reprovisioning.
 
+The project's GitHub repository is [https://github.com/nvidia/nv-config-manager](https://github.com/nvidia/nv-config-manager).
+
 ## Primary Personas
 
 | Persona | Primary work |
@@ -27,7 +29,7 @@ Use Config Manager when you need to:
 | [Getting Started with Config Manager](../install/index.mdx) | Deploy the Helm release on Kind or a target Kubernetes cluster, choose sizing, hostnames, services, and TLS. | Confirm the running UIs and APIs are reachable after install. |
 | [Airgapped Deployment](../install/install-airgapped.mdx) | Build, transfer, and install the offline bundle through an internal registry. | Use the installed platform the same way as a connected deployment. |
 | [Nautobot Integration](../nautobot/index.mdx) | Configure bundled or external Nautobot, bootstrap jobs, tokens, and source-of-truth data loading. | Treat Nautobot as the source of truth for device, interface, cabling, IPAM, VLAN, and config context data. |
-| Device authentication | Seed per-site network secrets and plan rotations through Kubernetes secrets or ESO. | Run and review [device](../user-guides/device-password-rotation/index.mdx) or [site password rotation](../user-guides/site-password-rotation/index.mdx) workflows. |
+| Device authentication | Seed per-site network secrets in Vault/OpenBao through ESO, or Kubernetes secrets for local development. | Run and review [device](../user-guides/device-password-rotation/index.mdx) or [site password rotation](../user-guides/site-password-rotation/index.mdx) workflows. |
 | [Render Service](../render/index.mdx) | Enable template plugin paths, storage, and event plumbing. | Review intended config output and trigger safe render checks through Nautobot changes. |
 | [Config Store](../config-store/index.mdx) | Provision storage, API, and UI exposure. | Browse intended and backup configs, inspect diffs, and confirm rendered output exists. |
 | [Temporal Workflows](../temporal/index.mdx) | Configure Temporal, worker pools, and workflow RBAC. | Launch, approve, retry, reject, or terminate workflow runs. |

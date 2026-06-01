@@ -1,0 +1,30 @@
+{{- if and .Values.gateway.enabled (eq (.Values.ingress.type | default "envoyGateway") "envoyGateway") }}
+{{- $policyName := include "nv-config-manager.componentName" (dict "root" . "component" "gateway-client-traffic") }}
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: ClientTrafficPolicy
+metadata:
+  name: {{ $policyName }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: {{ .Values.gateway.name }}
+  headers:
+    earlyRequestHeaders:
+      remove:
+        # Strip spoofable identity headers before auth/routing. SecurityPolicy
+        # may add trusted X-Auth-Request-* headers later from verified JWT/OIDC claims.
+        - ssl-client-cert
+        - X-Auth-Request-Email
+        - X-Auth-Request-User
+        - X-Auth-Request-Groups
+        - X-Auth-Request-Preferred-Username
+        - X-Auth-Request-Name
+        - X-Auth-Request-Roles
+        - X-Auth-Request-Subject
+        - X-Auth-Request-Access-Token
+{{- end }}

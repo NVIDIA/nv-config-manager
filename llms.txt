@@ -1,0 +1,51 @@
+# NVIDIA Config Manager
+
+> NVIDIA Config Manager - open-source platform for datacenter network automation and configuration lifecycle management
+
+NVIDIA Config Manager combines Nautobot inventory, event-driven rendering, ZTP, DHCP, Temporal workflows, and configuration storage behind a single deployable platform.
+
+## Components
+
+- `src/nv_config_manager/`: Python services and shared libraries for core platform behavior
+- `src/tests/`: Python unit and integration tests
+- `installer/`: Interactive TUI and headless CLI installer (`nv-config-manager-installer`)
+- `deploy/helm/`: Helm chart and environment overlays for Kubernetes deployment
+- `deploy/airgapped/`: Air-gapped packaging and registry upload tooling
+- `ui/`: React/Next.js user interface
+- `docs/`: Fern documentation source and generated API specs
+- `components/`: Supporting container assets (including Nautobot and service components)
+
+## Key Concepts
+
+- Nautobot is the source of truth for topology and inventory data
+- Render and workflow consumers process events and produce device configuration artifacts
+- Temporal orchestrates long-running network operations and approval-driven workflows
+- ZTP and DHCP services support device onboarding and provisioning paths
+- Config Store persists rendered, intended, and backup configurations
+- Installer-first deployment model: TUI and CLI share one config schema (`nv-config-manager-install.yaml`)
+- Kubernetes deployment supports local Kind, standard clusters, and air-gapped environments
+
+## Documentation
+
+- `docs/overview/architecture.mdx` - platform architecture and service relationships
+- `docs/install/index.mdx` - installation paths and installer workflow
+- `docs/getting-started/local-development-quick-start.mdx` - local setup and development bootstrap
+- `docs/network-ztp/index.mdx` - ZTP architecture and API overview
+- `docs/dhcp/index.mdx` - DHCP service behavior and Nautobot modeling
+- `docs/temporal/index.mdx` - workflow platform, APIs, and workflow catalog
+- `docs/render/index.mdx` - rendering service and template expansion
+- `docs/config-store/index.mdx` - configuration persistence architecture
+- `docs/nautobot/index.mdx` - Nautobot integration and data model references
+- `docs/install/install-airgapped.mdx` - offline deployment flow
+
+## Tech Stack
+
+- Python 3.11+ with `uv` for dependency and tooling execution
+- FastAPI-based service APIs and Python workers
+- Temporal for workflow orchestration
+- Nautobot as network source of truth
+- NATS/JetStream for event transport
+- PostgreSQL-backed configuration and workflow persistence
+- Helm 3 and Kubernetes for deployment
+- React/Next.js for UI
+- Fern for documentation publishing

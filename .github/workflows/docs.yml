@@ -1,23 +1,17 @@
 name: Docs
 
 on:
-  pull_request:
-    paths:
-      - "docs/**"
-      - "scripts/generate_openapi.py"
-      - "installer/scripts/screenshot_tui.py"
-      - "Makefile"
-      - ".github/workflows/docs.yml"
   push:
     branches:
       - main
+      - "pull-request/*"
     paths:
+      - "deploy/helm/dashboards/**"
       - "docs/**"
       - "scripts/generate_openapi.py"
       - "installer/scripts/screenshot_tui.py"
       - "Makefile"
       - ".github/workflows/docs.yml"
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -33,9 +27,13 @@ env:
 jobs:
   lint:
     name: Lint Docs
-    runs-on: ubuntu-24.04
+    runs-on: linux-amd64-cpu4
     steps:
-      - uses: actions/checkout@v4
+      - uses: &actions_checkout actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+      - name: Setup proxy cache
+        uses: &setup_proxy_cache nv-gha-runners/setup-proxy-cache@14229018fe157c83e03c008f27d183d8e99bc67c
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -47,20 +45,29 @@ jobs:
           enable-cache: true
       - run: uv sync --frozen
       - run: make openapi-check
+      - run: make docs-assets-check
       - run: make docs-lint
       - run: make docs-lint-fern
 
   preview:
     name: Preview Docs
     needs: lint
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-24.04
+    if: startsWith(github.ref, 'refs/heads/pull-request/')
+    runs-on: linux-amd64-cpu4
     continue-on-error: true
     permissions:
       contents: read
+      issues: write
       pull-requests: write
     steps:
-      - uses: actions/checkout@v4
+      - name: Get PR info
+        id: get-pr-info
+        uses: nv-gha-runners/get-pr-info@090577647b8ddc4e06e809e264f7881650ecdccf
+      - uses: *actions_checkout
+        with:
+          persist-credentials: false
+      - name: Setup proxy cache
+        uses: *setup_proxy_cache
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -70,7 +77,7 @@ jobs:
         id: preview
         env:
           FERN_TOKEN: ${{ secrets.FERN_TOKEN }}
-          PREVIEW_ID: ${{ github.event.repository.name }}-pr-${{ github.event.pull_request.number }}
+          PREVIEW_ID: ${{ github.event.repository.name }}-pr-${{ fromJSON(steps.get-pr-info.outputs.pr-info).number }}
         run: |
           set -euo pipefail
           if [ -z "${FERN_TOKEN:-}" ]; then
@@ -84,11 +91,13 @@ jobs:
           }
           printf '%s\n' "$output"
 
-          preview_url="$(printf '%s\n' "$output" | sed -nE 's#.*(https://[^[:space:]]+-preview-[^[:space:]]+).*#\1#p' | head -n 1)"
+          preview_url="$(printf '%s\n' "$output" | sed -nE 's#.*(https://[^[:space:])]+-preview-[^[:space:])]+).*#\1#p' | head -n 1)"
           if [ -z "$preview_url" ]; then
             echo "Fern preview completed, but no preview URL was found."
             exit 1
           fi
+          # Remove accidental zero-width space bytes if present in CLI output.
+          preview_url="$(printf '%s' "$preview_url" | tr -d '\342\200\213')"
 
           echo "preview_url=${preview_url}" >> "$GITHUB_OUTPUT"
           echo "Preview URL: ${preview_url}"
@@ -96,7 +105,7 @@ jobs:
         if: steps.preview.outputs.preview_url != ''
         env:
           GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_NUMBER: ${{ fromJSON(steps.get-pr-info.outputs.pr-info).number }}
           PREVIEW_URL: ${{ steps.preview.outputs.preview_url }}
         run: |
           set -euo pipefail
@@ -121,9 +130,13 @@ jobs:
     name: Publish Docs
     needs: lint
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-24.04
+    runs-on: linux-amd64-cpu4
     steps:
-      - uses: actions/checkout@v4
+      - uses: *actions_checkout
+        with:
+          persist-credentials: false
+      - name: Setup proxy cache
+        uses: *setup_proxy_cache
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}

@@ -6,13 +6,13 @@ NVIDIA Config Manager is an open-source network automation and configuration man
 
 | Service | Description |
 | :------ | :---------- |
-| **[ZTP](developer-docs/ztp.md)** | Zero Touch Provisioning, boot scripts, OS image delivery, and provisioning status updates |
-| **[DHCP](developer-docs/dhcp.md)** | Kea DHCP configuration generation from Nautobot data |
-| **[Temporal](developer-docs/temporal.md)** | Long-running network operations and approval workflows |
-| **[Render](developer-docs/render.md)** | Template rendering and event processing from Nautobot and workflow events |
-| **[Config Store](developer-docs/config-store.md)** | PostgreSQL-backed rendered, intended, and backup configuration storage |
-| **[UI](developer-docs/ui.md)** | React/Next.js interface for workflows and configuration browsing |
-| **[Nautobot](developer-docs/nautobot.md)** | Network source of truth, custom jobs, and event publication |
+| **[ZTP](https://docs.nvidia.com/switch-infrastructure/config-manager/services/network-ztp/overview)** | Zero Touch Provisioning, boot scripts, OS image delivery, and provisioning status updates |
+| **[DHCP](https://docs.nvidia.com/switch-infrastructure/config-manager/services/dhcp/overview)** | Kea DHCP configuration generation from Nautobot data |
+| **[Temporal](https://docs.nvidia.com/switch-infrastructure/config-manager/services/temporal/overview)** | Long-running network operations and approval workflows |
+| **[Render](https://docs.nvidia.com/switch-infrastructure/config-manager/services/render/overview)** | Template rendering and event processing from Nautobot and workflow events |
+| **[Config Store](https://docs.nvidia.com/switch-infrastructure/config-manager/services/config-store/overview)** | PostgreSQL-backed rendered, intended, and backup configuration storage |
+| **[UI](https://docs.nvidia.com/switch-infrastructure/config-manager/getting-started/which-interface-should-i-use)** | React/Next.js interface for workflows and configuration browsing |
+| **[Nautobot](https://docs.nvidia.com/switch-infrastructure/config-manager/config-manager/nautobot)** | Network source of truth, custom jobs, and event publication |
 
 ## Installer
 
@@ -51,6 +51,29 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 uv sync --dev
 ./scripts/install-hooks.sh
 ```
+
+### Git Hooks
+
+Install the repository hooks after cloning and whenever hook scripts change:
+
+```bash
+./scripts/install-hooks.sh
+```
+
+Installed hooks:
+
+- `pre-commit`: formats all staged Python files outside ignored/generated
+  directories with `uv run ruff format`, re-stages those files, and checks SPDX
+  license headers for supported source files (`.py`, `.ts`, `.tsx`, `.js`,
+  `.jsx`, `.mjs`, `.cjs`, and `.go`) under `src/`, `ui/src/`, `ui/tests/`,
+  `components/`, `db/migrations/`, `scripts/`, `development/`,
+  `installer/src/`, `installer/tests/`, and `installer/scripts/`.
+- `commit-msg`: rejects commits that do not include a valid DCO
+  `Signed-off-by: Name <email>` trailer. Use `git commit -s` or
+  `git commit --amend -s` to add the trailer automatically.
+
+Local hooks can be skipped with `git commit --no-verify`, so the organization DCO
+app remains the merge-time enforcement gate in CI.
 
 For UI work:
 
@@ -204,7 +227,7 @@ For demos or clusters without a registry, preload image tarballs onto the target
 ./manifests/load-airgapped-images.sh ./images --daemonset
 ```
 
-See [Air-Gapped Installation](developer-docs/airgapped-install.md) for the full offline workflow.
+See [Air-Gapped Installation](docs/install/install-airgapped.mdx) for the full offline workflow.
 
 ## Repository Structure
 
@@ -219,7 +242,6 @@ nv-config-manager/
 ├── deploy/helm/                 # Helm chart and values overlays
 ├── deploy/airgapped/            # Offline bundle tooling
 ├── docs/                        # Fern documentation site and generated API specs
-├── developer-docs/              # Developer and operator documentation
 ├── build/                       # Dockerfiles
 ├── db/                          # Alembic migrations
 ├── Makefile                     # Development commands
@@ -306,17 +328,18 @@ The `svc-*` hostnames, such as `svc-workflow.<base-hostname>`, accept bearer tok
 
 - [Fern docs source](docs/README.md)
 - [Installer](installer/README.md)
-- [Architecture](developer-docs/architecture.md)
-- [ZTP](developer-docs/ztp.md)
-- [DHCP](developer-docs/dhcp.md)
-- [Temporal](developer-docs/temporal.md)
-- [Render](developer-docs/render.md)
-- [Config Store](developer-docs/config-store.md)
-- [UI](developer-docs/ui.md)
-- [Nautobot](developer-docs/nautobot.md)
-- [Logging and Observability](developer-docs/logging.md)
-- [Remote VM Deployment](developer-docs/remote-vm-deployment.md)
-- [Air-Gapped Installation](developer-docs/airgapped-install.md)
+- [Architecture](docs/overview/architecture.mdx)
+- [ZTP](docs/network-ztp/index.mdx)
+- [DHCP](docs/dhcp/index.mdx)
+- [Temporal](docs/temporal/index.mdx)
+- [Render](docs/render/index.mdx)
+- [Config Store](docs/config-store/index.mdx)
+- [UI and API interfaces](docs/getting-started/interfaces.mdx)
+- [Nautobot](docs/nautobot/index.mdx)
+- [Device Authentication](docs/overview/device-authentication.mdx)
+- [Observability](docs/overview/observability.mdx)
+- [Local Development Quick Start](docs/getting-started/local-development-quick-start.mdx)
+- [Air-Gapped Installation](docs/install/install-airgapped.mdx)
 
 ## External Dependencies
 
@@ -334,8 +357,9 @@ Developer Certificate of Origin sign-off process described there.
 1. Fork the repository.
 2. Create a feature branch.
 3. Make changes.
-4. Run tests and linting with `make test lint`.
-5. Submit a pull request using the repository PR template.
+4. Install local hooks with `./scripts/install-hooks.sh`.
+5. Run tests and linting with `make test lint`.
+6. Submit a pull request using the repository PR template.
 
 Please also follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
