@@ -2024,28 +2024,62 @@ class AirSimulationManager:
             )
 
             assert proc.stdout is not None
-            for line in proc.stdout:
-                line = line.rstrip("\n")
-                LOG.info("[oob-mgmt-server] %s", line)
+            last_status_check = 0.0
+            done_seen_at: float | None = None
 
-                if self._SETUP_COMPLETE_MARKER in line:
-                    LOG.info("\nCloud-init setup finished successfully.")
-                    proc.terminate()
-                    proc.wait(timeout=5)
-                    return True
+            while time.monotonic() < deadline:
+                ready, _, _ = select.select([proc.stdout], [], [], 1.0)
+                if ready:
+                    line = proc.stdout.readline()
+                    if line == "":
+                        LOG.warning(
+                            "Log tail ended unexpectedly. SSH session "
+                            "may have dropped -- check the server manually."
+                        )
+                        proc.wait(timeout=5)
+                        return False
 
-                if time.monotonic() >= deadline:
-                    LOG.warning(
-                        "\nTimed out waiting for setup to complete. Check the server manually."
-                    )
+                    line = line.rstrip("\n")
+                    LOG.info("[oob-mgmt-server] %s", line)
+
+                    if self._SETUP_COMPLETE_MARKER in line:
+                        LOG.info("\nCloud-init setup finished successfully.")
+                        proc.terminate()
+                        proc.wait(timeout=5)
+                        return True
+
+                now = time.monotonic()
+                if now - last_status_check < 10:
+                    continue
+                last_status_check = now
+
+                status = subprocess.run(
+                    [*ssh_base, "cloud-init", "status", "--long"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                status_text = f"{status.stdout}\n{status.stderr}".strip()
+                if "status: error" in status_text or "extended_status: error" in status_text:
+                    LOG.warning("Cloud-init reported an error:\n%s", status_text)
                     proc.terminate()
                     proc.wait(timeout=5)
                     return False
 
-            LOG.warning(
-                "Log tail ended unexpectedly. SSH session "
-                "may have dropped -- check the server manually."
-            )
+                if "status: done" in status_text:
+                    done_seen_at = done_seen_at or now
+                    if now - done_seen_at > 5:
+                        LOG.warning(
+                            "Cloud-init completed without the setup-complete marker. "
+                            "Check /var/log/nvcm-setup.log on the server."
+                        )
+                        proc.terminate()
+                        proc.wait(timeout=5)
+                        return False
+
+            LOG.warning("\nTimed out waiting for setup to complete. Check the server manually.")
+            proc.terminate()
+            proc.wait(timeout=5)
             return False
 
         except KeyboardInterrupt:

@@ -27,15 +27,18 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import io
 import os
 import re
 import sys
 import time
 from collections.abc import Callable
+from html import unescape
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
+from rich.console import Console
 from textual.widgets import Button, Static
 
 from nv_config_manager_installer.air_sim.constants import (
@@ -48,15 +51,15 @@ from nv_config_manager_installer.air_sim.sim_config import SimConfig
 from nv_config_manager_installer.tui.air_sim.app import SECTION_LABELS, NVCMAirSimApp
 from nv_config_manager_installer.tui.air_sim.screens.launch import (
     LaunchScreen,
-    _ActivityWidget,
     _clean_dhcp_line,
     _clean_ztp_line,
     _PodStatusWidget,
     _StepListWidget,
+    _StreamTabsWidget,
 )
 
-COLS = 180
-ROWS = 70
+DEFAULT_COLS = 180
+DEFAULT_ROWS = 70
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUT_DIR = REPO_ROOT / "docs" / "assets" / "images" / "air-sim"
 
@@ -65,6 +68,44 @@ MOCK_PORT = 17117
 MOCK_SIM_ID = "7dfde74b-ce46-4a29-97dc-58294ee39390"
 MOCK_DEPLOY_LOG = Path("/tmp/nvcm-deploy-20260530-000000.log")
 TRUFFLEHOG_IGNORE_COMMENT = "<!-- trufflehog:ignore - public AIR demo VM password -->"
+_SVG_CHAR_HEIGHT = 20.0
+_SVG_LINE_HEIGHT = 24.4
+_SVG_LINE_WIDTH = 1.6
+_SVG_LINE_GLYPHS = frozenset("─━│┌┐└┘├┤┬┴┼╸╺▁▃▔")
+_LOCAL_TERMINAL_SVG_FORMAT = """<svg class="nvcm-tui-screenshot" viewBox="0 0 {terminal_width} {terminal_height}" xmlns="http://www.w3.org/2000/svg">
+    <!-- Generated with Rich https://www.textualize.io -->
+    <style>
+    .nvcm-tui-screenshot {{
+        background: #121212;
+    }}
+
+    .{unique_id}-matrix {{
+        font-family: "Ubuntu Sans Mono", "Ubuntu Mono", "DejaVu Sans Mono", "Liberation Mono", monospace;
+        font-size: {char_height}px;
+        line-height: {line_height}px;
+        font-variant-east-asian: full-width;
+        text-rendering: geometricPrecision;
+    }}
+
+    {styles}
+    </style>
+
+    <defs>
+    <clipPath id="{unique_id}-clip-terminal">
+      <rect x="0" y="0" width="{terminal_width}" height="{terminal_height}" />
+    </clipPath>
+    {lines}
+    </defs>
+
+    <rect fill="#121212" x="0" y="0" width="{terminal_width}" height="{terminal_height}" />
+    <g clip-path="url(#{unique_id}-clip-terminal)">
+    {backgrounds}
+    <g class="{unique_id}-matrix">
+    {matrix}
+    </g>
+    </g>
+</svg>
+"""
 
 
 def _slug(label: str) -> str:
@@ -72,7 +113,7 @@ def _slug(label: str) -> str:
 
 
 def _save(output_dir: Path, name: str, svg: str) -> None:
-    (output_dir / name).write_text(_allowlist_demo_password(svg))
+    (output_dir / name).write_text(_allowlist_demo_password(_solidify_box_glyphs(svg)))
     print(f"  {name}")
 
 
@@ -96,13 +137,160 @@ def _allowlist_demo_password(svg: str) -> str:
     return "".join(lines)
 
 
+def _solidify_box_glyphs(svg: str) -> str:
+    """Replace browser-font-sensitive terminal box glyphs with crisp SVG shapes."""
+
+    def _replace(match: re.Match[str]) -> str:
+        attrs = _parse_svg_attrs(match.group("attrs"))
+        raw_text = unescape(match.group("text"))
+        if not raw_text or any(char not in _SVG_LINE_GLYPHS for char in raw_text):
+            return match.group(0)
+        if not {"class", "x", "y", "textLength"}.issubset(attrs):
+            return match.group(0)
+
+        x = float(attrs["x"])
+        baseline = float(attrs["y"])
+        width = float(attrs["textLength"])
+        cell_width = width / len(raw_text)
+        class_name = attrs["class"]
+        clip_path = attrs.get("clip-path")
+        cell_top = baseline - _SVG_CHAR_HEIGHT
+        cell_mid = cell_top + (_SVG_LINE_HEIGHT / 2)
+        parts: list[str] = []
+
+        for index, char in enumerate(raw_text):
+            cell_x = x + (index * cell_width)
+            cell_mid_x = cell_x + (cell_width / 2)
+            parts.extend(
+                _box_glyph_rects(
+                    char,
+                    cell_x=cell_x,
+                    cell_mid_x=cell_mid_x,
+                    cell_top=cell_top,
+                    cell_mid=cell_mid,
+                    cell_width=cell_width,
+                    class_name=class_name,
+                    clip_path=clip_path,
+                )
+            )
+        return "".join(parts)
+
+    return re.sub(
+        r"<text (?P<attrs>[^>]*)>(?P<text>.*?)</text>",
+        _replace,
+        svg,
+        flags=re.DOTALL,
+    )
+
+
+def _parse_svg_attrs(attrs: str) -> dict[str, str]:
+    return dict(re.findall(r'([\w-]+)="([^"]*)"', attrs))
+
+
+def _box_glyph_rects(
+    char: str,
+    *,
+    cell_x: float,
+    cell_mid_x: float,
+    cell_top: float,
+    cell_mid: float,
+    cell_width: float,
+    class_name: str,
+    clip_path: str | None,
+) -> list[str]:
+    clip_attr = f' clip-path="{clip_path}"' if clip_path else ""
+
+    def rect(x: float, y: float, width: float, height: float) -> str:
+        return (
+            f'<rect class="{class_name}" x="{_fmt(x)}" y="{_fmt(y)}" '
+            f'width="{_fmt(width)}" height="{_fmt(height)}"'
+            f'{clip_attr} shape-rendering="crispEdges"/>'
+        )
+
+    stroke = _SVG_LINE_WIDTH
+    half_stroke = stroke / 2
+    shapes: list[str] = []
+
+    if char in {"─", "━", "╸", "╺"}:
+        shapes.append(rect(cell_x, cell_mid - half_stroke, cell_width, stroke))
+    elif char == "│":
+        shapes.append(rect(cell_mid_x - half_stroke, cell_top, stroke, _SVG_LINE_HEIGHT))
+    elif char == "┌":
+        shapes.append(rect(cell_mid_x - half_stroke, cell_mid, stroke, _SVG_LINE_HEIGHT / 2))
+        shapes.append(rect(cell_mid_x, cell_mid - half_stroke, cell_width / 2, stroke))
+    elif char == "┐":
+        shapes.append(rect(cell_mid_x - half_stroke, cell_mid, stroke, _SVG_LINE_HEIGHT / 2))
+        shapes.append(rect(cell_x, cell_mid - half_stroke, cell_width / 2, stroke))
+    elif char == "└":
+        shapes.append(rect(cell_mid_x - half_stroke, cell_top, stroke, _SVG_LINE_HEIGHT / 2))
+        shapes.append(rect(cell_mid_x, cell_mid - half_stroke, cell_width / 2, stroke))
+    elif char == "┘":
+        shapes.append(rect(cell_mid_x - half_stroke, cell_top, stroke, _SVG_LINE_HEIGHT / 2))
+        shapes.append(rect(cell_x, cell_mid - half_stroke, cell_width / 2, stroke))
+    elif char == "├":
+        shapes.append(rect(cell_mid_x - half_stroke, cell_top, stroke, _SVG_LINE_HEIGHT))
+        shapes.append(rect(cell_mid_x, cell_mid - half_stroke, cell_width / 2, stroke))
+    elif char == "┤":
+        shapes.append(rect(cell_mid_x - half_stroke, cell_top, stroke, _SVG_LINE_HEIGHT))
+        shapes.append(rect(cell_x, cell_mid - half_stroke, cell_width / 2, stroke))
+    elif char == "┬":
+        shapes.append(rect(cell_x, cell_mid - half_stroke, cell_width, stroke))
+        shapes.append(rect(cell_mid_x - half_stroke, cell_mid, stroke, _SVG_LINE_HEIGHT / 2))
+    elif char == "┴":
+        shapes.append(rect(cell_x, cell_mid - half_stroke, cell_width, stroke))
+        shapes.append(rect(cell_mid_x - half_stroke, cell_top, stroke, _SVG_LINE_HEIGHT / 2))
+    elif char == "┼":
+        shapes.append(rect(cell_x, cell_mid - half_stroke, cell_width, stroke))
+        shapes.append(rect(cell_mid_x - half_stroke, cell_top, stroke, _SVG_LINE_HEIGHT))
+    elif char == "▔":
+        shapes.append(rect(cell_x, cell_top + 2.0, cell_width, stroke))
+    elif char == "▁":
+        shapes.append(rect(cell_x, cell_top + _SVG_LINE_HEIGHT - 3.0, cell_width, stroke))
+    elif char == "▃":
+        shapes.append(
+            rect(cell_x, cell_top + (_SVG_LINE_HEIGHT * 0.68), cell_width, _SVG_LINE_HEIGHT * 0.24)
+        )
+    return shapes
+
+
+def _fmt(value: float) -> str:
+    return f"{value:.2f}".rstrip("0").rstrip(".")
+
+
 def _shot(app: NVCMAirSimApp, title: str) -> str:
     no_color = os.environ.pop("NO_COLOR", None)
     try:
-        return app.export_screenshot(title=f"NVCM AIR Sim Wizard - {title}")
+        return _export_app_viewport_svg(app, title=f"NVCM AIR Sim Wizard - {title}")
     finally:
         if no_color is not None:
             os.environ["NO_COLOR"] = no_color
+
+
+def _export_app_viewport_svg(app: NVCMAirSimApp, *, title: str) -> str:
+    """Export the TUI viewport without Rich's default macOS-style terminal chrome."""
+    assert app._driver is not None, "App must be running"
+    width, height = app.size
+    console = Console(
+        width=width,
+        height=height,
+        file=io.StringIO(),
+        force_terminal=True,
+        color_system="truecolor",
+        record=True,
+        legacy_windows=False,
+        safe_box=False,
+    )
+    screen_render = app.screen._compositor.render_update(
+        full=True,
+        screen_stack=app.app._background_screens,
+        simplify=False,
+    )
+    console.print(screen_render)
+    return console.export_svg(
+        title=title,
+        code_format=_LOCAL_TERMINAL_SVG_FORMAT,
+        font_aspect_ratio=0.61,
+    )
 
 
 async def _stabilize(pilot: object, pauses: int = 2, delay: float = 0.1) -> None:
@@ -482,10 +670,11 @@ def _set_launch_identity(launch: LaunchScreen) -> None:
 
 
 def _populate_logs(launch: LaunchScreen, *, focus: str = "deploy") -> None:
-    viewer = launch.query_one("#activity-viewer", _ActivityWidget)
-    viewer._lines.clear()
-    viewer._seen.clear()
-    viewer.query_one("#activity-lines", Static).update("Waiting for activity...")
+    viewer = launch.query_one("#stream-viewer", _StreamTabsWidget)
+    for buffer in viewer._buffers.values():
+        buffer.clear()
+    for seen in viewer._seen_service_lines.values():
+        seen.clear()
 
     deploy_lines = _DEPLOY_LOG_LINES
     dhcp_lines = _DHCP_LOG_LINES
@@ -503,6 +692,7 @@ def _populate_logs(launch: LaunchScreen, *, focus: str = "deploy") -> None:
         entries.extend((line, "dhcp") for line in dhcp_lines[:3])
         entries.extend((line, "ztp") for line in ztp_lines[:2])
     viewer.append_lines(entries)
+    viewer.select_stream(focus)
 
 
 def _populate_ssh_and_pods(
@@ -510,12 +700,17 @@ def _populate_ssh_and_pods(
     *,
     provisioned: str = "4/6",
     pending: str = "Pending: tan-leaf-04, tan-leaf-05",
+    show_access: bool = True,
+    nautobot_ready: bool = True,
 ) -> None:
     launch._host = MOCK_HOST
     launch._port = MOCK_PORT
-    launch._show_ssh_command(_ssh_cmd())
-    launch._show_proxy_panel(MOCK_HOST, MOCK_PORT)
+    launch._ssh_cmd_text = _ssh_cmd()
+    if show_access:
+        launch._show_proxy_panel(MOCK_HOST, MOCK_PORT, nautobot_ready=nautobot_ready)
     pod_panel = launch.query_one("#pod-status-panel", _PodStatusWidget)
+    pod_panel._host = MOCK_HOST
+    pod_panel._port = MOCK_PORT
     pod_panel._update_table(_MOCK_PODS)
     pod_panel.query_one("#prov-count", Static).update(f"Switches Provisioned: {provisioned}")
     pod_panel.query_one("#prov-detail", Static).update(pending)
@@ -536,7 +731,12 @@ def _populate_running_launch(launch: LaunchScreen) -> None:
         launch._status_text("[yellow]Running...[/yellow]")
     )
     _set_step_states(launch, running_step="run-deploy")
-    _populate_ssh_and_pods(launch, provisioned="0/6", pending="Waiting for first ZTP callback")
+    _populate_ssh_and_pods(
+        launch,
+        provisioned="0/6",
+        pending="Waiting for first ZTP callback",
+        nautobot_ready=False,
+    )
     _populate_logs(launch)
 
 
@@ -580,7 +780,7 @@ def _populate_complete_launch(launch: LaunchScreen) -> None:
     _populate_ssh_and_pods(launch, provisioned="6/6", pending="")
     launch.query_one("#prov-detail", Static).update("")
     _populate_logs(launch)
-    launch._show_proxy_panel(MOCK_HOST, MOCK_PORT)
+    launch.query_one("#stream-viewer", _StreamTabsWidget).select_stream("access")
 
 
 def _populate_failure_launch(launch: LaunchScreen) -> None:
@@ -596,10 +796,11 @@ def _populate_failure_launch(launch: LaunchScreen) -> None:
         provisioned="0/6",
         pending="Post-deploy topology job failed",
     )
-    viewer = launch.query_one("#activity-viewer", _ActivityWidget)
-    viewer._lines.clear()
-    viewer._seen.clear()
-    viewer.query_one("#activity-lines", Static).update("Waiting for activity...")
+    viewer = launch.query_one("#stream-viewer", _StreamTabsWidget)
+    for buffer in viewer._buffers.values():
+        buffer.clear()
+    for seen in viewer._seen_service_lines.values():
+        seen.clear()
     viewer.append_lines(
         [
             (line, "deploy")
@@ -627,6 +828,7 @@ def _populate_failure_launch(launch: LaunchScreen) -> None:
             ]
         ]
     )
+    viewer.select_stream("deploy")
 
 
 async def _capture_launch(
@@ -634,9 +836,11 @@ async def _capture_launch(
     name: str,
     title: str,
     populate: Callable[[LaunchScreen], None],
+    *,
+    size: tuple[int, int],
 ) -> None:
     app = NVCMAirSimApp(config=_example_config())
-    async with app.run_test(size=(COLS, ROWS)) as pilot:
+    async with app.run_test(size=size) as pilot:
         app.switch_section("launch")
         await _stabilize(pilot)
         populate(_launch_screen(app))
@@ -644,7 +848,7 @@ async def _capture_launch(
         _save(output_dir, name, _shot(app, title))
 
 
-async def _capture_all(output_dir: Path) -> None:
+async def _capture_all(output_dir: Path, *, size: tuple[int, int]) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     for stale_svg in output_dir.glob("*.svg"):
         stale_svg.unlink()
@@ -652,7 +856,7 @@ async def _capture_all(output_dir: Path) -> None:
     cfg = _example_config()
     app = NVCMAirSimApp(config=cfg)
 
-    async with app.run_test(size=(COLS, ROWS)) as pilot:
+    async with app.run_test(size=size) as pilot:
         for idx, (section_id, label) in enumerate(SECTION_LABELS, start=1):
             app.switch_section(section_id)
             await _stabilize(pilot)
@@ -673,7 +877,13 @@ async def _capture_all(output_dir: Path) -> None:
     ]
     for offset, (slug, title, populate) in enumerate(launch_shots, start=1):
         n = len(SECTION_LABELS) + offset
-        await _capture_launch(output_dir, f"{n:02d}-{slug}.svg", title, populate)
+        await _capture_launch(
+            output_dir,
+            f"{n:02d}-{slug}.svg",
+            title,
+            populate,
+            size=size,
+        )
 
 
 def main() -> None:
@@ -684,13 +894,25 @@ def main() -> None:
         default=DEFAULT_OUT_DIR,
         help=f"Directory for generated SVGs (default: {DEFAULT_OUT_DIR})",
     )
+    parser.add_argument(
+        "--cols",
+        type=int,
+        default=DEFAULT_COLS,
+        help=f"Terminal columns for wrapping (default: {DEFAULT_COLS})",
+    )
+    parser.add_argument(
+        "--rows",
+        type=int,
+        default=DEFAULT_ROWS,
+        help=f"Terminal rows for captured viewport height (default: {DEFAULT_ROWS})",
+    )
     args = parser.parse_args()
 
     total = len(SECTION_LABELS) + 5
-    print(f"Capturing {total} AIR sim screenshots at {COLS}x{ROWS}...")
+    print(f"Capturing {total} AIR sim screenshots at {args.cols}x{args.rows}...")
     no_color = os.environ.pop("NO_COLOR", None)
     try:
-        asyncio.run(_capture_all(args.output_dir))
+        asyncio.run(_capture_all(args.output_dir, size=(args.cols, args.rows)))
     finally:
         if no_color is not None:
             os.environ["NO_COLOR"] = no_color

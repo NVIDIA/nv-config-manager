@@ -79,21 +79,44 @@ _SETUP_SCRIPT_TEMPLATE = textwrap.dedent("""\
     # PREREQUISITES
     # ==========================================================================
     export DEBIAN_FRONTEND=noninteractive
-    APT_OPTS='-o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold'
+    APT_OPTS='-o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold -o DPkg::Lock::Timeout=600'
 
-    echo ">>> Waiting for cloud-init apt lock..."
-    for i in $(seq 1 120); do
-        fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || break
-        sleep 5
-    done
-    echo ">>> Lock released."
+    wait_for_apt() {
+        echo ">>> Waiting for apt/dpkg locks..."
+        for _i in $(seq 1 120); do
+            if ! fuser /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock \\
+                /var/cache/apt/archives/lock /var/lib/apt/lists/lock \\
+                >/dev/null 2>&1; then
+                echo ">>> Apt locks released."
+                return 0
+            fi
+            sleep 5
+        done
+        echo "Timed out waiting for apt/dpkg locks." >&2
+        return 1
+    }
+
+    apt_update() {
+        wait_for_apt
+        apt-get $APT_OPTS update "$@"
+    }
+
+    apt_install() {
+        wait_for_apt
+        apt-get $APT_OPTS install -y "$@"
+    }
+
+    apt_upgrade() {
+        wait_for_apt
+        apt-get $APT_OPTS upgrade -y
+    }
 
     echo ">>> Updating system packages..."
-    apt-get update && apt-get $APT_OPTS upgrade -y
+    apt_update && apt_upgrade
 
     echo ">>> Installing Docker..."
     if ! command -v docker &>/dev/null; then
-        apt-get $APT_OPTS install -y ca-certificates curl gnupg
+        apt_install ca-certificates curl gnupg
         install -m 0755 -d /etc/apt/keyrings
         curl -fsSL https://download.docker.com/linux/ubuntu/gpg \\
             | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
@@ -102,8 +125,8 @@ _SETUP_SCRIPT_TEMPLATE = textwrap.dedent("""\
         echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \\
             https://download.docker.com/linux/ubuntu $VERSION_CODENAME stable" \\
             > /etc/apt/sources.list.d/docker.list
-        apt-get update
-        apt-get $APT_OPTS install -y docker-ce docker-ce-cli containerd.io \\
+        apt_update
+        apt_install docker-ce docker-ce-cli containerd.io \\
             docker-buildx-plugin docker-compose-plugin
         usermod -aG docker nvcm
     else
@@ -138,8 +161,7 @@ _SETUP_SCRIPT_TEMPLATE = textwrap.dedent("""\
     fi
 
     echo ">>> Installing dev tools..."
-    apt-get $APT_OPTS install -y git jq htop yq \\
-        isc-dhcp-relay sshpass
+    apt_install git jq htop yq isc-dhcp-relay sshpass
     systemctl disable isc-dhcp-relay
     systemctl stop isc-dhcp-relay
 
@@ -261,8 +283,7 @@ _SETUP_SCRIPT_TEMPLATE = textwrap.dedent("""\
     echo "deb [signed-by=/usr/share/keyrings/frrouting.gpg] \\
         https://deb.frrouting.org/frr $(lsb_release -s -c) $FRRVER" \\
         | tee /etc/apt/sources.list.d/frr.list
-    apt-get update -qq && apt-get install -y -qq frr frr-pythontools \\
-        2>/dev/null
+    apt_update -qq && apt_install -qq frr frr-pythontools
 
     sed -i 's/^bgpd=no/bgpd=yes/' /etc/frr/daemons
 

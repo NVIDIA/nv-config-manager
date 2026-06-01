@@ -22,6 +22,7 @@ import subprocess
 import tempfile
 import threading
 import time
+from collections import deque
 from datetime import datetime
 from pathlib import Path
 from queue import Empty, SimpleQueue
@@ -32,8 +33,8 @@ from textual import events, work
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.message import Message
-from textual.widgets import Button, Label, Static
-from textual.worker import Worker, WorkerState
+from textual.widgets import Button, Label, Static, Tab, Tabs
+from textual.worker import Worker, WorkerState, get_current_worker
 
 from nv_config_manager_installer.air_sim.constants import (
     CONFIG_MANAGER_NAUTOBOT_DEPLOYMENT,
@@ -62,11 +63,16 @@ _STATUS_ICON = {
 
 _COPY_ICON = "⧉"
 _COPIED_ICON = "✓"
-_VISIBLE_ACTIVITY_LINES = 80
+_MAX_DEPLOY_LOG_LINES = 4000
+_MAX_SERVICE_LOG_LINES = 1000
 _LOG_FLUSH_INTERVAL = 0.5
 _MAX_LOG_DRAIN_PER_FLUSH = 250
 _MAX_SERVICE_EVENTS_PER_POLL = 25
 _SERVICE_POLL_INTERVAL = 10.0
+_POD_POLL_INTERVAL = 15.0
+_PROVISIONING_POLL_INTERVAL = 30.0
+_STEP_ELAPSED_INTERVAL = 5.0
+_WORKER_IDLE_INTERVAL = 0.5
 _POD_READY_STATES = {"Running", "Completed", "Succeeded"}
 _DHCP_ACTIVITY_KEYWORDS = (
     "DHCPDISCOVER",
@@ -95,6 +101,24 @@ _NAUTOBOT_DEPENDENT_PREFIXES = (
     "nv-config-manager-ztp",
     "nv-config-manager-dhcp",
 )
+_STREAM_HINTS = {
+    "deploy": "Deploy output streams here. The complete log is also written to the path above.",
+    "dhcp": "DHCP events appear here after install completes.",
+    "ztp": "ZTP request events appear here after install completes.",
+    "access": "Direct SSH appears here after SSH is ready. Browser access appears after Nautobot is ready.",
+}
+_TAB_TO_STREAM = {
+    "stream-deploy": "deploy",
+    "stream-dhcp": "dhcp",
+    "stream-ztp": "ztp",
+}
+_BUFFER_LIMITS = {
+    "deploy": _MAX_DEPLOY_LOG_LINES,
+    "dhcp": _MAX_SERVICE_LOG_LINES,
+    "ztp": _MAX_SERVICE_LOG_LINES,
+}
+_FOLLOW_LABEL_ON = "Follow: On"
+_FOLLOW_LABEL_OFF = "Follow: Off"
 
 
 def _copy_button(
@@ -156,14 +180,6 @@ def _is_interesting_ztp_line(line: str) -> bool:
     return " /v1/" in line or "/v1/" in line or "error" in lowered or "failed" in lowered
 
 
-def _activity_prefix(stream: str) -> str:
-    if stream == "dhcp":
-        return "[DHCP]"
-    if stream == "ztp":
-        return "[ZTP]"
-    return "[DEPLOY]"
-
-
 def _is_ready_pod(pod: dict[str, str]) -> bool:
     ready_count, _, ready_total = pod.get("ready", "").partition("/")
     return (
@@ -187,6 +203,15 @@ def _pod_state_text(pod: dict[str, str]) -> str:
 
 def _pod_attention_text(pod: dict[str, str]) -> str:
     return f"{pod.get('name', 'unknown')} ({_pod_state_text(pod)})"
+
+
+def _ssh_command(host: str, port: int) -> str:
+    return (
+        f"sshpass -p {NVCM_BOX_PASSWORD} ssh"
+        f" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+        f" -o PreferredAuthentications=password"
+        f" -p {port} {NVCM_BOX_USER}@{host}"
+    )
 
 
 # Rough typical durations shown as hints for pending/running steps.
@@ -226,6 +251,16 @@ class _LogLine(Message):
         self.stream = stream
 
 
+class _LogBatch(Message):
+    def __init__(self, entries: list[tuple[str, str]]) -> None:
+        super().__init__()
+        self.entries = entries
+
+
+class _StepElapsed(Message):
+    pass
+
+
 class _SshReady(Message):
     def __init__(self, host: str, port: int) -> None:
         super().__init__()
@@ -234,6 +269,13 @@ class _SshReady(Message):
 
 
 class _DeployStarted(Message):
+    def __init__(self, host: str, port: int) -> None:
+        super().__init__()
+        self.host = host
+        self.port = port
+
+
+class _NautobotReady(Message):
     def __init__(self, host: str, port: int) -> None:
         super().__init__()
         self.host = host
@@ -316,6 +358,10 @@ class _StepListWidget(Vertical):
         self._start_times: dict[str, float] = {}
         self._durations: dict[str, float] = {}
         self._running_step: str | None = None
+        self._stop = threading.Event()
+        self._tick_worker_lock = threading.Lock()
+        self._tick_worker_running = False
+        self._tick_thread: threading.Thread | None = None
 
     def compose(self) -> ComposeResult:
         yield Label("Steps", classes="section-title")
@@ -326,18 +372,43 @@ class _StepListWidget(Vertical):
             self._statuses[step_id] = StepStatus.PENDING
             yield w
 
-    def on_mount(self) -> None:
-        self.set_interval(1.0, self._tick)
+    def on_unmount(self) -> None:
+        self._stop.set()
 
-    def _tick(self) -> None:
+    def _start_elapsed_worker(self) -> None:
+        with self._tick_worker_lock:
+            if self._tick_worker_running:
+                return
+            self._stop.clear()
+            self._tick_worker_running = True
+            self._tick_thread = threading.Thread(
+                target=self._run_elapsed_ticks,
+                name="nvcm-air-step-elapsed",
+                daemon=True,
+            )
+            self._tick_thread.start()
+
+    def _run_elapsed_ticks(self) -> None:
+        try:
+            while not self._stop.wait(_STEP_ELAPSED_INTERVAL):
+                if not self._running_step:
+                    break
+                self.post_message(_StepElapsed())
+        finally:
+            with self._tick_worker_lock:
+                self._tick_worker_running = False
+
+    def on__step_elapsed(self, event: _StepElapsed) -> None:
         if self._running_step:
             self._refresh(self._running_step)
+        event.stop()
 
     def update_step(self, step_id: str, status: StepStatus) -> None:
         self._statuses[step_id] = status
         if status == StepStatus.RUNNING:
             self._start_times[step_id] = time.monotonic()
             self._running_step = step_id
+            self._start_elapsed_worker()
         else:
             if step_id in self._start_times and step_id not in self._durations:
                 self._durations[step_id] = time.monotonic() - self._start_times[step_id]
@@ -369,46 +440,177 @@ class _StepListWidget(Vertical):
         return f"{icon}  {label}{timing}{hint}"
 
 
-class _ActivityWidget(Vertical):
-    """Compact bounded activity feed for deploy, DHCP, and ZTP progress."""
+class _StreamTabsWidget(Vertical):
+    """Tabbed log viewer that only renders the selected stream."""
 
     def __init__(self, **kwargs: object) -> None:
         super().__init__(**kwargs)
-        self._lines: list[str] = []
-        self._seen: set[str] = set()
+        self._buffers: dict[str, deque[str]] = {
+            stream: deque(maxlen=limit) for stream, limit in _BUFFER_LIMITS.items()
+        }
+        self._seen_service_lines: dict[str, set[str]] = {"dhcp": set(), "ztp": set()}
+        self._follow_streams: dict[str, bool] = dict.fromkeys(_BUFFER_LIMITS, True)
+        self._active_stream = "deploy"
 
     def compose(self) -> ComposeResult:
-        yield Label("Activity", classes="section-title")
-        yield Static(
-            "Showing deploy output. DHCP/ZTP events appear here after install completes.",
-            classes="field-hint",
+        yield Label("Details", classes="section-title")
+        yield Tabs(
+            Tab("Deploy", id="stream-deploy"),
+            Tab("DHCP", id="stream-dhcp"),
+            Tab("ZTP", id="stream-ztp"),
+            Tab("Access", id="stream-access"),
+            active="stream-deploy",
+            id="stream-tabs",
         )
-        yield Static(
-            "Waiting for activity...",
-            id="activity-lines",
-            classes="activity-lines",
-            markup=False,
-        )
+        with Horizontal(id="stream-toolbar"):
+            yield Static(_STREAM_HINTS["deploy"], id="stream-hint", classes="field-hint")
+            yield Button(_FOLLOW_LABEL_ON, id="btn-stream-follow", variant="success", compact=True)
+            yield Button("End", id="btn-stream-end", compact=True)
+        with Container(id="stream-content"):
+            with VerticalScroll(id="active-log-pane", classes="stream-log"):
+                yield Static("", id="active-log", classes="stream-text", markup=False)
+            with VerticalScroll(id="access-pane"):
+                yield Static("Access details will appear after SSH is ready.")
+
+    def on_mount(self) -> None:
+        self._sync_visible_content()
+
+    def on_tabs_tab_activated(self, event: Tabs.TabActivated) -> None:
+        tab_id = event.tab.id or ""
+        if tab_id == "stream-access":
+            self._active_stream = "access"
+        else:
+            self._active_stream = _TAB_TO_STREAM.get(tab_id, "deploy")
+        self._sync_visible_content()
+        event.stop()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        button_id = event.button.id or ""
+        if button_id == "btn-stream-follow":
+            self._toggle_follow()
+            event.stop()
+        elif button_id == "btn-stream-end":
+            self._follow_streams[self._active_stream] = True
+            self._update_follow_button()
+            self._scroll_active_end()
+            event.stop()
 
     def append_lines(self, entries: list[tuple[str, str]]) -> None:
-        changed = False
+        active_changed = False
         for raw_line, stream in entries:
-            line = raw_line.strip()
+            line = raw_line.rstrip()
             if not line:
                 continue
-            display_line = f"{_activity_prefix(stream)} {line}"
-            if stream != "deploy" and display_line in self._seen:
+            stream = stream if stream in self._buffers else "deploy"
+            if self._is_duplicate_service_line(stream, line):
                 continue
-            if stream != "deploy":
-                self._seen.add(display_line)
-            self._lines.append(display_line)
-            changed = True
-        if not changed:
+            self._append_to_buffer(stream, line)
+            if stream == self._active_stream:
+                active_changed = True
+
+        if active_changed:
+            self._render_active_stream(follow=self._follow_streams[self._active_stream])
+
+    def set_access_widget(self, widget: _ProxyAccessWidget) -> None:
+        pane = self.query_one("#access-pane", VerticalScroll)
+        try:
+            existing = pane.query_one(_ProxyAccessWidget)
+        except Exception:
+            existing = None
+        if existing is not None:
+            existing.set_access(
+                widget.proxy,
+                widget.ssh_command,
+                nautobot_ready=widget.nautobot_ready,
+            )
+            self._sync_visible_content()
             return
-        if len(self._lines) > _VISIBLE_ACTIVITY_LINES:
-            self._lines = self._lines[-_VISIBLE_ACTIVITY_LINES:]
-            self._seen = set(self._lines)
-        self.query_one("#activity-lines", Static).update("\n".join(self._lines))
+        pane.remove_children()
+        pane.mount(widget)
+        self._sync_visible_content()
+
+    def select_stream(self, stream: str) -> None:
+        if stream != "access" and stream not in self._buffers:
+            raise ValueError(f"Unknown stream: {stream}")
+        self.query_one("#stream-tabs", Tabs).active = f"stream-{stream}"
+        self._active_stream = stream
+        self._sync_visible_content()
+
+    def _is_duplicate_service_line(self, stream: str, line: str) -> bool:
+        if stream == "deploy":
+            return False
+        seen = self._seen_service_lines[stream]
+        return line in seen
+
+    def _append_to_buffer(self, stream: str, line: str) -> None:
+        buffer = self._buffers[stream]
+        if stream != "deploy":
+            seen = self._seen_service_lines[stream]
+            if len(buffer) == buffer.maxlen and buffer:
+                seen.discard(buffer[0])
+            seen.add(line)
+        buffer.append(line)
+
+    def _sync_visible_content(self) -> None:
+        hint = self.query_one("#stream-hint", Static)
+        log_pane = self.query_one("#active-log-pane", VerticalScroll)
+        access = self.query_one("#access-pane", VerticalScroll)
+        follow = self.query_one("#btn-stream-follow", Button)
+        end = self.query_one("#btn-stream-end", Button)
+
+        hint.update(_STREAM_HINTS[self._active_stream])
+        if self._active_stream == "access":
+            log_pane.display = False
+            access.display = True
+            follow.display = False
+            end.display = False
+            return
+
+        access.display = False
+        log_pane.display = True
+        follow.display = True
+        end.display = True
+        self._update_follow_button()
+        self._render_active_stream(follow=self._follow_streams[self._active_stream])
+
+    def _render_active_stream(self, *, follow: bool) -> None:
+        self.query_one("#active-log", Static).update("\n".join(self._buffers[self._active_stream]))
+        if follow:
+            self.call_after_refresh(self._scroll_active_end)
+
+    def _toggle_follow(self) -> None:
+        if self._active_stream == "access":
+            return
+        enabled = not self._follow_streams[self._active_stream]
+        self._follow_streams[self._active_stream] = enabled
+        self._update_follow_button()
+        if enabled:
+            self._scroll_active_end()
+
+    def _update_follow_button(self) -> None:
+        if self._active_stream == "access":
+            return
+        button = self.query_one("#btn-stream-follow", Button)
+        if self._follow_streams[self._active_stream]:
+            button.label = _FOLLOW_LABEL_ON
+            button.variant = "success"
+        else:
+            button.label = _FOLLOW_LABEL_OFF
+            button.variant = "warning"
+
+    def _scroll_active_end(self) -> None:
+        self.query_one("#active-log-pane", VerticalScroll).scroll_end(
+            animate=False,
+            immediate=True,
+            force=True,
+            x_axis=False,
+        )
+
+    @property
+    def active_lines(self) -> list[str]:
+        if self._active_stream == "access":
+            return []
+        return list(self._buffers[self._active_stream])
 
 
 class _CopyCommandPanel(Container):
@@ -437,6 +639,13 @@ class _CopyCommandPanel(Container):
             yield Label(self._title, classes="copy-panel-title")
             yield _copy_button(self._button_id, self._tooltip)
         yield Static(self._command, id=self._command_id, classes="proxy-cmd")
+
+    def set_command(self, command: str) -> None:
+        self._command = command
+        try:
+            self.query_one(f"#{self._command_id}", Static).update(command)
+        except Exception:
+            pass
 
     def on_click(self) -> None:
         self._copy_command()
@@ -554,21 +763,65 @@ class _AirLinkBar(Horizontal):
 class _ProxyAccessWidget(Container):
     """Shows per-platform SOCKS proxy commands and a Launch Browser button."""
 
-    def __init__(self, proxy: ProxyInfo, **kwargs: object) -> None:
+    def __init__(
+        self,
+        proxy: ProxyInfo,
+        ssh_command: str,
+        *,
+        nautobot_ready: bool,
+        **kwargs: object,
+    ) -> None:
         super().__init__(**kwargs)
         self._proxy = proxy
+        self._ssh_command = ssh_command
+        self._nautobot_ready = nautobot_ready
         self._tunnel_proc: subprocess.Popen[bytes] | None = None
+
+    @property
+    def proxy(self) -> ProxyInfo:
+        return self._proxy
+
+    @property
+    def ssh_command(self) -> str:
+        return self._ssh_command
+
+    @property
+    def nautobot_ready(self) -> bool:
+        return self._nautobot_ready
 
     def compose(self) -> ComposeResult:
         p = self._proxy
 
         yield Label("Access", classes="subsection-label")
         yield Label(
-            "Start the SOCKS tunnel, then open the browser with the proxy after deploy is ready.",
+            self._access_hint(),
+            id="proxy-hint",
             classes="field-hint",
         )
+        with Horizontal(id="proxy-controls") as controls:
+            controls.display = self._nautobot_ready
+            launch_button = Button("Launch Browser", id="btn-launch-browser", variant="primary")
+            launch_button.display = self._nautobot_ready
+            yield launch_button
 
+        yield Label(self._manual_label(), id="manual-commands-label", classes="subsection-label")
         yield _CopyCommandPanel(
+            "Direct SSH",
+            self._ssh_command,
+            "copy-ssh-direct",
+            "Copy direct SSH command",
+            panel_id="panel-ssh-direct",
+            command_id="cmd-ssh-direct",
+        )
+
+        tunnel_label = Label(
+            "SSH tunnel commands",
+            id="tunnel-commands-label",
+            classes="subsection-label",
+        )
+        tunnel_label.display = self._nautobot_ready
+        yield tunnel_label
+        ssh_unix = _CopyCommandPanel(
             "Linux / macOS - SOCKS tunnel",
             p.ssh_cmd_unix(),
             "copy-ssh-unix",
@@ -576,7 +829,9 @@ class _ProxyAccessWidget(Container):
             panel_id="panel-ssh-unix",
             command_id="cmd-ssh-unix",
         )
-        yield _CopyCommandPanel(
+        ssh_unix.display = self._nautobot_ready
+        yield ssh_unix
+        ssh_win = _CopyCommandPanel(
             "Windows OpenSSH - SOCKS tunnel",
             p.ssh_cmd_windows(),
             "copy-ssh-win",
@@ -584,7 +839,9 @@ class _ProxyAccessWidget(Container):
             panel_id="panel-ssh-win",
             command_id="cmd-ssh-win",
         )
-        yield _CopyCommandPanel(
+        ssh_win.display = self._nautobot_ready
+        yield ssh_win
+        browser_unix = _CopyCommandPanel(
             "Linux / macOS - browser",
             p.browser_cmd_unix(),
             "copy-browser-unix",
@@ -592,7 +849,9 @@ class _ProxyAccessWidget(Container):
             panel_id="panel-browser-unix",
             command_id="cmd-browser-unix",
         )
-        yield _CopyCommandPanel(
+        browser_unix.display = self._nautobot_ready
+        yield browser_unix
+        browser_win = _CopyCommandPanel(
             "Windows - browser",
             p.browser_cmd_windows(),
             "copy-browser-win",
@@ -600,10 +859,72 @@ class _ProxyAccessWidget(Container):
             panel_id="panel-browser-win",
             command_id="cmd-browser-win",
         )
+        browser_win.display = self._nautobot_ready
+        yield browser_win
 
-        with Horizontal(id="proxy-controls"):
-            yield Button("Launch Browser", id="btn-launch-browser", variant="primary")
-        yield Static("", id="proxy-status")
+        status = Static("", id="proxy-status")
+        status.display = self._nautobot_ready
+        yield status
+
+    def set_access(
+        self,
+        proxy: ProxyInfo,
+        ssh_command: str,
+        *,
+        nautobot_ready: bool,
+    ) -> None:
+        self._proxy = proxy
+        self._ssh_command = ssh_command
+        self._nautobot_ready = nautobot_ready
+        self._update_command_panels()
+        self._sync_ready_state()
+
+    def _update_command_panels(self) -> None:
+        p = self._proxy
+        commands = {
+            "panel-ssh-direct": self._ssh_command,
+            "panel-ssh-unix": p.ssh_cmd_unix(),
+            "panel-ssh-win": p.ssh_cmd_windows(),
+            "panel-browser-unix": p.browser_cmd_unix(),
+            "panel-browser-win": p.browser_cmd_windows(),
+        }
+        for panel_id, command in commands.items():
+            try:
+                self.query_one(f"#{panel_id}", _CopyCommandPanel).set_command(command)
+            except Exception:
+                pass
+
+    def _sync_ready_state(self) -> None:
+        for selector in (
+            "#proxy-controls",
+            "#btn-launch-browser",
+            "#tunnel-commands-label",
+            "#panel-ssh-unix",
+            "#panel-ssh-win",
+            "#panel-browser-unix",
+            "#panel-browser-win",
+            "#proxy-status",
+        ):
+            try:
+                self.query_one(selector).display = self._nautobot_ready
+            except Exception:
+                pass
+        try:
+            self.query_one("#proxy-hint", Label).update(self._access_hint())
+            self.query_one("#manual-commands-label", Label).update(self._manual_label())
+        except Exception:
+            pass
+
+    def _access_hint(self) -> str:
+        if self._nautobot_ready:
+            return "Nautobot is ready. Launch a proxied browser or copy the manual commands."
+        return (
+            "SSH is ready. Use direct SSH to troubleshoot the OOB management server "
+            "while Nautobot starts."
+        )
+
+    def _manual_label(self) -> str:
+        return "Manual commands" if self._nautobot_ready else "SSH details"
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         btn = event.button.id or ""
@@ -655,10 +976,10 @@ class _PodStatusWidget(Vertical):
         self._port = 0
         self._manager: object = None  # AirSimulationManager, set at start_polling
         self._stop = threading.Event()
-        self._polling = False
-        self._prov_polling = False
+        self._status_worker_running = False
         self._last_pod_summary = ""
         self._last_prov: tuple[int, int, tuple[str, ...]] | None = None
+        self._notified_nautobot_ready = False
 
     def compose(self) -> ComposeResult:
         yield Label("Progress", classes="section-title")
@@ -674,48 +995,49 @@ class _PodStatusWidget(Vertical):
         self._port = port
         self._manager = manager
         self._stop.clear()
-        self._polling = False
-        self._prov_polling = False
+        self._notified_nautobot_ready = False
         self.query_one("#prov-count", Static).update("Switches Provisioned: waiting for Nautobot")
-        self._tick()
-        self.set_interval(15.0, self._tick)
-        self._prov_tick()
-        self.set_interval(30.0, self._prov_tick)
+        if not self._status_worker_running:
+            self._status_worker_running = True
+            self._run_status_polling()
 
     def stop_polling(self) -> None:
         self._stop.set()
 
-    def _tick(self) -> None:
-        if self._stop.is_set() or self._manager is None or self._polling:
-            return
-        self._do_refresh()
-
-    def _prov_tick(self) -> None:
-        if self._stop.is_set() or self._manager is None or self._prov_polling:
-            return
-        self._do_prov_refresh()
-
-    @work(thread=True, exclusive=False)
-    def _do_refresh(self) -> None:
-        self._polling = True
+    @work(thread=True, group="air_sim_status", exit_on_error=False)
+    def _run_status_polling(self) -> None:
+        worker = get_current_worker()
         try:
-            if not isinstance(self._manager, AirSimulationManager):
-                raise TypeError("expected AirSimulationManager for self._manager")
-            pods = self._manager.get_pod_status(self._host, self._port)
-            self.app.call_from_thread(self._update_table, pods)
-        finally:
-            self._polling = False
+            next_pod_poll = 0.0
+            next_provisioning_poll = 0.0
+            while not worker.is_cancelled and not self._stop.is_set():
+                if self._manager is None:
+                    self._stop.wait(_WORKER_IDLE_INTERVAL)
+                    continue
 
-    @work(thread=True, exclusive=False)
-    def _do_prov_refresh(self) -> None:
-        self._prov_polling = True
-        try:
-            if not isinstance(self._manager, AirSimulationManager):
-                raise TypeError("expected AirSimulationManager for self._manager")
-            prov, total, remaining = self._manager.get_provisioning_status(self._host, self._port)
-            self.app.call_from_thread(self._update_prov, prov, total, remaining)
+                now = time.monotonic()
+                if now >= next_pod_poll:
+                    self._refresh_pods()
+                    next_pod_poll = time.monotonic() + _POD_POLL_INTERVAL
+                if now >= next_provisioning_poll:
+                    self._refresh_provisioning()
+                    next_provisioning_poll = time.monotonic() + _PROVISIONING_POLL_INTERVAL
+
+                self._stop.wait(_WORKER_IDLE_INTERVAL)
         finally:
-            self._prov_polling = False
+            self._status_worker_running = False
+
+    def _refresh_pods(self) -> None:
+        if not isinstance(self._manager, AirSimulationManager):
+            raise TypeError("expected AirSimulationManager for self._manager")
+        pods = self._manager.get_pod_status(self._host, self._port)
+        self.app.call_from_thread(self._update_table, pods)
+
+    def _refresh_provisioning(self) -> None:
+        if not isinstance(self._manager, AirSimulationManager):
+            raise TypeError("expected AirSimulationManager for self._manager")
+        prov, total, remaining = self._manager.get_provisioning_status(self._host, self._port)
+        self.app.call_from_thread(self._update_prov, prov, total, remaining)
 
     def _update_prov(self, prov: int, total: int, remaining: list[str]) -> None:
         next_state = (prov, total, tuple(remaining))
@@ -746,6 +1068,9 @@ class _PodStatusWidget(Vertical):
                 summary = "Nautobot: waiting for pod"
             elif _is_ready_pod(nautobot):
                 summary = f"Nautobot: ready ({_pod_state_text(nautobot)})"
+                if not self._notified_nautobot_ready and self._host and self._port:
+                    self._notified_nautobot_ready = True
+                    self.post_message(_NautobotReady(self._host, self._port))
             else:
                 summary = f"Nautobot: {_pod_state_text(nautobot)}"
 
@@ -794,11 +1119,13 @@ class LaunchScreen(Container):
         self._monitor_stop = threading.Event()
         self._deploy_log_path: Path | None = None
         self._pending_log_lines: SimpleQueue[tuple[str, str]] = SimpleQueue()
-        self._log_flush_lock = threading.Lock()
-        self._log_flush_scheduled = False
+        self._log_stop = threading.Event()
+        self._log_worker_lock = threading.Lock()
+        self._log_worker_running = False
+        self._log_thread: threading.Thread | None = None
         self._service_polling = False
         self._seen_service_events: set[str] = set()
-        self._proxy_access_target: tuple[str, int] | None = None
+        self._proxy_access_target: tuple[str, int, bool] | None = None
 
     def compose(self) -> ComposeResult:
         yield Label("Launch", classes="section-title")
@@ -811,16 +1138,13 @@ class LaunchScreen(Container):
         yield Label("─" * 40, classes="section-divider")
 
         yield _AirLinkBar(id="air-link-bar", classes="ssh-info-bar")
-        yield _SshCommandBar(id="ssh-info-bar", classes="ssh-info-bar")
-        with VerticalScroll(id="access-pane"):
-            yield Static("Access details will appear after SSH is ready.")
 
         with Vertical(id="launch-dashboard"):
             with Horizontal(id="dashboard-top"):
                 with VerticalScroll(id="step-panel"):
                     yield _StepListWidget(id="step-list")
                 yield _PodStatusWidget(id="pod-status-panel")
-            yield _ActivityWidget(id="activity-viewer")
+            yield _StreamTabsWidget(id="stream-viewer")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-launch" and not self._bringup_running:
@@ -850,10 +1174,6 @@ class LaunchScreen(Container):
         self._simulation_url = f"{self._air_frontend_url()}/simulations/{simulation_id}"
         self.query_one("#air-link-bar", _AirLinkBar).set_url(self._simulation_url)
         self._set_status(self._status_text("[yellow]Running...[/yellow]"))
-
-    def _show_ssh_command(self, ssh_cmd: str) -> None:
-        self._ssh_cmd_text = ssh_cmd
-        self.query_one("#ssh-info-bar", _SshCommandBar).set_command(ssh_cmd)
 
     def _start_bringup(self) -> None:
         if self._config.run_mock_topology_job:
@@ -891,7 +1211,7 @@ class LaunchScreen(Container):
         self._set_status(self._status_text("[yellow]Running...[/yellow]"))
         self._run_orchestrator()
 
-    @work(thread=True, exclusive=False)
+    @work(thread=True, group="air_sim_orchestrator", exit_on_error=False)
     def _run_orchestrator(self) -> None:
         log_path = self._deploy_log_path
         with open(log_path if log_path else os.devnull, "w") as lf:
@@ -899,15 +1219,16 @@ class LaunchScreen(Container):
             orchestrator = SimOrchestrator(self._config, cb)
             orchestrator.run()
 
-    @work(thread=True, exclusive=False)
+    @work(thread=True, group="air_sim_service_logs", exit_on_error=False)
     def _run_monitoring(self, host: str, port: int) -> None:
+        worker = get_current_worker()
         try:
             manager = AirSimulationManager(
                 ngc_api_key=self._config.ngc_api_key,
                 use_internal=self._config.use_internal,
                 org_id=self._config.org_id,
             )
-            while not self._monitor_stop.is_set():
+            while not worker.is_cancelled and not self._monitor_stop.is_set():
                 snapshots = manager.get_service_log_snapshots(host, port)
                 entries: list[tuple[str, str]] = []
                 for stream, lines in snapshots.items():
@@ -952,59 +1273,68 @@ class LaunchScreen(Container):
         self.enqueue_log_line(event.line, event.stream)
 
     def enqueue_log_line(self, line: str, stream: str = "deploy") -> None:
-        """Queue a log line from any thread and batch UI refresh work."""
+        """Queue a log line from any thread for the log worker to batch."""
         self._pending_log_lines.put((line, stream))
-        self._schedule_log_flush()
+        self._start_log_worker()
 
-    def _schedule_log_flush(self) -> None:
-        with self._log_flush_lock:
-            if self._log_flush_scheduled:
-                return
-            self._log_flush_scheduled = True
-
-        def schedule() -> None:
-            self.set_timer(_LOG_FLUSH_INTERVAL, self._flush_log_lines)
-
-        if threading.current_thread() is threading.main_thread():
-            schedule()
-        else:
-            self.app.call_from_thread(schedule)
-
-    def _flush_log_lines(self) -> None:
-        with self._log_flush_lock:
-            self._log_flush_scheduled = False
-
+    def on__log_batch(self, event: _LogBatch) -> None:
         try:
-            viewer = self.query_one("#activity-viewer", _ActivityWidget)
+            viewer = self.query_one("#stream-viewer", _StreamTabsWidget)
         except Exception:
+            event.stop()
             return
+        viewer.append_lines(event.entries)
+        event.stop()
 
+    def _start_log_worker(self) -> None:
+        with self._log_worker_lock:
+            if self._log_worker_running:
+                return
+            self._log_stop.clear()
+            self._log_worker_running = True
+            self._log_thread = threading.Thread(
+                target=self._run_log_worker,
+                name="nvcm-air-log-flush",
+                daemon=True,
+            )
+            self._log_thread.start()
+
+    def _run_log_worker(self) -> None:
+        try:
+            while not self._log_stop.is_set():
+                batch = self._collect_log_batch()
+                if batch:
+                    self.post_message(_LogBatch(batch))
+                else:
+                    break
+        finally:
+            should_restart = False
+            with self._log_worker_lock:
+                self._log_worker_running = False
+                should_restart = not self._log_stop.is_set() and not self._pending_log_lines.empty()
+            if should_restart:
+                self._start_log_worker()
+
+    def _collect_log_batch(self) -> list[tuple[str, str]]:
         batch: list[tuple[str, str]] = []
-        processed = 0
-        while processed < _MAX_LOG_DRAIN_PER_FLUSH:
+        try:
+            batch.append(self._pending_log_lines.get(timeout=_LOG_FLUSH_INTERVAL))
+        except Empty:
+            return batch
+
+        self._log_stop.wait(_LOG_FLUSH_INTERVAL)
+        while len(batch) < _MAX_LOG_DRAIN_PER_FLUSH:
             try:
                 line, stream = self._pending_log_lines.get_nowait()
             except Empty:
                 break
             batch.append((line, stream))
-            processed += 1
-
-        if batch:
-            viewer.append_lines(batch)
-
-        if not self._pending_log_lines.empty():
-            self._schedule_log_flush()
+        return batch
 
     def on__ssh_ready(self, event: _SshReady) -> None:
         self._host = event.host
         self._port = event.port
-        ssh_cmd = (
-            f"sshpass -p {NVCM_BOX_PASSWORD} ssh"
-            f" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
-            f" -o PreferredAuthentications=password"
-            f" -p {event.port} {NVCM_BOX_USER}@{event.host}"
-        )
-        self._show_ssh_command(ssh_cmd)
+        self._ssh_cmd_text = _ssh_command(event.host, event.port)
         self._show_proxy_panel(event.host, event.port)
         manager = AirSimulationManager(
             ngc_api_key=self._config.ngc_api_key,
@@ -1019,6 +1349,11 @@ class LaunchScreen(Container):
         self._host = event.host
         self._port = event.port
 
+    def on__nautobot_ready(self, event: _NautobotReady) -> None:
+        self._host = event.host
+        self._port = event.port
+        self._show_proxy_panel(event.host, event.port, nautobot_ready=True)
+
     def on__bringup_complete(self, event: _BringupComplete) -> None:
         self._bringup_running = False
         self.query_one("#btn-launch", Button).disabled = False
@@ -1032,7 +1367,7 @@ class LaunchScreen(Container):
             self._set_status(self._status_text("[bold green][*] Bringup complete![/bold green]"))
             self.app.notify("Simulation bringup complete!", severity="information")
             if event.host:
-                self._show_proxy_panel(event.host, event.port)
+                self._show_proxy_panel(event.host, event.port, nautobot_ready=True)
                 self._start_monitoring(event.host, event.port)
         else:
             self.enqueue_log_line(
@@ -1047,18 +1382,22 @@ class LaunchScreen(Container):
     def on__simulation_created(self, event: _SimulationCreated) -> None:
         self.set_simulation_id(event.simulation_id)
 
-    def _show_proxy_panel(self, host: str, port: int) -> None:
-        if self._proxy_access_target == (host, port):
+    def _show_proxy_panel(self, host: str, port: int, *, nautobot_ready: bool = False) -> None:
+        if self._proxy_access_target == (host, port, nautobot_ready):
             return
+        self._ssh_cmd_text = self._ssh_cmd_text or _ssh_command(host, port)
         proxy = ProxyInfo(host=host, port=port)
-        widget = _ProxyAccessWidget(proxy, id="proxy-access")
-        pane = self.query_one("#access-pane", VerticalScroll)
-        pane.remove_children()
-        pane.mount(widget)
-        pane.display = True
-        self._proxy_access_target = (host, port)
+        widget = _ProxyAccessWidget(
+            proxy,
+            self._ssh_cmd_text,
+            nautobot_ready=nautobot_ready,
+            id="proxy-access",
+        )
+        self.query_one("#stream-viewer", _StreamTabsWidget).set_access_widget(widget)
+        self._proxy_access_target = (host, port, nautobot_ready)
 
     def on_unmount(self) -> None:
+        self._log_stop.set()
         self._monitor_stop.set()
         try:
             self.query_one("#pod-status-panel", _PodStatusWidget).stop_polling()

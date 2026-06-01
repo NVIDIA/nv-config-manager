@@ -173,22 +173,59 @@ LabeledSwitch .labeled-switch--label {
     min-width: 7;
 }
 
-#activity-viewer {
+#stream-viewer {
     width: 1fr;
     height: 1fr;
     padding: 0 1;
 }
 
-.activity-lines {
+#stream-tabs {
+    height: 3;
+}
+
+#stream-toolbar {
+    height: 3;
+    align: left middle;
+}
+
+#stream-hint {
+    width: 1fr;
+    height: 3;
+    content-align: left middle;
+    margin-bottom: 0;
+}
+
+#btn-stream-follow {
+    width: 14;
+    min-width: 14;
+    margin-left: 1;
+}
+
+#btn-stream-end {
+    width: 7;
+    min-width: 7;
+    margin-left: 1;
+}
+
+#stream-content {
+    height: 1fr;
+}
+
+.stream-log {
     height: 1fr;
     border: solid $primary-background-lighten-2;
     padding: 0 1;
     overflow-y: auto;
 }
 
+.stream-text {
+    width: 1fr;
+    height: auto;
+}
+
 #access-pane {
     display: none;
-    height: 18;
+    height: 1fr;
     border: solid $primary-background-lighten-2;
     padding: 0 1;
     overflow-y: auto;

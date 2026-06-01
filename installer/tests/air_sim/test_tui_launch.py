@@ -27,12 +27,13 @@ from nv_config_manager_installer.air_sim.sim_config import SimConfig
 from nv_config_manager_installer.air_sim.sim_manager import AirSimulationManager
 from nv_config_manager_installer.tui.air_sim.app import NVCMAirSimApp
 from nv_config_manager_installer.tui.air_sim.screens.launch import (
+    _MAX_DEPLOY_LOG_LINES,
     LaunchScreen,
-    _ActivityWidget,
     _clean_dhcp_line,
     _DeployStarted,
     _is_interesting_dhcp_line,
     _PodStatusWidget,
+    _StreamTabsWidget,
     _TuiCallback,
 )
 from nv_config_manager_installer.tui.widgets import LabeledSwitch
@@ -64,24 +65,31 @@ class CallbackRecorder:
 
 
 @pytest.mark.asyncio
-async def test_ssh_copy_button_and_command_bar_copy_command() -> None:
+async def test_direct_ssh_copy_button_lives_in_access_panel() -> None:
     app = ClipboardAirSimApp(config=SimConfig(ngc_api_key="nvapi-test"))
     command = f"sshpass -p {NVCM_BOX_PASSWORD} ssh -p 17117 nvcm@example.air"
 
-    async with app.run_test(size=(180, 70)) as pilot:
+    async with app.run_test(size=(180, 100)) as pilot:
         app.switch_section("launch")
         await pilot.pause(0.1)
 
         launch = app.query_one("#screen-launch", LaunchScreen)
-        launch._show_ssh_command(command)
+        launch._ssh_cmd_text = command
+        launch._show_proxy_panel(PUBLIC_AIR_WORKER, 17117)
+        launch.query_one("#stream-viewer", _StreamTabsWidget).select_stream("access")
         await pilot.pause(0.1)
 
-        await pilot.click("#copy-ssh")
+        assert not app.query("#ssh-info-bar")
+        assert app.query("#panel-ssh-direct")
+        assert app.query_one("#btn-launch-browser").display is False
+        assert app.query_one("#panel-ssh-unix").display is False
+
+        await pilot.click("#copy-ssh-direct")
         await pilot.pause(0.1)
         assert app.copied_text == command
 
         app.copied_text = None
-        await pilot.click("#ssh-cmd")
+        await pilot.click("#cmd-ssh-direct")
         await pilot.pause(0.1)
         assert app.copied_text == command
 
@@ -90,12 +98,17 @@ async def test_ssh_copy_button_and_command_bar_copy_command() -> None:
 async def test_access_panel_copy_button_and_panel_body_copy_command() -> None:
     app = ClipboardAirSimApp(config=SimConfig(ngc_api_key="nvapi-test"))
 
-    async with app.run_test(size=(180, 70)) as pilot:
+    async with app.run_test(size=(180, 100)) as pilot:
         app.switch_section("launch")
         await pilot.pause(0.1)
 
         launch = app.query_one("#screen-launch", LaunchScreen)
-        launch._show_proxy_panel(PUBLIC_AIR_WORKER, 17117)
+        launch._ssh_cmd_text = f"sshpass -p {NVCM_BOX_PASSWORD} ssh -p 17117 nvcm@example.air"
+        launch._show_proxy_panel(PUBLIC_AIR_WORKER, 17117, nautobot_ready=True)
+        launch.query_one("#stream-viewer", _StreamTabsWidget).select_stream("access")
+        await pilot.pause(0.1)
+
+        launch.query_one("#access-pane").scroll_to_widget(launch.query_one("#panel-ssh-unix"))
         await pilot.pause(0.1)
 
         await pilot.click("#copy-ssh-unix")
@@ -105,6 +118,8 @@ async def test_access_panel_copy_button_and_panel_body_copy_command() -> None:
         assert PUBLIC_AIR_WORKER in app.copied_text
 
         app.copied_text = None
+        launch.query_one("#access-pane").scroll_to_widget(launch.query_one("#panel-ssh-unix"))
+        await pilot.pause(0.1)
         await pilot.click("#cmd-ssh-unix")
         await pilot.pause(0.1)
         assert app.copied_text is not None
@@ -113,7 +128,30 @@ async def test_access_panel_copy_button_and_panel_body_copy_command() -> None:
 
 
 @pytest.mark.asyncio
-async def test_activity_feed_keeps_selected_progress_events() -> None:
+async def test_access_panel_upgrades_when_nautobot_is_ready() -> None:
+    app = ClipboardAirSimApp(config=SimConfig(ngc_api_key="nvapi-test"))
+
+    async with app.run_test(size=(180, 100)) as pilot:
+        app.switch_section("launch")
+        await pilot.pause(0.1)
+
+        launch = app.query_one("#screen-launch", LaunchScreen)
+        launch._ssh_cmd_text = f"sshpass -p {NVCM_BOX_PASSWORD} ssh -p 17117 nvcm@example.air"
+        launch._show_proxy_panel(PUBLIC_AIR_WORKER, 17117)
+        launch.query_one("#stream-viewer", _StreamTabsWidget).select_stream("access")
+        await pilot.pause(0.1)
+
+        assert app.query_one("#btn-launch-browser").display is False
+
+        launch._show_proxy_panel(PUBLIC_AIR_WORKER, 17117, nautobot_ready=True)
+        await pilot.pause(0.1)
+
+        assert app.query_one("#btn-launch-browser").display is True
+        assert app.query_one("#panel-ssh-unix").display is True
+
+
+@pytest.mark.asyncio
+async def test_stream_tabs_buffer_unfocused_progress_events() -> None:
     app = ClipboardAirSimApp(config=SimConfig(ngc_api_key="nvapi-test"))
 
     async with app.run_test(size=(180, 70)) as pilot:
@@ -121,7 +159,7 @@ async def test_activity_feed_keeps_selected_progress_events() -> None:
         await pilot.pause(0.1)
 
         launch = app.query_one("#screen-launch", LaunchScreen)
-        viewer = launch.query_one("#activity-viewer", _ActivityWidget)
+        viewer = launch.query_one("#stream-viewer", _StreamTabsWidget)
         viewer.append_lines(
             [
                 ("Simulation: demo-id", "deploy"),
@@ -131,10 +169,45 @@ async def test_activity_feed_keeps_selected_progress_events() -> None:
         )
         await pilot.pause(0.1)
 
-        activity_text = str(viewer.query_one("#activity-lines").render())
-        assert "[DEPLOY] Simulation: demo-id" in activity_text
-        assert "[DHCP] DHCP4_LEASE_ALLOC" in activity_text
-        assert "[ZTP] 10.120.1.10" in activity_text
+        assert viewer.active_lines == ["Simulation: demo-id"]
+
+        viewer.select_stream("dhcp")
+        await pilot.pause(0.1)
+        assert viewer.active_lines == [
+            "DHCP4_LEASE_ALLOC [hwtype=1 44:38:39:00:00:02], cid=[no info]"
+        ]
+
+        viewer.select_stream("ztp")
+        await pilot.pause(0.1)
+        assert viewer.active_lines == [
+            '10.120.1.10:12345 - "GET /v1/device/abc/boot-script HTTP/1.1" 200'
+        ]
+
+
+@pytest.mark.asyncio
+async def test_stream_tabs_follow_and_end_controls() -> None:
+    app = ClipboardAirSimApp(config=SimConfig(ngc_api_key="nvapi-test"))
+
+    async with app.run_test(size=(180, 70)) as pilot:
+        app.switch_section("launch")
+        await pilot.pause(0.1)
+
+        launch = app.query_one("#screen-launch", LaunchScreen)
+        viewer = launch.query_one("#stream-viewer", _StreamTabsWidget)
+
+        await pilot.click("#btn-stream-follow")
+        await pilot.pause(0.1)
+        assert viewer._follow_streams["deploy"] is False
+        assert str(viewer.query_one("#btn-stream-follow").label) == "Follow: Off"
+
+        viewer.append_lines([(f"deploy line {i}", "deploy") for i in range(5)])
+        await pilot.pause(0.1)
+        assert viewer.active_lines[-1] == "deploy line 4"
+
+        await pilot.click("#btn-stream-end")
+        await pilot.pause(0.1)
+        assert viewer._follow_streams["deploy"] is True
+        assert str(viewer.query_one("#btn-stream-follow").label) == "Follow: On"
 
 
 def test_tui_callback_streams_unfiltered_deploy_log_lines() -> None:
@@ -147,12 +220,8 @@ def test_tui_callback_streams_unfiltered_deploy_log_lines() -> None:
 
 
 def test_dhcp_activity_helpers_include_refresh_and_config_events() -> None:
-    refresh_line = (
-        '{"levelname": "INFO", "message": "KEA DHCP4 Configuration Refresh Complete."}'
-    )
-    config_line = (
-        "2026-05-31 00:50:03 DHCPSRV_CFGMGR_NEW_SUBNET4 a new subnet has been added"
-    )
+    refresh_line = '{"levelname": "INFO", "message": "KEA DHCP4 Configuration Refresh Complete."}'
+    config_line = "2026-05-31 00:50:03 DHCPSRV_CFGMGR_NEW_SUBNET4 a new subnet has been added"
 
     clean_refresh = _clean_dhcp_line(refresh_line)
     clean_config = _clean_dhcp_line(config_line)
@@ -199,8 +268,7 @@ def test_service_log_snapshots_include_dhcp_refresh_logs(monkeypatch: pytest.Mon
     snapshots = manager.get_service_log_snapshots(PUBLIC_AIR_WORKER, 17117)
 
     assert any(
-        sim_manager_module.CONFIG_MANAGER_DHCP_REFRESH_DEPLOYMENT in command
-        for command in commands
+        sim_manager_module.CONFIG_MANAGER_DHCP_REFRESH_DEPLOYMENT in command for command in commands
     )
     assert snapshots["dhcp"] == [
         "DHCP4_LEASE_ALLOC allocated lease",
@@ -276,7 +344,7 @@ async def test_switch_provisioning_waiting_state_names_nautobot_dependency() -> 
 
 
 @pytest.mark.asyncio
-async def test_activity_feed_is_bounded() -> None:
+async def test_stream_tabs_deploy_buffer_is_bounded() -> None:
     app = ClipboardAirSimApp(config=SimConfig(ngc_api_key="nvapi-test"))
 
     async with app.run_test(size=(180, 70)) as pilot:
@@ -284,14 +352,17 @@ async def test_activity_feed_is_bounded() -> None:
         await pilot.pause(0.1)
 
         launch = app.query_one("#screen-launch", LaunchScreen)
-        viewer = launch.query_one("#activity-viewer", _ActivityWidget)
-        for i in range(120):
-            viewer.append_lines([(f"deploy milestone {i:03d}", "deploy")])
+        viewer = launch.query_one("#stream-viewer", _StreamTabsWidget)
+        viewer.append_lines(
+            [(f"deploy milestone {i:03d}", "deploy") for i in range(_MAX_DEPLOY_LOG_LINES + 20)]
+        )
         await pilot.pause(0.1)
 
-        assert len(viewer._lines) == 80
-        assert viewer._lines[0].endswith("deploy milestone 040")
-        assert viewer._lines[-1].endswith("deploy milestone 119")
+        assert len(viewer.active_lines) == _MAX_DEPLOY_LOG_LINES
+        assert viewer.active_lines[0].endswith("deploy milestone 020")
+        assert viewer.active_lines[-1].endswith(
+            f"deploy milestone {_MAX_DEPLOY_LOG_LINES + 19:03d}"
+        )
 
 
 @pytest.mark.asyncio
@@ -307,14 +378,15 @@ async def test_log_flood_does_not_block_copy_or_save_key(tmp_path) -> None:
 
         launch = app.query_one("#screen-launch", LaunchScreen)
         ssh_command = f"sshpass -p {NVCM_BOX_PASSWORD} ssh -p 17117 nvcm@{PUBLIC_AIR_WORKER}"
-        launch._show_ssh_command(ssh_command)
+        launch._ssh_cmd_text = ssh_command
         launch._show_proxy_panel(PUBLIC_AIR_WORKER, 17117)
+        launch.query_one("#stream-viewer", _StreamTabsWidget).select_stream("access")
         await pilot.pause(0.1)
 
         for i in range(2000):
             launch.enqueue_log_line(f"ztp line {i:04d}", "ztp")
 
-        await pilot.click("#copy-ssh")
+        await pilot.click("#copy-ssh-direct")
         await pilot.press("f2")
         await pilot.pause(0.2)
 
