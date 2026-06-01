@@ -103,8 +103,12 @@ images:
     - quay.io/jetstack/cert-manager-startupapicheck:v1.20.2
     - quay.io/jetstack/cert-manager-acmesolver:v1.20.2
     - ghcr.io/cloudnative-pg/cloudnative-pg:1.29.0
+    # NOTE: keep the next line in sync with `images.overrides.postgresql` below;
+    # bumping the postgresql version requires updating BOTH the preload tag and
+    # the override `tag:` so CI preloads the exact image CNPG ends up running.
     - ghcr.io/cloudnative-pg/postgresql:18.0-system-trixie
   overrides:
+    # MUST match the postgresql entry in `kind_preload_images` above.
     postgresql:
       repository: ghcr.io/cloudnative-pg/postgresql
       tag: 18.0-system-trixie
