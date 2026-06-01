@@ -629,6 +629,7 @@ class TestKindImageLoading:
             pipe_commands.append((source_cmd, sink_cmd))
             return MagicMock(returncode=0, stdout="", stderr="")
 
+        monkeypatch.delenv("CI", raising=False)
         monkeypatch.setattr("nv_config_manager_installer.deployer._run", fake_run)
         monkeypatch.setattr("nv_config_manager_installer.deployer._run_logged", fake_run_logged)
         monkeypatch.setattr(
@@ -649,7 +650,7 @@ class TestKindImageLoading:
             "--format",
             "{{.Server.Os}}/{{.Server.Arch}}",
         ] in run_commands
-        assert ["docker", "system", "prune", "-af"] in logged_commands
+        assert ["docker", "system", "prune", "-af"] not in logged_commands
         assert [
             "docker",
             "pull",
@@ -712,6 +713,7 @@ class TestKindImageLoading:
             fake_run_logged_pipe,
         )
 
+        monkeypatch.setenv("CI", "true")
         config = _make_config()
         config.images.kind_preload_images = ["docker.io/library/redis:7-alpine"]
         deployer = Deployer(
@@ -836,10 +838,12 @@ class TestHelmInstall:
         )
         assert "--debug" not in helm_cmd
 
-    def test_watch_pods_summarizes_readiness_during_helm_install(self, monkeypatch, tmp_path):
+    def test_watch_pods_without_helm_debug_uses_plain_helm(self, monkeypatch, tmp_path):
+        logged_commands: list[list[str]] = []
         watched_commands: list[tuple[list[str], str]] = []
 
         def fake_run_logged(cmd, step, callback, **kwargs):
+            logged_commands.append(cmd)
             return MagicMock(returncode=0, stdout="", stderr="")
 
         def fake_run_logged_with_pod_summary(cmd, k8s, namespace, step, callback, **kwargs):
@@ -864,8 +868,43 @@ class TestHelmInstall:
 
         deployer._helm_install()
 
+        helm_cmd = next(
+            cmd for cmd in logged_commands if cmd[:3] == ["helm", "upgrade", "--install"]
+        )
+        assert "--debug" not in helm_cmd
+        assert watched_commands == []
+
+    def test_helm_debug_summarizes_readiness_during_helm_install(self, monkeypatch, tmp_path):
+        watched_commands: list[tuple[list[str], str]] = []
+
+        def fake_run_logged(cmd, step, callback, **kwargs):
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        def fake_run_logged_with_pod_summary(cmd, k8s, namespace, step, callback, **kwargs):
+            watched_commands.append((cmd, namespace))
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        monkeypatch.setattr("nv_config_manager_installer.deployer._run_logged", fake_run_logged)
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer._run_logged_with_pod_summary",
+            fake_run_logged_with_pod_summary,
+        )
+
+        config = _make_config()
+        config.cluster.airgapped = True
+        deployer = Deployer(
+            config,
+            DeployOptions(helm_debug=True, watch_pods=True, chart_dir="deploy/helm"),
+            RecordingCallback(),
+        )
+        deployer._values_file = tmp_path / "values-generated.yaml"
+        deployer._values_file.write_text("global: {}\n")
+
+        deployer._helm_install()
+
         helm_cmd, namespace = watched_commands[0]
         assert helm_cmd[:3] == ["helm", "upgrade", "--install"]
+        assert "--debug" in helm_cmd
         assert namespace == "nv-config-manager"
 
     def test_unready_pod_summary_includes_waiting_reasons(self):
@@ -958,6 +997,7 @@ class TestHelmInstall:
 
         assert not any(msg.startswith("[pods]") for msg in step.output)
         assert not any(msg.startswith("[pods]") for msg in callback.logs)
+
 
 class TestContentHashing:
     def test_deterministic_hash(self):

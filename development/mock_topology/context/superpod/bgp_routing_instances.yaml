@@ -15,3 +15,17 @@ bgp_routing_instances:
   asn: 4230000001
 - device: a09-u44-p01-pleaf-01
   asn: 4230000017
+- device: example-wan-1
+  asn: 4265355123
+- device: example-wan-2
+  asn: 4265355123
+
+bgp_peerings:
+- device: a08-u28-p01-oobspine-01
+  source_interface: swp21s0
+  peer_device: example-wan-2
+  peer_source_interface: Ethernet49
+- device: a09-u28-p01-bleaf-01
+  source_interface: swp21s4
+  peer_device: example-wan-1
+  peer_source_interface: Ethernet49

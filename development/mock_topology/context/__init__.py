@@ -179,12 +179,14 @@ class BaseContext(Context):
         """Load BGP plugin routing-instance seed data from the context directory."""
         bgp_file = Path(__file__).parent / self.context_dir / "bgp_routing_instances.yaml"
         self.json["bgp_routing_instances"] = []
+        self.json["bgp_peerings"] = []
 
         if bgp_file.exists():
             try:
                 with open(bgp_file) as f:
                     data = yaml.safe_load(f) or {}
                     self.json["bgp_routing_instances"] = data.get("bgp_routing_instances", [])
+                    self.json["bgp_peerings"] = data.get("bgp_peerings", [])
             except (yaml.YAMLError, OSError) as e:
                 print(f"Warning: Could not load {bgp_file}: {e}")
 

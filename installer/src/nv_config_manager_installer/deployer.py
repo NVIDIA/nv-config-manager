@@ -176,6 +176,14 @@ _IGNORE_COMMON = (".venv", "__pycache__", ".git", "*.pyc")
 _IGNORE_TEMPLATES = (".venv", "__pycache__", ".git", "tests")
 _SKIP_REASON = "Not requested"
 _BOOTSTRAP_JOBS_PATH = Path("components/nautobot/nv_config_manager_jobs")
+_CI_ENV_VAR = "CI"
+_DOCKER_SYSTEM_PRUNE_COMMAND = ("docker", "system", "prune", "-af")
+_TRUTHY_ENV_VALUES = {"1", "true", "yes", "on"}
+
+
+def _is_ci_environment() -> bool:
+    """Return whether installer-side CI-only behavior should be enabled."""
+    return os.environ.get(_CI_ENV_VAR, "").strip().lower() in _TRUTHY_ENV_VALUES
 
 
 def _build_job_paths(config: NVConfigManagerInstallConfig) -> list[Path]:
@@ -770,6 +778,7 @@ def _run_logged_with_pod_summary(
         stop_event.set()
         poll_thread.join(timeout=2)
 
+
 def _format_elapsed(seconds: float) -> str:
     """Return a compact elapsed-time string for long-running command status."""
     seconds_int = max(0, int(seconds))
@@ -1347,22 +1356,19 @@ class Deployer:
             # containerd with the selected platform instead. Avoid ctr's
             # digest refs here; the tag is what Kubernetes needs to resolve.
             #
-            # Prune the host daemon's content store between iterations so the
-            # next pull cannot share blobs with the previous one. Diagnostic
-            # for docker/cli#6457: Docker's containerd image store sometimes
-            # refuses to `docker save --platform <p>` a freshly pulled
-            # multi-arch tag ("no suitable export target found ... does not
-            # provide the specified platform"); shared layers from a sibling
-            # image pulled earlier in the loop are one suspected trigger.
-            # Running containers (the kind node) keep their images, so this
-            # only drops the previous helper image and its dangling content.
-            self.callback.on_log("Pruning host docker content store before next helper pull...")
-            _run_logged(
-                ["docker", "system", "prune", "-af"],
-                step,
-                self.callback,
-                timeout=120,
-            )
+            # CI has hit docker/cli#6457-like failures where Docker's
+            # containerd image store refuses to `docker save --platform <p>` a
+            # freshly pulled multi-arch tag after related helper images were
+            # pulled earlier in the loop. The prune is intentionally CI-only:
+            # it is too broad for local developer machines.
+            if _is_ci_environment():
+                self.callback.on_log("Pruning host docker content store before next helper pull...")
+                _run_logged(
+                    list(_DOCKER_SYSTEM_PRUNE_COMMAND),
+                    step,
+                    self.callback,
+                    timeout=120,
+                )
             source_img = _kind_preload_source_image(img, platform_name)
             self.callback.on_log(
                 f"Pulling helper image {source_img} for platform {platform_name}..."
@@ -2456,7 +2462,7 @@ class Deployer:
 
         debug_suffix = " --debug" if "--debug" in helm_args else ""
         self.callback.on_log(f"Running: helm upgrade --install {release}{debug_suffix} ...")
-        if self.options.watch_pods:
+        if self.options.helm_debug and self.options.watch_pods:
             _run_logged_with_pod_summary(
                 helm_args,
                 self._k8s,

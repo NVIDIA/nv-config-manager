@@ -389,7 +389,7 @@
                             "peer": {
                                 "source_ip": null,
                                 "source_interface": {
-                                    "name": "49",
+                                    "name": "Ethernet49",
                                     "ip_addresses": [
                                         {
                                             "address": "10.76.245.68/31",
@@ -5505,7 +5505,7 @@
                             }
                         },
                         "module": null,
-                        "name": "49"
+                        "name": "Ethernet49"
                     }
                 },
                 {

@@ -45,6 +45,15 @@ def _interface_by_name(device: dict[str, Any], name: str) -> dict[str, Any]:
     )
 
 
+def _devices_by_name(context_path: Path) -> dict[str, dict[str, Any]]:
+    devices = {}
+    for path in sorted((context_path / "devices").glob("*.json")):
+        device = _load_device(path)
+        if device.get("name"):
+            devices[device["name"]] = device
+    return devices
+
+
 def test_cumulus_mock_devices_define_explicit_ztp_identifiers() -> None:
     missing_eth0_mac = []
     missing_serial = []
@@ -85,9 +94,7 @@ def test_air_trial_cumulus_serials_match_eth0_mac_addresses() -> None:
 
 
 def test_air_trial_keeps_only_oob_chain_as_dhcp_pool() -> None:
-    oob_mleaf = _load_device(
-        MOCK_TOPOLOGY_CONTEXT / "air_trial" / "devices" / "oob-mleaf-01.json"
-    )
+    oob_mleaf = _load_device(MOCK_TOPOLOGY_CONTEXT / "air_trial" / "devices" / "oob-mleaf-01.json")
     oob_uplink = _interface_by_name(oob_mleaf, "swp1")
 
     tan_leaf_pools = []
@@ -164,6 +171,39 @@ def test_mock_topology_uses_bgp_model_seed_data() -> None:
     assert {"device": "su01-oob-mleaf01", "asn": 65101} in air_superpod_routing_instances
 
 
+def test_bgp_peering_seed_data_references_loaded_interfaces() -> None:
+    missing = []
+
+    for path in sorted(MOCK_TOPOLOGY_CONTEXT.glob("*/bgp_routing_instances.yaml")):
+        context_data = _load_yaml(path)
+        peerings = context_data.get("bgp_peerings", [])
+        if not peerings:
+            continue
+
+        devices = _devices_by_name(path.parent)
+        routing_instance_devices = {
+            entry["device"] for entry in context_data.get("bgp_routing_instances", [])
+        }
+
+        for peering in peerings:
+            for device_key, interface_key in (
+                ("device", "source_interface"),
+                ("peer_device", "peer_source_interface"),
+            ):
+                device_name = peering.get(device_key)
+                interface_name = peering.get(interface_key)
+                device = devices.get(device_name)
+                if not device:
+                    missing.append(f"{path.parent.name}:{device_name}")
+                    continue
+                if device_name not in routing_instance_devices:
+                    missing.append(f"{path.parent.name}:{device_name}:bgp_routing_instance")
+                if not _interface_by_name(device, interface_name):
+                    missing.append(f"{path.parent.name}:{device_name}:{interface_name}")
+
+    assert missing == []
+
+
 def test_mock_topology_templates_quote_string_identifiers() -> None:
     interfaces_template = (MOCK_TOPOLOGY_DESIGNS / "interfaces.yaml.j2").read_text()
     devices_template = (MOCK_TOPOLOGY_DESIGNS / "devices.yaml.j2").read_text()
@@ -176,7 +216,10 @@ def test_mock_topology_templates_quote_string_identifiers() -> None:
 def test_ip_address_templates_use_topology_namespace() -> None:
     ip_addresses_template = (MOCK_TOPOLOGY_DESIGNS / "ip_addresses.yaml.j2").read_text()
 
-    assert '"!create_or_update:parent__namespace__name": {{ global_defaults.namespace }}' in ip_addresses_template
+    assert (
+        '"!create_or_update:parent__namespace__name": {{ global_defaults.namespace }}'
+        in ip_addresses_template
+    )
 
 
 def test_role_design_does_not_replace_content_type_memberships() -> None:

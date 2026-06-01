@@ -49,8 +49,7 @@ def test_install_config_uses_mock_topology_with_paired_template_plugin() -> None
     assert content["template_plugins"] == [
         {
             "path": (
-                f"{CONFIG_MANAGER_REMOTE_DIR}/"
-                f"{DEFAULT_AIR_DEMO_TEMPLATE_PLUGIN_PATH.as_posix()}"
+                f"{CONFIG_MANAGER_REMOTE_DIR}/{DEFAULT_AIR_DEMO_TEMPLATE_PLUGIN_PATH.as_posix()}"
             )
         }
     ]
@@ -108,7 +107,7 @@ def test_template_plugin_paths_are_included_without_generation() -> None:
         template_plugin_paths=[
             "development/template_plugins/demo",
             "/opt/external/template-plugin.tar.gz",
-        ]
+        ],
     )
 
     assert build_template_plugins(cfg) == [

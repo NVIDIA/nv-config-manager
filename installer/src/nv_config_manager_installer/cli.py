@@ -188,7 +188,7 @@ def generate_values(
 @click.option(
     "--watch-pods/--no-watch-pods",
     default=True,
-    help="Stream pod readiness summaries while Helm waits.",
+    help="Stream pod readiness summaries while Helm waits when --helm-debug is set.",
 )
 @click.option("--recreate-secrets", is_flag=True, help="Recreate existing K8s secrets.")
 @click.option("--dry-run", is_flag=True, help="Generate values only, skip helm install.")

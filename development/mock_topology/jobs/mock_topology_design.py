@@ -27,7 +27,7 @@ from nautobot.apps.jobs import StringVar, register_jobs
 from nautobot.dcim.models import Device, Interface
 from nautobot.extras.models import Relationship, RelationshipAssociation, Role, Status
 from nautobot.ipam.models import IPAddress, Prefix
-from nautobot_bgp_models.models import AutonomousSystem, BGPRoutingInstance
+from nautobot_bgp_models.models import AutonomousSystem, BGPRoutingInstance, PeerEndpoint, Peering
 from nautobot_design_builder.choices import DesignModeChoices
 from nautobot_design_builder.contrib.ext import CableConnectionExtension, LookupExtension
 from nautobot_design_builder.design_job import DesignJob
@@ -40,10 +40,15 @@ logger = logging.getLogger(__name__)
 ACTIVE_STATUS_NAME = "Active"
 BGP_ASN_KEY = "asn"
 BGP_DEVICE_KEY = "device"
+BGP_PEER_DEVICE_KEY = "peer_device"
+BGP_PEER_SOURCE_INTERFACE_KEY = "peer_source_interface"
+BGP_PEERINGS_KEY = "bgp_peerings"
 BGP_ROUTING_INSTANCES_KEY = "bgp_routing_instances"
+BGP_SOURCE_INTERFACE_KEY = "source_interface"
 BGP_STATUS_CONTENT_TYPES = (
     "nautobot_bgp_models.autonomoussystem",
     "nautobot_bgp_models.bgproutinginstance",
+    "nautobot_bgp_models.peering",
 )
 DEFAULT_NAMESPACE_NAME = "Global"
 GLOBAL_DEFAULTS_KEY = "global_defaults"
@@ -75,6 +80,7 @@ class MockTopologyDesign(DesignJob):
             self._ensure_role_content_type_memberships(kwargs)
             result = super().run(*args, **kwargs)
             self._ensure_bgp_routing_instances(kwargs)
+            self._ensure_bgp_peerings(kwargs)
             self._ensure_prefix_gateway_relationships(kwargs)
             return result
 
@@ -172,6 +178,137 @@ class MockTopologyDesign(DesignJob):
             if routing_created or routing_changed:
                 routing_instance.validated_save()
 
+    def _ensure_bgp_peerings(self, data: dict[str, Any]) -> None:
+        """Create BGP peer endpoints required by render templates."""
+        active_status = self._ensure_status_content_type_memberships(
+            ACTIVE_STATUS_NAME,
+            BGP_STATUS_CONTENT_TYPES,
+        )
+
+        try:
+            job_result = self.job_result
+        except AttributeError:
+            job_result = None
+
+        context = self.Meta.context_class(data=data, job_result=job_result)
+        for peering_data in context.json.get(BGP_PEERINGS_KEY, []):
+            local_endpoint = self._get_bgp_endpoint_inputs(
+                peering_data.get(BGP_DEVICE_KEY),
+                peering_data.get(BGP_SOURCE_INTERFACE_KEY),
+            )
+            peer_endpoint = self._get_bgp_endpoint_inputs(
+                peering_data.get(BGP_PEER_DEVICE_KEY),
+                peering_data.get(BGP_PEER_SOURCE_INTERFACE_KEY),
+            )
+            if not (local_endpoint and peer_endpoint):
+                continue
+
+            peering = self._get_or_create_bgp_peering(
+                active_status,
+                local_endpoint,
+                peer_endpoint,
+            )
+            local_peer_endpoint = self._ensure_bgp_peer_endpoint(peering, *local_endpoint)
+            remote_peer_endpoint = self._ensure_bgp_peer_endpoint(peering, *peer_endpoint)
+
+            changed = (
+                local_peer_endpoint.peer_id != remote_peer_endpoint.id
+                or remote_peer_endpoint.peer_id != local_peer_endpoint.id
+            )
+            if changed:
+                local_peer_endpoint.peer = remote_peer_endpoint
+                remote_peer_endpoint.peer = local_peer_endpoint
+                local_peer_endpoint.validated_save()
+                remote_peer_endpoint.validated_save()
+
+    @staticmethod
+    def _get_bgp_endpoint_inputs(
+        device_name: str | None,
+        interface_name: str | None,
+    ) -> tuple[BGPRoutingInstance, Interface] | None:
+        """Return the routing instance and source interface for a seed endpoint."""
+        if not (device_name and interface_name):
+            return None
+
+        try:
+            device = Device.objects.get(name=device_name)
+        except Device.DoesNotExist:
+            logger.warning("Could not find BGP peering device %r", device_name)
+            return None
+
+        routing_instance = BGPRoutingInstance.objects.filter(device=device).first()
+        if not routing_instance:
+            logger.warning("Could not find BGP routing instance for %r", device_name)
+            return None
+
+        source_interface = Interface.objects.filter(
+            device=device,
+            name=interface_name,
+        ).first()
+        if not source_interface:
+            logger.warning(
+                "Could not find BGP source interface %r on %r",
+                interface_name,
+                device_name,
+            )
+            return None
+
+        return routing_instance, source_interface
+
+    @staticmethod
+    def _get_or_create_bgp_peering(
+        status: Status,
+        local_endpoint: tuple[BGPRoutingInstance, Interface],
+        peer_endpoint: tuple[BGPRoutingInstance, Interface],
+    ) -> Peering:
+        """Return an existing peering for the endpoint pair or create one."""
+        local_routing_instance, local_interface = local_endpoint
+        peer_routing_instance, peer_interface = peer_endpoint
+
+        existing = (
+            Peering.objects.filter(
+                endpoints__routing_instance=local_routing_instance,
+                endpoints__source_interface=local_interface,
+            )
+            .filter(
+                endpoints__routing_instance=peer_routing_instance,
+                endpoints__source_interface=peer_interface,
+            )
+            .first()
+        )
+        if existing:
+            if existing.status_id != status.id:
+                existing.status = status
+                existing.validated_save()
+            return existing
+
+        peering = Peering(status=status)
+        peering.validated_save()
+        return peering
+
+    @staticmethod
+    def _ensure_bgp_peer_endpoint(
+        peering: Peering,
+        routing_instance: BGPRoutingInstance,
+        source_interface: Interface,
+    ) -> PeerEndpoint:
+        """Create or update a BGP peer endpoint for one side of a peering."""
+        endpoint = PeerEndpoint.objects.filter(
+            peering=peering,
+            routing_instance=routing_instance,
+            source_interface=source_interface,
+        ).first()
+        if endpoint:
+            return endpoint
+
+        endpoint = PeerEndpoint(
+            peering=peering,
+            routing_instance=routing_instance,
+            source_interface=source_interface,
+        )
+        endpoint.validated_save()
+        return endpoint
+
     def _ensure_prefix_gateway_relationships(self, data: dict[str, Any]) -> None:
         """Create explicit prefix-to-gateway relationships for DHCP prefixes."""
         try:
@@ -266,8 +403,7 @@ class MockTopologyDesign(DesignJob):
     ) -> Status:
         """Add required status content types without removing existing memberships."""
         content_types = [
-            self._get_content_type(content_type_name)
-            for content_type_name in content_type_names
+            self._get_content_type(content_type_name) for content_type_name in content_type_names
         ]
         content_types = [content_type for content_type in content_types if content_type]
 

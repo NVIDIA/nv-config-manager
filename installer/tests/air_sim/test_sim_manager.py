@@ -65,9 +65,7 @@ def test_configure_nat_rules_enables_dhcp_relay(monkeypatch: pytest.MonkeyPatch)
         internal_iface="eth1",
     )
 
-    relay_config = next(
-        command for command in commands if "/etc/default/isc-dhcp-relay" in command
-    )
+    relay_config = next(command for command in commands if "/etc/default/isc-dhcp-relay" in command)
     assert 'SERVERS="172.18.255.202"' in relay_config
     assert 'INTERFACES="eth1 br-a0016a226683"' in relay_config
     assert "sudo systemctl enable isc-dhcp-relay" in commands
