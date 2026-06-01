@@ -17,8 +17,8 @@
 import * as React from "react";
 import { WorkflowFormSkeleton } from "@/components/loading";
 
-const VPCDeletionWorkflow: React.FC = () => {
+const SpXOverlayDeletionWorkflow: React.FC = () => {
   return <WorkflowFormSkeleton />;
 };
 
-export default VPCDeletionWorkflow;
+export default SpXOverlayDeletionWorkflow;

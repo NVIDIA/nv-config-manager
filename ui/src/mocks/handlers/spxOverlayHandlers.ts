@@ -18,16 +18,16 @@ import { delay, http, HttpResponse } from "msw";
 import { sanitizeUrl } from "@/lib/utils";
 import { mockApiURL as apiURL } from "@/config/mockApiUrl";
 import {
-  VPCCreationWorkflowInput,
-  VPCDeletionWorkflowInput,
+  SpXOverlayCreationWorkflowInput,
+  SpXOverlayDeletionWorkflowInput,
 } from "@/types/data-table.types";
 import { FORBIDDEN_SITE_ID, FORBIDDEN_VPC_ID } from "@/mocks/data/formData";
 
-export const vpcHandlers = [
+export const spxOverlayHandlers = [
   http.post(
-    sanitizeUrl(`${apiURL}/v1/workflow/ngc/vpc_creation`),
+    sanitizeUrl(`${apiURL}/v1/workflow/ngc/spx_overlay_creation`),
     async ({ request }) => {
-      const body = (await request.json()) as VPCCreationWorkflowInput;
+      const body = (await request.json()) as SpXOverlayCreationWorkflowInput;
 
       if (body.site === FORBIDDEN_SITE_ID || body.vpc_id === FORBIDDEN_VPC_ID) {
         return HttpResponse.json(
@@ -66,9 +66,9 @@ export const vpcHandlers = [
   ),
 
   http.post(
-    sanitizeUrl(`${apiURL}/v1/workflow/ngc/vpc_deletion`),
+    sanitizeUrl(`${apiURL}/v1/workflow/ngc/spx_overlay_deletion`),
     async ({ request }) => {
-      const body = (await request.json()) as VPCDeletionWorkflowInput;
+      const body = (await request.json()) as SpXOverlayDeletionWorkflowInput;
 
       if (body.site === FORBIDDEN_SITE_ID || body.vpc_id === FORBIDDEN_VPC_ID) {
         return HttpResponse.json(

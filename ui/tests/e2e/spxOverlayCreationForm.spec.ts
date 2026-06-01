@@ -27,14 +27,14 @@ const VPC_DATA = {
   rd_max: 65000,
 };
 
-test.describe("VPC Creation Workflow Form", () => {
+test.describe("SpX Overlay Creation Workflow Form", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto("/workflows/vpccreationworkflow/form");
+    await page.goto("/workflows/spxoverlaycreationworkflow/form");
   });
 
   test("renders form with correct title", async ({ page }) => {
     const title = await page.getByRole("heading", {
-      name: "VPC Creation Workflow Form",
+      name: "SpX Overlay Creation Workflow Form",
     });
     await expect(title).toBeVisible({ timeout: TEST_TIMEOUT });
   });
@@ -76,7 +76,7 @@ test.describe("VPC Creation Workflow Form", () => {
     await page.getByRole("dialog").getByText(SITES_LIST.pdx01).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "VPC Creation Workflow Form" })
+      .getByRole("heading", { name: "SpX Overlay Creation Workflow Form" })
       .click();
 
     await page.getByLabel("VPC").fill("test-vpc");
@@ -96,13 +96,13 @@ test.describe("VPC Creation Workflow Form", () => {
 });
 
 // Tests that handle their own navigation with URL parameters
-test.describe("VPC Creation Workflow Form - URL Parameters", () => {
+test.describe("SpX Overlay Creation Workflow Form - URL Parameters", () => {
   test("handles URL parameters correctly and submits with those values", async ({
     page,
   }) => {
     // Navigate with all URL parameters
     await page.goto(
-      "/workflows/vpccreationworkflow/form" +
+      "/workflows/spxoverlaycreationworkflow/form" +
         `?site=${SITES_LIST.pdx01}` +
         `&vpc=${VPC_DATA.vpc_id}` +
         `&description=${encodeURIComponent(VPC_DATA.description)}` +
@@ -131,7 +131,7 @@ test.describe("VPC Creation Workflow Form - URL Parameters", () => {
 
     // Set up a listener for the request (after page is loaded)
     const requestPromise = page.waitForRequest((request) => {
-      return request.url().includes("/v1/workflow/ngc/vpc_creation");
+      return request.url().includes("/v1/workflow/ngc/spx_overlay_creation");
     });
 
     // Submit the form with the URL parameters
@@ -162,7 +162,7 @@ test.describe("VPC Creation Workflow Form - URL Parameters", () => {
   }) => {
     // Navigate with initial URL parameters
     await page.goto(
-      "/workflows/vpccreationworkflow/form" +
+      "/workflows/spxoverlaycreationworkflow/form" +
         `?site=${SITES_LIST.pdx01}` +
         `&vpc=${VPC_DATA.vpc_id}` +
         `&namespace=${VPC_DATA.namespace_tag}` +
@@ -181,7 +181,7 @@ test.describe("VPC Creation Workflow Form - URL Parameters", () => {
     await page.getByRole("dialog").getByText(SITES_LIST.rno1).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "VPC Creation Workflow Form" })
+      .getByRole("heading", { name: "SpX Overlay Creation Workflow Form" })
       .click();
 
     // Change the VPC ID
@@ -199,7 +199,7 @@ test.describe("VPC Creation Workflow Form - URL Parameters", () => {
 
     // Set up a listener for the request (after page is loaded)
     const requestPromise = page.waitForRequest((request) => {
-      return request.url().includes("/v1/workflow/ngc/vpc_creation");
+      return request.url().includes("/v1/workflow/ngc/spx_overlay_creation");
     });
 
     // Submit the form with the modified values
@@ -230,7 +230,7 @@ test.describe("VPC Creation Workflow Form - URL Parameters", () => {
   }) => {
     // Navigate with all URL parameters
     await page.goto(
-      "/workflows/vpccreationworkflow/form" +
+      "/workflows/spxoverlaycreationworkflow/form" +
         `?site=${SITES_LIST.pdx01}` +
         `&vpc=${VPC_DATA.vpc_id}` +
         `&description=${encodeURIComponent(VPC_DATA.description)}` +
@@ -249,7 +249,7 @@ test.describe("VPC Creation Workflow Form - URL Parameters", () => {
 
     // Set up a listener for the request (after page is loaded)
     const requestPromise = page.waitForRequest((request) => {
-      return request.url().includes("/v1/workflow/ngc/vpc_creation");
+      return request.url().includes("/v1/workflow/ngc/spx_overlay_creation");
     });
 
     // Submit the form directly without making any changes
@@ -277,9 +277,9 @@ test.describe("VPC Creation Workflow Form - URL Parameters", () => {
 });
 
 // Tests that use beforeEach navigation
-test.describe("VPC Creation Workflow Form - Standard Tests", () => {
+test.describe("SpX Overlay Creation Workflow Form - Standard Tests", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto("/workflows/vpccreationworkflow/form");
+    await page.goto("/workflows/spxoverlaycreationworkflow/form");
   });
 
   test(`disables form during submission`, async ({ page }) => {
@@ -288,7 +288,7 @@ test.describe("VPC Creation Workflow Form - Standard Tests", () => {
     await page.getByRole("dialog").getByText(SITES_LIST.pdx01).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "VPC Creation Workflow Form" })
+      .getByRole("heading", { name: "SpX Overlay Creation Workflow Form" })
       .click();
 
     await page.getByLabel("VPC").fill("test-vpc-submission");
@@ -317,7 +317,7 @@ test.describe("VPC Creation Workflow Form - Standard Tests", () => {
     page,
   }) => {
     // Navigate to the form without any URL parameters
-    await page.goto("/workflows/vpccreationworkflow/form");
+    await page.goto("/workflows/spxoverlaycreationworkflow/form");
 
     // Verify that description is empty (no default)
     await expect(page.getByLabel("Description")).toHaveValue("");

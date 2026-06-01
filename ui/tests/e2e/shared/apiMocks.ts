@@ -314,7 +314,7 @@ export async function mockSiteCableValidationEndpoint(page: Page) {
 }
 
 export async function mockVpcCreationEndpoint(page: Page) {
-  await page.route(`**/v1/workflow/ngc/vpc_creation`, async (route) => {
+  await page.route(`**/v1/workflow/ngc/spx_overlay_creation`, async (route) => {
     const request = route.request();
     const body = JSON.parse((await request.postData()) || "{}");
 
@@ -358,7 +358,7 @@ export async function mockVpcCreationEndpoint(page: Page) {
 }
 
 export async function mockVpcDeletionEndpoint(page: Page) {
-  await page.route(`**/v1/workflow/ngc/vpc_deletion`, async (route) => {
+  await page.route(`**/v1/workflow/ngc/spx_overlay_deletion`, async (route) => {
     const request = route.request();
     const body = JSON.parse((await request.postData()) || "{}");
 
@@ -1091,9 +1091,8 @@ export async function mockWorkflowTypesEndpoint(page: Page) {
     "RedfishProvisioningWorkflow",
     "SiteCableValidationWorkflow",
     "SitePasswordRotationWorkflow",
-    "VpcCreationWorkflow",
-    "VpcDeletionWorkflow",
-    "VpcTenantChangeWorkflow",
+    "SpXOverlayCreationWorkflow",
+    "SpXOverlayDeletionWorkflow",
     "InfinibandGetUnhealthyPortsWorkflow",
     "InfinibandCableValidationWorkflow",
     "InfinibandMlnxOSUpgradeWorkflow",

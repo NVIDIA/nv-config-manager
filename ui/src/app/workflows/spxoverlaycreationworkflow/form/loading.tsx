@@ -17,8 +17,8 @@
 import * as React from "react";
 import { WorkflowFormSkeleton } from "@/components/loading";
 
-const VPCCreationWorkflow: React.FC = () => {
+const SpXOverlayCreationWorkflow: React.FC = () => {
   return <WorkflowFormSkeleton />;
 };
 
-export default VPCCreationWorkflow;
+export default SpXOverlayCreationWorkflow;

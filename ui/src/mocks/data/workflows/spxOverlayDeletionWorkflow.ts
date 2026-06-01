@@ -14,11 +14,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-export const VPC_DELETION_WORKFLOWS = {
+export const SPX_OVERLAY_DELETION_WORKFLOWS = {
   workflows: [
     {
       id: "6de98ae4-26ff-40a2-b7f2-8ad4c701baf6",
-      workflow_type: "VpcDeletionWorkflow",
+      workflow_type: "SpXOverlayDeletionWorkflow",
       workflow_input: {
         namespace_tag: "spectrumx",
         site: "string",

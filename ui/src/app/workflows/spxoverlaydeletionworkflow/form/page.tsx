@@ -16,10 +16,10 @@
  * limitations under the License.
  */
 
-import { VPCCreationWorkflowForm } from "./vpc-creation-workflow-form";
+import { SpXOverlayDeletionWorkflowForm } from "./spx-overlay-deletion-workflow-form";
 
-const VPCCreationWorkflowPage = () => {
-  return <VPCCreationWorkflowForm />;
+const SpXOverlayDeletionWorkflowPage = () => {
+  return <SpXOverlayDeletionWorkflowForm />;
 };
 
-export default VPCCreationWorkflowPage;
+export default SpXOverlayDeletionWorkflowPage;

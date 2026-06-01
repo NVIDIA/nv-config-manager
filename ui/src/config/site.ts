@@ -76,18 +76,18 @@ export const siteConfig = {
       enabled: false,
     },
     {
-      title: "VPC Creation",
-      slug: "vpccreationworkflow",
+      title: "SpX Overlay Creation",
+      slug: "spxoverlaycreationworkflow",
       enabled: true,
     },
     {
-      title: "VPC Deletion",
-      slug: "vpcdeletionworkflow",
+      title: "SpX Overlay Deletion",
+      slug: "spxoverlaydeletionworkflow",
       enabled: true,
     },
     {
-      title: "VPC Tenant Change",
-      slug: "vpctenantchangeworkflow",
+      title: "SpX Overlay Tenant Change",
+      slug: "spxoverlaytenantchangeworkflow",
       enabled: true,
     },
     {

@@ -46,6 +46,9 @@ __all__ = ["NautobotClient", "NautobotException"]
 
 CONFIG_MANAGER_BACKUP_CONFIG_PATH = "plugins/nv-config-manager/backupconfig"
 
+# REST API base path for the nautobot_app_overlays plugin (Overlay/VXLAN models).
+OVERLAYS_PLUGIN_BASE = "plugins/overlays"
+
 
 class DeviceVrfInfo(BaseModel):
     """Device VRF Information."""
@@ -612,6 +615,58 @@ class NautobotClient(BaseNautobotClient):
         return await self.post(
             "ipam/vrf-device-assignments/", data={"device": device_id, "vrf": vrf_id}
         )
+
+    async def lookup_id_by_name(self, path: str, name: str) -> str | None:
+        """Return the UUID of a Nautobot object matched by name, or None if not found."""
+        data = await self.get(path, params={"name": name})
+        results = data.get("results", [])
+        return cast(str, results[0]["id"]) if results else None
+
+    async def create_overlay(self, data: Any) -> Any:
+        """Create an Overlay in the overlays plugin."""
+        return await self.post(f"{OVERLAYS_PLUGIN_BASE}/overlays/", data=data)
+
+    async def find_overlay(self, name: str, location_id: str) -> dict[str, Any] | None:
+        """Return an existing Overlay matching name + location, or None."""
+        data = await self.get(
+            f"{OVERLAYS_PLUGIN_BASE}/overlays/",
+            params={"name": name, "location": location_id},
+        )
+        results = data.get("results", [])
+        return cast(dict[str, Any], results[0]) if results else None
+
+    async def get_overlay(self, overlay_id: str) -> dict[str, Any]:
+        """Get an Overlay by ID, including its related VXLANs and assignments."""
+        return cast(
+            dict[str, Any],
+            await self.get(f"{OVERLAYS_PLUGIN_BASE}/overlays/{overlay_id}/", params={"depth": 1}),
+        )
+
+    async def delete_overlay(self, overlay_id: str) -> None:
+        """Delete an Overlay."""
+        await self.delete(f"{OVERLAYS_PLUGIN_BASE}/overlays/{overlay_id}/")
+
+    async def create_vxlan(self, data: Any) -> Any:
+        """Create a VXLAN in the overlays plugin."""
+        return await self.post(f"{OVERLAYS_PLUGIN_BASE}/vxlans/", data=data)
+
+    async def get_vxlans_by_vnid(self, vnid: int) -> list[dict[str, Any]]:
+        """Return overlay-plugin VXLANs with the given VNI (namespace resolved via depth)."""
+        data = await self.get(
+            f"{OVERLAYS_PLUGIN_BASE}/vxlans/", params={"vnid": vnid, "depth": 1}
+        )
+        return cast(list[dict[str, Any]], data.get("results", []))
+
+    async def get_vxlans_by_overlay(self, overlay_id: str) -> list[dict[str, Any]]:
+        """Return overlay-plugin VXLANs bound to the given overlay."""
+        data = await self.get(
+            f"{OVERLAYS_PLUGIN_BASE}/vxlans/", params={"overlay": overlay_id}
+        )
+        return cast(list[dict[str, Any]], data.get("results", []))
+
+    async def delete_vxlan(self, vxlan_id: str) -> None:
+        """Delete a VXLAN."""
+        await self.delete(f"{OVERLAYS_PLUGIN_BASE}/vxlans/{vxlan_id}/")
 
     async def merge_config_context(self, device_id: str, data: Any) -> None:
         """Merge config context data with existing data."""

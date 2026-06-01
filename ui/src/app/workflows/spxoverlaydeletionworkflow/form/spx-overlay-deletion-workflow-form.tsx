@@ -28,15 +28,15 @@ import { useToast } from "@/components/ui/use-toast";
 import { useEnvData } from "@/hooks";
 import { WorkflowFormField } from "@/components/forms/formfield";
 import { startWorkflow } from "@/lib/utils";
-import { VPCDeletionWorkflowInput } from "@/types/data-table.types";
+import { SpXOverlayDeletionWorkflowInput } from "@/types/data-table.types";
 
-const VPCDeletionFormSchema = z.object({
+const SpXOverlayDeletionFormSchema = z.object({
   site: z.string().trim().min(1, { message: "Site is required" }),
   vpc: z.string().trim().min(1, { message: "VPC is required" }),
   namespace: z.string().trim().min(1, { message: "Namespace is required" }),
 });
 
-export const VPCDeletionWorkflowForm = () => {
+export const SpXOverlayDeletionWorkflowForm = () => {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const { toast } = useToast();
   const searchParams = useSearchParams();
@@ -49,8 +49,8 @@ export const VPCDeletionWorkflowForm = () => {
     isLoading: { siteIsLoading },
   } = useEnvData();
 
-  const form = useForm<z.infer<typeof VPCDeletionFormSchema>>({
-    resolver: zodResolver(VPCDeletionFormSchema),
+  const form = useForm<z.infer<typeof SpXOverlayDeletionFormSchema>>({
+    resolver: zodResolver(SpXOverlayDeletionFormSchema),
     defaultValues: {
       site: querySite,
       vpc: queryVPC,
@@ -72,20 +72,20 @@ export const VPCDeletionWorkflowForm = () => {
     }
   }, [sites, querySite, siteIsLoading, form]);
 
-  const onSubmit = async (data: z.infer<typeof VPCDeletionFormSchema>) => {
+  const onSubmit = async (data: z.infer<typeof SpXOverlayDeletionFormSchema>) => {
     setIsSubmitting(true);
-    const submissionData: VPCDeletionWorkflowInput = {
+    const submissionData: SpXOverlayDeletionWorkflowInput = {
       site: data.site,
       vpc_id: data.vpc,
       namespace_tag: data.namespace,
     };
     await startWorkflow(
-      "/v1/workflow/ngc/vpc_deletion",
+      "/v1/workflow/ngc/spx_overlay_deletion",
       submissionData
     ).catch((error) => {
       toast({
         variant: "destructive",
-        title: "VPC Deletion Workflow Failed",
+        title: "SpX Overlay Deletion Workflow Failed",
         description: error,
       });
     });
@@ -96,7 +96,7 @@ export const VPCDeletionWorkflowForm = () => {
     <div className="flex items-center justify-center p-6">
       <Card className="h-full border-2 shadow-md justify-center">
         <CardHeader>
-          <CardTitle>VPC Deletion Workflow Form</CardTitle>
+          <CardTitle>SpX Overlay Deletion Workflow Form</CardTitle>
         </CardHeader>
         <CardContent>
           <Form {...form}>

@@ -14,11 +14,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-export const VPC_CREATION_WORKFLOWS = {
+export const SPX_OVERLAY_CREATION_WORKFLOWS = {
   workflows: [
     {
       id: "a809c86a-790f-49cd-a5e1-ae84f20d0c21",
-      workflow_type: "VpcCreationWorkflow",
+      workflow_type: "SpXOverlayCreationWorkflow",
       workflow_input: {
         namespace_tag: "spectrumx",
         description: "TenantB Tenant",

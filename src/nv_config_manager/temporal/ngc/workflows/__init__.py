@@ -62,11 +62,11 @@ from nv_config_manager.temporal.ngc.workflows.reprovision import ReprovisionWork
 from nv_config_manager.temporal.ngc.workflows.site_password_rotation import (
     SitePasswordRotationWorkflow,
 )
-from nv_config_manager.temporal.ngc.workflows.vpc import (
-    VpcAssignmentWorkflow,
-    VpcCreationWorkflow,
-    VpcDeletionWorkflow,
-    VpcTenantChangeWorkflow,
+from nv_config_manager.temporal.ngc.workflows.spx_overlay import (
+    SpXOverlayAssignmentWorkflow,
+    SpXOverlayCreationWorkflow,
+    SpXOverlayDeletionWorkflow,
+    SpXOverlayTenantChangeWorkflow,
 )
 
 REGISTERED_WORKFLOWS = [
@@ -79,10 +79,10 @@ REGISTERED_WORKFLOWS = [
     BatchDeployWorkflow,
     ConnectedHostMetadataWorkflow,
     RedfishProvisioningWorkflow,
-    VpcCreationWorkflow,
-    VpcDeletionWorkflow,
-    VpcAssignmentWorkflow,
-    VpcTenantChangeWorkflow,
+    SpXOverlayCreationWorkflow,
+    SpXOverlayDeletionWorkflow,
+    SpXOverlayAssignmentWorkflow,
+    SpXOverlayTenantChangeWorkflow,
     PortLLDPInfoWorkflow,
     InfinibandGetUnhealthyPortsWorkflow,
     SwitchOSUpgradeWorkflow,

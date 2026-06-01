@@ -25,14 +25,14 @@ const VPC_DATA = {
   site: SITES_LIST.pdx01,
 };
 
-test.describe("VPC Deletion Workflow Form", () => {
+test.describe("SpX Overlay Deletion Workflow Form", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto("/workflows/vpcdeletionworkflow/form");
+    await page.goto("/workflows/spxoverlaydeletionworkflow/form");
   });
 
   test("renders form with correct title", async ({ page }) => {
     const title = await page.getByRole("heading", {
-      name: "VPC Deletion Workflow Form",
+      name: "SpX Overlay Deletion Workflow Form",
     });
     await expect(title).toBeVisible({ timeout: TEST_TIMEOUT });
   });
@@ -74,13 +74,13 @@ test.describe("VPC Deletion Workflow Form", () => {
 });
 
 // Tests that handle their own navigation with URL parameters
-test.describe("VPC Deletion Workflow Form - URL Parameters", () => {
+test.describe("SpX Overlay Deletion Workflow Form - URL Parameters", () => {
   test("handles URL parameters correctly and submits with those values", async ({
     page,
   }) => {
     // Navigate with all URL parameters
     await page.goto(
-      "/workflows/vpcdeletionworkflow/form" +
+      "/workflows/spxoverlaydeletionworkflow/form" +
         `?site=${SITES_LIST.pdx01}` +
         `&vpc=${VPC_DATA.vpc_id}` +
         `&namespace=${VPC_DATA.namespace_tag}`
@@ -97,7 +97,7 @@ test.describe("VPC Deletion Workflow Form - URL Parameters", () => {
 
     // Set up a listener for the request (after page is loaded)
     const requestPromise = page.waitForRequest((request) => {
-      return request.url().includes("/v1/workflow/ngc/vpc_deletion");
+      return request.url().includes("/v1/workflow/ngc/spx_overlay_deletion");
     });
 
     // Submit the form with the URL parameters
@@ -125,7 +125,7 @@ test.describe("VPC Deletion Workflow Form - URL Parameters", () => {
   }) => {
     // Navigate with initial URL parameters
     await page.goto(
-      "/workflows/vpcdeletionworkflow/form" +
+      "/workflows/spxoverlaydeletionworkflow/form" +
         `?site=${SITES_LIST.pdx01}` +
         `&vpc=${VPC_DATA.vpc_id}` +
         `&namespace=${VPC_DATA.namespace_tag}`
@@ -141,7 +141,7 @@ test.describe("VPC Deletion Workflow Form - URL Parameters", () => {
     await page.getByRole("dialog").getByText(SITES_LIST.rno1).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "VPC Deletion Workflow Form" })
+      .getByRole("heading", { name: "SpX Overlay Deletion Workflow Form" })
       .click();
 
     // Change the VPC ID
@@ -152,7 +152,7 @@ test.describe("VPC Deletion Workflow Form - URL Parameters", () => {
 
     // Set up a listener for the request (after page is loaded)
     const requestPromise = page.waitForRequest((request) => {
-      return request.url().includes("/v1/workflow/ngc/vpc_deletion");
+      return request.url().includes("/v1/workflow/ngc/spx_overlay_deletion");
     });
 
     // Submit the form with the modified values
@@ -177,15 +177,15 @@ test.describe("VPC Deletion Workflow Form - URL Parameters", () => {
 });
 
 // Tests that use beforeEach navigation
-test.describe("VPC Deletion Workflow Form - Standard Tests", () => {
+test.describe("SpX Overlay Deletion Workflow Form - Standard Tests", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto("/workflows/vpcdeletionworkflow/form");
+    await page.goto("/workflows/spxoverlaydeletionworkflow/form");
   });
 
   test("submits correct data to the API", async ({ page }) => {
     // Set up a listener for the request
     const requestPromise = page.waitForRequest((request) => {
-      return request.url().includes("/v1/workflow/ngc/vpc_deletion");
+      return request.url().includes("/v1/workflow/ngc/spx_overlay_deletion");
     });
 
     // Fill form with specific test values
@@ -193,7 +193,7 @@ test.describe("VPC Deletion Workflow Form - Standard Tests", () => {
     await page.getByRole("dialog").getByText(SITES_LIST.pdx01).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "VPC Deletion Workflow Form" })
+      .getByRole("heading", { name: "SpX Overlay Deletion Workflow Form" })
       .click();
 
     await page.getByLabel("VPC").fill("test-vpc-submission");
@@ -224,7 +224,7 @@ test.describe("VPC Deletion Workflow Form - Standard Tests", () => {
     await page.getByRole("dialog").getByText(SITES_LIST.pdx01).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "VPC Deletion Workflow Form" })
+      .getByRole("heading", { name: "SpX Overlay Deletion Workflow Form" })
       .click();
 
     await page.getByLabel("VPC").fill("test-vpc-submission");
@@ -269,13 +269,13 @@ test.describe("VPC Deletion Workflow Form - Standard Tests", () => {
 });
 
 // Test that needs to be in URL Parameters group
-test.describe("VPC Deletion Workflow Form - URL Parameters 2", () => {
+test.describe("SpX Overlay Deletion Workflow Form - URL Parameters 2", () => {
   test("submits form directly from URL parameters without changes", async ({
     page,
   }) => {
     // Navigate with all URL parameters
     await page.goto(
-      "/workflows/vpcdeletionworkflow/form" +
+      "/workflows/spxoverlaydeletionworkflow/form" +
         `?site=${SITES_LIST.pdx01}` +
         `&vpc=${VPC_DATA.vpc_id}` +
         `&namespace=${VPC_DATA.namespace_tag}`
@@ -288,7 +288,7 @@ test.describe("VPC Deletion Workflow Form - URL Parameters 2", () => {
 
     // Set up a listener for the request (after page is loaded)
     const requestPromise = page.waitForRequest((request) => {
-      return request.url().includes("/v1/workflow/ngc/vpc_deletion");
+      return request.url().includes("/v1/workflow/ngc/spx_overlay_deletion");
     });
 
     // Submit the form directly without making any changes
@@ -313,7 +313,7 @@ test.describe("VPC Deletion Workflow Form - URL Parameters 2", () => {
 
   test("populates default values for namespace", async ({ page }) => {
     // Navigate to the form without any URL parameters
-    await page.goto("/workflows/vpcdeletionworkflow/form");
+    await page.goto("/workflows/spxoverlaydeletionworkflow/form");
 
     // Verify that namespace has the default value "spectrumx"
     await expect(page.getByLabel("Namespace")).toHaveValue("spectrumx");

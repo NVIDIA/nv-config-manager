@@ -59,22 +59,22 @@ rbac:
         - all
       execute_roles:
         - all
-    - name: VpcCreationWorkflow
+    - name: SpXOverlayCreationWorkflow
       read_roles:
         - all
       execute_roles:
         - all
-    - name: VpcDeletionWorkflow
+    - name: SpXOverlayDeletionWorkflow
       read_roles:
         - all
       execute_roles:
         - all
-    - name: VpcAssignmentWorkflow
+    - name: SpXOverlayAssignmentWorkflow
       read_roles:
         - all
       execute_roles:
         - all
-    - name: VpcTenantChangeWorkflow
+    - name: SpXOverlayTenantChangeWorkflow
       read_roles:
         - all
       execute_roles:

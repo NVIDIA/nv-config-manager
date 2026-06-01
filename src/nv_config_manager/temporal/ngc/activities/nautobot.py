@@ -37,6 +37,16 @@ from nv_config_manager.temporal.common.mixins.device import (
 logger = get_logger(__name__, category=LogCategory.NAUTOBOT)
 logger.setLevel(logging.INFO)
 
+# SpectrumX VPC overlays are VRF-isolated and carry an L3 VNI per VRF.
+SPECTRUMX_ISOLATION_TYPE = "spectrum_x_vrf"
+VXLAN_L3_VNI_TYPE = "l3"
+DEFAULT_STATUS_NAME = "Active"
+
+
+def _vni_from_rd(route_distinguisher: str) -> int:
+    """Derive the VNI from a route distinguisher of the form ``*:<vni>``."""
+    return int(route_distinguisher.split(":")[1])
+
 
 class GetNetworkDeviceInput(BaseModel):
     """Get network device input."""
@@ -398,34 +408,84 @@ class ProvisionVrfInput(BaseModel):
     namespaces: list[str]
     route_distinguisher: str
     vpc_id: str
+    site: str
+    tenant: str
 
 
 @activity.defn
 async def provision_vrf(
     activity_input: ProvisionVrfInput,
 ) -> None:
-    """Provision VRF Activity."""
+    """Provision the SpectrumX overlay, VRFs, and L3 VXLANs for a VPC.
+
+    Finds or creates the (location-scoped) SpectrumX overlay, then creates one VRF
+    and one L3 VXLAN per namespace, binding each VXLAN to both its VRF and the
+    overlay. VRFs and VXLANs created in this call are rolled back on failure; the
+    overlay is left in place since it is found-or-created and may be shared.
+    """
     client = NautobotClient()
-    vrfs_created = []
-    vni = int(activity_input.route_distinguisher.split(":")[1])
+    vni = _vni_from_rd(activity_input.route_distinguisher)
+    name = f"SpXTenant{vni}"
+    vrfs_created: list[Any] = []
+    vxlans_created: list[Any] = []
     async with client:
+        status_id = await client.lookup_id_by_name("extras/statuses/", DEFAULT_STATUS_NAME)
+        if not status_id:
+            raise ApplicationError(f"Status '{DEFAULT_STATUS_NAME}' not found in Nautobot")
+        location_id = await client.lookup_id_by_name("dcim/locations/", activity_input.site)
+        if not location_id:
+            raise ApplicationError(f"Location '{activity_input.site}' not found in Nautobot")
+        tenant_id = await client.lookup_id_by_name("tenancy/tenants/", activity_input.tenant)
+        if not tenant_id:
+            raise ApplicationError(f"Tenant '{activity_input.tenant}' not found in Nautobot")
+
+        overlay = await client.find_overlay(name, location_id)
+        if overlay:
+            overlay_id = overlay["id"]
+            logger.info("Reusing existing overlay %s (%s)", name, overlay_id)
+        else:
+            overlay = await client.create_overlay(
+                data={
+                    "name": name,
+                    "location": location_id,
+                    "tenant": tenant_id,
+                    "isolation_type": SPECTRUMX_ISOLATION_TYPE,
+                    "status": status_id,
+                }
+            )
+            overlay_id = overlay["id"]
+            logger.info("Created overlay %s (%s)", name, overlay_id)
+
         try:
             for namespace in activity_input.namespaces:
-                vrfs_created.append(
-                    await client.create_vrf(
-                        data={
-                            "name": f"SpXTenant{vni}",
-                            "rd": activity_input.route_distinguisher,
-                            "namespace": namespace,
-                            "custom_fields": {"forge_vpc_id": activity_input.vpc_id},
-                        }
-                    )
+                vrf = await client.create_vrf(
+                    data={
+                        "name": name,
+                        "rd": activity_input.route_distinguisher,
+                        "namespace": namespace,
+                        "custom_fields": {"forge_vpc_id": activity_input.vpc_id},
+                    }
                 )
+                vrfs_created.append(vrf)
+                vxlan = await client.create_vxlan(
+                    data={
+                        "vnid": vni,
+                        "name": name,
+                        "vni_type": VXLAN_L3_VNI_TYPE,
+                        "namespace": namespace,
+                        "vrf": vrf["id"],
+                        "overlay": overlay_id,
+                        "status": status_id,
+                    }
+                )
+                vxlans_created.append(vxlan)
         except Exception as error:
-            logger.exception("Failed to create VRFs", exc_info=error)
+            logger.exception("Failed to provision VPC", exc_info=error)
+            for vxlan in vxlans_created:
+                await client.delete_vxlan(vxlan["id"])
             for vrf in vrfs_created:
                 await client.delete_vrf(vrf["id"])
-            raise ApplicationError("Failed to create VRFs") from error
+            raise ApplicationError("Failed to provision VPC") from error
 
 
 class QueryVRFByVPCInput(BaseModel):
@@ -460,14 +520,61 @@ class VrfDeletionActivityInput(BaseModel):
     """VRF Deletion Activity Input."""
 
     vrf_id: str
+    vnid: int
+    namespace: str
 
 
 @activity.defn
 async def delete_vrf(activity_input: VrfDeletionActivityInput) -> None:
-    """Delete VRF."""
+    """Delete a VRF and the L3 VXLAN bound to it.
+
+    The VXLAN is matched by VNI and namespace (its VRF FK is SET_NULL on VRF
+    deletion, so it is removed explicitly to keep the overlay clean).
+    """
     client = NautobotClient()
     async with client:
+        vxlans = await client.get_vxlans_by_vnid(activity_input.vnid)
+        for vxlan in vxlans:
+            if vxlan["namespace"]["name"] == activity_input.namespace:
+                await client.delete_vxlan(vxlan["id"])
         await client.delete_vrf(activity_input.vrf_id)
+
+
+class DeleteOverlayInput(BaseModel):
+    """Delete Overlay Activity Input."""
+
+    vnid: int
+    site: str
+
+
+class DeleteOverlayOutput(BaseModel):
+    """Delete Overlay Activity Output."""
+
+    deleted: bool
+    overlay_name: str
+
+
+@activity.defn
+async def delete_overlay(activity_input: DeleteOverlayInput) -> DeleteOverlayOutput:
+    """Delete the SpectrumX overlay for a VPC if no VXLANs or assignments remain."""
+    name = f"SpXTenant{activity_input.vnid}"
+    client = NautobotClient()
+    async with client:
+        location_id = await client.lookup_id_by_name("dcim/locations/", activity_input.site)
+        if not location_id:
+            raise ApplicationError(f"Location '{activity_input.site}' not found in Nautobot")
+        overlay = await client.find_overlay(name, location_id)
+        if not overlay:
+            return DeleteOverlayOutput(deleted=False, overlay_name=name)
+
+        details = await client.get_overlay(overlay["id"])
+        remaining_vxlans = await client.get_vxlans_by_overlay(overlay["id"])
+        if remaining_vxlans or details.get("member_count"):
+            logger.info("Overlay %s still has members, leaving in place", name)
+            return DeleteOverlayOutput(deleted=False, overlay_name=name)
+
+        await client.delete_overlay(overlay["id"])
+        return DeleteOverlayOutput(deleted=True, overlay_name=name)
 
 
 class SwitchPortByMacActivityInput(BaseModel):
