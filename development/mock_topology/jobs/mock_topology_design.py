@@ -189,10 +189,11 @@ class MockTopologyDesign(DesignJob):
             job_result = None
 
         context = self.Meta.context_class(data=data, job_result=job_result)
-        namespace_name = context.json.get(GLOBAL_DEFAULTS_KEY, {}).get(
-            "namespace",
-            DEFAULT_NAMESPACE_NAME,
+        global_defaults = getattr(context, GLOBAL_DEFAULTS_KEY, None) or context.json.get(
+            GLOBAL_DEFAULTS_KEY,
+            {},
         )
+        namespace_name = global_defaults.get("namespace", DEFAULT_NAMESPACE_NAME)
         prefix_type = ContentType.objects.get_for_model(Prefix)
         ip_address_type = ContentType.objects.get_for_model(IPAddress)
 
