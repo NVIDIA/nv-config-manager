@@ -6,13 +6,13 @@ NVIDIA Config Manager is an open-source network automation and configuration man
 
 | Service | Description |
 | :------ | :---------- |
-| **[ZTP](docs/network-ztp/index.mdx)** | Zero Touch Provisioning, boot scripts, OS image delivery, and provisioning status updates |
-| **[DHCP](docs/dhcp/index.mdx)** | Kea DHCP configuration generation from Nautobot data |
-| **[Temporal](docs/temporal/index.mdx)** | Long-running network operations and approval workflows |
-| **[Render](docs/render/index.mdx)** | Template rendering and event processing from Nautobot and workflow events |
-| **[Config Store](docs/config-store/index.mdx)** | PostgreSQL-backed rendered, intended, and backup configuration storage |
-| **[UI](docs/getting-started/interfaces.mdx)** | React/Next.js interface for workflows and configuration browsing |
-| **[Nautobot](docs/nautobot/index.mdx)** | Network source of truth, custom jobs, and event publication |
+| **[ZTP](https://docs.nvidia.com/switch-infrastructure/config-manager/services/network-ztp/overview)** | Zero Touch Provisioning, boot scripts, OS image delivery, and provisioning status updates |
+| **[DHCP](https://docs.nvidia.com/switch-infrastructure/config-manager/services/dhcp/overview)** | Kea DHCP configuration generation from Nautobot data |
+| **[Temporal](https://docs.nvidia.com/switch-infrastructure/config-manager/services/temporal/overview)** | Long-running network operations and approval workflows |
+| **[Render](https://docs.nvidia.com/switch-infrastructure/config-manager/services/render/overview)** | Template rendering and event processing from Nautobot and workflow events |
+| **[Config Store](https://docs.nvidia.com/switch-infrastructure/config-manager/services/config-store/overview)** | PostgreSQL-backed rendered, intended, and backup configuration storage |
+| **[UI](https://docs.nvidia.com/switch-infrastructure/config-manager/getting-started/which-interface-should-i-use)** | React/Next.js interface for workflows and configuration browsing |
+| **[Nautobot](https://docs.nvidia.com/switch-infrastructure/config-manager/config-manager/nautobot)** | Network source of truth, custom jobs, and event publication |
 
 ## Installer
 
