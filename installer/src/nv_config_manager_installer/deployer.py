@@ -1105,8 +1105,28 @@ class Deployer:
                 "use-context <name>`) to align them and retry."
             )
 
-        if self.options.build_images and not shutil.which("docker"):
-            raise RuntimeError("docker is required for --build-images")
+        needs_docker = self.options.build_images or self.options.load_kind
+        if needs_docker:
+            flags = " and ".join(
+                flag
+                for enabled, flag in (
+                    (self.options.build_images, "--build-images"),
+                    (self.options.load_kind, "--load-kind"),
+                )
+                if enabled
+            )
+            if not shutil.which("docker"):
+                raise RuntimeError(f"docker is required for {flags}")
+            # `docker info` exits non-zero if the CLI is installed but the daemon
+            # is unreachable. Catching that here turns later subprocess errors
+            # from `docker pull` / `docker save` into a clear prereq message.
+            probe = _run(["docker", "info"], check=False)
+            if probe.returncode != 0:
+                stderr = (probe.stderr or "").strip().splitlines()
+                detail = stderr[-1] if stderr else "docker info failed"
+                raise RuntimeError(
+                    f"docker daemon is required for {flags} but is not reachable: {detail}"
+                )
         if self.options.load_kind and not shutil.which("kind"):
             raise RuntimeError("kind is required for --load-kind")
 

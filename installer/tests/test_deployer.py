@@ -177,6 +177,60 @@ class TestStepSequencing:
         assert not success
         assert any(s[1] == StepStatus.FAILED for s in callback.step_updates)
 
+    def test_prereqs_require_docker_for_load_kind(self, monkeypatch):
+        def fake_which(tool):
+            return None if tool == "docker" else f"/usr/bin/{tool}"
+
+        monkeypatch.setattr("nv_config_manager_installer.deployer.shutil.which", fake_which)
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer.K8sClient",
+            lambda *a, **kw: _mock_k8s(),
+        )
+
+        deployer = Deployer(
+            _make_config(),
+            DeployOptions(load_kind=True, kind_cluster="x"),
+            RecordingCallback(),
+        )
+        with pytest.raises(RuntimeError, match=r"docker is required for --load-kind"):
+            deployer._check_prerequisites()
+
+    def test_prereqs_require_running_docker_daemon_for_load_kind(self, monkeypatch):
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer.shutil.which",
+            lambda tool: f"/usr/bin/{tool}",
+        )
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer.K8sClient",
+            lambda *a, **kw: _mock_k8s(),
+        )
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer.kubectl_current_context",
+            lambda: None,
+        )
+
+        def fake_run(cmd, **kwargs):
+            if cmd[:2] == ["docker", "info"]:
+                return MagicMock(
+                    returncode=1,
+                    stdout="",
+                    stderr="Cannot connect to the Docker daemon at unix:///var/run/docker.sock",
+                )
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        monkeypatch.setattr("nv_config_manager_installer.deployer._run", fake_run)
+
+        deployer = Deployer(
+            _make_config(),
+            DeployOptions(load_kind=True, kind_cluster="x"),
+            RecordingCallback(),
+        )
+        with pytest.raises(
+            RuntimeError,
+            match=r"docker daemon is required for --load-kind but is not reachable",
+        ):
+            deployer._check_prerequisites()
+
     @patch("nv_config_manager_installer.deployer._run_logged")
     @patch("nv_config_manager_installer.deployer._run")
     @patch("nv_config_manager_installer.deployer.K8sClient")
