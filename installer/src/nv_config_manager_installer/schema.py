@@ -580,6 +580,7 @@ class ImagesConfig(BaseModel):
     registry: str = "nvcr.io/nvidian/cfa"
     tag: str = ""
     pull_policy: str = "IfNotPresent"
+    kind_preload_images: list[str] = Field(default_factory=list)
     pull_secret: ImagePullSecret = Field(default_factory=ImagePullSecret)
     overrides: dict[str, ImageOverride] = Field(default_factory=dict)
 
@@ -927,9 +928,11 @@ def _prune_ztp_storage(ztp_storage: dict[str, Any]) -> None:
 
 
 def _prune_images(images: dict[str, Any]) -> None:
+    if not images.get("kind_preload_images"):
+        images.pop("kind_preload_images", None)
     if images.get("source") != ImageSource.LOCAL.value:
         return
-    _replace_with_keys(images, {"source"})
+    _replace_with_keys(images, {"source", "kind_preload_images"})
 
 
 def _prune_redfish(redfish: dict[str, Any]) -> None:

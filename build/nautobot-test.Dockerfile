@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 # Test image for running the vendored nv_config_manager plugin's Django test
 # suite. Derived from the production runtime image with test-only deps added.
 #
@@ -26,7 +27,8 @@ COPY --from=app /usr/lib/liblber*.so* /usr/lib/
 COPY --from=app /usr/lib/libsasl2.so* /usr/lib/
 COPY --from=app /usr/lib/libjpeg.so* /usr/lib/
 
-RUN uv pip install --python /opt/nautobot/.venv/bin/python --system \
+RUN --mount=type=cache,id=nvcm-uv-cache,target=/root/.cache/uv \
+    uv pip install --python /opt/nautobot/.venv/bin/python --system \
     "factory-boy>=3.3.1" \
     "unittest-xml-reporting>=3.2.0" \
     "django-slowtests>=1.1.1" \

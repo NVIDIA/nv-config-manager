@@ -76,7 +76,7 @@ dependencies = [
     # Security: Fix GitPython vulnerability (GHSA-mv93-w799-cj2w)
     "gitpython>=3.1.50",
     # Data Processing
-    "numpy<2.0.0",
+    "numpy>=2.1.0,<3.0.0",
     "pandas>=2.3.0",
     "pandas-stubs>=2.0.0",
     "openpyxl>=3.1.0",
