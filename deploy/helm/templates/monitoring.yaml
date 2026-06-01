@@ -72,6 +72,7 @@ spec:
     url: {{ .Values.monitoring.probes.blackboxExporterUrl }}
   targets:
     staticConfig:
+      {{- include "nv-config-manager.probeStaticConfigLabels" . | nindent 6 }}
       static:
       - {{ $probeScheme }}://{{ tpl .Values.renderService.gateway.hostname . }}/healthcheck
 {{- end }}
@@ -99,6 +100,7 @@ spec:
     url: {{ .Values.monitoring.probes.blackboxExporterUrl }}
   targets:
     staticConfig:
+      {{- include "nv-config-manager.probeStaticConfigLabels" . | nindent 6 }}
       static:
       - {{ $probeScheme }}://{{ tpl .Values.networkZtp.gateway.hostname . }}/healthcheck
 {{- end }}
@@ -126,6 +128,7 @@ spec:
     url: {{ .Values.monitoring.probes.blackboxExporterUrl }}
   targets:
     staticConfig:
+      {{- include "nv-config-manager.probeStaticConfigLabels" . | nindent 6 }}
       static:
       - {{ $probeScheme }}://{{ tpl .Values.networkDhcp.gateway.hostname . }}/healthcheck
 {{- end }}
@@ -153,6 +156,7 @@ spec:
     url: {{ .Values.monitoring.probes.blackboxExporterUrl }}
   targets:
     staticConfig:
+      {{- include "nv-config-manager.probeStaticConfigLabels" . | nindent 6 }}
       static:
       - {{ $probeScheme }}://{{ tpl .Values.configStore.gateway.api.hostname . }}/healthcheck
 {{- end }}
@@ -180,6 +184,7 @@ spec:
     url: {{ .Values.monitoring.probes.blackboxExporterUrl }}
   targets:
     staticConfig:
+      {{- include "nv-config-manager.probeStaticConfigLabels" . | nindent 6 }}
       static:
       - {{ $probeScheme }}://{{ tpl .Values.temporal.gateway.api.hostname . }}/healthcheck
 {{- end }}
@@ -207,6 +212,7 @@ spec:
     url: {{ .Values.monitoring.probes.blackboxExporterUrl }}
   targets:
     staticConfig:
+      {{- include "nv-config-manager.probeStaticConfigLabels" . | nindent 6 }}
       static:
       - {{ $probeScheme }}://{{ tpl .Values.temporal.gateway.devUi.hostname . }}/healthz
 {{- end }}
@@ -234,6 +240,7 @@ spec:
     url: {{ .Values.monitoring.probes.blackboxExporterUrl }}
   targets:
     staticConfig:
+      {{- include "nv-config-manager.probeStaticConfigLabels" . | nindent 6 }}
       static:
       - {{ $probeScheme }}://{{ tpl .Values.ui.gateway.hostname . }}/api/health
 {{- end }}
@@ -261,6 +268,7 @@ spec:
     url: {{ .Values.monitoring.probes.blackboxExporterUrl }}
   targets:
     staticConfig:
+      {{- include "nv-config-manager.probeStaticConfigLabels" . | nindent 6 }}
       static:
       - {{ $probeScheme }}://{{ tpl .Values.nautobot.gateway.hostname . }}/health
 {{- end }}
