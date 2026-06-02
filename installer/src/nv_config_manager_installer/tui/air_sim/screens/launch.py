@@ -217,6 +217,7 @@ def _ssh_command(host: str, port: int) -> str:
 # Rough typical durations shown as hints for pending/running steps.
 _TYPICAL: dict[str, str] = {
     "parse-topology": "~5s",
+    "validate-images": "~10s",
     "create-sim": "~10s",
     "attach-cloud-init": "~5s",
     "start-sim": "4-6m",

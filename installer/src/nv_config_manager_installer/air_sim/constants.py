@@ -46,25 +46,11 @@ def _is_release_tag(ref: str) -> bool:
 
 DEFAULT_AIR_API_URL = "https://api.air-ngc.nvidia.com/api/"
 DEFAULT_AIR_INTERNAL_URL = "https://api.air-inside.nvidia.com/api/"
-DEFAULT_AIR_FRONTEND_URL = "https://air.nvidia.com"
+DEFAULT_AIR_FRONTEND_URL = "https://dsx-air.nvidia.com"
 DEFAULT_AIR_INTERNAL_FRONTEND_URL = "https://ngc.air-inside.nvidia.com"
 DEFAULT_AIR_ORG = ""
 DEFAULT_AIR_SIM_CONFIG_PATH = Path.home() / ".nvcm-air-sim.yaml"
 
-CUMULUS_VX_IMAGES = {
-    "5.16.1": "cumulus-linux-vx-amd64-5.16.1.0008.qcow2",
-    "5.16.0": "cumulus-vx-5.16.0",
-    "5.15.0": "cumulus-vx-5.15.0",
-    "5.14.0": "cumulus-vx-5.14.0",
-    "5.11.0": "cumulus-vx-5.11.0",
-    "5.10.0": "cumulus-vx-5.10.0",
-    "5.9.0": "cumulus-vx-5.9.0",
-    "5.8.0": "cumulus-vx-5.8.0",
-    "5.7.0": "cumulus-vx-5.7.0",
-    "5.6.0": "cumulus-vx-5.6.0",
-    "5.5.0": "cumulus-vx-5.5.0",
-    "5.4.0": "cumulus-vx-5.4.0",
-}
 DEFAULT_CUMULUS_VERSION = "5.14.0"
 
 DEFAULT_NODE_CPU = 2

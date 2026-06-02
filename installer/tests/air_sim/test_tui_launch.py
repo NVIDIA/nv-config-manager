@@ -437,6 +437,24 @@ async def test_launch_status_keeps_deploy_log_and_air_bar_on_completion(tmp_path
 
 
 @pytest.mark.asyncio
+async def test_launch_air_link_uses_public_dsx_endpoint() -> None:
+    app = ClipboardAirSimApp(config=SimConfig(ngc_api_key="nvapi-test", use_internal=False))
+
+    async with app.run_test(size=(180, 70)) as pilot:
+        app.switch_section("launch")
+        await pilot.pause(0.1)
+
+        launch = app.query_one("#screen-launch", LaunchScreen)
+        launch.set_simulation_id("7dfde74b-ce46-4a29-97dc-58294ee39390")
+        await pilot.pause(0.1)
+
+        air_url = "https://dsx-air.nvidia.com/simulations/7dfde74b-ce46-4a29-97dc-58294ee39390"
+        await pilot.click("#copy-air-link")
+        await pilot.pause(0.1)
+        assert app.copied_text == air_url
+
+
+@pytest.mark.asyncio
 async def test_options_page_saves_visible_fields_without_resetting_hidden_flags(tmp_path) -> None:
     config = SimConfig(
         ngc_api_key="nvapi-test",

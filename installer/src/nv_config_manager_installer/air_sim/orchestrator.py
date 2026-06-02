@@ -55,6 +55,7 @@ class StepStatus(Enum):
 
 STEPS: list[tuple[str, str]] = [
     ("parse-topology", "Resolve topology"),
+    ("validate-images", "Validate AIR images"),
     ("create-sim", "Create AIR simulation"),
     ("attach-cloud-init", "Attach cloud-init"),
     ("start-sim", "Start simulation"),
@@ -158,6 +159,25 @@ class SimOrchestrator:
             minimal_mode=False,
             nvcm_server=nvcm_server,
         )
+        self._step("parse-topology", StepStatus.SUCCESS)
+
+        self._step("validate-images", StepStatus.RUNNING)
+        manager = AirSimulationManager(
+            ngc_api_key=cfg.ngc_api_key,
+            use_internal=cfg.use_internal,
+            org_id=cfg.org_id,
+        )
+        cumulus_versions = builder.cumulus_firmware_versions()
+        if cumulus_versions:
+            builder.set_cumulus_image_overrides(manager.resolve_cumulus_vx_images(cumulus_versions))
+            self._step(
+                "validate-images",
+                StepStatus.SUCCESS,
+                f"{len(cumulus_versions)} Cumulus version(s)",
+            )
+        else:
+            self._step("validate-images", StepStatus.SKIPPED, "No Cumulus devices")
+
         topology = builder.build_topology()
         self._log(
             f"Site: {builder.site_name}  "
@@ -165,7 +185,6 @@ class SimOrchestrator:
             f"Nodes: {len(topology['nodes'])}  "
             f"Links: {len(topology['links'])}"
         )
-        self._step("parse-topology", StepStatus.SUCCESS)
 
         derived_ip, derived_gw = _resolve_oob_server_ips_from_topology(
             builder.site_design, cfg.oob_server_name
@@ -176,11 +195,6 @@ class SimOrchestrator:
         bgp_asn = builder.resolve_device_bgp_asn(cfg.oob_server_name) or "4266000000"
 
         self._step("create-sim", StepStatus.RUNNING)
-        manager = AirSimulationManager(
-            ngc_api_key=cfg.ngc_api_key,
-            use_internal=cfg.use_internal,
-            org_id=cfg.org_id,
-        )
         simulation_id = manager.create_simulation(builder.simulation_name, topology)
         self._log(f"Simulation: {simulation_id}")
         if nvcm_server:

@@ -176,3 +176,18 @@ def test_air_topology_builder_resolves_oob_server_bgp_asn(tmp_path: Path) -> Non
     builder = AirTopologyBuilder(str(topology_path))
 
     assert builder.resolve_device_bgp_asn("oob-mgmt-server") == "65000"
+
+
+def test_air_topology_builder_uses_resolved_cumulus_image(tmp_path: Path) -> None:
+    _write_context(tmp_path)
+    site_design = build_site_design_from_mock_context(
+        "demo_blueprint", "demo", context_root=tmp_path
+    )
+    topology_path = tmp_path / "site-design.yaml"
+    _write_yaml(topology_path, site_design)
+
+    builder = AirTopologyBuilder(str(topology_path))
+    builder.set_cumulus_image_overrides({"5.16.1": "cumulus-linux-vx-amd64-5.16.1.0008.qcow2"})
+    topology = builder.build_topology()
+
+    assert topology["nodes"]["oob-mleaf-01"]["os"] == ("cumulus-linux-vx-amd64-5.16.1.0008.qcow2")

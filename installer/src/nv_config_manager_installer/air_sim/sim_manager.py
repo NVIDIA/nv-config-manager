@@ -26,7 +26,8 @@ import shlex
 import subprocess
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -60,6 +61,53 @@ from nv_config_manager_installer.air_sim.models import NVCMServerConfig
 
 LOG = logging.getLogger(__name__)
 _ANSI_ESCAPE = re.compile(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+
+
+def _cumulus_vx_image_name(version: str) -> str:
+    """Return the preferred AIR image name for a Cumulus VX version."""
+    return f"cumulus-vx-{version}"
+
+
+def _image_name(image: Any) -> str:
+    """Return an AIR image name from SDK model-like data."""
+    return str(getattr(image, "name", "") or "").strip()
+
+
+def _image_timestamp(image: Any) -> float:
+    """Return a sortable timestamp for newest-image selection."""
+    value = getattr(image, "modified", None) or getattr(image, "created", None)
+    if isinstance(value, datetime):
+        stamp = value
+    elif isinstance(value, str):
+        try:
+            stamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return 0.0
+    else:
+        return 0.0
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=UTC)
+    return stamp.timestamp()
+
+
+def _is_close_cumulus_vx_match(image: Any, version: str) -> bool:
+    """Return True when an image looks like a Cumulus VX build for *version*."""
+    name = _image_name(image).lower()
+    image_version = str(getattr(image, "version", "") or "").lower()
+    version = version.lower()
+    return (
+        "cumulus" in name
+        and "vx" in name
+        and (version in name or image_version.startswith(version))
+    )
+
+
+def _recent_cumulus_vx_image_names(images: list[Any], limit: int = 8) -> list[str]:
+    """Return recent Cumulus VX image names for error context."""
+    candidates = [image for image in images if _is_close_cumulus_vx_match(image, "")]
+    newest = sorted(candidates, key=_image_timestamp, reverse=True)
+    return [_image_name(image) for image in newest[:limit] if _image_name(image)]
+
 
 _NAUTOBOT_PROVISIONING_NBSHELL = (
     "from nautobot.dcim.models import Device;"
@@ -141,6 +189,64 @@ class AirSimulationManager:
 
         LOG.info(f"Created simulation: {simulation.id}")
         return simulation.id
+
+    def resolve_cumulus_vx_images(self, versions: Iterable[str]) -> dict[str, str]:
+        """Validate and resolve Cumulus VX AIR image names by firmware version.
+
+        Exact ``cumulus-vx-<version>`` image names are preferred. If the exact
+        name is unavailable, the newest visible Cumulus VX image containing the
+        requested version is selected.
+        """
+        required_versions = sorted({version for version in versions if version})
+        if not required_versions:
+            return {}
+
+        LOG.info(
+            "Validating Cumulus VX AIR image(s): %s",
+            ", ".join(required_versions),
+        )
+        images = list(self.client.images.list())
+        if not images:
+            raise RuntimeError("AIR image list is empty; cannot validate Cumulus VX images")
+
+        resolved: dict[str, str] = {}
+        for version in required_versions:
+            image = self._select_cumulus_vx_image(images, version)
+            expected_name = _cumulus_vx_image_name(version)
+            if image is None:
+                recent = ", ".join(_recent_cumulus_vx_image_names(images)) or "none"
+                raise RuntimeError(
+                    f"AIR image not found for Cumulus Linux {version}. "
+                    f"Expected '{expected_name}' or a Cumulus VX image containing "
+                    f"'{version}'. Recent Cumulus VX images: {recent}"
+                )
+
+            image_name = _image_name(image)
+            resolved[version] = image_name
+            if image_name == expected_name:
+                LOG.info("Found AIR image %s for Cumulus Linux %s", image_name, version)
+            else:
+                LOG.info(
+                    "Using AIR image %s for Cumulus Linux %s (preferred %s was not present)",
+                    image_name,
+                    version,
+                    expected_name,
+                )
+
+        return resolved
+
+    @staticmethod
+    def _select_cumulus_vx_image(images: list[Any], version: str) -> Any | None:
+        """Select the preferred AIR image for a Cumulus firmware version."""
+        expected_name = _cumulus_vx_image_name(version)
+        exact_matches = [image for image in images if _image_name(image) == expected_name]
+        if exact_matches:
+            return max(exact_matches, key=_image_timestamp)
+
+        close_matches = [image for image in images if _is_close_cumulus_vx_match(image, version)]
+        if close_matches:
+            return max(close_matches, key=_image_timestamp)
+        return None
 
     # ------------------------------------------------------------------
     # Cloud-init UserConfig attach / cleanup

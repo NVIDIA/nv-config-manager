@@ -16,12 +16,70 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
 
 import nv_config_manager_installer.air_sim.sim_manager as sim_manager_module
 from nv_config_manager_installer.air_sim.sim_manager import AirSimulationManager
+
+
+def _image(name: str, modified: datetime, version: str = "") -> SimpleNamespace:
+    return SimpleNamespace(
+        name=name,
+        version=version,
+        modified=modified,
+        created=modified,
+    )
+
+
+def _manager_with_images(images: list[SimpleNamespace]) -> AirSimulationManager:
+    manager = AirSimulationManager.__new__(AirSimulationManager)
+    manager.client = SimpleNamespace(
+        images=SimpleNamespace(list=lambda: iter(images)),
+    )
+    return manager
+
+
+def test_resolve_cumulus_vx_images_prefers_exact_name() -> None:
+    manager = _manager_with_images(
+        [
+            _image(
+                "cumulus-linux-vx-amd64-5.16.1.0008.qcow2",
+                datetime(2026, 1, 2, tzinfo=UTC),
+            ),
+            _image("cumulus-vx-5.16.1", datetime(2026, 1, 1, tzinfo=UTC)),
+        ]
+    )
+
+    assert manager.resolve_cumulus_vx_images(["5.16.1"]) == {"5.16.1": "cumulus-vx-5.16.1"}
+
+
+def test_resolve_cumulus_vx_images_uses_newest_close_match() -> None:
+    manager = _manager_with_images(
+        [
+            _image(
+                "cumulus-linux-vx-amd64-5.16.1.0007.qcow2",
+                datetime(2026, 1, 1, tzinfo=UTC),
+            ),
+            _image(
+                "cumulus-linux-vx-amd64-5.16.1.0008.qcow2",
+                datetime(2026, 1, 2, tzinfo=UTC),
+            ),
+        ]
+    )
+
+    assert manager.resolve_cumulus_vx_images(["5.16.1"]) == {
+        "5.16.1": "cumulus-linux-vx-amd64-5.16.1.0008.qcow2"
+    }
+
+
+def test_resolve_cumulus_vx_images_requires_match() -> None:
+    manager = _manager_with_images([_image("generic/ubuntu2404", datetime(2026, 1, 1, tzinfo=UTC))])
+
+    with pytest.raises(RuntimeError, match="cumulus-vx-5.16.1"):
+        manager.resolve_cumulus_vx_images(["5.16.1"])
 
 
 def test_configure_nat_rules_enables_dhcp_relay(monkeypatch: pytest.MonkeyPatch) -> None:

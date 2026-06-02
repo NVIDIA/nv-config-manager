@@ -29,7 +29,6 @@ from typing import Any
 import yaml
 
 from nv_config_manager_installer.air_sim.constants import (
-    CUMULUS_VX_IMAGES,
     DEFAULT_CUMULUS_VERSION,
     DEFAULT_NODE_CPU,
     DEFAULT_NODE_MEMORY,
@@ -145,6 +144,7 @@ class AirTopologyBuilder:
         simulation_name: str | None = None,
         minimal_mode: bool = False,
         nvcm_server: NVCMServerConfig | None = None,
+        cumulus_image_overrides: dict[str, str] | None = None,
     ) -> None:
         """Initialize the topology builder.
 
@@ -153,10 +153,12 @@ class AirTopologyBuilder:
             simulation_name: Name for the AIR simulation (auto-generated if not provided)
             minimal_mode: If True, group similar devices into single nodes for smaller sims
             nvcm_server: Configuration for adding a NVCM server node to the topology
+            cumulus_image_overrides: AIR image names keyed by Cumulus firmware version
         """
         self.yaml_path = Path(yaml_path)
         self.minimal_mode = minimal_mode
         self.nvcm_server = nvcm_server
+        self.cumulus_image_overrides = cumulus_image_overrides or {}
 
         # Parse YAML
         with open(self.yaml_path) as f:
@@ -178,6 +180,24 @@ class AirTopologyBuilder:
         self._parse_devices()
         self._parse_interfaces()
         self._parse_cables()
+
+    def cumulus_firmware_versions(self) -> list[str]:
+        """Return unique Cumulus firmware versions required by this topology."""
+        return sorted(
+            {
+                device.firmware_version
+                for device in self.devices.values()
+                if "Cumulus" in device.platform and device.firmware_version
+            }
+        )
+
+    def set_cumulus_image_overrides(self, image_overrides: dict[str, str]) -> None:
+        """Set resolved AIR image names keyed by Cumulus firmware version."""
+        self.cumulus_image_overrides = dict(image_overrides)
+
+    def _cumulus_air_image(self, firmware_version: str) -> str:
+        """Return the AIR OS image name for a Cumulus firmware version."""
+        return self.cumulus_image_overrides.get(firmware_version, f"cumulus-vx-{firmware_version}")
 
     def _extract_site_name(self) -> str:
         """Extract the site name from location hierarchy."""
@@ -450,14 +470,10 @@ class AirTopologyBuilder:
             is_cumulus = "Cumulus" in device.platform
 
             if is_cumulus:
-                air_image = CUMULUS_VX_IMAGES.get(
-                    device.firmware_version,
-                    f"cumulus-vx-{device.firmware_version}",
-                )
                 node: dict[str, Any] = {
                     "memory": DEFAULT_NODE_MEMORY,
                     "cpu": DEFAULT_NODE_CPU,
-                    "os": air_image,
+                    "os": self._cumulus_air_image(device.firmware_version),
                 }
             else:
                 # Non-Cumulus node (servers, GPUs, DPUs) - use AIR config if available
@@ -661,15 +677,10 @@ class AirTopologyBuilder:
 
         # Create nodes from groups
         for group_key, group_data in device_groups.items():
-            air_image = CUMULUS_VX_IMAGES.get(
-                group_data["firmware_version"],
-                f"cumulus-vx-{group_data['firmware_version']}",
-            )
-
             topology["nodes"][group_key] = {
                 "memory": DEFAULT_NODE_MEMORY,
                 "cpu": DEFAULT_NODE_CPU,
-                "os": air_image,
+                "os": self._cumulus_air_image(group_data["firmware_version"]),
             }
 
             # Add interfaces as unconnected
