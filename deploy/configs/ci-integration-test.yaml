@@ -77,6 +77,42 @@ services:
   config_store: true
   nautobot: true
 
+images:
+  # CI preloads third-party runtime images into Kind through the host Docker daemon.
+  # This avoids anonymous in-cluster pulls from Docker Hub during Helm's --wait window.
+  # Note: docker.io/library/busybox:1.36 is also preloaded as a code default via
+  # _KIND_PRELOAD_IMAGES in deployer.py (used by the installer's PVC loader pods);
+  # it's listed here for documentation. The effective list is deduplicated.
+  kind_preload_images:
+    - docker.io/library/busybox:1.36
+    - docker.io/hashicorp/http-echo:1.0
+    - docker.io/alpine/kubectl:1.35.4
+    - docker.io/library/redis:7-alpine
+    - docker.io/library/nats:2.10-alpine
+    - docker.io/natsio/nats-box:0.14.3
+    - docker.io/temporalio/server:1.29
+    - docker.io/temporalio/admin-tools:1.29
+    - docker.io/temporalio/ui:v2.37.4
+    - docker.io/nginxinc/nginx-unprivileged:1.27
+    - docker.io/envoyproxy/gateway:v1.6.5
+    - docker.io/envoyproxy/ratelimit:c8765e89
+    - docker.io/envoyproxy/envoy:distroless-v1.36.5
+    - quay.io/jetstack/cert-manager-controller:v1.20.2
+    - quay.io/jetstack/cert-manager-webhook:v1.20.2
+    - quay.io/jetstack/cert-manager-cainjector:v1.20.2
+    - quay.io/jetstack/cert-manager-startupapicheck:v1.20.2
+    - quay.io/jetstack/cert-manager-acmesolver:v1.20.2
+    - ghcr.io/cloudnative-pg/cloudnative-pg:1.29.0
+    # NOTE: keep the next line in sync with `images.overrides.postgresql` below;
+    # bumping the postgresql version requires updating BOTH the preload tag and
+    # the override `tag:` so CI preloads the exact image CNPG ends up running.
+    - ghcr.io/cloudnative-pg/postgresql:18.0-system-trixie
+  overrides:
+    # MUST match the postgresql entry in `kind_preload_images` above.
+    postgresql:
+      repository: ghcr.io/cloudnative-pg/postgresql
+      tag: 18.0-system-trixie
+
 infrastructure:
   gateway: envoyGateway
   tls: true

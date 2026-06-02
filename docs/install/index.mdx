@@ -173,6 +173,8 @@ nv-config-manager-installer deploy nv-config-manager-install.yaml \
 
 For a fresh Kind deployment that builds local images, the local-image flags and the three operator install flags are required unless those operators are already installed and images are already available to the cluster. If the Kind cluster name is not `nv-config-manager`, pass the actual name with `--kind-cluster`.
 
+In CI environments where in-cluster pulls are unreliable or rate limited, `--load-kind` can also preload selected third-party runtime images before Helm starts. Add image references under `images.kind_preload_images` in the installer YAML, or pass a comma- or space-separated override with `NVCM_KIND_PRELOAD_IMAGES`.
+
 | Flag | Default | Description |
 | :--- | :------ | :---------- |
 | `--chart-dir` | `deploy/helm` | Path to the Helm chart |
