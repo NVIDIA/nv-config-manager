@@ -289,6 +289,7 @@ class TestInstallCrds:
             DeployOptions(chart_dir=str(tmp_path / "helm"), install_cert_manager=True),
             RecordingCallback(),
         )
+        deployer._k8s = _mock_k8s()
         deployer._install_crds()
 
         assert any("charts.jetstack.io" in " ".join(cmd) for cmd in run_commands)
@@ -346,6 +347,7 @@ class TestInstallCrds:
             ),
             RecordingCallback(),
         )
+        deployer._k8s = _mock_k8s()
         deployer._install_crds()
 
         rendered_commands = [" ".join(cmd) for cmd in logged_commands]
@@ -416,6 +418,171 @@ class TestInstallCrds:
         assert str(charts_dir / "prometheus-operator-crds-28.0.1.tgz") in prom_crds_cmd
         assert run_commands == []
         assert not any("github.com/cert-manager" in cmd for cmd in rendered_commands)
+
+
+class TestInstallCrdsProvenance:
+    """Verify operator namespaces get pre-created with installer labels and that
+    chart-aware ``commonLabels`` args reach the helm CLI so installer-managed
+    resources are discoverable for cleanup.
+    """
+
+    @staticmethod
+    def _run_install_crds(tmp_path, monkeypatch, *, options: DeployOptions):
+        (tmp_path / "operator-versions.env").write_text(_OPERATOR_VERSIONS)
+        run_commands: list[list[str]] = []
+        logged_commands: list[list[str]] = []
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer._run",
+            lambda cmd, **kw: (run_commands.append(cmd), MagicMock(returncode=0))[1],
+        )
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer._run_logged",
+            lambda cmd, step, callback, **kw: (
+                logged_commands.append(cmd),
+                MagicMock(returncode=0),
+            )[1],
+        )
+
+        deployer = Deployer(_make_config(), options, RecordingCallback())
+        deployer._k8s = _mock_k8s()
+        deployer._install_crds()
+        return deployer, logged_commands
+
+    def test_envoy_namespace_pre_created_with_installer_labels(self, tmp_path, monkeypatch):
+        deployer, _ = self._run_install_crds(
+            tmp_path,
+            monkeypatch,
+            options=DeployOptions(chart_dir=str(tmp_path), install_envoy_gateway=True),
+        )
+        assert ("envoy-gateway-system",) in {
+            (c.args[0],) for c in deployer._k8s.ensure_namespace.call_args_list
+        }
+
+    def test_cert_manager_namespace_pre_created(self, tmp_path, monkeypatch):
+        deployer, _ = self._run_install_crds(
+            tmp_path,
+            monkeypatch,
+            options=DeployOptions(chart_dir=str(tmp_path), install_cert_manager=True),
+        )
+        assert ("cert-manager",) in {
+            (c.args[0],) for c in deployer._k8s.ensure_namespace.call_args_list
+        }
+
+    def test_cnpg_namespace_pre_created(self, tmp_path, monkeypatch):
+        deployer, _ = self._run_install_crds(
+            tmp_path,
+            monkeypatch,
+            options=DeployOptions(chart_dir=str(tmp_path), install_cnpg_operator=True),
+        )
+        assert ("cnpg-system",) in {
+            (c.args[0],) for c in deployer._k8s.ensure_namespace.call_args_list
+        }
+
+    def test_observability_namespace_pre_created(self, tmp_path, monkeypatch):
+        config = _make_config()
+        config.infrastructure.monitoring.observability_enabled = True
+        (tmp_path / "operator-versions.env").write_text(_OPERATOR_VERSIONS)
+        run_commands: list[list[str]] = []
+        logged_commands: list[list[str]] = []
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer._run",
+            lambda cmd, **kw: (run_commands.append(cmd), MagicMock(returncode=0))[1],
+        )
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer._run_logged",
+            lambda cmd, step, callback, **kw: (
+                logged_commands.append(cmd),
+                MagicMock(returncode=0),
+            )[1],
+        )
+
+        deployer = Deployer(config, DeployOptions(chart_dir=str(tmp_path)), RecordingCallback())
+        deployer._k8s = _mock_k8s()
+        deployer._install_crds()
+
+        assert ("nv-config-manager-monitoring",) in {
+            (c.args[0],) for c in deployer._k8s.ensure_namespace.call_args_list
+        }
+
+    def test_envoy_helm_args_include_common_labels(self, tmp_path, monkeypatch):
+        _, logged = self._run_install_crds(
+            tmp_path,
+            monkeypatch,
+            options=DeployOptions(chart_dir=str(tmp_path), install_envoy_gateway=True),
+        )
+        envoy_cmd = next(cmd for cmd in logged if cmd[:4] == ["helm", "upgrade", "--install", "eg"])
+        # Dotted label keys must be backslash-escaped to survive helm's --set parser.
+        assert (
+            "commonLabels.nv-config-manager\\.nvidia\\.com/installer=nv-config-manager-installer"
+            in envoy_cmd
+        )
+        assert "commonLabels.app\\.kubernetes\\.io/part-of=nv-config-manager" in envoy_cmd
+
+    def test_cert_manager_helm_args_use_global_common_labels(self, tmp_path, monkeypatch):
+        # cert-manager nests commonLabels under ``global`` — getting the prefix
+        # wrong means the labels silently land nowhere.
+        _, logged = self._run_install_crds(
+            tmp_path,
+            monkeypatch,
+            options=DeployOptions(chart_dir=str(tmp_path), install_cert_manager=True),
+        )
+        cert_cmd = next(
+            cmd for cmd in logged if cmd[:4] == ["helm", "upgrade", "--install", "cert-manager"]
+        )
+        assert (
+            "global.commonLabels.nv-config-manager\\.nvidia\\.com/installer="
+            "nv-config-manager-installer" in cert_cmd
+        )
+        assert "global.commonLabels.app\\.kubernetes\\.io/part-of=nv-config-manager" in cert_cmd
+
+    def test_cnpg_helm_args_use_pod_labels_fallback(self, tmp_path, monkeypatch):
+        # cloudnative-pg has no chart-wide commonLabels value, so the best we
+        # can do is stamp the operator pod via podLabels. Anything else is
+        # covered by namespace-level cleanup.
+        _, logged = self._run_install_crds(
+            tmp_path,
+            monkeypatch,
+            options=DeployOptions(chart_dir=str(tmp_path), install_cnpg_operator=True),
+        )
+        cnpg_cmd = next(
+            cmd for cmd in logged if cmd[:4] == ["helm", "upgrade", "--install", "cnpg"]
+        )
+        assert (
+            "podLabels.nv-config-manager\\.nvidia\\.com/installer=nv-config-manager-installer"
+            in cnpg_cmd
+        )
+
+    def test_prom_crds_helm_args_use_crd_annotations(self, tmp_path, monkeypatch):
+        # prometheus-operator-crds only exposes crds.annotations — labels
+        # aren't an option, so we annotate the CRDs for audit visibility.
+        config = _make_config()
+        config.infrastructure.monitoring.observability_enabled = True
+        (tmp_path / "operator-versions.env").write_text(_OPERATOR_VERSIONS)
+        logged_commands: list[list[str]] = []
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer._run",
+            lambda cmd, **kw: MagicMock(returncode=0),
+        )
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer._run_logged",
+            lambda cmd, step, callback, **kw: (
+                logged_commands.append(cmd),
+                MagicMock(returncode=0),
+            )[1],
+        )
+        deployer = Deployer(config, DeployOptions(chart_dir=str(tmp_path)), RecordingCallback())
+        deployer._k8s = _mock_k8s()
+        deployer._install_crds()
+
+        prom_cmd = next(
+            cmd
+            for cmd in logged_commands
+            if cmd[:4] == ["helm", "upgrade", "--install", "nv-config-manager-prom-crds"]
+        )
+        assert (
+            "crds.annotations.nv-config-manager\\.nvidia\\.com/installer="
+            "nv-config-manager-installer" in prom_cmd
+        )
 
 
 class TestDeployOptions:
