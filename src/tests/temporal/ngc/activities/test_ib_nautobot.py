@@ -40,6 +40,10 @@ DEVICE_IP = "10.0.0.1"
 DEVICE_ID = "dev-1234"
 LOCATION_ID = "loc-7890"
 LOCATION_NAME = "test-site"
+DATAHALL_ID = "loc-datahall-1"
+DATAHALL_NAME = "example-site-datahall-1"
+SITE_ID = "loc-site-example"
+SITE_NAME = "example-site"
 OVERLAY_ID = "ovl-aaaa"
 OVERLAY_NAME = "ib-pkey-0x0100"
 PKEY_ID = "pky-bbbb"
@@ -70,6 +74,21 @@ def mock_nb_config() -> Any:
         yield
 
 
+def _overlay_block(
+    *,
+    overlay_id: str = OVERLAY_ID,
+    overlay_name: str = OVERLAY_NAME,
+    pkeys: list[dict[str, str]] | None = None,
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "id": overlay_id,
+            "name": overlay_name,
+            "pkeys": pkeys if pkeys is not None else [{"id": PKEY_ID, "pkey": "0x0100"}],
+        }
+    ]
+
+
 def _device_payload(
     *,
     pkeys: list[dict[str, str]] | None = None,
@@ -84,13 +103,48 @@ def _device_payload(
         "location": {
             "id": LOCATION_ID,
             "name": LOCATION_NAME,
-            "overlays": [
-                {
-                    "id": overlay_id,
-                    "name": overlay_name,
-                    "pkeys": pkeys if pkeys is not None else [{"id": PKEY_ID, "pkey": "0x0100"}],
-                }
-            ],
+            "location_type": {"name": "Site"},
+            "overlays": _overlay_block(
+                overlay_id=overlay_id, overlay_name=overlay_name, pkeys=pkeys
+            ),
+        },
+    }
+
+
+def _datahall_device_payload(
+    *,
+    overlay_at: str = "site",
+    overlay_id: str = OVERLAY_ID,
+    overlay_name: str = OVERLAY_NAME,
+    pkeys: list[dict[str, str]] | None = None,
+    extra_site_overlays: list[dict[str, Any]] | None = None,
+    extra_datahall_overlays: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    site_overlays = list(extra_site_overlays or [])
+    datahall_overlays = list(extra_datahall_overlays or [])
+
+    overlay = _overlay_block(overlay_id=overlay_id, overlay_name=overlay_name, pkeys=pkeys)
+    if overlay_at in {"site", "both"}:
+        site_overlays = [*overlay, *site_overlays]
+    if overlay_at in {"datahall", "both"}:
+        datahall_overlays = [*overlay, *datahall_overlays]
+
+    return {
+        "id": DEVICE_ID,
+        "name": DEVICE_NAME,
+        "primary_ip4": {"host": DEVICE_IP},
+        "location": {
+            "id": DATAHALL_ID,
+            "name": DATAHALL_NAME,
+            "location_type": {"name": "Datahall"},
+            "overlays": datahall_overlays,
+            "parent": {
+                "id": SITE_ID,
+                "name": SITE_NAME,
+                "location_type": {"name": "Site"},
+                "overlays": site_overlays,
+                "parent": None,
+            },
         },
     }
 
@@ -133,21 +187,22 @@ class TestNormalizePkey:
 class TestSelectPkeyMatch:
     def test_finds_single_match(self) -> None:
         device = _device_payload()
-        overlay, pkey_record = _select_pkey_match(device, "0x0100")
+        location, overlay, pkey_record = _select_pkey_match(device, "0x0100")
+        assert location["id"] == LOCATION_ID
         assert overlay["id"] == OVERLAY_ID
         assert pkey_record["id"] == PKEY_ID
 
     def test_matches_across_pkey_format_variants(self) -> None:
         device = _device_payload(pkeys=[{"id": "p1", "pkey": "0x100"}])
-        _, pkey_record = _select_pkey_match(device, "0x0100")
+        _, _, pkey_record = _select_pkey_match(device, "0x0100")
         assert pkey_record["id"] == "p1"
 
     def test_no_match_raises(self) -> None:
         device = _device_payload(pkeys=[{"id": "p1", "pkey": "0x8001"}])
-        with pytest.raises(ApplicationError, match="not found at location"):
+        with pytest.raises(ApplicationError, match="not found at or above location"):
             _select_pkey_match(device, "0x0100")
 
-    def test_ambiguous_match_raises(self) -> None:
+    def test_ambiguous_match_at_same_location_raises(self) -> None:
         device = {
             "location": {
                 "id": LOCATION_ID,
@@ -166,20 +221,50 @@ class TestSelectPkeyMatch:
                 ],
             },
         }
-        with pytest.raises(ApplicationError, match="ambiguous at location"):
+        with pytest.raises(ApplicationError, match="ambiguous near location"):
             _select_pkey_match(device, "0x0100")
 
     def test_ignores_malformed_pkey_in_data(self) -> None:
         device = _device_payload(
             pkeys=[{"id": "p1", "pkey": "junk"}, {"id": "p2", "pkey": "0x0100"}]
         )
-        _, pkey_record = _select_pkey_match(device, "0x0100")
+        _, _, pkey_record = _select_pkey_match(device, "0x0100")
         assert pkey_record["id"] == "p2"
 
     def test_empty_overlays_raises_not_found(self) -> None:
         device = {"location": {"id": LOCATION_ID, "name": LOCATION_NAME, "overlays": []}}
-        with pytest.raises(ApplicationError, match="not found at location"):
+        with pytest.raises(ApplicationError, match="not found at or above location"):
             _select_pkey_match(device, "0x0100")
+
+    def test_finds_overlay_attached_at_site_parent(self) -> None:
+        device = _datahall_device_payload(overlay_at="site")
+        location, overlay, pkey_record = _select_pkey_match(device, "0x0100")
+        assert location["id"] == SITE_ID
+        assert location["name"] == SITE_NAME
+        assert overlay["id"] == OVERLAY_ID
+        assert pkey_record["id"] == PKEY_ID
+
+    def test_prefers_lower_level_overlay_when_both_levels_define_it(self) -> None:
+        device = _datahall_device_payload(overlay_at="both")
+        with pytest.raises(ApplicationError, match="ambiguous near location"):
+            _select_pkey_match(device, "0x0100")
+
+    def test_no_overlay_in_chain_reports_device_location(self) -> None:
+        device = _datahall_device_payload(overlay_at="neither")
+        with pytest.raises(ApplicationError) as exc_info:
+            _select_pkey_match(device, "0x0100")
+        assert DATAHALL_NAME in str(exc_info.value)
+
+    def test_walks_through_intermediate_location_without_overlays(self) -> None:
+        device = _datahall_device_payload(overlay_at="site")
+        device["location"]["parent"]["parent"] = {
+            "id": "loc-region",
+            "name": "us-east",
+            "overlays": [],
+            "parent": None,
+        }
+        location, _, _ = _select_pkey_match(device, "0x0100")
+        assert location["id"] == SITE_ID
 
 
 # ---------------------------------------------------------------------------
@@ -229,6 +314,39 @@ class TestResolveIBContextByName:
             m.post(NB_GRAPHQL, payload={"data": {"devices": []}})
             with pytest.raises(ApplicationError, match="does not match required format"):
                 await resolve_ib_context(ResolveIBContextInput(host=DEVICE_NAME, pkey="bogus"))
+
+    async def test_returns_site_when_overlay_lives_on_parent(self, mock_nb_config: Any) -> None:
+        payload = {"data": {"devices": [_datahall_device_payload(overlay_at="site")]}}
+        with aioresponses() as m:
+            m.post(NB_GRAPHQL, payload=payload)
+            result = await resolve_ib_context(
+                ResolveIBContextInput(host=DEVICE_NAME, pkey="0x0100")
+            )
+        assert result.location_id == SITE_ID
+        assert result.location_name == SITE_NAME
+        assert result.overlay_id == OVERLAY_ID
+
+    async def test_returns_site_even_when_overlay_lives_at_datahall(
+        self, mock_nb_config: Any
+    ) -> None:
+        payload = {"data": {"devices": [_datahall_device_payload(overlay_at="datahall")]}}
+        with aioresponses() as m:
+            m.post(NB_GRAPHQL, payload=payload)
+            result = await resolve_ib_context(
+                ResolveIBContextInput(host=DEVICE_NAME, pkey="0x0100")
+            )
+        assert result.location_id == SITE_ID
+        assert result.location_name == SITE_NAME
+        assert result.overlay_id == OVERLAY_ID
+
+    async def test_no_site_in_hierarchy_raises(self, mock_nb_config: Any) -> None:
+        device = _datahall_device_payload(overlay_at="datahall")
+        device["location"]["parent"]["location_type"] = {"name": "Region"}
+        payload = {"data": {"devices": [device]}}
+        with aioresponses() as m:
+            m.post(NB_GRAPHQL, payload=payload)
+            with pytest.raises(ApplicationError, match="No Site-typed location"):
+                await resolve_ib_context(ResolveIBContextInput(host=DEVICE_NAME, pkey="0x0100"))
 
 
 # ---------------------------------------------------------------------------

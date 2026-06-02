@@ -70,6 +70,7 @@ def stub_graphql_resolve_ib_context(
                         "location": {
                             "id": location_id,
                             "name": location_name,
+                            "location_type": {"name": "Site"},
                             "overlays": [
                                 {
                                     "id": overlay_id,

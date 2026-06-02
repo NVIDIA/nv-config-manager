@@ -749,7 +749,7 @@ class ResolveIBContextInput(BaseModel):
 
 
 class ResolveIBContextOutput(StageOutput):
-    """UFM device, location, and overlay context for an IB PKey operation."""
+    """UFM device, Site, and overlay context for an IB PKey operation."""
 
     ufm_device_id: str
     ufm_device_name: str
@@ -762,6 +762,8 @@ class ResolveIBContextOutput(StageOutput):
     pkey: str
 
 
+SITE_LOCATION_TYPE_NAME = "Site"
+
 _RESOLVE_BY_NAME_QUERY = """
 query ($host: [String]) {
   devices(name: $host) {
@@ -771,12 +773,39 @@ query ($host: [String]) {
     location {
       id
       name
+      location_type { name }
       overlays(isolation_type: ["ib_pkey"]) {
         id
         name
         pkeys {
           id
           pkey
+        }
+      }
+      parent {
+        id
+        name
+        location_type { name }
+        overlays(isolation_type: ["ib_pkey"]) {
+          id
+          name
+          pkeys {
+            id
+            pkey
+          }
+        }
+        parent {
+          id
+          name
+          location_type { name }
+          overlays(isolation_type: ["ib_pkey"]) {
+            id
+            name
+            pkeys {
+              id
+              pkey
+            }
+          }
         }
       }
     }
@@ -796,12 +825,39 @@ query ($ip: [String]) {
         location {
           id
           name
+          location_type { name }
           overlays(isolation_type: ["ib_pkey"]) {
             id
             name
             pkeys {
               id
               pkey
+            }
+          }
+          parent {
+            id
+            name
+            location_type { name }
+            overlays(isolation_type: ["ib_pkey"]) {
+              id
+              name
+              pkeys {
+                id
+                pkey
+              }
+            }
+            parent {
+              id
+              name
+              location_type { name }
+              overlays(isolation_type: ["ib_pkey"]) {
+                id
+                name
+                pkeys {
+                  id
+                  pkey
+                }
+              }
             }
           }
         }
@@ -863,30 +919,62 @@ async def _find_device(client: NautobotClient, host: str) -> dict[str, Any]:
     return next(iter(by_id.values()))
 
 
+def _walk_location_chain(location: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """Return [location, parent, grandparent, ...] until parent is missing."""
+    chain: list[dict[str, Any]] = []
+    current = location
+    while current:
+        chain.append(current)
+        current = current.get("parent")
+    return chain
+
+
+def _find_site_in_chain(chain: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Return the first Site-typed location in the chain, or None."""
+    for location in chain:
+        if (location.get("location_type") or {}).get("name") == SITE_LOCATION_TYPE_NAME:
+            return location
+    return None
+
+
+def _iter_pkey_matches(
+    chain: list[dict[str, Any]], canonical_pkey: str
+) -> list[tuple[dict[str, Any], dict[str, Any], dict[str, Any]]]:
+    """Collect every (location, overlay, pkey_record) triple in the chain matching canonical_pkey."""
+    matches: list[tuple[dict[str, Any], dict[str, Any], dict[str, Any]]] = []
+    for location in chain:
+        for overlay in location.get("overlays") or []:
+            for pkey_record in overlay.get("pkeys") or []:
+                stored = pkey_record.get("pkey") or ""
+                if not _PKEY_PATTERN.match(stored):
+                    continue
+                if f"0x{int(stored, 16):04x}" == canonical_pkey:
+                    matches.append((location, overlay, pkey_record))
+    return matches
+
+
 def _select_pkey_match(
     device: dict[str, Any], canonical_pkey: str
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Select the (overlay, pkey_record) pair matching canonical_pkey."""
-    location = device.get("location") or {}
-    overlays = location.get("overlays") or []
-    matches: list[tuple[dict[str, Any], dict[str, Any]]] = []
-    for overlay in overlays:
-        for pkey_record in overlay.get("pkeys") or []:
-            stored = pkey_record.get("pkey") or ""
-            if _PKEY_PATTERN.match(stored) and f"0x{int(stored, 16):04x}" == canonical_pkey:
-                matches.append((overlay, pkey_record))
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    """Select the (location, overlay, pkey_record) triple matching canonical_pkey."""
+    device_location = device.get("location") or {}
+    chain = _walk_location_chain(device_location)
+    matches = _iter_pkey_matches(chain, canonical_pkey)
 
-    location_name = location.get("name") or "<unknown>"
+    device_loc_name = device_location.get("name") or "<unknown>"
     if not matches:
         raise ApplicationError(
-            f"PKey {canonical_pkey!r} not found at location {location_name!r}",
+            f"PKey {canonical_pkey!r} not found at or above location {device_loc_name!r}",
             non_retryable=True,
         )
     if len(matches) > 1:
-        candidates = ", ".join(f"{o.get('id')}:{o.get('name', '<unnamed>')}" for o, _ in matches)
+        candidates = ", ".join(
+            f"{loc.get('name', '<unnamed>')}/{ovl.get('name', '<unnamed>')}"
+            for loc, ovl, _ in matches
+        )
         raise ApplicationError(
-            f"PKey {canonical_pkey!r} ambiguous at location {location_name!r}: "
-            f"matches overlays [{candidates}]. Specify overlay_id explicitly.",
+            f"PKey {canonical_pkey!r} ambiguous near location {device_loc_name!r}: "
+            f"matches [{candidates}]. Specify overlay_id explicitly.",
             non_retryable=True,
         )
     return matches[0]
@@ -903,15 +991,32 @@ async def resolve_ib_context(
     async with client:
         device = await _find_device(client, input.host)
 
-    overlay, pkey_record = _select_pkey_match(device, canonical_pkey)
+    overlay_location, overlay, pkey_record = _select_pkey_match(device, canonical_pkey)
+
+    chain = _walk_location_chain(device.get("location") or {})
+    site = _find_site_in_chain(chain)
+    if site is None:
+        chain_repr = " -> ".join(
+            f"{loc.get('name', '?')}:{(loc.get('location_type') or {}).get('name', '?')}"
+            for loc in chain
+        )
+        raise ApplicationError(
+            f"No {SITE_LOCATION_TYPE_NAME}-typed location in hierarchy for device "
+            f"{device.get('name')!r}: {chain_repr}",
+            non_retryable=True,
+        )
+
     primary_ip = (device.get("primary_ip4") or {}).get("host")
 
     log.info(
-        "Resolved IB context for host=%s pkey=%s -> device=%s location=%s overlay=%s",
+        "Resolved IB context for host=%s pkey=%s -> device=%s "
+        "device_location=%s site=%s overlay_location=%s overlay=%s",
         input.host,
         canonical_pkey,
         device.get("name"),
         (device.get("location") or {}).get("name"),
+        site.get("name"),
+        overlay_location.get("name"),
         overlay.get("name"),
     )
 
@@ -919,8 +1024,8 @@ async def resolve_ib_context(
         ufm_device_id=device["id"],
         ufm_device_name=device["name"],
         ufm_device_primary_ip=primary_ip,
-        location_id=device["location"]["id"],
-        location_name=device["location"]["name"],
+        location_id=site["id"],
+        location_name=site["name"],
         overlay_id=overlay["id"],
         overlay_name=overlay["name"],
         pkey_id=pkey_record["id"],
