@@ -47,6 +47,8 @@ from kubernetes import client, config, watch
 from kubernetes.client.rest import ApiException
 from kubernetes.stream import stream as k8s_stream
 
+LOADER_POD_IMAGE = "docker.io/library/busybox:1.36"
+
 
 def kubectl_current_context() -> str | None:
     """Return ``kubectl config current-context`` output, or None on failure.
@@ -480,7 +482,7 @@ class K8sClient:
         namespace: str,
         pvc_name: str,
         mount_path: str,
-        image: str = "busybox:1.36",
+        image: str = LOADER_POD_IMAGE,
         node_selector: dict[str, str] | None = None,
     ) -> None:
         """Create a short-lived pod that mounts a PVC for content loading."""
@@ -509,6 +511,102 @@ class K8sClient:
         )
         self.v1.create_namespaced_pod(namespace, body)
 
+    @staticmethod
+    def _short_status_text(value: str, *, limit: int = 180) -> str:
+        value = " ".join(value.split())
+        if len(value) <= limit:
+            return value
+        return f"{value[: limit - 3]}..."
+
+    @classmethod
+    def _container_status_details(
+        cls, statuses: list[Any] | None, *, prefix: str = "container"
+    ) -> list[str]:
+        details: list[str] = []
+        for status in statuses or []:
+            name = status.name or "<unknown>"
+            state = status.state
+            state_text = "unknown"
+            if state and state.waiting:
+                reason = state.waiting.reason or "Waiting"
+                message = state.waiting.message or ""
+                state_text = reason
+                if message:
+                    state_text = f"{state_text} ({cls._short_status_text(message)})"
+            elif state and state.terminated:
+                reason = state.terminated.reason or "Terminated"
+                state_text = f"{reason} exitCode={state.terminated.exit_code}"
+                if state.terminated.message:
+                    state_text = (
+                        f"{state_text} ({cls._short_status_text(state.terminated.message)})"
+                    )
+            elif state and state.running:
+                state_text = "Running"
+
+            ready = "ready" if status.ready else "not ready"
+            details.append(f"{prefix} {name}: {state_text}, {ready}")
+        return details
+
+    @classmethod
+    def _pod_condition_details(cls, pod: client.V1Pod) -> list[str]:
+        conditions = pod.status.conditions if pod.status and pod.status.conditions else []
+        details: list[str] = []
+        for cond in conditions:
+            detail = f"condition {cond.type}={cond.status}"
+            if cond.reason:
+                detail = f"{detail} ({cond.reason})"
+            if cond.message:
+                detail = f"{detail}: {cls._short_status_text(cond.message)}"
+            details.append(detail)
+        return details
+
+    def _pod_event_details(self, name: str, namespace: str) -> list[str]:
+        try:
+            events = self.v1.list_namespaced_event(
+                namespace,
+                field_selector=f"involvedObject.kind=Pod,involvedObject.name={name}",
+            ).items
+        except ApiException:
+            return []
+
+        def event_sort_key(event: Any) -> str:
+            ts = event.last_timestamp or event.event_time or event.first_timestamp
+            return ts.isoformat() if ts else ""
+
+        details: list[str] = []
+        for event in sorted(events, key=event_sort_key)[-5:]:
+            reason = event.reason or "Event"
+            message = self._short_status_text(event.message or "")
+            details.append(f"event {reason}: {message}" if message else f"event {reason}")
+        return details
+
+    def _pod_not_ready_details(self, name: str, namespace: str) -> str:
+        try:
+            pod = self.v1.read_namespaced_pod(name, namespace)
+        except ApiException as exc:
+            if exc.status == 404:
+                return "pod no longer exists"
+            return f"could not read pod status: {exc}"
+
+        details: list[str] = []
+        if pod.status:
+            if pod.status.phase:
+                details.append(f"phase={pod.status.phase}")
+            if pod.status.reason:
+                details.append(f"reason={pod.status.reason}")
+            if pod.status.message:
+                details.append(f"message={self._short_status_text(pod.status.message)}")
+            details.extend(self._pod_condition_details(pod))
+            details.extend(
+                self._container_status_details(
+                    pod.status.init_container_statuses,
+                    prefix="init container",
+                )
+            )
+            details.extend(self._container_status_details(pod.status.container_statuses))
+        details.extend(self._pod_event_details(name, namespace))
+        return "; ".join(details) if details else "no pod status details available"
+
     def wait_for_pod_ready(self, name: str, namespace: str, timeout: int = 120) -> None:
         """Block until a pod's Ready condition is True."""
         w = watch.Watch()
@@ -526,7 +624,8 @@ class K8sClient:
                             return
         finally:
             w.stop()
-        raise TimeoutError(f"Pod {name} not ready within {timeout}s")
+        details = self._pod_not_ready_details(name, namespace)
+        raise TimeoutError(f"Pod {name} not ready within {timeout}s: {details}")
 
     # -- Pod exec and file copy -----------------------------------------------
 

@@ -1,12 +1,27 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 """Tests for nv_config_manager_installer.deployer -- step sequencing, callbacks, and re-run detection."""
 
 from __future__ import annotations
 
 import subprocess
+import sys
 import tempfile
+import threading
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -19,8 +34,15 @@ from nv_config_manager_installer.deployer import (
     StepStatus,
     _get_image_digest_tag,
     _hash_content_dir,
+    _kind_preload_images,
+    _parallel_build_limit,
+    _ParallelCommand,
+    _poll_pod_summary,
     _RerunState,
+    _run_logged_parallel,
+    _unready_pod_summary_lines,
 )
+from nv_config_manager_installer.k8s import LOADER_POD_IMAGE
 from nv_config_manager_installer.schema import (
     ClusterConfig,
     ContentConfig,
@@ -156,6 +178,60 @@ class TestStepSequencing:
         success = deployer.run()
         assert not success
         assert any(s[1] == StepStatus.FAILED for s in callback.step_updates)
+
+    def test_prereqs_require_docker_for_load_kind(self, monkeypatch):
+        def fake_which(tool):
+            return None if tool == "docker" else f"/usr/bin/{tool}"
+
+        monkeypatch.setattr("nv_config_manager_installer.deployer.shutil.which", fake_which)
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer.K8sClient",
+            lambda *a, **kw: _mock_k8s(),
+        )
+
+        deployer = Deployer(
+            _make_config(),
+            DeployOptions(load_kind=True, kind_cluster="x"),
+            RecordingCallback(),
+        )
+        with pytest.raises(RuntimeError, match=r"docker is required for --load-kind"):
+            deployer._check_prerequisites()
+
+    def test_prereqs_require_running_docker_daemon_for_load_kind(self, monkeypatch):
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer.shutil.which",
+            lambda tool: f"/usr/bin/{tool}",
+        )
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer.K8sClient",
+            lambda *a, **kw: _mock_k8s(),
+        )
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer.kubectl_current_context",
+            lambda: None,
+        )
+
+        def fake_run(cmd, **kwargs):
+            if cmd[:2] == ["docker", "info"]:
+                return MagicMock(
+                    returncode=1,
+                    stdout="",
+                    stderr="Cannot connect to the Docker daemon at unix:///var/run/docker.sock",
+                )
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        monkeypatch.setattr("nv_config_manager_installer.deployer._run", fake_run)
+
+        deployer = Deployer(
+            _make_config(),
+            DeployOptions(load_kind=True, kind_cluster="x"),
+            RecordingCallback(),
+        )
+        with pytest.raises(
+            RuntimeError,
+            match=r"docker daemon is required for --load-kind but is not reachable",
+        ):
+            deployer._check_prerequisites()
 
     @patch("nv_config_manager_installer.deployer._run_logged")
     @patch("nv_config_manager_installer.deployer._run")
@@ -349,6 +425,8 @@ class TestDeployOptions:
         assert opts.build_images is False
         assert opts.load_kind is False
         assert opts.helm_timeout == "15m"
+        assert opts.helm_debug is False
+        assert opts.watch_pods is False
         assert opts.dry_run is False
 
     def test_custom_options(self):
@@ -356,10 +434,529 @@ class TestDeployOptions:
             build_images=True,
             load_kind=True,
             kind_cluster="test-cluster",
+            helm_debug=True,
+            watch_pods=True,
             dry_run=True,
         )
         assert opts.build_images is True
         assert opts.kind_cluster == "test-cluster"
+        assert opts.helm_debug is True
+        assert opts.watch_pods is True
+
+
+class TestImageBuilds:
+    def test_parallel_build_limit_defaults_and_env_override(self, monkeypatch):
+        monkeypatch.delenv("NVCM_DOCKER_BUILD_PARALLELISM", raising=False)
+        assert _parallel_build_limit(6) >= 1
+        assert _parallel_build_limit(6) <= 4
+
+        monkeypatch.setenv("NVCM_DOCKER_BUILD_PARALLELISM", "2")
+        assert _parallel_build_limit(6) == 2
+
+        monkeypatch.setenv("NVCM_DOCKER_BUILD_PARALLELISM", "99")
+        assert _parallel_build_limit(6) == 6
+
+        monkeypatch.setenv("NVCM_DOCKER_BUILD_PARALLELISM", "not-an-int")
+        assert _parallel_build_limit(6) >= 1
+
+    def test_run_logged_parallel_prefixes_logs_and_reports_progress(self):
+        step = DeployStep("build-images", "Build local images")
+        callback = RecordingCallback()
+        commands = [
+            _ParallelCommand(
+                "one",
+                [
+                    sys.executable,
+                    "-c",
+                    (
+                        "import time; "
+                        "print('one start', flush=True); "
+                        "time.sleep(0.4); "
+                        "print('one done', flush=True)"
+                    ),
+                ],
+                timeout=5,
+            ),
+            _ParallelCommand(
+                "two",
+                [
+                    sys.executable,
+                    "-c",
+                    (
+                        "import time; "
+                        "print('two start', flush=True); "
+                        "time.sleep(0.4); "
+                        "print('two done', flush=True)"
+                    ),
+                ],
+                timeout=5,
+            ),
+        ]
+
+        _run_logged_parallel(commands, step, callback, max_parallel=2, progress_interval=0.05)
+
+        one_start = callback.logs.index("[one] one start")
+        two_start = callback.logs.index("[two] two start")
+        one_done = callback.logs.index("[one] one done")
+
+        assert one_start < one_done
+        assert two_start < one_done
+        assert any(
+            "[one] running" in line and "latest: one start" in line for line in callback.logs
+        )
+        assert any(line.startswith("[one] completed in ") for line in callback.logs)
+        assert any(line.startswith("[two] completed in ") for line in callback.logs)
+
+    def test_build_images_runs_parallel_builds_and_tags(self, monkeypatch):
+        parallel_calls: list[tuple[list[_ParallelCommand], int]] = []
+        run_commands: list[list[str]] = []
+
+        def fake_run_logged_parallel(commands, step, callback, *, max_parallel, **kwargs):
+            parallel_calls.append((commands, max_parallel))
+            for command in commands:
+                callback.on_log(f"[{command.label}] completed in 0s")
+
+        def fake_digest(image: str) -> str:
+            return f"sha-{image.removeprefix('nv-config-manager-')[:8]}"
+
+        def fake_run(cmd, **kwargs):
+            run_commands.append(cmd)
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        monkeypatch.setenv("NVCM_DOCKER_BUILD_PARALLELISM", "2")
+        monkeypatch.delenv("BUILDX_BUILDER", raising=False)
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer._run_logged_parallel",
+            fake_run_logged_parallel,
+        )
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer._get_image_digest_tag",
+            fake_digest,
+        )
+        monkeypatch.setattr("nv_config_manager_installer.deployer._run", fake_run)
+
+        deployer = Deployer(
+            _make_config(),
+            DeployOptions(build_images=True),
+            RecordingCallback(),
+        )
+        deployer._build_images()
+
+        commands, max_parallel = parallel_calls[0]
+        assert max_parallel == 2
+        assert len(commands) == 6
+        assert all(
+            command.cmd[:4] == ["docker", "build", "--provenance=false", "--progress=plain"]
+            for command in commands
+        )
+        assert all("--load" not in command.cmd for command in commands)
+        assert all(command.timeout == 900 for command in commands)
+        assert all(command.env and command.env["DOCKER_BUILDKIT"] == "1" for command in commands)
+        assert len(run_commands) == 6
+        assert all(cmd[:2] == ["docker", "tag"] for cmd in run_commands)
+        assert deployer._local_image_tags["nv-config-manager-ui"].startswith("sha-")
+
+    def test_build_images_loads_buildx_container_outputs(self, monkeypatch):
+        parallel_calls: list[list[_ParallelCommand]] = []
+
+        def fake_run_logged_parallel(commands, step, callback, *, max_parallel, **kwargs):
+            parallel_calls.append(commands)
+            for command in commands:
+                callback.on_log(f"[{command.label}] completed in 0s")
+
+        monkeypatch.setenv("BUILDX_BUILDER", "ci-builder")
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer._run_logged_parallel",
+            fake_run_logged_parallel,
+        )
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer._get_image_digest_tag",
+            lambda image: "",
+        )
+
+        deployer = Deployer(
+            _make_config(),
+            DeployOptions(build_images=True),
+            RecordingCallback(),
+        )
+        deployer._build_images()
+
+        commands = parallel_calls[0]
+        assert len(commands) == 6
+        assert all("--load" in command.cmd for command in commands)
+        assert all(
+            command.env and command.env["BUILDX_BUILDER"] == "ci-builder" for command in commands
+        )
+
+
+class TestKindImageLoading:
+    def test_kind_preload_images_include_defaults_config_and_env(self, monkeypatch):
+        config = _make_config()
+        config.images.kind_preload_images = [
+            "docker.io/library/redis:7-alpine",
+            "docker.io/library/busybox:1.36",
+        ]
+        monkeypatch.setenv(
+            "NVCM_KIND_PRELOAD_IMAGES",
+            "docker.io/library/nats:2.10-alpine,docker.io/library/redis:7-alpine",
+        )
+
+        assert _kind_preload_images(config) == [
+            "docker.io/library/busybox:1.36",
+            "docker.io/library/redis:7-alpine",
+            "docker.io/library/nats:2.10-alpine",
+        ]
+
+    def test_load_kind_tags_arch_specific_loader_image_as_canonical(self, monkeypatch):
+        run_commands: list[list[str]] = []
+        logged_commands: list[list[str]] = []
+        pipe_commands: list[tuple[list[str], list[str]]] = []
+
+        def fake_run(cmd, **kwargs):
+            run_commands.append(cmd)
+            if cmd[:3] == ["docker", "version", "--format"]:
+                return MagicMock(returncode=0, stdout="linux/amd64\n", stderr="")
+            if cmd[:4] == ["docker", "image", "inspect", "--format"]:
+                return MagicMock(returncode=0, stdout="sha256:busyboxid\n", stderr="")
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        def fake_run_logged(cmd, step, callback, **kwargs):
+            logged_commands.append(cmd)
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        def fake_run_logged_pipe(source_cmd, sink_cmd, step, callback, **kwargs):
+            pipe_commands.append((source_cmd, sink_cmd))
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        monkeypatch.setattr("nv_config_manager_installer.deployer._run", fake_run)
+        monkeypatch.setattr("nv_config_manager_installer.deployer._run_logged", fake_run_logged)
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer._run_logged_pipe",
+            fake_run_logged_pipe,
+        )
+
+        deployer = Deployer(
+            _make_config(),
+            DeployOptions(load_kind=True, kind_cluster="test-cluster"),
+            RecordingCallback(),
+        )
+        deployer._load_kind()
+
+        assert [
+            "docker",
+            "version",
+            "--format",
+            "{{.Server.Os}}/{{.Server.Arch}}",
+        ] in run_commands
+        assert ["docker", "system", "prune", "-af"] in logged_commands
+        assert [
+            "docker",
+            "pull",
+            "--platform",
+            "linux/amd64",
+            "docker.io/amd64/busybox:1.36",
+        ] in logged_commands
+        assert [
+            "docker",
+            "tag",
+            "sha256:busyboxid",
+            LOADER_POD_IMAGE,
+        ] in logged_commands
+        assert ["kind", "get", "nodes", "--name", "test-cluster"] in run_commands
+        assert (
+            ["docker", "save", "--platform", "linux/amd64", LOADER_POD_IMAGE],
+            [
+                "docker",
+                "exec",
+                "--privileged",
+                "-i",
+                "test-cluster-control-plane",
+                "ctr",
+                "--namespace=k8s.io",
+                "images",
+                "import",
+                "--platform",
+                "linux/amd64",
+                "--snapshotter=overlayfs",
+                "-",
+            ],
+        ) in pipe_commands
+
+    def test_load_kind_loads_configured_preload_images(self, monkeypatch):
+        run_commands: list[list[str]] = []
+        logged_commands: list[list[str]] = []
+        pipe_commands: list[tuple[list[str], list[str]]] = []
+
+        def fake_run(cmd, **kwargs):
+            run_commands.append(cmd)
+            if cmd[:3] == ["docker", "version", "--format"]:
+                return MagicMock(returncode=0, stdout="linux/amd64\n", stderr="")
+            if cmd[:4] == ["docker", "image", "inspect", "--format"]:
+                return MagicMock(returncode=0, stdout="sha256:redisid\n", stderr="")
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        def fake_run_logged(cmd, step, callback, **kwargs):
+            logged_commands.append(cmd)
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        def fake_run_logged_pipe(source_cmd, sink_cmd, step, callback, **kwargs):
+            pipe_commands.append((source_cmd, sink_cmd))
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        monkeypatch.delenv("NVCM_KIND_PRELOAD_IMAGES", raising=False)
+        monkeypatch.setattr("nv_config_manager_installer.deployer._run", fake_run)
+        monkeypatch.setattr("nv_config_manager_installer.deployer._run_logged", fake_run_logged)
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer._run_logged_pipe",
+            fake_run_logged_pipe,
+        )
+
+        config = _make_config()
+        config.images.kind_preload_images = ["docker.io/library/redis:7-alpine"]
+        deployer = Deployer(
+            config,
+            DeployOptions(load_kind=True, kind_cluster="test-cluster"),
+            RecordingCallback(),
+        )
+        deployer._load_kind()
+
+        assert ["docker", "system", "prune", "-af"] in logged_commands
+        assert [
+            "docker",
+            "pull",
+            "--platform",
+            "linux/amd64",
+            "docker.io/library/redis:7-alpine",
+        ] in logged_commands
+        assert [
+            "docker",
+            "tag",
+            "sha256:redisid",
+            "docker.io/library/redis:7-alpine",
+        ] in logged_commands
+        assert (
+            [
+                "docker",
+                "save",
+                "--platform",
+                "linux/amd64",
+                "docker.io/library/redis:7-alpine",
+            ],
+            [
+                "docker",
+                "exec",
+                "--privileged",
+                "-i",
+                "test-cluster-control-plane",
+                "ctr",
+                "--namespace=k8s.io",
+                "images",
+                "import",
+                "--platform",
+                "linux/amd64",
+                "--snapshotter=overlayfs",
+                "-",
+            ],
+        ) in pipe_commands
+
+
+class TestHelmInstall:
+    def test_kind_deploy_does_not_enable_helm_debug_without_flag(self, monkeypatch, tmp_path):
+        logged_commands: list[list[str]] = []
+
+        def fake_run_logged(cmd, step, callback, **kwargs):
+            logged_commands.append(cmd)
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        monkeypatch.setattr("nv_config_manager_installer.deployer._run_logged", fake_run_logged)
+
+        config = _make_config()
+        config.cluster.airgapped = True
+        deployer = Deployer(
+            config,
+            DeployOptions(load_kind=True, chart_dir="deploy/helm"),
+            RecordingCallback(),
+        )
+        deployer._values_file = tmp_path / "values-generated.yaml"
+        deployer._values_file.write_text("global: {}\n")
+
+        deployer._helm_install()
+
+        helm_cmd = next(
+            cmd for cmd in logged_commands if cmd[:3] == ["helm", "upgrade", "--install"]
+        )
+        assert "--debug" not in helm_cmd
+
+    def test_helm_debug_can_be_enabled_without_kind(self, monkeypatch, tmp_path):
+        logged_commands: list[list[str]] = []
+
+        def fake_run_logged(cmd, step, callback, **kwargs):
+            logged_commands.append(cmd)
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        monkeypatch.setattr("nv_config_manager_installer.deployer._run_logged", fake_run_logged)
+
+        config = _make_config()
+        config.cluster.airgapped = True
+        deployer = Deployer(
+            config,
+            DeployOptions(helm_debug=True, chart_dir="deploy/helm"),
+            RecordingCallback(),
+        )
+        deployer._values_file = tmp_path / "values-generated.yaml"
+        deployer._values_file.write_text("global: {}\n")
+
+        deployer._helm_install()
+
+        helm_cmd = next(
+            cmd for cmd in logged_commands if cmd[:3] == ["helm", "upgrade", "--install"]
+        )
+        assert "--debug" in helm_cmd
+
+    def test_helm_debug_stays_off_by_default(self, monkeypatch, tmp_path):
+        logged_commands: list[list[str]] = []
+
+        def fake_run_logged(cmd, step, callback, **kwargs):
+            logged_commands.append(cmd)
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        monkeypatch.setattr("nv_config_manager_installer.deployer._run_logged", fake_run_logged)
+
+        config = _make_config()
+        config.cluster.airgapped = True
+        deployer = Deployer(config, DeployOptions(chart_dir="deploy/helm"), RecordingCallback())
+        deployer._values_file = tmp_path / "values-generated.yaml"
+        deployer._values_file.write_text("global: {}\n")
+
+        deployer._helm_install()
+
+        helm_cmd = next(
+            cmd for cmd in logged_commands if cmd[:3] == ["helm", "upgrade", "--install"]
+        )
+        assert "--debug" not in helm_cmd
+
+    def test_watch_pods_summarizes_readiness_during_helm_install(self, monkeypatch, tmp_path):
+        watched_commands: list[tuple[list[str], str]] = []
+
+        def fake_run_logged(cmd, step, callback, **kwargs):
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        def fake_run_logged_with_pod_summary(cmd, k8s, namespace, step, callback, **kwargs):
+            watched_commands.append((cmd, namespace))
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        monkeypatch.setattr("nv_config_manager_installer.deployer._run_logged", fake_run_logged)
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer._run_logged_with_pod_summary",
+            fake_run_logged_with_pod_summary,
+        )
+
+        config = _make_config()
+        config.cluster.airgapped = True
+        deployer = Deployer(
+            config,
+            DeployOptions(watch_pods=True, chart_dir="deploy/helm"),
+            RecordingCallback(),
+        )
+        deployer._values_file = tmp_path / "values-generated.yaml"
+        deployer._values_file.write_text("global: {}\n")
+
+        deployer._helm_install()
+
+        helm_cmd, namespace = watched_commands[0]
+        assert helm_cmd[:3] == ["helm", "upgrade", "--install"]
+        assert namespace == "nv-config-manager"
+
+    def test_unready_pod_summary_includes_waiting_reasons(self):
+        waiting_state = SimpleNamespace(
+            waiting=SimpleNamespace(reason="ImagePullBackOff", message="pull access denied"),
+            running=None,
+            terminated=None,
+        )
+        running_state = SimpleNamespace(waiting=None, running=object(), terminated=None)
+        pod = SimpleNamespace(
+            metadata=SimpleNamespace(name="api-123"),
+            status=SimpleNamespace(
+                phase="Pending",
+                reason=None,
+                message=None,
+                conditions=[
+                    SimpleNamespace(type="Ready", status="False", reason=None, message=None),
+                    SimpleNamespace(
+                        type="PodScheduled",
+                        status="False",
+                        reason="Unschedulable",
+                        message="0/1 nodes are available",
+                    ),
+                ],
+                init_container_statuses=[],
+                container_statuses=[
+                    SimpleNamespace(
+                        name="api",
+                        ready=False,
+                        restart_count=2,
+                        state=waiting_state,
+                    ),
+                    SimpleNamespace(
+                        name="sidecar",
+                        ready=False,
+                        restart_count=0,
+                        state=running_state,
+                    ),
+                ],
+            ),
+        )
+        k8s = SimpleNamespace(
+            v1=SimpleNamespace(list_namespaced_pod=lambda namespace: SimpleNamespace(items=[pod]))
+        )
+
+        lines = _unready_pod_summary_lines(k8s, "nv-config-manager")
+
+        assert lines[0] == "1 pod(s) not ready"
+        assert "api-123 ready=0/2 phase=Pending restarts=2" in lines[1]
+        assert "PodScheduled=False (Unschedulable)" in lines[1]
+        assert "container api: ImagePullBackOff (pull access denied)" in lines[1]
+
+    def test_poll_pod_summary_skips_emit_when_stop_event_set_during_list(self):
+        # list_namespaced_pod() can block for seconds; if shutdown sets
+        # stop_event while it's in-flight, the poller must not emit one final
+        # batch after _run_logged_with_pod_summary() has already returned.
+        stop_event = threading.Event()
+
+        pod = SimpleNamespace(
+            metadata=SimpleNamespace(name="api-1"),
+            status=SimpleNamespace(
+                phase="Pending",
+                reason=None,
+                message=None,
+                conditions=[
+                    SimpleNamespace(type="Ready", status="False", reason=None, message=None),
+                ],
+                init_container_statuses=[],
+                container_statuses=[],
+            ),
+        )
+
+        def slow_list(namespace):
+            stop_event.set()
+            return SimpleNamespace(items=[pod])
+
+        k8s = SimpleNamespace(v1=SimpleNamespace(list_namespaced_pod=slow_list))
+        step = DeployStep(id="test", label="test")
+        callback = RecordingCallback()
+
+        _poll_pod_summary(
+            k8s,
+            "ns",
+            step,
+            callback,
+            stop_event,
+            interval=0.01,
+            heartbeat_interval=60.0,
+        )
+
+        assert not any(msg.startswith("[pods]") for msg in step.output)
+        assert not any(msg.startswith("[pods]") for msg in callback.logs)
 
 
 class TestContentHashing:
