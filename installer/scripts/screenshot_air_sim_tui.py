@@ -30,13 +30,10 @@ import asyncio
 import io
 import os
 import re
-import sys
 import time
 from collections.abc import Callable
 from html import unescape
 from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from rich.console import Console
 from textual.widgets import Button, Static
@@ -303,6 +300,7 @@ def _example_config() -> SimConfig:
     """Return the public AIR trial demo config with screenshot-only auth filled in."""
     cfg = load_prebuilt_config("air-trial")
     cfg.ngc_api_key = "nvapi-demo-key-for-screenshots"
+    cfg.oob_ssh_password = NVCM_BOX_PASSWORD
     return cfg
 
 
@@ -781,54 +779,6 @@ def _populate_complete_launch(launch: LaunchScreen) -> None:
     launch.query_one("#prov-detail", Static).update("")
     _populate_logs(launch)
     launch.query_one("#stream-viewer", _StreamTabsWidget).select_stream("access")
-
-
-def _populate_failure_launch(launch: LaunchScreen) -> None:
-    launch._bringup_running = False
-    launch.query_one("#btn-launch", Button).disabled = False
-    _set_launch_identity(launch)
-    launch.query_one("#launch-status", Static).update(
-        launch._status_text("[bold red][!] Bringup failed - check the deploy log[/bold red]")
-    )
-    _set_step_states(launch, failed_step="post-deploy")
-    _populate_ssh_and_pods(
-        launch,
-        provisioned="0/6",
-        pending="Post-deploy topology job failed",
-    )
-    viewer = launch.query_one("#stream-viewer", _StreamTabsWidget)
-    for buffer in viewer._buffers.values():
-        buffer.clear()
-    for seen in viewer._seen_service_lines.values():
-        seen.clear()
-    viewer.append_lines(
-        [
-            (line, "deploy")
-            for line in [
-                "00:13:27  [oob-mgmt-server] [>]  Run post-deploy jobs",
-                "00:13:27  [oob-mgmt-server]   Port-forward to Nautobot established",
-                "00:13:27  [oob-mgmt-server]   Waiting for Nautobot API...",
-                (
-                    "00:13:27  [oob-mgmt-server]   Job 1/1: "
-                    "mock_topology.jobs.mock_topology_design.MockTopologyDesign"
-                ),
-                (
-                    "00:13:27  [oob-mgmt-server]     Found job ID: "
-                    "9ceddbd3-d1a2-4e52-a977-24209d29fed6"
-                ),
-                "00:13:27  [oob-mgmt-server]     Enabling job...",
-                "00:13:27  [oob-mgmt-server]     Starting job execution...",
-                (
-                    "00:13:27  [oob-mgmt-server]     Job started, result ID: "
-                    "c32499ba-5292-4ca1-ad39-5112b1b5ca9b"
-                ),
-                "00:13:27  [oob-mgmt-server]     [INFO] [initialization] Running job",
-                "00:13:27  [oob-mgmt-server]     Job failed (status: failure)",
-                "00:13:27  [oob-mgmt-server] [!]  Run post-deploy jobs",
-            ]
-        ]
-    )
-    viewer.select_stream("deploy")
 
 
 async def _capture_launch(

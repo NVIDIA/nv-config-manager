@@ -18,11 +18,12 @@ from __future__ import annotations
 
 import os
 import platform
+import shlex
 import subprocess
 import time
 from dataclasses import dataclass
 
-from nv_config_manager_installer.air_sim.constants import NVCM_BOX_PASSWORD, NVCM_BOX_USER
+from nv_config_manager_installer.air_sim.constants import NVCM_BOX_USER
 
 SOCKS_PORT = 8080
 _NVCM_URL = "https://nautobot.nvcm.air"
@@ -63,6 +64,7 @@ _CHROME_PATHS_WINDOWS = (
 class ProxyInfo:
     host: str
     port: int
+    password: str
     socks_port: int = SOCKS_PORT
 
     # ── Per-platform command strings ──────────────────────────────────────────
@@ -70,7 +72,7 @@ class ProxyInfo:
     def ssh_cmd_unix(self) -> str:
         """SOCKS tunnel command for Linux / macOS (uses sshpass)."""
         return (
-            f"sshpass -p {NVCM_BOX_PASSWORD}"
+            f"sshpass -p {shlex.quote(self.password)}"
             f" ssh {' '.join(_SSH_OPTS)}"
             f" -D {self.socks_port} -N -p {self.port}"
             f" {NVCM_BOX_USER}@{self.host}"
@@ -132,7 +134,7 @@ class ProxyInfo:
             cmd = [
                 "sshpass",
                 "-p",
-                NVCM_BOX_PASSWORD,
+                self.password,
                 "ssh",
                 *_SSH_OPTS,
                 "-D",

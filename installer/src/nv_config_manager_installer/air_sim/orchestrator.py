@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import logging
+import shlex
 import shutil
 import tempfile
 from collections.abc import Callable
@@ -27,7 +28,6 @@ from typing import Protocol
 from nv_config_manager_installer.air_sim.cloud_init import generate_server_cloud_init
 from nv_config_manager_installer.air_sim.constants import (
     CONFIG_MANAGER_INSTALL_CONFIG,
-    NVCM_BOX_PASSWORD,
     NVCM_BOX_USER,
 )
 from nv_config_manager_installer.air_sim.context_topology import write_site_design_from_mock_context
@@ -166,6 +166,7 @@ class SimOrchestrator:
             ngc_api_key=cfg.ngc_api_key,
             use_internal=cfg.use_internal,
             org_id=cfg.org_id,
+            ssh_password=cfg.oob_ssh_password,
         )
         cumulus_versions = builder.cumulus_firmware_versions()
         if cumulus_versions:
@@ -217,6 +218,7 @@ class SimOrchestrator:
 
             cloud_init = generate_server_cloud_init(
                 internal_mac=internal_mac,
+                oob_ssh_password=cfg.oob_ssh_password,
                 git_token=cfg.git_token,
                 config_manager_repo=cfg.config_manager_repo,
                 config_manager_ref=cfg.config_manager_ref,
@@ -277,7 +279,7 @@ class SimOrchestrator:
             for step_id in ("wait-setup", "upload-files", "run-deploy", "post-deploy"):
                 self._step(step_id, StepStatus.SKIPPED)
             self._log(
-                f"\nMonitor setup: sshpass -p {NVCM_BOX_PASSWORD} ssh -p {port} "
+                f"\nMonitor setup: sshpass -p {shlex.quote(cfg.oob_ssh_password)} ssh -p {port} "
                 f"{NVCM_BOX_USER}@{host} 'sudo tail -f /var/log/nvcm-setup.log'"
             )
             return host, port
@@ -289,7 +291,7 @@ class SimOrchestrator:
             for step_id in ("upload-files", "run-deploy", "post-deploy"):
                 self._step(step_id, StepStatus.SKIPPED)
             self._log(
-                f"\nSetup timed out. Check: sshpass -p {NVCM_BOX_PASSWORD} ssh -p {port} "
+                f"\nSetup timed out. Check: sshpass -p {shlex.quote(cfg.oob_ssh_password)} ssh -p {port} "
                 f"{NVCM_BOX_USER}@{host} 'sudo tail -f /var/log/nvcm-setup.log'"
             )
             return host, port

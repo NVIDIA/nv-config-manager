@@ -51,7 +51,6 @@ from nv_config_manager_installer.air_sim.constants import (
     DEFAULT_CONFIG_MANAGER_REPO,
     DEFAULT_NAUTOBOT_DEMO_PASSWORD,
     DEFAULT_NAUTOBOT_DEMO_USERNAME,
-    NVCM_BOX_PASSWORD,
     NVCM_BOX_USER,
     NVCM_KIND_CONFIG,
     NVCM_SECRETS,
@@ -139,6 +138,7 @@ class AirSimulationManager:
         ngc_api_key: str | None = None,
         org_id: str | None = None,
         use_internal: bool = False,
+        ssh_password: str = "",
     ) -> None:
         """Initialize the AIR simulation manager.
 
@@ -147,6 +147,7 @@ class AirSimulationManager:
             ngc_api_key: NGC API key (Starfleet API Key / SAK) for auth
             org_id: AIR organization ID for the simulation
             use_internal: Use internal AIR instance (api.air-inside.nvidia.com)
+            ssh_password: Password for the nvcm account on the OOB management server
         """
         self.api_url = api_url or (
             DEFAULT_AIR_INTERNAL_URL if use_internal else DEFAULT_AIR_API_URL
@@ -154,6 +155,7 @@ class AirSimulationManager:
 
         self.ngc_api_key = ngc_api_key or os.environ.get("NGC_API_KEY")
         self.org_id = org_id or os.environ.get("AIR_ORG_ID", DEFAULT_AIR_ORG)
+        self.ssh_password = ssh_password
 
         if not self.ngc_api_key:
             LOG.error("No NGC API key found. Set NGC_API_KEY env var or pass --ngc-api-key.")
@@ -733,17 +735,18 @@ class AirSimulationManager:
         "LogLevel=ERROR",
     ]
 
-    @staticmethod
     def _ssh_cmd(
+        self,
         host: str,
         port: int,
         command: str | None = None,
     ) -> list[str]:
         """Build an SSH command list with sshpass for password auth."""
+        ssh_password = self._require_ssh_password()
         base = [
             "sshpass",
             "-p",
-            NVCM_BOX_PASSWORD,
+            ssh_password,
             "ssh",
             *AirSimulationManager._SSH_OPTS,
             "-p",
@@ -753,6 +756,11 @@ class AirSimulationManager:
         if command is not None:
             base.append(command)
         return base
+
+    def _require_ssh_password(self) -> str:
+        if not self.ssh_password:
+            raise RuntimeError("OOB SSH password not configured")
+        return self.ssh_password
 
     _SETUP_COMPLETE_MARKER = "NVCM AIR Setup Complete"
     _DEPLOY_COMPLETE_MARKER = "Deployment completed successfully!"
@@ -865,7 +873,8 @@ class AirSimulationManager:
         # rsync trailing slash means "copy contents of dir"; files must NOT have it
         local = str(local_resolved) + ("/" if local_resolved.is_dir() else "")
 
-        ssh_opts_flat = f"sshpass -p {NVCM_BOX_PASSWORD} ssh -p {port} " + " ".join(
+        ssh_password = self._require_ssh_password()
+        ssh_opts_flat = f"sshpass -p {shlex.quote(ssh_password)} ssh -p {port} " + " ".join(
             f"{self._SSH_OPTS[i]} {self._SSH_OPTS[i + 1]}" for i in range(0, len(self._SSH_OPTS), 2)
         )
 
@@ -1607,9 +1616,10 @@ class AirSimulationManager:
         open_browser: bool = False,
     ) -> None:
         """Print SOCKS proxy instructions and optionally launch Chrome."""
+        ssh_password = self._require_ssh_password()
         socks_port = self._SOCKS_PORT
         ssh_cmd = (
-            f"sshpass -p {NVCM_BOX_PASSWORD}"
+            f"sshpass -p {shlex.quote(ssh_password)}"
             f" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
             f" -D {socks_port} -N -p {port}"
             f" {NVCM_BOX_USER}@{host}"
@@ -1643,7 +1653,7 @@ class AirSimulationManager:
                         [
                             "sshpass",
                             "-p",
-                            NVCM_BOX_PASSWORD,
+                            ssh_password,
                             "ssh",
                             *self._SSH_OPTS,
                             "-D",

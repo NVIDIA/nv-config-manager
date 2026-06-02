@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import dataclasses
 import os
+import secrets
+import string
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -30,10 +32,17 @@ from nv_config_manager_installer.air_sim.constants import (
     DEFAULT_MOCK_TOPOLOGY_PATH,
 )
 
+_OOB_SSH_PASSWORD_CHARS = string.ascii_letters + string.digits
+
 
 def _default_git_token() -> str:
     """Return an optional generic Git token for private forks."""
     return os.environ.get("GIT_TOKEN", os.environ.get("GITHUB_TOKEN", ""))
+
+
+def generate_oob_ssh_password(length: int = 24) -> str:
+    """Generate a shell-friendly password for the AIR OOB management server."""
+    return "".join(secrets.choice(_OOB_SSH_PASSWORD_CHARS) for _ in range(length))
 
 
 def _default_path(path: Path) -> str:
@@ -74,12 +83,17 @@ class SimConfig:
     use_internal: bool = False
     org_id: str = DEFAULT_AIR_ORG
     ngc_api_key: str = field(default_factory=lambda: os.environ.get("NGC_API_KEY", ""))
+    oob_ssh_password: str = field(default_factory=generate_oob_ssh_password)
 
     wait_timeout: int = 1800
     deploy_timeout: int = 3600
 
     no_aggressive_dhcp: bool = False
     no_reset_before_dhcp: bool = False
+
+    def __post_init__(self) -> None:
+        if not self.oob_ssh_password:
+            self.oob_ssh_password = generate_oob_ssh_password()
 
     def to_yaml(self, path: Path) -> None:
         """Persist config to a YAML file with 0600 permissions."""

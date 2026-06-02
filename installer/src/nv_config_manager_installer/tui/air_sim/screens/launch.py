@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import subprocess
 import tempfile
 import threading
@@ -40,7 +41,6 @@ from nv_config_manager_installer.air_sim.constants import (
     CONFIG_MANAGER_NAUTOBOT_DEPLOYMENT,
     DEFAULT_AIR_FRONTEND_URL,
     DEFAULT_AIR_INTERNAL_FRONTEND_URL,
-    NVCM_BOX_PASSWORD,
     NVCM_BOX_USER,
 )
 from nv_config_manager_installer.air_sim.orchestrator import (
@@ -205,13 +205,17 @@ def _pod_attention_text(pod: dict[str, str]) -> str:
     return f"{pod.get('name', 'unknown')} ({_pod_state_text(pod)})"
 
 
-def _ssh_command(host: str, port: int) -> str:
+def _ssh_command(host: str, port: int, password: str) -> str:
     return (
-        f"sshpass -p {NVCM_BOX_PASSWORD} ssh"
+        f"sshpass -p {shlex.quote(password)} ssh"
         f" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
         f" -o PreferredAuthentications=password"
         f" -p {port} {NVCM_BOX_USER}@{host}"
     )
+
+
+def _ssh_credentials(password: str) -> str:
+    return f"Username: {NVCM_BOX_USER}\nPassword: {password}"
 
 
 # Rough typical durations shown as hints for pending/running steps.
@@ -819,6 +823,14 @@ class _ProxyAccessWidget(Container):
 
         yield Label(self._manual_label(), id="manual-commands-label", classes="subsection-label")
         yield _CopyCommandPanel(
+            "OOB SSH credentials",
+            _ssh_credentials(p.password),
+            "copy-ssh-creds",
+            "Copy OOB SSH credentials",
+            panel_id="panel-ssh-creds",
+            command_id="cmd-ssh-creds",
+        )
+        yield _CopyCommandPanel(
             "Direct SSH",
             self._ssh_command,
             "copy-ssh-direct",
@@ -895,6 +907,7 @@ class _ProxyAccessWidget(Container):
     def _update_command_panels(self) -> None:
         p = self._proxy
         commands = {
+            "panel-ssh-creds": _ssh_credentials(p.password),
             "panel-ssh-direct": self._ssh_command,
             "panel-ssh-unix": p.ssh_cmd_unix(),
             "panel-ssh-win": p.ssh_cmd_windows(),
@@ -1168,7 +1181,7 @@ class LaunchScreen(Container):
         self._service_polling = False
         self._seen_service_events: set[str] = set()
         self._socks_port = SOCKS_PORT
-        self._proxy_access_target: tuple[str, int, bool, int] | None = None
+        self._proxy_access_target: tuple[str, int, bool, int, str] | None = None
 
     def compose(self) -> ComposeResult:
         yield Label("Launch", classes="section-title")
@@ -1270,6 +1283,7 @@ class LaunchScreen(Container):
                 ngc_api_key=self._config.ngc_api_key,
                 use_internal=self._config.use_internal,
                 org_id=self._config.org_id,
+                ssh_password=self._config.oob_ssh_password,
             )
             while not worker.is_cancelled and not self._monitor_stop.is_set():
                 snapshots = manager.get_service_log_snapshots(host, port)
@@ -1377,12 +1391,17 @@ class LaunchScreen(Container):
     def on__ssh_ready(self, event: _SshReady) -> None:
         self._host = event.host
         self._port = event.port
-        self._ssh_cmd_text = _ssh_command(event.host, event.port)
+        self._ssh_cmd_text = _ssh_command(
+            event.host,
+            event.port,
+            self._config.oob_ssh_password,
+        )
         self._show_proxy_panel(event.host, event.port)
         manager = AirSimulationManager(
             ngc_api_key=self._config.ngc_api_key,
             use_internal=self._config.use_internal,
             org_id=self._config.org_id,
+            ssh_password=self._config.oob_ssh_password,
         )
         self.query_one("#pod-status-panel", _PodStatusWidget).start_polling(
             event.host, event.port, manager
@@ -1430,10 +1449,26 @@ class LaunchScreen(Container):
         event.stop()
 
     def _show_proxy_panel(self, host: str, port: int, *, nautobot_ready: bool = False) -> None:
-        if self._proxy_access_target == (host, port, nautobot_ready, self._socks_port):
+        access_target = (
+            host,
+            port,
+            nautobot_ready,
+            self._socks_port,
+            self._config.oob_ssh_password,
+        )
+        if self._proxy_access_target == access_target:
             return
-        self._ssh_cmd_text = self._ssh_cmd_text or _ssh_command(host, port)
-        proxy = ProxyInfo(host=host, port=port, socks_port=self._socks_port)
+        self._ssh_cmd_text = self._ssh_cmd_text or _ssh_command(
+            host,
+            port,
+            self._config.oob_ssh_password,
+        )
+        proxy = ProxyInfo(
+            host=host,
+            port=port,
+            password=self._config.oob_ssh_password,
+            socks_port=self._socks_port,
+        )
         widget = _ProxyAccessWidget(
             proxy,
             self._ssh_cmd_text,
@@ -1441,7 +1476,7 @@ class LaunchScreen(Container):
             id="proxy-access",
         )
         self.query_one("#stream-viewer", _StreamTabsWidget).set_access_widget(widget)
-        self._proxy_access_target = (host, port, nautobot_ready, self._socks_port)
+        self._proxy_access_target = access_target
 
     def on_unmount(self) -> None:
         self._log_stop.set()

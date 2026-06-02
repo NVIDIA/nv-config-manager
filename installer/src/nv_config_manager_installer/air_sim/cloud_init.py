@@ -20,33 +20,43 @@ import logging
 import shlex
 import textwrap
 from typing import Any
-from urllib.parse import quote, urlsplit, urlunsplit
+from urllib.parse import urlsplit, urlunsplit
 
 import yaml
 
 from nv_config_manager_installer.air_sim.constants import (
     CONFIG_MANAGER_NAMESPACE,
     CONFIG_MANAGER_REMOTE_DIR,
+    NVCM_BOX_USER,
     _BlockStyleDumper,
 )
 
 LOG = logging.getLogger(__name__)
+GIT_TOKEN_FILE = "/opt/nvcm-git-token"
 
 
-def _repo_url_with_optional_token(repo_url: str, git_token: str | None) -> str:
-    """Return *repo_url* with HTTPS credentials only when a token is supplied."""
+def _git_token_username(repo_url: str, git_token: str | None) -> str | None:
+    """Return the Git credential username to use when *git_token* applies."""
     token = (git_token or "").strip()
     if not token:
-        return repo_url
+        return None
 
+    parts = urlsplit(repo_url)
+    if parts.scheme not in {"http", "https"}:
+        return None
+
+    host = parts.netloc.rsplit("@", 1)[-1]
+    return "x-access-token" if "github.com" in host.lower() else "oauth2"
+
+
+def _repo_url_without_credentials(repo_url: str) -> str:
+    """Return *repo_url* with any HTTPS credentials removed."""
     parts = urlsplit(repo_url)
     if parts.scheme not in {"http", "https"}:
         return repo_url
 
     host = parts.netloc.rsplit("@", 1)[-1]
-    username = "x-access-token" if "github.com" in host.lower() else "oauth2"
-    netloc = f"{username}:{quote(token, safe='')}@{host}"
-    return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
+    return urlunsplit((parts.scheme, host, parts.path, parts.query, parts.fragment))
 
 
 # ==============================================================================
@@ -60,6 +70,12 @@ _SETUP_SCRIPT_TEMPLATE = textwrap.dedent("""\
     set -euo pipefail
     exec > >(tee -a /var/log/nvcm-setup.log) 2>&1
     export HOME=/root
+    GIT_TOKEN_FILE=__GIT_TOKEN_FILE__
+
+    cleanup_nvcm_secrets() {
+        rm -f "$GIT_TOKEN_FILE"
+    }
+    trap cleanup_nvcm_secrets EXIT
 
     DEPLOY_SIZE=__DEPLOY_SIZE__
     INTERNAL_IP=__INTERNAL_IP__
@@ -437,17 +453,43 @@ def generate_setup_script(
     Substitutes placeholder tokens in ``_SETUP_SCRIPT_TEMPLATE`` with
     concrete values so the script can run unattended via cloud-init.
     """
-    config_manager_auth = _repo_url_with_optional_token(config_manager_repo, git_token)
 
     def _quote_shell_words(words: str) -> str:
         return " ".join(shlex.quote(word) for word in words.split())
 
-    clone_lines = (
-        f'su - nvcm -c "git clone -b {shlex.quote(config_manager_ref)}'
-        f' {shlex.quote(config_manager_auth)} {shlex.quote(CONFIG_MANAGER_REMOTE_DIR)}"'
+    git_token_username = _git_token_username(config_manager_repo, git_token)
+    clone_repo = (
+        _repo_url_without_credentials(config_manager_repo)
+        if git_token_username
+        else config_manager_repo
     )
+    tokenless_clone = (
+        f'su - nvcm -c "git clone -b {shlex.quote(config_manager_ref)}'
+        f' {shlex.quote(clone_repo)} {shlex.quote(CONFIG_MANAGER_REMOTE_DIR)}"'
+    )
+    if git_token_username:
+        quoted_ref = shlex.quote(config_manager_ref)
+        quoted_repo = shlex.quote(clone_repo)
+        quoted_remote_dir = shlex.quote(CONFIG_MANAGER_REMOTE_DIR)
+        clone_lines = textwrap.dedent(f"""\
+            if [[ -s "$GIT_TOKEN_FILE" ]]; then
+                git_credential_helper='!f() {{
+                    echo username={git_token_username}
+                    printf "password=%s\\n" "$(cat {GIT_TOKEN_FILE})"
+                }}; f'
+                git -c credential.helper="$git_credential_helper" \\
+                    clone -b {quoted_ref} {quoted_repo} {quoted_remote_dir}
+                rm -f "$GIT_TOKEN_FILE"
+                chown -R nvcm:nvcm {quoted_remote_dir}
+            else
+                {tokenless_clone}
+            fi
+        """).rstrip()
+    else:
+        clone_lines = tokenless_clone
 
     script = _SETUP_SCRIPT_TEMPLATE
+    script = script.replace("__GIT_TOKEN_FILE__", shlex.quote(GIT_TOKEN_FILE))
     script = script.replace("__DEPLOY_SIZE__", shlex.quote(deploy_size))
     script = script.replace("__INTERNAL_IP__", shlex.quote(internal_ip))
     script = script.replace("__INTERNAL_MAC__", shlex.quote(internal_mac))
@@ -466,6 +508,7 @@ def generate_setup_script(
 def generate_server_cloud_init(
     *,
     internal_mac: str,
+    oob_ssh_password: str,
     git_token: str | None = None,
     config_manager_repo: str = "",
     config_manager_ref: str = "main",
@@ -482,12 +525,14 @@ def generate_server_cloud_init(
     eth0 is the AIR exit interface (auto-DHCP by AIR, no config needed).
     eth1 is the internal OOB interface configured here with a static IP
     matched by MAC address.
+    ``oob_ssh_password`` sets the ``nvcm`` account password for SSH access to
+    the OOB management server.
 
     When *config_manager_repo* is supplied, produces a full-setup cloud-init that
     installs all prerequisites, creates a Kind cluster with MetalLB, clones the
-    nv-config-manager repository. ``git_token`` is optional and is only embedded in
-    the clone URL when set, which keeps public GitHub clones tokenless by
-    default while still allowing private forks.
+    nv-config-manager repository. ``git_token`` is optional and is written to a
+    root-only token file for private clones, keeping public GitHub clones
+    tokenless by default while still allowing private forks.
     """
     netplan_yaml = yaml.dump(
         {
@@ -525,6 +570,7 @@ def generate_server_cloud_init(
     ]
 
     if config_manager_repo:
+        git_token_username = _git_token_username(config_manager_repo, git_token)
         setup_script = generate_setup_script(
             deploy_size=deploy_size,
             git_token=git_token,
@@ -540,11 +586,21 @@ def generate_server_cloud_init(
         )
         kind_config = generate_kind_config(deploy_size)
 
+        if git_token_username:
+            write_files.append(
+                {
+                    "path": GIT_TOKEN_FILE,
+                    "owner": "root:root",
+                    "permissions": "0600",
+                    "content": (git_token or "").strip(),
+                }
+            )
         write_files.extend(
             [
                 {
                     "path": "/opt/nvcm-setup.sh",
-                    "permissions": "0755",
+                    "owner": "root:root",
+                    "permissions": "0700",
                     "content": setup_script,
                 },
                 {
@@ -558,18 +614,18 @@ def generate_server_cloud_init(
     cloud_config: dict[str, Any] = {
         "users": [
             {
-                "name": "nvcm",
+                "name": NVCM_BOX_USER,
                 "gecos": "NVCM Demo User",
                 "groups": "sudo,adm",
                 "shell": "/bin/bash",
                 "lock_passwd": False,
-                "passwd": (
-                    "$6$nvcmsalt$lHuZ5gth0uLkQEy.uz47oeG85XNZwA8AIHmFEKf98ZBs0S4b5M69JX2DyqQKTD05Hlek39poAyNJgN1J.0A.y/"
-                ),
             },
         ],
         "ssh_pwauth": True,
-        "chpasswd": {"expire": False},
+        "chpasswd": {
+            "expire": False,
+            "list": f"{NVCM_BOX_USER}:{oob_ssh_password}\n",
+        },
         "write_files": write_files,
         "runcmd": runcmd,
     }

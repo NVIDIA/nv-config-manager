@@ -20,7 +20,7 @@ from textual.app import ComposeResult
 from textual.containers import Container
 from textual.widgets import Input, Label, RadioButton, RadioSet, Static
 
-from nv_config_manager_installer.air_sim.sim_config import SimConfig
+from nv_config_manager_installer.air_sim.sim_config import SimConfig, generate_oob_ssh_password
 from nv_config_manager_installer.tui.widgets import LabeledSwitch
 
 _SIZES = ["small", "medium", "large"]
@@ -49,6 +49,12 @@ class OptionsScreen(Container):
             "Use Public Air",
             value=not self._config.use_internal,
             id="use-public-air",
+        )
+        yield Label("OOB SSH Password", classes="field-label")
+        yield Input(
+            value=self._config.oob_ssh_password,
+            placeholder="generated password for nvcm@oob-mgmt-server",
+            id="oob-ssh-password",
         )
 
         yield Label("─" * 40, classes="section-divider")
@@ -111,6 +117,11 @@ class OptionsScreen(Container):
     def write_to_config(self, config: SimConfig) -> None:
         config.ngc_api_key = self.query_one("#ngc-api-key", Input).value.strip()
         config.use_internal = not self.query_one("#use-public-air", LabeledSwitch).value
+        oob_ssh_password = (
+            self.query_one("#oob-ssh-password", Input).value.strip() or generate_oob_ssh_password()
+        )
+        config.oob_ssh_password = oob_ssh_password
+        self.query_one("#oob-ssh-password", Input).value = oob_ssh_password
         config.git_token = self.query_one("#git-token", Input).value.strip()
         config.config_manager_repo = self.query_one("#config-manager-repo", Input).value.strip()
         config.config_manager_ref = self.query_one("#config-manager-ref", Input).value.strip()
@@ -131,6 +142,7 @@ class OptionsScreen(Container):
     def sync_from_config(self, config: SimConfig) -> None:
         self.query_one("#ngc-api-key", Input).value = config.ngc_api_key
         self.query_one("#use-public-air", LabeledSwitch).value = not config.use_internal
+        self.query_one("#oob-ssh-password", Input).value = config.oob_ssh_password
         self.query_one("#git-token", Input).value = config.git_token
         self.query_one("#config-manager-repo", Input).value = config.config_manager_repo
         self.query_one("#config-manager-ref", Input).value = config.config_manager_ref

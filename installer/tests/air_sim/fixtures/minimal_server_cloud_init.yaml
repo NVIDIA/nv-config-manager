@@ -5,10 +5,11 @@ users:
   groups: sudo,adm
   shell: /bin/bash
   lock_passwd: false
-  passwd: $6$nvcmsalt$lHuZ5gth0uLkQEy.uz47oeG85XNZwA8AIHmFEKf98ZBs0S4b5M69JX2DyqQKTD05Hlek39poAyNJgN1J.0A.y/
 ssh_pwauth: true
 chpasswd:
   expire: false
+  list: |
+    nvcm:test-oob-password
 write_files:
 - path: /etc/netplan/99-air-config.yaml
   permissions: '0600'

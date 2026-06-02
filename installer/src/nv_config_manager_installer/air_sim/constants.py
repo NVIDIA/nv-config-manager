@@ -65,7 +65,7 @@ NVCM_SERVER_OS = "generic/ubuntu2404"
 DEFAULT_NVCM_SERVER_NAME = "nvcm-server"
 
 NVCM_BOX_USER = "nvcm"
-NVCM_BOX_PASSWORD = "NVCMDemo1!"  # trufflehog:ignore - public AIR demo VM password
+NVCM_BOX_PASSWORD = "NVCMDemo1!"  # trufflehog:ignore - predictable AIR demo/device password
 NVCM_BOX_DIR = "/opt/nvcm-box"
 DEFAULT_NAUTOBOT_DEMO_USERNAME = "demo"
 DEFAULT_NAUTOBOT_DEMO_PASSWORD = "demo"  # trufflehog:ignore - public AIR demo user password

@@ -122,7 +122,7 @@ def test_air_trial_tan_leaf_management_interfaces_use_vlan_subnet() -> None:
     assert wrong_masks == []
 
 
-def test_cpu_mode_override_only_on_air_superpod_oob_server() -> None:
+def test_cpu_mode_override_on_air_demo_oob_servers() -> None:
     cpu_mode_devices = []
 
     for path in sorted(MOCK_TOPOLOGY_CONTEXT.glob("*/devices/*.json")):

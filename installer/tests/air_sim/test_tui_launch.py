@@ -22,7 +22,6 @@ import pytest
 from textual.widgets import Input, Static
 
 import nv_config_manager_installer.air_sim.sim_manager as sim_manager_module
-from nv_config_manager_installer.air_sim.constants import NVCM_BOX_PASSWORD
 from nv_config_manager_installer.air_sim.sim_config import SimConfig
 from nv_config_manager_installer.air_sim.sim_manager import AirSimulationManager
 from nv_config_manager_installer.tui.air_sim.app import NVCMAirSimApp
@@ -39,6 +38,7 @@ from nv_config_manager_installer.tui.air_sim.screens.launch import (
 from nv_config_manager_installer.tui.widgets import LabeledSwitch
 
 PUBLIC_AIR_WORKER = "eb515e50.workers.ngc.air.nvidia.com"
+TEST_OOB_SSH_PASSWORD = "testOobPassword123"
 
 
 class ClipboardAirSimApp(NVCMAirSimApp):
@@ -66,8 +66,13 @@ class CallbackRecorder:
 
 @pytest.mark.asyncio
 async def test_direct_ssh_copy_button_lives_in_access_panel() -> None:
-    app = ClipboardAirSimApp(config=SimConfig(ngc_api_key="nvapi-test"))
-    command = f"sshpass -p {NVCM_BOX_PASSWORD} ssh -p 17117 nvcm@example.air"
+    app = ClipboardAirSimApp(
+        config=SimConfig(
+            ngc_api_key="nvapi-test",
+            oob_ssh_password=TEST_OOB_SSH_PASSWORD,
+        )
+    )
+    command = f"sshpass -p {TEST_OOB_SSH_PASSWORD} ssh -p 17117 nvcm@example.air"
 
     async with app.run_test(size=(180, 100)) as pilot:
         app.switch_section("launch")
@@ -80,6 +85,7 @@ async def test_direct_ssh_copy_button_lives_in_access_panel() -> None:
         await pilot.pause(0.1)
 
         assert not app.query("#ssh-info-bar")
+        assert TEST_OOB_SSH_PASSWORD in str(app.query_one("#cmd-ssh-creds", Static).render())
         assert app.query("#panel-ssh-direct")
         assert app.query_one("#btn-launch-browser").display is False
         assert app.query_one("#panel-ssh-unix").display is False
@@ -89,6 +95,8 @@ async def test_direct_ssh_copy_button_lives_in_access_panel() -> None:
         assert app.copied_text == command
 
         app.copied_text = None
+        launch.query_one("#access-pane").scroll_to_widget(launch.query_one("#panel-ssh-direct"))
+        await pilot.pause(0.1)
         await pilot.click("#cmd-ssh-direct")
         await pilot.pause(0.1)
         assert app.copied_text == command
@@ -96,14 +104,19 @@ async def test_direct_ssh_copy_button_lives_in_access_panel() -> None:
 
 @pytest.mark.asyncio
 async def test_access_panel_copy_button_and_panel_body_copy_command() -> None:
-    app = ClipboardAirSimApp(config=SimConfig(ngc_api_key="nvapi-test"))
+    app = ClipboardAirSimApp(
+        config=SimConfig(
+            ngc_api_key="nvapi-test",
+            oob_ssh_password=TEST_OOB_SSH_PASSWORD,
+        )
+    )
 
     async with app.run_test(size=(180, 100)) as pilot:
         app.switch_section("launch")
         await pilot.pause(0.1)
 
         launch = app.query_one("#screen-launch", LaunchScreen)
-        launch._ssh_cmd_text = f"sshpass -p {NVCM_BOX_PASSWORD} ssh -p 17117 nvcm@example.air"
+        launch._ssh_cmd_text = f"sshpass -p {TEST_OOB_SSH_PASSWORD} ssh -p 17117 nvcm@example.air"
         launch._show_proxy_panel(PUBLIC_AIR_WORKER, 17117, nautobot_ready=True)
         launch.query_one("#stream-viewer", _StreamTabsWidget).select_stream("access")
         await pilot.pause(0.1)
@@ -114,7 +127,7 @@ async def test_access_panel_copy_button_and_panel_body_copy_command() -> None:
         await pilot.click("#copy-ssh-unix")
         await pilot.pause(0.1)
         assert app.copied_text is not None
-        assert f"sshpass -p {NVCM_BOX_PASSWORD}" in app.copied_text
+        assert f"sshpass -p {TEST_OOB_SSH_PASSWORD}" in app.copied_text
         assert PUBLIC_AIR_WORKER in app.copied_text
 
         app.copied_text = None
@@ -123,20 +136,25 @@ async def test_access_panel_copy_button_and_panel_body_copy_command() -> None:
         await pilot.click("#cmd-ssh-unix")
         await pilot.pause(0.1)
         assert app.copied_text is not None
-        assert f"sshpass -p {NVCM_BOX_PASSWORD}" in app.copied_text
+        assert f"sshpass -p {TEST_OOB_SSH_PASSWORD}" in app.copied_text
         assert PUBLIC_AIR_WORKER in app.copied_text
 
 
 @pytest.mark.asyncio
 async def test_access_panel_upgrades_when_nautobot_is_ready() -> None:
-    app = ClipboardAirSimApp(config=SimConfig(ngc_api_key="nvapi-test"))
+    app = ClipboardAirSimApp(
+        config=SimConfig(
+            ngc_api_key="nvapi-test",
+            oob_ssh_password=TEST_OOB_SSH_PASSWORD,
+        )
+    )
 
     async with app.run_test(size=(180, 100)) as pilot:
         app.switch_section("launch")
         await pilot.pause(0.1)
 
         launch = app.query_one("#screen-launch", LaunchScreen)
-        launch._ssh_cmd_text = f"sshpass -p {NVCM_BOX_PASSWORD} ssh -p 17117 nvcm@example.air"
+        launch._ssh_cmd_text = f"sshpass -p {TEST_OOB_SSH_PASSWORD} ssh -p 17117 nvcm@example.air"
         launch._show_proxy_panel(PUBLIC_AIR_WORKER, 17117)
         launch.query_one("#stream-viewer", _StreamTabsWidget).select_stream("access")
         await pilot.pause(0.1)
@@ -152,14 +170,19 @@ async def test_access_panel_upgrades_when_nautobot_is_ready() -> None:
 
 @pytest.mark.asyncio
 async def test_access_panel_socks_port_updates_proxy_commands() -> None:
-    app = ClipboardAirSimApp(config=SimConfig(ngc_api_key="nvapi-test"))
+    app = ClipboardAirSimApp(
+        config=SimConfig(
+            ngc_api_key="nvapi-test",
+            oob_ssh_password=TEST_OOB_SSH_PASSWORD,
+        )
+    )
 
     async with app.run_test(size=(180, 100)) as pilot:
         app.switch_section("launch")
         await pilot.pause(0.1)
 
         launch = app.query_one("#screen-launch", LaunchScreen)
-        launch._ssh_cmd_text = f"sshpass -p {NVCM_BOX_PASSWORD} ssh -p 17117 nvcm@example.air"
+        launch._ssh_cmd_text = f"sshpass -p {TEST_OOB_SSH_PASSWORD} ssh -p 17117 nvcm@example.air"
         launch._show_proxy_panel(PUBLIC_AIR_WORKER, 17117, nautobot_ready=True)
         launch.query_one("#stream-viewer", _StreamTabsWidget).select_stream("access")
         await pilot.pause(0.1)
@@ -176,14 +199,19 @@ async def test_access_panel_socks_port_updates_proxy_commands() -> None:
 
 @pytest.mark.asyncio
 async def test_access_panel_preserves_custom_socks_port_after_refresh() -> None:
-    app = ClipboardAirSimApp(config=SimConfig(ngc_api_key="nvapi-test"))
+    app = ClipboardAirSimApp(
+        config=SimConfig(
+            ngc_api_key="nvapi-test",
+            oob_ssh_password=TEST_OOB_SSH_PASSWORD,
+        )
+    )
 
     async with app.run_test(size=(180, 100)) as pilot:
         app.switch_section("launch")
         await pilot.pause(0.1)
 
         launch = app.query_one("#screen-launch", LaunchScreen)
-        launch._ssh_cmd_text = f"sshpass -p {NVCM_BOX_PASSWORD} ssh -p 17117 nvcm@example.air"
+        launch._ssh_cmd_text = f"sshpass -p {TEST_OOB_SSH_PASSWORD} ssh -p 17117 nvcm@example.air"
         launch._show_proxy_panel(PUBLIC_AIR_WORKER, 17117, nautobot_ready=True)
         launch.query_one("#stream-viewer", _StreamTabsWidget).select_stream("access")
         await pilot.pause(0.1)
@@ -416,7 +444,10 @@ async def test_stream_tabs_deploy_buffer_is_bounded() -> None:
 @pytest.mark.asyncio
 async def test_log_flood_does_not_block_copy_or_save_key(tmp_path) -> None:
     app = ClipboardAirSimApp(
-        config=SimConfig(ngc_api_key="nvapi-test"),
+        config=SimConfig(
+            ngc_api_key="nvapi-test",
+            oob_ssh_password=TEST_OOB_SSH_PASSWORD,
+        ),
         config_path=tmp_path / "air-sim.yaml",
     )
 
@@ -425,7 +456,7 @@ async def test_log_flood_does_not_block_copy_or_save_key(tmp_path) -> None:
         await pilot.pause(0.1)
 
         launch = app.query_one("#screen-launch", LaunchScreen)
-        ssh_command = f"sshpass -p {NVCM_BOX_PASSWORD} ssh -p 17117 nvcm@{PUBLIC_AIR_WORKER}"
+        ssh_command = f"sshpass -p {TEST_OOB_SSH_PASSWORD} ssh -p 17117 nvcm@{PUBLIC_AIR_WORKER}"
         launch._ssh_cmd_text = ssh_command
         launch._show_proxy_panel(PUBLIC_AIR_WORKER, 17117)
         launch.query_one("#stream-viewer", _StreamTabsWidget).select_stream("access")
@@ -520,6 +551,7 @@ async def test_options_page_saves_visible_fields_without_resetting_hidden_flags(
 
         options = app.query_one("#screen-options")
         options.query_one("#use-public-air", LabeledSwitch).value = False
+        options.query_one("#oob-ssh-password", Input).value = TEST_OOB_SSH_PASSWORD
         options.query_one("#config-manager-ref", Input).value = "feature/air-demo"
         await pilot.click("#size-large")
         await pilot.pause(0.1)
@@ -527,6 +559,7 @@ async def test_options_page_saves_visible_fields_without_resetting_hidden_flags(
         app.collect_config()
 
     assert config.use_internal is True
+    assert config.oob_ssh_password == TEST_OOB_SSH_PASSWORD
     assert config.config_manager_ref == "feature/air-demo"
     assert config.auto_configure is False
     assert config.deploy is False

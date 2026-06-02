@@ -145,6 +145,23 @@ def test_default_superpod_mock_topology_includes_static_template_plugin() -> Non
     assert build_template_plugins(cfg) == [{"path": f"{CONFIG_MANAGER_REMOTE_DIR}/{expected}"}]
 
 
+def test_sim_config_generates_oob_ssh_password() -> None:
+    first = SimConfig()
+    second = SimConfig()
+
+    assert len(first.oob_ssh_password) == 24
+    assert first.oob_ssh_password != second.oob_ssh_password
+
+
+def test_sim_config_regenerates_blank_oob_ssh_password(tmp_path) -> None:
+    config_path = tmp_path / "air-sim.yaml"
+    config_path.write_text("ngc_api_key: nvapi-test\noob_ssh_password: ''\n")
+
+    cfg = SimConfig.from_yaml(config_path)
+
+    assert len(cfg.oob_ssh_password) == 24
+
+
 def test_demo_template_plugin_is_static_and_public_named() -> None:
     plugin_dir = PROJECT_ROOT / DEFAULT_AIR_DEMO_TEMPLATE_PLUGIN_PATH
 
