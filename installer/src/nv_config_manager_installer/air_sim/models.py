@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 from nv_config_manager_installer.air_sim.constants import (
     DEFAULT_NVCM_SERVER_NAME,
@@ -40,6 +41,7 @@ class DeviceInfo:
     interface_macs: dict[str, str] = field(default_factory=dict)
     serial: str = ""
     nvcm_enabled: bool = False
+    air_config: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

@@ -39,6 +39,8 @@ from nv_config_manager_installer.air_sim.models import CableConnection, DeviceIn
 
 LOG = logging.getLogger(__name__)
 
+AIR_NODE_PASSTHROUGH_FIELDS = ("cpu_mode", "cpu_options")
+
 
 def _create_version_override_yaml(yaml_path: str, target_version: str) -> str:
     """Create a modified copy of the topology YAML with intended-firmware overridden.
@@ -281,9 +283,8 @@ class AirTopologyBuilder:
                     firmware_version=version,
                     serial=serial,
                     nvcm_enabled=nvcm_enabled,
+                    air_config=air_config,
                 )
-                if air_config:
-                    self.devices[name].air_config = air_config
                 cumulus_count += 1
             else:
                 self.devices[name] = DeviceInfo(
@@ -294,8 +295,8 @@ class AirTopologyBuilder:
                     firmware_version=air_config.get("os", DEFAULT_SERVER_OS),
                     serial=serial,
                     nvcm_enabled=False,
+                    air_config=air_config,
                 )
-                self.devices[name].air_config = air_config
                 server_count += 1
 
             if needs_auto:
@@ -477,7 +478,7 @@ class AirTopologyBuilder:
                 }
             else:
                 # Non-Cumulus node (servers, GPUs, DPUs) - use AIR config if available
-                air_config = getattr(device, "air_config", {})
+                air_config = device.air_config
                 node = {
                     "memory": air_config.get("memory", DEFAULT_NODE_MEMORY),
                     "cpu": air_config.get("cpu", DEFAULT_NODE_CPU),
@@ -485,6 +486,9 @@ class AirTopologyBuilder:
                 }
                 if air_config.get("storage"):
                     node["storage"] = air_config["storage"]
+                for field in AIR_NODE_PASSTHROUGH_FIELDS:
+                    if field in air_config:
+                        node[field] = air_config[field]
 
             topology["nodes"][device.name] = node
 

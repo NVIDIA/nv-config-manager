@@ -72,6 +72,7 @@ def _write_context(context_root: Path) -> None:
                     "status": {"name": "Active"},
                     "serial": "44:38:39:00:00:01",
                     "config_context": {},
+                    "_air": {"os": "generic/ubuntu2404", "cpu_mode": "host-model"},
                     "interfaces": [
                         {
                             "name": "eth1",
@@ -191,3 +192,17 @@ def test_air_topology_builder_uses_resolved_cumulus_image(tmp_path: Path) -> Non
     topology = builder.build_topology()
 
     assert topology["nodes"]["oob-mleaf-01"]["os"] == ("cumulus-linux-vx-amd64-5.16.1.0008.qcow2")
+
+
+def test_air_topology_builder_preserves_explicit_oob_server_cpu_mode(tmp_path: Path) -> None:
+    _write_context(tmp_path)
+    site_design = build_site_design_from_mock_context(
+        "demo_blueprint", "demo", context_root=tmp_path
+    )
+    topology_path = tmp_path / "site-design.yaml"
+    _write_yaml(topology_path, site_design)
+
+    topology = AirTopologyBuilder(str(topology_path)).build_topology()
+
+    assert topology["nodes"]["oob-mgmt-server"]["cpu_mode"] == "host-model"
+    assert "cpu_mode" not in topology["nodes"]["oob-mleaf-01"]

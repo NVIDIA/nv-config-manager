@@ -25,6 +25,7 @@ from nv_config_manager_installer.air_sim.constants import (
 )
 from nv_config_manager_installer.air_sim.installer_config import (
     build_content_jobs,
+    build_deploy_command,
     build_template_plugins,
     generate_air_sim_install_config,
 )
@@ -157,3 +158,15 @@ def test_demo_template_plugin_is_static_and_public_named() -> None:
     assert "REDISTRIBUTE-CONNECTED" in plugin_text
     assert "OOB-SERVER-P2P" in plugin_text
     assert "source-ip: giaddress" in plugin_text
+
+
+def test_public_air_deploy_command_uses_default_numpy_wheel_path() -> None:
+    command = build_deploy_command(SimConfig(use_internal=False))
+
+    assert "NVCM_NUMPY_FROM_SOURCE" not in command
+
+
+def test_internal_air_deploy_command_uses_default_numpy_wheel_path() -> None:
+    command = build_deploy_command(SimConfig(use_internal=True))
+
+    assert "NVCM_NUMPY_FROM_SOURCE" not in command

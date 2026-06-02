@@ -122,6 +122,21 @@ def test_air_trial_tan_leaf_management_interfaces_use_vlan_subnet() -> None:
     assert wrong_masks == []
 
 
+def test_cpu_mode_override_only_on_air_superpod_oob_server() -> None:
+    cpu_mode_devices = []
+
+    for path in sorted(MOCK_TOPOLOGY_CONTEXT.glob("*/devices/*.json")):
+        device = _load_device(path)
+        cpu_mode = (device.get("_air") or {}).get("cpu_mode")
+        if cpu_mode:
+            cpu_mode_devices.append(f"{path.parent.parent.name}:{device.get('name')}:{cpu_mode}")
+
+    assert cpu_mode_devices == [
+        "air_superpod:oob-mgmt-server:host-model",
+        "air_trial:oob-mgmt-server:host-model",
+    ]
+
+
 def test_cumulus_mock_devices_define_intended_firmware() -> None:
     missing_firmware = []
 

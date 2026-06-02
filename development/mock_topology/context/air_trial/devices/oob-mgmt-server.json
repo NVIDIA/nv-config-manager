@@ -21,6 +21,9 @@
       },
       "serial": "44:38:39:00:00:01",
       "config_context": {},
+      "_air": {
+        "cpu_mode": "host-model"
+      },
       "interfaces": [
         {
           "name": "eth0",

@@ -1267,6 +1267,16 @@ class Deployer:
             val = os.environ.get(env_var, "")
             if val:
                 apt_mirror_args += ["--build-arg", f"{env_var}={val}"]
+        nv_config_manager_build_args: list[str] = []
+        for env_var in (
+            "NVCM_NUMPY_FROM_SOURCE",
+            "NVCM_NUMPY_CPU_BASELINE",
+            "NVCM_NUMPY_CPU_DISPATCH",
+            "NVCM_NUMPY_ALLOW_NOBLAS",
+        ):
+            val = os.environ.get(env_var, "")
+            if val:
+                nv_config_manager_build_args += ["--build-arg", f"{env_var}={val}"]
 
         build_env = {**os.environ, "DOCKER_BUILDKIT": "1"}
         use_buildx = bool(build_env.get("BUILDX_BUILDER"))
@@ -1275,6 +1285,9 @@ class Deployer:
         build_commands: list[_ParallelCommand] = []
         for name, dockerfile, context in images:
             build_tag = f"{name}:local"
+            image_build_args = [*apt_mirror_args]
+            if name == "nv-config-manager":
+                image_build_args += nv_config_manager_build_args
             build_commands.append(
                 _ParallelCommand(
                     label=name,
@@ -1285,7 +1298,7 @@ class Deployer:
                         *build_output_args,
                         "--build-context",
                         "scripts=build/",
-                        *apt_mirror_args,
+                        *image_build_args,
                         "-t",
                         build_tag,
                         "-f",

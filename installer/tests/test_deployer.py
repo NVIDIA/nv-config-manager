@@ -589,6 +589,48 @@ class TestImageBuilds:
             command.env and command.env["BUILDX_BUILDER"] == "ci-builder" for command in commands
         )
 
+    def test_build_images_forwards_numpy_source_build_args_to_service_image(self, monkeypatch):
+        parallel_calls: list[list[_ParallelCommand]] = []
+
+        def fake_run_logged_parallel(commands, step, callback, *, max_parallel, **kwargs):
+            parallel_calls.append(commands)
+            for command in commands:
+                callback.on_log(f"[{command.label}] completed in 0s")
+
+        monkeypatch.setenv("NVCM_NUMPY_FROM_SOURCE", "true")
+        monkeypatch.setenv("NVCM_NUMPY_CPU_BASELINE", "min")
+        monkeypatch.setenv("NVCM_NUMPY_CPU_DISPATCH", "max")
+        monkeypatch.setenv("NVCM_NUMPY_ALLOW_NOBLAS", "true")
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer._run_logged_parallel",
+            fake_run_logged_parallel,
+        )
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer._get_image_digest_tag",
+            lambda image: "",
+        )
+
+        deployer = Deployer(
+            _make_config(),
+            DeployOptions(build_images=True),
+            RecordingCallback(),
+        )
+        deployer._build_images()
+
+        commands = parallel_calls[0]
+        service_cmd = next(
+            command.cmd for command in commands if command.label == "nv-config-manager"
+        )
+        nautobot_cmd = next(
+            command.cmd for command in commands if command.label == "nv-config-manager-nautobot"
+        )
+        assert "--build-arg" in service_cmd
+        assert "NVCM_NUMPY_FROM_SOURCE=true" in service_cmd
+        assert "NVCM_NUMPY_CPU_BASELINE=min" in service_cmd
+        assert "NVCM_NUMPY_CPU_DISPATCH=max" in service_cmd
+        assert "NVCM_NUMPY_ALLOW_NOBLAS=true" in service_cmd
+        assert "NVCM_NUMPY_FROM_SOURCE=true" not in nautobot_cmd
+
 
 class TestKindImageLoading:
     def test_kind_preload_images_include_defaults_config_and_env(self, monkeypatch):

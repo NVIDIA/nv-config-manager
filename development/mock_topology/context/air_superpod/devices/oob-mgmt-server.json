@@ -74,7 +74,8 @@
         "os": "generic/ubuntu2404",
         "cpu": 16,
         "memory": 32768,
-        "storage": 100
+        "storage": 100,
+        "cpu_mode": "host-model"
       }
     }
   }
