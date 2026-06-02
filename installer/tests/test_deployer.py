@@ -504,19 +504,17 @@ class TestInstallCrdsProvenance:
             (c.args[0],) for c in deployer._k8s.ensure_namespace.call_args_list
         }
 
-    def test_envoy_helm_args_include_common_labels(self, tmp_path, monkeypatch):
+    def test_envoy_helm_args_omit_common_labels(self, tmp_path, monkeypatch):
+        # gateway-helm has no chart-wide commonLabels value, so we must NOT
+        # pass one (it would be a silent no-op). Envoy provenance comes from
+        # the pre-created namespace label instead.
         _, logged = self._run_install_crds(
             tmp_path,
             monkeypatch,
             options=DeployOptions(chart_dir=str(tmp_path), install_envoy_gateway=True),
         )
         envoy_cmd = next(cmd for cmd in logged if cmd[:4] == ["helm", "upgrade", "--install", "eg"])
-        # Dotted label keys must be backslash-escaped to survive helm's --set parser.
-        assert (
-            "commonLabels.nv-config-manager\\.nvidia\\.com/installer=nv-config-manager-installer"
-            in envoy_cmd
-        )
-        assert "commonLabels.app\\.kubernetes\\.io/part-of=nv-config-manager" in envoy_cmd
+        assert not any(arg.startswith("commonLabels.") for arg in envoy_cmd)
 
     def test_cert_manager_helm_args_use_global_common_labels(self, tmp_path, monkeypatch):
         # cert-manager nests commonLabels under ``global`` — getting the prefix

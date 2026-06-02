@@ -1526,7 +1526,6 @@ class Deployer:
         step = self._start_step("install-crds")
         versions = load_operator_versions(Path(opts.chart_dir))
         bundle_root = self._operator_bundle_root()
-        common_labels_args = self._helm_common_labels_args()
         cert_manager_label_args = self._helm_common_labels_args("global.commonLabels")
 
         if opts.install_envoy_gateway:
@@ -1548,6 +1547,10 @@ class Deployer:
                 if envoy_chart is not None
                 else "oci://docker.io/envoyproxy/gateway-helm"
             )
+            # gateway-helm has no chart-wide ``commonLabels`` value, so passing
+            # one would be a silent no-op. The pre-created namespace above
+            # carries the installer labels instead, which is what cleanup
+            # selectors key off of.
             self._ensure_operator_namespace("envoy-gateway-system")
             envoy_args = [
                 "helm",
@@ -1561,7 +1564,6 @@ class Deployer:
                 "--wait",
                 "--timeout",
                 "120s",
-                *common_labels_args,
             ]
             if envoy_chart is not None:
                 self.callback.on_log(f"Using local chart: {envoy_chart}")
