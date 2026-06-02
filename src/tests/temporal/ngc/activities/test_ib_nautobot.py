@@ -244,7 +244,7 @@ class TestSelectPkeyMatch:
         assert overlay["id"] == OVERLAY_ID
         assert pkey_record["id"] == PKEY_ID
 
-    def test_prefers_lower_level_overlay_when_both_levels_define_it(self) -> None:
+    def test_same_overlay_at_two_levels_raises_ambiguous(self) -> None:
         device = _datahall_device_payload(overlay_at="both")
         with pytest.raises(ApplicationError, match="ambiguous near location"):
             _select_pkey_match(device, "0x0100")
