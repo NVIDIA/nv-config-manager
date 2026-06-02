@@ -706,7 +706,7 @@ Usage: {{ include "nv-config-manager.waitForTemporalNamespace" . | nindent 6 }}
     - /bin/bash
     - -c
     - |
-      TEMPORAL_ADDR="{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc:{{ .Values.temporal.services.frontend.port }}"
+      TEMPORAL_ADDR="{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.temporal.services.frontend.port }}"
 
       echo "Waiting for Temporal default namespace..."
       until tctl --address "$TEMPORAL_ADDR" --namespace default namespace describe >/dev/null 2>&1; do

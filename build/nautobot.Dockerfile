@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 # NVIDIA Config Manager Nautobot Dockerfile - Pared down version for external customers
 #
 # Uses NVIDIA distroless Python image for minimal attack surface.
@@ -48,7 +49,8 @@ COPY nv_config_manager_auth /opt/nautobot/nv_config_manager_auth
 
 # Create venv and install dependencies (--no-editable ensures packages are in site-packages)
 RUN uv venv /opt/nautobot/.venv
-RUN set -eux; \
+RUN --mount=type=cache,id=nvcm-uv-cache,target=/root/.cache/uv \
+    set -eux; \
     if [ -n "$NAUTOBOT_APP_OVERLAYS_VERSION" ]; then \
         export SETUPTOOLS_SCM_PRETEND_VERSION="$NAUTOBOT_APP_OVERLAYS_VERSION"; \
         export SETUPTOOLS_SCM_PRETEND_VERSION_FOR_NAUTOBOT_APP_OVERLAYS="$NAUTOBOT_APP_OVERLAYS_VERSION"; \

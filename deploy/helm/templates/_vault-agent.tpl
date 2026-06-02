@@ -354,7 +354,7 @@ nv-config-manager.ini body (consul-template): must stay in sync with vault-secre
           # -----------------------------------------------------------------
           [temporal]
           # Internal: Temporal gRPC frontend (for workers, SDK clients)
-          grpc_service = {{ $temporalName }}-frontend-service.{{ $root.Values.global.namespace }}.svc:{{ $root.Values.temporal.services.frontend.port }}
+          grpc_service = {{ $temporalName }}-frontend-service.{{ $root.Values.global.namespace }}.svc.cluster.local:{{ $root.Values.temporal.services.frontend.port }}
           # Internal: NVIDIA Config Manager Temporal API (for internal service calls)
           # Uses sidecar port when auth sidecars are enabled for header injection
           api_service = http://{{ $temporalName }}-api:{{ $internalPort }}
