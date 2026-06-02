@@ -15,6 +15,8 @@
 
 """Models for Overlays app."""
 
+import re
+
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ValidationError
@@ -340,15 +342,39 @@ class InfiniBandPKey(PrimaryModel):
         verbose_name_plural = "InfiniBand PKeys"
         unique_together = ["pkey", "overlay"]
 
+    _PKEY_RE = re.compile(r"\A0[xX][0-9a-fA-F]{1,4}\Z")
+
     def __str__(self):
         """Stringify instance."""
         return f"{self.name} ({self.pkey})"
 
+    @staticmethod
+    def normalize_pkey(value):
+        """Return pkey as '0x' + 4 lowercase hex digits, or the input unchanged if it doesn't match the expected format."""
+        if not isinstance(value, str):
+            return value
+        stripped = value.strip()
+        if not InfiniBandPKey._PKEY_RE.match(stripped):
+            return stripped
+        return f"0x{int(stripped, 16):04x}"
+
+    def clean_fields(self, exclude=None):
+        """Normalize pkey before field validators run so '0X1' and whitespace are accepted."""
+        if isinstance(self.pkey, str):
+            self.pkey = self.normalize_pkey(self.pkey)
+        super().clean_fields(exclude=exclude)
+
     def clean(self):
-        """Validate PKey can only be associated with IB PKey overlays."""
+        """Validate PKey associations and normalize the pkey value."""
         super().clean()
+        self.pkey = self.normalize_pkey(self.pkey)
         if self.overlay and self.overlay.isolation_type != IsolationTypeChoices.IB_PKEY:
             raise ValidationError({"overlay": "InfiniBand PKeys can only be associated with IB PKey overlays."})
+
+    def save(self, *args, **kwargs):
+        """Normalize pkey before persisting."""
+        self.pkey = self.normalize_pkey(self.pkey)
+        super().save(*args, **kwargs)
 
 
 @extras_features("graphql", "statuses", "custom_fields")
