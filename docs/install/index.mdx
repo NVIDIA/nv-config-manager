@@ -194,6 +194,31 @@ In CI environments where in-cluster pulls are unreliable or rate limited, `--loa
 
 Prerequisite operator versions are read from `deploy/operator-versions.env`. When `cluster.airgapped` is true, or the chart directory sits inside an airgapped bundle with sibling `charts/` and `manifests/` directories, the installer uses the local bundled artifacts.
 
+### Optional NumPy source build for older virtual CPUs
+
+Some customer VM environments expose a conservative virtual CPU model that does not include the x86-64-v2 feature set required by the default NumPy wheel. In that case, Python services that import NumPy or Pandas can fail at startup with an error like:
+
+```text
+RuntimeError: NumPy was built with baseline optimizations:
+(X86_V2) but your machine doesn't support:
+(X86_V2).
+```
+
+When deploying with locally built images, you can opt into building NumPy from source with a lower CPU baseline for the `nv-config-manager` services image:
+
+```bash
+NVCM_NUMPY_FROM_SOURCE=true \
+NVCM_NUMPY_CPU_BASELINE=min \
+NVCM_NUMPY_CPU_DISPATCH=max \
+NVCM_NUMPY_ALLOW_NOBLAS=true \
+nvcm-installer deploy nv-config-manager-install.yaml \
+  --image-source local \
+  --build-images \
+  --load-kind
+```
+
+These settings only affect image builds that you explicitly run with `--build-images`. They are not enabled by any installer preset. Prefer fixing the VM or hypervisor CPU model when possible; use this build option when the deployment environment cannot expose the required CPU features.
+
 ## TUI Wizard Reference
 
 Detailed installer screen fields are documented in [TUI Wizard Reference](tui-wizard-reference.mdx).

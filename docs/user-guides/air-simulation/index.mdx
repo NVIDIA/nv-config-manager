@@ -22,6 +22,7 @@ Before running the Config Manager AIR simulation, review the public NVIDIA DSX A
 You also need:
 
 - Python 3.11+ and `uv`.
+- `sshpass` installed on the workstation where you run the TUI. The TUI-generated AIR SSH and SOCKS proxy commands use it.
 - An NGC API key for AIR API authentication. You can paste it into the TUI or set `NGC_API_KEY` in your shell.
 - Enough DSX Air capacity for the selected demo. The AIR free trial preset is resource-capped for public trial accounts.
 - A workstation browser that can run through a SOCKS proxy. Chromium-family browsers are easiest because the TUI prints ready-to-run commands.
@@ -232,6 +233,10 @@ The **Launch** screen creates the simulation, starts it, waits for SSH, deploys 
 
 Click **Launch Simulation** and leave the TUI open. The launch can take a while because it boots the AIR nodes, builds and loads local images, installs Config Manager, and lets the switches provision.
 
+<Warning title="TUI responsiveness">
+During launch, the Activity stream can receive a high volume of log output. Mouse clicks may feel delayed while the TUI is processing those logs. If a click does not respond immediately, wait a moment and try again. This is a known limitation and will be addressed in future enhancements.
+</Warning>
+
 During launch:
 
 - **Steps** shows high-level orchestration progress.
@@ -252,7 +257,8 @@ Config Manager runs inside the `oob-mgmt-server` node in AIR. The TUI creates an
 For Linux and macOS:
 
 1. Copy the **Linux / macOS - SOCKS tunnel** command from the Access panel and run it in a terminal.
-1. Copy the **Linux / macOS - browser** command, or manually launch a browser with `socks5://localhost:8080`.
+1. If `8080` is already in use on your workstation, change **SOCKS Port** in the Access panel before copying commands or launching a browser.
+1. Copy the **Linux / macOS - browser** command, or manually launch a browser with `socks5://localhost:<SOCKS_PORT>`.
 1. Open the Config Manager and Nautobot URLs through that browser session.
 
 Common service URLs inside the SOCKS-proxied browser are:
@@ -296,8 +302,6 @@ The AIR demo is intended for Ethernet and Cumulus Linux workflows. Useful workfl
 - Tenant Deploy, if you scope it to demo devices with tenant data
 - Cable Validation
 - Hardware Validation
-- Device Password Rotation
-- Site Password Rotation
 - Device Reprovision
 - Workflow lifecycle actions such as approve, reject, retry, and terminate
 
@@ -313,7 +317,7 @@ Do not use the AIR demo for:
 
 Multi-Deploy is a good first Day-2 workflow because the AIR trial demo has five `TAN-HLEAF` switches that should receive the same diff.
 
-The example below adds a DNS server to the site config context. The render service picks up the Nautobot change, produces new intended configs for the TAN leaf devices, and Multi-Deploy groups the identical diffs for approval.
+The standard demo context already includes `8.8.8.8` as a DNS server. The example below appends `8.8.4.4` to the site config context. The render service picks up the Nautobot change, produces new intended configs for the TAN leaf devices, and Multi-Deploy groups the identical diffs for approval.
 
 ### Edit the DNS config context
 
@@ -322,7 +326,7 @@ The example below adds a DNS server to the site config context. The render servi
 1. Navigate to **Extensibility > Config Contexts**.
 1. Open `air-trial-network-management-services - demo`.
 1. Edit the **Data** field.
-1. Add a DNS block. If the context already has a `dns` block, append one server to its `ipv4` list.
+1. Add `8.8.4.4` to the existing `dns.ipv4` list.
 
 Example data with a demo DNS server:
 
@@ -352,7 +356,8 @@ Example data with a demo DNS server:
   },
   "dns": {
     "ipv4": [
-      "192.0.2.53"
+      "8.8.8.8",
+      "8.8.4.4"
     ]
   }
 }

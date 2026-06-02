@@ -137,6 +137,23 @@ def test_cpu_mode_override_only_on_air_superpod_oob_server() -> None:
     ]
 
 
+def test_air_demo_network_management_contexts_include_public_dns() -> None:
+    expected_contexts = {
+        "air_superpod": "superpod-demo-network-management-services",
+        "air_trial": "air-trial-network-management-services - {{ deployment_name }}",
+    }
+
+    for blueprint, context_name in expected_contexts.items():
+        context_data = _load_yaml(MOCK_TOPOLOGY_CONTEXT / blueprint / "locations.yaml")
+        contexts = {
+            context["name"]: context
+            for context in context_data.get("config_contexts", [])
+            if context.get("name")
+        }
+
+        assert contexts[context_name]["data"]["dns"]["ipv4"] == ["8.8.8.8"]
+
+
 def test_cumulus_mock_devices_define_intended_firmware() -> None:
     missing_firmware = []
 

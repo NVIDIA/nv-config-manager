@@ -33,7 +33,7 @@ from textual import events, work
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.message import Message
-from textual.widgets import Button, Label, Static, Tab, Tabs
+from textual.widgets import Button, Input, Label, Static, Tab, Tabs
 from textual.worker import Worker, WorkerState, get_current_worker
 
 from nv_config_manager_installer.air_sim.constants import (
@@ -49,7 +49,7 @@ from nv_config_manager_installer.air_sim.orchestrator import (
     SimOrchestrator,
     StepStatus,
 )
-from nv_config_manager_installer.air_sim.proxy import ProxyInfo
+from nv_config_manager_installer.air_sim.proxy import SOCKS_PORT, ProxyInfo
 from nv_config_manager_installer.air_sim.sim_config import SimConfig
 from nv_config_manager_installer.air_sim.sim_manager import AirSimulationManager
 
@@ -295,6 +295,12 @@ class _SimulationCreated(Message):
     def __init__(self, simulation_id: str) -> None:
         super().__init__()
         self.simulation_id = simulation_id
+
+
+class _SocksPortChanged(Message):
+    def __init__(self, socks_port: int) -> None:
+        super().__init__()
+        self.socks_port = socks_port
 
 
 # ── Callback bridge ───────────────────────────────────────────────────────────
@@ -801,6 +807,12 @@ class _ProxyAccessWidget(Container):
         )
         with Horizontal(id="proxy-controls") as controls:
             controls.display = self._nautobot_ready
+            yield Label("SOCKS Port", id="socks-port-label")
+            yield Input(
+                value=str(p.socks_port),
+                placeholder=str(SOCKS_PORT),
+                id="socks-port",
+            )
             launch_button = Button("Launch Browser", id="btn-launch-browser", variant="primary")
             launch_button.display = self._nautobot_ready
             yield launch_button
@@ -932,6 +944,35 @@ class _ProxyAccessWidget(Container):
         if btn == "btn-launch-browser":
             self._launch_browser()
             event.stop()
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id != "socks-port":
+            return
+        value = event.value.strip()
+        if not value:
+            event.stop()
+            return
+        try:
+            socks_port = int(value)
+        except ValueError:
+            self._set_proxy_status("[yellow]Enter a numeric SOCKS port.[/yellow]")
+            event.stop()
+            return
+        if not 1 <= socks_port <= 65535:
+            self._set_proxy_status("[yellow]Enter a SOCKS port between 1 and 65535.[/yellow]")
+            event.stop()
+            return
+
+        self._proxy.socks_port = socks_port
+        self._update_command_panels()
+        self.post_message(_SocksPortChanged(socks_port))
+        event.stop()
+
+    def _set_proxy_status(self, markup: str) -> None:
+        try:
+            self.query_one("#proxy-status", Static).update(markup)
+        except Exception:
+            pass
 
     @work(thread=True)
     def _launch_browser(self) -> None:
@@ -1126,7 +1167,8 @@ class LaunchScreen(Container):
         self._log_thread: threading.Thread | None = None
         self._service_polling = False
         self._seen_service_events: set[str] = set()
-        self._proxy_access_target: tuple[str, int, bool] | None = None
+        self._socks_port = SOCKS_PORT
+        self._proxy_access_target: tuple[str, int, bool, int] | None = None
 
     def compose(self) -> ComposeResult:
         yield Label("Launch", classes="section-title")
@@ -1383,11 +1425,15 @@ class LaunchScreen(Container):
     def on__simulation_created(self, event: _SimulationCreated) -> None:
         self.set_simulation_id(event.simulation_id)
 
+    def on__socks_port_changed(self, event: _SocksPortChanged) -> None:
+        self._socks_port = event.socks_port
+        event.stop()
+
     def _show_proxy_panel(self, host: str, port: int, *, nautobot_ready: bool = False) -> None:
-        if self._proxy_access_target == (host, port, nautobot_ready):
+        if self._proxy_access_target == (host, port, nautobot_ready, self._socks_port):
             return
         self._ssh_cmd_text = self._ssh_cmd_text or _ssh_command(host, port)
-        proxy = ProxyInfo(host=host, port=port)
+        proxy = ProxyInfo(host=host, port=port, socks_port=self._socks_port)
         widget = _ProxyAccessWidget(
             proxy,
             self._ssh_cmd_text,
@@ -1395,7 +1441,7 @@ class LaunchScreen(Container):
             id="proxy-access",
         )
         self.query_one("#stream-viewer", _StreamTabsWidget).set_access_widget(widget)
-        self._proxy_access_target = (host, port, nautobot_ready)
+        self._proxy_access_target = (host, port, nautobot_ready, self._socks_port)
 
     def on_unmount(self) -> None:
         self._log_stop.set()

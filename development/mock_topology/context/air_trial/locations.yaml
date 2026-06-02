@@ -115,6 +115,9 @@ config_contexts:
       provisioning_servers:
         ipv4:
           - 10.120.0.0
+      dns:
+        ipv4:
+          - 8.8.8.8
 
   - name: "air-trial-password-mappings - {{ deployment_name }}"
     description: Intended password mappings for the AIR trial demo

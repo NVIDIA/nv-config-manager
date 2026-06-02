@@ -131,6 +131,9 @@ config_contexts:
     provisioning_servers:
       ipv4:
       - 10.100.0.0
+    dns:
+      ipv4:
+      - 8.8.8.8
   description: Network management services for the public SuperPOD demo
   locations:
   - SPO01

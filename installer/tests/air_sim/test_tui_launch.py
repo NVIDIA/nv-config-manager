@@ -19,7 +19,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
-from textual.widgets import Input
+from textual.widgets import Input, Static
 
 import nv_config_manager_installer.air_sim.sim_manager as sim_manager_module
 from nv_config_manager_installer.air_sim.constants import NVCM_BOX_PASSWORD
@@ -148,6 +148,54 @@ async def test_access_panel_upgrades_when_nautobot_is_ready() -> None:
 
         assert app.query_one("#btn-launch-browser").display is True
         assert app.query_one("#panel-ssh-unix").display is True
+
+
+@pytest.mark.asyncio
+async def test_access_panel_socks_port_updates_proxy_commands() -> None:
+    app = ClipboardAirSimApp(config=SimConfig(ngc_api_key="nvapi-test"))
+
+    async with app.run_test(size=(180, 100)) as pilot:
+        app.switch_section("launch")
+        await pilot.pause(0.1)
+
+        launch = app.query_one("#screen-launch", LaunchScreen)
+        launch._ssh_cmd_text = f"sshpass -p {NVCM_BOX_PASSWORD} ssh -p 17117 nvcm@example.air"
+        launch._show_proxy_panel(PUBLIC_AIR_WORKER, 17117, nautobot_ready=True)
+        launch.query_one("#stream-viewer", _StreamTabsWidget).select_stream("access")
+        await pilot.pause(0.1)
+
+        app.query_one("#socks-port", Input).value = "18080"
+        await pilot.pause(0.1)
+
+        ssh_command = str(app.query_one("#cmd-ssh-unix", Static).render())
+        browser_command = str(app.query_one("#cmd-browser-win", Static).render())
+
+        assert "-D 18080" in ssh_command
+        assert "localhost:18080" in browser_command
+
+
+@pytest.mark.asyncio
+async def test_access_panel_preserves_custom_socks_port_after_refresh() -> None:
+    app = ClipboardAirSimApp(config=SimConfig(ngc_api_key="nvapi-test"))
+
+    async with app.run_test(size=(180, 100)) as pilot:
+        app.switch_section("launch")
+        await pilot.pause(0.1)
+
+        launch = app.query_one("#screen-launch", LaunchScreen)
+        launch._ssh_cmd_text = f"sshpass -p {NVCM_BOX_PASSWORD} ssh -p 17117 nvcm@example.air"
+        launch._show_proxy_panel(PUBLIC_AIR_WORKER, 17117, nautobot_ready=True)
+        launch.query_one("#stream-viewer", _StreamTabsWidget).select_stream("access")
+        await pilot.pause(0.1)
+
+        app.query_one("#socks-port", Input).value = "18080"
+        await pilot.pause(0.1)
+
+        launch._show_proxy_panel(PUBLIC_AIR_WORKER, 17117, nautobot_ready=True)
+        await pilot.pause(0.1)
+
+        assert app.query_one("#socks-port", Input).value == "18080"
+        assert "-D 18080" in str(app.query_one("#cmd-ssh-unix", Static).render())
 
 
 @pytest.mark.asyncio

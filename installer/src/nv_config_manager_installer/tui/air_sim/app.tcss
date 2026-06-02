@@ -283,6 +283,16 @@ LabeledSwitch .labeled-switch--label {
     align: left middle;
 }
 
+#socks-port-label {
+    width: auto;
+    margin-right: 1;
+}
+
+#socks-port {
+    width: 12;
+    margin-right: 1;
+}
+
 #launch-controls Button { margin-right: 1; }
 
 #launch-status {
