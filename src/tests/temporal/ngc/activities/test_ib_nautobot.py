@@ -27,9 +27,11 @@ from temporalio.exceptions import ApplicationError
 from nv_config_manager.temporal.common.secrets import clear_secrets_cache
 from nv_config_manager.temporal.ngc.activities.ib_nautobot import (
     ResolveIBContextInput,
+    ResolveIBSiteForHostInput,
     _normalize_pkey,
     _select_pkey_match,
     resolve_ib_context,
+    resolve_ib_site_for_host,
 )
 
 NB_URL = "https://nautobot.example.com"
@@ -417,3 +419,72 @@ class TestResolveIBContextByIP:
             m.post(NB_GRAPHQL, payload=payload)
             with pytest.raises(ApplicationError, match="Multiple UFM devices"):
                 await resolve_ib_context(ResolveIBContextInput(host=DEVICE_IP, pkey="0x0100"))
+
+
+# ---------------------------------------------------------------------------
+# resolve_ib_site_for_host activity
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+class TestResolveIBSiteForHost:
+    async def test_happy_path_by_name(self, mock_nb_config: Any) -> None:
+        payload = {"data": {"devices": [_device_payload()]}}
+        with aioresponses() as m:
+            m.post(NB_GRAPHQL, payload=payload)
+            result = await resolve_ib_site_for_host(ResolveIBSiteForHostInput(host=DEVICE_NAME))
+        assert result.ufm_device_id == DEVICE_ID
+        assert result.ufm_device_name == DEVICE_NAME
+        assert result.ufm_device_primary_ip == DEVICE_IP
+        assert result.location_id == LOCATION_ID
+        assert result.location_name == LOCATION_NAME
+
+    async def test_happy_path_by_ip(self, mock_nb_config: Any) -> None:
+        payload = {
+            "data": {
+                "ip_addresses": [
+                    {
+                        "address": "10.0.0.1/32",
+                        "interfaces": [{"device": _device_payload()}],
+                    }
+                ]
+            }
+        }
+        with aioresponses() as m:
+            m.post(NB_GRAPHQL, payload=payload)
+            result = await resolve_ib_site_for_host(ResolveIBSiteForHostInput(host=DEVICE_IP))
+        assert result.ufm_device_id == DEVICE_ID
+        assert result.location_name == LOCATION_NAME
+
+    async def test_walks_chain_to_site_when_device_in_datahall(self, mock_nb_config: Any) -> None:
+        payload = {"data": {"devices": [_datahall_device_payload(overlay_at="datahall")]}}
+        with aioresponses() as m:
+            m.post(NB_GRAPHQL, payload=payload)
+            result = await resolve_ib_site_for_host(ResolveIBSiteForHostInput(host=DEVICE_NAME))
+        assert result.location_id == SITE_ID
+        assert result.location_name == SITE_NAME
+
+    async def test_succeeds_when_pkey_is_absent_from_nautobot(self, mock_nb_config: Any) -> None:
+        """The lightweight resolver must not depend on PKey/overlay state."""
+        device = _device_payload(pkeys=[])
+        device["location"]["overlays"] = []
+        payload = {"data": {"devices": [device]}}
+        with aioresponses() as m:
+            m.post(NB_GRAPHQL, payload=payload)
+            result = await resolve_ib_site_for_host(ResolveIBSiteForHostInput(host=DEVICE_NAME))
+        assert result.location_id == LOCATION_ID
+
+    async def test_device_not_found_raises(self, mock_nb_config: Any) -> None:
+        with aioresponses() as m:
+            m.post(NB_GRAPHQL, payload={"data": {"devices": []}})
+            with pytest.raises(ApplicationError, match="not found in Nautobot"):
+                await resolve_ib_site_for_host(ResolveIBSiteForHostInput(host=DEVICE_NAME))
+
+    async def test_no_site_in_hierarchy_raises(self, mock_nb_config: Any) -> None:
+        device = _datahall_device_payload(overlay_at="datahall")
+        device["location"]["parent"]["location_type"] = {"name": "Region"}
+        payload = {"data": {"devices": [device]}}
+        with aioresponses() as m:
+            m.post(NB_GRAPHQL, payload=payload)
+            with pytest.raises(ApplicationError, match="No Site-typed location"):
+                await resolve_ib_site_for_host(ResolveIBSiteForHostInput(host=DEVICE_NAME))

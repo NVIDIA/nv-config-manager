@@ -43,6 +43,7 @@ export const workflowTypes = [
   "AIRCreateSimulationWorkflow",
   "AIRValidateSiteWorkflow",
   "AIRDeleteSimulationWorkflow",
+  "IBPKeyCreationWorkflow",
 ];
 
 export const workflowFetchingHandlers = [

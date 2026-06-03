@@ -155,5 +155,10 @@ export const siteConfig = {
       slug: "ibportguiddiscoveryworkflow",
       enabled: true,
     },
+    {
+      title: "IB PKey Creation",
+      slug: "ibpkeycreationworkflow",
+      enabled: true,
+    },
   ],
 };

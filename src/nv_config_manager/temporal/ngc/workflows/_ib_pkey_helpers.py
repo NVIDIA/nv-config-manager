@@ -28,10 +28,13 @@ with workflow.unsafe.imports_passed_through():
         ResolveGuidsToInterfacesOutput,
         ResolveIBContextInput,
         ResolveIBContextOutput,
+        ResolveIBSiteForHostInput,
+        ResolveIBSiteForHostOutput,
         ResolveInterfaceGuidsInput,
         ResolveInterfaceGuidsOutput,
         resolve_guids_to_interfaces,
         resolve_ib_context,
+        resolve_ib_site_for_host,
         resolve_interface_guids,
     )
 
@@ -83,6 +86,16 @@ async def call_resolve_ib_context(host: str, pkey: str) -> ResolveIBContextOutpu
     return await workflow.execute_activity(
         resolve_ib_context,
         ResolveIBContextInput(host=host, pkey=pkey),
+        start_to_close_timeout=timedelta(minutes=1),
+        retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+    )
+
+
+async def call_resolve_ib_site_for_host(host: str) -> ResolveIBSiteForHostOutput:
+    """Invoke the resolve_ib_site_for_host activity from a workflow."""
+    return await workflow.execute_activity(
+        resolve_ib_site_for_host,
+        ResolveIBSiteForHostInput(host=host),
         start_to_close_timeout=timedelta(minutes=1),
         retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
     )

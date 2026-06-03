@@ -120,20 +120,14 @@ async def create_partition_in_nautobot(
 
 
 class RecordIBPKeyInNautobotInput(BaseModel):
-    """Parameters for creating an overlay and PKey in the overlays plugin."""
+    """Parameters for recording an InfiniBandPKey in Nautobot."""
 
     pkey: str
-    overlay_name: str | None = None
-    location_name: str
-    tenant_name: str
-    membership_type: str = "full"
 
 
 class RecordIBPKeyInNautobotOutput(StageOutput):
-    """Nautobot IDs for the created or reused overlay and PKey objects."""
+    """Nautobot ID for the created or reused InfiniBandPKey."""
 
-    overlay_id: str
-    overlay_name: str
     pkey_id: str
     pkey: str
 
@@ -259,72 +253,54 @@ async def _find_existing_pkey(
     return items[0] if items else None
 
 
+async def _find_orphan_pkey(
+    client: NautobotClient,
+    pkey: str,
+) -> dict[str, Any] | None:
+    """Return an existing InfiniBandPKey with this pkey value and no overlay."""
+    results = await client.get(
+        f"{PLUGIN_BASE}/pkeys/",
+        params={"pkey": pkey},
+    )
+    for item in results.get("results", []):
+        if item.get("overlay") is None:
+            return item
+    return None
+
+
 @activity.defn
 async def record_ib_pkey_in_nautobot(
     input: RecordIBPKeyInNautobotInput,
 ) -> RecordIBPKeyInNautobotOutput:
-    """Create an Overlay and InfiniBandPKey record in Nautobot."""
-    overlay_name = input.overlay_name or f"ib-pkey-{input.pkey}"
+    """Record an InfiniBandPKey in Nautobot."""
+    name = f"PKey-{input.pkey}"
 
     client = NautobotClient()
     async with client:
-        location = await _lookup_by_name(client, "dcim/locations/", input.location_name, "Location")
-        location_id: str = location["id"]
-
-        tenant = await _lookup_by_name(client, "tenancy/tenants/", input.tenant_name, "Tenant")
-        tenant_id: str = tenant["id"]
-
         status_id = await _resolve_status_id(client)
 
-        existing_overlay = await _find_existing_overlay(client, overlay_name, location_id)
-        if existing_overlay:
-            overlay_id: str = existing_overlay["id"]
+        existing = await _find_orphan_pkey(client, input.pkey)
+        if existing:
+            pkey_id: str = existing["id"]
             log.info(
-                "Overlay '%s' already exists (%s), reusing",
-                overlay_name,
-                overlay_id,
-            )
-        else:
-            overlay_payload: dict[str, Any] = {
-                "name": overlay_name,
-                "location": location_id,
-                "isolation_type": ISOLATION_TYPE_IB_PKEY,
-                "status": status_id,
-                "tenant": tenant_id,
-            }
-
-            log.info("Creating Overlay '%s' in Nautobot", overlay_name)
-            overlay = await client.post(f"{PLUGIN_BASE}/overlays/", data=overlay_payload)
-            overlay_id = overlay["id"]
-
-        existing_pkey = await _find_existing_pkey(client, input.pkey, overlay_id)
-        if existing_pkey:
-            pkey_id: str = existing_pkey["id"]
-            log.info(
-                "InfiniBandPKey '%s' already exists (%s), reusing",
+                "InfiniBandPKey %s already recorded (id=%s, no overlay), reusing",
                 input.pkey,
                 pkey_id,
             )
         else:
-            pkey_payload: dict[str, Any] = {
+            payload: dict[str, Any] = {
+                "name": name,
                 "pkey": input.pkey,
-                "name": f"PKey-{input.pkey}",
-                "overlay": overlay_id,
-                "membership_type": input.membership_type,
                 "status": status_id,
-                "tenant": tenant_id,
             }
-
             log.info("Creating InfiniBandPKey %s in Nautobot", input.pkey)
-            pkey_record = await client.post(f"{PLUGIN_BASE}/pkeys/", data=pkey_payload)
-            pkey_id = pkey_record["id"]
+            record = await client.post(f"{PLUGIN_BASE}/pkeys/", data=payload)
+            pkey_id = record["id"]
 
     return RecordIBPKeyInNautobotOutput(
-        overlay_id=overlay_id,
-        overlay_name=overlay_name,
         pkey_id=pkey_id,
         pkey=input.pkey,
-        display=(f"Overlay '{overlay_name}' and PKey {input.pkey} recorded in Nautobot"),
+        display=f"PKey {input.pkey} recorded in Nautobot (id={pkey_id})",
     )
 
 
@@ -741,6 +717,22 @@ async def sync_pkey_assignments(
 # ---------------------------------------------------------------------------
 
 
+class ResolveIBSiteForHostInput(BaseModel):
+    """Inputs for resolving the Site for a UFM host."""
+
+    host: str
+
+
+class ResolveIBSiteForHostOutput(StageOutput):
+    """UFM device + Site context for an IB PKey operation."""
+
+    ufm_device_id: str
+    ufm_device_name: str
+    ufm_device_primary_ip: str | None
+    location_id: str
+    location_name: str
+
+
 class ResolveIBContextInput(BaseModel):
     """Inputs for resolving the Nautobot context of an IB PKey operation."""
 
@@ -978,6 +970,49 @@ def _select_pkey_match(
             non_retryable=True,
         )
     return matches[0]
+
+
+@activity.defn
+async def resolve_ib_site_for_host(
+    input: ResolveIBSiteForHostInput,
+) -> ResolveIBSiteForHostOutput:
+    """Resolve the Site for a UFM host. Allows site specific UFM credentials. """
+
+    client = NautobotClient()
+    async with client:
+        device = await _find_device(client, input.host)
+
+    chain = _walk_location_chain(device.get("location") or {})
+    site = _find_site_in_chain(chain)
+    if site is None:
+        chain_repr = " -> ".join(
+            f"{loc.get('name', '?')}:{(loc.get('location_type') or {}).get('name', '?')}"
+            for loc in chain
+        )
+        raise ApplicationError(
+            f"No {SITE_LOCATION_TYPE_NAME}-typed location in hierarchy for device "
+            f"{device.get('name')!r}: {chain_repr}",
+            non_retryable=True,
+        )
+
+    primary_ip = (device.get("primary_ip4") or {}).get("host")
+
+    log.info(
+        "Resolved IB site for host=%s -> device=%s device_location=%s site=%s",
+        input.host,
+        device.get("name"),
+        (device.get("location") or {}).get("name"),
+        site.get("name"),
+    )
+
+    return ResolveIBSiteForHostOutput(
+        ufm_device_id=device["id"],
+        ufm_device_name=device["name"],
+        ufm_device_primary_ip=primary_ip,
+        location_id=site["id"],
+        location_name=site["name"],
+        display=f"Resolved {input.host} -> site {site.get('name')}",
+    )
 
 
 @activity.defn
