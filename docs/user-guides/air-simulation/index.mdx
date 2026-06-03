@@ -295,38 +295,37 @@ The standard demo context already includes `8.8.8.8` as a DNS server. The exampl
 
 Example data with a demo DNS server:
 
-```json
-{
-  "ztp": {
-    "ipv4": [
-      "172.18.255.201"
-    ]
-  },
-  "dhcp": {
-    "nvcm": {
-      "ipv4": [
-        "172.18.255.202"
-      ]
-    }
-  },
-  "management_prefixes": {
-    "ipv4": [
-      "172.18.0.0/16"
-    ]
-  },
-  "provisioning_servers": {
-    "ipv4": [
-      "10.120.0.0"
-    ]
-  },
-  "dns": {
-    "ipv4": [
-      "8.8.8.8",
-      "8.8.4.4"
-    ]
-  }
-}
-```
+   ```json
+   {
+     "ztp": {
+       "ipv4": [
+         "172.18.255.201"
+       ]
+     },
+     "dhcp": {
+       "nvcm": {
+         "ipv4": [
+           "172.18.255.202"
+         ]
+       }
+     },
+     "management_prefixes": {
+       "ipv4": [
+         "172.18.0.0/16"
+       ]
+     },
+     "provisioning_servers": {
+       "ipv4": [
+         "10.120.0.0"
+       ]
+     },
+     "dns": {
+       "ipv4": [
+         "8.8.8.8",
+         "8.8.4.4"
+       ]
+     }
+   }
 
 1. Save the config context.
 1. Wait for render to regenerate intended configs. If no intended config changes appear after a short wait, make a no-op edit to the context or call `POST /v1/render/all` from the Render API at `https://render.nvcm.air/docs`.
