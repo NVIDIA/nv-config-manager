@@ -80,10 +80,8 @@ PYTHON_DIRS = [
     "scripts",
     "components/nautobot",
     "components/network-templates",
-    "development/mock_topology",
-    "installer/src",
-    "installer/tests",
-    "installer/scripts",
+    "development/",
+    "installer/",
 ]
 
 JS_TS_DIRS = [

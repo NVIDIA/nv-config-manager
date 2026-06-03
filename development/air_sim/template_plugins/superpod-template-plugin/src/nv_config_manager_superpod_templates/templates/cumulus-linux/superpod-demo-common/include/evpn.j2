@@ -1,0 +1,31 @@
+{% set spectrumx = superpod_spectrumx|default(false) %}
+{% set cin_leaf = superpod_cin_leaf|default(false) %}
+{% if spectrumx %}
+    evpn:
+      state: enabled
+{% if cin_leaf %}
+{% set attached_vrfs = device_data|attached_vrfs|rejectattr("vni", "none")|sort(attribute="vni") %}
+{% if attached_vrfs %}
+      vni:
+{% for vrf in attached_vrfs %}
+        '{{ vrf.vni }}':
+          rd: {{ device_data|router_id }}:{{ vrf.vni }}
+{% if vrf.export_targets or vrf.import_targets %}
+          route-target:
+{% if vrf.export_targets %}
+            export:
+{% for target in vrf.export_targets %}
+              {{ target }}: {}
+{% endfor %}
+{% endif %}
+{% if vrf.import_targets %}
+            import:
+{% for target in vrf.import_targets %}
+              {{ target }}: {}
+{% endfor %}
+{% endif %}
+{% endif %}
+{% endfor %}
+{% endif %}
+{% endif %}
+{% endif %}

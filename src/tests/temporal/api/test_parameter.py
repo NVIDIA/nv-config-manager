@@ -12,13 +12,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from unittest.mock import MagicMock, patch
-
 from aioresponses import aioresponses
 from fastapi.testclient import TestClient
 
 from nv_config_manager.temporal.api.main import app
-from nv_config_manager.temporal.client.air import Simulation
 
 V2_SITES = {
     "data": {"locations": [{"id": "ddadde54-cbdd-4fa5-94ce-ca649b7e2aa8", "name": "SITEA"}]}
@@ -222,26 +219,3 @@ def test_status_without_content_type():
             {"id": "status-uuid-2", "name": "Provisioned"},
             {"id": "status-uuid-3", "name": "Decommissioned"},
         ]
-
-
-@patch("nv_config_manager.temporal.api.parameter_v1.AirClient")
-def test_simulations(mock_air_client):
-    """Test the simulations parameter endpoint."""
-    # Use actual Simulation model objects
-    sim1 = Simulation(id="sim-12345-abcde", name="Test Simulation 1", state="LOADED")
-    sim2 = Simulation(id="sim-67890-fghij", name="Test Simulation 2", state="RUNNING")
-
-    mock_client_instance = MagicMock()
-    mock_air_client.return_value = mock_client_instance
-    mock_client_instance.list_simulations.return_value = [sim1, sim2]
-
-    client = TestClient(app)
-    rsp = client.get("/v1/parameter/simulations")
-
-    expected_response = [
-        {"id": "sim-12345-abcde", "name": "Test Simulation 1", "state": "LOADED"},
-        {"id": "sim-67890-fghij", "name": "Test Simulation 2", "state": "RUNNING"},
-    ]
-
-    assert rsp.json() == expected_response
-    mock_client_instance.list_simulations.assert_called_once()

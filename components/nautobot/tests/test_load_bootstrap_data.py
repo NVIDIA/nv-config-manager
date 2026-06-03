@@ -361,7 +361,8 @@ class TestLoadRoles:
         job.load_roles()
 
         Role.objects.get_or_create.assert_called_once()
-        mock_role.content_types.set.assert_called_once()
+        mock_role.content_types.add.assert_called_once()
+        mock_role.content_types.set.assert_not_called()
         job.logger.success.assert_called()
 
     def test_missing_file(self, tmp_path):
@@ -394,6 +395,25 @@ class TestLoadTags:
 
         Tag.objects.update_or_create.assert_called_once()
         job.logger.success.assert_called()
+
+    def test_adds_tag_content_types_without_replacing_existing(self, tmp_path):
+        mod = _import_module()
+        from django.contrib.contenttypes.models import ContentType
+        from nautobot.extras.models import Tag
+
+        mock_tag = MagicMock()
+        mock_ct = MagicMock()
+        Tag.objects.update_or_create.return_value = (mock_tag, False)
+        ContentType.objects.get.return_value = mock_ct
+
+        data = [{"name": "dhcp-subnet", "content_types": ["ipam.prefix"]}]
+        _write_yaml(tmp_path / "tags.yaml", data)
+
+        job = _make_job(mod, tmp_path)
+        job.load_tags()
+
+        mock_tag.content_types.add.assert_called_once_with(mock_ct)
+        mock_tag.content_types.set.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -504,6 +524,51 @@ class TestLoadStatuses:
 
         Status.objects.update_or_create.assert_called_once()
 
+    def test_adds_status_content_types_without_replacing_existing(self, tmp_path):
+        mod = _import_module()
+        from django.contrib.contenttypes.models import ContentType
+        from nautobot.extras.models import Status
+
+        mock_status = MagicMock()
+        mock_ct = MagicMock()
+        Status.objects.update_or_create.return_value = (mock_status, False)
+        ContentType.objects.get.return_value = mock_ct
+
+        data = [{"name": "Active", "content_types": ["ipam.prefix"]}]
+        _write_yaml(tmp_path / "statuses.yaml", data)
+
+        job = _make_job(mod, tmp_path)
+        job.load_statuses()
+
+        mock_status.content_types.add.assert_called_once_with(mock_ct)
+        mock_status.content_types.set.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# load_location_types
+# ---------------------------------------------------------------------------
+
+
+class TestLoadLocationTypes:
+    def test_adds_location_type_content_types_without_replacing_existing(self, tmp_path):
+        mod = _import_module()
+        from django.contrib.contenttypes.models import ContentType
+        from nautobot.dcim.models import LocationType
+
+        mock_location_type = MagicMock()
+        mock_ct = MagicMock()
+        LocationType.objects.get_or_create.return_value = (mock_location_type, False)
+        ContentType.objects.get.return_value = mock_ct
+
+        data = [{"name": "Site", "content_types": ["dcim.device"]}]
+        _write_yaml(tmp_path / "location_types.yaml", data)
+
+        job = _make_job(mod, tmp_path)
+        job.load_location_types()
+
+        mock_location_type.content_types.add.assert_called_once_with(mock_ct)
+        mock_location_type.content_types.set.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # load_config_context_schemas
@@ -534,6 +599,20 @@ class TestLoadConfigContextSchemas:
 
 
 class TestLoadConfigContexts:
+    def test_bootstrap_config_contexts_do_not_set_intended_firmware(self):
+        data_path = Path(__file__).resolve().parents[1] / "nv_config_manager_jobs/data/config_contexts.yaml"
+
+        with data_path.open() as f:
+            config_contexts = yaml.safe_load(f)
+
+        firmware_contexts = [
+            config_context.get("name")
+            for config_context in config_contexts
+            if "intended-firmware" in config_context.get("data", {})
+        ]
+
+        assert firmware_contexts == []
+
     def test_creates_config_context_with_roles_and_platforms(self, tmp_path):
         mod = _import_module()
         from nautobot.dcim.models import Platform

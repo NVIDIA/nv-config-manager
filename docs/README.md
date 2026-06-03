@@ -25,5 +25,18 @@ make docs-preview
 - Navigation is defined in `docs/fern/docs.yml`.
 - OpenAPI specs are generated into `docs/api-specs/` with `make openapi`.
 - Installer TUI screenshots are generated into `docs/assets/images/installer/` with `make docs-screenshots`.
+- DSX Air sim TUI screenshots are generated into `docs/assets/images/air-sim/` with `make docs-air-sim-screenshots`.
+- Next.js workflow screenshots are generated into `docs/assets/images/workflows/` with `make docs-ui-screenshots`.
+
+## Programmatic UI screenshots
+
+The Next.js UI workflow screenshots use `ui/playwright.docs.config.ts` and the
+docs-only spec in `ui/tests/docs-screenshots/`. The spec starts the UI, serves
+mocked workflow API parameter data, pre-populates workflow forms with stable URL
+parameters, and writes PNGs to `docs/assets/images/workflows/`.
+
+Live screenshots against `https://nvcm.air` are also possible when the browser
+is launched through the DSX Air SOCKS tunnel, but those are less reproducible
+because they depend on simulation state, credentials, and workflow timing.
 
 Fern publishing in GitHub Actions uses a repository secret named `FERN_TOKEN`.

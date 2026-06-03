@@ -1,0 +1,80 @@
+{
+    "data": {
+        "device": {
+            "id": "26fb4692-d03b-4d7e-9c92-99457d42d9fd",
+            "vrfs": [],
+            "name": "example-wan-2",
+            "tags": [],
+            "tenant": {
+                "name": "SuperPod"
+            },
+            "role": {
+                "name": "TAN-BBR"
+            },
+            "device_type": {
+                "manufacturer": {
+                    "name": "Mock"
+                },
+                "model": "External Router"
+            },
+            "platform": null,
+            "serial": "MOCK-EXAMPLE-WAN-2",
+            "config_context": {},
+            "nvlink_domain": [],
+            "location": {
+                "name": "TEST-SITE SUPERPOD 1 - {{ deployment_name }}",
+                "location_type": {
+                    "name": "Module"
+                },
+                "parent": {
+                    "name": "TEST-SITE",
+                    "location_type": {
+                        "name": "Site"
+                    }
+                }
+            },
+            "interfaces": [
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "A_100GBASE_X_QSFP28",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "Ethernet49",
+                    "description": "WAN edge peer for a08-u28-p01-oobspine-01",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": null,
+                    "tagged_vlans": [],
+                    "ip_addresses": [
+                        {
+                            "host": "10.76.245.72",
+                            "mask_length": 31,
+                            "address": "10.76.245.72/31",
+                            "ip_version": 4,
+                            "role": null,
+                            "parent": {
+                                "prefix": "0.0.0.0/0",
+                                "parent": null
+                            }
+                        }
+                    ],
+                    "connected_interface": {
+                        "name": "swp21s0",
+                        "device": {
+                            "name": "a08-u28-p01-oobspine-01"
+                        }
+                    }
+                }
+            ],
+            "console_server_ports": []
+        },
+        "vxlans": [],
+        "overlay_assignments": []
+    }
+}

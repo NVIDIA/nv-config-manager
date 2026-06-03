@@ -1,0 +1,60 @@
+{% extends "cumulus-linux/role_common/5.16.1/include/service.j2" %}
+
+{% block dhcp_relay %}
+{% set dhcp_helpers = device_data|dhcp_servers("nvcm", true) %}
+{% set downstream = [] %}
+{% set upstream = [] %}
+{% for intf in device_data|interfaces(prefix="vlan") %}
+{% if intf.primary_ipv4 %}
+{% set _ = downstream.append(intf.name) %}
+{% endif %}
+{% endfor %}
+{% set has_vlan_downstream = downstream|length > 0 %}
+{% set server_upstream = [] %}
+{% for intf in device_data|interfaces(prefix="swp") %}
+{% if intf.primary_ipv4 %}
+{% set peer_role = intf.connected_interface.device.role if intf.connected_interface else "" %}
+{% if peer_role == "OOB-Server" %}
+{% set _ = upstream.append(intf.name) %}
+{% set _ = server_upstream.append(intf.name) %}
+{% endif %}
+{% endif %}
+{% endfor %}
+{% for intf in device_data|interfaces(prefix="swp") %}
+{% if intf.primary_ipv4 %}
+{% set peer_role = intf.connected_interface.device.role if intf.connected_interface else "" %}
+{% if peer_role == "OOB-Server" %}
+{% elif has_vlan_downstream and server_upstream %}
+{% set _ = downstream.append(intf.name) %}
+{% elif has_vlan_downstream %}
+{% set _ = upstream.append(intf.name) %}
+{% elif intf.name == "swp1" %}
+{% set _ = upstream.append(intf.name) %}
+{% else %}
+{% set _ = downstream.append(intf.name) %}
+{% endif %}
+{% endif %}
+{% endfor %}
+{% if dhcp_helpers and downstream and upstream %}
+      dhcp-relay:
+        default:
+          downstream-interface:
+{% for intf_name in downstream|sort %}
+            {{ intf_name }}:
+              server-group-name: group_1
+{% endfor %}
+          server-group:
+            group_1:
+              server:
+{% for helper_ip in dhcp_helpers %}
+                {{ helper_ip }}: {}
+{% endfor %}
+              upstream-interface:
+{% for intf_name in upstream|sort %}
+                {{ intf_name }}: {}
+{% endfor %}
+          source-ip: giaddress
+{% else %}
+      dhcp-relay: {}
+{% endif %}
+{% endblock dhcp_relay %}

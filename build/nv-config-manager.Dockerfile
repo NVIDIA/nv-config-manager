@@ -13,6 +13,10 @@ FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim AS builder
 
 ARG APT_MIRROR_DEBIAN=""
 ARG APT_MIRROR_GPG_KEY_URL=""
+ARG NVCM_NUMPY_FROM_SOURCE=false
+ARG NVCM_NUMPY_CPU_BASELINE=min
+ARG NVCM_NUMPY_CPU_DISPATCH=max
+ARG NVCM_NUMPY_ALLOW_NOBLAS=true
 
 # Install build dependencies for native extensions (numpy, psycopg2, etc.)
 # Also install openssh-server to get the moduli file and sftp binary for SFTP server
@@ -52,7 +56,19 @@ RUN --mount=type=cache,id=nvcm-uv-cache,target=/root/.cache/uv \
     if [ -n "$TEMPLATE_ENGINE_VERSION" ]; then \
         export SETUPTOOLS_SCM_PRETEND_VERSION="$TEMPLATE_ENGINE_VERSION"; \
     fi; \
-    uv sync --frozen --no-dev --group integration-test --no-editable && \
+    if [ "$NVCM_NUMPY_FROM_SOURCE" = "true" ]; then \
+        uv sync \
+            --frozen \
+            --no-dev \
+            --group integration-test \
+            --no-editable \
+            --no-binary-package numpy \
+            --config-settings-package "numpy:setup-args=-Dcpu-baseline=${NVCM_NUMPY_CPU_BASELINE}" \
+            --config-settings-package "numpy:setup-args=-Dcpu-dispatch=${NVCM_NUMPY_CPU_DISPATCH}" \
+            --config-settings-package "numpy:setup-args=-Dallow-noblas=${NVCM_NUMPY_ALLOW_NOBLAS}"; \
+    else \
+        uv sync --frozen --no-dev --group integration-test --no-editable; \
+    fi; \
     chmod -R a+rX /code/nv-config-manager/.venv /code/nv-config-manager/db /code/nv-config-manager/src
 
 # =============================================================================

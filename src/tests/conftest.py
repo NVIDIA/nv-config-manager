@@ -99,14 +99,6 @@ password = elastic
 [temporal.api]
 cors_origins = https://config-manager.example.com
 
-[temporal.air]
-ssa_client_id = DUMMY
-ssa_client_secret = DUMMY
-org_id = DUMMY
-air_api_url = https://air-api.example.com/api/
-air_node_user = nv-config-manager-air-user
-air_node_password = nv-config-manager-air-password
-
 [dhcp.kea]
 server = localhost
 port = 8000

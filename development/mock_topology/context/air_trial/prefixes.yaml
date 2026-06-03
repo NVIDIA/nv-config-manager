@@ -1,0 +1,31 @@
+---
+# Aggregate prefixes for the public DSX Air free trial mock topology.
+
+aggregate_prefixes:
+  - prefix: 172.18.255.0/24
+    role: Service-LB
+    tags: [role-aggregate]
+
+  - prefix: 172.18.0.0/16
+    role: Service-LB-Source
+    tags: [lb-allowed]
+
+  - prefix: 10.0.0.0/8
+    role: Service-LB-Source
+    tags: [lb-allowed]
+
+  - prefix: 10.120.0.0/16
+    role: OOB-Aggregate
+    tags: [relay-return, role-aggregate]
+
+  - prefix: 10.120.0.0/31
+    role: OOB-Server-p2p
+    tags: [dhcp-subnet]
+
+  - prefix: 10.120.1.0/24
+    role: OOB-Management
+    tags: [dhcp-subnet]
+
+  - prefix: 10.255.20.0/24
+    role: Loopback
+    tags: [role-aggregate]

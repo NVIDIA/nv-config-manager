@@ -14,12 +14,6 @@
 # limitations under the License.
 """NGC Workflow Definitions."""
 
-from nv_config_manager.temporal.ngc.workflows.air import (
-    AIRCreateBlueprintSimulationWorkflow,
-    AIRCreateSimulationWorkflow,
-    AIRDeleteSimulationWorkflow,
-    AIRValidateSiteWorkflow,
-)
 from nv_config_manager.temporal.ngc.workflows.backup import BackupWorkflow
 from nv_config_manager.temporal.ngc.workflows.bmc import RedfishProvisioningWorkflow
 from nv_config_manager.temporal.ngc.workflows.cable_validation import (
@@ -94,10 +88,6 @@ REGISTERED_WORKFLOWS = [
     SwitchOSUpgradeWorkflow,
     ReprovisionWorkflow,
     InfinibandCableValidationWorkflow,
-    AIRCreateBlueprintSimulationWorkflow,
-    AIRCreateSimulationWorkflow,
-    AIRDeleteSimulationWorkflow,
-    AIRValidateSiteWorkflow,
     InfinibandMlnxOSUpgradeWorkflow,
     ValidateHardwareWorkflow,
     DevicePasswordRotationWorkflow,

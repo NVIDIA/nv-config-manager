@@ -233,7 +233,7 @@ class TestESOVaultConfig:
             assert "keys" in paths[group]
 
         # Optional groups disabled by default
-        for group in ("slack", "air", "jira", "cnpgBackup"):
+        for group in ("slack", "jira", "cnpgBackup"):
             assert group not in paths, f"{group} should be disabled by default"
 
     def test_custom_path_preserves_default_keys(self):

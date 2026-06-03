@@ -214,19 +214,6 @@ wheels = [
 ]
 
 [[package]]
-name = "air-sdk"
-version = "2.21.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "python-dateutil" },
-    { name = "requests" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/b2/7b/82a87a17d158109efc98cd69c379045d83818a304c1ec7c9e93078e9dd2a/air_sdk-2.21.1.tar.gz", hash = "sha256:6394b89da7c415e90e9c15ed01c467e1ad1382d69b592b26b21e8fc16009ce73", size = 59202, upload-time = "2025-07-08T15:27:49.592Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/9a/b6/644c275126c49b855f47c6593aa982d2b1a272f2e701d0406273a96f31ed/air_sdk-2.21.1-py3-none-any.whl", hash = "sha256:5caffcc6b00f4e9136b8ce2d3aba013cd82366ab9664634e0d672d2073e63aca", size = 101629, upload-time = "2025-07-08T15:27:48.569Z" },
-]
-
-[[package]]
 name = "alembic"
 version = "1.18.4"
 source = { registry = "https://pypi.org/simple" }
@@ -2095,7 +2082,6 @@ dependencies = [
     { name = "aioboto3" },
     { name = "aiohttp", extra = ["speedups"] },
     { name = "aiohttp-retry" },
-    { name = "air-sdk" },
     { name = "alembic" },
     { name = "asyncpg" },
     { name = "boto3" },
@@ -2200,7 +2186,6 @@ requires-dist = [
     { name = "aioboto3", specifier = ">=13.1.1" },
     { name = "aiohttp", extras = ["speedups"], specifier = ">=3.13.4" },
     { name = "aiohttp-retry", specifier = ">=2.9.1" },
-    { name = "air-sdk", specifier = ">=2.16.0" },
     { name = "alembic", specifier = ">=1.13.1" },
     { name = "asyncpg", specifier = ">=0.29.0" },
     { name = "boto3", specifier = ">=1.35.42" },

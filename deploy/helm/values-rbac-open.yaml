@@ -114,26 +114,6 @@ rbac:
         - all
       execute_roles:
         - all
-    - name: AIRCreateSimulationWorkflow
-      read_roles:
-        - all
-      execute_roles:
-        - all
-    - name: AIRCreateBlueprintSimulationWorkflow
-      read_roles:
-        - all
-      execute_roles:
-        - all
-    - name: AIRDeleteSimulationWorkflow
-      read_roles:
-        - all
-      execute_roles:
-        - all
-    - name: AIRValidateSiteWorkflow
-      read_roles:
-        - all
-      execute_roles:
-        - all
     - name: ValidateHardwareWorkflow
       read_roles:
         - all
@@ -179,4 +159,3 @@ rbac:
         - all
       execute_roles:
         - all
-

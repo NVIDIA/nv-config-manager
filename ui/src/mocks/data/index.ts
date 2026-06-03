@@ -17,4 +17,3 @@
 export * from "./devicesData";
 export * from "./workflows";
 export * from "./formData";
-export * from "./airSimulations";

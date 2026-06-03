@@ -221,7 +221,6 @@ secrets:
     #   redfish-creds                     → lenovo-default-user, lenovo-default-password,
     #                                         lenovo-nv-config-manager-password, bluefield-default-user,
     #                                         bluefield-default-password, bluefield-nv-config-manager-password
-    #   air-creds                         → ssa-client-id, ssa-client-secret
     #   bmc-creds                         → bmc-creds.json (file body; ESO pulls bmc_data then templates)
     #   <release>-network-secrets         → config-secrets.ini (single key; helper networkSecretsName)
     #   <release>-ini                     → nv-config-manager.ini (single key; helper iniSecretName)
@@ -378,11 +377,6 @@ secrets:
         keys:
           token: "token"
       # Note: DHCP lease database password comes from postgres path (dhcpPassword key)
-      air:
-        path: "" # Required: e.g., "my-org/nv-config-manager/dev/air"
-        keys:
-          ssaClientId: "ssa_client_id"
-          ssaClientSecret: "ssa_client_secret"
       nautobotApp:
         path: "" # Required: e.g., "my-org/nv-config-manager/dev/nautobot-app"
         keys:
@@ -1759,12 +1753,6 @@ temporal:
   #   value: true
   #   constraints: []
 
-  # AIR integration
-  air:
-    orgId: ""
-    airApiUrl: ""
-    airNodeUser: ""
-    airNodePassword: ""
   # Redfish / BMC workflows
   # Enable only if Redfish provisioning workflows are in use.
   # When disabled, redfish-creds secret is not required.

@@ -1474,11 +1474,6 @@ if [[ "$INSTALL_OPENBAO" == "true" ]]; then
     write_bao_secret "demo/dhcp" \
         password="demo-dhcp-password"
     
-    # AIR
-    write_bao_secret "demo/air" \
-        ssa_client_id="demo-air-client-id" \
-        ssa_client_secret="demo-air-client-secret"
-    
     # UFM
     write_bao_secret "demo/ufm" \
         ufm_api_user="admin" \
@@ -1665,13 +1660,6 @@ secrets:
     path: ${ENVIRONMENT_PATH}/dhcp
     keys:
       password: "password"
-
-  # AIR service credentials
-  air:
-    path: ${ENVIRONMENT_PATH}/air
-    keys:
-      ssaClientId: "ssa_client_id"
-      ssaClientSecret: "ssa_client_secret"
 
   # UFM API credentials
   ufm:

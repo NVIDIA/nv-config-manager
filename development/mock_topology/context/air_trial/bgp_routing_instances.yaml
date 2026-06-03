@@ -1,0 +1,5 @@
+bgp_routing_instances:
+- device: oob-mgmt-server
+  asn: 65000
+- device: oob-mleaf-01
+  asn: 65101
