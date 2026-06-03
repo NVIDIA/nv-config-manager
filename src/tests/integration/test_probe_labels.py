@@ -1,0 +1,106 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""Live-cluster integration test for probe SLO customLabels.
+
+Every blackbox ``Probe`` the chart renders must carry ``global.customLabels``
+under ``spec.targets.staticConfig.labels`` so Prometheus attaches them to every
+probe sample. The Probe CR's ``metadata.labels`` are NOT propagated onto
+samples by Prometheus Operator, so ``staticConfig.labels`` is the only way to
+surface labels like ``include_in_slo`` on probe metrics (see the
+``nv-config-manager.probeStaticConfigLabels`` helper in
+``deploy/helm/templates/_helpers.tpl``).
+
+These assertions only apply when the observability stack is deployed — i.e. the
+prometheus-operator CRDs are registered and ``monitoring.probes`` is enabled.
+The kind integration job turns that on via its ``observability`` workflow
+input, which flips ``infrastructure.monitoring.observability_enabled`` and
+layers ``deploy/helm/values-observability.yaml`` (where the customLabels are
+set). When observability is off there is no Probe CRD / no Probe CRs, so this
+module skips itself rather than failing.
+"""
+
+from __future__ import annotations
+
+import json
+import subprocess
+
+import pytest
+
+pytestmark = [pytest.mark.integration]
+
+# Must match global.customLabels in deploy/helm/values-observability.yaml.
+EXPECTED_PROBE_LABELS = {"include_in_slo": "true"}
+
+PROBE_RESOURCE = "probes.monitoring.coreos.com"
+
+
+def _kubectl_get_json(*args: str) -> dict | None:
+    """Run ``kubectl get ... -o json`` and parse stdout.
+
+    Returns ``None`` when the command fails (e.g. the CRD isn't registered),
+    which the fixture treats as "observability not deployed → skip".
+    """
+    result = subprocess.run(
+        # --request-timeout caps the wait so an unreachable/stale API server
+        # fails fast (-> skip) instead of hanging until the pytest timeout.
+        ["kubectl", "get", *args, "-o", "json", "--request-timeout=15s"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return None
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return None
+
+
+@pytest.fixture(scope="module")
+def probes(config_manager_namespace: str) -> list[dict]:
+    """Return the Probe CRs in the namespace, skipping when observability is off."""
+    data = _kubectl_get_json(PROBE_RESOURCE, "-n", config_manager_namespace)
+    if data is None:
+        pytest.skip(
+            f"{PROBE_RESOURCE} CRD not registered — observability stack not "
+            "deployed (run the kind job with observability=true)"
+        )
+    items = data.get("items", [])
+    if not items:
+        pytest.skip(
+            f"No {PROBE_RESOURCE} in namespace '{config_manager_namespace}' — "
+            "monitoring.probes disabled / observability off"
+        )
+    return items
+
+
+def _static_config_labels(probe: dict) -> dict | None:
+    return probe.get("spec", {}).get("targets", {}).get("staticConfig", {}).get("labels")
+
+
+def test_probes_carry_static_config_labels(probes: list[dict]) -> None:
+    """Every Probe must surface global.customLabels under staticConfig.labels."""
+    problems: list[str] = []
+    for probe in probes:
+        name = probe.get("metadata", {}).get("name", "<unknown>")
+        labels = _static_config_labels(probe)
+        if labels is None:
+            problems.append(f"{name}: missing spec.targets.staticConfig.labels")
+            continue
+        for key, value in EXPECTED_PROBE_LABELS.items():
+            if labels.get(key) != value:
+                problems.append(f"{name}: expected {key}={value!r}, got {labels.get(key)!r}")
+
+    assert not problems, "Probe staticConfig labels missing/incorrect:\n" + "\n".join(problems)

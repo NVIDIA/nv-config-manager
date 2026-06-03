@@ -45,6 +45,21 @@
 #   * The bundle uses emptyDir storage; restarts lose all metrics.
 # =============================================================================
 
+# -----------------------------------------------------------------------------
+# Deployment-level custom labels (SLO / fleet metadata)
+# -----------------------------------------------------------------------------
+# Stamped onto pod metrics (PodMonitor podTargetLabels) and onto blackbox probe
+# samples via each Probe's spec.targets.staticConfig.labels (see the
+# "nv-config-manager.probeStaticConfigLabels" helper in templates/_helpers.tpl).
+# Probe CR metadata.labels are NOT propagated onto samples, so staticConfig is
+# the only way to get e.g. include_in_slo="true" onto probe series for SLO
+# rules. Set here so the observability path (local-dev + the opt-in kind
+# integration run) actually exercises probe labelling; real deployments
+# override via their own values.
+global:
+  customLabels:
+    include_in_slo: "true"
+
 # NOTE: prometheus-operator-crds is NOT configured here. It's installed
 # as a sibling Helm release by the deployer (Deployer._install_crds) before
 # this chart, to avoid the helm validation deadlock where the parent chart
