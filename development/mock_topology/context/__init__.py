@@ -82,6 +82,7 @@ class BaseContext(Context):
         self._load_vrfs()
         self._load_vlans()
         self._load_overlays()
+        self._load_ib_pkeys()
         self._load_vrf_device_assignments()
         self._load_roles()
         self._load_tags()
@@ -380,6 +381,23 @@ class BaseContext(Context):
             overlay_assignments[key] for key in sorted(overlay_assignments)
         ]
 
+    def _load_ib_pkeys(self) -> None:
+        """Load InfiniBand PKey overlay + pkey data from ib_pkeys.yaml."""
+        ib_pkeys_file = Path(__file__).parent / self.context_dir / "ib_pkeys.yaml"
+        self.json["ib_pkey_overlays"] = []
+
+        if not ib_pkeys_file.exists():
+            return
+
+        try:
+            with open(ib_pkeys_file) as f:
+                data = yaml.safe_load(f) or {}
+        except (yaml.YAMLError, OSError) as e:
+            print(f"Warning: Could not load {ib_pkeys_file}: {e}")
+            return
+
+        self.json["ib_pkey_overlays"] = data.get("ib_pkey_overlays", [])
+
     def _load_vrf_device_assignments(self) -> None:
         """Load device-to-VRF assignments required before interfaces reference VRFs."""
         assignments = {}
@@ -658,7 +676,7 @@ class SuperpodContext(BaseContext):
     """Jinja2 context for Superpod mock topology design job."""
 
     context_dir = "superpod"
-    device_file_glob = "a0*.json"
+    device_file_glob = "[ab]0*.json"
 
 
 def get_mock_topology_context_class(blueprint: str) -> type[BaseContext]:

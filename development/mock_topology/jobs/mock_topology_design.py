@@ -86,6 +86,7 @@ class MockTopologyDesign(DesignJob):
             "designs/primary_ip4.yaml.j2",
             "designs/cables.yaml.j2",
             "designs/managed_devices.yaml.j2",
+            "designs/infiniband_pkeys.yaml.j2",
         ]
         context_class = BaseContext  # Overriden in run()
         has_sensitive_variables = False

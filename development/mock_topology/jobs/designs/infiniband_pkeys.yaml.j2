@@ -1,0 +1,33 @@
+---
+
+{% if json.ib_pkey_overlays is defined and json.ib_pkey_overlays | length > 0 %}
+overlays:
+  {% for overlay in json.ib_pkey_overlays %}
+  - "!create_or_update:name": {{ overlay.name }}
+    "!create_or_update:location": "!ref:location"
+    tenant__name: {{ global_defaults.tenant }}
+    isolation_type: ib_pkey
+    status__name: {{ global_defaults.status }}
+    {% if overlay.description is defined and overlay.description %}
+    description: {{ overlay.description }}
+    {% endif %}
+    "!ref": ib-pkey-overlay-{{ overlay.name }}
+  {% endfor %}
+
+infiniband_pkeys:
+  {% for overlay in json.ib_pkey_overlays %}
+  {% for pkey in overlay.pkeys | default([]) %}
+  - "!create_or_update:pkey": "{{ pkey.pkey }}"
+    "!create_or_update:overlay": "!ref:ib-pkey-overlay-{{ overlay.name }}"
+    name: "{{ pkey.name | default('PKey-' ~ pkey.pkey) }}"
+    membership_type: {{ pkey.membership_type | default("full") }}
+    status__name: {{ global_defaults.status }}
+    {% if pkey.tenant is defined and pkey.tenant %}
+    tenant__name: {{ pkey.tenant }}
+    {% endif %}
+  {% endfor %}
+  {% endfor %}
+{% else %}
+overlays: []
+infiniband_pkeys: []
+{% endif %}
