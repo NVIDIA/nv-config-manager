@@ -1,0 +1,13 @@
+[project]
+name = "nv-config-manager-superpod-templates"
+version = "0.0.1"
+description = "Dedicated templates for the public SuperPOD demo topology"
+requires-python = ">=3.11"
+dependencies = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project.entry-points."nv_config_manager_templates.plugins"]
+nv_config_manager_superpod_templates = "nv_config_manager_superpod_templates"

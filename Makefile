@@ -1,6 +1,6 @@
 .PHONY: help install dev test lint format clean docker-build docker-push ui-install ui-dev ui-build \
         local-up local-down local-destroy local-status local-logs deploy kind-up kind-down topology install-cert \
-        openapi openapi-check docs-assets docs-assets-check docs-format docs-lint docs-lint-fern docs-live docs-preview docs-publish docs-publish-in-ci docs-screenshots \
+        openapi openapi-check docs-assets docs-assets-check docs-format docs-lint docs-lint-fern docs-live docs-preview docs-publish docs-publish-in-ci docs-screenshots docs-air-sim-screenshots docs-ui-screenshots \
         obs-grafana obs-prometheus obs-loki obs-alloy obs-port-forward obs-port-forward-stop
 
 # Configuration
@@ -25,6 +25,11 @@ LATEST_RELEASE_TAG = $(shell git tag --list 2>/dev/null | grep -E '^[v]?[0-9]+\.
 TEMPLATE_ENGINE_BASE_VERSION = $(subst -rc,rc,$(subst -rc.,rc,$(patsubst v%,%,$(LATEST_RELEASE_TAG))))
 TEMPLATE_ENGINE_VERSION ?= $(if $(TEMPLATE_ENGINE_BASE_VERSION),$(TEMPLATE_ENGINE_BASE_VERSION)+g$(GIT_SHA),)
 TEMPLATE_ENGINE_VERSION_ARG = $(if $(TEMPLATE_ENGINE_VERSION),--build-arg TEMPLATE_ENGINE_VERSION=$(TEMPLATE_ENGINE_VERSION),)
+NVCM_NUMPY_FROM_SOURCE ?=
+NVCM_NUMPY_CPU_BASELINE ?=
+NVCM_NUMPY_CPU_DISPATCH ?=
+NVCM_NUMPY_ALLOW_NOBLAS ?=
+NVCM_NUMPY_BUILD_ARGS = $(if $(NVCM_NUMPY_FROM_SOURCE),--build-arg NVCM_NUMPY_FROM_SOURCE=$(NVCM_NUMPY_FROM_SOURCE),) $(if $(NVCM_NUMPY_CPU_BASELINE),--build-arg NVCM_NUMPY_CPU_BASELINE=$(NVCM_NUMPY_CPU_BASELINE),) $(if $(NVCM_NUMPY_CPU_DISPATCH),--build-arg NVCM_NUMPY_CPU_DISPATCH=$(NVCM_NUMPY_CPU_DISPATCH),) $(if $(NVCM_NUMPY_ALLOW_NOBLAS),--build-arg NVCM_NUMPY_ALLOW_NOBLAS=$(NVCM_NUMPY_ALLOW_NOBLAS),)
 NAUTOBOT_APP_OVERLAYS_VERSION ?= $(TEMPLATE_ENGINE_VERSION)
 NAUTOBOT_APP_OVERLAYS_VERSION_ARG = $(if $(NAUTOBOT_APP_OVERLAYS_VERSION),--build-arg NAUTOBOT_APP_OVERLAYS_VERSION=$(NAUTOBOT_APP_OVERLAYS_VERSION),)
 NAUTOBOT_NV_CONFIG_MANAGER_VERSION ?= $(TEMPLATE_ENGINE_VERSION)
@@ -97,6 +102,8 @@ help:
 	@echo "  make docs-preview     - Generate a Fern docs preview"
 	@echo "  make docs-publish     - Publish the Fern docs"
 	@echo "  make docs-screenshots - Regenerate installer TUI screenshots for docs"
+	@echo "  make docs-air-sim-screenshots - Regenerate DSX Air sim TUI screenshots for docs"
+	@echo "  make docs-ui-screenshots - Regenerate Next.js workflow screenshots for docs"
 	@echo ""
 	@echo "Observability (local-dev stack only — requires observability to be enabled in installer config):"
 	@echo "  make obs-grafana             - Port-forward Grafana       -> http://localhost:3000  (admin/admin)"
@@ -324,6 +331,12 @@ docs-publish-in-ci:
 docs-screenshots:
 	cd installer && uv run python scripts/screenshot_tui.py
 
+docs-air-sim-screenshots:
+	cd installer && uv run python scripts/screenshot_air_sim_tui.py
+
+docs-ui-screenshots:
+	cd ui && npm run docs:screenshots
+
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 	find . -type d -name ".pytest_cache" -exec rm -rf {} + 2>/dev/null || true
@@ -365,7 +378,7 @@ docker-build:
 # Build NVIDIA Config Manager services image
 docker-build-nv-config-manager:
 	@echo "🏗️  Building NVIDIA Config Manager services image with tag $(LOCAL_TAG)..."
-	docker build --provenance=false $(APT_MIRROR_DEBIAN_ARGS) $(TEMPLATE_ENGINE_VERSION_ARG) -t nv-config-manager:$(LOCAL_TAG) -f build/nv-config-manager.Dockerfile .
+	docker build --provenance=false $(APT_MIRROR_DEBIAN_ARGS) $(TEMPLATE_ENGINE_VERSION_ARG) $(NVCM_NUMPY_BUILD_ARGS) -t nv-config-manager:$(LOCAL_TAG) -f build/nv-config-manager.Dockerfile .
 	@echo "✅ Built nv-config-manager:$(LOCAL_TAG)"
 
 # Build NVIDIA Config Manager KEA DHCP server image
@@ -487,6 +500,7 @@ docker-build-single-nv-config-manager: ## Builds and pushes NVIDIA Config Manage
 		$(EXTRA_TAGS) \
 		$(APT_MIRROR_DEBIAN_ARGS) \
 		$(TEMPLATE_ENGINE_VERSION_ARG) \
+		$(NVCM_NUMPY_BUILD_ARGS) \
 		-f build/nv-config-manager.Dockerfile \
 		--push \
 		.
@@ -597,6 +611,7 @@ docker-build-nv-config-manager-multiarch: docker-buildx-setup ## Builds and push
 		$(EXTRA_TAGS) \
 		$(APT_MIRROR_DEBIAN_ARGS) \
 		$(TEMPLATE_ENGINE_VERSION_ARG) \
+		$(NVCM_NUMPY_BUILD_ARGS) \
 		-f build/nv-config-manager.Dockerfile \
 		--push \
 		.

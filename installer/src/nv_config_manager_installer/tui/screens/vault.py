@@ -42,7 +42,6 @@ _PATH_GROUPS: list[tuple[str, str]] = [
     ("nautobot_app", "Nautobot App (admin/django)"),
     ("oidc", "OIDC / SSO"),
     ("slack", "Slack"),
-    ("air", "AIR"),
     ("jira", "Jira"),
     ("cnpg_backup", "CNPG Backup S3"),
 ]
@@ -111,15 +110,6 @@ _K8S_GROUPS: list[tuple[str, str, bool, list[tuple[str, str]]]] = [
         True,
         [
             ("token", "Bot Token"),
-        ],
-    ),
-    (
-        "air",
-        "AIR",
-        True,
-        [
-            ("ssaClientId", "SSA Client ID"),
-            ("ssaClientSecret", "SSA Client Secret"),
         ],
     ),
     (
@@ -519,7 +509,7 @@ class SecretsScreen(Container):
             yield Label("─" * 40, classes="section-divider")
             yield Label(
                 "Leave any field empty to auto-generate a password at deploy time. "
-                "Enable optional integrations (Slack, AIR, UFM, Jira, CNPG Backup) to configure their credentials."
+                "Enable optional integrations (Slack, Jira, CNPG Backup) to configure their credentials."
             )
             for field_name, label, optional, keys in _K8S_GROUPS:
                 grp: K8sSecretGroup = getattr(s.k8s, field_name)

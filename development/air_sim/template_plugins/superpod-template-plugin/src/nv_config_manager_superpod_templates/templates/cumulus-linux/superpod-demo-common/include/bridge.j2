@@ -1,0 +1,26 @@
+{% set vlan_interfaces = device_data|interfaces(prefix="vlan") %}
+{% if vlan_interfaces %}
+    bridge:
+      domain:
+        br_default:
+          stp:
+            priority: 28672
+            state:
+              up: {}
+          vlan:
+{% set vxlans = device_data.data.vxlans|default([]) %}
+{% for vlan_intf in vlan_interfaces %}
+{% set mapped_vxlans = [] %}
+{% for vxlan in vxlans %}
+{% if vxlan.vni_type|default("")|lower == "l2" and vxlan.vlan and vxlan.vlan.vid == vlan_intf.vlan_number %}
+{% set _ = mapped_vxlans.append(vxlan) %}
+{% endif %}
+{% endfor %}
+            '{{ vlan_intf.vlan_number }}':{% if not mapped_vxlans %} {}{% else %}
+              vni:
+{% for vxlan in mapped_vxlans %}
+                '{{ vxlan.vnid }}': {}
+{% endfor %}
+{% endif %}
+{% endfor %}
+{% endif %}

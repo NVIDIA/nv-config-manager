@@ -1,0 +1,137 @@
+---
+
+global_defaults:
+  tenant: Public Demo
+  namespace: DSX Air Trial Demo
+  status: Active
+  cable_status: Connected
+  prefix_status: Active
+  device_status: Active
+  ip_address_status: Active
+
+tenants:
+  - name: Public Demo
+
+namespaces:
+  - DSX Air Trial Demo
+
+locations:
+  - name: Public Demo
+    location_type: Provider
+
+  - name: DSX Air Trial Demo
+    location_type: Region
+    parent: Public Demo
+
+  - name: "TRIAL01 - {{ deployment_name }}"
+    location_type: Site
+    parent: DSX Air Trial Demo
+    ref: location
+
+config_contexts:
+  - name: "air-trial-dhcp-option-def - {{ deployment_name }}"
+    description: DHCP option definitions for the DSX Air trial demo
+    weight: 1000
+    is_active: true
+    locations:
+      - "TRIAL01 - {{ deployment_name }}"
+    data:
+      Dhcp4:
+        option-def:
+          - code: 239
+            name: cumulus-provision-url
+            type: string
+            array: false
+            space: dhcp4
+            encapsulate: ""
+            record-types: ""
+
+  - name: "air-trial-oob-dhcp-options - {{ deployment_name }}"
+    description: DHCP/ZTP options for OOB switches DHCPing over FPP
+    weight: 1000
+    is_active: true
+    roles:
+      - OOB-MLEAF
+    data:
+      dhcp:
+        options:
+          interface_roles:
+            Uplink:
+              subnet_config:
+                reservations-global: false
+                reservations-in-subnet: false
+              subnet_options:
+                boot-file-name: http://{{ztp_server}}/v1/device/{{device_id}}/onie
+                broadcast-address: 255.255.255.255
+                cumulus-provision-url: http://{{ztp_server}}/v1/device/{{device_id}}/boot-script
+
+  - name: "air-trial-tan-dhcp-options - {{ deployment_name }}"
+    description: DHCP/ZTP reservation options for TAN leaf eth0 interfaces
+    weight: 1000
+    is_active: true
+    roles:
+      - TAN-HLEAF
+    data:
+      dhcp:
+        options:
+          interface_names:
+            eth0:
+              subnet_config:
+                reservations-global: true
+                reservations-in-subnet: false
+              reservation_options:
+                boot-file-name: http://{{ztp_server}}/v1/device/{{device_id}}/onie
+                cumulus-provision-url: http://{{ztp_server}}/v1/device/{{device_id}}/boot-script
+
+  - name: "air-trial-firmware-targets - {{ deployment_name }}"
+    description: Intended Cumulus Linux versions for the DSX Air trial demo
+    weight: 1000
+    is_active: true
+    locations:
+      - "TRIAL01 - {{ deployment_name }}"
+    data:
+      oob-mleaf:
+        Cumulus Linux: 5.16.1
+      tan-hleaf:
+        Cumulus Linux: 5.16.1
+
+  - name: "air-trial-network-management-services - {{ deployment_name }}"
+    description: Network management services for the DSX Air trial demo
+    weight: 1000
+    is_active: true
+    locations:
+      - "TRIAL01 - {{ deployment_name }}"
+    data:
+      ztp:
+        ipv4:
+          - 172.18.255.201
+      dhcp:
+        nvcm:
+          ipv4:
+            - 172.18.255.202
+      management_prefixes:
+        ipv4:
+          - 172.18.0.0/16
+      provisioning_servers:
+        ipv4:
+          - 10.120.0.0
+      dns:
+        ipv4:
+          - 8.8.8.8
+
+  - name: "air-trial-password-mappings - {{ deployment_name }}"
+    description: Intended password mappings for the DSX Air trial demo
+    weight: 1000
+    is_active: true
+    locations:
+      - "TRIAL01 - {{ deployment_name }}"
+    data:
+      password_mappings:
+        cumulus:
+          role: system-admin
+          password: root_password
+          rotation: r1
+        nvConfigManager:
+          role: system-admin
+          password: api_user_key
+          rotation: r1

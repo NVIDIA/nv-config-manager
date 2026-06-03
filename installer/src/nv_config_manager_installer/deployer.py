@@ -176,6 +176,14 @@ _IGNORE_COMMON = (".venv", "__pycache__", ".git", "*.pyc")
 _IGNORE_TEMPLATES = (".venv", "__pycache__", ".git", "tests")
 _SKIP_REASON = "Not requested"
 _BOOTSTRAP_JOBS_PATH = Path("components/nautobot/nv_config_manager_jobs")
+_CI_ENV_VAR = "CI"
+_DOCKER_SYSTEM_PRUNE_COMMAND = ("docker", "system", "prune", "-af")
+_TRUTHY_ENV_VALUES = {"1", "true", "yes", "on"}
+
+
+def _is_ci_environment() -> bool:
+    """Return whether installer-side CI-only behavior should be enabled."""
+    return os.environ.get(_CI_ENV_VAR, "").strip().lower() in _TRUTHY_ENV_VALUES
 
 
 def _build_job_paths(config: NVConfigManagerInstallConfig) -> list[Path]:
@@ -1259,24 +1267,38 @@ class Deployer:
             val = os.environ.get(env_var, "")
             if val:
                 apt_mirror_args += ["--build-arg", f"{env_var}={val}"]
+        nv_config_manager_build_args: list[str] = []
+        for env_var in (
+            "NVCM_NUMPY_FROM_SOURCE",
+            "NVCM_NUMPY_CPU_BASELINE",
+            "NVCM_NUMPY_CPU_DISPATCH",
+            "NVCM_NUMPY_ALLOW_NOBLAS",
+        ):
+            val = os.environ.get(env_var, "")
+            if val:
+                nv_config_manager_build_args += ["--build-arg", f"{env_var}={val}"]
 
         build_env = {**os.environ, "DOCKER_BUILDKIT": "1"}
-        build_output_args = ["--load"] if build_env.get("BUILDX_BUILDER") else []
+        use_buildx = bool(build_env.get("BUILDX_BUILDER"))
+        build_cmd = ["docker", "buildx", "build"] if use_buildx else ["docker", "build"]
+        build_output_args = ["--load"] if use_buildx else []
         build_commands: list[_ParallelCommand] = []
         for name, dockerfile, context in images:
             build_tag = f"{name}:local"
+            image_build_args = [*apt_mirror_args]
+            if name == "nv-config-manager":
+                image_build_args += nv_config_manager_build_args
             build_commands.append(
                 _ParallelCommand(
                     label=name,
                     cmd=[
-                        "docker",
-                        "build",
+                        *build_cmd,
                         "--provenance=false",
                         "--progress=plain",
                         *build_output_args,
                         "--build-context",
                         "scripts=build/",
-                        *apt_mirror_args,
+                        *image_build_args,
                         "-t",
                         build_tag,
                         "-f",
@@ -1347,22 +1369,19 @@ class Deployer:
             # containerd with the selected platform instead. Avoid ctr's
             # digest refs here; the tag is what Kubernetes needs to resolve.
             #
-            # Prune the host daemon's content store between iterations so the
-            # next pull cannot share blobs with the previous one. Diagnostic
-            # for docker/cli#6457: Docker's containerd image store sometimes
-            # refuses to `docker save --platform <p>` a freshly pulled
-            # multi-arch tag ("no suitable export target found ... does not
-            # provide the specified platform"); shared layers from a sibling
-            # image pulled earlier in the loop are one suspected trigger.
-            # Running containers (the kind node) keep their images, so this
-            # only drops the previous helper image and its dangling content.
-            self.callback.on_log("Pruning host docker content store before next helper pull...")
-            _run_logged(
-                ["docker", "system", "prune", "-af"],
-                step,
-                self.callback,
-                timeout=120,
-            )
+            # CI has hit docker/cli#6457-like failures where Docker's
+            # containerd image store refuses to `docker save --platform <p>` a
+            # freshly pulled multi-arch tag after related helper images were
+            # pulled earlier in the loop. The prune is intentionally CI-only:
+            # it is too broad for local developer machines.
+            if _is_ci_environment():
+                self.callback.on_log("Pruning host docker content store before next helper pull...")
+                _run_logged(
+                    list(_DOCKER_SYSTEM_PRUNE_COMMAND),
+                    step,
+                    self.callback,
+                    timeout=120,
+                )
             source_img = _kind_preload_source_image(img, platform_name)
             self.callback.on_log(
                 f"Pulling helper image {source_img} for platform {platform_name}..."
@@ -1951,7 +1970,7 @@ class Deployer:
             self.callback.on_log(msg)
 
     def _create_optional_integration_secrets(self, step: DeployStep, s: dict[str, str]) -> None:
-        """Create Kubernetes secrets for optional integrations (Slack, AIR, Jira, CNPG backup)."""
+        """Create Kubernetes secrets for optional integrations (Slack, Jira, CNPG backup)."""
         k8s = self.config.secrets.k8s
 
         if k8s.slack.enabled:
@@ -1959,17 +1978,6 @@ class Deployer:
             if not token:
                 raise ValueError("Slack is enabled but slack_token is empty")
             self._apply_secret(step, "slack-token", {"token": token})
-
-        if k8s.air.enabled:
-            client_id = s.get("air_ssa_client_id", "")
-            client_secret = s.get("air_ssa_client_secret", "")
-            if not client_secret:
-                raise ValueError("AIR is enabled but air_ssa_client_secret is empty")
-            self._apply_secret(
-                step,
-                "air-creds",
-                {"ssa-client-id": client_id, "ssa-client-secret": client_secret},
-            )
 
         if k8s.jira.enabled:
             api_token = s.get("jira_api_token", "")
@@ -2467,7 +2475,7 @@ class Deployer:
 
         debug_suffix = " --debug" if "--debug" in helm_args else ""
         self.callback.on_log(f"Running: helm upgrade --install {release}{debug_suffix} ...")
-        if self.options.watch_pods:
+        if self.options.helm_debug and self.options.watch_pods:
             _run_logged_with_pod_summary(
                 helm_args,
                 self._k8s,

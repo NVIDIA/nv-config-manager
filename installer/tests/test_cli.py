@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import tempfile
+import tomllib
 from pathlib import Path
 
 from click.testing import CliRunner
@@ -84,15 +85,34 @@ class TestValidateCommand:
 
     def test_version(self):
         runner = CliRunner()
-        result = runner.invoke(main, ["--version"])
+        result = runner.invoke(main, ["--version"], prog_name="nv-config-manager-installer")
         assert result.exit_code == 0
         assert "nv-config-manager-installer" in result.output
+
+    def test_short_alias_script_is_registered(self):
+        pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
+        data = tomllib.loads(pyproject.read_text())
+        scripts = data["project"]["scripts"]
+        assert scripts["nvcm-installer"] == scripts["nv-config-manager-installer"]
 
     def test_generate_values_help(self):
         runner = CliRunner()
         result = runner.invoke(main, ["generate-values", "--help"])
         assert result.exit_code == 0
         assert "--chart-dir" in result.output
+
+    def test_air_sim_help(self):
+        runner = CliRunner()
+        result = runner.invoke(main, ["air-sim", "--help"])
+        assert result.exit_code == 0
+        assert "init" in result.output
+        assert "deploy" in result.output
+
+    def test_air_sim_deploy_help(self):
+        runner = CliRunner()
+        result = runner.invoke(main, ["air-sim", "deploy", "--help"])
+        assert result.exit_code == 0
+        assert "--config" in result.output
 
 
 class TestDeployCommand:

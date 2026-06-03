@@ -71,19 +71,6 @@ export type ConnectedDeviceMetadataWorkflowInput = {
   device_id: string;
 };
 
-export type AIRValidateSiteWorkflowInput = {
-  site_name: string;
-};
-
-export type AIRCreateSimulationWorkflowInput = {
-  name: string;
-  topology: object;
-};
-
-export type AIRDeleteSimulationWorkflowInput = {
-  simulation_id: string;
-};
-
 export type PortLLDPInfoWorkflowInput =
   | {
       device_id: string;

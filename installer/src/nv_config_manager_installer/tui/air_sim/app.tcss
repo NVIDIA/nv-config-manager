@@ -1,0 +1,330 @@
+/* NVCM DSX Air Sim Wizard - Textual CSS */
+
+NVCMAirSimApp {
+    layout: grid;
+    grid-size: 2;
+    grid-columns: 28 1fr;
+    grid-rows: 1fr 3;
+}
+
+#sidebar {
+    width: 28;
+    height: 100%;
+    dock: left;
+    border-right: solid $primary-background-lighten-2;
+    padding: 0;
+    scrollbar-size: 0 0;
+}
+
+#sidebar-title {
+    text-align: center;
+    text-style: bold;
+    color: $text;
+    padding: 1 1;
+    border-bottom: solid $primary-background-lighten-2;
+    margin-bottom: 1;
+}
+
+/* Nav items */
+.nav-item {
+    padding: 1 1;
+    height: auto;
+    margin: 0 1;
+    background: $surface;
+}
+
+.nav-item.--empty   { background: $surface; }
+.nav-item.--complete { background: #0d1f0d; }
+.nav-item.--incomplete { background: #1f1f0d; text-style: italic; }
+.nav-item.--running  { background: #0d1520; }
+.nav-item:hover      { background: $surface-lighten-1; }
+
+.nav-item.--highlight.--complete   { background: #1a3a1a; text-style: bold; }
+.nav-item.--highlight.--incomplete { background: #3a3a1a; text-style: bold italic; }
+.nav-item.--highlight.--empty      { background: $success 15%; text-style: bold; }
+.nav-item.--highlight.--running    { background: #1a2a3a; text-style: bold; }
+
+#content-area {
+    height: 100%;
+    padding: 1 2;
+    overflow-y: auto;
+}
+
+/* All section screens size to content for scroll */
+#content-area > Container {
+    height: auto;
+}
+
+/* Shared text styles */
+.section-title    { text-style: bold; margin-bottom: 1; }
+.section-divider  { margin-bottom: 1; color: $text-muted; }
+.subsection-label { text-style: bold; margin-top: 1; color: $accent; }
+.field-label      { margin-top: 1; margin-bottom: 0; }
+.field-hint       { color: $text-muted; margin-bottom: 1; }
+
+/* Switches */
+Switch > .switch--slider  { color: $error; background: $error 30%; }
+Switch.-on > .switch--slider { color: $success; background: $success 30%; }
+
+LabeledSwitch {
+    height: auto;
+    width: auto;
+    margin-bottom: 1;
+    padding: 0 1 0 0;
+    align: left middle;
+}
+
+LabeledSwitch .labeled-switch--label {
+    height: 3;
+    width: auto;
+    content-align: center middle;
+    padding: 0 1 0 0;
+}
+
+/* Field rows */
+.field-row {
+    height: auto;
+    margin-bottom: 1;
+}
+
+.field-row Input { width: 1fr; }
+.field-row Button { width: auto; margin-left: 1; }
+
+/* Topology screen */
+#attach-fields,
+#mock-topology-fields,
+#direct-topology-fields {
+    height: auto;
+    margin-top: 1;
+}
+
+/* Topology screen template plugins */
+#template-plugin-list {
+    height: auto;
+    margin-bottom: 1;
+}
+
+.template-plugin-row {
+    height: auto;
+    margin-bottom: 1;
+    padding: 0 1;
+    border: solid $primary-background-lighten-2;
+}
+
+.template-plugin-row Input {
+    width: 1fr;
+}
+
+.template-plugin-row Button {
+    width: auto;
+    margin-top: 1;
+}
+
+/* Launch screen */
+#launch-controls {
+    height: auto;
+    margin-bottom: 1;
+    align: left middle;
+}
+
+#btn-launch {
+    min-width: 24;
+}
+
+#btn-launch:disabled {
+    opacity: 0.4;
+}
+
+/* SSH info bar */
+.ssh-info-bar {
+    display: none;
+    height: 5;
+    margin-bottom: 1;
+    padding: 0 1;
+    border: solid $success 50%;
+    background: $success 10%;
+    align: left middle;
+}
+
+.ssh-badge {
+    width: auto;
+    height: 3;
+    background: $success 60%;
+    color: $text;
+    text-style: bold;
+    padding: 0 1;
+    margin-right: 1;
+    content-align: center middle;
+}
+
+.ssh-cmd {
+    width: 1fr;
+    height: 3;
+    min-height: 3;
+    border: none;
+    background: $surface;
+    padding: 0 1;
+    content-align: left middle;
+}
+
+.ssh-copy-btn {
+    margin-left: 1;
+    width: 7;
+    min-width: 7;
+}
+
+#stream-viewer {
+    width: 1fr;
+    height: 1fr;
+    padding: 0 1;
+}
+
+#stream-tabs {
+    height: 3;
+}
+
+#stream-toolbar {
+    height: 3;
+    align: left middle;
+}
+
+#stream-hint {
+    width: 1fr;
+    height: 3;
+    content-align: left middle;
+    margin-bottom: 0;
+}
+
+#btn-stream-follow {
+    width: 14;
+    min-width: 14;
+    margin-left: 1;
+}
+
+#btn-stream-end {
+    width: 7;
+    min-width: 7;
+    margin-left: 1;
+}
+
+#stream-content {
+    height: 1fr;
+}
+
+.stream-log {
+    height: 1fr;
+    border: solid $primary-background-lighten-2;
+    padding: 0 1;
+    overflow-y: auto;
+}
+
+.stream-text {
+    width: 1fr;
+    height: auto;
+}
+
+#access-pane {
+    display: none;
+    height: 1fr;
+    border: solid $primary-background-lighten-2;
+    padding: 0 1;
+    overflow-y: auto;
+}
+
+/* Proxy access panel */
+#proxy-access {
+    height: auto;
+    padding: 1 1;
+}
+
+.copy-panel {
+    height: auto;
+    border: solid $primary-background-lighten-2;
+    padding: 0 1 1 1;
+    margin-bottom: 1;
+}
+
+.copy-panel:hover {
+    background: $surface;
+}
+
+.copy-panel-header {
+    height: 3;
+    align: left middle;
+}
+
+.copy-panel-title {
+    width: 1fr;
+    content-align: left middle;
+    color: $text-muted;
+}
+
+.copy-icon-btn {
+    width: 5;
+    min-width: 5;
+    height: 3;
+    margin-left: 1;
+    padding: 0;
+    content-align: center middle;
+}
+
+.proxy-cmd {
+    width: 1fr;
+    height: auto;
+    min-height: 3;
+    background: $surface;
+    padding: 0 1;
+    content-align: left middle;
+}
+
+#proxy-controls {
+    height: auto;
+    margin-top: 1;
+    align: left middle;
+}
+
+#socks-port-label {
+    width: auto;
+    margin-right: 1;
+}
+
+#socks-port {
+    width: 12;
+    margin-right: 1;
+}
+
+#launch-controls Button { margin-right: 1; }
+
+#launch-status {
+    height: auto;
+    margin-bottom: 1;
+    min-height: 2;
+}
+
+#launch-dashboard {
+    height: 50;
+    margin-top: 1;
+    border: solid $primary-background-lighten-2;
+}
+
+#dashboard-top {
+    height: 18;
+    border-bottom: solid $primary-background-lighten-2;
+}
+
+#step-panel {
+    width: 44;
+    height: 100%;
+    border-right: solid $primary-background-lighten-2;
+    padding: 0 1;
+    overflow-y: auto;
+}
+
+#step-panel Static { height: 1; }
+
+#pod-status-panel {
+    width: 1fr;
+    height: 100%;
+    padding: 0 1;
+    overflow: hidden;
+}

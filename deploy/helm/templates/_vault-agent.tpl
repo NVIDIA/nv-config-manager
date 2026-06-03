@@ -219,10 +219,6 @@ Consul-template prelude: declare $secret vars for nv-config-manager.ini (same KV
 {{- printf "{{- $network := secret %q -}}\n" (printf "%s/data/%s" $m $np) -}}
 {{- $rf := include "nv-config-manager.vault.secretPath" (dict "root" $root "secret" "redfish") -}}
 {{- printf "{{- $redfish := secret %q -}}\n" (printf "%s/data/%s" $m $rf) -}}
-{{- if $root.Values.temporal.air.orgId -}}
-{{- $ap := include "nv-config-manager.vault.secretPath" (dict "root" $root "secret" "air") -}}
-{{- printf "{{- $air := secret %q -}}\n" (printf "%s/data/%s" $m $ap) -}}
-{{- end -}}
 {{- end -}}
 {{- if $root.Values.networkDhcp.enabled -}}
 {{- printf "{{- $leasedb := secret %q -}}\n" (printf "%s/data/%s" $m $pg) -}}
@@ -370,16 +366,6 @@ nv-config-manager.ini body (consul-template): must stay in sync with vault-secre
           server = {{ tpl $root.Values.externalServices.elasticsearch.server $root }}
           {{- if $root.Values.externalServices.elasticsearch.domain }}
           domain = {{ $root.Values.externalServices.elasticsearch.domain }}
-          {{- end }}
-
-          {{- if $root.Values.temporal.air.orgId }}
-          [temporal.air]
-          ssa_client_id = {{ include "nv-config-manager.vaultAgent.ctKv2Key" (dict "var" "air" "key" (include "nv-config-manager.vault.keyName" (dict "root" $root "secret" "air" "key" "ssaClientId"))) }}
-          ssa_client_secret = {{ include "nv-config-manager.vaultAgent.ctKv2Key" (dict "var" "air" "key" (include "nv-config-manager.vault.keyName" (dict "root" $root "secret" "air" "key" "ssaClientSecret"))) }}
-          org_id = {{ $root.Values.temporal.air.orgId }}
-          air_api_url = {{ $root.Values.temporal.air.airApiUrl }}
-          air_node_user = {{ $root.Values.temporal.air.airNodeUser }}
-          air_node_password = {{ $root.Values.temporal.air.airNodePassword }}
           {{- end }}
 
           # -----------------------------------------------------------------

@@ -17,7 +17,7 @@ devices:
     role__name: {{ device.role.name }}
     {% endif %}
     {% if device.serial is defined and device.serial %}
-    serial: {{ device.serial }}
+    serial: "{{ device.serial }}"
     {% endif %}
     {% if device.config_context is defined and device.config_context %}
     local_config_context_data: {{ device.config_context | tojson }}

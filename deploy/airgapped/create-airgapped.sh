@@ -1399,14 +1399,15 @@ echo "Installing nv-config-manager-installer from vendored wheels (offline)..."
     "$SCRIPT_DIR"/nv_config_manager_installer-*.whl
 
 ln -sf "$VENV_DIR/bin/nv-config-manager-installer" "$SCRIPT_DIR/nv-config-manager-installer"
+ln -sf "$VENV_DIR/bin/nvcm-installer" "$SCRIPT_DIR/nvcm-installer"
 
 echo ""
-echo "nv-config-manager-installer is ready."
+echo "nvcm-installer is ready. The longer nv-config-manager-installer command is also available."
 echo ""
 echo "Usage:"
-echo "  $SCRIPT_DIR/nv-config-manager-installer init --config install.yaml"
-echo "  $SCRIPT_DIR/nv-config-manager-installer validate install.yaml"
-echo "  $SCRIPT_DIR/nv-config-manager-installer deploy install.yaml --chart-dir ../helm --image-source registry"
+echo "  $SCRIPT_DIR/nvcm-installer init --config install.yaml"
+echo "  $SCRIPT_DIR/nvcm-installer validate install.yaml"
+echo "  $SCRIPT_DIR/nvcm-installer deploy install.yaml --chart-dir ../helm --image-source registry"
 echo ""
 echo "Or add to PATH:"
 echo "  export PATH=\"$VENV_DIR/bin:\$PATH\""
@@ -1497,8 +1498,8 @@ The helper uploads images from images/image-list.txt and the packaged Helm chart
 ## Install From Bundle
 
     ./installer/install.sh
-    ./installer/nv-config-manager-installer init --config install.yaml
-    ./installer/nv-config-manager-installer deploy install.yaml --chart-dir helm --image-source registry
+    ./installer/nvcm-installer init --config install.yaml
+    ./installer/nvcm-installer deploy install.yaml --chart-dir helm --image-source registry
 
 Configure install.yaml image settings to point at the registry image paths written in image-map.tsv. If the target environment preloads node runtimes instead of using a registry, use manifests/load-airgapped-images.sh before deploying.
 BUNDLE_README
@@ -1544,7 +1545,7 @@ print_summary() {
     echo "  3. cd nv-config-manager-airgapped-${VERSION}-<arch>/"
     echo "  4. Upload images and chart: ./upload-to-registry.sh --registry registry.example.com/nv-config-manager --chart-registry registry.example.com/nv-config-manager/charts --username '<user>' --password-stdin"
     echo "  5. Install CLI: ./installer/install.sh"
-    echo "  6. Configure/deploy with ./installer/nv-config-manager-installer"
+    echo "  6. Configure/deploy with ./installer/nvcm-installer"
     echo ""
 }
 

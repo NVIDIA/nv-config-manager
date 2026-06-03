@@ -1,0 +1,111 @@
+{
+  "data": {
+    "device": {
+      "id": "air-superpod-su01-storage01",
+      "name": "su01-storage01",
+      "tags": [],
+      "tenant": {
+        "name": "Public Demo"
+      },
+      "role": {
+        "name": "Storage-Server"
+      },
+      "device_type": {
+        "manufacturer": {
+          "name": "Generic"
+        },
+        "model": "Generic Server"
+      },
+      "status": {
+        "name": "Active"
+      },
+      "serial": "auto",
+      "config_context": {},
+      "location": {
+        "name": "SPO01"
+      },
+      "interfaces": [
+        {
+          "name": "bmc0",
+          "type": "1000base-t",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "ip_addresses": [],
+          "description": "su01-oob-mleaf01:swp11",
+          "mtu": 9216,
+          "role": {
+            "name": "Management"
+          },
+          "connected_interface": {
+            "name": "swp11",
+            "device": {
+              "name": "su01-oob-mleaf01",
+              "role": {
+                "name": "OOB-MLEAF"
+              }
+            }
+          }
+        },
+        {
+          "name": "ens1",
+          "type": "400gbase-x-qsfpdd",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "ip_addresses": [],
+          "description": "su01-tan-sleaf01:swp1",
+          "mtu": 9216,
+          "role": {
+            "name": "Data"
+          },
+          "connected_interface": {
+            "name": "swp1",
+            "device": {
+              "name": "su01-tan-sleaf01",
+              "role": {
+                "name": "TAN-SLEAF"
+              }
+            }
+          }
+        },
+        {
+          "name": "ens2",
+          "type": "400gbase-x-qsfpdd",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "ip_addresses": [],
+          "description": "su01-tan-sleaf02:swp1",
+          "mtu": 9216,
+          "role": {
+            "name": "Data"
+          },
+          "connected_interface": {
+            "name": "swp1",
+            "device": {
+              "name": "su01-tan-sleaf02",
+              "role": {
+                "name": "TAN-SLEAF"
+              }
+            }
+          }
+        }
+      ],
+      "platform": {
+        "name": "Ubuntu"
+      },
+      "_air": {
+        "os": "generic/ubuntu2404",
+        "cpu": 4,
+        "memory": 8192
+      }
+    }
+  }
+}

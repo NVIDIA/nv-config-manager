@@ -32,8 +32,6 @@ secrets:
         path: "nv-config-manager/ci/bmc"
       slack:
         path: "nv-config-manager/ci/slack"
-      air:
-        path: "nv-config-manager/ci/air"
       oauth2Proxy:
         path: "nv-config-manager/ci/oauth2-proxy"
       nautobot_nv_config_manager:
