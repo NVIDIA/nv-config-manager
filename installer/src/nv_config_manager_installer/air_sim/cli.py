@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Click commands for AIR simulation demos."""
+"""Click commands for DSX Air simulation demos."""
 
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ from nv_config_manager_installer.tui.air_sim.app import NVCMAirSimApp
 
 @click.group("air-sim")
 def air_sim() -> None:
-    """Create and deploy AIR simulation demos."""
+    """Create and deploy DSX Air simulation demos."""
 
 
 @air_sim.command("init")
@@ -42,10 +42,10 @@ def air_sim() -> None:
     "config_path",
     type=click.Path(dir_okay=False, path_type=Path),
     default=DEFAULT_AIR_SIM_CONFIG_PATH,
-    help="Path to AIR simulation YAML config.",
+    help="Path to DSX Air simulation YAML config.",
 )
 def init_air_sim(config_path: Path) -> None:
-    """Launch the interactive AIR simulation TUI wizard."""
+    """Launch the interactive DSX Air simulation TUI wizard."""
     config = SimConfig.load_or_default(config_path)
     app = NVCMAirSimApp(config=config, config_path=config_path)
     app.run()
@@ -58,10 +58,10 @@ def init_air_sim(config_path: Path) -> None:
     "config_path",
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
     required=True,
-    help="Path to AIR simulation YAML config.",
+    help="Path to DSX Air simulation YAML config.",
 )
 def deploy_air_sim(config_path: Path) -> None:
-    """Run AIR simulation bringup from a config file."""
+    """Run DSX Air simulation bringup from a config file."""
     config = SimConfig.from_yaml(config_path)
     callback = _CliCallback()
     orchestrator = SimOrchestrator(config, callback)
@@ -71,7 +71,7 @@ def deploy_air_sim(config_path: Path) -> None:
 
 
 class _CliCallback:
-    """Simple stdout callback for headless AIR simulation deploys."""
+    """Simple stdout callback for headless DSX Air simulation deploys."""
 
     def __init__(self) -> None:
         self.success = False
@@ -103,8 +103,8 @@ class _CliCallback:
         self.host = host
         self.port = port
         if success:
-            click.echo("AIR simulation bringup completed.")
+            click.echo("DSX Air simulation bringup completed.")
             if host:
                 click.echo(f"SSH: {host}:{port}")
         else:
-            click.echo("AIR simulation bringup failed.", err=True)
+            click.echo("DSX Air simulation bringup failed.", err=True)

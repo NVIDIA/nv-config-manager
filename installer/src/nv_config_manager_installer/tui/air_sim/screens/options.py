@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Options screen - AIR auth, source settings, and advanced timing."""
+"""Options screen - DSX Air auth, source settings, and advanced timing."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ _SIZES = ["small", "medium", "large"]
 
 
 class OptionsScreen(Container):
-    """Configure AIR auth, source settings, size, branch, and timeouts."""
+    """Configure DSX Air auth, source settings, size, branch, and timeouts."""
 
     def __init__(self, config: SimConfig, **kwargs: object) -> None:
         super().__init__(**kwargs)
@@ -37,7 +37,7 @@ class OptionsScreen(Container):
         yield Label("Options", classes="section-title")
         yield Label("─" * 40, classes="section-divider")
 
-        yield Label("AIR / Auth", classes="subsection-label")
+        yield Label("DSX Air / Auth", classes="subsection-label")
         yield Label("NGC API Key  (or set NGC_API_KEY env var)", classes="field-label")
         yield Input(
             value=self._config.ngc_api_key,
@@ -46,7 +46,7 @@ class OptionsScreen(Container):
             id="ngc-api-key",
         )
         yield LabeledSwitch(
-            "Use Public Air",
+            "Use Public DSX Air",
             value=not self._config.use_internal,
             id="use-public-air",
         )
@@ -111,7 +111,7 @@ class OptionsScreen(Container):
         ref = branch or "main"
         hint.update(
             f"[dim]Images will be built locally from nv-config-manager ref {ref!r}; "
-            "registry pulls are disabled for AIR demos.[/dim]"
+            "registry pulls are disabled for DSX Air demos.[/dim]"
         )
 
     def write_to_config(self, config: SimConfig) -> None:

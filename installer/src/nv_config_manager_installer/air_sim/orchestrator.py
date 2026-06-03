@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Orchestrator for AIR simulation bringup with TUI/CLI callbacks."""
+"""Orchestrator for DSX Air simulation bringup with TUI/CLI callbacks."""
 
 from __future__ import annotations
 
@@ -55,8 +55,8 @@ class StepStatus(Enum):
 
 STEPS: list[tuple[str, str]] = [
     ("parse-topology", "Resolve topology"),
-    ("validate-images", "Validate AIR images"),
-    ("create-sim", "Create AIR simulation"),
+    ("validate-images", "Validate DSX Air images"),
+    ("create-sim", "Create DSX Air simulation"),
     ("attach-cloud-init", "Attach cloud-init"),
     ("start-sim", "Start simulation"),
     ("create-ssh", "Create SSH service"),
@@ -90,7 +90,7 @@ class _CallbackLogHandler(logging.Handler):
 
 
 class SimOrchestrator:
-    """Run the full AIR simulation bringup."""
+    """Run the full DSX Air simulation bringup."""
 
     def __init__(self, config: SimConfig, callback: OrchestratorCallback) -> None:
         self._cfg = config
@@ -129,7 +129,7 @@ class SimOrchestrator:
             return write_site_design_from_mock_context(cfg.mock_blueprint, cfg.deployment_name)
         raise RuntimeError(
             "topology_path is required when run_mock_topology_job is disabled. "
-            "Custom job flows must provide a direct AIR topology YAML."
+            "Custom job flows must provide a direct DSX Air topology YAML."
         )
 
     def _run_impl(self) -> tuple[str, int]:

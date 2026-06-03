@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""SOCKS proxy helpers for accessing NVCM services through AIR VMs."""
+"""SOCKS proxy helpers for accessing NVCM services through DSX Air VMs."""
 
 from __future__ import annotations
 
@@ -109,7 +109,7 @@ class ProxyInfo:
 
         Run this on the Windows machine to forward local:{socks_port} through
         the Teleport session to the Linux dev machine, where the SOCKS tunnel
-        to the AIR VM is already running.  Then point your browser at
+        to the DSX Air VM is already running.  Then point your browser at
         socks5://localhost:{socks_port}.
         """
         return f"tsh ssh -L {self.socks_port}:localhost:{self.socks_port} {remote_host}"

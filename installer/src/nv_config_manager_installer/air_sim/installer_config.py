@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Generate nv-config-manager-install.yaml from AIR sim config."""
+"""Generate nv-config-manager-install.yaml from DSX Air sim config."""
 
 from __future__ import annotations
 
@@ -50,7 +50,7 @@ _DEMO_TEMPLATE_BLUEPRINTS = {"air_trial", "air_superpod"}
 
 
 def _remote_repo_path(path: str) -> str:
-    """Map repo-local paths on the workstation to paths in the AIR server clone."""
+    """Map repo-local paths on the workstation to paths in the DSX Air server clone."""
     if not path:
         return path
     path_obj = Path(path).expanduser()

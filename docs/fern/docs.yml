@@ -60,7 +60,7 @@ navigation:
       path: ../getting-started/interfaces.mdx
     - page: Local Development Quick Start
       path: ../getting-started/local-development-quick-start.mdx
-    - page: AIR Simulation User Guide
+    - page: DSX Air Simulation User Guide
       path: ../user-guides/air-simulation/index.mdx
     - page: First Run Tour
       path: ../getting-started/first-run-tour.mdx

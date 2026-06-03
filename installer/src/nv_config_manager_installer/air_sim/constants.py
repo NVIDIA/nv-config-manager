@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Constants and configuration for the NVCM AIR simulation helper."""
+"""Constants and configuration for the NVCM DSX Air simulation helper."""
 
 from __future__ import annotations
 
@@ -65,10 +65,10 @@ NVCM_SERVER_OS = "generic/ubuntu2404"
 DEFAULT_NVCM_SERVER_NAME = "nvcm-server"
 
 NVCM_BOX_USER = "nvcm"
-NVCM_BOX_PASSWORD = "NVCMDemo1!"  # trufflehog:ignore - predictable AIR demo/device password
+NVCM_BOX_PASSWORD = "NVCMDemo1!"  # trufflehog:ignore - predictable DSX Air demo/device password
 NVCM_BOX_DIR = "/opt/nvcm-box"
 DEFAULT_NAUTOBOT_DEMO_USERNAME = "demo"
-DEFAULT_NAUTOBOT_DEMO_PASSWORD = "demo"  # trufflehog:ignore - public AIR demo user password
+DEFAULT_NAUTOBOT_DEMO_PASSWORD = "demo"  # trufflehog:ignore - public DSX Air demo user password
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 DEFAULT_MOCK_TOPOLOGY_PATH = PROJECT_ROOT / "development" / "mock_topology"
@@ -137,14 +137,14 @@ NVCM_SECRETS = {
 NVCM_NETWORK_SECRETS = {
     "root_password": NVCM_BOX_PASSWORD,
     "api_user_key": NVCM_BOX_PASSWORD,
-    "bgp_password": "NVCMBgp1!",  # trufflehog:ignore - public AIR demo BGP password
-    "isis_password": "NVCMIsis1!",  # trufflehog:ignore - public AIR demo ISIS password
-    "tacacs_key": "NVCMTacacs1!",  # trufflehog:ignore - public AIR demo TACACS key
+    "bgp_password": "NVCMBgp1!",  # trufflehog:ignore - public DSX Air demo BGP password
+    "isis_password": "NVCMIsis1!",  # trufflehog:ignore - public DSX Air demo ISIS password
+    "tacacs_key": "NVCMTacacs1!",  # trufflehog:ignore - public DSX Air demo TACACS key
 }
 
 NVCM_SERVER_SETUP_SCRIPT = """#!/bin/bash
 set -euo pipefail
-echo "Install prerequisites for the NVCM AIR simulation server."
+echo "Install prerequisites for the NVCM DSX Air simulation server."
 """
 
 NVCM_KIND_CONFIG = """

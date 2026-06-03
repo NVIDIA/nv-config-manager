@@ -1,35 +1,36 @@
 ---
-title: AIR Simulation User Guide
-sidebar-title: AIR Simulation
+title: DSX Air Simulation User Guide
+sidebar-title: DSX Air Simulation
 position: 5
 ---
 
-The Config Manager AIR simulation guide brings up a live NVIDIA DSX Air simulation, installs Config Manager inside the simulation, loads a demo Nautobot topology, and provisions virtual Cumulus Linux switches through DHCP and ZTP. Use it when you want to validate real device-facing workflows without touching a physical lab.
+The Config Manager DSX Air simulation guide brings up a live NVIDIA DSX Air simulation, installs Config Manager inside the simulation, loads a demo Nautobot topology, and provisions virtual Cumulus Linux switches through DHCP and ZTP. Use it when you want to validate real device-facing workflows without touching a physical lab.
 
-This is different from the [Local Development Quick Start](../../getting-started/local-development-quick-start.mdx). The local quick start is render-only. The AIR simulation runs Cumulus Linux switch nodes and exercises Config Manager against those nodes over the simulated management network.
+This is different from the [Local Development Quick Start](../../getting-started/local-development-quick-start.mdx). The local quick start is render-only. The DSX Air simulation runs Cumulus Linux switch nodes and exercises Config Manager against those nodes over the simulated management network.
 
 <Note>
-Most Config Manager workflows that operate on the demo Ethernet Cumulus switches can be exercised in AIR. InfiniBand and NVLink workflows are not included because AIR does not currently simulate those fabrics for this demo. Switch OS Upgrade is also excluded because the ONIE install path does not work in AIR.
+Most Config Manager workflows that operate on the demo Ethernet Cumulus switches can be exercised in DSX Air. InfiniBand and NVLink workflows are not included because DSX Air does not currently simulate those fabrics for this demo. Switch OS Upgrade is also excluded because the ONIE install path does not work in DSX Air.
 </Note>
 
 ## Prerequisites
 
-Before running the Config Manager AIR simulation, review the public NVIDIA DSX Air documentation:
+Before running the Config Manager DSX Air simulation, review the public NVIDIA DSX Air documentation:
 
-- [NVIDIA DSX Air Account Setup](https://docs.nvidia.com/networking-ethernet-software/nvidia-air-v2/Account-Setup/) - NGC account, organization selection, free trial, and Air roles.
+- [NVIDIA DSX Air Account Setup](https://docs.nvidia.com/networking-ethernet-software/nvidia-air-v2/Account-Setup/) - NGC account, organization selection, free trial, and DSX Air roles.
 - [NVIDIA DSX Air Quick Start](https://docs.nvidia.com/networking-ethernet-software/guides/nvidia-air/Quick-Start/) - simulation navigation, services, node consoles, SSH keys, and API authentication.
 
 You also need:
 
+- A local clone of your fork of the [Config Manager repository](https://github.com/NVIDIA/nv-config-manager). Keep the NVIDIA repository as an upstream remote when you need to sync release branches or compare against the source repo.
 - Python 3.11+ and `uv`.
-- `sshpass` installed on the workstation where you run the TUI. The TUI-generated AIR SSH and SOCKS proxy commands use it.
-- An NGC API key for AIR API authentication. You can paste it into the TUI or set `NGC_API_KEY` in your shell.
-- Enough DSX Air capacity for the selected demo. The AIR free trial preset is resource-capped for public trial accounts.
+- `sshpass` installed on the workstation where you run the TUI. The TUI-generated DSX Air SSH and SOCKS proxy commands use it.
+- An NGC API key for DSX Air API authentication. You can paste it into the TUI or set `NGC_API_KEY` in your shell.
+- Enough DSX Air capacity for the selected demo. The DSX Air free trial preset is resource-capped for public trial accounts.
 - A workstation browser that can run through a SOCKS proxy. Chromium-family browsers are easiest because the TUI prints ready-to-run commands.
 
 ## Start the TUI
 
-From the Config Manager repository:
+From your Config Manager fork checkout:
 
 ```bash
 cd installer
@@ -37,7 +38,7 @@ uv sync
 uv run nvcm-installer air-sim init
 ```
 
-The TUI writes `~/.nvcm-air-sim.yaml` by default so API keys and generated AIR SSH credentials are not saved inside the Git checkout. Treat the file as sensitive if it contains your NGC API key. To use a different location outside the repository, pass `--config /path/to/config.yaml` or set `NVCM_AIR_CONFIG`.
+The TUI writes `~/.nvcm-air-sim.yaml` by default so API keys and generated DSX Air SSH credentials are not saved inside the Git checkout. Treat the file as sensitive if it contains your NGC API key. To use a different location outside the repository, pass `--config /path/to/config.yaml` or set `NVCM_AIR_CONFIG`.
 
 You can also run a saved simulation config headlessly:
 
@@ -48,34 +49,34 @@ uv run nvcm-installer air-sim deploy --config ~/.nvcm-air-sim.yaml
 
 ## TUI Walkthrough
 
-The AIR simulation TUI has three sections: Topology, Options, and Launch.
+The DSX Air simulation TUI has three sections: Topology, Options, and Launch.
 
 ### Topology
 
-Use the **Pre-built Config** selector for the built-in demos. For most users, start with **AIR free trial demo**. It creates one OOB management leaf and five `TAN-HLEAF` Cumulus switches, which is enough to exercise ZTP, backup, deploy, multi-deploy, reprovision, and validation workflows.
+Use the **Pre-built Config** selector for the built-in demos. For most users, start with **DSX Air free trial demo**. It creates one OOB management leaf and five `TAN-HLEAF` Cumulus switches, which is enough to exercise ZTP, backup, deploy, multi-deploy, reprovision, and validation workflows.
 
 The preset enables **Mock Topology**, points the loader at `development/mock_topology`, and configures the template plugin paired with the demo topology. Keep the paired template plugin in place; the prebuilt demos require those templates to render valid device configuration.
 
-![AIR sim topology screen](../../assets/images/air-sim/01-topology.svg)
+![DSX Air sim topology screen](../../assets/images/air-sim/01-topology.svg)
 
 Important fields:
 
 | Field | Description |
 | :---- | :---------- |
-| **Pre-built Config** | Loads the AIR trial or SuperPOD demo values into the TUI. |
-| **Mock Topology** | Builds AIR topology and Nautobot data from `development/mock_topology` instead of a hand-authored AIR topology YAML. |
+| **Pre-built Config** | Loads the DSX Air trial or SuperPOD demo values into the TUI. |
+| **Mock Topology** | Builds DSX Air topology and Nautobot data from `development/mock_topology` instead of a hand-authored DSX Air topology YAML. |
 | **Blueprint** | Mock topology blueprint, such as `air_trial`. |
-| **Deployment Name** | Suffix used by the mock topology job. For the AIR trial preset, this is `demo`. |
+| **Deployment Name** | Suffix used by the mock topology job. For the DSX Air trial preset, this is `demo`. |
 | **Template Plugins** | Template plugin directories or archives paired with the selected topology. |
 | **Simulation Name** | Name shown in DSX Air. Leave blank to auto-generate. |
-| **OOB Management Server Name** | Existing AIR server node that receives Config Manager, usually `oob-mgmt-server`. |
+| **OOB Management Server Name** | Existing DSX Air server node that receives Config Manager, usually `oob-mgmt-server`. |
 
-### AIR trial topology
+### DSX Air trial topology
 
 ```mermaid
 flowchart TB
-  AIR["DSX Air SSH service"]
-  OOBSRV["oob-mgmt-server<br/>eth0: AIR exit<br/>eth1: 10.120.0.0/31"]
+  DSXAIR["DSX Air SSH service"]
+  OOBSRV["oob-mgmt-server<br/>eth0: DSX Air exit<br/>eth1: 10.120.0.0/31"]
 
   subgraph OOB["OOB management"]
     OOBML01["oob-mleaf-01<br/>OOB-MLEAF"]
@@ -89,7 +90,7 @@ flowchart TB
     TANL05["tan-leaf-05<br/>TAN-HLEAF"]
   end
 
-  AIR -. "SSH to eth0" .-> OOBSRV
+  DSXAIR -. "SSH to eth0" .-> OOBSRV
   OOBSRV -- "eth1 <-> swp1<br/>10.120.0.0/31" --> OOBML01
   OOBML01 -- "swp2 <-> eth0<br/>VLAN 100" --> TANL01
   OOBML01 -- "swp3 <-> eth0<br/>VLAN 100" --> TANL02
@@ -102,137 +103,91 @@ flowchart TB
   classDef host fill:#f7f7f7,stroke:#666,color:#111;
   class OOBSRV,OOBML01 oob;
   class TANL01,TANL02,TANL03,TANL04,TANL05 tan;
-  class AIR host;
+  class DSXAIR host;
 ```
 
 ### SuperPOD demo topology
 
 ```mermaid
 flowchart TB
-  AIR["DSX Air SSH service"]
-  OOBSRV["oob-mgmt-server<br/>eth0: AIR exit<br/>eth1: 10.100.0.0/31"]
+  DSXAIR["DSX Air SSH service"]
+  OOBSRV["oob-mgmt-server<br/>eth0: DSX Air exit<br/>eth1: 10.100.0.0/31"]
 
   subgraph OOB["OOB management fabric"]
-    OOBML01["su01-oob-mleaf01<br/>OOB-MLEAF"]
-    OOBML02["su01-oob-mleaf02<br/>OOB-MLEAF"]
-    OOBSP01["su00-oob-spine01<br/>OOB-SPINE"]
-    OOBSP02["su00-oob-spine02<br/>OOB-SPINE"]
-    OOBHL01["su01-oob-hleaf01<br/>OOB-HLEAF"]
-    OOBHL02["su01-oob-hleaf02<br/>OOB-HLEAF"]
+    OOBML["OOB management leaves"]
+    OOBSP["OOB spines"]
+    OOBHL["OOB host leaves"]
   end
 
   subgraph TAN["TAN north/south fabric"]
-    TANSP01["su00-tan-spine01<br/>TAN-SPINE"]
-    TANSP02["su00-tan-spine02<br/>TAN-SPINE"]
-    TANBL01["su01-tan-bleaf01<br/>TAN-BLEAF"]
-    TANBL02["su01-tan-bleaf02<br/>TAN-BLEAF"]
-    TANHL01["su01-tan-hleaf01<br/>TAN-HLEAF"]
-    TANHL02["su01-tan-hleaf02<br/>TAN-HLEAF"]
-    TANSL01["su01-tan-sleaf01<br/>TAN-SLEAF"]
-    TANSL02["su01-tan-sleaf02<br/>TAN-SLEAF"]
+    TANSP["TAN spines"]
+    TANBL["Border leaves"]
+    TANHL["Host leaves"]
+    TANSL["Storage leaves"]
   end
 
   subgraph CIN["CIN Spectrum-X fabric"]
-    CINSP01["su00-cin-spine01<br/>CIN-SPINE"]
-    CINSP02["su00-cin-spine02<br/>CIN-SPINE"]
-    CINL01["su01-cin-leaf-r01<br/>CIN-LEAF"]
-    CINL02["su01-cin-leaf-r02<br/>CIN-LEAF"]
+    CINSP["CIN spines"]
+    CINL["CIN leaves"]
   end
 
   subgraph HOSTS["Demo servers and rack mocks"]
-    TRAY01["su01-compute-tray-r01<br/>single tray mock"]
-    TRAY02["su01-compute-tray-r02<br/>single tray mock"]
-    CTRL01["su00-control01<br/>control"]
-    CTRL02["su00-control02<br/>control"]
-    STORAGE01["su01-storage01<br/>storage"]
+    TRAYS["Compute tray mocks"]
+    CONTROL["Control nodes"]
+    STORAGE["Storage node"]
   end
 
-  AIR -. "SSH to eth0" .-> OOBSRV
-  OOBSRV -- "eth1 <-> swp1<br/>10.100.0.0/31" --> OOBML01
-
-  OOBML01 --- OOBSP01
-  OOBML01 --- OOBSP02
-  OOBML02 --- OOBSP01
-  OOBML02 --- OOBSP02
-  OOBHL01 --- OOBSP01
-  OOBHL01 --- OOBSP02
-  OOBHL02 --- OOBSP01
-  OOBHL02 --- OOBSP02
-  OOBML01 -- "swp2 <-> eth0" --> TANSP01
-  OOBML02 -- "swp2 <-> eth0" --> TANSP02
-  OOBML01 -- "swp3 <-> eth0" --> TANBL01
-  OOBML02 -- "swp3 <-> eth0" --> TANBL02
-  OOBML01 -- "swp4 <-> eth0" --> TANHL01
-  OOBML02 -- "swp4 <-> eth0" --> TANHL02
-  OOBML01 -- "swp5 <-> eth0" --> TANSL01
-  OOBML02 -- "swp5 <-> eth0" --> TANSL02
-  OOBML01 -- "swp6 <-> eth0" --> CINSP01
-  OOBML02 -- "swp6 <-> eth0" --> CINSP02
-  OOBML01 -- "swp7 <-> eth0" --> CINL01
-  OOBML02 -- "swp7 <-> eth0" --> CINL02
-  OOBHL01 -- "BMC/OOB" --> TRAY01
-  OOBHL02 -- "BMC/OOB" --> TRAY02
-
-  TANSP01 --- TANBL01
-  TANSP01 --- TANBL02
-  TANSP01 --- TANHL01
-  TANSP01 --- TANHL02
-  TANSP01 --- TANSL01
-  TANSP01 --- TANSL02
-  TANSP02 --- TANBL01
-  TANSP02 --- TANBL02
-  TANSP02 --- TANHL01
-  TANSP02 --- TANHL02
-  TANSP02 --- TANSL01
-  TANSP02 --- TANSL02
-  TANBL01 --- CTRL01
-  TANBL02 --- CTRL02
-  TANHL01 -- "ens1" --> TRAY01
-  TANHL02 -- "ens1" --> TRAY02
-  TANSL01 --- STORAGE01
-  TANSL02 --- STORAGE01
-
-  CINSP01 --- CINL01
-  CINSP01 --- CINL02
-  CINSP02 --- CINL01
-  CINSP02 --- CINL02
-  CINL01 -- "CIN-RDMA /31<br/>ens3" --> TRAY01
-  CINL02 -- "CIN-RDMA /31<br/>ens3" --> TRAY02
+  DSXAIR -. "SSH to eth0" .-> OOBSRV
+  OOBSRV -- "eth1 <-> swp1<br/>10.100.0.0/31" --> OOBML
+  OOBML --- OOBSP
+  OOBHL --- OOBSP
+  OOBML --> TAN
+  OOBML --> CIN
+  OOBHL --> TRAYS
+  OOBHL --> CONTROL
+  TANSP --- TANBL
+  TANSP --- TANHL
+  TANSP --- TANSL
+  CINSP --- CINL
+  TANBL --> CONTROL
+  TANHL --> TRAYS
+  TANSL --> STORAGE
+  CINL --> TRAYS
 
   classDef oob fill:#eaf4ff,stroke:#2b6cb0,color:#111;
   classDef tan fill:#edf7ed,stroke:#2f855a,color:#111;
   classDef cin fill:#fff3e8,stroke:#c05621,color:#111;
   classDef host fill:#f7f7f7,stroke:#666,color:#111;
-  class OOBSRV,OOBML01,OOBML02,OOBSP01,OOBSP02,OOBHL01,OOBHL02 oob;
-  class TANSP01,TANSP02,TANBL01,TANBL02,TANHL01,TANHL02,TANSL01,TANSL02 tan;
-  class CINSP01,CINSP02,CINL01,CINL02 cin;
-  class AIR,TRAY01,TRAY02,CTRL01,CTRL02,STORAGE01 host;
+  class OOBSRV,OOBML,OOBSP,OOBHL oob;
+  class TANSP,TANBL,TANHL,TANSL tan;
+  class CINSP,CINL cin;
+  class DSXAIR,TRAYS,CONTROL,STORAGE host;
 ```
 
 ### Options
 
-Use **Options** to set AIR authentication, source settings, and advanced timing values.
+Use **Options** to set DSX Air authentication, source settings, and advanced timing values.
 
-![AIR sim options screen](../../assets/images/air-sim/02-options.svg)
+![DSX Air sim options screen](../../assets/images/air-sim/02-options.svg)
 
-Recommended public AIR values:
+Recommended public DSX Air values:
 
 | Field | Recommended value |
 | :---- | :---------------- |
-| **NGC API Key** | Your AIR-capable NGC API key, or leave blank if `NGC_API_KEY` is set. |
-| **Use Public Air** | On. |
+| **NGC API Key** | Your DSX Air-capable NGC API key, or leave blank if `NGC_API_KEY` is set. |
+| **Use Public DSX Air** | On. |
 | **OOB SSH Password** | Generated by the TUI for `nvcm` SSH access to `oob-mgmt-server`. Change it before launch if desired. |
 | **Git Token** | Blank for the public `NVIDIA/nv-config-manager` repository. |
-| **nv-config-manager Git Ref** | `main`, unless you are testing a branch that contains unreleased AIR sim code. |
-| **Deployment Size** | Under **Advanced**. Use `small` for the public AIR trial demo. |
+| **nv-config-manager Git Ref** | `main`, unless you are testing a branch that contains unreleased DSX Air sim code. |
+| **Deployment Size** | Under **Advanced**. Use `small` for the public DSX Air trial demo. |
 
 ### Launch
 
 The **Launch** screen creates the simulation, starts it, waits for SSH, deploys Config Manager, runs post-deploy Nautobot jobs, monitors pods, and follows DHCP/ZTP logs.
 
-![AIR sim launch screen](../../assets/images/air-sim/03-launch-ready.svg)
+![DSX Air sim launch screen](../../assets/images/air-sim/03-launch-ready.svg)
 
-Click **Launch Simulation** and leave the TUI open. The launch can take a while because it boots the AIR nodes, builds and loads local images, installs Config Manager, and lets the switches provision.
+Click **Launch Simulation** and leave the TUI open. The launch can take a while because it boots the DSX Air nodes, builds and loads local images, installs Config Manager, and lets the switches provision.
 
 <Warning title="TUI responsiveness">
 During launch, the Activity stream can receive a high volume of log output. Mouse clicks may feel delayed while the TUI is processing those logs. If a click does not respond immediately, wait a moment and try again. This is a known limitation and will be addressed in future enhancements.
@@ -242,18 +197,26 @@ During launch:
 
 - **Steps** shows high-level orchestration progress.
 - **Progress** highlights the Nautobot pod first, then the remaining Kubernetes pods, and labels the ZTP count as **Switches Provisioned**.
-- **Activity** streams the full deploy log until installation completes. After bringup, DHCP and ZTP events appear in the same stream.
-- **AIR**, **SSH**, and **Access** panels appear as soon as the TUI has enough information to show them. The deploy log path remains visible after completion or failure.
+- **Activity** has separate **Deploy**, **DHCP**, **ZTP**, and **Access** tabs. Deploy output appears first. DHCP and ZTP events populate while the switches request leases, pull ZTP data, and report provisioned state.
+- **DSX Air**, **SSH**, and **Access** panels appear as soon as the TUI has enough information to show them. The deploy log path remains visible after completion or failure.
 
-![AIR sim launch running](../../assets/images/air-sim/04-launch-running.svg)
+![DSX Air sim launch running](../../assets/images/air-sim/04-launch-running.svg)
+
+Use the **DHCP** tab to follow lease activity as the switches boot and request management addresses.
+
+![DSX Air sim DHCP log screen](../../assets/images/air-sim/06-launch-dhcp-log.svg)
+
+Use the **ZTP** tab to follow switch callbacks into the ZTP service and confirm each device reports progress.
+
+![DSX Air sim ZTP log screen](../../assets/images/air-sim/07-launch-ztp-log.svg)
 
 When bringup completes, the **Access** panel shows commands for reaching the simulation.
 
-![AIR sim access screen](../../assets/images/air-sim/08-launch-access.svg)
+![DSX Air sim access screen](../../assets/images/air-sim/08-launch-access.svg)
 
 ## Access the Simulation
 
-Config Manager runs inside the `oob-mgmt-server` node in AIR. The TUI creates an AIR SSH service to that server and prints copyable commands. The Access panel also shows the generated `nvcm` SSH password under **OOB SSH credentials**.
+Config Manager runs inside the `oob-mgmt-server` node in DSX Air. The TUI creates a DSX Air SSH service to that server and prints copyable commands. The Access panel also shows the generated `nvcm` SSH password under **OOB SSH credentials**.
 
 For Linux and macOS:
 
@@ -280,7 +243,7 @@ The demo disables SSO. Nautobot credentials are `demo` / `demo`. Config Manager 
 DNS resolution for `*.nvcm.air` must go through the SOCKS tunnel. If a browser resolves names locally before using the proxy, the URLs will fail even though the services are healthy.
 </Note>
 
-You can also SSH directly to the AIR server with the SSH command shown at the top of the Launch screen. This is useful for `kubectl` checks, pod logs, and low-level troubleshooting.
+You can also SSH directly to the DSX Air server with the SSH command shown at the top of the Launch screen. This is useful for `kubectl` checks, pod logs, and low-level troubleshooting.
 
 ## What to Check After Bringup
 
@@ -294,7 +257,7 @@ After launch completes:
 
 ## Workflow Support
 
-The AIR demo is intended for Ethernet and Cumulus Linux workflows. Useful workflows to try include:
+The DSX Air demo is intended for Ethernet and Cumulus Linux workflows. Useful workflows to try include:
 
 - Configuration Backup
 - Configuration Deploy
@@ -306,17 +269,17 @@ The AIR demo is intended for Ethernet and Cumulus Linux workflows. Useful workfl
 - Device Reprovision
 - Workflow lifecycle actions such as approve, reject, retry, and terminate
 
-Do not use the AIR demo for:
+Do not use the DSX Air demo for:
 
 | Workflow family | Why it is excluded |
 | :-------------- | :----------------- |
-| InfiniBand workflows | AIR does not simulate the InfiniBand fabric for this demo. |
-| NVLink switch workflows | AIR does not simulate NVLink switches for this demo. |
-| Switch OS Upgrade | AIR cannot complete the ONIE install path used by the OS upgrade workflow. |
+| InfiniBand workflows | DSX Air does not simulate the InfiniBand fabric for this demo. |
+| NVLink switch workflows | DSX Air does not simulate NVLink switches for this demo. |
+| Switch OS Upgrade | DSX Air cannot complete the ONIE install path used by the OS upgrade workflow. |
 
 ## Try Multi-Deploy
 
-Multi-Deploy is a good first Day-2 workflow because the AIR trial demo has five `TAN-HLEAF` switches that should receive the same diff.
+Multi-Deploy is a good first Day-2 workflow because the DSX Air trial demo has five `TAN-HLEAF` switches that should receive the same diff.
 
 The standard demo context already includes `8.8.8.8` as a DNS server. The example below appends `8.8.4.4` to the site config context. The render service picks up the Nautobot change, produces new intended configs for the TAN leaf devices, and Multi-Deploy groups the identical diffs for approval.
 
@@ -374,9 +337,9 @@ Example data with a demo DNS server:
 1. Set **Role** to `TAN-HLEAF`.
 1. Set **Max Batch Size** to `5` so all demo TAN leaf devices can be approved together when they share one diff.
 
-The populated AIR trial form should look similar to this:
+The populated DSX Air trial form should look similar to this:
 
-![AIR trial Multi-Deploy workflow form](../../assets/images/workflows/multideployworkflow-form.png)
+![DSX Air trial Multi-Deploy workflow form](../../assets/images/workflows/multideployworkflow-form.png)
 
 1. Submit the workflow.
 1. When the parent reaches the batch execution stage, open the child Batch Deploy link.
@@ -391,17 +354,17 @@ For the full workflow behavior, see [Multi-Device Deploy](../multi-deploy/index.
 Reprovision shows the re-ZTP path for an already-running switch. It factory-resets the target Cumulus switch, waits for DHCP/ZTP to run again, and then triggers a fresh backup.
 
 <Warning title="Device reset">
-Reprovision intentionally takes the selected switch offline and wipes its running configuration. In the AIR demo this is safe, but the same workflow is disruptive in a real environment.
+Reprovision intentionally takes the selected switch offline and wipes its running configuration. In the DSX Air demo this is safe, but the same workflow is disruptive in a real environment.
 </Warning>
 
 1. Open `https://nvcm.air`.
 1. Click the **+** button and select **ReprovisionWorkflow**.
-1. Select the AIR trial site, such as `TRIAL01 - demo`.
+1. Select the DSX Air trial site, such as `TRIAL01 - demo`.
 1. Select a TAN leaf device, such as `tan-leaf-01`.
 
-The populated AIR trial form should look similar to this:
+The populated DSX Air trial form should look similar to this:
 
-![AIR trial Reprovision workflow form](../../assets/images/workflows/reprovisionworkflow-form.png)
+![DSX Air trial Reprovision workflow form](../../assets/images/workflows/reprovisionworkflow-form.png)
 
 1. Submit the workflow.
 1. In the DSX Air UI, open the simulation topology.
@@ -425,10 +388,10 @@ After Multi-Deploy and Reprovision, try these workflows:
 
 - **Configuration Backup** against one TAN leaf. Confirm the backup appears in Config Store.
 - **Configuration Deploy** against one TAN leaf after a small Nautobot config context change. Use this before Multi-Deploy if you want to inspect the single-device approval path.
-- **Cable Validation** for the AIR trial site. This checks LLDP-reported neighbors against the mock topology's Nautobot cabling.
+- **Cable Validation** for the DSX Air trial site. This checks LLDP-reported neighbors against the mock topology's Nautobot cabling.
 
 ## Cleanup
 
-AIR simulations consume account resources while running. When you are done, stop or delete the simulation in the DSX Air UI. If you expect to resume later, use AIR checkpoints according to your account limits. If you only needed a short demo, delete the simulation to free capacity.
+DSX Air simulations consume account resources while running. When you are done, stop or delete the simulation in the DSX Air UI. If you expect to resume later, use DSX Air checkpoints according to your account limits. If you only needed a short demo, delete the simulation to free capacity.
 
-The TUI-created Config Manager deployment lives inside the AIR simulation. Deleting the simulation removes the demo Kubernetes cluster, Nautobot data, Config Store data, and generated switch state.
+The TUI-created Config Manager deployment lives inside the DSX Air simulation. Deleting the simulation removes the demo Kubernetes cluster, Nautobot data, Config Store data, and generated switch state.

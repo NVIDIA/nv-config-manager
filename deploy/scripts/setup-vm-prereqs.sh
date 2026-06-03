@@ -1474,11 +1474,6 @@ if [[ "$INSTALL_OPENBAO" == "true" ]]; then
     write_bao_secret "demo/dhcp" \
         password="demo-dhcp-password"
     
-    # AIR
-    write_bao_secret "demo/air" \
-        ssa_client_id="demo-air-client-id" \
-        ssa_client_secret="demo-air-client-secret"
-    
     # UFM
     write_bao_secret "demo/ufm" \
         ufm_api_user="admin" \

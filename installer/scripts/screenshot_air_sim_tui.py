@@ -13,13 +13,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Generate SVG screenshots of the AIR simulation TUI for documentation.
+"""Generate SVG screenshots of the DSX Air simulation TUI for documentation.
 
 Usage:
     uv run python scripts/screenshot_air_sim_tui.py
     uv run python scripts/screenshot_air_sim_tui.py --output-dir ../docs/assets/images/air-sim
 
-The launch screenshots use deterministic mock data. They do not contact AIR,
+The launch screenshots use deterministic mock data. They do not contact DSX Air,
 Kubernetes, or the SSH target.
 """
 
@@ -64,7 +64,7 @@ MOCK_HOST = "eb515e50.workers.ngc.air.nvidia.com"
 MOCK_PORT = 17117
 MOCK_SIM_ID = "7dfde74b-ce46-4a29-97dc-58294ee39390"
 MOCK_DEPLOY_LOG = Path("/tmp/nvcm-deploy-20260530-000000.log")
-TRUFFLEHOG_IGNORE_COMMENT = "<!-- trufflehog:ignore - public AIR demo VM password -->"
+TRUFFLEHOG_IGNORE_COMMENT = "<!-- trufflehog:ignore - public DSX Air demo VM password -->"
 _SVG_CHAR_HEIGHT = 20.0
 _SVG_LINE_HEIGHT = 24.4
 _SVG_LINE_WIDTH = 1.6
@@ -257,7 +257,7 @@ def _fmt(value: float) -> str:
 def _shot(app: NVCMAirSimApp, title: str) -> str:
     no_color = os.environ.pop("NO_COLOR", None)
     try:
-        return _export_app_viewport_svg(app, title=f"NVCM AIR Sim Wizard - {title}")
+        return _export_app_viewport_svg(app, title=f"NVCM DSX Air Sim Wizard - {title}")
     finally:
         if no_color is not None:
             os.environ["NO_COLOR"] = no_color
@@ -297,7 +297,7 @@ async def _stabilize(pilot: object, pauses: int = 2, delay: float = 0.1) -> None
 
 
 def _example_config() -> SimConfig:
-    """Return the public AIR trial demo config with screenshot-only auth filled in."""
+    """Return the public DSX Air trial demo config with screenshot-only auth filled in."""
     cfg = load_prebuilt_config("air-trial")
     cfg.ngc_api_key = "nvapi-demo-key-for-screenshots"
     cfg.oob_ssh_password = NVCM_BOX_PASSWORD
@@ -717,7 +717,7 @@ def _populate_ssh_and_pods(
 def _populate_ready_launch(launch: LaunchScreen) -> None:
     launch.query_one("#btn-launch", Button).disabled = False
     launch.query_one("#launch-status", Static).update(
-        "[green]Ready to create AIR simulation from mock topology air_trial.[/green]"
+        "[green]Ready to create DSX Air simulation from mock topology air_trial.[/green]"
     )
 
 
@@ -859,7 +859,7 @@ def main() -> None:
     args = parser.parse_args()
 
     total = len(SECTION_LABELS) + 5
-    print(f"Capturing {total} AIR sim screenshots at {args.cols}x{args.rows}...")
+    print(f"Capturing {total} DSX Air sim screenshots at {args.cols}x{args.rows}...")
     no_color = os.environ.pop("NO_COLOR", None)
     try:
         asyncio.run(_capture_all(args.output_dir, size=(args.cols, args.rows)))

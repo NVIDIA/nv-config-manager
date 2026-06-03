@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""AIR topology builder for nvcm-air-simulation."""
+"""DSX Air topology builder for nvcm-air-simulation."""
 
 from __future__ import annotations
 
@@ -138,7 +138,7 @@ def _resolve_oob_server_ips_from_topology(
 
 
 class AirTopologyBuilder:
-    """Build NVIDIA AIR topology from site export YAML."""
+    """Build NVIDIA DSX Air topology from site export YAML."""
 
     def __init__(
         self,
@@ -152,10 +152,10 @@ class AirTopologyBuilder:
 
         Args:
             yaml_path: Path to the site export YAML file
-            simulation_name: Name for the AIR simulation (auto-generated if not provided)
+            simulation_name: Name for the DSX Air simulation (auto-generated if not provided)
             minimal_mode: If True, group similar devices into single nodes for smaller sims
             nvcm_server: Configuration for adding a NVCM server node to the topology
-            cumulus_image_overrides: AIR image names keyed by Cumulus firmware version
+            cumulus_image_overrides: DSX Air image names keyed by Cumulus firmware version
         """
         self.yaml_path = Path(yaml_path)
         self.minimal_mode = minimal_mode
@@ -194,11 +194,11 @@ class AirTopologyBuilder:
         )
 
     def set_cumulus_image_overrides(self, image_overrides: dict[str, str]) -> None:
-        """Set resolved AIR image names keyed by Cumulus firmware version."""
+        """Set resolved DSX Air image names keyed by Cumulus firmware version."""
         self.cumulus_image_overrides = dict(image_overrides)
 
     def _cumulus_air_image(self, firmware_version: str) -> str:
-        """Return the AIR OS image name for a Cumulus firmware version."""
+        """Return the DSX Air OS image name for a Cumulus firmware version."""
         return self.cumulus_image_overrides.get(firmware_version, f"cumulus-vx-{firmware_version}")
 
     def _extract_site_name(self) -> str:
@@ -439,17 +439,17 @@ class AirTopologyBuilder:
         LOG.info(f"Found {len(self.connections)} cable connections between devices")
 
     def build_topology(self) -> dict[str, Any]:
-        """Build the AIR topology JSON.
+        """Build the DSX Air topology JSON.
 
         Returns:
-            Dictionary in AIR JSON topology format
+            Dictionary in DSX Air JSON topology format
         """
         if self.minimal_mode:
             return self._build_minimal_topology()
         return self._build_full_topology()
 
     def _make_link_endpoint(self, device_name: str, intf_name: str) -> dict[str, str]:
-        """Build an AIR link endpoint dict, including MAC when set."""
+        """Build a DSX Air link endpoint dict, including MAC when set."""
         endpoint: dict[str, str] = {"node": device_name, "interface": intf_name}
         device = self.devices.get(device_name)
         if device:
@@ -459,7 +459,7 @@ class AirTopologyBuilder:
         return endpoint
 
     def _build_full_topology(self) -> dict[str, Any]:
-        """Build full topology with one AIR node per device."""
+        """Build full topology with one DSX Air node per device."""
         topology: dict[str, Any] = {
             "oob": False,  # We'll add eth0 as outbound interfaces manually
             "nodes": {},
@@ -477,7 +477,7 @@ class AirTopologyBuilder:
                     "os": self._cumulus_air_image(device.firmware_version),
                 }
             else:
-                # Non-Cumulus node (servers, GPUs, DPUs) - use AIR config if available
+                # Non-Cumulus node (servers, GPUs, DPUs) - use DSX Air config if available
                 air_config = device.air_config
                 node = {
                     "memory": air_config.get("memory", DEFAULT_NODE_MEMORY),

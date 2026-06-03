@@ -58,7 +58,7 @@ class TopologyScreen(Container):
         yield Label("─" * 40, classes="section-divider")
         yield Label("Mock Topology", classes="subsection-label")
         yield LabeledSwitch(
-            "Build AIR topology from development/mock_topology context",
+            "Build DSX Air topology from development/mock_topology context",
             value=self._config.run_mock_topology_job,
             id="run-mock-topology-job",
         )
@@ -83,7 +83,7 @@ class TopologyScreen(Container):
             )
 
         with Vertical(id="direct-topology-fields"):
-            yield Label("AIR Topology YAML", classes="field-label")
+            yield Label("DSX Air Topology YAML", classes="field-label")
             with Horizontal(classes="field-row"):
                 yield Input(
                     value=self._config.topology_path,

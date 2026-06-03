@@ -1,6 +1,6 @@
-# AIR Demo Template Plugin
+# DSX Air Demo Template Plugin
 
-This sample plugin provides template entrypoints for the public AIR demo role names:
+This sample plugin provides template entrypoints for the public DSX Air demo role names:
 `OOB-HLEAF`, `OOB-MLEAF`, `TAN-BLEAF`, `TAN-HLEAF`, `TAN-SLEAF`,
 `OOB-SPINE`, `TAN-SPINE`, `CIN-LEAF`, and `CIN-SPINE`.
 

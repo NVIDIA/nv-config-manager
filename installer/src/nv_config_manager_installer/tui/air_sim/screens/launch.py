@@ -679,7 +679,7 @@ class _CopyCommandPanel(Container):
 
 
 class _SshCommandBar(Horizontal):
-    """Copyable SSH command strip shown once the AIR worker is reachable."""
+    """Copyable SSH command strip shown once the DSX Air worker is reachable."""
 
     def __init__(self, **kwargs: object) -> None:
         super().__init__(**kwargs)
@@ -724,19 +724,19 @@ class _SshCommandBar(Horizontal):
 
 
 class _AirLinkBar(Horizontal):
-    """Copyable AIR simulation URL shown once the simulation exists."""
+    """Copyable DSX Air simulation URL shown once the simulation exists."""
 
     def __init__(self, **kwargs: object) -> None:
         super().__init__(**kwargs)
         self._url = ""
-        self.tooltip = "Copy AIR simulation link"
+        self.tooltip = "Copy DSX Air simulation link"
 
     def compose(self) -> ComposeResult:
-        yield Label("AIR", classes="ssh-badge")
+        yield Label("DSX Air", classes="ssh-badge")
         yield Static("", id="air-link", classes="ssh-cmd")
         yield _copy_button(
             "copy-air-link",
-            "Copy AIR simulation link",
+            "Copy DSX Air simulation link",
             classes="copy-icon-btn ssh-copy-btn",
         )
 

@@ -1,4 +1,4 @@
-/* NVCM AIR Sim Wizard - Textual CSS */
+/* NVCM DSX Air Sim Wizard - Textual CSS */
 
 NVCMAirSimApp {
     layout: grid;

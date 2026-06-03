@@ -102,7 +102,7 @@ help:
 	@echo "  make docs-preview     - Generate a Fern docs preview"
 	@echo "  make docs-publish     - Publish the Fern docs"
 	@echo "  make docs-screenshots - Regenerate installer TUI screenshots for docs"
-	@echo "  make docs-air-sim-screenshots - Regenerate AIR sim TUI screenshots for docs"
+	@echo "  make docs-air-sim-screenshots - Regenerate DSX Air sim TUI screenshots for docs"
 	@echo "  make docs-ui-screenshots - Regenerate Next.js workflow screenshots for docs"
 	@echo ""
 	@echo "Observability (local-dev stack only — requires observability to be enabled in installer config):"

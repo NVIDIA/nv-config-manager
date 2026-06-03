@@ -2,7 +2,7 @@
 
 global_defaults:
   tenant: Public Demo
-  namespace: AIR Trial Demo
+  namespace: DSX Air Trial Demo
   status: Active
   cable_status: Connected
   prefix_status: Active
@@ -13,24 +13,24 @@ tenants:
   - name: Public Demo
 
 namespaces:
-  - AIR Trial Demo
+  - DSX Air Trial Demo
 
 locations:
   - name: Public Demo
     location_type: Provider
 
-  - name: AIR Trial Demo
+  - name: DSX Air Trial Demo
     location_type: Region
     parent: Public Demo
 
   - name: "TRIAL01 - {{ deployment_name }}"
     location_type: Site
-    parent: AIR Trial Demo
+    parent: DSX Air Trial Demo
     ref: location
 
 config_contexts:
   - name: "air-trial-dhcp-option-def - {{ deployment_name }}"
-    description: DHCP option definitions for the AIR trial demo
+    description: DHCP option definitions for the DSX Air trial demo
     weight: 1000
     is_active: true
     locations:
@@ -84,7 +84,7 @@ config_contexts:
                 cumulus-provision-url: http://{{ztp_server}}/v1/device/{{device_id}}/boot-script
 
   - name: "air-trial-firmware-targets - {{ deployment_name }}"
-    description: Intended Cumulus Linux versions for the AIR trial demo
+    description: Intended Cumulus Linux versions for the DSX Air trial demo
     weight: 1000
     is_active: true
     locations:
@@ -96,7 +96,7 @@ config_contexts:
         Cumulus Linux: 5.16.1
 
   - name: "air-trial-network-management-services - {{ deployment_name }}"
-    description: Network management services for the AIR trial demo
+    description: Network management services for the DSX Air trial demo
     weight: 1000
     is_active: true
     locations:
@@ -120,7 +120,7 @@ config_contexts:
           - 8.8.8.8
 
   - name: "air-trial-password-mappings - {{ deployment_name }}"
-    description: Intended password mappings for the AIR trial demo
+    description: Intended password mappings for the DSX Air trial demo
     weight: 1000
     is_active: true
     locations:

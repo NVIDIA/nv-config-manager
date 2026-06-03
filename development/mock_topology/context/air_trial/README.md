@@ -1,8 +1,8 @@
-# AIR Trial Mock Topology Context
+# DSX Air Trial Mock Topology Context
 
-This context is the source of truth for the AIR free trial demo topology and the
-Nautobot mock data loaded by the Design Builder mock topology job. The AIR sim
-generates its temporary AIR topology YAML from these device JSON files, so there
+This context is the source of truth for the DSX Air free trial demo topology and the
+Nautobot mock data loaded by the Design Builder mock topology job. The DSX Air sim
+generates its temporary DSX Air topology YAML from these device JSON files, so there
 is no separate maintained topology export for this built-in demo.
 
 Coverage:

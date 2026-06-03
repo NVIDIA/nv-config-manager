@@ -41,8 +41,8 @@ class PrebuiltConfig:
 PREBUILT_CONFIGS: tuple[PrebuiltConfig, ...] = (
     PrebuiltConfig(
         id="air-trial",
-        label="AIR free trial demo",
-        description="Resource-capped ZTP and multi-deploy demo for public AIR trial accounts.",
+        label="DSX Air free trial demo",
+        description="Resource-capped ZTP and multi-deploy demo for public DSX Air trial accounts.",
         path=DEFAULT_AIR_TRIAL_CONFIG,
     ),
     PrebuiltConfig(

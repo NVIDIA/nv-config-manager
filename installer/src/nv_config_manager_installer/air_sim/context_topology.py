@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Build temporary AIR topology input from mock_topology context data."""
+"""Build temporary DSX Air topology input from mock_topology context data."""
 
 from __future__ import annotations
 
@@ -60,7 +60,7 @@ def build_site_design_from_mock_context(
     *,
     context_root: Path = DEFAULT_MOCK_CONTEXT_ROOT,
 ) -> dict[str, Any]:
-    """Return an AIR topology-builder site design from mock_topology context files."""
+    """Return a DSX Air topology-builder site design from mock_topology context files."""
     context_dir = context_root / blueprint
     devices_dir = context_dir / "devices"
     if not devices_dir.is_dir():

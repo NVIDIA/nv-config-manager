@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""NVCM AIR Simulation TUI - wizard for bringing up AIR simulations."""
+"""NVCM DSX Air Simulation TUI - wizard for bringing up DSX Air simulations."""
 
 from __future__ import annotations
 
@@ -97,7 +97,7 @@ class QuitConfirmScreen(ModalScreen[bool]):
 
     def compose(self) -> ComposeResult:
         with Container(id="quit-dialog"):
-            yield Label("Quit NVCM AIR Sim Wizard?")
+            yield Label("Quit NVCM DSX Air Sim Wizard?")
             with Horizontal(id="quit-buttons"):
                 yield Button("Quit", variant="error", id="quit-yes")
                 yield Button("Cancel", variant="primary", id="quit-no")
@@ -107,9 +107,9 @@ class QuitConfirmScreen(ModalScreen[bool]):
 
 
 class NVCMAirSimApp(App[None]):
-    """NVCM AIR Simulation Wizard TUI."""
+    """NVCM DSX Air Simulation Wizard TUI."""
 
-    TITLE = "NVCM AIR Sim Wizard"
+    TITLE = "NVCM DSX Air Sim Wizard"
     CSS_PATH = CSS_PATH
     ENABLE_COMMAND_PALETTE = False
 
@@ -137,7 +137,7 @@ class NVCMAirSimApp(App[None]):
     def compose(self) -> ComposeResult:
         with Horizontal():
             with VerticalScroll(id="sidebar"):
-                yield Label("NVCM AIR Sim Wizard", id="sidebar-title")
+                yield Label("NVCM DSX Air Sim Wizard", id="sidebar-title")
                 for section_id, label in SECTION_LABELS:
                     item = NavItem(section_id, label)
                     item.add_class("nav-item")
@@ -249,7 +249,7 @@ class NVCMAirSimApp(App[None]):
 
 def _resolve_config_path(argv: list[str] | None = None) -> Path:
     """Resolve the TUI config path from CLI args, env, or the default path."""
-    parser = argparse.ArgumentParser(description="Launch the NVCM AIR simulation TUI")
+    parser = argparse.ArgumentParser(description="Launch the NVCM DSX Air simulation TUI")
     parser.add_argument(
         "config_path",
         nargs="?",

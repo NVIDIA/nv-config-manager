@@ -117,8 +117,6 @@ secrets:
         path: "nv-config-manager/bmc"
       slack:
         path: "nv-config-manager/slack"
-      air:
-        path: "nv-config-manager/air"
       ufm:
         path: "nv-config-manager/ufm"
       nautobotApp:

@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Wizard state for AIR simulation deployment."""
+"""Wizard state for DSX Air simulation deployment."""
 
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ def _default_git_token() -> str:
 
 
 def generate_oob_ssh_password(length: int = 24) -> str:
-    """Generate a shell-friendly password for the AIR OOB management server."""
+    """Generate a shell-friendly password for the DSX Air OOB management server."""
     return "".join(secrets.choice(_OOB_SSH_PASSWORD_CHARS) for _ in range(length))
 
 
@@ -51,7 +51,7 @@ def _default_path(path: Path) -> str:
 
 @dataclass
 class SimConfig:
-    """Configuration for bringing up an NVCM AIR simulation."""
+    """Configuration for bringing up an NVCM DSX Air simulation."""
 
     topology_path: str = ""
     mock_blueprint: str = "air_superpod"

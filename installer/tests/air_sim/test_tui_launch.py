@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Textual tests for the AIR simulation launch screen."""
+"""Textual tests for the DSX Air simulation launch screen."""
 
 from __future__ import annotations
 

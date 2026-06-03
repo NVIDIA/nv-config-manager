@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""AIR simulation manager for nvcm-air-simulation."""
+"""DSX Air simulation manager for nvcm-air-simulation."""
 
 from __future__ import annotations
 
@@ -63,12 +63,12 @@ _ANSI_ESCAPE = re.compile(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 
 
 def _cumulus_vx_image_name(version: str) -> str:
-    """Return the preferred AIR image name for a Cumulus VX version."""
+    """Return the preferred DSX Air image name for a Cumulus VX version."""
     return f"cumulus-vx-{version}"
 
 
 def _image_name(image: Any) -> str:
-    """Return an AIR image name from SDK model-like data."""
+    """Return a DSX Air image name from SDK model-like data."""
     return str(getattr(image, "name", "") or "").strip()
 
 
@@ -130,7 +130,7 @@ _NAUTOBOT_INTENDED_CONFIG_NBSHELL = (
 
 
 class AirSimulationManager:
-    """Manage AIR simulations for e2e testing."""
+    """Manage DSX Air simulations for e2e testing."""
 
     def __init__(
         self,
@@ -140,13 +140,13 @@ class AirSimulationManager:
         use_internal: bool = False,
         ssh_password: str = "",
     ) -> None:
-        """Initialize the AIR simulation manager.
+        """Initialize the DSX Air simulation manager.
 
         Args:
-            api_url: AIR API URL (auto-detected if not provided)
+            api_url: DSX Air API URL (auto-detected if not provided)
             ngc_api_key: NGC API key (Starfleet API Key / SAK) for auth
-            org_id: AIR organization ID for the simulation
-            use_internal: Use internal AIR instance (api.air-inside.nvidia.com)
+            org_id: DSX Air organization ID for the simulation
+            use_internal: Use internal DSX Air instance (api.air-inside.nvidia.com)
             ssh_password: Password for the nvcm account on the OOB management server
         """
         self.api_url = api_url or (
@@ -159,7 +159,7 @@ class AirSimulationManager:
 
         if not self.ngc_api_key:
             LOG.error("No NGC API key found. Set NGC_API_KEY env var or pass --ngc-api-key.")
-            raise ValueError("Missing NGC API key for AIR authentication")
+            raise ValueError("Missing NGC API key for DSX Air authentication")
 
         LOG.info("Authenticating with NGC API key (Bearer token)...")
         self.client = AirApi.with_api_key(
@@ -172,11 +172,11 @@ class AirSimulationManager:
         name: str,
         topology: dict[str, Any],
     ) -> str:
-        """Create a new AIR simulation.
+        """Create a new DSX Air simulation.
 
         Args:
             name: Simulation name
-            topology: AIR topology JSON
+            topology: DSX Air topology JSON
 
         Returns:
             Simulation ID
@@ -193,7 +193,7 @@ class AirSimulationManager:
         return simulation.id
 
     def resolve_cumulus_vx_images(self, versions: Iterable[str]) -> dict[str, str]:
-        """Validate and resolve Cumulus VX AIR image names by firmware version.
+        """Validate and resolve Cumulus VX DSX Air image names by firmware version.
 
         Exact ``cumulus-vx-<version>`` image names are preferred. If the exact
         name is unavailable, the newest visible Cumulus VX image containing the
@@ -204,12 +204,12 @@ class AirSimulationManager:
             return {}
 
         LOG.info(
-            "Validating Cumulus VX AIR image(s): %s",
+            "Validating Cumulus VX DSX Air image(s): %s",
             ", ".join(required_versions),
         )
         images = list(self.client.images.list())
         if not images:
-            raise RuntimeError("AIR image list is empty; cannot validate Cumulus VX images")
+            raise RuntimeError("DSX Air image list is empty; cannot validate Cumulus VX images")
 
         resolved: dict[str, str] = {}
         for version in required_versions:
@@ -218,7 +218,7 @@ class AirSimulationManager:
             if image is None:
                 recent = ", ".join(_recent_cumulus_vx_image_names(images)) or "none"
                 raise RuntimeError(
-                    f"AIR image not found for Cumulus Linux {version}. "
+                    f"DSX Air image not found for Cumulus Linux {version}. "
                     f"Expected '{expected_name}' or a Cumulus VX image containing "
                     f"'{version}'. Recent Cumulus VX images: {recent}"
                 )
@@ -226,10 +226,10 @@ class AirSimulationManager:
             image_name = _image_name(image)
             resolved[version] = image_name
             if image_name == expected_name:
-                LOG.info("Found AIR image %s for Cumulus Linux %s", image_name, version)
+                LOG.info("Found DSX Air image %s for Cumulus Linux %s", image_name, version)
             else:
                 LOG.info(
-                    "Using AIR image %s for Cumulus Linux %s (preferred %s was not present)",
+                    "Using DSX Air image %s for Cumulus Linux %s (preferred %s was not present)",
                     image_name,
                     version,
                     expected_name,
@@ -239,7 +239,7 @@ class AirSimulationManager:
 
     @staticmethod
     def _select_cumulus_vx_image(images: list[Any], version: str) -> Any | None:
-        """Select the preferred AIR image for a Cumulus firmware version."""
+        """Select the preferred DSX Air image for a Cumulus firmware version."""
         expected_name = _cumulus_vx_image_name(version)
         exact_matches = [image for image in images if _image_name(image) == expected_name]
         if exact_matches:
@@ -422,7 +422,7 @@ class AirSimulationManager:
 
         Uses the ``file`` executor to write a netplan config that matches
         the outbound interface by MAC and enables DHCP.  Runs before the
-        simulation is started; the AIR agent delivers the file on first
+        simulation is started; the DSX Air agent delivers the file on first
         boot and then runs ``netplan apply``.
 
         Args:
@@ -524,7 +524,7 @@ class AirSimulationManager:
         relay_return_networks: list[str] | None = None,
         bgp_asn: str = "4266000000",
     ) -> str | None:
-        """Configure the nvcm-box server for AIR after --setup completes.
+        """Configure the nvcm-box server for DSX Air after --setup completes.
 
         Runs via SSH after ``nvcm-box-setup.sh --setup`` finishes on boot.
         Sets up everything the old cloud-init setup script used to do:
@@ -534,7 +534,7 @@ class AirSimulationManager:
         3. IP forwarding + MASQUERADE
 
         Args:
-            host: SSH hostname (from AIR service).
+            host: SSH hostname (from DSX Air service).
             port: SSH port.
             internal_mac: MAC of the internal interface (oob-mgmt-switch).
             internal_ip: IP/CIDR for the internal interface.
@@ -762,7 +762,7 @@ class AirSimulationManager:
             raise RuntimeError("OOB SSH password not configured")
         return self.ssh_password
 
-    _SETUP_COMPLETE_MARKER = "NVCM AIR Setup Complete"
+    _SETUP_COMPLETE_MARKER = "NVCM DSX Air Setup Complete"
     _DEPLOY_COMPLETE_MARKER = "Deployment completed successfully!"
 
     _SOCKS_PORT = 8080
@@ -927,8 +927,8 @@ class AirSimulationManager:
         """Stream nv-config-manager-installer deploy output via SSH, return True on success.
 
         Args:
-            host: SSH hostname (from AIR service).
-            port: SSH port (from AIR service).
+            host: SSH hostname (from DSX Air service).
+            port: SSH port (from DSX Air service).
             deploy_cmd: Full installer command string.
             timeout: Max seconds to wait (default 60 min).
             horizontal: Accepted for CLI compatibility; streaming here is plain text.
@@ -1034,7 +1034,7 @@ class AirSimulationManager:
         """Set up forwarding, routing, MASQUERADE, and isc-dhcp-relay.
 
         Mirrors ``nvcm-box-setup.sh configure_forwarding()`` (standard
-        mode) with AIR-specific additions for relay-return networks.
+        mode) with DSX Air-specific additions for relay-return networks.
 
         1. DOCKER-USER  -- allow forwarding internal <-> Kind bridge
         2. ZTP DNAT     -- TCP 80/443 from internal -> ZTP MetalLB IP
@@ -1244,7 +1244,7 @@ class AirSimulationManager:
         """Queue renders for every render-enabled Config Manager device."""
         ssh_base = self._ssh_cmd(host, port)
         kube = "KUBECONFIG=/home/nvcm/.kube/config"
-        payload = b'{"commit_message":"AIR demo render"}'
+        payload = b'{"commit_message":"DSX Air demo render"}'
         python_code = (
             "import urllib.request;"
             "req=urllib.request.Request("
@@ -2083,14 +2083,14 @@ class AirSimulationManager:
     ) -> bool:
         """Wait for SSH and cloud-init to finish completely.
 
-        Phase 1: poll SSH until reachable (AIR auto-configures eth0 DHCP).
+        Phase 1: poll SSH until reachable (DSX Air auto-configures eth0 DHCP).
         Phase 2: poll ``cloud-init status`` until it reports ``done``.
         This ensures the full setup script (Kind, repo clones, topology
         copy, etc.) has completed before deployment is attempted.
 
         Args:
-            host: SSH hostname (from AIR service).
-            port: SSH port (from AIR service).
+            host: SSH hostname (from DSX Air service).
+            port: SSH port (from DSX Air service).
             timeout: Max seconds to wait (default 30 min). 0 = skip.
 
         Returns:
@@ -2380,7 +2380,7 @@ class AirSimulationManager:
         script = f"""#!/bin/bash
 set -euo pipefail
 
-echo "=== Deploying NVCM inside AIR simulation ==="
+echo "=== Deploying NVCM inside DSX Air simulation ==="
 
 # Clone the NVIDIA Config Manager repository
 if [ ! -d "nv-config-manager" ]; then
@@ -2496,7 +2496,7 @@ echo "  Password: {secrets["nautobot_password"]}"
 
 echo "=== NVCM deployment complete ==="
 echo ""
-echo "NVCM is now running inside the AIR simulation."
+echo "NVCM is now running inside the DSX Air simulation."
 echo "Switches will receive configuration via ZTP from $ZTP_IP"
 echo ""
 echo "To access Nautobot UI, add this to /etc/hosts on nvcm-server:"

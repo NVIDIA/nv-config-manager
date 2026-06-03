@@ -85,7 +85,7 @@ _SETUP_SCRIPT_TEMPLATE = textwrap.dedent("""\
     BGP_PASSWORD=__BGP_PASSWORD__
     RELAY_RETURN_NETWORKS=(__RELAY_RETURN_NETWORKS__)
     echo "========================================"
-    echo "  NVCM AIR Setup"
+    echo "  NVCM DSX Air Setup"
     echo "========================================"
     echo "Started: $(date)"
     echo "Deploy size: $DEPLOY_SIZE"
@@ -367,7 +367,7 @@ _SETUP_SCRIPT_TEMPLATE = textwrap.dedent("""\
     # ==========================================================================
     echo ""
     echo "========================================"
-    echo "  NVCM AIR Setup Complete!"
+    echo "  NVCM DSX Air Setup Complete!"
     echo "========================================"
     echo "Finished: $(date)"
     echo ""
@@ -522,7 +522,7 @@ def generate_server_cloud_init(
 ) -> str:
     """Generate cloud-init user-data for the oob-mgmt-server.
 
-    eth0 is the AIR exit interface (auto-DHCP by AIR, no config needed).
+    eth0 is the DSX Air exit interface (auto-DHCP by DSX Air, no config needed).
     eth1 is the internal OOB interface configured here with a static IP
     matched by MAC address.
     ``oob_ssh_password`` sets the ``nvcm`` account password for SSH access to

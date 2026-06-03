@@ -298,7 +298,7 @@ When **ESO** is selected, additional Vault fields appear:
 **Vault Paths** — Each secret group maps to a Vault path. Toggle groups on/off and
 customize paths to match your Vault layout. Click "Keys" to override individual
 key name mappings. Supported groups: Nautobot, Redis, PostgreSQL, Network/Device Creds,
-Nautobot App, OIDC, Redfish, BMC, Slack, AIR, Jira, CNPG Backup.
+Nautobot App, OIDC, Redfish, BMC, Slack, Jira, CNPG Backup.
 
 **Git Tokens** — Add/remove Git repository tokens for Nautobot Git sync:
 

@@ -1,5 +1,5 @@
 ---
-# Aggregate prefixes for the public AIR free trial mock topology.
+# Aggregate prefixes for the public DSX Air free trial mock topology.
 
 aggregate_prefixes:
   - prefix: 172.18.255.0/24
