@@ -220,7 +220,9 @@ async def test_spx_overlay_assignment_workflow_vrf_not_assigned(_mock_time, _moc
 @pytest.mark.asyncio
 @patch("nv_config_manager.temporal.ngc.activities.nats.NatsProducer", autospec=True)
 @patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
-async def test_spx_overlay_assignment_workflow_vrf_already_assigned(_mock_time, _mock_nats_client, env):
+async def test_spx_overlay_assignment_workflow_vrf_already_assigned(
+    _mock_time, _mock_nats_client, env
+):
     """Test VPC assignment when VRF is already assigned to device."""
     from nv_config_manager.temporal.ngc.activities.nats import publish_nats
 
@@ -325,7 +327,9 @@ async def test_spx_overlay_assignment_workflow_vrf_not_found(_mock_time, _mock_n
 @pytest.mark.asyncio
 @patch("nv_config_manager.temporal.ngc.activities.nats.NatsProducer", autospec=True)
 @patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
-async def test_spx_overlay_assignment_workflow_interface_not_found(_mock_time, _mock_nats_client, env):
+async def test_spx_overlay_assignment_workflow_interface_not_found(
+    _mock_time, _mock_nats_client, env
+):
     """Test VPC assignment when one of the interfaces doesn't exist on device."""
     from nv_config_manager.temporal.ngc.activities.nats import publish_nats
 
