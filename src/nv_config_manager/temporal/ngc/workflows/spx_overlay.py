@@ -741,17 +741,19 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
         namespace_tag: str
 
     class AssignSpXOverlayStageOutput(StageOutput):
-        """Assign VPC Stage Output."""
+        """Assign SpX Overlay Stage Output."""
 
         assigned_ports: list[str]
         vrf_assigned: bool
         vrf: DeviceVrfInfo
+        overlay_name: str
+        vxlan_name: str
 
     @stage_executor("assign_spx_overlay")
     async def assign_spx_overlay_stage(
         self, stage_input: AssignSpXOverlayStageInput
     ) -> AssignSpXOverlayStageOutput:
-        """Assign VPC to device and ports."""
+        """Assign SpX Overlay to device and ports."""
         result = await workflow.execute_child_workflow(
             SpXOverlayAssignmentWorkflow.run,
             SpXOverlayAssignmentInput(
@@ -766,12 +768,25 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
 
         self.append_child_workflow("assign_spx_overlay", workflow.info().workflow_id)
 
-        vrf_message = f" and VRF {result.vrf.vrf_name}" if result.vrf_assigned else ""
+        # For SpX overlays the overlay, VRF, and L3 VXLAN all share the same
+        # name (e.g. SpXTenant60004), so we can surface all three from the VRF result.
+        overlay_name = result.vrf.vrf_name
+        vxlan_name = result.vrf.vrf_name
+
+        vrf_line = f"VRF: {result.vrf.vrf_name}" if result.vrf_assigned else "VRF already assigned"
+        display = (
+            f"Overlay: {overlay_name}\n"
+            f"L3 VXLAN: {vxlan_name}\n"
+            f"{vrf_line}\n"
+            f"Ports assigned ({len(result.assigned_ports)}): {', '.join(result.assigned_ports)}"
+        )
         return self.AssignSpXOverlayStageOutput(
             assigned_ports=result.assigned_ports,
             vrf_assigned=result.vrf_assigned,
             vrf=result.vrf,
-            display=f"Assigned {len(result.assigned_ports)} ports{vrf_message}",
+            overlay_name=overlay_name,
+            vxlan_name=vxlan_name,
+            display=display,
         )
 
     class RenderStageInput(StageInput):
