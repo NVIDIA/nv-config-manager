@@ -1253,6 +1253,150 @@
         "title": "SitePasswordRotationInput",
         "type": "object"
       },
+      "SpXOverlayAssignmentInput": {
+        "description": "VPC Assignment Workflow Input Definition.",
+        "properties": {
+          "device": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "$ref": "#/components/schemas/NetworkDeviceData"
+              }
+            ],
+            "title": "Device"
+          },
+          "namespace_tag": {
+            "default": "spectrumx",
+            "title": "Namespace Tag",
+            "type": "string"
+          },
+          "port_names": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Port Names",
+            "type": "array"
+          },
+          "site": {
+            "title": "Site",
+            "type": "string"
+          },
+          "vpc_id": {
+            "title": "Vpc Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "vpc_id",
+          "device",
+          "port_names",
+          "site"
+        ],
+        "title": "SpXOverlayAssignmentInput",
+        "type": "object"
+      },
+      "SpXOverlayCreationInput": {
+        "description": "VPC Creation Workflow Input Definition.",
+        "properties": {
+          "namespace_tag": {
+            "default": "spectrumx",
+            "title": "Namespace Tag",
+            "type": "string"
+          },
+          "rd_max": {
+            "default": 65000,
+            "title": "Rd Max",
+            "type": "integer"
+          },
+          "rd_min": {
+            "default": 60000,
+            "title": "Rd Min",
+            "type": "integer"
+          },
+          "site": {
+            "title": "Site",
+            "type": "string"
+          },
+          "tenant": {
+            "title": "Tenant",
+            "type": "string"
+          },
+          "vpc_id": {
+            "title": "Vpc Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "site",
+          "vpc_id",
+          "tenant"
+        ],
+        "title": "SpXOverlayCreationInput",
+        "type": "object"
+      },
+      "SpXOverlayDeletionInput": {
+        "description": "VPC Deletion Workflow Input Definition.",
+        "properties": {
+          "namespace_tag": {
+            "default": "spectrumx",
+            "title": "Namespace Tag",
+            "type": "string"
+          },
+          "site": {
+            "title": "Site",
+            "type": "string"
+          },
+          "vpc_id": {
+            "title": "Vpc Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "site",
+          "vpc_id"
+        ],
+        "title": "SpXOverlayDeletionInput",
+        "type": "object"
+      },
+      "SpXOverlayTenantChangeInput": {
+        "description": "VPC Tenant Change Workflow Input Definition.",
+        "properties": {
+          "device_id": {
+            "title": "Device Id",
+            "type": "string"
+          },
+          "namespace_tag": {
+            "default": "spectrumx",
+            "title": "Namespace Tag",
+            "type": "string"
+          },
+          "port_names": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Port Names",
+            "type": "array"
+          },
+          "site": {
+            "title": "Site",
+            "type": "string"
+          },
+          "vpc_id": {
+            "title": "Vpc Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "vpc_id",
+          "device_id",
+          "port_names",
+          "site"
+        ],
+        "title": "SpXOverlayTenantChangeInput",
+        "type": "object"
+      },
       "Stage": {
         "description": "Workflow Stage Model.",
         "properties": {
@@ -1553,145 +1697,6 @@
           "type"
         ],
         "title": "ValidationError",
-        "type": "object"
-      },
-      "VpcAssignmentInput": {
-        "description": "VPC Assignment Workflow Input Definition.",
-        "properties": {
-          "device": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "$ref": "#/components/schemas/NetworkDeviceData"
-              }
-            ],
-            "title": "Device"
-          },
-          "namespace_tag": {
-            "default": "spectrumx",
-            "title": "Namespace Tag",
-            "type": "string"
-          },
-          "port_names": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Port Names",
-            "type": "array"
-          },
-          "site": {
-            "title": "Site",
-            "type": "string"
-          },
-          "vpc_id": {
-            "title": "Vpc Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "vpc_id",
-          "device",
-          "port_names",
-          "site"
-        ],
-        "title": "VpcAssignmentInput",
-        "type": "object"
-      },
-      "VpcCreationInput": {
-        "description": "VPC Creation Workflow Input Definition.",
-        "properties": {
-          "namespace_tag": {
-            "default": "spectrumx",
-            "title": "Namespace Tag",
-            "type": "string"
-          },
-          "rd_max": {
-            "default": 65000,
-            "title": "Rd Max",
-            "type": "integer"
-          },
-          "rd_min": {
-            "default": 60000,
-            "title": "Rd Min",
-            "type": "integer"
-          },
-          "site": {
-            "title": "Site",
-            "type": "string"
-          },
-          "vpc_id": {
-            "title": "Vpc Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "site",
-          "vpc_id"
-        ],
-        "title": "VpcCreationInput",
-        "type": "object"
-      },
-      "VpcDeletionInput": {
-        "description": "VPC Deletion Workflow Input Definition.",
-        "properties": {
-          "namespace_tag": {
-            "default": "spectrumx",
-            "title": "Namespace Tag",
-            "type": "string"
-          },
-          "site": {
-            "title": "Site",
-            "type": "string"
-          },
-          "vpc_id": {
-            "title": "Vpc Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "site",
-          "vpc_id"
-        ],
-        "title": "VpcDeletionInput",
-        "type": "object"
-      },
-      "VpcTenantChangeInput": {
-        "description": "VPC Tenant Change Workflow Input Definition.",
-        "properties": {
-          "device_id": {
-            "title": "Device Id",
-            "type": "string"
-          },
-          "namespace_tag": {
-            "default": "spectrumx",
-            "title": "Namespace Tag",
-            "type": "string"
-          },
-          "port_names": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Port Names",
-            "type": "array"
-          },
-          "site": {
-            "title": "Site",
-            "type": "string"
-          },
-          "vpc_id": {
-            "title": "Vpc Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "vpc_id",
-          "device_id",
-          "port_names",
-          "site"
-        ],
-        "title": "VpcTenantChangeInput",
         "type": "object"
       },
       "WhoamiResponse": {
@@ -4187,6 +4192,178 @@
         ]
       }
     },
+    "/v1/workflow/ngc/spx-overlay-tenant-change": {
+      "post": {
+        "description": "Assign a SpX Overlay to a device and deploy tenant configuration",
+        "operationId": "spxoverlaytenantchangeworkflow_endpoint_v1_workflow_ngc_spx_overlay_tenant_change_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SpXOverlayTenantChangeInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Execute SpXOverlayTenantChangeWorkflow",
+        "tags": [
+          "workflow",
+          "workflow"
+        ]
+      }
+    },
+    "/v1/workflow/ngc/spx_overlay_assignment": {
+      "post": {
+        "description": "Assign a SpX Overlay/VRF to a device and its specified ports",
+        "operationId": "spxoverlayassignmentworkflow_endpoint_v1_workflow_ngc_spx_overlay_assignment_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SpXOverlayAssignmentInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Execute SpXOverlayAssignmentWorkflow",
+        "tags": [
+          "workflow",
+          "workflow"
+        ]
+      }
+    },
+    "/v1/workflow/ngc/spx_overlay_creation": {
+      "post": {
+        "description": "Create a SpX Overlay with route distinguisher assignment and VRF/VXLAN provisioning",
+        "operationId": "spxoverlaycreationworkflow_endpoint_v1_workflow_ngc_spx_overlay_creation_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SpXOverlayCreationInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Execute SpXOverlayCreationWorkflow",
+        "tags": [
+          "workflow",
+          "workflow"
+        ]
+      }
+    },
+    "/v1/workflow/ngc/spx_overlay_deletion": {
+      "post": {
+        "description": "Delete a SpX Overlay and its associated VRFs/VXLANs with validation checks",
+        "operationId": "spxoverlaydeletionworkflow_endpoint_v1_workflow_ngc_spx_overlay_deletion_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SpXOverlayDeletionInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Execute SpXOverlayDeletionWorkflow",
+        "tags": [
+          "workflow",
+          "workflow"
+        ]
+      }
+    },
     "/v1/workflow/ngc/switch_os_upgrade": {
       "post": {
         "description": "Upgrade network switch operating system with approval and validation workflow",
@@ -4267,178 +4444,6 @@
           }
         },
         "summary": "Execute TenantDeployWorkflow",
-        "tags": [
-          "workflow",
-          "workflow"
-        ]
-      }
-    },
-    "/v1/workflow/ngc/vpc-tenant-change": {
-      "post": {
-        "description": "Assign VPC to device and deploy tenant configuration",
-        "operationId": "vpctenantchangeworkflow_endpoint_v1_workflow_ngc_vpc_tenant_change_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/VpcTenantChangeInput"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WorkflowResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Execute VpcTenantChangeWorkflow",
-        "tags": [
-          "workflow",
-          "workflow"
-        ]
-      }
-    },
-    "/v1/workflow/ngc/vpc_assignment": {
-      "post": {
-        "description": "Assign VPC/VRF to a device and its specified ports",
-        "operationId": "vpcassignmentworkflow_endpoint_v1_workflow_ngc_vpc_assignment_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/VpcAssignmentInput"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WorkflowResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Execute VpcAssignmentWorkflow",
-        "tags": [
-          "workflow",
-          "workflow"
-        ]
-      }
-    },
-    "/v1/workflow/ngc/vpc_creation": {
-      "post": {
-        "description": "Create VPC with route distinguisher assignment and VRF provisioning",
-        "operationId": "vpccreationworkflow_endpoint_v1_workflow_ngc_vpc_creation_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/VpcCreationInput"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WorkflowResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Execute VpcCreationWorkflow",
-        "tags": [
-          "workflow",
-          "workflow"
-        ]
-      }
-    },
-    "/v1/workflow/ngc/vpc_deletion": {
-      "post": {
-        "description": "Delete VPC and associated VRFs with validation checks",
-        "operationId": "vpcdeletionworkflow_endpoint_v1_workflow_ngc_vpc_deletion_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/VpcDeletionInput"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WorkflowResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Execute VpcDeletionWorkflow",
         "tags": [
           "workflow",
           "workflow"
