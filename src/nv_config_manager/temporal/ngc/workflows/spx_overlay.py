@@ -754,17 +754,20 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
         self, stage_input: AssignSpXOverlayStageInput
     ) -> AssignSpXOverlayStageOutput:
         """Assign SpX Overlay to device and ports."""
-        result = await workflow.execute_child_workflow(
-            SpXOverlayAssignmentWorkflow.run,
-            SpXOverlayAssignmentInput(
-                vpc_id=stage_input.vpc_id,
-                device=stage_input.device,
-                port_names=stage_input.port_names,
-                site=stage_input.site,
-                namespace_tag=stage_input.namespace_tag,
-            ),
-            run_timeout=timedelta(minutes=10),
-        )
+        try:
+            result = await workflow.execute_child_workflow(
+                SpXOverlayAssignmentWorkflow.run,
+                SpXOverlayAssignmentInput(
+                    vpc_id=stage_input.vpc_id,
+                    device=stage_input.device,
+                    port_names=stage_input.port_names,
+                    site=stage_input.site,
+                    namespace_tag=stage_input.namespace_tag,
+                ),
+                run_timeout=timedelta(minutes=10),
+            )
+        except Exception as exc:
+            raise ApplicationError(str(exc)) from exc
 
         self.append_child_workflow("assign_spx_overlay", workflow.info().workflow_id)
 
