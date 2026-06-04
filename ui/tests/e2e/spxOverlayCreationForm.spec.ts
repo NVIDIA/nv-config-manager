@@ -21,6 +21,7 @@ import { test, TEST_TIMEOUT } from "./shared/utils";
 // Sample VPC data for testing
 const VPC_DATA = {
   vpc_id: "test-vpc-1",
+  tenant: "test-tenant",
   description: "TenantB Tenant",
   namespace_tag: "spectrumx",
   rd_min: 60000,
@@ -105,6 +106,7 @@ test.describe("SpX Overlay Creation Workflow Form - URL Parameters", () => {
       "/workflows/spxoverlaycreationworkflow/form" +
         `?site=${SITES_LIST.pdx01}` +
         `&vpc=${VPC_DATA.vpc_id}` +
+        `&tenant=${VPC_DATA.tenant}` +
         `&description=${encodeURIComponent(VPC_DATA.description)}` +
         `&namespace=${VPC_DATA.namespace_tag}` +
         `&rd_min=${VPC_DATA.rd_min}` +
@@ -116,6 +118,7 @@ test.describe("SpX Overlay Creation Workflow Form - URL Parameters", () => {
       page.getByRole("button", { name: SITES_LIST.pdx01, exact: true })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
     await expect(page.getByLabel("VPC")).toHaveValue(VPC_DATA.vpc_id);
+    await expect(page.getByLabel("Tenant")).toHaveValue(VPC_DATA.tenant);
     await expect(page.getByLabel("Description")).toHaveValue(
       VPC_DATA.description
     );
@@ -145,6 +148,7 @@ test.describe("SpX Overlay Creation Workflow Form - URL Parameters", () => {
     expect(requestData).toEqual({
       site: SITES_LIST.pdx01,
       vpc_id: VPC_DATA.vpc_id,
+      tenant: VPC_DATA.tenant,
       description: VPC_DATA.description,
       namespace_tag: VPC_DATA.namespace_tag,
       rd_min: VPC_DATA.rd_min,
@@ -165,6 +169,7 @@ test.describe("SpX Overlay Creation Workflow Form - URL Parameters", () => {
       "/workflows/spxoverlaycreationworkflow/form" +
         `?site=${SITES_LIST.pdx01}` +
         `&vpc=${VPC_DATA.vpc_id}` +
+        `&tenant=${VPC_DATA.tenant}` +
         `&namespace=${VPC_DATA.namespace_tag}` +
         `&description=${VPC_DATA.description}` +
         `&rd_min=${VPC_DATA.rd_min}` +
@@ -186,6 +191,9 @@ test.describe("SpX Overlay Creation Workflow Form - URL Parameters", () => {
 
     // Change the VPC ID
     await page.getByLabel("VPC").fill("modified-vpc");
+
+    // Change the tenant
+    await page.getByLabel("Tenant").fill("modified-tenant");
 
     // Change the namespace
     await page.getByLabel("Namespace").fill("modified-namespace");
@@ -213,6 +221,7 @@ test.describe("SpX Overlay Creation Workflow Form - URL Parameters", () => {
     expect(requestData).toEqual({
       site: SITES_LIST.rno1,
       vpc_id: "modified-vpc",
+      tenant: "modified-tenant",
       namespace_tag: "modified-namespace",
       description: "modified-description",
       rd_min: 61000,
@@ -233,6 +242,7 @@ test.describe("SpX Overlay Creation Workflow Form - URL Parameters", () => {
       "/workflows/spxoverlaycreationworkflow/form" +
         `?site=${SITES_LIST.pdx01}` +
         `&vpc=${VPC_DATA.vpc_id}` +
+        `&tenant=${VPC_DATA.tenant}` +
         `&description=${encodeURIComponent(VPC_DATA.description)}` +
         `&namespace=${VPC_DATA.namespace_tag}` +
         `&rd_min=${VPC_DATA.rd_min}` +
@@ -243,6 +253,7 @@ test.describe("SpX Overlay Creation Workflow Form - URL Parameters", () => {
     await expect(
       page.getByRole("button", { name: SITES_LIST.pdx01, exact: true })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
+    await expect(page.getByLabel("Tenant")).toHaveValue(VPC_DATA.tenant);
     await expect(page.getByLabel("Description")).toHaveValue(
       VPC_DATA.description
     );
@@ -263,6 +274,7 @@ test.describe("SpX Overlay Creation Workflow Form - URL Parameters", () => {
     expect(requestData).toEqual({
       site: SITES_LIST.pdx01,
       vpc_id: VPC_DATA.vpc_id,
+      tenant: VPC_DATA.tenant,
       description: VPC_DATA.description,
       namespace_tag: VPC_DATA.namespace_tag,
       rd_min: VPC_DATA.rd_min,
@@ -292,6 +304,7 @@ test.describe("SpX Overlay Creation Workflow Form - Standard Tests", () => {
       .click();
 
     await page.getByLabel("VPC").fill("test-vpc-submission");
+    await page.getByLabel("Tenant").fill("test-tenant");
     await page.getByLabel("Description").fill("TenantB Tenant");
     await page.getByLabel("Namespace").fill("test-namespace");
     await page.getByLabel("RD Min").fill("62000");
@@ -346,6 +359,7 @@ test.describe("SpX Overlay Creation Workflow Form - Standard Tests", () => {
     await page.getByRole("dialog").getByText(FORBIDDEN_SITE_ID).click();
 
     await page.getByLabel("VPC").fill("test-vpc");
+    await page.getByLabel("Tenant").fill("test-tenant");
     await page.getByLabel("Description").fill("Test Description");
     await page.getByLabel("Namespace").fill("test-namespace");
     await page.getByLabel("RD Min").fill("60000");
