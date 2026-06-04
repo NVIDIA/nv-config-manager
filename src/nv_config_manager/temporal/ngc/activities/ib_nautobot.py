@@ -277,8 +277,6 @@ async def record_ib_pkey_in_nautobot(
 
     client = NautobotClient()
     async with client:
-        status_id = await _resolve_status_id(client)
-
         existing = await _find_orphan_pkey(client, input.pkey)
         if existing:
             pkey_id: str = existing["id"]
@@ -288,6 +286,7 @@ async def record_ib_pkey_in_nautobot(
                 pkey_id,
             )
         else:
+            status_id = await _resolve_status_id(client)
             payload: dict[str, Any] = {
                 "name": name,
                 "pkey": input.pkey,

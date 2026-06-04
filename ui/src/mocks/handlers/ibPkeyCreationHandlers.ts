@@ -21,10 +21,6 @@ import { mockApiURL as apiURL } from "@/config/mockApiUrl";
 interface IBPKeyCreationRequest {
   host?: string;
   pkey?: string;
-  site?: string;
-  location_name?: string;
-  tenant_name?: string;
-  overlay_name?: string;
 }
 
 const PKEY_PATTERN = /^0[xX][0-9a-fA-F]{1,4}$/;

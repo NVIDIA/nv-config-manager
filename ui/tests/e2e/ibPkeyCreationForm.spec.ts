@@ -76,6 +76,10 @@ test.describe("IB PKey Creation Form", () => {
     const request = await requestPromise;
     const body = JSON.parse((await request.postData()) || "{}");
     expect(body).toEqual({ host: "ufm-1.lab" });
+
+    await expect(
+      page.getByRole("heading", { name: "Workflow Details" }),
+    ).toBeVisible({ timeout: WORKFLOW_DETAILS_TIMEOUT });
   });
 
   test("shows hint when pkey is non-canonical and lets server decide", async ({
