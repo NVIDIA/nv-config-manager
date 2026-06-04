@@ -60,6 +60,25 @@ global:
   customLabels:
     include_in_slo: "true"
 
+# -----------------------------------------------------------------------------
+# Blackbox probes
+# -----------------------------------------------------------------------------
+# The installer flips monitoring.{enabled,podMonitors.enabled,probes.enabled} on
+# when observability_enabled is set (see helm_values.py), but the Probe CRs in
+# templates/monitoring.yaml are ALSO gated on a non-empty blackboxExporterUrl.
+# Set a URL here so the Probe CRs render — and therefore carry the SLO
+# customLabels under spec.targets.staticConfig.labels — on the local-dev / CI
+# observability stack.
+#
+# NOTE: this stack does NOT deploy a blackbox-exporter, so the probes won't
+# actually scrape; this exists to exercise Probe CR rendering + labelling (what
+# test_probe_labels.py asserts), not real blackbox probing. A real deployment
+# points this at its own blackbox-exporter Service.
+monitoring:
+  probes:
+    enabled: true
+    blackboxExporterUrl: "blackbox-exporter:9115"
+
 # NOTE: prometheus-operator-crds is NOT configured here. It's installed
 # as a sibling Helm release by the deployer (Deployer._install_crds) before
 # this chart, to avoid the helm validation deadlock where the parent chart
