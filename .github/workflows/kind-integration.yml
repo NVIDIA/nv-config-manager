@@ -123,10 +123,27 @@ jobs:
           # Prometheus/Alloy and enables monitoring.probes, so the Probe CRs
           # render with the SLO customLabels from values-observability.yaml.
           # Defaults off so normal kind runs stay fast.
+          #
+          # We also append the observability stack's runtime images to
+          # kind_preload_images. The installer preloads these on the host (which
+          # goes through the runner proxy cache) and `kind load`s them, so
+          # helm's --wait doesn't stall on anonymous in-cluster pulls from
+          # quay.io / docker.io — those uncached pulls are what blow the deploy
+          # timeout. Keep the tags in sync with the prometheus (Chart.yaml) and
+          # alloy subchart versions; derive current refs with:
+          #   helm template t deploy/helm -f deploy/helm/values-ci.yaml \
+          #     -f deploy/helm/values-observability.yaml | grep -E 'image:'
           if [ "${OBSERVABILITY}" = "true" ]; then
             echo "Observability enabled for this run"
-            yq -i '.infrastructure.monitoring.enabled = true | .infrastructure.monitoring.observability_enabled = true' \
-              deploy/configs/ci-integration-test.yaml
+            yq -i '
+              .infrastructure.monitoring.enabled = true |
+              .infrastructure.monitoring.observability_enabled = true |
+              .images.kind_preload_images += [
+                "quay.io/prometheus/prometheus:v3.11.3",
+                "quay.io/prometheus-operator/prometheus-config-reloader:v0.90.1",
+                "docker.io/grafana/alloy:v1.16.0"
+              ]
+            ' deploy/configs/ci-integration-test.yaml
           fi
 
           make kind-up \
