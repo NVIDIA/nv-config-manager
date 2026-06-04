@@ -153,6 +153,11 @@ jobs:
           kubectl get pods -n "${NV_CONFIG_MANAGER_NAMESPACE}" -o wide
       - name: Run integration tests
         timeout-minutes: 50
+        env:
+          # Gates observability-only tests (e.g. test_probe_labels.py), which
+          # skip themselves unless this is "true". Mirrors the JIRA_ISSUE_KEY
+          # gate on the diagnostics tests.
+          OBSERVABILITY: ${{ inputs.observability }}
         run: |
           for attempt in 1 2 3; do
             echo "Attempt ${attempt} of 3"
