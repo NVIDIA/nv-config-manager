@@ -357,8 +357,8 @@ class SpXOverlayDeletionWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
             deleted_vrfs=existing_vrfs,
             in_use_vrfs=[],
             display=(
-                f"VRFs deleted for VPC ID {stage_input.vpc_id}:\n "
-                f"{self.markdown_table(existing_vrfs, exclude={'interfaces'})}\n"
+                f"VRFs deleted for VPC ID {stage_input.vpc_id}:\n"
+                f"{self.markdown_table(existing_vrfs, exclude={'interfaces'})}\n\n"
                 f"{overlay_message}"
             ),
         )

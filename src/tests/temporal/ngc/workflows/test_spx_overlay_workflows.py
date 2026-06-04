@@ -593,12 +593,12 @@ async def test_spx_overlay_deletion_workflow(
                     ],
                     "display": (
                         "VRFs deleted for VPC ID mock_vpc_id:\n"
-                        " |     name     |   namespace   |   site  |       id      |   rd  |   vpc_id  |interface_count|\n"
+                        "|     name     |   namespace   |   site  |       id      |   rd  |   vpc_id  |interface_count|\n"
                         "|--------------|---------------|---------|---------------|-------|-----------|---------------|\n"
                         "|SpXTenant60004|mock_namespace1|mock_site|mock_namespace1|*:60004|mock_vpc_id|       0       |\n"
                         "|SpXTenant60004|mock_namespace2|mock_site|mock_namespace2|*:60004|mock_vpc_id|       0       |\n"
                         "|SpXTenant60004|mock_namespace3|mock_site|mock_namespace3|*:60004|mock_vpc_id|       0       |\n"
-                        "Deleted overlay SpXTenant60004"
+                        "\nDeleted overlay SpXTenant60004"
                     ),
                     "in_use_vrfs": [],
                 },
