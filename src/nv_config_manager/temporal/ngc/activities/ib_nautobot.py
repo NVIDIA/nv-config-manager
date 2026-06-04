@@ -262,10 +262,8 @@ async def _find_orphan_pkey(
         f"{PLUGIN_BASE}/pkeys/",
         params={"pkey": pkey},
     )
-    for item in results.get("results", []):
-        if item.get("overlay") is None:
-            return item
-    return None
+    items = [item for item in results.get("results", []) if item.get("overlay") is None]
+    return items[0] if items else None
 
 
 @activity.defn
