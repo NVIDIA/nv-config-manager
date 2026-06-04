@@ -617,9 +617,17 @@ class NautobotClient(BaseNautobotClient):
         )
 
     async def lookup_id_by_name(self, path: str, name: str) -> str | None:
-        """Return the UUID of a Nautobot object matched by name, or None if not found."""
+        """Return the UUID of a Nautobot object matched by name, or None if not found.
+
+        Raises NautobotException if more than one object matches, to prevent silently
+        binding to the wrong ID when names are not globally unique.
+        """
         data = await self.get(path, params={"name": name})
         results = data.get("results", [])
+        if len(results) > 1:
+            raise NautobotException(
+                f"Ambiguous name '{name}' at {path}: {len(results)} objects match"
+            )
         return cast(str, results[0]["id"]) if results else None
 
     async def create_overlay(self, data: Any) -> Any:
