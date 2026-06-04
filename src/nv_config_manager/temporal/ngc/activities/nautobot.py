@@ -435,9 +435,7 @@ async def provision_vrf(
         status_id = await client.lookup_id_by_name("extras/statuses/", DEFAULT_STATUS_NAME)
         if not status_id:
             raise ApplicationError(f"Status '{DEFAULT_STATUS_NAME}' not found in Nautobot")
-        location_id = await client.lookup_id_by_name("dcim/locations/", activity_input.site)
-        if not location_id:
-            raise ApplicationError(f"Location '{activity_input.site}' not found in Nautobot")
+        location_id = activity_input.site
         tenant_id = await client.lookup_id_by_name("tenancy/tenants/", activity_input.tenant)
         if not tenant_id:
             raise ApplicationError(f"Tenant '{activity_input.tenant}' not found in Nautobot")
@@ -569,9 +567,7 @@ async def delete_overlay(activity_input: DeleteOverlayInput) -> DeleteOverlayOut
     name = f"SpXTenant{activity_input.vnid}"
     client = NautobotClient()
     async with client:
-        location_id = await client.lookup_id_by_name("dcim/locations/", activity_input.site)
-        if not location_id:
-            raise ApplicationError(f"Location '{activity_input.site}' not found in Nautobot")
+        location_id = activity_input.site
         overlay = await client.find_overlay(name, location_id)
         if not overlay:
             return DeleteOverlayOutput(deleted=False, overlay_name=name)
