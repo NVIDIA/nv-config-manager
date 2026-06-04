@@ -1,0 +1,40 @@
+# CIN HFA01-style AIR simulation config.
+# Based on NVIDIA SN5600 / Cumulus Linux leaf topology from HFA01 MODULE 1.
+#
+# After deploy, set up local access:
+#   1. Add to /etc/hosts:
+#      127.0.0.1 nvcm.air workflow.nvcm.air nautobot.nvcm.air temporal.nvcm.air config-store.nvcm.air
+#   2. Find the k8s node IP from the OOB server: kubectl get nodes -o wide
+#   3. Find the NodePorts: kubectl get svc -n envoy-gateway-system
+#   4. Tunnel: sudo ssh -p <PORT> -L 443:<NODE_IP>:<HTTPS_NODEPORT> -L 80:<NODE_IP>:<HTTP_NODEPORT> nvcm@<AIR_HOST> -N
+#   5. Open https://nvcm.air in browser (accept cert warning)
+#
+topology_path: ''
+mock_blueprint: air_superpod
+deployment_name: cin-hfa01-test
+simulation_name: nv-config-manager-cin-hfa01
+oob_server_name: oob-mgmt-server
+server_mode: use-existing
+attach_switch: ''
+attach_interface: ''
+auto_configure: true
+git_token: ''
+config_manager_repo: https://github.com/NVIDIA/nv-config-manager
+config_manager_ref: feature/associate-vrf-to-vxlan
+size: small
+cumulus_version: ''
+deploy: true
+run_mock_topology_job: true
+mock_topology_path: development/mock_topology
+template_plugin_paths:
+- development/air_sim/template_plugins/superpod-template-plugin
+extra_job_paths: []
+extra_run_after_deploy: []
+use_internal: true
+org_id: ''
+ngc_api_key: ''
+wait_timeout: 1800
+deploy_timeout: 3600
+no_aggressive_dhcp: false
+no_reset_before_dhcp: false
+oob_ssh_password: 'NVCMDemo1!'

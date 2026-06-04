@@ -10,6 +10,9 @@ tenants:
 - name: Public Demo
 namespaces:
 - SuperPOD Demo
+spx_namespaces:
+- name: SuperPOD Demo
+  location: SPO01
 locations:
 - name: Public Demo
   location_type: Provider
