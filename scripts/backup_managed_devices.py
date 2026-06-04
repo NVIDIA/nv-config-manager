@@ -173,7 +173,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--verify-tls",
         action="store_true",
-        help="Verify TLS certificates. Disabled by default for local/AIR-style setups.",
+        help="Verify TLS certificates. Disabled by default for local/DSX Air-style setups.",
     )
     return parser.parse_args(argv)
 

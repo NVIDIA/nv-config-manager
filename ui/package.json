@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "docs:screenshots": "npx playwright test --config=playwright.docs.config.ts --project=chromium",
     "build": "next build",
     "start": "next start",
     "lint": "eslint src/",

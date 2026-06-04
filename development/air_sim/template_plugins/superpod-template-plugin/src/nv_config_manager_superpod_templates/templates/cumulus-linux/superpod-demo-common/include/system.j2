@@ -1,0 +1,7 @@
+{% extends "cumulus-linux/role_common/5.16.1/include/system.j2" %}
+
+{% block config_snippet %}
+{% if superpod_spectrumx|default(false) %}
+{% include "cumulus-linux/role_common/5.16.1/include/ar_profile_snippet.j2" %}
+{% endif %}
+{% endblock config_snippet %}

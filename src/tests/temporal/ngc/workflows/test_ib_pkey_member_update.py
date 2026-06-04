@@ -28,6 +28,7 @@ from nv_config_manager.temporal.common.secrets import clear_secrets_cache
 from nv_config_manager.temporal.ngc.activities.ib_nautobot import (
     fetch_pkey_assignments,
     resolve_guids_to_interfaces,
+    resolve_ib_context,
     resolve_interface_guids,
     sync_pkey_assignments,
 )
@@ -43,7 +44,10 @@ from nv_config_manager.temporal.ngc.workflows.ib_pkey_member_update import (
     IBPKeyMemberUpdateWorkflow,
     InterfaceRef,
 )
-from tests.temporal.ib_helpers import stub_graphql_resolve_guids
+from tests.temporal.ib_helpers import (
+    stub_graphql_resolve_guids,
+    stub_graphql_resolve_ib_context,
+)
 
 UFM_BASE = "https://ufm.example.com/ufmRest"
 NB_URL = "https://nautobot.example.com"
@@ -108,6 +112,7 @@ def mock_all_configs():
 
 
 _ALL_ACTIVITIES = [
+    resolve_ib_context,
     resolve_interface_guids,
     resolve_guids_to_interfaces,
     fetch_pkey_assignments,
@@ -160,6 +165,9 @@ async def test_additions_only_auto_approved(mock_all_configs):
             activities=_ALL_ACTIVITIES,
         ):
             with aioresponses() as m:
+                # Stage 0: resolve_ib_context
+                stub_graphql_resolve_ib_context(m, pkey="0x0005", overlay_id=OVERLAY_UUID)
+
                 # Stage 1: resolve desired
                 _stub_resolve_interfaces(
                     m,
@@ -234,6 +242,9 @@ async def test_no_op_when_desired_matches_current(mock_all_configs):
             activities=_ALL_ACTIVITIES,
         ):
             with aioresponses() as m:
+                # Stage 0: resolve_ib_context
+                stub_graphql_resolve_ib_context(m, pkey="0x0005", overlay_id=OVERLAY_UUID)
+
                 # Stage 1: resolve desired
                 _stub_resolve_interfaces(m, [(IFACE_UUID_1, GUID_1)])
 
@@ -310,6 +321,7 @@ async def test_stages_queryable_after_completion(mock_all_configs):
             activities=_ALL_ACTIVITIES,
         ):
             with aioresponses() as m:
+                stub_graphql_resolve_ib_context(m, pkey="0x0005", overlay_id=OVERLAY_UUID)
                 _stub_resolve_interfaces(m, [(IFACE_UUID_1, GUID_1)])
                 m.get(_NB_ASSIGNMENTS, payload={"results": []})
                 _stub_status(m)
@@ -342,6 +354,7 @@ async def test_stages_queryable_after_completion(mock_all_configs):
             stages = await handle.query(IBPKeyMemberUpdateWorkflow.stages)
 
     stage_names = [s.name for s in stages]
+    assert "resolve_context" in stage_names
     assert "resolve_desired" in stage_names
     assert "query_current" in stage_names
     assert "validate_diff" in stage_names
@@ -398,6 +411,27 @@ def test_input_accepts_guids_only():
     assert payload.interfaces == []
 
 
+def test_input_accepts_missing_overlay_id():
+    """overlay_id is optional; the resolver fills it from Nautobot."""
+    payload = IBPKeyMemberUpdateInput(
+        host="ufm.example.com",
+        pkey="0x0005",
+        interfaces=[InterfaceRef(device="hca01", interface="mlx5_0")],
+    )
+    assert payload.overlay_id is None
+
+
+@pytest.mark.parametrize("bad_pkey", ["", "5", "0x", "0xZZZZ", "0x12345"])
+def test_input_rejects_bad_pkey_format(bad_pkey):
+    with pytest.raises(ValueError, match="pkey must be hex"):
+        IBPKeyMemberUpdateInput(
+            host="ufm.example.com",
+            pkey=bad_pkey,
+            overlay_id=OVERLAY_UUID,
+            interfaces=[InterfaceRef(device="hca01", interface="mlx5_0")],
+        )
+
+
 @pytest.mark.asyncio
 async def test_guids_only_path_resolves_via_graphql(mock_all_configs):
     """GUIDs-only input reverse-resolves to interfaces and completes the workflow."""
@@ -411,6 +445,7 @@ async def test_guids_only_path_resolves_via_graphql(mock_all_configs):
             activities=_ALL_ACTIVITIES,
         ):
             with aioresponses() as m:
+                stub_graphql_resolve_ib_context(m, pkey="0x0005", overlay_id=OVERLAY_UUID)
                 stub_graphql_resolve_guids(m, [(GUID_1, IFACE_UUID_1)])
 
                 m.get(_NB_ASSIGNMENTS, payload={"results": []})

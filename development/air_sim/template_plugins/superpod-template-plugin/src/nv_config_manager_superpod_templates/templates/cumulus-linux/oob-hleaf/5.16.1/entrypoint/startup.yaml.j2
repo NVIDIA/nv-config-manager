@@ -1,0 +1,40 @@
+{% set superpod_spectrumx = false %}
+{% set superpod_vtep = false %}
+{% set superpod_cin_leaf = false %}
+{% extends "cumulus-linux/role_common/base/startup.yaml.j2" %}
+
+{% block bridge %}
+{% include "cumulus-linux/superpod-demo-common/include/bridge.j2" %}
+{% endblock bridge %}
+
+{% block evpn %}
+{% include "cumulus-linux/superpod-demo-common/include/evpn.j2" %}
+{% endblock evpn %}
+
+{% block interfaces %}
+{% include "cumulus-linux/superpod-demo-common/include/interface.j2" %}
+{% endblock interfaces %}
+
+{% block nve %}
+{% include "cumulus-linux/superpod-demo-common/include/nve.j2" %}
+{% endblock nve %}
+
+{% block qos %}
+{% include "cumulus-linux/superpod-demo-common/include/qos.j2" %}
+{% endblock qos %}
+
+{% block router %}
+{% include "cumulus-linux/superpod-demo-common/include/router.j2" %}
+{% endblock router %}
+
+{% block service %}
+{% include "cumulus-linux/role_common/5.16.1/include/service.j2" %}
+{% endblock service %}
+
+{% block system %}
+{% include "cumulus-linux/superpod-demo-common/include/system.j2" %}
+{% endblock system %}
+
+{% block vrf %}
+{% include "cumulus-linux/superpod-demo-common/include/vrf.j2" %}
+{% endblock vrf %}

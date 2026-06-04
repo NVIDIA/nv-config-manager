@@ -38,5 +38,5 @@ InfiniBand PKeys, and InfiniBand MKeys.
 
 !!! note "Status Content Types"
     On first startup, the app automatically assigns the **Active**, **Planned**, and
-    **Deprecated** statuses to all overlay model content types. This happens via the
-    `nautobot_database_ready` signal and requires no manual steps.
+    **Deprecated** statuses to all overlay model content types. This happens via a
+    `post_migrate` signal handler and requires no manual steps.

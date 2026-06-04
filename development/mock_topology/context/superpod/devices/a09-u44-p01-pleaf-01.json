@@ -28,7 +28,7 @@
             "platform": {
                 "name": "Cumulus Linux"
             },
-            "serial": "",
+            "serial": "2C:5E:AB:12:5A:68",
             "config_context": {
                 "intended-firmware": {
                     "version": "5.13.1"
@@ -76,9 +76,6 @@
                             "record-types": ""
                         }
                     ]
-                },
-                "bgp": {
-                    "asn": 4230000017
                 }
             },
             "nvlink_domain": [],
@@ -316,9 +313,6 @@
                                             "record-types": ""
                                         }
                                     ]
-                                },
-                                "bgp": {
-                                    "asn": 4230000028
                                 }
                             }
                         },
@@ -4003,9 +3997,6 @@
                                         }
                                     ]
                                 },
-                                "bgp": {
-                                    "asn": 4265355097
-                                },
                                 "evpn": {
                                     "df-preference": 50000
                                 }
@@ -4113,9 +4104,6 @@
                                             "record-types": ""
                                         }
                                     ]
-                                },
-                                "bgp": {
-                                    "asn": 4265355098
                                 },
                                 "evpn": {
                                     "df-preference": 40000

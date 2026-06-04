@@ -1,102 +1,6 @@
 {
   "components": {
     "schemas": {
-      "AIRCreateBlueprintSimulationInput": {
-        "description": "AIR Workflow Input Definition.",
-        "properties": {
-          "blueprint_name": {
-            "title": "Blueprint Name",
-            "type": "string"
-          },
-          "user": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "User"
-          },
-          "user_domain": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "User Domain"
-          }
-        },
-        "required": [
-          "blueprint_name",
-          "user",
-          "user_domain"
-        ],
-        "title": "AIRCreateBlueprintSimulationInput",
-        "type": "object"
-      },
-      "AIRCreateSimulationInput": {
-        "description": "AIR Workflow Input Definition.",
-        "properties": {
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "topology": {
-            "additionalProperties": true,
-            "title": "Topology",
-            "type": "object"
-          },
-          "user": {
-            "title": "User",
-            "type": "string"
-          }
-        },
-        "required": [
-          "name",
-          "topology",
-          "user"
-        ],
-        "title": "AIRCreateSimulationInput",
-        "type": "object"
-      },
-      "AIRDeleteInput": {
-        "description": "AIR Delete Workflow Input Definition.",
-        "properties": {
-          "simulation_id": {
-            "title": "Simulation Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "simulation_id"
-        ],
-        "title": "AIRDeleteInput",
-        "type": "object"
-      },
-      "AIRValidateSiteInput": {
-        "description": "AIR Validate Site Workflow Input Definition.",
-        "properties": {
-          "site_name": {
-            "title": "Site Name",
-            "type": "string"
-          },
-          "user": {
-            "title": "User",
-            "type": "string"
-          }
-        },
-        "required": [
-          "site_name",
-          "user"
-        ],
-        "title": "AIRValidateSiteInput",
-        "type": "object"
-      },
       "BackupInput": {
         "description": "Backup Workflow Input Definiton.",
         "properties": {
@@ -581,7 +485,7 @@
         "type": "object"
       },
       "IBPKeyMemberAddInput": {
-        "description": "InfiniBand PKey Member Add Workflow Input.",
+        "description": "InfiniBand PKey Member Add Workflow Input.\n\n``site`` and ``overlay_id`` are optional. If omitted they are resolved\nfrom Nautobot using ``host`` and ``pkey``.",
         "properties": {
           "guids": {
             "default": [],
@@ -614,8 +518,15 @@
             "type": "string"
           },
           "overlay_id": {
-            "title": "Overlay Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overlay Id"
           },
           "pkey": {
             "title": "Pkey",
@@ -635,14 +546,13 @@
         },
         "required": [
           "host",
-          "pkey",
-          "overlay_id"
+          "pkey"
         ],
         "title": "IBPKeyMemberAddInput",
         "type": "object"
       },
       "IBPKeyMemberDeleteInput": {
-        "description": "InfiniBand PKey Member Delete Workflow Input.\n\nProvide either ``interfaces`` (resolved to GUIDs via Nautobot) or\n``guids`` directly, but not both.",
+        "description": "InfiniBand PKey Member Delete Workflow Input.\n\nProvide either ``interfaces`` (resolved to GUIDs via Nautobot) or\n``guids`` directly, but not both. ``site`` and ``overlay_id`` are\noptional; resolved from Nautobot via ``host`` and ``pkey`` if omitted.",
         "properties": {
           "guids": {
             "default": [],
@@ -665,8 +575,15 @@
             "type": "array"
           },
           "overlay_id": {
-            "title": "Overlay Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overlay Id"
           },
           "pkey": {
             "title": "Pkey",
@@ -686,14 +603,13 @@
         },
         "required": [
           "host",
-          "pkey",
-          "overlay_id"
+          "pkey"
         ],
         "title": "IBPKeyMemberDeleteInput",
         "type": "object"
       },
       "IBPKeyMemberUpdateInput": {
-        "description": "InfiniBand PKey Member Update Workflow Input.",
+        "description": "InfiniBand PKey Member Update Workflow Input.\n\n``site`` and ``overlay_id`` are optional; resolved from Nautobot via\n``host`` and ``pkey`` if omitted.",
         "properties": {
           "guids": {
             "default": [],
@@ -726,8 +642,15 @@
             "type": "string"
           },
           "overlay_id": {
-            "title": "Overlay Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overlay Id"
           },
           "pkey": {
             "title": "Pkey",
@@ -747,8 +670,7 @@
         },
         "required": [
           "host",
-          "pkey",
-          "overlay_id"
+          "pkey"
         ],
         "title": "IBPKeyMemberUpdateInput",
         "type": "object"
@@ -1302,30 +1224,6 @@
           "name"
         ],
         "title": "Secret",
-        "type": "object"
-      },
-      "Simulation": {
-        "description": "Model representing an AIR simulation.",
-        "properties": {
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "state": {
-            "title": "State",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "state"
-        ],
-        "title": "Simulation",
         "type": "object"
       },
       "SiteCableValidationInput": {
@@ -2815,32 +2713,6 @@
         ]
       }
     },
-    "/v1/parameter/simulations": {
-      "get": {
-        "description": "Return a list of NVIDIA Config Manager-managed AIR simulations.",
-        "operationId": "get_simulations_v1_parameter_simulations_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/Simulation"
-                  },
-                  "title": "Response Get Simulations V1 Parameter Simulations Get",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Get AIR Simulations",
-        "tags": [
-          "parameters"
-        ]
-      }
-    },
     "/v1/parameter/site": {
       "get": {
         "description": "Return a list of NVIDIA Config Manager-managed sites.",
@@ -3241,178 +3113,6 @@
           }
         },
         "summary": "Execute HelloWorldApproval",
-        "tags": [
-          "workflow",
-          "workflow"
-        ]
-      }
-    },
-    "/v1/workflow/ngc/air_create_blueprint_simulation": {
-      "post": {
-        "description": "Create AIR simulation from blueprint template for standardized network testing",
-        "operationId": "aircreateblueprintsimulationworkflow_endpoint_v1_workflow_ngc_air_create_blueprint_simulation_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AIRCreateBlueprintSimulationInput"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WorkflowResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Execute AIRCreateBlueprintSimulationWorkflow",
-        "tags": [
-          "workflow",
-          "workflow"
-        ]
-      }
-    },
-    "/v1/workflow/ngc/air_create_simulation": {
-      "post": {
-        "description": "Create AIR network simulation from topology for configuration testing",
-        "operationId": "aircreatesimulationworkflow_endpoint_v1_workflow_ngc_air_create_simulation_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AIRCreateSimulationInput"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WorkflowResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Execute AIRCreateSimulationWorkflow",
-        "tags": [
-          "workflow",
-          "workflow"
-        ]
-      }
-    },
-    "/v1/workflow/ngc/air_delete": {
-      "post": {
-        "description": "Delete AIR simulation and clean up associated resources",
-        "operationId": "airdeletesimulationworkflow_endpoint_v1_workflow_ngc_air_delete_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AIRDeleteInput"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WorkflowResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Execute AIRDeleteSimulationWorkflow",
-        "tags": [
-          "workflow",
-          "workflow"
-        ]
-      }
-    },
-    "/v1/workflow/ngc/air_validate_site": {
-      "post": {
-        "description": "Validate site network configuration using AIR simulation environment",
-        "operationId": "airvalidatesiteworkflow_endpoint_v1_workflow_ngc_air_validate_site_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AIRValidateSiteInput"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WorkflowResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Execute AIRValidateSiteWorkflow",
         "tags": [
           "workflow",
           "workflow"

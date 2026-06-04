@@ -213,12 +213,6 @@ generate_test_secrets() {
         password="test-dhcp-password"
     log_info "  ✓ dhcp"
     
-    # AIR
-    write_secret "${env_path}/air" \
-        ssa_client_id="test-air-client-id" \
-        ssa_client_secret="test-air-client-secret"
-    log_info "  ✓ air"
-    
     # UFM
     write_secret "${env_path}/ufm" \
         ufm_api_user="admin" \

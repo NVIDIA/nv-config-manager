@@ -584,9 +584,52 @@ class TestImageBuilds:
         commands = parallel_calls[0]
         assert len(commands) == 6
         assert all("--load" in command.cmd for command in commands)
+        assert all(command.cmd[:3] == ["docker", "buildx", "build"] for command in commands)
         assert all(
             command.env and command.env["BUILDX_BUILDER"] == "ci-builder" for command in commands
         )
+
+    def test_build_images_forwards_numpy_source_build_args_to_service_image(self, monkeypatch):
+        parallel_calls: list[list[_ParallelCommand]] = []
+
+        def fake_run_logged_parallel(commands, step, callback, *, max_parallel, **kwargs):
+            parallel_calls.append(commands)
+            for command in commands:
+                callback.on_log(f"[{command.label}] completed in 0s")
+
+        monkeypatch.setenv("NVCM_NUMPY_FROM_SOURCE", "true")
+        monkeypatch.setenv("NVCM_NUMPY_CPU_BASELINE", "min")
+        monkeypatch.setenv("NVCM_NUMPY_CPU_DISPATCH", "max")
+        monkeypatch.setenv("NVCM_NUMPY_ALLOW_NOBLAS", "true")
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer._run_logged_parallel",
+            fake_run_logged_parallel,
+        )
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer._get_image_digest_tag",
+            lambda image: "",
+        )
+
+        deployer = Deployer(
+            _make_config(),
+            DeployOptions(build_images=True),
+            RecordingCallback(),
+        )
+        deployer._build_images()
+
+        commands = parallel_calls[0]
+        service_cmd = next(
+            command.cmd for command in commands if command.label == "nv-config-manager"
+        )
+        nautobot_cmd = next(
+            command.cmd for command in commands if command.label == "nv-config-manager-nautobot"
+        )
+        assert "--build-arg" in service_cmd
+        assert "NVCM_NUMPY_FROM_SOURCE=true" in service_cmd
+        assert "NVCM_NUMPY_CPU_BASELINE=min" in service_cmd
+        assert "NVCM_NUMPY_CPU_DISPATCH=max" in service_cmd
+        assert "NVCM_NUMPY_ALLOW_NOBLAS=true" in service_cmd
+        assert "NVCM_NUMPY_FROM_SOURCE=true" not in nautobot_cmd
 
 
 class TestKindImageLoading:
@@ -628,6 +671,7 @@ class TestKindImageLoading:
             pipe_commands.append((source_cmd, sink_cmd))
             return MagicMock(returncode=0, stdout="", stderr="")
 
+        monkeypatch.delenv("CI", raising=False)
         monkeypatch.setattr("nv_config_manager_installer.deployer._run", fake_run)
         monkeypatch.setattr("nv_config_manager_installer.deployer._run_logged", fake_run_logged)
         monkeypatch.setattr(
@@ -648,7 +692,7 @@ class TestKindImageLoading:
             "--format",
             "{{.Server.Os}}/{{.Server.Arch}}",
         ] in run_commands
-        assert ["docker", "system", "prune", "-af"] in logged_commands
+        assert ["docker", "system", "prune", "-af"] not in logged_commands
         assert [
             "docker",
             "pull",
@@ -711,6 +755,7 @@ class TestKindImageLoading:
             fake_run_logged_pipe,
         )
 
+        monkeypatch.setenv("CI", "true")
         config = _make_config()
         config.images.kind_preload_images = ["docker.io/library/redis:7-alpine"]
         deployer = Deployer(
@@ -835,10 +880,12 @@ class TestHelmInstall:
         )
         assert "--debug" not in helm_cmd
 
-    def test_watch_pods_summarizes_readiness_during_helm_install(self, monkeypatch, tmp_path):
+    def test_watch_pods_without_helm_debug_uses_plain_helm(self, monkeypatch, tmp_path):
+        logged_commands: list[list[str]] = []
         watched_commands: list[tuple[list[str], str]] = []
 
         def fake_run_logged(cmd, step, callback, **kwargs):
+            logged_commands.append(cmd)
             return MagicMock(returncode=0, stdout="", stderr="")
 
         def fake_run_logged_with_pod_summary(cmd, k8s, namespace, step, callback, **kwargs):
@@ -863,8 +910,43 @@ class TestHelmInstall:
 
         deployer._helm_install()
 
+        helm_cmd = next(
+            cmd for cmd in logged_commands if cmd[:3] == ["helm", "upgrade", "--install"]
+        )
+        assert "--debug" not in helm_cmd
+        assert watched_commands == []
+
+    def test_helm_debug_summarizes_readiness_during_helm_install(self, monkeypatch, tmp_path):
+        watched_commands: list[tuple[list[str], str]] = []
+
+        def fake_run_logged(cmd, step, callback, **kwargs):
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        def fake_run_logged_with_pod_summary(cmd, k8s, namespace, step, callback, **kwargs):
+            watched_commands.append((cmd, namespace))
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        monkeypatch.setattr("nv_config_manager_installer.deployer._run_logged", fake_run_logged)
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer._run_logged_with_pod_summary",
+            fake_run_logged_with_pod_summary,
+        )
+
+        config = _make_config()
+        config.cluster.airgapped = True
+        deployer = Deployer(
+            config,
+            DeployOptions(helm_debug=True, watch_pods=True, chart_dir="deploy/helm"),
+            RecordingCallback(),
+        )
+        deployer._values_file = tmp_path / "values-generated.yaml"
+        deployer._values_file.write_text("global: {}\n")
+
+        deployer._helm_install()
+
         helm_cmd, namespace = watched_commands[0]
         assert helm_cmd[:3] == ["helm", "upgrade", "--install"]
+        assert "--debug" in helm_cmd
         assert namespace == "nv-config-manager"
 
     def test_unready_pod_summary_includes_waiting_reasons(self):

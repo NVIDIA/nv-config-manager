@@ -124,13 +124,6 @@ secrets:
         keys:
           password: "password"
       
-      # AIR service credentials
-      air:
-        path: "prod/air"
-        keys:
-          ssaClientId: "ssa_client_id"
-          ssaClientSecret: "ssa_client_secret"
-      
       # Jira service account credentials (used by DiagnosticsWorkflow)
       jira:
         path: "prod/jira"

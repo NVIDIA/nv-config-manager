@@ -1,0 +1,330 @@
+{% set spectrumx = superpod_spectrumx|default(false) %}
+{% set loopback_prefixes = location_data|site_aggregates("Loopback") %}
+{% set oob_server_p2p_prefixes = location_data|site_aggregates("OOB-Server-p2p", fail_if_missing=false) %}
+{% set oob_p2p_prefixes = location_data|site_aggregates("OOB-p2p", fail_if_missing=false) %}
+{% set tan_p2p_prefixes = location_data|site_aggregates("TAN-p2p", fail_if_missing=false) %}
+{% set cin_p2p_prefixes = location_data|site_aggregates("CIN-p2p", fail_if_missing=false) %}
+{% set oob_mgmt_prefixes = location_data|site_aggregates("OOB-Management-Aggregate", fail_if_missing=false) %}
+{% set superpod_p2p_aggregates = [] %}
+{% for prefixes in [oob_server_p2p_prefixes, oob_p2p_prefixes, tan_p2p_prefixes, cin_p2p_prefixes] %}
+{% for prefix in prefixes %}
+{% set _ = superpod_p2p_aggregates.append(prefix) %}
+{% endfor %}
+{% endfor %}
+{% set routed_swp = [] %}
+{% set host_links = [] %}
+{% for intf in device_data|interfaces(prefix="swp") %}
+{% if intf.primary_ipv4 %}
+{% set _ = routed_swp.append(intf.name) %}
+{% endif %}
+{% if intf.primary_ipv4 and intf.connected_interface and not intf.connected_interface.device.asn and intf.connected_interface.device.role != "OOB-Server" %}
+{% set _ = host_links.append(intf.primary_ipv4) %}
+{% endif %}
+{% endfor %}
+{% if routed_swp %}
+    router:
+      bfd:
+        state: enabled
+        profile:
+          default-bfd:
+            detect-multiplier: 3
+            min-rx-interval: 300
+            min-tx-interval: 300
+          default-bfd-multihop:
+            detect-multiplier: 3
+            min-rx-interval: 1000
+            min-tx-interval: 1000
+{% if spectrumx %}
+      adaptive-routing:
+        state: enabled
+        profile: profile-custom
+{% endif %}
+      bgp:
+        autonomous-system: {{ device_data|asn|asplain }}
+        graceful-restart:
+          mode: full
+{% if spectrumx %}
+          path-selection-deferral-time: 180
+          restart-time: 180
+          stale-routes-time: 180
+{% endif %}
+        router-id: {{ device_data|router_id }}
+        state: enabled
+      policy:
+        prefix-list:
+          LOOPBACK:
+            rule:
+{% for prefix in loopback_prefixes %}
+              '{{ loop.index * 10 }}':
+                action: permit
+                match:
+                  {{ prefix }}:
+                    max-prefix-len: 32
+                    min-prefix-len: 32
+{% endfor %}
+              '9999':
+                action: deny
+                match:
+                  any: {}
+            type: ipv4
+          SUPERPOD-P2P-AGGREGATES:
+            rule:
+{% for prefix in superpod_p2p_aggregates %}
+{% set prefix_len = prefix.split('/')[1]|int %}
+              '{{ loop.index * 10 }}':
+                action: permit
+                match:
+                  {{ prefix }}:
+                    max-prefix-len: {{ prefix_len }}
+                    min-prefix-len: {{ prefix_len }}
+{% endfor %}
+              '9999':
+                action: deny
+                match:
+                  any: {}
+            type: ipv4
+          OOB-P2P:
+            rule:
+{% for prefix in oob_p2p_prefixes %}
+              '{{ loop.index * 10 }}':
+                action: permit
+                match:
+                  {{ prefix }}:
+                    max-prefix-len: 31
+                    min-prefix-len: 31
+{% endfor %}
+              '9999':
+                action: deny
+                match:
+                  any: {}
+            type: ipv4
+          OOB-SERVER-P2P:
+            rule:
+{% for prefix in oob_server_p2p_prefixes %}
+              '{{ loop.index * 10 }}':
+                action: permit
+                match:
+                  {{ prefix }}:
+                    max-prefix-len: 31
+                    min-prefix-len: 31
+{% endfor %}
+              '9999':
+                action: deny
+                match:
+                  any: {}
+            type: ipv4
+          TAN-P2P:
+            rule:
+{% for prefix in tan_p2p_prefixes %}
+              '{{ loop.index * 10 }}':
+                action: permit
+                match:
+                  {{ prefix }}:
+                    max-prefix-len: 31
+                    min-prefix-len: 31
+{% endfor %}
+              '9999':
+                action: deny
+                match:
+                  any: {}
+            type: ipv4
+          CIN-P2P:
+            rule:
+{% for prefix in cin_p2p_prefixes %}
+              '{{ loop.index * 10 }}':
+                action: permit
+                match:
+                  {{ prefix }}:
+                    max-prefix-len: 31
+                    min-prefix-len: 31
+{% endfor %}
+              '9999':
+                action: deny
+                match:
+                  any: {}
+            type: ipv4
+          OOB-MGMT:
+            rule:
+{% for prefix in oob_mgmt_prefixes %}
+              '{{ loop.index * 10 }}':
+                action: permit
+                match:
+                  {{ prefix }}:
+                    max-prefix-len: 25
+                    min-prefix-len: 25
+{% endfor %}
+              '9999':
+                action: deny
+                match:
+                  any: {}
+            type: ipv4
+{% if host_links %}
+          HOST-LINKS:
+            rule:
+{% set host_ns = namespace(index=0) %}
+{% for host_link in host_links %}
+{% set host_ns.index = host_ns.index + 1 %}
+              '{{ host_ns.index * 10 }}':
+                action: permit
+                match:
+                  {{ host_link|network_address }}:
+                    max-prefix-len: 31
+                    min-prefix-len: 31
+{% endfor %}
+              '9999':
+                action: deny
+                match:
+                  any: {}
+            type: ipv4
+{% endif %}
+        route-map:
+          P2P-AGGREGATE-ROUTE:
+            rule:
+              '10':
+                action:
+                  permit: {}
+                match:
+                  ip-prefix-list: SUPERPOD-P2P-AGGREGATES
+                  type: ipv4
+              '9999':
+                action:
+                  deny: {}
+                match:
+                  type: ipv4
+          REDISTRIBUTE-CONNECTED:
+            rule:
+              '10':
+                action:
+                  permit: {}
+                match:
+                  ip-prefix-list: LOOPBACK
+                  type: ipv4
+              '20':
+                action:
+                  permit: {}
+                match:
+                  ip-prefix-list: OOB-SERVER-P2P
+                  type: ipv4
+              '30':
+                action:
+                  permit: {}
+                match:
+                  ip-prefix-list: OOB-P2P
+                  type: ipv4
+              '40':
+                action:
+                  permit: {}
+                match:
+                  ip-prefix-list: TAN-P2P
+                  type: ipv4
+              '50':
+                action:
+                  permit: {}
+                match:
+                  ip-prefix-list: CIN-P2P
+                  type: ipv4
+              '60':
+                action:
+                  permit: {}
+                match:
+                  ip-prefix-list: OOB-MGMT
+                  type: ipv4
+{% if host_links %}
+              '70':
+                action:
+                  permit: {}
+                match:
+                  ip-prefix-list: HOST-LINKS
+                  type: ipv4
+{% endif %}
+              '9999':
+                action:
+                  deny: {}
+                match:
+                  type: ipv4
+{% if host_links %}
+          CIN-HOSTS:
+            rule:
+              '10':
+                action:
+                  permit: {}
+                match:
+                  ip-prefix-list: HOST-LINKS
+                  type: ipv4
+              '9999':
+                action:
+                  deny: {}
+                match:
+                  type: ipv4
+{% endif %}
+          LEAF-TO-SPINE:
+            rule:
+              '10':
+                action:
+                  permit: {}
+                set:
+                  ext-community-bw: multipaths
+              '9999':
+                action:
+                  deny: {}
+                match:
+                  type: ipv4
+          SPINE-TO-LEAF:
+            rule:
+              '10':
+                action:
+                  permit: {}
+                set:
+                  ext-community-bw: multipaths
+              '9999':
+                action:
+                  deny: {}
+                match:
+                  type: ipv4
+          FABRIC-OUT:
+            rule:
+              '10':
+                action:
+                  permit: {}
+                set:
+                  ext-community-bw: multipaths
+              '9999':
+                action:
+                  deny: {}
+                match:
+                  type: ipv4
+          SERVICE-OUT:
+            rule:
+              '10':
+                action:
+                  permit: {}
+              '9999':
+                action:
+                  deny: {}
+                match:
+                  type: ipv4
+          WECMP-CUMULATIVE:
+            rule:
+              '10':
+                action:
+                  permit: {}
+                set:
+                  ext-community-bw: cumulative
+              '9999':
+                action:
+                  deny: {}
+                match:
+                  type: ipv4
+          WECMP-ORIGIN:
+            rule:
+              '10':
+                action:
+                  permit: {}
+                set:
+                  ext-community-bw: multipaths
+              '9999':
+                action:
+                  deny: {}
+                match:
+                  type: ipv4
+{% endif %}

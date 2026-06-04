@@ -14,17 +14,6 @@
 # limitations under the License.
 """NGC Network Activities."""
 
-from nv_config_manager.temporal.ngc.activities.air import (
-    create_simulation,
-    create_simulation_node_services,
-    delete_simulation,
-    generate_air_topology_for_location,
-    generate_minimal_topology_for_site,
-    prepare_simulation_nodes,
-    start_simulation,
-    validate_configuration_against_air_device,
-    wait_for_simulation_node,
-)
 from nv_config_manager.temporal.ngc.activities.backup import (
     load_running_configuration,
     persist_config_backup,
@@ -94,6 +83,7 @@ from nv_config_manager.temporal.ngc.activities.ib_nautobot import (
     record_pkey_assignments,
     remove_pkey_assignments,
     resolve_guids_to_interfaces,
+    resolve_ib_context,
     resolve_interface_guids,
     sync_pkey_assignments,
 )
@@ -220,15 +210,6 @@ REGISTERED_ACTIVITIES = [
     validate_rendered_password_change,
     check_recorded_config_drift,
     wait_reboot,
-    generate_air_topology_for_location,
-    create_simulation,
-    prepare_simulation_nodes,
-    start_simulation,
-    create_simulation_node_services,
-    wait_for_simulation_node,
-    delete_simulation,
-    generate_minimal_topology_for_site,
-    validate_configuration_against_air_device,
     get_mlnx_os_version,
     download_mlnx_os,
     install_mlnx_os,
@@ -261,6 +242,7 @@ REGISTERED_ACTIVITIES = [
     create_partition_in_nautobot,
     resolve_interface_guids,
     resolve_guids_to_interfaces,
+    resolve_ib_context,
     record_pkey_assignments,
     fetch_pkey_assignments,
     sync_pkey_assignments,

@@ -29,15 +29,19 @@ from typing import TYPE_CHECKING
 import click
 
 from nv_config_manager_installer import __version__
+from nv_config_manager_installer.air_sim.cli import air_sim
 
 if TYPE_CHECKING:
     from nv_config_manager_installer.schema import NVConfigManagerInstallConfig
 
 
 @click.group()
-@click.version_option(version=__version__, prog_name="nv-config-manager-installer")
+@click.version_option(version=__version__)
 def main() -> None:
     """NVIDIA Config Manager Install Wizard."""
+
+
+main.add_command(air_sim)
 
 
 @main.command()
@@ -184,7 +188,7 @@ def generate_values(
 @click.option(
     "--watch-pods/--no-watch-pods",
     default=True,
-    help="Stream pod readiness summaries while Helm waits.",
+    help="Stream pod readiness summaries while Helm waits when --helm-debug is set.",
 )
 @click.option("--recreate-secrets", is_flag=True, help="Recreate existing K8s secrets.")
 @click.option("--dry-run", is_flag=True, help="Generate values only, skip helm install.")

@@ -1,0 +1,30 @@
+---
+# InfiniBand PKey overlays + PKeys at the SuperPod test-site.
+#
+# Defines two `ib_pkey` overlays, one per UFM appliance, with non-overlapping
+# PKey values so the resolver can disambiguate by (host, pkey) alone.
+#
+# Loaded by:
+#   - context/__init__.py:_load_ib_pkeys
+#   - jobs/designs/infiniband_pkeys.yaml.j2
+
+ib_pkey_overlays:
+  - name: ib-fabric-a
+    description: InfiniBand fabric managed by a09-u23-p01-ufm-01
+    pkeys:
+      - pkey: "0x0100"
+        name: PKey-0x0100
+        membership_type: full
+      - pkey: "0x0101"
+        name: PKey-0x0101
+        membership_type: full
+
+  - name: ib-fabric-b
+    description: InfiniBand fabric managed by b09-u23-p01-ufm-02
+    pkeys:
+      - pkey: "0x0200"
+        name: PKey-0x0200
+        membership_type: full
+      - pkey: "0x0201"
+        name: PKey-0x0201
+        membership_type: full

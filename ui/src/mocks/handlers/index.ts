@@ -29,7 +29,6 @@ import { deployHandlers } from "./deployHandlers";
 import { ibValidationHandlers } from "./ibValidationHandlers";
 import { ibOsUpgradeHandlers } from "./ibOsUpgradeHandler";
 import { reprovisionHandlers } from "./reprovisionHandlers";
-import { airHandlers } from "./airHandlers";
 import { switchOsUpgradeHandlers } from "./switchOsUpgradeHandlers";
 import { cumulusHardwareValidationHandlers } from "./cumulusHardwareValidationHandler";
 import { multiDeployHandlers } from "./multiDeployHandlers";
@@ -49,7 +48,6 @@ export * from "./deployHandlers";
 export * from "./ibValidationHandlers";
 export * from "./ibOsUpgradeHandler";
 export * from "./reprovisionHandlers";
-export * from "./airHandlers";
 export * from "./switchOsUpgradeHandlers";
 export * from "./cumulusHardwareValidationHandler";
 export * from "./multiDeployHandlers";
@@ -70,7 +68,6 @@ export const handlers = [
   ...ibValidationHandlers,
   ...ibOsUpgradeHandlers,
   ...reprovisionHandlers,
-  ...airHandlers,
   ...switchOsUpgradeHandlers,
   ...cumulusHardwareValidationHandlers,
   ...multiDeployHandlers,

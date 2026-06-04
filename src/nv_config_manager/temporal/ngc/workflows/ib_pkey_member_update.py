@@ -16,7 +16,7 @@
 
 from datetime import timedelta
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from temporalio import workflow
 
 from nv_config_manager.temporal.common.decorators.workflow import run_nv_config_manager_workflow
@@ -55,22 +55,33 @@ with workflow.unsafe.imports_passed_through():
     )
     from nv_config_manager.temporal.ngc.workflows._ib_pkey_helpers import (
         DEFAULT_ACTIVITY_RETRY_POLICY,
+        call_resolve_ib_context,
         resolve_members,
         validate_interfaces_xor_guids,
+        validate_pkey_format,
     )
 
 
 class IBPKeyMemberUpdateInput(BaseModel):
-    """InfiniBand PKey Member Update Workflow Input."""
+    """InfiniBand PKey Member Update Workflow Input.
+
+    ``site`` and ``overlay_id`` are optional; resolved from Nautobot via
+    ``host`` and ``pkey`` if omitted.
+    """
 
     host: str
     site: str | None = None
     pkey: str
-    overlay_id: str
+    overlay_id: str | None = None
     interfaces: list[InterfaceRef] = []
     guids: list[str] = []
     membership_type: str = "full"
     ip_over_ib: bool = True
+
+    @field_validator("pkey")
+    @classmethod
+    def _validate_pkey(cls, v: str) -> str:
+        return validate_pkey_format(v)
 
     @model_validator(mode="after")
     def _validate(self) -> "IBPKeyMemberUpdateInput":
@@ -101,13 +112,19 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
     workflow_namespace = "ngc"
 
     def __init__(self) -> None:
-        """Initialize workflow with six stages."""
+        """Initialize workflow with seven stages."""
         StageMixin.__init__(self)
+        self.define_stage(
+            name="resolve_context",
+            description="Resolve site, overlay, and canonical pkey from Nautobot",
+            requires_approval=False,
+            depends_on=[],
+        )
         self.define_stage(
             name="resolve_desired",
             description="Resolve desired interfaces to IB GUIDs from Nautobot",
             requires_approval=False,
-            depends_on=[],
+            depends_on=["resolve_context"],
         )
         self.define_stage(
             name="query_current",
@@ -139,6 +156,69 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
             description="Verify final UFM GUID membership matches desired set",
             requires_approval=False,
             depends_on=["update_ufm"],
+        )
+
+    # ------------------------------------------------------------------
+    # Stage 0: Resolve site / overlay / canonical pkey from Nautobot
+    # ------------------------------------------------------------------
+
+    class ResolveContextStageInput(StageInput):
+        """Resolve Context Stage Input."""
+
+        host: str
+        pkey: str
+        site_override: str | None = None
+        overlay_id_override: str | None = None
+
+    class ResolveContextStageOutput(StageOutput):
+        """Resolve Context Stage Output."""
+
+        host: str
+        site: str
+        pkey: str
+        overlay_id: str
+        ufm_device_id: str
+        location_id: str
+        overlay_name: str
+
+    @stage_executor("resolve_context")
+    async def resolve_context(
+        self, stage_input: ResolveContextStageInput
+    ) -> ResolveContextStageOutput:
+        """Resolve site/overlay from Nautobot and canonicalize pkey."""
+        resolved = await call_resolve_ib_context(stage_input.host, stage_input.pkey)
+
+        effective_site = stage_input.site_override or resolved.location_name
+        effective_overlay_id = stage_input.overlay_id_override or resolved.overlay_id
+
+        if stage_input.site_override and stage_input.site_override != resolved.location_name:
+            workflow.logger.warning(
+                "Client-supplied site %r differs from resolved %r; using client value.",
+                stage_input.site_override,
+                resolved.location_name,
+            )
+        if (
+            stage_input.overlay_id_override
+            and stage_input.overlay_id_override != resolved.overlay_id
+        ):
+            workflow.logger.warning(
+                "Client-supplied overlay_id %r differs from resolved %r; using client value.",
+                stage_input.overlay_id_override,
+                resolved.overlay_id,
+            )
+
+        return self.ResolveContextStageOutput(
+            host=stage_input.host,
+            site=effective_site,
+            pkey=resolved.pkey,
+            overlay_id=effective_overlay_id,
+            ufm_device_id=resolved.ufm_device_id,
+            location_id=resolved.location_id,
+            overlay_name=resolved.overlay_name,
+            display=(
+                f"Context: host={stage_input.host} site={effective_site} "
+                f"pkey={resolved.pkey} overlay={resolved.overlay_name}"
+            ),
         )
 
     # ------------------------------------------------------------------
@@ -432,6 +512,15 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
         """Execute the IB PKey Member Update workflow."""
         self.set_input(workflow_input)
 
+        context = await self.resolve_context(
+            self.ResolveContextStageInput(
+                host=workflow_input.host,
+                pkey=workflow_input.pkey,
+                site_override=workflow_input.site,
+                overlay_id_override=workflow_input.overlay_id,
+            )
+        )
+
         resolve_output = await self.resolve_desired(
             self.ResolveDesiredStageInput(
                 interfaces=workflow_input.interfaces,
@@ -441,7 +530,7 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
 
         query_output = await self.query_current(
             self.QueryCurrentStageInput(
-                overlay_id=workflow_input.overlay_id,
+                overlay_id=context.overlay_id,
                 resolved=resolve_output.resolved,
             )
         )
@@ -460,7 +549,7 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
             self.set_stage_state("verify_ufm", StateEnum.UNREACHABLE)
             await self.archive_results()
             return IBPKeyMemberUpdateOutput(
-                pkey=workflow_input.pkey,
+                pkey=context.pkey,
                 members_added=0,
                 members_removed=0,
                 members_unchanged=len(query_output.guids_unchanged),
@@ -472,7 +561,7 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
 
         nautobot_output = await self.update_nautobot(
             self.UpdateNautobotStageInput(
-                overlay_id=workflow_input.overlay_id,
+                overlay_id=context.overlay_id,
                 desired=resolve_output.resolved,
                 membership_type=workflow_input.membership_type,
             )
@@ -480,9 +569,9 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
 
         await self.update_ufm(
             self.UpdateUFMStageInput(
-                host=workflow_input.host,
-                site=workflow_input.site,
-                pkey=workflow_input.pkey,
+                host=context.host,
+                site=context.site,
+                pkey=context.pkey,
                 guids_to_remove=query_output.guids_to_remove,
                 guids_to_add=query_output.guids_to_add,
                 membership_type=workflow_input.membership_type,
@@ -493,9 +582,9 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
         desired_guids = [r.guid for r in resolve_output.resolved]
         verify_output = await self.verify_ufm(
             self.VerifyUFMStageInput(
-                host=workflow_input.host,
-                site=workflow_input.site,
-                pkey=workflow_input.pkey,
+                host=context.host,
+                site=context.site,
+                pkey=context.pkey,
                 expected_guids=desired_guids,
             )
         )

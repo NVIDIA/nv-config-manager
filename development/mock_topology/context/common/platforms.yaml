@@ -11,3 +11,4 @@ platforms:
     # No manufacturer restriction - Mellanox is now part of NVIDIA
   - name: Arista EOS
   - name: Opengear Firmware
+  - name: Ubuntu

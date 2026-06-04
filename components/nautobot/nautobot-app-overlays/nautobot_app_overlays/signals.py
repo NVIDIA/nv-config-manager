@@ -17,92 +17,52 @@
 
 import logging
 
+from django.apps import apps
 from django.contrib.contenttypes.models import ContentType
 from nautobot.extras.models import CustomField, Status
 
+from nautobot_app_overlays.models import (
+    VXLAN,
+    InfiniBandMKey,
+    InfiniBandPKey,
+    Overlay,
+    OverlayAssignment,
+)
+
 logger = logging.getLogger(__name__)
 
-CUSTOM_FIELDS = [
-    {
-        "key": "ib_guid",
-        "type": "text",
-        "label": "InfiniBand GUID",
-        "description": "InfiniBand GUID.",
-        "content_type_app_label": "dcim",
-        "content_type_model": "interface",
-    },
-]
-
-# Status names to assign to each overlay model so they can be set on creation.
-OVERLAY_MODELS = [
-    ("nautobot_app_overlays", "overlay"),
-    ("nautobot_app_overlays", "infinibandpkey"),
-    ("nautobot_app_overlays", "infinibandmkey"),
-    ("nautobot_app_overlays", "vxlan"),
-    ("nautobot_app_overlays", "overlayassignment"),
-]
-
-STATUS_NAMES = ["Active", "Deprecated", "Planned"]
+OVERLAY_MODELS = (Overlay, InfiniBandPKey, InfiniBandMKey, VXLAN, OverlayAssignment)
+DEFAULT_STATUSES = ("Active", "Deprecated", "Planned")
 
 
-def ensure_custom_fields(sender, **kwargs):  # noqa: ARG001 - sender required by signal
-    """Create custom fields and assign status content types for the Overlays app."""
+def post_migrate_create_defaults(*args, **kwargs):  # noqa: ARG001 - signature required by signal
+    """Create the ib_guid custom field and link overlay-app CTs to default Statuses."""
     _ensure_ib_guid_custom_field()
     _ensure_overlay_status_content_types()
 
 
 def _ensure_ib_guid_custom_field():
     """Create the ib_guid custom field on dcim.Interface if absent."""
-    for field_def in CUSTOM_FIELDS:
-        ct = ContentType.objects.get(
-            app_label=field_def["content_type_app_label"],
-            model=field_def["content_type_model"],
-        )
-
-        cf, created = CustomField.objects.get_or_create(
-            key=field_def["key"],
-            defaults={
-                "type": field_def["type"],
-                "label": field_def["label"],
-                "description": field_def["description"],
-            },
-        )
-
-        if ct not in cf.content_types.all():
-            cf.content_types.add(ct)
-
-        if created:
-            logger.info("Created custom field '%s' on %s.%s", cf.key, ct.app_label, ct.model)
-        else:
-            logger.debug("Custom field '%s' already exists", cf.key)
+    interface_ct = ContentType.objects.get_for_model(apps.get_model("dcim", "Interface"))
+    cf, created = CustomField.objects.get_or_create(
+        key="ib_guid",
+        defaults={"type": "text", "label": "InfiniBand GUID", "description": "InfiniBand GUID."},
+    )
+    cf.content_types.add(interface_ct)
+    if created:
+        logger.info("Created custom field 'ib_guid' on dcim.interface")
 
 
 def _ensure_overlay_status_content_types():
-    """Assign overlay model content types to the required statuses."""
-    overlay_cts = []
-    for app_label, model in OVERLAY_MODELS:
-        try:
-            ct = ContentType.objects.get(app_label=app_label, model=model)
-            overlay_cts.append(ct)
-        except ContentType.DoesNotExist:
-            logger.debug("Content type %s.%s not found, skipping", app_label, model)
-
-    if not overlay_cts:
-        return
-
-    for status_name in STATUS_NAMES:
-        try:
-            status = Status.objects.get(name=status_name)
-        except Status.DoesNotExist:
-            logger.debug("Status '%s' not found, skipping", status_name)
-            continue
-
-        for ct in overlay_cts:
-            if ct not in status.content_types.all():
-                status.content_types.add(ct)
-                logger.info(
-                    "Assigned status '%s' to content type %s.%s",
+    """Attach overlay-app content types to the default Active/Deprecated/Planned Statuses."""
+    logger.info("Adding overlay models to Statuses")
+    for model in OVERLAY_MODELS:
+        ct = ContentType.objects.get_for_model(model)
+        for status_name in DEFAULT_STATUSES:
+            try:
+                Status.objects.get(name=status_name).content_types.add(ct)
+            except Status.DoesNotExist:
+                logger.warning(
+                    "Status '%s' does not exist; skipping overlay content_types linkage",
                     status_name,
-                    ct.app_label,
-                    ct.model,
                 )

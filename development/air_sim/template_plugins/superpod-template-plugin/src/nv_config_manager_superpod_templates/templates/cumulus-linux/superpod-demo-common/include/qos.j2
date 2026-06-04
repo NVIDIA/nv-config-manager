@@ -1,0 +1,18 @@
+{% if superpod_spectrumx|default(false) %}
+    qos:
+      pfc:
+        default-global:
+          port-buffer: 363000
+          switch-priority:
+            '3': {}
+          xoff-threshold: 75000
+          xon-threshold: 75000
+      roce:
+        state: enabled
+        mode: lossless
+      traffic-pool:
+        default-lossy:
+          memory-percent: 10
+        roce-lossless:
+          memory-percent: 90
+{% endif %}

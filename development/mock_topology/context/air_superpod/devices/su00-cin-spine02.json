@@ -1,0 +1,155 @@
+{
+  "data": {
+    "device": {
+      "id": "air-superpod-su00-cin-spine02",
+      "name": "su00-cin-spine02",
+      "tags": [
+        {
+          "name": "demo"
+        },
+        {
+          "name": "ztp"
+        }
+      ],
+      "tenant": {
+        "name": "Public Demo"
+      },
+      "role": {
+        "name": "CIN-SPINE"
+      },
+      "device_type": {
+        "manufacturer": {
+          "name": "NVIDIA"
+        },
+        "model": "SN5600"
+      },
+      "status": {
+        "name": "Provisioning"
+      },
+      "serial": "44:38:39:00:00:03",
+      "config_context": {
+        "intended-firmware": {
+          "version": "5.16.1"
+        }
+      },
+      "location": {
+        "name": "SPO01"
+      },
+      "interfaces": [
+        {
+          "name": "lo",
+          "type": "virtual",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "ip_addresses": [
+            {
+              "address": "10.255.0.16/32",
+              "mask_length": 32,
+              "ip_version": 4
+            }
+          ],
+          "role": {
+            "name": "Loopback"
+          }
+        },
+        {
+          "name": "eth0",
+          "type": "1000base-t",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "ip_addresses": [
+            {
+              "address": "10.100.1.149/25",
+              "mask_length": 25,
+              "ip_version": 4
+            }
+          ],
+          "mac_address": "44:38:39:00:00:03",
+          "connected_interface": {
+            "name": "swp6",
+            "device": {
+              "name": "su01-oob-mleaf02",
+              "role": {
+                "name": "OOB-MLEAF"
+              }
+            }
+          },
+          "description": "su01-oob-mleaf02:swp6",
+          "mtu": 9216,
+          "role": {
+            "name": "Management"
+          }
+        },
+        {
+          "name": "swp1",
+          "type": "400gbase-x-qsfpdd",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "ip_addresses": [
+            {
+              "address": "10.103.0.3/31",
+              "mask_length": 31,
+              "ip_version": 4
+            }
+          ],
+          "description": "su01-cin-leaf-r01:swp50",
+          "mtu": 9216,
+          "role": {
+            "name": "Downlink"
+          },
+          "connected_interface": {
+            "name": "swp50",
+            "device": {
+              "name": "su01-cin-leaf-r01",
+              "role": {
+                "name": "CIN-LEAF"
+              }
+            }
+          }
+        },
+        {
+          "name": "swp2",
+          "type": "400gbase-x-qsfpdd",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "ip_addresses": [
+            {
+              "address": "10.103.0.7/31",
+              "mask_length": 31,
+              "ip_version": 4
+            }
+          ],
+          "description": "su01-cin-leaf-r02:swp50",
+          "mtu": 9216,
+          "role": {
+            "name": "Downlink"
+          },
+          "connected_interface": {
+            "name": "swp50",
+            "device": {
+              "name": "su01-cin-leaf-r02",
+              "role": {
+                "name": "CIN-LEAF"
+              }
+            }
+          }
+        }
+      ],
+      "platform": {
+        "name": "Cumulus Linux"
+      }
+    }
+  }
+}
