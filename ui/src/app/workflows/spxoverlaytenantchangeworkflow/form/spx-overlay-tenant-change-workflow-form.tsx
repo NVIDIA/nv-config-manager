@@ -124,7 +124,7 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
       namespace_tag: data.namespace,
     };
     await startWorkflow(
-      "/v1/workflow/ngc/spx-overlay-tenant-change",
+      "/v1/workflow/ngc/spx_overlay_tenant_change",
       submissionData
     ).catch((error) => {
       toast({

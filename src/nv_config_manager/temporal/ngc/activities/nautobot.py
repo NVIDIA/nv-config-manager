@@ -45,7 +45,10 @@ DEFAULT_STATUS_NAME = "Active"
 
 def _vni_from_rd(route_distinguisher: str) -> int:
     """Derive the VNI from a route distinguisher of the form ``*:<vni>``."""
-    return int(route_distinguisher.split(":")[1])
+    parts = route_distinguisher.split(":")
+    if len(parts) != 2 or not parts[1].isdigit():
+        raise ValueError(f"Invalid route distinguisher {route_distinguisher!r}, expected '*:<vni>'")
+    return int(parts[1])
 
 
 class GetNetworkDeviceInput(BaseModel):
@@ -482,9 +485,15 @@ async def provision_vrf(
         except Exception as error:
             logger.exception("Failed to provision VPC", exc_info=error)
             for vxlan in vxlans_created:
-                await client.delete_vxlan(vxlan["id"])
+                try:
+                    await client.delete_vxlan(vxlan["id"])
+                except Exception:
+                    logger.exception("Failed to delete vxlan %s during rollback", vxlan["id"])
             for vrf in vrfs_created:
-                await client.delete_vrf(vrf["id"])
+                try:
+                    await client.delete_vrf(vrf["id"])
+                except Exception:
+                    logger.exception("Failed to delete vrf %s during rollback", vrf["id"])
             raise ApplicationError("Failed to provision VPC") from error
 
 

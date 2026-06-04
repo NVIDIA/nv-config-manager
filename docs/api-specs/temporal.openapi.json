@@ -1254,7 +1254,7 @@
         "type": "object"
       },
       "SpXOverlayAssignmentInput": {
-        "description": "VPC Assignment Workflow Input Definition.",
+        "description": "SpX Overlay Assignment Workflow Input Definition.",
         "properties": {
           "device": {
             "anyOf": [
@@ -1298,7 +1298,7 @@
         "type": "object"
       },
       "SpXOverlayCreationInput": {
-        "description": "VPC Creation Workflow Input Definition.",
+        "description": "SpX Overlay Creation Workflow Input Definition.",
         "properties": {
           "namespace_tag": {
             "default": "spectrumx",
@@ -1337,7 +1337,7 @@
         "type": "object"
       },
       "SpXOverlayDeletionInput": {
-        "description": "VPC Deletion Workflow Input Definition.",
+        "description": "SpX Overlay Deletion Workflow Input Definition.",
         "properties": {
           "namespace_tag": {
             "default": "spectrumx",
@@ -1361,7 +1361,7 @@
         "type": "object"
       },
       "SpXOverlayTenantChangeInput": {
-        "description": "VPC Tenant Change Workflow Input Definition.",
+        "description": "SpX Overlay Tenant Change Workflow Input Definition.",
         "properties": {
           "device_id": {
             "title": "Device Id",
@@ -4192,49 +4192,6 @@
         ]
       }
     },
-    "/v1/workflow/ngc/spx-overlay-tenant-change": {
-      "post": {
-        "description": "Assign a SpX Overlay to a device and deploy tenant configuration",
-        "operationId": "spxoverlaytenantchangeworkflow_endpoint_v1_workflow_ngc_spx_overlay_tenant_change_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SpXOverlayTenantChangeInput"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WorkflowResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Execute SpXOverlayTenantChangeWorkflow",
-        "tags": [
-          "workflow",
-          "workflow"
-        ]
-      }
-    },
     "/v1/workflow/ngc/spx_overlay_assignment": {
       "post": {
         "description": "Assign a SpX Overlay/VRF to a device and its specified ports",
@@ -4358,6 +4315,49 @@
           }
         },
         "summary": "Execute SpXOverlayDeletionWorkflow",
+        "tags": [
+          "workflow",
+          "workflow"
+        ]
+      }
+    },
+    "/v1/workflow/ngc/spx_overlay_tenant_change": {
+      "post": {
+        "description": "Assign a SpX Overlay to a device and deploy tenant configuration",
+        "operationId": "spxoverlaytenantchangeworkflow_endpoint_v1_workflow_ngc_spx_overlay_tenant_change_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SpXOverlayTenantChangeInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Execute SpXOverlayTenantChangeWorkflow",
         "tags": [
           "workflow",
           "workflow"

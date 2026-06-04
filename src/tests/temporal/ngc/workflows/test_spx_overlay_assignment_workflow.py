@@ -26,6 +26,7 @@ from temporalio import activity
 from temporalio.worker import Worker
 
 from nv_config_manager.temporal.common.mixins.device import InterfaceData, NetworkDeviceData
+from nv_config_manager.temporal.ngc.activities.nats import publish_nats
 from nv_config_manager.temporal.ngc.activities.nautobot import (
     AssignVrfToDeviceInput,
     AssignVrfToInterfaceInput,
@@ -173,7 +174,6 @@ async def mock_assign_vrf_to_interface(
 @patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
 async def test_spx_overlay_assignment_workflow_vrf_not_assigned(_mock_time, _mock_nats_client, env):
     """Test VPC assignment when VRF is not already assigned to device."""
-    from nv_config_manager.temporal.ngc.activities.nats import publish_nats
 
     _mock_state["vrf_exists"] = True
     _mock_state["interfaces_with_vrf"] = []
@@ -224,7 +224,6 @@ async def test_spx_overlay_assignment_workflow_vrf_already_assigned(
     _mock_time, _mock_nats_client, env
 ):
     """Test VPC assignment when VRF is already assigned to device."""
-    from nv_config_manager.temporal.ngc.activities.nats import publish_nats
 
     _mock_state["vrf_exists"] = True
     _mock_state["interfaces_with_vrf"] = ["swp1"]
@@ -273,7 +272,6 @@ async def test_spx_overlay_assignment_workflow_vrf_already_assigned(
 @patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
 async def test_spx_overlay_assignment_workflow_vrf_not_found(_mock_time, _mock_nats_client, env):
     """Test VPC assignment when VRF doesn't exist in Nautobot."""
-    from nv_config_manager.temporal.ngc.activities.nats import publish_nats
 
     _mock_state["vrf_exists"] = False
     _mock_state["interfaces_with_vrf"] = []
@@ -331,7 +329,6 @@ async def test_spx_overlay_assignment_workflow_interface_not_found(
     _mock_time, _mock_nats_client, env
 ):
     """Test VPC assignment when one of the interfaces doesn't exist on device."""
-    from nv_config_manager.temporal.ngc.activities.nats import publish_nats
 
     _mock_state["vrf_exists"] = True
     _mock_state["interfaces_with_vrf"] = []

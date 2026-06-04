@@ -110,7 +110,6 @@ export type SpXOverlayCreationWorkflowInput = {
   site: string;
   vpc_id: string;
   tenant: string;
-  description: string;
   namespace_tag: string;
   rd_min: number;
   rd_max: number;

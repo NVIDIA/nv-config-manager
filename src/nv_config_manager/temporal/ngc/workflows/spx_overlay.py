@@ -52,6 +52,7 @@ with workflow.unsafe.imports_passed_through():
         QueryVRFByVPCInput,
         Vrf,
         VrfDeletionActivityInput,
+        _vni_from_rd,
         assign_vrf_to_device,
         assign_vrf_to_interface,
         delete_overlay,
@@ -88,7 +89,7 @@ DEFAULT_ACTIVITY_RETRY_POLICY = RetryPolicy(
 
 
 class SpXOverlayCreationInput(BaseModel):
-    """VPC Creation Workflow Input Definition."""
+    """SpX Overlay Creation Workflow Input Definition."""
 
     site: str
     vpc_id: str
@@ -99,7 +100,7 @@ class SpXOverlayCreationInput(BaseModel):
 
 
 class SpXOverlayCreationWorkflowOutput(BaseModel):
-    """VPC Workflow Output Definition."""
+    """SpX Overlay Creation Workflow Output Definition."""
 
     created_vrfs: list[Vrf]
     existing_vrfs: list[Vrf]
@@ -236,7 +237,7 @@ class SpXOverlayCreationWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
 
 
 class SpXOverlayDeletionInput(BaseModel):
-    """VPC Deletion Workflow Input Definition."""
+    """SpX Overlay Deletion Workflow Input Definition."""
 
     site: str
     vpc_id: str
@@ -244,7 +245,7 @@ class SpXOverlayDeletionInput(BaseModel):
 
 
 class SpXOverlayDeletionWorkflowOutput(BaseModel):
-    """VPC Workflow Output Definition."""
+    """SpX Overlay Deletion Workflow Output Definition."""
 
     deleted_vrfs: list[Vrf]
     in_use_vrfs: list[Vrf]
@@ -327,7 +328,7 @@ class SpXOverlayDeletionWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
                 delete_vrf,
                 VrfDeletionActivityInput(
                     vrf_id=vrf.id,
-                    vnid=int(vrf.rd.split(":")[1]),
+                    vnid=_vni_from_rd(vrf.rd),
                     namespace=vrf.namespace,
                 ),
                 start_to_close_timeout=timedelta(minutes=1),
@@ -340,7 +341,7 @@ class SpXOverlayDeletionWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
         overlay_result = await workflow.execute_activity(
             delete_overlay,
             DeleteOverlayInput(
-                vnid=int(existing_vrfs[0].rd.split(":")[1]),
+                vnid=_vni_from_rd(existing_vrfs[0].rd),
                 site=stage_input.site,
             ),
             start_to_close_timeout=timedelta(minutes=1),
@@ -383,7 +384,7 @@ class SpXOverlayDeletionWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
 
 
 class SpXOverlayAssignmentInput(BaseModel):
-    """VPC Assignment Workflow Input Definition."""
+    """SpX Overlay Assignment Workflow Input Definition."""
 
     vpc_id: str
     device: str | NetworkDeviceData
@@ -393,7 +394,7 @@ class SpXOverlayAssignmentInput(BaseModel):
 
 
 class SpXOverlayAssignmentWorkflowOutput(BaseModel):
-    """VPC Assignment Workflow Output Definition."""
+    """SpX Overlay Assignment Workflow Output Definition."""
 
     assigned_ports: list[str]
     vrf_assigned: bool
@@ -640,7 +641,7 @@ class SpXOverlayAssignmentWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixi
 
 
 class SpXOverlayTenantChangeInput(BaseModel):
-    """VPC Tenant Change Workflow Input Definition."""
+    """SpX Overlay Tenant Change Workflow Input Definition."""
 
     vpc_id: str
     device_id: str
@@ -650,7 +651,7 @@ class SpXOverlayTenantChangeInput(BaseModel):
 
 
 class SpXOverlayTenantChangeWorkflowOutput(BaseModel):
-    """VPC Tenant Change Workflow Output Definition."""
+    """SpX Overlay Tenant Change Workflow Output Definition."""
 
     assigned_ports: list[str]
     vrf_assigned: bool
@@ -665,7 +666,7 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
     workflow_name = "SpX Overlay Tenant Change"
     workflow_description = "Assign a SpX Overlay to a device and deploy tenant configuration"
     workflow_input_class = SpXOverlayTenantChangeInput
-    workflow_api_endpoint = "/ngc/spx-overlay-tenant-change"
+    workflow_api_endpoint = "/ngc/spx_overlay_tenant_change"
     workflow_namespace = "ngc"
 
     def __init__(self) -> None:

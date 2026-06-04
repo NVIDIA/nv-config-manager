@@ -38,7 +38,7 @@ export const spxOverlayHandlers = [
         );
       }
 
-      if (!body.vpc_id || !body.site) {
+      if (!body.vpc_id || !body.site || !body.tenant) {
         return HttpResponse.json(
           { error: "Missing required fields" },
           { status: 400 }

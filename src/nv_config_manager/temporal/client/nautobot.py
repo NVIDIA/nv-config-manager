@@ -635,12 +635,20 @@ class NautobotClient(BaseNautobotClient):
         return await self.post(f"{OVERLAYS_PLUGIN_BASE}/overlays/", data=data)
 
     async def find_overlay(self, name: str, location_id: str) -> dict[str, Any] | None:
-        """Return an existing Overlay matching name + location, or None."""
+        """Return an existing Overlay matching name + location, or None.
+
+        Raises NautobotException if more than one overlay matches, to prevent
+        silently binding to the wrong overlay.
+        """
         data = await self.get(
             f"{OVERLAYS_PLUGIN_BASE}/overlays/",
             params={"name": name, "location": location_id},
         )
         results = data.get("results", [])
+        if len(results) > 1:
+            raise NautobotException(
+                f"Ambiguous overlay: {len(results)} overlays match name={name!r} location={location_id!r}"
+            )
         return cast(dict[str, Any], results[0]) if results else None
 
     async def get_overlay(self, overlay_id: str) -> dict[str, Any]:

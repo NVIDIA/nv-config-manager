@@ -25,6 +25,7 @@ import pytest
 from temporalio import activity
 from temporalio.worker import Worker
 
+from nv_config_manager.temporal.ngc.activities.nats import publish_nats
 from nv_config_manager.temporal.ngc.activities.nautobot import (
     DeleteOverlayInput,
     DeleteOverlayOutput,
@@ -135,7 +136,6 @@ async def test_spx_overlay_creation_workflow(
     mock_nats_client,
     env,
 ):
-    from nv_config_manager.temporal.ngc.activities.nats import publish_nats
 
     # Reset mock state
     _mock_state["failure_scenario"] = True
@@ -377,7 +377,6 @@ async def test_spx_overlay_deletion_workflow(
     mock_nats_client,
     env,
 ):
-    from nv_config_manager.temporal.ngc.activities.nats import publish_nats
 
     task_queue_name = str(uuid.uuid4())
     async with Worker(

@@ -35,7 +35,6 @@ const SpXOverlayCreationFormSchema = z
     site: z.string().trim().min(1, { message: "Site is required" }),
     vpc: z.string().trim().min(1, { message: "VPC is required" }),
     tenant: z.string().trim().min(1, { message: "Tenant is required" }),
-    description: z.string().trim().min(1, { message: "Description is required" }),
     namespace: z.string().trim().min(1, {message: "Namespace is required"}),
     rd_min: z.number().min(0).max(65535),
     rd_max: z.number().min(0).max(65535),
@@ -52,7 +51,6 @@ export const SpXOverlayCreationWorkflowForm = () => {
   const querySite = (searchParams && searchParams.get("site")) || "";
   const queryVPC = (searchParams && searchParams.get("vpc")) || "";
   const queryTenant = (searchParams && searchParams.get("tenant")) || "";
-  const queryDescription = (searchParams && searchParams.get("description")) || "";
   const queryNamespace =
     (searchParams && searchParams.get("namespace")) || "spectrumx";
   const queryRDMin =
@@ -70,7 +68,6 @@ export const SpXOverlayCreationWorkflowForm = () => {
       site: querySite,
       vpc: queryVPC,
       tenant: queryTenant,
-      description: queryDescription,
       namespace: queryNamespace,
       rd_min: queryRDMin,
       rd_max: queryRDMax,
@@ -97,7 +94,6 @@ export const SpXOverlayCreationWorkflowForm = () => {
       site: data.site,
       vpc_id: data.vpc,
       tenant: data.tenant,
-      description: data.description,
       namespace_tag: data.namespace,
       rd_min: data.rd_min,
       rd_max: data.rd_max,
@@ -145,13 +141,6 @@ export const SpXOverlayCreationWorkflowForm = () => {
                 control={form.control}
                 name="tenant"
                 label="Tenant"
-                isSubmitting={isSubmitting}
-              />
-              <WorkflowFormField
-                type="input"
-                control={form.control}
-                name="description"
-                label="Description"
                 isSubmitting={isSubmitting}
               />
               <WorkflowFormField
