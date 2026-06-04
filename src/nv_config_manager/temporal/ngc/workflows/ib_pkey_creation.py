@@ -304,7 +304,7 @@ class IBPKeyCreationWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin):
     ) -> IBPKeyCreationWorkflowOutput:
         """Execute the IB PKey Creation workflow."""
         self.set_input(workflow_input)
-        
+
         context_output = await self.resolve_context(
             self.ResolveContextStageInput(
                 host=workflow_input.host,

@@ -975,7 +975,7 @@ def _select_pkey_match(
 async def resolve_ib_site_for_host(
     input: ResolveIBSiteForHostInput,
 ) -> ResolveIBSiteForHostOutput:
-    """Resolve the Site for a UFM host. Allows site specific UFM credentials. """
+    """Resolve the Site for a UFM host. Allows site specific UFM credentials."""
 
     client = NautobotClient()
     async with client:
