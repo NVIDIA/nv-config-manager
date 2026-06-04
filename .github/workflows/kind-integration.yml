@@ -8,6 +8,11 @@ on:
         required: true
         default: src/tests/integration/
         type: string
+      observability:
+        description: Deploy the observability stack (Prometheus + Alloy) and run observability tests
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -106,9 +111,41 @@ jobs:
         timeout-minutes: 65
         env:
           BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
+          OBSERVABILITY: ${{ inputs.observability }}
         run: |
           sudo sysctl -w fs.inotify.max_user_instances=512
           sudo sysctl -w fs.inotify.max_user_watches=524288
+
+          # Opt-in observability: flip the two monitoring switches on the base
+          # config in place (the runner checkout is throwaway, so we keep a
+          # single source of truth instead of a near-duplicate config file).
+          # This installs the prometheus-operator CRDs + standalone
+          # Prometheus/Alloy and enables monitoring.probes, so the Probe CRs
+          # render with the SLO customLabels from values-observability.yaml.
+          # Defaults off so normal kind runs stay fast.
+          #
+          # We also append the observability stack's runtime images to
+          # kind_preload_images. The installer preloads these on the host (which
+          # goes through the runner proxy cache) and `kind load`s them, so
+          # helm's --wait doesn't stall on anonymous in-cluster pulls from
+          # quay.io / docker.io — those uncached pulls are what blow the deploy
+          # timeout. Keep the tags in sync with the prometheus (Chart.yaml) and
+          # alloy subchart versions; derive current refs with:
+          #   helm template t deploy/helm -f deploy/helm/values-ci.yaml \
+          #     -f deploy/helm/values-observability.yaml | grep -E 'image:'
+          if [ "${OBSERVABILITY}" = "true" ]; then
+            echo "Observability enabled for this run"
+            yq -i '
+              .infrastructure.monitoring.enabled = true |
+              .infrastructure.monitoring.observability_enabled = true |
+              .images.kind_preload_images += [
+                "quay.io/prometheus/prometheus:v3.11.3",
+                "quay.io/prometheus-operator/prometheus-config-reloader:v0.90.1",
+                "docker.io/grafana/alloy:v1.16.0"
+              ]
+            ' deploy/configs/ci-integration-test.yaml
+          fi
+
           make kind-up \
             KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME}" \
             INSTALL_CONFIG=deploy/configs/ci-integration-test.yaml \
@@ -116,6 +153,11 @@ jobs:
           kubectl get pods -n "${NV_CONFIG_MANAGER_NAMESPACE}" -o wide
       - name: Run integration tests
         timeout-minutes: 50
+        env:
+          # Gates observability-only tests (e.g. test_probe_labels.py), which
+          # skip themselves unless this is "true". Mirrors the JIRA_ISSUE_KEY
+          # gate on the diagnostics tests.
+          OBSERVABILITY: ${{ inputs.observability }}
         run: |
           for attempt in 1 2 3; do
             echo "Attempt ${attempt} of 3"
