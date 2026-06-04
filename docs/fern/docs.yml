@@ -126,17 +126,17 @@ navigation:
       - page: Site Password Rotation
         path: ../user-guides/site-password-rotation/index.mdx
 
-    - section: VPC Lifecycle
+    - section: SpX Overlay Lifecycle
       collapsible: true
       collapsed-by-default: true
       contents:
-      - page: VPC Creation
+      - page: SpX Overlay Creation
         path: ../user-guides/vpc-creation/index.mdx
-      - page: VPC Deletion
+      - page: SpX Overlay Deletion
         path: ../user-guides/vpc-deletion/index.mdx
-      - page: VPC Assignment
+      - page: SpX Overlay Assignment
         path: ../user-guides/vpc-assignment/index.mdx
-      - page: VPC Tenant Change
+      - page: SpX Overlay Tenant Change
         path: ../user-guides/vpc-tenant-change/index.mdx
 
   - section: Deployment

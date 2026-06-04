@@ -1,10 +1,10 @@
 ---
-title: VPC Tenant Change
-sidebar-title: VPC Tenant Change
+title: SpX Overlay Tenant Change
+sidebar-title: SpX Overlay Tenant Change
 position: 40
 ---
 
-The VPC Tenant Change workflow drives an end-to-end VPC change against a single device: assign the VPC to the device and ports, re-render the tenant configuration, wait for the new render to land in the Config Store, and deploy the rendered configuration to the device. It is the workflow most operators interact with when adding, moving, or expanding a tenant's footprint on a switch — the underlying [VPC Assignment](../vpc-assignment/index.mdx), [Render Service](../../render/index.mdx), and [Tenant Deploy](../tenant-deploy/index.mdx) workflows are exposed individually for advanced cases but are normally orchestrated by this workflow.
+The SpX Overlay Tenant Change workflow drives an end-to-end VPC change against a single device: assign the VPC to the device and ports, re-render the tenant configuration, wait for the new render to land in the Config Store, and deploy the rendered configuration to the device. It is the workflow most operators interact with when adding, moving, or expanding a tenant's footprint on a switch — the underlying [SpX Overlay Assignment](../vpc-assignment/index.mdx), [Render Service](../../render/index.mdx), and [Tenant Deploy](../tenant-deploy/index.mdx) workflows are exposed individually for advanced cases but are normally orchestrated by this workflow.
 
 <Warning title="Experimental">
 This workflow is experimental and not intended for general use. Use it only in test or pilot environments.
@@ -14,16 +14,16 @@ This workflow is experimental and not intended for general use. Use it only in t
 
 Before running, confirm:
 
-- **VPC exists at the site** ([VPC Creation](../vpc-creation/index.mdx) has been run).
+- **VPC exists at the site** ([SpX Overlay Creation](../vpc-creation/index.mdx) has been run, with the Overlay and L3 VXLANs created in Nautobot).
 - **Device exists in Nautobot** with a primary IPv4, a supported platform (Cumulus Linux or NVOS), and current credentials in the secrets store.
-- **Port names match Nautobot interface names** on the target device. Already-assigned ports are silently skipped — see [VPC Assignment](../vpc-assignment/index.mdx).
+- **Port names match Nautobot interface names** on the target device. Already-assigned ports are silently skipped.
 - **Render service is healthy.** The workflow waits up to a bounded window for the render service to produce the new tenant config; outages on render will stall the workflow.
-- **Tenant Deploy validation will accept the diff.** [Tenant Deploy](../tenant-deploy/index.mdx) only applies diffs that match the tenant-allowed `nv set` / `nv unset` patterns. Changes that escape that scope (touching the default VRF, for example) are refused.
+- **Tenant Deploy validation will accept the diff.** [Tenant Deploy](../tenant-deploy/index.mdx) only applies diffs that match the tenant-allowed `nv set` / `nv unset` patterns.
 
 ## Running the workflow
 
 1. Navigate to the Config Manager URL for your environment.
-1. Click the **+** in the top right and select **VpcTenantChangeWorkflow**.
+1. Click the **+** in the top right and select **SpXOverlayTenantChangeWorkflow**.
 1. Fill in the form using the field reference below and submit.
 
 | Field | Description | Required |
@@ -34,7 +34,7 @@ Before running, confirm:
 | **Port Names (comma-separated)** | Interface names on the device to bind to the VPC's VRF (comma-separated list). Already-assigned ports are skipped. | Yes |
 | **Namespace** | Tag used to identify the VPC namespace in Nautobot. | No |
 
-After submission, a status page shows the five stages. The workflow runs without human approval; the validation gate is performed inside [Tenant Deploy](../tenant-deploy/index.mdx).
+After submission, a status page shows the five stages. The workflow runs without human approval.
 
 ## Execution stages
 
@@ -42,61 +42,58 @@ The workflow runs five stages in order. None require manual approval.
 
 1. **`get_device` — Load the target device record from Nautobot.**
 
-   Resolves the device by UUID and attaches search attributes for observability.
+    Resolves the device by UUID and attaches search attributes for observability.
 
-1. **`assign_vpc` — Run VPC Assignment as a child workflow.**
+1. **`assign_spx_overlay` — Run SpX Overlay Assignment as a child workflow.**
 
-   Invokes [VPC Assignment](../vpc-assignment/index.mdx) with the same inputs to bind the VRF to the device and its ports. If the assignment is a complete no-op (`vrf_assigned=false` and no `assigned_ports` changed), the workflow short-circuits — `render_tenant_config`, `wait_for_render`, and `deploy` are marked UNREACHABLE and the workflow exits successfully with `device_deployed=null`.
+    Invokes [SpX Overlay Assignment](../vpc-assignment/index.mdx) with the same inputs to bind the VRF to the device and its ports. The stage display shows the Overlay name, L3 VXLAN name, VRF, and assigned ports. If the assignment is a complete no-op (`vrf_assigned=false` and no `assigned_ports` changed), the workflow short-circuits — `render_tenant_config`, `wait_for_render`, and `deploy` are marked UNREACHABLE and the workflow exits successfully with `device_deployed=null`.
 
 1. **`render_tenant_config` — Trigger a tenant-scoped re-render for the device.**
 
-   Submits a render request to the render service to generate the updated tenant configuration that reflects the new VRF assignment. The stage captures the resulting `tenant_config_file` commit ID for tracking.
+    Submits a render request to the render service to generate the updated tenant configuration that reflects the new VRF assignment. The stage captures the resulting `tenant_config_file` commit ID for tracking.
 
 1. **`wait_for_render` — Wait for the render to land in the Config Store.**
 
-   Polls the Config Store for the rendered configuration tagged with the commit ID from the prior stage. Times out if the render service does not produce the file within the configured window.
+    Polls the Config Store for the rendered configuration tagged with the commit ID from the prior stage. Times out if the render service does not produce the file within the configured window.
 
 1. **`deploy` — Apply the rendered configuration via Tenant Deploy.**
 
-   Invokes [Tenant Deploy](../tenant-deploy/index.mdx) as a child workflow against the device. Tenant Deploy performs its own diff validation (allowed `nv set` patterns only) before applying; a validation failure halts the parent here.
+    Invokes [Tenant Deploy](../tenant-deploy/index.mdx) as a child workflow against the device. Tenant Deploy performs its own diff validation (allowed `nv set` patterns only) before applying.
 
 ## Verifying outcomes
 
 After the workflow reports success, confirm:
 
-- **All five stages green** on the Config Manager run page (or `assign_vpc` green and downstream UNREACHABLE on the no-op path).
+- **All five stages green** on the Config Manager run page (or `assign_spx_overlay` green and downstream UNREACHABLE on the no-op path).
+- **`assign_spx_overlay` stage display** shows the Overlay name, L3 VXLAN name, VRF name, and assigned ports.
 - **`vrf_assigned`, `assigned_ports`, and `vrf`** in the result reflect the change you intended.
 - **`device_deployed`** is the device name when a deploy actually ran; `null` when the no-op short-circuit fired.
 - **Nautobot shows the VRF on the device and ports.**
-- **The device's running configuration** reflects the change. The post-deploy backup captured by Tenant Deploy is in the Config Store, tagged with the commit ID this workflow captured.
+- **Nautobot overlays plugin** shows the Overlay with the device assignment recorded.
 
 ## Common issues
 
 **Workflow exits with downstream UNREACHABLE.**
 
-`assign_vpc` reported no changes — the VRF was already bound to the device and to all named ports. Successful no-op; the device is already in the desired state.
+`assign_spx_overlay` reported no changes — the VRF was already bound to the device and to all named ports. Successful no-op; the device is already in the desired state.
 
 **`render_tenant_config` or `wait_for_render` times out.**
 
 The render service either rejected the render or is unavailable. Open the [Render Service](../../render/index.mdx) status page; once render is healthy, re-run this workflow.
 
-**`deploy` (Tenant Deploy child) fails with `DiffValidationError` / `StageRuntimeFailure`.**
+**`deploy` (Tenant Deploy child) fails with `DiffValidationError`.**
 
-The tenant-scoped diff produced by the re-render exceeds the tenant-allowed `nv set` / `nv unset` set — for example, a template change snuck in that touches the default VRF. See [Tenant Deploy → Diff validation rules](../tenant-deploy/index.mdx#diff-validation-rules). Either restructure the template change so only the tenant scope is affected, or apply the change via [Configuration Deploy](../configuration-deploy/index.mdx) with a human approval.
+The tenant-scoped diff produced by the re-render exceeds the tenant-allowed `nv set` / `nv unset` set. See [Tenant Deploy → Diff validation rules](../tenant-deploy/index.mdx#diff-validation-rules). Either restructure the template change so only the tenant scope is affected, or apply the change via [Configuration Deploy](../configuration-deploy/index.mdx) with a human approval.
 
-**`get_device_and_vrf` (inside the assign_vpc child) raises `ApplicationError`.**
+**`get_device_and_vrf` (inside the assign_spx_overlay child) raises `ApplicationError`.**
 
-Either zero or multiple VRFs were returned for the `vpc_id` + `namespace_tag` combination. Run [VPC Creation](../vpc-creation/index.mdx) if the VPC does not exist; reconcile duplicates in Nautobot if it does.
-
-**Apply succeeded but the post-deploy backup is missing.**
-
-The deploy succeeded; only the backup child failed. Run [Configuration Backup](../configuration-backup/index.mdx) against the device once the underlying backup issue is resolved.
+Either zero or multiple VRFs were returned for the `vpc_id` + `namespace_tag` combination. Run [SpX Overlay Creation](../vpc-creation/index.mdx) if the VPC does not exist; reconcile duplicates in Nautobot if it does.
 
 ## Related guides
 
-- [VPC Creation](../vpc-creation/index.mdx) — provision the VRF metadata before assigning it.
-- [VPC Assignment](../vpc-assignment/index.mdx) — the assignment child workflow this orchestration invokes.
-- [VPC Deletion](../vpc-deletion/index.mdx) — counterpart deletion lifecycle.
+- [SpX Overlay Creation](../vpc-creation/index.mdx) — provision the VRF, VXLAN, and Overlay metadata before assigning it.
+- [SpX Overlay Assignment](../vpc-assignment/index.mdx) — the assignment child workflow this orchestration invokes.
+- [SpX Overlay Deletion](../vpc-deletion/index.mdx) — counterpart deletion lifecycle.
 - [Tenant Deploy](../tenant-deploy/index.mdx) — the tenant-scoped deploy child this orchestration ends with.
 - [Render Service](../../render/index.mdx) — produces the tenant configurations this workflow waits on.
 - [Configuration Deploy](../configuration-deploy/index.mdx) — alternative path when a change is too broad for tenant deploy.
