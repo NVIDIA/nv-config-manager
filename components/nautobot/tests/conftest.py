@@ -133,7 +133,7 @@ def _django_stubs(monkeypatch):
         setattr(stubs["nautobot.dcim.models"], model, mock)
 
     # extras models
-    for model in ("Role", "Tag", "Status", "ConfigContext", "ConfigContextSchema", "Relationship"):
+    for model in ("Role", "Tag", "Status", "ConfigContext", "ConfigContextSchema", "Relationship", "CustomField"):
         mock = MagicMock()
         mock.DoesNotExist = type("DoesNotExist", (Exception,), {})
         setattr(stubs["nautobot.extras.models"], model, mock)

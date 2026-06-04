@@ -1,0 +1,29 @@
+---
+# Custom fields for NVIDIA Config Manager deployments
+
+# ============================================================================
+# Device custom fields
+# ============================================================================
+
+# nico_info holds NICo machine info (machine_type, state, GPU
+# summary, attached DPU machine ids), stored as JSON.
+- key: nico_info
+  label: NICo Info
+  type: json
+  description: NICo machine info synced into Nautobot.
+  content_types:
+    - dcim.device
+  deployment_types: [all, superpod]
+
+# nico_machine_id is the scalar NICo machine ID, kept separate from
+# nico_info so devices are filterable by ID (e.g. via GraphQL) — you can't
+# filter on a value nested in a JSON custom field.
+- key: nico_machine_id
+  label: NICo Machine ID
+  type: text
+  description: NICo machine ID.
+  # exact (not loose) so GraphQL/UI filters match the full ID.
+  filter_logic: exact
+  content_types:
+    - dcim.device
+  deployment_types: [all, superpod]
