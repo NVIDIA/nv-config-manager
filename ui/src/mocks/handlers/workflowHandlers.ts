@@ -40,9 +40,6 @@ export const workflowTypes = [
   "ReprovisionWorkflow",
   "SwitchOsUpgradeWorkflow",
   "CumulusHardwareValidationWorkflow",
-  "AIRCreateSimulationWorkflow",
-  "AIRValidateSiteWorkflow",
-  "AIRDeleteSimulationWorkflow",
   "IBPKeyCreationWorkflow",
 ];
 
