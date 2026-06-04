@@ -1,5 +1,4 @@
-# CIN HFA01-style AIR simulation config.
-# Based on NVIDIA SN5600 / Cumulus Linux leaf topology from HFA01 MODULE 1.
+# SpX Overlay AIR simulation config for testing the SpX Overlay workflows.
 #
 # After deploy, set up local access:
 #   1. Add to /etc/hosts:
