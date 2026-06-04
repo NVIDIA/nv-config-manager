@@ -1108,6 +1108,30 @@ Usage under each endpoint:
 {{- end }}
 
 {{/*
+Probe staticConfig labels -- emits global.customLabels under
+spec.targets.staticConfig.labels so Prometheus attaches them to every
+blackbox sample scraped from the Probe's static targets. The Probe CR's
+metadata.labels are NOT propagated onto samples by Prometheus Operator, so
+this helper is the only way to surface customLabels (e.g. `include_in_slo`,
+`production`) on probe metrics. Yields nothing when global.customLabels is
+empty/missing.
+
+Usage (the `labels:` key lives at 6 spaces under the Probe spec, hence
+`nindent 6`):
+  targets:
+    staticConfig:
+      {{- include "nv-config-manager.probeStaticConfigLabels" . | nindent 6 }}
+      static:
+      - {{ ... }}
+*/}}
+{{- define "nv-config-manager.probeStaticConfigLabels" -}}
+{{- with .Values.global.customLabels -}}
+labels:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end -}}
+
+{{/*
 =============================================================================
 Security Context Helpers
 =============================================================================
