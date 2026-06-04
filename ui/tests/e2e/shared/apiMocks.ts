@@ -74,6 +74,7 @@ export async function setupApiMocks(page: Page) {
   await mockIbGetUnhealthyPortsEndpoint(page);
   await mockIbOsUpgradeEndpoint(page);
   await mockInfinibandCableValidationEndpoint(page);
+  await mockIbPkeyCreationEndpoint(page);
   await mockReprovisionEndpoint(page);
   await mockSwitchOsUpgradeEndpoint(page);
   await mockCumulusHardwareValidationEndpoint(page);
@@ -708,6 +709,43 @@ export async function mockInfinibandCableValidationEndpoint(page: Page) {
       });
     }
   );
+}
+
+export async function mockIbPkeyCreationEndpoint(page: Page) {
+  const PKEY_PATTERN = /^0[xX][0-9a-fA-F]{1,4}$/;
+
+  await page.route(`**/v1/workflow/ngc/ib_pkey_creation`, async (route) => {
+    const request = route.request();
+    const body = JSON.parse((await request.postData()) || "{}");
+
+    if (!body.host) {
+      await route.fulfill({
+        status: 400,
+        json: { error: "Missing required field: host" },
+      });
+      return;
+    }
+
+    if (body.pkey && !PKEY_PATTERN.test(body.pkey)) {
+      await route.fulfill({
+        status: 400,
+        json: { error: "pkey must match /^0[xX][0-9a-fA-F]{1,4}$/" },
+      });
+      return;
+    }
+
+    await delay(100);
+
+    const workflowId = `ib-pkey-creation-${Date.now()}`;
+    await route.fulfill({
+      status: 201,
+      json: {
+        id: workflowId,
+        href: `https://url-to-temporal.com/namespaces/default/workflows/${workflowId}`,
+        submitted_data: body,
+      },
+    });
+  });
 }
 
 export async function mockReprovisionEndpoint(page: Page) {
