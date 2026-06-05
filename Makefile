@@ -258,7 +258,7 @@ docs-lint:
 	if command -v rumdl >/dev/null 2>&1; then \
 		rumdl check --fail-on warning .; \
 	else \
-		npx --yes rumdl check .; \
+		npx --yes rumdl check --fail-on warning .; \
 	fi
 
 docs-format:
