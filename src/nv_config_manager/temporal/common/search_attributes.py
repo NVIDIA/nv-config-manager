@@ -12,13 +12,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Hello World Workflow Definitions."""
+"""Temporal search attribute names used by NVIDIA Config Manager."""
 
-from nv_config_manager.temporal.hello_world.workflows.hello_world_workflow import (
-    HelloWorld,
-    HelloWorldApproval,
-    HelloWorldRunning,
-)
-
-REGISTERED_WORKFLOWS = [HelloWorld, HelloWorldApproval]
-LOCAL_TEST_WORKFLOWS = [HelloWorldRunning]
+DEVICE_ID_SEARCH_ATTRIBUTE = "DeviceID"
+DEVICE_NAME_SEARCH_ATTRIBUTE = "DeviceName"
+DEVICE_PLATFORM_SEARCH_ATTRIBUTE = "DevicePlatform"
+DEVICE_ROLE_SEARCH_ATTRIBUTE = "DeviceRole"
+EXECUTE_ROLES_SEARCH_ATTRIBUTE = "ExecuteRoles"
+ISSUE_KEY_SEARCH_ATTRIBUTE = "IssueKey"
+PENDING_APPROVAL_SEARCH_ATTRIBUTE = "PendingApproval"
+READ_ROLES_SEARCH_ATTRIBUTE = "ReadRoles"
+SITE_SEARCH_ATTRIBUTE = "Site"
+USER_SEARCH_ATTRIBUTE = "User"

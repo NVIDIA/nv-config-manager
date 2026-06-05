@@ -33,6 +33,12 @@ from nv_config_manager.temporal.common.mixins.stage import (
     StateEnum,
     stage_executor,
 )
+from nv_config_manager.temporal.common.search_attributes import (
+    EXECUTE_ROLES_SEARCH_ATTRIBUTE,
+    READ_ROLES_SEARCH_ATTRIBUTE,
+    SITE_SEARCH_ATTRIBUTE,
+    USER_SEARCH_ATTRIBUTE,
+)
 
 with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.common.mixins.archive import ArchiveMixin
@@ -56,7 +62,12 @@ with workflow.unsafe.imports_passed_through():
     )
 
 
-CLONE_SEARCH_ATTRS = ["User", "ReadRoles", "ExecuteRoles", "Site"]
+CLONE_SEARCH_ATTRS = [
+    USER_SEARCH_ATTRIBUTE,
+    READ_ROLES_SEARCH_ATTRIBUTE,
+    EXECUTE_ROLES_SEARCH_ATTRIBUTE,
+    SITE_SEARCH_ATTRIBUTE,
+]
 DEFAULT_ACTIVITY_RETRY_POLICY = RetryPolicy(
     maximum_attempts=3,
     non_retryable_error_types=["ConfigSyntaxException", "DiffChangedException"],
@@ -864,7 +875,7 @@ class MultiDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
         """Execute multi-deploy workflow."""
         self.set_input(workflow_input)
         if workflow_input.location:
-            workflow.upsert_search_attributes({"Site": [workflow_input.location]})
+            workflow.upsert_search_attributes({SITE_SEARCH_ATTRIBUTE: [workflow_input.location]})
 
         # Discover devices
         discover_output = await self.discover_devices(

@@ -31,8 +31,6 @@
 nautobot:
   server:
     replicas: 1
-    strategy:
-      type: Recreate
     resources:
       requests:
         cpu: 100m

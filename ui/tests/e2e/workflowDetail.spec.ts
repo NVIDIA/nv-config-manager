@@ -156,7 +156,7 @@ test.describe("Workflow Detail Page", () => {
     ).toBeVisible();
   });
 
-  test("shows prominent pending approval actions", async ({ page }) => {
+  test("shows pending approval stage actions", async ({ page }) => {
     const workflowId = "pending-approval-workflow";
     const stageName = "review_config";
     let approveCalled = false;
@@ -187,7 +187,6 @@ test.describe("Workflow Detail Page", () => {
 
     await page.goto(`/workflows/${workflowId}`);
 
-    await expect(page.getByText("Approval required")).toBeVisible();
     await expect(
       page.getByRole("heading", { name: stageName, exact: true })
     ).toBeVisible();

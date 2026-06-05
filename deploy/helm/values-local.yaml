@@ -17,6 +17,8 @@ global:
   environment: local
   replicas: 1
   domain: config-manager.local
+  deploymentStrategy:
+    type: Recreate
 
 # =============================================================================
 # Mock SSO Authentication for Local Development

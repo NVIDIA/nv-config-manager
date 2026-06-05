@@ -27,6 +27,7 @@ from nv_config_manager.temporal.hello_world.activities import (
     REGISTERED_ACTIVITIES as HELLO_WORLD_REGISTERED_ACTIVITIES,
 )
 from nv_config_manager.temporal.hello_world.workflows import (
+    LOCAL_TEST_WORKFLOWS as HELLO_WORLD_LOCAL_TEST_WORKFLOWS,
     REGISTERED_WORKFLOWS as HELLO_WORLD_REGISTERED_WORKFLOWS,
 )
 from nv_config_manager.temporal.ngc.activities import (
@@ -54,7 +55,11 @@ async def main() -> None:
     worker = Worker(
         client,
         task_queue="default-task-queue",
-        workflows=[*NGC_REGISTERED_WORKFLOWS, *HELLO_WORLD_REGISTERED_WORKFLOWS],
+        workflows=[
+            *NGC_REGISTERED_WORKFLOWS,
+            *HELLO_WORLD_REGISTERED_WORKFLOWS,
+            *HELLO_WORLD_LOCAL_TEST_WORKFLOWS,
+        ],
         activities=all_activities,  # type: ignore[arg-type]
         activity_executor=ThreadPoolExecutor(100),
     )

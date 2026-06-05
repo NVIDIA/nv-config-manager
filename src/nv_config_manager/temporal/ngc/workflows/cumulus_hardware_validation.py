@@ -30,6 +30,7 @@ from nv_config_manager.temporal.common.mixins.stage import (
     StageOutput,
     stage_executor,
 )
+from nv_config_manager.temporal.common.search_attributes import SITE_SEARCH_ATTRIBUTE
 
 with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.common.mixins.archive import ArchiveMixin
@@ -827,7 +828,7 @@ class ValidateHardwareWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, A
     ) -> HardwareValidationResult:
         """Execute hardware validation workflow."""
         self.set_input(workflow_input)
-        workflow.upsert_search_attributes({"Site": [workflow_input.site]})
+        workflow.upsert_search_attributes({SITE_SEARCH_ATTRIBUTE: [workflow_input.site]})
 
         devices_to_validate_output = await self.get_devices_to_validate(
             self.GetDevicesToValidateStageInput(

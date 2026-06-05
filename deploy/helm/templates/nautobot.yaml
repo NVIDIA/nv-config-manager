@@ -47,6 +47,7 @@ spec:
     matchLabels:
       app.kubernetes.io/name: {{ $natsName }}
       app.kubernetes.io/instance: {{ .Release.Name }}
+  {{- include "nv-config-manager.deploymentStrategy" (dict "root" .) | nindent 2 }}
   template:
     metadata:
       labels:
@@ -171,6 +172,7 @@ spec:
       app.kubernetes.io/component: {{ $natsName }}-box
       app.kubernetes.io/instance: {{ .Release.Name }}
       app.kubernetes.io/name: {{ $natsName }}
+  {{- include "nv-config-manager.deploymentStrategy" (dict "root" .) | nindent 2 }}
   template:
     metadata:
       labels:
@@ -450,15 +452,7 @@ spec:
     matchLabels:
       app.kubernetes.io/name: {{ $nautobotName }}
       app.kubernetes.io/instance: {{ .Release.Name }}
-  {{- $nautobotStrategy := .Values.nautobot.server.strategy | default dict }}
-  {{- $nautobotRollingUpdate := $nautobotStrategy.rollingUpdate | default dict }}
-  strategy:
-    type: {{ $nautobotStrategy.type | default "RollingUpdate" }}
-    {{- if eq ($nautobotStrategy.type | default "RollingUpdate") "RollingUpdate" }}
-    rollingUpdate:
-      maxSurge: {{ $nautobotRollingUpdate.maxSurge | default "25%" }}
-      maxUnavailable: {{ $nautobotRollingUpdate.maxUnavailable | default 0 }}
-    {{- end }}
+  {{- include "nv-config-manager.deploymentStrategy" (dict "root" . "strategy" .Values.nautobot.server.strategy) | nindent 2 }}
   template:
     metadata:
       labels:
@@ -830,6 +824,7 @@ spec:
     matchLabels:
       app.kubernetes.io/name: {{ $nautobotName }}-celery
       app.kubernetes.io/instance: {{ .Release.Name }}
+  {{- include "nv-config-manager.deploymentStrategy" (dict "root" .) | nindent 2 }}
   template:
     metadata:
       labels:
@@ -983,6 +978,7 @@ spec:
     matchLabels:
       app.kubernetes.io/name: {{ $nautobotName }}-celery-beat
       app.kubernetes.io/instance: {{ .Release.Name }}
+  {{- include "nv-config-manager.deploymentStrategy" (dict "root" .) | nindent 2 }}
   template:
     metadata:
       labels:

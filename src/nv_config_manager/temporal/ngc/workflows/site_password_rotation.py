@@ -30,6 +30,12 @@ from nv_config_manager.temporal.common.mixins.stage import (
     StageOutput,
     stage_executor,
 )
+from nv_config_manager.temporal.common.search_attributes import (
+    DEVICE_ID_SEARCH_ATTRIBUTE,
+    EXECUTE_ROLES_SEARCH_ATTRIBUTE,
+    READ_ROLES_SEARCH_ATTRIBUTE,
+    USER_SEARCH_ATTRIBUTE,
+)
 
 with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.common.mixins.archive import ArchiveMixin
@@ -64,7 +70,11 @@ DEFAULT_CONFIG_MANAGER_TENANT = "NGC"
 SUPPORTED_PLATFORMS = ["cumulus", "nvos"]
 
 # Search attributes to clone from parent to child workflows
-CLONE_SEARCH_ATTRS = ["User", "ReadRoles", "ExecuteRoles"]
+CLONE_SEARCH_ATTRS = [
+    USER_SEARCH_ATTRIBUTE,
+    READ_ROLES_SEARCH_ATTRIBUTE,
+    EXECUTE_ROLES_SEARCH_ATTRIBUTE,
+]
 
 DEFAULT_ACTIVITY_RETRY_POLICY = RetryPolicy(
     maximum_attempts=3,
@@ -184,7 +194,7 @@ class SitePasswordRotationWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixi
 
         # Start child workflows for each device
         for device in stage_input.devices:
-            search_attrs.update({"DeviceID": [device.id]})
+            search_attrs.update({DEVICE_ID_SEARCH_ATTRIBUTE: [device.id]})
 
             handles[device.name] = await workflow.start_child_workflow(
                 DevicePasswordRotationWorkflow.run,

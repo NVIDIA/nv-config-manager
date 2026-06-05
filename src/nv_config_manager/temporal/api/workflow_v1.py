@@ -54,6 +54,17 @@ from nv_config_manager.temporal.common.mixins.stage import (
     StateEnum,
 )
 from nv_config_manager.temporal.common.rbac_config import RBACConfig
+from nv_config_manager.temporal.common.search_attributes import (
+    DEVICE_ID_SEARCH_ATTRIBUTE,
+    DEVICE_NAME_SEARCH_ATTRIBUTE,
+    DEVICE_PLATFORM_SEARCH_ATTRIBUTE,
+    DEVICE_ROLE_SEARCH_ATTRIBUTE,
+    EXECUTE_ROLES_SEARCH_ATTRIBUTE,
+    PENDING_APPROVAL_SEARCH_ATTRIBUTE,
+    READ_ROLES_SEARCH_ATTRIBUTE,
+    SITE_SEARCH_ATTRIBUTE,
+    USER_SEARCH_ATTRIBUTE,
+)
 from nv_config_manager.temporal.converter import get_data_converter
 from nv_config_manager.temporal.hello_world.workflows import (
     REGISTERED_WORKFLOWS as HELLO_WORLD_REGISTERED_WORKFLOWS,
@@ -69,6 +80,25 @@ router = APIRouter(prefix="/workflow", tags=["workflow"])
 _VISIBILITY_SAFE_VALUE = re.compile(r"^[\w.@:/ -]+$")
 _WORKFLOW_LIST_QUERY_CONCURRENCY = 25
 _WORKFLOW_STAGE_QUERY_CACHE_NAMES = ("pending_approval", "compressed_stages")
+_PENDING_APPROVAL_STATUS_VALUES = {
+    StateEnum.PENDING_APPROVAL.value,
+    "PENDING APPROVAL",
+    "PENDINGAPPROVAL",
+}
+_TEMPORAL_VISIBILITY_STATUS_VALUES = {
+    "RUNNING": "Running",
+    "COMPLETED": "Completed",
+    "FAILED": "Failed",
+    "CANCELED": "Canceled",
+    "CANCELLED": "Canceled",
+    "TERMINATED": "Terminated",
+    "CONTINUED_AS_NEW": "ContinuedAsNew",
+    "CONTINUED AS NEW": "ContinuedAsNew",
+    "CONTINUEDASNEW": "ContinuedAsNew",
+    "TIMED_OUT": "TimedOut",
+    "TIMED OUT": "TimedOut",
+    "TIMEDOUT": "TimedOut",
+}
 
 
 def _sanitize_visibility_value(value: str, param_name: str) -> str:
@@ -90,6 +120,20 @@ def _format_visibility_time(value: datetime) -> str:
     if value.tzinfo is None:
         value = value.replace(tzinfo=UTC)
     return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _format_visibility_bool(value: bool) -> str:
+    """Return a Temporal visibility boolean literal."""
+    return "true" if value else "false"
+
+
+def _format_visibility_status(value: str) -> str:
+    """Return a Temporal visibility status literal from an API status value."""
+    normalized = value.upper()
+    temporal_status = _TEMPORAL_VISIBILITY_STATUS_VALUES.get(normalized)
+    if temporal_status is None:
+        raise HTTPException(status_code=400, detail=f"Invalid workflow status '{value}'")
+    return temporal_status
 
 
 class WorkflowListResponse(BaseModel):
@@ -163,6 +207,17 @@ class WorkflowSummaryResponse(WorkflowResponse):
         return status.name if status else "UNKNOWN"
 
     @staticmethod
+    def _pending_approval_from_search_attributes(
+        search_attributes: SearchAttributes,
+    ) -> bool | None:
+        """Return indexed pending-approval state when present."""
+        value = search_attributes.get(PENDING_APPROVAL_SEARCH_ATTRIBUTE)
+        if not value:
+            return None
+        pending_approval = value[0]
+        return pending_approval if isinstance(pending_approval, bool) else None
+
+    @staticmethod
     def _should_read_cache(query: str, is_active: bool) -> bool:
         """Return whether the query should read the durable workflow query cache."""
         return not is_active or query in WorkflowSummaryResponse._ACTIVE_DURABLE_CACHEABLE_QUERIES
@@ -232,11 +287,16 @@ class WorkflowSummaryResponse(WorkflowResponse):
             else:
                 raise
         try:
+            pending_approval = WorkflowSummaryResponse._pending_approval_from_search_attributes(
+                description.search_attributes
+            )
+            queries = ["input"] if pending_approval is not None else ["pending_approval", "input"]
             query_results = await WorkflowSummaryResponse._execute_queries(
-                handle, description, ["pending_approval", "input"]
+                handle, description, queries
             )
             workflow_input = query_results.get("input")
-            pending_approval = bool(query_results.get("pending_approval"))
+            if pending_approval is None:
+                pending_approval = bool(query_results.get("pending_approval"))
         except RPCError:
             # Should not occur in prod, but there was a point in time in
             # test in which signal functions would throw Exceptions when
@@ -251,7 +311,7 @@ class WorkflowSummaryResponse(WorkflowResponse):
             workflow_input = None
 
         try:
-            user = cast(str, description.search_attributes["User"][0])
+            user = cast(str, description.search_attributes[USER_SEARCH_ATTRIBUTE][0])
         except (KeyError, IndexError):
             user = "unknown"
 
@@ -297,11 +357,20 @@ class WorkflowDetailResponse(WorkflowSummaryResponse):
                 raise
         # Not every workflow is guaranteed to implement every query
         try:
+            pending_approval = WorkflowSummaryResponse._pending_approval_from_search_attributes(
+                description.search_attributes
+            )
+            queries = (
+                ["input", "compressed_stages"]
+                if pending_approval is not None
+                else ["pending_approval", "input", "compressed_stages"]
+            )
             query_results = await WorkflowSummaryResponse._execute_queries(
-                handle, description, ["pending_approval", "input", "compressed_stages"]
+                handle, description, queries
             )
             workflow_input = query_results.get("input")
-            pending_approval = bool(query_results.get("pending_approval"))
+            if pending_approval is None:
+                pending_approval = bool(query_results.get("pending_approval"))
 
             # Decompress and parse stages
             compressed_stages = query_results.get("compressed_stages")
@@ -332,7 +401,7 @@ class WorkflowDetailResponse(WorkflowSummaryResponse):
                 await cache.cache_result(handle.id, result)
 
         try:
-            user = cast(str, description.search_attributes["User"][0])
+            user = cast(str, description.search_attributes[USER_SEARCH_ATTRIBUTE][0])
         except (KeyError, IndexError):
             user = "unknown"
 
@@ -340,7 +409,7 @@ class WorkflowDetailResponse(WorkflowSummaryResponse):
             id=handle.id,
             started_by=user,
             workflow_input=workflow_input,
-            status=WorkflowSummaryResponse._status_name(description.status),
+            status=WorkflowSummaryResponse._status_name(description.status, pending_approval),
             start_time=description.start_time,
             close_time=description.close_time,
             workflow_type=description.workflow_type,
@@ -405,9 +474,10 @@ async def start_workflow(
     # Prepare search attributes
     if search_attributes is None:
         search_attributes = {}
-    search_attributes["User"] = [user]
-    search_attributes["ReadRoles"] = sorted(read_roles)
-    search_attributes["ExecuteRoles"] = sorted(execute_roles)
+    search_attributes[USER_SEARCH_ATTRIBUTE] = [user]
+    search_attributes[READ_ROLES_SEARCH_ATTRIBUTE] = sorted(read_roles)
+    search_attributes[EXECUTE_ROLES_SEARCH_ATTRIBUTE] = sorted(execute_roles)
+    search_attributes.setdefault(PENDING_APPROVAL_SEARCH_ATTRIBUTE, [False])
 
     client = await get_client()
     handle: WorkflowHandle = await client.start_workflow(
@@ -442,7 +512,7 @@ async def is_authorized(request: Request, handle: WorkflowHandle, action: str) -
             raise
 
     # convert roles to string set for comparison
-    attr = "ExecuteRoles" if action == "execute" else "ReadRoles"
+    attr = EXECUTE_ROLES_SEARCH_ATTRIBUTE if action == "execute" else READ_ROLES_SEARCH_ATTRIBUTE
     permitted_roles = description.search_attributes.get(attr, [])
     if not permitted_roles:
         logger.error(
@@ -491,72 +561,15 @@ async def invalidate_workflow_stage_query_cache(workflow_id: str) -> None:
         logger.exception("Failed to invalidate workflow stage query cache for %s", workflow_id)
 
 
-@router.get("/")
-async def get_workflows(  # pylint: disable=R0913,R0914
-    request: Request,
-    user: str | None = None,
-    workflow_type: str | None = None,
-    device_id: str | None = None,
-    device_name: str | None = None,
-    device_role: str | None = None,
-    device_platform: str | None = None,
-    site: str | None = None,
-    status: str | None = None,
-    start_time: datetime | None = None,
-    end_time: datetime | None = None,
-    limit: int = 100,
-    next_page_token: str | None = None,
-) -> WorkflowListResponse:
-    """Return a filtered list of workflows."""
-    _, user_roles = get_user_info(request)
-    filters = []
-    filter_pending_approval = False
-    if user:
-        filters.append(f"User = '{_sanitize_visibility_value(user, 'user')}'")
-    if workflow_type:
-        filters.append(
-            f"WorkflowType = '{_sanitize_visibility_value(workflow_type, 'workflow_type')}'"
-        )
-    if device_id:
-        filters.append(f"DeviceID = '{_sanitize_visibility_value(device_id, 'device_id')}'")
-    if device_name:
-        filters.append(f"DeviceName = '{_sanitize_visibility_value(device_name, 'device_name')}'")
-    if device_role:
-        filters.append(f"DeviceRole = '{_sanitize_visibility_value(device_role, 'device_role')}'")
-    if device_platform:
-        filters.append(
-            f"DevicePlatform = '{_sanitize_visibility_value(device_platform, 'device_platform')}'"
-        )
-    if site:
-        filters.append(f"Site = '{_sanitize_visibility_value(site, 'site')}'")
-    if status:
-        sanitized_status = _sanitize_visibility_value(status, "status")
-        if sanitized_status == StateEnum.PENDING_APPROVAL.value:
-            filters.append("ExecutionStatus = 'RUNNING'")
-            filter_pending_approval = True
-        else:
-            filters.append(f"ExecutionStatus = '{sanitized_status}'")
-    if start_time:
-        filters.append(f"StartTime >= '{_format_visibility_time(start_time)}'")
-    if end_time:
-        filters.append(f"StartTime <= '{_format_visibility_time(end_time)}'")
-    # Add role filters
-    # Permit admin roles to view workflows that are missing
-    # RBAC search attributes
-    admin_roles = RBACConfig().get_admin_roles()
-    if not admin_roles.intersection(user_roles):
-        role_filters = [f"ReadRoles = '{role}'" for role in sorted(user_roles)]
-        role_filter = " or ".join(role_filters)
-        filters.append(f"({role_filter})")
-    query = " and ".join(filters) if filters else None
-
-    client = await get_client()
-
+async def _get_workflow_summary_page(
+    client: Client,
+    query: str | None,
+    limit: int,
+    next_page_token: bytes | None,
+    semaphore: asyncio.Semaphore,
+) -> tuple[list[WorkflowSummaryResponse], bytes | None]:
+    """Fetch and summarize one Temporal workflow visibility page."""
     tasks = []
-    semaphore = asyncio.Semaphore(_WORKFLOW_LIST_QUERY_CONCURRENCY)
-    next_page_token = (
-        brotli.decompress(base64.urlsafe_b64decode(next_page_token)) if next_page_token else None
-    )
     aiter = client.list_workflows(
         query, limit=limit, page_size=limit, next_page_token=next_page_token
     )
@@ -570,9 +583,102 @@ async def get_workflows(  # pylint: disable=R0913,R0914
         )
 
     workflows = await asyncio.gather(*tasks)
-    if filter_pending_approval:
-        workflows = [workflow for workflow in workflows if workflow.pending_approval]
-    new_token = aiter.next_page_token
+    return workflows, aiter.next_page_token
+
+
+async def _get_workflow_summaries(
+    client: Client,
+    query: str | None,
+    limit: int,
+    next_page_token: bytes | None,
+) -> tuple[list[WorkflowSummaryResponse], bytes | None]:
+    """Fetch workflow summaries for one Temporal visibility page."""
+    semaphore = asyncio.Semaphore(_WORKFLOW_LIST_QUERY_CONCURRENCY)
+    return await _get_workflow_summary_page(client, query, limit, next_page_token, semaphore)
+
+
+@router.get("/")
+async def get_workflows(  # pylint: disable=R0913,R0914
+    request: Request,
+    user: str | None = None,
+    workflow_type: str | None = None,
+    device_id: str | None = None,
+    device_name: str | None = None,
+    device_role: str | None = None,
+    device_platform: str | None = None,
+    site: str | None = None,
+    status: str | None = None,
+    pending_approval: bool | None = None,
+    start_time: datetime | None = None,
+    end_time: datetime | None = None,
+    limit: int = 100,
+    next_page_token: str | None = None,
+) -> WorkflowListResponse:
+    """Return a filtered list of workflows."""
+    _, user_roles = get_user_info(request)
+    filters = []
+    pending_approval_filter = pending_approval
+    if user:
+        filters.append(f"{USER_SEARCH_ATTRIBUTE} = '{_sanitize_visibility_value(user, 'user')}'")
+    if workflow_type:
+        filters.append(
+            f"WorkflowType = '{_sanitize_visibility_value(workflow_type, 'workflow_type')}'"
+        )
+    if device_id:
+        filters.append(
+            f"{DEVICE_ID_SEARCH_ATTRIBUTE} = '{_sanitize_visibility_value(device_id, 'device_id')}'"
+        )
+    if device_name:
+        filters.append(
+            f"{DEVICE_NAME_SEARCH_ATTRIBUTE} = "
+            f"'{_sanitize_visibility_value(device_name, 'device_name')}'"
+        )
+    if device_role:
+        filters.append(
+            f"{DEVICE_ROLE_SEARCH_ATTRIBUTE} = "
+            f"'{_sanitize_visibility_value(device_role, 'device_role')}'"
+        )
+    if device_platform:
+        filters.append(
+            f"{DEVICE_PLATFORM_SEARCH_ATTRIBUTE} = "
+            f"'{_sanitize_visibility_value(device_platform, 'device_platform')}'"
+        )
+    if site:
+        filters.append(f"{SITE_SEARCH_ATTRIBUTE} = '{_sanitize_visibility_value(site, 'site')}'")
+    if status:
+        sanitized_status = _sanitize_visibility_value(status, "status")
+        if sanitized_status.upper() in _PENDING_APPROVAL_STATUS_VALUES:
+            filters.append("ExecutionStatus = 'Running'")
+            pending_approval_filter = True
+        else:
+            filters.append(f"ExecutionStatus = '{_format_visibility_status(sanitized_status)}'")
+    elif pending_approval is True:
+        filters.append("ExecutionStatus = 'Running'")
+    if pending_approval_filter is not None:
+        filters.append(
+            f"{PENDING_APPROVAL_SEARCH_ATTRIBUTE} = "
+            f"{_format_visibility_bool(pending_approval_filter)}"
+        )
+    if start_time:
+        filters.append(f"StartTime >= '{_format_visibility_time(start_time)}'")
+    if end_time:
+        filters.append(f"StartTime <= '{_format_visibility_time(end_time)}'")
+    # Add role filters
+    # Permit admin roles to view workflows that are missing
+    # RBAC search attributes
+    admin_roles = RBACConfig().get_admin_roles()
+    if not admin_roles.intersection(user_roles):
+        role_filters = [f"{READ_ROLES_SEARCH_ATTRIBUTE} = '{role}'" for role in sorted(user_roles)]
+        role_filter = " or ".join(role_filters)
+        filters.append(f"({role_filter})")
+    query = " and ".join(filters) if filters else None
+
+    client = await get_client()
+
+    next_page_token = (
+        brotli.decompress(base64.urlsafe_b64decode(next_page_token)) if next_page_token else None
+    )
+    workflows, new_token = await _get_workflow_summaries(client, query, limit, next_page_token)
     encoded_token = (
         base64.urlsafe_b64encode(brotli.compress(new_token)).decode() if new_token else None
     )

@@ -28,6 +28,9 @@ from nv_config_manager.temporal.api.workflow_v1 import (
     start_workflow,
 )
 from nv_config_manager.temporal.common.mixins.stage import ReviewSignalInput, Stage, StageMixin
+from nv_config_manager.temporal.common.search_attributes import (
+    PENDING_APPROVAL_SEARCH_ATTRIBUTE,
+)
 from nv_config_manager.temporal.hello_world.workflows.hello_world_workflow import (
     HelloWorld,
     HelloWorldInput,
@@ -76,6 +79,7 @@ async def test_start_workflow(mock_rbac_config, mock_uuid, mock_connect):
         task_queue="default-task-queue",
         search_attributes={
             "ExecuteRoles": ["all"],
+            PENDING_APPROVAL_SEARCH_ATTRIBUTE: [False],
             "ReadRoles": ["all"],
             "User": ["testuser"],
         },
@@ -107,6 +111,7 @@ async def test_start_workflow(mock_rbac_config, mock_uuid, mock_connect):
         task_queue="default-task-queue",
         search_attributes={
             "ExecuteRoles": ["ngc-cfa", "ngc-gni"],
+            PENDING_APPROVAL_SEARCH_ATTRIBUTE: [False],
             "ReadRoles": ["ngc-cfa", "ngc-gni"],
             "User": ["testuser"],
         },
@@ -515,7 +520,7 @@ async def test_workflow_detail(mock_redis, mock_client):
         "started_by": "test",
         "start_time": "1970-01-01T00:00:00Z",
         "close_time": None,
-        "status": "RUNNING",
+        "status": "PENDING_APPROVAL",
         "pending_approval": True,
         "stages": [
             {
@@ -892,7 +897,20 @@ async def test_workflows(mock_rbac_config, mock_redis, mock_client):
     assert rsp.status_code == 200
     assert all(workflow["status"] == "PENDING_APPROVAL" for workflow in rsp.json()["workflows"])
     mock_client.return_value.list_workflows.assert_called_with(
-        "ExecutionStatus = 'RUNNING' and (ReadRoles = 'all')",
+        "ExecutionStatus = 'Running' and PendingApproval = true and (ReadRoles = 'all')",
+        limit=100,
+        page_size=100,
+        next_page_token=None,
+    )
+
+    rsp = client.get(
+        "/v1/workflow",
+        params={"status": "RUNNING", "pending_approval": "true"},
+    )
+    assert rsp.status_code == 200
+    assert all(workflow["status"] == "PENDING_APPROVAL" for workflow in rsp.json()["workflows"])
+    mock_client.return_value.list_workflows.assert_called_with(
+        "ExecutionStatus = 'Running' and PendingApproval = true and (ReadRoles = 'all')",
         limit=100,
         page_size=100,
         next_page_token=None,
@@ -922,7 +940,7 @@ async def test_workflows(mock_rbac_config, mock_redis, mock_client):
         "DeviceRole = 'test' and "
         "DevicePlatform = 'test' and "
         "Site = 'test' and "
-        "ExecutionStatus = 'RUNNING' and "
+        "ExecutionStatus = 'Running' and "
         "StartTime >= '2025-03-04T02:32:00Z' and "
         "StartTime <= '2025-03-04T02:35:00Z' and "
         "(ReadRoles = 'all')",
@@ -957,7 +975,7 @@ async def test_workflows(mock_rbac_config, mock_redis, mock_client):
         "DeviceRole = 'test' and "
         "DevicePlatform = 'test' and "
         "Site = 'test' and "
-        "ExecutionStatus = 'RUNNING' and "
+        "ExecutionStatus = 'Running' and "
         "StartTime >= '2025-03-04T02:32:00Z' and "
         "StartTime <= '2025-03-04T02:35:00Z'",
         limit=100,
@@ -990,12 +1008,102 @@ async def test_workflows(mock_rbac_config, mock_redis, mock_client):
         "DeviceRole = 'test' and "
         "DevicePlatform = 'test' and "
         "Site = 'test' and "
-        "ExecutionStatus = 'RUNNING' and "
+        "ExecutionStatus = 'Running' and "
         "StartTime >= '2025-03-04T02:32:00Z' and "
         "StartTime <= '2025-03-04T02:35:00Z' and "
         "(ReadRoles = 'all' or ReadRoles = 'ngc-gni')",
         limit=100,
         page_size=100,
+        next_page_token=None,
+    )
+
+
+def test_workflows_invalid_status_returns_400():
+    """Verify unknown workflow status filters are rejected before querying Temporal."""
+    client = TestClient(app)
+    rsp = client.get("/v1/workflow", params={"status": "NOT_A_STATUS"})
+
+    assert rsp.status_code == 400
+    assert rsp.json() == {"detail": "Invalid workflow status 'NOT_A_STATUS'"}
+
+
+@pytest.mark.asyncio
+@patch("nv_config_manager.temporal.api.workflow_v1.get_client")
+@patch("nv_config_manager.temporal.api.workflow_v1.RedisClient")
+@patch("nv_config_manager.temporal.api.workflow_v1.RBACConfig")
+async def test_workflows_pending_approval_filter_uses_search_attribute(
+    mock_rbac_config, mock_redis, mock_client
+):
+    """Verify pending approval filtering is pushed into Temporal visibility."""
+    mock_redis.from_config.return_value.get_cached_query = AsyncMock(return_value=None)
+    mock_redis.from_config.return_value.cache_query = AsyncMock()
+
+    mock_rbac_instance = MagicMock()
+    mock_rbac_instance.get_admin_roles.return_value = {"ngc-cfa"}
+    mock_rbac_config.return_value = mock_rbac_instance
+
+    def mock_get_workflow_handle(workflow_id):
+        mock_description = MagicMock()
+        mock_description.search_attributes = {
+            PENDING_APPROVAL_SEARCH_ATTRIBUTE: [True],
+            "User": ["test"],
+        }
+        mock_description.status = WorkflowExecutionStatus.RUNNING
+        mock_description.start_time = datetime.fromisoformat("1970-01-01T00:00:00+00:00")
+        mock_description.close_time = None
+        mock_description.workflow_type = "HelloWorldApproval"
+
+        async def mock_query(name: str):
+            if name == "pending_approval":
+                return True
+            if name == "input":
+                return {"user": "test"}
+
+        mock_handle = MagicMock()
+        mock_handle.id = workflow_id
+        mock_handle.describe = AsyncMock(return_value=mock_description)
+        mock_handle.query = mock_query
+        return mock_handle
+
+    class MockWorkflowExecutionAsyncIterator:
+        def __init__(self, items, next_page_token):
+            self.items = items
+            self._next_page_token = next_page_token
+
+        async def __aiter__(self):
+            for item in self.items:
+                yield item
+
+        @property
+        def next_page_token(self) -> bytes | None:
+            """Token for the next page request if any."""
+            return self._next_page_token
+
+    def mock_list_queries(query, **kwargs):
+        return MockWorkflowExecutionAsyncIterator(
+            [MagicMock(id="pending_uuid1"), MagicMock(id="pending_uuid2")],
+            b"token-1",
+        )
+
+    mock_client.return_value.get_workflow_handle = mock_get_workflow_handle
+    mock_client.return_value.list_workflows = MagicMock(side_effect=mock_list_queries)
+
+    client = TestClient(app)
+    rsp = client.get(
+        "/v1/workflow",
+        params={"status": "RUNNING", "pending_approval": "true", "limit": "2"},
+    )
+
+    assert rsp.status_code == 200
+    assert [workflow["id"] for workflow in rsp.json()["workflows"]] == [
+        "pending_uuid1",
+        "pending_uuid2",
+    ]
+    assert rsp.json()["next_page_token"] is not None
+    mock_client.return_value.list_workflows.assert_called_once_with(
+        "ExecutionStatus = 'Running' and PendingApproval = true and (ReadRoles = 'all')",
+        limit=2,
+        page_size=2,
         next_page_token=None,
     )
 
@@ -1010,6 +1118,7 @@ def test_workflow_types():
     # dont want to have to update this test on every
     # workflow creation
     assert {"BackupWorkflow", "DeployWorkflow"}.issubset(workflow_types)
+    assert "HelloWorldRunning" not in workflow_types
 
 
 @patch("nv_config_manager.temporal.api.dynamic_endpoints.RBACConfig")
@@ -1030,6 +1139,7 @@ def test_workflow_metadata(mock_dynamic_rbac_config):
     assert "admin_roles" not in response
 
     workflows_by_name = {workflow["name"]: workflow for workflow in response["workflows"]}
+    assert "HelloWorldRunning" not in workflows_by_name
     backup_workflow = workflows_by_name["BackupWorkflow"]
     assert backup_workflow["display_name"] == "Backup"
     assert backup_workflow["description"]

@@ -20,6 +20,7 @@ spec:
     matchLabels:
       app: {{ $uiName }}
       component: ui
+  {{- include "nv-config-manager.deploymentStrategy" (dict "root" .) | nindent 2 }}
   template:
     metadata:
       labels:
@@ -139,4 +140,3 @@ spec:
     app: {{ $uiName }}
     component: ui
 {{- end }}
-

@@ -31,6 +31,7 @@ from nv_config_manager.temporal.common.mixins.stage import (
     StateEnum,
     stage_executor,
 )
+from nv_config_manager.temporal.common.search_attributes import ISSUE_KEY_SEARCH_ATTRIBUTE
 
 with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.common.mixins.archive import ArchiveMixin
@@ -626,7 +627,9 @@ class DiagnosticsWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
     ) -> DiagnosticsWorkflowResult:
         self.set_input(workflow_input)
         if workflow_input.issue_key:
-            workflow.upsert_search_attributes({"IssueKey": [workflow_input.issue_key]})
+            workflow.upsert_search_attributes(
+                {ISSUE_KEY_SEARCH_ATTRIBUTE: [workflow_input.issue_key]}
+            )
 
         ticketless = not workflow_input.issue_key
         self._mark_unreachable_stages(workflow_input, ticketless)

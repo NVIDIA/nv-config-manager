@@ -27,6 +27,18 @@ from temporalio.api.operatorservice.v1 import (
 )
 from temporalio.testing import WorkflowEnvironment
 
+from nv_config_manager.temporal.common.search_attributes import (
+    DEVICE_ID_SEARCH_ATTRIBUTE,
+    DEVICE_NAME_SEARCH_ATTRIBUTE,
+    DEVICE_PLATFORM_SEARCH_ATTRIBUTE,
+    DEVICE_ROLE_SEARCH_ATTRIBUTE,
+    EXECUTE_ROLES_SEARCH_ATTRIBUTE,
+    ISSUE_KEY_SEARCH_ATTRIBUTE,
+    PENDING_APPROVAL_SEARCH_ATTRIBUTE,
+    READ_ROLES_SEARCH_ATTRIBUTE,
+    SITE_SEARCH_ATTRIBUTE,
+    USER_SEARCH_ATTRIBUTE,
+)
 from nv_config_manager.temporal.converter import get_data_converter
 from nv_config_manager.temporal.ngc.activities.nats import PublishNatsInput
 
@@ -100,15 +112,16 @@ async def env() -> AsyncGenerator[WorkflowEnvironment]:
         AddSearchAttributesRequest(
             namespace=env.client.namespace,
             search_attributes={
-                "User": IndexedValueType.INDEXED_VALUE_TYPE_KEYWORD,
-                "DeviceID": IndexedValueType.INDEXED_VALUE_TYPE_KEYWORD,
-                "DeviceRole": IndexedValueType.INDEXED_VALUE_TYPE_KEYWORD,
-                "Site": IndexedValueType.INDEXED_VALUE_TYPE_KEYWORD,
-                "DeviceName": IndexedValueType.INDEXED_VALUE_TYPE_TEXT,
-                "DevicePlatform": IndexedValueType.INDEXED_VALUE_TYPE_KEYWORD,
-                "ReadRoles": IndexedValueType.INDEXED_VALUE_TYPE_KEYWORD_LIST,
-                "ExecuteRoles": IndexedValueType.INDEXED_VALUE_TYPE_KEYWORD_LIST,
-                "IssueKey": IndexedValueType.INDEXED_VALUE_TYPE_KEYWORD,
+                USER_SEARCH_ATTRIBUTE: IndexedValueType.INDEXED_VALUE_TYPE_KEYWORD,
+                DEVICE_ID_SEARCH_ATTRIBUTE: IndexedValueType.INDEXED_VALUE_TYPE_KEYWORD,
+                DEVICE_ROLE_SEARCH_ATTRIBUTE: IndexedValueType.INDEXED_VALUE_TYPE_KEYWORD,
+                SITE_SEARCH_ATTRIBUTE: IndexedValueType.INDEXED_VALUE_TYPE_KEYWORD,
+                DEVICE_NAME_SEARCH_ATTRIBUTE: IndexedValueType.INDEXED_VALUE_TYPE_TEXT,
+                DEVICE_PLATFORM_SEARCH_ATTRIBUTE: IndexedValueType.INDEXED_VALUE_TYPE_KEYWORD,
+                READ_ROLES_SEARCH_ATTRIBUTE: IndexedValueType.INDEXED_VALUE_TYPE_KEYWORD_LIST,
+                EXECUTE_ROLES_SEARCH_ATTRIBUTE: IndexedValueType.INDEXED_VALUE_TYPE_KEYWORD_LIST,
+                PENDING_APPROVAL_SEARCH_ATTRIBUTE: IndexedValueType.INDEXED_VALUE_TYPE_BOOL,
+                ISSUE_KEY_SEARCH_ATTRIBUTE: IndexedValueType.INDEXED_VALUE_TYPE_KEYWORD,
             },
         )
     )

@@ -197,9 +197,6 @@ export const WorkflowClientComponent: React.FC<
   const workflowStatusBadgeState = getWorkflowStatusBadgeState(
     workflow.status
   );
-  const pendingApprovalStage = visibleStages.find(
-    (visibleStage) => visibleStage.state === "PENDING_APPROVAL"
-  );
 
   useEffect(() => {
     setStage((currentStage) => {
@@ -368,39 +365,6 @@ export const WorkflowClientComponent: React.FC<
             >
               {workflow.status}
             </Badge>
-            {pendingApprovalStage && !isReviewed && (
-              <div className="mx-3 mt-3 rounded-md border border-yellow-500/40 bg-yellow-500/10 p-3 text-sm">
-                <div className="font-semibold">Approval required</div>
-                <div className="mt-1 text-muted-foreground">
-                  {pendingApprovalStage.name}
-                </div>
-                <div className="mt-3 flex flex-wrap justify-center gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setStage(pendingApprovalStage)}
-                  >
-                    Review
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="approval"
-                    disabled={isLoading}
-                    onClick={() => handleApprove(pendingApprovalStage.name)}
-                  >
-                    {isLoading ? <LoadingSpinner /> : "Approve"}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    disabled={isLoading}
-                    onClick={() => handleReject(pendingApprovalStage.name)}
-                  >
-                    {isLoading ? <LoadingSpinner /> : "Reject"}
-                  </Button>
-                </div>
-              </div>
-            )}
             {canShowTerminate && (
               <div className="mt-3 flex flex-col items-center gap-1">
                 <Button

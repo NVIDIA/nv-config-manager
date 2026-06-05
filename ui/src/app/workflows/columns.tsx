@@ -27,8 +27,32 @@ import { Search } from "lucide-react";
 
 function filterHref(param: string, value: string): string {
   const params = new URLSearchParams();
-  params.set(param, value);
+
+  if (param == "status" && value == "PENDING_APPROVAL") {
+    params.set("status", "RUNNING");
+    params.set("pending_approval", "true");
+  } else {
+    params.set(param, value);
+  }
+
   return `/workflows?${params.toString()}`;
+}
+
+const workflowStatusOptions = [
+  { label: "Running", value: "RUNNING" },
+  { label: "Pending Approval", value: "PENDING_APPROVAL" },
+  { label: "Completed", value: "COMPLETED" },
+  { label: "Failed", value: "FAILED" },
+  { label: "Terminated", value: "TERMINATED" },
+  { label: "Not Started", value: "NOT_STARTED" },
+];
+
+const workflowStatusLabels = new Map(
+  workflowStatusOptions.map((option) => [option.value, option.label])
+);
+
+function getWorkflowStatusLabel(status: string): string {
+  return workflowStatusLabels.get(status) ?? status;
 }
 
 function FilterValueIcon({
@@ -224,16 +248,9 @@ export const getWorkflowColumns = (
     {
       accessorKey: "status",
       meta: {
-        className: "w-[8rem] min-w-[8rem] max-w-[8rem]",
+        className: "w-[10rem] min-w-[10rem] max-w-[10rem]",
         columnLabel: "Status",
-        filterOptions: [
-          { label: "Running", value: "RUNNING" },
-          { label: "Pending Approval", value: "PENDING_APPROVAL" },
-          { label: "Completed", value: "COMPLETED" },
-          { label: "Failed", value: "FAILED" },
-          { label: "Terminated", value: "TERMINATED" },
-          { label: "Not Started", value: "NOT_STARTED" },
-        ],
+        filterOptions: workflowStatusOptions,
         filterVariant: "select",
         placeholder: "Status",
       },
@@ -241,13 +258,15 @@ export const getWorkflowColumns = (
         return <SortableHeaderButton column={column} title="Status" />;
       },
       cell: ({ row }) => {
+        const status = row.original.status;
+
         return (
           <FilterableValue
             label="Status"
             param="status"
-            value={row.original.status}
+            value={status}
           >
-            {row.original.status}
+            {getWorkflowStatusLabel(status)}
           </FilterableValue>
         );
       },

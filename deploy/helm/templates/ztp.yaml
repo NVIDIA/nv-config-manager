@@ -17,6 +17,7 @@ spec:
   selector:
     matchLabels:
       app: {{ $ztpName }}
+  {{- include "nv-config-manager.deploymentStrategy" (dict "root" .) | nindent 2 }}
   template:
     metadata:
       labels:
@@ -324,4 +325,3 @@ spec:
     app: {{ $ztpName }}
 {{- end }}
 {{- end }}
-

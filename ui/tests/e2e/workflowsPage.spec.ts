@@ -89,7 +89,8 @@ test.describe("Workflows Page", () => {
     await expect(page.getByText("LEAF1-GP1-CIN2-PDX01").first()).toBeVisible();
     await page.getByRole("button", { exact: true, name: "Next" }).click();
 
-    await expect(page.getByText("2 of 3")).toBeVisible();
+    await expect(page.getByText("Page 2")).toBeVisible();
+    await expect(page.getByText("More pages available")).toBeVisible();
     await expect(page.getByText("Port LLDP Info").first()).toBeVisible();
   });
 
@@ -119,7 +120,9 @@ test.describe("Workflows Page", () => {
 
     await expect(page.getByText("Device Cable Validation")).toBeVisible();
     await expect(page.getByText("LEAF2-GP1-CIN3-PDX01")).toBeVisible();
-    await expect(page.getByRole("cell", { name: "FAILED" })).toBeVisible();
+    await expect(
+      page.locator("tbody").getByText("Failed", { exact: true })
+    ).toBeVisible();
   });
 
   test("supports dropdown filters and clearing all filters", async ({ page }) => {
@@ -134,6 +137,26 @@ test.describe("Workflows Page", () => {
 
     await expect(page.getByText("Device Cable Validation")).toBeVisible();
     await expect(page.getByText("LEAF2-GP1-CIN3-PDX01")).toBeVisible();
+
+    await page.getByRole("button", { name: "Clear All Filters" }).click();
+    await expect(page.getByText("LEAF1-GP1-CIN2-PDX01").first()).toBeVisible();
+
+    const pendingApprovalResponse = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+
+      return (
+        url.pathname.endsWith("/v1/workflow/") &&
+        url.searchParams.get("status") === "RUNNING" &&
+        url.searchParams.get("pending_approval") === "true"
+      );
+    });
+    await page
+      .locator("thead")
+      .getByRole("cell", { name: /Status/ })
+      .getByRole("combobox")
+      .click();
+    await page.getByRole("option", { name: "Pending Approval" }).click();
+    await pendingApprovalResponse;
 
     await page.getByRole("button", { name: "Clear All Filters" }).click();
     await expect(page.getByText("LEAF1-GP1-CIN2-PDX01").first()).toBeVisible();

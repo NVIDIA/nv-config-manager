@@ -18,6 +18,7 @@ KIND_SEC_SPIFFE_TRUST_DOMAIN ?= $(KIND_SEC_HOSTNAME)
 KIND_SEC_OIDC_CLIENT_SECRET ?= nvcm-local-client-secret
 KIND_SEC_KEYCLOAK_ADMIN_PASSWORD ?= admin
 WORKFLOW_PERF_COUNT ?= 100
+WORKFLOW_PERF_RUNNING_COUNT ?= 150
 WORKFLOW_PERF_FAILED_COUNT ?= 1
 
 # Generate unique image tag: SHA-TIMESTAMP (e.g., abc1234-1704067200)
@@ -62,7 +63,7 @@ help:
 	@echo "  make kind-up DEPLOY_SIZE=medium   - Deploy with medium sizing (64GB VM)"
 	@echo "  make kind-down                    - Delete Kind cluster"
 	@echo "  make topology                     - Populate Nautobot with mock topology data"
-	@echo "  make workflow-perf-seed           - Seed local Temporal with stuck/failing workflows for list latency testing"
+	@echo "  make workflow-perf-seed           - Seed local Temporal with pending/running/failing workflows for list latency testing"
 	@echo "  make install-cert                 - Install self-signed CA certificate in system keychain"
 	@echo ""
 	@echo "Docker Build:"
@@ -802,12 +803,13 @@ kind-up-sec:
 
 # Seed Temporal with many non-terminal workflows to test workflow list latency.
 workflow-perf-seed:
-	@echo "🌱 Seeding workflow latency fixtures (pending: $(WORKFLOW_PERF_COUNT), failed: $(WORKFLOW_PERF_FAILED_COUNT))..."
+	@echo "🌱 Seeding workflow latency fixtures (pending: $(WORKFLOW_PERF_COUNT), running non-pending: $(WORKFLOW_PERF_RUNNING_COUNT), failed: $(WORKFLOW_PERF_FAILED_COUNT))..."
 	uv run scripts/seed-workflow-latency-data \
 		--port-forward \
 		--kube-namespace $(NAMESPACE) \
 		--release-name $(RELEASE_NAME) \
 		--count $(WORKFLOW_PERF_COUNT) \
+		--running-count $(WORKFLOW_PERF_RUNNING_COUNT) \
 		--failed-count $(WORKFLOW_PERF_FAILED_COUNT)
 
 # Create Kind cluster, deploy NVIDIA Config Manager, and populate with mock topology.

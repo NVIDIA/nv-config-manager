@@ -34,6 +34,13 @@ from nv_config_manager.temporal.common.mixins.stage import (
     StateEnum,
     stage_executor,
 )
+from nv_config_manager.temporal.common.search_attributes import (
+    DEVICE_ID_SEARCH_ATTRIBUTE,
+    EXECUTE_ROLES_SEARCH_ATTRIBUTE,
+    READ_ROLES_SEARCH_ATTRIBUTE,
+    SITE_SEARCH_ATTRIBUTE,
+    USER_SEARCH_ATTRIBUTE,
+)
 
 with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.client.device import (
@@ -94,7 +101,11 @@ DEFAULT_CONFIG_MANAGER_ROLES = [
 DEFAULT_CONFIG_MANAGER_STATUS = ["active", "provisioning"]
 DEFAULT_CONFIG_MANAGER_TENANT = "nsv"
 # list of search attributes to clone from parent to child
-CLONE_SEARCH_ATTRS = ["User", "ReadRoles", "ExecuteRoles"]
+CLONE_SEARCH_ATTRS = [
+    USER_SEARCH_ATTRIBUTE,
+    READ_ROLES_SEARCH_ATTRIBUTE,
+    EXECUTE_ROLES_SEARCH_ATTRIBUTE,
+]
 
 SUPPORTED_PLATFORMS = [Platform.CUMULUS_LINUX, Platform.ARISTA_EOS, Platform.NV_OS]
 
@@ -241,7 +252,7 @@ class SiteCableValidationWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixi
         }
         for device in stage_input.devices:
             # Attach the device search attribute as well
-            search_attrs.update({"DeviceID": [device.id]})
+            search_attrs.update({DEVICE_ID_SEARCH_ATTRIBUTE: [device.id]})
             handles[device.name] = await workflow.start_child_workflow(
                 DeviceCableValidationWorkflow.run,
                 DeviceCableValidationInput(device_id=device.id, device=device),
@@ -392,7 +403,7 @@ class SiteCableValidationWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixi
     ) -> SiteCableValidationResult:
         """Run the workflow."""
         self.set_input(workflow_input)
-        workflow.upsert_search_attributes({"Site": [workflow_input.site]})
+        workflow.upsert_search_attributes({SITE_SEARCH_ATTRIBUTE: [workflow_input.site]})
 
         devices_output = await self.get_devices_to_validate(
             SiteCableValidationWorkflow.GetDevicesStageInput(

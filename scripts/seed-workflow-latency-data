@@ -20,10 +20,17 @@ from temporalio.common import (
     TypedSearchAttributes,
 )
 
+from nv_config_manager.temporal.common.search_attributes import (
+    EXECUTE_ROLES_SEARCH_ATTRIBUTE,
+    PENDING_APPROVAL_SEARCH_ATTRIBUTE,
+    READ_ROLES_SEARCH_ATTRIBUTE,
+    USER_SEARCH_ATTRIBUTE,
+)
 from nv_config_manager.temporal.converter import get_data_converter
 from nv_config_manager.temporal.hello_world.workflows.hello_world_workflow import (
     HelloWorldApproval,
     HelloWorldInput,
+    HelloWorldRunning,
 )
 from nv_config_manager.temporal.ngc.workflows.backup import (
     BackupInput,
@@ -40,11 +47,20 @@ def parse_args() -> argparse.Namespace:
     """Parse command-line options."""
     parser = argparse.ArgumentParser(
         description=(
-            "Start many non-terminal HelloWorldApproval workflows and optional failed "
-            "BackupWorkflow runs for workflow-list latency testing."
+            "Start pending, running non-pending, and optional failed workflows for "
+            "workflow-list latency testing."
         )
     )
     parser.add_argument("--count", type=int, default=100, help="Pending workflow count.")
+    parser.add_argument(
+        "--running-count",
+        type=int,
+        default=150,
+        help=(
+            "Running non-pending workflow count. These are started after pending workflows "
+            "so they sort newer than the pending approval fixtures."
+        ),
+    )
     parser.add_argument(
         "--failed-count",
         type=int,
@@ -235,10 +251,25 @@ async def wait_for_failed(client: Client, workflow_id: str, timeout: float) -> N
     raise TimeoutError(f"Workflow {workflow_id} did not fail.")
 
 
+async def wait_for_running_non_pending(client: Client, workflow_id: str, timeout: float) -> None:
+    """Wait for a workflow to remain running without pending approval."""
+    handle = client.get_workflow_handle(workflow_id=workflow_id)
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        description = await handle.describe()
+        if (
+            description.status == WorkflowExecutionStatus.RUNNING
+            and not await handle.query("pending_approval")
+        ):
+            return
+        await asyncio.sleep(1)
+    raise TimeoutError(f"Workflow {workflow_id} did not reach running non-pending state.")
+
+
 async def seed_workflows(args: argparse.Namespace) -> None:
-    """Seed Temporal with pending and failed workflows."""
-    if args.count < 0 or args.failed_count < 0:
-        raise ValueError("--count and --failed-count must be non-negative.")
+    """Seed Temporal with pending, running non-pending, and failed workflows."""
+    if args.count < 0 or args.running_count < 0 or args.failed_count < 0:
+        raise ValueError("--count, --running-count, and --failed-count must be non-negative.")
     if args.concurrency < 1:
         raise ValueError("--concurrency must be >= 1.")
 
@@ -248,21 +279,28 @@ async def seed_workflows(args: argparse.Namespace) -> None:
         data_converter=get_data_converter(),
     )
     run_prefix = f"{args.prefix}-{int(time.time())}"
-    typed_search_attributes = TypedSearchAttributes(
+    search_attributes = TypedSearchAttributes(
         [
-            SearchAttributePair(SearchAttributeKey.for_keyword("User"), args.user),
+            SearchAttributePair(SearchAttributeKey.for_keyword(USER_SEARCH_ATTRIBUTE), args.user),
             SearchAttributePair(
-                SearchAttributeKey.for_keyword_list("ReadRoles"),
+                SearchAttributeKey.for_keyword_list(READ_ROLES_SEARCH_ATTRIBUTE),
                 split_roles(args.read_roles),
             ),
             SearchAttributePair(
-                SearchAttributeKey.for_keyword_list("ExecuteRoles"),
+                SearchAttributeKey.for_keyword_list(EXECUTE_ROLES_SEARCH_ATTRIBUTE),
                 split_roles(args.execute_roles),
+            ),
+            SearchAttributePair(
+                SearchAttributeKey.for_bool(PENDING_APPROVAL_SEARCH_ATTRIBUTE),
+                False,
             ),
         ]
     )
 
     pending_ids = [f"{run_prefix}-pending-{idx:04d}" for idx in range(1, args.count + 1)]
+    running_ids = [
+        f"{run_prefix}-running-{idx:04d}" for idx in range(1, args.running_count + 1)
+    ]
     failed_ids = [
         f"{run_prefix}-failed-{idx:04d}" for idx in range(1, args.failed_count + 1)
     ]
@@ -273,7 +311,16 @@ async def seed_workflows(args: argparse.Namespace) -> None:
             HelloWorldInput(name=workflow_id),
             id=workflow_id,
             task_queue=args.task_queue,
-            typed_search_attributes=typed_search_attributes,
+            search_attributes=search_attributes,
+        )
+
+    async def start_running(workflow_id: str) -> None:
+        await client.start_workflow(
+            HelloWorldRunning.run,
+            HelloWorldInput(name=workflow_id),
+            id=workflow_id,
+            task_queue=args.task_queue,
+            search_attributes=search_attributes,
         )
 
     async def start_failed(workflow_id: str) -> None:
@@ -289,13 +336,15 @@ async def seed_workflows(args: argparse.Namespace) -> None:
             ),
             id=workflow_id,
             task_queue=args.task_queue,
-            typed_search_attributes=typed_search_attributes,
+            search_attributes=search_attributes,
         )
 
     await run_limited(pending_ids, args.concurrency, start_pending)
     await run_limited(failed_ids, args.concurrency, start_failed)
+    await run_limited(running_ids, args.concurrency, start_running)
 
     print(f"Started {len(pending_ids)} pending workflows.")
+    print(f"Started {len(running_ids)} running non-pending workflows.")
     print(f"Started {len(failed_ids)} failing workflows.")
 
     if not args.no_wait:
@@ -308,6 +357,13 @@ async def seed_workflows(args: argparse.Namespace) -> None:
             failed_ids,
             args.concurrency,
             lambda workflow_id: wait_for_failed(client, workflow_id, args.wait_timeout),
+        )
+        await run_limited(
+            running_ids,
+            args.concurrency,
+            lambda workflow_id: wait_for_running_non_pending(
+                client, workflow_id, args.wait_timeout
+            ),
         )
         print("Seeded workflows reached expected states.")
 

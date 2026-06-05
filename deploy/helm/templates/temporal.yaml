@@ -50,6 +50,7 @@ spec:
     matchLabels:
       app: {{ $temporalName }}
       component: {{ $service }}
+  {{- include "nv-config-manager.deploymentStrategy" (dict "root" $) | nindent 2 }}
   template:
     metadata:
       labels:
@@ -268,6 +269,7 @@ spec:
     matchLabels:
       app: {{ $temporalName }}
       component: worker
+  {{- include "nv-config-manager.deploymentStrategy" (dict "root" .) | nindent 2 }}
   template:
     metadata:
       labels:
@@ -352,6 +354,7 @@ spec:
           temporal operator search-attribute create --address "$TEMPORAL_ADDR" --name Site --type Text || true
           temporal operator search-attribute create --address "$TEMPORAL_ADDR" --name ReadRoles --type KeywordList || true
           temporal operator search-attribute create --address "$TEMPORAL_ADDR" --name ExecuteRoles --type KeywordList || true
+          temporal operator search-attribute create --address "$TEMPORAL_ADDR" --name PendingApproval --type Bool || true
           temporal operator search-attribute create --address "$TEMPORAL_ADDR" --name IssueKey --type Keyword || true
 
           echo "Temporal setup complete!"
@@ -423,6 +426,7 @@ spec:
     matchLabels:
       app: {{ $temporalName }}
       component: api
+  {{- include "nv-config-manager.deploymentStrategy" (dict "root" .) | nindent 2 }}
   template:
     metadata:
       labels:
@@ -536,6 +540,7 @@ spec:
     matchLabels:
       app: {{ $temporalName }}
       component: scheduler
+  {{- include "nv-config-manager.deploymentStrategy" (dict "root" .) | nindent 2 }}
   template:
     metadata:
       labels:
@@ -617,6 +622,7 @@ spec:
     matchLabels:
       app: {{ $temporalName }}
       component: archive
+  {{- include "nv-config-manager.deploymentStrategy" (dict "root" .) | nindent 2 }}
   template:
     metadata:
       labels:
@@ -680,6 +686,7 @@ spec:
   selector:
     matchLabels:
       app: {{ $temporalName }}-web
+  {{- include "nv-config-manager.deploymentStrategy" (dict "root" .) | nindent 2 }}
   template:
     metadata:
       labels:

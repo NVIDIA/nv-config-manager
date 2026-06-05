@@ -95,6 +95,30 @@ class HelloWorld(WorkflowMetadataMixin, StageMixin):
         return result.display
 
 
+@workflow.defn
+class HelloWorldRunning(StageMixin):
+    """Long-running workflow for local workflow-list latency testing."""
+
+    def __init__(self) -> None:
+        """Initialize workflow."""
+        StageMixin.__init__(self)
+        self.define_stage(
+            name="running",
+            description="Long-running non-approval latency fixture",
+            depends_on=[],
+            requires_approval=False,
+        )
+
+    @workflow.run
+    async def run(self, workflow_input: HelloWorldInput) -> str:
+        """Run long enough to remain visible as a non-pending running workflow."""
+        self.set_input(workflow_input)
+        self.set_stage_state("running", StateEnum.IN_PROGRESS)
+        await workflow.sleep(timedelta(days=3650))
+        self.set_stage_state("running", StateEnum.COMPLETE)
+        return workflow_input.name
+
+
 class PromptStageOutput(StageOutput):
     """Prompt Stage Output."""
 

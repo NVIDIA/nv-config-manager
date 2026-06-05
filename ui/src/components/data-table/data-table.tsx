@@ -126,10 +126,16 @@ const getWorkflowApiFilterString = (columnFilters: ColumnFiltersState): string =
 
   columnFilters.forEach((filter) => {
     const value = String(filter.value ?? "").trim();
-    const apiParam = workflowApiFilterParams[filter.id.replaceAll(".", "_")];
+    const columnId = filter.id.replaceAll(".", "_");
+    const apiParam = workflowApiFilterParams[columnId];
 
     if (apiParam && value) {
-      params.set(apiParam, value);
+      if (columnId == "status" && value == WORKFLOW_STATUS.pending_approval) {
+        params.set("status", WORKFLOW_STATUS.running);
+        params.set("pending_approval", "true");
+      } else {
+        params.set(apiParam, value);
+      }
     }
   });
 
@@ -194,9 +200,22 @@ const getColumnFiltersFromSearchParams = (
     return [];
   }
 
+  const pendingApprovalFilter =
+    searchParams.get("pending_approval")?.toLowerCase() == "true";
+
   return Object.entries(workflowApiFilterParams).reduce<ColumnFiltersState>(
     (filters, [columnId, apiParam]) => {
       const value = searchParams.get(apiParam);
+
+      if (
+        columnId == "status" &&
+        pendingApprovalFilter &&
+        (!value || value == WORKFLOW_STATUS.running)
+      ) {
+        filters.push({ id: columnId, value: WORKFLOW_STATUS.pending_approval });
+        return filters;
+      }
+
       if (value) {
         filters.push({ id: columnId, value });
       }
@@ -555,18 +574,10 @@ export function DataTable<TData, TValue>({ columns }: DataTableProps<TData, TVal
     void setSize(1);
   };
 
-  const loadedPageCount = Math.max(
-    Math.ceil(tableData.length / pagination.pageSize),
-    1
-  );
-  const backendPageCount = Math.max(
-    loadedPageCount,
-    (workflowPages?.length ?? 0) + (hasMoreData ? 1 : 0),
-    pagination.pageIndex + 1
-  );
   const nextPageIndex = pagination.pageIndex + 1;
   const hasLoadedNextPage =
     tableData.length > nextPageIndex * pagination.pageSize;
+  const hasNextPage = hasMoreData || hasLoadedNextPage;
 
   const handleNextPage = () => {
     if (hasLoadedNextPage) {
@@ -580,24 +591,6 @@ export function DataTable<TData, TValue>({ columns }: DataTableProps<TData, TVal
     if (hasMoreData && pendingPageIndex === null) {
       setPendingPageIndex(nextPageIndex);
       void setSize((currentSize) => currentSize + 1);
-    }
-  };
-
-  const handleGoToPage = (pageIndex: number) => {
-    const nextIndex = Math.max(0, Math.min(pageIndex, backendPageCount - 1));
-
-    if (nextIndex < loadedPageCount) {
-      setPendingPageIndex(null);
-      setPagination((currentPagination) => ({
-        ...currentPagination,
-        pageIndex: nextIndex,
-      }));
-      return;
-    }
-
-    if (hasMoreData && pendingPageIndex === null) {
-      setPendingPageIndex(nextIndex);
-      void setSize(nextIndex + 1);
     }
   };
 
@@ -789,29 +782,12 @@ export function DataTable<TData, TValue>({ columns }: DataTableProps<TData, TVal
             </Select>
           </div>
 
-          <div className="text-center flex flex-col items-center flex-grow">
-            <div>
-              {table.getState().pagination.pageIndex + 1} of{" "}
-              {backendPageCount}
+          <div className="flex flex-grow flex-col items-center text-center">
+            <div className="text-sm font-medium">
+              Page {table.getState().pagination.pageIndex + 1}
             </div>
-            <div className="flex items-center space-x-2">
-              <span>Go to page:</span>
-              <Input
-                type="number"
-                defaultValue={table.getState().pagination.pageIndex + 1}
-                onChange={(e) => {
-                  let page = e.target.value ? Number(e.target.value) - 1 : 0;
-
-                  if (page >= backendPageCount) {
-                    page = backendPageCount - 1;
-                  }
-
-                  handleGoToPage(page);
-                }}
-                className="border p-1 rounded w-16"
-                min={1}
-                max={backendPageCount}
-              />
+            <div className="text-xs text-muted-foreground">
+              {hasNextPage ? "More pages available" : "End of results"}
             </div>
           </div>
 
@@ -829,9 +805,7 @@ export function DataTable<TData, TValue>({ columns }: DataTableProps<TData, TVal
               variant="outline"
               size="sm"
               onClick={handleNextPage}
-              disabled={
-                isFetchingNextPage || (!hasMoreData && !hasLoadedNextPage)
-              }
+              disabled={isFetchingNextPage || !hasNextPage}
               className="px-4 py-2 border rounded"
             >
               {isFetchingNextPage ? "Loading..." : "Next"}

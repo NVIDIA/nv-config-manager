@@ -40,6 +40,9 @@ from temporalio.exceptions import (
 
 from nv_config_manager.common.log import LogCategory, get_logger
 from nv_config_manager.temporal.common.mixins.base import BaseMixin
+from nv_config_manager.temporal.common.search_attributes import (
+    PENDING_APPROVAL_SEARCH_ATTRIBUTE,
+)
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -374,11 +377,13 @@ class StageMixin(BaseMixin):
                     raise StageStateFailure(f"Cannot start {name} before {dependency} is complete.")
 
         stage.transition(state)
+        self._upsert_pending_approval_search_attribute()
 
         if state == StateEnum.UNREACHABLE:
             # Set all stages dependent on this stage as unreachable as well
             for dependent_stage in self.stages_by_dependency(stage):
                 dependent_stage.transition(state)
+            self._upsert_pending_approval_search_attribute()
 
     def get_stage_state(self, name: str) -> StateEnum:
         """Get the state of the stage."""
@@ -401,6 +406,12 @@ class StageMixin(BaseMixin):
     def stages_by_dependency(self, dependency: Stage) -> list[Stage]:
         """Return a list of stages dependent on a given stage."""
         return [stage for stage in self._stages if dependency in stage.depends_on]
+
+    def _upsert_pending_approval_search_attribute(self) -> None:
+        """Index whether any workflow stage is currently pending approval."""
+        workflow.upsert_search_attributes(
+            {PENDING_APPROVAL_SEARCH_ATTRIBUTE: [self.pending_approval()]}
+        )
 
     @staticmethod
     def _format_row_for_markdown_table(row_data: dict[str, Any]) -> dict[str, Any]:
@@ -522,6 +533,7 @@ class StageMixin(BaseMixin):
         if self.stage_exists(review_input.stage_name):
             stage = self.get_stage_by_name(review_input.stage_name)
             stage.approve(review_input.user)
+            self._upsert_pending_approval_search_attribute()
         else:
             self.logger.error(
                 "Received approve signal for non-existent stage: %s",
@@ -534,6 +546,7 @@ class StageMixin(BaseMixin):
         if self.stage_exists(review_input.stage_name):
             stage = self.get_stage_by_name(review_input.stage_name)
             stage.reject(review_input.user)
+            self._upsert_pending_approval_search_attribute()
         else:
             self.logger.error(
                 "Received reject signal for non-existent stage: %s",
