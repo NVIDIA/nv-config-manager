@@ -94,9 +94,15 @@ class _CliCallback:
     def on_log(self, line: str) -> None:
         click.echo(line)
 
+    def _ssh_cmd(self, host: str, port: int) -> str:
+        base = f"ssh -p {port} nvcm@{host}"
+        if self._ssh_password:
+            return f"sshpass -p {shlex.quote(self._ssh_password)} {base}"
+        return base
+
     def on_ssh_ready(self, host: str, port: int) -> None:
         click.echo(f"SSH ready: {host}:{port}")
-        click.echo(f"  sshpass -p {shlex.quote(self._ssh_password)} ssh -p {port} nvcm@{host}")
+        click.echo(f"  {self._ssh_cmd(host, port)}")
 
     def on_deploy_started(self, host: str, port: int) -> None:
         click.echo(f"Deployment started over SSH: {host}:{port}")
@@ -109,6 +115,6 @@ class _CliCallback:
             click.echo("DSX Air simulation bringup completed.")
             if host:
                 click.echo(f"SSH: {host}:{port}")
-                click.echo(f"  sshpass -p {shlex.quote(self._ssh_password)} ssh -p {port} nvcm@{host}")
+                click.echo(f"  {self._ssh_cmd(host, port)}")
         else:
             click.echo("DSX Air simulation bringup failed.", err=True)
