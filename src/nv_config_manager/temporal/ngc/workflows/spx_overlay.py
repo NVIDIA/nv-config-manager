@@ -343,7 +343,6 @@ class SpXOverlayDeletionWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
                 VrfDeletionActivityInput(
                     vrf_id=vrf.id,
                     vnid=_vni_from_rd(vrf.rd),
-                    namespace=vrf.namespace,
                 ),
                 start_to_close_timeout=timedelta(minutes=1),
                 retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,

@@ -198,29 +198,25 @@ async def test_delete_vrf_deletes_vxlan_then_vrf():
     with aioresponses() as m:
         m.get(
             _r(f"{OVERLAYS_BASE}/vxlans/"),
-            payload={"results": [{"id": VXLAN_ID, "namespace": {"name": "SuperPOD Demo"}}]},
+            payload={"results": [{"id": VXLAN_ID, "vrf": {"id": VRF_ID}}]},
         )
         m.delete(f"{OVERLAYS_BASE}/vxlans/{VXLAN_ID}/", status=204)
         m.delete(f"{NAUTOBOT}/api/ipam/vrfs/{VRF_ID}/", status=204)
 
-        await delete_vrf(
-            VrfDeletionActivityInput(vrf_id=VRF_ID, vnid=60004, namespace="SuperPOD Demo")
-        )
+        await delete_vrf(VrfDeletionActivityInput(vrf_id=VRF_ID, vnid=60004))
 
 
 @pytest.mark.asyncio
-async def test_delete_vrf_skips_vxlan_from_different_namespace():
+async def test_delete_vrf_skips_vxlan_bound_to_different_vrf():
     with aioresponses() as m:
         m.get(
             _r(f"{OVERLAYS_BASE}/vxlans/"),
-            payload={"results": [{"id": VXLAN_ID, "namespace": {"name": "other-ns"}}]},
+            payload={"results": [{"id": VXLAN_ID, "vrf": {"id": "other-vrf-id"}}]},
         )
-        # No VXLAN delete — only VRF delete
+        # No VXLAN delete — vrf_id doesn't match
         m.delete(f"{NAUTOBOT}/api/ipam/vrfs/{VRF_ID}/", status=204)
 
-        await delete_vrf(
-            VrfDeletionActivityInput(vrf_id=VRF_ID, vnid=60004, namespace="SuperPOD Demo")
-        )
+        await delete_vrf(VrfDeletionActivityInput(vrf_id=VRF_ID, vnid=60004))
 
 
 # ---------------------------------------------------------------------------

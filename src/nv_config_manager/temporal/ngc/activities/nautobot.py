@@ -530,15 +530,15 @@ class VrfDeletionActivityInput(BaseModel):
 
     vrf_id: str
     vnid: int
-    namespace: str
 
 
 @activity.defn
 async def delete_vrf(activity_input: VrfDeletionActivityInput) -> None:
     """Delete a VRF and the L3 VXLAN bound to it.
 
-    The VXLAN is matched by VNI and namespace (its VRF FK is SET_NULL on VRF
-    deletion, so it is removed explicitly to keep the overlay clean).
+    VXLANs are fetched by VNI then filtered to those whose vrf.id matches
+    vrf_id (the VRF FK is SET_NULL on VRF deletion, so they are removed
+    explicitly to keep the overlay clean).
     """
     client = NautobotClient()
     async with client:
