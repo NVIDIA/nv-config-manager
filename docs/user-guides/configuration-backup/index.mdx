@@ -41,21 +41,21 @@ The workflow defines three stages. The first two run in parallel; the third depe
 
 1. **`load_running_configuration` — Pull the running config from the device.**
 
-   Fetches the device record from Nautobot, attaches device search attributes to the workflow for observability, and then calls the `load_running_configuration` activity to read the device's running configuration. The activity has a 5-minute start-to-close timeout and retries up to 3 times on transient errors.
+    Fetches the device record from Nautobot, attaches device search attributes to the workflow for observability, and then calls the `load_running_configuration` activity to read the device's running configuration. The activity has a 5-minute start-to-close timeout and retries up to 3 times on transient errors.
 
-   The full running configuration is included in the stage output so it is visible on the workflow status page.
+    The full running configuration is included in the stage output so it is visible on the workflow status page.
 
 1. **`check_drift` — Compare running vs. intended configuration.**
 
-   If the caller already supplied an `intended_config_commit_id`, the stage short-circuits and reports no drift — this is the path Deploy workflows take, because they just applied the intended config and do not want their own change flagged.
+    If the caller already supplied an `intended_config_commit_id`, the stage short-circuits and reports no drift — this is the path Deploy workflows take, because they just applied the intended config and do not want their own change flagged.
 
-   Otherwise, the stage loads the intended configuration for the device from the Config Store and runs `perform_candidate_diff` to compare it against what is on the device. The diff output is included in the stage display, and the commit ID of the intended configuration is recorded so the persist stage can mark the backup as matching that commit. The diff activities have a 1-minute timeout and retry up to 3 times.
+    Otherwise, the stage loads the intended configuration for the device from the Config Store and runs `perform_candidate_diff` to compare it against what is on the device. The diff output is included in the stage display, and the commit ID of the intended configuration is recorded so the persist stage can mark the backup as matching that commit. The diff activities have a 1-minute timeout and retry up to 3 times.
 
 1. **`persist_backup` — Write the snapshot to the Config Store and record it on the device.**
 
-   Persists the running configuration to the Config Store with a commit message of the form `Backup trigger: <TRIGGER> User: <user>`, then records the backup against the device via the Config Manager plugin. The plugin record links the backup to the originating workflow ID, the Config Store commit ID, the device's `backup_path`, and (when known) the deployed intended-config commit ID, so the device's history can show "this is the running config as of commit X, while the deployed intended config was commit Y."
+    Persists the running configuration to the Config Store with a commit message of the form `Backup trigger: <TRIGGER> User: <user>`, then records the backup against the device via the Config Manager plugin. The plugin record links the backup to the originating workflow ID, the Config Store commit ID, the device's `backup_path`, and (when known) the deployed intended-config commit ID, so the device's history can show "this is the running config as of commit X, while the deployed intended config was commit Y."
 
-   The stage returns a `changed` flag indicating whether the new backup differs from the previous one on record. Each activity has a 1-minute timeout and retries up to 3 times.
+    The stage returns a `changed` flag indicating whether the new backup differs from the previous one on record. Each activity has a 1-minute timeout and retries up to 3 times.
 
 After all three stages complete, the workflow archives its results and returns the `changed` flag from the persist stage.
 

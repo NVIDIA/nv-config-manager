@@ -44,7 +44,7 @@ The workflow runs four stages in order. Only `approve_upgrade` requires approval
 
 1. **`approve_upgrade` — Compute the delta and request approval.**
 
-   Reads the device's current firmware off the running configuration and compares it against the intended firmware in Nautobot. Three outcomes:
+    Reads the device's current firmware off the running configuration and compares it against the intended firmware in Nautobot. Three outcomes:
 
    - **Unsupported platform** — the workflow returns early, the approval stage is cleared, and downstream stages are marked UNREACHABLE.
    - **Intended matches running** — no upgrade needed. The stage flips `requires_approval` to false at runtime and short-circuits; downstream stages are marked UNREACHABLE.
@@ -52,15 +52,15 @@ The workflow runs four stages in order. Only `approve_upgrade` requires approval
 
 1. **`perform_backup` — Capture a pre-upgrade backup.**
 
-   Starts the [Configuration Backup](../configuration-backup/index.mdx) workflow as a child workflow with `trigger=WORKFLOW`. After it completes, the workflow runs `check_recorded_config_drift`: if the just-recorded backup differs from what was last known to Config Manager, the upgrade halts with the downstream stages marked UNREACHABLE. Drift means the device has been configured out of band; resolve the drift before re-running.
+    Starts the [Configuration Backup](../configuration-backup/index.mdx) workflow as a child workflow with `trigger=WORKFLOW`. After it completes, the workflow runs `check_recorded_config_drift`: if the just-recorded backup differs from what was last known to Config Manager, the upgrade halts with the downstream stages marked UNREACHABLE. Drift means the device has been configured out of band; resolve the drift before re-running.
 
 1. **`update_device_configuration` — Refresh device context for the upgrade.**
 
-   Calls `validate_rendered_image_change` (6-minute start-to-close timeout, 2-minute heartbeat) to ensure the rendered configuration is consistent with the upgrade target, and updates Config Manager's internal state to track the new firmware.
+    Calls `validate_rendered_image_change` (6-minute start-to-close timeout, 2-minute heartbeat) to ensure the rendered configuration is consistent with the upgrade target, and updates Config Manager's internal state to track the new firmware.
 
 1. **`perform_upgrade` — Install the image and wait for the device to come back.**
 
-   Pushes the image to the device via the ZTP service and reboots. Two long-poll activities then wait for the device to converge:
+    Pushes the image to the device via the ZTP service and reboots. Two long-poll activities then wait for the device to converge:
 
    - `poll_image` — 35-minute timeout (30 + 5 buffer), 3-minute heartbeat. If the post-reboot image does not match the intended firmware, raises `ApplicationError`.
    - `poll_ztp_status` — 15-minute timeout (10 + 5 buffer). If ZTP does not complete in that window, raises `ApplicationError`.

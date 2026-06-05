@@ -42,19 +42,19 @@ The parent workflow runs four stages in order. None of the parent stages require
 
 1. **`discover_devices` — Query Nautobot for in-scope devices.**
 
-   Calls Nautobot with the supplied role, location, status, and tenant filters, and `deploy_enabled=True`. The stage display reports how many devices were discovered. If no devices match, the workflow exits early with `"No devices found with role '<role>'"` and no further stages run.
+    Calls Nautobot with the supplied role, location, status, and tenant filters, and `deploy_enabled=True`. The stage display reports how many devices were discovered. If no devices match, the workflow exits early with `"No devices found with role '<role>'"` and no further stages run.
 
 1. **`collect_diffs` — Generate a candidate diff for every device.**
 
-   For each discovered device, in parallel, the workflow loads the device's intended configuration (with its own commit SHA) from the Config Store and runs a candidate diff against the device's live configuration. Devices with no diff are dropped from later stages. Devices that error out during diff collection (unreachable, render failure, syntax error) are recorded in `discovery_failures` and reported in the final result but do not stop the workflow. If no device has changes to apply, the workflow exits with `"No devices have configuration changes to deploy"`.
+    For each discovered device, in parallel, the workflow loads the device's intended configuration (with its own commit SHA) from the Config Store and runs a candidate diff against the device's live configuration. Devices with no diff are dropped from later stages. Devices that error out during diff collection (unreachable, render failure, syntax error) are recorded in `discovery_failures` and reported in the final result but do not stop the workflow. If no device has changes to apply, the workflow exits with `"No devices have configuration changes to deploy"`.
 
 1. **`group_and_batch` — Group by shared diff and slice into batches.**
 
-   Devices with byte-identical diff content are grouped together (see [Diff grouping and batching](#diff-grouping-and-batching) below). Each group is then split into batches no larger than `max_batch_size`. The stage display reports the number of diff groups, the number of batches, and how each group breaks down.
+    Devices with byte-identical diff content are grouped together (see [Diff grouping and batching](#diff-grouping-and-batching) below). Each group is then split into batches no larger than `max_batch_size`. The stage display reports the number of diff groups, the number of batches, and how each group breaks down.
 
 1. **`execute_batches` — Spawn a child batch workflow per batch.**
 
-   For each batch, the parent starts a child [Batch Deploy](../batch-deploy/index.mdx) and posts a clickable link to it on the stage display. The parent stage stays running and updates the display as each child completes (succeeded, failed, or rejected). The approval gate for each batch lives inside its child workflow — open the child link to review the diff and approve or reject.
+    For each batch, the parent starts a child [Batch Deploy](../batch-deploy/index.mdx) and posts a clickable link to it on the stage display. The parent stage stays running and updates the display as each child completes (succeeded, failed, or rejected). The approval gate for each batch lives inside its child workflow — open the child link to review the diff and approve or reject.
 
 The parent workflow is complete only after every child batch workflow terminates. The final result aggregates total successes, failures, and rejections across all batches.
 

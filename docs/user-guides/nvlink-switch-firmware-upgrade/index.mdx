@@ -29,27 +29,27 @@ The workflow runs six stages in order. None require manual approval — the work
 
 1. **`get_current_state` — Read the running firmware.**
 
-   Queries the device for its current firmware version. Early-exits if the device platform is unsupported (not NVOS) by marking downstream stages UNREACHABLE.
+    Queries the device for its current firmware version. Early-exits if the device platform is unsupported (not NVOS) by marking downstream stages UNREACHABLE.
 
 1. **`compare_versions` — Compare running vs requested.**
 
-   Compares the current firmware against the requested `bundle_version`. If they match, the workflow short-circuits — downstream stages are marked UNREACHABLE and the result reflects "no upgrade needed."
+    Compares the current firmware against the requested `bundle_version`. If they match, the workflow short-circuits — downstream stages are marked UNREACHABLE and the result reflects "no upgrade needed."
 
 1. **`perform_backup` — Capture a pre-upgrade backup.**
 
-   Starts the [Configuration Backup](../configuration-backup/index.mdx) workflow as a child workflow so the device's pre-upgrade configuration is preserved.
+    Starts the [Configuration Backup](../configuration-backup/index.mdx) workflow as a child workflow so the device's pre-upgrade configuration is preserved.
 
 1. **`update_context_and_validate` — Refresh device context and validate config drift.**
 
-   Updates Config Manager's internal device-context state to track the new firmware, then validates that the rendered configuration is consistent with the upgrade. Halts the workflow on configuration drift (similar to Switch OS Upgrade's drift gate).
+    Updates Config Manager's internal device-context state to track the new firmware, then validates that the rendered configuration is consistent with the upgrade. Halts the workflow on configuration drift (similar to Switch OS Upgrade's drift gate).
 
 1. **`execute_firmware_upgrade` — Install the bundle and reboot.**
 
-   Pushes the firmware bundle and triggers the install. ZTP poll waits up to 110 minutes for the device to come back; an extended timeout reflects the longer install + reboot cycle on NVLink hardware.
+    Pushes the firmware bundle and triggers the install. ZTP poll waits up to 110 minutes for the device to come back; an extended timeout reflects the longer install + reboot cycle on NVLink hardware.
 
 1. **`validate_firmware_upgrade` — Confirm the post-upgrade firmware.**
 
-   Queries the device after it comes back and confirms the running firmware now matches `bundle_version`. A persistent mismatch raises `NVLinkSwitchFirmwareUpgradeException` (non-retryable) — this is a hard failure indicating the install did not take effect.
+    Queries the device after it comes back and confirms the running firmware now matches `bundle_version`. A persistent mismatch raises `NVLinkSwitchFirmwareUpgradeException` (non-retryable) — this is a hard failure indicating the install did not take effect.
 
 Retry policy: 3 attempts, with `NVLinkSwitchFirmwareUpgradeException` non-retryable.
 

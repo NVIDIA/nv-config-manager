@@ -38,25 +38,25 @@ Use this for site bringup or any time you need a full-site view.
 
 1. Click the **+** in the top right and select **SiteCableValidationWorkflow**.
 
-   ![Workflow form](../../assets/images/cable-validation-workflow-form.png)
+    ![Workflow form](../../assets/images/cable-validation-workflow-form.png)
 
-   Fill in the form using the field reference below.
+    Fill in the form using the field reference below.
 
-   | Field | Description | Required |
-   | :---- | :---------- | :------- |
-   | **Site** | The site to validate. | Yes |
-   | **Roles** | Device roles to include (multi-select). On InfiniBand sites, exclude CIN devices — they are validated by a separate workflow. | Yes |
-   | **Device Types** | Optional device-type filter. When set, only devices whose Nautobot device type IDs are in this list are included. | No |
-   | **Device Status** | Device statuses to include (multi-select). Typically `Provisioned`, the state devices are in after ZTP completes. | Yes |
-   | **Tenant** | Nautobot tenant for the run. | Yes |
+    | Field | Description | Required |
+    | :---- | :---------- | :------- |
+    | **Site** | The site to validate. | Yes |
+    | **Roles** | Device roles to include (multi-select). On InfiniBand sites, exclude CIN devices — they are validated by a separate workflow. | Yes |
+    | **Device Types** | Optional device-type filter. When set, only devices whose Nautobot device type IDs are in this list are included. | No |
+    | **Device Status** | Device statuses to include (multi-select). Typically `Provisioned`, the state devices are in after ZTP completes. | Yes |
+    | **Tenant** | Nautobot tenant for the run. | Yes |
 
 1. Submit the form. A status page appears showing the three workflow stages. Progress for the per-device child workflows is reported incrementally; once fewer than ten devices remain, the page links directly to each remaining child workflow so you can drill in on stragglers. This may take a few minutes as the workflow reaches out to every device in scope.
 
 1. When the workflow is finished, click **Generate Cable Validation report** on the left menu to view the report.
 
-   ![Report link](../../assets/images/cable-validation-report-link.png)
+    ![Report link](../../assets/images/cable-validation-report-link.png)
 
-   ![Report example](../../assets/images/cable-validation-report-example.png)
+    ![Report example](../../assets/images/cable-validation-report-example.png)
 
 1. Address any issues, then re-run the workflow to confirm they are resolved.
 
@@ -86,15 +86,15 @@ The site workflow runs three stages. None require manual approval.
 
 1. **`get_devices_to_validate` — Resolve the device list from Nautobot.**
 
-   Calls Nautobot for all devices matching the site, role, status, tenant, and device-type filters, then drops anything not on a supported platform (Cumulus Linux, NVOS, Arista EOS). The resolved device list is rendered as a Markdown table on the stage page. If no devices match the filters, the remaining stages are marked Unreachable and the workflow returns immediately with an explanatory message.
+    Calls Nautobot for all devices matching the site, role, status, tenant, and device-type filters, then drops anything not on a supported platform (Cumulus Linux, NVOS, Arista EOS). The resolved device list is rendered as a Markdown table on the stage page. If no devices match the filters, the remaining stages are marked Unreachable and the workflow returns immediately with an explanatory message.
 
 1. **`validate_devices` — Run a device cable validation child per device.**
 
-   For each device, the site workflow starts a device cable validation child workflow, cloning the parent's `User`, `ReadRoles`, and `ExecuteRoles` search attributes and attaching the per-device `DeviceID`. The stage waits for all children to complete, updating the page incrementally as each one finishes (`N/total completed`, success/failure counts, and a list of remaining devices once fewer than ten are left). A child that fails is recorded against `failed_devices` rather than stopping the stage, so a single unreachable switch does not block the rest of the report.
+    For each device, the site workflow starts a device cable validation child workflow, cloning the parent's `User`, `ReadRoles`, and `ExecuteRoles` search attributes and attaching the per-device `DeviceID`. The stage waits for all children to complete, updating the page incrementally as each one finishes (`N/total completed`, success/failure counts, and a list of remaining devices once fewer than ten are left). A child that fails is recorded against `failed_devices` rather than stopping the stage, so a single unreachable switch does not block the rest of the report.
 
 1. **`format_result` — Aggregate per-device results into the site report.**
 
-   Combines every child's interface findings into the consolidated Markdown report, with the list of `failed_devices` preserved verbatim at the top so operators know which switches were skipped versus which were validated and clean. The report renders inline on the stage page and is also offered as a downloadable CSV for cases where the result set is too large to view in the UI.
+    Combines every child's interface findings into the consolidated Markdown report, with the list of `failed_devices` preserved verbatim at the top so operators know which switches were skipped versus which were validated and clean. The report renders inline on the stage page and is also offered as a downloadable CSV for cases where the result set is too large to view in the UI.
 
 ### Device cable validation
 
@@ -102,27 +102,27 @@ The device workflow runs six stages. The three data-collection stages (`get_devi
 
 1. **`get_device_data` — Fetch the device record from Nautobot.**
 
-   Loads the device by UUID and attaches device search attributes to the workflow for observability. When the workflow is invoked as a child of site cable validation, the parent passes the already-fetched record so this stage is effectively a no-op.
+    Loads the device by UUID and attaches device search attributes to the workflow for observability. When the workflow is invoked as a child of site cable validation, the parent passes the already-fetched record so this stage is effectively a no-op.
 
 1. **`validate_device_hostname` — Confirm the device's running hostname matches Nautobot.**
 
-   Logs into the device and reads its configured hostname, then compares it against the Nautobot name. A mismatch fails the workflow before any cabling work begins, since cabling validation against the wrong device would produce misleading findings.
+    Logs into the device and reads its configured hostname, then compares it against the Nautobot name. A mismatch fails the workflow before any cabling work begins, since cabling validation against the wrong device would produce misleading findings.
 
 1. **`get_device_intended_neighbors` — Read intended cabling from Nautobot.**
 
-   Pulls the list of intended LLDP/MAC neighbors for every interface on the device from Nautobot, including any `cable-validation-ignore` tagging that should exclude an interface from the comparison.
+    Pulls the list of intended LLDP/MAC neighbors for every interface on the device from Nautobot, including any `cable-validation-ignore` tagging that should exclude an interface from the comparison.
 
 1. **`get_device_actual_neighbors` — Read observed cabling from the device.**
 
-   Queries the device for its LLDP neighbor table on every interface. This is the primary source of truth for what is physically connected.
+    Queries the device for its LLDP neighbor table on every interface. This is the primary source of truth for what is physically connected.
 
 1. **`get_device_mac_table` — Read the FDB and ARP table from the device.**
 
-   Pulls the MAC table (FDB) and ARP table off the device. MAC and ARP entries are the fallback validator for links where LLDP is not available — most commonly IPMI/BMC connections to hosts. When LLDP is absent, the FDB MAC must match the MAC recorded in Nautobot.
+    Pulls the MAC table (FDB) and ARP table off the device. MAC and ARP entries are the fallback validator for links where LLDP is not available — most commonly IPMI/BMC connections to hosts. When LLDP is absent, the FDB MAC must match the MAC recorded in Nautobot.
 
 1. **`validate_connections` — Compare intended vs actual and produce the report.**
 
-   Joins the three data sources, classifies every interface mismatch (link down, wrong neighbor, no neighbor found, unexpected connection), decorates the findings with the stable `ID` hash used across runs, and formats the per-device Markdown report. This stage is not retryable — if validation logic raises, the run fails outright rather than masking a real bug behind a retry.
+    Joins the three data sources, classifies every interface mismatch (link down, wrong neighbor, no neighbor found, unexpected connection), decorates the findings with the stable `ID` hash used across runs, and formats the per-device Markdown report. This stage is not retryable — if validation logic raises, the run fails outright rather than masking a real bug behind a retry.
 
 The workflow's final output is a `DeviceCableValidationResult` whose `interfaces` field maps each invalid interface name to its findings.
 

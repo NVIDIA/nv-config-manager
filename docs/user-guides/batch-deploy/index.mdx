@@ -13,7 +13,7 @@ Before running Batch Deploy directly (or before approving a child invocation fro
 - **Every device in the batch is in Nautobot** with a current intended configuration in the [Config Store](../../config-store/index.mdx). When Batch Deploy is a child of Multi-Deploy, the parent has already loaded each intended config — for direct invocations, the caller is responsible for supplying the `DeviceDiffData` payload, including the loaded intended config and commit SHA.
 - **Every device in the batch is deploy-enabled in Nautobot.** Switches marked deploy-disabled — typically the Kubernetes-attached management switches on a shared-network deployment — must never appear in a Batch Deploy input. See [Hosting Options](../../hosting-options/index.mdx) for the safeguard and the self-isolation risk it protects against.
 
-  Multi-Deploy enforces this safeguard automatically because its `discover_devices` stage filters on `deploy_enabled=True`. A direct Batch Deploy invocation bypasses that filter — the caller is responsible for ensuring no deploy-disabled device is in the batch.
+    Multi-Deploy enforces this safeguard automatically because its `discover_devices` stage filters on `deploy_enabled=True`. A direct Batch Deploy invocation bypasses that filter — the caller is responsible for ensuring no deploy-disabled device is in the batch.
 
 - **All devices in the batch are expected to apply the same diff.** The approval display shows a single diff; if devices in the batch actually have different running configurations, only those matching the approved diff will apply cleanly and the rest will fail at apply time.
 - **Approval to change traffic-bearing devices.** The first stage is a hard approval gate and will wait indefinitely for a human reviewer.
@@ -30,7 +30,7 @@ The workflow runs three stages in order. Only the first stage requires human app
 
 1. **`review_shared_diff` — Hard approval gate. Requires one approver.**
 
-   The stage display renders a single shared diff with the full list of devices that will receive it. The reviewer should confirm:
+    The stage display renders a single shared diff with the full list of devices that will receive it. The reviewer should confirm:
 
    - The diff content is what was expected (no surprise lines from drift or template bugs).
    - Every device in the listed batch is one the reviewer is authorized to change.
@@ -40,13 +40,13 @@ The workflow runs three stages in order. Only the first stage requires human app
 
 1. **`apply_configurations` — Apply the approved diff to every device in parallel.**
 
-   Each device's apply runs as a separate `apply_approved_configuration` activity, all started concurrently with `asyncio.gather`. Each activity has a 5-minute start-to-close timeout and retries up to 3 attempts on transient errors. Two error types are non-retryable: `ConfigSyntaxException` (the rendered config is malformed) and `DiffChangedException` (the device's running config drifted between the diff capture and apply — re-run from Multi-Deploy to get a fresh diff).
+    Each device's apply runs as a separate `apply_approved_configuration` activity, all started concurrently with `asyncio.gather`. Each activity has a 5-minute start-to-close timeout and retries up to 3 attempts on transient errors. Two error types are non-retryable: `ConfigSyntaxException` (the rendered config is malformed) and `DiffChangedException` (the device's running config drifted between the diff capture and apply — re-run from Multi-Deploy to get a fresh diff).
 
-   Apply failures on individual devices do not stop the stage. Successful devices are listed under `successful_devices`; failures are reported under `failed_devices` as a `{device_name: error_string}` map. The stage display summarizes the success and failure counts.
+    Apply failures on individual devices do not stop the stage. Successful devices are listed under `successful_devices`; failures are reported under `failed_devices` as a `{device_name: error_string}` map. The stage display summarizes the success and failure counts.
 
 1. **`perform_backups` — Capture a fresh backup for every successful device.**
 
-   For each device in `successful_devices`, the workflow starts the [Configuration Backup](../configuration-backup/index.mdx) workflow as a child workflow with `trigger=WORKFLOW`, attaching the device's intended-config commit SHA so the new backup is correlated with the configuration version that was just applied. All backup children are started immediately and awaited in parallel with a 10-minute run timeout. Backup failures are not surfaced as workflow failures — the device is configured and in service; only the post-deploy backup is missing.
+    For each device in `successful_devices`, the workflow starts the [Configuration Backup](../configuration-backup/index.mdx) workflow as a child workflow with `trigger=WORKFLOW`, attaching the device's intended-config commit SHA so the new backup is correlated with the configuration version that was just applied. All backup children are started immediately and awaited in parallel with a 10-minute run timeout. Backup failures are not surfaced as workflow failures — the device is configured and in service; only the post-deploy backup is missing.
 
 If `review_shared_diff` rejects, the workflow archives the result and exits without running the two subsequent stages.
 

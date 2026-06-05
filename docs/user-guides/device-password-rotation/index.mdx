@@ -37,11 +37,11 @@ The workflow runs four stages. The diff stage flips from `requires_approval=True
 
 1. **`load_intended_configuration` — Load the device's intended config.**
 
-   Pulls the rendered intended configuration plus its commit SHA. The intended config must contain the new password from the secrets store; if it still contains the old password, this is an upstream render issue and the diff stage will report "No password changes needed, no diff."
+    Pulls the rendered intended configuration plus its commit SHA. The intended config must contain the new password from the secrets store; if it still contains the old password, this is an upstream render issue and the diff stage will report "No password changes needed, no diff."
 
 1. **`perform_configuration_diff` — Compute the diff and validate it.**
 
-   Validates the device's platform is supported, validates the password mapping is present for the target username, runs a candidate diff against the device's running configuration, and then:
+    Validates the device's platform is supported, validates the password mapping is present for the target username, runs a candidate diff against the device's running configuration, and then:
 
    - **Empty diff** — clears the approval requirement and returns `approved=False` with display "No password changes needed, no diff." The workflow continues to `perform_backup` to record the unchanged state.
    - **Password-only diff** — runs `validate_password_diff` against the diff text and the target username. If the diff *only* changes the target user's password, the stage clears its approval requirement and auto-approves with display "Password Rotation Configuration Diff (Auto-Approved password only changes for '`<user>`')".
@@ -49,11 +49,11 @@ The workflow runs four stages. The diff stage flips from `requires_approval=True
 
 1. **`apply_configuration` — Apply the auto-approved diff.**
 
-   Pushes the configuration change to the device. The same non-retryable errors as Configuration Deploy apply: `ConfigSyntaxException`, `DiffChangedException`.
+    Pushes the configuration change to the device. The same non-retryable errors as Configuration Deploy apply: `ConfigSyntaxException`, `DiffChangedException`.
 
 1. **`perform_backup` — Capture a fresh backup.**
 
-   Starts the [Configuration Backup](../configuration-backup/index.mdx) workflow as a child workflow with `trigger=WORKFLOW` and a 10-minute run timeout. The backup is tagged with the just-applied commit SHA.
+    Starts the [Configuration Backup](../configuration-backup/index.mdx) workflow as a child workflow with `trigger=WORKFLOW` and a 10-minute run timeout. The backup is tagged with the just-applied commit SHA.
 
 ## Verifying outcomes
 

@@ -43,15 +43,15 @@ The workflow runs three stages. None require manual approval at the site level �
 
 1. **`get_devices` — Resolve the device list from Nautobot.**
 
-   Calls Nautobot with the supplied location, role, status, and tenant filters and returns the device list to be rotated. The stage display reports the device count.
+    Calls Nautobot with the supplied location, role, status, and tenant filters and returns the device list to be rotated. The stage display reports the device count.
 
 1. **`rotate_passwords` — Fan out a child rotation per device.**
 
-   For each device, the workflow starts a [Device Password Rotation](../device-password-rotation/index.mdx) child workflow with the device ID and the target username. All children are started in parallel and awaited as they complete; the stage display updates as each result lands. A child that fails (validation error, unreachable device, apply failure) is captured in the per-device result rather than stopping the run.
+    For each device, the workflow starts a [Device Password Rotation](../device-password-rotation/index.mdx) child workflow with the device ID and the target username. All children are started in parallel and awaited as they complete; the stage display updates as each result lands. A child that fails (validation error, unreachable device, apply failure) is captured in the per-device result rather than stopping the run.
 
 1. **`format_result` — Aggregate per-device results.**
 
-   Combines all child outcomes into a consolidated `PasswordRotationResultData` list and renders it on the stage display. Each entry includes the device, success/failure, optional error message, and the child workflow ID for drilling in.
+    Combines all child outcomes into a consolidated `PasswordRotationResultData` list and renders it on the stage display. Each entry includes the device, success/failure, optional error message, and the child workflow ID for drilling in.
 
 ## Result structure
 
