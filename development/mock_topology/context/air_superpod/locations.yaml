@@ -10,8 +10,6 @@ tenants:
 - name: Public Demo
 namespaces:
 - SuperPOD Demo
-# SpX Overlay workflows require the spectrumx tag and a site location on the
-# namespace. These are applied by the mock topology job via _ensure_spectrumx_prerequisites.
 spx_namespaces:
 - name: SuperPOD Demo
   location: SPO01
