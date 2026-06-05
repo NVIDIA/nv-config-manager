@@ -47,7 +47,7 @@ with workflow.unsafe.imports_passed_through():
     )
     from nv_config_manager.temporal.ngc.workflows._ib_pkey_helpers import (
         DEFAULT_ACTIVITY_RETRY_POLICY,
-        call_resolve_ib_context,
+        call_resolve_ib_context_for_add,
         resolve_members,
         validate_interfaces_xor_guids,
         validate_pkey_format,
@@ -57,14 +57,11 @@ with workflow.unsafe.imports_passed_through():
 class IBPKeyMemberAddInput(BaseModel):
     """InfiniBand PKey Member Add Workflow Input.
 
-    ``site`` and ``overlay_id`` are optional. If omitted they are resolved
-    from Nautobot using ``host`` and ``pkey``.
+    Site and Overlay are resolved server-side from ``host`` and ``pkey``.
     """
 
     host: str
-    site: str | None = None
     pkey: str
-    overlay_id: str | None = None
     interfaces: list[InterfaceRef] = []
     guids: list[str] = []
     membership_type: str = "full"
@@ -85,6 +82,8 @@ class IBPKeyMemberAddOutput(BaseModel):
     """InfiniBand PKey Member Add Workflow Output."""
 
     pkey: str
+    overlay_id: str
+    overlay_name: str
     members_added: int
     verified: bool
     assignment_ids: list[str]
@@ -142,8 +141,6 @@ class IBPKeyMemberAddWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin):
 
         host: str
         pkey: str
-        site_override: str | None = None
-        overlay_id_override: str | None = None
 
     class ResolveContextStageOutput(StageOutput):
         """Resolve Context Stage Output."""
@@ -160,38 +157,23 @@ class IBPKeyMemberAddWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin):
     async def resolve_context(
         self, stage_input: ResolveContextStageInput
     ) -> ResolveContextStageOutput:
-        """Resolve site/overlay from Nautobot and canonicalize pkey."""
-        resolved = await call_resolve_ib_context(stage_input.host, stage_input.pkey)
+        """Resolve site/overlay from Nautobot and canonicalize pkey.
 
-        effective_site = stage_input.site_override or resolved.location_name
-        effective_overlay_id = stage_input.overlay_id_override or resolved.overlay_id
-
-        if stage_input.site_override and stage_input.site_override != resolved.location_name:
-            workflow.logger.warning(
-                "Client-supplied site %r differs from resolved %r; using client value.",
-                stage_input.site_override,
-                resolved.location_name,
-            )
-        if (
-            stage_input.overlay_id_override
-            and stage_input.overlay_id_override != resolved.overlay_id
-        ):
-            workflow.logger.warning(
-                "Client-supplied overlay_id %r differs from resolved %r; using client value.",
-                stage_input.overlay_id_override,
-                resolved.overlay_id,
-            )
+        Uses the add-specific resolver which lazily creates an Overlay at the
+        device's Site when only an orphan PKey row exists in Nautobot.
+        """
+        resolved = await call_resolve_ib_context_for_add(stage_input.host, stage_input.pkey)
 
         return self.ResolveContextStageOutput(
             host=stage_input.host,
-            site=effective_site,
+            site=resolved.location_name,
             pkey=resolved.pkey,
-            overlay_id=effective_overlay_id,
+            overlay_id=resolved.overlay_id,
             ufm_device_id=resolved.ufm_device_id,
             location_id=resolved.location_id,
             overlay_name=resolved.overlay_name,
             display=(
-                f"Context: host={stage_input.host} site={effective_site} "
+                f"Context: host={stage_input.host} site={resolved.location_name} "
                 f"pkey={resolved.pkey} overlay={resolved.overlay_name}"
             ),
         )
@@ -350,8 +332,6 @@ class IBPKeyMemberAddWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin):
             self.ResolveContextStageInput(
                 host=workflow_input.host,
                 pkey=workflow_input.pkey,
-                site_override=workflow_input.site,
-                overlay_id_override=workflow_input.overlay_id,
             )
         )
 
@@ -395,6 +375,8 @@ class IBPKeyMemberAddWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin):
         await self.archive_results()
         return IBPKeyMemberAddOutput(
             pkey=verify_output.pkey,
+            overlay_id=context.overlay_id,
+            overlay_name=context.overlay_name,
             members_added=len(add_output.guids_added),
             verified=verify_output.verified,
             assignment_ids=record_output.assignment_ids,

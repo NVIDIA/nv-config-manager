@@ -145,5 +145,20 @@ export const siteConfig = {
       slug: "ibpkeycreationworkflow",
       enabled: true,
     },
+    {
+      title: "IB PKey Member Add",
+      slug: "ibpkeymemberaddworkflow",
+      enabled: true,
+    },
+    {
+      title: "IB PKey Member Update",
+      slug: "ibpkeymemberupdateworkflow",
+      enabled: true,
+    },
+    {
+      title: "IB PKey Member Delete",
+      slug: "ibpkeymemberdeleteworkflow",
+      enabled: true,
+    },
   ],
 };

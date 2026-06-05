@@ -759,6 +759,7 @@ query ($host: [String]) {
     id
     name
     primary_ip4 { host }
+    tenant { id name }
     location {
       id
       name
@@ -811,6 +812,7 @@ query ($ip: [String]) {
         id
         name
         primary_ip4 { host }
+        tenant { id name }
         location {
           id
           name
@@ -1047,6 +1049,161 @@ async def resolve_ib_context(
         canonical_pkey,
         device.get("name"),
         (device.get("location") or {}).get("name"),
+        site.get("name"),
+        overlay_location.get("name"),
+        overlay.get("name"),
+    )
+
+    return ResolveIBContextOutput(
+        ufm_device_id=device["id"],
+        ufm_device_name=device["name"],
+        ufm_device_primary_ip=primary_ip,
+        location_id=site["id"],
+        location_name=site["name"],
+        overlay_id=overlay["id"],
+        overlay_name=overlay["name"],
+        pkey_id=pkey_record["id"],
+        pkey=canonical_pkey,
+        display=f"Resolved {input.host}+{canonical_pkey} -> overlay {overlay.get('name')}",
+    )
+
+
+async def _create_overlay_for_orphan_pkey(
+    client: NautobotClient,
+    *,
+    pkey_value: str,
+    orphan_pkey_id: str,
+    location_id: str,
+    location_name: str,
+    tenant_id: str,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Create an Overlay at the given location and link the orphan PKey to it."""
+    overlay_name = f"ib-pkey-overlay-{pkey_value}"
+
+    overlay = await _find_existing_overlay(client, overlay_name, location_id)
+    if overlay:
+        log.info(
+            "Reusing existing Overlay '%s' (id=%s) at location %s for orphan PKey %s",
+            overlay_name,
+            overlay["id"],
+            location_name,
+            pkey_value,
+        )
+    else:
+        status_id = await _resolve_status_id(client)
+        payload: dict[str, Any] = {
+            "name": overlay_name,
+            "location": location_id,
+            "tenant": tenant_id,
+            "isolation_type": ISOLATION_TYPE_IB_PKEY,
+            "status": status_id,
+            "description": f"Auto-created for orphan PKey {pkey_value} during member-add",
+        }
+        log.info(
+            "Creating Overlay '%s' at location %s for orphan PKey %s",
+            overlay_name,
+            location_name,
+            pkey_value,
+        )
+        overlay = await client.post(f"{PLUGIN_BASE}/overlays/", data=payload)
+
+    pkey_record = await client.get(f"{PLUGIN_BASE}/pkeys/{orphan_pkey_id}/")
+    raw_overlay = pkey_record.get("overlay")
+    current_overlay_id = raw_overlay["id"] if isinstance(raw_overlay, dict) else raw_overlay
+    if current_overlay_id != overlay["id"]:
+        log.info(
+            "Linking orphan PKey %s (id=%s) to Overlay %s",
+            pkey_value,
+            orphan_pkey_id,
+            overlay["id"],
+        )
+        pkey_record = await client.patch(
+            f"{PLUGIN_BASE}/pkeys/{orphan_pkey_id}/",
+            data={"overlay": overlay["id"]},
+        )
+
+    return overlay, pkey_record
+
+
+@activity.defn
+async def resolve_ib_context_for_add(
+    input: ResolveIBContextInput,
+) -> ResolveIBContextOutput:
+    """Resolve UFM/site/overlay/pkey for member-add with lazy Overlay creation."""
+    canonical_pkey = _normalize_pkey(input.pkey)
+
+    client = NautobotClient()
+    async with client:
+        device = await _find_device(client, input.host)
+
+        device_location = device.get("location") or {}
+        chain = _walk_location_chain(device_location)
+        site = _find_site_in_chain(chain)
+        if site is None:
+            chain_repr = " -> ".join(
+                f"{loc.get('name', '?')}:{(loc.get('location_type') or {}).get('name', '?')}"
+                for loc in chain
+            )
+            raise ApplicationError(
+                f"No {SITE_LOCATION_TYPE_NAME}-typed location in hierarchy for device "
+                f"{device.get('name')!r}: {chain_repr}",
+                non_retryable=True,
+            )
+
+        matches = _iter_pkey_matches(chain, canonical_pkey)
+        device_loc_name = device_location.get("name") or "<unknown>"
+        if len(matches) > 1:
+            candidates = ", ".join(
+                f"{loc.get('name', '<unnamed>')}/{ovl.get('name', '<unnamed>')}"
+                for loc, ovl, _ in matches
+            )
+            raise ApplicationError(
+                f"PKey {canonical_pkey!r} ambiguous near location {device_loc_name!r}: "
+                f"matches [{candidates}]. Specify overlay_id explicitly.",
+                non_retryable=True,
+            )
+
+        if matches:
+            overlay_location, overlay, pkey_record = matches[0]
+        else:
+            orphan = await _find_orphan_pkey(client, canonical_pkey)
+            if orphan is None:
+                raise ApplicationError(
+                    f"PKey {canonical_pkey!r} not found in Nautobot. Run the IB "
+                    f"PKey Creation workflow first to register the partition.",
+                    non_retryable=True,
+                )
+
+            tenant = device.get("tenant") or {}
+            tenant_id = tenant.get("id")
+            if not tenant_id:
+                raise ApplicationError(
+                    f"Device {device.get('name')!r} has no Tenant set; cannot "
+                    f"auto-create Overlay for orphan PKey {canonical_pkey}. "
+                    f"Set Tenant on the device or pre-create an Overlay and "
+                    f"link PKey {canonical_pkey} to it.",
+                    non_retryable=True,
+                )
+
+            overlay, pkey_record = await _create_overlay_for_orphan_pkey(
+                client,
+                pkey_value=canonical_pkey,
+                orphan_pkey_id=orphan["id"],
+                location_id=device_location["id"],
+                location_name=device_loc_name,
+                tenant_id=tenant_id,
+            )
+            overlay_location = device_location
+
+    primary_ip = (device.get("primary_ip4") or {}).get("host")
+
+    log.info(
+        "Resolved IB context (with lazy-create) for host=%s pkey=%s -> "
+        "device=%s device_location=%s site=%s overlay_location=%s overlay=%s",
+        input.host,
+        canonical_pkey,
+        device.get("name"),
+        device_location.get("name"),
         site.get("name"),
         overlay_location.get("name"),
         overlay.get("name"),

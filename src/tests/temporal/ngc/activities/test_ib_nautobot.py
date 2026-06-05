@@ -31,6 +31,7 @@ from nv_config_manager.temporal.ngc.activities.ib_nautobot import (
     _normalize_pkey,
     _select_pkey_match,
     resolve_ib_context,
+    resolve_ib_context_for_add,
     resolve_ib_site_for_host,
 )
 
@@ -488,3 +489,198 @@ class TestResolveIBSiteForHost:
             m.post(NB_GRAPHQL, payload=payload)
             with pytest.raises(ApplicationError, match="No Site-typed location"):
                 await resolve_ib_site_for_host(ResolveIBSiteForHostInput(host=DEVICE_NAME))
+
+
+# ---------------------------------------------------------------------------
+# resolve_ib_context_for_add activity -- lazy-create-overlay path
+# ---------------------------------------------------------------------------
+
+
+TENANT_ID = "tenant-uuid-1"
+TENANT_NAME = "test-tenant"
+ORPHAN_PKEY_ID = "orphan-pkey-1"
+NEW_OVERLAY_ID = "ovl-new-1"
+NEW_OVERLAY_NAME = "ib-pkey-overlay-0x0100"
+STATUS_ID = "status-active-uuid"
+
+NB_PKEYS = f"{NB_URL}/api/plugins/overlays/pkeys/"
+NB_OVERLAYS = f"{NB_URL}/api/plugins/overlays/overlays/"
+NB_STATUSES = f"{NB_URL}/api/extras/statuses/"
+
+
+def _device_payload_with_tenant(
+    *,
+    pkeys: list[dict[str, str]] | None = None,
+    tenant_id: str | None = TENANT_ID,
+) -> dict[str, Any]:
+    device = _device_payload(pkeys=pkeys)
+    if tenant_id is None:
+        device["tenant"] = None
+    else:
+        device["tenant"] = {"id": tenant_id, "name": TENANT_NAME}
+    return device
+
+
+def _device_payload_no_overlays(
+    *,
+    tenant_id: str | None = TENANT_ID,
+) -> dict[str, Any]:
+    device = _device_payload_with_tenant(tenant_id=tenant_id)
+    device["location"]["overlays"] = []
+    return device
+
+
+def _datahall_device_payload_with_tenant_no_overlays(
+    *,
+    tenant_id: str | None = TENANT_ID,
+) -> dict[str, Any]:
+    """Device installed at a Datahall under a Site, with empty overlays."""
+    device = _datahall_device_payload(overlay_at="site")
+    device["location"]["overlays"] = []
+    device["location"]["parent"]["overlays"] = []
+    if tenant_id is None:
+        device["tenant"] = None
+    else:
+        device["tenant"] = {"id": tenant_id, "name": TENANT_NAME}
+    return device
+
+
+@pytest.mark.asyncio
+class TestResolveIBContextForAdd:
+    async def test_existing_overlay_no_lazy_create(self, mock_nb_config: Any) -> None:
+        """When an Overlay-bound PKey is found at the site, do not touch REST."""
+        payload = {"data": {"devices": [_device_payload_with_tenant()]}}
+        with aioresponses() as m:
+            m.post(NB_GRAPHQL, payload=payload)
+            result = await resolve_ib_context_for_add(
+                ResolveIBContextInput(host=DEVICE_NAME, pkey="0x100")
+            )
+        assert result.overlay_id == OVERLAY_ID
+        assert result.overlay_name == OVERLAY_NAME
+        assert result.pkey_id == PKEY_ID
+        assert result.pkey == "0x0100"
+
+    async def test_orphan_pkey_lazy_creates_overlay(self, mock_nb_config: Any) -> None:
+        """Orphan PKey + missing Overlay -> create Overlay and link PKey to it."""
+        gql_payload = {"data": {"devices": [_device_payload_no_overlays()]}}
+
+        orphan = {"id": ORPHAN_PKEY_ID, "pkey": "0x0100", "overlay": None}
+        new_overlay = {"id": NEW_OVERLAY_ID, "name": NEW_OVERLAY_NAME}
+        linked_pkey = {"id": ORPHAN_PKEY_ID, "pkey": "0x0100", "overlay": NEW_OVERLAY_ID}
+
+        with aioresponses() as m:
+            m.post(NB_GRAPHQL, payload=gql_payload)
+            m.get(
+                f"{NB_PKEYS}?pkey=0x0100",
+                payload={"results": [orphan]},
+            )
+            m.get(
+                f"{NB_OVERLAYS}?name={NEW_OVERLAY_NAME}&location={LOCATION_ID}",
+                payload={"results": []},
+            )
+            m.get(
+                f"{NB_STATUSES}?name=Active",
+                payload={"results": [{"id": STATUS_ID, "name": "Active"}]},
+            )
+            m.post(NB_OVERLAYS, payload=new_overlay)
+            m.get(f"{NB_PKEYS}{ORPHAN_PKEY_ID}/", payload=orphan)
+            m.patch(f"{NB_PKEYS}{ORPHAN_PKEY_ID}/", payload=linked_pkey)
+
+            result = await resolve_ib_context_for_add(
+                ResolveIBContextInput(host=DEVICE_NAME, pkey="0x0100")
+            )
+
+        assert result.overlay_id == NEW_OVERLAY_ID
+        assert result.overlay_name == NEW_OVERLAY_NAME
+        assert result.pkey_id == ORPHAN_PKEY_ID
+        assert result.location_id == LOCATION_ID
+
+    async def test_idempotent_when_overlay_already_exists(self, mock_nb_config: Any) -> None:
+        """On retry: an Overlay with the same (name, location) is reused (no POST)."""
+        gql_payload = {"data": {"devices": [_device_payload_no_overlays()]}}
+
+        orphan = {"id": ORPHAN_PKEY_ID, "pkey": "0x0100", "overlay": None}
+        existing_overlay = {"id": NEW_OVERLAY_ID, "name": NEW_OVERLAY_NAME}
+        already_linked = {
+            "id": ORPHAN_PKEY_ID,
+            "pkey": "0x0100",
+            "overlay": NEW_OVERLAY_ID,
+        }
+
+        with aioresponses() as m:
+            m.post(NB_GRAPHQL, payload=gql_payload)
+            m.get(f"{NB_PKEYS}?pkey=0x0100", payload={"results": [orphan]})
+            m.get(
+                f"{NB_OVERLAYS}?name={NEW_OVERLAY_NAME}&location={LOCATION_ID}",
+                payload={"results": [existing_overlay]},
+            )
+            m.get(f"{NB_PKEYS}{ORPHAN_PKEY_ID}/", payload=already_linked)
+
+            result = await resolve_ib_context_for_add(
+                ResolveIBContextInput(host=DEVICE_NAME, pkey="0x0100")
+            )
+
+        assert result.overlay_id == NEW_OVERLAY_ID
+        assert result.pkey_id == ORPHAN_PKEY_ID
+
+    async def test_no_overlay_no_orphan_raises_with_creation_hint(
+        self, mock_nb_config: Any
+    ) -> None:
+        """Missing Overlay AND missing PKey row -> hard fail with hint to creation workflow."""
+        gql_payload = {"data": {"devices": [_device_payload_no_overlays()]}}
+        with aioresponses() as m:
+            m.post(NB_GRAPHQL, payload=gql_payload)
+            m.get(f"{NB_PKEYS}?pkey=0x0100", payload={"results": []})
+
+            with pytest.raises(ApplicationError, match="Run the IB PKey Creation workflow"):
+                await resolve_ib_context_for_add(
+                    ResolveIBContextInput(host=DEVICE_NAME, pkey="0x0100")
+                )
+
+    async def test_lazy_creates_at_device_location_not_site(self, mock_nb_config: Any) -> None:
+        """When the device lives below the Site (e.g. Datahall), the new Overlay
+        is placed at the device's immediate location, NOT promoted up to the Site.
+        The returned ``location_id`` still refers to the Site (used for credentials).
+        """
+        gql_payload = {"data": {"devices": [_datahall_device_payload_with_tenant_no_overlays()]}}
+
+        orphan = {"id": ORPHAN_PKEY_ID, "pkey": "0x0100", "overlay": None}
+        new_overlay = {"id": NEW_OVERLAY_ID, "name": NEW_OVERLAY_NAME}
+        linked_pkey = {"id": ORPHAN_PKEY_ID, "pkey": "0x0100", "overlay": NEW_OVERLAY_ID}
+
+        with aioresponses() as m:
+            m.post(NB_GRAPHQL, payload=gql_payload)
+            m.get(f"{NB_PKEYS}?pkey=0x0100", payload={"results": [orphan]})
+            m.get(
+                f"{NB_OVERLAYS}?name={NEW_OVERLAY_NAME}&location={DATAHALL_ID}",
+                payload={"results": []},
+            )
+            m.get(
+                f"{NB_STATUSES}?name=Active",
+                payload={"results": [{"id": STATUS_ID, "name": "Active"}]},
+            )
+            m.post(NB_OVERLAYS, payload=new_overlay)
+            m.get(f"{NB_PKEYS}{ORPHAN_PKEY_ID}/", payload=orphan)
+            m.patch(f"{NB_PKEYS}{ORPHAN_PKEY_ID}/", payload=linked_pkey)
+
+            result = await resolve_ib_context_for_add(
+                ResolveIBContextInput(host=DEVICE_NAME, pkey="0x0100")
+            )
+
+        assert result.overlay_id == NEW_OVERLAY_ID
+        assert result.location_id == SITE_ID
+        assert result.location_name == SITE_NAME
+
+    async def test_orphan_without_device_tenant_raises(self, mock_nb_config: Any) -> None:
+        """Cannot lazy-create Overlay when the device has no Tenant set."""
+        gql_payload = {"data": {"devices": [_device_payload_no_overlays(tenant_id=None)]}}
+        orphan = {"id": ORPHAN_PKEY_ID, "pkey": "0x0100", "overlay": None}
+
+        with aioresponses() as m:
+            m.post(NB_GRAPHQL, payload=gql_payload)
+            m.get(f"{NB_PKEYS}?pkey=0x0100", payload={"results": [orphan]})
+
+            with pytest.raises(ApplicationError, match="has no Tenant set"):
+                await resolve_ib_context_for_add(
+                    ResolveIBContextInput(host=DEVICE_NAME, pkey="0x0100")
+                )
