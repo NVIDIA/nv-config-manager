@@ -6,7 +6,7 @@ position: 10
 
 The SpX Overlay Creation workflow provisions a SpectrumX overlay, VRFs, and L3 VXLANs for a new overlay at a site. An overlay in this context is a tenant-scoped routing domain: creation allocates a route distinguisher (RD), registers the VRF objects in Nautobot, and creates an L3 VXLAN per namespace bound to a location-scoped Overlay object in the overlays plugin. No switches are touched by this workflow — applying the new overlay to a device happens through [SpX Overlay Assignment](../vpc-assignment/index.mdx), and re-rendering and redeploying tenant configuration happens through [SpX Overlay Tenant Change](../vpc-tenant-change/index.mdx).
 
-Creation is idempotent on `vpc_id` — re-running with an existing ID returns the already-existing VRFs rather than creating new ones.
+Creation is idempotent on `overlay_id` — re-running with an existing ID returns the already-existing VRFs rather than creating new ones.
 
 <Warning title="Experimental">
 This workflow is experimental and not intended for general use. Use it only in test or pilot environments.
@@ -18,7 +18,7 @@ Before running, confirm:
 
 - **Site exists in Nautobot** and is correctly tagged so RD allocation can find an available range.
 - **Tenant exists in Nautobot.** The tenant is used to scope the created Overlay object.
-- **vpc_id chosen.** Pick a unique identifier; if the same ID is reused, the workflow short-circuits and returns the existing VRFs without creating new ones.
+- **overlay_id chosen.** Pick a unique identifier; if the same ID is reused, the workflow short-circuits and returns the existing VRFs without creating new ones.
 - **Route-distinguisher range has free entries** within the site's allocated `rd_min`..`rd_max` window. The workflow's RD allocator pulls the first available RD in that window.
 
 ## Running the workflow
@@ -44,7 +44,7 @@ The workflow runs one stage. No human approval is required.
 
 1. **`create_spx_overlay` — Allocate the RD and provision the Overlay, VRF, and VXLAN objects.**
 
-   Queries Nautobot for any existing VRFs matching the `vpc_id` + `namespace_tag`. If they exist, the stage short-circuits with the existing-VRFs list and the result is treated as a successful no-op. Otherwise:
+   Queries Nautobot for any existing VRFs matching the `overlay_id` + `namespace_tag`. If they exist, the stage short-circuits with the existing-VRFs list and the result is treated as a successful no-op. Otherwise:
 
     - Finds or creates a location-scoped `SpXTenant<VNI>` Overlay object of type `spectrum_x_vrf` in the overlays plugin.
     - For each namespace, creates a VRF and an L3 VXLAN bound to both the VRF and the Overlay.
@@ -57,7 +57,7 @@ After the workflow reports success, confirm:
 - **`create_spx_overlay` shows green** and the result's `created_vrfs` or `existing_vrfs` list contains the expected VRF objects.
 - **Nautobot shows the VRFs** under the site with the allocated RD.
 - **Nautobot overlays plugin** (`/plugins/overlays/`) shows the new `SpXTenant<VNI>` Overlay with the bound L3 VXLANs.
-- **Re-running the workflow** with the same `vpc_id` returns immediately with `existing_vrfs` populated — confirming idempotency.
+- **Re-running the workflow** with the same `overlay_id` returns immediately with `existing_vrfs` populated — confirming idempotency.
 
 ## Common issues
 

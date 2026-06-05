@@ -15,7 +15,7 @@ This workflow is experimental and not intended for general use. Use it only in t
 Before running, confirm:
 
 - **overlay is no longer in use on any device.** Query Nautobot to confirm no interfaces remain bound to the overlay's VRFs. The workflow's `interface_count > 0` guard will refuse to delete any in-use VRF; resolving the bindings up front is easier than retrying after the fact.
-- **vpc_id and site are known.** These are the same identifiers used at creation time.
+- \*\*overlay_id and site are known.\*\* These are the same identifiers used at creation time.
 
 ## Running the workflow
 
