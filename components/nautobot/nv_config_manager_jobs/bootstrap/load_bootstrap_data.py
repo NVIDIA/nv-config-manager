@@ -423,10 +423,18 @@ class LoadBootstrapData(Job):
             self.logger.failure(f"Custom fields file not found: {cf_file}")
             return
 
-        with open(cf_file) as f:
-            custom_fields = yaml.safe_load(f) or []
+        try:
+            with open(cf_file) as f:
+                custom_fields = yaml.safe_load(f) or []
+        except yaml.YAMLError as exc:
+            self.logger.failure(f"Failed to parse custom fields file: {exc}")
+            return
 
         for cf_data in custom_fields:
+            if not isinstance(cf_data, dict):
+                self.logger.failure(f"Custom field entry is not a dict, skipping: {cf_data!r}")
+                continue
+
             key = cf_data.get("key")
             if not key:
                 self.logger.failure(f"Custom field entry missing required 'key': {cf_data}")
@@ -434,18 +442,22 @@ class LoadBootstrapData(Job):
             if not self.should_load_item(cf_data, f"custom field '{key}'"):
                 continue
 
-            defaults = {
-                "label": cf_data.get("label", key),
-                "type": cf_data.get("type", "text"),
-                "description": cf_data.get("description", ""),
-            }
-            # filter_logic is optional; only override Nautobot's default when set.
-            if "filter_logic" in cf_data:
-                defaults["filter_logic"] = cf_data["filter_logic"]
-            cf, created = CustomField.objects.update_or_create(key=key, defaults=defaults)
-            # Add content_types without removing memberships created by other jobs.
-            if "content_types" in cf_data:
-                self.add_content_types(cf, cf_data["content_types"])
+            try:
+                defaults = {
+                    "label": cf_data.get("label", key),
+                    "type": cf_data.get("type", "text"),
+                    "description": cf_data.get("description", ""),
+                }
+                # filter_logic is optional; only override Nautobot's default when set.
+                if "filter_logic" in cf_data:
+                    defaults["filter_logic"] = cf_data["filter_logic"]
+                cf, created = CustomField.objects.update_or_create(key=key, defaults=defaults)
+                # Add content_types without removing memberships created by other jobs.
+                if "content_types" in cf_data:
+                    self.add_content_types(cf, cf_data["content_types"])
+            except Exception as exc:
+                self.logger.failure(f"Error processing custom field '{key}': {exc}")
+                continue
 
             self.logger.success(
                 f"{'Created' if created else 'Updated'} custom field: {key}",
