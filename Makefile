@@ -256,7 +256,7 @@ docs-lint:
 	echo "Linting documentation markdown with rumdl..."; \
 	cd docs; \
 	if command -v rumdl >/dev/null 2>&1; then \
-		rumdl check .; \
+		rumdl check --fail-on warning .; \
 	else \
 		npx --yes rumdl check .; \
 	fi
