@@ -13,9 +13,9 @@ This guide explains how to configure network devices and clients to use the NVID
 Before configuring devices for ZTP, ensure:
 
 1. Devices are registered in the device management system
-2. Device IP addresses are correctly configured in the device management system
-3. Firmware images are available for your device platform and version
-4. Configuration files are prepared and stored in the configuration store
+1. Device IP addresses are correctly configured in the device management system
+1. Firmware images are available for your device platform and version
+1. Configuration files are prepared and stored in the configuration store
 
 ## Device Configuration
 
@@ -116,9 +116,9 @@ Contact your system administrator for the specific configuration file names for 
 **Solutions:**
 
 1. Verify network connectivity from device to ZTP server
-2. Check DNS resolution: `nslookup ztp.example.com`
-3. Verify firewall rules allow HTTP/HTTPS traffic
-4. Check that device IP is registered in device management system
+1. Check DNS resolution: `nslookup ztp.example.com`
+1. Verify firewall rules allow HTTP/HTTPS traffic
+1. Check that device IP is registered in device management system
 
 ### Authorization Failures
 
@@ -130,9 +130,9 @@ Contact your system administrator for the specific configuration file names for 
 **Solutions:**
 
 1. Verify device IP address is registered in device management system
-2. Check that requests are coming from the registered IP address
-3. Ensure device is using the correct device UUID
-4. Contact system administrator if IP address has changed
+1. Check that requests are coming from the registered IP address
+1. Ensure device is using the correct device UUID
+1. Contact system administrator if IP address has changed
 
 ### Missing Resources
 
@@ -144,9 +144,9 @@ Contact your system administrator for the specific configuration file names for 
 **Solutions:**
 
 1. Verify device UUID is correct
-2. Check that device is registered in device management system
-3. Verify firmware version is available for the device platform
-4. Ensure configuration files exist in the configuration store
+1. Check that device is registered in device management system
+1. Verify firmware version is available for the device platform
+1. Ensure configuration files exist in the configuration store
 
 ### Firmware Download Issues
 
@@ -158,37 +158,37 @@ Contact your system administrator for the specific configuration file names for 
 **Solutions:**
 
 1. Use `curl` with `-O` flag for reliable downloads
-2. Verify checksum after download
-3. Check network stability during large file transfers
-4. Retry download if checksum verification fails
+1. Verify checksum after download
+1. Check network stability during large file transfers
+1. Retry download if checksum verification fails
 
 ## Best Practices
 
 ### Security
 
 1. **Use HTTPS**: Always use HTTPS endpoints in production
-2. **Verify Checksums**: Always verify firmware checksums before installation
-3. **Validate Serial Numbers**: Use the serial validation endpoint before provisioning
-4. **Monitor Provisioning**: Monitor device provisioning status and logs
+1. **Verify Checksums**: Always verify firmware checksums before installation
+1. **Validate Serial Numbers**: Use the serial validation endpoint before provisioning
+1. **Monitor Provisioning**: Monitor device provisioning status and logs
 
 ### Reliability
 
 1. **Retry Logic**: Implement retry logic for transient failures
-2. **Timeout Handling**: Set appropriate timeouts for large file downloads
-3. **Error Logging**: Log all API errors for troubleshooting
-4. **Status Monitoring**: Monitor device provisioning status
+1. **Timeout Handling**: Set appropriate timeouts for large file downloads
+1. **Error Logging**: Log all API errors for troubleshooting
+1. **Status Monitoring**: Monitor device provisioning status
 
 ### Performance
 
 1. **Parallel Downloads**: Download firmware and configurations in parallel when possible
-2. **Connection Reuse**: Reuse HTTP connections for multiple requests
-3. **Caching**: Cache boot scripts and configuration metadata locally
-4. **Streaming**: Use streaming for large firmware files
+1. **Connection Reuse**: Reuse HTTP connections for multiple requests
+1. **Caching**: Cache boot scripts and configuration metadata locally
+1. **Streaming**: Use streaming for large firmware files
 
 ## Support
 
 For additional support:
 
 1. Check the [API Documentation](api-overview.mdx) for endpoint details
-2. Review the [Architecture Documentation](architecture.mdx) for system overview
-3. Contact your system administrator for environment-specific configuration
+1. Review the [Architecture Documentation](architecture.mdx) for system overview
+1. Contact your system administrator for environment-specific configuration

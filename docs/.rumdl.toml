@@ -115,7 +115,7 @@ allow-with-separators = true    # Allow multiple H1s as document section titles 
 # - "ordered0": Zero-based sequential (0, 1, 2...)
 # - "one-or-ordered": Auto-detect per list (either all-ones OR sequential)
 # - "consistent": Document-wide consistency - uses most common style across all lists
-style = "one-or-ordered"
+style = "one-one"
 
 [MD041]
 # first-line-heading
