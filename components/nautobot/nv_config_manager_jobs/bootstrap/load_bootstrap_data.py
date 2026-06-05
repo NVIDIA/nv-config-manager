@@ -427,7 +427,10 @@ class LoadBootstrapData(Job):
             custom_fields = yaml.safe_load(f) or []
 
         for cf_data in custom_fields:
-            key = cf_data["key"]  # required; a missing key fails the job
+            key = cf_data.get("key")
+            if not key:
+                self.logger.failure(f"Custom field entry missing required 'key': {cf_data}")
+                continue
             if not self.should_load_item(cf_data, f"custom field '{key}'"):
                 continue
 

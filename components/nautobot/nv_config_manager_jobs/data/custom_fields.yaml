@@ -15,9 +15,7 @@
     - dcim.device
   deployment_types: [all, superpod]
 
-# nico_machine_id is the scalar NICo machine ID, kept separate from
-# nico_info so devices are filterable by ID (e.g. via GraphQL) — you can't
-# filter on a value nested in a JSON custom field.
+# Scalar field so devices are filterable by NICo machine ID (JSON fields aren't filterable).
 - key: nico_machine_id
   label: NICo Machine ID
   type: text
