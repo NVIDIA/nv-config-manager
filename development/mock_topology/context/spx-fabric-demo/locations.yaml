@@ -57,9 +57,9 @@ config_contexts:
               cumulus-provision-url: http://{{ztp_server}}/v1/device/{{device_id}}/boot-script
         client_id_template: '00:{{ serial | hex }}'
   roles:
-  - SPX-Leaf
-  - SPX-Spine
-  - SPX-Core
+  - CIN-Leaf
+  - CIN-Spine
+  - CIN-Core
 - name: spx-fabric-demo-firmware-targets
   weight: 1000
   is_active: true

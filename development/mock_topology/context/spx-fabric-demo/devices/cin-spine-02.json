@@ -1,11 +1,11 @@
 {
     "data": {
         "device": {
-            "id": "spx-fabric-demo-spx-spine-02",
-            "name": "spx-spine-02",
+            "id": "cin-fabric-demo-cin-spine-02",
+            "name": "cin-spine-02",
             "tags": [{"name": "demo"}, {"name": "ztp"}],
             "tenant": {"name": "Public Demo"},
-            "role": {"name": "SPX-Spine"},
+            "role": {"name": "CIN-Spine"},
             "device_type": {
                 "manufacturer": {"name": "NVIDIA"},
                 "model": "SN5600"
@@ -50,10 +50,10 @@
                     "ip_addresses": [
                         {"address": "10.103.0.3/31", "mask_length": 31, "ip_version": 4}
                     ],
-                    "description": "spx-leaf-01:swp2",
+                    "description": "cin-leaf-01:swp2",
                     "connected_interface": {
                         "name": "swp2",
-                        "device": {"name": "spx-leaf-01", "role": {"name": "SPX-Leaf"}}
+                        "device": {"name": "cin-leaf-01", "role": {"name": "CIN-Leaf"}}
                     }
                 },
                 {
@@ -65,10 +65,10 @@
                     "ip_addresses": [
                         {"address": "10.103.0.7/31", "mask_length": 31, "ip_version": 4}
                     ],
-                    "description": "spx-leaf-02:swp2",
+                    "description": "cin-leaf-02:swp2",
                     "connected_interface": {
                         "name": "swp2",
-                        "device": {"name": "spx-leaf-02", "role": {"name": "SPX-Leaf"}}
+                        "device": {"name": "cin-leaf-02", "role": {"name": "CIN-Leaf"}}
                     }
                 },
                 {
@@ -80,10 +80,10 @@
                     "ip_addresses": [
                         {"address": "10.103.0.11/31", "mask_length": 31, "ip_version": 4}
                     ],
-                    "description": "spx-leaf-03:swp2",
+                    "description": "cin-leaf-03:swp2",
                     "connected_interface": {
                         "name": "swp2",
-                        "device": {"name": "spx-leaf-03", "role": {"name": "SPX-Leaf"}}
+                        "device": {"name": "cin-leaf-03", "role": {"name": "CIN-Leaf"}}
                     }
                 },
                 {
@@ -95,10 +95,10 @@
                     "ip_addresses": [
                         {"address": "10.103.0.15/31", "mask_length": 31, "ip_version": 4}
                     ],
-                    "description": "spx-leaf-04:swp2",
+                    "description": "cin-leaf-04:swp2",
                     "connected_interface": {
                         "name": "swp2",
-                        "device": {"name": "spx-leaf-04", "role": {"name": "SPX-Leaf"}}
+                        "device": {"name": "cin-leaf-04", "role": {"name": "CIN-Leaf"}}
                     }
                 },
                 {
@@ -110,10 +110,10 @@
                     "ip_addresses": [
                         {"address": "10.103.0.18/31", "mask_length": 31, "ip_version": 4}
                     ],
-                    "description": "spx-core-01:swp2",
+                    "description": "cin-core-01:swp2",
                     "connected_interface": {
                         "name": "swp2",
-                        "device": {"name": "spx-core-01", "role": {"name": "SPX-Core"}}
+                        "device": {"name": "cin-core-01", "role": {"name": "CIN-Core"}}
                     }
                 }
             ]

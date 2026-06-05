@@ -1,17 +1,17 @@
 {
     "data": {
         "device": {
-            "id": "spx-fabric-demo-spx-leaf-01",
-            "name": "spx-leaf-01",
+            "id": "cin-fabric-demo-cin-leaf-04",
+            "name": "cin-leaf-04",
             "tags": [{"name": "demo"}, {"name": "ztp"}, {"name": "spectrumx"}],
             "tenant": {"name": "Public Demo"},
-            "role": {"name": "SPX-Leaf"},
+            "role": {"name": "CIN-Leaf"},
             "device_type": {
                 "manufacturer": {"name": "NVIDIA"},
                 "model": "SN5600"
             },
             "status": {"name": "Provisioning"},
-            "serial": "44:38:39:00:01:21",
+            "serial": "44:38:39:00:01:24",
             "config_context": {
                 "intended-firmware": {"version": "5.16.1"}
             },
@@ -24,7 +24,7 @@
                     "enabled": true,
                     "mgmt_only": false,
                     "ip_addresses": [
-                        {"address": "10.255.2.21/32", "mask_length": 32, "ip_version": 4}
+                        {"address": "10.255.2.24/32", "mask_length": 32, "ip_version": 4}
                     ],
                     "role": {"name": "Loopback"}
                 },
@@ -35,9 +35,9 @@
                     "enabled": true,
                     "mgmt_only": false,
                     "ip_addresses": [
-                        {"address": "10.100.2.21/25", "mask_length": 25, "ip_version": 4}
+                        {"address": "10.100.2.24/25", "mask_length": 25, "ip_version": 4}
                     ],
-                    "mac_address": "44:38:39:00:01:21",
+                    "mac_address": "44:38:39:00:01:24",
                     "mtu": 9216,
                     "role": {"name": "Management"}
                 },
@@ -48,12 +48,12 @@
                     "enabled": true,
                     "mgmt_only": false,
                     "ip_addresses": [
-                        {"address": "10.103.0.0/31", "mask_length": 31, "ip_version": 4}
+                        {"address": "10.103.0.12/31", "mask_length": 31, "ip_version": 4}
                     ],
-                    "description": "spx-spine-01:swp1",
+                    "description": "cin-spine-01:swp4",
                     "connected_interface": {
-                        "name": "swp1",
-                        "device": {"name": "spx-spine-01", "role": {"name": "SPX-Spine"}}
+                        "name": "swp4",
+                        "device": {"name": "cin-spine-01", "role": {"name": "CIN-Spine"}}
                     }
                 },
                 {
@@ -63,12 +63,12 @@
                     "enabled": true,
                     "mgmt_only": false,
                     "ip_addresses": [
-                        {"address": "10.103.0.2/31", "mask_length": 31, "ip_version": 4}
+                        {"address": "10.103.0.14/31", "mask_length": 31, "ip_version": 4}
                     ],
-                    "description": "spx-spine-02:swp1",
+                    "description": "cin-spine-02:swp4",
                     "connected_interface": {
-                        "name": "swp1",
-                        "device": {"name": "spx-spine-02", "role": {"name": "SPX-Spine"}}
+                        "name": "swp4",
+                        "device": {"name": "cin-spine-02", "role": {"name": "CIN-Spine"}}
                     }
                 }
             ]
