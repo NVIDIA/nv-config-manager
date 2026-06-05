@@ -111,7 +111,7 @@ async def test_provision_vrf_reuses_existing_overlay():
         m.get(_r(f"{NAUTOBOT}/api/tenancy/tenants/"), payload=_lookup(TENANT_ID))
         m.get(
             _r(f"{OVERLAYS_BASE}/overlays/"),
-            payload={"results": [{"id": OVERLAY_ID}]},
+            payload={"results": [{"id": OVERLAY_ID, "tenant": {"id": TENANT_ID}}]},
         )
         # No create_overlay call — overlay already exists
         m.post(f"{NAUTOBOT}/api/ipam/vrfs/", payload={"id": VRF_ID})

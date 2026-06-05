@@ -437,6 +437,12 @@ async def provision_vrf(
 
         overlay = await client.find_overlay(overlay_name, location_id)
         if overlay:
+            existing_tenant = (overlay.get("tenant") or {}).get("id")
+            if existing_tenant != tenant_id:
+                raise ApplicationError(
+                    f"Overlay '{overlay_name}' exists but belongs to tenant "
+                    f"{existing_tenant!r}, expected {tenant_id!r}"
+                )
             overlay_id = overlay["id"]
             logger.info("Reusing existing overlay %s (%s)", overlay_name, overlay_id)
         else:
@@ -495,6 +501,7 @@ class QueryVRFByVPCInput(BaseModel):
     overlay_id: str
     site: str
     namespace_tag: str
+    namespace: str | None = None
 
 
 @activity.defn
@@ -506,6 +513,10 @@ async def get_vrfs_by_overlay_id(activity_input: QueryVRFByVPCInput) -> list[Vrf
         if not overlay:
             return None
         vxlans = await client.get_vxlans_by_overlay(overlay["id"], depth=1)
+        if activity_input.namespace:
+            vxlans = [
+                v for v in vxlans if v.get("namespace", {}).get("name") == activity_input.namespace
+            ]
         vrf_ids = [v["vrf"]["id"] for v in vxlans if v.get("vrf")]
         if not vrf_ids:
             return None
@@ -533,7 +544,7 @@ async def delete_vrf(activity_input: VrfDeletionActivityInput) -> None:
     async with client:
         vxlans = await client.get_vxlans_by_vnid(activity_input.vnid)
         for vxlan in vxlans:
-            if vxlan["namespace"]["name"] == activity_input.namespace:
+            if (vxlan.get("vrf") or {}).get("id") == activity_input.vrf_id:
                 await client.delete_vxlan(vxlan["id"])
         await client.delete_vrf(activity_input.vrf_id)
 

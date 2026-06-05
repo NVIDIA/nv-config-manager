@@ -32,7 +32,7 @@ server_mode: use-existing
 attach_switch: ''
 attach_interface: ''
 auto_configure: true
-git_token: ''
+# git_token: ''        # set via GIT_TOKEN / GITHUB_TOKEN env var
 config_manager_repo: https://github.com/NVIDIA/nv-config-manager
 config_manager_ref: main
 size: small
@@ -45,8 +45,8 @@ template_plugin_paths:
 extra_job_paths: []
 extra_run_after_deploy: []
 use_internal: false
-org_id: ''
-ngc_api_key: ''
+# org_id: ''           # set via AIR_ORG_ID env var
+# ngc_api_key: ''      # set via NGC_API_KEY env var
 wait_timeout: 1800
 deploy_timeout: 3600
 no_aggressive_dhcp: false
