@@ -74,7 +74,7 @@ def deploy_air_sim(config_path: Path) -> None:
 class _CliCallback:
     """Simple stdout callback for headless DSX Air simulation deploys."""
 
-    def __init__(self, ssh_password: str = "") -> None:
+    def __init__(self, ssh_password: str) -> None:
         self.success = False
         self.host = ""
         self.port = 0
@@ -95,10 +95,7 @@ class _CliCallback:
         click.echo(line)
 
     def _ssh_cmd(self, host: str, port: int) -> str:
-        base = f"ssh -p {port} nvcm@{host}"
-        if self._ssh_password:
-            return f"sshpass -p {shlex.quote(self._ssh_password)} {base}"
-        return base
+        return f"sshpass -p {shlex.quote(self._ssh_password)} ssh -p {port} nvcm@{host}"
 
     def on_ssh_ready(self, host: str, port: int) -> None:
         click.echo(f"SSH ready: {host}:{port}")
