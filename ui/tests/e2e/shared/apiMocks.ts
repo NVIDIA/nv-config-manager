@@ -328,7 +328,7 @@ export async function mockVpcCreationEndpoint(page: Page) {
       return;
     }
 
-    if (!body.vpc_id || !body.site) {
+    if (!body.overlay_id || !body.site) {
       await route.fulfill({
         status: 400,
         json: { error: "Missing required fields" },
@@ -349,8 +349,8 @@ export async function mockVpcCreationEndpoint(page: Page) {
     await route.fulfill({
       status: 201,
       json: {
-        id: body.vpc_id,
-        href: `https://url-to-temporal.com/namespaces/default/workflows/${body.vpc_id}`,
+        id: body.overlay_id,
+        href: `https://url-to-temporal.com/namespaces/default/workflows/${body.overlay_id}`,
         submitted_data: body,
       },
     });
@@ -372,7 +372,7 @@ export async function mockVpcDeletionEndpoint(page: Page) {
       return;
     }
 
-    if (!body.vpc_id || !body.site) {
+    if (!body.overlay_id || !body.site) {
       await route.fulfill({
         status: 400,
         json: { error: "Missing required fields" },
@@ -385,8 +385,8 @@ export async function mockVpcDeletionEndpoint(page: Page) {
     await route.fulfill({
       status: 200,
       json: {
-        id: body.vpc_id,
-        href: `https://url-to-temporal.com/namespaces/default/workflows/${body.vpc_id}`,
+        id: body.overlay_id,
+        href: `https://url-to-temporal.com/namespaces/default/workflows/${body.overlay_id}`,
         submitted_data: body,
       },
     });

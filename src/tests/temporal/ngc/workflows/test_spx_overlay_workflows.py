@@ -59,7 +59,7 @@ def make_test_vrf(namespace: int, with_interfaces: bool = False) -> Any:
         "id": namespace,
         "name": "SpXTenant60004",
         "rd": "*:60004",
-        "cf_forge_vpc_id": "mock_vpc_id",
+        "cf_forge_vpc_id": "mock_overlay_id",
         "namespace": {"name": namespace, "location": {"name": "mock_site"}},
         "interfaces": mock_interfaces,
     }
@@ -85,8 +85,8 @@ async def mock_get_available_route_distinguishers(
     )
 
 
-@activity.defn(name="get_vrfs_by_vpc_id")
-async def mock_get_vrfs_by_vpc_id(
+@activity.defn(name="get_vrfs_by_overlay_id")
+async def mock_get_vrfs_by_overlay_id(
     input: QueryVRFByVPCInput,
 ) -> list[Vrf] | None:
     """Mock activity for getting VRFs by VPC ID."""
@@ -149,7 +149,7 @@ async def test_spx_overlay_creation_workflow(
         workflows=[SpXOverlayCreationWorkflow],
         activities=[
             mock_get_available_route_distinguishers,
-            mock_get_vrfs_by_vpc_id,
+            mock_get_vrfs_by_overlay_id,
             mock_provision_vrf,
             publish_nats,
         ],
@@ -158,7 +158,7 @@ async def test_spx_overlay_creation_workflow(
         workflow_input = SpXOverlayCreationInput(
             namespace_tag="mock_tag",
             site="mock_site",
-            vpc_id="mock_vpc_id",
+            overlay_id="mock_overlay_id",
             tenant="mock_tenant",
         )
         workflow_id = str(uuid.uuid4())
@@ -206,7 +206,7 @@ async def test_spx_overlay_creation_workflow(
                     "rd_min": 60000,
                     "site": "mock_site",
                     "tenant": "mock_tenant",
-                    "vpc_id": "mock_vpc_id",
+                    "overlay_id": "mock_overlay_id",
                 },
                 "name": "create_spx_overlay",
                 "output": {
@@ -219,7 +219,7 @@ async def test_spx_overlay_creation_workflow(
                             "namespace": "mock_namespace1",
                             "rd": "*:60004",
                             "site": "mock_site",
-                            "vpc_id": "mock_vpc_id",
+                            "overlay_id": "mock_overlay_id",
                         },
                         {
                             "id": "mock_namespace2",
@@ -229,7 +229,7 @@ async def test_spx_overlay_creation_workflow(
                             "namespace": "mock_namespace2",
                             "rd": "*:60004",
                             "site": "mock_site",
-                            "vpc_id": "mock_vpc_id",
+                            "overlay_id": "mock_overlay_id",
                         },
                         {
                             "id": "mock_namespace3",
@@ -239,16 +239,16 @@ async def test_spx_overlay_creation_workflow(
                             "namespace": "mock_namespace3",
                             "rd": "*:60004",
                             "site": "mock_site",
-                            "vpc_id": "mock_vpc_id",
+                            "overlay_id": "mock_overlay_id",
                         },
                     ],
                     "display": (
                         "Created VRFs:\n"
-                        "|     name     |   namespace   |   site  |       id      |   rd  |   vpc_id  |interface_count|\n"
-                        "|--------------|---------------|---------|---------------|-------|-----------|---------------|\n"
-                        "|SpXTenant60004|mock_namespace1|mock_site|mock_namespace1|*:60004|mock_vpc_id|       0       |\n"
-                        "|SpXTenant60004|mock_namespace2|mock_site|mock_namespace2|*:60004|mock_vpc_id|       0       |\n"
-                        "|SpXTenant60004|mock_namespace3|mock_site|mock_namespace3|*:60004|mock_vpc_id|       0       |"
+                        "|     name     |   namespace   |   site  |       id      |   rd  |   overlay_id  |interface_count|\n"
+                        "|--------------|---------------|---------|---------------|-------|---------------|---------------|\n"
+                        "|SpXTenant60004|mock_namespace1|mock_site|mock_namespace1|*:60004|mock_overlay_id|       0       |\n"
+                        "|SpXTenant60004|mock_namespace2|mock_site|mock_namespace2|*:60004|mock_overlay_id|       0       |\n"
+                        "|SpXTenant60004|mock_namespace3|mock_site|mock_namespace3|*:60004|mock_overlay_id|       0       |"
                     ),
                     "existing_vrfs": [],
                 },
@@ -306,18 +306,18 @@ async def test_spx_overlay_creation_workflow(
                     "rd_min": 60000,
                     "site": "mock_site",
                     "tenant": "mock_tenant",
-                    "vpc_id": "mock_vpc_id",
+                    "overlay_id": "mock_overlay_id",
                 },
                 "name": "create_spx_overlay",
                 "output": {
                     "created_vrfs": [],
                     "display": (
-                        "VRFs already exists for VPC ID mock_vpc_id:\n"
-                        " |     name     |   namespace   |   site  |       id      |   rd  |   vpc_id  |interface_count|\n"
-                        "|--------------|---------------|---------|---------------|-------|-----------|---------------|\n"
-                        "|SpXTenant60004|mock_namespace1|mock_site|mock_namespace1|*:60004|mock_vpc_id|       0       |\n"
-                        "|SpXTenant60004|mock_namespace2|mock_site|mock_namespace2|*:60004|mock_vpc_id|       0       |\n"
-                        "|SpXTenant60004|mock_namespace3|mock_site|mock_namespace3|*:60004|mock_vpc_id|       0       |"
+                        "VRFs already exists for VPC ID mock_overlay_id:\n"
+                        " |     name     |   namespace   |   site  |       id      |   rd  |   overlay_id  |interface_count|\n"
+                        "|--------------|---------------|---------|---------------|-------|---------------|---------------|\n"
+                        "|SpXTenant60004|mock_namespace1|mock_site|mock_namespace1|*:60004|mock_overlay_id|       0       |\n"
+                        "|SpXTenant60004|mock_namespace2|mock_site|mock_namespace2|*:60004|mock_overlay_id|       0       |\n"
+                        "|SpXTenant60004|mock_namespace3|mock_site|mock_namespace3|*:60004|mock_overlay_id|       0       |"
                     ),
                     "existing_vrfs": [
                         {
@@ -328,7 +328,7 @@ async def test_spx_overlay_creation_workflow(
                             "namespace": "mock_namespace1",
                             "rd": "*:60004",
                             "site": "mock_site",
-                            "vpc_id": "mock_vpc_id",
+                            "overlay_id": "mock_overlay_id",
                         },
                         {
                             "id": "mock_namespace2",
@@ -338,7 +338,7 @@ async def test_spx_overlay_creation_workflow(
                             "namespace": "mock_namespace2",
                             "rd": "*:60004",
                             "site": "mock_site",
-                            "vpc_id": "mock_vpc_id",
+                            "overlay_id": "mock_overlay_id",
                         },
                         {
                             "id": "mock_namespace3",
@@ -348,7 +348,7 @@ async def test_spx_overlay_creation_workflow(
                             "namespace": "mock_namespace3",
                             "rd": "*:60004",
                             "site": "mock_site",
-                            "vpc_id": "mock_vpc_id",
+                            "overlay_id": "mock_overlay_id",
                         },
                     ],
                 },
@@ -384,7 +384,7 @@ async def test_spx_overlay_deletion_workflow(
         task_queue=task_queue_name,
         workflows=[SpXOverlayDeletionWorkflow],
         activities=[
-            mock_get_vrfs_by_vpc_id,
+            mock_get_vrfs_by_overlay_id,
             mock_delete_vrf,
             mock_delete_overlay,
             publish_nats,
@@ -392,7 +392,7 @@ async def test_spx_overlay_deletion_workflow(
         activity_executor=ThreadPoolExecutor(1),
     ):
         workflow_input = SpXOverlayDeletionInput(
-            vpc_id="mock_vpc_id",
+            overlay_id="mock_overlay_id",
             site="mock_site",
             namespace_tag="mock_tag",
         )
@@ -427,12 +427,12 @@ async def test_spx_overlay_deletion_workflow(
                 "input": {
                     "namespace_tag": "mock_tag",
                     "site": "mock_site",
-                    "vpc_id": "mock_vpc_id",
+                    "overlay_id": "mock_overlay_id",
                 },
                 "name": "delete_spx_overlay",
                 "output": {
                     "deleted_vrfs": [],
-                    "display": "No VRFs exist for VPC ID mock_vpc_id",
+                    "display": "No VRFs exist for VPC ID mock_overlay_id",
                     "in_use_vrfs": [],
                 },
                 "rejecters": [],
@@ -482,16 +482,16 @@ async def test_spx_overlay_deletion_workflow(
                 "input": {
                     "namespace_tag": "mock_tag",
                     "site": "mock_site",
-                    "vpc_id": "mock_vpc_id",
+                    "overlay_id": "mock_overlay_id",
                 },
                 "name": "delete_spx_overlay",
                 "output": {
                     "deleted_vrfs": [],
                     "display": (
-                        "Unable to delete VPC mock_vpc_id, the following VRFs are in use:\n"
-                        " |     name     |   namespace   |   site  |       id      |   rd  |   vpc_id  |interface_count|\n"
-                        "|--------------|---------------|---------|---------------|-------|-----------|---------------|\n"
-                        "|SpXTenant60004|mock_namespace1|mock_site|mock_namespace1|*:60004|mock_vpc_id|       1       |"
+                        "Unable to delete VPC mock_overlay_id, the following VRFs are in use:\n"
+                        " |     name     |   namespace   |   site  |       id      |   rd  |   overlay_id  |interface_count|\n"
+                        "|--------------|---------------|---------|---------------|-------|---------------|---------------|\n"
+                        "|SpXTenant60004|mock_namespace1|mock_site|mock_namespace1|*:60004|mock_overlay_id|       1       |"
                     ),
                     "in_use_vrfs": [
                         {
@@ -502,7 +502,7 @@ async def test_spx_overlay_deletion_workflow(
                             "namespace": "mock_namespace1",
                             "rd": "*:60004",
                             "site": "mock_site",
-                            "vpc_id": "mock_vpc_id",
+                            "overlay_id": "mock_overlay_id",
                         }
                     ],
                 },
@@ -555,7 +555,7 @@ async def test_spx_overlay_deletion_workflow(
                 "input": {
                     "namespace_tag": "mock_tag",
                     "site": "mock_site",
-                    "vpc_id": "mock_vpc_id",
+                    "overlay_id": "mock_overlay_id",
                 },
                 "name": "delete_spx_overlay",
                 "output": {
@@ -568,7 +568,7 @@ async def test_spx_overlay_deletion_workflow(
                             "namespace": "mock_namespace1",
                             "rd": "*:60004",
                             "site": "mock_site",
-                            "vpc_id": "mock_vpc_id",
+                            "overlay_id": "mock_overlay_id",
                         },
                         {
                             "id": "mock_namespace2",
@@ -578,7 +578,7 @@ async def test_spx_overlay_deletion_workflow(
                             "namespace": "mock_namespace2",
                             "rd": "*:60004",
                             "site": "mock_site",
-                            "vpc_id": "mock_vpc_id",
+                            "overlay_id": "mock_overlay_id",
                         },
                         {
                             "id": "mock_namespace3",
@@ -588,16 +588,16 @@ async def test_spx_overlay_deletion_workflow(
                             "namespace": "mock_namespace3",
                             "rd": "*:60004",
                             "site": "mock_site",
-                            "vpc_id": "mock_vpc_id",
+                            "overlay_id": "mock_overlay_id",
                         },
                     ],
                     "display": (
-                        "VRFs deleted for VPC ID mock_vpc_id:\n"
-                        "|     name     |   namespace   |   site  |       id      |   rd  |   vpc_id  |interface_count|\n"
-                        "|--------------|---------------|---------|---------------|-------|-----------|---------------|\n"
-                        "|SpXTenant60004|mock_namespace1|mock_site|mock_namespace1|*:60004|mock_vpc_id|       0       |\n"
-                        "|SpXTenant60004|mock_namespace2|mock_site|mock_namespace2|*:60004|mock_vpc_id|       0       |\n"
-                        "|SpXTenant60004|mock_namespace3|mock_site|mock_namespace3|*:60004|mock_vpc_id|       0       |\n"
+                        "VRFs deleted for VPC ID mock_overlay_id:\n"
+                        "|     name     |   namespace   |   site  |       id      |   rd  |   overlay_id  |interface_count|\n"
+                        "|--------------|---------------|---------|---------------|-------|---------------|---------------|\n"
+                        "|SpXTenant60004|mock_namespace1|mock_site|mock_namespace1|*:60004|mock_overlay_id|       0       |\n"
+                        "|SpXTenant60004|mock_namespace2|mock_site|mock_namespace2|*:60004|mock_overlay_id|       0       |\n"
+                        "|SpXTenant60004|mock_namespace3|mock_site|mock_namespace3|*:60004|mock_overlay_id|       0       |\n"
                         "\nDeleted overlay SpXTenant60004"
                     ),
                     "in_use_vrfs": [],

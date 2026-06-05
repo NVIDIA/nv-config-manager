@@ -29,7 +29,7 @@ export const spxOverlayHandlers = [
     async ({ request }) => {
       const body = (await request.json()) as SpXOverlayCreationWorkflowInput;
 
-      if (body.site === FORBIDDEN_SITE_ID || body.vpc_id === FORBIDDEN_VPC_ID) {
+      if (body.site === FORBIDDEN_SITE_ID || body.overlay_id === FORBIDDEN_VPC_ID) {
         return HttpResponse.json(
           {
             error: "Forbidden: You do not have permission to run this workflow",
@@ -38,7 +38,7 @@ export const spxOverlayHandlers = [
         );
       }
 
-      if (!body.vpc_id || !body.site || !body.tenant) {
+      if (!body.overlay_id || !body.site || !body.tenant) {
         return HttpResponse.json(
           { error: "Missing required fields" },
           { status: 400 }
@@ -56,8 +56,8 @@ export const spxOverlayHandlers = [
 
       return HttpResponse.json(
         {
-          id: body.vpc_id,
-          href: `https://url-to-temporal.com/namespaces/default/workflows/${body.vpc_id}`,
+          id: body.overlay_id,
+          href: `https://url-to-temporal.com/namespaces/default/workflows/${body.overlay_id}`,
           submitted_data: body,
         },
         { status: 201 }
@@ -70,7 +70,7 @@ export const spxOverlayHandlers = [
     async ({ request }) => {
       const body = (await request.json()) as SpXOverlayDeletionWorkflowInput;
 
-      if (body.site === FORBIDDEN_SITE_ID || body.vpc_id === FORBIDDEN_VPC_ID) {
+      if (body.site === FORBIDDEN_SITE_ID || body.overlay_id === FORBIDDEN_VPC_ID) {
         return HttpResponse.json(
           {
             error: "Forbidden: You do not have permission to run this workflow",
@@ -79,7 +79,7 @@ export const spxOverlayHandlers = [
         );
       }
 
-      if (!body.vpc_id || !body.site) {
+      if (!body.overlay_id || !body.site) {
         return HttpResponse.json(
           { error: "Missing required fields" },
           { status: 400 }
@@ -90,8 +90,8 @@ export const spxOverlayHandlers = [
 
       return HttpResponse.json(
         {
-          id: body.vpc_id,
-          href: `https://url-to-temporal.com/namespaces/default/workflows/${body.vpc_id}`,
+          id: body.overlay_id,
+          href: `https://url-to-temporal.com/namespaces/default/workflows/${body.overlay_id}`,
           submitted_data: body,
         },
         { status: 200 }

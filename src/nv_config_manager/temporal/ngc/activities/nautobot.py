@@ -352,9 +352,9 @@ class Vrf(BaseModel):
     """VRF Data."""
 
     QUERY_BY_VPC_ID: ClassVar[str] = """
-query ($vpc_id: String!, $location: String!, $namespace_tag: [String]!) {
+query ($overlay_id: String!, $location: String!, $namespace_tag: [String]!) {
   namespaces(location: $location, tags: $namespace_tag) {
-    vrfs(cf_forge_vpc_id: $vpc_id) {
+    vrfs(cf_forge_vpc_id: $overlay_id) {
       id
       name
       rd
@@ -380,7 +380,7 @@ query ($vpc_id: String!, $location: String!, $namespace_tag: [String]!) {
     site: str
     id: str
     rd: str
-    vpc_id: str | None
+    overlay_id: str | None
     interfaces: list[str]
 
     @computed_field  # type: ignore[prop-decorator]
@@ -397,7 +397,7 @@ query ($vpc_id: String!, $location: String!, $namespace_tag: [String]!) {
             site=data["namespace"]["location"]["name"],
             id=data["id"],
             rd=data["rd"],
-            vpc_id=data["cf_forge_vpc_id"],
+            overlay_id=data["cf_forge_vpc_id"],
             interfaces=[
                 ":".join((intf["device"]["name"], intf["name"])) for intf in data["interfaces"]
             ],
@@ -409,7 +409,7 @@ class ProvisionVrfInput(BaseModel):
 
     namespaces: list[str]
     route_distinguisher: str
-    vpc_id: str
+    overlay_id: str
     site: str
     tenant: str
 
@@ -463,7 +463,7 @@ async def provision_vrf(
                         "name": name,
                         "rd": activity_input.route_distinguisher,
                         "namespace": namespace,
-                        "custom_fields": {"forge_vpc_id": activity_input.vpc_id},
+                        "custom_fields": {"forge_vpc_id": activity_input.overlay_id},
                     }
                 )
                 vrfs_created.append(vrf)
@@ -497,20 +497,20 @@ async def provision_vrf(
 class QueryVRFByVPCInput(BaseModel):
     """Query VRF Activity Input."""
 
-    vpc_id: str
+    overlay_id: str
     site: str
     namespace_tag: str
 
 
 @activity.defn
-async def get_vrfs_by_vpc_id(activity_input: QueryVRFByVPCInput) -> list[Vrf] | None:
+async def get_vrfs_by_overlay_id(activity_input: QueryVRFByVPCInput) -> list[Vrf] | None:
     """Get VRF by VPC ID."""
     client = NautobotClient()
     async with client:
         rsp = await client.graphql_query(
             Vrf.QUERY_BY_VPC_ID,
             {
-                "vpc_id": activity_input.vpc_id,
+                "overlay_id": activity_input.overlay_id,
                 "location": activity_input.site,
                 "namespace_tag": [activity_input.namespace_tag],
             },

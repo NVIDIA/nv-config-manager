@@ -32,7 +32,7 @@ import { SpXOverlayDeletionWorkflowInput } from "@/types/data-table.types";
 
 const SpXOverlayDeletionFormSchema = z.object({
   site: z.string().trim().min(1, { message: "Site is required" }),
-  vpc: z.string().trim().min(1, { message: "VPC is required" }),
+  overlay_id: z.string().trim().min(1, { message: "Overlay ID is required" }),
   namespace: z.string().trim().min(1, { message: "Namespace is required" }),
 });
 
@@ -41,7 +41,7 @@ export const SpXOverlayDeletionWorkflowForm = () => {
   const { toast } = useToast();
   const searchParams = useSearchParams();
   const querySite = (searchParams && searchParams.get("site")) || "";
-  const queryVPC = (searchParams && searchParams.get("vpc")) || "";
+  const queryOverlayId = (searchParams && searchParams.get("overlay_id")) || "";
   const queryNamespace =
     (searchParams && searchParams.get("namespace")) || "spectrumx";
   const {
@@ -53,7 +53,7 @@ export const SpXOverlayDeletionWorkflowForm = () => {
     resolver: zodResolver(SpXOverlayDeletionFormSchema),
     defaultValues: {
       site: querySite,
-      vpc: queryVPC,
+      overlay_id: queryOverlayId,
       namespace: queryNamespace,
     },
   });
@@ -76,7 +76,7 @@ export const SpXOverlayDeletionWorkflowForm = () => {
     setIsSubmitting(true);
     const submissionData: SpXOverlayDeletionWorkflowInput = {
       site: data.site,
-      vpc_id: data.vpc,
+      overlay_id: data.overlay_id,
       namespace_tag: data.namespace,
     };
     await startWorkflow(
@@ -113,8 +113,8 @@ export const SpXOverlayDeletionWorkflowForm = () => {
               <WorkflowFormField
                 type="input"
                 control={form.control}
-                name="vpc"
-                label="VPC"
+                name="overlay_id"
+                label="Overlay ID"
                 isSubmitting={isSubmitting}
               />
               <WorkflowFormField

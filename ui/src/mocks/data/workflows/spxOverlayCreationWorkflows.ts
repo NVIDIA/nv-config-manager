@@ -25,7 +25,7 @@ export const SPX_OVERLAY_CREATION_WORKFLOWS = {
         rd_max: 65000,
         rd_min: 60000,
         site: "RNO1",
-        vpc_id: "1234",
+        overlay_id: "1234",
       },
       started_by: "joliao",
       start_time: "2025-03-04T02:55:39.440019Z",

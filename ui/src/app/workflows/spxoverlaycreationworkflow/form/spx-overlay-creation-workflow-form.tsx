@@ -33,7 +33,7 @@ import { SpXOverlayCreationWorkflowInput } from "@/types/data-table.types";
 const SpXOverlayCreationFormSchema = z
   .object({
     site: z.string().trim().min(1, { message: "Site is required" }),
-    vpc: z.string().trim().min(1, { message: "VPC is required" }),
+    overlay_id: z.string().trim().min(1, { message: "Overlay ID is required" }),
     tenant: z.string().trim().min(1, { message: "Tenant is required" }),
     namespace: z.string().trim().min(1, {message: "Namespace is required"}),
     rd_min: z.number().min(0).max(65535),
@@ -49,7 +49,7 @@ export const SpXOverlayCreationWorkflowForm = () => {
   const { toast } = useToast();
   const searchParams = useSearchParams();
   const querySite = (searchParams && searchParams.get("site")) || "";
-  const queryVPC = (searchParams && searchParams.get("vpc")) || "";
+  const queryOverlayId = (searchParams && searchParams.get("overlay_id")) || "";
   const queryTenant = (searchParams && searchParams.get("tenant")) || "";
   const queryNamespace =
     (searchParams && searchParams.get("namespace")) || "spectrumx";
@@ -66,7 +66,7 @@ export const SpXOverlayCreationWorkflowForm = () => {
     resolver: zodResolver(SpXOverlayCreationFormSchema),
     defaultValues: {
       site: querySite,
-      vpc: queryVPC,
+      overlay_id: queryOverlayId,
       tenant: queryTenant,
       namespace: queryNamespace,
       rd_min: queryRDMin,
@@ -92,7 +92,7 @@ export const SpXOverlayCreationWorkflowForm = () => {
     setIsSubmitting(true);
     const submissionData: SpXOverlayCreationWorkflowInput = {
       site: data.site,
-      vpc_id: data.vpc,
+      overlay_id: data.overlay_id,
       tenant: data.tenant,
       namespace_tag: data.namespace,
       rd_min: data.rd_min,
@@ -132,8 +132,8 @@ export const SpXOverlayCreationWorkflowForm = () => {
               <WorkflowFormField
                 type="input"
                 control={form.control}
-                name="vpc"
-                label="VPC"
+                name="overlay_id"
+                label="Overlay ID"
                 isSubmitting={isSubmitting}
               />
               <WorkflowFormField

@@ -21,6 +21,7 @@ from aioresponses import aioresponses
 from temporalio.exceptions import ApplicationError
 
 from nv_config_manager.common.client.nautobot import NautobotException
+from nv_config_manager.temporal.client.nautobot import NautobotClient
 from nv_config_manager.temporal.ngc.activities.nautobot import (
     DeleteOverlayInput,
     ProvisionVrfInput,
@@ -96,7 +97,7 @@ async def test_provision_vrf_creates_overlay_vrf_vxlan():
             ProvisionVrfInput(
                 namespaces=[NS_ID],
                 route_distinguisher="*:60004",
-                vpc_id="test-vpc-001",
+                overlay_id="test-vpc-001",
                 site=LOCATION_ID,
                 tenant="Public Demo",
             )
@@ -120,7 +121,7 @@ async def test_provision_vrf_reuses_existing_overlay():
             ProvisionVrfInput(
                 namespaces=[NS_ID],
                 route_distinguisher="*:60004",
-                vpc_id="test-vpc-001",
+                overlay_id="test-vpc-001",
                 site=LOCATION_ID,
                 tenant="Public Demo",
             )
@@ -145,7 +146,7 @@ async def test_provision_vrf_rolls_back_on_vxlan_failure():
                 ProvisionVrfInput(
                     namespaces=[NS_ID],
                     route_distinguisher="*:60004",
-                    vpc_id="test-vpc-001",
+                    overlay_id="test-vpc-001",
                     site=LOCATION_ID,
                     tenant="Public Demo",
                 )
@@ -162,7 +163,7 @@ async def test_provision_vrf_missing_status_raises():
                 ProvisionVrfInput(
                     namespaces=[NS_ID],
                     route_distinguisher="*:60004",
-                    vpc_id="test-vpc-001",
+                    overlay_id="test-vpc-001",
                     site=LOCATION_ID,
                     tenant="Public Demo",
                 )
@@ -180,7 +181,7 @@ async def test_provision_vrf_missing_tenant_raises():
                 ProvisionVrfInput(
                     namespaces=[NS_ID],
                     route_distinguisher="*:60004",
-                    vpc_id="test-vpc-001",
+                    overlay_id="test-vpc-001",
                     site=LOCATION_ID,
                     tenant="Public Demo",
                 )
@@ -301,7 +302,6 @@ async def test_delete_overlay_not_found_returns_not_deleted():
 
 @pytest.mark.asyncio
 async def test_lookup_id_by_name_raises_on_multiple_results():
-    from nv_config_manager.temporal.client.nautobot import NautobotClient
 
     with aioresponses() as m:
         m.get(
@@ -317,7 +317,6 @@ async def test_lookup_id_by_name_raises_on_multiple_results():
 
 @pytest.mark.asyncio
 async def test_lookup_id_by_name_returns_none_when_not_found():
-    from nv_config_manager.temporal.client.nautobot import NautobotClient
 
     with aioresponses() as m:
         m.get(_r(f"{NAUTOBOT}/api/dcim/locations/"), payload={"results": []})
@@ -336,7 +335,6 @@ async def test_lookup_id_by_name_returns_none_when_not_found():
 
 @pytest.mark.asyncio
 async def test_find_overlay_raises_on_multiple_results():
-    from nv_config_manager.temporal.client.nautobot import NautobotClient
 
     with aioresponses() as m:
         m.get(

@@ -22,7 +22,7 @@ export const SPX_OVERLAY_DELETION_WORKFLOWS = {
       workflow_input: {
         namespace_tag: "spectrumx",
         site: "string",
-        vpc_id: "string",
+        overlay_id: "string",
       },
       started_by: "joliao",
       start_time: "2025-03-17T19:15:37.789363Z",

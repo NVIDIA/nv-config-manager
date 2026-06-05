@@ -17,7 +17,7 @@
 import asyncio
 from datetime import timedelta
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 from temporalio.exceptions import ApplicationError
@@ -61,7 +61,7 @@ with workflow.unsafe.imports_passed_through():
         get_device_interfaces,
         get_device_vrfs,
         get_network_device,
-        get_vrfs_by_vpc_id,
+        get_vrfs_by_overlay_id,
         provision_vrf,
     )
     from nv_config_manager.temporal.ngc.activities.render import (
@@ -92,11 +92,22 @@ class SpXOverlayCreationInput(BaseModel):
     """SpX Overlay Creation Workflow Input Definition."""
 
     site: str
-    vpc_id: str
+    overlay_id: str = Field(
+        title="Overlay ID",
+        description="Unique identifier for the SpX overlay. Used as an idempotency key — re-running with the same ID returns existing VRFs without creating new ones.",
+    )
     tenant: str
     namespace_tag: str = NAMESPACE_TAG
-    rd_min: int = RD_MIN
-    rd_max: int = RD_MAX
+    rd_min: int = Field(
+        default=RD_MIN,
+        title="RD Min",
+        description="Lower bound of the route-distinguisher allocation range (0–65535). The first available RD in [rd_min, rd_max] is allocated.",
+    )
+    rd_max: int = Field(
+        default=RD_MAX,
+        title="RD Max",
+        description="Upper bound of the route-distinguisher allocation range (0–65535). Must be greater than rd_min.",
+    )
 
 
 class SpXOverlayCreationWorkflowOutput(BaseModel):
@@ -133,7 +144,7 @@ class SpXOverlayCreationWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
         """Create VPC Stage Input."""
 
         namespace_tag: str
-        vpc_id: str
+        overlay_id: str
         site: str
         tenant: str
         rd_min: int
@@ -152,9 +163,9 @@ class SpXOverlayCreationWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
         """Create VPC Stage."""
         # Ensure no existing VRFs with this VPC ID
         existing_vrfs = await workflow.execute_activity(
-            get_vrfs_by_vpc_id,
+            get_vrfs_by_overlay_id,
             QueryVRFByVPCInput(
-                vpc_id=stage_input.vpc_id,
+                overlay_id=stage_input.overlay_id,
                 namespace_tag=stage_input.namespace_tag,
                 site=stage_input.site,
             ),
@@ -166,7 +177,7 @@ class SpXOverlayCreationWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
                 created_vrfs=[],
                 existing_vrfs=existing_vrfs,
                 display=(
-                    f"VRFs already exists for VPC ID {stage_input.vpc_id}:\n "
+                    f"VRFs already exists for VPC ID {stage_input.overlay_id}:\n "
                     f"{self.markdown_table(existing_vrfs, exclude={'interfaces'})}"
                 ),
             )
@@ -186,7 +197,7 @@ class SpXOverlayCreationWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
             ProvisionVrfInput(
                 namespaces=rd_results.namespaces,
                 route_distinguisher=rd_results.route_distinguisher,
-                vpc_id=stage_input.vpc_id,
+                overlay_id=stage_input.overlay_id,
                 site=stage_input.site,
                 tenant=stage_input.tenant,
             ),
@@ -194,9 +205,9 @@ class SpXOverlayCreationWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
             retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
         )
         created_vrfs = await workflow.execute_activity(
-            get_vrfs_by_vpc_id,
+            get_vrfs_by_overlay_id,
             QueryVRFByVPCInput(
-                vpc_id=stage_input.vpc_id,
+                overlay_id=stage_input.overlay_id,
                 namespace_tag=stage_input.namespace_tag,
                 site=stage_input.site,
             ),
@@ -222,7 +233,7 @@ class SpXOverlayCreationWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
         vrf_output = await self.create_spx_overlay(
             self.CreateSpXOverlayStageInput(
                 namespace_tag=workflow_input.namespace_tag,
-                vpc_id=workflow_input.vpc_id,
+                overlay_id=workflow_input.overlay_id,
                 site=workflow_input.site,
                 tenant=workflow_input.tenant,
                 rd_min=workflow_input.rd_min,
@@ -240,7 +251,10 @@ class SpXOverlayDeletionInput(BaseModel):
     """SpX Overlay Deletion Workflow Input Definition."""
 
     site: str
-    vpc_id: str
+    overlay_id: str = Field(
+        title="Overlay ID",
+        description="Identifier of the SpX overlay to delete.",
+    )
     namespace_tag: str = NAMESPACE_TAG
 
 
@@ -277,7 +291,7 @@ class SpXOverlayDeletionWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
     class DeleteSpXOverlayStageInput(StageInput):
         """Create VPC Stage Input."""
 
-        vpc_id: str
+        overlay_id: str
         site: str
         namespace_tag: str = NAMESPACE_TAG
 
@@ -293,9 +307,9 @@ class SpXOverlayDeletionWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
     ) -> DeleteSpXOverlayStageOutput:
         """Delete VPC Stage."""
         existing_vrfs = await workflow.execute_activity(
-            get_vrfs_by_vpc_id,
+            get_vrfs_by_overlay_id,
             QueryVRFByVPCInput(
-                vpc_id=stage_input.vpc_id,
+                overlay_id=stage_input.overlay_id,
                 namespace_tag=stage_input.namespace_tag,
                 site=stage_input.site,
             ),
@@ -306,7 +320,7 @@ class SpXOverlayDeletionWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
             return self.DeleteSpXOverlayStageOutput(
                 deleted_vrfs=[],
                 in_use_vrfs=[],
-                display=f"No VRFs exist for VPC ID {stage_input.vpc_id}",
+                display=f"No VRFs exist for VPC ID {stage_input.overlay_id}",
             )
 
         in_use_vrfs = [vrf for vrf in existing_vrfs if vrf.interface_count > 0]
@@ -315,7 +329,7 @@ class SpXOverlayDeletionWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
                 in_use_vrfs=in_use_vrfs,
                 deleted_vrfs=[],
                 display=(
-                    f"Unable to delete VPC {stage_input.vpc_id}, "
+                    f"Unable to delete VPC {stage_input.overlay_id}, "
                     f"the following VRFs are in use:\n "
                     f"{self.markdown_table(in_use_vrfs, exclude={'interfaces'})}"
                 ),
@@ -357,7 +371,7 @@ class SpXOverlayDeletionWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
             deleted_vrfs=existing_vrfs,
             in_use_vrfs=[],
             display=(
-                f"VRFs deleted for VPC ID {stage_input.vpc_id}:\n"
+                f"VRFs deleted for VPC ID {stage_input.overlay_id}:\n"
                 f"{self.markdown_table(existing_vrfs, exclude={'interfaces'})}\n\n"
                 f"{overlay_message}"
             ),
@@ -371,7 +385,7 @@ class SpXOverlayDeletionWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
         self.set_input(workflow_input)
         vrf_output = await self.delete_spx_overlay(
             self.DeleteSpXOverlayStageInput(
-                vpc_id=workflow_input.vpc_id,
+                overlay_id=workflow_input.overlay_id,
                 site=workflow_input.site,
                 namespace_tag=workflow_input.namespace_tag,
             )
@@ -386,7 +400,10 @@ class SpXOverlayDeletionWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
 class SpXOverlayAssignmentInput(BaseModel):
     """SpX Overlay Assignment Workflow Input Definition."""
 
-    vpc_id: str
+    overlay_id: str = Field(
+        title="Overlay ID",
+        description="Identifier of the SpX overlay whose VRF will be assigned to the device and ports.",
+    )
     device: str | NetworkDeviceData
     port_names: list[str]
     site: str
@@ -437,7 +454,7 @@ class SpXOverlayAssignmentWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixi
     class GetDeviceAndVrfStageInput(StageInput):
         """Get Device and VRF Stage Input."""
 
-        vpc_id: str
+        overlay_id: str
         device: str | NetworkDeviceData
         site: str
         namespace_tag: str
@@ -465,9 +482,9 @@ class SpXOverlayAssignmentWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixi
             device = stage_input.device
 
         vrfs = await workflow.execute_activity(
-            get_vrfs_by_vpc_id,
+            get_vrfs_by_overlay_id,
             QueryVRFByVPCInput(
-                vpc_id=stage_input.vpc_id,
+                overlay_id=stage_input.overlay_id,
                 namespace_tag=stage_input.namespace_tag,
                 site=stage_input.site,
             ),
@@ -477,11 +494,11 @@ class SpXOverlayAssignmentWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixi
 
         if not vrfs:
             raise ApplicationError(
-                f"No VRF found for VPC ID {stage_input.vpc_id} in site {stage_input.site}"
+                f"No VRF found for VPC ID {stage_input.overlay_id} in site {stage_input.site}"
             )
         if len(vrfs) > 1:
             raise ApplicationError(
-                f"Multiple VRFs found for VPC ID {stage_input.vpc_id} in site {stage_input.site}"
+                f"Multiple VRFs found for VPC ID {stage_input.overlay_id} in site {stage_input.site}"
             )
 
         return self.GetDeviceAndVrfStageOutput(
@@ -604,7 +621,7 @@ class SpXOverlayAssignmentWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixi
 
         device_vrf_output = await self.get_device_and_vrf(
             self.GetDeviceAndVrfStageInput(
-                vpc_id=workflow_input.vpc_id,
+                overlay_id=workflow_input.overlay_id,
                 device=workflow_input.device,
                 site=workflow_input.site,
                 namespace_tag=workflow_input.namespace_tag,
@@ -643,8 +660,11 @@ class SpXOverlayAssignmentWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixi
 class SpXOverlayTenantChangeInput(BaseModel):
     """SpX Overlay Tenant Change Workflow Input Definition."""
 
-    vpc_id: str
-    device_id: str
+    overlay_id: str = Field(
+        title="Overlay ID",
+        description="Identifier of the SpX overlay to assign and deploy tenant configuration for.",
+    )
+    device_id: str = Field(title="Device ID")
     port_names: list[str]
     site: str
     namespace_tag: str = NAMESPACE_TAG
@@ -734,7 +754,7 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
     class AssignSpXOverlayStageInput(StageInput):
         """Assign VPC Stage Input."""
 
-        vpc_id: str
+        overlay_id: str
         device: NetworkDeviceData
         port_names: list[str]
         site: str
@@ -758,7 +778,7 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
             result = await workflow.execute_child_workflow(
                 SpXOverlayAssignmentWorkflow.run,
                 SpXOverlayAssignmentInput(
-                    vpc_id=stage_input.vpc_id,
+                    overlay_id=stage_input.overlay_id,
                     device=stage_input.device,
                     port_names=stage_input.port_names,
                     site=stage_input.site,
@@ -902,7 +922,7 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
         DeviceMixin.attach_device_search_attributes(device_output.device)
         assign_output = await self.assign_spx_overlay_stage(
             self.AssignSpXOverlayStageInput(
-                vpc_id=workflow_input.vpc_id,
+                overlay_id=workflow_input.overlay_id,
                 device=device_output.device,
                 port_names=workflow_input.port_names,
                 site=workflow_input.site,

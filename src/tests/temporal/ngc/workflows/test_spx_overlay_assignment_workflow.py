@@ -51,7 +51,7 @@ def make_test_vrf(namespace: str) -> dict[str, Any]:
         "id": namespace,
         "name": "SpXTenant60004",
         "rd": "*:60004",
-        "cf_forge_vpc_id": "mock_vpc_id",
+        "cf_forge_vpc_id": "mock_overlay_id",
         "namespace": {"name": namespace, "location": {"name": "mock_site"}},
         "interfaces": [],
     }
@@ -89,8 +89,8 @@ _mock_state = {
 }
 
 
-@activity.defn(name="get_vrfs_by_vpc_id")
-async def mock_get_vrfs_by_vpc_id(
+@activity.defn(name="get_vrfs_by_overlay_id")
+async def mock_get_vrfs_by_overlay_id(
     _activity_input: QueryVRFByVPCInput,
 ) -> list[Vrf] | None:
     """Mock activity for getting VRFs by VPC ID."""
@@ -185,7 +185,7 @@ async def test_spx_overlay_assignment_workflow_vrf_not_assigned(_mock_time, _moc
         workflows=[SpXOverlayAssignmentWorkflow],
         activities=[
             mock_get_network_device,
-            mock_get_vrfs_by_vpc_id,
+            mock_get_vrfs_by_overlay_id,
             mock_get_device_vrfs,
             mock_assign_vrf_to_device,
             mock_get_device_interfaces,
@@ -195,7 +195,7 @@ async def test_spx_overlay_assignment_workflow_vrf_not_assigned(_mock_time, _moc
         activity_executor=ThreadPoolExecutor(1),
     ):
         workflow_input = SpXOverlayAssignmentInput(
-            vpc_id="mock_vpc_id",
+            overlay_id="mock_overlay_id",
             device="mock_device_id",
             port_names=["swp1", "swp2"],
             site="mock_site",
@@ -235,7 +235,7 @@ async def test_spx_overlay_assignment_workflow_vrf_already_assigned(
         workflows=[SpXOverlayAssignmentWorkflow],
         activities=[
             mock_get_network_device,
-            mock_get_vrfs_by_vpc_id,
+            mock_get_vrfs_by_overlay_id,
             mock_get_device_vrfs,
             mock_assign_vrf_to_device,
             mock_get_device_interfaces,
@@ -245,7 +245,7 @@ async def test_spx_overlay_assignment_workflow_vrf_already_assigned(
         activity_executor=ThreadPoolExecutor(1),
     ):
         workflow_input = SpXOverlayAssignmentInput(
-            vpc_id="mock_vpc_id",
+            overlay_id="mock_overlay_id",
             device="mock_device_id_with_vrf",
             port_names=["swp1", "swp2"],
             site="mock_site",
@@ -283,7 +283,7 @@ async def test_spx_overlay_assignment_workflow_vrf_not_found(_mock_time, _mock_n
         workflows=[SpXOverlayAssignmentWorkflow],
         activities=[
             mock_get_network_device,
-            mock_get_vrfs_by_vpc_id,
+            mock_get_vrfs_by_overlay_id,
             mock_get_device_vrfs,
             mock_assign_vrf_to_device,
             mock_get_device_interfaces,
@@ -293,7 +293,7 @@ async def test_spx_overlay_assignment_workflow_vrf_not_found(_mock_time, _mock_n
         activity_executor=ThreadPoolExecutor(1),
     ):
         workflow_input = SpXOverlayAssignmentInput(
-            vpc_id="mock_vpc_id",
+            overlay_id="mock_overlay_id",
             device="mock_device_id",
             port_names=["swp1", "swp2"],
             site="mock_site",
@@ -319,7 +319,7 @@ async def test_spx_overlay_assignment_workflow_vrf_not_found(_mock_time, _mock_n
         assert get_device_vrf_stage["state"] == "FAILED"
 
         if get_device_vrf_stage.get("traceback"):
-            assert "No VRF found for VPC ID mock_vpc_id" in get_device_vrf_stage["traceback"]
+            assert "No VRF found for VPC ID mock_overlay_id" in get_device_vrf_stage["traceback"]
 
 
 @pytest.mark.asyncio
@@ -340,7 +340,7 @@ async def test_spx_overlay_assignment_workflow_interface_not_found(
         workflows=[SpXOverlayAssignmentWorkflow],
         activities=[
             mock_get_network_device,
-            mock_get_vrfs_by_vpc_id,
+            mock_get_vrfs_by_overlay_id,
             mock_get_device_vrfs,
             mock_assign_vrf_to_device,
             mock_get_device_interfaces,
@@ -350,7 +350,7 @@ async def test_spx_overlay_assignment_workflow_interface_not_found(
         activity_executor=ThreadPoolExecutor(1),
     ):
         workflow_input = SpXOverlayAssignmentInput(
-            vpc_id="mock_vpc_id",
+            overlay_id="mock_overlay_id",
             device="mock_device_id",
             port_names=["swp1", "swp99"],
             site="mock_site",

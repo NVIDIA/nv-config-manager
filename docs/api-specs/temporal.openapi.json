@@ -1272,6 +1272,11 @@
             "title": "Namespace Tag",
             "type": "string"
           },
+          "overlay_id": {
+            "description": "Identifier of the SpX overlay whose VRF will be assigned to the device and ports.",
+            "title": "Overlay ID",
+            "type": "string"
+          },
           "port_names": {
             "items": {
               "type": "string"
@@ -1282,14 +1287,10 @@
           "site": {
             "title": "Site",
             "type": "string"
-          },
-          "vpc_id": {
-            "title": "Vpc Id",
-            "type": "string"
           }
         },
         "required": [
-          "vpc_id",
+          "overlay_id",
           "device",
           "port_names",
           "site"
@@ -1305,14 +1306,21 @@
             "title": "Namespace Tag",
             "type": "string"
           },
+          "overlay_id": {
+            "description": "Unique identifier for the SpX overlay. Used as an idempotency key \u2014 re-running with the same ID returns existing VRFs without creating new ones.",
+            "title": "Overlay ID",
+            "type": "string"
+          },
           "rd_max": {
             "default": 65000,
-            "title": "Rd Max",
+            "description": "Upper bound of the route-distinguisher allocation range (0\u201365535). Must be greater than rd_min.",
+            "title": "RD Max",
             "type": "integer"
           },
           "rd_min": {
             "default": 60000,
-            "title": "Rd Min",
+            "description": "Lower bound of the route-distinguisher allocation range (0\u201365535). The first available RD in [rd_min, rd_max] is allocated.",
+            "title": "RD Min",
             "type": "integer"
           },
           "site": {
@@ -1322,15 +1330,11 @@
           "tenant": {
             "title": "Tenant",
             "type": "string"
-          },
-          "vpc_id": {
-            "title": "Vpc Id",
-            "type": "string"
           }
         },
         "required": [
           "site",
-          "vpc_id",
+          "overlay_id",
           "tenant"
         ],
         "title": "SpXOverlayCreationInput",
@@ -1344,18 +1348,19 @@
             "title": "Namespace Tag",
             "type": "string"
           },
-          "site": {
-            "title": "Site",
+          "overlay_id": {
+            "description": "Identifier of the SpX overlay to delete.",
+            "title": "Overlay ID",
             "type": "string"
           },
-          "vpc_id": {
-            "title": "Vpc Id",
+          "site": {
+            "title": "Site",
             "type": "string"
           }
         },
         "required": [
           "site",
-          "vpc_id"
+          "overlay_id"
         ],
         "title": "SpXOverlayDeletionInput",
         "type": "object"
@@ -1364,12 +1369,17 @@
         "description": "SpX Overlay Tenant Change Workflow Input Definition.",
         "properties": {
           "device_id": {
-            "title": "Device Id",
+            "title": "Device ID",
             "type": "string"
           },
           "namespace_tag": {
             "default": "spectrumx",
             "title": "Namespace Tag",
+            "type": "string"
+          },
+          "overlay_id": {
+            "description": "Identifier of the SpX overlay to assign and deploy tenant configuration for.",
+            "title": "Overlay ID",
             "type": "string"
           },
           "port_names": {
@@ -1382,14 +1392,10 @@
           "site": {
             "title": "Site",
             "type": "string"
-          },
-          "vpc_id": {
-            "title": "Vpc Id",
-            "type": "string"
           }
         },
         "required": [
-          "vpc_id",
+          "overlay_id",
           "device_id",
           "port_names",
           "site"
