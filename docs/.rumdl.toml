@@ -158,4 +158,4 @@ allow-loose-continuation = true  # allow blank lines around continuation paragra
 
 [MD077]
 # list-continuation-indent
-severity = "info"
+# severity = "info"
