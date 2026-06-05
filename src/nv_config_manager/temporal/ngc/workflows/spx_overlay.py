@@ -355,7 +355,7 @@ class SpXOverlayDeletionWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
         overlay_result = await workflow.execute_activity(
             delete_overlay,
             DeleteOverlayInput(
-                vnid=_vni_from_rd(existing_vrfs[0].rd),
+                overlay_id=stage_input.overlay_id,
                 site=stage_input.site,
             ),
             start_to_close_timeout=timedelta(minutes=1),
@@ -791,9 +791,8 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
 
         self.append_child_workflow("assign_spx_overlay", workflow.info().workflow_id)
 
-        # For SpX overlays the overlay, VRF, and L3 VXLAN all share the same
-        # name (e.g. SpXTenant60004), so we can surface all three from the VRF result.
-        overlay_name = result.vrf.vrf_name
+        # The overlay name is the user-supplied overlay_id; VRF and VXLAN share SpXTenant{vni}.
+        overlay_name = stage_input.overlay_id
         vxlan_name = result.vrf.vrf_name
 
         vrf_line = f"VRF: {result.vrf.vrf_name}" if result.vrf_assigned else "VRF already assigned"

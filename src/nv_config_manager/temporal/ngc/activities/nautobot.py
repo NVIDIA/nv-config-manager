@@ -351,25 +351,22 @@ async def get_available_route_distinguishers(
 class Vrf(BaseModel):
     """VRF Data."""
 
-    QUERY_BY_VPC_ID: ClassVar[str] = """
-query ($overlay_id: String!, $location: String!, $namespace_tag: [String]!) {
-  namespaces(location: $location, tags: $namespace_tag) {
-    vrfs(cf_forge_vpc_id: $overlay_id) {
-      id
+    QUERY_BY_IDS: ClassVar[str] = """
+query ($ids: [ID!]!) {
+  vrfs(id: $ids) {
+    id
+    name
+    rd
+    namespace {
       name
-      rd
-      cf_forge_vpc_id
-      namespace {
+      location {
         name
-        location {
-          name
-        }
       }
-      interfaces {
+    }
+    interfaces {
+      name
+      device {
         name
-        device {
-          name
-        }
       }
     }
   }
@@ -380,7 +377,6 @@ query ($overlay_id: String!, $location: String!, $namespace_tag: [String]!) {
     site: str
     id: str
     rd: str
-    overlay_id: str | None
     interfaces: list[str]
 
     @computed_field  # type: ignore[prop-decorator]
@@ -397,7 +393,6 @@ query ($overlay_id: String!, $location: String!, $namespace_tag: [String]!) {
             site=data["namespace"]["location"]["name"],
             id=data["id"],
             rd=data["rd"],
-            overlay_id=data["cf_forge_vpc_id"],
             interfaces=[
                 ":".join((intf["device"]["name"], intf["name"])) for intf in data["interfaces"]
             ],
@@ -427,7 +422,8 @@ async def provision_vrf(
     """
     client = NautobotClient()
     vni = _vni_from_rd(activity_input.route_distinguisher)
-    name = f"SpXTenant{vni}"
+    vrf_name = f"SpXTenant{vni}"
+    overlay_name = activity_input.overlay_id
     vrfs_created: list[Any] = []
     vxlans_created: list[Any] = []
     async with client:
@@ -439,14 +435,14 @@ async def provision_vrf(
         if not tenant_id:
             raise ApplicationError(f"Tenant '{activity_input.tenant}' not found in Nautobot")
 
-        overlay = await client.find_overlay(name, location_id)
+        overlay = await client.find_overlay(overlay_name, location_id)
         if overlay:
             overlay_id = overlay["id"]
-            logger.info("Reusing existing overlay %s (%s)", name, overlay_id)
+            logger.info("Reusing existing overlay %s (%s)", overlay_name, overlay_id)
         else:
             overlay = await client.create_overlay(
                 data={
-                    "name": name,
+                    "name": overlay_name,
                     "location": location_id,
                     "tenant": tenant_id,
                     "isolation_type": SPECTRUMX_ISOLATION_TYPE,
@@ -454,23 +450,22 @@ async def provision_vrf(
                 }
             )
             overlay_id = overlay["id"]
-            logger.info("Created overlay %s (%s)", name, overlay_id)
+            logger.info("Created overlay %s (%s)", overlay_name, overlay_id)
 
         try:
             for namespace in activity_input.namespaces:
                 vrf = await client.create_vrf(
                     data={
-                        "name": name,
+                        "name": vrf_name,
                         "rd": activity_input.route_distinguisher,
                         "namespace": namespace,
-                        "custom_fields": {"forge_vpc_id": activity_input.overlay_id},
                     }
                 )
                 vrfs_created.append(vrf)
                 vxlan = await client.create_vxlan(
                     data={
                         "vnid": vni,
-                        "name": name,
+                        "name": vrf_name,
                         "vni_type": VXLAN_L3_VNI_TYPE,
                         "namespace": namespace,
                         "vrf": vrf["id"],
@@ -504,22 +499,19 @@ class QueryVRFByVPCInput(BaseModel):
 
 @activity.defn
 async def get_vrfs_by_overlay_id(activity_input: QueryVRFByVPCInput) -> list[Vrf] | None:
-    """Get VRF by VPC ID."""
+    """Get VRFs for an overlay by looking up overlay → vxlans → VRF IDs → GraphQL."""
     client = NautobotClient()
     async with client:
-        rsp = await client.graphql_query(
-            Vrf.QUERY_BY_VPC_ID,
-            {
-                "overlay_id": activity_input.overlay_id,
-                "location": activity_input.site,
-                "namespace_tag": [activity_input.namespace_tag],
-            },
-        )
-        vrfs = []
-        for namespace in rsp["data"]["namespaces"]:
-            for vrf in namespace["vrfs"]:
-                vrfs.append(Vrf.from_nautobot_graphql(vrf))
-    return vrfs
+        overlay = await client.find_overlay(activity_input.overlay_id, activity_input.site)
+        if not overlay:
+            return None
+        vxlans = await client.get_vxlans_by_overlay(overlay["id"], depth=1)
+        vrf_ids = [v["vrf"]["id"] for v in vxlans if v.get("vrf")]
+        if not vrf_ids:
+            return None
+        rsp = await client.graphql_query(Vrf.QUERY_BY_IDS, {"ids": vrf_ids})
+        vrfs = [Vrf.from_nautobot_graphql(v) for v in rsp["data"]["vrfs"]]
+    return vrfs if vrfs else None
 
 
 class VrfDeletionActivityInput(BaseModel):
@@ -549,7 +541,7 @@ async def delete_vrf(activity_input: VrfDeletionActivityInput) -> None:
 class DeleteOverlayInput(BaseModel):
     """Delete Overlay Activity Input."""
 
-    vnid: int
+    overlay_id: str
     site: str
 
 
@@ -562,23 +554,22 @@ class DeleteOverlayOutput(BaseModel):
 
 @activity.defn
 async def delete_overlay(activity_input: DeleteOverlayInput) -> DeleteOverlayOutput:
-    """Delete the SpectrumX overlay for a VPC if no VXLANs or assignments remain."""
-    name = f"SpXTenant{activity_input.vnid}"
+    """Delete the SpectrumX overlay if no VXLANs or assignments remain."""
+    overlay_name = activity_input.overlay_id
     client = NautobotClient()
     async with client:
-        location_id = activity_input.site
-        overlay = await client.find_overlay(name, location_id)
+        overlay = await client.find_overlay(overlay_name, activity_input.site)
         if not overlay:
-            return DeleteOverlayOutput(deleted=False, overlay_name=name)
+            return DeleteOverlayOutput(deleted=False, overlay_name=overlay_name)
 
         details = await client.get_overlay(overlay["id"])
         remaining_vxlans = await client.get_vxlans_by_overlay(overlay["id"])
         if remaining_vxlans or details.get("member_count"):
-            logger.info("Overlay %s still has members, leaving in place", name)
-            return DeleteOverlayOutput(deleted=False, overlay_name=name)
+            logger.info("Overlay %s still has members, leaving in place", overlay_name)
+            return DeleteOverlayOutput(deleted=False, overlay_name=overlay_name)
 
         await client.delete_overlay(overlay["id"])
-        return DeleteOverlayOutput(deleted=True, overlay_name=name)
+        return DeleteOverlayOutput(deleted=True, overlay_name=overlay_name)
 
 
 class SwitchPortByMacActivityInput(BaseModel):

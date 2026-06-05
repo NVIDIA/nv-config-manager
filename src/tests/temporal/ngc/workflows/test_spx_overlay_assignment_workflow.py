@@ -51,7 +51,6 @@ def make_test_vrf(namespace: str) -> dict[str, Any]:
         "id": namespace,
         "name": "SpXTenant60004",
         "rd": "*:60004",
-        "cf_forge_vpc_id": "mock_overlay_id",
         "namespace": {"name": namespace, "location": {"name": "mock_site"}},
         "interfaces": [],
     }

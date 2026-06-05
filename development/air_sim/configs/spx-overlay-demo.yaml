@@ -1,0 +1,53 @@
+# SpX Overlay workflow demo — DSX Air simulation config.
+#
+# Deploys the SpX Overlay workflows (creation, deletion, assignment,
+# tenant change) against a simulated SuperPOD topology for end-to-end
+# testing without real hardware.
+#
+# Usage:
+#   uv run --project installer nv-config-manager-installer air-sim deploy \
+#     -c development/air_sim/configs/spx-overlay-demo.yaml
+#
+# After deploy, set up local access:
+#   1. SSH to the OOB server printed in the deploy output.
+#   2. Run: kubectl get nodes -o wide
+#          kubectl get svc -n envoy-gateway-system | grep LoadBalancer
+#   3. Add to /etc/hosts on your local machine:
+#      127.0.0.1 nvcm.air workflow.nvcm.air nautobot.nvcm.air temporal.nvcm.air
+#   4. Tunnel (replace NODE_IP and HTTPS_NODEPORT from step 2):
+#      sudo ssh -p <PORT> -L 443:<NODE_IP>:<HTTPS_NODEPORT> nvcm@<AIR_HOST> -N
+#   5. Accept certs at https://nvcm.air, https://workflow.nvcm.air,
+#      https://nautobot.nvcm.air, then open https://nvcm.air.
+#
+# Post-deploy Nautobot setup (run once after deploy):
+#   See development/air_sim/configs/README.md for the setup steps
+#   required before running SpX Overlay workflows.
+#
+topology_path: ''
+mock_blueprint: air_superpod
+deployment_name: spx-overlay-demo
+simulation_name: nv-config-manager-spx-overlay
+oob_server_name: oob-mgmt-server
+server_mode: use-existing
+attach_switch: ''
+attach_interface: ''
+auto_configure: true
+git_token: ''
+config_manager_repo: https://github.com/NVIDIA/nv-config-manager
+config_manager_ref: main
+size: small
+cumulus_version: ''
+deploy: true
+run_mock_topology_job: true
+mock_topology_path: development/mock_topology
+template_plugin_paths:
+- development/air_sim/template_plugins/superpod-template-plugin
+extra_job_paths: []
+extra_run_after_deploy: []
+use_internal: false
+org_id: ''
+ngc_api_key: ''
+wait_timeout: 1800
+deploy_timeout: 3600
+no_aggressive_dhcp: false
+no_reset_before_dhcp: false

@@ -671,9 +671,12 @@ class NautobotClient(BaseNautobotClient):
         data = await self.get(f"{OVERLAYS_PLUGIN_BASE}/vxlans/", params={"vnid": vnid, "depth": 1})
         return cast(list[dict[str, Any]], data.get("results", []))
 
-    async def get_vxlans_by_overlay(self, overlay_id: str) -> list[dict[str, Any]]:
+    async def get_vxlans_by_overlay(self, overlay_id: str, depth: int = 0) -> list[dict[str, Any]]:
         """Return overlay-plugin VXLANs bound to the given overlay."""
-        data = await self.get(f"{OVERLAYS_PLUGIN_BASE}/vxlans/", params={"overlay": overlay_id})
+        params: dict[str, Any] = {"overlay": overlay_id}
+        if depth:
+            params["depth"] = depth
+        data = await self.get(f"{OVERLAYS_PLUGIN_BASE}/vxlans/", params=params)
         return cast(list[dict[str, Any]], data.get("results", []))
 
     async def delete_vxlan(self, vxlan_id: str) -> None:

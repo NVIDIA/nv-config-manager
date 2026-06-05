@@ -233,7 +233,7 @@ async def test_delete_overlay_deletes_when_no_members():
     with aioresponses() as m:
         m.get(
             _r(f"{OVERLAYS_BASE}/overlays/"),
-            payload={"results": [{"id": OVERLAY_ID, "name": "SpXTenant60004"}]},
+            payload={"results": [{"id": OVERLAY_ID, "name": "test-overlay-001"}]},
         )
         m.get(
             _r(f"{OVERLAYS_BASE}/overlays/{OVERLAY_ID}/"),
@@ -242,10 +242,12 @@ async def test_delete_overlay_deletes_when_no_members():
         m.get(_r(f"{OVERLAYS_BASE}/vxlans/"), payload={"results": []})
         m.delete(f"{OVERLAYS_BASE}/overlays/{OVERLAY_ID}/", status=204)
 
-        result = await delete_overlay(DeleteOverlayInput(vnid=60004, site=LOCATION_ID))
+        result = await delete_overlay(
+            DeleteOverlayInput(overlay_id="test-overlay-001", site=LOCATION_ID)
+        )
 
     assert result.deleted is True
-    assert result.overlay_name == "SpXTenant60004"
+    assert result.overlay_name == "test-overlay-001"
 
 
 @pytest.mark.asyncio
@@ -253,7 +255,7 @@ async def test_delete_overlay_skips_when_vxlans_remain():
     with aioresponses() as m:
         m.get(
             _r(f"{OVERLAYS_BASE}/overlays/"),
-            payload={"results": [{"id": OVERLAY_ID, "name": "SpXTenant60004"}]},
+            payload={"results": [{"id": OVERLAY_ID, "name": "test-overlay-001"}]},
         )
         m.get(
             _r(f"{OVERLAYS_BASE}/overlays/{OVERLAY_ID}/"),
@@ -261,7 +263,9 @@ async def test_delete_overlay_skips_when_vxlans_remain():
         )
         m.get(_r(f"{OVERLAYS_BASE}/vxlans/"), payload={"results": [{"id": VXLAN_ID}]})
 
-        result = await delete_overlay(DeleteOverlayInput(vnid=60004, site=LOCATION_ID))
+        result = await delete_overlay(
+            DeleteOverlayInput(overlay_id="test-overlay-001", site=LOCATION_ID)
+        )
 
     assert result.deleted is False
 
@@ -271,7 +275,7 @@ async def test_delete_overlay_skips_when_assignments_remain():
     with aioresponses() as m:
         m.get(
             _r(f"{OVERLAYS_BASE}/overlays/"),
-            payload={"results": [{"id": OVERLAY_ID, "name": "SpXTenant60004"}]},
+            payload={"results": [{"id": OVERLAY_ID, "name": "test-overlay-001"}]},
         )
         m.get(
             _r(f"{OVERLAYS_BASE}/overlays/{OVERLAY_ID}/"),
@@ -279,7 +283,9 @@ async def test_delete_overlay_skips_when_assignments_remain():
         )
         m.get(_r(f"{OVERLAYS_BASE}/vxlans/"), payload={"results": []})
 
-        result = await delete_overlay(DeleteOverlayInput(vnid=60004, site=LOCATION_ID))
+        result = await delete_overlay(
+            DeleteOverlayInput(overlay_id="test-overlay-001", site=LOCATION_ID)
+        )
 
     assert result.deleted is False
 
@@ -289,10 +295,12 @@ async def test_delete_overlay_not_found_returns_not_deleted():
     with aioresponses() as m:
         m.get(_r(f"{OVERLAYS_BASE}/overlays/"), payload={"results": []})
 
-        result = await delete_overlay(DeleteOverlayInput(vnid=60004, site=LOCATION_ID))
+        result = await delete_overlay(
+            DeleteOverlayInput(overlay_id="test-overlay-001", site=LOCATION_ID)
+        )
 
     assert result.deleted is False
-    assert result.overlay_name == "SpXTenant60004"
+    assert result.overlay_name == "test-overlay-001"
 
 
 # ---------------------------------------------------------------------------
@@ -345,4 +353,4 @@ async def test_find_overlay_raises_on_multiple_results():
         client = NautobotClient()
         async with client:
             with pytest.raises(NautobotException, match="Ambiguous overlay"):
-                await client.find_overlay("SpXTenant60004", LOCATION_ID)
+                await client.find_overlay("test-overlay-001", LOCATION_ID)
