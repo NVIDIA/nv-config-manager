@@ -25,15 +25,8 @@ from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
 from nautobot.apps.jobs import StringVar, register_jobs
 from nautobot.dcim.models import Device, Interface
-from nautobot.extras.models import (
-    CustomField,
-    Relationship,
-    RelationshipAssociation,
-    Role,
-    Status,
-    Tag,
-)
-from nautobot.ipam.models import IPAddress, Namespace, Prefix
+from nautobot.extras.models import Relationship, RelationshipAssociation, Role, Status
+from nautobot.ipam.models import IPAddress, Prefix
 from nautobot_bgp_models.models import AutonomousSystem, BGPRoutingInstance, PeerEndpoint, Peering
 from nautobot_design_builder.choices import DesignModeChoices
 from nautobot_design_builder.contrib.ext import CableConnectionExtension, LookupExtension
@@ -89,7 +82,6 @@ class MockTopologyDesign(DesignJob):
             self._ensure_bgp_routing_instances(kwargs)
             self._ensure_bgp_peerings(kwargs)
             self._ensure_prefix_gateway_relationships(kwargs)
-            self._ensure_spectrumx_prerequisites(kwargs)
             return result
 
     def _ensure_role_content_type_memberships(self, data: dict[str, Any]) -> None:
@@ -433,58 +425,6 @@ class MockTopologyDesign(DesignJob):
         except (ValueError, ContentType.DoesNotExist) as exc:
             logger.warning("Could not resolve content type %r: %s", content_type, exc)
             return None
-
-    def _ensure_spectrumx_prerequisites(self, data: dict[str, Any]) -> None:
-        """Ensure the forge_vpc_id custom field and spectrumx namespace tag exist.
-
-        These are required by the SpX Overlay workflows but are not part of the
-        standard Nautobot bootstrap data or design builder schema.
-        """
-        # Create the forge_vpc_id custom field on VRFs if it doesn't exist
-        vrf_ct = ContentType.objects.filter(app_label="ipam", model="vrf").first()
-        if vrf_ct:
-            cf, created = CustomField.objects.get_or_create(
-                key="forge_vpc_id",
-                defaults={
-                    "label": "Forge VPC ID",
-                    "type": "text",
-                    "required": False,
-                },
-            )
-            cf.content_types.add(vrf_ct)
-            if created:
-                logger.info("Created forge_vpc_id custom field on VRFs")
-
-        # Create the spectrumx tag and apply it to SpX namespaces
-        spx_namespaces = data.get("spx_namespaces", [])
-        if not spx_namespaces:
-            return
-
-        tag, _ = Tag.objects.get_or_create(name="spectrumx")
-        ns_ct = ContentType.objects.filter(app_label="ipam", model="namespace").first()
-        if ns_ct:
-            tag.content_types.add(ns_ct)
-
-        for ns_data in spx_namespaces:
-            ns_name = ns_data.get("name")
-            location_name = ns_data.get("location")
-            if not ns_name:
-                continue
-            try:
-                ns = Namespace.objects.get(name=ns_name)
-                ns.tags.add(tag)
-                if location_name:
-                    from nautobot.dcim.models import Location
-
-                    try:
-                        ns.location = Location.objects.get(name=location_name)
-                        ns.validated_save()
-                    except Location.DoesNotExist:
-                        logger.warning(
-                            "Location %r not found for namespace %r", location_name, ns_name
-                        )
-            except Namespace.DoesNotExist:
-                logger.warning("Namespace %r not found for spectrumx tagging", ns_name)
 
     class Meta:
         """Metadata."""
