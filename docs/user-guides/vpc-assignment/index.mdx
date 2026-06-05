@@ -4,7 +4,7 @@ sidebar-title: SpX Overlay Assignment
 position: 30
 ---
 
-The SpX Overlay Assignment workflow binds an existing VPC's VRF to a specific device and to a specific set of ports on that device. It updates Nautobot's intent — the model of which VRF terminates on which port — without touching the device itself; the device-side change happens when a subsequent deploy applies the resulting intended configuration. Assignment is the second step in the SpX Overlay lifecycle, after [SpX Overlay Creation](../vpc-creation/index.mdx) provisions the VRF and Overlay objects.
+The SpX Overlay Assignment workflow binds an existing overlay's VRF to a specific device and to a specific set of ports on that device. It updates Nautobot's intent — the model of which VRF terminates on which port — without touching the device itself; the device-side change happens when a subsequent deploy applies the resulting intended configuration. Assignment is the second step in the SpX Overlay lifecycle, after [SpX Overlay Creation](../vpc-creation/index.mdx) provisions the VRF and Overlay objects.
 
 For the end-to-end assign + render + deploy lifecycle, use [SpX Overlay Tenant Change](../vpc-tenant-change/index.mdx) — it calls this workflow as a child plus the render and deploy steps.
 
@@ -16,13 +16,13 @@ This workflow is experimental and not intended for general use. Use it only in t
 
 Before running, confirm:
 
-- **VPC exists at the site** with exactly one VRF allocated under `vpc_id` + `namespace_tag`. Multiple VRFs (or zero) under the same VPC ID is treated as an error.
+- **Overlay exists at the site** with exactly one VRF allocated under `overlay_id` + `namespace_tag`. Multiple VRFs (or zero) under the same Overlay ID is treated as an error.
 - **Device exists in Nautobot** and is in the site you are assigning at.
 - **Port names match Nautobot interface names** on the target device. Already-assigned ports for this VRF are skipped, not re-assigned.
 
 ## Running the workflow
 
-SpX Overlay Assignment is not exposed in the Config Manager UI today. It is invoked as a child of [SpX Overlay Tenant Change](../vpc-tenant-change/index.mdx), which orchestrates assignment plus the subsequent re-render and deploy. To run assignment in isolation, submit the workflow through the API with the target VPC, device, ports, and site.
+SpX Overlay Assignment is not exposed in the Config Manager UI today. It is invoked as a child of [SpX Overlay Tenant Change](../vpc-tenant-change/index.mdx), which orchestrates assignment plus the subsequent re-render and deploy. To run assignment in isolation, submit the workflow through the API with the target overlay, device, ports, and site.
 
 After submission, a status page shows the three stages.
 
@@ -30,9 +30,9 @@ After submission, a status page shows the three stages.
 
 The workflow runs three stages in order. None require manual approval.
 
-1. **`get_device_and_vrf` — Resolve the device and the VPC's VRF.**
+1. **`get_device_and_vrf` — Resolve the device and the overlay's VRF.**
 
-   Loads the target device record and queries Nautobot for the VRF matching `vpc_id` + `namespace_tag` + `site`. The query is asserted to return exactly one VRF — zero or more than one raises `ApplicationError` and halts the workflow.
+   Loads the target device record and queries Nautobot for the VRF matching `overlay_id` + `namespace_tag` + `site`. The query is asserted to return exactly one VRF — zero or more than one raises `ApplicationError` and halts the workflow.
 
 1. **`assign_vrf_to_device` — Bind the VRF to the device record.**
 
@@ -55,11 +55,11 @@ After the workflow reports success, confirm:
 
 **`get_device_and_vrf` raises `ApplicationError` "0 VRFs found".**
 
-The VPC has not been created yet at this site. Run [SpX Overlay Creation](../vpc-creation/index.mdx) first.
+The overlay has not been created yet at this site. Run [SpX Overlay Creation](../vpc-creation/index.mdx) first.
 
 **`get_device_and_vrf` raises `ApplicationError` "multiple VRFs found".**
 
-Nautobot has more than one VRF matching `vpc_id` + `namespace_tag` + `site`. Investigate — VPC IDs are expected to be unique within a site. Reconcile the duplicates before re-running.
+Nautobot has more than one VRF matching `overlay_id` + `namespace_tag` + `site`. Investigate — Overlay IDs are expected to be unique within a site. Reconcile the duplicates before re-running.
 
 **`assign_vrf_to_device` reports `vrf_assigned=false`.**
 
@@ -73,5 +73,5 @@ Those ports were already bound to this VRF. Successful no-op for those ports —
 
 - [SpX Overlay Creation](../vpc-creation/index.mdx) — provision the VRF and Overlay metadata.
 - [SpX Overlay Tenant Change](../vpc-tenant-change/index.mdx) — assignment + render + deploy in one workflow.
-- [SpX Overlay Deletion](../vpc-deletion/index.mdx) — tear down a VPC (only after VRFs are unassigned).
+- [SpX Overlay Deletion](../vpc-deletion/index.mdx) — tear down an overlay (only after VRFs are unassigned).
 - [Tenant Deploy](../tenant-deploy/index.mdx) — the tenant-scoped deploy used by SpX Overlay Tenant Change to push the resulting config to the device.

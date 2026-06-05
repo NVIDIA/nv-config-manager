@@ -4,7 +4,7 @@ sidebar-title: SpX Overlay Creation
 position: 10
 ---
 
-The SpX Overlay Creation workflow provisions a SpectrumX overlay, VRFs, and L3 VXLANs for a new VPC at a site. A VPC in this context is a tenant-scoped routing domain: creation allocates a route distinguisher (RD), registers the VRF objects in Nautobot, and creates an L3 VXLAN per namespace bound to a location-scoped Overlay object in the overlays plugin. No switches are touched by this workflow — applying the new overlay to a device happens through [SpX Overlay Assignment](../vpc-assignment/index.mdx), and re-rendering and redeploying tenant configuration happens through [SpX Overlay Tenant Change](../vpc-tenant-change/index.mdx).
+The SpX Overlay Creation workflow provisions a SpectrumX overlay, VRFs, and L3 VXLANs for a new overlay at a site. An overlay in this context is a tenant-scoped routing domain: creation allocates a route distinguisher (RD), registers the VRF objects in Nautobot, and creates an L3 VXLAN per namespace bound to a location-scoped Overlay object in the overlays plugin. No switches are touched by this workflow — applying the new overlay to a device happens through [SpX Overlay Assignment](../vpc-assignment/index.mdx), and re-rendering and redeploying tenant configuration happens through [SpX Overlay Tenant Change](../vpc-tenant-change/index.mdx).
 
 Creation is idempotent on `vpc_id` — re-running with an existing ID returns the already-existing VRFs rather than creating new ones.
 
@@ -29,10 +29,10 @@ Before running, confirm:
 
 | Field | Description | Required |
 | :---- | :---------- | :------- |
-| **Site** | The site the VPC belongs to. | Yes |
-| **VPC** | Unique identifier for the VPC. Idempotency key — re-running with the same ID returns existing VRFs. | Yes |
+| **Site** | The site the overlay belongs to. | Yes |
+| **Overlay ID** | Unique identifier for the overlay. Idempotency key — re-running with the same ID returns existing VRFs. | Yes |
 | **Tenant** | The Nautobot tenant to associate with the created Overlay. | Yes |
-| **Namespace** | Tag used to identify the VPC namespace in Nautobot. | Yes |
+| **Namespace** | Tag used to identify the overlay namespace in Nautobot. | Yes |
 | **RD Min** | Lower bound of the route-distinguisher allocation range (0-65535). | No (default: 60000) |
 | **RD Max** | Upper bound of the route-distinguisher allocation range (0-65535). | No (default: 65000) |
 
@@ -65,7 +65,7 @@ After the workflow reports success, confirm:
 
 The `[rd_min, rd_max]` window is exhausted. Either widen the window via the optional inputs, or audit the site's existing VRFs and reclaim RDs no longer in use before retrying.
 
-**`create_spx_overlay` fails with "Failed to provision VPC".**
+**`create_spx_overlay` fails with "Failed to provision overlay".**
 
 The Nautobot write to register the VRF or VXLAN failed. Check Nautobot's logs and confirm the site, tenant, and namespace tag are correctly modeled before re-running. Partial VRF/VXLAN objects created before the failure are rolled back automatically.
 
@@ -75,11 +75,11 @@ The `Active` status object is missing from Nautobot. Ensure the bootstrap data j
 
 **The result has empty `created_vrfs` and a populated `existing_vrfs`.**
 
-The VPC already existed — the workflow short-circuited. This is the expected idempotent behavior.
+The overlay already existed — the workflow short-circuited. This is the expected idempotent behavior.
 
 ## Related guides
 
-- [SpX Overlay Deletion](../vpc-deletion/index.mdx) — tear down a VPC (only when it is not in use on any device).
+- [SpX Overlay Deletion](../vpc-deletion/index.mdx) — tear down an overlay (only when it is not in use on any device).
 - [SpX Overlay Assignment](../vpc-assignment/index.mdx) — bind the new VRF to a device and specific ports.
-- [SpX Overlay Tenant Change](../vpc-tenant-change/index.mdx) — assign + render + deploy a VPC change against a device end-to-end.
-- [Render Service](../../render/index.mdx) — produces the tenant-scoped configurations that get deployed onto devices once a VPC is assigned.
+- [SpX Overlay Tenant Change](../vpc-tenant-change/index.mdx) — assign + render + deploy an overlay change against a device end-to-end.
+- [Render Service](../../render/index.mdx) — produces the tenant-scoped configurations that get deployed onto devices once an overlay is assigned.

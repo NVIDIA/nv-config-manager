@@ -4,7 +4,7 @@ sidebar-title: SpX Overlay Tenant Change
 position: 40
 ---
 
-The SpX Overlay Tenant Change workflow drives an end-to-end VPC change against a single device: assign the VPC to the device and ports, re-render the tenant configuration, wait for the new render to land in the Config Store, and deploy the rendered configuration to the device. It is the workflow most operators interact with when adding, moving, or expanding a tenant's footprint on a switch — the underlying [SpX Overlay Assignment](../vpc-assignment/index.mdx), [Render Service](../../render/index.mdx), and [Tenant Deploy](../tenant-deploy/index.mdx) workflows are exposed individually for advanced cases but are normally orchestrated by this workflow.
+The SpX Overlay Tenant Change workflow drives an end-to-end overlay change against a single device: assign the overlay to the device and ports, re-render the tenant configuration, wait for the new render to land in the Config Store, and deploy the rendered configuration to the device. It is the workflow most operators interact with when adding, moving, or expanding a tenant's footprint on a switch — the underlying [SpX Overlay Assignment](../vpc-assignment/index.mdx), [Render Service](../../render/index.mdx), and [Tenant Deploy](../tenant-deploy/index.mdx) workflows are exposed individually for advanced cases but are normally orchestrated by this workflow.
 
 <Warning title="Experimental">
 This workflow is experimental and not intended for general use. Use it only in test or pilot environments.
@@ -14,7 +14,7 @@ This workflow is experimental and not intended for general use. Use it only in t
 
 Before running, confirm:
 
-- **VPC exists at the site** ([SpX Overlay Creation](../vpc-creation/index.mdx) has been run, with the Overlay and L3 VXLANs created in Nautobot).
+- **Overlay exists at the site** ([SpX Overlay Creation](../vpc-creation/index.mdx) has been run, with the Overlay and L3 VXLANs created in Nautobot).
 - **Device exists in Nautobot** with a primary IPv4, a supported platform (Cumulus Linux or NVOS), and current credentials in the secrets store.
 - **Port names match Nautobot interface names** on the target device. Already-assigned ports are silently skipped.
 - **Render service is healthy.** The workflow waits up to a bounded window for the render service to produce the new tenant config; outages on render will stall the workflow.
@@ -28,11 +28,11 @@ Before running, confirm:
 
 | Field | Description | Required |
 | :---- | :---------- | :------- |
-| **Site** | The site the VPC and device belong to. | Yes |
-| **VPC ID** | The VPC to apply to the device. | Yes |
+| **Site** | The site the overlay and device belong to. | Yes |
+| **Overlay ID** | The overlay to apply to the device. | Yes |
 | **Device** | The target device. | Yes |
-| **Port Names (comma-separated)** | Interface names on the device to bind to the VPC's VRF (comma-separated list). Already-assigned ports are skipped. | Yes |
-| **Namespace** | Tag used to identify the VPC namespace in Nautobot. | No |
+| **Port Names (comma-separated)** | Interface names on the device to bind to the overlay's VRF (comma-separated list). Already-assigned ports are skipped. | Yes |
+| **Namespace** | Tag used to identify the overlay namespace in Nautobot. | No |
 
 After submission, a status page shows the five stages. The workflow runs without human approval.
 
@@ -87,7 +87,7 @@ The tenant-scoped diff produced by the re-render exceeds the tenant-allowed `nv 
 
 **`get_device_and_vrf` (inside the assign_spx_overlay child) raises `ApplicationError`.**
 
-Either zero or multiple VRFs were returned for the `vpc_id` + `namespace_tag` combination. Run [SpX Overlay Creation](../vpc-creation/index.mdx) if the VPC does not exist; reconcile duplicates in Nautobot if it does.
+Either zero or multiple VRFs were returned for the `overlay_id` + `namespace_tag` combination. Run [SpX Overlay Creation](../vpc-creation/index.mdx) if the overlay does not exist; reconcile duplicates in Nautobot if it does.
 
 ## Related guides
 
