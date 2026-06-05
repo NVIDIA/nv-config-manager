@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import shlex
 import sys
 from pathlib import Path
 
@@ -63,7 +64,7 @@ def init_air_sim(config_path: Path) -> None:
 def deploy_air_sim(config_path: Path) -> None:
     """Run DSX Air simulation bringup from a config file."""
     config = SimConfig.from_yaml(config_path)
-    callback = _CliCallback()
+    callback = _CliCallback(config.oob_ssh_password)
     orchestrator = SimOrchestrator(config, callback)
     orchestrator.run()
     if not callback.success:
@@ -73,10 +74,11 @@ def deploy_air_sim(config_path: Path) -> None:
 class _CliCallback:
     """Simple stdout callback for headless DSX Air simulation deploys."""
 
-    def __init__(self) -> None:
+    def __init__(self, ssh_password: str = "") -> None:
         self.success = False
         self.host = ""
         self.port = 0
+        self._ssh_password = ssh_password
 
     def on_step(self, step_id: str, status: StepStatus, message: str = "") -> None:
         icon = {
@@ -94,6 +96,7 @@ class _CliCallback:
 
     def on_ssh_ready(self, host: str, port: int) -> None:
         click.echo(f"SSH ready: {host}:{port}")
+        click.echo(f"  sshpass -p {shlex.quote(self._ssh_password)} ssh -p {port} nvcm@{host}")
 
     def on_deploy_started(self, host: str, port: int) -> None:
         click.echo(f"Deployment started over SSH: {host}:{port}")
@@ -106,5 +109,6 @@ class _CliCallback:
             click.echo("DSX Air simulation bringup completed.")
             if host:
                 click.echo(f"SSH: {host}:{port}")
+                click.echo(f"  sshpass -p {shlex.quote(self._ssh_password)} ssh -p {port} nvcm@{host}")
         else:
             click.echo("DSX Air simulation bringup failed.", err=True)
