@@ -19,9 +19,8 @@
 #   5. Accept certs at https://nvcm.air, https://workflow.nvcm.air,
 #      https://nautobot.nvcm.air, then open https://nvcm.air.
 #
-# Post-deploy Nautobot setup (run once after deploy):
-#   See development/air_sim/configs/README.md for the setup steps
-#   required before running SpX Overlay workflows.
+# Test values (no manual Nautobot setup needed — mock topology job runs automatically):
+#   Site: SPO01  Tenant: Public Demo  Namespace: spectrumx  RD: 60000–65000
 #
 topology_path: ''
 mock_blueprint: air_superpod
