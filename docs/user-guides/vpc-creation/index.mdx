@@ -43,7 +43,7 @@ The workflow runs one stage. No human approval is required.
 
 1. **`create_vpc` — Allocate the RD and provision VRF objects.**
 
-    Queries Nautobot for any existing VRFs matching the `vpc_id` + `namespace_tag`. If they exist, the stage short-circuits with the existing-VRFs list and the result is treated as a successful no-op. Otherwise, the activity allocates the first available RD in `[rd_min, rd_max]` and calls `provision_vrf` to register the VRF in Nautobot. The stage display reports the created VRFs.
+   Queries Nautobot for any existing VRFs matching the `vpc_id` + `namespace_tag`. If they exist, the stage short-circuits with the existing-VRFs list and the result is treated as a successful no-op. Otherwise, the activity allocates the first available RD in `[rd_min, rd_max]` and calls `provision_vrf` to register the VRF in Nautobot. The stage display reports the created VRFs.
 
 ## Verifying outcomes
 
