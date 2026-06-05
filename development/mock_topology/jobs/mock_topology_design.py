@@ -442,6 +442,7 @@ class MockTopologyDesign(DesignJob):
             "designs/statuses.yaml.j2",
             "designs/manufacturers.yaml.j2",
             "designs/namespaces.yaml.j2",
+            "designs/spx_namespaces.yaml.j2",
             "designs/platforms.yaml.j2",
             "designs/location_types.yaml.j2",
             "designs/locations.yaml.j2",

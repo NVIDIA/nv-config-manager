@@ -1,0 +1,117 @@
+global_defaults:
+  tenant: Public Demo
+  namespace: SPX Fabric Demo
+  status: Active
+  cable_status: Connected
+  prefix_status: Active
+  device_status: Active
+  ip_address_status: Active
+tenants:
+- name: Public Demo
+namespaces:
+- SPX Fabric Demo
+spx_namespaces:
+- name: SPX Fabric Demo
+  location: SPX01
+locations:
+- name: Public Demo
+  location_type: Provider
+- name: SPX Fabric Demo
+  location_type: Region
+  parent: Public Demo
+- name: SPX01
+  location_type: Site
+  parent: SPX Fabric Demo
+  ref: location
+config_contexts:
+- name: spx-fabric-demo-dhcp-option-def
+  weight: 1000
+  is_active: true
+  data:
+    Dhcp4:
+      option-def:
+      - code: 239
+        name: cumulus-provision-url
+        type: string
+        array: false
+        space: dhcp4
+        encapsulate: ''
+        record-types: ''
+  locations:
+  - SPX01
+  tags:
+  - no-propagate
+- name: spx-fabric-demo-dhcp-options
+  weight: 1000
+  is_active: true
+  data:
+    dhcp:
+      options:
+        interface_names:
+          eth0:
+            subnet_config:
+              reservations-global: true
+              reservations-in-subnet: false
+            reservation_options:
+              boot-file-name: http://{{ztp_server}}/v1/device/{{device_id}}/onie
+              cumulus-provision-url: http://{{ztp_server}}/v1/device/{{device_id}}/boot-script
+        client_id_template: '00:{{ serial | hex }}'
+  roles:
+  - SPX-Leaf
+  - SPX-Spine
+  - SPX-Core
+- name: spx-fabric-demo-firmware-targets
+  weight: 1000
+  is_active: true
+  data:
+    spx-leaf:
+      Cumulus Linux: 5.16.1
+    spx-spine:
+      Cumulus Linux: 5.16.1
+    spx-core:
+      Cumulus Linux: 5.16.1
+  locations:
+  - SPX01
+  tags:
+  - no-propagate
+- name: spx-fabric-demo-network-management-services
+  weight: 1000
+  is_active: true
+  data:
+    ztp:
+      ipv4:
+      - 172.18.255.201
+    dhcp:
+      nvcm:
+        ipv4:
+        - 172.18.255.202
+    management_prefixes:
+      ipv4:
+      - 172.18.0.0/16
+    provisioning_servers:
+      ipv4:
+      - 10.100.0.0
+    dns:
+      ipv4:
+      - 8.8.8.8
+  locations:
+  - SPX01
+  tags:
+  - no-propagate
+- name: spx-fabric-demo-password-mappings
+  weight: 1000
+  is_active: true
+  data:
+    password_mappings:
+      cumulus:
+        role: system-admin
+        password: root_password
+        rotation: r1
+      nvConfigManager:
+        role: system-admin
+        password: api_user_key
+        rotation: r1
+  locations:
+  - SPX01
+  tags:
+  - no-propagate

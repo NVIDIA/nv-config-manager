@@ -1,0 +1,15 @@
+bgp_routing_instances:
+- device: spx-core-01
+  asn: 65401
+- device: spx-spine-01
+  asn: 65301
+- device: spx-spine-02
+  asn: 65302
+- device: spx-leaf-01
+  asn: 65311
+- device: spx-leaf-02
+  asn: 65312
+- device: spx-leaf-03
+  asn: 65313
+- device: spx-leaf-04
+  asn: 65314
