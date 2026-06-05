@@ -22,6 +22,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
+from django.contrib.contenttypes.models import ContentType
+from nautobot.extras.models import CustomField
 
 
 def _import_module():
@@ -424,9 +426,6 @@ class TestLoadTags:
 class TestLoadCustomFields:
     def test_creates_custom_field(self, tmp_path):
         mod = _import_module()
-        # Deferred: Django apps must be fully loaded before model imports work.
-        from django.contrib.contenttypes.models import ContentType
-        from nautobot.extras.models import CustomField
 
         mock_cf = MagicMock()
         mock_ct = MagicMock()
@@ -460,8 +459,6 @@ class TestLoadCustomFields:
 
     def test_filter_logic_passed_when_set(self, tmp_path):
         mod = _import_module()
-        # Deferred: Django apps must be fully loaded before model imports work.
-        from nautobot.extras.models import CustomField
 
         CustomField.objects.update_or_create.return_value = (MagicMock(), True)
 
@@ -490,6 +487,7 @@ class TestLoadCustomFields:
 
         job.logger.failure.assert_called_once()
         assert "key" in job.logger.failure.call_args[0][0]
+        CustomField.objects.update_or_create.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
