@@ -18,6 +18,7 @@ disable = [
   "commands-show-output",
   "no-inline-html",
   "no-emphasis-as-heading",
+  "list-continuation-indent",
 ]
 
 # List of rules to enable exclusively (replaces defaults; only these rules will run)
@@ -154,7 +155,3 @@ style = "compact"
 # list-item-spacing
 style = "consistent"              # "consistent" (default), "loose", or "tight"
 allow-loose-continuation = true  # allow blank lines around continuation paragraphs
-
-[MD077]
-# list-continuation-indent
-severity = "info"
