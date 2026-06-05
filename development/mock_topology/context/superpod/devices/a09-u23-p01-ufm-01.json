@@ -20,7 +20,7 @@
             "platform": {
                 "name": "MLNX-OS"
             },
-            "serial": "",
+            "serial": "SPOD00000009",
             "config_context": {
                 "dns": {
                     "ipv4": [

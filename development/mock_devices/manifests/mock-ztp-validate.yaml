@@ -1,0 +1,56 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Validates the end-to-end ZTP provisioning chain for a mock device:
+#   1. Checks DHCP reservation has boot-file-name / cumulus-provision-url
+#   2. Fetches the boot script from the ZTP service
+#   3. Validates the device serial number against Nautobot
+#   4. Fetches the startup config via ZTP (from Config Store)
+#
+# Prerequisites:
+#   - DHCP confgen has generated reservations (automatic after deploy)
+#   - Config Store has rendered configs (run: make mock-render)
+#
+# Uses the ZTP internal API (port 9000, ACCEPT_REQUEST_HEADERS=true)
+# with mock auth headers matching the localDev.mockAuth pattern.
+#
+# Usage:
+#   envsubst < mock-ztp-validate.yaml | kubectl apply -f -
+#   kubectl logs -n nv-config-manager job/mock-ztp-validate -f
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: mock-ztp-validate
+  namespace: nv-config-manager
+  labels:
+    app: mock-device
+    mock-device-task: ztp-validate
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: mock-device
+        mock-device-task: ztp-validate
+    spec:
+      containers:
+      - name: ztp-validator
+        image: mock-device:local
+        args:
+        - ztp-validate
+        - --name=${MOCK_ZTP_DEVICE}
+        - --platform=${MOCK_ZTP_PLATFORM}
+        - --serial=${MOCK_ZTP_SERIAL}
+        - --client-id-template=${MOCK_ZTP_CLIENT_ID_TPL}
+        - --dhcp-api-url=http://nv-config-manager-dhcp-internal.nv-config-manager.svc.cluster.local:9000
+        - --ztp-api-url=http://nv-config-manager-ztp-api.nv-config-manager.svc.cluster.local:9000
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+      restartPolicy: Never

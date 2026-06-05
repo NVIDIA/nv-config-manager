@@ -181,6 +181,10 @@ spec:
         env:
         - name: NV_CONFIG_MANAGER_INI
           value: {{ include "nv-config-manager.vaultAgent.configManagerIniPathDhcp" . | quote }}
+        {{- if .Values.networkDhcp.kea.dhcpSocketType }}
+        - name: NV_CONFIG_MANAGER_DHCP_SOCKET_TYPE
+          value: {{ .Values.networkDhcp.kea.dhcpSocketType | quote }}
+        {{- end }}
         {{- include "nv-config-manager.customLabelsEnv" . | nindent 8 }}
         # Backstop livenessProbe for the case where the in-loop divergence
         # check in _sync_kea_configuration_async can't recover (e.g. the
@@ -270,6 +274,10 @@ spec:
         env:
         - name: NV_CONFIG_MANAGER_INI
           value: {{ include "nv-config-manager.vaultAgent.configManagerIniPathDhcp" . | quote }}
+        {{- if .Values.networkDhcp.kea.dhcpSocketType }}
+        - name: NV_CONFIG_MANAGER_DHCP_SOCKET_TYPE
+          value: {{ .Values.networkDhcp.kea.dhcpSocketType | quote }}
+        {{- end }}
         {{- include "nv-config-manager.customLabelsEnv" . | nindent 8 }}
         resources:
           {{- toYaml .Values.networkDhcp.resources.confgen | nindent 10 }}

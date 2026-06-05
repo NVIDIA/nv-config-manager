@@ -63,6 +63,23 @@ config_contexts:
         ipv4:
           - "10.48.169.70"
 
+  - name: "DC01 Sandbox Pod Network DHCP"
+    description: "DHCP subnet for Kind pod network enabling in-cluster DHCP testing"
+    schema: nv-config-manager-kea-static-data
+    weight: 900
+    is_active: true
+    locations:
+      - DC01
+    data:
+      Dhcp4:
+        subnet4:
+          - subnet: "10.244.0.0/16"
+            option-data: []
+            reservations-global: false
+            reservations-in-subnet: false
+            pools:
+              - pool: "10.244.0.200 - 10.244.0.250"
+
   # DHCP options config contexts (role-based)
   - name: "SMN-dhcp-options"
     description: "DHCP options for SMN network devices"

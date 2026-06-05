@@ -1,0 +1,50 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Kubernetes Job that sends DHCP DISCOVER/REQUEST from a mock device.
+# Requires the dhcp-dev-service to be deployed first (or MetalLB for real LB).
+#
+# This job simulates a device sending a DHCP request with its
+# serial number as the client-id.
+#
+# Prerequisites:
+#   kubectl apply -f development/mock_devices/manifests/dhcp-dev-service.yaml
+#
+# Usage:
+#   envsubst < mock-dhcp-discover.yaml | kubectl apply -f -
+#   kubectl logs -n nv-config-manager job/mock-dhcp-discover -f
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: mock-dhcp-discover
+  namespace: nv-config-manager
+  labels:
+    app: mock-dhcp-client
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: mock-dhcp-client
+    spec:
+      containers:
+      - name: dhcp-client
+        image: mock-device:local
+        args:
+        - dhcp
+        - --name=${MOCK_DHCP_DEVICE}
+        - --platform=${MOCK_DHCP_PLATFORM}
+        - --serial=${MOCK_DHCP_SERIAL}
+        - --mac=${MOCK_DHCP_MAC}
+        - --dhcp-server=nv-config-manager-dhcp-dev.nv-config-manager.svc.cluster.local
+        - --client-id-template=${MOCK_DHCP_CLIENT_ID_TPL}
+        - --timeout=15
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+      restartPolicy: Never

@@ -1,0 +1,9 @@
+{
+  "hostname": "mock-cumulus",
+  "uptime": 86400,
+  "version": {
+    "product-release": "5.14.0",
+    "build-date": "2025-01-15",
+    "kernel": "6.1.0-cl-1-amd64"
+  }
+}

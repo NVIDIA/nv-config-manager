@@ -732,6 +732,11 @@ async def generate_config(
         dhcp_key: {
             "interfaces-config": {
                 "interfaces": ["eth0"],
+                **(
+                    {"dhcp-socket-type": os.environ["NV_CONFIG_MANAGER_DHCP_SOCKET_TYPE"]}
+                    if "NV_CONFIG_MANAGER_DHCP_SOCKET_TYPE" in os.environ
+                    else {}
+                ),
                 "service-sockets-max-retries": 5,
                 "service-sockets-require-all": True,
             },

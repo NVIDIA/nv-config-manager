@@ -1,0 +1,518 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Mock device API deployments for sandbox testing.
+# Each deployment emulates a network device (Cumulus NVUE) using version-aware
+# fixtures generated from development/mock_topology/context/superpod/devices/.
+#
+# These correspond to devices in the superpod mock topology.
+# NVIDIA Config Manager's Temporal workflows can connect to them via their Service IPs.
+#
+# Usage:
+#   make mock-devices-up
+#   kubectl apply -f development/mock_devices/manifests/mock-devices.yaml
+---
+# OOB-Leaf (a04-u44-p01-tor-01) — MSN2201
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-sp-tor-01
+  namespace: nv-config-manager
+  labels:
+    app: mock-device
+    mock-device-role: oob-leaf
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mock-device
+      mock-device-name: a04-u44-p01-tor-01
+  template:
+    metadata:
+      labels:
+        app: mock-device
+        mock-device-name: a04-u44-p01-tor-01
+        mock-device-platform: cumulus
+    spec:
+      containers:
+      - name: device-api
+        image: mock-device:local
+        args: ["serve"]
+        env:
+        - name: MOCK_DEVICE_NAME
+          value: "a04-u44-p01-tor-01"
+        - name: MOCK_DEVICE_PLATFORM
+          value: "cumulus"
+        - name: MOCK_DEVICE_SERIAL
+          value: "44:38:39:20:00:01"
+        - name: MOCK_DEVICE_OS_VERSION
+          value: "5.13.1"
+        - name: MOCK_DEVICE_API_PORT
+          value: "8765"
+        ports:
+        - containerPort: 8765
+          name: nvue-api
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+---
+# OOB-Spine (a08-u28-p01-oobspine-01) — SN5600
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-sp-oobspine-01
+  namespace: nv-config-manager
+  labels:
+    app: mock-device
+    mock-device-role: oob-spine
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mock-device
+      mock-device-name: a08-u28-p01-oobspine-01
+  template:
+    metadata:
+      labels:
+        app: mock-device
+        mock-device-name: a08-u28-p01-oobspine-01
+        mock-device-platform: cumulus
+    spec:
+      containers:
+      - name: device-api
+        image: mock-device:local
+        args: ["serve"]
+        env:
+        - name: MOCK_DEVICE_NAME
+          value: "a08-u28-p01-oobspine-01"
+        - name: MOCK_DEVICE_PLATFORM
+          value: "cumulus"
+        - name: MOCK_DEVICE_SERIAL
+          value: "54:9B:24:41:33:12"
+        - name: MOCK_DEVICE_OS_VERSION
+          value: "5.13.1"
+        - name: MOCK_DEVICE_API_PORT
+          value: "8765"
+        ports:
+        - containerPort: 8765
+          name: nvue-api
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+---
+# In-Band-Leaf (a08-u32-p01-cleaf-01) — SN5600
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-sp-cleaf-01
+  namespace: nv-config-manager
+  labels:
+    app: mock-device
+    mock-device-role: in-band-leaf
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mock-device
+      mock-device-name: a08-u32-p01-cleaf-01
+  template:
+    metadata:
+      labels:
+        app: mock-device
+        mock-device-name: a08-u32-p01-cleaf-01
+        mock-device-platform: cumulus
+    spec:
+      containers:
+      - name: device-api
+        image: mock-device:local
+        args: ["serve"]
+        env:
+        - name: MOCK_DEVICE_NAME
+          value: "a08-u32-p01-cleaf-01"
+        - name: MOCK_DEVICE_PLATFORM
+          value: "cumulus"
+        - name: MOCK_DEVICE_SERIAL
+          value: "7C:8C:09:B9:F8:8E"
+        - name: MOCK_DEVICE_OS_VERSION
+          value: "5.13.1"
+        - name: MOCK_DEVICE_API_PORT
+          value: "8765"
+        ports:
+        - containerPort: 8765
+          name: nvue-api
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+---
+# Mgmt-Leaf (a08-u44-p01-mleaf-01) — MSN2201
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-sp-mleaf-01
+  namespace: nv-config-manager
+  labels:
+    app: mock-device
+    mock-device-role: mgmt-leaf
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mock-device
+      mock-device-name: a08-u44-p01-mleaf-01
+  template:
+    metadata:
+      labels:
+        app: mock-device
+        mock-device-name: a08-u44-p01-mleaf-01
+        mock-device-platform: cumulus
+    spec:
+      containers:
+      - name: device-api
+        image: mock-device:local
+        args: ["serve"]
+        env:
+        - name: MOCK_DEVICE_NAME
+          value: "a08-u44-p01-mleaf-01"
+        - name: MOCK_DEVICE_PLATFORM
+          value: "cumulus"
+        - name: MOCK_DEVICE_SERIAL
+          value: "2C:5E:AB:12:5A:38"
+        - name: MOCK_DEVICE_OS_VERSION
+          value: "5.13.1"
+        - name: MOCK_DEVICE_API_PORT
+          value: "8765"
+        ports:
+        - containerPort: 8765
+          name: nvue-api
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+---
+# Border-Leaf (a09-u28-p01-bleaf-01) — SN5600
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-sp-bleaf-01
+  namespace: nv-config-manager
+  labels:
+    app: mock-device
+    mock-device-role: border-leaf
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mock-device
+      mock-device-name: a09-u28-p01-bleaf-01
+  template:
+    metadata:
+      labels:
+        app: mock-device
+        mock-device-name: a09-u28-p01-bleaf-01
+        mock-device-platform: cumulus
+    spec:
+      containers:
+      - name: device-api
+        image: mock-device:local
+        args: ["serve"]
+        env:
+        - name: MOCK_DEVICE_NAME
+          value: "a09-u28-p01-bleaf-01"
+        - name: MOCK_DEVICE_PLATFORM
+          value: "cumulus"
+        - name: MOCK_DEVICE_SERIAL
+          value: "E8:9E:49:CF:4E:90"
+        - name: MOCK_DEVICE_OS_VERSION
+          value: "5.13.1"
+        - name: MOCK_DEVICE_API_PORT
+          value: "8765"
+        ports:
+        - containerPort: 8765
+          name: nvue-api
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+---
+# Storage-Leaf (a09-u32-p01-sleaf-01) — SN5600
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-sp-sleaf-01
+  namespace: nv-config-manager
+  labels:
+    app: mock-device
+    mock-device-role: storage-leaf
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mock-device
+      mock-device-name: a09-u32-p01-sleaf-01
+  template:
+    metadata:
+      labels:
+        app: mock-device
+        mock-device-name: a09-u32-p01-sleaf-01
+        mock-device-platform: cumulus
+    spec:
+      containers:
+      - name: device-api
+        image: mock-device:local
+        args: ["serve"]
+        env:
+        - name: MOCK_DEVICE_NAME
+          value: "a09-u32-p01-sleaf-01"
+        - name: MOCK_DEVICE_PLATFORM
+          value: "cumulus"
+        - name: MOCK_DEVICE_SERIAL
+          value: "7C:8C:09:B9:F8:9E"
+        - name: MOCK_DEVICE_OS_VERSION
+          value: "5.13.1"
+        - name: MOCK_DEVICE_API_PORT
+          value: "8765"
+        ports:
+        - containerPort: 8765
+          name: nvue-api
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+---
+# Converged-Spine (a09-u36-p01-spine-01) — SN5600
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-sp-spine-01
+  namespace: nv-config-manager
+  labels:
+    app: mock-device
+    mock-device-role: converged-spine
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mock-device
+      mock-device-name: a09-u36-p01-spine-01
+  template:
+    metadata:
+      labels:
+        app: mock-device
+        mock-device-name: a09-u36-p01-spine-01
+        mock-device-platform: cumulus
+    spec:
+      containers:
+      - name: device-api
+        image: mock-device:local
+        args: ["serve"]
+        env:
+        - name: MOCK_DEVICE_NAME
+          value: "a09-u36-p01-spine-01"
+        - name: MOCK_DEVICE_PLATFORM
+          value: "cumulus"
+        - name: MOCK_DEVICE_SERIAL
+          value: "7C:8C:09:B9:F8:A6"
+        - name: MOCK_DEVICE_OS_VERSION
+          value: "5.13.1"
+        - name: MOCK_DEVICE_API_PORT
+          value: "8765"
+        ports:
+        - containerPort: 8765
+          name: nvue-api
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+---
+# Power-Leaf (a09-u44-p01-pleaf-01) — MSN2201
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-sp-pleaf-01
+  namespace: nv-config-manager
+  labels:
+    app: mock-device
+    mock-device-role: power-leaf
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mock-device
+      mock-device-name: a09-u44-p01-pleaf-01
+  template:
+    metadata:
+      labels:
+        app: mock-device
+        mock-device-name: a09-u44-p01-pleaf-01
+        mock-device-platform: cumulus
+    spec:
+      containers:
+      - name: device-api
+        image: mock-device:local
+        args: ["serve"]
+        env:
+        - name: MOCK_DEVICE_NAME
+          value: "a09-u44-p01-pleaf-01"
+        - name: MOCK_DEVICE_PLATFORM
+          value: "cumulus"
+        - name: MOCK_DEVICE_SERIAL
+          value: "2C:5E:AB:12:5A:68"
+        - name: MOCK_DEVICE_OS_VERSION
+          value: "5.13.1"
+        - name: MOCK_DEVICE_API_PORT
+          value: "8765"
+        ports:
+        - containerPort: 8765
+          name: nvue-api
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+---
+# Services for mock devices
+apiVersion: v1
+kind: Service
+metadata:
+  name: mock-sp-tor-01
+  namespace: nv-config-manager
+  labels:
+    app: mock-device
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8765
+    name: nvue-api
+  selector:
+    mock-device-name: a04-u44-p01-tor-01
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mock-sp-oobspine-01
+  namespace: nv-config-manager
+  labels:
+    app: mock-device
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8765
+    name: nvue-api
+  selector:
+    mock-device-name: a08-u28-p01-oobspine-01
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mock-sp-cleaf-01
+  namespace: nv-config-manager
+  labels:
+    app: mock-device
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8765
+    name: nvue-api
+  selector:
+    mock-device-name: a08-u32-p01-cleaf-01
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mock-sp-mleaf-01
+  namespace: nv-config-manager
+  labels:
+    app: mock-device
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8765
+    name: nvue-api
+  selector:
+    mock-device-name: a08-u44-p01-mleaf-01
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mock-sp-bleaf-01
+  namespace: nv-config-manager
+  labels:
+    app: mock-device
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8765
+    name: nvue-api
+  selector:
+    mock-device-name: a09-u28-p01-bleaf-01
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mock-sp-sleaf-01
+  namespace: nv-config-manager
+  labels:
+    app: mock-device
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8765
+    name: nvue-api
+  selector:
+    mock-device-name: a09-u32-p01-sleaf-01
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mock-sp-spine-01
+  namespace: nv-config-manager
+  labels:
+    app: mock-device
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8765
+    name: nvue-api
+  selector:
+    mock-device-name: a09-u36-p01-spine-01
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mock-sp-pleaf-01
+  namespace: nv-config-manager
+  labels:
+    app: mock-device
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8765
+    name: nvue-api
+  selector:
+    mock-device-name: a09-u44-p01-pleaf-01

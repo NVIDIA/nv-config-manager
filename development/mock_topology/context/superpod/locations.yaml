@@ -74,3 +74,45 @@ config_contexts:
       provisioning_servers:
         ipv4:
           - "192.0.2.10"
+
+  - name: "TEST-SITE Sandbox DHCP Subnet"
+    description: "DHCP subnet for Kind pod network enabling in-cluster DHCP testing"
+    schema: nv-config-manager-kea-static-data
+    weight: 900
+    is_active: true
+    locations:
+      - TEST-SITE
+    data:
+      Dhcp4:
+        subnet4:
+          - subnet: "10.244.0.0/16"
+            option-data: []
+            reservations-global: false
+            reservations-in-subnet: false
+            pools:
+              - pool: "10.244.0.200 - 10.244.0.250"
+
+  - name: "Superpod-dhcp-options"
+    description: "DHCP options for Superpod network devices"
+    weight: 1000
+    is_active: true
+    roles:
+      - OOB-Leaf
+      - OOB-Spine
+      - In-Band-Leaf
+      - Mgmt-Leaf
+      - Border-Leaf
+      - Storage-Leaf
+      - Converged-Spine
+      - Power-Leaf
+    data:
+      dhcp:
+        options:
+          interface_names:
+            eth0:
+              subnet_config:
+                reservations-global: true
+                reservations-in-subnet: false
+              reservation_options:
+                boot-file-name: "http://{{ztp_server}}/v1/device/{{device_id}}/onie"
+                cumulus-provision-url: "http://{{ztp_server}}/v1/device/{{device_id}}/boot-script"

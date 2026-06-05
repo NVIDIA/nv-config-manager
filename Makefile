@@ -1,7 +1,10 @@
 .PHONY: help install dev test lint format clean docker-build docker-push ui-install ui-dev ui-build \
-        local-up local-down local-destroy local-status local-logs deploy kind-up kind-up-sec kind-down topology install-cert workflow-perf-seed \
+        local-up local-down local-destroy local-status local-logs deploy kind-up kind-up-sec kind-down kind-up-with-topology topology install-cert workflow-perf-seed \
         openapi openapi-check go-bindings api-generate docs-assets docs-assets-check docs-format docs-lint docs-lint-fern docs-live docs-preview docs-publish docs-publish-in-ci docs-screenshots docs-air-sim-screenshots docs-ui-screenshots \
-        obs-grafana obs-prometheus obs-loki obs-alloy obs-port-forward obs-port-forward-stop
+        obs-grafana obs-prometheus obs-loki obs-alloy obs-port-forward obs-port-forward-stop \
+        docker-build-mock-device mock-devices-up mock-devices-down mock-devices-status \
+        mock-dhcp-validate mock-dhcp-discover mock-wire-devices mock-ztp-validate \
+        mock-workflow-backup mock-workflow-cable-validate sandbox-up
 
 # Configuration
 NAMESPACE ?= nv-config-manager
@@ -103,6 +106,18 @@ help:
 	@echo "  make ui-install       - Install UI dependencies"
 	@echo "  make ui-dev           - Run UI development server"
 	@echo "  make ui-build         - Build UI for production"
+	@echo ""
+	@echo "Mock Devices (sandbox):"
+	@echo "  make sandbox-up             - Full sandbox: Kind + topology + mock devices"
+	@echo "  make mock-devices-up        - Build and deploy mock devices to Kind"
+	@echo "  make mock-devices-down      - Remove mock devices"
+	@echo "  make mock-devices-status    - Show mock device pod status"
+	@echo "  make mock-dhcp-validate     - Validate DHCP config via API (no raw sockets)"
+	@echo "  make mock-dhcp-discover     - Send DHCP discover from mock device"
+	@echo "  make mock-ztp-validate      - Validate ZTP chain (DHCP opts -> boot script -> serial -> config)"
+	@echo "  make mock-wire-devices      - Wire mock device IPs into Nautobot for Temporal"
+	@echo "  make mock-workflow-backup   - Run Temporal backup workflow on a mock device"
+	@echo "  make mock-workflow-cable-validate - Run cable validation on a mock device"
 	@echo ""
 	@echo "Documentation:"
 	@echo "  make openapi          - Generate OpenAPI specs for all FastAPI services"
@@ -772,6 +787,7 @@ kind-up:
 		echo "Creating Kind cluster: $(KIND_CLUSTER_NAME)"; \
 		kind create cluster --name $(KIND_CLUSTER_NAME) --config deploy/kind-config.yaml --wait 5m; \
 	fi
+	kubectl config use-context kind-$(KIND_CLUSTER_NAME)
 	cd installer && uv run nv-config-manager-installer deploy ../$(INSTALL_CONFIG) \
 		--image-source local \
 		--build-images \
@@ -997,6 +1013,220 @@ obs-port-forward-stop:
 	@pkill -f 'kubectl port-forward.*svc/(grafana|prometheus-server|loki|alloy)' 2>/dev/null && \
 	  echo "✅ Stopped observability port-forwards" || \
 	  echo "ℹ️  No matching port-forward processes were running"
+
+# =============================================================================
+# Mock Device Targets (sandbox testing)
+# =============================================================================
+
+# Build mock device Docker image
+docker-build-mock-device:
+	@echo "🏗️  Building mock device image..."
+	docker build --provenance=false -t mock-device:local -f development/mock_devices/Dockerfile development/mock_devices/
+	@echo "✅ Built mock-device:local"
+
+# Deploy mock devices to Kind cluster (builds image first)
+mock-devices-up: docker-build-mock-device
+	@echo "🔧 Loading mock device image into Kind..."
+	kind load docker-image mock-device:local --name $(KIND_CLUSTER_NAME)
+	@echo "🔌 Deploying DHCP dev service..."
+	kubectl apply -f development/mock_devices/manifests/dhcp-dev-service.yaml
+	@echo "🖥️  Deploying mock devices..."
+	kubectl apply -f development/mock_devices/manifests/mock-devices.yaml
+	@echo "✅ Mock devices deployed. Use 'make mock-devices-status' to check."
+
+# Remove mock devices
+mock-devices-down:
+	@echo "🗑️  Removing mock devices..."
+	kubectl delete -f development/mock_devices/manifests/mock-devices.yaml --ignore-not-found
+	kubectl delete -f development/mock_devices/manifests/mock-dhcp-discover.yaml --ignore-not-found
+	kubectl delete -f development/mock_devices/manifests/mock-dhcp-validate.yaml --ignore-not-found
+	kubectl delete -f development/mock_devices/manifests/mock-wire-devices.yaml --ignore-not-found
+	kubectl delete -f development/mock_devices/manifests/dhcp-dev-service.yaml --ignore-not-found
+	@echo "✅ Mock devices removed."
+
+# Show mock device status
+mock-devices-status:
+	@echo "=== Mock Device Pods ==="
+	@kubectl get pods -n $(NAMESPACE) -l app=mock-device -o wide 2>/dev/null || echo "No mock devices found"
+	@echo ""
+	@echo "=== Mock Device Services ==="
+	@kubectl get svc -n $(NAMESPACE) -l app=mock-device -o wide 2>/dev/null || true
+	@echo ""
+	@echo "=== DHCP Dev Service ==="
+	@kubectl get svc -n $(NAMESPACE) nv-config-manager-dhcp-dev -o wide 2>/dev/null || echo "DHCP dev service not deployed"
+
+# DHCP test device defaults (override with e.g. make mock-dhcp-validate MOCK_DHCP_DEVICE=a08-u44-p01-mleaf-01 ...)
+MOCK_DHCP_DEVICE ?= a04-u44-p01-tor-01
+MOCK_DHCP_PLATFORM ?= cumulus
+MOCK_DHCP_SERIAL ?= 44:38:39:20:00:01
+MOCK_DHCP_CLIENT_ID_TPL ?= {{ serial | hex }}
+MOCK_DEVICE_OS_VERSION ?= 4.29.5M
+
+# Run DHCP validation (no raw sockets needed)
+mock-dhcp-validate: docker-build-mock-device
+	@echo "🔍 Running DHCP config validation for $(MOCK_DHCP_DEVICE)..."
+	kind load docker-image mock-device:local --name $(KIND_CLUSTER_NAME) 2>/dev/null || true
+	kubectl delete job mock-dhcp-validate -n $(NAMESPACE) --ignore-not-found 2>/dev/null
+	@kubectl port-forward -n $(NAMESPACE) svc/nv-config-manager-nautobot 18080:80 &>/dev/null & \
+	NB_PF=$$!; \
+	sleep 2; \
+	NB_TOKEN=$$(kubectl get secret nautobot-token -n $(NAMESPACE) -o jsonpath='{.data.token}' | base64 -d); \
+	MOCK_DHCP_MAC=$$(curl -s -H "Authorization: Token $$NB_TOKEN" \
+		"http://localhost:18080/api/dcim/interfaces/?device=$(MOCK_DHCP_DEVICE)&name=eth0&limit=1" \
+		| python3 -c "import json,sys; r=json.load(sys.stdin)['results']; print(r[0].get('mac_address') or '' if r else '')" 2>/dev/null); \
+	kill $$NB_PF 2>/dev/null; \
+	if [ -n "$$MOCK_DHCP_MAC" ]; then \
+		echo "   Using MAC from Nautobot: $$MOCK_DHCP_MAC"; \
+	else \
+		echo "   No eth0 MAC in Nautobot — falling back to client-id/serial matching"; \
+	fi; \
+	MOCK_DHCP_DEVICE="$(MOCK_DHCP_DEVICE)" \
+		MOCK_DHCP_PLATFORM="$(MOCK_DHCP_PLATFORM)" \
+		MOCK_DHCP_SERIAL="$(MOCK_DHCP_SERIAL)" \
+		MOCK_DHCP_MAC="$$MOCK_DHCP_MAC" \
+		MOCK_DHCP_CLIENT_ID_TPL="$(MOCK_DHCP_CLIENT_ID_TPL)" \
+		envsubst < development/mock_devices/manifests/mock-dhcp-validate.yaml | kubectl apply -f -
+	@echo "⏳ Waiting for validation job..."
+	@kubectl wait --for=condition=complete job/mock-dhcp-validate -n $(NAMESPACE) --timeout=60s 2>/dev/null || true
+	@echo "=== Validation Result ==="
+	@kubectl logs -n $(NAMESPACE) job/mock-dhcp-validate 2>/dev/null || echo "Job not found or still running"
+
+# Run DHCP discover (uses relay agent, no raw sockets needed)
+mock-dhcp-discover: docker-build-mock-device
+	@echo "📡 Running DHCP discover for $(MOCK_DHCP_DEVICE)..."
+	kind load docker-image mock-device:local --name $(KIND_CLUSTER_NAME) 2>/dev/null || true
+	kubectl delete job mock-dhcp-discover -n $(NAMESPACE) --ignore-not-found 2>/dev/null
+	@kubectl port-forward -n $(NAMESPACE) svc/nv-config-manager-nautobot 18080:80 &>/dev/null & \
+	NB_PF=$$!; \
+	sleep 2; \
+	NB_TOKEN=$$(kubectl get secret nautobot-token -n $(NAMESPACE) -o jsonpath='{.data.token}' | base64 -d); \
+	MOCK_DHCP_MAC=$$(curl -s -H "Authorization: Token $$NB_TOKEN" \
+		"http://localhost:18080/api/dcim/interfaces/?device=$(MOCK_DHCP_DEVICE)&name=eth0&limit=1" \
+		| python3 -c "import json,sys; r=json.load(sys.stdin)['results']; print(r[0].get('mac_address') or '' if r else '')" 2>/dev/null); \
+	kill $$NB_PF 2>/dev/null; \
+	if [ -n "$$MOCK_DHCP_MAC" ]; then \
+		echo "   Using MAC from Nautobot: $$MOCK_DHCP_MAC"; \
+	else \
+		echo "   No eth0 MAC in Nautobot — falling back to client-id/serial matching"; \
+	fi; \
+	MOCK_DHCP_DEVICE="$(MOCK_DHCP_DEVICE)" \
+		MOCK_DHCP_PLATFORM="$(MOCK_DHCP_PLATFORM)" \
+		MOCK_DHCP_SERIAL="$(MOCK_DHCP_SERIAL)" \
+		MOCK_DHCP_MAC="$$MOCK_DHCP_MAC" \
+		MOCK_DHCP_CLIENT_ID_TPL="$(MOCK_DHCP_CLIENT_ID_TPL)" \
+		envsubst < development/mock_devices/manifests/mock-dhcp-discover.yaml | kubectl apply -f -
+	@echo "⏳ Waiting for DHCP discover..."
+	@kubectl wait --for=condition=complete job/mock-dhcp-discover -n $(NAMESPACE) --timeout=60s 2>/dev/null || true
+	@echo "=== DHCP Result ==="
+	@kubectl logs -n $(NAMESPACE) job/mock-dhcp-discover 2>/dev/null || echo "Job not found or still running"
+
+# ZTP test device defaults (override with e.g. make mock-ztp-validate MOCK_ZTP_DEVICE=a08-u32-p01-cleaf-01 ...)
+MOCK_ZTP_DEVICE ?= a04-u44-p01-tor-01
+MOCK_ZTP_PLATFORM ?= cumulus
+MOCK_ZTP_SERIAL ?= 44:38:39:20:00:01
+MOCK_ZTP_CLIENT_ID_TPL ?= {{ serial | hex }}
+
+# Validate ZTP provisioning chain (DHCP options -> boot script -> serial -> config)
+mock-ztp-validate: docker-build-mock-device
+	@echo "🔗 Running ZTP validation for $(MOCK_ZTP_DEVICE)..."
+	kind load docker-image mock-device:local --name $(KIND_CLUSTER_NAME) 2>/dev/null || true
+	kubectl delete job mock-ztp-validate -n $(NAMESPACE) --ignore-not-found 2>/dev/null
+	@MOCK_ZTP_DEVICE="$(MOCK_ZTP_DEVICE)" \
+		MOCK_ZTP_PLATFORM="$(MOCK_ZTP_PLATFORM)" \
+		MOCK_ZTP_SERIAL="$(MOCK_ZTP_SERIAL)" \
+		MOCK_ZTP_CLIENT_ID_TPL="$(MOCK_ZTP_CLIENT_ID_TPL)" \
+		envsubst < development/mock_devices/manifests/mock-ztp-validate.yaml | kubectl apply -f -
+	@echo "⏳ Waiting for ZTP validation..."
+	@kubectl wait --for=condition=complete job/mock-ztp-validate -n $(NAMESPACE) --timeout=120s 2>/dev/null || true
+	@echo "=== ZTP Validation Result ==="
+	@kubectl logs -n $(NAMESPACE) job/mock-ztp-validate 2>/dev/null || echo "Job not found or still running"
+
+# Wire mock device service IPs into Nautobot (primary_ip4 -> ClusterIP)
+mock-wire-devices: docker-build-mock-device
+	@echo "🔌 Wiring mock device IPs into Nautobot..."
+	kind load docker-image mock-device:local --name $(KIND_CLUSTER_NAME) 2>/dev/null || true
+	kubectl delete job mock-wire-devices -n $(NAMESPACE) --ignore-not-found 2>/dev/null
+	kubectl apply -f development/mock_devices/manifests/mock-wire-devices.yaml
+	@echo "⏳ Waiting for wire job..."
+	kubectl wait --for=condition=complete job/mock-wire-devices -n $(NAMESPACE) --timeout=60s 2>/dev/null || true
+	@echo "=== Wire Result ==="
+	@kubectl logs -n $(NAMESPACE) job/mock-wire-devices 2>/dev/null || echo "Job not found or still running"
+
+# Run Temporal backup workflow against a mock device
+MOCK_BACKUP_DEVICE ?= a04-u44-p01-tor-01
+mock-workflow-backup:
+	@echo "📦 Starting backup workflow for $(MOCK_BACKUP_DEVICE)..."
+	@kubectl port-forward -n $(NAMESPACE) svc/nv-config-manager-nautobot 18080:80 &>/dev/null & \
+	NB_PF=$$!; \
+	sleep 2; \
+	NB_TOKEN=$$(kubectl get secret nautobot-token -n $(NAMESPACE) -o jsonpath='{.data.token}' | base64 -d); \
+	DEVICE_ID=$$(curl -sS -H "Authorization: Token $$NB_TOKEN" \
+		"http://localhost:18080/api/dcim/devices/?name=$(MOCK_BACKUP_DEVICE)" | \
+		python3 -c "import sys,json; r=json.load(sys.stdin)['results']; print(r[0]['id'] if r else '')" 2>/dev/null); \
+	kill $$NB_PF 2>/dev/null; \
+	if [ -z "$$DEVICE_ID" ]; then \
+		echo "ERROR: Device $(MOCK_BACKUP_DEVICE) not found in Nautobot"; exit 1; \
+	fi; \
+	echo "   Device UUID: $$DEVICE_ID"; \
+	kubectl port-forward -n $(NAMESPACE) svc/nv-config-manager-temporal-api 19001:9000 &>/dev/null & \
+	T_PF=$$!; \
+	sleep 2; \
+	RESP=$$(curl -sS -X POST http://localhost:19001/v1/workflow/ngc/backup \
+		-H "Content-Type: application/json" \
+		-d "{\"device_id\": \"$$DEVICE_ID\", \"trigger\": \"API\", \"user\": null, \"user_domain\": null, \"workflow_id\": null, \"intended_config_commit_id\": null}" 2>&1); \
+	echo "   Response: $$RESP"; \
+	kill $$T_PF 2>/dev/null; \
+	echo "✅ Backup workflow started. Check Temporal UI: make port-forward"
+
+# Run Temporal cable validation workflow against a mock device
+MOCK_CABLE_DEVICE ?= a04-u44-p01-tor-01
+mock-workflow-cable-validate:
+	@echo "🔗 Starting cable validation for $(MOCK_CABLE_DEVICE)..."
+	@kubectl port-forward -n $(NAMESPACE) svc/nv-config-manager-nautobot 18080:80 &>/dev/null & \
+	NB_PF=$$!; \
+	sleep 2; \
+	NB_TOKEN=$$(kubectl get secret nautobot-token -n $(NAMESPACE) -o jsonpath='{.data.token}' | base64 -d); \
+	DEVICE_ID=$$(curl -sS -H "Authorization: Token $$NB_TOKEN" \
+		"http://localhost:18080/api/dcim/devices/?name=$(MOCK_CABLE_DEVICE)" | \
+		python3 -c "import sys,json; r=json.load(sys.stdin)['results']; print(r[0]['id'] if r else '')" 2>/dev/null); \
+	kill $$NB_PF 2>/dev/null; \
+	if [ -z "$$DEVICE_ID" ]; then \
+		echo "ERROR: Device $(MOCK_CABLE_DEVICE) not found in Nautobot"; exit 1; \
+	fi; \
+	echo "   Device UUID: $$DEVICE_ID"; \
+	kubectl port-forward -n $(NAMESPACE) svc/nv-config-manager-temporal-api 19001:9000 &>/dev/null & \
+	T_PF=$$!; \
+	sleep 2; \
+	RESP=$$(curl -sS -X POST http://localhost:19001/v1/workflow/ngc/device_cable_validation \
+		-H "Content-Type: application/json" \
+		-d "{\"device_id\": \"$$DEVICE_ID\"}" 2>&1); \
+	echo "   Response: $$RESP"; \
+	kill $$T_PF 2>/dev/null; \
+	echo "✅ Cable validation started. Check Temporal UI: make port-forward"
+
+# Full sandbox: Kind cluster + topology + mock devices + wiring.
+# Uses local-superpod-sandbox.yaml (mock_devices: false) so Temporal workflows
+# connect to mock device API pods via real CumulusConnection classes.
+sandbox-up: INSTALL_CONFIG = deploy/configs/local-superpod-sandbox.yaml
+sandbox-up: kind-up-with-topology mock-devices-up mock-wire-devices
+	@echo ""
+	@echo "🎉 Full sandbox environment ready!"
+	@echo ""
+	@echo "Next steps:"
+	@echo "  make mock-workflow-backup           - Test backup workflow"
+	@echo "  make mock-workflow-cable-validate   - Test cable validation workflow"
+	@echo ""
+	@echo "DHCP testing:"
+	@echo "  make mock-dhcp-validate            - Validate DHCP config via API"
+	@echo "  make mock-dhcp-discover            - Send DHCP discover from mock device"
+	@echo ""
+	@echo "ZTP testing:"
+	@echo "  make mock-ztp-validate             - Validate ZTP provisioning chain"
+	@echo ""
+	@echo "General:"
+	@echo "  make mock-devices-status           - Show mock device pod status"
+	@echo "  make port-forward                  - Forward Nautobot + Temporal UI"
+	@echo "  make local-status                  - Platform status"
 
 # =============================================================================
 # Production Deployment (via nv-config-manager-installer)

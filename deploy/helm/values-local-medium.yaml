@@ -175,6 +175,8 @@ networkDhcp:
   replicas: 1
   nodeSelector: null
   affinity: null
+  kea:
+    dhcpSocketType: "udp"
 
 # -----------------------------------------------------------------------------
 # Redis - Clear node scheduling

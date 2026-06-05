@@ -1,0 +1,39 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Updates Nautobot so each mock device's primary_ip4 points to its
+# Kubernetes Service ClusterIP.  After this job completes, Temporal
+# workflows can reach the mock device API pods.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: mock-wire-devices
+  namespace: nv-config-manager
+  labels:
+    app: mock-device
+    mock-device-task: wire
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 2
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: wire
+        image: mock-device:local
+        args:
+        - wire
+        - --nautobot-url=http://nv-config-manager-nautobot.nv-config-manager.svc:80
+        env:
+        - name: NAUTOBOT_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: nautobot-token
+              key: token
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"

@@ -60,6 +60,10 @@ dhcp:
   kea:
     replicas: 1
 
+networkDhcp:
+  kea:
+    dhcpSocketType: "udp"
+    
 temporal:
   enabled: true
   replicas: 1

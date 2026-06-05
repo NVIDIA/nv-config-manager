@@ -1,0 +1,597 @@
+{
+  "eth0": {
+    "type": "eth",
+    "link": {
+      "state": {
+        "up": {}
+      }
+    },
+    "ip": {
+      "address": {
+        "10.240.143.226/27": {}
+      }
+    },
+    "lldp": {
+      "neighbor": {
+        "leaf8-cp1-smn1-dc01": {
+          "port": {
+            "name": "swp1"
+          },
+          "age": "120"
+        }
+      }
+    }
+  },
+  "lo": {
+    "type": "loopback",
+    "link": {
+      "state": {
+        "up": {}
+      }
+    },
+    "ip": {
+      "address": {
+        "10.240.236.0/32": {}
+      }
+    },
+    "lldp": {
+      "neighbor": {}
+    }
+  },
+  "swp1": {
+    "type": "swp",
+    "link": {
+      "state": {
+        "up": {}
+      }
+    },
+    "ip": {
+      "address": {
+        "10.240.198.254/31": {}
+      }
+    },
+    "lldp": {
+      "neighbor": {
+        "storage1-cno1-cp1-dc01-dpu2": {
+          "port": {
+            "name": "p1"
+          },
+          "age": "120"
+        }
+      }
+    }
+  },
+  "swp2": {
+    "type": "swp",
+    "link": {
+      "state": {
+        "up": {}
+      }
+    },
+    "ip": {
+      "address": {}
+    },
+    "lldp": {
+      "neighbor": {
+        "storage2-cno1-cp1-dc01-dpu2": {
+          "port": {
+            "name": "p1"
+          },
+          "age": "120"
+        }
+      }
+    }
+  },
+  "swp5s0": {
+    "type": "swp",
+    "link": {
+      "state": {
+        "up": {}
+      }
+    },
+    "ip": {
+      "address": {}
+    },
+    "lldp": {
+      "neighbor": {
+        "control1-cno1-cp1-dc01-dpu2": {
+          "port": {
+            "name": "p1"
+          },
+          "age": "120"
+        }
+      }
+    }
+  },
+  "swp5s1": {
+    "type": "swp",
+    "link": {
+      "state": {
+        "up": {}
+      }
+    },
+    "ip": {
+      "address": {}
+    },
+    "lldp": {
+      "neighbor": {
+        "control2-cno1-cp1-dc01-dpu2": {
+          "port": {
+            "name": "p1"
+          },
+          "age": "120"
+        }
+      }
+    }
+  },
+  "swp6s0": {
+    "type": "swp",
+    "link": {
+      "state": {
+        "up": {}
+      }
+    },
+    "ip": {
+      "address": {}
+    },
+    "lldp": {
+      "neighbor": {
+        "control3-cno1-cp1-dc01-dpu2": {
+          "port": {
+            "name": "p1"
+          },
+          "age": "120"
+        }
+      }
+    }
+  },
+  "swp6s1": {
+    "type": "swp",
+    "link": {
+      "state": {
+        "up": {}
+      }
+    },
+    "ip": {
+      "address": {}
+    },
+    "lldp": {
+      "neighbor": {
+        "control4-cno1-cp1-dc01-dpu2": {
+          "port": {
+            "name": "p1"
+          },
+          "age": "120"
+        }
+      }
+    }
+  },
+  "swp7s0": {
+    "type": "swp",
+    "link": {
+      "state": {
+        "up": {}
+      }
+    },
+    "ip": {
+      "address": {}
+    },
+    "lldp": {
+      "neighbor": {
+        "control5-cno1-cp1-dc01-dpu2": {
+          "port": {
+            "name": "p1"
+          },
+          "age": "120"
+        }
+      }
+    }
+  },
+  "swp7s1": {
+    "type": "swp",
+    "link": {
+      "state": {
+        "up": {}
+      }
+    },
+    "ip": {
+      "address": {}
+    },
+    "lldp": {
+      "neighbor": {
+        "control6-cno1-cp1-dc01-dpu2": {
+          "port": {
+            "name": "p1"
+          },
+          "age": "120"
+        }
+      }
+    }
+  },
+  "swp8s0": {
+    "type": "swp",
+    "link": {
+      "state": {
+        "up": {}
+      }
+    },
+    "ip": {
+      "address": {}
+    },
+    "lldp": {
+      "neighbor": {
+        "control7-cno1-cp1-dc01-dpu2": {
+          "port": {
+            "name": "p1"
+          },
+          "age": "120"
+        }
+      }
+    }
+  },
+  "swp8s1": {
+    "type": "swp",
+    "link": {
+      "state": {
+        "up": {}
+      }
+    },
+    "ip": {
+      "address": {}
+    },
+    "lldp": {
+      "neighbor": {
+        "control8-cno1-cp1-dc01-dpu2": {
+          "port": {
+            "name": "p1"
+          },
+          "age": "120"
+        }
+      }
+    }
+  },
+  "swp9s0": {
+    "type": "swp",
+    "link": {
+      "state": {
+        "up": {}
+      }
+    },
+    "ip": {
+      "address": {}
+    },
+    "lldp": {
+      "neighbor": {
+        "control9-cno1-cp1-dc01-dpu2": {
+          "port": {
+            "name": "p1"
+          },
+          "age": "120"
+        }
+      }
+    }
+  },
+  "swp9s1": {
+    "type": "swp",
+    "link": {
+      "state": {
+        "up": {}
+      }
+    },
+    "ip": {
+      "address": {}
+    },
+    "lldp": {
+      "neighbor": {
+        "control10-cno1-cp1-dc01-dpu2": {
+          "port": {
+            "name": "p1"
+          },
+          "age": "120"
+        }
+      }
+    }
+  },
+  "swp10s0": {
+    "type": "swp",
+    "link": {
+      "state": {
+        "up": {}
+      }
+    },
+    "ip": {
+      "address": {}
+    },
+    "lldp": {
+      "neighbor": {
+        "control11-cno1-cp1-dc01-dpu2": {
+          "port": {
+            "name": "p1"
+          },
+          "age": "120"
+        }
+      }
+    }
+  },
+  "swp10s1": {
+    "type": "swp",
+    "link": {
+      "state": {
+        "up": {}
+      }
+    },
+    "ip": {
+      "address": {}
+    },
+    "lldp": {
+      "neighbor": {
+        "control12-cno1-cp1-dc01-dpu2": {
+          "port": {
+            "name": "p1"
+          },
+          "age": "120"
+        }
+      }
+    }
+  },
+  "swp11s0": {
+    "type": "swp",
+    "link": {
+      "state": {
+        "up": {}
+      }
+    },
+    "ip": {
+      "address": {}
+    },
+    "lldp": {
+      "neighbor": {
+        "control13-cno1-cp1-dc01-dpu2": {
+          "port": {
+            "name": "p1"
+          },
+          "age": "120"
+        }
+      }
+    }
+  },
+  "swp11s1": {
+    "type": "swp",
+    "link": {
+      "state": {
+        "up": {}
+      }
+    },
+    "ip": {
+      "address": {}
+    },
+    "lldp": {
+      "neighbor": {
+        "control14-cno1-cp1-dc01-dpu2": {
+          "port": {
+            "name": "p1"
+          },
+          "age": "120"
+        }
+      }
+    }
+  },
+  "swp12s0": {
+    "type": "swp",
+    "link": {
+      "state": {
+        "up": {}
+      }
+    },
+    "ip": {
+      "address": {}
+    },
+    "lldp": {
+      "neighbor": {
+        "control15-cno1-cp1-dc01-dpu2": {
+          "port": {
+            "name": "p1"
+          },
+          "age": "120"
+        }
+      }
+    }
+  },
+  "swp12s1": {
+    "type": "swp",
+    "link": {
+      "state": {
+        "up": {}
+      }
+    },
+    "ip": {
+      "address": {}
+    },
+    "lldp": {
+      "neighbor": {
+        "control16-cno1-cp1-dc01-dpu2": {
+          "port": {
+            "name": "p1"
+          },
+          "age": "120"
+        }
+      }
+    }
+  },
+  "swp13s0": {
+    "type": "swp",
+    "link": {
+      "state": {
+        "up": {}
+      }
+    },
+    "ip": {
+      "address": {}
+    },
+    "lldp": {
+      "neighbor": {
+        "control17-cno1-cp1-dc01-dpu2": {
+          "port": {
+            "name": "p1"
+          },
+          "age": "120"
+        }
+      }
+    }
+  },
+  "swp13s1": {
+    "type": "swp",
+    "link": {
+      "state": {
+        "up": {}
+      }
+    },
+    "ip": {
+      "address": {}
+    },
+    "lldp": {
+      "neighbor": {
+        "control18-cno1-cp1-dc01-dpu2": {
+          "port": {
+            "name": "p1"
+          },
+          "age": "120"
+        }
+      }
+    }
+  },
+  "swp14s0": {
+    "type": "swp",
+    "link": {
+      "state": {
+        "up": {}
+      }
+    },
+    "ip": {
+      "address": {}
+    },
+    "lldp": {
+      "neighbor": {
+        "control19-cno1-cp1-dc01-dpu2": {
+          "port": {
+            "name": "p1"
+          },
+          "age": "120"
+        }
+      }
+    }
+  },
+  "swp14s1": {
+    "type": "swp",
+    "link": {
+      "state": {
+        "up": {}
+      }
+    },
+    "ip": {
+      "address": {}
+    },
+    "lldp": {
+      "neighbor": {
+        "control20-cno1-cp1-dc01-dpu2": {
+          "port": {
+            "name": "p1"
+          },
+          "age": "120"
+        }
+      }
+    }
+  },
+  "swp29": {
+    "type": "swp",
+    "link": {
+      "state": {
+        "up": {}
+      }
+    },
+    "ip": {
+      "address": {
+        "10.240.228.1/31": {}
+      }
+    },
+    "lldp": {
+      "neighbor": {
+        "spine4-cno1-cp1-tan1-dc01": {
+          "port": {
+            "name": "swp1"
+          },
+          "age": "120"
+        }
+      }
+    }
+  },
+  "swp30": {
+    "type": "swp",
+    "link": {
+      "state": {
+        "up": {}
+      }
+    },
+    "ip": {
+      "address": {
+        "10.240.227.1/31": {}
+      }
+    },
+    "lldp": {
+      "neighbor": {
+        "spine3-cno1-cp1-tan1-dc01": {
+          "port": {
+            "name": "swp1"
+          },
+          "age": "120"
+        }
+      }
+    }
+  },
+  "swp31": {
+    "type": "swp",
+    "link": {
+      "state": {
+        "up": {}
+      }
+    },
+    "ip": {
+      "address": {
+        "10.240.224.129/31": {}
+      }
+    },
+    "lldp": {
+      "neighbor": {
+        "spine2-cno1-cp1-tan1-dc01": {
+          "port": {
+            "name": "swp1"
+          },
+          "age": "120"
+        }
+      }
+    }
+  },
+  "swp32": {
+    "type": "swp",
+    "link": {
+      "state": {
+        "up": {}
+      }
+    },
+    "ip": {
+      "address": {
+        "10.240.225.1/31": {}
+      }
+    },
+    "lldp": {
+      "neighbor": {
+        "spine1-cno1-cp1-tan1-dc01": {
+          "port": {
+            "name": "swp1"
+          },
+          "age": "120"
+        }
+      }
+    }
+  }
+}

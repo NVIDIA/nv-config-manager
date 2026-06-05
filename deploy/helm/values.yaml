@@ -1555,6 +1555,11 @@ networkDhcp:
   # Kea configuration
   kea:
     storkAgentPort: 9457
+    # Kea dhcp-socket-type override. Valid values: "raw" (default), "udp".
+    # Set to "udp" for Kind/overlay networks where raw sockets don't work.
+    # Leave empty to omit the setting (Kea defaults to "raw").
+    dhcpSocketType: ""
+
 # =============================================================================
 # Service: Temporal (Workflows)
 # =============================================================================

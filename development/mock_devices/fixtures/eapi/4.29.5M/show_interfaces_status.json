@@ -1,0 +1,96 @@
+{
+  "interfaceStatuses": {
+    "Management1/1": {
+      "linkStatus": "connected",
+      "lineProtocolStatus": "up"
+    },
+    "Ethernet3/1/1": {
+      "linkStatus": "connected",
+      "lineProtocolStatus": "up"
+    },
+    "Ethernet3/2/1": {
+      "linkStatus": "connected",
+      "lineProtocolStatus": "up"
+    },
+    "Ethernet3/3/1": {
+      "linkStatus": "connected",
+      "lineProtocolStatus": "up"
+    },
+    "Ethernet3/4/1": {
+      "linkStatus": "connected",
+      "lineProtocolStatus": "up"
+    },
+    "Ethernet3/30/1": {
+      "linkStatus": "connected",
+      "lineProtocolStatus": "up"
+    },
+    "Ethernet3/31/1": {
+      "linkStatus": "connected",
+      "lineProtocolStatus": "up"
+    },
+    "Ethernet3/32/1": {
+      "linkStatus": "connected",
+      "lineProtocolStatus": "up"
+    },
+    "Ethernet3/33/1": {
+      "linkStatus": "connected",
+      "lineProtocolStatus": "up"
+    },
+    "Ethernet3/34/1": {
+      "linkStatus": "connected",
+      "lineProtocolStatus": "up"
+    },
+    "Ethernet3/35/1": {
+      "linkStatus": "connected",
+      "lineProtocolStatus": "up"
+    },
+    "Ethernet3/36/1": {
+      "linkStatus": "connected",
+      "lineProtocolStatus": "up"
+    },
+    "Ethernet4/1/1": {
+      "linkStatus": "connected",
+      "lineProtocolStatus": "up"
+    },
+    "Ethernet4/2/1": {
+      "linkStatus": "connected",
+      "lineProtocolStatus": "up"
+    },
+    "Ethernet4/30/1": {
+      "linkStatus": "connected",
+      "lineProtocolStatus": "up"
+    },
+    "Ethernet4/31/1": {
+      "linkStatus": "connected",
+      "lineProtocolStatus": "up"
+    },
+    "Ethernet4/32/1": {
+      "linkStatus": "connected",
+      "lineProtocolStatus": "up"
+    },
+    "Ethernet4/33/1": {
+      "linkStatus": "connected",
+      "lineProtocolStatus": "up"
+    },
+    "Ethernet4/34/1": {
+      "linkStatus": "connected",
+      "lineProtocolStatus": "up"
+    },
+    "Ethernet4/35/1": {
+      "linkStatus": "connected",
+      "lineProtocolStatus": "up"
+    },
+    "Ethernet4/36/1": {
+      "linkStatus": "connected",
+      "lineProtocolStatus": "up"
+    },
+    "Loopback0": {
+      "linkStatus": "connected",
+      "lineProtocolStatus": "up"
+    },
+    "Loopback1": {
+      "linkStatus": "connected",
+      "lineProtocolStatus": "up"
+    }
+  }
+}

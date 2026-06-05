@@ -10,6 +10,9 @@ config_contexts:
     weight: {{ cc.weight | default(1000) }}
     is_active: {{ cc.is_active | default(true) }}
     data: {{ cc.data | tojson }}
+    {% if cc.schema is defined and cc.schema %}
+    config_context_schema__name: {{ cc.schema }}
+    {% endif %}
     {% if cc.locations is defined and cc.locations | length > 0 %}
     locations:
       {% for location in cc.locations %}

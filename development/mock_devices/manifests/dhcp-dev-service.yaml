@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Development-only ClusterIP service that exposes Kea's DHCP UDP port 67.
+# The production Helm chart only exposes UDP 67 via LoadBalancer (MetalLB/NLB/Cilium).
+# This service lets mock device pods reach Kea on UDP 67 within the cluster.
+#
+# Usage: kubectl apply -f development/mock_devices/manifests/dhcp-dev-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: nv-config-manager-dhcp-dev
+  namespace: nv-config-manager
+  labels:
+    app: nv-config-manager-dhcp
+    component: dhcp-dev
+spec:
+  type: ClusterIP
+  ports:
+  - port: 67
+    protocol: UDP
+    name: dhcp
+    targetPort: 67
+  selector:
+    app: nv-config-manager-dhcp

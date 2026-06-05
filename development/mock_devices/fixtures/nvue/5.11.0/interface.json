@@ -1,0 +1,26 @@
+{
+  "eth0": {
+    "type": "eth",
+    "link": {
+      "state": {"up": {}}
+    },
+    "ip": {"address": {}},
+    "lldp": {"neighbor": {}}
+  },
+  "lo": {
+    "type": "loopback",
+    "link": {
+      "state": {"up": {}}
+    },
+    "ip": {"address": {}},
+    "lldp": {"neighbor": {}}
+  },
+  "swp1": {
+    "type": "swp",
+    "link": {
+      "state": {"up": {}}
+    },
+    "ip": {"address": {}},
+    "lldp": {"neighbor": {}}
+  }
+}

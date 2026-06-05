@@ -1,0 +1,17 @@
+{
+  "modelName": "DCS-7804R3-BND",
+  "internalVersion": "4.29.5M-mock",
+  "systemMacAddress": "00:1c:73:00:00:01",
+  "serialNumber": "ANON00001018",
+  "memTotal": 65777320,
+  "bootupTimestamp": 1700000000.0,
+  "memFree": 52000000,
+  "version": "4.29.5M",
+  "configMacAddress": "00:00:00:00:00:00",
+  "isIntlVersion": false,
+  "internalBuildId": "mock-build-id",
+  "hardwareRevision": "02.01",
+  "hwMacAddress": "00:1c:73:00:00:01",
+  "architecture": "x86_64",
+  "uptime": 86400
+}
