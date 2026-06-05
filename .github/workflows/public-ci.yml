@@ -426,6 +426,13 @@ jobs:
           restore_report components/network-templates/coverage.xml \
             /tmp/sonar-coverage/network/coverage.xml \
             /tmp/sonar-coverage/network/components/network-templates/coverage.xml
+      - name: Debug SonarQube connectivity
+        if: steps.sonar-token.outputs.has-token == 'true'
+        env:
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        run: |
+          echo "Sonar host: $SONAR_HOST_URL"
+          curl -v --max-time 10 "$SONAR_HOST_URL/api/v2/analysis/version" 2>&1 | head -40 || true
       - name: SonarQube branch scan
         if: steps.sonar-token.outputs.has-token == 'true' && !startsWith(github.ref, 'refs/heads/pull-request/')
         uses: &sonarqube_scan SonarSource/sonarqube-scan-action@c7ee0f9df90b7aa20e8dcf9695dcfe2e7da5b4f2
