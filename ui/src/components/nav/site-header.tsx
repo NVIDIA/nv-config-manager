@@ -16,70 +16,224 @@
  * limitations under the License.
  */
 import Link from "next/link";
+import useSWRImmutable from "swr/immutable";
 
 import { siteConfig } from "@/config/site";
 import { MainNav } from "@/components/nav";
 import { ThemeToggle } from "@/components/theme";
 import { useState } from "react";
-import { PlusIcon } from "lucide-react";
+import { LogOut, PlusIcon, UserCircle } from "lucide-react";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useRuntimeConfig } from "@/config/runtime";
+import { fetcher } from "@/lib/fetcher";
+import { cn, sanitizeUrl } from "@/lib/utils";
+import {
+  WorkflowMetadata,
+  WorkflowMetadataResponse,
+} from "@/types/data-table.types";
+
+type WhoamiResponse = {
+  user: string;
+  roles: string[];
+};
+
+const workflowMetadataBySlug = (
+  workflows: WorkflowMetadata[] | undefined
+): Map<string, WorkflowMetadata> => {
+  return new Map(
+    workflows?.map((workflow) => [workflow.name.toLowerCase(), workflow]) ?? []
+  );
+};
+
+const canExecuteWorkflow = (
+  metadata: WorkflowMetadata | undefined,
+  userRoles: Set<string>
+): boolean => {
+  if (!metadata) {
+    return false;
+  }
+
+  if (metadata.execute_roles.includes("all")) {
+    return true;
+  }
+
+  return metadata.execute_roles.some((role) => userRoles.has(role));
+};
+
+const getDisabledWorkflowReason = (
+  metadata: WorkflowMetadata | undefined,
+  isFormEnabled: boolean
+): string => {
+  if (!isFormEnabled) {
+    return "Form Coming Soon!";
+  }
+
+  if (!metadata) {
+    return "Workflow metadata is unavailable.";
+  }
+
+  const executeRoles = metadata.execute_roles;
+  if (executeRoles.length === 0) {
+    return "Required execute roles are not configured.";
+  }
+
+  return `Required execute roles: ${executeRoles.join(", ")}`;
+};
 
 const NewWorkflowChooser = () => {
   const [isOpen, setIsOpen] = useState(false);
-  const togglePopover = () => setIsOpen(!isOpen);
+  const { config } = useRuntimeConfig();
+  const apiURL = config?.workflowApiUrl;
+  const { data: workflowMetadata } = useSWRImmutable<WorkflowMetadataResponse>(
+    apiURL ? sanitizeUrl(`${apiURL}/v1/workflow/metadata`) : null,
+    fetcher
+  );
+  const { data: userInfo } = useSWRImmutable<WhoamiResponse>(
+    apiURL ? sanitizeUrl(`${apiURL}/whoami`) : null,
+    fetcher
+  );
+
+  const metadataBySlug = workflowMetadataBySlug(workflowMetadata?.workflows);
+  const userRoles = new Set(userInfo?.roles ?? []);
+
   return (
     <div className="relative inline-block text-left">
-      <Popover open={isOpen} onOpenChange={togglePopover}>
+      <Popover open={isOpen} onOpenChange={setIsOpen}>
         <PopoverTrigger asChild>
-          <button
-            className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-10 w-10"
+          <Button
+            aria-label="New workflow"
+            size="icon"
             title="New workflow"
+            variant="ghost"
           >
             <PlusIcon size={24} />
-          </button>
+          </Button>
         </PopoverTrigger>
 
-        <PopoverContent>
-          {siteConfig.workflows.map((item, index) =>
-            item.enabled ? (
+        <PopoverContent align="end" className="max-h-[70vh] overflow-y-auto">
+          {siteConfig.workflows.map((item) => {
+            const metadata = metadataBySlug.get(item.slug);
+            const hasPermission = canExecuteWorkflow(metadata, userRoles);
+            const isEnabled = item.enabled && hasPermission;
+            const disabledReason = getDisabledWorkflowReason(
+              metadata,
+              item.enabled
+            );
+
+            return isEnabled ? (
               <Link
-                key={index}
+                key={item.slug}
                 href={`/workflows/${item.slug}/form`}
-                className="flex hover:bg-accent hover:text-accent-foreground rounded-sm border-none hover:border-none px-3 py-2"
-                onClick={togglePopover}
+                className="flex rounded-sm border-none px-3 py-2 hover:border-none hover:bg-accent hover:text-accent-foreground"
+                onClick={() => setIsOpen(false)}
               >
                 {item.title}
               </Link>
             ) : (
-              <TooltipProvider key={index}>
+              <TooltipProvider delayDuration={0} key={item.slug}>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <div className="cursor-not-allowed">
-                      <div className="flex hover:bg-accent hover:text-accent-foreground rounded-sm border-none hover:border-none px-3 py-2 pointer-events-none opacity-50">
-                        {item.title}
-                      </div>
+                    <div
+                      aria-disabled="true"
+                      className={cn(
+                        "flex cursor-not-allowed rounded-sm border-none px-3 py-2 opacity-50",
+                        "hover:border-none hover:bg-accent hover:text-accent-foreground"
+                      )}
+                    >
+                      {item.title}
                     </div>
                   </TooltipTrigger>
                   <TooltipContent side="left">
-                    <p>Form Coming Soon!</p>
+                    <p>{disabledReason}</p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
-            )
-          )}
+            );
+          })}
         </PopoverContent>
       </Popover>
     </div>
+  );
+};
+
+const UserRolesMenu = () => {
+  const { config } = useRuntimeConfig();
+  const apiURL = config?.workflowApiUrl;
+  const { data: userInfo, error } = useSWRImmutable<WhoamiResponse>(
+    apiURL ? sanitizeUrl(`${apiURL}/whoami`) : null,
+    fetcher
+  );
+
+  const roles = userInfo?.roles ?? [];
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          aria-label="User roles"
+          size="icon"
+          title="User roles"
+          variant="ghost"
+        >
+          <UserCircle size={24} />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-80">
+        <div className="space-y-4">
+          <div className="space-y-1">
+            <div className="text-xs font-medium text-muted-foreground">
+              Username
+            </div>
+            <div className="break-all text-sm font-medium">
+              {userInfo?.user ?? "Unknown user"}
+            </div>
+            {error && (
+              <div className="text-xs text-destructive">
+                Unable to load roles
+              </div>
+            )}
+          </div>
+          <div className="space-y-2">
+            <div className="text-xs font-medium text-muted-foreground">
+              Roles
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {roles.length > 0 ? (
+                roles.map((role) => (
+                  <Badge key={role} variant="secondary">
+                    {role}
+                  </Badge>
+                ))
+              ) : (
+                <span className="text-sm text-muted-foreground">No roles</span>
+              )}
+            </div>
+          </div>
+          <Button
+            asChild
+            className="w-full justify-start gap-2"
+            variant="outline"
+          >
+            <a href="/auth/logout">
+              <LogOut size={16} />
+              Logout
+            </a>
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 };
 
@@ -91,6 +245,7 @@ export function SiteHeader() {
         <div className="flex flex-1 items-center justify-end space-x-4">
           <nav className="flex items-center space-x-1">
             <NewWorkflowChooser />
+            <UserRolesMenu />
             <ThemeToggle />
           </nav>
         </div>

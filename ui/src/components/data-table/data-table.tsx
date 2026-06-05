@@ -17,26 +17,27 @@
  */
 
 import * as React from "react";
-import { useSearchParams } from "next/navigation";
-import useSWR from "swr";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import useSWRInfinite from "swr/infinite";
 import {
   Column,
   ColumnDef,
   ColumnFiltersState,
-  FilterFn,
   flexRender,
   getCoreRowModel,
   getFilteredRowModel,
   getPaginationRowModel,
   getSortedRowModel,
   RowData,
+  Table as TanstackTable,
+  VisibilityState,
   useReactTable,
 } from "@tanstack/react-table";
-import { RankingInfo, rankItem } from "@tanstack/match-sorter-utils";
+import { Columns3, RefreshCw } from "lucide-react";
 import { fetcher } from "@/lib/fetcher";
 import { TokenError } from "@/lib/errors";
 import { useRuntimeConfig } from "@/config/runtime";
-import { sanitizeUrl } from "@/lib/utils";
+import { cn, sanitizeUrl } from "@/lib/utils";
 import {
   Table,
   TableBody,
@@ -48,7 +49,12 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { DataTableProps, Workflow, WORKFLOW_STATUS } from "@/types/data-table.types";
+import {
+  DataTableProps,
+  Workflow,
+  WorkflowListResponse,
+  WORKFLOW_STATUS,
+} from "@/types/data-table.types";
 import { DebouncedInput } from "@/components/ui/debounced-input";
 import {
   Select,
@@ -57,57 +63,172 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { useHeaderContext } from "@/app/contexts/header";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 
 declare module "@tanstack/react-table" {
-  interface FilterFns {
-    fuzzy: FilterFn<unknown>;
-  }
-  interface FilterMeta {
-    itemRank: RankingInfo;
-  }
   // eslint-disable-next-line @typescript-eslint/no-unused-vars -- required by module augmentation contract
   interface ColumnMeta<TData extends RowData, TValue> {
+    className?: string;
+    columnLabel?: string;
+    filterOptions?: { label: string; value: string }[];
     filterVariant?: "select";
+    placeholder?: string;
   }
 }
 
-const fuzzyFilter: FilterFn<Workflow> = (row, columnId, value, addMeta) => {
-  const itemRank = rankItem(row.getValue(columnId), value);
-
-  addMeta({
-    itemRank,
-  });
-
-  return itemRank.passed;
+const defaultColumnVisibility: VisibilityState = {
+  search_attributes_DeviceID: false,
+  search_attributes_DevicePlatform: false,
+  search_attributes_DeviceRole: false,
 };
+const workflowPageSizeStorageKey = "nvcm.workflowTable.pageSize";
+const workflowPageSizeOptions = [10, 50, 100];
 
-const removeSearchAttributesPrefix = (str: string): string => {
-  const prefix = "search_attributes_";
+const isWorkflowPageSize = (pageSize: number): boolean =>
+  workflowPageSizeOptions.includes(pageSize);
 
-  if (str.startsWith(prefix)) {
-    return str.slice(prefix.length);
+const getStoredWorkflowPageSize = (): number => {
+  if (typeof window === "undefined") {
+    return workflowPageSizeOptions[0];
   }
 
-  return str;
+  const pageSize = Number(window.localStorage.getItem(workflowPageSizeStorageKey));
+  return isWorkflowPageSize(pageSize) ? pageSize : workflowPageSizeOptions[0];
+};
+
+const setStoredWorkflowPageSize = (pageSize: number) => {
+  if (typeof window === "undefined" || !isWorkflowPageSize(pageSize)) {
+    return;
+  }
+
+  window.localStorage.setItem(workflowPageSizeStorageKey, String(pageSize));
+};
+
+const workflowApiFilterParams: Record<string, string> = {
+  search_attributes_DeviceID: "device_id",
+  search_attributes_DeviceName: "device_name",
+  search_attributes_DevicePlatform: "device_platform",
+  search_attributes_DeviceRole: "device_role",
+  search_attributes_Site: "site",
+  search_attributes_User: "user",
+  status: "status",
+  workflow_type: "workflow_type",
+};
+
+const getWorkflowApiFilterString = (columnFilters: ColumnFiltersState): string => {
+  const params = new URLSearchParams();
+
+  columnFilters.forEach((filter) => {
+    const value = String(filter.value ?? "").trim();
+    const apiParam = workflowApiFilterParams[filter.id.replaceAll(".", "_")];
+
+    if (apiParam && value) {
+      params.set(apiParam, value);
+    }
+  });
+
+  return params.toString();
+};
+
+type DateTimeFilterParts = {
+  date: string;
+  time: string;
+};
+
+const formatDateTimeFilterParts = (date: Date): DateTimeFilterParts => {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  const year = date.getFullYear();
+  const month = pad(date.getMonth() + 1);
+  const day = pad(date.getDate());
+  const hours = pad(date.getHours());
+  const minutes = pad(date.getMinutes());
+
+  return {
+    date: `${year}-${month}-${day}`,
+    time: `${hours}:${minutes}`,
+  };
+};
+
+const getDateTimePartsFromSearchParam = (
+  value: string | null
+): DateTimeFilterParts => {
+  if (!value) {
+    return { date: "", time: "" };
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return { date: "", time: "" };
+  }
+
+  return formatDateTimeFilterParts(date);
+};
+
+const getIsoFromDateTimeParts = (
+  dateValue: string,
+  timeValue: string,
+  fallbackTime: string
+): string | null => {
+  if (!dateValue) {
+    return null;
+  }
+
+  const date = new Date(`${dateValue}T${timeValue || fallbackTime}`);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return date.toISOString();
+};
+
+const getColumnFiltersFromSearchParams = (
+  searchParams: { get: (name: string) => string | null } | null
+): ColumnFiltersState => {
+  if (!searchParams) {
+    return [];
+  }
+
+  return Object.entries(workflowApiFilterParams).reduce<ColumnFiltersState>(
+    (filters, [columnId, apiParam]) => {
+      const value = searchParams.get(apiParam);
+      if (value) {
+        filters.push({ id: columnId, value });
+      }
+      return filters;
+    },
+    []
+  );
+};
+
+const areColumnFiltersEqual = (
+  left: ColumnFiltersState,
+  right: ColumnFiltersState
+): boolean => {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  return left.every(
+    (filter, index) =>
+      filter.id === right[index].id && filter.value === right[index].value
+  );
 };
 
 function Filter({ column }: { column: Column<Workflow, unknown> }) {
   const columnFilterValue = (column.getFilterValue() ?? "") as string;
-  const { filterVariant } = column.columnDef.meta ?? {};
-  const statusOptions = [
-    "not-started",
-    "pending",
-    "completed",
-    "running",
-    "failed",
-  ];
+  const { filterOptions, filterVariant, placeholder } = column.columnDef.meta ?? {};
+  const selectValues = filterOptions?.map((option) => option.value) ?? [];
 
   const handleSelect = (value: string) => {
     if (value == "all") {
       column.setFilterValue("");
-    } else if (statusOptions.includes(value)) {
+    } else if (selectValues.includes(value)) {
       column.setFilterValue(value);
     }
   };
@@ -115,18 +236,18 @@ function Filter({ column }: { column: Column<Workflow, unknown> }) {
   return filterVariant == "select" ? (
     <Select
       onValueChange={handleSelect}
-      value={statusOptions.includes(columnFilterValue) ? columnFilterValue : ""}
+      value={selectValues.includes(columnFilterValue) ? columnFilterValue : ""}
     >
       <SelectTrigger className="w-full">
-        <SelectValue placeholder="Select Status" />
+        <SelectValue placeholder={placeholder ?? "Select"} />
       </SelectTrigger>
       <SelectContent>
         <SelectItem value="all">All</SelectItem>
-        <SelectItem value="not-started">Not Started</SelectItem>
-        <SelectItem value="pending">Pending Approval</SelectItem>
-        <SelectItem value="completed">Completed</SelectItem>
-        <SelectItem value="running">Running</SelectItem>
-        <SelectItem value="failed">Failed</SelectItem>
+        {filterOptions?.map((option) => (
+          <SelectItem key={option.value} value={option.value}>
+            {option.label}
+          </SelectItem>
+        ))}
       </SelectContent>
     </Select>
   ) : (
@@ -135,58 +256,162 @@ function Filter({ column }: { column: Column<Workflow, unknown> }) {
       value={columnFilterValue}
       onChange={(value) => column.setFilterValue(value)}
       placeholder={`Search...`}
-      className="w-36 border shadow rounded"
+      className="h-9 w-full min-w-0 rounded border shadow"
     />
   );
 }
 
-export function DataTable<TData, TValue>({
-  columns,
-  workflowType,
-}: DataTableProps<TData, TValue>) {
+function ColumnVisibilityMenu({ table }: { table: TanstackTable<Workflow> }) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button className="gap-2" size="sm" variant="outline">
+          <Columns3 size={16} />
+          Columns
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-64">
+        <div className="space-y-2">
+          {table
+            .getAllLeafColumns()
+            .filter((column) => column.getCanHide())
+            .map((column) => {
+              const columnLabel = column.columnDef.meta?.columnLabel ?? column.id;
+
+              return (
+                <label
+                  className="flex items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                  key={column.id}
+                >
+                  <Checkbox
+                    aria-label={`Toggle ${columnLabel} column`}
+                    checked={column.getIsVisible()}
+                    onCheckedChange={(checked) =>
+                      column.toggleVisibility(checked === true)
+                    }
+                  />
+                  <span>{columnLabel}</span>
+                </label>
+              );
+            })}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+export function DataTable<TData, TValue>({ columns }: DataTableProps<TData, TValue>) {
   const { config } = useRuntimeConfig();
   const apiURL = config?.workflowApiUrl;
-  
-  const [globalFilter, setGlobalFilter] = React.useState("");
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const searchParamString = React.useMemo(
+    () => searchParams?.toString() ?? "",
+    [searchParams]
+  );
+
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
-    []
+    () => getColumnFiltersFromSearchParams(searchParams)
+  );
+  const [workflowStartDate, setWorkflowStartDate] = React.useState<string>(() =>
+    getDateTimePartsFromSearchParam(searchParams?.get("start_time") ?? null).date
+  );
+  const [workflowStartClock, setWorkflowStartClock] = React.useState<string>(() =>
+    getDateTimePartsFromSearchParam(searchParams?.get("start_time") ?? null).time
+  );
+  const [workflowEndDate, setWorkflowEndDate] = React.useState<string>(() =>
+    getDateTimePartsFromSearchParam(searchParams?.get("end_time") ?? null).date
+  );
+  const [workflowEndClock, setWorkflowEndClock] = React.useState<string>(() =>
+    getDateTimePartsFromSearchParam(searchParams?.get("end_time") ?? null).time
+  );
+  const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>(
+    defaultColumnVisibility
   );
   const [isHideCompletedChecked, setIsHideCompletedChecked] =
     React.useState<boolean>(false);
 
-  const [workflowData, setWorkflowData] = React.useState<Workflow[]>([]);
-  const [nextPageToken, setNextPageToken] = React.useState("");
-  const [hasMoreData, setHasMoreData] = React.useState(true);
-  const searchParams = useSearchParams();
   const { refreshPaused, setRefreshPaused } = useHeaderContext();
-  const [apiLimit, setApiLimit] = React.useState(10);
+  const [pendingPageIndex, setPendingPageIndex] = React.useState<number | null>(
+    null
+  );
+  const [pagination, setPagination] = React.useState({
+    pageIndex: 0,
+    pageSize: getStoredWorkflowPageSize(),
+  });
+  const apiFilterString = React.useMemo(() => {
+    const params = new URLSearchParams(getWorkflowApiFilterString(columnFilters));
+    const startTime = getIsoFromDateTimeParts(
+      workflowStartDate,
+      workflowStartClock,
+      "00:00"
+    );
+    const endTime = getIsoFromDateTimeParts(
+      workflowEndDate,
+      workflowEndClock,
+      "23:59"
+    );
+
+    if (startTime) {
+      params.set("start_time", startTime);
+    }
+    if (endTime) {
+      params.set("end_time", endTime);
+    }
+
+    return params.toString();
+  }, [
+    columnFilters,
+    workflowEndClock,
+    workflowEndDate,
+    workflowStartClock,
+    workflowStartDate,
+  ]);
+
+  const getWorkflowPageKey = React.useCallback(
+    (
+      pageIndex: number,
+      previousPageData: WorkflowListResponse | null
+    ): string | null => {
+      if (refreshPaused || !apiURL) {
+        return null;
+      }
+
+      const params = new URLSearchParams(apiFilterString);
+      params.set("limit", String(pagination.pageSize));
+
+      if (pageIndex > 0) {
+        const nextPageToken = previousPageData?.next_page_token;
+        if (!nextPageToken) {
+          return null;
+        }
+        params.set("next_page_token", nextPageToken);
+      }
+
+      return sanitizeUrl(`${apiURL}/v1/workflow/?${params.toString()}`);
+    },
+    [apiFilterString, apiURL, pagination.pageSize, refreshPaused]
+  );
 
   const {
-    data,
+    data: workflowPages,
     error: workflowError,
     isLoading,
-  } = useSWR(
-    !refreshPaused && hasMoreData && apiURL
-      ? sanitizeUrl(
-          `${apiURL}/v1/workflow/?workflow_type=${workflowType}&limit=${apiLimit}&next_page_token=${nextPageToken}`
-        )
-      : null,
-    fetcher,
-    {
-      refreshInterval: 60000,
-      onSuccess: (data) => {
-        const uniqueWorkflows = Array.from(
-          new Map(
-            [...workflowData, ...data.workflows].map((item) => [item.id, item])
-          ).values()
-        );
-        setWorkflowData(uniqueWorkflows);
-        setNextPageToken(data.next_page_token || "");
-        setHasMoreData(!!data.next_page_token);
-        setApiLimit(100);
-      },
-    }
+    isValidating,
+    mutate,
+    setSize,
+  } = useSWRInfinite<WorkflowListResponse>(
+    getWorkflowPageKey,
+    fetcher
   );
+
+  const workflowData = React.useMemo(
+    () => (workflowPages ?? []).flatMap((page) => page.workflows),
+    [workflowPages]
+  );
+  const lastWorkflowPage = workflowPages?.[workflowPages.length - 1];
+  const hasMoreData = Boolean(lastWorkflowPage?.next_page_token);
 
   React.useEffect(() => {
     if (workflowError instanceof TokenError) {
@@ -196,36 +421,55 @@ export function DataTable<TData, TValue>({
 
   React.useEffect(() => {
     const queryParam = searchParams?.get("hidecompleted")?.toLowerCase();
-    if (queryParam == "true") {
-      const filteredData = workflowData.filter(
-        (workflow) => workflow.status != WORKFLOW_STATUS.completed
-      );
-      setWorkflowData(filteredData);
-      setIsHideCompletedChecked(true);
+    setIsHideCompletedChecked(queryParam == "true");
+  }, [searchParams]);
+
+  const tableData = React.useMemo(() => {
+    if (!isHideCompletedChecked) {
+      return workflowData;
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- workflowData is set here; adding it would cause an infinite loop
-  }, [data, searchParams]);
-  const [pagination, setPagination] = React.useState({
-    pageIndex: 0,
-    pageSize: 10,
-  });
+    return workflowData.filter((workflow) => workflow.status != WORKFLOW_STATUS.completed);
+  }, [isHideCompletedChecked, workflowData]);
+
+  const resetWorkflowFetchState = React.useCallback(() => {
+    setPendingPageIndex(null);
+    void setSize(1);
+    setPagination((currentPagination) => ({ ...currentPagination, pageIndex: 0 }));
+  }, [setSize]);
+  const didMountFilters = React.useRef(false);
+
+  const handleColumnFiltersChange = React.useCallback(
+    (
+      updater:
+        | ColumnFiltersState
+        | ((old: ColumnFiltersState) => ColumnFiltersState)
+    ) => {
+      setColumnFilters((currentFilters) => {
+        const nextFilters =
+          typeof updater === "function" ? updater(currentFilters) : updater;
+
+        if (areColumnFiltersEqual(currentFilters, nextFilters)) {
+          return currentFilters;
+        }
+
+        return nextFilters;
+      });
+    },
+    []
+  );
 
   const table = useReactTable({
-    data: workflowData,
+    data: tableData,
     columns: columns as ColumnDef<Workflow, unknown>[],
-    filterFns: {
-      fuzzy: fuzzyFilter,
-    },
     state: {
       columnFilters,
-      globalFilter,
+      columnVisibility,
       pagination,
     },
     autoResetPageIndex: false,
+    onColumnVisibilityChange: setColumnVisibility,
     onPaginationChange: setPagination,
-    onColumnFiltersChange: setColumnFilters,
-    onGlobalFilterChange: setGlobalFilter,
-    globalFilterFn: "fuzzy",
+    onColumnFiltersChange: handleColumnFiltersChange,
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getSortedRowModel: getSortedRowModel(),
@@ -233,94 +477,257 @@ export function DataTable<TData, TValue>({
   });
 
   React.useEffect(() => {
-    const headers = table.getHeaderGroups()[0].headers;
-    headers.forEach(({ id }) => {
-      const queryParam = searchParams?.get(
-        removeSearchAttributesPrefix(id).toLowerCase()
-      );
-      table.getColumn(id)?.setFilterValue(queryParam);
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- table is recreated every render; including it would run on every render
-  }, [searchParams]);
+    const nextSearchParams = new URLSearchParams(searchParamString);
+    const nextFilters = getColumnFiltersFromSearchParams(nextSearchParams);
+    const nextStartTime = getDateTimePartsFromSearchParam(
+      nextSearchParams.get("start_time")
+    );
+    const nextEndTime = getDateTimePartsFromSearchParam(
+      nextSearchParams.get("end_time")
+    );
 
-  const handleToggleHideCompleted = (checked: boolean) => {
-    if (checked) {
-      setWorkflowData(
-        workflowData.filter(
-          (workflow) => workflow.status != WORKFLOW_STATUS.completed
-        )
-      );
-      setIsHideCompletedChecked(true);
-    } else {
-      setWorkflowData(data);
-      setIsHideCompletedChecked(false);
+    setWorkflowStartDate(nextStartTime.date);
+    setWorkflowStartClock(nextStartTime.time);
+    setWorkflowEndDate(nextEndTime.date);
+    setWorkflowEndClock(nextEndTime.time);
+
+    setColumnFilters((currentFilters) => {
+      if (areColumnFiltersEqual(currentFilters, nextFilters)) {
+        return currentFilters;
+      }
+
+      return nextFilters;
+    });
+  }, [searchParamString]);
+
+  React.useEffect(() => {
+    if (!didMountFilters.current) {
+      didMountFilters.current = true;
+      return;
     }
+
+    resetWorkflowFetchState();
+  }, [apiFilterString, resetWorkflowFetchState]);
+
+  React.useEffect(() => {
+    if (
+      pendingPageIndex !== null &&
+      tableData.length > pendingPageIndex * pagination.pageSize
+    ) {
+      setPagination((currentPagination) => ({
+        ...currentPagination,
+        pageIndex: pendingPageIndex,
+      }));
+      setPendingPageIndex(null);
+    }
+  }, [pagination.pageSize, pendingPageIndex, tableData.length]);
+
+  const handleToggleHideCompleted = (checked: boolean | "indeterminate") => {
+    setIsHideCompletedChecked(checked === true);
   };
 
   const handleClearFilters = () => {
-    const headers = table.getHeaderGroups()[0].headers;
-    headers.forEach(({ id }) => {
-      table.getColumn(id)?.setFilterValue("");
-    });
-    setWorkflowData(data);
+    setColumnFilters([]);
+    setWorkflowStartDate("");
+    setWorkflowStartClock("");
+    setWorkflowEndDate("");
+    setWorkflowEndClock("");
     setIsHideCompletedChecked(false);
-    table.resetGlobalFilter();
+    resetWorkflowFetchState();
+    if (searchParamString) {
+      router.replace(pathname, { scroll: false });
+    }
   };
+
+  const handleRefresh = () => {
+    void mutate();
+  };
+
+  const handlePageSizeChange = (value: string) => {
+    const pageSize = Number(value);
+    if (!isWorkflowPageSize(pageSize)) {
+      return;
+    }
+
+    setStoredWorkflowPageSize(pageSize);
+    setPendingPageIndex(null);
+    setPagination({ pageIndex: 0, pageSize });
+    void setSize(1);
+  };
+
+  const loadedPageCount = Math.max(
+    Math.ceil(tableData.length / pagination.pageSize),
+    1
+  );
+  const backendPageCount = Math.max(
+    loadedPageCount,
+    (workflowPages?.length ?? 0) + (hasMoreData ? 1 : 0),
+    pagination.pageIndex + 1
+  );
+  const nextPageIndex = pagination.pageIndex + 1;
+  const hasLoadedNextPage =
+    tableData.length > nextPageIndex * pagination.pageSize;
+
+  const handleNextPage = () => {
+    if (hasLoadedNextPage) {
+      setPagination((currentPagination) => ({
+        ...currentPagination,
+        pageIndex: nextPageIndex,
+      }));
+      return;
+    }
+
+    if (hasMoreData && pendingPageIndex === null) {
+      setPendingPageIndex(nextPageIndex);
+      void setSize((currentSize) => currentSize + 1);
+    }
+  };
+
+  const handleGoToPage = (pageIndex: number) => {
+    const nextIndex = Math.max(0, Math.min(pageIndex, backendPageCount - 1));
+
+    if (nextIndex < loadedPageCount) {
+      setPendingPageIndex(null);
+      setPagination((currentPagination) => ({
+        ...currentPagination,
+        pageIndex: nextIndex,
+      }));
+      return;
+    }
+
+    if (hasMoreData && pendingPageIndex === null) {
+      setPendingPageIndex(nextIndex);
+      void setSize(nextIndex + 1);
+    }
+  };
+
+  const isFetchingNextPage = pendingPageIndex !== null;
 
   return (
     <>
-      <div className="flex items-center py-4 gap-4">
-        <DebouncedInput
-          value={globalFilter ?? ""}
-          onChange={(value) => setGlobalFilter(String(value))}
-          className="p-2 font-lg shadow border border-block"
-          placeholder="Search all columns..."
-        />
-        <div className="flex items-center space-x-2">
-          <Checkbox
-            onCheckedChange={handleToggleHideCompleted}
-            checked={isHideCompletedChecked}
-          />
-          <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-            Hide Completed Workflows
+      <div className="mb-4 mt-2 rounded-md border border-border/70 bg-card p-2 shadow-sm">
+        <div className="flex w-full flex-wrap items-center justify-end gap-1.5">
+          <label className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-input bg-background px-2 text-sm font-medium shadow-sm">
+            <Checkbox
+              aria-label="Hide completed workflows"
+              onCheckedChange={handleToggleHideCompleted}
+              checked={isHideCompletedChecked}
+            />
+            <span>Hide Completed</span>
           </label>
-        </div>
+          <div className="flex max-w-full flex-wrap items-center justify-end gap-x-1.5 gap-y-2">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-medium text-muted-foreground">
+                Start
+              </span>
+              <Input
+                aria-label="Start date"
+                className="h-9 w-36 shrink-0 bg-background px-2 shadow-sm"
+                onChange={(event) => setWorkflowStartDate(event.target.value)}
+                type="date"
+                value={workflowStartDate}
+              />
+              <Input
+                aria-label="Start time"
+                className="h-9 w-28 shrink-0 bg-background px-2 shadow-sm"
+                onChange={(event) => setWorkflowStartClock(event.target.value)}
+                type="time"
+                value={workflowStartClock}
+              />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-medium text-muted-foreground">
+                End
+              </span>
+              <Input
+                aria-label="End date"
+                className="h-9 w-36 shrink-0 bg-background px-2 shadow-sm"
+                onChange={(event) => setWorkflowEndDate(event.target.value)}
+                type="date"
+                value={workflowEndDate}
+              />
+              <Input
+                aria-label="End time"
+                className="h-9 w-28 shrink-0 bg-background px-2 shadow-sm"
+                onChange={(event) => setWorkflowEndClock(event.target.value)}
+                type="time"
+                value={workflowEndClock}
+              />
+            </div>
+          </div>
 
-        <Button onClick={handleClearFilters}>Clear All Filters</Button>
+          <Button
+            aria-label="Clear All Filters"
+            onClick={handleClearFilters}
+            size="sm"
+            title="Clear all filters"
+            variant="outline"
+          >
+            Clear
+          </Button>
+          <Button
+            aria-label="Refresh workflows"
+            className="gap-2"
+            disabled={isValidating}
+            onClick={handleRefresh}
+            size="sm"
+            variant="outline"
+          >
+            <RefreshCw
+              className={isValidating ? "animate-spin" : ""}
+              size={16}
+            />
+            Refresh
+          </Button>
+          <ColumnVisibilityMenu table={table} />
+        </div>
       </div>
-      <div className="rounded-md border">
+      <div className="overflow-hidden rounded-md border border-border/70 bg-card shadow-sm">
         <Table>
-          <TableHeader>
+          <TableHeader className="bg-muted/40">
             {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id}>
+              <TableRow
+                className="border-border/70 hover:bg-transparent"
+                key={headerGroup.id}
+              >
                 {headerGroup.headers.map((header) => {
                   return (
-                    <TableHead key={header.id}>
-                      {header.isPlaceholder
-                        ? null
-                        : flexRender(
-                            header.column.columnDef.header,
-                            header.getContext()
-                          )}
-                      {header.column.getCanFilter() && (
-                        <div>
-                          <Filter column={header.column} />
-                        </div>
+                    <TableHead
+                      className={cn(
+                        "border-r border-border/50 px-3 pb-4 pt-3 align-top last:border-r-0",
+                        header.column.columnDef.meta?.className
                       )}
+                      key={header.id}
+                    >
+                      <div className="flex min-h-[4.25rem] flex-col gap-2">
+                        <div className="flex min-h-8 items-center">
+                          {header.isPlaceholder
+                            ? null
+                            : flexRender(
+                                header.column.columnDef.header,
+                                header.getContext()
+                              )}
+                        </div>
+                        {header.column.getCanFilter() && (
+                          <div>
+                            <Filter column={header.column} />
+                          </div>
+                        )}
+                      </div>
                     </TableHead>
                   );
                 })}
               </TableRow>
             ))}
           </TableHeader>
-          <TableBody>
+          <TableBody className="bg-card">
             {isLoading &&
             table.getState().pagination.pageIndex *
               table.getState().pagination.pageSize >=
-              workflowData.length ? (
+              tableData.length ? (
               <TableRow>
                 <TableCell
-                  colSpan={columns.length}
+                  colSpan={table.getVisibleLeafColumns().length}
                   className="h-24 text-center"
                 >
                   <div className="flex items-center justify-center h-full">
@@ -331,11 +738,18 @@ export function DataTable<TData, TValue>({
             ) : table.getRowModel().rows?.length ? (
               table.getRowModel().rows.map((row) => (
                 <TableRow
+                  className="border-border/60 odd:bg-background/35 even:bg-muted/10 hover:bg-muted/30"
                   key={row.id}
                   data-state={row.getIsSelected() && "selected"}
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
+                    <TableCell
+                      className={cn(
+                        "border-r border-border/30 px-3 py-3 last:border-r-0",
+                        cell.column.columnDef.meta?.className
+                      )}
+                      key={cell.id}
+                    >
                       {flexRender(
                         cell.column.columnDef.cell,
                         cell.getContext()
@@ -347,7 +761,7 @@ export function DataTable<TData, TValue>({
             ) : (
               <TableRow>
                 <TableCell
-                  colSpan={columns.length}
+                  colSpan={table.getVisibleLeafColumns().length}
                   className="h-24 text-center"
                 >
                   No results.
@@ -356,21 +770,21 @@ export function DataTable<TData, TValue>({
             )}
           </TableBody>
         </Table>
-        <div className="flex items-center justify-between w-full p-4 border-t">
+        <div className="flex items-center justify-between w-full border-t border-border/70 bg-muted/20 p-4">
           <div className="flex items-center space-x-2">
             <Select
               value={String(table.getState().pagination.pageSize)}
-              onValueChange={(value) => {
-                table.setPageSize(Number(value));
-              }}
+              onValueChange={handlePageSizeChange}
             >
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Rows per page" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="10">10 Rows</SelectItem>
-                <SelectItem value="50">50 Rows</SelectItem>
-                <SelectItem value="100">100 Rows</SelectItem>
+                {workflowPageSizeOptions.map((pageSize) => (
+                  <SelectItem key={pageSize} value={String(pageSize)}>
+                    {pageSize} Rows
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -378,7 +792,7 @@ export function DataTable<TData, TValue>({
           <div className="text-center flex flex-col items-center flex-grow">
             <div>
               {table.getState().pagination.pageIndex + 1} of{" "}
-              {table.getPageCount()}
+              {backendPageCount}
             </div>
             <div className="flex items-center space-x-2">
               <span>Go to page:</span>
@@ -386,18 +800,17 @@ export function DataTable<TData, TValue>({
                 type="number"
                 defaultValue={table.getState().pagination.pageIndex + 1}
                 onChange={(e) => {
-                  const maxPage = table.getPageCount();
                   let page = e.target.value ? Number(e.target.value) - 1 : 0;
 
-                  if (page >= maxPage) {
-                    page = maxPage - 1;
+                  if (page >= backendPageCount) {
+                    page = backendPageCount - 1;
                   }
 
-                  table.setPageIndex(page);
+                  handleGoToPage(page);
                 }}
                 className="border p-1 rounded w-16"
                 min={1}
-                max={table.getPageCount()}
+                max={backendPageCount}
               />
             </div>
           </div>
@@ -415,11 +828,13 @@ export function DataTable<TData, TValue>({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => table.nextPage()}
-              disabled={hasMoreData ? false : !table.getCanNextPage()}
+              onClick={handleNextPage}
+              disabled={
+                isFetchingNextPage || (!hasMoreData && !hasLoadedNextPage)
+              }
               className="px-4 py-2 border rounded"
             >
-              Next
+              {isFetchingNextPage ? "Loading..." : "Next"}
             </Button>
           </div>
         </div>

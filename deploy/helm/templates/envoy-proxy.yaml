@@ -77,6 +77,10 @@ spec:
                   {{- if $needsContainerPatch }}
                   containers:
                   - name: envoy
+                    {{- if .Values.gateway.envoyProxy.resources }}
+                    resources:
+                      {{- toYaml .Values.gateway.envoyProxy.resources | nindent 22 }}
+                    {{- end }}
                     {{- if $envoyImage }}
                     image: {{ $envoyImage | quote }}
                     {{- end }}

@@ -586,6 +586,84 @@ def _run_logged_pipe(
     return subprocess.CompletedProcess(sink_cmd, sink.returncode, stdout_text, stderr_text)
 
 
+def _yaml_documents(text: str) -> list[str]:
+    """Split a simple multi-document YAML stream."""
+    documents: list[str] = []
+    current: list[str] = []
+    for line in text.splitlines():
+        if line.strip() == "---":
+            document = "\n".join(current).strip()
+            if document:
+                documents.append(document)
+            current = []
+            continue
+        current.append(line)
+
+    document = "\n".join(current).strip()
+    if document:
+        documents.append(document)
+    return documents
+
+
+def _crd_metadata_name(document: str) -> str | None:
+    """Return metadata.name from a CRD document."""
+    in_metadata = False
+    for line in document.splitlines():
+        if line == "metadata:":
+            in_metadata = True
+            continue
+        if not in_metadata:
+            continue
+        if line.startswith("  name: "):
+            return line.split(":", 1)[1].strip()
+        if line and not line.startswith(" "):
+            return None
+    return None
+
+
+def _filter_envoy_gateway_crds(crd_stream: str) -> str:
+    """Keep only Envoy Gateway CRDs from a Helm chart CRD stream."""
+    documents = [
+        document
+        for document in _yaml_documents(crd_stream)
+        if (_crd_metadata_name(document) or "").endswith(".gateway.envoyproxy.io")
+    ]
+    if not documents:
+        raise RuntimeError("Envoy Gateway chart did not include gateway.envoyproxy.io CRDs")
+    return "\n---\n".join(documents) + "\n"
+
+
+def _apply_envoy_gateway_crds(
+    chart_ref: str,
+    version: str | None,
+    step: DeployStep,
+    callback: DeployCallback,
+) -> None:
+    """Apply only Envoy Gateway CRDs from the Envoy chart."""
+    helm_args = ["helm", "show", "crds", chart_ref]
+    if version is not None:
+        helm_args.extend(["--version", version])
+    callback.on_log("$ helm show crds...")
+    result = _run(helm_args, timeout=300)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        crd_path = Path(tmpdir) / "envoy-gateway-crds.yaml"
+        crd_path.write_text(_filter_envoy_gateway_crds(result.stdout))
+        _run_logged(
+            [
+                "kubectl",
+                "apply",
+                "--server-side",
+                "--force-conflicts",
+                "-f",
+                str(crd_path),
+            ],
+            step,
+            callback,
+            timeout=300,
+        )
+
+
 def _short_pod_text(value: str, *, limit: int = 140) -> str:
     """Return a compact single-line pod status detail."""
     value = " ".join(value.split())
@@ -1515,11 +1593,36 @@ class Deployer:
         bundle_root = self._operator_bundle_root()
 
         if opts.install_envoy_gateway:
-            # The Envoy Gateway Helm chart carries the matching Gateway API and
-            # Envoy Gateway CRDs. Pre-applying Gateway API CRDs with kubectl
-            # creates server-side field-manager ownership that Helm 4 conflicts
-            # with during chart CRD installation.
             self.callback.on_log("Installing Envoy Gateway...")
+            gateway_api_manifest = self._require_airgap_artifact(
+                self._local_operator_manifest(
+                    bundle_root,
+                    "gateway-api",
+                    versions.gateway_api_version,
+                ),
+                f"Gateway API manifest {versions.gateway_api_version}",
+            )
+            gateway_api_ref = (
+                str(gateway_api_manifest)
+                if gateway_api_manifest is not None
+                else "https://github.com/kubernetes-sigs/gateway-api/releases/download/"
+                f"{versions.gateway_api_version}/standard-install.yaml"
+            )
+            self.callback.on_log(f"Installing Gateway API {versions.gateway_api_version} CRDs...")
+            _run_logged(
+                [
+                    "kubectl",
+                    "apply",
+                    "--server-side",
+                    "--force-conflicts",
+                    "-f",
+                    gateway_api_ref,
+                ],
+                step,
+                self.callback,
+                timeout=300,
+            )
+
             envoy_chart = self._require_airgap_artifact(
                 self._local_operator_chart(
                     bundle_root,
@@ -1550,6 +1653,13 @@ class Deployer:
                 self.callback.on_log(f"Using local chart: {envoy_chart}")
             else:
                 envoy_args.extend(["--version", versions.envoy_gateway_version])
+            _apply_envoy_gateway_crds(
+                envoy_chart_ref,
+                None if envoy_chart is not None else versions.envoy_gateway_version,
+                step,
+                self.callback,
+            )
+            envoy_args.append("--skip-crds")
             _append_full_image_set_string(
                 envoy_args,
                 self.config,

@@ -14,17 +14,62 @@
 # limitations under the License.
 """Workflow Metadata Mixin."""
 
+import re
+
 from pydantic import BaseModel
+
+
+_ACRONYM_REPLACEMENTS = {
+    "Air": "AIR",
+    "Api": "API",
+    "Bmc": "BMC",
+    "Cli": "CLI",
+    "Guid": "GUID",
+    "Ib": "IB",
+    "Infiniband": "InfiniBand",
+    "Lldp": "LLDP",
+    "Mlnx": "MLNX",
+    "Nvlink": "NVLink",
+    "Os": "OS",
+    "Pkey": "PKey",
+    "Rbac": "RBAC",
+    "Vpc": "VPC",
+    "Ztp": "ZTP",
+}
+
+_TOKEN_REPLACEMENTS = {
+    "IBPKey": "IbPkey",
+    "NVLink": "Nvlink",
+}
+
+
+def _humanize_workflow_name(name: str) -> str:
+    """Return a readable workflow name from a workflow class name."""
+    if name.endswith("Workflow"):
+        name = name[:-8]
+
+    for token, replacement in _TOKEN_REPLACEMENTS.items():
+        name = name.replace(token, replacement)
+
+    s1 = re.sub("(.)([A-Z][a-z]+)", r"\1 \2", name)
+    words = re.sub("([a-z0-9])([A-Z])", r"\1 \2", s1).split()
+    return " ".join(_ACRONYM_REPLACEMENTS.get(word, word) for word in words)
 
 
 class WorkflowMetadataMixin:
     """Mixin to provide metadata for workflows."""
 
     # Class attributes that should be overridden in workflow classes
+    workflow_name: str | None = None
     workflow_description: str | None = None
     workflow_input_class: type[BaseModel] | None = None
     workflow_api_endpoint: str | None = None
     workflow_namespace: str | None = None
+
+    @classmethod
+    def get_workflow_name(cls) -> str:
+        """Get the human-readable workflow name."""
+        return cls.workflow_name or _humanize_workflow_name(cls.__name__)
 
     @classmethod
     def get_workflow_description(cls) -> str:
@@ -56,8 +101,6 @@ class WorkflowMetadataMixin:
     @classmethod
     def get_workflow_cli_name(cls) -> str:
         """Get the CLI command name for this workflow."""
-        import re
-
         # Convert CamelCase to kebab-case
         name = cls.__name__
         # Remove 'Workflow' suffix if present

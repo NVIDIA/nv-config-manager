@@ -23,11 +23,12 @@ export const SortableHeaderButton = <TData,>(
 ) => {
   return (
     <Button
+      className="-ml-2 h-8 px-2"
       variant="ghost"
       onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
     >
       {title}
-      <ArrowUpDown className="ml-2 h-4 w-4" />
+      <ArrowUpDown className="ml-1 h-3.5 w-3.5" />
     </Button>
   );
 };

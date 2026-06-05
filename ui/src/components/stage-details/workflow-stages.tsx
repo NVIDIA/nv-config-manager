@@ -43,6 +43,14 @@ import WorkflowInputDisplay from "@/components/stage-details/workflow-input-disp
 import { WorkflowClientComponentProps } from "@/types/workflow-page.types";
 import { StateHistory, WorkflowStage } from "@/types/data-table.types";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { useToast } from "@/components/ui/use-toast";
 import {
@@ -175,6 +183,7 @@ export const WorkflowClientComponent: React.FC<
   );
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isTerminating, setIsTerminating] = useState<boolean>(false);
+  const [isTerminateDialogOpen, setIsTerminateDialogOpen] = useState(false);
   const [terminateOutcome, setTerminateOutcome] = useState<
     "success" | "failed" | null
   >(null);
@@ -188,13 +197,23 @@ export const WorkflowClientComponent: React.FC<
   const workflowStatusBadgeState = getWorkflowStatusBadgeState(
     workflow.status
   );
+  const pendingApprovalStage = visibleStages.find(
+    (visibleStage) => visibleStage.state === "PENDING_APPROVAL"
+  );
 
   useEffect(() => {
-    if (!stage || !visibleStages.find((s) => s.name === stage.name)) {
-      setStage(getInitialStage(visibleStages));
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- re-sync only when the workflow changes, not on every stage update
-  }, [workflow.id]);
+    setStage((currentStage) => {
+      if (!currentStage) {
+        return getInitialStage(visibleStages);
+      }
+
+      return (
+        visibleStages.find(
+          (visibleStage) => visibleStage.name === currentStage.name
+        ) ?? getInitialStage(visibleStages)
+      );
+    });
+  }, [visibleStages]);
 
   useEffect(() => {
     setTerminateOutcome(null);
@@ -208,7 +227,6 @@ export const WorkflowClientComponent: React.FC<
         title: "Retry: Success",
         description: "Retrying Stage",
       });
-      setIsLoading(false);
     } catch (error) {
       console.error(error);
       toast({
@@ -216,20 +234,20 @@ export const WorkflowClientComponent: React.FC<
         title: "Retry: Failed",
         description: "Failed to retry stage.",
       });
+    } finally {
       setIsLoading(false);
     }
   }
 
-  async function handleApprove() {
+  async function handleApprove(stageName = stage!.name) {
     try {
       setIsLoading(true);
-      await sendWorkflowSignal(workflow.id, stage!.name, "approve");
+      await sendWorkflowSignal(workflow.id, stageName, "approve");
       toast({
         title: "Approval: Success",
         description: "Approving Stage",
       });
       setIsReviewed(true);
-      setIsLoading(false);
     } catch (error) {
       console.error(error);
       toast({
@@ -237,19 +255,20 @@ export const WorkflowClientComponent: React.FC<
         title: "Approval: Failed",
         description: "Failed to approve stage.",
       });
+    } finally {
+      setIsLoading(false);
     }
   }
 
-  async function handleReject() {
+  async function handleReject(stageName = stage!.name) {
     try {
       setIsLoading(true);
-      await sendWorkflowSignal(workflow.id, stage!.name, "reject");
+      await sendWorkflowSignal(workflow.id, stageName, "reject");
       toast({
         title: "Rejection: Success",
         description: "Rejecting Stage.",
       });
       setIsReviewed(true);
-      setIsLoading(false);
     } catch (error) {
       console.error(error);
       toast({
@@ -257,6 +276,8 @@ export const WorkflowClientComponent: React.FC<
         title: "Rejection: Failed",
         description: "Failed to reject stage.",
       });
+    } finally {
+      setIsLoading(false);
     }
   }
 
@@ -266,6 +287,7 @@ export const WorkflowClientComponent: React.FC<
       setTerminateOutcome(null);
       await terminateWorkflow(workflow.id);
       setTerminateOutcome("success");
+      setIsTerminateDialogOpen(false);
       toast({
         title: "Terminate: Success",
         description: "Workflow termination requested.",
@@ -294,7 +316,7 @@ export const WorkflowClientComponent: React.FC<
             className="w-32"
             variant="approval"
             disabled={isLoading || isReviewed}
-            onClick={handleApprove}
+            onClick={() => handleApprove()}
           >
             {isLoading ? <LoadingSpinner /> : "Approve"}
           </Button>
@@ -302,15 +324,22 @@ export const WorkflowClientComponent: React.FC<
             className="w-32"
             variant="destructive"
             disabled={isLoading || isReviewed}
-            onClick={handleReject}
+            onClick={() => handleReject()}
           >
             {isLoading ? <LoadingSpinner /> : "Reject"}
           </Button>
         </div>
       );
     } else if (state == "FAILED") {
+      if (!stage!.retryable) {
+        return (
+          <span className="text-sm text-muted-foreground">
+            This failed stage cannot be retried.
+          </span>
+        );
+      }
       return (
-        <Button disabled={!stage!.retryable || isLoading} onClick={handleRetry}>
+        <Button disabled={isLoading} onClick={handleRetry}>
           {isLoading ? <LoadingSpinner /> : "Retry"}
         </Button>
       );
@@ -339,13 +368,46 @@ export const WorkflowClientComponent: React.FC<
             >
               {workflow.status}
             </Badge>
+            {pendingApprovalStage && !isReviewed && (
+              <div className="mx-3 mt-3 rounded-md border border-yellow-500/40 bg-yellow-500/10 p-3 text-sm">
+                <div className="font-semibold">Approval required</div>
+                <div className="mt-1 text-muted-foreground">
+                  {pendingApprovalStage.name}
+                </div>
+                <div className="mt-3 flex flex-wrap justify-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setStage(pendingApprovalStage)}
+                  >
+                    Review
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="approval"
+                    disabled={isLoading}
+                    onClick={() => handleApprove(pendingApprovalStage.name)}
+                  >
+                    {isLoading ? <LoadingSpinner /> : "Approve"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    disabled={isLoading}
+                    onClick={() => handleReject(pendingApprovalStage.name)}
+                  >
+                    {isLoading ? <LoadingSpinner /> : "Reject"}
+                  </Button>
+                </div>
+              </div>
+            )}
             {canShowTerminate && (
               <div className="mt-3 flex flex-col items-center gap-1">
                 <Button
                   variant="destructive"
                   size="sm"
                   disabled={!isTerminateEnabled}
-                  onClick={handleTerminate}
+                  onClick={() => setIsTerminateDialogOpen(true)}
                 >
                   {isTerminating ? <LoadingSpinner /> : "Terminate"}
                 </Button>
@@ -366,7 +428,11 @@ export const WorkflowClientComponent: React.FC<
           <div className="flex flex-col items-center overflow-hidden flex-1 mt-4">
             <span className="font-bold text-lg mb-2 flex-shrink-0">Stages</span>
             <div className="w-full overflow-y-auto">
-              <StagesList stages={visibleStages} handleClick={setStage} />
+              <StagesList
+                stages={visibleStages}
+                selectedStageName={stage?.name ?? null}
+                handleClick={setStage}
+              />
             </div>
           </div>
         </ResizablePanel>
@@ -463,6 +529,34 @@ export const WorkflowClientComponent: React.FC<
           </div>
         </ResizablePanel>
       </ResizablePanelGroup>
+      <Dialog open={isTerminateDialogOpen} onOpenChange={setIsTerminateDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Terminate Workflow?</DialogTitle>
+            <DialogDescription>
+              This will terminate {workflow.workflow_type || "this workflow"}{" "}
+              <span className="font-semibold text-foreground">{workflow.id}</span>.
+              Current status: {workflow.status}. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsTerminateDialogOpen(false)}
+              disabled={isTerminating}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleTerminate}
+              disabled={isTerminating}
+            >
+              {isTerminating ? <LoadingSpinner /> : "Terminate Workflow"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

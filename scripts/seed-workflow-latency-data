@@ -1,0 +1,334 @@
+#!/usr/bin/env python3
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+"""Seed Temporal with workflow-list latency test data for local development."""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import socket
+import subprocess
+import sys
+import time
+from collections.abc import Awaitable, Callable
+
+from temporalio.client import Client, WorkflowExecutionStatus
+from temporalio.common import (
+    SearchAttributeKey,
+    SearchAttributePair,
+    TypedSearchAttributes,
+)
+
+from nv_config_manager.temporal.converter import get_data_converter
+from nv_config_manager.temporal.hello_world.workflows.hello_world_workflow import (
+    HelloWorldApproval,
+    HelloWorldInput,
+)
+from nv_config_manager.temporal.ngc.workflows.backup import (
+    BackupInput,
+    BackupWorkflow,
+    TriggerEnum,
+)
+
+
+DEFAULT_READ_ROLES = ("nvcm-readonly", "nvcm-network", "nvcm-admin")
+DEFAULT_EXECUTE_ROLES = ("nvcm-network", "nvcm-admin")
+
+
+def parse_args() -> argparse.Namespace:
+    """Parse command-line options."""
+    parser = argparse.ArgumentParser(
+        description=(
+            "Start many non-terminal HelloWorldApproval workflows and optional failed "
+            "BackupWorkflow runs for workflow-list latency testing."
+        )
+    )
+    parser.add_argument("--count", type=int, default=100, help="Pending workflow count.")
+    parser.add_argument(
+        "--failed-count",
+        type=int,
+        default=1,
+        help="Fast-failing workflow count. Set to 0 to skip.",
+    )
+    parser.add_argument(
+        "--prefix",
+        default="latency-test",
+        help="Workflow ID prefix. A timestamp is appended for uniqueness.",
+    )
+    parser.add_argument(
+        "--user",
+        default="workflow-latency-seed",
+        help="User search attribute applied to seeded workflows.",
+    )
+    parser.add_argument(
+        "--read-roles",
+        default=",".join(DEFAULT_READ_ROLES),
+        help="Comma-separated ReadRoles search attributes.",
+    )
+    parser.add_argument(
+        "--execute-roles",
+        default=",".join(DEFAULT_EXECUTE_ROLES),
+        help="Comma-separated ExecuteRoles search attributes.",
+    )
+    parser.add_argument(
+        "--temporal-address",
+        default="127.0.0.1:7233",
+        help="Temporal frontend address.",
+    )
+    parser.add_argument(
+        "--temporal-namespace",
+        default="default",
+        help="Temporal namespace.",
+    )
+    parser.add_argument(
+        "--task-queue",
+        default="default-task-queue",
+        help="Temporal task queue.",
+    )
+    parser.add_argument(
+        "--concurrency",
+        type=int,
+        default=25,
+        help="Concurrent workflow start/query operations.",
+    )
+    parser.add_argument(
+        "--wait-timeout",
+        type=float,
+        default=90.0,
+        help="Seconds to wait for seeded workflows to reach expected states.",
+    )
+    parser.add_argument(
+        "--no-wait",
+        action="store_true",
+        help="Do not wait for pending/failed states after starts.",
+    )
+    parser.add_argument(
+        "--port-forward",
+        action="store_true",
+        help="Open a temporary kubectl port-forward to the Temporal frontend service.",
+    )
+    parser.add_argument(
+        "--kube-namespace",
+        default="nv-config-manager",
+        help="Kubernetes namespace for --port-forward.",
+    )
+    parser.add_argument(
+        "--release-name",
+        default="nv-config-manager",
+        help="Helm release name used to derive the Temporal frontend service.",
+    )
+    parser.add_argument(
+        "--temporal-service",
+        default=None,
+        help="Temporal frontend service name for --port-forward.",
+    )
+    parser.add_argument(
+        "--local-port",
+        type=int,
+        default=7233,
+        help="Local port for --port-forward.",
+    )
+    return parser.parse_args()
+
+
+def split_roles(raw: str) -> list[str]:
+    """Parse comma-separated roles."""
+    return [role.strip() for role in raw.split(",") if role.strip()]
+
+
+def can_connect(host: str, port: int) -> bool:
+    """Return true when host:port accepts a TCP connection."""
+    try:
+        with socket.create_connection((host, port), timeout=1.0):
+            return True
+    except OSError:
+        return False
+
+
+def start_port_forward(args: argparse.Namespace) -> subprocess.Popen[bytes] | None:
+    """Start kubectl port-forward unless the local Temporal address is already reachable."""
+    host, raw_port = args.temporal_address.rsplit(":", 1)
+    port = int(raw_port)
+    if can_connect(host, port):
+        print(f"Temporal is already reachable at {args.temporal_address}; not port-forwarding.")
+        return None
+
+    service = args.temporal_service or f"{args.release_name}-temporal-frontend-service"
+    cmd = [
+        "kubectl",
+        "port-forward",
+        "-n",
+        args.kube_namespace,
+        f"svc/{service}",
+        f"{args.local_port}:7233",
+    ]
+    print(f"Starting temporary port-forward: {' '.join(cmd)}")
+    process = subprocess.Popen(
+        cmd,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            raise RuntimeError("kubectl port-forward exited before Temporal became reachable.")
+        if can_connect(host, port):
+            return process
+        time.sleep(0.25)
+
+    process.terminate()
+    raise TimeoutError(f"Timed out waiting for Temporal at {args.temporal_address}")
+
+
+def stop_port_forward(process: subprocess.Popen[bytes] | None) -> None:
+    """Stop a temporary kubectl port-forward."""
+    if process is None or process.poll() is not None:
+        return
+    process.terminate()
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=5)
+
+
+async def run_limited[T](
+    items: list[T],
+    concurrency: int,
+    operation: Callable[[T], Awaitable[None]],
+) -> None:
+    """Run an async operation over items with a concurrency cap."""
+    semaphore = asyncio.Semaphore(concurrency)
+
+    async def run_one(item: T) -> None:
+        async with semaphore:
+            await operation(item)
+
+    await asyncio.gather(*(run_one(item) for item in items))
+
+
+async def wait_for_pending(client: Client, workflow_id: str, timeout: float) -> None:
+    """Wait for a workflow to report pending approval."""
+    handle = client.get_workflow_handle(workflow_id=workflow_id)
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            if await handle.query("pending_approval"):
+                return
+        except Exception:
+            pass
+        await asyncio.sleep(1)
+    raise TimeoutError(f"Workflow {workflow_id} did not reach pending approval.")
+
+
+async def wait_for_failed(client: Client, workflow_id: str, timeout: float) -> None:
+    """Wait for a workflow to enter failed state."""
+    handle = client.get_workflow_handle(workflow_id=workflow_id)
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        description = await handle.describe()
+        if description.status == WorkflowExecutionStatus.FAILED:
+            return
+        await asyncio.sleep(1)
+    raise TimeoutError(f"Workflow {workflow_id} did not fail.")
+
+
+async def seed_workflows(args: argparse.Namespace) -> None:
+    """Seed Temporal with pending and failed workflows."""
+    if args.count < 0 or args.failed_count < 0:
+        raise ValueError("--count and --failed-count must be non-negative.")
+    if args.concurrency < 1:
+        raise ValueError("--concurrency must be >= 1.")
+
+    client = await Client.connect(
+        args.temporal_address,
+        namespace=args.temporal_namespace,
+        data_converter=get_data_converter(),
+    )
+    run_prefix = f"{args.prefix}-{int(time.time())}"
+    typed_search_attributes = TypedSearchAttributes(
+        [
+            SearchAttributePair(SearchAttributeKey.for_keyword("User"), args.user),
+            SearchAttributePair(
+                SearchAttributeKey.for_keyword_list("ReadRoles"),
+                split_roles(args.read_roles),
+            ),
+            SearchAttributePair(
+                SearchAttributeKey.for_keyword_list("ExecuteRoles"),
+                split_roles(args.execute_roles),
+            ),
+        ]
+    )
+
+    pending_ids = [f"{run_prefix}-pending-{idx:04d}" for idx in range(1, args.count + 1)]
+    failed_ids = [
+        f"{run_prefix}-failed-{idx:04d}" for idx in range(1, args.failed_count + 1)
+    ]
+
+    async def start_pending(workflow_id: str) -> None:
+        await client.start_workflow(
+            HelloWorldApproval.run,
+            HelloWorldInput(name=workflow_id),
+            id=workflow_id,
+            task_queue=args.task_queue,
+            typed_search_attributes=typed_search_attributes,
+        )
+
+    async def start_failed(workflow_id: str) -> None:
+        await client.start_workflow(
+            BackupWorkflow.run,
+            BackupInput(
+                device_id="missing-device-for-latency-test",
+                trigger=TriggerEnum.API,
+                user=None,
+                user_domain=None,
+                workflow_id=None,
+                intended_config_commit_id=None,
+            ),
+            id=workflow_id,
+            task_queue=args.task_queue,
+            typed_search_attributes=typed_search_attributes,
+        )
+
+    await run_limited(pending_ids, args.concurrency, start_pending)
+    await run_limited(failed_ids, args.concurrency, start_failed)
+
+    print(f"Started {len(pending_ids)} pending workflows.")
+    print(f"Started {len(failed_ids)} failing workflows.")
+
+    if not args.no_wait:
+        await run_limited(
+            pending_ids,
+            args.concurrency,
+            lambda workflow_id: wait_for_pending(client, workflow_id, args.wait_timeout),
+        )
+        await run_limited(
+            failed_ids,
+            args.concurrency,
+            lambda workflow_id: wait_for_failed(client, workflow_id, args.wait_timeout),
+        )
+        print("Seeded workflows reached expected states.")
+
+    print(f"Workflow ID prefix: {run_prefix}")
+
+
+def main() -> int:
+    """Program entrypoint."""
+    args = parse_args()
+    port_forward = None
+    try:
+        if args.port_forward:
+            port_forward = start_port_forward(args)
+        asyncio.run(seed_workflows(args))
+    except Exception as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        stop_port_forward(port_forward)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

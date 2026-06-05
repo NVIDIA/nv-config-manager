@@ -450,11 +450,15 @@ spec:
     matchLabels:
       app.kubernetes.io/name: {{ $nautobotName }}
       app.kubernetes.io/instance: {{ .Release.Name }}
+  {{- $nautobotStrategy := .Values.nautobot.server.strategy | default dict }}
+  {{- $nautobotRollingUpdate := $nautobotStrategy.rollingUpdate | default dict }}
   strategy:
-    type: RollingUpdate
+    type: {{ $nautobotStrategy.type | default "RollingUpdate" }}
+    {{- if eq ($nautobotStrategy.type | default "RollingUpdate") "RollingUpdate" }}
     rollingUpdate:
-      maxSurge: 25%
-      maxUnavailable: 0
+      maxSurge: {{ $nautobotRollingUpdate.maxSurge | default "25%" }}
+      maxUnavailable: {{ $nautobotRollingUpdate.maxUnavailable | default 0 }}
+    {{- end }}
   template:
     metadata:
       labels:
@@ -583,11 +587,7 @@ spec:
               readOnly: true
             {{- end }}
           resources:
-            requests:
-              cpu: 250m
-              memory: 512Mi
-            limits:
-              memory: 2Gi
+            {{- toYaml .Values.nautobot.server.migrations.resources | nindent 12 }}
       containers:
         - name: nautobot
           image: {{ .Values.global.images.nautobot.repository }}:{{ .Values.global.images.nautobot.tag }}

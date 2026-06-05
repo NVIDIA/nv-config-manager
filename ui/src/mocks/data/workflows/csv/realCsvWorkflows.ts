@@ -33,7 +33,7 @@ export const REAL_CSV_WORKFLOWS = {
       status: "COMPLETED",
       pending_approval: false,
       search_attributes: {
-        ExecuteRoles: ["dcops", "ngc-cfa", "ngc-gni", "nvis"],
+        ExecuteRoles: ["dcops", "nvcm-network", "nvcm-admin", "nvis"],
         BuildIds: [
           "unversioned",
           "unversioned:3fcfa9715253f2bb57ecd6987b1228da",

@@ -72,6 +72,22 @@ PROMETHEUS_CRD_VERSION=v0.90.1
 PROMETHEUS_OPERATOR_VERSION=84.5.0
 """
 
+_ENVOY_GATEWAY_CRDS = """\
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: referencegrants.gateway.networking.k8s.io
+spec:
+  group: gateway.networking.k8s.io
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: envoyproxies.gateway.envoyproxy.io
+spec:
+  group: gateway.envoyproxy.io
+"""
+
 
 def _make_config() -> NVConfigManagerInstallConfig:
     return NVConfigManagerInstallConfig(
@@ -320,6 +336,8 @@ class TestInstallCrds:
 
         def fake_run(cmd, **kwargs):
             run_commands.append(cmd)
+            if cmd[:3] == ["helm", "show", "crds"]:
+                return MagicMock(returncode=0, stdout=_ENVOY_GATEWAY_CRDS, stderr="")
             return MagicMock(returncode=0, stdout="", stderr="")
 
         def fake_run_logged(cmd, step, callback, **kwargs):
@@ -349,13 +367,15 @@ class TestInstallCrds:
         deployer._install_crds()
 
         rendered_commands = [" ".join(cmd) for cmd in logged_commands]
-        assert not any(
+        assert any(
             str(manifests_dir / "gateway-api-v1.4.1.yaml") in cmd for cmd in rendered_commands
         )
+        assert any("envoy-gateway-crds.yaml" in cmd for cmd in rendered_commands)
         assert any(str(charts_dir / "gateway-helm-v1.6.5.tgz") in cmd for cmd in rendered_commands)
         envoy_cmd = next(
             cmd for cmd in logged_commands if cmd[:4] == ["helm", "upgrade", "--install", "eg"]
         )
+        assert "--skip-crds" in envoy_cmd
         assert "--force-conflicts" not in envoy_cmd
         assert "--take-ownership" not in envoy_cmd
         assert (
@@ -414,7 +434,9 @@ class TestInstallCrds:
             if cmd[:4] == ["helm", "upgrade", "--install", "nv-config-manager-prom-crds"]
         )
         assert str(charts_dir / "prometheus-operator-crds-28.0.1.tgz") in prom_crds_cmd
-        assert run_commands == []
+        assert run_commands == [
+            ["helm", "show", "crds", str(charts_dir / "gateway-helm-v1.6.5.tgz")]
+        ]
         assert not any("github.com/cert-manager" in cmd for cmd in rendered_commands)
 
 

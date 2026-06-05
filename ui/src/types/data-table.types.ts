@@ -212,18 +212,36 @@ export type Workflow = {
   href: string; //readonly
 };
 
+export type WorkflowListResponse = {
+  workflows: Workflow[];
+  next_page_token: string | null;
+};
+
+export type WorkflowMetadata = {
+  name: string;
+  display_name: string;
+  description: string;
+  endpoint: string;
+  namespace: string | null;
+  cli_name: string;
+  input_class: string;
+  read_roles: string[];
+  execute_roles: string[];
+};
+
+export type WorkflowMetadataResponse = {
+  workflows: WorkflowMetadata[];
+};
+
 export type WorkflowTableProps = {
-  title: string;
-  //workflowData: Workflow[];
-  workflowType: string;
+  title?: string;
+  workflowMetadata: WorkflowMetadata[];
 };
 
 export type WorkflowColumns = Workflow;
 
 export interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[];
-  //data: TData[];
-  workflowType: string;
 }
 
 export interface SortableHeaderButtonProps<TData> {

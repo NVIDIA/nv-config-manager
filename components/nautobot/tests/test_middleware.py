@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Tests for nv_config_manager_auth.middleware.JWTCookieMiddleware."""
+"""Tests for nv_config_manager_auth.middleware."""
 
 from __future__ import annotations
 
@@ -23,6 +23,10 @@ def _import_module():
     import nv_config_manager_auth.middleware as mod
 
     return mod
+
+
+class _RedirectResponse(dict):
+    status_code = 302
 
 
 class TestJWTCookieMiddleware:
@@ -92,7 +96,9 @@ class TestJWTCookieMiddleware:
         request.COOKIES = {"NVConfigManagerAccessToken": "valid-jwt"}
 
         with (
-            patch("nv_config_manager_auth.jwt_authentication._get_providers", return_value=[provider]),
+            patch(
+                "nv_config_manager_auth.jwt_authentication._get_providers", return_value=[provider]
+            ),
             patch(
                 "nv_config_manager_auth.jwt_authentication._try_jwt_provider",
                 return_value=(mock_user, "oidc:jdoe"),
@@ -130,7 +136,10 @@ class TestJWTCookieMiddleware:
         request.COOKIES = {"NVConfigManagerAccessToken": "some-jwt"}
 
         with (
-            patch("nv_config_manager_auth.jwt_authentication._get_providers", return_value=[service_provider]),
+            patch(
+                "nv_config_manager_auth.jwt_authentication._get_providers",
+                return_value=[service_provider],
+            ),
             patch("nv_config_manager_auth.jwt_authentication._try_jwt_provider") as mock_try,
             patch("nv_config_manager_auth.middleware.login") as mock_login,
         ):
@@ -162,7 +171,9 @@ class TestJWTCookieMiddleware:
         request.COOKIES = {"NVConfigManagerAccessToken": "bad-jwt"}
 
         with (
-            patch("nv_config_manager_auth.jwt_authentication._get_providers", return_value=[provider]),
+            patch(
+                "nv_config_manager_auth.jwt_authentication._get_providers", return_value=[provider]
+            ),
             patch("nv_config_manager_auth.jwt_authentication._try_jwt_provider", return_value=None),
             patch("nv_config_manager_auth.middleware.login") as mock_login,
         ):
@@ -170,3 +181,39 @@ class TestJWTCookieMiddleware:
 
         mock_login.assert_not_called()
         assert result == "response"
+
+
+class TestLogoutRedirectMiddleware:
+    def test_rewrites_logout_redirect(self, monkeypatch):
+        monkeypatch.setenv(
+            "NAUTOBOT_LOGOUT_REDIRECT_URL",
+            "https://nautobot.config-manager.local/oauth2/logout",
+        )
+        mod = _import_module()
+
+        response = _RedirectResponse(Location="/")
+        get_response = MagicMock(return_value=response)
+        request = MagicMock()
+        request.path = "/logout/"
+
+        mw = mod.LogoutRedirectMiddleware(get_response=get_response)
+        result = mw(request)
+
+        assert result["Location"] == "https://nautobot.config-manager.local/oauth2/logout"
+
+    def test_leaves_other_paths_unchanged(self, monkeypatch):
+        monkeypatch.setenv(
+            "NAUTOBOT_LOGOUT_REDIRECT_URL",
+            "https://nautobot.config-manager.local/oauth2/logout",
+        )
+        mod = _import_module()
+
+        response = _RedirectResponse(Location="/")
+        get_response = MagicMock(return_value=response)
+        request = MagicMock()
+        request.path = "/"
+
+        mw = mod.LogoutRedirectMiddleware(get_response=get_response)
+        result = mw(request)
+
+        assert result["Location"] == "/"

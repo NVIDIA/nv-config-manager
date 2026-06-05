@@ -13,7 +13,7 @@
 # For services that need to support both OIDC/JWT and native token auth,
 # separate HTTPRoutes are created for bypass paths. These routes get a
 # SecurityPolicy with jwt.optional=true but NO oidc block, allowing:
-#   - Valid JWT: claims extracted to headers (for remote user auth)
+#   - Valid Authorization bearer JWT: claims extracted to headers
 #   - No JWT: request passes through (service handles its own auth)
 # =============================================================================
 
@@ -58,8 +58,9 @@ spec:
 # Auth Bypass HTTPRoute Helper Template
 # =============================================================================
 # Creates a separate HTTPRoute for paths that bypass OIDC but still support
-# optional JWT auth. A SecurityPolicy (in security-policy.yaml) attaches to
-# this route with jwt.optional=true and no oidc block.
+# optional Authorization bearer JWT auth. A SecurityPolicy (in
+# security-policy.yaml) attaches to this route with jwt.optional=true and no
+# oidc block.
 # =============================================================================
 {{- define "nv-config-manager.authBypassHTTPRoute" }}
 {{- if and $.root.Values.oidc.enabled $.root.Values.gateway.authBypass.enabled $.enabled (gt (len $.paths) 0) }}
@@ -70,7 +71,7 @@ metadata:
   name: {{ $.routeName }}-auth-bypass
   namespace: {{ $.root.Values.global.namespace }}
   annotations:
-    # Auth bypass route - OIDC disabled, JWT optional with claim extraction
+    # Auth bypass route - OIDC disabled, bearer JWT optional with claim extraction
     nv-config-manager.nvidia.com/auth-bypass: "true"
 spec:
   parentRefs:
@@ -309,6 +310,31 @@ spec:
 ---
 # Unified UI HTTPRoute (at base hostname) - OIDC-only, direct to app port
 {{- if .Values.ui.enabled }}
+{{- if .Values.oidc.enabled }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $uiName }}-auth-logout
+  namespace: {{ .Values.global.namespace }}
+  annotations:
+    # Allows the UI to clear stale local OIDC cookies before Envoy logout.
+    nv-config-manager.nvidia.com/no-auth: "true"
+spec:
+  parentRefs:
+  - name: {{ .Values.gateway.name }}
+    namespace: {{ .Values.global.namespace }}
+  hostnames:
+  - {{ .Values.gateway.baseHostname | quote }}
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /auth/logout
+    backendRefs:
+    - name: {{ $uiName }}
+      port: 3000
+---
+{{- end }}
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:

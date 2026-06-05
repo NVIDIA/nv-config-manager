@@ -20,8 +20,8 @@ import asyncio
 import base64
 import os
 import re
-from datetime import datetime
-from typing import Any, cast
+from datetime import UTC, datetime
+from typing import Any, ClassVar, cast
 from uuid import uuid4
 
 import brotli
@@ -41,6 +41,7 @@ from temporalio.service import RPCError, RPCStatusCode
 from nv_config_manager.common.config import load_config
 from nv_config_manager.common.log import LogCategory, get_logger
 from nv_config_manager.temporal.api.dynamic_endpoints import (
+    get_registered_workflows_info,
     register_dynamic_endpoints,
     set_start_workflow_function,
 )
@@ -66,6 +67,8 @@ logger = get_logger(__name__, category=LogCategory.TEMPORAL_API)
 router = APIRouter(prefix="/workflow", tags=["workflow"])
 
 _VISIBILITY_SAFE_VALUE = re.compile(r"^[\w.@:/ -]+$")
+_WORKFLOW_LIST_QUERY_CONCURRENCY = 25
+_WORKFLOW_STAGE_QUERY_CACHE_NAMES = ("pending_approval", "compressed_stages")
 
 
 def _sanitize_visibility_value(value: str, param_name: str) -> str:
@@ -82,11 +85,38 @@ def _sanitize_visibility_value(value: str, param_name: str) -> str:
     return value
 
 
+def _format_visibility_time(value: datetime) -> str:
+    """Return a UTC timestamp literal for Temporal visibility queries."""
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
 class WorkflowListResponse(BaseModel):
     """Workflow List Response Model."""
 
     workflows: list[WorkflowSummaryResponse]
     next_page_token: str | None
+
+
+class WorkflowMetadata(BaseModel):
+    """Workflow metadata."""
+
+    name: str
+    display_name: str
+    description: str
+    endpoint: str
+    namespace: str | None
+    cli_name: str
+    input_class: str
+    read_roles: list[str]
+    execute_roles: list[str]
+
+
+class WorkflowMetadataResponse(BaseModel):
+    """Workflow metadata response."""
+
+    workflows: list[WorkflowMetadata]
 
 
 class WorkflowResponse(BaseModel):
@@ -113,16 +143,39 @@ class WorkflowSummaryResponse(WorkflowResponse):
     pending_approval: bool
     search_attributes: SearchAttributes
 
-    _NON_TERMINAL_STATES = {
+    _NON_TERMINAL_STATES: ClassVar[set[StateEnum]] = {
         StateEnum.IN_PROGRESS,
         StateEnum.PENDING_APPROVAL,
         StateEnum.APPROVED,
         StateEnum.REJECTED,
     }
+    _ACTIVE_WORKFLOW_STATUSES: ClassVar[set[WorkflowExecutionStatus]] = {
+        WorkflowExecutionStatus.RUNNING,
+        WorkflowExecutionStatus.CONTINUED_AS_NEW,
+    }
+    _ACTIVE_DURABLE_CACHEABLE_QUERIES: ClassVar[set[str]] = {"input", "pending_approval"}
 
     @staticmethod
-    def _should_cache(query: str, data: Any) -> bool:
-        """Return False for compressed_stages when any stage is still non-terminal."""
+    def _status_name(status: WorkflowExecutionStatus | None, pending_approval: bool = False) -> str:
+        """Return the API workflow status value."""
+        if pending_approval:
+            return StateEnum.PENDING_APPROVAL.value
+        return status.name if status else "UNKNOWN"
+
+    @staticmethod
+    def _should_read_cache(query: str, is_active: bool) -> bool:
+        """Return whether the query should read the durable workflow query cache."""
+        return not is_active or query in WorkflowSummaryResponse._ACTIVE_DURABLE_CACHEABLE_QUERIES
+
+    @staticmethod
+    def _should_cache(query: str, data: Any, is_active: bool) -> bool:
+        """Return whether the query should write the durable workflow query cache."""
+        if is_active:
+            if query == "input":
+                return True
+            if query == "pending_approval":
+                return bool(data)
+            return False
         if query != "compressed_stages" or data is None:
             return True
         try:
@@ -137,16 +190,13 @@ class WorkflowSummaryResponse(WorkflowResponse):
         description: WorkflowExecutionDescription,
         queries: list[str],
     ) -> dict[str, Any]:
-        use_cache = description.status not in [
-            WorkflowExecutionStatus.RUNNING,
-            WorkflowExecutionStatus.CONTINUED_AS_NEW,
-        ]
+        is_active = description.status in WorkflowSummaryResponse._ACTIVE_WORKFLOW_STATUSES
         cache = RedisClient.from_config(load_config())
         results = {}
 
         for query in queries:
             try:
-                if use_cache:
+                if WorkflowSummaryResponse._should_read_cache(query, is_active):
                     data = await cache.get_cached_query(handle.id, query)
                     if data is not None:
                         results[query] = data
@@ -154,7 +204,7 @@ class WorkflowSummaryResponse(WorkflowResponse):
 
                 data = await handle.query(query)
 
-                if WorkflowSummaryResponse._should_cache(query, data):
+                if WorkflowSummaryResponse._should_cache(query, data, is_active):
                     await cache.cache_query(handle.id, query, data)
 
                 results[query] = data
@@ -209,7 +259,7 @@ class WorkflowSummaryResponse(WorkflowResponse):
             id=handle.id,
             started_by=user,
             workflow_input=workflow_input,
-            status=description.status.name if description.status else "UNKNOWN",
+            status=WorkflowSummaryResponse._status_name(description.status, pending_approval),
             start_time=description.start_time,
             close_time=description.close_time,
             workflow_type=description.workflow_type,
@@ -290,7 +340,7 @@ class WorkflowDetailResponse(WorkflowSummaryResponse):
             id=handle.id,
             started_by=user,
             workflow_input=workflow_input,
-            status=description.status.name if description.status else "UNKNOWN",
+            status=WorkflowSummaryResponse._status_name(description.status),
             start_time=description.start_time,
             close_time=description.close_time,
             workflow_type=description.workflow_type,
@@ -422,8 +472,23 @@ async def signal_workflow(request: Request, workflow_id: str, signal_name: str, 
 
     if await is_authorized(request, handle, "execute"):
         await handle.signal(signal_name, *args)
+        await invalidate_workflow_stage_query_cache(workflow_id)
     else:
         raise HTTPException(status_code=403, detail="Forbidden")
+
+
+async def invalidate_workflow_stage_query_cache(workflow_id: str) -> None:
+    """Invalidate cached workflow query data that changes when stages change."""
+    cache = RedisClient.from_config(load_config())
+    try:
+        await asyncio.gather(
+            *(
+                cache.delete_cached_query(workflow_id, query)
+                for query in _WORKFLOW_STAGE_QUERY_CACHE_NAMES
+            )
+        )
+    except Exception:
+        logger.exception("Failed to invalidate workflow stage query cache for %s", workflow_id)
 
 
 @router.get("/")
@@ -437,12 +502,15 @@ async def get_workflows(  # pylint: disable=R0913,R0914
     device_platform: str | None = None,
     site: str | None = None,
     status: str | None = None,
+    start_time: datetime | None = None,
+    end_time: datetime | None = None,
     limit: int = 100,
     next_page_token: str | None = None,
 ) -> WorkflowListResponse:
     """Return a filtered list of workflows."""
     _, user_roles = get_user_info(request)
     filters = []
+    filter_pending_approval = False
     if user:
         filters.append(f"User = '{_sanitize_visibility_value(user, 'user')}'")
     if workflow_type:
@@ -462,7 +530,16 @@ async def get_workflows(  # pylint: disable=R0913,R0914
     if site:
         filters.append(f"Site = '{_sanitize_visibility_value(site, 'site')}'")
     if status:
-        filters.append(f"ExecutionStatus = '{_sanitize_visibility_value(status, 'status')}'")
+        sanitized_status = _sanitize_visibility_value(status, "status")
+        if sanitized_status == StateEnum.PENDING_APPROVAL.value:
+            filters.append("ExecutionStatus = 'RUNNING'")
+            filter_pending_approval = True
+        else:
+            filters.append(f"ExecutionStatus = '{sanitized_status}'")
+    if start_time:
+        filters.append(f"StartTime >= '{_format_visibility_time(start_time)}'")
+    if end_time:
+        filters.append(f"StartTime <= '{_format_visibility_time(end_time)}'")
     # Add role filters
     # Permit admin roles to view workflows that are missing
     # RBAC search attributes
@@ -476,7 +553,7 @@ async def get_workflows(  # pylint: disable=R0913,R0914
     client = await get_client()
 
     tasks = []
-    semaphore = asyncio.Semaphore(10)
+    semaphore = asyncio.Semaphore(_WORKFLOW_LIST_QUERY_CONCURRENCY)
     next_page_token = (
         brotli.decompress(base64.urlsafe_b64decode(next_page_token)) if next_page_token else None
     )
@@ -493,6 +570,8 @@ async def get_workflows(  # pylint: disable=R0913,R0914
         )
 
     workflows = await asyncio.gather(*tasks)
+    if filter_pending_approval:
+        workflows = [workflow for workflow in workflows if workflow.pending_approval]
     new_token = aiter.next_page_token
     encoded_token = (
         base64.urlsafe_b64encode(brotli.compress(new_token)).decode() if new_token else None
@@ -503,10 +582,26 @@ async def get_workflows(  # pylint: disable=R0913,R0914
 
 @router.get("/types")
 async def get_workflow_types() -> list[str]:
-    """Return the list of registered workflow types."""
+    """Return registered workflow type names."""
     return sorted(
         [wf.__name__ for wf in NGC_REGISTERED_WORKFLOWS + HELLO_WORLD_REGISTERED_WORKFLOWS]
     )
+
+
+@router.get("/metadata")
+async def get_workflow_metadata() -> WorkflowMetadataResponse:
+    """Return registered workflow metadata and RBAC roles."""
+    workflow_types = sorted(
+        [wf.__name__ for wf in NGC_REGISTERED_WORKFLOWS + HELLO_WORLD_REGISTERED_WORKFLOWS]
+    )
+
+    workflows_info = get_registered_workflows_info(include_rbac=True)
+    workflows = [
+        WorkflowMetadata.model_validate(workflows_info[name])
+        for name in workflow_types
+        if name in workflows_info
+    ]
+    return WorkflowMetadataResponse(workflows=workflows)
 
 
 @router.get("/{workflow_id}")
@@ -599,6 +694,7 @@ async def terminate(workflow_id: str, request: Request) -> WorkflowResponse:
                 ) from e
             raise
         await handle.terminate()
+        await invalidate_workflow_stage_query_cache(workflow_id)
     else:
         raise HTTPException(status_code=403, detail="Forbidden")
 

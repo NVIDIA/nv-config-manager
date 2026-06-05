@@ -19,6 +19,7 @@ import { createGenericWorkflow } from "@/mocks/data/workflows/genericWorkflow";
 import {
   SITES_LIST_API_RESPONSE,
   DEVICES_LIST,
+  ALL_WORKFLOW_DATA,
   workflowsMockData,
   ROLES_LIST_API_RESPONSE,
   STATUS_LIST_API_RESPONSE,
@@ -59,6 +60,7 @@ export async function setupApiMocks(page: Page) {
 
   // Runtime config endpoint (must be first!)
   await mockRuntimeConfigEndpoint(page);
+  await mockWhoamiEndpoint(page);
 
   // Workflow submission endpoints
   await mockSiteCableValidationEndpoint(page);
@@ -94,6 +96,7 @@ export async function setupApiMocks(page: Page) {
 
   // Workflow listing endpoints
   await mockWorkflowTypesEndpoint(page);
+  await mockWorkflowMetadataEndpoint(page);
   await mockWorkflowsListEndpoint(page);
   await mockWorkflowDetailsEndpoint(page);
 
@@ -105,6 +108,18 @@ export async function setupApiMocks(page: Page) {
 
   // Health check
   await mockHealthCheckEndpoint(page);
+}
+
+export async function mockWhoamiEndpoint(page: Page) {
+  await page.route('**/whoami', async (route) => {
+    await route.fulfill({
+      status: 200,
+      json: {
+        user: 'joliao@nvidia.com',
+        roles: ['nvcm-network'],
+      },
+    });
+  });
 }
 
 export async function mockDevicePasswordRotationEndpoint(page: Page) {
@@ -1038,6 +1053,7 @@ export async function mockWorkflowTypesEndpoint(page: Page) {
     "BackupWorkflow",
     "ConnectedHostMetadataWorkflow",
     "DeployWorkflow",
+    "TenantDeployWorkflow",
     "MultiDeployWorkflow",
     "DeviceCableValidationWorkflow",
     "DevicePasswordRotationWorkflow",
@@ -1046,14 +1062,18 @@ export async function mockWorkflowTypesEndpoint(page: Page) {
     "PortLLDPInfoWorkflow",
     "RedfishProvisioningWorkflow",
     "SiteCableValidationWorkflow",
+    "SitePasswordRotationWorkflow",
     "VpcCreationWorkflow",
     "VpcDeletionWorkflow",
+    "VpcTenantChangeWorkflow",
     "InfinibandGetUnhealthyPortsWorkflow",
     "InfinibandCableValidationWorkflow",
     "InfinibandMlnxOSUpgradeWorkflow",
     "ReprovisionWorkflow",
     "SwitchOsUpgradeWorkflow",
     "CumulusHardwareValidationWorkflow",
+    "DiagnosticsWorkflow",
+    "IBPortGuidDiscoveryWorkflow",
   ];
 
   await page.route(`**/v1/workflow/types`, async (route) => {
@@ -1064,13 +1084,86 @@ export async function mockWorkflowTypesEndpoint(page: Page) {
   });
 }
 
-export async function mockWorkflowsListEndpoint(page: Page) {
-  await page.route(`**/v1/workflow*`, async (route) => {
-    const url = new URL(route.request().url());
+export async function mockWorkflowMetadataEndpoint(page: Page) {
+  const workflowTypes = [
+    "BackupWorkflow",
+    "ConnectedHostMetadataWorkflow",
+    "DeployWorkflow",
+    "TenantDeployWorkflow",
+    "MultiDeployWorkflow",
+    "DeviceCableValidationWorkflow",
+    "DevicePasswordRotationWorkflow",
+    "HelloWorld",
+    "HelloWorldApproval",
+    "PortLLDPInfoWorkflow",
+    "RedfishProvisioningWorkflow",
+    "SiteCableValidationWorkflow",
+    "SitePasswordRotationWorkflow",
+    "VpcCreationWorkflow",
+    "VpcDeletionWorkflow",
+    "VpcTenantChangeWorkflow",
+    "InfinibandGetUnhealthyPortsWorkflow",
+    "InfinibandCableValidationWorkflow",
+    "InfinibandMlnxOSUpgradeWorkflow",
+    "ReprovisionWorkflow",
+    "SwitchOsUpgradeWorkflow",
+    "CumulusHardwareValidationWorkflow",
+    "DiagnosticsWorkflow",
+    "IBPortGuidDiscoveryWorkflow",
+  ];
+  const workflowDisplayNames: Record<string, string> = {
+    BackupWorkflow: "Configuration Backup",
+    ConnectedHostMetadataWorkflow: "Connected Host Metadata",
+    DeployWorkflow: "Configuration Deploy",
+    TenantDeployWorkflow: "Tenant Deploy",
+    MultiDeployWorkflow: "Multi-Deploy",
+    DeviceCableValidationWorkflow: "Device Cable Validation",
+    DevicePasswordRotationWorkflow: "Device Password Rotation",
+    PortLLDPInfoWorkflow: "Port LLDP Info",
+    SiteCableValidationWorkflow: "Site Cable Validation",
+    SitePasswordRotationWorkflow: "Site Password Rotation",
+    VpcCreationWorkflow: "VPC Creation",
+    VpcDeletionWorkflow: "VPC Deletion",
+    VpcTenantChangeWorkflow: "VPC Tenant Change",
+    InfinibandGetUnhealthyPortsWorkflow: "InfiniBand Get Unhealthy Ports",
+    InfinibandCableValidationWorkflow: "InfiniBand Cable Validation",
+    InfinibandMlnxOSUpgradeWorkflow: "InfiniBand MLNX OS Upgrade",
+    ReprovisionWorkflow: "Reprovision",
+    SwitchOsUpgradeWorkflow: "Switch OS Upgrade",
+    CumulusHardwareValidationWorkflow: "Cumulus Hardware Validation",
+    DiagnosticsWorkflow: "Diagnostics",
+    IBPortGuidDiscoveryWorkflow: "IB Port GUID Discovery",
+  };
+  const getWorkflowExecuteRoles = (workflowType: string) =>
+    workflowType === "MultiDeployWorkflow" ? ["nvcm-admin"] : ["all"];
+  const workflowMetadata = {
+    workflows: workflowTypes.map((workflowType) => ({
+      name: workflowType,
+      display_name: workflowDisplayNames[workflowType] ?? workflowType,
+      description: `${workflowDisplayNames[workflowType] ?? workflowType} workflow`,
+      endpoint: `/ngc/${workflowType.toLowerCase()}`,
+      namespace: "ngc",
+      cli_name: workflowType.toLowerCase(),
+      input_class: `${workflowType}Input`,
+      read_roles: ["all"],
+      execute_roles: getWorkflowExecuteRoles(workflowType),
+    })),
+  };
 
+  await page.route(`**/v1/workflow/metadata`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      json: workflowMetadata,
+    });
+  });
+}
+
+export async function mockWorkflowsListEndpoint(page: Page) {
+  await page.route(/.*\/v1\/workflow\/?(\?.*)?$/, async (route) => {
+    const url = new URL(route.request().url());
     // Skip if this is a specific workflow ID request
-    if (!url.searchParams.has("workflow_type")) {
-      return route.continue();
+    if (!url.pathname.endsWith("/v1/workflow") && !url.pathname.endsWith("/v1/workflow/")) {
+      return route.fallback();
     }
 
     const workflowType = url.searchParams.get("workflow_type");
@@ -1080,9 +1173,59 @@ export async function mockWorkflowsListEndpoint(page: Page) {
     const pageSize = limit ? parseInt(limit) : 10;
     const page = nextPageToken ? parseInt(nextPageToken) : 0;
 
-    const workflows =
-      workflowsMockData[workflowType as keyof typeof workflowsMockData]
-        ?.workflows || [];
+    const searchAttributeFilters = [
+      ["device_id", "DeviceID"],
+      ["device_name", "DeviceName"],
+      ["device_platform", "DevicePlatform"],
+      ["device_role", "DeviceRole"],
+      ["site", "Site"],
+      ["user", "User"],
+    ];
+    const workflows = (
+      workflowType
+        ? workflowsMockData[workflowType as keyof typeof workflowsMockData]
+            ?.workflows || []
+        : ALL_WORKFLOW_DATA.workflows
+    ).filter((workflow) => {
+      if (workflowType && workflow.workflow_type !== workflowType) {
+        return false;
+      }
+
+      const status = url.searchParams.get("status");
+      if (status && workflow.status !== status) {
+        return false;
+      }
+
+      const startTimeFilter = Date.parse(url.searchParams.get("start_time") ?? "");
+      const endTimeFilter = Date.parse(url.searchParams.get("end_time") ?? "");
+      if (!Number.isNaN(startTimeFilter) || !Number.isNaN(endTimeFilter)) {
+        const workflowStartTime = Date.parse(workflow.start_time);
+
+        if (Number.isNaN(workflowStartTime)) {
+          return false;
+        }
+        if (!Number.isNaN(startTimeFilter) && workflowStartTime < startTimeFilter) {
+          return false;
+        }
+        if (!Number.isNaN(endTimeFilter) && workflowStartTime > endTimeFilter) {
+          return false;
+        }
+      }
+
+      return searchAttributeFilters.every(([param, attribute]) => {
+        const value = url.searchParams.get(param);
+        if (!value) {
+          return true;
+        }
+
+        const searchAttributes = workflow.search_attributes as Record<
+          string,
+          Array<string | number | boolean> | undefined
+        >;
+        const attributeValue = String(searchAttributes[attribute]?.[0] ?? "").toLowerCase();
+        return attributeValue.includes(value.toLowerCase());
+      });
+    });
     const paginatedWorkflows = workflows.slice(
       page * pageSize,
       (page + 1) * pageSize
@@ -1103,9 +1246,17 @@ export async function mockWorkflowsListEndpoint(page: Page) {
 
 export async function mockWorkflowDetailsEndpoint(page: Page) {
   // Use a regex pattern to match any workflow ID
-  await page.route(/.*\/v1\/workflow\/([^\/]+)$/, async (route) => {
-    const url = route.request().url();
-    const id = url.split("/").pop();
+  await page.route(/.*\/v1\/workflow\/([^/?]+)(\?.*)?$/, async (route) => {
+    const url = new URL(route.request().url());
+    if (
+      url.pathname.endsWith("/v1/workflow") ||
+      url.pathname.endsWith("/v1/workflow/") ||
+      url.pathname.endsWith("/v1/workflow/types") ||
+      url.pathname.endsWith("/v1/workflow/metadata")
+    ) {
+      return route.fallback();
+    }
+    const id = url.pathname.split("/").pop();
 
     console.log(`Workflow details requested for ID: ${id}`);
 

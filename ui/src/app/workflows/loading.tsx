@@ -15,12 +15,6 @@
  * limitations under the License.
  */
 import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
-import {
   Table,
   TableBody,
   TableCell,
@@ -28,56 +22,38 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const WorkflowsListSkeleton = () => {
-  const workflowTypes = ["Type 1", "Type 2", "Type 3"];
-
   return (
-    <Accordion type="multiple" defaultValue={workflowTypes}>
-      {workflowTypes.map((type) => (
-        <AccordionItem value={type} key={type}>
-          <AccordionTrigger>
-            <div className="p-3 font-bold text-lg">
-              <Skeleton className="h-6 w-24" />
-            </div>
-          </AccordionTrigger>
-          <AccordionContent>
-            <SkeletonWorkflowTable />
-          </AccordionContent>
-        </AccordionItem>
-      ))}
-    </Accordion>
-  );
-};
-
-const SkeletonWorkflowTable = () => {
-  return (
-    <Card className="mt-4 w-full">
-      <CardHeader className="flex flex-row items-center justify-between">
+    <div className="container py-6">
+      <div className="mb-4 flex flex-row items-center justify-between">
         <div className="space-y-4">
-          <CardTitle className="mr-4">
-            <Skeleton className="h-6 w-24" />
-          </CardTitle>
-          <div className="flex items-center space-x-2">
-            <Skeleton className="h-5 w-20" />
-          </div>
+          <Skeleton className="h-8 w-36" />
+          <Skeleton className="h-5 w-48" />
         </div>
-        <Skeleton className="h-10 w-24" />
-      </CardHeader>
-      <CardContent>
-        <SkeletonDataTable />
-      </CardContent>
-    </Card>
+        <Skeleton className="h-10 w-32" />
+      </div>
+      <div className="mb-4 mt-2 rounded-md border border-border/70 bg-card p-2 shadow-sm">
+        <div className="flex flex-wrap items-center justify-end gap-1.5">
+          <Skeleton className="h-9 w-36" />
+          <Skeleton className="h-9 w-[32rem] max-w-full" />
+          <Skeleton className="h-9 w-20" />
+          <Skeleton className="h-9 w-28" />
+          <Skeleton className="h-9 w-28" />
+        </div>
+      </div>
+      <SkeletonDataTable />
+    </div>
   );
 };
 
 const SkeletonDataTable = () => {
-  const columns = ["Column 1", "Column 2", "Column 3"];
+  const columns = ["Column 1", "Column 2", "Column 3", "Column 4", "Column 5"];
 
   return (
-    <Table>
+    <div className="rounded-md border">
+      <Table>
       <TableHeader>
         <TableRow>
           {columns.map((_, index) => (
@@ -99,6 +75,7 @@ const SkeletonDataTable = () => {
         ))}
       </TableBody>
     </Table>
+    </div>
   );
 };
 
