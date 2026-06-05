@@ -342,7 +342,7 @@ jobs:
       - network-template-tests
       - ui-lint
       - ui-e2e
-    runs-on: linux-amd64-cpu4
+    runs-on: linux-amd64-cpu32m
     permissions:
       contents: read
       pull-requests: read
