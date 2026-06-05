@@ -42,23 +42,23 @@ The workflow runs five stages in order. None require manual approval.
 
 1. **`get_device` — Load the target device record from Nautobot.**
 
-    Resolves the device by UUID and attaches search attributes for observability.
+   Resolves the device by UUID and attaches search attributes for observability.
 
 1. **`assign_spx_overlay` — Run SpX Overlay Assignment as a child workflow.**
 
-    Invokes [SpX Overlay Assignment](../vpc-assignment/index.mdx) with the same inputs to bind the VRF to the device and its ports. The stage display shows the Overlay name, L3 VXLAN name, VRF, and assigned ports. If the assignment is a complete no-op (`vrf_assigned=false` and no `assigned_ports` changed), the workflow short-circuits — `render_tenant_config`, `wait_for_render`, and `deploy` are marked UNREACHABLE and the workflow exits successfully with `device_deployed=null`.
+   Invokes [SpX Overlay Assignment](../vpc-assignment/index.mdx) with the same inputs to bind the VRF to the device and its ports. The stage display shows the Overlay name, L3 VXLAN name, VRF, and assigned ports. If the assignment is a complete no-op (`vrf_assigned=false` and no `assigned_ports` changed), the workflow short-circuits — `render_tenant_config`, `wait_for_render`, and `deploy` are marked UNREACHABLE and the workflow exits successfully with `device_deployed=null`.
 
 1. **`render_tenant_config` — Trigger a tenant-scoped re-render for the device.**
 
-    Submits a render request to the render service to generate the updated tenant configuration that reflects the new VRF assignment. The stage captures the resulting `tenant_config_file` commit ID for tracking.
+   Submits a render request to the render service to generate the updated tenant configuration that reflects the new VRF assignment. The stage captures the resulting `tenant_config_file` commit ID for tracking.
 
 1. **`wait_for_render` — Wait for the render to land in the Config Store.**
 
-    Polls the Config Store for the rendered configuration tagged with the commit ID from the prior stage. Times out if the render service does not produce the file within the configured window.
+   Polls the Config Store for the rendered configuration tagged with the commit ID from the prior stage. Times out if the render service does not produce the file within the configured window.
 
 1. **`deploy` — Apply the rendered configuration via Tenant Deploy.**
 
-    Invokes [Tenant Deploy](../tenant-deploy/index.mdx) as a child workflow against the device. Tenant Deploy performs its own diff validation (allowed `nv set` patterns only) before applying.
+   Invokes [Tenant Deploy](../tenant-deploy/index.mdx) as a child workflow against the device. Tenant Deploy performs its own diff validation (allowed `nv set` patterns only) before applying.
 
 ## Verifying outcomes
 

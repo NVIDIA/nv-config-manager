@@ -37,12 +37,12 @@ The workflow runs one stage. No human approval is required.
 
 1. **`delete_spx_overlay` — Delete the VPC's VRFs, VXLANs, and Overlay.**
 
-    Queries Nautobot for the VPC's VRFs by `vpc_id` + `namespace_tag` + `site`. If none exist, the stage short-circuits — a successful no-op for a VPC that was never created or is already gone. For each VRF that does exist:
+   Queries Nautobot for the VPC's VRFs by `vpc_id` + `namespace_tag` + `site`. If none exist, the stage short-circuits — a successful no-op for a VPC that was never created or is already gone. For each VRF that does exist:
 
     - If the VRF's `interface_count > 0`, it is added to `in_use_vrfs` and skipped.
     - Otherwise the workflow deletes the VRF's bound L3 VXLAN (the VXLAN's VRF FK is `SET_NULL` on VRF deletion, so explicit cleanup is required) and then deletes the VRF.
 
-    All eligible VRF/VXLAN deletions run in parallel. After all VRFs are removed, the workflow attempts to delete the `SpXTenant<VNI>` Overlay — it is left in place if any VXLANs or member assignments still remain, and a message indicating the outcome is included in the stage display.
+   All eligible VRF/VXLAN deletions run in parallel. After all VRFs are removed, the workflow attempts to delete the `SpXTenant<VNI>` Overlay — it is left in place if any VXLANs or member assignments still remain, and a message indicating the outcome is included in the stage display.
 
 ## Verifying outcomes
 
