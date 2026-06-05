@@ -424,6 +424,7 @@ class TestLoadTags:
 class TestLoadCustomFields:
     def test_creates_custom_field(self, tmp_path):
         mod = _import_module()
+        # Deferred: Django apps must be fully loaded before model imports work.
         from django.contrib.contenttypes.models import ContentType
         from nautobot.extras.models import CustomField
 
@@ -459,6 +460,7 @@ class TestLoadCustomFields:
 
     def test_filter_logic_passed_when_set(self, tmp_path):
         mod = _import_module()
+        # Deferred: Django apps must be fully loaded before model imports work.
         from nautobot.extras.models import CustomField
 
         CustomField.objects.update_or_create.return_value = (MagicMock(), True)
@@ -478,14 +480,16 @@ class TestLoadCustomFields:
         job.load_custom_fields()
         job.logger.failure.assert_called()
 
-    def test_missing_key_fails(self, tmp_path):
+    def test_missing_key_logs_failure_and_skips(self, tmp_path):
         mod = _import_module()
 
         _write_yaml(tmp_path / "custom_fields.yaml", [{"label": "no key here"}])
 
         job = _make_job(mod, tmp_path)
-        with pytest.raises(KeyError):
-            job.load_custom_fields()
+        job.load_custom_fields()
+
+        job.logger.failure.assert_called_once()
+        assert "key" in job.logger.failure.call_args[0][0]
 
 
 # ---------------------------------------------------------------------------
