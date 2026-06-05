@@ -97,7 +97,7 @@ async def test_provision_vrf_creates_overlay_vrf_vxlan():
             ProvisionVrfInput(
                 namespaces=[NS_ID],
                 route_distinguisher="*:60004",
-                overlay_id="test-vpc-001",
+                overlay_id="test-overlay-001",
                 site=LOCATION_ID,
                 tenant="Public Demo",
             )
@@ -121,7 +121,7 @@ async def test_provision_vrf_reuses_existing_overlay():
             ProvisionVrfInput(
                 namespaces=[NS_ID],
                 route_distinguisher="*:60004",
-                overlay_id="test-vpc-001",
+                overlay_id="test-overlay-001",
                 site=LOCATION_ID,
                 tenant="Public Demo",
             )
@@ -146,7 +146,7 @@ async def test_provision_vrf_rolls_back_on_vxlan_failure():
                 ProvisionVrfInput(
                     namespaces=[NS_ID],
                     route_distinguisher="*:60004",
-                    overlay_id="test-vpc-001",
+                    overlay_id="test-overlay-001",
                     site=LOCATION_ID,
                     tenant="Public Demo",
                 )
@@ -163,7 +163,7 @@ async def test_provision_vrf_missing_status_raises():
                 ProvisionVrfInput(
                     namespaces=[NS_ID],
                     route_distinguisher="*:60004",
-                    overlay_id="test-vpc-001",
+                    overlay_id="test-overlay-001",
                     site=LOCATION_ID,
                     tenant="Public Demo",
                 )
@@ -181,7 +181,7 @@ async def test_provision_vrf_missing_tenant_raises():
                 ProvisionVrfInput(
                     namespaces=[NS_ID],
                     route_distinguisher="*:60004",
-                    overlay_id="test-vpc-001",
+                    overlay_id="test-overlay-001",
                     site=LOCATION_ID,
                     tenant="Public Demo",
                 )

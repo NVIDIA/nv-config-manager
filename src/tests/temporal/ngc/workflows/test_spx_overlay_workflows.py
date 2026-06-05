@@ -312,7 +312,7 @@ async def test_spx_overlay_creation_workflow(
                 "output": {
                     "created_vrfs": [],
                     "display": (
-                        "VRFs already exists for VPC ID mock_overlay_id:\n"
+                        "VRFs already exist for Overlay ID mock_overlay_id:\n"
                         " |     name     |   namespace   |   site  |       id      |   rd  |   overlay_id  |interface_count|\n"
                         "|--------------|---------------|---------|---------------|-------|---------------|---------------|\n"
                         "|SpXTenant60004|mock_namespace1|mock_site|mock_namespace1|*:60004|mock_overlay_id|       0       |\n"
@@ -432,7 +432,7 @@ async def test_spx_overlay_deletion_workflow(
                 "name": "delete_spx_overlay",
                 "output": {
                     "deleted_vrfs": [],
-                    "display": "No VRFs exist for VPC ID mock_overlay_id",
+                    "display": "No VRFs exist for Overlay ID mock_overlay_id",
                     "in_use_vrfs": [],
                 },
                 "rejecters": [],
@@ -488,7 +488,7 @@ async def test_spx_overlay_deletion_workflow(
                 "output": {
                     "deleted_vrfs": [],
                     "display": (
-                        "Unable to delete VPC mock_overlay_id, the following VRFs are in use:\n"
+                        "Unable to delete Overlay mock_overlay_id, the following VRFs are in use:\n"
                         " |     name     |   namespace   |   site  |       id      |   rd  |   overlay_id  |interface_count|\n"
                         "|--------------|---------------|---------|---------------|-------|---------------|---------------|\n"
                         "|SpXTenant60004|mock_namespace1|mock_site|mock_namespace1|*:60004|mock_overlay_id|       1       |"
@@ -592,7 +592,7 @@ async def test_spx_overlay_deletion_workflow(
                         },
                     ],
                     "display": (
-                        "VRFs deleted for VPC ID mock_overlay_id:\n"
+                        "VRFs deleted for Overlay ID mock_overlay_id:\n"
                         "|     name     |   namespace   |   site  |       id      |   rd  |   overlay_id  |interface_count|\n"
                         "|--------------|---------------|---------|---------------|-------|---------------|---------------|\n"
                         "|SpXTenant60004|mock_namespace1|mock_site|mock_namespace1|*:60004|mock_overlay_id|       0       |\n"

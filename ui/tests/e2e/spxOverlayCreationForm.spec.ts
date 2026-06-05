@@ -20,7 +20,7 @@ import { test, TEST_TIMEOUT } from "./shared/utils";
 
 // Sample VPC data for testing
 const VPC_DATA = {
-  overlay_id: "test-vpc-1",
+  overlay_id: "test-overlay-1",
   tenant: "test-tenant",
   namespace_tag: "spectrumx",
   rd_min: 60000,
@@ -51,7 +51,7 @@ test.describe("SpX Overlay Creation Workflow Form", () => {
     await expect(page.getByText("Site is required")).toBeVisible({
       timeout: TEST_TIMEOUT,
     });
-    await expect(page.getByText("VPC is required")).toBeVisible({
+    await expect(page.getByText("Overlay ID is required")).toBeVisible({
       timeout: TEST_TIMEOUT,
     });
     await expect(page.getByText("Tenant is required")).toBeVisible({
@@ -79,7 +79,7 @@ test.describe("SpX Overlay Creation Workflow Form", () => {
       .getByRole("heading", { name: "SpX Overlay Creation Workflow Form" })
       .click();
 
-    await page.getByLabel("Overlay ID").fill("test-vpc");
+    await page.getByLabel("Overlay ID").fill("test-overlay");
     await page.getByLabel("Tenant").fill("test-tenant");
     await page.getByLabel("Namespace").fill("spectrumx");
 
@@ -288,7 +288,7 @@ test.describe("SpX Overlay Creation Workflow Form - Standard Tests", () => {
       .getByRole("heading", { name: "SpX Overlay Creation Workflow Form" })
       .click();
 
-    await page.getByLabel("Overlay ID").fill("test-vpc-submission");
+    await page.getByLabel("Overlay ID").fill("test-overlay-submission");
     await page.getByLabel("Tenant").fill("test-tenant");
     await page.getByLabel("Namespace").fill("test-namespace");
     await page.getByLabel("RD Min").fill("62000");
@@ -340,7 +340,7 @@ test.describe("SpX Overlay Creation Workflow Form - Standard Tests", () => {
     await page.getByRole("button", { name: "Site" }).click();
     await page.getByRole("dialog").getByText(FORBIDDEN_SITE_ID).click();
 
-    await page.getByLabel("Overlay ID").fill("test-vpc");
+    await page.getByLabel("Overlay ID").fill("test-overlay");
     await page.getByLabel("Tenant").fill("test-tenant");
     await page.getByLabel("Namespace").fill("test-namespace");
     await page.getByLabel("RD Min").fill("60000");

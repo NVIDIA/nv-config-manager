@@ -154,3 +154,7 @@ style = "compact"
 # list-item-spacing
 style = "consistent"              # "consistent" (default), "loose", or "tight"
 allow-loose-continuation = true  # allow blank lines around continuation paragraphs
+
+[MD077]
+# list-continuation-indent
+severity = "info"

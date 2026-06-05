@@ -177,7 +177,7 @@ class SpXOverlayCreationWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
                 created_vrfs=[],
                 existing_vrfs=existing_vrfs,
                 display=(
-                    f"VRFs already exists for VPC ID {stage_input.overlay_id}:\n "
+                    f"VRFs already exist for Overlay ID {stage_input.overlay_id}:\n "
                     f"{self.markdown_table(existing_vrfs, exclude={'interfaces'})}"
                 ),
             )
@@ -320,7 +320,7 @@ class SpXOverlayDeletionWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
             return self.DeleteSpXOverlayStageOutput(
                 deleted_vrfs=[],
                 in_use_vrfs=[],
-                display=f"No VRFs exist for VPC ID {stage_input.overlay_id}",
+                display=f"No VRFs exist for Overlay ID {stage_input.overlay_id}",
             )
 
         in_use_vrfs = [vrf for vrf in existing_vrfs if vrf.interface_count > 0]
@@ -329,7 +329,7 @@ class SpXOverlayDeletionWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
                 in_use_vrfs=in_use_vrfs,
                 deleted_vrfs=[],
                 display=(
-                    f"Unable to delete VPC {stage_input.overlay_id}, "
+                    f"Unable to delete Overlay {stage_input.overlay_id}, "
                     f"the following VRFs are in use:\n "
                     f"{self.markdown_table(in_use_vrfs, exclude={'interfaces'})}"
                 ),
@@ -371,7 +371,7 @@ class SpXOverlayDeletionWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
             deleted_vrfs=existing_vrfs,
             in_use_vrfs=[],
             display=(
-                f"VRFs deleted for VPC ID {stage_input.overlay_id}:\n"
+                f"VRFs deleted for Overlay ID {stage_input.overlay_id}:\n"
                 f"{self.markdown_table(existing_vrfs, exclude={'interfaces'})}\n\n"
                 f"{overlay_message}"
             ),
@@ -494,11 +494,11 @@ class SpXOverlayAssignmentWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixi
 
         if not vrfs:
             raise ApplicationError(
-                f"No VRF found for VPC ID {stage_input.overlay_id} in site {stage_input.site}"
+                f"No VRF found for Overlay ID {stage_input.overlay_id} in site {stage_input.site}"
             )
         if len(vrfs) > 1:
             raise ApplicationError(
-                f"Multiple VRFs found for VPC ID {stage_input.overlay_id} in site {stage_input.site}"
+                f"Multiple VRFs found for Overlay ID {stage_input.overlay_id} in site {stage_input.site}"
             )
 
         return self.GetDeviceAndVrfStageOutput(

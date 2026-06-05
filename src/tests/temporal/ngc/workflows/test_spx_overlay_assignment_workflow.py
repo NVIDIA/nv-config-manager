@@ -319,7 +319,7 @@ async def test_spx_overlay_assignment_workflow_vrf_not_found(_mock_time, _mock_n
         assert get_device_vrf_stage["state"] == "FAILED"
 
         if get_device_vrf_stage.get("traceback"):
-            assert "No VRF found for VPC ID mock_overlay_id" in get_device_vrf_stage["traceback"]
+            assert "No VRF found for Overlay ID mock_overlay_id" in get_device_vrf_stage["traceback"]
 
 
 @pytest.mark.asyncio
