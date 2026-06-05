@@ -37,7 +37,6 @@ from nv_config_manager.temporal.common.mixins.device import (
 logger = get_logger(__name__, category=LogCategory.NAUTOBOT)
 logger.setLevel(logging.INFO)
 
-# SpectrumX VPC overlays are VRF-isolated and carry an L3 VNI per VRF.
 SPECTRUMX_ISOLATION_TYPE = "spectrum_x_vrf"
 VXLAN_L3_VNI_TYPE = "l3"
 DEFAULT_STATUS_NAME = "Active"
