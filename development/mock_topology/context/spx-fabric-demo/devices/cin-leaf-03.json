@@ -130,6 +130,110 @@
                             }
                         }
                     }
+                },
+                {
+                    "name": "swp3",
+                    "type": "400gbase-x-qsfpdd",
+                    "status": {
+                        "name": "Active"
+                    },
+                    "enabled": true,
+                    "mgmt_only": false,
+                    "ip_addresses": [],
+                    "role": {
+                        "name": "Downlink"
+                    }
+                },
+                {
+                    "name": "swp4",
+                    "type": "400gbase-x-qsfpdd",
+                    "status": {
+                        "name": "Active"
+                    },
+                    "enabled": true,
+                    "mgmt_only": false,
+                    "ip_addresses": [],
+                    "role": {
+                        "name": "Downlink"
+                    }
+                },
+                {
+                    "name": "swp5",
+                    "type": "400gbase-x-qsfpdd",
+                    "status": {
+                        "name": "Active"
+                    },
+                    "enabled": true,
+                    "mgmt_only": false,
+                    "ip_addresses": [],
+                    "role": {
+                        "name": "Downlink"
+                    }
+                },
+                {
+                    "name": "swp6",
+                    "type": "400gbase-x-qsfpdd",
+                    "status": {
+                        "name": "Active"
+                    },
+                    "enabled": true,
+                    "mgmt_only": false,
+                    "ip_addresses": [],
+                    "role": {
+                        "name": "Downlink"
+                    }
+                },
+                {
+                    "name": "swp7",
+                    "type": "400gbase-x-qsfpdd",
+                    "status": {
+                        "name": "Active"
+                    },
+                    "enabled": true,
+                    "mgmt_only": false,
+                    "ip_addresses": [],
+                    "role": {
+                        "name": "Downlink"
+                    }
+                },
+                {
+                    "name": "swp8",
+                    "type": "400gbase-x-qsfpdd",
+                    "status": {
+                        "name": "Active"
+                    },
+                    "enabled": true,
+                    "mgmt_only": false,
+                    "ip_addresses": [],
+                    "role": {
+                        "name": "Downlink"
+                    }
+                },
+                {
+                    "name": "swp9",
+                    "type": "400gbase-x-qsfpdd",
+                    "status": {
+                        "name": "Active"
+                    },
+                    "enabled": true,
+                    "mgmt_only": false,
+                    "ip_addresses": [],
+                    "role": {
+                        "name": "Downlink"
+                    }
+                },
+                {
+                    "name": "swp10",
+                    "type": "400gbase-x-qsfpdd",
+                    "status": {
+                        "name": "Active"
+                    },
+                    "enabled": true,
+                    "mgmt_only": false,
+                    "ip_addresses": [],
+                    "role": {
+                        "name": "Downlink"
+                    }
                 }
             ],
             "platform": {
