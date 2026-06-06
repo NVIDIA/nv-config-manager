@@ -178,6 +178,12 @@ export const IBPKeyMembershipForm = ({
     name: "interfaces",
   });
 
+  const interfacesErr = form.formState.errors.interfaces as
+    | { message?: string; root?: { message?: string } }
+    | undefined;
+  const interfacesErrorMessage =
+    interfacesErr?.message ?? interfacesErr?.root?.message;
+
   const onSubmit = async (data: MembershipFormValues) => {
     setIsSubmitting(true);
 
@@ -344,7 +350,11 @@ export const IBPKeyMembershipForm = ({
                           Add Row
                         </Button>
                       </div>
-                      <FormMessage />
+                      {interfacesErrorMessage ? (
+                        <p className="text-sm font-medium text-destructive">
+                          {interfacesErrorMessage}
+                        </p>
+                      ) : null}
                     </FormItem>
                   )}
                 />

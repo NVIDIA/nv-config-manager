@@ -101,7 +101,9 @@ test.describe("IB PKey Member Add Form", () => {
       page.getByPlaceholder("device (e.g. hca01)"),
     ).toHaveCount(0);
 
-    await page.getByLabel("GUIDs").fill(`${GUID_A}\n${GUID_B}`);
+    await page
+      .getByRole("textbox", { name: "GUIDs" })
+      .fill(`${GUID_A}\n${GUID_B}`);
     await page.getByRole("button", { name: "Add Members" }).click();
 
     const request = await requestPromise;
@@ -118,7 +120,7 @@ test.describe("IB PKey Member Add Form", () => {
     await page.getByLabel("UFM Host").fill("ufm-1.lab");
     await page.getByLabel("PKey").fill("0x8001");
     await page.getByLabel("By GUIDs").click();
-    await page.getByLabel("GUIDs").fill("0xnope");
+    await page.getByRole("textbox", { name: "GUIDs" }).fill("0xnope");
     await page.getByRole("button", { name: "Add Members" }).click();
 
     await expect(page.getByText(/Invalid GUID/i)).toBeVisible({
