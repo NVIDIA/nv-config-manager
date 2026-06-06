@@ -29,17 +29,17 @@ Follow these steps in order. Each step assumes the previous one has completed su
 
 1. **Power up all network switches.** All switches can be powered up at once. Each switch will boot, attempt DHCP, and retry in a boot loop until it receives a response — so downstream switches will simply keep trying until the relay chain through their upstream neighbors is operational. Provisioning will naturally fan out from Config Manager along the documented [ZTP provisioning order](../../network-topology-requirements/index.mdx#defined-ztp-provisioning-order) as each upstream layer comes online.
 
-    <Tip>
-    **Stuck boot loop:** if a switch fails to leave the DHCP retry loop after its upstream relay path is up, power-cycle the switch to restart the boot process.
-    </Tip>
+   <Tip>
+   **Stuck boot loop:** if a switch fails to leave the DHCP retry loop after its upstream relay path is up, power-cycle the switch to restart the boot process.
+   </Tip>
 
 1. **ZTP device configurations from Config Manager.** Each switch boots with factory defaults, requests an IP via DHCP, and downloads its boot script and rendered configuration from the Config Manager ZTP service. See [Network ZTP](../../network-ztp/index.mdx) for how this works under the hood.
 
-    When ZTP completes successfully, the device's status in Nautobot transitions to **Provisioned**. If a switch does not reach Provisioned within a reasonable window, work through the [Monitoring DHCP and ZTP](#monitoring-dhcp-and-ztp) and [Common errors](#common-errors-and-troubleshooting) sections below. Where the underlying issue is physical (miscabled, unpowered, factory reset required), DC Ops will need to investigate on-site.
+   When ZTP completes successfully, the device's status in Nautobot transitions to **Provisioned**. If a switch does not reach Provisioned within a reasonable window, work through the [Monitoring DHCP and ZTP](#monitoring-dhcp-and-ztp) and [Common errors](#common-errors-and-troubleshooting) sections below. Where the underlying issue is physical (miscabled, unpowered, factory reset required), DC Ops will need to investigate on-site.
 
 1. **Run the Cable Validation workflow.** Once switches have reached Provisioned, run the cable validation workflow to confirm cabling matches the design. See the [Cable Validation Guide](../cable-validation/index.mdx) for how to run the workflow and interpret the report.
 
-    Incorrect cabling typically surfaces as a MAC mismatch or a down link. The report identifies the device and port to investigate. Devices that do not respond require DC Ops to confirm power and connectivity.
+   Incorrect cabling typically surfaces as a MAC mismatch or a down link. The report identifies the device and port to investigate. Devices that do not respond require DC Ops to confirm power and connectivity.
 
 1. **Run the hardware error check workflow.** This collects hardware diagnostic command output from each switch into a per-device file for review by DC Ops.
 
@@ -184,13 +184,13 @@ The rendered configuration is failing to apply or has broken connectivity back t
 - Routing between the device and Config Manager may be broken. Access via console or upstream SSH to investigate.
 - The device may be on Cumulus pre-5.x, which cannot ZTP. Upgrade and retry.
 
-    From the Cumulus shell, you can verify that the ZTP URL is reachable by fetching the boot script directly. On a non-management switch, run the request in the management VRF so it leaves the switch over eth0:
+  From the Cumulus shell, you can verify that the ZTP URL is reachable by fetching the boot script directly. On a non-management switch, run the request in the management VRF so it leaves the switch over eth0:
 
     ```bash
     sudo ip vrf exec mgmt curl -v http://<ztp-server>/v1/device/<device-uuid>/boot-script
     ```
 
-    A 200 response (or a 403, which still confirms the network path is open) means HTTP reachability is fine and the problem is elsewhere. A connection refused, timeout, or no route to host indicates a firewall, security-group, or routing issue between the device and Config Manager.
+  A 200 response (or a 403, which still confirms the network path is open) means HTTP reachability is fine and the problem is elsewhere. A connection refused, timeout, or no route to host indicates a firewall, security-group, or routing issue between the device and Config Manager.
 
 ### Render errors
 
@@ -216,9 +216,9 @@ To perform the swap:
 1. Ensure the inventory-system owner renames the devices in their system to match the new physical positions.
 1. In Nautobot, swap the **serial number, asset tag, and eth0 MAC address** between the two device records.
 
-    <Warning>
-    **Do not rename the devices in Nautobot** — renaming forces you to rebuild all of the cabling relationships.
-    </Warning>
+   <Warning>
+   **Do not rename the devices in Nautobot** — renaming forces you to rebuild all of the cabling relationships.
+   </Warning>
 
 1. On the console for both switches, reset the DHCP/ZTP state and reboot:
 
@@ -276,6 +276,6 @@ If a device directly upstream of the stuck switch has already provisioned, you c
     ip vrf exec <vrf> bash
     ```
 
-    For management-network devices this is the `default` VRF; for non-management devices, choose the VRF that carries the eth0 management connection.
+   For management-network devices this is the `default` VRF; for non-management devices, choose the VRF that carries the eth0 management connection.
 
 1. SSH to the uplink IP on the stuck device's interface.

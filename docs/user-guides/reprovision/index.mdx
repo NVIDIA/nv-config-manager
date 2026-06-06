@@ -52,7 +52,7 @@ The workflow runs two stages in order. Each stage is defined as a Pydantic-valid
 
 1. **`execute_ztp` — Reset the device and run ZTP.**
 
-    This stage drives the full ZTP cycle:
+   This stage drives the full ZTP cycle:
 
    - Fetches the device record from Nautobot to confirm it exists and to attach device search attributes to the workflow for observability.
    - Calls the `execute_ztp` activity, which triggers a factory reset on the switch. The switch reboots, requests DHCP, and downloads its boot script and rendered configuration from the ZTP service. See [Network ZTP](../../network-ztp/index.mdx) for how this works under the hood.
@@ -63,9 +63,9 @@ The workflow runs two stages in order. Each stage is defined as a Pydantic-valid
 
 1. **`perform_backup` — Capture the post-provision configuration.**
 
-    Once ZTP succeeds, the workflow starts the [Configuration Backup](../configuration-backup/index.mdx) workflow as a child workflow against the same device, with `trigger=WORKFLOW` and a 10-minute run timeout. The child workflow ID is recorded on the parent so you can drill into the backup run from the Reprovision status page.
+   Once ZTP succeeds, the workflow starts the [Configuration Backup](../configuration-backup/index.mdx) workflow as a child workflow against the same device, with `trigger=WORKFLOW` and a 10-minute run timeout. The child workflow ID is recorded on the parent so you can drill into the backup run from the Reprovision status page.
 
-    The backup gives you a known-good starting point for future change tracking on the freshly provisioned device.
+   The backup gives you a known-good starting point for future change tracking on the freshly provisioned device.
 
 After both stages complete, the workflow archives its results and returns success.
 
