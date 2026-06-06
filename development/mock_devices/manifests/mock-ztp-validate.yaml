@@ -43,6 +43,7 @@ spec:
         - --name=${MOCK_ZTP_DEVICE}
         - --platform=${MOCK_ZTP_PLATFORM}
         - --serial=${MOCK_ZTP_SERIAL}
+        - --mac=${MOCK_ZTP_MAC}
         - --client-id-template=${MOCK_ZTP_CLIENT_ID_TPL}
         - --dhcp-api-url=http://nv-config-manager-dhcp-internal.nv-config-manager.svc.cluster.local:9000
         - --ztp-api-url=http://nv-config-manager-ztp-api.nv-config-manager.svc.cluster.local:9000

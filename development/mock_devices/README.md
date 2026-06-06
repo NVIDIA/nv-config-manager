@@ -26,10 +26,10 @@ This deploys the platform with `mock_devices: false` (via `local-superpod-sandbo
 After `sandbox-up`, test workflows directly:
 
 ```bash
-# Trigger a backup workflow against a mock device
+# Trigger a backup workflow against a mock device (default: a04-u44-p01-tor-01)
 make mock-workflow-backup
 
-# Trigger cable validation against a mock device
+# Trigger cable validation against a mock device (default: a04-u44-p01-tor-01)
 make mock-workflow-cable-validate
 
 # Override the target device (must have a rendered intended config)
@@ -40,14 +40,15 @@ make mock-workflow-cable-validate MOCK_CABLE_DEVICE=a08-u32-p01-cleaf-01
 ### DHCP Testing
 
 ```bash
-# Validate DHCP config (queries Kea API, no DHCP packets sent)
+# Validate DHCP config via Kea API — no DHCP packets sent (default: a04-u44-p01-tor-01, serial: 44:38:39:20:00:01)
 make mock-dhcp-validate
 
-# Send a real DHCP discover (simulates a relay by setting giaddr, no raw sockets)
+# Send a real DHCP discover via UDP relay (default: a04-u44-p01-tor-01, serial: 44:38:39:20:00:01)
 make mock-dhcp-discover
 
-# Override the target device (defaults to a04-u44-p01-tor-01)
-make mock-dhcp-discover MOCK_DHCP_DEVICE=a08-u44-p01-mleaf-01 MOCK_DHCP_PLATFORM=cumulus MOCK_DHCP_SERIAL=SPOD00000004
+# Override the target device
+make mock-dhcp-validate MOCK_DHCP_DEVICE=a08-u44-p01-mleaf-01 MOCK_DHCP_PLATFORM=cumulus MOCK_DHCP_SERIAL=2C:5E:AB:12:5A:38
+make mock-dhcp-discover MOCK_DHCP_DEVICE=a08-u44-p01-mleaf-01 MOCK_DHCP_PLATFORM=cumulus MOCK_DHCP_SERIAL=2C:5E:AB:12:5A:38
 ```
 
 ### ZTP Testing
@@ -55,11 +56,11 @@ make mock-dhcp-discover MOCK_DHCP_DEVICE=a08-u44-p01-mleaf-01 MOCK_DHCP_PLATFORM
 Validates the end-to-end ZTP provisioning chain: DHCP reservation options, boot script retrieval, serial validation, and config delivery.
 
 ```bash
-# Run the full ZTP validation chain (defaults to a04-u44-p01-tor-01)
+# Run the full ZTP validation chain (default: a04-u44-p01-tor-01, serial: 44:38:39:20:00:01)
 make mock-ztp-validate
 
 # Override the target device (must be a device with a DHCP reservation and rendered config)
-make mock-ztp-validate MOCK_ZTP_DEVICE=a08-u32-p01-cleaf-01 MOCK_ZTP_PLATFORM=cumulus MOCK_ZTP_SERIAL=SPOD00000003
+make mock-ztp-validate MOCK_ZTP_DEVICE=a08-u32-p01-cleaf-01 MOCK_ZTP_PLATFORM=cumulus MOCK_ZTP_SERIAL=7C:8C:09:B9:F8:8E
 ```
 
 The validation checks four steps in sequence:
@@ -240,16 +241,16 @@ The sandbox runs all the same services as production (Nautobot, Render, Temporal
 The default manifests deploy devices matching the superpod mock topology:
 
 
-| Service              | Device                   | Platform | Role             | Port |
-| -------------------- | ------------------------ | -------- | ---------------- | ---- |
-| mock-sp-tor-01       | a04-u44-p01-tor-01       | Cumulus  | OOB-Leaf         | 8765 |
-| mock-sp-oobspine-01  | a08-u28-p01-oobspine-01  | Cumulus  | OOB-Spine        | 8765 |
-| mock-sp-cleaf-01     | a08-u32-p01-cleaf-01     | Cumulus  | In-Band-Leaf     | 8765 |
-| mock-sp-mleaf-01     | a08-u44-p01-mleaf-01     | Cumulus  | Mgmt-Leaf        | 8765 |
-| mock-sp-bleaf-01     | a09-u28-p01-bleaf-01     | Cumulus  | Border-Leaf      | 8765 |
-| mock-sp-sleaf-01     | a09-u32-p01-sleaf-01     | Cumulus  | Storage-Leaf     | 8765 |
-| mock-sp-spine-01     | a09-u36-p01-spine-01     | Cumulus  | Converged-Spine  | 8765 |
-| mock-sp-pleaf-01     | a09-u44-p01-pleaf-01     | Cumulus  | Power-Leaf       | 8765 |
+| Service              | Device                   | Platform | Role             | Serial (DHCP/ZTP)       | Port |
+| -------------------- | ------------------------ | -------- | ---------------- | ----------------------- | ---- |
+| mock-sp-tor-01       | a04-u44-p01-tor-01       | Cumulus  | OOB-Leaf         | `44:38:39:20:00:01`     | 8765 |
+| mock-sp-oobspine-01  | a08-u28-p01-oobspine-01  | Cumulus  | OOB-Spine        | `54:9B:24:41:33:12`     | 8765 |
+| mock-sp-cleaf-01     | a08-u32-p01-cleaf-01     | Cumulus  | In-Band-Leaf     | `7C:8C:09:B9:F8:8E`     | 8765 |
+| mock-sp-mleaf-01     | a08-u44-p01-mleaf-01     | Cumulus  | Mgmt-Leaf        | `2C:5E:AB:12:5A:38`     | 8765 |
+| mock-sp-bleaf-01     | a09-u28-p01-bleaf-01     | Cumulus  | Border-Leaf      | `E8:9E:49:CF:4E:90`     | 8765 |
+| mock-sp-sleaf-01     | a09-u32-p01-sleaf-01     | Cumulus  | Storage-Leaf     | `7C:8C:09:B9:F8:9E`     | 8765 |
+| mock-sp-spine-01     | a09-u36-p01-spine-01     | Cumulus  | Converged-Spine  | `7C:8C:09:B9:F8:A6`     | 8765 |
+| mock-sp-pleaf-01     | a09-u44-p01-pleaf-01     | Cumulus  | Power-Leaf       | `2C:5E:AB:12:5A:68`     | 8765 |
 
 
 The two MLNX-OS UFM devices (`a09-u23-p01-ufm-01`, `b09-u23-p01-ufm-02`) are not mocked — they have no `intended-firmware` and no supported mock API implementation.
@@ -269,7 +270,7 @@ The mock device CLI provides the following commands:
 uv run mock-device serve \
     --name a04-u44-p01-tor-01 \
     --platform cumulus \
-    --serial SPOD00000001 \
+    --serial 44:38:39:20:00:01 \
     --os-version 5.13.1 \
     --port 8765
 ```
@@ -292,7 +293,7 @@ Resolves each mock device's Kubernetes Service ClusterIP and updates the device'
 uv run mock-device dhcp \
     --name a04-u44-p01-tor-01 \
     --platform cumulus \
-    --serial SPOD00000001 \
+    --serial 44:38:39:20:00:01 \
     --dhcp-server nv-config-manager-dhcp-dev.nv-config-manager.svc.cluster.local \
     --client-id-template '{{ serial | hex }}'
 ```
@@ -305,7 +306,7 @@ The client auto-detects its pod IP for the relay `giaddr`. To override, pass `--
 uv run mock-device validate \
     --name a04-u44-p01-tor-01 \
     --platform cumulus \
-    --serial SPOD00000001 \
+    --serial 44:38:39:20:00:01 \
     --client-id-template '{{ serial | hex }}' \
     --dhcp-api-url http://nv-config-manager-dhcp-internal.nv-config-manager.svc:9000
 ```
@@ -316,7 +317,7 @@ uv run mock-device validate \
 uv run mock-device ztp-validate \
     --name a04-u44-p01-tor-01 \
     --platform cumulus \
-    --serial SPOD00000001 \
+    --serial 44:38:39:20:00:01 \
     --client-id-template '{{ serial | hex }}' \
     --dhcp-api-url http://nv-config-manager-dhcp-internal.nv-config-manager.svc:9000 \
     --ztp-api-url http://nv-config-manager-ztp-api.nv-config-manager.svc:9000

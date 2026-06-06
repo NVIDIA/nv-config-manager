@@ -1131,9 +1131,23 @@ mock-ztp-validate: docker-build-mock-device
 	@echo "🔗 Running ZTP validation for $(MOCK_ZTP_DEVICE)..."
 	kind load docker-image mock-device:local --name $(KIND_CLUSTER_NAME) 2>/dev/null || true
 	kubectl delete job mock-ztp-validate -n $(NAMESPACE) --ignore-not-found 2>/dev/null
-	@MOCK_ZTP_DEVICE="$(MOCK_ZTP_DEVICE)" \
+	@kubectl port-forward -n $(NAMESPACE) svc/nv-config-manager-nautobot 18080:80 &>/dev/null & \
+	NB_PF=$$!; \
+	sleep 2; \
+	NB_TOKEN=$$(kubectl get secret nautobot-token -n $(NAMESPACE) -o jsonpath='{.data.token}' | base64 -d); \
+	MOCK_ZTP_MAC=$$(curl -s -H "Authorization: Token $$NB_TOKEN" \
+		"http://localhost:18080/api/dcim/interfaces/?device=$(MOCK_ZTP_DEVICE)&name=eth0&limit=1" \
+		| python3 -c "import json,sys; r=json.load(sys.stdin)['results']; print(r[0].get('mac_address') or '' if r else '')" 2>/dev/null); \
+	kill $$NB_PF 2>/dev/null; \
+	if [ -n "$$MOCK_ZTP_MAC" ]; then \
+		echo "   Using MAC from Nautobot: $$MOCK_ZTP_MAC"; \
+	else \
+		echo "   No eth0 MAC in Nautobot — falling back to client-id/serial matching"; \
+	fi; \
+	MOCK_ZTP_DEVICE="$(MOCK_ZTP_DEVICE)" \
 		MOCK_ZTP_PLATFORM="$(MOCK_ZTP_PLATFORM)" \
 		MOCK_ZTP_SERIAL="$(MOCK_ZTP_SERIAL)" \
+		MOCK_ZTP_MAC="$$MOCK_ZTP_MAC" \
 		MOCK_ZTP_CLIENT_ID_TPL="$(MOCK_ZTP_CLIENT_ID_TPL)" \
 		envsubst < development/mock_devices/manifests/mock-ztp-validate.yaml | kubectl apply -f -
 	@echo "⏳ Waiting for ZTP validation..."
