@@ -4,7 +4,8 @@
 namespaces:
   {% for ns in spx_namespaces %}
   - "!create_or_update:name": {{ ns.name }}
-    location__name: {{ ns.location }}
+    location:
+      "!get:name": {{ ns.location }}
     tags:
       - "!get:name": spectrumx
   {% endfor %}
