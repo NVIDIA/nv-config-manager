@@ -54,7 +54,7 @@
             br_default:
               access: {{ intf.untagged_vlan }}
 {% endif %}
-{% if spectrumx %}
+{% if spectrumx and not breakout %}
         qos:
           pfc-watchdog:
             state: enable

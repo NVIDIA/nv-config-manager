@@ -177,6 +177,16 @@
                     }
                 },
                 {
+                    "name": "swp3",
+                    "type": "400gbase-x-osfp",
+                    "status": {
+                        "name": "Active"
+                    },
+                    "enabled": true,
+                    "mgmt_only": false,
+                    "ip_addresses": []
+                },
+                {
                     "name": "swp3s0",
                     "type": "400gbase-x-osfp",
                     "status": {
@@ -185,6 +195,9 @@
                     "enabled": true,
                     "mgmt_only": false,
                     "ip_addresses": [],
+                    "parent_interface": {
+                        "name": "swp3"
+                    },
                     "role": {
                         "name": "Downlink"
                     }
@@ -198,9 +211,22 @@
                     "enabled": true,
                     "mgmt_only": false,
                     "ip_addresses": [],
+                    "parent_interface": {
+                        "name": "swp3"
+                    },
                     "role": {
                         "name": "Downlink"
                     }
+                },
+                {
+                    "name": "swp4",
+                    "type": "400gbase-x-osfp",
+                    "status": {
+                        "name": "Active"
+                    },
+                    "enabled": true,
+                    "mgmt_only": false,
+                    "ip_addresses": []
                 },
                 {
                     "name": "swp4s0",
@@ -211,6 +237,9 @@
                     "enabled": true,
                     "mgmt_only": false,
                     "ip_addresses": [],
+                    "parent_interface": {
+                        "name": "swp4"
+                    },
                     "role": {
                         "name": "Downlink"
                     }
@@ -224,9 +253,22 @@
                     "enabled": true,
                     "mgmt_only": false,
                     "ip_addresses": [],
+                    "parent_interface": {
+                        "name": "swp4"
+                    },
                     "role": {
                         "name": "Downlink"
                     }
+                },
+                {
+                    "name": "swp5",
+                    "type": "400gbase-x-osfp",
+                    "status": {
+                        "name": "Active"
+                    },
+                    "enabled": true,
+                    "mgmt_only": false,
+                    "ip_addresses": []
                 },
                 {
                     "name": "swp5s0",
@@ -237,6 +279,9 @@
                     "enabled": true,
                     "mgmt_only": false,
                     "ip_addresses": [],
+                    "parent_interface": {
+                        "name": "swp5"
+                    },
                     "role": {
                         "name": "Downlink"
                     }
@@ -250,9 +295,22 @@
                     "enabled": true,
                     "mgmt_only": false,
                     "ip_addresses": [],
+                    "parent_interface": {
+                        "name": "swp5"
+                    },
                     "role": {
                         "name": "Downlink"
                     }
+                },
+                {
+                    "name": "swp6",
+                    "type": "400gbase-x-osfp",
+                    "status": {
+                        "name": "Active"
+                    },
+                    "enabled": true,
+                    "mgmt_only": false,
+                    "ip_addresses": []
                 },
                 {
                     "name": "swp6s0",
@@ -263,6 +321,9 @@
                     "enabled": true,
                     "mgmt_only": false,
                     "ip_addresses": [],
+                    "parent_interface": {
+                        "name": "swp6"
+                    },
                     "role": {
                         "name": "Downlink"
                     }
@@ -276,9 +337,22 @@
                     "enabled": true,
                     "mgmt_only": false,
                     "ip_addresses": [],
+                    "parent_interface": {
+                        "name": "swp6"
+                    },
                     "role": {
                         "name": "Downlink"
                     }
+                },
+                {
+                    "name": "swp7",
+                    "type": "400gbase-x-osfp",
+                    "status": {
+                        "name": "Active"
+                    },
+                    "enabled": true,
+                    "mgmt_only": false,
+                    "ip_addresses": []
                 },
                 {
                     "name": "swp7s0",
@@ -289,6 +363,9 @@
                     "enabled": true,
                     "mgmt_only": false,
                     "ip_addresses": [],
+                    "parent_interface": {
+                        "name": "swp7"
+                    },
                     "role": {
                         "name": "Downlink"
                     }
@@ -302,6 +379,9 @@
                     "enabled": true,
                     "mgmt_only": false,
                     "ip_addresses": [],
+                    "parent_interface": {
+                        "name": "swp7"
+                    },
                     "role": {
                         "name": "Downlink"
                     }
