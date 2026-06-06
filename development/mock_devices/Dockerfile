@@ -23,7 +23,8 @@ WORKDIR /app
 RUN openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
     -keyout /app/tls.key -out /app/tls.crt \
     -subj '/CN=mock-device' 2>/dev/null && \
-    chmod 644 /app/tls.key /app/tls.crt
+    chmod 644 /app/tls.crt && \
+    chmod 600 /app/tls.key
 
 COPY pyproject.toml .
 COPY mock_device/ /app/mock_device/
@@ -41,17 +42,19 @@ ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-COPY --from=builder /app/.venv /app/.venv
-COPY --from=builder /app/mock_device /app/mock_device
-COPY --from=builder /app/fixtures /app/fixtures
-COPY --from=builder /app/tls.crt /app/tls.crt
-COPY --from=builder /app/tls.key /app/tls.key
+COPY --from=builder --chown=65532:65532 /app/.venv /app/.venv
+COPY --from=builder --chown=65532:65532 /app/mock_device /app/mock_device
+COPY --from=builder --chown=65532:65532 /app/fixtures /app/fixtures
+COPY --from=builder --chown=65532:65532 /app/tls.crt /app/tls.crt
+COPY --from=builder --chown=65532:65532 /app/tls.key /app/tls.key
 
 # libpcap for scapy packet capture
 COPY --from=builder /pcap-lib/ /usr/lib/
 
 ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONPATH=/app
+
+USER 65532:65532
 
 ENTRYPOINT ["python", "-m", "mock_device.cli"]
 CMD ["serve"]

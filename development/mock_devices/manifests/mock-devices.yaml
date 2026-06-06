@@ -59,6 +59,13 @@ spec:
           limits:
             memory: "128Mi"
             cpu: "100m"
+        securityContext:
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
 ---
 # OOB-Spine (a08-u28-p01-oobspine-01) — SN5600
 apiVersion: apps/v1
@@ -107,6 +114,13 @@ spec:
           limits:
             memory: "128Mi"
             cpu: "100m"
+        securityContext:
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
 ---
 # In-Band-Leaf (a08-u32-p01-cleaf-01) — SN5600
 apiVersion: apps/v1
@@ -155,6 +169,13 @@ spec:
           limits:
             memory: "128Mi"
             cpu: "100m"
+        securityContext:
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
 ---
 # Mgmt-Leaf (a08-u44-p01-mleaf-01) — MSN2201
 apiVersion: apps/v1
@@ -203,6 +224,13 @@ spec:
           limits:
             memory: "128Mi"
             cpu: "100m"
+        securityContext:
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
 ---
 # Border-Leaf (a09-u28-p01-bleaf-01) — SN5600
 apiVersion: apps/v1
@@ -251,6 +279,13 @@ spec:
           limits:
             memory: "128Mi"
             cpu: "100m"
+        securityContext:
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
 ---
 # Storage-Leaf (a09-u32-p01-sleaf-01) — SN5600
 apiVersion: apps/v1
@@ -299,6 +334,13 @@ spec:
           limits:
             memory: "128Mi"
             cpu: "100m"
+        securityContext:
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
 ---
 # Converged-Spine (a09-u36-p01-spine-01) — SN5600
 apiVersion: apps/v1
@@ -347,6 +389,13 @@ spec:
           limits:
             memory: "128Mi"
             cpu: "100m"
+        securityContext:
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
 ---
 # Power-Leaf (a09-u44-p01-pleaf-01) — MSN2201
 apiVersion: apps/v1
@@ -395,6 +444,13 @@ spec:
           limits:
             memory: "128Mi"
             cpu: "100m"
+        securityContext:
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
 ---
 # Services for mock devices
 apiVersion: v1

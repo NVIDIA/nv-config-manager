@@ -197,15 +197,16 @@ def _nvue_interfaces(
 
 
 def _nvue_iface_type(name: str) -> str:
-    if name.startswith("swp"):
+    lower = name.lower()
+    if lower.startswith("swp"):
         return "swp"
-    if name.startswith("eth"):
+    if lower.startswith("eth"):
         return "eth"
-    if name in ("lo",) or name.startswith("lo"):
+    if lower in ("lo",) or lower.startswith("lo"):
         return "loopback"
-    if name.startswith("vlan"):
+    if lower.startswith("vlan"):
         return "svi"
-    if name.startswith("bond"):
+    if lower.startswith("bond"):
         return "bond"
     return "swp"
 

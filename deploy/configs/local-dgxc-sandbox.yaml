@@ -5,7 +5,7 @@
 # workflows use real CumulusConnection / AristaConnection classes to reach
 # the mock device API pods (FastAPI with version-aware fixtures).
 #
-# Used by: make sandbox-up
+# Used by: make sandbox-up (dgx_cloud topology)
 # =============================================================================
 
 version: "1"

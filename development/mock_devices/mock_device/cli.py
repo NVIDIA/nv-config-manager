@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import sys
 from pathlib import Path
 
@@ -55,9 +54,13 @@ def cli() -> None:
 )
 @click.option("--mac", envvar="MOCK_DEVICE_MAC", default=None, help="MAC address")
 @click.option("--serial", envvar="MOCK_DEVICE_SERIAL", default="", help="Serial number")
-@click.option("--os-version", envvar="MOCK_DEVICE_OS_VERSION", default="", help="OS version for fixtures")
+@click.option(
+    "--os-version", envvar="MOCK_DEVICE_OS_VERSION", default="", help="OS version for fixtures"
+)
 @click.option("--port", envvar="MOCK_DEVICE_API_PORT", default=0, type=int, help="API port")
-def serve(name: str, platform: str, mac: str | None, serial: str, os_version: str, port: int) -> None:
+def serve(
+    name: str, platform: str, mac: str | None, serial: str, os_version: str, port: int
+) -> None:
     """Run the mock device API server (EAPI or NVUE)."""
     kwargs: dict = {"name": name, "platform": platform, "serial": serial, "os_version": os_version}
     if mac:
@@ -147,7 +150,7 @@ def dhcp(
     click.echo(json.dumps(output, indent=2))
     sys.stdout.flush()
 
-    os._exit(0 if result.success else 1)
+    raise SystemExit(0 if result.success else 1)
 
 
 @cli.command()
@@ -205,7 +208,7 @@ def validate(
     click.echo(json.dumps(output, indent=2))
     sys.stdout.flush()
 
-    os._exit(0 if result.success else 1)
+    raise SystemExit(0 if result.success else 1)
 
 
 @cli.command("ztp-validate")
@@ -279,7 +282,7 @@ def ztp_validate(
     click.echo(json.dumps(output, indent=2))
     sys.stdout.flush()
 
-    os._exit(0 if result.success else 1)
+    raise SystemExit(0 if result.success else 1)
 
 
 @cli.command()

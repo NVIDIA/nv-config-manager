@@ -1069,6 +1069,7 @@ mock-dhcp-validate: docker-build-mock-device
 	kubectl delete job mock-dhcp-validate -n $(NAMESPACE) --ignore-not-found 2>/dev/null
 	@kubectl port-forward -n $(NAMESPACE) svc/nv-config-manager-nautobot 18080:80 &>/dev/null & \
 	NB_PF=$$!; \
+	trap 'kill $$NB_PF 2>/dev/null' EXIT INT TERM; \
 	sleep 2; \
 	NB_TOKEN=$$(kubectl get secret nautobot-token -n $(NAMESPACE) -o jsonpath='{.data.token}' | base64 -d); \
 	MOCK_DHCP_MAC=$$(curl -s -H "Authorization: Token $$NB_TOKEN" \
@@ -1098,6 +1099,7 @@ mock-dhcp-discover: docker-build-mock-device
 	kubectl delete job mock-dhcp-discover -n $(NAMESPACE) --ignore-not-found 2>/dev/null
 	@kubectl port-forward -n $(NAMESPACE) svc/nv-config-manager-nautobot 18080:80 &>/dev/null & \
 	NB_PF=$$!; \
+	trap 'kill $$NB_PF 2>/dev/null' EXIT INT TERM; \
 	sleep 2; \
 	NB_TOKEN=$$(kubectl get secret nautobot-token -n $(NAMESPACE) -o jsonpath='{.data.token}' | base64 -d); \
 	MOCK_DHCP_MAC=$$(curl -s -H "Authorization: Token $$NB_TOKEN" \
@@ -1133,6 +1135,7 @@ mock-ztp-validate: docker-build-mock-device
 	kubectl delete job mock-ztp-validate -n $(NAMESPACE) --ignore-not-found 2>/dev/null
 	@kubectl port-forward -n $(NAMESPACE) svc/nv-config-manager-nautobot 18080:80 &>/dev/null & \
 	NB_PF=$$!; \
+	trap 'kill $$NB_PF 2>/dev/null' EXIT INT TERM; \
 	sleep 2; \
 	NB_TOKEN=$$(kubectl get secret nautobot-token -n $(NAMESPACE) -o jsonpath='{.data.token}' | base64 -d); \
 	MOCK_ZTP_MAC=$$(curl -s -H "Authorization: Token $$NB_TOKEN" \
@@ -1172,6 +1175,7 @@ mock-workflow-backup:
 	@echo "📦 Starting backup workflow for $(MOCK_BACKUP_DEVICE)..."
 	@kubectl port-forward -n $(NAMESPACE) svc/nv-config-manager-nautobot 18080:80 &>/dev/null & \
 	NB_PF=$$!; \
+	trap 'kill $$NB_PF 2>/dev/null; kill $$T_PF 2>/dev/null' EXIT INT TERM; \
 	sleep 2; \
 	NB_TOKEN=$$(kubectl get secret nautobot-token -n $(NAMESPACE) -o jsonpath='{.data.token}' | base64 -d); \
 	DEVICE_ID=$$(curl -sS -H "Authorization: Token $$NB_TOKEN" \
@@ -1198,6 +1202,7 @@ mock-workflow-cable-validate:
 	@echo "🔗 Starting cable validation for $(MOCK_CABLE_DEVICE)..."
 	@kubectl port-forward -n $(NAMESPACE) svc/nv-config-manager-nautobot 18080:80 &>/dev/null & \
 	NB_PF=$$!; \
+	trap 'kill $$NB_PF 2>/dev/null; kill $$T_PF 2>/dev/null' EXIT INT TERM; \
 	sleep 2; \
 	NB_TOKEN=$$(kubectl get secret nautobot-token -n $(NAMESPACE) -o jsonpath='{.data.token}' | base64 -d); \
 	DEVICE_ID=$$(curl -sS -H "Authorization: Token $$NB_TOKEN" \

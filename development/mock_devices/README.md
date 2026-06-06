@@ -117,7 +117,7 @@ LLDP neighbor data is populated with topology-aware entries so cable validation 
 
 API responses are loaded from JSON fixture files organized by platform and OS version, with a fallback to hardcoded defaults. This allows testing version-specific JSON shape differences (e.g., Cumulus 5.11 vs 5.14 `product-release` location, `link.state` vs `link.oper-status`).
 
-```
+```text
 fixtures/
   nvue/
     5.11.0/
@@ -178,7 +178,7 @@ The sandbox pod network subnet (`10.244.0.0/16`) is configured as a Nautobot con
 
 With mock devices wired into Nautobot, the full pipeline looks like:
 
-```
+```text
 make mock-topology    →  Nautobot (device data)
 make mock-devices-up  →  Mock API pods (NVUE/eAPI)
 make mock-wire-devices →  Nautobot primary_ip4 → mock ClusterIP
@@ -192,7 +192,7 @@ Testable workflows with current mock APIs:
 | ----------------------- | ----------- | ------------------------------------------------------------------------- |
 | Backup                  | High        | `get_running_configuration` fully mocked                                  |
 | Cable Validation        | High        | LLDP neighbors + interface status + MAC/ARP mocked                        |
-| Config Deploy (diff)    | Medium      | Requires rendered config in Config Store                                  |
+| Config Deploy (diff)    | Medium      | Requires a rendered config in Config Store                                |
 | Config Deploy (commit)  | Medium      | Mock commit succeeds but simplified state machine                         |
 | ZTP Validation          | High        | `make mock-ztp-validate` checks DHCP options, boot script, serial, config |
 | OS Upgrade / ZTP (full) | Low         | Full DORA+fetch+reboot cycle needs stateful ZTP mock and firmware stubs   |

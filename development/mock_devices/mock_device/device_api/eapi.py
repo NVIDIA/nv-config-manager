@@ -288,6 +288,18 @@ async def command_api(request: Request) -> JSONResponse:
 
     results = []
     for cmd in commands:
+        if not isinstance(cmd, (str, dict)):
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "error": {
+                        "code": -32602,
+                        "message": "Invalid params: each command must be a string or object",
+                    },
+                },
+            )
         cmd_str = cmd if isinstance(cmd, str) else cmd.get("cmd", "")
         result = _dispatch_command(cmd_str)
         if encoding == "text" and isinstance(result, dict) and "output" not in result:
