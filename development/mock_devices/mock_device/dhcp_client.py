@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import logging
 import socket
-import struct
 import time
 from dataclasses import dataclass, field
 
@@ -54,16 +53,20 @@ def _get_pod_ip() -> str:
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         s.connect(("10.96.0.1", 53))
-        return s.getsockname()[0]
+        return str(s.getsockname()[0])
     except Exception:
         return "0.0.0.0"
     finally:
         s.close()
 
 
-def _build_bootp_dhcp_payload(device: DeviceConfig, message_type: str = "discover",
-                               offered_ip: str = "", server_id: str = "",
-                               giaddr: str = "") -> tuple[bytes, int]:
+def _build_bootp_dhcp_payload(
+    device: DeviceConfig,
+    message_type: str = "discover",
+    offered_ip: str = "",
+    server_id: str = "",
+    giaddr: str = "",
+) -> tuple[bytes, int]:
     """Build raw BOOTP+DHCP bytes using Scapy for encoding.
 
     Returns (payload_bytes, transaction_id).
@@ -108,7 +111,9 @@ def _parse_bootp_dhcp_response(data: bytes, expected_xid: int) -> DhcpResult:
         pkt = BOOTP(data)
 
         if pkt.xid != expected_xid:
-            return DhcpResult(success=False, error=f"XID mismatch: got {pkt.xid:#x}, expected {expected_xid:#x}")
+            return DhcpResult(
+                success=False, error=f"XID mismatch: got {pkt.xid:#x}, expected {expected_xid:#x}"
+            )
 
         offered_ip = pkt.yiaddr if pkt.yiaddr != "0.0.0.0" else ""
 
@@ -126,7 +131,9 @@ def _parse_bootp_dhcp_response(data: bytes, expected_xid: int) -> DhcpResult:
                 elif key == "server_id":
                     dhcp_options["server_id"] = str(val)
                 elif key == "boot-file-name":
-                    dhcp_options["boot_file"] = val if isinstance(val, str) else val.decode(errors="replace")
+                    dhcp_options["boot_file"] = (
+                        val if isinstance(val, str) else val.decode(errors="replace")
+                    )
                 elif isinstance(val, bytes):
                     dhcp_options[key] = val.decode(errors="replace")
                 else:
@@ -147,7 +154,7 @@ def _parse_bootp_dhcp_response(data: bytes, expected_xid: int) -> DhcpResult:
 def _resolve_server(server: str) -> str:
     """Resolve hostname to IP address."""
     try:
-        return socket.getaddrinfo(server, 67, socket.AF_INET)[0][4][0]
+        return str(socket.getaddrinfo(server, 67, socket.AF_INET)[0][4][0])
     except socket.gaierror as exc:
         raise RuntimeError(f"Cannot resolve DHCP server '{server}': {exc}") from exc
 
@@ -169,8 +176,12 @@ def send_dhcp_discover(
 
     logger.info(
         "Sending DHCP DISCOVER: device=%s mac=%s serial=%s server=%s giaddr=%s xid=%#x",
-        device.name, device.mac_address, device.serial or "(none)",
-        server_ip, giaddr, xid,
+        device.name,
+        device.mac_address,
+        device.serial or "(none)",
+        server_ip,
+        giaddr,
+        xid,
     )
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -181,7 +192,12 @@ def send_dhcp_discover(
     try:
         sock.bind(("0.0.0.0", 67))
         sock.sendto(payload, (server_ip, 67))
-        logger.info("DHCP DISCOVER sent (%d bytes) to %s:67 (relay giaddr=%s)", len(payload), server_ip, giaddr)
+        logger.info(
+            "DHCP DISCOVER sent (%d bytes) to %s:67 (relay giaddr=%s)",
+            len(payload),
+            server_ip,
+            giaddr,
+        )
 
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
@@ -193,10 +209,12 @@ def send_dhcp_discover(
                 result = _parse_bootp_dhcp_response(data, xid)
                 if result.message_type in ("offer", "ack", "nak"):
                     return result
-            except socket.timeout:
+            except TimeoutError:
                 break
 
-        return DhcpResult(success=False, error=f"No DHCP response within {timeout}s from {server_ip}")
+        return DhcpResult(
+            success=False, error=f"No DHCP response within {timeout}s from {server_ip}"
+        )
     finally:
         sock.close()
 
@@ -211,11 +229,16 @@ def send_dhcp_request(
     server_ip = _resolve_server(device.dhcp_server) if device.dhcp_server else "255.255.255.255"
     pod_ip = _get_pod_ip()
     giaddr = device.relay_gateway or pod_ip
-    payload, xid = _build_bootp_dhcp_payload(device, "request", offered_ip, server_id, giaddr=giaddr)
+    payload, xid = _build_bootp_dhcp_payload(
+        device, "request", offered_ip, server_id, giaddr=giaddr
+    )
 
     logger.info(
         "Sending DHCP REQUEST: device=%s requested_ip=%s server=%s giaddr=%s",
-        device.name, offered_ip, server_id, giaddr,
+        device.name,
+        offered_ip,
+        server_id,
+        giaddr,
     )
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -236,7 +259,7 @@ def send_dhcp_request(
                 result = _parse_bootp_dhcp_response(data, xid)
                 if result.message_type in ("ack", "nak"):
                     return result
-            except socket.timeout:
+            except TimeoutError:
                 break
 
         return DhcpResult(success=False, error=f"No DHCP ACK/NAK within {timeout}s")
@@ -260,11 +283,16 @@ def run_dhcp_transaction(
 
     logger.info(
         "Got DHCP OFFER for %s: ip=%s server=%s",
-        device.name, discover_result.offered_ip, discover_result.server_id,
+        device.name,
+        discover_result.offered_ip,
+        discover_result.server_id,
     )
 
     request_result = send_dhcp_request(
-        device, discover_result.offered_ip, discover_result.server_id, timeout,
+        device,
+        discover_result.offered_ip,
+        discover_result.server_id,
+        timeout,
     )
     if not request_result.success:
         logger.error("DHCP REQUEST failed for %s: %s", device.name, request_result.error)
@@ -272,13 +300,17 @@ def run_dhcp_transaction(
 
     logger.info(
         "DHCP ACK for %s: ip=%s options=%s",
-        device.name, request_result.offered_ip, request_result.options,
+        device.name,
+        request_result.offered_ip,
+        request_result.options,
     )
 
     if device.management_ip and request_result.offered_ip != device.management_ip:
         logger.warning(
             "IP mismatch for %s: expected=%s got=%s",
-            device.name, device.management_ip, request_result.offered_ip,
+            device.name,
+            device.management_ip,
+            request_result.offered_ip,
         )
 
     return request_result
@@ -340,7 +372,10 @@ def validate_dhcp_config(
                     success=True,
                     message_type="reservation-match",
                     offered_ip=reservation.get("ip-address", ""),
-                    options={"match_type": "client-id", "hostname": reservation.get("hostname", "")},
+                    options={
+                        "match_type": "client-id",
+                        "hostname": reservation.get("hostname", ""),
+                    },
                 )
 
     subnet_count = len(dhcp4.get("subnet4", []))

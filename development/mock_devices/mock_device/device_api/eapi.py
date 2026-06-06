@@ -127,20 +127,24 @@ def _handle_show_ip_arp(**kwargs: Any) -> dict[str, Any]:
 _BBR_LLDP: dict[str, dict[str, Any]] = {
     "bbr1-cp1-tan1-dc01": {
         "Management1/1": {
-            "lldpNeighborInfo": [{
-                "systemName": "leaf1-cp1-smn1-dc01",
-                "neighborInterfaceInfo": {"interfaceId": "\"swp12\""},
-                "chassisId": "00:1c:73:00:00:10",
-            }],
+            "lldpNeighborInfo": [
+                {
+                    "systemName": "leaf1-cp1-smn1-dc01",
+                    "neighborInterfaceInfo": {"interfaceId": '"swp12"'},
+                    "chassisId": "00:1c:73:00:00:10",
+                }
+            ],
         },
     },
     "bbr2-cp1-tan1-dc01": {
         "Management1/1": {
-            "lldpNeighborInfo": [{
-                "systemName": "leaf2-cp1-smn1-dc01",
-                "neighborInterfaceInfo": {"interfaceId": "\"swp12\""},
-                "chassisId": "00:1c:73:00:00:11",
-            }],
+            "lldpNeighborInfo": [
+                {
+                    "systemName": "leaf2-cp1-smn1-dc01",
+                    "neighborInterfaceInfo": {"interfaceId": '"swp12"'},
+                    "chassisId": "00:1c:73:00:00:11",
+                }
+            ],
         },
     },
 }
@@ -277,7 +281,6 @@ async def command_api(request: Request) -> JSONResponse:
     """Arista EAPI JSON-RPC endpoint."""
     body = await request.json()
 
-    method = body.get("method", "runCmds")
     params = body.get("params", {})
     req_id = body.get("id", "1")
     commands = params.get("cmds", [])

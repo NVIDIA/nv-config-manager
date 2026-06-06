@@ -24,6 +24,7 @@ from __future__ import annotations
 import logging
 import socket
 from dataclasses import dataclass
+from typing import Any, cast
 
 import requests
 
@@ -33,18 +34,19 @@ logger = logging.getLogger(__name__)
 class _ApiClient:
     """Thin wrapper around requests.Session that supports base_url (like httpx.Client)."""
 
-    def __init__(self, base_url: str, headers: dict, timeout: int = 30):
+    def __init__(self, base_url: str, headers: dict, timeout: int = 30) -> None:
         self._session = requests.Session()
         self._session.headers.update(headers)
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout
 
-    def request(self, method: str, path: str, **kwargs) -> requests.Response:
+    def request(self, method: str, path: str, **kwargs: Any) -> requests.Response:
         kwargs.setdefault("timeout", self._timeout)
         return self._session.request(method, self._base_url + path, **kwargs)
 
     def close(self) -> None:
         self._session.close()
+
 
 SANDBOX_NAMESPACE = "Sandbox"
 SANDBOX_PREFIX = "10.96.0.0/12"
@@ -75,16 +77,18 @@ def _resolve_service(service_name: str, port: int) -> str:
     try:
         results = socket.getaddrinfo(service_name, port, socket.AF_INET, socket.SOCK_STREAM)
         if results:
-            return results[0][4][0]
+            return str(results[0][4][0])
     except socket.gaierror:
         pass
     raise RuntimeError(f"Cannot resolve service {service_name}:{port}")
 
 
-def _api(client: _ApiClient, method: str, path: str, **kwargs) -> requests.Response:
+def _api(client: _ApiClient, method: str, path: str, **kwargs: Any) -> requests.Response:
     resp = client.request(method, path, **kwargs)
     if resp.status_code >= 400:
-        logger.error("Nautobot API %s %s -> %d: %s", method, path, resp.status_code, resp.text[:500])
+        logger.error(
+            "Nautobot API %s %s -> %d: %s", method, path, resp.status_code, resp.text[:500]
+        )
     return resp
 
 
@@ -92,12 +96,13 @@ def _find_or_create(client: _ApiClient, endpoint: str, lookup: dict, create_data
     """Find an existing object or create it. Returns the object dict."""
     resp = _api(client, "GET", endpoint, params=lookup)
     resp.raise_for_status()
-    results = resp.json().get("results", [])
+    body: dict[str, Any] = resp.json()
+    results = body.get("results", [])
     if results:
-        return results[0]
+        return cast(dict[str, Any], results[0])
     resp = _api(client, "POST", endpoint, json=create_data)
     resp.raise_for_status()
-    return resp.json()
+    return cast(dict[str, Any], resp.json())
 
 
 def _get_or_create_namespace(client: _ApiClient) -> dict:
@@ -112,57 +117,81 @@ def _get_or_create_namespace(client: _ApiClient) -> dict:
 def _get_status_id(client: _ApiClient, name: str = "Active") -> str:
     resp = _api(client, "GET", "/api/extras/statuses/", params={"name": name})
     resp.raise_for_status()
-    results = resp.json().get("results", [])
+    body: dict[str, Any] = resp.json()
+    results = body.get("results", [])
     if not results:
         raise RuntimeError(f"Status '{name}' not found in Nautobot")
-    return results[0]["id"]
+    return cast(str, results[0]["id"])
 
 
 def _get_or_create_prefix(client: _ApiClient, namespace_id: str, status_id: str) -> dict:
-    resp = _api(client, "GET", "/api/ipam/prefixes/", params={
-        "prefix": SANDBOX_PREFIX,
-        "namespace": namespace_id,
-    })
+    resp = _api(
+        client,
+        "GET",
+        "/api/ipam/prefixes/",
+        params={
+            "prefix": SANDBOX_PREFIX,
+            "namespace": namespace_id,
+        },
+    )
     resp.raise_for_status()
-    results = resp.json().get("results", [])
+    body: dict[str, Any] = resp.json()
+    results = body.get("results", [])
     if results:
-        return results[0]
-    resp = _api(client, "POST", "/api/ipam/prefixes/", json={
-        "prefix": SANDBOX_PREFIX,
-        "namespace": namespace_id,
-        "status": status_id,
-        "type": "network",
-    })
+        return cast(dict[str, Any], results[0])
+    resp = _api(
+        client,
+        "POST",
+        "/api/ipam/prefixes/",
+        json={
+            "prefix": SANDBOX_PREFIX,
+            "namespace": namespace_id,
+            "status": status_id,
+            "type": "network",
+        },
+    )
     resp.raise_for_status()
-    return resp.json()
+    return cast(dict[str, Any], resp.json())
 
 
 def _get_device(client: _ApiClient, name: str) -> dict | None:
     resp = _api(client, "GET", "/api/dcim/devices/", params={"name": name})
     resp.raise_for_status()
-    results = resp.json().get("results", [])
-    return results[0] if results else None
+    body: dict[str, Any] = resp.json()
+    results = body.get("results", [])
+    return cast(dict[str, Any], results[0]) if results else None
 
 
 def _get_or_create_interface(client: _ApiClient, device_id: str, status_id: str) -> dict:
-    resp = _api(client, "GET", "/api/dcim/interfaces/", params={
-        "device": device_id,
-        "name": MOCK_MGMT_INTF,
-    })
+    resp = _api(
+        client,
+        "GET",
+        "/api/dcim/interfaces/",
+        params={
+            "device": device_id,
+            "name": MOCK_MGMT_INTF,
+        },
+    )
     resp.raise_for_status()
-    results = resp.json().get("results", [])
+    body: dict[str, Any] = resp.json()
+    results = body.get("results", [])
     if results:
-        return results[0]
-    resp = _api(client, "POST", "/api/dcim/interfaces/", json={
-        "device": device_id,
-        "name": MOCK_MGMT_INTF,
-        "type": "virtual",
-        "mgmt_only": True,
-        "status": status_id,
-        "description": "Mock device service IP for sandbox testing",
-    })
+        return cast(dict[str, Any], results[0])
+    resp = _api(
+        client,
+        "POST",
+        "/api/dcim/interfaces/",
+        json={
+            "device": device_id,
+            "name": MOCK_MGMT_INTF,
+            "type": "virtual",
+            "mgmt_only": True,
+            "status": status_id,
+            "description": "Mock device service IP for sandbox testing",
+        },
+    )
     resp.raise_for_status()
-    return resp.json()
+    return cast(dict[str, Any], resp.json())
 
 
 def _get_or_create_ip(
@@ -173,44 +202,70 @@ def _get_or_create_ip(
 ) -> dict:
     """Create or find an IP address. Returns the IP address object."""
     cidr = f"{address}/32"
-    resp = _api(client, "GET", "/api/ipam/ip-addresses/", params={
-        "address": cidr,
-        "namespace": namespace_id,
-    })
+    resp = _api(
+        client,
+        "GET",
+        "/api/ipam/ip-addresses/",
+        params={
+            "address": cidr,
+            "namespace": namespace_id,
+        },
+    )
     resp.raise_for_status()
-    results = resp.json().get("results", [])
+    body: dict[str, Any] = resp.json()
+    results = body.get("results", [])
     if results:
-        return results[0]
+        return cast(dict[str, Any], results[0])
 
-    resp = _api(client, "POST", "/api/ipam/ip-addresses/", json={
-        "address": cidr,
-        "namespace": namespace_id,
-        "status": status_id,
-    })
+    resp = _api(
+        client,
+        "POST",
+        "/api/ipam/ip-addresses/",
+        json={
+            "address": cidr,
+            "namespace": namespace_id,
+            "status": status_id,
+        },
+    )
     resp.raise_for_status()
-    return resp.json()
+    return cast(dict[str, Any], resp.json())
 
 
 def _assign_ip_to_interface(client: _ApiClient, interface_id: str, ip_id: str) -> None:
     """Assign an IP address to an interface via the IPAddressToInterface through table."""
-    resp = _api(client, "GET", "/api/ipam/ip-address-to-interface/", params={
-        "ip_address": ip_id,
-        "interface": interface_id,
-    })
+    resp = _api(
+        client,
+        "GET",
+        "/api/ipam/ip-address-to-interface/",
+        params={
+            "ip_address": ip_id,
+            "interface": interface_id,
+        },
+    )
     resp.raise_for_status()
     if resp.json().get("count", 0) > 0:
         return
 
-    _api(client, "POST", "/api/ipam/ip-address-to-interface/", json={
-        "ip_address": ip_id,
-        "interface": interface_id,
-    }).raise_for_status()
+    _api(
+        client,
+        "POST",
+        "/api/ipam/ip-address-to-interface/",
+        json={
+            "ip_address": ip_id,
+            "interface": interface_id,
+        },
+    ).raise_for_status()
 
 
 def _set_primary_ip4(client: _ApiClient, device_id: str, ip_id: str) -> None:
-    _api(client, "PATCH", f"/api/dcim/devices/{device_id}/", json={
-        "primary_ip4": {"id": ip_id},
-    }).raise_for_status()
+    _api(
+        client,
+        "PATCH",
+        f"/api/dcim/devices/{device_id}/",
+        json={
+            "primary_ip4": {"id": ip_id},
+        },
+    ).raise_for_status()
 
 
 def wire_device(
@@ -223,7 +278,9 @@ def wire_device(
     """Wire a single mock device's primary IP to its service ClusterIP."""
     device = _get_device(client, device_name)
     if not device:
-        return WireResult(device_name, service_ip, False, f"Device '{device_name}' not found in Nautobot")
+        return WireResult(
+            device_name, service_ip, False, f"Device '{device_name}' not found in Nautobot"
+        )
 
     device_id = device["id"]
 

@@ -72,9 +72,13 @@ def generate_for_device(
     written: list[Path] = []
 
     if platform == "nvue":
-        written.extend(_generate_nvue(root, hostname, serial, os_version, model, interfaces, device_overrides))
+        written.extend(
+            _generate_nvue(root, hostname, serial, os_version, model, interfaces, device_overrides)
+        )
     elif platform == "eapi":
-        written.extend(_generate_eapi(root, hostname, serial, os_version, model, interfaces, device_overrides))
+        written.extend(
+            _generate_eapi(root, hostname, serial, os_version, model, interfaces, device_overrides)
+        )
     else:
         logger.warning("Unknown platform %r for %s", platform_raw, hostname)
 
@@ -105,7 +109,9 @@ def _generate_nvue(
         intf_data = _nvue_interfaces(version, interfaces)
         written.append(_write_json(version_dir / "interface.json", intf_data))
 
-        written.append(_write_json(version_dir / "platform.json", {"model": model, "vendor": "NVIDIA"}))
+        written.append(
+            _write_json(version_dir / "platform.json", {"model": model, "vendor": "NVIDIA"})
+        )
 
         inventory = {"model": model, "serial": serial}
         written.append(_write_json(version_dir / "platform_inventory.json", inventory))
@@ -115,8 +121,12 @@ def _generate_nvue(
         device_dir.mkdir(parents=True, exist_ok=True)
         dev_intf = _nvue_interfaces(version, interfaces, include_lldp=True)
         written.append(_write_json(device_dir / "interface.json", dev_intf))
-        written.append(_write_json(device_dir / "platform.json", {"model": model, "vendor": "NVIDIA"}))
-        written.append(_write_json(device_dir / "platform_inventory.json", {"model": model, "serial": serial}))
+        written.append(
+            _write_json(device_dir / "platform.json", {"model": model, "vendor": "NVIDIA"})
+        )
+        written.append(
+            _write_json(device_dir / "platform_inventory.json", {"model": model, "serial": serial})
+        )
 
     return written
 
@@ -157,7 +167,7 @@ def _nvue_interfaces(
         enabled = iface.get("enabled", True)
 
         if use_oper_status:
-            link = {"oper-status": "up" if enabled else "down"}
+            link: dict[str, Any] = {"oper-status": "up" if enabled else "down"}
         else:
             link = {"state": {"up": {}} if enabled else {"down": {}}}
 
@@ -221,11 +231,13 @@ def _generate_eapi(
         peer_port = peer.get("name", "")
         if peer_device and peer_port:
             neighbors[iface["name"]] = {
-                "lldpNeighborInfo": [{
-                    "systemName": peer_device,
-                    "neighborInterfaceInfo": {"interfaceId": f'"{peer_port}"'},
-                    "chassisId": "00:00:00:00:00:00",
-                }],
+                "lldpNeighborInfo": [
+                    {
+                        "systemName": peer_device,
+                        "neighborInterfaceInfo": {"interfaceId": f'"{peer_port}"'},
+                        "chassisId": "00:00:00:00:00:00",
+                    }
+                ],
             }
 
     if not device_overrides:
@@ -266,34 +278,44 @@ def _generate_eapi(
                 "linkStatus": "connected" if enabled else "disabled",
                 "lineProtocolStatus": "up" if enabled else "down",
             }
-        written.append(_write_json(
-            version_dir / "show_interfaces_status.json",
-            {"interfaceStatuses": statuses},
-        ))
+        written.append(
+            _write_json(
+                version_dir / "show_interfaces_status.json",
+                {"interfaceStatuses": statuses},
+            )
+        )
 
-        written.append(_write_json(
-            version_dir / "show_lldp_neighbors_detail.json",
-            {"lldpNeighbors": neighbors},
-        ))
+        written.append(
+            _write_json(
+                version_dir / "show_lldp_neighbors_detail.json",
+                {"lldpNeighbors": neighbors},
+            )
+        )
 
-        written.append(_write_json(
-            version_dir / "show_mac_address_table.json",
-            {"unicastTable": {"tableEntries": []}},
-        ))
+        written.append(
+            _write_json(
+                version_dir / "show_mac_address_table.json",
+                {"unicastTable": {"tableEntries": []}},
+            )
+        )
 
-        written.append(_write_json(
-            version_dir / "show_mpls_interface.json",
-            {"interfaces": {}},
-        ))
+        written.append(
+            _write_json(
+                version_dir / "show_mpls_interface.json",
+                {"interfaces": {}},
+            )
+        )
 
     if device_overrides:
         device_dir = root / "devices" / hostname
         device_dir.mkdir(parents=True, exist_ok=True)
         if neighbors:
-            written.append(_write_json(
-                device_dir / "show_lldp_neighbors_detail.json",
-                {"lldpNeighbors": neighbors},
-            ))
+            written.append(
+                _write_json(
+                    device_dir / "show_lldp_neighbors_detail.json",
+                    {"lldpNeighbors": neighbors},
+                )
+            )
 
     return written
 

@@ -22,7 +22,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 logger = logging.getLogger(__name__)
 
@@ -104,5 +104,5 @@ class FixtureLoader:
     def _read(path: Path) -> dict[str, Any] | str:
         text = path.read_text(encoding="utf-8")
         if path.suffix == ".json":
-            return json.loads(text)
+            return cast(dict[str, Any], json.loads(text))
         return text
