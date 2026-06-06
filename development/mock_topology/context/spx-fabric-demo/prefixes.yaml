@@ -1,0 +1,30 @@
+aggregate_prefixes:
+- prefix: 172.18.255.0/24
+  role: Service-LB
+  tags: []
+- prefix: 172.18.0.0/16
+  role: Service-LB-Source
+  tags:
+  - lb-allowed
+- prefix: 10.0.0.0/8
+  role: Service-LB-Source
+  tags:
+  - lb-allowed
+- prefix: 10.100.2.0/24
+  role: OOB-Management-Aggregate
+  tags:
+  - role-aggregate
+- prefix: 10.100.2.0/25
+  role: OOB-Management
+  tags:
+  - dhcp-subnet
+- prefix: 10.103.0.0/24
+  role: SPX-p2p
+  tags:
+  - relay-return
+  - role-aggregate
+- prefix: 10.255.2.0/24
+  role: Loopback
+  tags:
+  - relay-return
+  - role-aggregate

@@ -1,0 +1,55 @@
+{
+    "data": {
+        "device": {
+            "id": "spx-fabric-demo-oob-mgmt-server",
+            "name": "oob-mgmt-server",
+            "tags": [],
+            "tenant": {"name": "Public Demo"},
+            "role": {"name": "OOB-Server"},
+            "device_type": {
+                "manufacturer": {"name": "Generic"},
+                "model": "Generic Server"
+            },
+            "status": {"name": "Active"},
+            "serial": "auto",
+            "config_context": {},
+            "location": {"name": "SPX01"},
+            "platform": {"name": "Ubuntu"},
+            "_air": {
+                "os": "generic/ubuntu2404",
+                "cpu": 16,
+                "memory": 32768,
+                "storage": 100,
+                "cpu_mode": "host-model"
+            },
+            "interfaces": [
+                {
+                    "name": "eth0",
+                    "type": "1000base-t",
+                    "status": {"name": "Active"},
+                    "enabled": true,
+                    "mgmt_only": false,
+                    "ip_addresses": [],
+                    "description": "exit"
+                },
+                {
+                    "name": "eth1",
+                    "type": "1000base-t",
+                    "status": {"name": "Active"},
+                    "enabled": true,
+                    "mgmt_only": false,
+                    "ip_addresses": [
+                        {
+                            "address": "10.100.2.126/31",
+                            "mask_length": 31,
+                            "ip_version": 4
+                        }
+                    ],
+                    "description": "uplink",
+                    "role": {"name": "OOB-Uplink"},
+                    "mac_address": "44:38:39:00:01:ff"
+                }
+            ]
+        }
+    }
+}

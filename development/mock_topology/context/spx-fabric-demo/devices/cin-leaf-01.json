@@ -1,0 +1,140 @@
+{
+    "data": {
+        "device": {
+            "id": "cin-fabric-demo-cin-leaf-01",
+            "name": "cin-leaf-01",
+            "tags": [
+                {
+                    "name": "demo"
+                },
+                {
+                    "name": "ztp"
+                },
+                {
+                    "name": "spectrumx"
+                }
+            ],
+            "tenant": {
+                "name": "Public Demo"
+            },
+            "role": {
+                "name": "CIN-Leaf"
+            },
+            "device_type": {
+                "manufacturer": {
+                    "name": "NVIDIA"
+                },
+                "model": "SN5600"
+            },
+            "status": {
+                "name": "Provisioning"
+            },
+            "serial": "44:38:39:00:01:21",
+            "config_context": {
+                "intended-firmware": {
+                    "version": "5.16.1"
+                }
+            },
+            "location": {
+                "name": "SPX01"
+            },
+            "interfaces": [
+                {
+                    "name": "lo",
+                    "type": "virtual",
+                    "status": {
+                        "name": "Active"
+                    },
+                    "enabled": true,
+                    "mgmt_only": false,
+                    "ip_addresses": [
+                        {
+                            "address": "10.255.2.21/32",
+                            "mask_length": 32,
+                            "ip_version": 4
+                        }
+                    ],
+                    "role": {
+                        "name": "Loopback"
+                    }
+                },
+                {
+                    "name": "eth0",
+                    "type": "1000base-t",
+                    "status": {
+                        "name": "Active"
+                    },
+                    "enabled": true,
+                    "mgmt_only": false,
+                    "ip_addresses": [
+                        {
+                            "address": "10.100.2.21/25",
+                            "mask_length": 25,
+                            "ip_version": 4
+                        }
+                    ],
+                    "mac_address": "44:38:39:00:01:21",
+                    "mtu": 9216,
+                    "role": {
+                        "name": "Management"
+                    }
+                },
+                {
+                    "name": "swp1",
+                    "type": "400gbase-x-qsfpdd",
+                    "status": {
+                        "name": "Active"
+                    },
+                    "enabled": true,
+                    "mgmt_only": false,
+                    "ip_addresses": [
+                        {
+                            "address": "10.103.0.0/31",
+                            "mask_length": 31,
+                            "ip_version": 4
+                        }
+                    ],
+                    "description": "cin-spine-01:swp1",
+                    "connected_interface": {
+                        "name": "swp1",
+                        "device": {
+                            "name": "cin-spine-01",
+                            "role": {
+                                "name": "CIN-Spine"
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "swp2",
+                    "type": "400gbase-x-qsfpdd",
+                    "status": {
+                        "name": "Active"
+                    },
+                    "enabled": true,
+                    "mgmt_only": false,
+                    "ip_addresses": [
+                        {
+                            "address": "10.103.0.2/31",
+                            "mask_length": 31,
+                            "ip_version": 4
+                        }
+                    ],
+                    "description": "cin-spine-02:swp1",
+                    "connected_interface": {
+                        "name": "swp1",
+                        "device": {
+                            "name": "cin-spine-02",
+                            "role": {
+                                "name": "CIN-Spine"
+                            }
+                        }
+                    }
+                }
+            ],
+            "platform": {
+                "name": "Cumulus Linux"
+            }
+        }
+    }
+}
