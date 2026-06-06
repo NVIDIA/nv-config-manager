@@ -76,13 +76,25 @@ class MockTopologyDesign(DesignJob):
         self.Meta.context_class = get_mock_topology_context_class(
             kwargs.get("blueprint", "superpod")
         )
-        with transaction.atomic():
-            self._ensure_role_content_type_memberships(kwargs)
-            result = super().run(*args, **kwargs)
-            self._ensure_bgp_routing_instances(kwargs)
-            self._ensure_bgp_peerings(kwargs)
-            self._ensure_prefix_gateway_relationships(kwargs)
-            return result
+        try:
+            with transaction.atomic():
+                self._ensure_role_content_type_memberships(kwargs)
+                result = super().run(*args, **kwargs)
+                self._ensure_bgp_routing_instances(kwargs)
+                self._ensure_bgp_peerings(kwargs)
+                self._ensure_prefix_gateway_relationships(kwargs)
+                return result
+        except Exception as _exc:
+            _cause = _exc.__cause__
+            if _cause is not None:
+                import traceback as _tb
+                self.logger.error("Root validation error: " + repr(_cause))
+                if hasattr(_cause, "message_dict"):
+                    self.logger.error("Field errors: " + str(_cause.message_dict))
+                elif hasattr(_cause, "messages"):
+                    self.logger.error("Messages: " + str(_cause.messages))
+                self.logger.error("Cause traceback: " + _tb.format_exc())
+            raise
 
     def _ensure_role_content_type_memberships(self, data: dict[str, Any]) -> None:
         """Add required role content types without removing existing memberships."""
