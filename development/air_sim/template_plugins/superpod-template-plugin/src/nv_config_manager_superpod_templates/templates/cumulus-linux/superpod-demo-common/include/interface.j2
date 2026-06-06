@@ -29,8 +29,18 @@
 {% endif %}
         type: loopback
 {% endif %}
+{% set configured_parents = [] %}
 {% for intf in device_data|interfaces(prefix="swp") %}
 {% set breakout = device_data|breakout_count(intf.name) if not intf.parent and not intf.primary_ipv4 and not intf.untagged_vlan else 0 %}
+{% if intf.parent and intf.parent not in configured_parents %}
+      {{ intf.parent }}:
+        link:
+          breakout:
+            {{ device_data|breakout_count(intf.parent) }}x: {}
+        type: swp
+{% set _ = configured_parents.append(intf.parent) %}
+{% endif %}
+{% if not breakout %}
       {{ intf.name }}:
 {% if intf.description %}
         description: {{ intf.description }}
@@ -54,16 +64,12 @@
             br_default:
               access: {{ intf.untagged_vlan }}
 {% endif %}
-{% if spectrumx and not breakout %}
+{% if spectrumx %}
         qos:
           pfc-watchdog:
             state: enable
 {% endif %}
         link:
-{% if breakout %}
-          breakout:
-            {{ breakout }}x: {}
-{% else %}
           mtu: {{ intf.mtu or 9216 }}
           state:
 {% if intf.enabled %}
@@ -71,13 +77,13 @@
 {% else %}
             down: {}
 {% endif %}
-{% endif %}
 {% if spectrumx and intf.connected_interface and intf.connected_interface.device.peer_group in ["CIN-LEAF", "CIN-SPINE"] %}
         router:
           adaptive-routing:
             state: enabled
 {% endif %}
         type: swp
+{% endif %}
 {% endfor %}
 {% for vlan in device_data|interfaces(prefix="vlan") %}
       {{ vlan.name }}:
