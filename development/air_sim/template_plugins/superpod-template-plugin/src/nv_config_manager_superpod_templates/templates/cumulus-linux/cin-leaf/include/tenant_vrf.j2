@@ -1,0 +1,34 @@
+{% set attached_vrfs = device_data|attached_vrfs|rejectattr("vni", "none")|sort(attribute="vni") %}
+{% for vrf in attached_vrfs %}
+      {{ vrf.name }}:
+        evpn:
+          state: enabled
+          vni:
+            '{{ vrf.vni }}': {}
+        router:
+          bgp:
+            address-family:
+              ipv4-unicast:
+                aggregate-route:
+{% for prefix in device_data|device_aggregate(peer_role="server", allow_multiple=True) %}
+                  {{ prefix }}:
+                    summary-only: enabled
+{% endfor %}
+                state: enabled
+                redistribute:
+                  connected:
+                    state: enabled
+                    route-map: SERVER-REDISTRIBUTE-CONNECTED
+                route-export:
+                  to-evpn:
+                    state: enabled
+              l2vpn-evpn:
+                state: enabled
+            autonomous-system: {{ device_data|asn|asplain }}
+            state: enabled
+            path-selection:
+              multipath:
+                aspath-ignore: enabled
+            rd: {{ device_data|router_id }}:{{ vrf.vni }}
+            router-id: {{ device_data|router_id }}
+{% endfor %}
