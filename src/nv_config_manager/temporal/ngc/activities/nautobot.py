@@ -352,7 +352,7 @@ class Vrf(BaseModel):
     """VRF Data."""
 
     QUERY_BY_IDS: ClassVar[str] = """
-query ($ids: [ID!]!) {
+query ($ids: [String]!) {
   vrfs(id: $ids) {
     id
     name
