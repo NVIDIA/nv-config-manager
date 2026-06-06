@@ -965,7 +965,8 @@ def _select_pkey_match(
         )
         raise ApplicationError(
             f"PKey {canonical_pkey!r} ambiguous near location {device_loc_name!r}: "
-            f"matches [{candidates}]. Specify overlay_id explicitly.",
+            f"matches [{candidates}]. Resolve the duplicate PKey/Overlay "
+            f"entries in Nautobot before retrying.",
             non_retryable=True,
         )
     return matches[0]
@@ -1110,7 +1111,8 @@ async def _create_overlay_for_orphan_pkey(
     pkey_record = await client.get(f"{PLUGIN_BASE}/pkeys/{orphan_pkey_id}/")
     raw_overlay = pkey_record.get("overlay")
     current_overlay_id = raw_overlay["id"] if isinstance(raw_overlay, dict) else raw_overlay
-    if current_overlay_id != overlay["id"]:
+
+    if current_overlay_id is None:
         log.info(
             "Linking orphan PKey %s (id=%s) to Overlay %s",
             pkey_value,
@@ -1120,6 +1122,14 @@ async def _create_overlay_for_orphan_pkey(
         pkey_record = await client.patch(
             f"{PLUGIN_BASE}/pkeys/{orphan_pkey_id}/",
             data={"overlay": overlay["id"]},
+        )
+    elif current_overlay_id != overlay["id"]:
+        raise ApplicationError(
+            f"PKey {pkey_value!r} (id={orphan_pkey_id}) is already linked to "
+            f"Overlay {current_overlay_id!r}; refusing to relink to "
+            f"{overlay['id']!r}. Unlink the PKey from the other Overlay or "
+            f"use a different PKey value.",
+            non_retryable=True,
         )
 
     return overlay, pkey_record
@@ -1159,7 +1169,8 @@ async def resolve_ib_context_for_add(
             )
             raise ApplicationError(
                 f"PKey {canonical_pkey!r} ambiguous near location {device_loc_name!r}: "
-                f"matches [{candidates}]. Specify overlay_id explicitly.",
+                f"matches [{candidates}]. Resolve the duplicate PKey/Overlay "
+                f"entries in Nautobot before retrying.",
                 non_retryable=True,
             )
 

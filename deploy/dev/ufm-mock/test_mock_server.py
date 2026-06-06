@@ -65,6 +65,20 @@ class TestCreatePKey:
         assert response.status_code == 200
         assert response.json() == {"pkey": "0x0042", "status": "created"}
 
+    def test_index0_round_trips(self, client: TestClient) -> None:
+        client.post(
+            "/ufmRest/resources/pkeys/add",
+            json={"pkey": "0x0001", "ip_over_ib": True, "index0": False},
+        )
+        client.post(
+            "/ufmRest/resources/pkeys/add",
+            json={"pkey": "0x0002", "ip_over_ib": True},  # default index0=True
+        )
+
+        body = client.get("/ufmRest/resources/pkeys").json()
+        assert body["0x0001"]["index0"] is False
+        assert body["0x0002"]["index0"] is True
+
     def test_409_on_duplicate(self, client: TestClient) -> None:
         client.post(
             "/ufmRest/resources/pkeys/add",
@@ -213,6 +227,4 @@ class TestDevHelpers:
 
         state = client.get("/_dev/state").json()
         assert "0x0001" in state
-        assert state["0x0001"]["guids"] == [
-            {"guid": "0xabc", "membership": "full"}
-        ]
+        assert state["0x0001"]["guids"] == [{"guid": "0xabc", "membership": "full"}]

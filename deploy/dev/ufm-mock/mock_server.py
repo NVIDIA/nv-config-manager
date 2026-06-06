@@ -29,9 +29,11 @@ Not production-grade. Not security-reviewed.
 
 from __future__ import annotations
 
+import os
 import threading
 from typing import Annotated, Any
 
+import uvicorn
 from fastapi import Body, FastAPI, HTTPException, Path
 from pydantic import BaseModel, Field
 
@@ -49,9 +51,10 @@ class PKeyAddRequest(BaseModel):
 class _PKeyState:
     """In-memory state for a single mock PKey partition."""
 
-    def __init__(self, *, pkey: str, ip_over_ib: bool) -> None:
+    def __init__(self, *, pkey: str, ip_over_ib: bool, index0: bool) -> None:
         self.pkey = pkey
         self.ip_over_ib = ip_over_ib
+        self.index0 = index0
         # Members keyed by lowercase GUID for case-insensitive comparison.
         self.guids: dict[str, dict[str, str]] = {}
 
@@ -60,7 +63,7 @@ class _PKeyState:
         return {
             "partition": f"ib-pkey-{self.pkey}",
             "ip_over_ib": self.ip_over_ib,
-            "index0": True,
+            "index0": self.index0,
         }
 
     def to_detail(self) -> dict[str, Any]:
@@ -92,11 +95,11 @@ class _Store:
         with self._lock:
             return {pkey: state.to_summary() for pkey, state in self._pkeys.items()}
 
-    def create(self, pkey: str, *, ip_over_ib: bool) -> None:
+    def create(self, pkey: str, *, ip_over_ib: bool, index0: bool) -> None:
         with self._lock:
             if pkey in self._pkeys:
                 raise HTTPException(status_code=409, detail=f"PKey {pkey} already exists")
-            self._pkeys[pkey] = _PKeyState(pkey=pkey, ip_over_ib=ip_over_ib)
+            self._pkeys[pkey] = _PKeyState(pkey=pkey, ip_over_ib=ip_over_ib, index0=index0)
 
     def get(self, pkey: str, *, with_guids: bool) -> dict[str, Any]:
         with self._lock:
@@ -148,13 +151,11 @@ def create_app(store: _Store | None = None) -> FastAPI:
 
     @app.post("/ufmRest/resources/pkeys/add")
     def create_pkey(payload: Annotated[PKeyAddRequest, Body()]) -> dict[str, str]:
-        store.create(payload.pkey, ip_over_ib=payload.ip_over_ib)
+        store.create(payload.pkey, ip_over_ib=payload.ip_over_ib, index0=payload.index0)
         return {"pkey": payload.pkey, "status": "created"}
 
     @app.get("/ufmRest/resources/pkeys/{pkey}")
-    def get_pkey(
-        pkey: Annotated[str, Path()], guids_data: bool = False
-    ) -> dict[str, Any]:
+    def get_pkey(pkey: Annotated[str, Path()], guids_data: bool = False) -> dict[str, Any]:
         return store.get(pkey, with_guids=guids_data)
 
     @app.post("/ufmRest/resources/pkeys/")
@@ -188,10 +189,6 @@ app = create_app()
 
 
 if __name__ == "__main__":
-    import os
-
-    import uvicorn
-
     uvicorn.run(
         app,
         host="0.0.0.0",

@@ -39,8 +39,8 @@ test.describe("IB PKey Member Update Form", () => {
   });
 
   test("submits with interfaces and full membership_type", async ({ page }) => {
-    const requestPromise = page.waitForRequest((r) =>
-      r.url().includes(ENDPOINT),
+    const requestPromise = page.waitForRequest(
+      (r) => r.url().includes(ENDPOINT) && r.method() === "POST",
     );
 
     await page.getByLabel("UFM Host").fill("ufm-1.lab");

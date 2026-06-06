@@ -23,7 +23,7 @@ const IBPKeyMemberUpdateWorkflowFormPage = () => {
     <IBPKeyMembershipForm
       title="Replace PKey Membership"
       endpoint="/v1/workflow/ngc/ib_pkey_member_update"
-      submitLabel="Update Members"
+      submitLabel="Replace Members"
       includeMembershipType
       destructiveWarning="This reconciles PKey membership to the list below. Any current members not present here will be removed. Removals require approval before they execute."
     />

@@ -623,6 +623,32 @@ class TestResolveIBContextForAdd:
         assert result.overlay_id == NEW_OVERLAY_ID
         assert result.pkey_id == ORPHAN_PKEY_ID
 
+    async def test_pkey_linked_to_different_overlay_raises(self, mock_nb_config: Any) -> None:
+        """If the orphan PKey is already linked to a *different* overlay, refuse to relink."""
+        gql_payload = {"data": {"devices": [_device_payload_no_overlays()]}}
+
+        orphan = {"id": ORPHAN_PKEY_ID, "pkey": "0x0100", "overlay": None}
+        existing_overlay = {"id": NEW_OVERLAY_ID, "name": NEW_OVERLAY_NAME}
+        already_linked_elsewhere = {
+            "id": ORPHAN_PKEY_ID,
+            "pkey": "0x0100",
+            "overlay": "some-other-overlay-id",
+        }
+
+        with aioresponses() as m:
+            m.post(NB_GRAPHQL, payload=gql_payload)
+            m.get(f"{NB_PKEYS}?pkey=0x0100", payload={"results": [orphan]})
+            m.get(
+                f"{NB_OVERLAYS}?name={NEW_OVERLAY_NAME}&location={LOCATION_ID}",
+                payload={"results": [existing_overlay]},
+            )
+            m.get(f"{NB_PKEYS}{ORPHAN_PKEY_ID}/", payload=already_linked_elsewhere)
+
+            with pytest.raises(ApplicationError, match="already linked to Overlay"):
+                await resolve_ib_context_for_add(
+                    ResolveIBContextInput(host=DEVICE_NAME, pkey="0x0100")
+                )
+
     async def test_no_overlay_no_orphan_raises_with_creation_hint(
         self, mock_nb_config: Any
     ) -> None:
