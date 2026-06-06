@@ -87,10 +87,10 @@ config_contexts:
         - 172.18.255.202
     management_prefixes:
       ipv4:
-      - 10.100.2.0/25
+      - 172.18.0.0/16
     provisioning_servers:
       ipv4:
-      - 172.18.255.201
+      - 10.100.0.0
     dns:
       ipv4:
       - 8.8.8.8
