@@ -9,11 +9,6 @@
           bgp:
             address-family:
               ipv4-unicast:
-                aggregate-route:
-{% for prefix in device_data|device_aggregate(peer_role="server", allow_multiple=True) %}
-                  {{ prefix }}:
-                    summary-only: enabled
-{% endfor %}
                 state: enabled
                 redistribute:
                   connected:
