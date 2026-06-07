@@ -85,15 +85,22 @@ class MockTopologyDesign(DesignJob):
                 self._ensure_prefix_gateway_relationships(kwargs)
                 return result
         except Exception as _exc:
+            import logging as _logging
+            import traceback as _tb
+            _dbg = _logging.getLogger("mock_topology.debug")
+            _dbg.error("=== DESIGN JOB EXCEPTION ===")
+            _dbg.error("Exception: %r", _exc)
             _cause = _exc.__cause__
             if _cause is not None:
-                import traceback as _tb
-                self.logger.error("Root validation error: " + repr(_cause))
+                _dbg.error("Cause type: %s", type(_cause).__name__)
+                _dbg.error("Cause repr: %r", _cause)
                 if hasattr(_cause, "message_dict"):
-                    self.logger.error("Field errors: " + str(_cause.message_dict))
+                    _dbg.error("message_dict: %s", _cause.message_dict)
                 elif hasattr(_cause, "messages"):
-                    self.logger.error("Messages: " + str(_cause.messages))
-                self.logger.error("Cause traceback: " + _tb.format_exc())
+                    _dbg.error("messages: %s", _cause.messages)
+                elif hasattr(_cause, "message"):
+                    _dbg.error("message: %s", _cause.message)
+            _dbg.error("Full traceback:\n%s", _tb.format_exc())
             raise
 
     def _ensure_role_content_type_memberships(self, data: dict[str, Any]) -> None:
