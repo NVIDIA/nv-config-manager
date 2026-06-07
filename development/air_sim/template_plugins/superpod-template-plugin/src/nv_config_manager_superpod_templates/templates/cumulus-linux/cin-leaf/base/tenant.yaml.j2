@@ -11,8 +11,7 @@
     interface:
 {% for intf in tenant_interfaces %}
       {{ intf.name }}:
-        ip:
-          vrf: {{ intf.vrf }}
+        vrf: {{ intf.vrf }}
 {% endfor %}
 {% endif %}
 {% endblock interface %}
