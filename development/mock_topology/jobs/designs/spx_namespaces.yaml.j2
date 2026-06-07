@@ -1,8 +1,8 @@
 ---
 
-{% if spx_namespaces %}
+{% if json.spx_namespaces is defined and json.spx_namespaces | length > 0 %}
 namespaces:
-  {% for ns in spx_namespaces %}
+  {% for ns in json.spx_namespaces %}
   - "!create_or_update:name": {{ ns.name }}
     location:
       "!get:name": {{ ns.location }}
