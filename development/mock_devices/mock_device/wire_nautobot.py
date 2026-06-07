@@ -35,16 +35,19 @@ class _ApiClient:
     """Thin wrapper around requests.Session that supports base_url (like httpx.Client)."""
 
     def __init__(self, base_url: str, headers: dict, timeout: int = 30) -> None:
+        """Initialise the session with the given base URL and default headers."""
         self._session = requests.Session()
         self._session.headers.update(headers)
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout
 
     def request(self, method: str, path: str, **kwargs: Any) -> requests.Response:
+        """Send an HTTP request to *base_url + path*."""
         kwargs.setdefault("timeout", self._timeout)
         return self._session.request(method, self._base_url + path, **kwargs)
 
     def close(self) -> None:
+        """Close the underlying requests session."""
         self._session.close()
 
 
@@ -66,6 +69,8 @@ DEFAULT_DEVICE_MAP: list[dict[str, str | int]] = [
 
 @dataclass
 class WireResult:
+    """Result of wiring a single mock device's IP into Nautobot."""
+
     device_name: str
     service_ip: str
     success: bool
@@ -84,6 +89,7 @@ def _resolve_service(service_name: str, port: int) -> str:
 
 
 def _api(client: _ApiClient, method: str, path: str, **kwargs: Any) -> requests.Response:
+    """Call the Nautobot API and log any HTTP errors; does not raise on 4xx/5xx."""
     resp = client.request(method, path, **kwargs)
     if resp.status_code >= 400:
         logger.error(
@@ -106,6 +112,7 @@ def _find_or_create(client: _ApiClient, endpoint: str, lookup: dict, create_data
 
 
 def _get_or_create_namespace(client: _ApiClient) -> dict:
+    """Ensure the Sandbox IPAM namespace exists in Nautobot and return it."""
     return _find_or_create(
         client,
         "/api/ipam/namespaces/",
@@ -115,6 +122,7 @@ def _get_or_create_namespace(client: _ApiClient) -> dict:
 
 
 def _get_status_id(client: _ApiClient, name: str = "Active") -> str:
+    """Return the Nautobot UUID for the named status (e.g. 'Active')."""
     resp = _api(client, "GET", "/api/extras/statuses/", params={"name": name})
     resp.raise_for_status()
     body: dict[str, Any] = resp.json()
@@ -125,6 +133,7 @@ def _get_status_id(client: _ApiClient, name: str = "Active") -> str:
 
 
 def _get_or_create_prefix(client: _ApiClient, namespace_id: str, status_id: str) -> dict:
+    """Ensure the sandbox IPAM prefix exists in Nautobot and return it."""
     resp = _api(
         client,
         "GET",
@@ -155,6 +164,7 @@ def _get_or_create_prefix(client: _ApiClient, namespace_id: str, status_id: str)
 
 
 def _get_device(client: _ApiClient, name: str) -> dict | None:
+    """Look up a Nautobot device by hostname; returns the device dict or None if not found."""
     resp = _api(client, "GET", "/api/dcim/devices/", params={"name": name})
     resp.raise_for_status()
     body: dict[str, Any] = resp.json()
@@ -163,6 +173,7 @@ def _get_device(client: _ApiClient, name: str) -> dict | None:
 
 
 def _get_or_create_interface(client: _ApiClient, device_id: str, status_id: str) -> dict:
+    """Ensure the mock management interface exists on the given Nautobot device."""
     resp = _api(
         client,
         "GET",
@@ -258,6 +269,7 @@ def _assign_ip_to_interface(client: _ApiClient, interface_id: str, ip_id: str) -
 
 
 def _set_primary_ip4(client: _ApiClient, device_id: str, ip_id: str) -> None:
+    """Patch the Nautobot device to set its primary_ip4 to the given IP address UUID."""
     _api(
         client,
         "PATCH",

@@ -51,7 +51,9 @@ class DeviceConfig(BaseModel):
 
     # Mock API parameters
     api_port: int = Field(default=0, description="Port for mock device API (0 = auto)")
-    os_version: str = Field(default="", description="OS version for fixture selection (e.g. 5.11.0, 4.29.5M)")
+    os_version: str = Field(
+        default="", description="OS version for fixture selection (e.g. 5.11.0, 4.29.5M)"
+    )
     running_config: str = Field(default="", description="Canned running configuration")
 
     @property
@@ -81,6 +83,7 @@ class DeviceConfig(BaseModel):
 
     @property
     def mac_bytes(self) -> bytes:
+        """Return the MAC address as a raw byte string."""
         return bytes.fromhex(self.mac_address.replace(":", ""))
 
     @staticmethod

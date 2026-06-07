@@ -37,6 +37,7 @@ _PLATFORM_MAP: dict[str, str] = {
 
 
 def _platform_key(platform_name: str) -> str:
+    """Normalise a Nautobot platform name to the fixture directory key (e.g. 'nvue', 'eapi')."""
     return _PLATFORM_MAP.get(platform_name.lower(), platform_name.lower())
 
 
@@ -94,6 +95,7 @@ def _generate_nvue(
     interfaces: list[dict[str, Any]],
     device_overrides: bool,
 ) -> list[Path]:
+    """Write NVUE fixture files for one device version or per-device override set."""
     written: list[Path] = []
 
     if not device_overrides:
@@ -132,6 +134,7 @@ def _generate_nvue(
 
 
 def _nvue_system(hostname: str, version: str) -> dict[str, Any]:
+    """Build the NVUE system fixture, adapting the schema to the OS version."""
     major_minor = _parse_major_minor(version)
     if major_minor and major_minor >= (5, 14):
         return {
@@ -156,6 +159,7 @@ def _nvue_interfaces(
     interfaces: list[dict[str, Any]],
     include_lldp: bool = False,
 ) -> dict[str, Any]:
+    """Build the NVUE interface fixture dict, version-aware for link state field differences."""
     major_minor = _parse_major_minor(version)
     use_oper_status = major_minor is not None and major_minor >= (5, 14)
     result: dict[str, Any] = {}
@@ -197,6 +201,7 @@ def _nvue_interfaces(
 
 
 def _nvue_iface_type(name: str) -> str:
+    """Map an interface name to its NVUE type string (swp, eth, loopback, svi, bond)."""
     lower = name.lower()
     if lower.startswith("swp"):
         return "swp"
@@ -220,6 +225,7 @@ def _generate_eapi(
     interfaces: list[dict[str, Any]],
     device_overrides: bool,
 ) -> list[Path]:
+    """Write eAPI fixture files for one Arista device version or per-device override set."""
     written: list[Path] = []
 
     # show_lldp_neighbors_detail — built from topology regardless of mode
@@ -333,6 +339,7 @@ def _parse_major_minor(version: str) -> tuple[int, int] | None:
 
 
 def _write_json(path: Path, data: Any) -> Path:
+    """Serialise *data* as indented JSON and write to *path*, creating parent dirs as needed."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     logger.info("Wrote %s", path)

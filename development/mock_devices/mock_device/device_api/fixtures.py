@@ -51,6 +51,7 @@ class FixtureLoader:
         device_name: str,
         fixtures_dir: str | Path | None = None,
     ) -> None:
+        """Initialise the loader for a given platform, OS version, and device name."""
         self._platform = platform
         self._os_version = os_version
         self._device_name = device_name
@@ -80,6 +81,7 @@ class FixtureLoader:
         return result
 
     def _resolve(self, key: str) -> dict[str, Any] | str | None:
+        """Walk the candidate paths (device override → version fixture) and return the first hit."""
         candidates: list[Path] = []
 
         # 1. Per-device override
@@ -102,6 +104,7 @@ class FixtureLoader:
 
     @staticmethod
     def _read(path: Path) -> dict[str, Any] | str:
+        """Read a fixture file; parses JSON files and returns text files as raw strings."""
         text = path.read_text(encoding="utf-8")
         if path.suffix == ".json":
             return cast(dict[str, Any], json.loads(text))

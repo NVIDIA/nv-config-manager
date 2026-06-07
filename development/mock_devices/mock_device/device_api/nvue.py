@@ -51,6 +51,7 @@ def configure(device: DeviceConfig) -> None:
 
 
 def _hostname() -> str:
+    """Return the configured device hostname, falling back to 'mock-cumulus'."""
     return _device.name if _device else "mock-cumulus"
 
 
@@ -238,6 +239,7 @@ async def get_platform() -> JSONResponse:
 
 @router.get("/platform/environment/fan")
 async def get_platform_fan() -> JSONResponse:
+    """GET /nvue_v1/platform/environment/fan — fan speed and state."""
     if _loader:
         fixture = _loader.load("platform_environment_fan")
         if fixture and isinstance(fixture, dict):
@@ -247,21 +249,25 @@ async def get_platform_fan() -> JSONResponse:
 
 @router.get("/platform/environment/led")
 async def get_platform_led() -> JSONResponse:
+    """GET /nvue_v1/platform/environment/led — LED status colour and state."""
     return JSONResponse(content={"status": {"color": "green", "state": "ok"}})
 
 
 @router.get("/platform/environment/psu")
 async def get_platform_psu() -> JSONResponse:
+    """GET /nvue_v1/platform/environment/psu — PSU state and output wattage."""
     return JSONResponse(content={"psu1": {"state": "ok", "output_watts": 150}})
 
 
 @router.get("/platform/environment/voltage")
 async def get_platform_voltage() -> JSONResponse:
+    """GET /nvue_v1/platform/environment/voltage — rail voltage readings."""
     return JSONResponse(content={"12V": {"voltage": 12.1, "state": "ok"}})
 
 
 @router.get("/platform/inventory")
 async def get_platform_inventory() -> JSONResponse:
+    """GET /nvue_v1/platform/inventory — model and serial number, serial injected at runtime."""
     if _loader:
         fixture = _loader.load("platform_inventory")
         if fixture and isinstance(fixture, dict):
@@ -277,6 +283,7 @@ async def get_platform_inventory() -> JSONResponse:
 
 @router.get("/platform/firmware")
 async def get_platform_firmware() -> JSONResponse:
+    """GET /nvue_v1/platform/firmware — ONIE and ASIC firmware versions."""
     if _loader:
         fixture = _loader.load("platform_firmware")
         if fixture and isinstance(fixture, dict):
@@ -341,6 +348,7 @@ async def patch_revision(rev_id: str, request: Request) -> JSONResponse:
 
 @router.get("/system/ztp")
 async def get_ztp_status() -> JSONResponse:
+    """GET /nvue_v1/system/ztp — ZTP status (always disabled for mock devices)."""
     return JSONResponse(content={"status": "disabled"})
 
 

@@ -44,6 +44,7 @@ def create_app(device: DeviceConfig) -> FastAPI:
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:
+        """Return a simple liveness probe response."""
         return {"status": "ok", "device": device.name, "platform": device.platform}
 
     if device.platform in ("arista", "arista_eos"):
@@ -78,7 +79,10 @@ def run_server(device: DeviceConfig) -> None:
 
     logger.info(
         "Starting mock %s API for %s on port %d (TLS=%s)",
-        device.platform, device.name, port, use_tls,
+        device.platform,
+        device.name,
+        port,
+        use_tls,
     )
 
     kwargs: dict = {"host": "0.0.0.0", "port": port, "log_level": "info"}

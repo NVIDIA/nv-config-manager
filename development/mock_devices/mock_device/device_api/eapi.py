@@ -50,10 +50,12 @@ def configure(device: DeviceConfig) -> None:
 
 
 def _hostname() -> str:
+    """Return the configured device hostname, falling back to 'mock-arista'."""
     return _device.name if _device else "mock-arista"
 
 
 def _running_config() -> str:
+    """Return the canned running configuration for the device."""
     if _device and _device.running_config:
         return _device.running_config
     return (
@@ -75,10 +77,12 @@ _COMMAND_HANDLERS: dict[str, Any] = {}
 
 
 def _handle_show_running_config(**kwargs: Any) -> dict[str, Any]:
+    """Return the running configuration as an eAPI text output dict."""
     return {"output": _running_config()}
 
 
 def _handle_show_hostname(**kwargs: Any) -> dict[str, Any]:
+    """Return hostname and FQDN, preferring the fixture file when available."""
     if _loader:
         fixture = _loader.load("show_hostname")
         if fixture and isinstance(fixture, dict):
@@ -89,6 +93,7 @@ def _handle_show_hostname(**kwargs: Any) -> dict[str, Any]:
 
 
 def _handle_show_mac_address_table(**kwargs: Any) -> dict[str, Any]:
+    """Return the MAC address table, preferring the fixture file when available."""
     if _loader:
         fixture = _loader.load("show_mac_address_table")
         if fixture and isinstance(fixture, dict):
@@ -109,6 +114,7 @@ def _handle_show_mac_address_table(**kwargs: Any) -> dict[str, Any]:
 
 
 def _handle_show_ip_arp(**kwargs: Any) -> dict[str, Any]:
+    """Return the ARP table, preferring the fixture file when available."""
     if _loader:
         fixture = _loader.load("show_ip_arp")
         if fixture and isinstance(fixture, dict):
@@ -153,6 +159,7 @@ _BBR_DEVICES = frozenset(_BBR_LLDP)
 
 
 def _handle_show_version(**kwargs: Any) -> dict[str, Any]:
+    """Return version and serial information, overwriting serial with the configured value."""
     fixture: dict[str, Any] = {}
     if _loader:
         loaded = _loader.load("show_version")
@@ -171,6 +178,7 @@ def _handle_show_version(**kwargs: Any) -> dict[str, Any]:
 
 
 def _handle_show_lldp_neighbors_detail(**kwargs: Any) -> dict[str, Any]:
+    """Return LLDP neighbour detail, preferring fixture data then BBR hardcoded topology."""
     if _loader:
         fixture = _loader.load("show_lldp_neighbors_detail")
         if fixture and isinstance(fixture, dict):
@@ -182,6 +190,7 @@ def _handle_show_lldp_neighbors_detail(**kwargs: Any) -> dict[str, Any]:
 
 
 def _handle_show_interfaces_status(**kwargs: Any) -> dict[str, Any]:
+    """Return interface status, preferring fixture data then a hardcoded default."""
     if _loader:
         fixture = _loader.load("show_interfaces_status")
         if fixture and isinstance(fixture, dict):
@@ -197,19 +206,23 @@ def _handle_show_interfaces_status(**kwargs: Any) -> dict[str, Any]:
 
 
 def _handle_show_uptime(**kwargs: Any) -> dict[str, Any]:
+    """Return a hardcoded uptime value."""
     return {"upTime": 86400}
 
 
 def _handle_show_configuration_sessions(**kwargs: Any) -> dict[str, Any]:
+    """Return the list of in-progress configuration sessions."""
     return {"sessions": {sid: {"state": "pending"} for sid in _sessions}}
 
 
 def _handle_configure_session(session_id: str, **kwargs: Any) -> dict[str, Any]:
+    """Create or reset a named configuration session."""
     _sessions[session_id] = {"state": "pending", "config": ""}
     return {}
 
 
 def _handle_show_session_config_diffs(session_id: str, **kwargs: Any) -> dict[str, Any]:
+    """Return a minimal unified diff for the named configuration session."""
     return {"output": f"--- session:/{session_id}-session-config\n+++ system:/running-config\n"}
 
 
