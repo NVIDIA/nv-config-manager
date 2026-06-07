@@ -781,7 +781,7 @@ class BaseContext(Context):
         if locations_file.exists():
             try:
                 with open(locations_file) as f:
-                    data = yaml.safe_load(f)
+                    data = yaml.safe_load(f) or {}
                     self.json["config_contexts"] = [
                         self._render_config_context_metadata(config_context)
                         for config_context in data.get("config_contexts", [])
