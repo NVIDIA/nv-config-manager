@@ -177,211 +177,131 @@
                     }
                 },
                 {
-                    "name": "swp3",
+                    "name": "swp3s0",
                     "type": "400gbase-x-osfp",
                     "status": {
                         "name": "Active"
                     },
                     "enabled": true,
                     "mgmt_only": false,
-                    "ip_addresses": []
-                },
-                {
-                    "name": "swp3s0",
-                    "type": "virtual",
-                    "status": {
-                        "name": "Active"
-                    },
-                    "enabled": true,
-                    "mgmt_only": false,
                     "ip_addresses": [],
-                    "parent_interface": {
-                        "name": "swp3"
-                    },
                     "role": {
                         "name": "Downlink"
                     }
                 },
                 {
                     "name": "swp3s1",
-                    "type": "virtual",
-                    "status": {
-                        "name": "Active"
-                    },
-                    "enabled": true,
-                    "mgmt_only": false,
-                    "ip_addresses": [],
-                    "parent_interface": {
-                        "name": "swp3"
-                    },
-                    "role": {
-                        "name": "Downlink"
-                    }
-                },
-                {
-                    "name": "swp4",
                     "type": "400gbase-x-osfp",
                     "status": {
                         "name": "Active"
                     },
                     "enabled": true,
                     "mgmt_only": false,
-                    "ip_addresses": []
+                    "ip_addresses": [],
+                    "role": {
+                        "name": "Downlink"
+                    }
                 },
                 {
                     "name": "swp4s0",
-                    "type": "virtual",
+                    "type": "400gbase-x-osfp",
                     "status": {
                         "name": "Active"
                     },
                     "enabled": true,
                     "mgmt_only": false,
                     "ip_addresses": [],
-                    "parent_interface": {
-                        "name": "swp4"
-                    },
                     "role": {
                         "name": "Downlink"
                     }
                 },
                 {
                     "name": "swp4s1",
-                    "type": "virtual",
-                    "status": {
-                        "name": "Active"
-                    },
-                    "enabled": true,
-                    "mgmt_only": false,
-                    "ip_addresses": [],
-                    "parent_interface": {
-                        "name": "swp4"
-                    },
-                    "role": {
-                        "name": "Downlink"
-                    }
-                },
-                {
-                    "name": "swp5",
                     "type": "400gbase-x-osfp",
                     "status": {
                         "name": "Active"
                     },
                     "enabled": true,
                     "mgmt_only": false,
-                    "ip_addresses": []
+                    "ip_addresses": [],
+                    "role": {
+                        "name": "Downlink"
+                    }
                 },
                 {
                     "name": "swp5s0",
-                    "type": "virtual",
+                    "type": "400gbase-x-osfp",
                     "status": {
                         "name": "Active"
                     },
                     "enabled": true,
                     "mgmt_only": false,
                     "ip_addresses": [],
-                    "parent_interface": {
-                        "name": "swp5"
-                    },
                     "role": {
                         "name": "Downlink"
                     }
                 },
                 {
                     "name": "swp5s1",
-                    "type": "virtual",
-                    "status": {
-                        "name": "Active"
-                    },
-                    "enabled": true,
-                    "mgmt_only": false,
-                    "ip_addresses": [],
-                    "parent_interface": {
-                        "name": "swp5"
-                    },
-                    "role": {
-                        "name": "Downlink"
-                    }
-                },
-                {
-                    "name": "swp6",
                     "type": "400gbase-x-osfp",
                     "status": {
                         "name": "Active"
                     },
                     "enabled": true,
                     "mgmt_only": false,
-                    "ip_addresses": []
+                    "ip_addresses": [],
+                    "role": {
+                        "name": "Downlink"
+                    }
                 },
                 {
                     "name": "swp6s0",
-                    "type": "virtual",
+                    "type": "400gbase-x-osfp",
                     "status": {
                         "name": "Active"
                     },
                     "enabled": true,
                     "mgmt_only": false,
                     "ip_addresses": [],
-                    "parent_interface": {
-                        "name": "swp6"
-                    },
                     "role": {
                         "name": "Downlink"
                     }
                 },
                 {
                     "name": "swp6s1",
-                    "type": "virtual",
-                    "status": {
-                        "name": "Active"
-                    },
-                    "enabled": true,
-                    "mgmt_only": false,
-                    "ip_addresses": [],
-                    "parent_interface": {
-                        "name": "swp6"
-                    },
-                    "role": {
-                        "name": "Downlink"
-                    }
-                },
-                {
-                    "name": "swp7",
                     "type": "400gbase-x-osfp",
                     "status": {
                         "name": "Active"
                     },
                     "enabled": true,
                     "mgmt_only": false,
-                    "ip_addresses": []
+                    "ip_addresses": [],
+                    "role": {
+                        "name": "Downlink"
+                    }
                 },
                 {
                     "name": "swp7s0",
-                    "type": "virtual",
+                    "type": "400gbase-x-osfp",
                     "status": {
                         "name": "Active"
                     },
                     "enabled": true,
                     "mgmt_only": false,
                     "ip_addresses": [],
-                    "parent_interface": {
-                        "name": "swp7"
-                    },
                     "role": {
                         "name": "Downlink"
                     }
                 },
                 {
                     "name": "swp7s1",
-                    "type": "virtual",
+                    "type": "400gbase-x-osfp",
                     "status": {
                         "name": "Active"
                     },
                     "enabled": true,
                     "mgmt_only": false,
                     "ip_addresses": [],
-                    "parent_interface": {
-                        "name": "swp7"
-                    },
                     "role": {
                         "name": "Downlink"
                     }

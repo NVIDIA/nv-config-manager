@@ -31,16 +31,25 @@
 {% endif %}
 {% set configured_parents = [] %}
 {% for intf in device_data|interfaces(prefix="swp") %}
-{% set breakout = device_data|breakout_count(intf.name) if not intf.parent and not intf.primary_ipv4 and not intf.untagged_vlan else 0 %}
-{% if intf.parent and intf.parent not in configured_parents %}
-      {{ intf.parent }}:
+{% set swp_suffix = intf.name[3:] %}
+{% set is_sub = 's' in swp_suffix and swp_suffix.split('s')[0].isdigit() and swp_suffix.split('s')[1].isdigit() %}
+{% if is_sub %}
+{% set parent_name = 'swp' + swp_suffix.split('s')[0] %}
+{% if parent_name not in configured_parents %}
+{% set sibling_count = namespace(n=0) %}
+{% for other in device_data|interfaces(prefix="swp") %}
+{% if other.name.startswith(parent_name + 's') %}
+{% set sibling_count.n = sibling_count.n + 1 %}
+{% endif %}
+{% endfor %}
+      {{ parent_name }}:
         link:
           breakout:
-            {{ device_data|breakout_count(intf.parent) }}x: {}
+            {{ sibling_count.n }}x: {}
         type: swp
-{% set _ = configured_parents.append(intf.parent) %}
+{% set _ = configured_parents.append(parent_name) %}
 {% endif %}
-{% if not breakout %}
+{% endif %}
       {{ intf.name }}:
 {% if intf.description %}
         description: {{ intf.description }}
@@ -83,7 +92,6 @@
             state: enabled
 {% endif %}
         type: swp
-{% endif %}
 {% endfor %}
 {% for vlan in device_data|interfaces(prefix="vlan") %}
       {{ vlan.name }}:
