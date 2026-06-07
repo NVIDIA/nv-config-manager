@@ -188,7 +188,7 @@
                 },
                 {
                     "name": "swp3s0",
-                    "type": "400gbase-x-osfp",
+                    "type": "virtual",
                     "status": {
                         "name": "Active"
                     },
@@ -204,7 +204,7 @@
                 },
                 {
                     "name": "swp3s1",
-                    "type": "400gbase-x-osfp",
+                    "type": "virtual",
                     "status": {
                         "name": "Active"
                     },
@@ -230,7 +230,7 @@
                 },
                 {
                     "name": "swp4s0",
-                    "type": "400gbase-x-osfp",
+                    "type": "virtual",
                     "status": {
                         "name": "Active"
                     },
@@ -246,7 +246,7 @@
                 },
                 {
                     "name": "swp4s1",
-                    "type": "400gbase-x-osfp",
+                    "type": "virtual",
                     "status": {
                         "name": "Active"
                     },
@@ -272,7 +272,7 @@
                 },
                 {
                     "name": "swp5s0",
-                    "type": "400gbase-x-osfp",
+                    "type": "virtual",
                     "status": {
                         "name": "Active"
                     },
@@ -288,7 +288,7 @@
                 },
                 {
                     "name": "swp5s1",
-                    "type": "400gbase-x-osfp",
+                    "type": "virtual",
                     "status": {
                         "name": "Active"
                     },
@@ -314,7 +314,7 @@
                 },
                 {
                     "name": "swp6s0",
-                    "type": "400gbase-x-osfp",
+                    "type": "virtual",
                     "status": {
                         "name": "Active"
                     },
@@ -330,7 +330,7 @@
                 },
                 {
                     "name": "swp6s1",
-                    "type": "400gbase-x-osfp",
+                    "type": "virtual",
                     "status": {
                         "name": "Active"
                     },
@@ -356,7 +356,7 @@
                 },
                 {
                     "name": "swp7s0",
-                    "type": "400gbase-x-osfp",
+                    "type": "virtual",
                     "status": {
                         "name": "Active"
                     },
@@ -372,7 +372,7 @@
                 },
                 {
                     "name": "swp7s1",
-                    "type": "400gbase-x-osfp",
+                    "type": "virtual",
                     "status": {
                         "name": "Active"
                     },
