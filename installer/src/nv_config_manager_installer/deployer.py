@@ -2851,6 +2851,10 @@ class Deployer:
                 return True
             if status in self._FAILED_STATUSES:
                 self.callback.on_log(f"  Job failed (status: {status})")
+                tb = result_data.get("traceback") or ""
+                if tb:
+                    for line in tb.splitlines():
+                        self.callback.on_log(f"  {line}")
                 return False
             if status not in self._PENDING_STATUSES:
                 self.callback.on_log(f"  Unknown job status: {status}")
