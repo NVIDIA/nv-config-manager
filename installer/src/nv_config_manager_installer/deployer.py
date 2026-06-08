@@ -2852,7 +2852,10 @@ class Deployer:
             if status in self._FAILED_STATUSES:
                 self.callback.on_log(f"  Job failed (status: {status})")
                 try:
-                    self.callback.on_log(f"  [raw] {json.dumps(result_data)[:5000]}")
+                    raw = json.dumps(result_data)
+                    self.callback.on_log(f"  [raw-len] {len(raw)}")
+                    for i in range(0, min(len(raw), 6000), 200):
+                        self.callback.on_log(f"  [raw-{i}] {raw[i:i+200]}")
                 except Exception as e:
                     self.callback.on_log(f"  [raw-error] {e!r}")
                 return False
