@@ -2851,15 +2851,10 @@ class Deployer:
                 return True
             if status in self._FAILED_STATUSES:
                 self.callback.on_log(f"  Job failed (status: {status})")
-                for field in ("traceback", "result"):
-                    content = result_data.get(field) or ""
-                    if isinstance(content, dict):
-                        content = json.dumps(content)
-                    if content:
-                        self.callback.on_log(f"  [{field}]")
-                        for line in str(content).splitlines():
-                            self.callback.on_log(f"  {line}")
-                self.callback.on_log(f"  [raw] {json.dumps(result_data)[:3000]}")
+                try:
+                    self.callback.on_log(f"  [raw] {json.dumps(result_data)[:5000]}")
+                except Exception as e:
+                    self.callback.on_log(f"  [raw-error] {e!r}")
                 return False
             if status not in self._PENDING_STATUSES:
                 self.callback.on_log(f"  Unknown job status: {status}")
