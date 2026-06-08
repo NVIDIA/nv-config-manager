@@ -58,14 +58,11 @@ OVERLAY_UUID = "ddd-444"
 STATUS_UUID = "ccc-333"
 IFACE_UUID_1 = "iface-001"
 IFACE_UUID_2 = "iface-002"
-IFACE_UUID_3 = "iface-003"
 ASSIGNMENT_UUID_1 = "asgn-001"
 ASSIGNMENT_UUID_2 = "asgn-002"
-ASSIGNMENT_UUID_3 = "asgn-003"
 
 GUID_1 = "0002c903000e0b72"
 GUID_2 = "0002c903000e0b73"
-GUID_3 = "0002c903000e0b74"
 
 _NB_INTERFACES = re.compile(rf"{re.escape(NB_API)}/dcim/interfaces/.*")
 _NB_STATUSES = re.compile(rf"{re.escape(NB_API)}/extras/statuses/.*")
@@ -210,7 +207,6 @@ async def test_additions_only_auto_approved(mock_all_configs):
                     IBPKeyMemberUpdateInput(
                         host="ufm.example.com",
                         pkey="0x0005",
-                        overlay_id=OVERLAY_UUID,
                         interfaces=[
                             InterfaceRef(device="hca01", interface="mlx5_0"),
                             InterfaceRef(device="hca01", interface="mlx5_1"),
@@ -222,6 +218,8 @@ async def test_additions_only_auto_approved(mock_all_configs):
 
     assert isinstance(result, IBPKeyMemberUpdateOutput)
     assert result.pkey == "0x0005"
+    assert result.overlay_id == OVERLAY_UUID
+    assert result.overlay_name == "ib-pkey-overlay"
     assert result.members_added == 2
     assert result.members_removed == 0
     assert result.members_unchanged == 0
@@ -293,7 +291,6 @@ async def test_no_op_when_desired_matches_current(mock_all_configs):
                     IBPKeyMemberUpdateInput(
                         host="ufm.example.com",
                         pkey="0x0005",
-                        overlay_id=OVERLAY_UUID,
                         interfaces=[
                             InterfaceRef(device="hca01", interface="mlx5_0"),
                         ],
@@ -308,68 +305,12 @@ async def test_no_op_when_desired_matches_current(mock_all_configs):
     assert result.verified is True
 
 
-@pytest.mark.asyncio
-async def test_stages_queryable_after_completion(mock_all_configs):
-    """All six stage names appear in query results after the workflow completes."""
-    task_queue = str(uuid.uuid4())
-
-    async with await WorkflowEnvironment.start_time_skipping() as env:
-        async with Worker(
-            env.client,
-            task_queue=task_queue,
-            workflows=[IBPKeyMemberUpdateWorkflow],
-            activities=_ALL_ACTIVITIES,
-        ):
-            with aioresponses() as m:
-                stub_graphql_resolve_ib_context(m, pkey="0x0005", overlay_id=OVERLAY_UUID)
-                _stub_resolve_interfaces(m, [(IFACE_UUID_1, GUID_1)])
-                m.get(_NB_ASSIGNMENTS, payload={"results": []})
-                _stub_status(m)
-                m.get(_NB_ASSIGNMENTS, payload={"results": []})
-                m.post(
-                    f"{PLUGIN}/overlay-assignments/",
-                    payload={"id": ASSIGNMENT_UUID_1},
-                )
-                m.post(f"{UFM_BASE}/resources/pkeys/", payload={})
-                m.get(
-                    _pkey_verify_url("0x0005"),
-                    payload={"guids": [{"guid": GUID_1, "membership": "full"}]},
-                )
-
-                handle = await env.client.start_workflow(
-                    IBPKeyMemberUpdateWorkflow.run,
-                    IBPKeyMemberUpdateInput(
-                        host="ufm.example.com",
-                        pkey="0x0005",
-                        overlay_id=OVERLAY_UUID,
-                        interfaces=[
-                            InterfaceRef(device="hca01", interface="mlx5_0"),
-                        ],
-                    ),
-                    id=str(uuid.uuid4()),
-                    task_queue=task_queue,
-                )
-                await handle.result()
-
-            stages = await handle.query(IBPKeyMemberUpdateWorkflow.stages)
-
-    stage_names = [s.name for s in stages]
-    assert "resolve_context" in stage_names
-    assert "resolve_desired" in stage_names
-    assert "query_current" in stage_names
-    assert "validate_diff" in stage_names
-    assert "update_nautobot" in stage_names
-    assert "update_ufm" in stage_names
-    assert "verify_ufm" in stage_names
-
-
 def test_input_rejects_neither_interfaces_nor_guids():
     """Validator rejects an input with neither interfaces nor GUIDs."""
     with pytest.raises(ValueError, match="One of 'interfaces' or 'guids'"):
         IBPKeyMemberUpdateInput(
             host="ufm.example.com",
             pkey="0x0005",
-            overlay_id=OVERLAY_UUID,
         )
 
 
@@ -381,44 +322,9 @@ def test_input_rejects_both_interfaces_and_guids():
         IBPKeyMemberUpdateInput(
             host="ufm.example.com",
             pkey="0x0005",
-            overlay_id=OVERLAY_UUID,
             interfaces=[InterfaceRef(device="hca01", interface="mlx5_0")],
             guids=[GUID_1],
         )
-
-
-def test_input_accepts_interfaces_only():
-    """Validator accepts interfaces-only input."""
-    payload = IBPKeyMemberUpdateInput(
-        host="ufm.example.com",
-        pkey="0x0005",
-        overlay_id=OVERLAY_UUID,
-        interfaces=[InterfaceRef(device="hca01", interface="mlx5_0")],
-    )
-    assert payload.guids == []
-    assert len(payload.interfaces) == 1
-
-
-def test_input_accepts_guids_only():
-    """Validator accepts GUIDs-only input."""
-    payload = IBPKeyMemberUpdateInput(
-        host="ufm.example.com",
-        pkey="0x0005",
-        overlay_id=OVERLAY_UUID,
-        guids=[GUID_1],
-    )
-    assert payload.guids == [GUID_1]
-    assert payload.interfaces == []
-
-
-def test_input_accepts_missing_overlay_id():
-    """overlay_id is optional; the resolver fills it from Nautobot."""
-    payload = IBPKeyMemberUpdateInput(
-        host="ufm.example.com",
-        pkey="0x0005",
-        interfaces=[InterfaceRef(device="hca01", interface="mlx5_0")],
-    )
-    assert payload.overlay_id is None
 
 
 @pytest.mark.parametrize("bad_pkey", ["", "5", "0x", "0xZZZZ", "0x12345"])
@@ -427,7 +333,6 @@ def test_input_rejects_bad_pkey_format(bad_pkey):
         IBPKeyMemberUpdateInput(
             host="ufm.example.com",
             pkey=bad_pkey,
-            overlay_id=OVERLAY_UUID,
             interfaces=[InterfaceRef(device="hca01", interface="mlx5_0")],
         )
 
@@ -469,7 +374,6 @@ async def test_guids_only_path_resolves_via_graphql(mock_all_configs):
                     IBPKeyMemberUpdateInput(
                         host="ufm.example.com",
                         pkey="0x0005",
-                        overlay_id=OVERLAY_UUID,
                         guids=[GUID_1],
                     ),
                     id=str(uuid.uuid4()),

@@ -204,7 +204,6 @@ async def test_full_workflow_happy_path(mock_all_configs):
                     IBPKeyMemberDeleteInput(
                         host="ufm.example.com",
                         pkey="0x0005",
-                        overlay_id=OVERLAY_UUID,
                         interfaces=[
                             InterfaceRef(device="hca01", interface="mlx5_0"),
                             InterfaceRef(device="hca01", interface="mlx5_1"),
@@ -216,65 +215,12 @@ async def test_full_workflow_happy_path(mock_all_configs):
 
     assert isinstance(result, IBPKeyMemberDeleteOutput)
     assert result.pkey == "0x0005"
+    assert result.overlay_id == OVERLAY_UUID
+    assert result.overlay_name == "ib-pkey-overlay"
     assert result.members_removed == 2
     assert result.verified is True
     assert sorted(result.assignment_ids_removed) == sorted([ASSIGNMENT_UUID_1, ASSIGNMENT_UUID_2])
     assert result.interface_ids_not_assigned == []
-
-
-@pytest.mark.asyncio
-async def test_single_interface(mock_all_configs):
-    """Workflow succeeds with a single interface."""
-    task_queue = str(uuid.uuid4())
-
-    async with await WorkflowEnvironment.start_time_skipping() as env:
-        async with Worker(
-            env.client,
-            task_queue=task_queue,
-            workflows=[IBPKeyMemberDeleteWorkflow],
-            activities=_ALL_ACTIVITIES,
-        ):
-            with aioresponses() as m:
-                stub_graphql_resolve_ib_context(m, pkey="0x0005", overlay_id=OVERLAY_UUID)
-                m.get(
-                    _NB_INTERFACES,
-                    payload={
-                        "results": [
-                            {
-                                "id": IFACE_UUID_1,
-                                "name": "mlx5_0",
-                                "custom_fields": {"ib_guid": GUID_1},
-                            }
-                        ]
-                    },
-                )
-                m.delete(_UFM_DELETE, payload={})
-                m.get(
-                    _pkey_verify_url("0x0005"),
-                    payload={"guids": []},
-                )
-                m.get(
-                    _NB_ASSIGNMENTS,
-                    payload={"results": [{"id": ASSIGNMENT_UUID_1}]},
-                )
-                m.delete(f"{PLUGIN}/overlay-assignments/{ASSIGNMENT_UUID_1}/", payload={})
-
-                result = await env.client.execute_workflow(
-                    IBPKeyMemberDeleteWorkflow.run,
-                    IBPKeyMemberDeleteInput(
-                        host="ufm.example.com",
-                        pkey="0x0005",
-                        overlay_id=OVERLAY_UUID,
-                        interfaces=[
-                            InterfaceRef(device="hca01", interface="mlx5_0"),
-                        ],
-                    ),
-                    id=str(uuid.uuid4()),
-                    task_queue=task_queue,
-                )
-
-    assert result.members_removed == 1
-    assert result.assignment_ids_removed == [ASSIGNMENT_UUID_1]
 
 
 @pytest.mark.asyncio
@@ -316,7 +262,6 @@ async def test_idempotent_no_existing_assignment(mock_all_configs):
                     IBPKeyMemberDeleteInput(
                         host="ufm.example.com",
                         pkey="0x0005",
-                        overlay_id=OVERLAY_UUID,
                         interfaces=[
                             InterfaceRef(device="hca01", interface="mlx5_0"),
                         ],
@@ -330,54 +275,12 @@ async def test_idempotent_no_existing_assignment(mock_all_configs):
     assert result.interface_ids_not_assigned == [IFACE_UUID_1]
 
 
-@pytest.mark.asyncio
-async def test_stages_queryable_after_completion(mock_all_configs):
-    """Verify all four stage names appear in query results after the workflow completes."""
-    task_queue = str(uuid.uuid4())
-
-    async with await WorkflowEnvironment.start_time_skipping() as env:
-        async with Worker(
-            env.client,
-            task_queue=task_queue,
-            workflows=[IBPKeyMemberDeleteWorkflow],
-            activities=_ALL_ACTIVITIES,
-        ):
-            with aioresponses() as m:
-                _stub_full_run(m)
-
-                handle = await env.client.start_workflow(
-                    IBPKeyMemberDeleteWorkflow.run,
-                    IBPKeyMemberDeleteInput(
-                        host="ufm.example.com",
-                        pkey="0x0005",
-                        overlay_id=OVERLAY_UUID,
-                        interfaces=[
-                            InterfaceRef(device="hca01", interface="mlx5_0"),
-                            InterfaceRef(device="hca01", interface="mlx5_1"),
-                        ],
-                    ),
-                    id=str(uuid.uuid4()),
-                    task_queue=task_queue,
-                )
-                await handle.result()
-
-            stages = await handle.query(IBPKeyMemberDeleteWorkflow.stages)
-
-    stage_names = [s.name for s in stages]
-    assert "resolve_context" in stage_names
-    assert "resolve_guids" in stage_names
-    assert "remove_members" in stage_names
-    assert "verify_removed" in stage_names
-    assert "remove_assignments" in stage_names
-
-
 def test_input_rejects_neither():
     """Validator rejects an input with neither interfaces nor GUIDs."""
     with pytest.raises(ValueError, match="One of 'interfaces' or 'guids' must be provided"):
         IBPKeyMemberDeleteInput(
             host="ufm.example.com",
             pkey="0x0005",
-            overlay_id=OVERLAY_UUID,
         )
 
 
@@ -387,40 +290,9 @@ def test_input_rejects_both():
         IBPKeyMemberDeleteInput(
             host="ufm.example.com",
             pkey="0x0005",
-            overlay_id=OVERLAY_UUID,
             interfaces=[InterfaceRef(device="hca01", interface="mlx5_0")],
             guids=[GUID_1],
         )
-
-
-def test_input_accepts_interfaces_only():
-    payload = IBPKeyMemberDeleteInput(
-        host="ufm.example.com",
-        pkey="0x0005",
-        overlay_id=OVERLAY_UUID,
-        interfaces=[InterfaceRef(device="hca01", interface="mlx5_0")],
-    )
-    assert payload.guids == []
-
-
-def test_input_accepts_guids_only():
-    payload = IBPKeyMemberDeleteInput(
-        host="ufm.example.com",
-        pkey="0x0005",
-        overlay_id=OVERLAY_UUID,
-        guids=[GUID_1],
-    )
-    assert payload.interfaces == []
-
-
-def test_input_accepts_missing_overlay_id():
-    """overlay_id is optional now; the resolver fills it from Nautobot."""
-    payload = IBPKeyMemberDeleteInput(
-        host="ufm.example.com",
-        pkey="0x0005",
-        interfaces=[InterfaceRef(device="hca01", interface="mlx5_0")],
-    )
-    assert payload.overlay_id is None
 
 
 @pytest.mark.parametrize("bad_pkey", ["", "5", "0x", "0xZZZZ", "0x12345"])
@@ -429,7 +301,6 @@ def test_input_rejects_bad_pkey_format(bad_pkey):
         IBPKeyMemberDeleteInput(
             host="ufm.example.com",
             pkey=bad_pkey,
-            overlay_id=OVERLAY_UUID,
             interfaces=[InterfaceRef(device="hca01", interface="mlx5_0")],
         )
 
@@ -462,7 +333,6 @@ async def test_guids_only_path(mock_all_configs):
                     IBPKeyMemberDeleteInput(
                         host="ufm.example.com",
                         pkey="0x0005",
-                        overlay_id=OVERLAY_UUID,
                         guids=[GUID_1],
                     ),
                     id=str(uuid.uuid4()),

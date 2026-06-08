@@ -74,6 +74,10 @@ export async function setupApiMocks(page: Page) {
   await mockIbGetUnhealthyPortsEndpoint(page);
   await mockIbOsUpgradeEndpoint(page);
   await mockInfinibandCableValidationEndpoint(page);
+  await mockIbPkeyCreationEndpoint(page);
+  await mockIbPkeyMemberAddEndpoint(page);
+  await mockIbPkeyMemberDeleteEndpoint(page);
+  await mockIbPkeyMemberUpdateEndpoint(page);
   await mockReprovisionEndpoint(page);
   await mockSwitchOsUpgradeEndpoint(page);
   await mockCumulusHardwareValidationEndpoint(page);
@@ -710,6 +714,130 @@ export async function mockInfinibandCableValidationEndpoint(page: Page) {
   );
 }
 
+const IB_PKEY_PATTERN = /^0[xX][0-9a-fA-F]{1,4}$/;
+const IB_GUID_PATTERN = /^0x[0-9a-fA-F]{16}$/;
+
+function validateIbPkeyMembershipBody(body: {
+  host?: string;
+  pkey?: string;
+  interfaces?: { device?: string; interface?: string }[];
+  guids?: string[];
+}): { status: number; json: { error: string } } | null {
+  if (!body.host) {
+    return { status: 400, json: { error: "Missing required field: host" } };
+  }
+  if (!body.pkey) {
+    return { status: 400, json: { error: "Missing required field: pkey" } };
+  }
+  if (!IB_PKEY_PATTERN.test(body.pkey)) {
+    return {
+      status: 400,
+      json: { error: "pkey must match /^0[xX][0-9a-fA-F]{1,4}$/" },
+    };
+  }
+  const hasInterfaces = (body.interfaces?.length ?? 0) > 0;
+  const hasGuids = (body.guids?.length ?? 0) > 0;
+  if (hasInterfaces === hasGuids) {
+    return {
+      status: 400,
+      json: { error: "Provide exactly one of 'interfaces' or 'guids'" },
+    };
+  }
+  if (hasGuids && body.guids!.some((g) => !IB_GUID_PATTERN.test(g))) {
+    return {
+      status: 400,
+      json: { error: "Each guid must match 0x + 16 hex digits" },
+    };
+  }
+  return null;
+}
+
+async function registerIbPkeyMembershipRoute(
+  page: Page,
+  endpoint: string,
+  workflowKind: string,
+) {
+  await page.route(`**${endpoint}`, async (route) => {
+    const body = JSON.parse((await route.request().postData()) || "{}");
+    const err = validateIbPkeyMembershipBody(body);
+    if (err) {
+      await route.fulfill({ status: err.status, json: err.json });
+      return;
+    }
+    await delay(100);
+    const workflowId = `${workflowKind}-${Date.now()}`;
+    await route.fulfill({
+      status: 201,
+      json: {
+        id: workflowId,
+        href: `https://url-to-temporal.com/namespaces/default/workflows/${workflowId}`,
+        submitted_data: body,
+      },
+    });
+  });
+}
+
+export async function mockIbPkeyMemberAddEndpoint(page: Page) {
+  await registerIbPkeyMembershipRoute(
+    page,
+    "/v1/workflow/ngc/ib_pkey_member_add",
+    "ib-pkey-member-add",
+  );
+}
+
+export async function mockIbPkeyMemberDeleteEndpoint(page: Page) {
+  await registerIbPkeyMembershipRoute(
+    page,
+    "/v1/workflow/ngc/ib_pkey_member_delete",
+    "ib-pkey-member-delete",
+  );
+}
+
+export async function mockIbPkeyMemberUpdateEndpoint(page: Page) {
+  await registerIbPkeyMembershipRoute(
+    page,
+    "/v1/workflow/ngc/ib_pkey_member_update",
+    "ib-pkey-member-update",
+  );
+}
+
+export async function mockIbPkeyCreationEndpoint(page: Page) {
+  const PKEY_PATTERN = /^0[xX][0-9a-fA-F]{1,4}$/;
+
+  await page.route(`**/v1/workflow/ngc/ib_pkey_creation`, async (route) => {
+    const request = route.request();
+    const body = JSON.parse((await request.postData()) || "{}");
+
+    if (!body.host) {
+      await route.fulfill({
+        status: 400,
+        json: { error: "Missing required field: host" },
+      });
+      return;
+    }
+
+    if (body.pkey && !PKEY_PATTERN.test(body.pkey)) {
+      await route.fulfill({
+        status: 400,
+        json: { error: "pkey must match /^0[xX][0-9a-fA-F]{1,4}$/" },
+      });
+      return;
+    }
+
+    await delay(100);
+
+    const workflowId = `ib-pkey-creation-${Date.now()}`;
+    await route.fulfill({
+      status: 201,
+      json: {
+        id: workflowId,
+        href: `https://url-to-temporal.com/namespaces/default/workflows/${workflowId}`,
+        submitted_data: body,
+      },
+    });
+  });
+}
+
 export async function mockReprovisionEndpoint(page: Page) {
   await page.route(`**/v1/workflow/ngc/reprovision`, async (route) => {
     const request = route.request();
@@ -788,9 +916,6 @@ export async function mockSwitchOsUpgradeEndpoint(page: Page) {
 // Data fetching endpoints
 export async function mockSitesEndpoint(page: Page) {
   await page.route(`**/v1/parameter/location*`, async (route) => {
-    const url = new URL(route.request().url());
-    const locationTypes = url.searchParams.getAll("location_type");
-
     await route.fulfill({
       status: 200,
       json: SITES_LIST_API_RESPONSE,

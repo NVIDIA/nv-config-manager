@@ -58,14 +58,12 @@ class IBPKeyMemberDeleteInput(BaseModel):
     """InfiniBand PKey Member Delete Workflow Input.
 
     Provide either ``interfaces`` (resolved to GUIDs via Nautobot) or
-    ``guids`` directly, but not both. ``site`` and ``overlay_id`` are
-    optional; resolved from Nautobot via ``host`` and ``pkey`` if omitted.
+    ``guids`` directly, but not both. Site and Overlay are resolved
+    server-side from ``host`` and ``pkey``.
     """
 
     host: str
-    site: str | None = None
     pkey: str
-    overlay_id: str | None = None
     interfaces: list[InterfaceRef] = []
     guids: list[str] = []
 
@@ -84,6 +82,8 @@ class IBPKeyMemberDeleteOutput(BaseModel):
     """InfiniBand PKey Member Delete Workflow Output."""
 
     pkey: str
+    overlay_id: str
+    overlay_name: str
     members_removed: int
     verified: bool
     assignment_ids_removed: list[str]
@@ -142,8 +142,6 @@ class IBPKeyMemberDeleteWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
 
         host: str
         pkey: str
-        site_override: str | None = None
-        overlay_id_override: str | None = None
 
     class ResolveContextStageOutput(StageOutput):
         """Resolve Context Stage Output."""
@@ -163,35 +161,16 @@ class IBPKeyMemberDeleteWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
         """Resolve site/overlay from Nautobot and canonicalize pkey."""
         resolved = await call_resolve_ib_context(stage_input.host, stage_input.pkey)
 
-        effective_site = stage_input.site_override or resolved.location_name
-        effective_overlay_id = stage_input.overlay_id_override or resolved.overlay_id
-
-        if stage_input.site_override and stage_input.site_override != resolved.location_name:
-            workflow.logger.warning(
-                "Client-supplied site %r differs from resolved %r; using client value.",
-                stage_input.site_override,
-                resolved.location_name,
-            )
-        if (
-            stage_input.overlay_id_override
-            and stage_input.overlay_id_override != resolved.overlay_id
-        ):
-            workflow.logger.warning(
-                "Client-supplied overlay_id %r differs from resolved %r; using client value.",
-                stage_input.overlay_id_override,
-                resolved.overlay_id,
-            )
-
         return self.ResolveContextStageOutput(
             host=stage_input.host,
-            site=effective_site,
+            site=resolved.location_name,
             pkey=resolved.pkey,
-            overlay_id=effective_overlay_id,
+            overlay_id=resolved.overlay_id,
             ufm_device_id=resolved.ufm_device_id,
             location_id=resolved.location_id,
             overlay_name=resolved.overlay_name,
             display=(
-                f"Context: host={stage_input.host} site={effective_site} "
+                f"Context: host={stage_input.host} site={resolved.location_name} "
                 f"pkey={resolved.pkey} overlay={resolved.overlay_name}"
             ),
         )
@@ -348,8 +327,6 @@ class IBPKeyMemberDeleteWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
             self.ResolveContextStageInput(
                 host=workflow_input.host,
                 pkey=workflow_input.pkey,
-                site_override=workflow_input.site,
-                overlay_id_override=workflow_input.overlay_id,
             )
         )
 
@@ -391,6 +368,8 @@ class IBPKeyMemberDeleteWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
         await self.archive_results()
         return IBPKeyMemberDeleteOutput(
             pkey=verify_output.pkey,
+            overlay_id=context.overlay_id,
+            overlay_name=context.overlay_name,
             members_removed=len(remove_output.guids_removed),
             verified=verify_output.verified,
             assignment_ids_removed=assignments_output.assignment_ids_removed,

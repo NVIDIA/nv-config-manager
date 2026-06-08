@@ -40,6 +40,10 @@ export const workflowTypes = [
   "ReprovisionWorkflow",
   "SwitchOsUpgradeWorkflow",
   "CumulusHardwareValidationWorkflow",
+  "IBPKeyCreationWorkflow",
+  "IBPKeyMemberAddWorkflow",
+  "IBPKeyMemberUpdateWorkflow",
+  "IBPKeyMemberDeleteWorkflow",
 ];
 
 export const workflowFetchingHandlers = [

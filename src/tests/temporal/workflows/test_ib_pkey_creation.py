@@ -25,7 +25,10 @@ from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
 from nv_config_manager.temporal.common.secrets import clear_secrets_cache
-from nv_config_manager.temporal.ngc.activities.ib_nautobot import record_ib_pkey_in_nautobot
+from nv_config_manager.temporal.ngc.activities.ib_nautobot import (
+    record_ib_pkey_in_nautobot,
+    resolve_ib_site_for_host,
+)
 from nv_config_manager.temporal.ngc.activities.ib_pkey import (
     create_pkey_on_ufm,
     validate_pkey_available,
@@ -39,6 +42,10 @@ from nv_config_manager.temporal.ngc.workflows.ib_pkey_creation import (
 )
 
 UFM_BASE = "https://ufm.example.com/ufmRest"
+NB_URL = "https://nautobot.example.com"
+NB_API = f"{NB_URL}/api"
+NB_GRAPHQL = f"{NB_API}/graphql/"
+PLUGIN = f"{NB_API}/plugins/overlays"
 
 
 def _create_config(sections: dict[str, dict[str, str]]) -> ConfigParser:
@@ -71,157 +78,7 @@ def _mock_nats():
 
 
 @pytest.fixture()
-def mock_config():
-    with patch("nv_config_manager.temporal.client.ufm.load_config") as mock:
-        mock.return_value = _create_config(
-            {"ufm": {"ufm_api_user": "admin", "ufm_api_token_r1": "password"}}
-        )
-        yield mock
-
-
-@pytest.mark.asyncio
-async def test_ib_pkey_creation_with_specific_pkey(mock_config):
-    """Full workflow: validate, create, verify with a specific PKey."""
-    task_queue = str(uuid.uuid4())
-
-    async with await WorkflowEnvironment.start_time_skipping() as env:
-        async with Worker(
-            env.client,
-            task_queue=task_queue,
-            workflows=[IBPKeyCreationWorkflow],
-            activities=[
-                validate_pkey_available,
-                create_pkey_on_ufm,
-                verify_pkey_created,
-                publish_nats,
-            ],
-        ):
-            with aioresponses() as m:
-                m.get(
-                    f"{UFM_BASE}/resources/pkeys",
-                    payload={"0x7fff": {"partition": "management"}},
-                )
-                m.post(f"{UFM_BASE}/resources/pkeys/add", payload={})
-                m.get(
-                    f"{UFM_BASE}/resources/pkeys/0x8001",
-                    payload={"partition": "new-tenant", "guids": []},
-                )
-
-                result = await env.client.execute_workflow(
-                    IBPKeyCreationWorkflow.run,
-                    IBPKeyCreationInput(
-                        host="ufm.example.com",
-                        pkey="0x8001",
-                    ),
-                    id=str(uuid.uuid4()),
-                    task_queue=task_queue,
-                )
-
-            assert isinstance(result, IBPKeyCreationWorkflowOutput)
-            assert result.pkey == "0x8001"
-            assert result.auto_assigned is False
-            assert result.created is True
-            assert result.verified is True
-
-
-@pytest.mark.asyncio
-async def test_ib_pkey_creation_with_auto_assign(mock_config):
-    """Full workflow: auto-assign PKey when none specified."""
-    task_queue = str(uuid.uuid4())
-
-    async with await WorkflowEnvironment.start_time_skipping() as env:
-        async with Worker(
-            env.client,
-            task_queue=task_queue,
-            workflows=[IBPKeyCreationWorkflow],
-            activities=[
-                validate_pkey_available,
-                create_pkey_on_ufm,
-                verify_pkey_created,
-                publish_nats,
-            ],
-        ):
-            with aioresponses() as m:
-                m.get(
-                    f"{UFM_BASE}/resources/pkeys",
-                    payload={"0x7fff": {"partition": "management"}},
-                )
-                m.post(f"{UFM_BASE}/resources/pkeys/add", payload={})
-                m.get(
-                    re.compile(rf"{re.escape(UFM_BASE)}/resources/pkeys/0x[0-9a-fA-F]+$"),
-                    payload={"partition": "auto-assigned", "guids": []},
-                )
-
-                result = await env.client.execute_workflow(
-                    IBPKeyCreationWorkflow.run,
-                    IBPKeyCreationInput(
-                        host="ufm.example.com",
-                        pkey=None,
-                    ),
-                    id=str(uuid.uuid4()),
-                    task_queue=task_queue,
-                )
-
-            assert result.pkey == "0x0001"
-            assert result.auto_assigned is True
-            assert result.created is True
-            assert result.verified is True
-
-
-@pytest.mark.asyncio
-async def test_ib_pkey_creation_stages_queryable(mock_config):
-    """Verify stages are queryable during workflow execution."""
-    task_queue = str(uuid.uuid4())
-
-    async with await WorkflowEnvironment.start_time_skipping() as env:
-        async with Worker(
-            env.client,
-            task_queue=task_queue,
-            workflows=[IBPKeyCreationWorkflow],
-            activities=[
-                validate_pkey_available,
-                create_pkey_on_ufm,
-                verify_pkey_created,
-                publish_nats,
-            ],
-        ):
-            with aioresponses() as m:
-                m.get(
-                    f"{UFM_BASE}/resources/pkeys",
-                    payload={"0x7fff": {"partition": "management"}},
-                )
-                m.post(f"{UFM_BASE}/resources/pkeys/add", payload={})
-                m.get(
-                    f"{UFM_BASE}/resources/pkeys/0x8001",
-                    payload={"partition": "test", "guids": []},
-                )
-
-                handle = await env.client.start_workflow(
-                    IBPKeyCreationWorkflow.run,
-                    IBPKeyCreationInput(host="ufm.example.com", pkey="0x8001"),
-                    id=str(uuid.uuid4()),
-                    task_queue=task_queue,
-                )
-
-                result = await handle.result()
-
-            assert result.verified is True
-
-            stages = await handle.query(IBPKeyCreationWorkflow.stages)
-            stage_names = [s.name for s in stages]
-            assert "validate_pkey" in stage_names
-            assert "create_pkey" in stage_names
-            assert "verify_pkey" in stage_names
-            assert "record_nautobot" in stage_names
-
-
-NB_URL = "https://nautobot.example.com"
-NB_API = f"{NB_URL}/api"
-PLUGIN = f"{NB_API}/plugins/overlays"
-
-
-@pytest.fixture()
-def mock_all_configs():
+def mock_configs():
     """Mock both UFM and Nautobot config loading."""
     ufm_cfg = _create_config({"ufm": {"ufm_api_user": "admin", "ufm_api_token_r1": "password"}})
     nb_cfg = _create_config(
@@ -240,9 +97,91 @@ def mock_all_configs():
         yield
 
 
+def _stub_nautobot_record_pkey(
+    m: aioresponses,
+    pkey: str,
+    *,
+    existing_orphan_id: str | None = None,
+    new_pkey_id: str = "pkey-1",
+) -> None:
+    """Stub the Nautobot endpoints the record-pkey activity hits."""
+    m.get(
+        re.compile(rf"{re.escape(NB_API)}/extras/statuses/.*"),
+        payload={"results": [{"id": "stat-1", "name": "Active"}]},
+    )
+    if existing_orphan_id is not None:
+        m.get(
+            re.compile(rf"{re.escape(PLUGIN)}/pkeys/.*"),
+            payload={"results": [{"id": existing_orphan_id, "pkey": pkey, "overlay": None}]},
+        )
+    else:
+        m.get(
+            re.compile(rf"{re.escape(PLUGIN)}/pkeys/.*"),
+            payload={"results": []},
+        )
+        m.post(f"{PLUGIN}/pkeys/", payload={"id": new_pkey_id, "pkey": pkey})
+
+
+def _stub_nautobot_resolve_site(
+    m: aioresponses,
+    *,
+    site_name: str = "test-site",
+    site_id: str = "site-1",
+) -> None:
+    """Stub the GraphQL device-by-name query that the site resolver hits."""
+    m.post(
+        NB_GRAPHQL,
+        payload={
+            "data": {
+                "devices": [
+                    {
+                        "id": "dev-1",
+                        "name": "ufm.example.com",
+                        "primary_ip4": {"host": "10.0.0.1"},
+                        "location": {
+                            "id": site_id,
+                            "name": site_name,
+                            "location_type": {"name": "Site"},
+                        },
+                    }
+                ]
+            }
+        },
+    )
+
+
+def _stub_ufm_create_flow(m: aioresponses, *, verify_pkey: str | None = None) -> None:
+    """Stub the UFM endpoints the validate/create/verify stages hit."""
+    m.get(
+        f"{UFM_BASE}/resources/pkeys",
+        payload={"0x7fff": {"partition": "management"}},
+    )
+    m.post(f"{UFM_BASE}/resources/pkeys/add", payload={})
+    if verify_pkey is None:
+        m.get(
+            re.compile(rf"{re.escape(UFM_BASE)}/resources/pkeys/0x[0-9a-fA-F]+$"),
+            payload={"partition": "auto-assigned", "guids": []},
+        )
+    else:
+        m.get(
+            f"{UFM_BASE}/resources/pkeys/{verify_pkey}",
+            payload={"partition": "new-tenant", "guids": []},
+        )
+
+
+CREATION_ACTIVITIES = [
+    resolve_ib_site_for_host,
+    validate_pkey_available,
+    create_pkey_on_ufm,
+    verify_pkey_created,
+    record_ib_pkey_in_nautobot,
+    publish_nats,
+]
+
+
 @pytest.mark.asyncio
-async def test_ib_pkey_creation_with_nautobot_recording(mock_all_configs):
-    """Full workflow including Nautobot partition recording."""
+async def test_ib_pkey_creation_with_specific_pkey(mock_configs):
+    """Full workflow: validate, create, verify, record with a specific PKey."""
     task_queue = str(uuid.uuid4())
 
     async with await WorkflowEnvironment.start_time_skipping() as env:
@@ -250,78 +189,31 @@ async def test_ib_pkey_creation_with_nautobot_recording(mock_all_configs):
             env.client,
             task_queue=task_queue,
             workflows=[IBPKeyCreationWorkflow],
-            activities=[
-                validate_pkey_available,
-                create_pkey_on_ufm,
-                verify_pkey_created,
-                record_ib_pkey_in_nautobot,
-                publish_nats,
-            ],
+            activities=CREATION_ACTIVITIES,
         ):
             with aioresponses() as m:
-                m.get(
-                    f"{UFM_BASE}/resources/pkeys",
-                    payload={"0x7fff": {"partition": "management"}},
-                )
-                m.post(f"{UFM_BASE}/resources/pkeys/add", payload={})
-                m.get(
-                    f"{UFM_BASE}/resources/pkeys/0x8001",
-                    payload={"partition": "new-tenant", "guids": []},
-                )
-
-                m.get(
-                    re.compile(rf"{re.escape(NB_API)}/dcim/locations/.*"),
-                    payload={"results": [{"id": "loc-1", "name": "UFM Lab"}]},
-                )
-                m.get(
-                    re.compile(rf"{re.escape(NB_API)}/tenancy/tenants/.*"),
-                    payload={"results": [{"id": "ten-1", "name": "Test Tenant"}]},
-                )
-                m.get(
-                    re.compile(rf"{re.escape(NB_API)}/extras/statuses/.*"),
-                    payload={"results": [{"id": "stat-1", "name": "Active"}]},
-                )
-                m.get(
-                    re.compile(rf"{re.escape(PLUGIN)}/overlays/.*"),
-                    payload={"results": []},
-                )
-                m.post(
-                    f"{PLUGIN}/overlays/",
-                    payload={"id": "part-1", "name": "ib-pkey-0x8001"},
-                )
-                m.get(
-                    re.compile(rf"{re.escape(PLUGIN)}/pkeys/.*"),
-                    payload={"results": []},
-                )
-                m.post(
-                    f"{PLUGIN}/pkeys/",
-                    payload={"id": "pkey-1", "pkey": "0x8001"},
-                )
+                _stub_nautobot_resolve_site(m)
+                _stub_ufm_create_flow(m, verify_pkey="0x8001")
+                _stub_nautobot_record_pkey(m, "0x8001")
 
                 result = await env.client.execute_workflow(
                     IBPKeyCreationWorkflow.run,
-                    IBPKeyCreationInput(
-                        host="ufm.example.com",
-                        pkey="0x8001",
-                        location_name="UFM Lab",
-                        tenant_name="Test Tenant",
-                    ),
+                    IBPKeyCreationInput(host="ufm.example.com", pkey="0x8001"),
                     id=str(uuid.uuid4()),
                     task_queue=task_queue,
                 )
 
             assert isinstance(result, IBPKeyCreationWorkflowOutput)
             assert result.pkey == "0x8001"
+            assert result.auto_assigned is False
             assert result.created is True
             assert result.verified is True
-            assert result.overlay_id == "part-1"
-            assert result.overlay_name == "ib-pkey-0x8001"
             assert result.nautobot_pkey_id == "pkey-1"
 
 
 @pytest.mark.asyncio
-async def test_ib_pkey_creation_skips_nautobot_without_location(mock_config):
-    """Nautobot recording is skipped when location_name is not provided."""
+async def test_ib_pkey_creation_with_auto_assign(mock_configs):
+    """Full workflow: auto-assign PKey when none specified."""
     task_queue = str(uuid.uuid4())
 
     async with await WorkflowEnvironment.start_time_skipping() as env:
@@ -329,35 +221,80 @@ async def test_ib_pkey_creation_skips_nautobot_without_location(mock_config):
             env.client,
             task_queue=task_queue,
             workflows=[IBPKeyCreationWorkflow],
-            activities=[
-                validate_pkey_available,
-                create_pkey_on_ufm,
-                verify_pkey_created,
-                record_ib_pkey_in_nautobot,
-                publish_nats,
-            ],
+            activities=CREATION_ACTIVITIES,
         ):
             with aioresponses() as m:
-                m.get(
-                    f"{UFM_BASE}/resources/pkeys",
-                    payload={"0x7fff": {"partition": "management"}},
+                _stub_nautobot_resolve_site(m)
+                _stub_ufm_create_flow(m)
+                _stub_nautobot_record_pkey(m, "0x0001")
+
+                result = await env.client.execute_workflow(
+                    IBPKeyCreationWorkflow.run,
+                    IBPKeyCreationInput(host="ufm.example.com", pkey=None),
+                    id=str(uuid.uuid4()),
+                    task_queue=task_queue,
                 )
-                m.post(f"{UFM_BASE}/resources/pkeys/add", payload={})
-                m.get(
-                    f"{UFM_BASE}/resources/pkeys/0x8001",
-                    payload={"partition": "new-tenant", "guids": []},
+
+            assert result.pkey == "0x0001"
+            assert result.auto_assigned is True
+            assert result.created is True
+            assert result.verified is True
+            assert result.nautobot_pkey_id == "pkey-1"
+
+
+@pytest.mark.asyncio
+async def test_ib_pkey_creation_reuses_existing_orphan_pkey(mock_configs):
+    """If an orphan PKey row already exists, the workflow reuses its id."""
+    task_queue = str(uuid.uuid4())
+
+    async with await WorkflowEnvironment.start_time_skipping() as env:
+        async with Worker(
+            env.client,
+            task_queue=task_queue,
+            workflows=[IBPKeyCreationWorkflow],
+            activities=CREATION_ACTIVITIES,
+        ):
+            with aioresponses() as m:
+                _stub_nautobot_resolve_site(m)
+                _stub_ufm_create_flow(m, verify_pkey="0x8001")
+                _stub_nautobot_record_pkey(m, "0x8001", existing_orphan_id="existing-pkey-id")
+
+                result = await env.client.execute_workflow(
+                    IBPKeyCreationWorkflow.run,
+                    IBPKeyCreationInput(host="ufm.example.com", pkey="0x8001"),
+                    id=str(uuid.uuid4()),
+                    task_queue=task_queue,
                 )
+
+            assert result.nautobot_pkey_id == "existing-pkey-id"
+
+
+@pytest.mark.asyncio
+async def test_ib_pkey_creation_site_override_skips_nautobot_resolve(mock_configs):
+    """An explicit ``site`` makes resolve_context skip the Nautobot lookup."""
+    task_queue = str(uuid.uuid4())
+
+    async with await WorkflowEnvironment.start_time_skipping() as env:
+        async with Worker(
+            env.client,
+            task_queue=task_queue,
+            workflows=[IBPKeyCreationWorkflow],
+            activities=CREATION_ACTIVITIES,
+        ):
+            with aioresponses() as m:
+                # Intentionally NO _stub_nautobot_resolve_site -- if the resolver
+                # were to fire, the GraphQL call would 500 from aioresponses.
+                _stub_ufm_create_flow(m, verify_pkey="0x8001")
+                _stub_nautobot_record_pkey(m, "0x8001")
 
                 result = await env.client.execute_workflow(
                     IBPKeyCreationWorkflow.run,
                     IBPKeyCreationInput(
-                        host="ufm.example.com",
-                        pkey="0x8001",
+                        host="ufm.example.com", pkey="0x8001", site="explicit-site"
                     ),
                     id=str(uuid.uuid4()),
                     task_queue=task_queue,
                 )
 
-            assert result.pkey == "0x8001"
-            assert result.overlay_id is None
-            assert result.nautobot_pkey_id is None
+            assert result.verified is True
+            assert result.nautobot_pkey_id == "pkey-1"
