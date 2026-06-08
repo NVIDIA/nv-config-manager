@@ -1,0 +1,42 @@
+---
+title: InfiniBand PKey Member Update
+sidebar-title: InfiniBand PKey Member Update
+position: 30
+---
+
+Reconciles a PKey's membership to a declarative list. The submitted list is treated as the desired complete state — current members not in the list are removed, and missing members are added. The UI labels this as "Replace PKey Membership".
+
+<Note>
+For pure additions, use [IB PKey Member Add](ib-pkey-member-add.mdx). For pure removals, use [IB PKey Member Delete](ib-pkey-member-delete.mdx). Use Update only when you want the PKey to match an exact set.
+</Note>
+
+<Warning title="Removals require approval">
+When the computed diff contains any removals, the workflow pauses at `validate_diff` and waits for approval. Additions-only runs auto-approve. Rejection aborts cleanly without modifying Nautobot or UFM.
+</Warning>
+
+## User Interface
+
+### Form Inputs
+
+| Field | Description | Selection Type | Required |
+| :---- | :---------- | :------------- | :------- |
+| **UFM Host** | Nautobot device name of the UFM server that owns the PKey | Text input field | Yes |
+| **PKey** | Partition key whose membership is being reconciled | Text input field | Yes |
+| **Membership Type** | `full` or `limited`, applied to any newly added members | Single dropdown (default `full`) | Yes |
+| **Member Source** | `By Interfaces` or `By GUIDs` | Radio group | Yes |
+| **Interfaces** | Desired complete list of device + interface rows | Repeating text input pair | When **Member Source** is `By Interfaces` |
+| **GUIDs** | Desired complete list of `0x` + 16 hex GUIDs | Multi-line text input | When **Member Source** is `By GUIDs` |
+
+![InfiniBand PKey Member Update workflow form](../../assets/images/workflows/ibpkeymemberupdateworkflow-form.png)
+
+## Workflow Execution
+
+### Execution Stages
+
+1. Resolve site, overlay, and canonical PKey from Nautobot
+1. Resolve desired interfaces to IB GUIDs
+1. Fetch current `OverlayAssignments` from Nautobot and compute the diff
+1. Review the diff — approval required when members are being removed
+1. Sync `OverlayAssignment` records in Nautobot
+1. Remove stale GUIDs and add new GUIDs on UFM
+1. Verify final UFM membership matches the desired set
