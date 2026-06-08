@@ -4,23 +4,39 @@ sidebar-title: Local Development Quick Start
 position: 30
 ---
 
-Use this guide when you want to bring up the local development environment to preview Config Manager functionality without a real lab. The local environment is useful for previewing rendered configurations, exploring the Config Manager UI, browsing Config Store output, and understanding how Nautobot data is shaped.
-
-<Warning title="Render-only local preview">
-The bundled mock topology data is not production data and must never be used for a real deployment. Local mock mode is only useful for testing renders, UI navigation, Config Store browsing, and source-of-truth modeling examples.
-
-Real device interaction is not meaningfully mocked today. Workflows such as ZTP, cable validation, deploy, multi-deploy, backup, reprovision, password rotation, hardware validation, and LLDP-based discovery require reachable real devices to be useful.
-</Warning>
-
-Future work will include a more robust mocking infrastructure for local development. Until then, treat the local quick start as a render and interface preview only. To exercise workflows against simulated Cumulus switches, use the [DSX Air Simulation User Guide](../user-guides/air-simulation/index.mdx).
+Use this guide when you want to bring up the local development environment to preview Config Manager functionality without a real lab. The local environment is useful for previewing rendered configurations, exploring the Config Manager UI, browsing Config Store output, validating DHCP reservations and ZTP provisioning chains, and exercising Temporal workflows end-to-end against mock network device pods.
 
 ## What this gives you
 
-The local SuperPOD config profile in the platform repository deploys Config Manager with an in-cluster Nautobot, render-focused sample site data, generated Kubernetes secrets, and no SSO. The profile sets development-only flags and runs the sample topology design job to populate Nautobot; those flags should not be interpreted as a meaningful substitute for device interactions.
+There are two local deployment modes depending on what you want to test.
 
-Use the generated topology as a reference for the kinds of objects your own site data needs: locations, devices, roles, platforms, interfaces, prefixes, IP addresses, cables, VLANs, VRFs, tenants, config contexts, and managed-device metadata.
+Both modes deploy the same superpod mock topology. Use the generated topology as a reference for the kinds of objects your own site data needs: locations, devices, roles, platforms, interfaces, prefixes, IP addresses, cables, VLANs, VRFs, tenants, config contexts, and managed-device metadata.
 
 The sample data is loaded by a Nautobot Design Builder job. See [Design Builder Data Loading](../nautobot/design-builder-data-loading.mdx) for the job structure and for guidance on replacing the sample topology context with your own data.
+
+<Warning title="Mock topology data is not production data">
+The bundled mock topology data must never be used for a real deployment.
+</Warning>
+
+### `make kind-up` — render and UI preview
+
+Deploys Config Manager with an in-cluster Nautobot, sample site data, generated secrets, and no SSO. Workflows are routed through a hardcoded `MockNetworkConnection` stub, which means workflow code paths execute but no real device API is called. Use this for fast inner-loop development: rendering configs, navigating the UI, browsing Config Store output, and modeling Nautobot data shapes.
+
+### `make sandbox-up` — full mock device sandbox
+
+Deploys Config Manager with `mock_devices: false`, builds and loads mock device API pods (FastAPI servers emulating Cumulus NVUE and Arista EAPI), and wires their Kubernetes ClusterIPs into Nautobot as `primary_ip4`. Temporal workflows reach the mock pods over real `NetworkConnection` code paths.
+
+This mode is useful for:
+
+- Testing DHCP reservation generation and ZTP provisioning chains end-to-end
+- Running backup and cable validation Temporal workflows against mock devices
+- Exercising `CumulusConnection` / `AristaConnection` code without physical hardware
+
+<Warning title="Partial workflow coverage">
+The mock device pods cover backup, cable validation, DHCP, and ZTP. Workflows that mutate device state — deploy, multi-deploy, reprovision, password rotation, and hardware validation — execute against the mock API but produce simplified or stub responses and are not a substitute for testing against real hardware.
+</Warning>
+
+See [`development/mock_devices/README.md`](../../development/mock_devices/README.md) for full documentation on the mock device CLI, fixture system, and all available make targets.
 
 ## Prerequisites
 
@@ -40,7 +56,7 @@ kind create cluster --name nv-config-manager --config deploy/kind-config.yaml --
 
 ## Deploy a local development preview
 
-From the Config Manager platform repository:
+### Render and UI preview (fast)
 
 ```bash
 make kind-up
@@ -59,6 +75,28 @@ uv run nvcm-installer deploy ../deploy/configs/local-superpod.yaml \
   --install-cnpg-operator \
   --install-cert-manager
 ```
+
+After `kind-up` completes:
+
+1. In Nautobot, inspect the generated site, devices, interfaces, cables, prefixes, and config contexts.
+1. In the Config Manager UI, inspect workflow forms and existing config links.
+1. In Config Store, confirm intended configs exist for generated devices.
+1. Edit a safe Nautobot object that affects render output and confirm the intended config updates.
+
+### Full mock device sandbox
+
+```bash
+make sandbox-up
+```
+
+This runs `kind-up` with the superpod topology, then builds the mock device image, deploys mock device pods, and wires their ClusterIPs into Nautobot automatically. Allow an extra ~5 minutes for the mock device image build and wiring job.
+
+After `sandbox-up` completes:
+
+1. Run `make mock-dhcp-validate` to confirm DHCP reservations exist for all mock devices.
+1. Run `make mock-ztp-validate` to walk the full ZTP provisioning chain.
+1. Run `make mock-workflow-backup` and check the Temporal UI (`make port-forward`) to confirm the workflow completes.
+1. Run `./development/mock_devices/smoke-test.sh` to run all mock device make targets in one pass.
 
 ## Access the local services
 
@@ -87,12 +125,3 @@ Then open:
 | MCP endpoint | `https://mcp.config-manager.local/mcp` |
 
 For the local profile, Nautobot login is `admin` / `admin`.
-
-## What to inspect first
-
-1. In Nautobot, inspect the generated site, devices, interfaces, cables, prefixes, and config contexts.
-1. In the Config Manager UI, inspect workflow forms and existing config links.
-1. In Config Store, confirm intended configs exist for generated devices.
-1. Edit a safe Nautobot object that affects render output and confirm the intended config updates.
-
-Stop there for local validation. Do not interpret successful local render output as proof that device-facing workflows will succeed against a real fabric.
