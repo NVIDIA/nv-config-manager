@@ -9,8 +9,7 @@
 devices:
   {% for device in json.devices %}
   {% set primary_ip = namespace(found=false, address='') %}
-  {% set preferred_interfaces = [device.primary_ip4_interface, 'lo', 'eth0'] if device.primary_ip4_interface is defined else ['lo', 'eth0'] %}
-  {% for preferred_interface in preferred_interfaces %}
+  {% for preferred_interface in ['lo', 'eth0'] %}
   {% if not primary_ip.found %}
   {% for interface in device.interfaces | default([]) %}
   {% if interface.name == preferred_interface and interface.ip_addresses | default([]) %}
