@@ -93,6 +93,6 @@ make ufm-mock-state
 | File | Purpose |
 | ---- | ------- |
 | `mock_server.py` | FastAPI app implementing the UFM endpoints |
-| `test_mock_server.py` | pytest unit tests (run with `uv run pytest deploy/dev/ufm-mock/`) |
+| `tests/test_mock_server.py` | pytest unit tests (run with `uv run pytest development/ufm_mock/tests/`) |
 | `manifest.yaml` | Deployment + Service definitions (uses `${NAMESPACE}` envsubst placeholder) |
 | `inject-ufm-creds.sh` | Patches `nv-config-manager-ini` with a `[ufm]` section |
