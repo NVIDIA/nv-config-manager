@@ -1,6 +1,8 @@
 # NVIDIA Config Manager
 
-NVIDIA Config Manager is an open-source network automation and configuration management platform for large-scale datacenter operations. It combines Nautobot inventory, event-driven rendering, ZTP, DHCP, workflow automation, and configuration storage behind a single Helm deployment.
+NVIDIA Config Manager (NVCM) is an open-source network automation and configuration management platform for large-scale datacenter operations. It combines Nautobot inventory, event-driven rendering, ZTP, DHCP, workflow automation, and configuration storage behind a single Helm deployment.
+
+NVCM is currently in Developer Preview and are not recommended for production usage
 
 ## Overview
 
