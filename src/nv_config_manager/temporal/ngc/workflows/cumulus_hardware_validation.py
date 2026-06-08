@@ -207,6 +207,7 @@ class ValidateHardwareWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, A
     """Network hardware validation workflow for infrastructure health monitoring."""
 
     # Workflow metadata
+    workflow_name = "Cumulus Hardware Validation"
     workflow_description = (
         "Validate hardware components (fans, PSUs, LEDs, voltage) across network devices"
     )

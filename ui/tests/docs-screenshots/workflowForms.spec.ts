@@ -33,6 +33,34 @@ const PDX_MLNX_ID = "pdx01-mlx-switch-01";
 const PDX_UFM_ID = "pdx01-ufm-01";
 const DEMO_VPC_ID = "vpc-demo-101";
 
+const DOC_WORKFLOW_DISPLAY_NAMES: Record<string, string> = {
+  BackupWorkflow: "Configuration Backup",
+  ConnectedHostMetadataWorkflow: "Connected Host Metadata",
+  DeployWorkflow: "Configuration Deploy",
+  TenantDeployWorkflow: "Tenant Deploy",
+  MultiDeployWorkflow: "Multi-Configuration Deploy",
+  DeviceCableValidationWorkflow: "Device Cable Validation",
+  DevicePasswordRotationWorkflow: "Device Password Rotation",
+  PortLLDPInfoWorkflow: "Port LLDP Info",
+  SiteCableValidationWorkflow: "Site Cable Validation",
+  SitePasswordRotationWorkflow: "Site Password Rotation",
+  VpcCreationWorkflow: "VPC Creation",
+  VpcDeletionWorkflow: "VPC Deletion",
+  VpcTenantChangeWorkflow: "VPC Tenant Change",
+  InfinibandGetUnhealthyPortsWorkflow: "InfiniBand Get Unhealthy Ports",
+  InfinibandCableValidationWorkflow: "InfiniBand Cable Validation",
+  InfinibandMlnxOSUpgradeWorkflow: "InfiniBand MLNX-OS Upgrade",
+  ReprovisionWorkflow: "Reprovision",
+  SwitchOsUpgradeWorkflow: "Switch OS Upgrade",
+  CumulusHardwareValidationWorkflow: "Cumulus Hardware Validation",
+  IBPKeyCreationWorkflow: "InfiniBand PKey Creation",
+  IBPKeyMemberAddWorkflow: "InfiniBand PKey Member Add",
+  IBPKeyMemberUpdateWorkflow: "InfiniBand PKey Member Update",
+  IBPKeyMemberDeleteWorkflow: "InfiniBand PKey Member Delete",
+  DiagnosticsWorkflow: "Device Diagnostics",
+  IBPortGuidDiscoveryWorkflow: "InfiniBand Port GUID Discovery",
+};
+
 type ParameterOption = {
   id: string;
   name: string;
@@ -45,6 +73,36 @@ type Device = {
   role: string;
   status: string;
   tenant: string;
+};
+
+type DocWorkflow = {
+  id: string;
+  workflow_type: string;
+  workflow_input: Record<string, unknown>;
+  started_by: string;
+  start_time: string;
+  close_time: string | null;
+  status: string;
+  pending_approval: boolean;
+  stages: unknown[];
+  result: unknown;
+  search_attributes: Record<string, Array<string | boolean>>;
+  href: string;
+};
+
+type DocWorkflowFixture = {
+  id: string;
+  workflowType: string;
+  status: string;
+  pendingApproval: boolean;
+  user: string;
+  site: string;
+  deviceName: string;
+  deviceId: string;
+  deviceRole: string;
+  devicePlatform: string;
+  startTime: string;
+  closeTime?: string | null;
 };
 
 type QueryValue = string | string[];
@@ -172,6 +230,80 @@ const DOC_DEVICES_BY_SITE: Record<string, Device[]> = {
   ],
 };
 
+const DOC_WORKFLOW_METADATA = {
+  workflows: Object.entries(DOC_WORKFLOW_DISPLAY_NAMES).map(
+    ([workflowType, displayName]) => ({
+      name: workflowType,
+      display_name: displayName,
+      description: `${displayName} workflow`,
+      endpoint: `/ngc/${workflowType.toLowerCase()}`,
+      namespace: "ngc",
+      cli_name: workflowType.toLowerCase(),
+      input_class: `${workflowType}Input`,
+      read_roles: ["all"],
+      execute_roles:
+        workflowType === "MultiDeployWorkflow" ? ["nvcm-admin"] : ["all"],
+    })
+  ),
+};
+
+const DOC_WORKFLOWS: DocWorkflow[] = [
+  createDocWorkflow({
+    id: "workflow-20260608-000001",
+    workflowType: "DeployWorkflow",
+    status: "PENDING_APPROVAL",
+    pendingApproval: true,
+    user: "demo",
+    site: AIR_SITE,
+    deviceName: "tan-leaf-01",
+    deviceId: AIR_TAN_LEAF_01_ID,
+    deviceRole: "TAN-HLEAF",
+    devicePlatform: "Cumulus Linux",
+    startTime: "2026-06-08T16:02:00Z",
+  }),
+  createDocWorkflow({
+    id: "workflow-20260608-000002",
+    workflowType: "BackupWorkflow",
+    status: "COMPLETED",
+    pendingApproval: false,
+    user: "demo",
+    site: AIR_SITE,
+    deviceName: "tan-leaf-02",
+    deviceId: "air-trial-tan-leaf-02",
+    deviceRole: "TAN-HLEAF",
+    devicePlatform: "Cumulus Linux",
+    startTime: "2026-06-08T15:48:00Z",
+    closeTime: "2026-06-08T15:51:00Z",
+  }),
+  createDocWorkflow({
+    id: "workflow-20260608-000003",
+    workflowType: "DiagnosticsWorkflow",
+    status: "RUNNING",
+    pendingApproval: false,
+    user: "nvcm-network",
+    site: PDX_SITE,
+    deviceName: "pdx01-cumulus-leaf-01",
+    deviceId: PDX_CUMULUS_ID,
+    deviceRole: "CIN-Leaf",
+    devicePlatform: "Cumulus Linux",
+    startTime: "2026-06-08T16:10:00Z",
+  }),
+  createDocWorkflow({
+    id: "workflow-20260608-000004",
+    workflowType: "InfinibandGetUnhealthyPortsWorkflow",
+    status: "FAILED",
+    pendingApproval: false,
+    user: "demo",
+    site: PDX_SITE,
+    deviceName: "infiniband-switch1",
+    deviceId: PDX_MLNX_ID,
+    deviceRole: "CIN-Spine",
+    devicePlatform: "MLNX-OS",
+    startTime: "2026-06-08T14:37:00Z",
+    closeTime: "2026-06-08T14:39:00Z",
+  }),
+];
+
 const AIR_DEVICE_QUERY = {
   "device-id": AIR_TAN_LEAF_01_ID,
   site: AIR_SITE,
@@ -227,6 +359,42 @@ const WORKFLOW_SCREENSHOTS: WorkflowScreenshot[] = [
       site: AIR_SITE,
     },
     title: "Device Password Rotation Workflow",
+  },
+  {
+    fileName: "ibpkeycreationworkflow-form.png",
+    path: "/workflows/ibpkeycreationworkflow/form",
+    query: {
+      host: "ufm.pdx01.example.com",
+      pkey: "0x8001",
+    },
+    title: "InfiniBand PKey Creation Workflow",
+  },
+  {
+    fileName: "ibpkeymemberaddworkflow-form.png",
+    path: "/workflows/ibpkeymemberaddworkflow/form",
+    query: {
+      host: "ufm.pdx01.example.com",
+      pkey: "0x8001",
+    },
+    title: "Add PKey Members",
+  },
+  {
+    fileName: "ibpkeymemberdeleteworkflow-form.png",
+    path: "/workflows/ibpkeymemberdeleteworkflow/form",
+    query: {
+      host: "ufm.pdx01.example.com",
+      pkey: "0x8001",
+    },
+    title: "Remove PKey Members",
+  },
+  {
+    fileName: "ibpkeymemberupdateworkflow-form.png",
+    path: "/workflows/ibpkeymemberupdateworkflow/form",
+    query: {
+      host: "ufm.pdx01.example.com",
+      pkey: "0x8001",
+    },
+    title: "Replace PKey Membership",
   },
   {
     fileName: "diagnosticsworkflow-form.png",
@@ -359,6 +527,16 @@ const test = base.extend<{ page: Page }>({
     const page = await context.newPage();
 
     await setupDocsMocks(page);
+    await page.addStyleTag({
+      content: `
+        nextjs-portal,
+        [data-nextjs-dev-tools-button],
+        [data-nextjs-toast] {
+          display: none !important;
+          visibility: hidden !important;
+        }
+      `,
+    });
     await page.addInitScript(() => {
       window.BYPASS_MSW = true;
     });
@@ -386,6 +564,41 @@ test.describe("workflow form docs screenshots", () => {
   }
 });
 
+test.describe("workflow page docs screenshots", () => {
+  test.beforeAll(async () => {
+    await fs.mkdir(SCREENSHOT_DIR, { recursive: true });
+  });
+
+  test("captures workflow list page", async ({ page }) => {
+    await page.goto("/workflows");
+    await page.waitForLoadState("networkidle");
+
+    await expect(page.getByRole("heading", { name: "Workflows" })).toBeVisible();
+    await expect(page.getByRole("cell", { name: /Configuration Deploy/ })).toBeVisible();
+    await settleFonts(page);
+    await screenshotWorkflowListPage(page);
+  });
+
+  test("captures user roles popout", async ({ page }) => {
+    await page.goto("/workflows");
+    await page.waitForLoadState("networkidle");
+
+    await page.getByRole("button", { name: "User roles" }).click();
+    const popout = page
+      .locator('[data-radix-popper-content-wrapper] > div')
+      .filter({ hasText: "Username" })
+      .first();
+    await expect(popout).toBeVisible();
+    await expect(popout.getByText("demo", { exact: true })).toBeVisible();
+    await expect(popout.getByText("nvcm-network", { exact: true })).toBeVisible();
+    await expect(popout.getByText("all", { exact: true })).toHaveCount(0);
+    await settleFonts(page);
+    await popout.screenshot({
+      path: path.join(SCREENSHOT_DIR, "workflow-user-popout.png"),
+    });
+  });
+});
+
 async function setupDocsMocks(page: Page): Promise<void> {
   await page.route("**/api/config", async (route) => {
     await fulfillJson(route, {
@@ -396,6 +609,35 @@ async function setupDocsMocks(page: Page): Promise<void> {
       workflowApiUrl: "http://localhost:9000",
       ztpUrl: "http://localhost:9003",
     });
+  });
+
+  await page.route("**/healthcheck", async (route) => {
+    await fulfillJson(route, { status: "ok" });
+  });
+
+  await page.route("**/whoami", async (route) => {
+    await fulfillJson(route, {
+      user: "demo",
+      roles: ["all", "nvcm-network"],
+    });
+  });
+
+  await page.route("**/v1/workflow/types", async (route) => {
+    await fulfillJson(route, Object.keys(DOC_WORKFLOW_DISPLAY_NAMES));
+  });
+
+  await page.route("**/v1/workflow/metadata", async (route) => {
+    await fulfillJson(route, DOC_WORKFLOW_METADATA);
+  });
+
+  await page.route(/.*\/v1\/workflow\/?(\?.*)?$/, async (route) => {
+    const url = new URL(route.request().url());
+    if (!url.pathname.match(/\/v1\/workflow\/?$/)) {
+      await route.fallback();
+      return;
+    }
+
+    await fulfillJson(route, getWorkflowListResponse(url));
   });
 
   await page.route("**/v1/parameter/location*", async (route) => {
@@ -432,6 +674,121 @@ async function setupDocsMocks(page: Page): Promise<void> {
       { description: "Collect LLDP neighbors", name: "show lldp neighbor" },
     ]);
   });
+}
+
+function createDocWorkflow(fixture: DocWorkflowFixture): DocWorkflow {
+  const workflowInput = {
+    device_id: fixture.deviceId,
+    site: fixture.site,
+  };
+
+  return {
+    id: fixture.id,
+    workflow_type: fixture.workflowType,
+    workflow_input: workflowInput,
+    started_by: fixture.user,
+    start_time: fixture.startTime,
+    close_time: fixture.closeTime ?? null,
+    status: fixture.status,
+    pending_approval: fixture.pendingApproval,
+    stages: [],
+    result: null,
+    search_attributes: {
+      DeviceID: [fixture.deviceId],
+      DeviceName: [fixture.deviceName],
+      DevicePlatform: [fixture.devicePlatform],
+      DeviceRole: [fixture.deviceRole],
+      PendingApproval: [fixture.pendingApproval],
+      Site: [fixture.site],
+      User: [fixture.user],
+    },
+    href: `/v1/workflow/${fixture.id}`,
+  };
+}
+
+function getWorkflowListResponse(url: URL): {
+  workflows: DocWorkflow[];
+  next_page_token: string | null;
+} {
+  const nextPageToken = url.searchParams.get("next_page_token");
+  const page = nextPageToken ? Number(nextPageToken) : 0;
+  const limit = Number(url.searchParams.get("limit") ?? "10");
+  const pageSize = Number.isFinite(limit) && limit > 0 ? limit : 10;
+  const filteredWorkflows = filterWorkflows(url);
+  const paginatedWorkflows = filteredWorkflows.slice(
+    page * pageSize,
+    (page + 1) * pageSize
+  );
+  const hasMore = (page + 1) * pageSize < filteredWorkflows.length;
+
+  return {
+    workflows: paginatedWorkflows,
+    next_page_token: hasMore ? String(page + 1) : null,
+  };
+}
+
+function filterWorkflows(url: URL): DocWorkflow[] {
+  const searchAttributeFilters = [
+    ["device_id", "DeviceID"],
+    ["device_name", "DeviceName"],
+    ["device_platform", "DevicePlatform"],
+    ["device_role", "DeviceRole"],
+    ["site", "Site"],
+    ["user", "User"],
+  ];
+  const workflowType = url.searchParams.get("workflow_type");
+  const status = url.searchParams.get("status");
+  const pendingApproval =
+    url.searchParams.get("pending_approval")?.toLowerCase() === "true";
+  const startTimeFilter = Date.parse(url.searchParams.get("start_time") ?? "");
+  const endTimeFilter = Date.parse(url.searchParams.get("end_time") ?? "");
+
+  return DOC_WORKFLOWS.filter((workflow) => {
+    if (workflowType && workflow.workflow_type !== workflowType) {
+      return false;
+    }
+
+    if (pendingApproval && !workflow.pending_approval) {
+      return false;
+    }
+
+    if (
+      status &&
+      workflow.status !== status &&
+      !(pendingApproval && status === "RUNNING" && workflow.pending_approval)
+    ) {
+      return false;
+    }
+
+    if (!Number.isNaN(startTimeFilter) || !Number.isNaN(endTimeFilter)) {
+      const workflowStartTime = Date.parse(workflow.start_time);
+
+      if (Number.isNaN(workflowStartTime)) {
+        return false;
+      }
+      if (!Number.isNaN(startTimeFilter) && workflowStartTime < startTimeFilter) {
+        return false;
+      }
+      if (!Number.isNaN(endTimeFilter) && workflowStartTime > endTimeFilter) {
+        return false;
+      }
+    }
+
+    return searchAttributeFilters.every(([param, attribute]) => {
+      const value = url.searchParams.get(param);
+      if (!value) {
+        return true;
+      }
+
+      return getFirstSearchAttribute(workflow, attribute)
+        .toLowerCase()
+        .includes(value.toLowerCase());
+    });
+  });
+}
+
+function getFirstSearchAttribute(workflow: DocWorkflow, key: string): string {
+  return String(workflow.search_attributes[key]?.[0] ?? "");
 }
 
 function filterDevices(url: URL): Device[] {
@@ -494,6 +851,28 @@ async function screenshotWorkflowCard(
       await page.waitForTimeout(500);
     }
   }
+}
+
+async function screenshotWorkflowListPage(page: Page): Promise<void> {
+  const viewport = page.viewportSize() ?? { width: 1280, height: 900 };
+  const pageContentBox = await page.locator("div.container.py-6").first().boundingBox();
+
+  if (!pageContentBox) {
+    throw new Error("Workflow page content was not available for screenshot.");
+  }
+
+  await page.screenshot({
+    clip: {
+      height: Math.min(
+        viewport.height,
+        Math.ceil(pageContentBox.y + pageContentBox.height + 24)
+      ),
+      width: viewport.width,
+      x: 0,
+      y: 0,
+    },
+    path: path.join(SCREENSHOT_DIR, "workflow-list.png"),
+  });
 }
 
 function routeWithQuery(

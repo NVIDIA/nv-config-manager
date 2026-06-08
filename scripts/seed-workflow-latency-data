@@ -22,6 +22,7 @@ from temporalio.common import (
 
 from nv_config_manager.temporal.common.search_attributes import (
     EXECUTE_ROLES_SEARCH_ATTRIBUTE,
+    FAILED_STAGE_SEARCH_ATTRIBUTE,
     PENDING_APPROVAL_SEARCH_ATTRIBUTE,
     READ_ROLES_SEARCH_ATTRIBUTE,
     USER_SEARCH_ATTRIBUTE,
@@ -292,6 +293,10 @@ async def seed_workflows(args: argparse.Namespace) -> None:
             ),
             SearchAttributePair(
                 SearchAttributeKey.for_bool(PENDING_APPROVAL_SEARCH_ATTRIBUTE),
+                False,
+            ),
+            SearchAttributePair(
+                SearchAttributeKey.for_bool(FAILED_STAGE_SEARCH_ATTRIBUTE),
                 False,
             ),
         ]

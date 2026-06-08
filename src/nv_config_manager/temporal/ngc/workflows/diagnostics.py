@@ -276,6 +276,7 @@ def _format_comment(
 class DiagnosticsWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, ArchiveMixin):
     """Run diagnostic commands against network devices and attach results to a ticket."""
 
+    workflow_name = "Device Diagnostics"
     workflow_description = (
         "Run diagnostic commands against network devices and attach results to a ticketing issue"
     )

@@ -116,7 +116,7 @@ export async function mockWhoamiEndpoint(page: Page) {
       status: 200,
       json: {
         user: 'joliao@nvidia.com',
-        roles: ['nvcm-network'],
+        roles: ['all', 'nvcm-network'],
       },
     });
   });
@@ -1116,7 +1116,7 @@ export async function mockWorkflowMetadataEndpoint(page: Page) {
     ConnectedHostMetadataWorkflow: "Connected Host Metadata",
     DeployWorkflow: "Configuration Deploy",
     TenantDeployWorkflow: "Tenant Deploy",
-    MultiDeployWorkflow: "Multi-Deploy",
+    MultiDeployWorkflow: "Multi-Configuration Deploy",
     DeviceCableValidationWorkflow: "Device Cable Validation",
     DevicePasswordRotationWorkflow: "Device Password Rotation",
     PortLLDPInfoWorkflow: "Port LLDP Info",
@@ -1127,12 +1127,12 @@ export async function mockWorkflowMetadataEndpoint(page: Page) {
     VpcTenantChangeWorkflow: "VPC Tenant Change",
     InfinibandGetUnhealthyPortsWorkflow: "InfiniBand Get Unhealthy Ports",
     InfinibandCableValidationWorkflow: "InfiniBand Cable Validation",
-    InfinibandMlnxOSUpgradeWorkflow: "InfiniBand MLNX OS Upgrade",
+    InfinibandMlnxOSUpgradeWorkflow: "InfiniBand MLNX-OS Upgrade",
     ReprovisionWorkflow: "Reprovision",
     SwitchOsUpgradeWorkflow: "Switch OS Upgrade",
     CumulusHardwareValidationWorkflow: "Cumulus Hardware Validation",
-    DiagnosticsWorkflow: "Diagnostics",
-    IBPortGuidDiscoveryWorkflow: "IB Port GUID Discovery",
+    DiagnosticsWorkflow: "Device Diagnostics",
+    IBPortGuidDiscoveryWorkflow: "InfiniBand Port GUID Discovery",
   };
   const getWorkflowExecuteRoles = (workflowType: string) =>
     workflowType === "MultiDeployWorkflow" ? ["nvcm-admin"] : ["all"];

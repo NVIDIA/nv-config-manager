@@ -57,7 +57,7 @@ const workflowDisplayNames: Record<string, string> = {
   ConnectedHostMetadataWorkflow: "Connected Host Metadata",
   DeployWorkflow: "Configuration Deploy",
   TenantDeployWorkflow: "Tenant Deploy",
-  MultiDeployWorkflow: "Multi-Deploy",
+  MultiDeployWorkflow: "Multi-Configuration Deploy",
   DeviceCableValidationWorkflow: "Device Cable Validation",
   DevicePasswordRotationWorkflow: "Device Password Rotation",
   PortLLDPInfoWorkflow: "Port LLDP Info",
@@ -68,16 +68,16 @@ const workflowDisplayNames: Record<string, string> = {
   VpcTenantChangeWorkflow: "VPC Tenant Change",
   InfinibandGetUnhealthyPortsWorkflow: "InfiniBand Get Unhealthy Ports",
   InfinibandCableValidationWorkflow: "InfiniBand Cable Validation",
-  InfinibandMlnxOSUpgradeWorkflow: "InfiniBand MLNX OS Upgrade",
+  InfinibandMlnxOSUpgradeWorkflow: "InfiniBand MLNX-OS Upgrade",
   ReprovisionWorkflow: "Reprovision",
   SwitchOsUpgradeWorkflow: "Switch OS Upgrade",
   CumulusHardwareValidationWorkflow: "Cumulus Hardware Validation",
-  IBPKeyCreationWorkflow: "IB PKey Creation",
-  IBPKeyMemberAddWorkflow: "IB PKey Member Add",
-  IBPKeyMemberUpdateWorkflow: "IB PKey Member Update",
-  IBPKeyMemberDeleteWorkflow: "IB PKey Member Delete",
-  DiagnosticsWorkflow: "Diagnostics",
-  IBPortGuidDiscoveryWorkflow: "IB Port GUID Discovery",
+  IBPKeyCreationWorkflow: "InfiniBand PKey Creation",
+  IBPKeyMemberAddWorkflow: "InfiniBand PKey Member Add",
+  IBPKeyMemberUpdateWorkflow: "InfiniBand PKey Member Update",
+  IBPKeyMemberDeleteWorkflow: "InfiniBand PKey Member Delete",
+  DiagnosticsWorkflow: "Device Diagnostics",
+  IBPortGuidDiscoveryWorkflow: "InfiniBand Port GUID Discovery",
 };
 
 const getWorkflowExecuteRoles = (workflowType: string) =>
@@ -161,7 +161,7 @@ const filterWorkflows = (workflows: unknown[], url: URL) => {
 export const workflowFetchingHandlers = [
   http.get(sanitizeUrl(`${apiURL}/whoami`), async () => {
     return HttpResponse.json(
-      { user: "joliao@nvidia.com", roles: ["nvcm-network"] },
+      { user: "joliao@nvidia.com", roles: ["all", "nvcm-network"] },
       { status: 200 }
     );
   }),

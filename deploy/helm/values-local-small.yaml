@@ -160,10 +160,10 @@ networkDhcp:
   resources:
     dhcp:
       requests:
-        cpu: 100m
+        cpu: 1
         memory: 256Mi
       limits:
-        cpu: 500m
+        cpu: 1
         memory: 256Mi
     confgen:
       requests:

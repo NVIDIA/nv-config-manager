@@ -122,6 +122,7 @@ class BatchDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
     """Batch configuration deployment workflow for multiple devices."""
 
     # Workflow metadata
+    workflow_name = "Batch Configuration Deploy"
     workflow_description = "Deploy configurations to a batch of devices with shared diff content"
     workflow_input_class = BatchDeployInput
     workflow_api_endpoint = "/ngc/batch_deploy"
@@ -388,6 +389,7 @@ class MultiDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
     """Multi-device configuration deployment orchestration workflow."""
 
     # Workflow metadata
+    workflow_name = "Multi-Configuration Deploy"
     workflow_description = (
         "Deploy configurations to multiple devices by role with batching and approval workflow"
     )

@@ -106,6 +106,7 @@ class SitePasswordRotationWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixi
     """Site-wide password rotation workflow for security management."""
 
     # Workflow metadata
+    workflow_name = "Site Password Rotation"
     workflow_description = (
         "Rotate passwords across all devices in a site with coordinated deployment"
     )

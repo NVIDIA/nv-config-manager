@@ -40,6 +40,7 @@ from nv_config_manager.temporal.client.nautobot import NautobotClient, NautobotE
 from nv_config_manager.temporal.common.rbac_config import RBACConfig
 from nv_config_manager.temporal.common.search_attributes import (
     EXECUTE_ROLES_SEARCH_ATTRIBUTE,
+    FAILED_STAGE_SEARCH_ATTRIBUTE,
     PENDING_APPROVAL_SEARCH_ATTRIBUTE,
     READ_ROLES_SEARCH_ATTRIBUTE,
     USER_SEARCH_ATTRIBUTE,
@@ -133,6 +134,7 @@ query ($is_aggregate_managed: Boolean) {
         read_roles_key = SearchAttributeKey.for_keyword_list(READ_ROLES_SEARCH_ATTRIBUTE)
         execute_roles_key = SearchAttributeKey.for_keyword_list(EXECUTE_ROLES_SEARCH_ATTRIBUTE)
         pending_approval_key = SearchAttributeKey.for_bool(PENDING_APPROVAL_SEARCH_ATTRIBUTE)
+        failed_stage_key = SearchAttributeKey.for_bool(FAILED_STAGE_SEARCH_ATTRIBUTE)
 
         typed_search_attributes = TypedSearchAttributes(
             [
@@ -140,6 +142,7 @@ query ($is_aggregate_managed: Boolean) {
                 SearchAttributePair(read_roles_key, sorted(workflow_roles["read_roles"])),
                 SearchAttributePair(execute_roles_key, sorted(workflow_roles["execute_roles"])),
                 SearchAttributePair(pending_approval_key, False),
+                SearchAttributePair(failed_stage_key, False),
             ]
         )
 

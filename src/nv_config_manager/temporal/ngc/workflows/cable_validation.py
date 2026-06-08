@@ -147,6 +147,7 @@ class SiteCableValidationWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixi
     """Site-wide cable validation workflow for network infrastructure."""
 
     # Workflow metadata
+    workflow_name = "Site Cable Validation"
     workflow_description = (
         "Validate cable connections for all devices in a site against intended topology"
     )
@@ -444,6 +445,7 @@ class DeviceCableValidationWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMix
     """Single device cable validation workflow for network infrastructure."""
 
     # Workflow metadata
+    workflow_name = "Device Cable Validation"
     workflow_description = (
         "Validate cable connections for a specific device against intended topology"
     )

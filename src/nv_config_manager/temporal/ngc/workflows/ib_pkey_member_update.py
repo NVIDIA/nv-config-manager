@@ -136,6 +136,7 @@ class IBPKeyMemberUpdateOutput(BaseModel):
 class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin):
     """Declarative reconciliation of IB PKey membership."""
 
+    workflow_name = "InfiniBand PKey Member Update"
     workflow_description = "Reconcile InfiniBand PKey membership to a desired interface list"
     workflow_input_class = IBPKeyMemberUpdateInput
     workflow_api_endpoint = "/ngc/ib_pkey_member_update"

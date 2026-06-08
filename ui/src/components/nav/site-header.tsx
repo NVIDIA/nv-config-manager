@@ -176,7 +176,9 @@ const UserRolesMenu = () => {
     fetcher
   );
 
-  const roles = userInfo?.roles ?? [];
+  const roles = (userInfo?.roles ?? []).filter(
+    (role) => role.toLowerCase() !== "all"
+  );
 
   return (
     <Popover>

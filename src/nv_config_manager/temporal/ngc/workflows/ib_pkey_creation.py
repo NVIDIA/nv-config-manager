@@ -94,6 +94,7 @@ class IBPKeyCreationWorkflowOutput(BaseModel):
 class IBPKeyCreationWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin):
     """Create an InfiniBand PKey partition on UFM for tenant isolation."""
 
+    workflow_name = "InfiniBand PKey Creation"
     workflow_description = "Create an InfiniBand PKey partition on UFM for multi-tenant isolation"
     workflow_input_class = IBPKeyCreationInput
     workflow_api_endpoint = "/ngc/ib_pkey_creation"

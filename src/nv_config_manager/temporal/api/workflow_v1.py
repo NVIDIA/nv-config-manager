@@ -60,6 +60,7 @@ from nv_config_manager.temporal.common.search_attributes import (
     DEVICE_PLATFORM_SEARCH_ATTRIBUTE,
     DEVICE_ROLE_SEARCH_ATTRIBUTE,
     EXECUTE_ROLES_SEARCH_ATTRIBUTE,
+    FAILED_STAGE_SEARCH_ATTRIBUTE,
     PENDING_APPROVAL_SEARCH_ATTRIBUTE,
     READ_ROLES_SEARCH_ATTRIBUTE,
     SITE_SEARCH_ATTRIBUTE,
@@ -84,6 +85,10 @@ _PENDING_APPROVAL_STATUS_VALUES = {
     StateEnum.PENDING_APPROVAL.value,
     "PENDING APPROVAL",
     "PENDINGAPPROVAL",
+}
+_FAILED_STATUS_VALUES = {
+    StateEnum.FAILED.value,
+    "FAILED",
 }
 _TEMPORAL_VISIBILITY_STATUS_VALUES = {
     "RUNNING": "Running",
@@ -200,22 +205,48 @@ class WorkflowSummaryResponse(WorkflowResponse):
     _ACTIVE_DURABLE_CACHEABLE_QUERIES: ClassVar[set[str]] = {"input", "pending_approval"}
 
     @staticmethod
-    def _status_name(status: WorkflowExecutionStatus | None, pending_approval: bool = False) -> str:
+    def _status_name(
+        status: WorkflowExecutionStatus | None,
+        pending_approval: bool = False,
+        failed_stage: bool = False,
+    ) -> str:
         """Return the API workflow status value."""
+        if failed_stage:
+            return StateEnum.FAILED.value
         if pending_approval:
             return StateEnum.PENDING_APPROVAL.value
         return status.name if status else "UNKNOWN"
+
+    @staticmethod
+    def _bool_from_search_attributes(
+        search_attributes: SearchAttributes, search_attribute: str
+    ) -> bool | None:
+        """Return an indexed boolean search attribute when present."""
+        value = search_attributes.get(search_attribute)
+        if not value:
+            return None
+        indexed_bool = value[0]
+        return indexed_bool if isinstance(indexed_bool, bool) else None
 
     @staticmethod
     def _pending_approval_from_search_attributes(
         search_attributes: SearchAttributes,
     ) -> bool | None:
         """Return indexed pending-approval state when present."""
-        value = search_attributes.get(PENDING_APPROVAL_SEARCH_ATTRIBUTE)
-        if not value:
-            return None
-        pending_approval = value[0]
-        return pending_approval if isinstance(pending_approval, bool) else None
+        return WorkflowSummaryResponse._bool_from_search_attributes(
+            search_attributes, PENDING_APPROVAL_SEARCH_ATTRIBUTE
+        )
+
+    @staticmethod
+    def _failed_stage_from_search_attributes(
+        search_attributes: SearchAttributes,
+    ) -> bool:
+        """Return indexed failed-stage state when present."""
+        return bool(
+            WorkflowSummaryResponse._bool_from_search_attributes(
+                search_attributes, FAILED_STAGE_SEARCH_ATTRIBUTE
+            )
+        )
 
     @staticmethod
     def _should_read_cache(query: str, is_active: bool) -> bool:
@@ -290,6 +321,9 @@ class WorkflowSummaryResponse(WorkflowResponse):
             pending_approval = WorkflowSummaryResponse._pending_approval_from_search_attributes(
                 description.search_attributes
             )
+            failed_stage = WorkflowSummaryResponse._failed_stage_from_search_attributes(
+                description.search_attributes
+            )
             queries = ["input"] if pending_approval is not None else ["pending_approval", "input"]
             query_results = await WorkflowSummaryResponse._execute_queries(
                 handle, description, queries
@@ -308,6 +342,7 @@ class WorkflowSummaryResponse(WorkflowResponse):
                 description.workflow_type,
             )
             pending_approval = False
+            failed_stage = False
             workflow_input = None
 
         try:
@@ -319,7 +354,9 @@ class WorkflowSummaryResponse(WorkflowResponse):
             id=handle.id,
             started_by=user,
             workflow_input=workflow_input,
-            status=WorkflowSummaryResponse._status_name(description.status, pending_approval),
+            status=WorkflowSummaryResponse._status_name(
+                description.status, pending_approval, failed_stage
+            ),
             start_time=description.start_time,
             close_time=description.close_time,
             workflow_type=description.workflow_type,
@@ -360,6 +397,9 @@ class WorkflowDetailResponse(WorkflowSummaryResponse):
             pending_approval = WorkflowSummaryResponse._pending_approval_from_search_attributes(
                 description.search_attributes
             )
+            failed_stage = WorkflowSummaryResponse._failed_stage_from_search_attributes(
+                description.search_attributes
+            )
             queries = (
                 ["input", "compressed_stages"]
                 if pending_approval is not None
@@ -377,6 +417,7 @@ class WorkflowDetailResponse(WorkflowSummaryResponse):
             stages = []
             if compressed_stages is not None:
                 stages = StageMixin.decompress_stages(compressed_stages)
+                failed_stage = any(stage.state == StateEnum.FAILED for stage in stages)
 
         except RPCError:
             # Should not occur in prod, but there was a point in time in
@@ -389,6 +430,7 @@ class WorkflowDetailResponse(WorkflowSummaryResponse):
                 description.workflow_type,
             )
             pending_approval = False
+            failed_stage = False
             workflow_input = None
             stages = []
 
@@ -409,7 +451,9 @@ class WorkflowDetailResponse(WorkflowSummaryResponse):
             id=handle.id,
             started_by=user,
             workflow_input=workflow_input,
-            status=WorkflowSummaryResponse._status_name(description.status, pending_approval),
+            status=WorkflowSummaryResponse._status_name(
+                description.status, pending_approval, failed_stage
+            ),
             start_time=description.start_time,
             close_time=description.close_time,
             workflow_type=description.workflow_type,
@@ -433,6 +477,12 @@ async def get_client() -> Client:
 def get_user_info(request: Request) -> tuple[str, set[str]]:
     """Extract the user data from request data."""
     return request.state.user, request.state.roles
+
+
+async def cache_workflow_input(workflow_id: str, body: BaseModel) -> None:
+    """Cache workflow input immediately after workflow creation."""
+    cache = RedisClient.from_config(load_config())
+    await cache.cache_query(workflow_id, "input", body.model_dump(mode="json"))
 
 
 async def start_workflow(
@@ -478,6 +528,7 @@ async def start_workflow(
     search_attributes[READ_ROLES_SEARCH_ATTRIBUTE] = sorted(read_roles)
     search_attributes[EXECUTE_ROLES_SEARCH_ATTRIBUTE] = sorted(execute_roles)
     search_attributes.setdefault(PENDING_APPROVAL_SEARCH_ATTRIBUTE, [False])
+    search_attributes.setdefault(FAILED_STAGE_SEARCH_ATTRIBUTE, [False])
 
     client = await get_client()
     handle: WorkflowHandle = await client.start_workflow(
@@ -487,6 +538,10 @@ async def start_workflow(
         task_queue="default-task-queue",
         search_attributes=search_attributes,
     )
+    try:
+        await cache_workflow_input(handle.id, body)
+    except Exception:
+        logger.exception("Failed to proactively cache workflow input for %s", handle.id)
     return handle.id
 
 
@@ -650,6 +705,10 @@ async def get_workflows(  # pylint: disable=R0913,R0914
         if sanitized_status.upper() in _PENDING_APPROVAL_STATUS_VALUES:
             filters.append("ExecutionStatus = 'Running'")
             pending_approval_filter = True
+        elif sanitized_status.upper() in _FAILED_STATUS_VALUES:
+            filters.append(
+                f"(ExecutionStatus = 'Failed' or {FAILED_STAGE_SEARCH_ATTRIBUTE} = true)"
+            )
         else:
             filters.append(f"ExecutionStatus = '{_format_visibility_status(sanitized_status)}'")
     elif pending_approval is True:

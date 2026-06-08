@@ -355,6 +355,7 @@ spec:
           temporal operator search-attribute create --address "$TEMPORAL_ADDR" --name ReadRoles --type KeywordList || true
           temporal operator search-attribute create --address "$TEMPORAL_ADDR" --name ExecuteRoles --type KeywordList || true
           temporal operator search-attribute create --address "$TEMPORAL_ADDR" --name PendingApproval --type Bool || true
+          temporal operator search-attribute create --address "$TEMPORAL_ADDR" --name FailedStage --type Bool || true
           temporal operator search-attribute create --address "$TEMPORAL_ADDR" --name IssueKey --type Keyword || true
 
           echo "Temporal setup complete!"

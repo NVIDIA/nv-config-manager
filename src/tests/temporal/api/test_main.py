@@ -24,11 +24,13 @@ from temporalio.client import WorkflowExecutionStatus, WorkflowHandle
 from nv_config_manager.temporal.api.main import app
 from nv_config_manager.temporal.api.workflow_v1 import (
     WorkflowSummaryResponse,
+    cache_workflow_input,
     signal_workflow,
     start_workflow,
 )
 from nv_config_manager.temporal.common.mixins.stage import ReviewSignalInput, Stage, StageMixin
 from nv_config_manager.temporal.common.search_attributes import (
+    FAILED_STAGE_SEARCH_ATTRIBUTE,
     PENDING_APPROVAL_SEARCH_ATTRIBUTE,
 )
 from nv_config_manager.temporal.hello_world.workflows.hello_world_workflow import (
@@ -47,10 +49,11 @@ def test_healthcheck():
 
 
 @pytest.mark.asyncio
+@patch("nv_config_manager.temporal.api.workflow_v1.cache_workflow_input")
 @patch("nv_config_manager.temporal.api.workflow_v1.get_client")
 @patch("nv_config_manager.temporal.api.workflow_v1.uuid4", return_value="mockuuid")
 @patch("nv_config_manager.temporal.api.workflow_v1.RBACConfig")
-async def test_start_workflow(mock_rbac_config, mock_uuid, mock_connect):
+async def test_start_workflow(mock_rbac_config, mock_uuid, mock_connect, mock_cache_input):
     """Verify Start Workflow."""
     handle = MagicMock()
     handle.id = "mockuuid"
@@ -79,14 +82,17 @@ async def test_start_workflow(mock_rbac_config, mock_uuid, mock_connect):
         task_queue="default-task-queue",
         search_attributes={
             "ExecuteRoles": ["all"],
+            FAILED_STAGE_SEARCH_ATTRIBUTE: [False],
             PENDING_APPROVAL_SEARCH_ATTRIBUTE: [False],
             "ReadRoles": ["all"],
             "User": ["testuser"],
         },
     )
+    mock_cache_input.assert_awaited_once_with("mockuuid", body)
 
     # Test that more strict workflow permissions are respected
     mock_connect.reset_mock()
+    mock_cache_input.reset_mock()
     # Mock RBAC config for DeployWorkflow
     mock_rbac_instance.get_workflow_roles.return_value = {
         "read_roles": {"ngc-cfa", "ngc-gni"},
@@ -111,11 +117,28 @@ async def test_start_workflow(mock_rbac_config, mock_uuid, mock_connect):
         task_queue="default-task-queue",
         search_attributes={
             "ExecuteRoles": ["ngc-cfa", "ngc-gni"],
+            FAILED_STAGE_SEARCH_ATTRIBUTE: [False],
             PENDING_APPROVAL_SEARCH_ATTRIBUTE: [False],
             "ReadRoles": ["ngc-cfa", "ngc-gni"],
             "User": ["testuser"],
         },
     )
+    mock_cache_input.assert_awaited_once_with("mockuuid", body)
+
+
+@pytest.mark.asyncio
+@patch("nv_config_manager.temporal.api.workflow_v1.load_config")
+@patch("nv_config_manager.temporal.api.workflow_v1.RedisClient")
+async def test_cache_workflow_input(mock_redis, mock_load_config):
+    """Verify workflow input is cached in list-safe JSON form."""
+    cache = mock_redis.from_config.return_value
+    cache.cache_query = AsyncMock()
+    body = HelloWorldInput(name="test")
+
+    await cache_workflow_input("workflow-id", body)
+
+    mock_redis.from_config.assert_called_once_with(mock_load_config.return_value)
+    cache.cache_query.assert_awaited_once_with("workflow-id", "input", {"name": "test"})
 
 
 @pytest.mark.asyncio
@@ -676,6 +699,41 @@ async def test_active_workflow_pending_false_is_not_cached(mock_redis, mock_load
 
 
 @pytest.mark.asyncio
+@patch("nv_config_manager.temporal.api.workflow_v1.load_config")
+@patch("nv_config_manager.temporal.api.workflow_v1.RedisClient")
+async def test_running_workflow_with_failed_stage_reports_failed(mock_redis, mock_load_config):
+    """Verify failed-stage workflows surface as failed even while Temporal is running."""
+    cache = mock_redis.from_config.return_value
+    cache.get_cached_query = AsyncMock(return_value={"user": "cached"})
+    cache.cache_query = AsyncMock()
+
+    handle = MagicMock()
+    handle.id = "failed-stage-workflow"
+    handle.query = AsyncMock()
+
+    description = MagicMock()
+    description.search_attributes = {
+        FAILED_STAGE_SEARCH_ATTRIBUTE: [True],
+        PENDING_APPROVAL_SEARCH_ATTRIBUTE: [False],
+        "User": ["test"],
+    }
+    description.status = WorkflowExecutionStatus.RUNNING
+    description.start_time = datetime.fromisoformat("1970-01-01T00:00:00+00:00")
+    description.close_time = None
+    description.workflow_type = "HelloWorldApproval"
+    handle.describe = AsyncMock(return_value=description)
+
+    result = await WorkflowSummaryResponse.from_handle(handle)
+
+    assert result.status == "FAILED"
+    assert result.pending_approval is False
+    assert result.workflow_input == {"user": "cached"}
+    handle.query.assert_not_awaited()
+    cache.cache_query.assert_not_awaited()
+    mock_redis.from_config.assert_called_once_with(mock_load_config.return_value)
+
+
+@pytest.mark.asyncio
 @patch("nv_config_manager.temporal.api.workflow_v1.get_client")
 async def test_workflow_detail_not_found(mock_client):
     """Verify workflow detail returns 404 when workflow doesn't exist."""
@@ -916,6 +974,15 @@ async def test_workflows(mock_rbac_config, mock_redis, mock_client):
         next_page_token=None,
     )
 
+    rsp = client.get("/v1/workflow", params={"status": "FAILED"})
+    assert rsp.status_code == 200
+    mock_client.return_value.list_workflows.assert_called_with(
+        "(ExecutionStatus = 'Failed' or FailedStage = true) and (ReadRoles = 'all')",
+        limit=100,
+        page_size=100,
+        next_page_token=None,
+    )
+
     # Test filter query construction
     rsp = client.get(
         "/v1/workflow",
@@ -1141,7 +1208,7 @@ def test_workflow_metadata(mock_dynamic_rbac_config):
     workflows_by_name = {workflow["name"]: workflow for workflow in response["workflows"]}
     assert "HelloWorldRunning" not in workflows_by_name
     backup_workflow = workflows_by_name["BackupWorkflow"]
-    assert backup_workflow["display_name"] == "Backup"
+    assert backup_workflow["display_name"] == "Configuration Backup"
     assert backup_workflow["description"]
     assert backup_workflow["endpoint"] == "/ngc/backup"
     assert backup_workflow["namespace"] == "ngc"

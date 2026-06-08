@@ -55,6 +55,7 @@ class HelloWorld(WorkflowMetadataMixin, StageMixin):
     """Simple hello world workflow for testing."""
 
     # Workflow metadata
+    workflow_name = "Hello World"
     workflow_description = "Simple hello world workflow for testing and demonstration"
     workflow_input_class = HelloWorldInput
     workflow_api_endpoint = "/hello_world"
@@ -144,6 +145,7 @@ class HelloWorldApproval(WorkflowMetadataMixin, StageMixin):
     """Hello world workflow with approval step."""
 
     # Workflow metadata
+    workflow_name = "Hello World Approval"
     workflow_description = "Hello world workflow with approval step for testing staged workflows"
     workflow_input_class = HelloWorldInput
     workflow_api_endpoint = "/hello_world_approval"

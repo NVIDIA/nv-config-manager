@@ -62,6 +62,7 @@ test.describe("Workflows Page", () => {
     await expect(page.getByText("joliao@nvidia.com")).toBeVisible();
     await expect(page.getByText("Roles", { exact: true })).toBeVisible();
     await expect(page.getByText("nvcm-network")).toBeVisible();
+    await expect(page.getByText("all", { exact: true })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Logout" })).toHaveAttribute(
       "href",
       "/auth/logout"

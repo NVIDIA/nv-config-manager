@@ -85,6 +85,7 @@ class BackupWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, ArchiveMixi
     """Network device configuration backup workflow."""
 
     # Workflow metadata
+    workflow_name = "Configuration Backup"
     workflow_description = (
         "Backup network device configuration to the Config Store and NVIDIA Config Manager plugin"
     )

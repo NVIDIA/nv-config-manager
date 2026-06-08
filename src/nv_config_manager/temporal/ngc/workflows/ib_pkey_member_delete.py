@@ -94,6 +94,7 @@ class IBPKeyMemberDeleteOutput(BaseModel):
 class IBPKeyMemberDeleteWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin):
     """Remove device interface GUIDs from an existing IB PKey partition."""
 
+    workflow_name = "InfiniBand PKey Member Delete"
     workflow_description = "Remove device interfaces from an existing InfiniBand PKey partition"
     workflow_input_class = IBPKeyMemberDeleteInput
     workflow_api_endpoint = "/ngc/ib_pkey_member_delete"
