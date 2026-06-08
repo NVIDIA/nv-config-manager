@@ -28,6 +28,7 @@ class WorkflowMetadataMixin:
     workflow_input_class: type[BaseModel] | None = None
     workflow_api_endpoint: str | None = None
     workflow_namespace: str | None = None
+    workflow_mcp_enabled: bool = False
 
     @classmethod
     def get_workflow_name(cls) -> str:
@@ -76,6 +77,11 @@ class WorkflowMetadataMixin:
         s1 = re.sub("(.)([A-Z][a-z]+)", r"\1-\2", name)
         # Insert hyphens before uppercase letters that follow lowercase letters or numbers
         return re.sub("([a-z0-9])([A-Z])", r"\1-\2", s1).lower()
+
+    @classmethod
+    def get_workflow_mcp_enabled(cls) -> bool:
+        """Return whether this workflow can be exposed as an MCP tool."""
+        return cls.workflow_mcp_enabled
 
     @classmethod
     def has_complete_metadata(cls) -> bool:

@@ -66,6 +66,7 @@ class PortLLDPInfoWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archi
     workflow_input_class = PortLLDPInfoInput
     workflow_api_endpoint = "/ngc/port_lldp_info"
     workflow_namespace = "ngc"
+    workflow_mcp_enabled = True
 
     def __init__(self) -> None:
         """Initialize workflow."""

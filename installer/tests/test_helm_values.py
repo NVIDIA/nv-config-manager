@@ -114,6 +114,13 @@ class TestGenerateHelmValues:
         assert ext["postgres"]["temporal"]["host"] == "cluster-temporal-rw"
         assert ext["postgres"]["configStore"]["host"] == "cluster-config-store-rw"
 
+    def test_local_environment_uses_recreate_deployment_strategy(self):
+        values = _gen(
+            _make_config(cluster=ClusterConfig(hostname="local.test", environment="local"))
+        )
+
+        assert values["global"]["deploymentStrategy"] == {"type": "Recreate"}
+
     def test_key_names_match_chart(self):
         values = _gen(_make_config())
 

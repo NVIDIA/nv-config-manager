@@ -373,6 +373,9 @@ def _build_global(
         "serviceAccountName": "vault-access-sa",
     }
 
+    if c.environment == "local":
+        section["deploymentStrategy"] = {"type": "Recreate"}
+
     if is_local:
         section["imagePullSecrets"] = []
         section["imagePullPolicy"] = "IfNotPresent"

@@ -92,6 +92,7 @@ class BackupWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, ArchiveMixi
     workflow_input_class = BackupInput
     workflow_api_endpoint = "/ngc/backup"
     workflow_namespace = "ngc"
+    workflow_mcp_enabled = True
 
     def __init__(self) -> None:
         """Initialize workflow."""

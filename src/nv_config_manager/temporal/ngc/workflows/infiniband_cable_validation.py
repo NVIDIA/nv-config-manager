@@ -88,6 +88,7 @@ class InfinibandCableValidationWorkflow(WorkflowMetadataMixin, StageMixin):
     workflow_input_class = InfinibandCableValidationInput
     workflow_api_endpoint = "/ngc/infiniband_cable_validation"
     workflow_namespace = "ngc"
+    workflow_mcp_enabled = True
 
     def __init__(self) -> None:
         """Initialize workflow."""

@@ -99,6 +99,7 @@ spec:
 {{- $uiName := include "nv-config-manager.componentName" (dict "root" . "component" "ui") }}
 {{- $nautobotName := include "nv-config-manager.componentName" (dict "root" . "component" "nautobot") }}
 {{- $configStoreName := include "nv-config-manager.componentName" (dict "root" . "component" "config-store") }}
+{{- $mcpName := include "nv-config-manager.componentName" (dict "root" . "component" "mcp") }}
 
 {{- if and .Values.gateway.enabled (eq (.Values.ingress.type | default "envoyGateway") "envoyGateway") }}
 
@@ -456,6 +457,52 @@ spec:
         value: /
     backendRefs:
     - name: {{ $configStoreName }}-api
+      port: 9000
+{{- end }}
+
+# MCP svc-* HTTPRoute (JWT-only)
+{{- if .Values.mcp.enabled }}
+{{- include "nv-config-manager.svcHTTPRoute" (dict
+    "root" .
+    "routeName" $mcpName
+    "svcHostname" (tpl (.Values.mcp.gateway.svcHostname | default "") .)
+    "backendName" $mcpName
+    "backendPort" 9000
+) }}
+{{- end }}
+
+# MCP HTTPRoute
+{{- if .Values.mcp.enabled }}
+{{- if .Values.mcp.gateway.authBypass }}
+{{- include "nv-config-manager.authBypassHTTPRoute" (dict
+    "root" .
+    "routeName" $mcpName
+    "enabled" (.Values.mcp.gateway.authBypass.enabled | default false)
+    "paths" (.Values.mcp.gateway.authBypass.paths | default list)
+    "hostname" (tpl .Values.mcp.gateway.hostname .)
+    "backendName" $mcpName
+    "backendPort" 9000
+) }}
+{{- end }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $mcpName }}
+  namespace: {{ .Values.global.namespace }}
+spec:
+  parentRefs:
+  - name: {{ .Values.gateway.name }}
+    namespace: {{ .Values.global.namespace }}
+  hostnames:
+  - {{ tpl .Values.mcp.gateway.hostname . | quote }}
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: {{ $mcpName }}
       port: 9000
 {{- end }}
 

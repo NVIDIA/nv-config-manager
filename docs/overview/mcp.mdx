@@ -1,0 +1,108 @@
+---
+title: Remote MCP Access
+sidebar-title: Remote MCP
+position: 95
+---
+
+NVIDIA Config Manager exposes a remote Model Context Protocol (MCP) endpoint for MCP-capable clients. The endpoint is a Streamable HTTP service that runs in the Config Manager deployment; users do not need to run a local MCP server process.
+
+## Connection Model
+
+When SSO is enabled, use the JWT-only service hostname for MCP client connections:
+
+```text
+https://svc-mcp.<base-hostname>/mcp
+```
+
+The client sends a bearer token for the signed-in user:
+
+```text
+Authorization: Bearer <user-token>
+```
+
+When SSO is not enabled, use the regular MCP hostname and omit the Authorization header:
+
+```text
+https://mcp.<base-hostname>/mcp
+```
+
+Config Manager MCP tools use the caller's bearer token when SSO is enabled. The tools do not switch to broader service credentials for user-authorized APIs.
+
+## CLI Helper
+
+The `nvcm-mcp-cli` command handles OIDC login, token retrieval, endpoint resolution, and generic connection output.
+
+Authenticate to an environment:
+
+```sh
+uv run nvcm-mcp-cli login -H <base-hostname>
+```
+
+Print the remote MCP endpoint:
+
+```sh
+uv run nvcm-mcp-cli endpoint -H <base-hostname>
+```
+
+In SSO-enabled environments, export a bearer token for an MCP-capable client:
+
+```sh
+export NVCM_MCP_BEARER_TOKEN="$(uv run nvcm-mcp-cli token -H <base-hostname>)"
+```
+
+Print generic Streamable HTTP connection details:
+
+```sh
+uv run nvcm-mcp-cli config -H <base-hostname>
+```
+
+Check token availability and service health:
+
+```sh
+uv run nvcm-mcp-cli check -H <base-hostname>
+```
+
+## Client Configuration
+
+Configure the MCP-capable client for Streamable HTTP using:
+
+| Setting | Value |
+| :------ | :---- |
+| Transport | Streamable HTTP |
+| URL | Use `nvcm-mcp-cli endpoint -H <base-hostname>` |
+| Authentication | Use bearer authentication when `nvcm-mcp-cli config` reports it; otherwise omit Authorization |
+
+When bearer authentication is required, prefer passing the token through an environment variable rather than writing token values into static configuration files.
+
+## Custom Endpoints
+
+If the deployment uses a custom MCP URL, pass it explicitly:
+
+```sh
+uv run nvcm-mcp-cli endpoint --mcp-url https://svc-mcp.example.com/mcp
+uv run nvcm-mcp-cli token --mcp-url https://svc-mcp.example.com/mcp
+```
+
+OIDC discovery normally uses the OIDC-enabled `mcp.<base-hostname>` endpoint. If discovery is served from a different URL, provide it separately:
+
+```sh
+uv run nvcm-mcp-cli token \
+  --mcp-url https://svc-mcp.example.com/mcp \
+  --discovery-url https://mcp.example.com/mcp
+```
+
+If automatic discovery is not available, provide the OIDC issuer and client ID:
+
+```sh
+uv run nvcm-mcp-cli token \
+  --mcp-url https://svc-mcp.example.com/mcp \
+  --issuer https://issuer.example.com \
+  --client-id <client-id>
+```
+
+## Security Notes
+
+- The token represents the signed-in user.
+- In SSO-enabled environments, MCP tools call Config Manager APIs with the user's bearer token.
+- The CLI does not create service credentials or elevate access.
+- Token values should be treated as secrets and kept out of committed configuration.

@@ -34,6 +34,8 @@ from nv_config_manager.common.log import LogCategory, get_logger
 if TYPE_CHECKING:
     from nv_config_manager.common.config import ConfigStoreType
 
+_FILE_TYPE_UNSET = object()
+
 
 class ConfigStoreException(Exception):
     """Exception interacting with Config Store."""
@@ -150,6 +152,29 @@ class ConfigStoreClient(_WhoamiViaRetryClientMixin):
                 client_certificate=get_mtls_cert_paths(config),
             )
 
+    @classmethod
+    def for_mcp(
+        cls,
+        target: str,
+        headers: dict[str, str] | Callable[[], dict[str, str]],
+        file_type: ConfigStoreType | str = "intended",
+        ui_url: str | None = None,
+        verify: bool | str = True,
+    ) -> ConfigStoreClient:
+        """Create a Config Store client for MCP with explicit caller-scoped headers."""
+        if hasattr(file_type, "value"):
+            file_type_str = str(file_type.value)
+        else:
+            file_type_str = str(file_type)
+        return cls(
+            target=target,
+            file_type=file_type_str,
+            ui_url=ui_url or target,
+            verify=verify,
+            client_certificate=None,
+            headers=headers,
+        )
+
     @staticmethod
     def _sanitize_url(url: str) -> str:
         """Remove duplicate slashes from URL."""
@@ -233,6 +258,117 @@ class ConfigStoreClient(_WhoamiViaRetryClientMixin):
         except Exception as e:
             raise ConfigStoreException(f"Failed to load {filename}: {e}") from e
 
+    async def list_device_configs(
+        self,
+        device_uuid: str,
+        file_type: str | None | object = _FILE_TYPE_UNSET,
+    ) -> dict[str, object]:
+        """List latest configuration files for a device."""
+        try:
+            async with self._new_session() as session:
+                async with session.get(
+                    f"{self.config_url}/device/{device_uuid}",
+                    params=self._file_type_params(file_type),
+                ) as rsp:
+                    rsp.raise_for_status()
+                    data: dict[str, object] = await rsp.json()
+                    return data
+        except aiohttp.ClientResponseError as exc:
+            raise ConfigStoreException(
+                f"Failed to list configs for {device_uuid}: {exc.status} {exc.message}"
+            ) from exc
+        except Exception as exc:
+            raise ConfigStoreException(f"Failed to list configs for {device_uuid}: {exc}") from exc
+
+    async def get_config_file(
+        self,
+        device_uuid: str,
+        filename: str,
+        file_type: str | None | object = _FILE_TYPE_UNSET,
+        version: int | None = None,
+    ) -> dict[str, object]:
+        """Get a configuration file from Config Store."""
+        params = self._file_type_params(file_type)
+        if version is not None:
+            params["version"] = version
+        try:
+            async with self._new_session() as session:
+                async with session.get(
+                    f"{self.config_url}/{device_uuid}/{quote(filename, safe='')}",
+                    params=params,
+                ) as rsp:
+                    rsp.raise_for_status()
+                    data: dict[str, object] = await rsp.json()
+                    return data
+        except aiohttp.ClientResponseError as exc:
+            if exc.status == 404:
+                raise ConfigStoreFileNotFound(
+                    f"Did not locate {filename} for device {device_uuid}"
+                ) from exc
+            raise ConfigStoreException(
+                f"Failed to get config {device_uuid}/{filename}: {exc.status} {exc.message}"
+            ) from exc
+        except Exception as exc:
+            raise ConfigStoreException(
+                f"Failed to get config {device_uuid}/{filename}: {exc}"
+            ) from exc
+
+    async def get_config_versions(
+        self,
+        device_uuid: str,
+        filename: str,
+        file_type: str | None | object = _FILE_TYPE_UNSET,
+        limit: int = 100,
+    ) -> dict[str, object]:
+        """List versions for a device configuration file."""
+        params = self._file_type_params(file_type)
+        params["limit"] = limit
+        try:
+            async with self._new_session() as session:
+                async with session.get(
+                    f"{self.config_url}/{device_uuid}/{quote(filename, safe='')}/versions",
+                    params=params,
+                ) as rsp:
+                    rsp.raise_for_status()
+                    data: dict[str, object] = await rsp.json()
+                    return data
+        except aiohttp.ClientResponseError as exc:
+            raise ConfigStoreException(
+                f"Failed to list versions for {device_uuid}/{filename}: {exc.status} {exc.message}"
+            ) from exc
+        except Exception as exc:
+            raise ConfigStoreException(
+                f"Failed to list versions for {device_uuid}/{filename}: {exc}"
+            ) from exc
+
+    async def get_config_diff(
+        self,
+        device_uuid: str,
+        filename: str,
+        from_version: int,
+        to_version: int,
+        file_type: str | None | object = _FILE_TYPE_UNSET,
+    ) -> dict[str, object]:
+        """Get a diff between two Config Store versions."""
+        params = self._file_type_params(file_type)
+        params["from_version"] = from_version
+        params["to_version"] = to_version
+        try:
+            async with self._new_session() as session:
+                async with session.get(
+                    f"{self.config_url}/{device_uuid}/{quote(filename, safe='')}/diff",
+                    params=params,
+                ) as rsp:
+                    rsp.raise_for_status()
+                    data: dict[str, object] = await rsp.json()
+                    return data
+        except aiohttp.ClientResponseError as exc:
+            raise ConfigStoreException(
+                f"Failed to diff {device_uuid}/{filename}: {exc.status} {exc.message}"
+            ) from exc
+        except Exception as exc:
+            raise ConfigStoreException(f"Failed to diff {device_uuid}/{filename}: {exc}") from exc
+
     async def persist_files(
         self,
         device_uuid: str,
@@ -310,6 +446,13 @@ class ConfigStoreClient(_WhoamiViaRetryClientMixin):
         """Close the connector."""
         if self.connector and not self.connector.closed:
             await self.connector.close()
+
+    def _file_type_params(self, file_type: str | None | object) -> dict[str, object]:
+        if file_type is None:
+            return {}
+        if file_type is _FILE_TYPE_UNSET:
+            return {"file_type": self.file_type}
+        return {"file_type": file_type}
 
     async def __aenter__(self) -> ConfigStoreClient:
         """Async context manager entry."""

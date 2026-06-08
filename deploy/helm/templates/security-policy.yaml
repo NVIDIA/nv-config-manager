@@ -539,6 +539,19 @@ spec:
 {{- end }}
 {{- end }}
 
+# MCP Auth Bypass SecurityPolicy
+{{- if .Values.mcp.enabled }}
+{{- if .Values.mcp.gateway.authBypass }}
+{{- $mcpName := include "nv-config-manager.componentName" (dict "root" . "component" "mcp") }}
+{{- include "nv-config-manager.authBypassSecurityPolicy" (dict
+    "root" .
+    "routeName" $mcpName
+    "enabled" (.Values.mcp.gateway.authBypass.enabled | default false)
+    "paths" (.Values.mcp.gateway.authBypass.paths | default list)
+) }}
+{{- end }}
+{{- end }}
+
 # =============================================================================
 # Service (svc-*) SecurityPolicies
 # =============================================================================
@@ -609,6 +622,16 @@ spec:
     "root" .
     "routeName" (printf "%s-api" $configStoreName)
     "svcHostname" (tpl (.Values.configStore.gateway.api.svcHostname | default "") .)
+) }}
+{{- end }}
+
+# MCP svc-* SecurityPolicy
+{{- if .Values.mcp.enabled }}
+{{- $mcpName := include "nv-config-manager.componentName" (dict "root" . "component" "mcp") }}
+{{- include "nv-config-manager.svcSecurityPolicy" (dict
+    "root" .
+    "routeName" $mcpName
+    "svcHostname" (tpl (.Values.mcp.gateway.svcHostname | default "") .)
 ) }}
 {{- end }}
 

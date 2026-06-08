@@ -1511,6 +1511,20 @@ networkDhcp:
         memory: 1Gi
       limits:
         memory: 2Gi
+    healthcheck:
+      requests:
+        cpu: 200m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
+    api:
+      requests:
+        cpu: 200m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
     confgen:
       requests:
         cpu: 100m
@@ -1846,6 +1860,46 @@ configStore:
     useInternalEndpoint: false
     # SSL verification: true, false, or path to CA cert file
     verify: true
+# =============================================================================
+# Service: MCP
+# =============================================================================
+mcp:
+  enabled: true
+  # Gateway routing - Streamable HTTP MCP endpoint
+  gateway:
+    # Hostname: mcp.<baseHostname> (OIDC+JWT, browser access)
+    hostname: "mcp.{{ .Values.gateway.baseHostname }}"
+    # Hostname: svc-mcp.<baseHostname> (JWT-only, machine access)
+    svcHostname: "svc-mcp.{{ .Values.gateway.baseHostname }}"
+    # Auth bypass - healthcheck and metrics must be accessible without OIDC/JWT
+    authBypass:
+      enabled: true
+      paths:
+        - /healthcheck
+        - /metrics
+  api:
+    replicas: 2
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        memory: 512Mi
+    nodeSelector: null
+    affinity: null
+  client:
+    # MCP always calls Config Manager APIs through internal service endpoints
+    # and forwards the caller's inbound Bearer token. It never falls back to
+    # service-to-service auth for these APIs.
+    useInternalEndpoints: true
+    maxResponseBytes: 100000
+  nautobot:
+    # auto: bundled/local Nautobot uses user JWT, external Nautobot uses token
+    # jwt: always forward the user's Bearer token to Nautobot
+    # token: always use [nautobot] token; set it to a read-only token per env
+    authMode: auto
+    # Optional escape hatch for dev-only environments. Keep false in production.
+    tokenFallbackEnabled: false
 # =============================================================================
 # SPIFFE Configuration (Service-to-Service Authentication)
 # =============================================================================

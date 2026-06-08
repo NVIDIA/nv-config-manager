@@ -1,0 +1,103 @@
+# Copyright (c) 2026, NVIDIA CORPORATION.  All rights reserved.
+{{- if .Values.mcp.enabled }}
+{{- $mcpName := include "nv-config-manager.componentName" (dict "root" . "component" "mcp") }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $mcpName }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ $mcpName }}
+    component: api
+    app.kubernetes.io/name: nv-config-manager
+    app.kubernetes.io/component: mcp
+spec:
+  replicas: {{ .Values.mcp.api.replicas }}
+  selector:
+    matchLabels:
+      app: {{ $mcpName }}
+      component: api
+  {{- include "nv-config-manager.deploymentStrategy" (dict "root" .) | nindent 2 }}
+  template:
+    metadata:
+      labels:
+        app: {{ $mcpName }}
+        component: api
+        {{- include "nv-config-manager.customPodLabels" . | nindent 8 }}
+      annotations:
+        {{- include "nv-config-manager.authIniChecksum" . | nindent 8 }}
+        {{- if eq .Values.secrets.method "vault-agent" }}
+        {{- include "nv-config-manager.vaultAgent.injectorAnnotations" . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "nv-config-manager.serviceAccountName" . }}
+      {{- if .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range .Values.global.imagePullSecrets }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      {{- include "nv-config-manager.scheduling" .Values.mcp.api | nindent 6 }}
+      {{- include "nv-config-manager.podSecurityContext" . | nindent 6 }}
+      containers:
+      - name: api
+        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ .Values.global.images.nvConfigManager.tag }}"
+        imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
+        {{- include "nv-config-manager.containerSecurityContext" . | nindent 8 }}
+        command: ["nvidia-config-manager-mcp"]
+        args: []
+        env:
+        - name: LOG_LEVEL
+          value: "INFO"
+        - name: ENVIRONMENT
+          value: {{ .Values.global.environment }}
+        {{- include "nv-config-manager.customLabelsEnv" . | nindent 8 }}
+        - name: NV_CONFIG_MANAGER_INI
+          value: {{ include "nv-config-manager.vaultAgent.configManagerIniPathApp" . | quote }}
+        - name: NV_CONFIG_MANAGER_SERVICE
+          value: "mcp"
+        ports:
+        - containerPort: 9000
+          name: http
+        resources:
+          {{- toYaml .Values.mcp.api.resources | nindent 10 }}
+        volumeMounts:
+        {{- include "nv-config-manager.vaultAgent.configManagerIniVolumeMount" . | nindent 8 }}
+        livenessProbe:
+          httpGet:
+            path: /healthcheck
+            port: 9000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /healthcheck
+            port: 9000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+      volumes:
+      {{- include "nv-config-manager.vaultAgent.projectedSATokenVolume" . | nindent 6 }}
+      {{- include "nv-config-manager.vaultAgent.configManagerIniVolume" . | nindent 6 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $mcpName }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ $mcpName }}
+    component: api
+spec:
+  type: ClusterIP
+  ports:
+  - port: 9000
+    targetPort: 9000
+    protocol: TCP
+    name: http
+  selector:
+    app: {{ $mcpName }}
+    component: api
+{{- end }}

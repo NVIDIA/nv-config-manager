@@ -481,6 +481,21 @@ nv-config-manager.ini body (consul-template): must stay in sync with vault-secre
 
           {{- end }}
 
+          {{- if $root.Values.mcp.enabled }}
+          # -----------------------------------------------------------------
+          # MCP Service Configuration
+          # -----------------------------------------------------------------
+          [mcp]
+          # When auth is enabled, MCP forwards the caller's inbound Bearer token
+          # to Config Manager APIs. It does not fall back to service-to-service auth.
+          use_internal_endpoints = {{ $root.Values.mcp.client.useInternalEndpoints | default true }}
+          max_response_bytes = {{ $root.Values.mcp.client.maxResponseBytes | default 100000 }}
+          # auto resolves to jwt for bundled/local Nautobot and token for external Nautobot.
+          nautobot_auth_mode = {{ $root.Values.mcp.nautobot.authMode | default "auto" }}
+          nautobot_token_fallback_enabled = {{ $root.Values.mcp.nautobot.tokenFallbackEnabled | default false }}
+
+          {{- end }}
+
           {{- if and $root.Values.temporal.enabled (index $root.Values.secrets.vault.paths "jira") }}
           # -----------------------------------------------------------------
           # Jira Configuration (for DiagnosticsWorkflow)
