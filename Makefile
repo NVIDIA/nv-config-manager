@@ -11,6 +11,8 @@ NAMESPACE ?= nv-config-manager
 RELEASE_NAME ?= nv-config-manager
 HOSTNAME ?= config-manager.local
 KIND_CLUSTER_NAME ?= nv-config-manager
+KIND_CONTEXT      ?= kind-$(KIND_CLUSTER_NAME)
+KUBECTL_KIND       = kubectl --context $(KIND_CONTEXT)
 DEPLOY_SIZE ?= small  # Resource sizing: small (24GB Mac) or medium (64GB VM)
 INSTALL_CONFIG ?= deploy/configs/local-superpod.yaml
 KIND_SEC_INSTALL_CONFIG ?= deploy/configs/local-sec.yaml
@@ -1029,31 +1031,31 @@ mock-devices-up: docker-build-mock-device
 	@echo "🔧 Loading mock device image into Kind..."
 	kind load docker-image mock-device:local --name $(KIND_CLUSTER_NAME)
 	@echo "🔌 Deploying DHCP dev service..."
-	kubectl apply -f development/mock_devices/manifests/dhcp-dev-service.yaml
+	$(KUBECTL_KIND) apply -f development/mock_devices/manifests/dhcp-dev-service.yaml
 	@echo "🖥️  Deploying mock devices..."
-	kubectl apply -f development/mock_devices/manifests/mock-devices.yaml
+	$(KUBECTL_KIND) apply -f development/mock_devices/manifests/mock-devices.yaml
 	@echo "✅ Mock devices deployed. Use 'make mock-devices-status' to check."
 
 # Remove mock devices
 mock-devices-down:
 	@echo "🗑️  Removing mock devices..."
-	kubectl delete -f development/mock_devices/manifests/mock-devices.yaml --ignore-not-found
-	kubectl delete -f development/mock_devices/manifests/mock-dhcp-discover.yaml --ignore-not-found
-	kubectl delete -f development/mock_devices/manifests/mock-dhcp-validate.yaml --ignore-not-found
-	kubectl delete -f development/mock_devices/manifests/mock-wire-devices.yaml --ignore-not-found
-	kubectl delete -f development/mock_devices/manifests/dhcp-dev-service.yaml --ignore-not-found
+	$(KUBECTL_KIND) delete -f development/mock_devices/manifests/mock-devices.yaml --ignore-not-found
+	$(KUBECTL_KIND) delete -f development/mock_devices/manifests/mock-dhcp-discover.yaml --ignore-not-found
+	$(KUBECTL_KIND) delete -f development/mock_devices/manifests/mock-dhcp-validate.yaml --ignore-not-found
+	$(KUBECTL_KIND) delete -f development/mock_devices/manifests/mock-wire-devices.yaml --ignore-not-found
+	$(KUBECTL_KIND) delete -f development/mock_devices/manifests/dhcp-dev-service.yaml --ignore-not-found
 	@echo "✅ Mock devices removed."
 
 # Show mock device status
 mock-devices-status:
 	@echo "=== Mock Device Pods ==="
-	@kubectl get pods -n $(NAMESPACE) -l app=mock-device -o wide 2>/dev/null || echo "No mock devices found"
+	@$(KUBECTL_KIND) get pods -n $(NAMESPACE) -l app=mock-device -o wide 2>/dev/null || echo "No mock devices found"
 	@echo ""
 	@echo "=== Mock Device Services ==="
-	@kubectl get svc -n $(NAMESPACE) -l app=mock-device -o wide 2>/dev/null || true
+	@$(KUBECTL_KIND) get svc -n $(NAMESPACE) -l app=mock-device -o wide 2>/dev/null || true
 	@echo ""
 	@echo "=== DHCP Dev Service ==="
-	@kubectl get svc -n $(NAMESPACE) nv-config-manager-dhcp-dev -o wide 2>/dev/null || echo "DHCP dev service not deployed"
+	@$(KUBECTL_KIND) get svc -n $(NAMESPACE) nv-config-manager-dhcp-dev -o wide 2>/dev/null || echo "DHCP dev service not deployed"
 
 # DHCP test device defaults (override with e.g. make mock-dhcp-validate MOCK_DHCP_DEVICE=a08-u44-p01-mleaf-01 ...)
 MOCK_DHCP_DEVICE ?= a04-u44-p01-tor-01
@@ -1066,8 +1068,8 @@ MOCK_DEVICE_OS_VERSION ?= 4.29.5M
 mock-dhcp-validate: docker-build-mock-device
 	@echo "🔍 Running DHCP config validation for $(MOCK_DHCP_DEVICE)..."
 	kind load docker-image mock-device:local --name $(KIND_CLUSTER_NAME) 2>/dev/null || true
-	kubectl delete job mock-dhcp-validate -n $(NAMESPACE) --ignore-not-found 2>/dev/null
-	@NB_TOKEN=$$(kubectl get secret nautobot-token -n $(NAMESPACE) -o jsonpath='{.data.token}' | base64 -d); \
+	$(KUBECTL_KIND) delete job mock-dhcp-validate -n $(NAMESPACE) --ignore-not-found 2>/dev/null
+	@NB_TOKEN=$$($(KUBECTL_KIND) get secret nautobot-token -n $(NAMESPACE) -o jsonpath='{.data.token}' | base64 -d); \
 	MOCK_DHCP_MAC=$$(curl -sk -H "Authorization: Token $$NB_TOKEN" \
 		"https://nautobot.$(HOSTNAME)/api/dcim/interfaces/?device=$(MOCK_DHCP_DEVICE)&name=eth0&limit=1" \
 		| python3 -c "import json,sys; r=json.load(sys.stdin)['results']; print(r[0].get('mac_address') or '' if r else '')" 2>/dev/null); \
@@ -1081,18 +1083,22 @@ mock-dhcp-validate: docker-build-mock-device
 		MOCK_DHCP_SERIAL="$(MOCK_DHCP_SERIAL)" \
 		MOCK_DHCP_MAC="$$MOCK_DHCP_MAC" \
 		MOCK_DHCP_CLIENT_ID_TPL="$(MOCK_DHCP_CLIENT_ID_TPL)" \
-		envsubst < development/mock_devices/manifests/mock-dhcp-validate.yaml | kubectl apply -f -
+		envsubst < development/mock_devices/manifests/mock-dhcp-validate.yaml | $(KUBECTL_KIND) apply -f -
 	@echo "⏳ Waiting for validation job..."
-	@kubectl wait --for=condition=complete job/mock-dhcp-validate -n $(NAMESPACE) --timeout=60s 2>/dev/null || true
+	@$(KUBECTL_KIND) wait --for=condition=complete job/mock-dhcp-validate -n $(NAMESPACE) --timeout=60s || { \
+		$(KUBECTL_KIND) describe job mock-dhcp-validate -n $(NAMESPACE) 2>/dev/null || true; \
+		$(KUBECTL_KIND) logs -n $(NAMESPACE) job/mock-dhcp-validate 2>/dev/null || true; \
+		exit 1; \
+	}
 	@echo "=== Validation Result ==="
-	@kubectl logs -n $(NAMESPACE) job/mock-dhcp-validate 2>/dev/null || echo "Job not found or still running"
+	@$(KUBECTL_KIND) logs -n $(NAMESPACE) job/mock-dhcp-validate 2>/dev/null || echo "Job not found or still running"
 
 # Run DHCP discover (uses relay agent, no raw sockets needed)
 mock-dhcp-discover: docker-build-mock-device
 	@echo "📡 Running DHCP discover for $(MOCK_DHCP_DEVICE)..."
 	kind load docker-image mock-device:local --name $(KIND_CLUSTER_NAME) 2>/dev/null || true
-	kubectl delete job mock-dhcp-discover -n $(NAMESPACE) --ignore-not-found 2>/dev/null
-	@NB_TOKEN=$$(kubectl get secret nautobot-token -n $(NAMESPACE) -o jsonpath='{.data.token}' | base64 -d); \
+	$(KUBECTL_KIND) delete job mock-dhcp-discover -n $(NAMESPACE) --ignore-not-found 2>/dev/null
+	@NB_TOKEN=$$($(KUBECTL_KIND) get secret nautobot-token -n $(NAMESPACE) -o jsonpath='{.data.token}' | base64 -d); \
 	MOCK_DHCP_MAC=$$(curl -sk -H "Authorization: Token $$NB_TOKEN" \
 		"https://nautobot.$(HOSTNAME)/api/dcim/interfaces/?device=$(MOCK_DHCP_DEVICE)&name=eth0&limit=1" \
 		| python3 -c "import json,sys; r=json.load(sys.stdin)['results']; print(r[0].get('mac_address') or '' if r else '')" 2>/dev/null); \
@@ -1106,11 +1112,15 @@ mock-dhcp-discover: docker-build-mock-device
 		MOCK_DHCP_SERIAL="$(MOCK_DHCP_SERIAL)" \
 		MOCK_DHCP_MAC="$$MOCK_DHCP_MAC" \
 		MOCK_DHCP_CLIENT_ID_TPL="$(MOCK_DHCP_CLIENT_ID_TPL)" \
-		envsubst < development/mock_devices/manifests/mock-dhcp-discover.yaml | kubectl apply -f -
+		envsubst < development/mock_devices/manifests/mock-dhcp-discover.yaml | $(KUBECTL_KIND) apply -f -
 	@echo "⏳ Waiting for DHCP discover..."
-	@kubectl wait --for=condition=complete job/mock-dhcp-discover -n $(NAMESPACE) --timeout=60s 2>/dev/null || true
+	@$(KUBECTL_KIND) wait --for=condition=complete job/mock-dhcp-discover -n $(NAMESPACE) --timeout=60s || { \
+		$(KUBECTL_KIND) describe job mock-dhcp-discover -n $(NAMESPACE) 2>/dev/null || true; \
+		$(KUBECTL_KIND) logs -n $(NAMESPACE) job/mock-dhcp-discover 2>/dev/null || true; \
+		exit 1; \
+	}
 	@echo "=== DHCP Result ==="
-	@kubectl logs -n $(NAMESPACE) job/mock-dhcp-discover 2>/dev/null || echo "Job not found or still running"
+	@$(KUBECTL_KIND) logs -n $(NAMESPACE) job/mock-dhcp-discover 2>/dev/null || echo "Job not found or still running"
 
 # ZTP test device defaults (override with e.g. make mock-ztp-validate MOCK_ZTP_DEVICE=a08-u32-p01-cleaf-01 ...)
 MOCK_ZTP_DEVICE ?= a04-u44-p01-tor-01
@@ -1122,8 +1132,8 @@ MOCK_ZTP_CLIENT_ID_TPL ?= {{ serial | hex }}
 mock-ztp-validate: docker-build-mock-device
 	@echo "🔗 Running ZTP validation for $(MOCK_ZTP_DEVICE)..."
 	kind load docker-image mock-device:local --name $(KIND_CLUSTER_NAME) 2>/dev/null || true
-	kubectl delete job mock-ztp-validate -n $(NAMESPACE) --ignore-not-found 2>/dev/null
-	@NB_TOKEN=$$(kubectl get secret nautobot-token -n $(NAMESPACE) -o jsonpath='{.data.token}' | base64 -d); \
+	$(KUBECTL_KIND) delete job mock-ztp-validate -n $(NAMESPACE) --ignore-not-found 2>/dev/null
+	@NB_TOKEN=$$($(KUBECTL_KIND) get secret nautobot-token -n $(NAMESPACE) -o jsonpath='{.data.token}' | base64 -d); \
 	MOCK_ZTP_MAC=$$(curl -sk -H "Authorization: Token $$NB_TOKEN" \
 		"https://nautobot.$(HOSTNAME)/api/dcim/interfaces/?device=$(MOCK_ZTP_DEVICE)&name=eth0&limit=1" \
 		| python3 -c "import json,sys; r=json.load(sys.stdin)['results']; print(r[0].get('mac_address') or '' if r else '')" 2>/dev/null); \
@@ -1137,28 +1147,36 @@ mock-ztp-validate: docker-build-mock-device
 		MOCK_ZTP_SERIAL="$(MOCK_ZTP_SERIAL)" \
 		MOCK_ZTP_MAC="$$MOCK_ZTP_MAC" \
 		MOCK_ZTP_CLIENT_ID_TPL="$(MOCK_ZTP_CLIENT_ID_TPL)" \
-		envsubst < development/mock_devices/manifests/mock-ztp-validate.yaml | kubectl apply -f -
+		envsubst < development/mock_devices/manifests/mock-ztp-validate.yaml | $(KUBECTL_KIND) apply -f -
 	@echo "⏳ Waiting for ZTP validation..."
-	@kubectl wait --for=condition=complete job/mock-ztp-validate -n $(NAMESPACE) --timeout=120s 2>/dev/null || true
+	@$(KUBECTL_KIND) wait --for=condition=complete job/mock-ztp-validate -n $(NAMESPACE) --timeout=120s || { \
+		$(KUBECTL_KIND) describe job mock-ztp-validate -n $(NAMESPACE) 2>/dev/null || true; \
+		$(KUBECTL_KIND) logs -n $(NAMESPACE) job/mock-ztp-validate 2>/dev/null || true; \
+		exit 1; \
+	}
 	@echo "=== ZTP Validation Result ==="
-	@kubectl logs -n $(NAMESPACE) job/mock-ztp-validate 2>/dev/null || echo "Job not found or still running"
+	@$(KUBECTL_KIND) logs -n $(NAMESPACE) job/mock-ztp-validate 2>/dev/null || echo "Job not found or still running"
 
 # Wire mock device service IPs into Nautobot (primary_ip4 -> ClusterIP)
 mock-wire-devices: docker-build-mock-device
 	@echo "🔌 Wiring mock device IPs into Nautobot..."
 	kind load docker-image mock-device:local --name $(KIND_CLUSTER_NAME) 2>/dev/null || true
-	kubectl delete job mock-wire-devices -n $(NAMESPACE) --ignore-not-found 2>/dev/null
-	kubectl apply -f development/mock_devices/manifests/mock-wire-devices.yaml
+	$(KUBECTL_KIND) delete job mock-wire-devices -n $(NAMESPACE) --ignore-not-found 2>/dev/null
+	$(KUBECTL_KIND) apply -f development/mock_devices/manifests/mock-wire-devices.yaml
 	@echo "⏳ Waiting for wire job..."
-	kubectl wait --for=condition=complete job/mock-wire-devices -n $(NAMESPACE) --timeout=60s 2>/dev/null || true
+	$(KUBECTL_KIND) wait --for=condition=complete job/mock-wire-devices -n $(NAMESPACE) --timeout=60s || { \
+		$(KUBECTL_KIND) describe job mock-wire-devices -n $(NAMESPACE) 2>/dev/null || true; \
+		$(KUBECTL_KIND) logs -n $(NAMESPACE) job/mock-wire-devices 2>/dev/null || true; \
+		exit 1; \
+	}
 	@echo "=== Wire Result ==="
-	@kubectl logs -n $(NAMESPACE) job/mock-wire-devices 2>/dev/null || echo "Job not found or still running"
+	@$(KUBECTL_KIND) logs -n $(NAMESPACE) job/mock-wire-devices 2>/dev/null || echo "Job not found or still running"
 
 # Run Temporal backup workflow against a mock device
 MOCK_BACKUP_DEVICE ?= a04-u44-p01-tor-01
 mock-workflow-backup:
 	@echo "📦 Starting backup workflow for $(MOCK_BACKUP_DEVICE)..."
-	@NB_TOKEN=$$(kubectl get secret nautobot-token -n $(NAMESPACE) -o jsonpath='{.data.token}' | base64 -d); \
+	@NB_TOKEN=$$($(KUBECTL_KIND) get secret nautobot-token -n $(NAMESPACE) -o jsonpath='{.data.token}' | base64 -d); \
 	DEVICE_ID=$$(curl -sk -H "Authorization: Token $$NB_TOKEN" \
 		"https://nautobot.$(HOSTNAME)/api/dcim/devices/?name=$(MOCK_BACKUP_DEVICE)" | \
 		python3 -c "import sys,json; r=json.load(sys.stdin)['results']; print(r[0]['id'] if r else '')" 2>/dev/null); \
@@ -1181,7 +1199,7 @@ mock-workflow-backup:
 MOCK_CABLE_DEVICE ?= a04-u44-p01-tor-01
 mock-workflow-cable-validate:
 	@echo "🔗 Starting cable validation for $(MOCK_CABLE_DEVICE)..."
-	@NB_TOKEN=$$(kubectl get secret nautobot-token -n $(NAMESPACE) -o jsonpath='{.data.token}' | base64 -d); \
+	@NB_TOKEN=$$($(KUBECTL_KIND) get secret nautobot-token -n $(NAMESPACE) -o jsonpath='{.data.token}' | base64 -d); \
 	DEVICE_ID=$$(curl -sk -H "Authorization: Token $$NB_TOKEN" \
 		"https://nautobot.$(HOSTNAME)/api/dcim/devices/?name=$(MOCK_CABLE_DEVICE)" | \
 		python3 -c "import sys,json; r=json.load(sys.stdin)['results']; print(r[0]['id'] if r else '')" 2>/dev/null); \
