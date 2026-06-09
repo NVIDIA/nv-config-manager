@@ -80,6 +80,7 @@ class IBPortGuidDiscoveryResult(BaseModel):
 class IBPortGuidDiscoveryWorkflow(WorkflowMetadataMixin, StageMixin):
     """Sync UFM-discovered IB port GUIDs onto matching Nautobot interfaces."""
 
+    workflow_name = "InfiniBand Port GUID Discovery"
     workflow_description = "Discover InfiniBand port GUIDs from UFM and sync them onto the matching Nautobot interfaces."
     workflow_input_class = IBPortGuidDiscoveryInput
     workflow_api_endpoint = "/ngc/ib_port_guid_discovery"

@@ -32,7 +32,20 @@ interface MembershipRequest {
 }
 
 const PKEY_PATTERN = /^0[xX][0-9a-fA-F]{1,4}$/;
-const GUID_PATTERN = /^0x[0-9a-fA-F]{16}$/;
+const GUID_PATTERN = /^0[xX][0-9a-fA-F]{16}$/;
+
+function isValidInterfaceRef(entry: unknown): entry is InterfaceRefPayload {
+  if (!entry || typeof entry !== "object") {
+    return false;
+  }
+  const ref = entry as Partial<InterfaceRefPayload>;
+  return (
+    typeof ref.device === "string" &&
+    ref.device.trim().length > 0 &&
+    typeof ref.interface === "string" &&
+    ref.interface.trim().length > 0
+  );
+}
 
 function validateMembershipBody(
   body: MembershipRequest,
@@ -49,11 +62,21 @@ function validateMembershipBody(
       status: 400,
     };
   }
-  const hasInterfaces = (body.interfaces?.length ?? 0) > 0;
-  const hasGuids = (body.guids?.length ?? 0) > 0;
+  const hasInterfaces =
+    Array.isArray(body.interfaces) && body.interfaces.length > 0;
+  const hasGuids = Array.isArray(body.guids) && body.guids.length > 0;
   if (hasInterfaces === hasGuids) {
     return {
       error: "Provide exactly one of 'interfaces' or 'guids'",
+      status: 400,
+    };
+  }
+  if (
+    hasInterfaces &&
+    body.interfaces!.some((entry) => !isValidInterfaceRef(entry))
+  ) {
+    return {
+      error: "Each interfaces entry must include non-empty 'device' and 'interface'",
       status: 400,
     };
   }

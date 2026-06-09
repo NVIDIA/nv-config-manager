@@ -21,7 +21,6 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from aioresponses import aioresponses
-from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
 from nv_config_manager.temporal.common.secrets import clear_secrets_cache
@@ -180,11 +179,11 @@ CREATION_ACTIVITIES = [
 
 
 @pytest.mark.asyncio
-async def test_ib_pkey_creation_with_specific_pkey(mock_configs):
+async def test_ib_pkey_creation_with_specific_pkey(mock_configs, time_skipping_env):
     """Full workflow: validate, create, verify, record with a specific PKey."""
     task_queue = str(uuid.uuid4())
 
-    async with await WorkflowEnvironment.start_time_skipping() as env:
+    async with time_skipping_env() as env:
         async with Worker(
             env.client,
             task_queue=task_queue,
@@ -212,11 +211,11 @@ async def test_ib_pkey_creation_with_specific_pkey(mock_configs):
 
 
 @pytest.mark.asyncio
-async def test_ib_pkey_creation_with_auto_assign(mock_configs):
+async def test_ib_pkey_creation_with_auto_assign(mock_configs, time_skipping_env):
     """Full workflow: auto-assign PKey when none specified."""
     task_queue = str(uuid.uuid4())
 
-    async with await WorkflowEnvironment.start_time_skipping() as env:
+    async with time_skipping_env() as env:
         async with Worker(
             env.client,
             task_queue=task_queue,
@@ -243,11 +242,11 @@ async def test_ib_pkey_creation_with_auto_assign(mock_configs):
 
 
 @pytest.mark.asyncio
-async def test_ib_pkey_creation_reuses_existing_orphan_pkey(mock_configs):
+async def test_ib_pkey_creation_reuses_existing_orphan_pkey(mock_configs, time_skipping_env):
     """If an orphan PKey row already exists, the workflow reuses its id."""
     task_queue = str(uuid.uuid4())
 
-    async with await WorkflowEnvironment.start_time_skipping() as env:
+    async with time_skipping_env() as env:
         async with Worker(
             env.client,
             task_queue=task_queue,
@@ -270,11 +269,13 @@ async def test_ib_pkey_creation_reuses_existing_orphan_pkey(mock_configs):
 
 
 @pytest.mark.asyncio
-async def test_ib_pkey_creation_site_override_skips_nautobot_resolve(mock_configs):
+async def test_ib_pkey_creation_site_override_skips_nautobot_resolve(
+    mock_configs, time_skipping_env
+):
     """An explicit ``site`` makes resolve_context skip the Nautobot lookup."""
     task_queue = str(uuid.uuid4())
 
-    async with await WorkflowEnvironment.start_time_skipping() as env:
+    async with time_skipping_env() as env:
         async with Worker(
             env.client,
             task_queue=task_queue,

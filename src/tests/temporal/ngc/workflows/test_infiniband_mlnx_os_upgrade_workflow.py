@@ -23,7 +23,6 @@ from unittest.mock import patch
 import pytest
 from temporalio import activity
 from temporalio.common import RetryPolicy
-from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
 from nv_config_manager.temporal.common.mixins.device import NetworkDeviceData
@@ -197,9 +196,9 @@ async def test_execute_single_stage_already_on_target(
 @pytest.mark.asyncio
 @pytest.mark.timeout(30)
 @patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
-async def test_execute_single_stage_with_approval(_):
+async def test_execute_single_stage_with_approval(_, time_skipping_env):
     """Test single stage workflow with approval signal and full completion."""
-    async with await WorkflowEnvironment.start_time_skipping() as env:
+    async with time_skipping_env() as env:
         task_queue_name = str(uuid.uuid4())
 
         async with Worker(

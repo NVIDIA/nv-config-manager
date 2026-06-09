@@ -70,16 +70,17 @@ export const IBPKeyCreationWorkflowForm = () => {
     const params: IBPKeyCreationRequest = { host: data.host };
     if (data.pkey) params.pkey = data.pkey;
 
-    await startWorkflow("/v1/workflow/ngc/ib_pkey_creation", params).catch(
-      (error) => {
-        toast({
-          variant: "destructive",
-          title: "Workflow Failed",
-          description: typeof error === "string" ? error : String(error),
-        });
-        setIsSubmitting(false);
-      },
-    );
+    try {
+      await startWorkflow("/v1/workflow/ngc/ib_pkey_creation", params);
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Workflow Failed",
+        description: typeof error === "string" ? error : String(error),
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (

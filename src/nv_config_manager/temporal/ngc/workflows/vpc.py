@@ -107,6 +107,7 @@ class VpcCreationWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin):
     """VPC creation workflow for network virtualization."""
 
     # Workflow metadata
+    workflow_name = "VPC Creation"
     workflow_description = "Create VPC with route distinguisher assignment and VRF provisioning"
     workflow_input_class = VpcCreationInput
     workflow_api_endpoint = "/ngc/vpc_creation"
@@ -243,6 +244,7 @@ class VpcDeletionWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin):
     """VPC deletion workflow for network virtualization cleanup."""
 
     # Workflow metadata
+    workflow_name = "VPC Deletion"
     workflow_description = "Delete VPC and associated VRFs with validation checks"
     workflow_input_class = VpcDeletionInput
     workflow_api_endpoint = "/ngc/vpc_deletion"
@@ -367,6 +369,7 @@ class VpcAssignmentWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Arch
     """VPC assignment workflow for assigning VRFs to devices and ports."""
 
     # Workflow metadata
+    workflow_name = "VPC Assignment"
     workflow_description = "Assign VPC/VRF to a device and its specified ports"
     workflow_input_class = VpcAssignmentInput
     workflow_api_endpoint = "/ngc/vpc_assignment"
@@ -623,6 +626,7 @@ class VpcTenantChangeWorkflowOutput(BaseModel):
 class VpcTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, ArchiveMixin):
     """VPC tenant change workflow for assigning VPCs and deploying tenant config."""
 
+    workflow_name = "VPC Tenant Change"
     workflow_description = "Assign VPC to device and deploy tenant configuration"
     workflow_input_class = VpcTenantChangeInput
     workflow_api_endpoint = "/ngc/vpc-tenant-change"

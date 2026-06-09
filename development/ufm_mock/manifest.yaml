@@ -54,7 +54,8 @@ spec:
                 -days 365 \
                 -subj "/CN=ufm-mock" \
                 -addext "subjectAltName=DNS:ufm-mock,DNS:ufm-mock.${NAMESPACE},DNS:ufm-mock.${NAMESPACE}.svc,DNS:ufm-mock.${NAMESPACE}.svc.cluster.local"
-              chmod 644 /certs/tls.key /certs/tls.crt
+              chmod 600 /certs/tls.key
+              chmod 644 /certs/tls.crt
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

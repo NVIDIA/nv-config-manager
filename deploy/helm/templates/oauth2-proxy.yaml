@@ -188,6 +188,7 @@ spec:
   selector:
     matchLabels:
       app: {{ $oauth2ProxyName }}
+  {{- include "nv-config-manager.deploymentStrategy" (dict "root" .) | nindent 2 }}
   template:
     metadata:
       labels:

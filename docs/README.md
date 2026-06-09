@@ -32,8 +32,9 @@ make docs-preview
 
 The Next.js UI workflow screenshots use `ui/playwright.docs.config.ts` and the
 docs-only spec in `ui/tests/docs-screenshots/`. The spec starts the UI, serves
-mocked workflow API parameter data, pre-populates workflow forms with stable URL
-parameters, and writes PNGs to `docs/assets/images/workflows/`.
+mocked workflow API data, pre-populates workflow forms with stable URL
+parameters, captures workflow page states, and writes PNGs to
+`docs/assets/images/workflows/`.
 
 Live screenshots against `https://nvcm.air` are also possible when the browser
 is launched through the DSX Air SOCKS tunnel, but those are less reproducible

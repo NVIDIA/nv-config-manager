@@ -14,6 +14,8 @@
 # limitations under the License.
 """Workflow Metadata Mixin."""
 
+import re
+
 from pydantic import BaseModel
 
 
@@ -21,10 +23,18 @@ class WorkflowMetadataMixin:
     """Mixin to provide metadata for workflows."""
 
     # Class attributes that should be overridden in workflow classes
+    workflow_name: str | None = None
     workflow_description: str | None = None
     workflow_input_class: type[BaseModel] | None = None
     workflow_api_endpoint: str | None = None
     workflow_namespace: str | None = None
+
+    @classmethod
+    def get_workflow_name(cls) -> str:
+        """Get the human-readable workflow name."""
+        if cls.workflow_name is None:
+            raise ValueError(f"Workflow {cls.__name__} is missing workflow_name metadata")
+        return cls.workflow_name
 
     @classmethod
     def get_workflow_description(cls) -> str:
@@ -56,8 +66,6 @@ class WorkflowMetadataMixin:
     @classmethod
     def get_workflow_cli_name(cls) -> str:
         """Get the CLI command name for this workflow."""
-        import re
-
         # Convert CamelCase to kebab-case
         name = cls.__name__
         # Remove 'Workflow' suffix if present
@@ -73,7 +81,8 @@ class WorkflowMetadataMixin:
     def has_complete_metadata(cls) -> bool:
         """Check if the workflow has complete metadata defined."""
         return (
-            cls.workflow_description is not None
+            cls.workflow_name is not None
+            and cls.workflow_description is not None
             and cls.workflow_input_class is not None
             and cls.workflow_api_endpoint is not None
         )

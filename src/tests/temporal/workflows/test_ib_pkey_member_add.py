@@ -14,7 +14,7 @@
 # limitations under the License.
 """Tests for IBPKey Member Add Workflow.
 
-Uses WorkflowEnvironment.start_time_skipping() with mocked HTTP responses
+Uses a registered Temporal time-skipping test environment with mocked HTTP responses
 for both UFM (via aioresponses) and Nautobot (via aioresponses).
 """
 
@@ -25,7 +25,6 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from aioresponses import aioresponses
-from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
 from nv_config_manager.temporal.common.secrets import clear_secrets_cache
@@ -195,11 +194,11 @@ def _stub_full_run(m: aioresponses) -> None:
 
 
 @pytest.mark.asyncio
-async def test_full_workflow_happy_path(mock_all_configs):
+async def test_full_workflow_happy_path(mock_all_configs, time_skipping_env):
     """Complete four-stage run with two interfaces."""
     task_queue = str(uuid.uuid4())
 
-    async with await WorkflowEnvironment.start_time_skipping() as env:
+    async with time_skipping_env() as env:
         async with Worker(
             env.client,
             task_queue=task_queue,
@@ -233,11 +232,11 @@ async def test_full_workflow_happy_path(mock_all_configs):
 
 
 @pytest.mark.asyncio
-async def test_idempotent_existing_assignments(mock_all_configs):
+async def test_idempotent_existing_assignments(mock_all_configs, time_skipping_env):
     """Existing OverlayAssignments are reused without creating duplicates."""
     task_queue = str(uuid.uuid4())
 
-    async with await WorkflowEnvironment.start_time_skipping() as env:
+    async with time_skipping_env() as env:
         async with Worker(
             env.client,
             task_queue=task_queue,
@@ -333,11 +332,11 @@ def test_input_rejects_bad_pkey_format(bad_pkey):
 
 
 @pytest.mark.asyncio
-async def test_guids_only_path(mock_all_configs):
+async def test_guids_only_path(mock_all_configs, time_skipping_env):
     """GUIDs-only input reverse-resolves through Nautobot and completes the workflow."""
     task_queue = str(uuid.uuid4())
 
-    async with await WorkflowEnvironment.start_time_skipping() as env:
+    async with time_skipping_env() as env:
         async with Worker(
             env.client,
             task_queue=task_queue,

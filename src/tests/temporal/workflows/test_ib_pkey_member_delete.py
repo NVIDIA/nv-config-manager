@@ -21,7 +21,6 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from aioresponses import aioresponses
-from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
 from nv_config_manager.temporal.common.secrets import clear_secrets_cache
@@ -185,11 +184,11 @@ def _stub_full_run(m: aioresponses) -> None:
 
 
 @pytest.mark.asyncio
-async def test_full_workflow_happy_path(mock_all_configs):
+async def test_full_workflow_happy_path(mock_all_configs, time_skipping_env):
     """Complete four-stage delete with two interfaces."""
     task_queue = str(uuid.uuid4())
 
-    async with await WorkflowEnvironment.start_time_skipping() as env:
+    async with time_skipping_env() as env:
         async with Worker(
             env.client,
             task_queue=task_queue,
@@ -224,11 +223,11 @@ async def test_full_workflow_happy_path(mock_all_configs):
 
 
 @pytest.mark.asyncio
-async def test_idempotent_no_existing_assignment(mock_all_configs):
+async def test_idempotent_no_existing_assignment(mock_all_configs, time_skipping_env):
     """If no OverlayAssignment exists for the interface, delete is a no-op for that one."""
     task_queue = str(uuid.uuid4())
 
-    async with await WorkflowEnvironment.start_time_skipping() as env:
+    async with time_skipping_env() as env:
         async with Worker(
             env.client,
             task_queue=task_queue,
@@ -306,11 +305,11 @@ def test_input_rejects_bad_pkey_format(bad_pkey):
 
 
 @pytest.mark.asyncio
-async def test_guids_only_path(mock_all_configs):
+async def test_guids_only_path(mock_all_configs, time_skipping_env):
     """GUIDs-only input reverse-resolves through Nautobot and completes the delete."""
     task_queue = str(uuid.uuid4())
 
-    async with await WorkflowEnvironment.start_time_skipping() as env:
+    async with time_skipping_env() as env:
         async with Worker(
             env.client,
             task_queue=task_queue,

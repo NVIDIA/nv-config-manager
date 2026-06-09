@@ -21,11 +21,11 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from aioresponses import aioresponses
-from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
 from nv_config_manager.temporal.common.secrets import clear_secrets_cache
 from nv_config_manager.temporal.ngc.activities.ib_nautobot import (
+    ResolvedInterface,
     fetch_pkey_assignments,
     resolve_guids_to_interfaces,
     resolve_ib_context,
@@ -43,6 +43,7 @@ from nv_config_manager.temporal.ngc.workflows.ib_pkey_member_update import (
     IBPKeyMemberUpdateOutput,
     IBPKeyMemberUpdateWorkflow,
     InterfaceRef,
+    _unresolved_guid_values,
 )
 from tests.temporal.ib_helpers import (
     stub_graphql_resolve_guids,
@@ -67,6 +68,20 @@ GUID_2 = "0002c903000e0b73"
 _NB_INTERFACES = re.compile(rf"{re.escape(NB_API)}/dcim/interfaces/.*")
 _NB_STATUSES = re.compile(rf"{re.escape(NB_API)}/extras/statuses/.*")
 _NB_ASSIGNMENTS = re.compile(rf"{re.escape(PLUGIN)}/overlay-assignments/.*")
+
+
+def test_unresolved_guid_values_detects_missing_removal_resolution():
+    """Defensive removal checks catch GUIDs dropped by reverse-resolution."""
+    resolved = [
+        ResolvedInterface(
+            device="hca01",
+            interface="mlx5_0",
+            interface_id=IFACE_UUID_1,
+            guid=GUID_1.upper(),
+        )
+    ]
+
+    assert _unresolved_guid_values([GUID_1, GUID_2], resolved) == [GUID_2]
 
 
 def _ufm_config() -> ConfigParser:
@@ -150,11 +165,11 @@ def _stub_status(m: aioresponses) -> None:
 
 
 @pytest.mark.asyncio
-async def test_additions_only_auto_approved(mock_all_configs):
+async def test_additions_only_auto_approved(mock_all_configs, time_skipping_env):
     """Workflow completes without approval gate when only adding members."""
     task_queue = str(uuid.uuid4())
 
-    async with await WorkflowEnvironment.start_time_skipping() as env:
+    async with time_skipping_env() as env:
         async with Worker(
             env.client,
             task_queue=task_queue,
@@ -228,11 +243,11 @@ async def test_additions_only_auto_approved(mock_all_configs):
 
 
 @pytest.mark.asyncio
-async def test_no_op_when_desired_matches_current(mock_all_configs):
+async def test_no_op_when_desired_matches_current(mock_all_configs, time_skipping_env):
     """Workflow completes with no writes when desired == current."""
     task_queue = str(uuid.uuid4())
 
-    async with await WorkflowEnvironment.start_time_skipping() as env:
+    async with time_skipping_env() as env:
         async with Worker(
             env.client,
             task_queue=task_queue,
@@ -338,11 +353,11 @@ def test_input_rejects_bad_pkey_format(bad_pkey):
 
 
 @pytest.mark.asyncio
-async def test_guids_only_path_resolves_via_graphql(mock_all_configs):
+async def test_guids_only_path_resolves_via_graphql(mock_all_configs, time_skipping_env):
     """GUIDs-only input reverse-resolves to interfaces and completes the workflow."""
     task_queue = str(uuid.uuid4())
 
-    async with await WorkflowEnvironment.start_time_skipping() as env:
+    async with time_skipping_env() as env:
         async with Worker(
             env.client,
             task_queue=task_queue,

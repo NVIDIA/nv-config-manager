@@ -189,7 +189,7 @@ test.describe("Cumulus Hardware Validation Form", () => {
     page,
   }) => {
     // Test multiple selections for Roles
-    await page.getByRole("button", { name: "Roles" }).click();
+    await page.locator("form").getByRole("button", { name: "Roles" }).click();
     await page.getByRole("dialog").getByText(ROLES_LIST.leaf).click();
     await page.getByRole("dialog").getByText(ROLES_LIST.spine).click();
     // Click outside to close any dropdown that might be open
@@ -246,7 +246,7 @@ test.describe("Cumulus Hardware Validation Form", () => {
       })
       .click();
 
-    await page.getByRole("button", { name: "Roles" }).click();
+    await page.locator("form").getByRole("button", { name: "Roles" }).click();
     await page.getByRole("dialog").getByText(ROLES_LIST.leaf).click();
     await page.getByRole("dialog").getByText(ROLES_LIST.spine).click();
     // Click outside to close any dropdown that might be open
@@ -307,7 +307,7 @@ test.describe("Cumulus Hardware Validation Form", () => {
       })
       .click();
 
-    await page.getByRole("button", { name: "Roles" }).click();
+    await page.locator("form").getByRole("button", { name: "Roles" }).click();
     await page.getByRole("dialog").getByText(ROLES_LIST.leaf).click();
     // Click outside to close any dropdown that might be open
     await page
@@ -345,7 +345,7 @@ test.describe("Cumulus Hardware Validation Form", () => {
 
   test("validates individual form fields", async ({ page }) => {
     // Test Site field validation
-    await page.getByRole("button", { name: "Roles" }).click();
+    await page.locator("form").getByRole("button", { name: "Roles" }).click();
     await page.getByRole("dialog").getByText(ROLES_LIST.leaf).click();
     // Click outside to close any dropdown that might be open
     await page
@@ -381,7 +381,7 @@ test.describe("Cumulus Hardware Validation Form", () => {
 
   test("clears multi-select fields correctly", async ({ page }) => {
     // Select multiple roles
-    await page.getByRole("button", { name: "Roles" }).click();
+    await page.locator("form").getByRole("button", { name: "Roles" }).click();
     await page.getByRole("dialog").getByText(ROLES_LIST.leaf).click();
     await page.getByRole("dialog").getByText(ROLES_LIST.spine).click();
     // Click outside to close any dropdown that might be open

@@ -45,6 +45,11 @@ class RedisClient(BaseRedisClient):
         key = self.query_key(workflow_id, query)
         return await self.get(key)
 
+    async def delete_cached_query(self, workflow_id: str, query: str) -> None:
+        """Delete cached workflow query data."""
+        key = self.query_key(workflow_id, query)
+        await self.delete(key)
+
     def result_key(self, workflow_id: str) -> str:
         """Generate cache key for workflow result."""
         return f"workflow:{workflow_id}:result"

@@ -41,6 +41,25 @@ Workload ServiceAccount (Vault K8s/JWT auth binds to this identity; must match V
 {{- end }}
 
 {{/*
+Deployment rollout strategy.
+Pass root and, optionally, strategy. Global strategy wins when set so local
+overrides can switch every Deployment to Recreate in one place.
+*/}}
+{{- define "nv-config-manager.deploymentStrategy" -}}
+{{- $globalStrategy := .root.Values.global.deploymentStrategy | default dict -}}
+{{- $strategy := $globalStrategy | default .strategy | default dict -}}
+{{- $type := $strategy.type | default "RollingUpdate" -}}
+strategy:
+  type: {{ $type }}
+{{- if eq $type "RollingUpdate" }}
+{{- $rollingUpdate := $strategy.rollingUpdate | default dict }}
+  rollingUpdate:
+    maxSurge: {{ $rollingUpdate.maxSurge | default "25%" }}
+    maxUnavailable: {{ $rollingUpdate.maxUnavailable | default 0 }}
+{{- end }}
+{{- end }}
+
+{{/*
 Generate the base hostname for the gateway
 */}}
 {{- define "nv-config-manager.hostname" -}}

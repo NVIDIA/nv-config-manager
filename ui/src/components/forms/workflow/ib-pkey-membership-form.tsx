@@ -41,7 +41,7 @@ import { WorkflowFormField } from "@/components/forms/formfield";
 import { startWorkflow } from "@/lib/utils";
 
 const PKEY_PATTERN = /^0[xX][0-9a-fA-F]{1,4}$/;
-const GUID_PATTERN = /^0x[0-9a-fA-F]{16}$/;
+const GUID_PATTERN = /^0[xX][0-9a-fA-F]{16}$/;
 
 const MEMBERSHIP_OPTIONS = [
   { key: "full", value: "full" },

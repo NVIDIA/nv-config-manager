@@ -93,6 +93,7 @@ class IBPKeyMemberAddOutput(BaseModel):
 class IBPKeyMemberAddWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin):
     """Add device interface GUIDs to an existing IB PKey partition."""
 
+    workflow_name = "InfiniBand PKey Member Add"
     workflow_description = "Add device interfaces to an existing InfiniBand PKey partition"
     workflow_input_class = IBPKeyMemberAddInput
     workflow_api_endpoint = "/ngc/ib_pkey_member_add"
