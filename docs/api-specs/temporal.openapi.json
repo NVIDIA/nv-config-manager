@@ -1731,6 +1731,10 @@
             ],
             "title": "Close Time"
           },
+          "failed_stage": {
+            "title": "Failed Stage",
+            "type": "boolean"
+          },
           "href": {
             "description": "Calculate URL to Temporal UI Workflow View.",
             "readOnly": true,
@@ -1824,6 +1828,7 @@
           "close_time",
           "status",
           "pending_approval",
+          "failed_stage",
           "search_attributes",
           "stages",
           "result",
@@ -2006,6 +2011,10 @@
             ],
             "title": "Close Time"
           },
+          "failed_stage": {
+            "title": "Failed Stage",
+            "type": "boolean"
+          },
           "href": {
             "description": "Calculate URL to Temporal UI Workflow View.",
             "readOnly": true,
@@ -2089,6 +2098,7 @@
           "close_time",
           "status",
           "pending_approval",
+          "failed_stage",
           "search_attributes",
           "href"
         ],
