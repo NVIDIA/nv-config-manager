@@ -16,7 +16,9 @@ When the computed diff contains any removals, the workflow pauses at the `valida
 
 Before running, confirm:
 
-- **PKey exists** and the desired Overlay record is linked. The workflow does not lazy-create overlays; use [IB PKey Member Add](../ib-pkey-member-add/index.mdx) once first if the Overlay is missing.
+- **PKey exists and the desired Overlay record is already created.** This workflow will not create Overlays. If the PKey has no Overlay linked in Nautobot, you have two options:
+  - Run [IB PKey Member Add](../ib-pkey-member-add/index.mdx) once first — it lazily creates an Overlay at the PKey's Site when the PKey row is orphaned — then come back to Update to reconcile membership.
+  - Create the Overlay manually in Nautobot under **Multi-Tenancy → Overlays → IB PKey** (click the `+` button), then return here.
 - **Every interface in the desired list has an `ib_guid`** populated in Nautobot (By-Interfaces mode only).
 - **You are ready to approve removals.** Any current member not in your submitted list will be removed.
 
