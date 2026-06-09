@@ -36,7 +36,7 @@ This mode is useful for:
 The mock device pods cover backup, cable validation, DHCP, and ZTP. Workflows that mutate device state — deploy, multi-deploy, reprovision, password rotation, and hardware validation — execute against the mock API but produce simplified or stub responses and are not a substitute for testing against real hardware.
 </Warning>
 
-See [`development/mock_devices/README.md`](../../development/mock_devices/README.md) for full documentation on the mock device CLI, fixture system, and all available make targets.
+See `development/mock_devices/README.md` for full documentation on the mock device CLI, fixture system, and all available make targets.
 
 ## Prerequisites
 
@@ -95,8 +95,7 @@ After `sandbox-up` completes:
 
 1. Run `make mock-dhcp-validate` to confirm DHCP reservations exist for all mock devices.
 1. Run `make mock-ztp-validate` to walk the full ZTP provisioning chain.
-1. Run `make mock-workflow-backup` and check the Temporal UI (`make port-forward`) to confirm the workflow completes.
-1. Run `./development/mock_devices/smoke-test.sh` to run all mock device make targets in one pass.
+1. Run `make mock-workflow-backup` and check the Temporal UI at `https://temporal.config-manager.local` to confirm the workflow completes.
 
 ## Access the local services
 
