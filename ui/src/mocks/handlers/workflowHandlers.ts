@@ -80,6 +80,45 @@ const workflowDisplayNames: Record<string, string> = {
   IBPortGuidDiscoveryWorkflow: "InfiniBand Port GUID Discovery",
 };
 
+const workflowEndpoints: Record<string, string> = {
+  BackupWorkflow: "/ngc/backup",
+  ConnectedHostMetadataWorkflow: "/ngc/connected_host_metadata",
+  DeployWorkflow: "/ngc/deploy",
+  TenantDeployWorkflow: "/ngc/tenant-deploy",
+  MultiDeployWorkflow: "/ngc/multi_deploy",
+  DeviceCableValidationWorkflow: "/ngc/device_cable_validation",
+  DevicePasswordRotationWorkflow: "/ngc/device_password_rotation",
+  HelloWorld: "/hello_world",
+  HelloWorldApproval: "/hello_world_approval",
+  PortLLDPInfoWorkflow: "/ngc/port_lldp_info",
+  RedfishProvisioningWorkflow: "/ngc/redfish_provisioning",
+  SiteCableValidationWorkflow: "/ngc/site_cable_validation",
+  SitePasswordRotationWorkflow: "/ngc/site_password_rotation",
+  VpcCreationWorkflow: "/ngc/vpc_creation",
+  VpcDeletionWorkflow: "/ngc/vpc_deletion",
+  VpcTenantChangeWorkflow: "/ngc/vpc-tenant-change",
+  InfinibandGetUnhealthyPortsWorkflow: "/ngc/infiniband_get_unhealthy_ports",
+  InfinibandCableValidationWorkflow: "/ngc/infiniband_cable_validation",
+  InfinibandMlnxOSUpgradeWorkflow: "/ngc/infiniband_mlnx_os_upgrade",
+  ReprovisionWorkflow: "/ngc/reprovision",
+  SwitchOsUpgradeWorkflow: "/ngc/switch_os_upgrade",
+  CumulusHardwareValidationWorkflow: "/ngc/cumulus_hardware_validation",
+  IBPKeyCreationWorkflow: "/ngc/ib_pkey_creation",
+  IBPKeyMemberAddWorkflow: "/ngc/ib_pkey_member_add",
+  IBPKeyMemberUpdateWorkflow: "/ngc/ib_pkey_member_update",
+  IBPKeyMemberDeleteWorkflow: "/ngc/ib_pkey_member_delete",
+  DiagnosticsWorkflow: "/ngc/diagnostics",
+  IBPortGuidDiscoveryWorkflow: "/ngc/ib_port_guid_discovery",
+};
+
+const getWorkflowEndpoint = (workflowType: string) => {
+  const endpoint = workflowEndpoints[workflowType];
+  if (!endpoint) {
+    throw new Error(`Missing mock workflow endpoint for ${workflowType}`);
+  }
+  return endpoint;
+};
+
 const getWorkflowExecuteRoles = (workflowType: string) =>
   workflowType === "MultiDeployWorkflow" ? ["nvcm-admin"] : ["all"];
 
@@ -88,7 +127,7 @@ export const workflowMetadata = {
     name: workflowType,
     display_name: workflowDisplayNames[workflowType] ?? workflowType,
     description: `${workflowDisplayNames[workflowType] ?? workflowType} workflow`,
-    endpoint: `/ngc/${workflowType.toLowerCase()}`,
+    endpoint: getWorkflowEndpoint(workflowType),
     namespace: "ngc",
     cli_name: workflowType.toLowerCase(),
     input_class: `${workflowType}Input`,
@@ -120,16 +159,29 @@ const filterWorkflows = (workflows: unknown[], url: URL) => {
   ];
 
   return workflows.filter((workflow) => {
-    const workflowRecord = workflow as { status?: string; workflow_type?: string };
+    const workflowRecord = workflow as {
+      pending_approval?: boolean;
+      status?: string;
+      workflow_type?: string;
+    };
     const workflowType = url.searchParams.get("workflow_type");
     const status = url.searchParams.get("status");
+    const pendingApproval =
+      url.searchParams.get("pending_approval")?.toLowerCase() === "true";
     const startTimeFilter = Date.parse(url.searchParams.get("start_time") ?? "");
     const endTimeFilter = Date.parse(url.searchParams.get("end_time") ?? "");
 
     if (workflowType && workflowRecord.workflow_type !== workflowType) {
       return false;
     }
-    if (status && workflowRecord.status !== status) {
+    if (pendingApproval && !workflowRecord.pending_approval) {
+      return false;
+    }
+    if (
+      status &&
+      workflowRecord.status !== status &&
+      !(pendingApproval && status === "RUNNING" && workflowRecord.pending_approval)
+    ) {
       return false;
     }
     if (!Number.isNaN(startTimeFilter) || !Number.isNaN(endTimeFilter)) {

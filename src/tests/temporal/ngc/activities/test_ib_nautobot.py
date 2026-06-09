@@ -663,6 +663,31 @@ class TestResolveIBContextForAdd:
                     ResolveIBContextInput(host=DEVICE_NAME, pkey="0x0100")
                 )
 
+    async def test_multiple_orphan_pkeys_raise(self, mock_nb_config: Any) -> None:
+        """Multiple unlinked PKey rows are ambiguous and must be cleaned up."""
+        gql_payload = {"data": {"devices": [_device_payload_no_overlays()]}}
+        orphan_a = {
+            "id": "orphan-pkey-a",
+            "name": "PKey-0x0100-a",
+            "pkey": "0x0100",
+            "overlay": None,
+        }
+        orphan_b = {
+            "id": "orphan-pkey-b",
+            "name": "PKey-0x0100-b",
+            "pkey": "0x0100",
+            "overlay": None,
+        }
+
+        with aioresponses() as m:
+            m.post(NB_GRAPHQL, payload=gql_payload)
+            m.get(f"{NB_PKEYS}?pkey=0x0100", payload={"results": [orphan_a, orphan_b]})
+
+            with pytest.raises(ApplicationError, match="Multiple orphan InfiniBandPKey rows"):
+                await resolve_ib_context_for_add(
+                    ResolveIBContextInput(host=DEVICE_NAME, pkey="0x0100")
+                )
+
     async def test_lazy_creates_at_device_location_not_site(self, mock_nb_config: Any) -> None:
         """When the device lives below the Site (e.g. Datahall), the new Overlay
         is placed at the device's immediate location, NOT promoted up to the Site.

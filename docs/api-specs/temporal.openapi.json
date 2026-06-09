@@ -1861,6 +1861,90 @@
         "title": "WorkflowListResponse",
         "type": "object"
       },
+      "WorkflowMetadata": {
+        "description": "Workflow metadata.",
+        "properties": {
+          "cli_name": {
+            "title": "Cli Name",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "endpoint": {
+            "title": "Endpoint",
+            "type": "string"
+          },
+          "execute_roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Execute Roles",
+            "type": "array"
+          },
+          "input_class": {
+            "title": "Input Class",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "namespace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Namespace"
+          },
+          "read_roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Read Roles",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "display_name",
+          "description",
+          "endpoint",
+          "namespace",
+          "cli_name",
+          "input_class",
+          "read_roles",
+          "execute_roles"
+        ],
+        "title": "WorkflowMetadata",
+        "type": "object"
+      },
+      "WorkflowMetadataResponse": {
+        "description": "Workflow metadata response.",
+        "properties": {
+          "workflows": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowMetadata"
+            },
+            "title": "Workflows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "workflows"
+        ],
+        "title": "WorkflowMetadataResponse",
+        "type": "object"
+      },
       "WorkflowResponse": {
         "description": "Workflow Response Model.",
         "properties": {
@@ -2893,6 +2977,56 @@
           },
           {
             "in": "query",
+            "name": "pending_approval",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pending Approval"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start_time",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start Time"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end_time",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End Time"
+            }
+          },
+          {
+            "in": "query",
             "name": "limit",
             "required": false,
             "schema": {
@@ -3028,6 +3162,28 @@
         "summary": "Execute HelloWorldApproval",
         "tags": [
           "workflow",
+          "workflow"
+        ]
+      }
+    },
+    "/v1/workflow/metadata": {
+      "get": {
+        "description": "Return registered workflow metadata and RBAC roles.",
+        "operationId": "get_workflow_metadata_v1_workflow_metadata_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowMetadataResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Workflow Metadata",
+        "tags": [
           "workflow"
         ]
       }
@@ -3679,7 +3835,7 @@
     },
     "/v1/workflow/ngc/infiniband_mlnx_os_upgrade": {
       "post": {
-        "description": "Upgrade Mellanox OS on Infiniband switches with validation and rollback capabilities",
+        "description": "Upgrade MLNX-OS on Infiniband switches with validation and rollback capabilities",
         "operationId": "infinibandmlnxosupgradeworkflow_endpoint_v1_workflow_ngc_infiniband_mlnx_os_upgrade_post",
         "requestBody": {
           "content": {
@@ -4281,7 +4437,7 @@
     },
     "/v1/workflow/types": {
       "get": {
-        "description": "Return the list of registered workflow types.",
+        "description": "Return registered workflow type names.",
         "operationId": "get_workflow_types_v1_workflow_types_get",
         "responses": {
           "200": {

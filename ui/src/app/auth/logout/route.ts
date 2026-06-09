@@ -35,6 +35,25 @@ const expiredCookie = (name: string, domain?: string): string => {
   ].join("");
 };
 
+const cookieDomains = (hostname: string): string[] => {
+  if (!hostname.includes(".") || hostname === "localhost") {
+    return [];
+  }
+
+  const labels = hostname.split(".").filter(Boolean);
+  const domains = new Set<string>();
+  domains.add(hostname);
+  domains.add(`.${hostname}`);
+
+  if (labels.length > 2) {
+    const parentDomain = labels.slice(1).join(".");
+    domains.add(parentDomain);
+    domains.add(`.${parentDomain}`);
+  }
+
+  return Array.from(domains);
+};
+
 export async function GET(request: NextRequest) {
   const response = new NextResponse(null, {
     status: 302,
@@ -43,13 +62,13 @@ export async function GET(request: NextRequest) {
     },
   });
   const hostname = request.nextUrl.hostname;
-  const cookieDomain = hostname.includes(".") ? hostname : undefined;
+  const domains = cookieDomains(hostname);
 
   OIDC_COOKIE_NAMES.forEach((name) => {
     response.headers.append("Set-Cookie", expiredCookie(name));
-    if (cookieDomain) {
-      response.headers.append("Set-Cookie", expiredCookie(name, cookieDomain));
-    }
+    domains.forEach((domain) => {
+      response.headers.append("Set-Cookie", expiredCookie(name, domain));
+    });
   });
 
   return response;

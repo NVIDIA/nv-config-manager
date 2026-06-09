@@ -26,6 +26,7 @@ from temporalio.worker import Worker
 
 from nv_config_manager.temporal.common.secrets import clear_secrets_cache
 from nv_config_manager.temporal.ngc.activities.ib_nautobot import (
+    ResolvedInterface,
     fetch_pkey_assignments,
     resolve_guids_to_interfaces,
     resolve_ib_context,
@@ -43,6 +44,7 @@ from nv_config_manager.temporal.ngc.workflows.ib_pkey_member_update import (
     IBPKeyMemberUpdateOutput,
     IBPKeyMemberUpdateWorkflow,
     InterfaceRef,
+    _unresolved_guid_values,
 )
 from tests.temporal.ib_helpers import (
     stub_graphql_resolve_guids,
@@ -67,6 +69,20 @@ GUID_2 = "0002c903000e0b73"
 _NB_INTERFACES = re.compile(rf"{re.escape(NB_API)}/dcim/interfaces/.*")
 _NB_STATUSES = re.compile(rf"{re.escape(NB_API)}/extras/statuses/.*")
 _NB_ASSIGNMENTS = re.compile(rf"{re.escape(PLUGIN)}/overlay-assignments/.*")
+
+
+def test_unresolved_guid_values_detects_missing_removal_resolution():
+    """Defensive removal checks catch GUIDs dropped by reverse-resolution."""
+    resolved = [
+        ResolvedInterface(
+            device="hca01",
+            interface="mlx5_0",
+            interface_id=IFACE_UUID_1,
+            guid=GUID_1.upper(),
+        )
+    ]
+
+    assert _unresolved_guid_values([GUID_1, GUID_2], resolved) == [GUID_2]
 
 
 def _ufm_config() -> ConfigParser:

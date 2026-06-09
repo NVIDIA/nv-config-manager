@@ -18,6 +18,7 @@ from datetime import timedelta
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 from temporalio import workflow
+from temporalio.exceptions import ApplicationError
 
 from nv_config_manager.temporal.common.decorators.workflow import run_nv_config_manager_workflow
 from nv_config_manager.temporal.common.mixins.metadata import WorkflowMetadataMixin
@@ -91,6 +92,14 @@ def _format_diff_lines(
 
     lines.append(f"- Unchanged: {len(guids_unchanged)} member(s)")
     return "\n".join(lines)
+
+
+def _unresolved_guid_values(
+    requested_guids: list[str], resolved_interfaces: list[ResolvedInterface]
+) -> list[str]:
+    """Return requested GUIDs that are missing from a reverse-resolution result."""
+    resolved_guids = {resolved.guid.lower() for resolved in resolved_interfaces}
+    return [guid for guid in requested_guids if guid.lower() not in resolved_guids]
 
 
 class IBPKeyMemberUpdateInput(BaseModel):
@@ -311,6 +320,12 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
                 retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
             )
             ifaces_to_remove = remove_resolution.resolved
+            unresolved_guids = _unresolved_guid_values(guids_to_remove, ifaces_to_remove)
+            if unresolved_guids:
+                raise ApplicationError(
+                    f"Unable to resolve removal GUID(s) to Nautobot interfaces: {unresolved_guids}",
+                    non_retryable=True,
+                )
 
         display = _format_diff_lines(
             pkey=stage_input.pkey,

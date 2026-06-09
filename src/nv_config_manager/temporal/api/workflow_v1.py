@@ -727,7 +727,10 @@ async def get_workflows(  # pylint: disable=R0913,R0914
     # RBAC search attributes
     admin_roles = RBACConfig().get_admin_roles()
     if not admin_roles.intersection(user_roles):
-        role_filters = [f"{READ_ROLES_SEARCH_ATTRIBUTE} = '{role}'" for role in sorted(user_roles)]
+        role_filters = [
+            f"{READ_ROLES_SEARCH_ATTRIBUTE} = '{_sanitize_visibility_value(role, 'role')}'"
+            for role in sorted(user_roles)
+        ]
         role_filter = " or ".join(role_filters)
         filters.append(f"({role_filter})")
     query = " and ".join(filters) if filters else None

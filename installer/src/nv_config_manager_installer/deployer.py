@@ -41,6 +41,8 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, Protocol
 
+import yaml
+
 from nv_config_manager_installer.accounts import build_config_secrets_ini
 from nv_config_manager_installer.helm_values import generate_helm_values
 from nv_config_manager_installer.k8s import (
@@ -586,51 +588,28 @@ def _run_logged_pipe(
     return subprocess.CompletedProcess(sink_cmd, sink.returncode, stdout_text, stderr_text)
 
 
-def _yaml_documents(text: str) -> list[str]:
-    """Split a simple multi-document YAML stream."""
-    documents: list[str] = []
-    current: list[str] = []
-    for line in text.splitlines():
-        if line.strip() == "---":
-            document = "\n".join(current).strip()
-            if document:
-                documents.append(document)
-            current = []
-            continue
-        current.append(line)
-
-    document = "\n".join(current).strip()
-    if document:
-        documents.append(document)
-    return documents
-
-
-def _crd_metadata_name(document: str) -> str | None:
-    """Return metadata.name from a CRD document."""
-    in_metadata = False
-    for line in document.splitlines():
-        if line == "metadata:":
-            in_metadata = True
-            continue
-        if not in_metadata:
-            continue
-        if line.startswith("  name: "):
-            return line.split(":", 1)[1].strip()
-        if line and not line.startswith(" "):
-            return None
-    return None
-
-
 def _filter_envoy_gateway_crds(crd_stream: str) -> str:
     """Keep only Envoy Gateway CRDs from a Helm chart CRD stream."""
     documents = [
         document
-        for document in _yaml_documents(crd_stream)
-        if (_crd_metadata_name(document) or "").endswith(".gateway.envoyproxy.io")
+        for document in yaml.safe_load_all(crd_stream)
+        if isinstance(document, dict)
+        and _document_metadata_name(document).endswith(".gateway.envoyproxy.io")
     ]
     if not documents:
         raise RuntimeError("Envoy Gateway chart did not include gateway.envoyproxy.io CRDs")
-    return "\n---\n".join(documents) + "\n"
+    return (
+        "\n---\n".join(yaml.safe_dump(document, sort_keys=False).strip() for document in documents)
+        + "\n"
+    )
+
+
+def _document_metadata_name(document: dict[str, Any]) -> str:
+    """Return metadata.name from a parsed Kubernetes document."""
+    metadata = document.get("metadata")
+    if not isinstance(metadata, dict):
+        return ""
+    return str(metadata.get("name", ""))
 
 
 def _apply_envoy_gateway_crds(

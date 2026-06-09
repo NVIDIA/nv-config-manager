@@ -188,15 +188,17 @@ def start_port_forward(args: argparse.Namespace) -> subprocess.Popen[bytes] | No
     )
 
     deadline = time.monotonic() + 30
+    forwarded_address = f"127.0.0.1:{args.local_port}"
     while time.monotonic() < deadline:
         if process.poll() is not None:
             raise RuntimeError("kubectl port-forward exited before Temporal became reachable.")
-        if can_connect(host, port):
+        if can_connect("127.0.0.1", args.local_port):
+            args.temporal_address = forwarded_address
             return process
         time.sleep(0.25)
 
     process.terminate()
-    raise TimeoutError(f"Timed out waiting for Temporal at {args.temporal_address}")
+    raise TimeoutError(f"Timed out waiting for Temporal at {forwarded_address}")
 
 
 def stop_port_forward(process: subprocess.Popen[bytes] | None) -> None:

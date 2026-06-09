@@ -380,6 +380,10 @@ spec:
         {{- include "nv-config-manager.customLabelsEnv" . | nindent 8 }}
         - name: TEMPORAL_ADDRESS
           value: "{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.temporal.services.frontend.port }}"
+        {{- if .Values.localDev.enableLocalTestWorkflows }}
+        - name: NVCM_ENABLE_LOCAL_TEST_WORKFLOWS
+          value: "true"
+        {{- end }}
         {{- if .Values.secrets.vault.configSecrets.enabled }}
         - name: NV_CONFIG_MANAGER_CONFIG_SECRET_PATH
           value: {{ include "nv-config-manager.vaultAgent.configSecretsFilePath" (dict "root" . "path" .Values.temporal.configManagerWorker.configSecrets.path) | quote }}

@@ -29,7 +29,7 @@ from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
 from nv_config_manager.temporal.common.decorators.workflow import run_nv_config_manager_workflow
-from nv_config_manager.temporal.common.mixins.stage import StageMixin, stage_executor
+from nv_config_manager.temporal.common.mixins.stage import StateEnum, StageMixin, stage_executor
 from nv_config_manager.temporal.hello_world.activities.hello_world import (
     hello_world_activity,
     hello_world_prompt_activity,
@@ -41,6 +41,38 @@ from nv_config_manager.temporal.hello_world.workflows.hello_world_workflow impor
     HelloWorldInput,
 )
 from nv_config_manager.temporal.ngc.activities.slack import SlackMessageInput, SlackMessageOutput
+
+
+@patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
+@patch("nv_config_manager.temporal.common.mixins.stage.workflow.upsert_search_attributes")
+def test_unreachable_stage_cascades_to_direct_dependents(mock_upsert, mock_time):
+    workflow_state = StageMixin()
+    workflow_state.define_stage(
+        name="source",
+        description="Source",
+        depends_on=[],
+        requires_approval=False,
+    )
+    workflow_state.define_stage(
+        name="dependent",
+        description="Dependent",
+        depends_on=["source"],
+        requires_approval=False,
+    )
+    workflow_state.define_stage(
+        name="unrelated",
+        description="Unrelated",
+        depends_on=[],
+        requires_approval=False,
+    )
+
+    workflow_state.set_stage_state("source", StateEnum.UNREACHABLE)
+
+    assert workflow_state.get_stage_state("source") == StateEnum.UNREACHABLE
+    assert workflow_state.get_stage_state("dependent") == StateEnum.UNREACHABLE
+    assert workflow_state.get_stage_state("unrelated") == StateEnum.NOT_STARTED
+    assert mock_time.called
+    assert mock_upsert.called
 
 
 @activity.defn(name="send_slack_message")

@@ -569,7 +569,9 @@ def _build_oidc(config: NVConfigManagerInstallConfig, values: dict[str, Any]) ->
     values["oidc"] = oidc
 
     if config.cluster.mock_devices:
-        values.setdefault("localDev", {})["mockDevices"] = True
+        local_dev = values.setdefault("localDev", {})
+        local_dev["mockDevices"] = True
+        local_dev["enableLocalTestWorkflows"] = True
 
 
 def _build_postgres_section(pg: ExternalPostgresConfig) -> dict[str, Any]:

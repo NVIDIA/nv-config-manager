@@ -92,7 +92,7 @@ class LogoutRedirectMiddleware:
         response = self.get_response(request)
         if (
             self._redirect_url
-            and request.path == "/logout/"
+            and request.path_info == "/logout/"
             and response.status_code in {301, 302, 303, 307, 308}
         ):
             response["Location"] = self._redirect_url

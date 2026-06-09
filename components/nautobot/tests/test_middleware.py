@@ -194,7 +194,7 @@ class TestLogoutRedirectMiddleware:
         response = _RedirectResponse(Location="/")
         get_response = MagicMock(return_value=response)
         request = MagicMock()
-        request.path = "/logout/"
+        request.path_info = "/logout/"
 
         mw = mod.LogoutRedirectMiddleware(get_response=get_response)
         result = mw(request)
@@ -211,7 +211,39 @@ class TestLogoutRedirectMiddleware:
         response = _RedirectResponse(Location="/")
         get_response = MagicMock(return_value=response)
         request = MagicMock()
-        request.path = "/"
+        request.path_info = "/"
+
+        mw = mod.LogoutRedirectMiddleware(get_response=get_response)
+        result = mw(request)
+
+        assert result["Location"] == "/"
+
+    def test_leaves_logout_unchanged_without_redirect_env(self, monkeypatch):
+        monkeypatch.delenv("NAUTOBOT_LOGOUT_REDIRECT_URL", raising=False)
+        mod = _import_module()
+
+        response = _RedirectResponse(Location="/")
+        get_response = MagicMock(return_value=response)
+        request = MagicMock()
+        request.path_info = "/logout/"
+
+        mw = mod.LogoutRedirectMiddleware(get_response=get_response)
+        result = mw(request)
+
+        assert result["Location"] == "/"
+
+    def test_leaves_non_redirect_logout_response_unchanged(self, monkeypatch):
+        monkeypatch.setenv(
+            "NAUTOBOT_LOGOUT_REDIRECT_URL",
+            "https://nautobot.config-manager.local/oauth2/logout",
+        )
+        mod = _import_module()
+
+        response = _RedirectResponse(Location="/")
+        response.status_code = 200
+        get_response = MagicMock(return_value=response)
+        request = MagicMock()
+        request.path_info = "/logout/"
 
         mw = mod.LogoutRedirectMiddleware(get_response=get_response)
         result = mw(request)

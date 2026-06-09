@@ -730,7 +730,23 @@ export async function mockInfinibandCableValidationEndpoint(page: Page) {
 }
 
 const IB_PKEY_PATTERN = /^0[xX][0-9a-fA-F]{1,4}$/;
-const IB_GUID_PATTERN = /^0x[0-9a-fA-F]{16}$/;
+const IB_GUID_PATTERN = /^0[xX][0-9a-fA-F]{16}$/;
+
+function isValidIbInterfaceRef(entry: unknown): entry is {
+  device: string;
+  interface: string;
+} {
+  if (!entry || typeof entry !== "object") {
+    return false;
+  }
+  const ref = entry as { device?: unknown; interface?: unknown };
+  return (
+    typeof ref.device === "string" &&
+    ref.device.trim().length > 0 &&
+    typeof ref.interface === "string" &&
+    ref.interface.trim().length > 0
+  );
+}
 
 function validateIbPkeyMembershipBody(body: {
   host?: string;
@@ -750,12 +766,24 @@ function validateIbPkeyMembershipBody(body: {
       json: { error: "pkey must match /^0[xX][0-9a-fA-F]{1,4}$/" },
     };
   }
-  const hasInterfaces = (body.interfaces?.length ?? 0) > 0;
-  const hasGuids = (body.guids?.length ?? 0) > 0;
+  const hasInterfaces =
+    Array.isArray(body.interfaces) && body.interfaces.length > 0;
+  const hasGuids = Array.isArray(body.guids) && body.guids.length > 0;
   if (hasInterfaces === hasGuids) {
     return {
       status: 400,
       json: { error: "Provide exactly one of 'interfaces' or 'guids'" },
+    };
+  }
+  if (
+    hasInterfaces &&
+    body.interfaces!.some((entry) => !isValidIbInterfaceRef(entry))
+  ) {
+    return {
+      status: 400,
+      json: {
+        error: "Each interfaces entry must include non-empty 'device' and 'interface'",
+      },
     };
   }
   if (hasGuids && body.guids!.some((g) => !IB_GUID_PATTERN.test(g))) {
@@ -1134,6 +1162,39 @@ export async function mockWorkflowMetadataEndpoint(page: Page) {
     DiagnosticsWorkflow: "Device Diagnostics",
     IBPortGuidDiscoveryWorkflow: "InfiniBand Port GUID Discovery",
   };
+  const workflowEndpoints: Record<string, string> = {
+    BackupWorkflow: "/ngc/backup",
+    ConnectedHostMetadataWorkflow: "/ngc/connected_host_metadata",
+    DeployWorkflow: "/ngc/deploy",
+    TenantDeployWorkflow: "/ngc/tenant-deploy",
+    MultiDeployWorkflow: "/ngc/multi_deploy",
+    DeviceCableValidationWorkflow: "/ngc/device_cable_validation",
+    DevicePasswordRotationWorkflow: "/ngc/device_password_rotation",
+    HelloWorld: "/hello_world",
+    HelloWorldApproval: "/hello_world_approval",
+    PortLLDPInfoWorkflow: "/ngc/port_lldp_info",
+    RedfishProvisioningWorkflow: "/ngc/redfish_provisioning",
+    SiteCableValidationWorkflow: "/ngc/site_cable_validation",
+    SitePasswordRotationWorkflow: "/ngc/site_password_rotation",
+    VpcCreationWorkflow: "/ngc/vpc_creation",
+    VpcDeletionWorkflow: "/ngc/vpc_deletion",
+    VpcTenantChangeWorkflow: "/ngc/vpc-tenant-change",
+    InfinibandGetUnhealthyPortsWorkflow: "/ngc/infiniband_get_unhealthy_ports",
+    InfinibandCableValidationWorkflow: "/ngc/infiniband_cable_validation",
+    InfinibandMlnxOSUpgradeWorkflow: "/ngc/infiniband_mlnx_os_upgrade",
+    ReprovisionWorkflow: "/ngc/reprovision",
+    SwitchOsUpgradeWorkflow: "/ngc/switch_os_upgrade",
+    CumulusHardwareValidationWorkflow: "/ngc/cumulus_hardware_validation",
+    DiagnosticsWorkflow: "/ngc/diagnostics",
+    IBPortGuidDiscoveryWorkflow: "/ngc/ib_port_guid_discovery",
+  };
+  const getWorkflowEndpoint = (workflowType: string) => {
+    const endpoint = workflowEndpoints[workflowType];
+    if (!endpoint) {
+      throw new Error(`Missing mock workflow endpoint for ${workflowType}`);
+    }
+    return endpoint;
+  };
   const getWorkflowExecuteRoles = (workflowType: string) =>
     workflowType === "MultiDeployWorkflow" ? ["nvcm-admin"] : ["all"];
   const workflowMetadata = {
@@ -1141,7 +1202,7 @@ export async function mockWorkflowMetadataEndpoint(page: Page) {
       name: workflowType,
       display_name: workflowDisplayNames[workflowType] ?? workflowType,
       description: `${workflowDisplayNames[workflowType] ?? workflowType} workflow`,
-      endpoint: `/ngc/${workflowType.toLowerCase()}`,
+      endpoint: getWorkflowEndpoint(workflowType),
       namespace: "ngc",
       cli_name: workflowType.toLowerCase(),
       input_class: `${workflowType}Input`,
@@ -1192,7 +1253,16 @@ export async function mockWorkflowsListEndpoint(page: Page) {
       }
 
       const status = url.searchParams.get("status");
-      if (status && workflow.status !== status) {
+      const pendingApproval =
+        url.searchParams.get("pending_approval")?.toLowerCase() === "true";
+      if (pendingApproval && !workflow.pending_approval) {
+        return false;
+      }
+      if (
+        status &&
+        workflow.status !== status &&
+        !(pendingApproval && status === "RUNNING" && workflow.pending_approval)
+      ) {
         return false;
       }
 

@@ -1016,6 +1016,16 @@ async def test_workflows(mock_rbac_config, mock_redis, mock_client):
         next_page_token=None,
     )
 
+    rsp = client.get(
+        "/v1/workflow",
+        headers={
+            "X-Auth-Request-Email": "user@nvidia.com",
+            "X-AUTH-REQUEST-GROUPS": "ngc-gni, bad'role",
+        },
+    )
+    assert rsp.status_code == 400
+    assert rsp.json() == {"detail": "Invalid characters in query parameter 'role'"}
+
     # Modify the X-AUTH-REQUEST-GROUPS header and test filter change
     # admin roles can see all workflows, so ReadRoles is not added to the filter
     rsp = client.get(

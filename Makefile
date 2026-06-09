@@ -17,6 +17,7 @@ KIND_SEC_KEYCLOAK_HOSTNAME ?= keycloak.$(KIND_SEC_HOSTNAME)
 KIND_SEC_SPIFFE_TRUST_DOMAIN ?= $(KIND_SEC_HOSTNAME)
 KIND_SEC_OIDC_CLIENT_SECRET ?= nvcm-local-client-secret
 KIND_SEC_KEYCLOAK_ADMIN_PASSWORD ?= admin
+KIND_SEC_RENDERED_CONFIG ?= /tmp/nvcm-local-sec-$(KIND_CLUSTER_NAME).yaml
 WORKFLOW_PERF_COUNT ?= 100
 WORKFLOW_PERF_RUNNING_COUNT ?= 150
 WORKFLOW_PERF_FAILED_COUNT ?= 1
@@ -788,7 +789,16 @@ kind-up-sec:
 		--spiffe-trust-domain $(KIND_SEC_SPIFFE_TRUST_DOMAIN) \
 		--keycloak-admin-password $(KIND_SEC_KEYCLOAK_ADMIN_PASSWORD) \
 		--oidc-client-secret $(KIND_SEC_OIDC_CLIENT_SECRET)
-	cd installer && uv run nv-config-manager-installer deploy ../$(KIND_SEC_INSTALL_CONFIG) \
+	uv run python scripts/render-local-security-config \
+		--input $(KIND_SEC_INSTALL_CONFIG) \
+		--output $(abspath $(KIND_SEC_RENDERED_CONFIG)) \
+		--namespace $(KIND_SEC_NAMESPACE) \
+		--release-name $(RELEASE_NAME) \
+		--hostname $(KIND_SEC_HOSTNAME) \
+		--keycloak-hostname $(KIND_SEC_KEYCLOAK_HOSTNAME) \
+		--spiffe-trust-domain $(KIND_SEC_SPIFFE_TRUST_DOMAIN) \
+		--oidc-client-secret $(KIND_SEC_OIDC_CLIENT_SECRET)
+	cd installer && uv run nv-config-manager-installer deploy $(abspath $(KIND_SEC_RENDERED_CONFIG)) \
 		--image-source local \
 		--build-images \
 		--load-kind \

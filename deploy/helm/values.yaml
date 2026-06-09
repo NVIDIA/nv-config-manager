@@ -170,6 +170,8 @@ localDev:
   # Enable mock network device connections (returns stub data, no real SSH/API calls)
   # Set to true in local Kind environments where worker pods can't reach real devices
   mockDevices: false
+  # Register long-running test workflows used by local workflow-list latency seeding.
+  enableLocalTestWorkflows: false
 # =============================================================================
 # Secrets Configuration
 # =============================================================================
@@ -2508,8 +2510,8 @@ nautobot:
     #
     # For /api/ paths:
     #   - OIDC redirect is disabled (no login prompt)
-  #   - Authorization bearer JWT is optional and claims are extracted if present
-  #   - Nautobot handles its own token auth for requests without JWT
+    #   - Authorization bearer JWT is optional and claims are extracted if present
+    #   - Nautobot handles its own token auth for requests without JWT
     #
     # This enables both SSO users (with JWT) and API clients (with native tokens)
     # to access the same endpoints.
@@ -2517,7 +2519,6 @@ nautobot:
     authBypass:
       enabled: true
       paths:
-        - /login/
         - /logout/
         - /api/
   # Ingress (optional, for direct access)

@@ -27,6 +27,9 @@ OIDC_CLIENT_SECRET="nvcm-local-client-secret"
 GATEWAY_API_VERSION="v1.4.1"
 ENVOY_GATEWAY_VERSION="v1.6.5"
 CERT_MANAGER_VERSION="v1.20.2"
+SPIRE_CRDS_VERSION="0.5.0"
+SPIRE_VERSION="0.29.0"
+KEYCLOAK_CONFIG_IMAGE="curlimages/curl:8.15.0"
 if [[ -f "$OPERATOR_VERSIONS_FILE" ]]; then
     # shellcheck disable=SC1090
     source "$OPERATOR_VERSIONS_FILE"
@@ -48,34 +51,47 @@ Options:
 EOF
 }
 
+require_option_value() {
+    local option="$1"
+    local value="${2:-}"
+
+    if [[ -z "$value" || "$value" == --* ]]; then
+        echo "Missing value for $option" >&2
+        usage >&2
+        exit 1
+    fi
+
+    printf '%s\n' "$value"
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --cluster-name)
-            CLUSTER_NAME="$2"
+            CLUSTER_NAME="$(require_option_value "$1" "${2:-}")"
             shift 2
             ;;
         --app-namespace)
-            APP_NAMESPACE="$2"
+            APP_NAMESPACE="$(require_option_value "$1" "${2:-}")"
             shift 2
             ;;
         --base-hostname)
-            BASE_HOSTNAME="$2"
+            BASE_HOSTNAME="$(require_option_value "$1" "${2:-}")"
             shift 2
             ;;
         --keycloak-hostname)
-            KEYCLOAK_HOSTNAME="$2"
+            KEYCLOAK_HOSTNAME="$(require_option_value "$1" "${2:-}")"
             shift 2
             ;;
         --spiffe-trust-domain)
-            SPIFFE_TRUST_DOMAIN="$2"
+            SPIFFE_TRUST_DOMAIN="$(require_option_value "$1" "${2:-}")"
             shift 2
             ;;
         --keycloak-admin-password)
-            KEYCLOAK_ADMIN_PASSWORD="$2"
+            KEYCLOAK_ADMIN_PASSWORD="$(require_option_value "$1" "${2:-}")"
             shift 2
             ;;
         --oidc-client-secret)
-            OIDC_CLIENT_SECRET="$2"
+            OIDC_CLIENT_SECRET="$(require_option_value "$1" "${2:-}")"
             shift 2
             ;;
         --help|-h)
@@ -282,11 +298,13 @@ install_spire() {
     helm repo update
 
     helm upgrade --install spire-crds spiffe/spire-crds \
+        --version "${SPIRE_CRDS_VERSION}" \
         --namespace spire-system \
         --create-namespace \
         --wait --timeout 2m
 
     helm upgrade --install spire spiffe/spire \
+        --version "${SPIRE_VERSION}" \
         --namespace spire-system \
         --set global.spire.trustDomain="$SPIFFE_TRUST_DOMAIN" \
         --set global.spire.clusterName="$CLUSTER_NAME" \
@@ -422,7 +440,7 @@ KEYCLOAK_DEPLOY_EOF
 
 configure_keycloak_realm() {
     kubectl delete job keycloak-config -n keycloak 2>/dev/null || true
-    kubectl apply -f - <<'KEYCLOAK_CONFIG_EOF'
+    cat <<'KEYCLOAK_CONFIG_EOF' | sed "s|__KEYCLOAK_CONFIG_IMAGE__|${KEYCLOAK_CONFIG_IMAGE}|g" | kubectl apply -f -
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -436,7 +454,7 @@ spec:
       restartPolicy: OnFailure
       containers:
       - name: config
-        image: curlimages/curl:latest
+        image: __KEYCLOAK_CONFIG_IMAGE__
         env:
         - name: KEYCLOAK_ADMIN_PASSWORD
           valueFrom:

@@ -263,6 +263,15 @@ async def _find_orphan_pkey(
         params={"pkey": pkey},
     )
     items = [item for item in results.get("results", []) if item.get("overlay") is None]
+    if len(items) > 1:
+        details = ", ".join(
+            f"id={item.get('id', '<missing>')}, name={item.get('name', '<missing>')}"
+            for item in items
+        )
+        raise ApplicationError(
+            f"Multiple orphan InfiniBandPKey rows found for {pkey}: {details}",
+            non_retryable=True,
+        )
     return items[0] if items else None
 
 

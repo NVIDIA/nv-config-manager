@@ -382,7 +382,7 @@ class StageMixin(BaseMixin):
 
         if state == StateEnum.UNREACHABLE:
             # Set all stages dependent on this stage as unreachable as well
-            for dependent_stage in self.stages_by_dependency(stage):
+            for dependent_stage in self.stages_by_dependency(stage.name):
                 dependent_stage.transition(state)
             self._upsert_stage_state_search_attributes()
 
@@ -404,7 +404,7 @@ class StageMixin(BaseMixin):
         """Return a list of stages by their current state."""
         return [stage for stage in self._stages if stage.state == state]
 
-    def stages_by_dependency(self, dependency: Stage) -> list[Stage]:
+    def stages_by_dependency(self, dependency: str) -> list[Stage]:
         """Return a list of stages dependent on a given stage."""
         return [stage for stage in self._stages if dependency in stage.depends_on]
 

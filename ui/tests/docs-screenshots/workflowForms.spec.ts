@@ -61,6 +61,42 @@ const DOC_WORKFLOW_DISPLAY_NAMES: Record<string, string> = {
   IBPortGuidDiscoveryWorkflow: "InfiniBand Port GUID Discovery",
 };
 
+const DOC_WORKFLOW_ENDPOINTS: Record<string, string> = {
+  BackupWorkflow: "/ngc/backup",
+  ConnectedHostMetadataWorkflow: "/ngc/connected_host_metadata",
+  DeployWorkflow: "/ngc/deploy",
+  TenantDeployWorkflow: "/ngc/tenant-deploy",
+  MultiDeployWorkflow: "/ngc/multi_deploy",
+  DeviceCableValidationWorkflow: "/ngc/device_cable_validation",
+  DevicePasswordRotationWorkflow: "/ngc/device_password_rotation",
+  PortLLDPInfoWorkflow: "/ngc/port_lldp_info",
+  SiteCableValidationWorkflow: "/ngc/site_cable_validation",
+  SitePasswordRotationWorkflow: "/ngc/site_password_rotation",
+  VpcCreationWorkflow: "/ngc/vpc_creation",
+  VpcDeletionWorkflow: "/ngc/vpc_deletion",
+  VpcTenantChangeWorkflow: "/ngc/vpc-tenant-change",
+  InfinibandGetUnhealthyPortsWorkflow: "/ngc/infiniband_get_unhealthy_ports",
+  InfinibandCableValidationWorkflow: "/ngc/infiniband_cable_validation",
+  InfinibandMlnxOSUpgradeWorkflow: "/ngc/infiniband_mlnx_os_upgrade",
+  ReprovisionWorkflow: "/ngc/reprovision",
+  SwitchOsUpgradeWorkflow: "/ngc/switch_os_upgrade",
+  CumulusHardwareValidationWorkflow: "/ngc/cumulus_hardware_validation",
+  IBPKeyCreationWorkflow: "/ngc/ib_pkey_creation",
+  IBPKeyMemberAddWorkflow: "/ngc/ib_pkey_member_add",
+  IBPKeyMemberUpdateWorkflow: "/ngc/ib_pkey_member_update",
+  IBPKeyMemberDeleteWorkflow: "/ngc/ib_pkey_member_delete",
+  DiagnosticsWorkflow: "/ngc/diagnostics",
+  IBPortGuidDiscoveryWorkflow: "/ngc/ib_port_guid_discovery",
+};
+
+function getDocWorkflowEndpoint(workflowType: string): string {
+  const endpoint = DOC_WORKFLOW_ENDPOINTS[workflowType];
+  if (!endpoint) {
+    throw new Error(`Missing docs workflow endpoint for ${workflowType}`);
+  }
+  return endpoint;
+}
+
 type ParameterOption = {
   id: string;
   name: string;
@@ -236,7 +272,7 @@ const DOC_WORKFLOW_METADATA = {
       name: workflowType,
       display_name: displayName,
       description: `${displayName} workflow`,
-      endpoint: `/ngc/${workflowType.toLowerCase()}`,
+      endpoint: getDocWorkflowEndpoint(workflowType),
       namespace: "ngc",
       cli_name: workflowType.toLowerCase(),
       input_class: `${workflowType}Input`,
