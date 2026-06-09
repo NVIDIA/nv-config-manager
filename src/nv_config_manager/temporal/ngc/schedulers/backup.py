@@ -18,6 +18,7 @@ import asyncio
 import logging
 import os
 import signal
+from collections.abc import Sequence
 from datetime import timedelta
 from uuid import uuid4
 
@@ -137,13 +138,17 @@ query ($is_aggregate_managed: Boolean) {
         failed_stage_key = SearchAttributeKey.for_bool(FAILED_STAGE_SEARCH_ATTRIBUTE)
 
         typed_search_attributes = TypedSearchAttributes(
-            [
+            (
                 SearchAttributePair(user_key, "nv-config-manager-temporal"),
-                SearchAttributePair(read_roles_key, sorted(workflow_roles["read_roles"])),
-                SearchAttributePair(execute_roles_key, sorted(workflow_roles["execute_roles"])),
-                SearchAttributePair(pending_approval_key, False),
-                SearchAttributePair(failed_stage_key, False),
-            ]
+                SearchAttributePair[Sequence[str]](
+                    read_roles_key, sorted(workflow_roles["read_roles"])
+                ),
+                SearchAttributePair[Sequence[str]](
+                    execute_roles_key, sorted(workflow_roles["execute_roles"])
+                ),
+                SearchAttributePair[bool](pending_approval_key, False),
+                SearchAttributePair[bool](failed_stage_key, False),
+            )
         )
 
         await temporal_client.create_schedule(

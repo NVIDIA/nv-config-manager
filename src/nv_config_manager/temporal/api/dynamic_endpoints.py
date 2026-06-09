@@ -163,7 +163,7 @@ def register_dynamic_endpoints(router: APIRouter) -> None:
 
 def get_registered_workflows_info(*, include_rbac: bool = False) -> dict[str, dict[str, Any]]:
     """Get information about all registered workflows with metadata."""
-    workflows_info = {}
+    workflows_info: dict[str, dict[str, Any]] = {}
     rbac_config = RBACConfig() if include_rbac else None
 
     all_workflows = NGC_WORKFLOWS + HELLO_WORLD_WORKFLOWS

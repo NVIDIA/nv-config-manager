@@ -120,6 +120,7 @@ type DocWorkflow = {
   close_time: string | null;
   status: string;
   pending_approval: boolean;
+  failed_stage?: boolean;
   stages: unknown[];
   result: unknown;
   search_attributes: Record<string, Array<string | boolean>>;
@@ -287,7 +288,7 @@ const DOC_WORKFLOWS: DocWorkflow[] = [
   createDocWorkflow({
     id: "workflow-20260608-000001",
     workflowType: "DeployWorkflow",
-    status: "PENDING_APPROVAL",
+    status: "RUNNING",
     pendingApproval: true,
     user: "demo",
     site: AIR_SITE,
@@ -780,6 +781,12 @@ function filterWorkflows(url: URL): DocWorkflow[] {
   const endTimeFilter = Date.parse(url.searchParams.get("end_time") ?? "");
 
   return DOC_WORKFLOWS.filter((workflow) => {
+    const displayStatus = workflow.failed_stage
+      ? "FAILED"
+      : workflow.pending_approval
+        ? "PENDING_APPROVAL"
+        : workflow.status;
+
     if (workflowType && workflow.workflow_type !== workflowType) {
       return false;
     }
@@ -790,7 +797,7 @@ function filterWorkflows(url: URL): DocWorkflow[] {
 
     if (
       status &&
-      workflow.status !== status &&
+      displayStatus !== status &&
       !(pendingApproval && status === "RUNNING" && workflow.pending_approval)
     ) {
       return false;

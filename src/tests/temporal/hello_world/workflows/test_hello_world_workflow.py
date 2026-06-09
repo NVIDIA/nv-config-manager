@@ -16,11 +16,15 @@ import asyncio
 import re
 import uuid
 from datetime import timedelta
-from time import sleep
 from unittest.mock import patch
 
 import pytest
 from temporalio import activity, workflow
+from temporalio.api.enums.v1 import IndexedValueType
+from temporalio.api.operatorservice.v1 import (
+    AddSearchAttributesRequest,
+    ListSearchAttributesRequest,
+)
 from temporalio.client import WorkflowExecutionStatus, WorkflowFailureError
 from temporalio.common import RetryPolicy
 from temporalio.exceptions import ApplicationError
@@ -29,7 +33,11 @@ from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
 from nv_config_manager.temporal.common.decorators.workflow import run_nv_config_manager_workflow
-from nv_config_manager.temporal.common.mixins.stage import StateEnum, StageMixin, stage_executor
+from nv_config_manager.temporal.common.mixins.stage import StageMixin, StateEnum, stage_executor
+from nv_config_manager.temporal.common.search_attributes import (
+    FAILED_STAGE_SEARCH_ATTRIBUTE,
+    PENDING_APPROVAL_SEARCH_ATTRIBUTE,
+)
 from nv_config_manager.temporal.hello_world.activities.hello_world import (
     hello_world_activity,
     hello_world_prompt_activity,
@@ -81,10 +89,33 @@ async def send_slack_message(input: SlackMessageInput) -> SlackMessageOutput:
     return SlackMessageOutput(thread_ts="test-thread")
 
 
+async def start_workflow_environment() -> WorkflowEnvironment:
+    """Start a Temporal test environment with stage search attributes."""
+    env = await WorkflowEnvironment.start_local(
+        dev_server_extra_args=[
+            "--dynamic-config-value",
+            "system.forceSearchAttributesCacheRefreshOnRead=true",
+        ],
+    )
+    await env.client.operator_service.add_search_attributes(
+        AddSearchAttributesRequest(
+            namespace=env.client.namespace,
+            search_attributes={
+                PENDING_APPROVAL_SEARCH_ATTRIBUTE: IndexedValueType.INDEXED_VALUE_TYPE_BOOL,
+                FAILED_STAGE_SEARCH_ATTRIBUTE: IndexedValueType.INDEXED_VALUE_TYPE_BOOL,
+            },
+        )
+    )
+    await env.client.operator_service.list_search_attributes(
+        ListSearchAttributesRequest(namespace=env.client.namespace)
+    )
+    return env
+
+
 @pytest.mark.asyncio
 async def test_execute_workflow():
     task_queue_name = str(uuid.uuid4())
-    async with await WorkflowEnvironment.start_time_skipping() as env:
+    async with await start_workflow_environment() as env:
         async with Worker(
             env.client,
             task_queue=task_queue_name,
@@ -103,7 +134,7 @@ async def test_execute_workflow():
 @patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
 async def test_execute_workflow_approval(mock_time):
     task_queue_name = str(uuid.uuid4())
-    async with await WorkflowEnvironment.start_time_skipping() as env:
+    async with await start_workflow_environment() as env:
         async with Worker(
             env.client,
             task_queue=task_queue_name,
@@ -125,7 +156,7 @@ async def test_execute_workflow_approval(mock_time):
 
             # Confirm that the workflow does not advance
             while await handle.query("pending_approval") is False:
-                sleep(1)
+                await asyncio.sleep(0.1)
 
             workflow_description = await handle.describe()
             assert workflow_description.status == WorkflowExecutionStatus.RUNNING
@@ -297,7 +328,7 @@ async def test_execute_workflow_approval(mock_time):
 
             # Send reject signal
             while await handle.query("pending_approval") is False:
-                sleep(1)
+                await asyncio.sleep(0.1)
 
             assert await handle.query("stages") == expected_stages_preapprove
             await handle.signal("reject", {"stage_name": "prompt", "user": "Test"})
@@ -392,7 +423,7 @@ async def hello_world_exception() -> str:
 @patch("nv_config_manager.temporal.common.mixins.stage.traceback.format_exc", return_value="exists")
 async def test_retries(mock_tb, mock_time):
     task_queue_name = str(uuid.uuid4())
-    async with await WorkflowEnvironment.start_time_skipping() as env:
+    async with await start_workflow_environment() as env:
         async with Worker(
             env.client,
             task_queue=task_queue_name,
@@ -412,7 +443,7 @@ async def test_retries(mock_tb, mock_time):
 
             stages = await handle.query("stages")
             while stages[0]["state"] != "FAILED":
-                sleep(1)
+                await asyncio.sleep(0.1)
                 stages = await handle.query("stages")
 
             expected_stages = [
@@ -485,7 +516,7 @@ async def test_retries(mock_tb, mock_time):
             await handle.signal("retry", "prompt")
             stages = await handle.query("stages")
             while stages[0]["state"] != "FAILED":
-                sleep(1)
+                await asyncio.sleep(0.1)
                 stages = await handle.query("stages")
 
             expected_stages = [
@@ -566,7 +597,7 @@ async def hello_world_exception_non_retry() -> str:
 @patch("nv_config_manager.temporal.common.mixins.stage.traceback.format_exc", return_value="exists")
 async def test_non_retryable(mock_tb, mock_time):
     task_queue_name = str(uuid.uuid4())
-    async with await WorkflowEnvironment.start_time_skipping() as env:
+    async with await start_workflow_environment() as env:
         async with Worker(
             env.client,
             task_queue=task_queue_name,
@@ -595,7 +626,10 @@ async def test_non_retryable(mock_tb, mock_time):
 
             with pytest.raises(RPCError) as error:
                 await handle.signal("retry", "prompt")
-            assert error.value.message == "Completed workflow"
+            assert error.value.message in {
+                "Completed workflow",
+                "workflow execution already completed",
+            }
             stages = await handle.query("stages")
             assert stages == [
                 {
@@ -689,7 +723,7 @@ class MockHelloWorldStageFail(StageMixin):
 async def test_uncaught_exception_stage(mock_tb, mock_time):
     task_queue_name = str(uuid.uuid4())
 
-    async with await WorkflowEnvironment.start_time_skipping() as env:
+    async with await start_workflow_environment() as env:
         async with Worker(
             env.client,
             task_queue=task_queue_name,
@@ -729,7 +763,7 @@ class MockHelloWorldRunFail(StageMixin):
 async def test_uncaught_exception_run(mock_tb, mock_time):
     task_queue_name = str(uuid.uuid4())
 
-    async with await WorkflowEnvironment.start_time_skipping() as env:
+    async with await start_workflow_environment() as env:
         async with Worker(
             env.client,
             task_queue=task_queue_name,
@@ -780,8 +814,9 @@ class MockHelloWorldRunActivityTimeout(StageMixin):
 
 @pytest.mark.asyncio
 @patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
+@patch("nv_config_manager.temporal.common.mixins.stage.workflow.upsert_search_attributes")
 @patch("nv_config_manager.temporal.common.mixins.stage.traceback.format_exc", return_value="exists")
-async def test_workflow_activity_timeout(mock_tb, mock_time):
+async def test_workflow_activity_timeout(mock_tb, mock_upsert, mock_time):
     task_queue_name = str(uuid.uuid4())
 
     async with await WorkflowEnvironment.start_time_skipping() as env:
@@ -800,7 +835,7 @@ async def test_workflow_activity_timeout(mock_tb, mock_time):
 
             stages = await handle.query("stages")
             while stages[0]["state"] != "FAILED":
-                sleep(1)
+                await asyncio.sleep(0.1)
                 stages = await handle.query("stages")
 
             assert stages == [
@@ -831,7 +866,7 @@ async def test_workflow_activity_timeout(mock_tb, mock_time):
             await handle.signal("retry", "test")
             stages = await handle.query("stages")
             while stages[0]["state"] != "FAILED":
-                sleep(1)
+                await asyncio.sleep(0.1)
                 stages = await handle.query("stages")
             assert stages == [
                 {

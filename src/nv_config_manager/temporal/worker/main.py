@@ -17,6 +17,7 @@
 import asyncio
 import os
 from concurrent.futures import ThreadPoolExecutor
+from typing import Any
 
 from temporalio.client import Client
 from temporalio.worker import Worker
@@ -28,6 +29,8 @@ from nv_config_manager.temporal.hello_world.activities import (
 )
 from nv_config_manager.temporal.hello_world.workflows import (
     LOCAL_TEST_WORKFLOWS as HELLO_WORLD_LOCAL_TEST_WORKFLOWS,
+)
+from nv_config_manager.temporal.hello_world.workflows import (
     REGISTERED_WORKFLOWS as HELLO_WORLD_REGISTERED_WORKFLOWS,
 )
 from nv_config_manager.temporal.ngc.activities import (
@@ -56,7 +59,7 @@ async def main() -> None:
 
     # Combine activity lists - registered activities are lists of callables
     all_activities = [*NGC_REGISTERED_ACTIVITIES, *HELLO_WORLD_REGISTERED_ACTIVITIES]
-    workflows = [*NGC_REGISTERED_WORKFLOWS, *HELLO_WORLD_REGISTERED_WORKFLOWS]
+    workflows: list[type[Any]] = [*NGC_REGISTERED_WORKFLOWS, *HELLO_WORLD_REGISTERED_WORKFLOWS]
     if _enabled_env_flag("NVCM_ENABLE_LOCAL_TEST_WORKFLOWS"):
         workflows.extend(HELLO_WORLD_LOCAL_TEST_WORKFLOWS)
 

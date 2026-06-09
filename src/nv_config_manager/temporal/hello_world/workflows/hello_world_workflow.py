@@ -111,7 +111,7 @@ class HelloWorldRunning(StageMixin):
         )
 
     @workflow.run
-    async def run(self, workflow_input: HelloWorldInput) -> str:
+    async def run(self, workflow_input: HelloWorldInput) -> str:  # type: ignore[override, ty:invalid-method-override]
         """Run long enough to remain visible as a non-pending running workflow."""
         self.set_input(workflow_input)
         self.set_stage_state("running", StateEnum.IN_PROGRESS)

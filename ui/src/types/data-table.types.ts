@@ -204,6 +204,7 @@ export type Workflow = {
   close_time: ISODateTimeString | null;
   status: string;
   pending_approval: boolean;
+  failed_stage?: boolean;
   stages: WorkflowStage[];
   result: unknown;
   search_attributes: {

@@ -55,6 +55,16 @@ function getWorkflowStatusLabel(status: string): string {
   return workflowStatusLabels.get(status) ?? status;
 }
 
+function getWorkflowDisplayStatus(workflow: WorkflowColumns): string {
+  if (workflow.failed_stage) {
+    return "FAILED";
+  }
+  if (workflow.pending_approval) {
+    return "PENDING_APPROVAL";
+  }
+  return workflow.status;
+}
+
 function FilterValueIcon({
   label,
   param,
@@ -246,7 +256,8 @@ export const getWorkflowColumns = (
       },
     },
     {
-      accessorKey: "status",
+      accessorFn: (workflow) => getWorkflowDisplayStatus(workflow),
+      id: "status",
       meta: {
         className: "w-[10rem] min-w-[10rem] max-w-[10rem]",
         columnLabel: "Status",
@@ -258,7 +269,7 @@ export const getWorkflowColumns = (
         return <SortableHeaderButton column={column} title="Status" />;
       },
       cell: ({ row }) => {
-        const status = row.original.status;
+        const status = getWorkflowDisplayStatus(row.original);
 
         return (
           <FilterableValue

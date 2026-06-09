@@ -148,6 +148,22 @@ const getWorkflowStartTimestamp = (workflow: unknown): number => {
   return Date.parse(workflowRecord.start_time ?? "");
 };
 
+const getWorkflowDisplayStatus = (workflow: unknown): string => {
+  const workflowRecord = workflow as {
+    failed_stage?: boolean;
+    pending_approval?: boolean;
+    status?: string;
+  };
+
+  if (workflowRecord.failed_stage) {
+    return "FAILED";
+  }
+  if (workflowRecord.pending_approval) {
+    return "PENDING_APPROVAL";
+  }
+  return workflowRecord.status ?? "";
+};
+
 const filterWorkflows = (workflows: unknown[], url: URL) => {
   const searchAttributeFilters = [
     ["device_id", "DeviceID"],
@@ -179,7 +195,7 @@ const filterWorkflows = (workflows: unknown[], url: URL) => {
     }
     if (
       status &&
-      workflowRecord.status !== status &&
+      getWorkflowDisplayStatus(workflow) !== status &&
       !(pendingApproval && status === "RUNNING" && workflowRecord.pending_approval)
     ) {
       return false;

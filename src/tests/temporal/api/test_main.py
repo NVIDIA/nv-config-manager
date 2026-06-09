@@ -543,8 +543,9 @@ async def test_workflow_detail(mock_redis, mock_client):
         "started_by": "test",
         "start_time": "1970-01-01T00:00:00Z",
         "close_time": None,
-        "status": "PENDING_APPROVAL",
+        "status": "RUNNING",
         "pending_approval": True,
+        "failed_stage": False,
         "stages": [
             {
                 "approval_threshold": 1,
@@ -701,8 +702,10 @@ async def test_active_workflow_pending_false_is_not_cached(mock_redis, mock_load
 @pytest.mark.asyncio
 @patch("nv_config_manager.temporal.api.workflow_v1.load_config")
 @patch("nv_config_manager.temporal.api.workflow_v1.RedisClient")
-async def test_running_workflow_with_failed_stage_reports_failed(mock_redis, mock_load_config):
-    """Verify failed-stage workflows surface as failed even while Temporal is running."""
+async def test_running_workflow_with_failed_stage_exposes_failed_stage_flag(
+    mock_redis, mock_load_config
+):
+    """Verify failed-stage workflows expose the failed-stage flag."""
     cache = mock_redis.from_config.return_value
     cache.get_cached_query = AsyncMock(return_value={"user": "cached"})
     cache.cache_query = AsyncMock()
@@ -725,8 +728,9 @@ async def test_running_workflow_with_failed_stage_reports_failed(mock_redis, moc
 
     result = await WorkflowSummaryResponse.from_handle(handle)
 
-    assert result.status == "FAILED"
+    assert result.status == "RUNNING"
     assert result.pending_approval is False
+    assert result.failed_stage is True
     assert result.workflow_input == {"user": "cached"}
     handle.query.assert_not_awaited()
     cache.cache_query.assert_not_awaited()
@@ -918,8 +922,9 @@ async def test_workflows(mock_rbac_config, mock_redis, mock_client):
                 "started_by": "test",
                 "start_time": "1970-01-01T00:00:00Z",
                 "close_time": None,
-                "status": "PENDING_APPROVAL",
+                "status": "RUNNING",
                 "pending_approval": True,
+                "failed_stage": False,
                 "search_attributes": {"User": ["test"]},
                 "href": "http://localhost:8080/namespaces/default/workflows/mock_uuid1",
             },
@@ -930,8 +935,9 @@ async def test_workflows(mock_rbac_config, mock_redis, mock_client):
                 "started_by": "test",
                 "start_time": "1970-01-01T00:00:00Z",
                 "close_time": None,
-                "status": "PENDING_APPROVAL",
+                "status": "RUNNING",
                 "pending_approval": True,
+                "failed_stage": False,
                 "search_attributes": {"User": ["test"]},
                 "href": "http://localhost:8080/namespaces/default/workflows/mock_uuid2",
             },
@@ -942,8 +948,9 @@ async def test_workflows(mock_rbac_config, mock_redis, mock_client):
                 "started_by": "test",
                 "start_time": "1970-01-01T00:00:00Z",
                 "close_time": None,
-                "status": "PENDING_APPROVAL",
+                "status": "RUNNING",
                 "pending_approval": True,
+                "failed_stage": False,
                 "search_attributes": {"User": ["test"]},
                 "href": "http://localhost:8080/namespaces/default/workflows/mock_uuid3",
             },
@@ -953,7 +960,8 @@ async def test_workflows(mock_rbac_config, mock_redis, mock_client):
 
     rsp = client.get("/v1/workflow", params={"status": "PENDING_APPROVAL"})
     assert rsp.status_code == 200
-    assert all(workflow["status"] == "PENDING_APPROVAL" for workflow in rsp.json()["workflows"])
+    assert all(workflow["status"] == "RUNNING" for workflow in rsp.json()["workflows"])
+    assert all(workflow["pending_approval"] for workflow in rsp.json()["workflows"])
     mock_client.return_value.list_workflows.assert_called_with(
         "ExecutionStatus = 'Running' and PendingApproval = true and (ReadRoles = 'all')",
         limit=100,
@@ -966,7 +974,8 @@ async def test_workflows(mock_rbac_config, mock_redis, mock_client):
         params={"status": "RUNNING", "pending_approval": "true"},
     )
     assert rsp.status_code == 200
-    assert all(workflow["status"] == "PENDING_APPROVAL" for workflow in rsp.json()["workflows"])
+    assert all(workflow["status"] == "RUNNING" for workflow in rsp.json()["workflows"])
+    assert all(workflow["pending_approval"] for workflow in rsp.json()["workflows"])
     mock_client.return_value.list_workflows.assert_called_with(
         "ExecutionStatus = 'Running' and PendingApproval = true and (ReadRoles = 'all')",
         limit=100,

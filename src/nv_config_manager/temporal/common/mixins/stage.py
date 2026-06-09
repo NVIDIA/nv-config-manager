@@ -367,9 +367,13 @@ class StageMixin(BaseMixin):
         stage = self.get_stage_by_name(name)
         stage.child_workflows.append(workflow_id)
 
-    def set_stage_state(self, name: str, state: StateEnum) -> None:
+    def set_stage_state(
+        self, name: str, state: StateEnum, *, cascade_unreachable: bool = True
+    ) -> None:
         """Update stage progress."""
         stage = self.get_stage_by_name(name)
+        if stage.state == state:
+            return
         # Check dependencies
         if state == StateEnum.IN_PROGRESS:
             for dependency in stage.depends_on:
@@ -380,10 +384,11 @@ class StageMixin(BaseMixin):
         stage.transition(state)
         self._upsert_stage_state_search_attributes()
 
-        if state == StateEnum.UNREACHABLE:
+        if state == StateEnum.UNREACHABLE and cascade_unreachable:
             # Set all stages dependent on this stage as unreachable as well
             for dependent_stage in self.stages_by_dependency(stage.name):
-                dependent_stage.transition(state)
+                if dependent_stage.state != state:
+                    dependent_stage.transition(state)
             self._upsert_stage_state_search_attributes()
 
     def get_stage_state(self, name: str) -> StateEnum:

@@ -1255,12 +1255,19 @@ export async function mockWorkflowsListEndpoint(page: Page) {
       const status = url.searchParams.get("status");
       const pendingApproval =
         url.searchParams.get("pending_approval")?.toLowerCase() === "true";
+      const failedStage = Boolean((workflow as { failed_stage?: boolean }).failed_stage);
+      const displayStatus = failedStage
+        ? "FAILED"
+        : workflow.pending_approval
+          ? "PENDING_APPROVAL"
+          : workflow.status;
+
       if (pendingApproval && !workflow.pending_approval) {
         return false;
       }
       if (
         status &&
-        workflow.status !== status &&
+        displayStatus !== status &&
         !(pendingApproval && status === "RUNNING" && workflow.pending_approval)
       ) {
         return false;

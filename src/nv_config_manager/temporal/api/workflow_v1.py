@@ -190,6 +190,7 @@ class WorkflowSummaryResponse(WorkflowResponse):
     close_time: datetime | None
     status: str
     pending_approval: bool
+    failed_stage: bool
     search_attributes: SearchAttributes
 
     _NON_TERMINAL_STATES: ClassVar[set[StateEnum]] = {
@@ -205,16 +206,8 @@ class WorkflowSummaryResponse(WorkflowResponse):
     _ACTIVE_DURABLE_CACHEABLE_QUERIES: ClassVar[set[str]] = {"input", "pending_approval"}
 
     @staticmethod
-    def _status_name(
-        status: WorkflowExecutionStatus | None,
-        pending_approval: bool = False,
-        failed_stage: bool = False,
-    ) -> str:
-        """Return the API workflow status value."""
-        if failed_stage:
-            return StateEnum.FAILED.value
-        if pending_approval:
-            return StateEnum.PENDING_APPROVAL.value
+    def _temporal_status_name(status: WorkflowExecutionStatus | None) -> str:
+        """Return the raw Temporal workflow status value."""
         return status.name if status else "UNKNOWN"
 
     @staticmethod
@@ -354,13 +347,12 @@ class WorkflowSummaryResponse(WorkflowResponse):
             id=handle.id,
             started_by=user,
             workflow_input=workflow_input,
-            status=WorkflowSummaryResponse._status_name(
-                description.status, pending_approval, failed_stage
-            ),
+            status=WorkflowSummaryResponse._temporal_status_name(description.status),
             start_time=description.start_time,
             close_time=description.close_time,
             workflow_type=description.workflow_type,
             pending_approval=pending_approval,
+            failed_stage=failed_stage,
             search_attributes=description.search_attributes,
         )
 
@@ -451,13 +443,12 @@ class WorkflowDetailResponse(WorkflowSummaryResponse):
             id=handle.id,
             started_by=user,
             workflow_input=workflow_input,
-            status=WorkflowSummaryResponse._status_name(
-                description.status, pending_approval, failed_stage
-            ),
+            status=WorkflowSummaryResponse._temporal_status_name(description.status),
             start_time=description.start_time,
             close_time=description.close_time,
             workflow_type=description.workflow_type,
             pending_approval=pending_approval,
+            failed_stage=failed_stage,
             stages=stages,
             result=result,
             search_attributes=description.search_attributes,
