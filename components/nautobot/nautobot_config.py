@@ -95,9 +95,7 @@ DATABASES = {
             if METRICS_ENABLED  # noqa: F405
             else "django.db.backends.postgresql",
         ),  # Database driver ("mysql" or "postgresql")
-        "DISABLE_SERVER_SIDE_CURSORS": is_truthy(
-            os.getenv("NAUTOBOT_DB_DISABLE_SERVER_SIDE_CURSORS", "False")
-        ),
+        "DISABLE_SERVER_SIDE_CURSORS": is_truthy(os.getenv("NAUTOBOT_DB_DISABLE_SERVER_SIDE_CURSORS", "False")),
     }
 }
 
@@ -125,9 +123,7 @@ CSRF_TRUSTED_ORIGINS = [
     "https://localhost",
 ]
 if _csrf_env:
-    CSRF_TRUSTED_ORIGINS.extend(
-        [origin.strip() for origin in _csrf_env.split(",") if origin.strip()]
-    )
+    CSRF_TRUSTED_ORIGINS.extend([origin.strip() for origin in _csrf_env.split(",") if origin.strip()])
 
 LOGOUT_REDIRECT_URL = os.getenv(
     "NAUTOBOT_LOGOUT_REDIRECT_URL",

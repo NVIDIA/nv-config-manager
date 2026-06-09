@@ -108,6 +108,67 @@ check_spdx_header() {
     return 1
 }
 
+find_ruff_project_dir() {
+    local file="$1"
+    local dir
+    dir="$(dirname "$file")"
+
+    while [[ "$dir" != "." && "$dir" != "/" ]]; do
+        if [[ -f "$dir/pyproject.toml" ]]; then
+            echo "$dir"
+            return 0
+        fi
+        dir="$(dirname "$dir")"
+    done
+
+    echo "."
+}
+
+add_unique_project_dir() {
+    local project_dir="$1"
+    local existing
+
+    for existing in "${ruff_project_dirs[@]}"; do
+        if [[ "$existing" == "$project_dir" ]]; then
+            return 0
+        fi
+    done
+
+    ruff_project_dirs+=("$project_dir")
+}
+
+format_project_python_files() {
+    local project_dir="$1"
+    local project_files=()
+    local file
+    local file_project_dir
+
+    for file in "${staged_py_files[@]}"; do
+        file_project_dir="$(find_ruff_project_dir "$file")"
+        if [[ "$file_project_dir" != "$project_dir" ]]; then
+            continue
+        fi
+
+        if [[ "$project_dir" == "." ]]; then
+            project_files+=("$file")
+        else
+            project_files+=("${file#"$project_dir/"}")
+        fi
+    done
+
+    if [[ ${#project_files[@]} -eq 0 ]]; then
+        return 0
+    fi
+
+    if [[ "$project_dir" == "." ]]; then
+        echo -e "${YELLOW}Running ruff format on ${#project_files[@]} staged Python file(s) in repo root...${NC}"
+        uv run ruff format "${project_files[@]}"
+    else
+        echo -e "${YELLOW}Running ruff format on ${#project_files[@]} staged Python file(s) in ${project_dir}...${NC}"
+        (cd "$project_dir" && uv run ruff format "${project_files[@]}")
+    fi
+}
+
 # --- Ruff formatting ---
 staged_py_files=()
 for file in "${staged_files[@]}"; do
@@ -121,8 +182,15 @@ for file in "${staged_files[@]}"; do
 done
 
 if [[ ${#staged_py_files[@]} -gt 0 ]]; then
-    echo -e "${YELLOW}Running ruff format on staged Python files...${NC}"
-    uv run ruff format "${staged_py_files[@]}"
+    ruff_project_dirs=()
+    for file in "${staged_py_files[@]}"; do
+        add_unique_project_dir "$(find_ruff_project_dir "$file")"
+    done
+
+    for project_dir in "${ruff_project_dirs[@]}"; do
+        format_project_python_files "$project_dir"
+    done
+
     git add "${staged_py_files[@]}"
     echo -e "${GREEN}✓ Formatted ${#staged_py_files[@]} Python file(s)${NC}"
 fi
