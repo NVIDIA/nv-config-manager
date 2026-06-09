@@ -79,6 +79,7 @@ class DevicePasswordRotationWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
     """Network device password rotation workflow for security management."""
 
     # Workflow metadata
+    workflow_name = "Device Password Rotation"
     workflow_description = (
         "Rotate passwords on network devices with validation and approval workflow"
     )

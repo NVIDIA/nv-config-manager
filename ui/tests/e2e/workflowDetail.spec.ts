@@ -15,8 +15,61 @@
  * limitations under the License.
  */
 import { expect } from "@playwright/test";
-import { test, TEST_TIMEOUT } from "./shared/utils";
+import { test } from "./shared/utils";
 import { FORBIDDEN_WORKFLOW_ID } from "@/mocks/data";
+import { createGenericWorkflow } from "@/mocks/data/workflows/genericWorkflow";
+
+const createWorkflowWithStage = ({
+  id,
+  retryable,
+  stageName,
+  stageState,
+  status,
+}: {
+  id: string;
+  retryable: boolean;
+  stageName: string;
+  stageState: "FAILED" | "PENDING_APPROVAL";
+  status: string;
+}) => {
+  const workflow = createGenericWorkflow(id);
+  workflow.workflow_type = "DeployWorkflow";
+  workflow.status = status;
+  workflow.pending_approval = stageState === "PENDING_APPROVAL";
+  workflow.search_attributes = {
+    ExecuteRoles: ["all"],
+    ReadRoles: ["all"],
+    User: ["joliao"],
+  };
+  workflow.stages = [
+    {
+      name: stageName,
+      description: `${stageName} description`,
+      requires_approval: stageState === "PENDING_APPROVAL",
+      state: stageState,
+      output: { display: `${stageName} output` },
+      depends_on: [],
+      approvers: [],
+      rejecters: [],
+      approval_threshold: stageState === "PENDING_APPROVAL" ? 1 : 0,
+      state_history: [
+        {
+          state: "IN_PROGRESS",
+          time: "2025-07-03T22:12:19.012499+00:00",
+        },
+        {
+          state: stageState,
+          time: "2025-07-03T22:12:22.864934+00:00",
+        },
+      ],
+      retryable,
+      retry_count: 0,
+      traceback: stageState === "FAILED" ? "failed stage" : null,
+      execution_time: null,
+    },
+  ];
+  return workflow;
+};
 
 test.describe("Workflow Detail Page", () => {
   test("Test workflow detail page loads correctly", async ({ page }) => {
@@ -101,5 +154,162 @@ test.describe("Workflow Detail Page", () => {
     await expect(
       page.getByRole("heading", { name: "Access Denied", level: 3 })
     ).toBeVisible();
+  });
+
+  test("shows pending approval stage actions", async ({ page }) => {
+    const workflowId = "pending-approval-workflow";
+    const stageName = "review_config";
+    let approveCalled = false;
+    const workflow = createWorkflowWithStage({
+      id: workflowId,
+      retryable: false,
+      stageName,
+      stageState: "PENDING_APPROVAL",
+      status: "RUNNING",
+    });
+
+    await page.route(`**/v1/workflow/${workflowId}`, async (route) => {
+      await route.fulfill({ status: 200, json: workflow });
+    });
+    await page.route(
+      `**/v1/workflow/${workflowId}/approve/${stageName}`,
+      async (route) => {
+        approveCalled = true;
+        await route.fulfill({
+          status: 200,
+          json: {
+            id: workflowId,
+            href: `https://url-to-temporal.com/namespaces/default/workflows/${workflowId}`,
+          },
+        });
+      }
+    );
+
+    await page.goto(`/workflows/${workflowId}`);
+
+    await expect(
+      page.getByRole("heading", { name: stageName, exact: true })
+    ).toBeVisible();
+    await expect(page.getByText("Read Roles: all")).toBeVisible();
+    await expect(page.getByText("Execute Roles: all")).toBeVisible();
+
+    await page.getByRole("button", { name: "Approve" }).first().click();
+    await expect.poll(() => approveCalled).toBe(true);
+  });
+
+  test("requires confirmation before terminating a workflow", async ({ page }) => {
+    const workflowId = "running-workflow";
+    let terminateCalled = false;
+    const workflow = createWorkflowWithStage({
+      id: workflowId,
+      retryable: false,
+      stageName: "wait_for_approval",
+      stageState: "PENDING_APPROVAL",
+      status: "RUNNING",
+    });
+
+    await page.route(`**/v1/workflow/${workflowId}`, async (route) => {
+      await route.fulfill({ status: 200, json: workflow });
+    });
+    await page.route(`**/v1/workflow/${workflowId}/terminate`, async (route) => {
+      terminateCalled = true;
+      await route.fulfill({
+        status: 200,
+        json: {
+          id: workflowId,
+          href: `https://url-to-temporal.com/namespaces/default/workflows/${workflowId}`,
+        },
+      });
+    });
+
+    await page.goto(`/workflows/${workflowId}`);
+    await page.getByRole("button", { name: "Terminate" }).click();
+
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(page.getByText("Terminate Workflow?")).toBeVisible();
+    await expect.poll(() => terminateCalled).toBe(false);
+
+    await page.getByRole("button", { name: "Terminate Workflow" }).click();
+    await expect.poll(() => terminateCalled).toBe(true);
+  });
+
+  test("refreshes the selected stage detail panel when stage data updates", async ({
+    page,
+  }) => {
+    const workflowId = "refreshing-stage-workflow";
+    const stageName = "render_config";
+    let currentOutput = "initial stage output";
+
+    const createRefreshingWorkflow = () => {
+      const workflow = createGenericWorkflow(workflowId);
+      workflow.workflow_type = "DeployWorkflow";
+      workflow.status = "RUNNING";
+      workflow.search_attributes = {
+        ExecuteRoles: ["all"],
+        ReadRoles: ["all"],
+        User: ["joliao"],
+      };
+      workflow.stages = [
+        {
+          name: stageName,
+          description: "Render config description",
+          requires_approval: false,
+          state: "IN_PROGRESS",
+          output: { display: currentOutput },
+          depends_on: [],
+          approvers: [],
+          rejecters: [],
+          approval_threshold: 0,
+          state_history: [
+            {
+              state: "IN_PROGRESS",
+              time: "2025-07-03T22:12:19.012499+00:00",
+            },
+          ],
+          retryable: false,
+          retry_count: 0,
+          traceback: null,
+          execution_time: null,
+        },
+      ];
+      return workflow;
+    };
+
+    await page.route(`**/v1/workflow/${workflowId}`, async (route) => {
+      await route.fulfill({ status: 200, json: createRefreshingWorkflow() });
+    });
+
+    await page.goto(`/workflows/${workflowId}`);
+    await expect(page.getByText("initial stage output")).toBeVisible();
+
+    currentOutput = "refreshed stage output";
+    await expect(page.getByText("refreshed stage output")).toBeVisible({
+      timeout: 10000,
+    });
+    await expect(page.getByText("initial stage output")).toHaveCount(0);
+  });
+
+  test("does not show retry as an action for non-retryable failed stages", async ({
+    page,
+  }) => {
+    const workflowId = "non-retryable-failed-workflow";
+    const workflow = createWorkflowWithStage({
+      id: workflowId,
+      retryable: false,
+      stageName: "apply_config",
+      stageState: "FAILED",
+      status: "FAILED",
+    });
+
+    await page.route(`**/v1/workflow/${workflowId}`, async (route) => {
+      await route.fulfill({ status: 200, json: workflow });
+    });
+
+    await page.goto(`/workflows/${workflowId}`);
+
+    await expect(
+      page.getByText("This failed stage cannot be retried.")
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Retry" })).toHaveCount(0);
   });
 });

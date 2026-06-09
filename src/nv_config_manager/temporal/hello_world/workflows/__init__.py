@@ -17,6 +17,8 @@
 from nv_config_manager.temporal.hello_world.workflows.hello_world_workflow import (
     HelloWorld,
     HelloWorldApproval,
+    HelloWorldRunning,
 )
 
 REGISTERED_WORKFLOWS = [HelloWorld, HelloWorldApproval]
+LOCAL_TEST_WORKFLOWS = [HelloWorldRunning]

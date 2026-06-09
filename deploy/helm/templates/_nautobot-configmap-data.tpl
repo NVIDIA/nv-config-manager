@@ -26,6 +26,9 @@ NAUTOBOT_ALLOWED_HOSTS: "*"
 NAUTOBOT_CSRF_TRUSTED_ORIGINS: "https://{{ tpl .Values.nautobot.gateway.hostname . }},http://{{ .Values.nautobot.name }}-nv-config-manager"
 NAUTOBOT_DEBUG: "{{ .Values.nautobot.server.debug }}"
 NAUTOBOT_LOG_LEVEL: "{{ .Values.nautobot.server.logLevel }}"
+{{- if .Values.oidc.enabled }}
+NAUTOBOT_LOGOUT_REDIRECT_URL: "https://{{ tpl .Values.nautobot.gateway.hostname . }}/oauth2/logout"
+{{- end }}
 NAUTOBOT_DB_ENGINE: "django.db.backends.postgresql"
 NAUTOBOT_DB_HOST: "{{ tpl .Values.nautobot.server.db.host . }}"
 NAUTOBOT_DB_PORT: "{{ .Values.nautobot.server.db.port }}"

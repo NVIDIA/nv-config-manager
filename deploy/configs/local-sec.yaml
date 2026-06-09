@@ -1,0 +1,127 @@
+# =============================================================================
+# NVIDIA Config Manager - Local Security Development Config
+# =============================================================================
+# Pre-built config for local development with Keycloak SSO, SPIRE SPIFFE,
+# workflow RBAC, SuperPod mock topology, and test-site.
+# Usage:
+#   make kind-up-sec
+# =============================================================================
+
+version: "1"
+
+cluster:
+  hostname: config-manager.local
+  environment: local-sec
+  namespace: nv-config-manager
+  release_name: nv-config-manager
+  airgapped: false
+  mock_devices: true
+  size: small
+
+secrets:
+  method: kubernetes
+  config_manager_service_username: nv-config-manager
+  k8s:
+    nautobot_app:
+      values:
+        adminPassword: admin
+
+network_secrets:
+  - name: Hash Salt
+    description: Password hashing salt for user accounts
+    source: generate
+    secret_key: hash_salt
+    rotation: r1
+    required: true
+  - name: BGP Password
+    description: BGP peering authentication
+    source: generate
+    secret_key: bgp_password
+    rotation: r1
+    required: true
+  - name: Device Admin Password
+    description: Admin/root password for managed devices
+    source: generate
+    secret_key: root_password
+    rotation: r1
+    required: true
+  - name: NVIDIA Config Manager API Key
+    description: NVIDIA Config Manager service account device credential
+    source: generate
+    secret_key: api_user_key
+    rotation: r1
+    required: true
+
+sites:
+  - name: test-site
+
+sso:
+  enabled: true
+  provider: keycloak
+  issuer_url: https://keycloak.config-manager.local/realms/nv-config-manager
+  internal_issuer: http://keycloak.keycloak.svc.cluster.local:80/realms/nv-config-manager
+  jwks_uri: http://keycloak.keycloak.svc.cluster.local:80/realms/nv-config-manager/protocol/openid-connect/certs
+  client_id: nv-config-manager
+  client_secret: nvcm-local-client-secret
+  scopes: openid,email,profile
+  audiences: account,nv-config-manager
+
+spiffe:
+  enabled: true
+  provider: spire
+  auth_mode: jwt
+  trust_domain: config-manager.local
+  group_prefixes:
+    - spiffe://config-manager.local/ns/nv-config-manager=nv-config-manager
+
+content:
+  jobs:
+    - path: development/mock_topology
+  template_plugins: []
+  include_bootstrap_jobs: true
+  run_after_deploy:
+    - job: mock_topology.jobs.mock_topology_design.MockTopologyDesign
+      input: '{"blueprint": "superpod", "deployment_name": "test"}'
+
+services:
+  render: true
+  ztp: true
+  dhcp: true
+  temporal: true
+  config_store: true
+  nautobot: true
+
+rbac:
+  admin_roles:
+    - nvcm-admin
+  default_read_roles:
+    - nvcm-readonly
+    - nvcm-network
+    - nvcm-admin
+  default_execute_roles:
+    - nvcm-network
+    - nvcm-admin
+  workflow_overrides:
+    - name: DevicePasswordRotationWorkflow
+      read_roles:
+        - nvcm-network
+        - nvcm-admin
+      execute_roles:
+        - nvcm-admin
+    - name: SitePasswordRotationWorkflow
+      read_roles:
+        - nvcm-network
+        - nvcm-admin
+      execute_roles:
+        - nvcm-admin
+
+
+infrastructure:
+  gateway: envoyGateway
+  tls: true
+  cnpg_s3_backup:
+    enabled: false
+  monitoring:
+    enabled: false
+  load_balancer:
+    provider: ""

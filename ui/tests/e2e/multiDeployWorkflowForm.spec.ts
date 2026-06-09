@@ -44,7 +44,7 @@ test.describe("Multi-Deploy Workflow Form", () => {
     });
 
     // Fill in role (single select)
-    await page.getByRole("button", { name: "Role" }).click();
+    await page.locator("form").getByRole("button", { name: "Role" }).click();
     await page.getByRole("dialog").getByText(ROLES_LIST.wan).click();
 
     // Fill in batch size
@@ -114,7 +114,7 @@ test.describe("Multi-Deploy Workflow Form", () => {
     });
 
     // Fill in only the required field - role
-    await page.getByRole("button", { name: "Role" }).click();
+    await page.locator("form").getByRole("button", { name: "Role" }).click();
     await page.getByRole("dialog").getByText(ROLES_LIST.leaf).click();
 
     // Submit form
@@ -140,7 +140,7 @@ test.describe("Multi-Deploy Workflow Form", () => {
 
   test("validates batch size limits", async ({ page }) => {
     // Fill required field first (only role is required)
-    await page.getByRole("button", { name: "Role" }).click();
+    await page.locator("form").getByRole("button", { name: "Role" }).click();
     await page.getByRole("dialog").getByText(ROLES_LIST.leaf).click();
 
     // Test batch size too small
@@ -257,7 +257,7 @@ test.describe("Multi-Deploy Workflow Form", () => {
 
   test("handles forbidden location error", async ({ page }) => {
     // Fill in role
-    await page.getByRole("button", { name: "Role" }).click();
+    await page.locator("form").getByRole("button", { name: "Role" }).click();
     await page.getByRole("dialog").getByText(ROLES_LIST.leaf).click();
 
     // Fill in forbidden location
@@ -276,7 +276,7 @@ test.describe("Multi-Deploy Workflow Form", () => {
 
   test("allows only single role selection", async ({ page }) => {
     // Select first role
-    await page.getByRole("button", { name: "Role" }).click();
+    await page.locator("form").getByRole("button", { name: "Role" }).click();
     await page.getByRole("dialog").getByText(ROLES_LIST.leaf).click();
 
     // Try to select another role - it should replace the first one

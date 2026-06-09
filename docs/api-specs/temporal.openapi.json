@@ -413,7 +413,7 @@
         "type": "object"
       },
       "IBPKeyCreationInput": {
-        "description": "InfiniBand PKey Creation Workflow Input.\n\nBy default, auto-assigns the next available PKey. Pass an explicit\n``pkey`` value only when a specific partition key is required.",
+        "description": "InfiniBand PKey Creation Workflow Input.\n\nBy default, auto-assigns the next available PKey. Pass an explicit\n``pkey`` value only when a specific partition key is required.\n\n``site`` is optional. When omitted, the workflow resolves the device's\nSite-typed Nautobot location from ``host`` and uses that as the UFM\ncredential lookup key. Pass ``site`` explicitly to override the\nauto-resolved value (e.g. for API callers that want to skip the\nNautobot round-trip).",
         "properties": {
           "host": {
             "title": "Host",
@@ -423,22 +423,6 @@
             "default": true,
             "title": "Ip Over Ib",
             "type": "boolean"
-          },
-          "location_name": {
-            "default": "",
-            "title": "Location Name",
-            "type": "string"
-          },
-          "overlay_name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Overlay Name"
           },
           "pkey": {
             "anyOf": [
@@ -471,11 +455,6 @@
               }
             ],
             "title": "Site"
-          },
-          "tenant_name": {
-            "default": "",
-            "title": "Tenant Name",
-            "type": "string"
           }
         },
         "required": [
@@ -485,7 +464,7 @@
         "type": "object"
       },
       "IBPKeyMemberAddInput": {
-        "description": "InfiniBand PKey Member Add Workflow Input.\n\n``site`` and ``overlay_id`` are optional. If omitted they are resolved\nfrom Nautobot using ``host`` and ``pkey``.",
+        "description": "InfiniBand PKey Member Add Workflow Input.\n\nSite and Overlay are resolved server-side from ``host`` and ``pkey``.",
         "properties": {
           "guids": {
             "default": [],
@@ -517,31 +496,9 @@
             "title": "Membership Type",
             "type": "string"
           },
-          "overlay_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Overlay Id"
-          },
           "pkey": {
             "title": "Pkey",
             "type": "string"
-          },
-          "site": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Site"
           }
         },
         "required": [
@@ -552,7 +509,7 @@
         "type": "object"
       },
       "IBPKeyMemberDeleteInput": {
-        "description": "InfiniBand PKey Member Delete Workflow Input.\n\nProvide either ``interfaces`` (resolved to GUIDs via Nautobot) or\n``guids`` directly, but not both. ``site`` and ``overlay_id`` are\noptional; resolved from Nautobot via ``host`` and ``pkey`` if omitted.",
+        "description": "InfiniBand PKey Member Delete Workflow Input.\n\nProvide either ``interfaces`` (resolved to GUIDs via Nautobot) or\n``guids`` directly, but not both. Site and Overlay are resolved\nserver-side from ``host`` and ``pkey``.",
         "properties": {
           "guids": {
             "default": [],
@@ -574,31 +531,9 @@
             "title": "Interfaces",
             "type": "array"
           },
-          "overlay_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Overlay Id"
-          },
           "pkey": {
             "title": "Pkey",
             "type": "string"
-          },
-          "site": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Site"
           }
         },
         "required": [
@@ -609,7 +544,7 @@
         "type": "object"
       },
       "IBPKeyMemberUpdateInput": {
-        "description": "InfiniBand PKey Member Update Workflow Input.\n\n``site`` and ``overlay_id`` are optional; resolved from Nautobot via\n``host`` and ``pkey`` if omitted.",
+        "description": "InfiniBand PKey Member Update Workflow Input.\n\nSite and Overlay are resolved server-side from ``host`` and ``pkey``.",
         "properties": {
           "guids": {
             "default": [],
@@ -641,31 +576,9 @@
             "title": "Membership Type",
             "type": "string"
           },
-          "overlay_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Overlay Id"
-          },
           "pkey": {
             "title": "Pkey",
             "type": "string"
-          },
-          "site": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Site"
           }
         },
         "required": [
@@ -1818,6 +1731,10 @@
             ],
             "title": "Close Time"
           },
+          "failed_stage": {
+            "title": "Failed Stage",
+            "type": "boolean"
+          },
           "href": {
             "description": "Calculate URL to Temporal UI Workflow View.",
             "readOnly": true,
@@ -1911,6 +1828,7 @@
           "close_time",
           "status",
           "pending_approval",
+          "failed_stage",
           "search_attributes",
           "stages",
           "result",
@@ -1946,6 +1864,90 @@
           "next_page_token"
         ],
         "title": "WorkflowListResponse",
+        "type": "object"
+      },
+      "WorkflowMetadata": {
+        "description": "Workflow metadata.",
+        "properties": {
+          "cli_name": {
+            "title": "Cli Name",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "endpoint": {
+            "title": "Endpoint",
+            "type": "string"
+          },
+          "execute_roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Execute Roles",
+            "type": "array"
+          },
+          "input_class": {
+            "title": "Input Class",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "namespace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Namespace"
+          },
+          "read_roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Read Roles",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "display_name",
+          "description",
+          "endpoint",
+          "namespace",
+          "cli_name",
+          "input_class",
+          "read_roles",
+          "execute_roles"
+        ],
+        "title": "WorkflowMetadata",
+        "type": "object"
+      },
+      "WorkflowMetadataResponse": {
+        "description": "Workflow metadata response.",
+        "properties": {
+          "workflows": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowMetadata"
+            },
+            "title": "Workflows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "workflows"
+        ],
+        "title": "WorkflowMetadataResponse",
         "type": "object"
       },
       "WorkflowResponse": {
@@ -2008,6 +2010,10 @@
               }
             ],
             "title": "Close Time"
+          },
+          "failed_stage": {
+            "title": "Failed Stage",
+            "type": "boolean"
           },
           "href": {
             "description": "Calculate URL to Temporal UI Workflow View.",
@@ -2092,6 +2098,7 @@
           "close_time",
           "status",
           "pending_approval",
+          "failed_stage",
           "search_attributes",
           "href"
         ],
@@ -2980,6 +2987,56 @@
           },
           {
             "in": "query",
+            "name": "pending_approval",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pending Approval"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start_time",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start Time"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end_time",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End Time"
+            }
+          },
+          {
+            "in": "query",
             "name": "limit",
             "required": false,
             "schema": {
@@ -3115,6 +3172,28 @@
         "summary": "Execute HelloWorldApproval",
         "tags": [
           "workflow",
+          "workflow"
+        ]
+      }
+    },
+    "/v1/workflow/metadata": {
+      "get": {
+        "description": "Return registered workflow metadata and RBAC roles.",
+        "operationId": "get_workflow_metadata_v1_workflow_metadata_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowMetadataResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Workflow Metadata",
+        "tags": [
           "workflow"
         ]
       }
@@ -3766,7 +3845,7 @@
     },
     "/v1/workflow/ngc/infiniband_mlnx_os_upgrade": {
       "post": {
-        "description": "Upgrade Mellanox OS on Infiniband switches with validation and rollback capabilities",
+        "description": "Upgrade MLNX-OS on Infiniband switches with validation and rollback capabilities",
         "operationId": "infinibandmlnxosupgradeworkflow_endpoint_v1_workflow_ngc_infiniband_mlnx_os_upgrade_post",
         "requestBody": {
           "content": {
@@ -4368,7 +4447,7 @@
     },
     "/v1/workflow/types": {
       "get": {
-        "description": "Return the list of registered workflow types.",
+        "description": "Return registered workflow type names.",
         "operationId": "get_workflow_types_v1_workflow_types_get",
         "responses": {
           "200": {

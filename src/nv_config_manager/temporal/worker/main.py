@@ -17,6 +17,7 @@
 import asyncio
 import os
 from concurrent.futures import ThreadPoolExecutor
+from typing import Any
 
 from temporalio.client import Client
 from temporalio.worker import Worker
@@ -25,6 +26,9 @@ from nv_config_manager.common.log import configure_logging
 from nv_config_manager.temporal.converter import get_data_converter
 from nv_config_manager.temporal.hello_world.activities import (
     REGISTERED_ACTIVITIES as HELLO_WORLD_REGISTERED_ACTIVITIES,
+)
+from nv_config_manager.temporal.hello_world.workflows import (
+    LOCAL_TEST_WORKFLOWS as HELLO_WORLD_LOCAL_TEST_WORKFLOWS,
 )
 from nv_config_manager.temporal.hello_world.workflows import (
     REGISTERED_WORKFLOWS as HELLO_WORLD_REGISTERED_WORKFLOWS,
@@ -39,6 +43,11 @@ from nv_config_manager.temporal.ngc.workflows import (
 configure_logging(service="temporal-worker")
 
 
+def _enabled_env_flag(name: str) -> bool:
+    """Return true when an environment flag is explicitly enabled."""
+    return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 async def main() -> None:
     """Run the temporal worker."""
     temporal_server = os.getenv("TEMPORAL_ADDRESS", "localhost:7233")
@@ -50,11 +59,14 @@ async def main() -> None:
 
     # Combine activity lists - registered activities are lists of callables
     all_activities = [*NGC_REGISTERED_ACTIVITIES, *HELLO_WORLD_REGISTERED_ACTIVITIES]
+    workflows: list[type[Any]] = [*NGC_REGISTERED_WORKFLOWS, *HELLO_WORLD_REGISTERED_WORKFLOWS]
+    if _enabled_env_flag("NVCM_ENABLE_LOCAL_TEST_WORKFLOWS"):
+        workflows.extend(HELLO_WORLD_LOCAL_TEST_WORKFLOWS)
 
     worker = Worker(
         client,
         task_queue="default-task-queue",
-        workflows=[*NGC_REGISTERED_WORKFLOWS, *HELLO_WORLD_REGISTERED_WORKFLOWS],
+        workflows=workflows,
         activities=all_activities,  # type: ignore[arg-type]
         activity_executor=ThreadPoolExecutor(100),
     )

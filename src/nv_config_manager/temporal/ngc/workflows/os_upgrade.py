@@ -82,6 +82,7 @@ class SwitchOSUpgradeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Ar
     """Network switch OS upgrade workflow for firmware management."""
 
     # Workflow metadata
+    workflow_name = "Switch OS Upgrade"
     workflow_description = (
         "Upgrade network switch operating system with approval and validation workflow"
     )

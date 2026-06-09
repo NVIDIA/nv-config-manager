@@ -25,6 +25,13 @@ from temporalio import workflow
 from temporalio.exceptions import ApplicationError
 
 from nv_config_manager.temporal.common.mixins.base import BaseMixin
+from nv_config_manager.temporal.common.search_attributes import (
+    DEVICE_ID_SEARCH_ATTRIBUTE,
+    DEVICE_NAME_SEARCH_ATTRIBUTE,
+    DEVICE_PLATFORM_SEARCH_ATTRIBUTE,
+    DEVICE_ROLE_SEARCH_ATTRIBUTE,
+    SITE_SEARCH_ATTRIBUTE,
+)
 
 
 class Platform(StrEnum):
@@ -300,11 +307,11 @@ class DeviceMixin(BaseMixin):
     def attach_device_search_attributes(device: DeviceData) -> None:
         """Attach Device Metadata in search attributes."""
         attrs = {
-            "DeviceID": [device.id],
-            "DeviceRole": [device.role],
-            "Site": [device.site],
-            "DeviceName": [device.name],
+            DEVICE_ID_SEARCH_ATTRIBUTE: [device.id],
+            DEVICE_ROLE_SEARCH_ATTRIBUTE: [device.role],
+            SITE_SEARCH_ATTRIBUTE: [device.site],
+            DEVICE_NAME_SEARCH_ATTRIBUTE: [device.name],
         }
         if isinstance(device, NetworkDeviceData):
-            attrs["DevicePlatform"] = [device.platform]
+            attrs[DEVICE_PLATFORM_SEARCH_ATTRIBUTE] = [device.platform]
         workflow.upsert_search_attributes(attrs)
