@@ -1067,15 +1067,10 @@ mock-dhcp-validate: docker-build-mock-device
 	@echo "🔍 Running DHCP config validation for $(MOCK_DHCP_DEVICE)..."
 	kind load docker-image mock-device:local --name $(KIND_CLUSTER_NAME) 2>/dev/null || true
 	kubectl delete job mock-dhcp-validate -n $(NAMESPACE) --ignore-not-found 2>/dev/null
-	@kubectl port-forward -n $(NAMESPACE) svc/nv-config-manager-nautobot 18080:80 &>/dev/null & \
-	NB_PF=$$!; \
-	trap 'kill $$NB_PF 2>/dev/null' EXIT INT TERM; \
-	sleep 2; \
-	NB_TOKEN=$$(kubectl get secret nautobot-token -n $(NAMESPACE) -o jsonpath='{.data.token}' | base64 -d); \
-	MOCK_DHCP_MAC=$$(curl -s -H "Authorization: Token $$NB_TOKEN" \
-		"http://localhost:18080/api/dcim/interfaces/?device=$(MOCK_DHCP_DEVICE)&name=eth0&limit=1" \
+	@NB_TOKEN=$$(kubectl get secret nautobot-token -n $(NAMESPACE) -o jsonpath='{.data.token}' | base64 -d); \
+	MOCK_DHCP_MAC=$$(curl -sk -H "Authorization: Token $$NB_TOKEN" \
+		"https://nautobot.$(HOSTNAME)/api/dcim/interfaces/?device=$(MOCK_DHCP_DEVICE)&name=eth0&limit=1" \
 		| python3 -c "import json,sys; r=json.load(sys.stdin)['results']; print(r[0].get('mac_address') or '' if r else '')" 2>/dev/null); \
-	kill $$NB_PF 2>/dev/null; \
 	if [ -n "$$MOCK_DHCP_MAC" ]; then \
 		echo "   Using MAC from Nautobot: $$MOCK_DHCP_MAC"; \
 	else \
@@ -1097,15 +1092,10 @@ mock-dhcp-discover: docker-build-mock-device
 	@echo "📡 Running DHCP discover for $(MOCK_DHCP_DEVICE)..."
 	kind load docker-image mock-device:local --name $(KIND_CLUSTER_NAME) 2>/dev/null || true
 	kubectl delete job mock-dhcp-discover -n $(NAMESPACE) --ignore-not-found 2>/dev/null
-	@kubectl port-forward -n $(NAMESPACE) svc/nv-config-manager-nautobot 18080:80 &>/dev/null & \
-	NB_PF=$$!; \
-	trap 'kill $$NB_PF 2>/dev/null' EXIT INT TERM; \
-	sleep 2; \
-	NB_TOKEN=$$(kubectl get secret nautobot-token -n $(NAMESPACE) -o jsonpath='{.data.token}' | base64 -d); \
-	MOCK_DHCP_MAC=$$(curl -s -H "Authorization: Token $$NB_TOKEN" \
-		"http://localhost:18080/api/dcim/interfaces/?device=$(MOCK_DHCP_DEVICE)&name=eth0&limit=1" \
+	@NB_TOKEN=$$(kubectl get secret nautobot-token -n $(NAMESPACE) -o jsonpath='{.data.token}' | base64 -d); \
+	MOCK_DHCP_MAC=$$(curl -sk -H "Authorization: Token $$NB_TOKEN" \
+		"https://nautobot.$(HOSTNAME)/api/dcim/interfaces/?device=$(MOCK_DHCP_DEVICE)&name=eth0&limit=1" \
 		| python3 -c "import json,sys; r=json.load(sys.stdin)['results']; print(r[0].get('mac_address') or '' if r else '')" 2>/dev/null); \
-	kill $$NB_PF 2>/dev/null; \
 	if [ -n "$$MOCK_DHCP_MAC" ]; then \
 		echo "   Using MAC from Nautobot: $$MOCK_DHCP_MAC"; \
 	else \
@@ -1133,15 +1123,10 @@ mock-ztp-validate: docker-build-mock-device
 	@echo "🔗 Running ZTP validation for $(MOCK_ZTP_DEVICE)..."
 	kind load docker-image mock-device:local --name $(KIND_CLUSTER_NAME) 2>/dev/null || true
 	kubectl delete job mock-ztp-validate -n $(NAMESPACE) --ignore-not-found 2>/dev/null
-	@kubectl port-forward -n $(NAMESPACE) svc/nv-config-manager-nautobot 18080:80 &>/dev/null & \
-	NB_PF=$$!; \
-	trap 'kill $$NB_PF 2>/dev/null' EXIT INT TERM; \
-	sleep 2; \
-	NB_TOKEN=$$(kubectl get secret nautobot-token -n $(NAMESPACE) -o jsonpath='{.data.token}' | base64 -d); \
-	MOCK_ZTP_MAC=$$(curl -s -H "Authorization: Token $$NB_TOKEN" \
-		"http://localhost:18080/api/dcim/interfaces/?device=$(MOCK_ZTP_DEVICE)&name=eth0&limit=1" \
+	@NB_TOKEN=$$(kubectl get secret nautobot-token -n $(NAMESPACE) -o jsonpath='{.data.token}' | base64 -d); \
+	MOCK_ZTP_MAC=$$(curl -sk -H "Authorization: Token $$NB_TOKEN" \
+		"https://nautobot.$(HOSTNAME)/api/dcim/interfaces/?device=$(MOCK_ZTP_DEVICE)&name=eth0&limit=1" \
 		| python3 -c "import json,sys; r=json.load(sys.stdin)['results']; print(r[0].get('mac_address') or '' if r else '')" 2>/dev/null); \
-	kill $$NB_PF 2>/dev/null; \
 	if [ -n "$$MOCK_ZTP_MAC" ]; then \
 		echo "   Using MAC from Nautobot: $$MOCK_ZTP_MAC"; \
 	else \
@@ -1173,55 +1158,37 @@ mock-wire-devices: docker-build-mock-device
 MOCK_BACKUP_DEVICE ?= a04-u44-p01-tor-01
 mock-workflow-backup:
 	@echo "📦 Starting backup workflow for $(MOCK_BACKUP_DEVICE)..."
-	@kubectl port-forward -n $(NAMESPACE) svc/nv-config-manager-nautobot 18080:80 &>/dev/null & \
-	NB_PF=$$!; \
-	trap 'kill $$NB_PF 2>/dev/null; kill $$T_PF 2>/dev/null' EXIT INT TERM; \
-	sleep 2; \
-	NB_TOKEN=$$(kubectl get secret nautobot-token -n $(NAMESPACE) -o jsonpath='{.data.token}' | base64 -d); \
-	DEVICE_ID=$$(curl -sS -H "Authorization: Token $$NB_TOKEN" \
-		"http://localhost:18080/api/dcim/devices/?name=$(MOCK_BACKUP_DEVICE)" | \
+	@NB_TOKEN=$$(kubectl get secret nautobot-token -n $(NAMESPACE) -o jsonpath='{.data.token}' | base64 -d); \
+	DEVICE_ID=$$(curl -sk -H "Authorization: Token $$NB_TOKEN" \
+		"https://nautobot.$(HOSTNAME)/api/dcim/devices/?name=$(MOCK_BACKUP_DEVICE)" | \
 		python3 -c "import sys,json; r=json.load(sys.stdin)['results']; print(r[0]['id'] if r else '')" 2>/dev/null); \
-	kill $$NB_PF 2>/dev/null; \
 	if [ -z "$$DEVICE_ID" ]; then \
 		echo "ERROR: Device $(MOCK_BACKUP_DEVICE) not found in Nautobot"; exit 1; \
 	fi; \
 	echo "   Device UUID: $$DEVICE_ID"; \
-	kubectl port-forward -n $(NAMESPACE) svc/nv-config-manager-temporal-api 19001:9000 &>/dev/null & \
-	T_PF=$$!; \
-	sleep 2; \
-	RESP=$$(curl -sS -X POST http://localhost:19001/v1/workflow/ngc/backup \
+	RESP=$$(curl -sk -X POST "https://workflow.$(HOSTNAME)/v1/workflow/ngc/backup" \
 		-H "Content-Type: application/json" \
 		-d "{\"device_id\": \"$$DEVICE_ID\", \"trigger\": \"API\", \"user\": null, \"user_domain\": null, \"workflow_id\": null, \"intended_config_commit_id\": null}" 2>&1); \
 	echo "   Response: $$RESP"; \
-	kill $$T_PF 2>/dev/null; \
-	echo "✅ Backup workflow started. Check Temporal UI: make port-forward"
+	echo "✅ Backup workflow started. Check Temporal UI: https://temporal.$(HOSTNAME)"
 
 # Run Temporal cable validation workflow against a mock device
 MOCK_CABLE_DEVICE ?= a04-u44-p01-tor-01
 mock-workflow-cable-validate:
 	@echo "🔗 Starting cable validation for $(MOCK_CABLE_DEVICE)..."
-	@kubectl port-forward -n $(NAMESPACE) svc/nv-config-manager-nautobot 18080:80 &>/dev/null & \
-	NB_PF=$$!; \
-	trap 'kill $$NB_PF 2>/dev/null; kill $$T_PF 2>/dev/null' EXIT INT TERM; \
-	sleep 2; \
-	NB_TOKEN=$$(kubectl get secret nautobot-token -n $(NAMESPACE) -o jsonpath='{.data.token}' | base64 -d); \
-	DEVICE_ID=$$(curl -sS -H "Authorization: Token $$NB_TOKEN" \
-		"http://localhost:18080/api/dcim/devices/?name=$(MOCK_CABLE_DEVICE)" | \
+	@NB_TOKEN=$$(kubectl get secret nautobot-token -n $(NAMESPACE) -o jsonpath='{.data.token}' | base64 -d); \
+	DEVICE_ID=$$(curl -sk -H "Authorization: Token $$NB_TOKEN" \
+		"https://nautobot.$(HOSTNAME)/api/dcim/devices/?name=$(MOCK_CABLE_DEVICE)" | \
 		python3 -c "import sys,json; r=json.load(sys.stdin)['results']; print(r[0]['id'] if r else '')" 2>/dev/null); \
-	kill $$NB_PF 2>/dev/null; \
 	if [ -z "$$DEVICE_ID" ]; then \
 		echo "ERROR: Device $(MOCK_CABLE_DEVICE) not found in Nautobot"; exit 1; \
 	fi; \
 	echo "   Device UUID: $$DEVICE_ID"; \
-	kubectl port-forward -n $(NAMESPACE) svc/nv-config-manager-temporal-api 19001:9000 &>/dev/null & \
-	T_PF=$$!; \
-	sleep 2; \
-	RESP=$$(curl -sS -X POST http://localhost:19001/v1/workflow/ngc/device_cable_validation \
+	RESP=$$(curl -sk -X POST "https://workflow.$(HOSTNAME)/v1/workflow/ngc/device_cable_validation" \
 		-H "Content-Type: application/json" \
 		-d "{\"device_id\": \"$$DEVICE_ID\"}" 2>&1); \
 	echo "   Response: $$RESP"; \
-	kill $$T_PF 2>/dev/null; \
-	echo "✅ Cable validation started. Check Temporal UI: make port-forward"
+	echo "✅ Cable validation started. Check Temporal UI: https://temporal.$(HOSTNAME)"
 
 # Full sandbox: Kind cluster + topology + mock devices + wiring.
 # Uses local-superpod-sandbox.yaml (mock_devices: false) so Temporal workflows
