@@ -1166,10 +1166,15 @@ mock-workflow-backup:
 		echo "ERROR: Device $(MOCK_BACKUP_DEVICE) not found in Nautobot"; exit 1; \
 	fi; \
 	echo "   Device UUID: $$DEVICE_ID"; \
-	RESP=$$(curl -sk -X POST "https://workflow.$(HOSTNAME)/v1/workflow/ngc/backup" \
+	RESP_AND_CODE=$$(curl -sk -w "\n%{http_code}" -X POST "https://workflow.$(HOSTNAME)/v1/workflow/ngc/backup" \
 		-H "Content-Type: application/json" \
 		-d "{\"device_id\": \"$$DEVICE_ID\", \"trigger\": \"API\", \"user\": null, \"user_domain\": null, \"workflow_id\": null, \"intended_config_commit_id\": null}" 2>&1); \
+	RESP=$$(echo "$$RESP_AND_CODE" | head -n -1); \
+	RESP_CODE=$$(echo "$$RESP_AND_CODE" | tail -n 1); \
 	echo "   Response: $$RESP"; \
+	if [ "$$RESP_CODE" -ge 400 ]; then \
+		echo "ERROR: Workflow API returned HTTP $$RESP_CODE"; exit 1; \
+	fi; \
 	echo "✅ Backup workflow started. Check Temporal UI: https://temporal.$(HOSTNAME)"
 
 # Run Temporal cable validation workflow against a mock device
@@ -1184,10 +1189,15 @@ mock-workflow-cable-validate:
 		echo "ERROR: Device $(MOCK_CABLE_DEVICE) not found in Nautobot"; exit 1; \
 	fi; \
 	echo "   Device UUID: $$DEVICE_ID"; \
-	RESP=$$(curl -sk -X POST "https://workflow.$(HOSTNAME)/v1/workflow/ngc/device_cable_validation" \
+	RESP_AND_CODE=$$(curl -sk -w "\n%{http_code}" -X POST "https://workflow.$(HOSTNAME)/v1/workflow/ngc/device_cable_validation" \
 		-H "Content-Type: application/json" \
 		-d "{\"device_id\": \"$$DEVICE_ID\"}" 2>&1); \
+	RESP=$$(echo "$$RESP_AND_CODE" | head -n -1); \
+	RESP_CODE=$$(echo "$$RESP_AND_CODE" | tail -n 1); \
 	echo "   Response: $$RESP"; \
+	if [ "$$RESP_CODE" -ge 400 ]; then \
+		echo "ERROR: Workflow API returned HTTP $$RESP_CODE"; exit 1; \
+	fi; \
 	echo "✅ Cable validation started. Check Temporal UI: https://temporal.$(HOSTNAME)"
 
 # Full sandbox: Kind cluster + topology + mock devices + wiring.
