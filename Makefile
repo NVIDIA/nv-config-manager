@@ -789,7 +789,7 @@ kind-up:
 		echo "Creating Kind cluster: $(KIND_CLUSTER_NAME)"; \
 		kind create cluster --name $(KIND_CLUSTER_NAME) --config deploy/kind-config.yaml --wait 5m; \
 	fi
-	kubectl config use-context kind-$(KIND_CLUSTER_NAME)
+	kubectl config use-context $(KIND_CONTEXT)
 	cd installer && uv run nv-config-manager-installer deploy ../$(INSTALL_CONFIG) \
 		--image-source local \
 		--build-images \
@@ -1070,9 +1070,19 @@ mock-dhcp-validate: docker-build-mock-device
 	kind load docker-image mock-device:local --name $(KIND_CLUSTER_NAME) 2>/dev/null || true
 	$(KUBECTL_KIND) delete job mock-dhcp-validate -n $(NAMESPACE) --ignore-not-found 2>/dev/null
 	@NB_TOKEN=$$($(KUBECTL_KIND) get secret nautobot-token -n $(NAMESPACE) -o jsonpath='{.data.token}' | base64 -d); \
-	MOCK_DHCP_MAC=$$(curl -sk -H "Authorization: Token $$NB_TOKEN" \
-		"https://nautobot.$(HOSTNAME)/api/dcim/interfaces/?device=$(MOCK_DHCP_DEVICE)&name=eth0&limit=1" \
-		| python3 -c "import json,sys; r=json.load(sys.stdin)['results']; print(r[0].get('mac_address') or '' if r else '')" 2>/dev/null); \
+	if [ -z "$$NB_TOKEN" ]; then \
+		echo "ERROR: Could not read nautobot-token secret from namespace $(NAMESPACE)"; exit 1; \
+	fi; \
+	NB_RESP=$$(curl -sk -w "\n%{http_code}" -H "Authorization: Token $$NB_TOKEN" \
+		"https://nautobot.$(HOSTNAME)/api/dcim/interfaces/?device=$(MOCK_DHCP_DEVICE)&name=eth0&limit=1"); \
+	NB_BODY=$$(echo "$$NB_RESP" | sed '$$d'); \
+	NB_CODE=$$(echo "$$NB_RESP" | tail -n 1); \
+	if [ "$$NB_CODE" = "000" ] || [ "$$NB_CODE" -ge 400 ]; then \
+		echo "ERROR: Nautobot API returned HTTP $$NB_CODE for interface lookup"; exit 1; \
+	fi; \
+	MOCK_DHCP_MAC=$$(echo "$$NB_BODY" | python3 -c "import json,sys; r=json.load(sys.stdin)['results']; print(r[0].get('mac_address') or '' if r else '')" 2>&1) || { \
+		echo "ERROR: Failed to parse Nautobot interface response"; exit 1; \
+	}; \
 	if [ -n "$$MOCK_DHCP_MAC" ]; then \
 		echo "   Using MAC from Nautobot: $$MOCK_DHCP_MAC"; \
 	else \
@@ -1099,9 +1109,19 @@ mock-dhcp-discover: docker-build-mock-device
 	kind load docker-image mock-device:local --name $(KIND_CLUSTER_NAME) 2>/dev/null || true
 	$(KUBECTL_KIND) delete job mock-dhcp-discover -n $(NAMESPACE) --ignore-not-found 2>/dev/null
 	@NB_TOKEN=$$($(KUBECTL_KIND) get secret nautobot-token -n $(NAMESPACE) -o jsonpath='{.data.token}' | base64 -d); \
-	MOCK_DHCP_MAC=$$(curl -sk -H "Authorization: Token $$NB_TOKEN" \
-		"https://nautobot.$(HOSTNAME)/api/dcim/interfaces/?device=$(MOCK_DHCP_DEVICE)&name=eth0&limit=1" \
-		| python3 -c "import json,sys; r=json.load(sys.stdin)['results']; print(r[0].get('mac_address') or '' if r else '')" 2>/dev/null); \
+	if [ -z "$$NB_TOKEN" ]; then \
+		echo "ERROR: Could not read nautobot-token secret from namespace $(NAMESPACE)"; exit 1; \
+	fi; \
+	NB_RESP=$$(curl -sk -w "\n%{http_code}" -H "Authorization: Token $$NB_TOKEN" \
+		"https://nautobot.$(HOSTNAME)/api/dcim/interfaces/?device=$(MOCK_DHCP_DEVICE)&name=eth0&limit=1"); \
+	NB_BODY=$$(echo "$$NB_RESP" | sed '$$d'); \
+	NB_CODE=$$(echo "$$NB_RESP" | tail -n 1); \
+	if [ "$$NB_CODE" = "000" ] || [ "$$NB_CODE" -ge 400 ]; then \
+		echo "ERROR: Nautobot API returned HTTP $$NB_CODE for interface lookup"; exit 1; \
+	fi; \
+	MOCK_DHCP_MAC=$$(echo "$$NB_BODY" | python3 -c "import json,sys; r=json.load(sys.stdin)['results']; print(r[0].get('mac_address') or '' if r else '')" 2>&1) || { \
+		echo "ERROR: Failed to parse Nautobot interface response"; exit 1; \
+	}; \
 	if [ -n "$$MOCK_DHCP_MAC" ]; then \
 		echo "   Using MAC from Nautobot: $$MOCK_DHCP_MAC"; \
 	else \
@@ -1134,9 +1154,19 @@ mock-ztp-validate: docker-build-mock-device
 	kind load docker-image mock-device:local --name $(KIND_CLUSTER_NAME) 2>/dev/null || true
 	$(KUBECTL_KIND) delete job mock-ztp-validate -n $(NAMESPACE) --ignore-not-found 2>/dev/null
 	@NB_TOKEN=$$($(KUBECTL_KIND) get secret nautobot-token -n $(NAMESPACE) -o jsonpath='{.data.token}' | base64 -d); \
-	MOCK_ZTP_MAC=$$(curl -sk -H "Authorization: Token $$NB_TOKEN" \
-		"https://nautobot.$(HOSTNAME)/api/dcim/interfaces/?device=$(MOCK_ZTP_DEVICE)&name=eth0&limit=1" \
-		| python3 -c "import json,sys; r=json.load(sys.stdin)['results']; print(r[0].get('mac_address') or '' if r else '')" 2>/dev/null); \
+	if [ -z "$$NB_TOKEN" ]; then \
+		echo "ERROR: Could not read nautobot-token secret from namespace $(NAMESPACE)"; exit 1; \
+	fi; \
+	NB_RESP=$$(curl -sk -w "\n%{http_code}" -H "Authorization: Token $$NB_TOKEN" \
+		"https://nautobot.$(HOSTNAME)/api/dcim/interfaces/?device=$(MOCK_ZTP_DEVICE)&name=eth0&limit=1"); \
+	NB_BODY=$$(echo "$$NB_RESP" | sed '$$d'); \
+	NB_CODE=$$(echo "$$NB_RESP" | tail -n 1); \
+	if [ "$$NB_CODE" = "000" ] || [ "$$NB_CODE" -ge 400 ]; then \
+		echo "ERROR: Nautobot API returned HTTP $$NB_CODE for interface lookup"; exit 1; \
+	fi; \
+	MOCK_ZTP_MAC=$$(echo "$$NB_BODY" | python3 -c "import json,sys; r=json.load(sys.stdin)['results']; print(r[0].get('mac_address') or '' if r else '')" 2>&1) || { \
+		echo "ERROR: Failed to parse Nautobot interface response"; exit 1; \
+	}; \
 	if [ -n "$$MOCK_ZTP_MAC" ]; then \
 		echo "   Using MAC from Nautobot: $$MOCK_ZTP_MAC"; \
 	else \
@@ -1187,10 +1217,10 @@ mock-workflow-backup:
 	RESP_AND_CODE=$$(curl -sk -w "\n%{http_code}" -X POST "https://workflow.$(HOSTNAME)/v1/workflow/ngc/backup" \
 		-H "Content-Type: application/json" \
 		-d "{\"device_id\": \"$$DEVICE_ID\", \"trigger\": \"API\", \"user\": null, \"user_domain\": null, \"workflow_id\": null, \"intended_config_commit_id\": null}" 2>&1); \
-	RESP=$$(echo "$$RESP_AND_CODE" | head -n -1); \
+	RESP=$$(echo "$$RESP_AND_CODE" | sed '$$d'); \
 	RESP_CODE=$$(echo "$$RESP_AND_CODE" | tail -n 1); \
 	echo "   Response: $$RESP"; \
-	if [ "$$RESP_CODE" -ge 400 ]; then \
+	if [ "$$RESP_CODE" = "000" ] || [ "$$RESP_CODE" -ge 400 ]; then \
 		echo "ERROR: Workflow API returned HTTP $$RESP_CODE"; exit 1; \
 	fi; \
 	echo "✅ Backup workflow started. Check Temporal UI: https://temporal.$(HOSTNAME)"
@@ -1210,10 +1240,10 @@ mock-workflow-cable-validate:
 	RESP_AND_CODE=$$(curl -sk -w "\n%{http_code}" -X POST "https://workflow.$(HOSTNAME)/v1/workflow/ngc/device_cable_validation" \
 		-H "Content-Type: application/json" \
 		-d "{\"device_id\": \"$$DEVICE_ID\"}" 2>&1); \
-	RESP=$$(echo "$$RESP_AND_CODE" | head -n -1); \
+	RESP=$$(echo "$$RESP_AND_CODE" | sed '$$d'); \
 	RESP_CODE=$$(echo "$$RESP_AND_CODE" | tail -n 1); \
 	echo "   Response: $$RESP"; \
-	if [ "$$RESP_CODE" -ge 400 ]; then \
+	if [ "$$RESP_CODE" = "000" ] || [ "$$RESP_CODE" -ge 400 ]; then \
 		echo "ERROR: Workflow API returned HTTP $$RESP_CODE"; exit 1; \
 	fi; \
 	echo "✅ Cable validation started. Check Temporal UI: https://temporal.$(HOSTNAME)"
