@@ -190,9 +190,9 @@ Applies options when the DHCP reservation is for an interface with a **specific 
 When generating DHCP options for a reservation:
 
 1. Config contexts are merged based on targeting (platform, role, location, and so on)
-2. Within the merged context, **`interface_names` options override `interface_roles` options** if both match
-3. `reservation_options` from different contexts are combined (conflicts raise errors)
-4. `subnet_options` from different contexts are combined (conflicts raise errors)
+1. Within the merged context, **`interface_names` options override `interface_roles` options** if both match
+1. `reservation_options` from different contexts are combined (conflicts raise errors)
+1. `subnet_options` from different contexts are combined (conflicts raise errors)
 
 **Example**: A device with platform "Cumulus Linux" has two contexts applied:
 

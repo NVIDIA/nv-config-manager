@@ -139,16 +139,16 @@ If the PVC is NFS-backed and the API is not reachable, you can write the image s
 1. Use the SHA256 published by the image's download source (e.g. `enterprise.nvidia.com`) — not one computed from the local copy — so the manifest matches what the vendor shipped.
 1. Edit `manifest.json` at the PVC root, adding (or updating) an entry:
 
-    ```json
-    {
-      "platform": "cumulus-linux",
-      "version": "5.14.0",
-      "filename": "cumulus-linux-5.14.0-mlx-amd64.bin",
-      "path": "cumulus-linux/5.14.0/cumulus-linux-5.14.0-mlx-amd64.bin",
-      "sha256": "7c0a9f...",
-      "tags": { "firmware-image": "" }
-    }
-    ```
+   ```json
+   {
+     "platform": "cumulus-linux",
+     "version": "5.14.0",
+     "filename": "cumulus-linux-5.14.0-mlx-amd64.bin",
+     "path": "cumulus-linux/5.14.0/cumulus-linux-5.14.0-mlx-amd64.bin",
+     "sha256": "7c0a9f...",
+     "tags": { "firmware-image": "" }
+   }
+   ```
 
 The `tags.firmware-image` field is what marks this file as the OS image for the directory. Omit it for supporting files.
 
