@@ -1754,6 +1754,12 @@ temporal:
   archive:
     enabled: false
     replicas: 1
+    resources:
+      requests:
+        cpu: 200m
+        memory: 256Mi
+      limits:
+        memory: 512Mi
   # Dynamic configuration for Temporal server
   # See: https://docs.temporal.io/references/dynamic-configuration
   dynamicConfig: []
