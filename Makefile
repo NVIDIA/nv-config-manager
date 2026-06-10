@@ -1043,6 +1043,7 @@ mock-devices-down:
 	$(KUBECTL_KIND) delete -f development/mock_devices/manifests/mock-dhcp-discover.yaml --ignore-not-found
 	$(KUBECTL_KIND) delete -f development/mock_devices/manifests/mock-dhcp-validate.yaml --ignore-not-found
 	$(KUBECTL_KIND) delete -f development/mock_devices/manifests/mock-wire-devices.yaml --ignore-not-found
+	$(KUBECTL_KIND) delete -f development/mock_devices/manifests/mock-ztp-validate.yaml --ignore-not-found
 	$(KUBECTL_KIND) delete -f development/mock_devices/manifests/dhcp-dev-service.yaml --ignore-not-found
 	@echo "✅ Mock devices removed."
 
