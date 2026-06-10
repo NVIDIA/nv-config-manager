@@ -28,24 +28,24 @@ import { useToast } from "@/components/ui/use-toast";
 import { useEnvData, useDevices } from "@/hooks";
 import { WorkflowFormField } from "@/components/forms/formfield";
 import { startWorkflow } from "@/lib/utils";
-import { VpcTenantChangeWorkflowInput } from "@/types/data-table.types";
+import { SpXOverlayTenantChangeWorkflowInput } from "@/types/data-table.types";
 
-const VpcTenantChangeFormSchema = z.object({
+const SpXOverlayTenantChangeFormSchema = z.object({
   site: z.string().trim().min(1, { message: "Site is required" }),
-  vpc: z.string().trim().min(1, { message: "VPC is required" }),
+  overlay_id: z.string().trim().min(1, { message: "Overlay ID is required" }),
   device: z.string().trim().min(1, { message: "Device is required" }),
   port_names: z.string().trim().min(1, { message: "Port names are required" }),
   namespace: z.string().trim().optional(),
 });
 
-type VpcTenantChangeFormData = z.infer<typeof VpcTenantChangeFormSchema>;
+type SpXOverlayTenantChangeFormData = z.infer<typeof SpXOverlayTenantChangeFormSchema>;
 
-export const VpcTenantChangeWorkflowForm = () => {
+export const SpXOverlayTenantChangeWorkflowForm = () => {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const { toast } = useToast();
   const searchParams = useSearchParams();
   const querySite = searchParams?.get("site") ?? "";
-  const queryVPC = searchParams?.get("vpc") ?? "";
+  const queryOverlayId = searchParams?.get("overlay_id") ?? "";
   const queryDevice = searchParams?.get("device-id") ?? "";
   const queryPortNames = searchParams?.get("port_names") ?? "";
   const queryNamespace = searchParams?.get("namespace") ?? "spectrumx";
@@ -54,11 +54,11 @@ export const VpcTenantChangeWorkflowForm = () => {
     isLoading: { siteIsLoading },
   } = useEnvData();
 
-  const form = useForm<VpcTenantChangeFormData>({
-    resolver: zodResolver(VpcTenantChangeFormSchema),
+  const form = useForm<SpXOverlayTenantChangeFormData>({
+    resolver: zodResolver(SpXOverlayTenantChangeFormSchema),
     defaultValues: {
       site: querySite,
-      vpc: queryVPC,
+      overlay_id: queryOverlayId,
       device: queryDevice,
       port_names: queryPortNames,
       namespace: queryNamespace,
@@ -109,27 +109,27 @@ export const VpcTenantChangeWorkflowForm = () => {
     }
   }, [site, form]);
 
-  const onSubmit = async (data: VpcTenantChangeFormData): Promise<void> => {
+  const onSubmit = async (data: SpXOverlayTenantChangeFormData): Promise<void> => {
     setIsSubmitting(true);
     // Transform comma-separated port names to array
     const portNamesArray = data.port_names
       .split(",")
       .map((p) => p.trim())
       .filter((p) => p.length > 0);
-    const submissionData: VpcTenantChangeWorkflowInput = {
+    const submissionData: SpXOverlayTenantChangeWorkflowInput = {
       site: data.site,
-      vpc_id: data.vpc,
+      overlay_id: data.overlay_id,
       device_id: data.device,
       port_names: portNamesArray,
       namespace_tag: data.namespace,
     };
     await startWorkflow(
-      "/v1/workflow/ngc/vpc-tenant-change",
+      "/v1/workflow/ngc/spx_overlay_tenant_change",
       submissionData
     ).catch((error) => {
       toast({
         variant: "destructive",
-        title: "VPC Tenant Change Workflow Failed",
+        title: "SpX Overlay Tenant Change Workflow Failed",
         description: error,
       });
     });
@@ -140,7 +140,7 @@ export const VpcTenantChangeWorkflowForm = () => {
     <div className="flex items-center justify-center p-6">
       <Card className="h-full border-2 shadow-md justify-center">
         <CardHeader>
-          <CardTitle>VPC Tenant Change Workflow Form</CardTitle>
+          <CardTitle>SpX Overlay Tenant Change Workflow Form</CardTitle>
         </CardHeader>
         <CardContent>
           <Form {...form}>
@@ -158,7 +158,7 @@ export const VpcTenantChangeWorkflowForm = () => {
               <WorkflowFormField
                 type="input"
                 control={form.control}
-                name="vpc"
+                name="overlay_id"
                 label="VPC ID"
                 isSubmitting={isSubmitting}
               />
@@ -193,7 +193,7 @@ export const VpcTenantChangeWorkflowForm = () => {
                 disabled={
                   isSubmitting ||
                   !site ||
-                  !form.watch("vpc") ||
+                  !form.watch("overlay_id") ||
                   !form.watch("device") ||
                   !form.watch("port_names") ||
                   deviceIsLoading ||

@@ -1,3 +1,4 @@
+"use client";
 /*
  * SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
@@ -14,11 +15,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import * as React from "react";
-import { WorkflowFormSkeleton } from "@/components/loading";
 
-const VpcTenantChangeWorkflow: React.FC = () => {
-  return <WorkflowFormSkeleton />;
-};
+import { SpXOverlayTenantChangeWorkflowForm } from "./spx-overlay-tenant-change-workflow-form";
 
-export default VpcTenantChangeWorkflow;
+export default function Page() {
+  return <SpXOverlayTenantChangeWorkflowForm />;
+}

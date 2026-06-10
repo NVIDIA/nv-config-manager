@@ -28,13 +28,13 @@ import { useToast } from "@/components/ui/use-toast";
 import { useEnvData } from "@/hooks";
 import { WorkflowFormField } from "@/components/forms/formfield";
 import { startWorkflow } from "@/lib/utils";
-import { VPCCreationWorkflowInput } from "@/types/data-table.types";
+import { SpXOverlayCreationWorkflowInput } from "@/types/data-table.types";
 
-const VPCCreationFormSchema = z
+const SpXOverlayCreationFormSchema = z
   .object({
     site: z.string().trim().min(1, { message: "Site is required" }),
-    vpc: z.string().trim().min(1, { message: "VPC is required" }),
-    description: z.string().trim().min(1, { message: "Description is required" }),
+    overlay_id: z.string().trim().min(1, { message: "Overlay ID is required" }),
+    tenant: z.string().trim().min(1, { message: "Tenant is required" }),
     namespace: z.string().trim().min(1, {message: "Namespace is required"}),
     rd_min: z.number().min(0).max(65535),
     rd_max: z.number().min(0).max(65535),
@@ -44,13 +44,13 @@ const VPCCreationFormSchema = z
     path: ["rd_min"],
   });
 
-export const VPCCreationWorkflowForm = () => {
+export const SpXOverlayCreationWorkflowForm = () => {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const { toast } = useToast();
   const searchParams = useSearchParams();
   const querySite = (searchParams && searchParams.get("site")) || "";
-  const queryVPC = (searchParams && searchParams.get("vpc")) || "";
-  const queryDescription = (searchParams && searchParams.get("description")) || "";
+  const queryOverlayId = (searchParams && searchParams.get("overlay_id")) || "";
+  const queryTenant = (searchParams && searchParams.get("tenant")) || "";
   const queryNamespace =
     (searchParams && searchParams.get("namespace")) || "spectrumx";
   const queryRDMin =
@@ -62,12 +62,12 @@ export const VPCCreationWorkflowForm = () => {
     isLoading: { siteIsLoading },
   } = useEnvData();
 
-  const form = useForm<z.infer<typeof VPCCreationFormSchema>>({
-    resolver: zodResolver(VPCCreationFormSchema),
+  const form = useForm<z.infer<typeof SpXOverlayCreationFormSchema>>({
+    resolver: zodResolver(SpXOverlayCreationFormSchema),
     defaultValues: {
       site: querySite,
-      vpc: queryVPC,
-      description: queryDescription,
+      overlay_id: queryOverlayId,
+      tenant: queryTenant,
       namespace: queryNamespace,
       rd_min: queryRDMin,
       rd_max: queryRDMax,
@@ -88,18 +88,18 @@ export const VPCCreationWorkflowForm = () => {
     }
   }, [sites, querySite, siteIsLoading, form]);
 
-  const onSubmit = async (data: z.infer<typeof VPCCreationFormSchema>) => {
+  const onSubmit = async (data: z.infer<typeof SpXOverlayCreationFormSchema>) => {
     setIsSubmitting(true);
-    const submissionData: VPCCreationWorkflowInput = {
+    const submissionData: SpXOverlayCreationWorkflowInput = {
       site: data.site,
-      vpc_id: data.vpc,
-      description: data.description,
+      overlay_id: data.overlay_id,
+      tenant: data.tenant,
       namespace_tag: data.namespace,
       rd_min: data.rd_min,
       rd_max: data.rd_max,
     };
     await startWorkflow(
-      "/v1/workflow/ngc/vpc_creation",
+      "/v1/workflow/ngc/spx_overlay_creation",
       submissionData
     ).catch((error) => {
       toast({
@@ -115,7 +115,7 @@ export const VPCCreationWorkflowForm = () => {
     <div className="flex items-center justify-center p-6">
       <Card className="h-full border-2 shadow-md justify-center">
         <CardHeader>
-          <CardTitle>VPC Creation Workflow Form</CardTitle>
+          <CardTitle>SpX Overlay Creation Workflow Form</CardTitle>
         </CardHeader>
         <CardContent>
           <Form {...form}>
@@ -132,15 +132,15 @@ export const VPCCreationWorkflowForm = () => {
               <WorkflowFormField
                 type="input"
                 control={form.control}
-                name="vpc"
-                label="VPC"
+                name="overlay_id"
+                label="Overlay ID"
                 isSubmitting={isSubmitting}
               />
               <WorkflowFormField
                 type="input"
                 control={form.control}
-                name="description"
-                label="Description"
+                name="tenant"
+                label="Tenant"
                 isSubmitting={isSubmitting}
               />
               <WorkflowFormField

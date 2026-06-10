@@ -26,6 +26,7 @@ from temporalio import activity
 from temporalio.worker import Worker
 
 from nv_config_manager.temporal.common.mixins.device import InterfaceData, NetworkDeviceData
+from nv_config_manager.temporal.ngc.activities.nats import publish_nats
 from nv_config_manager.temporal.ngc.activities.nautobot import (
     AssignVrfToDeviceInput,
     AssignVrfToInterfaceInput,
@@ -39,9 +40,9 @@ from nv_config_manager.temporal.ngc.activities.nautobot import (
     QueryVRFByVPCInput,
     Vrf,
 )
-from nv_config_manager.temporal.ngc.workflows.vpc import (
-    VpcAssignmentInput,
-    VpcAssignmentWorkflow,
+from nv_config_manager.temporal.ngc.workflows.spx_overlay import (
+    SpXOverlayAssignmentInput,
+    SpXOverlayAssignmentWorkflow,
 )
 
 
@@ -50,7 +51,6 @@ def make_test_vrf(namespace: str) -> dict[str, Any]:
         "id": namespace,
         "name": "SpXTenant60004",
         "rd": "*:60004",
-        "cf_forge_vpc_id": "mock_vpc_id",
         "namespace": {"name": namespace, "location": {"name": "mock_site"}},
         "interfaces": [],
     }
@@ -88,8 +88,8 @@ _mock_state = {
 }
 
 
-@activity.defn(name="get_vrfs_by_vpc_id")
-async def mock_get_vrfs_by_vpc_id(
+@activity.defn(name="get_vrfs_by_overlay_id")
+async def mock_get_vrfs_by_overlay_id(
     _activity_input: QueryVRFByVPCInput,
 ) -> list[Vrf] | None:
     """Mock activity for getting VRFs by VPC ID."""
@@ -171,9 +171,8 @@ async def mock_assign_vrf_to_interface(
 @pytest.mark.asyncio
 @patch("nv_config_manager.temporal.ngc.activities.nats.NatsProducer", autospec=True)
 @patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
-async def test_vpc_assignment_workflow_vrf_not_assigned(_mock_time, _mock_nats_client, env):
+async def test_spx_overlay_assignment_workflow_vrf_not_assigned(_mock_time, _mock_nats_client, env):
     """Test VPC assignment when VRF is not already assigned to device."""
-    from nv_config_manager.temporal.ngc.activities.nats import publish_nats
 
     _mock_state["vrf_exists"] = True
     _mock_state["interfaces_with_vrf"] = []
@@ -182,10 +181,10 @@ async def test_vpc_assignment_workflow_vrf_not_assigned(_mock_time, _mock_nats_c
     async with Worker(
         env.client,
         task_queue=task_queue_name,
-        workflows=[VpcAssignmentWorkflow],
+        workflows=[SpXOverlayAssignmentWorkflow],
         activities=[
             mock_get_network_device,
-            mock_get_vrfs_by_vpc_id,
+            mock_get_vrfs_by_overlay_id,
             mock_get_device_vrfs,
             mock_assign_vrf_to_device,
             mock_get_device_interfaces,
@@ -194,8 +193,8 @@ async def test_vpc_assignment_workflow_vrf_not_assigned(_mock_time, _mock_nats_c
         ],
         activity_executor=ThreadPoolExecutor(1),
     ):
-        workflow_input = VpcAssignmentInput(
-            vpc_id="mock_vpc_id",
+        workflow_input = SpXOverlayAssignmentInput(
+            overlay_id="mock_overlay_id",
             device="mock_device_id",
             port_names=["swp1", "swp2"],
             site="mock_site",
@@ -203,7 +202,7 @@ async def test_vpc_assignment_workflow_vrf_not_assigned(_mock_time, _mock_nats_c
         workflow_id = str(uuid.uuid4())
 
         handle = await env.client.start_workflow(
-            VpcAssignmentWorkflow.run,
+            SpXOverlayAssignmentWorkflow.run,
             workflow_input,
             id=workflow_id,
             task_queue=task_queue_name,
@@ -220,9 +219,10 @@ async def test_vpc_assignment_workflow_vrf_not_assigned(_mock_time, _mock_nats_c
 @pytest.mark.asyncio
 @patch("nv_config_manager.temporal.ngc.activities.nats.NatsProducer", autospec=True)
 @patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
-async def test_vpc_assignment_workflow_vrf_already_assigned(_mock_time, _mock_nats_client, env):
+async def test_spx_overlay_assignment_workflow_vrf_already_assigned(
+    _mock_time, _mock_nats_client, env
+):
     """Test VPC assignment when VRF is already assigned to device."""
-    from nv_config_manager.temporal.ngc.activities.nats import publish_nats
 
     _mock_state["vrf_exists"] = True
     _mock_state["interfaces_with_vrf"] = ["swp1"]
@@ -231,10 +231,10 @@ async def test_vpc_assignment_workflow_vrf_already_assigned(_mock_time, _mock_na
     async with Worker(
         env.client,
         task_queue=task_queue_name,
-        workflows=[VpcAssignmentWorkflow],
+        workflows=[SpXOverlayAssignmentWorkflow],
         activities=[
             mock_get_network_device,
-            mock_get_vrfs_by_vpc_id,
+            mock_get_vrfs_by_overlay_id,
             mock_get_device_vrfs,
             mock_assign_vrf_to_device,
             mock_get_device_interfaces,
@@ -243,8 +243,8 @@ async def test_vpc_assignment_workflow_vrf_already_assigned(_mock_time, _mock_na
         ],
         activity_executor=ThreadPoolExecutor(1),
     ):
-        workflow_input = VpcAssignmentInput(
-            vpc_id="mock_vpc_id",
+        workflow_input = SpXOverlayAssignmentInput(
+            overlay_id="mock_overlay_id",
             device="mock_device_id_with_vrf",
             port_names=["swp1", "swp2"],
             site="mock_site",
@@ -252,7 +252,7 @@ async def test_vpc_assignment_workflow_vrf_already_assigned(_mock_time, _mock_na
         workflow_id = str(uuid.uuid4())
 
         handle = await env.client.start_workflow(
-            VpcAssignmentWorkflow.run,
+            SpXOverlayAssignmentWorkflow.run,
             workflow_input,
             id=workflow_id,
             task_queue=task_queue_name,
@@ -269,9 +269,8 @@ async def test_vpc_assignment_workflow_vrf_already_assigned(_mock_time, _mock_na
 @pytest.mark.asyncio
 @patch("nv_config_manager.temporal.ngc.activities.nats.NatsProducer", autospec=True)
 @patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
-async def test_vpc_assignment_workflow_vrf_not_found(_mock_time, _mock_nats_client, env):
+async def test_spx_overlay_assignment_workflow_vrf_not_found(_mock_time, _mock_nats_client, env):
     """Test VPC assignment when VRF doesn't exist in Nautobot."""
-    from nv_config_manager.temporal.ngc.activities.nats import publish_nats
 
     _mock_state["vrf_exists"] = False
     _mock_state["interfaces_with_vrf"] = []
@@ -280,10 +279,10 @@ async def test_vpc_assignment_workflow_vrf_not_found(_mock_time, _mock_nats_clie
     async with Worker(
         env.client,
         task_queue=task_queue_name,
-        workflows=[VpcAssignmentWorkflow],
+        workflows=[SpXOverlayAssignmentWorkflow],
         activities=[
             mock_get_network_device,
-            mock_get_vrfs_by_vpc_id,
+            mock_get_vrfs_by_overlay_id,
             mock_get_device_vrfs,
             mock_assign_vrf_to_device,
             mock_get_device_interfaces,
@@ -292,8 +291,8 @@ async def test_vpc_assignment_workflow_vrf_not_found(_mock_time, _mock_nats_clie
         ],
         activity_executor=ThreadPoolExecutor(1),
     ):
-        workflow_input = VpcAssignmentInput(
-            vpc_id="mock_vpc_id",
+        workflow_input = SpXOverlayAssignmentInput(
+            overlay_id="mock_overlay_id",
             device="mock_device_id",
             port_names=["swp1", "swp2"],
             site="mock_site",
@@ -301,7 +300,7 @@ async def test_vpc_assignment_workflow_vrf_not_found(_mock_time, _mock_nats_clie
         workflow_id = str(uuid.uuid4())
 
         handle = await env.client.start_workflow(
-            VpcAssignmentWorkflow.run,
+            SpXOverlayAssignmentWorkflow.run,
             workflow_input,
             id=workflow_id,
             task_queue=task_queue_name,
@@ -319,15 +318,18 @@ async def test_vpc_assignment_workflow_vrf_not_found(_mock_time, _mock_nats_clie
         assert get_device_vrf_stage["state"] == "FAILED"
 
         if get_device_vrf_stage.get("traceback"):
-            assert "No VRF found for VPC ID mock_vpc_id" in get_device_vrf_stage["traceback"]
+            assert (
+                "No VRF found for Overlay ID mock_overlay_id" in get_device_vrf_stage["traceback"]
+            )
 
 
 @pytest.mark.asyncio
 @patch("nv_config_manager.temporal.ngc.activities.nats.NatsProducer", autospec=True)
 @patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
-async def test_vpc_assignment_workflow_interface_not_found(_mock_time, _mock_nats_client, env):
+async def test_spx_overlay_assignment_workflow_interface_not_found(
+    _mock_time, _mock_nats_client, env
+):
     """Test VPC assignment when one of the interfaces doesn't exist on device."""
-    from nv_config_manager.temporal.ngc.activities.nats import publish_nats
 
     _mock_state["vrf_exists"] = True
     _mock_state["interfaces_with_vrf"] = []
@@ -336,10 +338,10 @@ async def test_vpc_assignment_workflow_interface_not_found(_mock_time, _mock_nat
     async with Worker(
         env.client,
         task_queue=task_queue_name,
-        workflows=[VpcAssignmentWorkflow],
+        workflows=[SpXOverlayAssignmentWorkflow],
         activities=[
             mock_get_network_device,
-            mock_get_vrfs_by_vpc_id,
+            mock_get_vrfs_by_overlay_id,
             mock_get_device_vrfs,
             mock_assign_vrf_to_device,
             mock_get_device_interfaces,
@@ -348,8 +350,8 @@ async def test_vpc_assignment_workflow_interface_not_found(_mock_time, _mock_nat
         ],
         activity_executor=ThreadPoolExecutor(1),
     ):
-        workflow_input = VpcAssignmentInput(
-            vpc_id="mock_vpc_id",
+        workflow_input = SpXOverlayAssignmentInput(
+            overlay_id="mock_overlay_id",
             device="mock_device_id",
             port_names=["swp1", "swp99"],
             site="mock_site",
@@ -357,7 +359,7 @@ async def test_vpc_assignment_workflow_interface_not_found(_mock_time, _mock_nat
         workflow_id = str(uuid.uuid4())
 
         handle = await env.client.start_workflow(
-            VpcAssignmentWorkflow.run,
+            SpXOverlayAssignmentWorkflow.run,
             workflow_input,
             id=workflow_id,
             task_queue=task_queue_name,

@@ -16,7 +16,7 @@
  */
 import { healthCheckHandlers } from "./healthcheckHandlers";
 import { workflowFetchingHandlers } from "./workflowHandlers";
-import { vpcHandlers } from "./vpcHandlers";
+import { spxOverlayHandlers } from "./spxOverlayHandlers";
 import { configBackupHandlers } from "./backupHandlers";
 import { useEnvDataHandlers } from "./useEnvHandlers";
 import { useDevicesHandlers } from "./useDevicesHandlers";
@@ -36,7 +36,7 @@ import { ibPkeyCreationHandlers } from "./ibPkeyCreationHandlers";
 
 export * from "./healthcheckHandlers";
 export * from "./workflowHandlers";
-export * from "./vpcHandlers";
+export * from "./spxOverlayHandlers";
 export * from "./backupHandlers";
 export * from "./useEnvHandlers";
 export * from "./useDevicesHandlers";
@@ -57,7 +57,7 @@ export * from "./ibPkeyCreationHandlers";
 export const handlers = [
   ...healthCheckHandlers,
   ...workflowFetchingHandlers,
-  ...vpcHandlers,
+  ...spxOverlayHandlers,
   ...configBackupHandlers,
   ...useEnvDataHandlers,
   ...useDevicesHandlers,

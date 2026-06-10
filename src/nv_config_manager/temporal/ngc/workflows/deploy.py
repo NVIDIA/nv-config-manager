@@ -514,7 +514,7 @@ class TenantDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archi
         allowed_patterns = [
             r"^nv (set|unset) nve vxlan\b",
             r"^nv (set|unset) evpn\b",
-            r"^nv (set|unset) interface \S+ ip vrf\b",
+            r"^nv (set|unset) interface \S+ (ip )?vrf\b",
             r"^nv (set|unset) vrf \S+ evpn\b",
             r"^nv (set|unset) vrf \S+ router\b",
         ]
