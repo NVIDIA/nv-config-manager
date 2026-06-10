@@ -55,6 +55,7 @@ class HelloWorld(WorkflowMetadataMixin, StageMixin):
     """Simple hello world workflow for testing."""
 
     # Workflow metadata
+    workflow_name = "Hello World"
     workflow_description = "Simple hello world workflow for testing and demonstration"
     workflow_input_class = HelloWorldInput
     workflow_api_endpoint = "/hello_world"
@@ -95,6 +96,30 @@ class HelloWorld(WorkflowMetadataMixin, StageMixin):
         return result.display
 
 
+@workflow.defn
+class HelloWorldRunning(StageMixin):
+    """Long-running workflow for local workflow-list latency testing."""
+
+    def __init__(self) -> None:
+        """Initialize workflow."""
+        StageMixin.__init__(self)
+        self.define_stage(
+            name="running",
+            description="Long-running non-approval latency fixture",
+            depends_on=[],
+            requires_approval=False,
+        )
+
+    @workflow.run
+    async def run(self, workflow_input: HelloWorldInput) -> str:  # type: ignore[override, ty:invalid-method-override]
+        """Run long enough to remain visible as a non-pending running workflow."""
+        self.set_input(workflow_input)
+        self.set_stage_state("running", StateEnum.IN_PROGRESS)
+        await workflow.sleep(timedelta(days=3650))
+        self.set_stage_state("running", StateEnum.COMPLETE)
+        return workflow_input.name
+
+
 class PromptStageOutput(StageOutput):
     """Prompt Stage Output."""
 
@@ -120,6 +145,7 @@ class HelloWorldApproval(WorkflowMetadataMixin, StageMixin):
     """Hello world workflow with approval step."""
 
     # Workflow metadata
+    workflow_name = "Hello World Approval"
     workflow_description = "Hello world workflow with approval step for testing staged workflows"
     workflow_input_class = HelloWorldInput
     workflow_api_endpoint = "/hello_world_approval"

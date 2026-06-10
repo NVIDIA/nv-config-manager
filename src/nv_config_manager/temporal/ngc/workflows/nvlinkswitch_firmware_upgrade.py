@@ -117,6 +117,7 @@ class NVLinkSwitchFirmwareUpgradeWorkflow(
     """NVLink switch firmware upgrade workflow for GPU interconnect infrastructure."""
 
     # Workflow metadata
+    workflow_name = "NVLink Switch Firmware Upgrade"
     workflow_description = "Upgrade firmware on NVLink switches with validation"
     workflow_input_class = NVLinkSwitchFirmwareUpgradeInput
     workflow_api_endpoint = "/ngc/nvlinkswitch_firmware_upgrade"

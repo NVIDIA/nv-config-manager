@@ -17,12 +17,6 @@
  */
 
 import WorkflowTable from "./workflow-table";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
 
 import { fetcher } from "@/lib/fetcher";
 import useSWR from "swr";
@@ -33,6 +27,7 @@ import WorkflowErrorPage from "@/components/loading/error";
 import { getErrorConfig, TokenError } from "@/lib/errors";
 import { useState, useEffect } from "react";
 import WorkflowsListSkeleton from "./loading";
+import { WorkflowMetadataResponse } from "@/types/data-table.types";
 
 // Force dynamic rendering since we need runtime config
 export const dynamic = 'force-dynamic';
@@ -43,10 +38,13 @@ export default function WorkflowsPage() {
   const apiURL = config?.workflowApiUrl;
 
   const {
-    data: workflowTypes,
-    error: workflowTypesError,
-    isLoading: workflowTypesIsLoading,
-  } = useSWRImmutable(apiURL ? sanitizeUrl(`${apiURL}/v1/workflow/types`) : null, fetcher);
+    data: workflowMetadata,
+    error: workflowMetadataError,
+    isLoading: workflowMetadataIsLoading,
+  } = useSWRImmutable<WorkflowMetadataResponse>(
+    apiURL ? sanitizeUrl(`${apiURL}/v1/workflow/metadata`) : null,
+    fetcher
+  );
 
   const { error } = useSWR(
     shouldFetch && apiURL ? sanitizeUrl(`${apiURL}/healthcheck`) : null,
@@ -73,11 +71,11 @@ export default function WorkflowsPage() {
     }
   }, []);
 
-  if (workflowTypesError) {
+  if (workflowMetadataError) {
     return (
       <WorkflowErrorPage
-        error={workflowTypesError}
-        errorConfig={getErrorConfig(workflowTypesError)}
+        error={workflowMetadataError}
+        errorConfig={getErrorConfig(workflowMetadataError)}
         reset={function (): void {
           window.location.reload();
         }}
@@ -86,22 +84,13 @@ export default function WorkflowsPage() {
   }
   
   // Show loading while config is loading or data is being fetched
-  if (!apiURL || workflowTypesIsLoading || !workflowTypes) {
+  if (!apiURL || workflowMetadataIsLoading || !workflowMetadata) {
     return <WorkflowsListSkeleton />;
   }
 
   return (
-    <Accordion type="multiple">
-      {workflowTypes.map((type: string, index: number) => (
-        <AccordionItem key={index} value={type}>
-          <AccordionTrigger>
-            <div className="p-3 font-bold text-lg">{type}</div>
-          </AccordionTrigger>
-          <AccordionContent id={type.toLowerCase()}>
-            <WorkflowTable title={type} workflowType={type as string} />
-          </AccordionContent>
-        </AccordionItem>
-      ))}
-    </Accordion>
+    <WorkflowTable
+      workflowMetadata={workflowMetadata.workflows}
+    />
   );
 }

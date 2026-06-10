@@ -51,11 +51,14 @@ REST_FRAMEWORK["DEFAULT_AUTHENTICATION_CLASSES"] = [  # noqa: F405
 # ``X-Auth-Request-*`` headers and JWTCookieMiddleware skips already-authed
 # requests.
 _JWT_COOKIE_MW = "nv_config_manager_auth.middleware.JWTCookieMiddleware"
+_LOGOUT_REDIRECT_MW = "nv_config_manager_auth.middleware.LogoutRedirectMiddleware"
 _REMOTE_USER_MW = "nautobot.core.middleware.RemoteUserMiddleware"
 if _REMOTE_USER_MW in MIDDLEWARE:  # noqa: F405
     MIDDLEWARE.insert(MIDDLEWARE.index(_REMOTE_USER_MW), _JWT_COOKIE_MW)  # noqa: F405
 else:
     MIDDLEWARE.append(_JWT_COOKIE_MW)  # noqa: F405
+if _LOGOUT_REDIRECT_MW not in MIDDLEWARE:  # noqa: F405
+    MIDDLEWARE.append(_LOGOUT_REDIRECT_MW)  # noqa: F405
 
 #########################
 #                       #
@@ -121,6 +124,11 @@ CSRF_TRUSTED_ORIGINS = [
 ]
 if _csrf_env:
     CSRF_TRUSTED_ORIGINS.extend([origin.strip() for origin in _csrf_env.split(",") if origin.strip()])
+
+LOGOUT_REDIRECT_URL = os.getenv(
+    "NAUTOBOT_LOGOUT_REDIRECT_URL",
+    globals().get("LOGOUT_REDIRECT_URL", "/"),
+)
 
 # Set to True to enable server debugging. WARNING: Debugging introduces a substantial performance penalty and may reveal
 # sensitive information about your installation. Only enable debugging while performing testing. Never enable debugging

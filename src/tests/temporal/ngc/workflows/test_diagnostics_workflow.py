@@ -235,8 +235,7 @@ async def test_full_workflow_no_tech_support(env: WorkflowEnvironment):
         assert state_by_name[name] == "COMPLETE", f"{name} should be COMPLETE"
 
     assert state_by_name["collect_tech_support"] == "UNREACHABLE"
-    # stages_by_dependency cascade is broken (reverted) — upload_tech_support stays NOT_STARTED
-    assert state_by_name["upload_tech_support"] == "NOT_STARTED"
+    assert state_by_name["upload_tech_support"] == "UNREACHABLE"
 
 
 # =============================================================================

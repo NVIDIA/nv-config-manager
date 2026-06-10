@@ -81,6 +81,7 @@ class InfinibandCableValidationWorkflow(WorkflowMetadataMixin, StageMixin):
     """Infiniband cable validation workflow for high-performance computing networks."""
 
     # Workflow metadata
+    workflow_name = "InfiniBand Cable Validation"
     workflow_description = (
         "Validate Infiniband cable connections against intended topology using UFM data"
     )

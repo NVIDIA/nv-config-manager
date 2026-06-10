@@ -6,7 +6,6 @@
 # This configuration:
 #   - Single control-plane node (suitable for laptops)
 #   - Exposes NodePorts 30443/30080 as 443/80 for Envoy Gateway v1.6+
-#   - Exposes port 8443 for Keycloak (if using local Keycloak)
 #   - API server accessible from Docker-in-Docker environments (GitLab CI)
 #
 # After cluster creation, remove control-plane taint to allow scheduling:

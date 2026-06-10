@@ -88,11 +88,13 @@ def _derive_oidc_endpoints(provider: SSOProvider, issuer_url: str) -> dict[str, 
         return {
             "authorizationEndpoint": f"{base}/oauth2/v2.0/authorize",
             "tokenEndpoint": f"{base}/oauth2/v2.0/token",
+            "endSessionEndpoint": f"{base}/oauth2/v2.0/logout",
             "jwksUri": f"{base}/discovery/v2.0/keys",
         }
 
     if provider == SSOProvider.KEYCLOAK:
         return {
+            "endSessionEndpoint": f"{issuer}/protocol/openid-connect/logout",
             "jwksUri": f"{issuer}/protocol/openid-connect/certs",
         }
 
@@ -560,10 +562,16 @@ def _build_oidc(config: NVConfigManagerInstallConfig, values: dict[str, Any]) ->
         oidc["authorizationEndpoint"] = endpoints["authorizationEndpoint"]
     if endpoints.get("tokenEndpoint"):
         oidc["tokenEndpoint"] = endpoints["tokenEndpoint"]
+    if config.sso.end_session_endpoint:
+        oidc["endSessionEndpoint"] = config.sso.end_session_endpoint
+    elif endpoints.get("endSessionEndpoint"):
+        oidc["endSessionEndpoint"] = endpoints["endSessionEndpoint"]
     values["oidc"] = oidc
 
     if config.cluster.mock_devices:
-        values.setdefault("localDev", {})["mockDevices"] = True
+        local_dev = values.setdefault("localDev", {})
+        local_dev["mockDevices"] = True
+        local_dev["enableLocalTestWorkflows"] = True
 
 
 def _build_postgres_section(pg: ExternalPostgresConfig) -> dict[str, Any]:

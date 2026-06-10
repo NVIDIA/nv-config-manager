@@ -1,0 +1,190 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Mock UFM server for local development.
+#
+# Do not apply this directly. Use `make ufm-mock-up`, which also creates the
+# ConfigMap holding mock_server.py and patches the temporal-worker config to
+# include UFM credentials.
+#
+# All resources are namespace-scoped. The NAMESPACE placeholders below are
+# substituted by the Makefile target via sed before piping to kubectl apply.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ufm-mock
+  namespace: ${NAMESPACE}
+  labels:
+    app.kubernetes.io/name: ufm-mock
+    app.kubernetes.io/component: dev-mock
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ufm-mock
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ufm-mock
+        app.kubernetes.io/component: dev-mock
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        # Generate a self-signed cert. UFMClient sets ssl=False on aiohttp
+        # requests, so the cert is never validated by the workflow worker.
+        - name: gen-cert
+          image: alpine/openssl:3.3.2
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              openssl req -x509 -newkey rsa:2048 -nodes \
+                -keyout /certs/tls.key \
+                -out /certs/tls.crt \
+                -days 365 \
+                -subj "/CN=ufm-mock" \
+                -addext "subjectAltName=DNS:ufm-mock,DNS:ufm-mock.${NAMESPACE},DNS:ufm-mock.${NAMESPACE}.svc,DNS:ufm-mock.${NAMESPACE}.svc.cluster.local"
+              chmod 600 /certs/tls.key
+              chmod 644 /certs/tls.crt
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: certs
+              mountPath: /certs
+      containers:
+        - name: server
+          image: python:3.12-slim
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              export PYTHONUSERBASE=/tmp/pylib
+              export PATH="$PYTHONUSERBASE/bin:$PATH"
+              pip install --user --quiet --no-cache-dir --root-user-action=ignore \
+                fastapi==0.115.0 uvicorn==0.30.6 pydantic==2.9.2
+              exec python /app/mock_server.py
+          env:
+            - name: PORT
+              value: "8443"
+            - name: SSL_CERTFILE
+              value: /certs/tls.crt
+            - name: SSL_KEYFILE
+              value: /certs/tls.key
+            - name: LOG_LEVEL
+              value: info
+          ports:
+            - name: https
+              containerPort: 8443
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /healthcheck
+              port: https
+              scheme: HTTPS
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthcheck
+              port: https
+              scheme: HTTPS
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: source
+              mountPath: /app
+              readOnly: true
+            - name: certs
+              mountPath: /certs
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: source
+          configMap:
+            name: ufm-mock-source
+            items:
+              - key: mock_server.py
+                path: mock_server.py
+        - name: certs
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ufm-mock
+  namespace: ${NAMESPACE}
+  labels:
+    app.kubernetes.io/name: ufm-mock
+    app.kubernetes.io/component: dev-mock
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: ufm-mock
+  ports:
+    - name: https
+      port: 443
+      targetPort: https
+      protocol: TCP
+---
+# DNS aliases for the SuperPod blueprint's UFM device names.
+# The IB PKey workflows pass the Nautobot device name straight to UFMClient,
+# which connects to that bare hostname. The cluster's search-domain rule
+# (<name>.${NAMESPACE}.svc.cluster.local) lets these ExternalName Services
+# stand in for real DNS.
+#
+# Keep this list in sync with the mock_topology context/superpod/devices/
+# JSON files that declare role.name == "UFM".
+apiVersion: v1
+kind: Service
+metadata:
+  name: a09-u23-p01-ufm-01
+  namespace: ${NAMESPACE}
+  labels:
+    app.kubernetes.io/name: ufm-mock
+    app.kubernetes.io/component: dev-mock-alias
+spec:
+  type: ExternalName
+  externalName: ufm-mock.${NAMESPACE}.svc.cluster.local
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: b09-u23-p01-ufm-02
+  namespace: ${NAMESPACE}
+  labels:
+    app.kubernetes.io/name: ufm-mock
+    app.kubernetes.io/component: dev-mock-alias
+spec:
+  type: ExternalName
+  externalName: ufm-mock.${NAMESPACE}.svc.cluster.local

@@ -55,6 +55,22 @@ const WorkflowSummary: React.FC<WorkflowClientComponentProps> = ({
     const user = workflow?.search_attributes?.User;
     if (user) summaryData.push({ label: "User", value: String(user[0]) });
 
+    const readRoles = workflow?.search_attributes?.ReadRoles;
+    if (readRoles && readRoles.length > 0) {
+      summaryData.push({
+        label: "Read Roles",
+        value: readRoles.map(String).join(", "),
+      });
+    }
+
+    const executeRoles = workflow?.search_attributes?.ExecuteRoles;
+    if (executeRoles && executeRoles.length > 0) {
+      summaryData.push({
+        label: "Execute Roles",
+        value: executeRoles.map(String).join(", "),
+      });
+    }
+
     const startTime = workflow?.start_time;
     if (startTime)
       summaryData.push({

@@ -41,6 +41,7 @@ spec:
     matchLabels:
       app.kubernetes.io/name: {{ $redisName }}
       app.kubernetes.io/instance: {{ .Release.Name }}
+  {{- include "nv-config-manager.deploymentStrategy" (dict "root" .) | nindent 2 }}
   template:
     metadata:
       labels:
@@ -152,4 +153,3 @@ spec:
 {{- end }}
 
 {{- end }}
-

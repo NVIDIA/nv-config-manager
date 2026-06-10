@@ -19,6 +19,7 @@ spec:
     matchLabels:
       app: {{ $renderName }}
       component: api
+  {{- include "nv-config-manager.deploymentStrategy" (dict "root" .) | nindent 2 }}
   template:
     metadata:
       labels:
@@ -149,6 +150,7 @@ spec:
     matchLabels:
       app: {{ $renderName }}
       component: consumer-nautobot
+  {{- include "nv-config-manager.deploymentStrategy" (dict "root" .) | nindent 2 }}
   template:
     metadata:
       labels:
@@ -255,6 +257,7 @@ spec:
     matchLabels:
       app: {{ $renderName }}
       component: consumer-device
+  {{- include "nv-config-manager.deploymentStrategy" (dict "root" .) | nindent 2 }}
   template:
     metadata:
       labels:

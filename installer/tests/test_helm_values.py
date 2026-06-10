@@ -353,6 +353,10 @@ class TestGenerateHelmValues:
             values["oidc"]["jwksUri"]
             == "https://kc.test/realms/nv-config-manager/protocol/openid-connect/certs"
         )
+        assert (
+            values["oidc"]["endSessionEndpoint"]
+            == "https://kc.test/realms/nv-config-manager/protocol/openid-connect/logout"
+        )
         assert "auth" in values["gateway"]
         assert "authorizationEndpoint" not in values["oidc"]
         assert "tokenEndpoint" not in values["oidc"]
@@ -376,6 +380,7 @@ class TestGenerateHelmValues:
         base = f"https://login.microsoftonline.com/{tenant}"
         assert values["oidc"]["authorizationEndpoint"] == f"{base}/oauth2/v2.0/authorize"
         assert values["oidc"]["tokenEndpoint"] == f"{base}/oauth2/v2.0/token"
+        assert values["oidc"]["endSessionEndpoint"] == f"{base}/oauth2/v2.0/logout"
         assert values["oidc"]["jwksUri"] == f"{base}/discovery/v2.0/keys"
         # Azure-specific scopes and audiences (needed for v2 access tokens)
         assert "api://test-client/access" in values["oidc"]["scopes"]
@@ -410,10 +415,12 @@ class TestGenerateHelmValues:
                 client_id="c",
                 client_secret="s",
                 jwks_uri="https://custom.jwks/keys",
+                end_session_endpoint="https://logout.example.com/end",
             ),
         )
         values = _gen(config)
         assert values["oidc"]["jwksUri"] == "https://custom.jwks/keys"
+        assert values["oidc"]["endSessionEndpoint"] == "https://logout.example.com/end"
 
     def test_sso_scopes_and_internal_issuer(self):
         config = _make_config(

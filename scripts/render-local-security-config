@@ -1,0 +1,63 @@
+#!/usr/bin/env python3
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+"""Render the local security installer config used by make kind-up-sec."""
+
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+
+def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--input", required=True, type=Path)
+    parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--namespace", required=True)
+    parser.add_argument("--release-name", required=True)
+    parser.add_argument("--hostname", required=True)
+    parser.add_argument("--keycloak-hostname", required=True)
+    parser.add_argument("--spiffe-trust-domain", required=True)
+    parser.add_argument("--oidc-client-secret", required=True)
+    return parser.parse_args()
+
+
+def require_mapping(data: Any, path: str) -> dict[str, Any]:
+    """Return a nested mapping, raising if the config shape is unexpected."""
+    if not isinstance(data, dict):
+        raise TypeError(f"{path} must be a mapping")
+    return data
+
+
+def main() -> int:
+    """Render a local-sec config with Makefile override values applied."""
+    args = parse_args()
+    config = require_mapping(yaml.safe_load(args.input.read_text()), str(args.input))
+
+    cluster = require_mapping(config.setdefault("cluster", {}), "cluster")
+    cluster["hostname"] = args.hostname
+    cluster["namespace"] = args.namespace
+    cluster["release_name"] = args.release_name
+
+    sso = require_mapping(config.setdefault("sso", {}), "sso")
+    sso["issuer_url"] = f"https://{args.keycloak_hostname}/realms/nv-config-manager"
+    sso["client_secret"] = args.oidc_client_secret
+
+    spiffe = require_mapping(config.setdefault("spiffe", {}), "spiffe")
+    spiffe["trust_domain"] = args.spiffe_trust_domain
+    spiffe["group_prefixes"] = [
+        f"spiffe://{args.spiffe_trust_domain}/ns/{args.namespace}=nv-config-manager"
+    ]
+
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(yaml.safe_dump(config, sort_keys=False))
+    print(f"Rendered local security config: {args.output}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
