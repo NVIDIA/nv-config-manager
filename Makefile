@@ -1094,6 +1094,7 @@ mock-dhcp-validate: docker-build-mock-device
 		MOCK_DHCP_SERIAL="$(MOCK_DHCP_SERIAL)" \
 		MOCK_DHCP_MAC="$$MOCK_DHCP_MAC" \
 		MOCK_DHCP_CLIENT_ID_TPL="$(MOCK_DHCP_CLIENT_ID_TPL)" \
+		NAMESPACE="$(NAMESPACE)" \
 		envsubst < development/mock_devices/manifests/mock-dhcp-validate.yaml | $(KUBECTL_KIND) apply -f -
 	@echo "⏳ Waiting for validation job..."
 	@$(KUBECTL_KIND) wait --for=condition=complete job/mock-dhcp-validate -n $(NAMESPACE) --timeout=60s || { \
@@ -1133,6 +1134,7 @@ mock-dhcp-discover: docker-build-mock-device
 		MOCK_DHCP_SERIAL="$(MOCK_DHCP_SERIAL)" \
 		MOCK_DHCP_MAC="$$MOCK_DHCP_MAC" \
 		MOCK_DHCP_CLIENT_ID_TPL="$(MOCK_DHCP_CLIENT_ID_TPL)" \
+		NAMESPACE="$(NAMESPACE)" \
 		envsubst < development/mock_devices/manifests/mock-dhcp-discover.yaml | $(KUBECTL_KIND) apply -f -
 	@echo "⏳ Waiting for DHCP discover..."
 	@$(KUBECTL_KIND) wait --for=condition=complete job/mock-dhcp-discover -n $(NAMESPACE) --timeout=60s || { \
@@ -1178,6 +1180,7 @@ mock-ztp-validate: docker-build-mock-device
 		MOCK_ZTP_SERIAL="$(MOCK_ZTP_SERIAL)" \
 		MOCK_ZTP_MAC="$$MOCK_ZTP_MAC" \
 		MOCK_ZTP_CLIENT_ID_TPL="$(MOCK_ZTP_CLIENT_ID_TPL)" \
+		NAMESPACE="$(NAMESPACE)" \
 		envsubst < development/mock_devices/manifests/mock-ztp-validate.yaml | $(KUBECTL_KIND) apply -f -
 	@echo "⏳ Waiting for ZTP validation..."
 	@$(KUBECTL_KIND) wait --for=condition=complete job/mock-ztp-validate -n $(NAMESPACE) --timeout=120s || { \

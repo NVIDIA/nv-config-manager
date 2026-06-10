@@ -18,7 +18,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: mock-dhcp-discover
-  namespace: nv-config-manager
+  namespace: ${NAMESPACE}
   labels:
     app: mock-dhcp-client
 spec:

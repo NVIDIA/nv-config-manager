@@ -22,7 +22,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: mock-ztp-validate
-  namespace: nv-config-manager
+  namespace: ${NAMESPACE}
   labels:
     app: mock-device
     mock-device-task: ztp-validate
