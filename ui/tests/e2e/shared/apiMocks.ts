@@ -64,8 +64,8 @@ export async function setupApiMocks(page: Page) {
 
   // Workflow submission endpoints
   await mockSiteCableValidationEndpoint(page);
-  await mockVpcCreationEndpoint(page);
-  await mockVpcDeletionEndpoint(page);
+  await mockSpxOverlayCreationEndpoint(page);
+  await mockSpxOverlayDeletionEndpoint(page);
   await mockBackupEndpoint(page);
   await mockDeployEndpoint(page);
   await mockPortLLDPInfoEndpoint(page);
@@ -313,7 +313,7 @@ export async function mockSiteCableValidationEndpoint(page: Page) {
   );
 }
 
-export async function mockVpcCreationEndpoint(page: Page) {
+export async function mockSpxOverlayCreationEndpoint(page: Page) {
   await page.route(`**/v1/workflow/ngc/spx_overlay_creation`, async (route) => {
     const request = route.request();
     const body = JSON.parse((await request.postData()) || "{}");
@@ -357,7 +357,7 @@ export async function mockVpcCreationEndpoint(page: Page) {
   });
 }
 
-export async function mockVpcDeletionEndpoint(page: Page) {
+export async function mockSpxOverlayDeletionEndpoint(page: Page) {
   await page.route(`**/v1/workflow/ngc/spx_overlay_deletion`, async (route) => {
     const request = route.request();
     const body = JSON.parse((await request.postData()) || "{}");
@@ -1093,6 +1093,8 @@ export async function mockWorkflowTypesEndpoint(page: Page) {
     "SitePasswordRotationWorkflow",
     "SpXOverlayCreationWorkflow",
     "SpXOverlayDeletionWorkflow",
+    "SpXOverlayAssignmentWorkflow",
+    "SpXOverlayTenantChangeWorkflow",
     "InfinibandGetUnhealthyPortsWorkflow",
     "InfinibandCableValidationWorkflow",
     "InfinibandMlnxOSUpgradeWorkflow",
@@ -1126,9 +1128,10 @@ export async function mockWorkflowMetadataEndpoint(page: Page) {
     "RedfishProvisioningWorkflow",
     "SiteCableValidationWorkflow",
     "SitePasswordRotationWorkflow",
-    "VpcCreationWorkflow",
-    "VpcDeletionWorkflow",
-    "VpcTenantChangeWorkflow",
+    "SpXOverlayCreationWorkflow",
+    "SpXOverlayDeletionWorkflow",
+    "SpXOverlayAssignmentWorkflow",
+    "SpXOverlayTenantChangeWorkflow",
     "InfinibandGetUnhealthyPortsWorkflow",
     "InfinibandCableValidationWorkflow",
     "InfinibandMlnxOSUpgradeWorkflow",
@@ -1149,9 +1152,10 @@ export async function mockWorkflowMetadataEndpoint(page: Page) {
     PortLLDPInfoWorkflow: "Port LLDP Info",
     SiteCableValidationWorkflow: "Site Cable Validation",
     SitePasswordRotationWorkflow: "Site Password Rotation",
-    VpcCreationWorkflow: "VPC Creation",
-    VpcDeletionWorkflow: "VPC Deletion",
-    VpcTenantChangeWorkflow: "VPC Tenant Change",
+    SpXOverlayCreationWorkflow: "SpX Overlay Creation",
+    SpXOverlayDeletionWorkflow: "SpX Overlay Deletion",
+    SpXOverlayAssignmentWorkflow: "SpX Overlay Assignment",
+    SpXOverlayTenantChangeWorkflow: "SpX Overlay Tenant Change",
     InfinibandGetUnhealthyPortsWorkflow: "InfiniBand Get Unhealthy Ports",
     InfinibandCableValidationWorkflow: "InfiniBand Cable Validation",
     InfinibandMlnxOSUpgradeWorkflow: "InfiniBand MLNX-OS Upgrade",
@@ -1175,9 +1179,10 @@ export async function mockWorkflowMetadataEndpoint(page: Page) {
     RedfishProvisioningWorkflow: "/ngc/redfish_provisioning",
     SiteCableValidationWorkflow: "/ngc/site_cable_validation",
     SitePasswordRotationWorkflow: "/ngc/site_password_rotation",
-    VpcCreationWorkflow: "/ngc/vpc_creation",
-    VpcDeletionWorkflow: "/ngc/vpc_deletion",
-    VpcTenantChangeWorkflow: "/ngc/vpc-tenant-change",
+    SpXOverlayCreationWorkflow: "/ngc/spx_overlay_creation",
+    SpXOverlayDeletionWorkflow: "/ngc/spx_overlay_deletion",
+    SpXOverlayAssignmentWorkflow: "/ngc/spx_overlay_assignment",
+    SpXOverlayTenantChangeWorkflow: "/ngc/spx-overlay-tenant-change",
     InfinibandGetUnhealthyPortsWorkflow: "/ngc/infiniband_get_unhealthy_ports",
     InfinibandCableValidationWorkflow: "/ngc/infiniband_cable_validation",
     InfinibandMlnxOSUpgradeWorkflow: "/ngc/infiniband_mlnx_os_upgrade",
