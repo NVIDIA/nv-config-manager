@@ -51,6 +51,17 @@ def _normalize_url(url: str) -> str:
     return url.rstrip("/")
 
 
+def _normalize_auth_discovery_url(url: str) -> str:
+    """Return an HTTPS auth discovery URL without a trailing slash."""
+    normalized_url = _normalize_url(url)
+    parsed = urlparse(normalized_url)
+    if parsed.scheme.lower() != "https":
+        raise click.ClickException(f"Refusing non-HTTPS auth discovery URL: {normalized_url}")
+    if not parsed.netloc:
+        raise click.ClickException(f"Invalid auth discovery URL: {normalized_url}")
+    return normalized_url
+
+
 def _resolve_base_hostname(
     hostname: str | None,
     environment: str | None,
@@ -103,11 +114,11 @@ def _resolve_auth_discovery_endpoint(
 ) -> str:
     """Resolve the URL used to discover public auth settings."""
     if discovery_url:
-        return _normalize_url(discovery_url)
+        return _normalize_auth_discovery_url(discovery_url)
 
     if hostname or environment:
         base_hostname = _resolve_base_hostname(hostname, environment, domain)
-        return f"https://{base_hostname}/auth/discovery"
+        return _normalize_auth_discovery_url(f"https://{base_hostname}/auth/discovery")
 
     if mcp_url:
         return _auth_discovery_url_from_mcp_url(mcp_url)
@@ -119,7 +130,7 @@ def _auth_discovery_url_from_mcp_url(mcp_url: str) -> str:
     """Derive the base-host /auth/discovery URL from an MCP endpoint URL."""
     parsed = urlparse(mcp_url)
     if not parsed.scheme or not parsed.netloc:
-        return _normalize_url(mcp_url)
+        return _normalize_auth_discovery_url(mcp_url)
 
     netloc = parsed.netloc
     for prefix in ("svc-mcp.", "mcp."):
@@ -127,13 +138,33 @@ def _auth_discovery_url_from_mcp_url(mcp_url: str) -> str:
             netloc = netloc.removeprefix(prefix)
             break
 
-    return parsed._replace(
+    discovery_url = parsed._replace(
         netloc=netloc,
         path="/auth/discovery",
         params="",
         query="",
         fragment="",
     ).geturl()
+    return _normalize_auth_discovery_url(discovery_url)
+
+
+def _resolve_configured_auth_discovery_endpoint(
+    hostname: str | None,
+    environment: str | None,
+    domain: str,
+    mcp_url: str | None,
+    discovery_url: str | None,
+) -> str:
+    """Resolve an explicitly configured discovery URL without deriving it from MCP URLs."""
+    if discovery_url or hostname or environment:
+        return _resolve_auth_discovery_endpoint(
+            hostname=hostname,
+            environment=environment,
+            domain=domain,
+            mcp_url=mcp_url,
+            discovery_url=discovery_url,
+        )
+    return ""
 
 
 def _resolve_redirect_discovery_endpoint(
@@ -203,15 +234,14 @@ def _resolve_connection(
     insecure: bool,
 ) -> ResolvedMCPConnection:
     """Resolve endpoint and auth requirements for an MCP-capable client."""
-    resolved_discovery_url = _resolve_auth_discovery_endpoint(
-        hostname=hostname,
-        environment=environment,
-        domain=domain,
-        mcp_url=mcp_url,
-        discovery_url=discovery_url,
-    )
-
     if auth_mode == AUTH_MODE_NONE:
+        resolved_discovery_url = _resolve_configured_auth_discovery_endpoint(
+            hostname=hostname,
+            environment=environment,
+            domain=domain,
+            mcp_url=mcp_url,
+            discovery_url=discovery_url,
+        )
         connection = ResolvedMCPConnection(
             endpoint_url=_resolve_mcp_endpoint(
                 hostname=hostname,
@@ -227,6 +257,13 @@ def _resolve_connection(
         return connection
 
     if auth_mode == AUTH_MODE_SSO:
+        resolved_discovery_url = _resolve_configured_auth_discovery_endpoint(
+            hostname=hostname,
+            environment=environment,
+            domain=domain,
+            mcp_url=mcp_url,
+            discovery_url=discovery_url,
+        )
         connection = ResolvedMCPConnection(
             endpoint_url=_resolve_mcp_endpoint(
                 hostname=hostname,
@@ -241,6 +278,13 @@ def _resolve_connection(
         _enforce_secure_endpoint(connection.endpoint_url, connection.auth_required)
         return connection
 
+    resolved_discovery_url = _resolve_auth_discovery_endpoint(
+        hostname=hostname,
+        environment=environment,
+        domain=domain,
+        mcp_url=mcp_url,
+        discovery_url=discovery_url,
+    )
     redirect_discovery_url = _resolve_redirect_discovery_endpoint(
         hostname=hostname,
         environment=environment,
@@ -624,6 +668,8 @@ def config_command(
     ]
     if insecure:
         token_command.append("--insecure")
+    if discovery_url:
+        token_command.extend(["--discovery-url", connection.discovery_url])
     if issuer:
         token_command.extend(["--issuer", issuer])
     if client_id:

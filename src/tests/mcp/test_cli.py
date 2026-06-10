@@ -147,6 +147,38 @@ def test_mcp_url_can_drive_endpoint_and_discovery() -> None:
     assert result.output == "access-token\n"
 
 
+def test_explicit_discovery_url_must_use_https() -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(
+        mcp_cli.main,
+        [
+            "token",
+            "-H",
+            "config-manager.example.com",
+            "--discovery-url",
+            "http://config-manager.example.com/auth/discovery",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "Refusing non-HTTPS auth discovery URL" in result.output
+    assert FakeOIDCAuth.auth_discovered == []
+
+
+def test_mcp_derived_discovery_url_must_use_https() -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(
+        mcp_cli.main,
+        ["token", "--mcp-url", "http://svc-mcp.config-manager.example.com/mcp"],
+    )
+
+    assert result.exit_code != 0
+    assert "Refusing non-HTTPS auth discovery URL" in result.output
+    assert FakeOIDCAuth.auth_discovered == []
+
+
 def test_legacy_redirect_discovery_is_used_when_auth_discovery_is_unavailable() -> None:
     FakeOIDCAuth.auth_discovery_result = None
     runner = CliRunner()
@@ -307,6 +339,28 @@ def test_config_output_includes_insecure_in_token_command() -> None:
     assert (
         "nvcm-mcp-cli token --auth-mode sso "
         "--mcp-url https://svc-mcp.config-manager.example.com/mcp --insecure"
+    ) in result.output
+
+
+def test_config_output_preserves_explicit_discovery_url_in_token_command() -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(
+        mcp_cli.main,
+        [
+            "config",
+            "-H",
+            "config-manager.example.com",
+            "--discovery-url",
+            "https://gateway.example.com/auth/discovery/",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert (
+        "nvcm-mcp-cli token --auth-mode sso "
+        "--mcp-url https://svc-mcp.config-manager.example.com/mcp "
+        "--discovery-url https://gateway.example.com/auth/discovery"
     ) in result.output
 
 

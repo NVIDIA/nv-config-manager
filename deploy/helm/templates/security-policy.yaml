@@ -236,8 +236,10 @@ spec:
           headers:
             - name: Authorization
               valuePrefix: "Bearer "
+          {{- if $.root.Values.oidc.disableTokenEncryption }}
           cookies:
             - {{ $.root.Values.oidc.cookieName | default "NVConfigManagerAccessToken" | quote }}
+          {{- end }}
         {{- if $.root.Values.oidc.claimToHeaders }}
         claimToHeaders:
         {{- range $.root.Values.oidc.claimToHeaders }}
