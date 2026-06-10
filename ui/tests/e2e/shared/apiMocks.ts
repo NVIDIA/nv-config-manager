@@ -1182,7 +1182,7 @@ export async function mockWorkflowMetadataEndpoint(page: Page) {
     SpXOverlayCreationWorkflow: "/ngc/spx_overlay_creation",
     SpXOverlayDeletionWorkflow: "/ngc/spx_overlay_deletion",
     SpXOverlayAssignmentWorkflow: "/ngc/spx_overlay_assignment",
-    SpXOverlayTenantChangeWorkflow: "/ngc/spx-overlay-tenant-change",
+    SpXOverlayTenantChangeWorkflow: "/ngc/spx_overlay_tenant_change",
     InfinibandGetUnhealthyPortsWorkflow: "/ngc/infiniband_get_unhealthy_ports",
     InfinibandCableValidationWorkflow: "/ngc/infiniband_cable_validation",
     InfinibandMlnxOSUpgradeWorkflow: "/ngc/infiniband_mlnx_os_upgrade",
