@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import shlex
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlparse
@@ -24,7 +25,7 @@ import click
 import requests
 import urllib3
 
-from nv_config_manager.common.oidc import OIDCAuth
+from nv_config_manager.common.oidc import AuthDiscovery, OIDCAuth
 
 DEFAULT_DOMAIN = "config-manager.example.com"
 DEFAULT_TOKEN_ENV_VAR = "NVCM_MCP_BEARER_TOKEN"
@@ -42,6 +43,7 @@ class ResolvedMCPConnection:
     discovery_url: str
     auth_required: bool
     discovered_oidc: tuple[str, str] | None = None
+    discovered_scopes: tuple[str, ...] = ()
 
 
 def _normalize_url(url: str) -> str:
@@ -92,17 +94,55 @@ def _replace_svc_mcp_host(mcp_url: str) -> str:
     return _normalize_url(parsed._replace(netloc=netloc, query="", fragment="").geturl())
 
 
-def _resolve_discovery_endpoint(
+def _resolve_auth_discovery_endpoint(
     hostname: str | None,
     environment: str | None,
     domain: str,
     mcp_url: str | None,
     discovery_url: str | None,
 ) -> str:
-    """Resolve the URL used to discover OIDC settings."""
+    """Resolve the URL used to discover public auth settings."""
     if discovery_url:
         return _normalize_url(discovery_url)
 
+    if hostname or environment:
+        base_hostname = _resolve_base_hostname(hostname, environment, domain)
+        return f"https://{base_hostname}/auth/discovery"
+
+    if mcp_url:
+        return _auth_discovery_url_from_mcp_url(mcp_url)
+
+    raise click.ClickException("Either --hostname, --environment, or --mcp-url is required.")
+
+
+def _auth_discovery_url_from_mcp_url(mcp_url: str) -> str:
+    """Derive the base-host /auth/discovery URL from an MCP endpoint URL."""
+    parsed = urlparse(mcp_url)
+    if not parsed.scheme or not parsed.netloc:
+        return _normalize_url(mcp_url)
+
+    netloc = parsed.netloc
+    for prefix in ("svc-mcp.", "mcp."):
+        if netloc.startswith(prefix):
+            netloc = netloc.removeprefix(prefix)
+            break
+
+    return parsed._replace(
+        netloc=netloc,
+        path="/auth/discovery",
+        params="",
+        query="",
+        fragment="",
+    ).geturl()
+
+
+def _resolve_redirect_discovery_endpoint(
+    hostname: str | None,
+    environment: str | None,
+    domain: str,
+    mcp_url: str | None,
+) -> str:
+    """Resolve the legacy OIDC redirect discovery URL."""
     if hostname or environment:
         base_hostname = _resolve_base_hostname(hostname, environment, domain)
         return f"https://mcp.{base_hostname}/mcp"
@@ -113,10 +153,31 @@ def _resolve_discovery_endpoint(
     raise click.ClickException("Either --hostname, --environment, or --mcp-url is required.")
 
 
-def _discover_oidc_config(discovery_url: str, insecure: bool) -> tuple[str, str] | None:
-    """Discover OIDC settings from the MCP gateway."""
+def _discovered_oidc_tuple(discovery: AuthDiscovery) -> tuple[str, str] | None:
+    """Return issuer/client tuple when auth discovery includes OIDC settings."""
+    if not discovery.issuer_url or not discovery.client_id:
+        return None
+    return (discovery.issuer_url, discovery.client_id)
+
+
+def _discover_auth_config(
+    auth_discovery_url: str,
+    redirect_discovery_url: str,
+    insecure: bool,
+) -> tuple[AuthDiscovery | None, tuple[str, str] | None]:
+    """Discover auth settings, falling back to legacy OIDC redirect parsing."""
     try:
-        return OIDCAuth.discover_oidc_config(discovery_url, verify=not insecure)
+        discovery = OIDCAuth.discover_auth_config(auth_discovery_url, verify=not insecure)
+    except RuntimeError as e:
+        raise click.ClickException(f"OIDC auto-discovery failed: {e}") from e
+    if discovery is not None:
+        return discovery, _discovered_oidc_tuple(discovery)
+
+    try:
+        return None, OIDCAuth.discover_oidc_config(
+            redirect_discovery_url,
+            verify=not insecure,
+        )
     except RuntimeError as e:
         raise click.ClickException(f"OIDC auto-discovery failed: {e}") from e
 
@@ -131,7 +192,7 @@ def _resolve_connection(
     insecure: bool,
 ) -> ResolvedMCPConnection:
     """Resolve endpoint and auth requirements for an MCP-capable client."""
-    resolved_discovery_url = _resolve_discovery_endpoint(
+    resolved_discovery_url = _resolve_auth_discovery_endpoint(
         hostname=hostname,
         environment=environment,
         domain=domain,
@@ -165,7 +226,36 @@ def _resolve_connection(
             auth_required=True,
         )
 
-    discovered = _discover_oidc_config(resolved_discovery_url, insecure)
+    redirect_discovery_url = _resolve_redirect_discovery_endpoint(
+        hostname=hostname,
+        environment=environment,
+        domain=domain,
+        mcp_url=mcp_url,
+    )
+    auth_discovery, discovered = _discover_auth_config(
+        resolved_discovery_url,
+        redirect_discovery_url,
+        insecure,
+    )
+    if auth_discovery is not None:
+        auth_required = auth_discovery.auth_required
+        service_endpoint = auth_discovery.services.get("mcp")
+        resolved_auth_mode = AUTH_MODE_SSO if auth_required else AUTH_MODE_NONE
+        return ResolvedMCPConnection(
+            endpoint_url=(_normalize_url(service_endpoint) if service_endpoint else None)
+            or _resolve_mcp_endpoint(
+                hostname=hostname,
+                environment=environment,
+                domain=domain,
+                mcp_url=mcp_url,
+                auth_mode=resolved_auth_mode,
+            ),
+            discovery_url=resolved_discovery_url,
+            auth_required=auth_required,
+            discovered_oidc=discovered,
+            discovered_scopes=auth_discovery.scopes,
+        )
+
     resolved_auth_mode = AUTH_MODE_SSO if discovered else AUTH_MODE_NONE
     return ResolvedMCPConnection(
         endpoint_url=_resolve_mcp_endpoint(
@@ -193,22 +283,28 @@ def _build_auth(
     issuer: str | None,
     client_id: str | None,
     connection: ResolvedMCPConnection,
+    insecure: bool,
 ) -> OIDCAuth:
     """Build an OIDC auth helper from explicit settings or gateway discovery."""
-    if issuer and client_id:
-        return OIDCAuth(issuer_url=issuer, client_id=client_id)
+    discovered_issuer, discovered_client_id = (
+        connection.discovered_oidc if connection.discovered_oidc else (None, None)
+    )
+    resolved_issuer = issuer or discovered_issuer
+    resolved_client_id = client_id or discovered_client_id
 
-    if issuer or client_id:
-        raise click.ClickException("--issuer and --client-id must be provided together.")
-
-    if connection.discovered_oidc is None:
+    if not resolved_issuer or not resolved_client_id:
         raise click.ClickException(
             "OIDC configuration was not discovered from the MCP gateway. "
-            "Provide --issuer and --client-id explicitly."
+            "Provide --issuer and --client-id explicitly, or use a gateway that "
+            "supports auth discovery."
         )
 
-    discovered_issuer, discovered_client_id = connection.discovered_oidc
-    return OIDCAuth(issuer_url=discovered_issuer, client_id=discovered_client_id)
+    return OIDCAuth(
+        issuer_url=resolved_issuer,
+        client_id=resolved_client_id,
+        scopes=list(connection.discovered_scopes) or None,
+        verify=not insecure,
+    )
 
 
 def _target_options(function: Any) -> Any:
@@ -263,19 +359,19 @@ def _auth_options(function: Any) -> Any:
             "--discovery-url",
             default=None,
             envvar="NV_CONFIG_MANAGER_MCP_DISCOVERY_URL",
-            help="Explicit URL used for OIDC discovery. Defaults to the mcp.<base> endpoint.",
+            help="Explicit URL used for auth discovery. Defaults to https://<base>/auth/discovery.",
         ),
         click.option(
             "--issuer",
             default=None,
             envvar="NV_CONFIG_MANAGER_OIDC_ISSUER",
-            help="OIDC issuer URL. Must be provided with --client-id.",
+            help="OIDC issuer URL. Auto-discovered from the gateway when omitted.",
         ),
         click.option(
             "--client-id",
             default=None,
             envvar="NV_CONFIG_MANAGER_OIDC_CLIENT_ID",
-            help="OIDC client ID. Must be provided with --issuer.",
+            help="OIDC client ID. Overrides the gateway-discovered client ID when provided.",
         ),
         click.option(
             "--insecure",
@@ -301,8 +397,11 @@ def _resolve_auth(
     insecure: bool,
 ) -> tuple[ResolvedMCPConnection, OIDCAuth | None]:
     """Resolve an auth helper for the selected MCP endpoint."""
-    if issuer or client_id:
+    requested_auth_mode = auth_mode
+    if issuer and client_id:
         auth_mode = AUTH_MODE_SSO
+    elif issuer or client_id or auth_mode == AUTH_MODE_SSO:
+        auth_mode = AUTH_MODE_AUTO
 
     connection = _resolve_connection(
         hostname=hostname,
@@ -314,11 +413,19 @@ def _resolve_auth(
         insecure=insecure,
     )
     if not connection.auth_required:
-        if issuer or client_id:
-            raise click.ClickException("--issuer and --client-id require --auth-mode sso.")
+        if issuer or client_id or requested_auth_mode == AUTH_MODE_SSO:
+            raise click.ClickException(
+                "OIDC configuration was not discovered from the MCP gateway. "
+                "Provide --issuer and --client-id explicitly."
+            )
         return connection, None
 
-    return connection, _build_auth(issuer=issuer, client_id=client_id, connection=connection)
+    return connection, _build_auth(
+        issuer=issuer,
+        client_id=client_id,
+        connection=connection,
+        insecure=insecure,
+    )
 
 
 @click.group()
@@ -488,11 +595,20 @@ def config_command(
     click.echo("Required HTTP header:")
     click.echo(f"  Authorization: Bearer ${{{token_env_var}}}")
     click.echo("Token command:")
-    click.echo(
-        "  "
-        f'export {token_env_var}="$(nvcm-mcp-cli token '
-        f'--auth-mode sso --mcp-url {connection.endpoint_url})"'
-    )
+    token_command = [
+        "nvcm-mcp-cli",
+        "token",
+        "--auth-mode",
+        "sso",
+        "--mcp-url",
+        connection.endpoint_url,
+    ]
+    if issuer:
+        token_command.extend(["--issuer", issuer])
+    if client_id:
+        token_command.extend(["--client-id", client_id])
+    token_command_text = " ".join(shlex.quote(part) for part in token_command)
+    click.echo(f'  export {token_env_var}="$({token_command_text})"')
 
 
 @main.command()

@@ -67,13 +67,24 @@ async def test_downstream_clients_omit_auth_headers_when_auth_is_disabled(
 
 
 def test_nautobot_token_mode_uses_configured_token_without_bearer_token() -> None:
-    client = nautobot_client(_settings(nautobot_auth_mode="token", nautobot_token="ro-token"))
+    client = nautobot_client(
+        _settings(nautobot_auth_mode="token", nautobot_read_only_token="ro-token")
+    )
 
     assert client._resolve_headers() == {"Authorization": "Token ro-token"}
 
 
+def test_nautobot_token_mode_requires_read_only_token() -> None:
+    client = nautobot_client(_settings(nautobot_auth_mode="token"))
+
+    with pytest.raises(MCPAuthError, match="nautobot_read_only_token"):
+        client._resolve_headers()
+
+
 def test_nautobot_jwt_mode_does_not_fallback_to_configured_token() -> None:
-    client = nautobot_client(_settings(nautobot_auth_mode="jwt", nautobot_token="ro-token"))
+    client = nautobot_client(
+        _settings(nautobot_auth_mode="jwt", nautobot_read_only_token="ro-token")
+    )
 
     with pytest.raises(MCPAuthError, match="Bearer token"):
         client._resolve_headers()
@@ -83,7 +94,9 @@ def test_nautobot_jwt_mode_uses_configured_token_when_auth_is_disabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr("nv_config_manager.mcp.clients.config_auth_required", lambda: False)
-    client = nautobot_client(_settings(nautobot_auth_mode="jwt", nautobot_token="ro-token"))
+    client = nautobot_client(
+        _settings(nautobot_auth_mode="jwt", nautobot_read_only_token="ro-token")
+    )
 
     assert client._resolve_headers() == {"Authorization": "Token ro-token"}
 
@@ -99,15 +112,16 @@ def test_nautobot_jwt_mode_omits_auth_when_auth_is_disabled_without_token(
 
 def _settings(
     nautobot_auth_mode: str,
-    nautobot_token: str = "",
+    nautobot_read_only_token: str = "",
     nautobot_token_fallback_enabled: bool = False,
 ) -> MCPSettings:
     return MCPSettings(
         workflow_api_url="http://workflow:9000",
+        workflow_ui_url="https://config-manager.example.test",
         config_store_api_url="http://config-store:9000",
         dhcp_api_url="http://dhcp:9000",
         nautobot_url="http://nautobot",
-        nautobot_token=nautobot_token,
+        nautobot_read_only_token=nautobot_read_only_token,
         nautobot_verify=True,
         nautobot_auth_mode=nautobot_auth_mode,
         nautobot_token_fallback_enabled=nautobot_token_fallback_enabled,

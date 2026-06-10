@@ -590,6 +590,90 @@ spec:
               }'
           fi
 
+          cli_client_uuid() {
+            curl -sf -H "Authorization: Bearer $TOKEN" \
+              "http://keycloak:80/admin/realms/nv-config-manager/clients?clientId=nv-config-manager-cli" \
+              | tr '{' '\n' \
+              | grep '"clientId":"nv-config-manager-cli"' \
+              | sed -n 's/.*"id":"\([^"]*\)".*/\1/p' \
+              | head -n 1
+          }
+
+          if [ -z "$(cli_client_uuid)" ]; then
+            curl -sf -X POST "http://keycloak:80/admin/realms/nv-config-manager/clients" \
+              -H "Authorization: Bearer $TOKEN" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "clientId": "nv-config-manager-cli",
+                "name": "NVIDIA Config Manager CLI",
+                "enabled": true,
+                "publicClient": true,
+                "directAccessGrantsEnabled": false,
+                "standardFlowEnabled": true,
+                "implicitFlowEnabled": false,
+                "serviceAccountsEnabled": false,
+                "protocol": "openid-connect",
+                "redirectUris": ["http://localhost:*", "http://127.0.0.1:*"],
+                "webOrigins": ["*"],
+                "attributes": {
+                  "access.token.lifespan": "3600",
+                  "pkce.code.challenge.method": "S256"
+                }
+              }'
+          fi
+
+          CLI_CLIENT_UUID=$(cli_client_uuid)
+          if [ -z "$CLI_CLIENT_UUID" ]; then
+            echo "Failed to resolve nv-config-manager-cli client id"
+            exit 1
+          fi
+
+          curl -sf -X PUT "http://keycloak:80/admin/realms/nv-config-manager/clients/${CLI_CLIENT_UUID}" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "clientId": "nv-config-manager-cli",
+              "name": "NVIDIA Config Manager CLI",
+              "enabled": true,
+              "publicClient": true,
+              "directAccessGrantsEnabled": false,
+              "standardFlowEnabled": true,
+              "implicitFlowEnabled": false,
+              "serviceAccountsEnabled": false,
+              "protocol": "openid-connect",
+              "redirectUris": ["http://localhost:*", "http://127.0.0.1:*"],
+              "webOrigins": ["*"],
+              "attributes": {
+                "access.token.lifespan": "3600",
+                "pkce.code.challenge.method": "S256"
+              }
+            }'
+
+          if curl -sf -H "Authorization: Bearer $TOKEN" \
+            "http://keycloak:80/admin/realms/nv-config-manager/clients/${CLI_CLIENT_UUID}/protocol-mappers/models" \
+            | grep -q '"name":"realm roles"'; then
+            echo "CLI realm roles mapper exists"
+          else
+            curl -sf -X POST \
+              "http://keycloak:80/admin/realms/nv-config-manager/clients/${CLI_CLIENT_UUID}/protocol-mappers/models" \
+              -H "Authorization: Bearer $TOKEN" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "name": "realm roles",
+                "protocol": "openid-connect",
+                "protocolMapper": "oidc-usermodel-realm-role-mapper",
+                "consentRequired": false,
+                "config": {
+                  "multivalued": "true",
+                  "userinfo.token.claim": "true",
+                  "id.token.claim": "true",
+                  "access.token.claim": "true",
+                  "claim.name": "roles",
+                  "jsonType.label": "String"
+                }
+              }'
+          fi
+
           ensure_realm_role() {
             role="$1"
             description="$2"

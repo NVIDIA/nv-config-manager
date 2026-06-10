@@ -20,7 +20,7 @@ import ssl
 import types
 from collections.abc import Callable
 from configparser import ConfigParser
-from typing import Any
+from typing import Any, cast
 
 import aiohttp
 from aiohttp import ClientTimeout, TCPConnector
@@ -111,9 +111,10 @@ class DHCPClient:
 
     def _resolve_headers(self) -> dict[str, str] | None:
         """Return headers for the current request/session."""
-        if callable(self._headers):
-            return self._headers()
-        return self._headers
+        headers = self._headers
+        if isinstance(headers, dict) or headers is None:
+            return cast(dict[str, str] | None, headers)
+        return headers()
 
     async def _request(
         self,

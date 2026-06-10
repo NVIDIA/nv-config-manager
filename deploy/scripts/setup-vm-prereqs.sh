@@ -1133,6 +1133,34 @@ spec:
               }'
             echo "Client created"
           fi
+
+          # Check if public CLI client exists
+          if curl -sf -H "Authorization: Bearer \$TOKEN" "http://keycloak:80/admin/realms/nv-config-manager/clients?clientId=nv-config-manager-cli" | grep -q "nv-config-manager-cli"; then
+            echo "Client nv-config-manager-cli already exists, skipping creation"
+          else
+            echo "Creating nv-config-manager-cli public client..."
+            curl -sf -X POST "http://keycloak:80/admin/realms/nv-config-manager/clients" \
+              -H "Authorization: Bearer \$TOKEN" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "clientId": "nv-config-manager-cli",
+                "name": "NVIDIA Config Manager CLI",
+                "enabled": true,
+                "publicClient": true,
+                "directAccessGrantsEnabled": false,
+                "standardFlowEnabled": true,
+                "implicitFlowEnabled": false,
+                "serviceAccountsEnabled": false,
+                "protocol": "openid-connect",
+                "redirectUris": ["http://localhost:*", "http://127.0.0.1:*"],
+                "webOrigins": ["*"],
+                "attributes": {
+                  "access.token.lifespan": "3600",
+                  "pkce.code.challenge.method": "S256"
+                }
+              }'
+            echo "CLI client created"
+          fi
           
           # Check if demo user exists
           if curl -sf -H "Authorization: Bearer \$TOKEN" "http://keycloak:80/admin/realms/nv-config-manager/users?username=demo" | grep -q "demo"; then

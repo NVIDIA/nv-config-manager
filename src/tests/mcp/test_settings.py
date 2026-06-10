@@ -24,10 +24,12 @@ def _config(nautobot_server: str, auth_mode: str = "auto") -> ConfigParser:
     config["mcp"] = {
         "use_internal_endpoints": "true",
         "nautobot_auth_mode": auth_mode,
+        "nautobot_read_only_token": "read-only-token",
     }
     config["temporal"] = {
         "api_service": "http://workflow:9000",
         "api_url": "https://workflow.example.test",
+        "ui_url": "https://config-manager.example.test",
     }
     config["config_store.client"] = {
         "api_service": "http://config-store:9000",
@@ -39,7 +41,7 @@ def _config(nautobot_server: str, auth_mode: str = "auto") -> ConfigParser:
     }
     config["nautobot"] = {
         "server": nautobot_server,
-        "token": "read-only-token",
+        "token": "rw-token",
         "verify": "true",
     }
     return config
@@ -49,15 +51,36 @@ def test_nautobot_auth_auto_uses_jwt_for_local_nautobot() -> None:
     settings = MCPSettings.from_config(_config("http://nv-config-manager-nautobot"))
 
     assert settings.nautobot_auth_mode == "jwt"
+    assert settings.workflow_ui_url == "https://config-manager.example.test"
 
 
 def test_nautobot_auth_auto_uses_token_for_external_nautobot() -> None:
     settings = MCPSettings.from_config(_config("https://nautobot.example.test"))
 
     assert settings.nautobot_auth_mode == "token"
+    assert settings.nautobot_read_only_token == "read-only-token"
+
+
+def test_nautobot_read_only_token_does_not_fallback_to_rw_token() -> None:
+    config = _config("https://nautobot.example.test")
+    del config["mcp"]["nautobot_read_only_token"]
+
+    settings = MCPSettings.from_config(config)
+
+    assert settings.nautobot_auth_mode == "token"
+    assert settings.nautobot_read_only_token == ""
 
 
 def test_nautobot_auth_explicit_override() -> None:
     settings = MCPSettings.from_config(_config("https://nautobot.example.test", auth_mode="jwt"))
 
     assert settings.nautobot_auth_mode == "jwt"
+
+
+def test_workflow_ui_url_falls_back_to_base_hostname() -> None:
+    config = _config("http://nv-config-manager-nautobot")
+    del config["temporal"]["ui_url"]
+
+    settings = MCPSettings.from_config(config)
+
+    assert settings.workflow_ui_url == "https://example.test"

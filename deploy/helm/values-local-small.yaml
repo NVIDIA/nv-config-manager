@@ -453,6 +453,7 @@ cnpg:
 # MCP Service - Clear node scheduling
 # -----------------------------------------------------------------------------
 mcp:
+  enabled: true
   api:
     replicas: 1
     resources:

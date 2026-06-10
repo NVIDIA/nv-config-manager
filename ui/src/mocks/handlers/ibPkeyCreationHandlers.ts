@@ -30,6 +30,7 @@ export const ibPkeyCreationHandlers = [
     sanitizeUrl(`${apiURL}/v1/workflow/ngc/ib_pkey_creation`),
     async ({ request }) => {
       const body = (await request.json()) as IBPKeyCreationRequest;
+      const normalizedPkey = body.pkey?.trim();
 
       if (!body.host) {
         return HttpResponse.json(
@@ -38,7 +39,7 @@ export const ibPkeyCreationHandlers = [
         );
       }
 
-      if (body.pkey && !PKEY_PATTERN.test(body.pkey)) {
+      if (normalizedPkey && !PKEY_PATTERN.test(normalizedPkey)) {
         return HttpResponse.json(
           { error: "pkey must match /^0[xX][0-9a-fA-F]{1,4}$/" },
           { status: 400 },
@@ -48,11 +49,18 @@ export const ibPkeyCreationHandlers = [
       await delay(1500);
 
       const workflowId = `ib-pkey-creation-${Date.now()}`;
+      const submittedData: IBPKeyCreationRequest = { ...body };
+      if (normalizedPkey) {
+        submittedData.pkey = normalizedPkey;
+      } else {
+        delete submittedData.pkey;
+      }
+
       return HttpResponse.json(
         {
           id: workflowId,
           href: `https://url-to-temporal.com/namespaces/default/workflows/${workflowId}`,
-          submitted_data: body,
+          submitted_data: submittedData,
         },
         { status: 201 },
       );

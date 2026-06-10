@@ -85,12 +85,13 @@ def bounded_response(value: Any, max_response_bytes: int) -> dict[str, Any]:
     """Return redacted data with a byte-size boundary indicator."""
     redacted = redact_data(value)
     encoded = json.dumps(redacted, default=str, sort_keys=True)
-    if len(encoded.encode("utf-8")) <= max_response_bytes:
+    encoded_bytes = encoded.encode("utf-8")
+    if len(encoded_bytes) <= max_response_bytes:
         return {"truncated": False, "data": redacted}
     return {
         "truncated": True,
         "max_response_bytes": max_response_bytes,
-        "preview": encoded[:max_response_bytes],
+        "preview": encoded_bytes[:max_response_bytes].decode("utf-8", errors="ignore"),
     }
 
 
@@ -229,7 +230,7 @@ async def fetch_workflows(
 
     async def call() -> Any:
         async with workflow_client(settings) as client:
-            return await client.list_workflows(params=params)
+            return _add_workflow_ui_links(settings, await client.list_workflows(params=params))
 
     return await _bounded_client_call(call, settings.max_response_bytes)
 
@@ -239,7 +240,7 @@ async def fetch_workflow_detail(settings: MCPSettings, workflow_id: str) -> dict
 
     async def call() -> Any:
         async with workflow_client(settings) as client:
-            return await client.get_workflow(workflow_id)
+            return _add_workflow_ui_links(settings, await client.get_workflow(workflow_id))
 
     return await _bounded_client_call(call, settings.max_response_bytes)
 
@@ -253,7 +254,7 @@ async def start_workflow(
 
     async def call() -> Any:
         async with workflow_client(settings) as client:
-            return await client.start_workflow(endpoint, payload)
+            return _add_workflow_ui_links(settings, await client.start_workflow(endpoint, payload))
 
     return await _bounded_client_call(call, settings.max_response_bytes)
 
@@ -321,22 +322,56 @@ def mcp_downstream_auth_headers() -> dict[str, str]:
 
 def _nautobot_auth_headers(settings: MCPSettings) -> dict[str, str]:
     if settings.nautobot_auth_mode == "token":
-        if not settings.nautobot_token:
-            raise MCPAuthError("Nautobot token auth is configured but no token is available.")
-        return {"Authorization": f"Token {settings.nautobot_token}"}
+        if not settings.nautobot_read_only_token:
+            raise MCPAuthError(
+                "Nautobot token auth is configured but [mcp] "
+                "nautobot_read_only_token is not configured."
+            )
+        return {"Authorization": f"Token {settings.nautobot_read_only_token}"}
 
     bearer = user_bearer_authorization()
     if bearer:
         return {"Authorization": bearer}
 
     if not config_auth_required():
-        if settings.nautobot_token:
-            return {"Authorization": f"Token {settings.nautobot_token}"}
+        if settings.nautobot_read_only_token:
+            return {"Authorization": f"Token {settings.nautobot_read_only_token}"}
         return {}
 
-    if settings.nautobot_token_fallback_enabled and settings.nautobot_token:
-        return {"Authorization": f"Token {settings.nautobot_token}"}
+    if settings.nautobot_token_fallback_enabled and settings.nautobot_read_only_token:
+        return {"Authorization": f"Token {settings.nautobot_read_only_token}"}
 
     raise MCPAuthError(
         "Nautobot JWT auth is configured, but the MCP request did not include a Bearer token."
     )
+
+
+def _add_workflow_ui_links(settings: MCPSettings, value: Any) -> Any:
+    """Add Config Manager UI links to Workflow API payloads without changing href."""
+    if isinstance(value, list):
+        return [_add_workflow_ui_links(settings, item) for item in value]
+    if not isinstance(value, dict):
+        return value
+
+    result = dict(value)
+    workflows = result.get("workflows")
+    if isinstance(workflows, list):
+        result["workflows"] = [_add_workflow_ui_links(settings, item) for item in workflows]
+
+    workflow_id = result.get("id")
+    if isinstance(workflow_id, str) and workflow_id:
+        ui_href = build_workflow_ui_href(settings, workflow_id)
+        if ui_href:
+            result.setdefault("ui_href", ui_href)
+        href = result.get("href")
+        if isinstance(href, str) and href and href != ui_href:
+            result.setdefault("temporal_href", href)
+
+    return result
+
+
+def build_workflow_ui_href(settings: MCPSettings, workflow_id: str) -> str:
+    """Build the end-user Config Manager UI URL for a workflow execution."""
+    if not settings.workflow_ui_url:
+        return ""
+    return f"{settings.workflow_ui_url.rstrip('/')}/workflows/{workflow_id}"

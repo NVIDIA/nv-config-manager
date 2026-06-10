@@ -87,6 +87,7 @@ class TestNVConfigManagerInstallConfig:
                 enabled=True,
                 provider=SSOProvider.KEYCLOAK,
                 issuer_url="https://kc.test/realms/nv-config-manager",
+                cli_client_id="nv-config-manager-cli",
             ),
         )
 
@@ -107,6 +108,7 @@ class TestNVConfigManagerInstallConfig:
             assert loaded.sites[0].name == "dc01"
             assert loaded.sso.enabled is True
             assert loaded.sso.provider == SSOProvider.KEYCLOAK
+            assert loaded.sso.cli_client_id == "nv-config-manager-cli"
         finally:
             path.unlink(missing_ok=True)
 

@@ -46,8 +46,11 @@ Pass root and, optionally, strategy. Global strategy wins when set so local
 overrides can switch every Deployment to Recreate in one place.
 */}}
 {{- define "nv-config-manager.deploymentStrategy" -}}
-{{- $globalStrategy := .root.Values.global.deploymentStrategy | default dict -}}
-{{- $strategy := $globalStrategy | default .strategy | default dict -}}
+{{- $strategy := .strategy | default dict -}}
+{{- if .root.Values.global.deploymentStrategy -}}
+{{- $strategy = .root.Values.global.deploymentStrategy -}}
+{{- end -}}
+{{- if $strategy }}
 {{- $type := $strategy.type | default "RollingUpdate" -}}
 strategy:
   type: {{ $type }}
@@ -56,6 +59,7 @@ strategy:
   rollingUpdate:
     maxSurge: {{ $rollingUpdate.maxSurge | default "25%" }}
     maxUnavailable: {{ $rollingUpdate.maxUnavailable | default 0 }}
+{{- end }}
 {{- end }}
 {{- end }}
 

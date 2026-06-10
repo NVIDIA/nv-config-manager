@@ -26,7 +26,7 @@ from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp
 
 from nv_config_manager.common.log import configure_logging
-from nv_config_manager.mcp.auth import RequestAuthMiddleware
+from nv_config_manager.mcp.auth import RequestAuthMiddleware, ServiceAuthMiddleware
 from nv_config_manager.mcp.settings import MCPSettings
 from nv_config_manager.mcp.tools import register_tools
 
@@ -42,7 +42,9 @@ def create_mcp_server(settings: MCPSettings | None = None) -> FastMCP:
             "Read-only NVIDIA Config Manager operator tools plus explicitly "
             "enabled safe diagnostic workflow starters. When auth is enabled, tools "
             "use the caller's Bearer token for Config Manager APIs. Nautobot auth "
-            "mode is configured per environment."
+            "mode is configured per environment. Use list_related_mcp_servers to "
+            "discover public documentation MCP servers that clients can connect to "
+            "directly."
         ),
         host="0.0.0.0",
         json_response=True,
@@ -64,7 +66,9 @@ def create_mcp_server(settings: MCPSettings | None = None) -> FastMCP:
 
 def create_app(settings: MCPSettings | None = None) -> ASGIApp:
     """Create the ASGI application for Streamable HTTP MCP."""
-    return RequestAuthMiddleware(create_mcp_server(settings).streamable_http_app())
+    return ServiceAuthMiddleware(
+        RequestAuthMiddleware(create_mcp_server(settings).streamable_http_app())
+    )
 
 
 def main() -> None:

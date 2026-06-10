@@ -24,8 +24,8 @@ The examples in this guide use `uv run`.
 
 The CLI auto-detects whether SSO is enabled for the target deployment:
 
-- If the workflow gateway redirects to an OIDC provider, the CLI uses browser-based OIDC PKCE authentication and sends workflow API requests to `https://svc-workflow.<hostname>/v1/workflow` with a bearer token.
-- If SSO is not enabled, the CLI sends unauthenticated requests to `https://workflow.<hostname>/v1/workflow`.
+- If `https://<hostname>/auth/discovery` reports SSO is enabled, the CLI uses browser-based OIDC PKCE authentication and sends workflow API requests to the advertised workflow service URL with a bearer token.
+- If discovery reports SSO is not enabled, the CLI sends unauthenticated requests to the advertised workflow URL.
 
 Cached OIDC tokens are stored in `~/.nv-config-manager/token.json`.
 
@@ -44,7 +44,7 @@ uv run workflow-cli logout
 uv run workflow-cli login -H config-manager.example.com --force
 ```
 
-If gateway OIDC discovery is not available, pass the issuer and client ID directly:
+If auth discovery is not available, the CLI falls back to the older gateway redirect discovery path. If automatic discovery is not available, pass the issuer and client ID directly:
 
 ```bash
 uv run workflow-cli login \

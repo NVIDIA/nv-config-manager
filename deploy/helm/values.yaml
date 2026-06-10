@@ -336,6 +336,7 @@ secrets:
         path: "" # Required: e.g., "my-org/nv-config-manager/dev/nautobot"
         keys:
           token: "token"
+          readOnlyToken: "read_only_token"
           natsPassword: "nats_password"
           natsSysPassword: "nats_sys_password"
           natsNautobotPassword: "nats_nautobot_password"
@@ -920,6 +921,14 @@ oidc:
   issuerUrl: ""
   # OAuth2 client ID
   clientId: ""
+  # Optional public/native client ID for CLI PKCE auth discovery.
+  # Defaults to clientId when unset.
+  cliClientId: ""
+  # Public UI-backed auth utility endpoints for native clients.
+  # Keep disabled by default so current chart main remains compatible with
+  # pre-1.3.0 UI images that do not serve /auth/discovery or /auth/logout.
+  authUtility:
+    enabled: false
   # Name of K8s secret containing client-secret key
   # Secret must have key 'client-secret'
   clientSecretName: "oidc-client-secret"
@@ -1864,7 +1873,10 @@ configStore:
 # Service: MCP
 # =============================================================================
 mcp:
-  enabled: true
+  # Keep disabled by default so current chart main remains compatible with
+  # pre-1.3.0 environment values that pin nv-config-manager images to 1.2.x.
+  # Enable explicitly in values once the image contains the MCP entrypoint.
+  enabled: false
   # Gateway routing - Streamable HTTP MCP endpoint
   gateway:
     # Hostname: mcp.<baseHostname> (OIDC+JWT, browser access)
@@ -1894,9 +1906,9 @@ mcp:
     useInternalEndpoints: true
     maxResponseBytes: 100000
   nautobot:
-    # auto: bundled/local Nautobot uses user JWT, external Nautobot uses token
+    # auto: bundled/local Nautobot uses user JWT, external Nautobot uses the MCP read-only token
     # jwt: always forward the user's Bearer token to Nautobot
-    # token: always use [nautobot] token; set it to a read-only token per env
+    # token: always use [mcp] nautobot_read_only_token
     authMode: auto
     # Optional escape hatch for dev-only environments. Keep false in production.
     tokenFallbackEnabled: false

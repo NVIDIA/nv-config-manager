@@ -41,6 +41,8 @@ import hashlib
 import json
 import secrets
 import webbrowser
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -53,6 +55,17 @@ import requests
 from nv_config_manager.common.log import LogCategory, get_logger
 
 logger = get_logger(__name__, category=LogCategory.AUTH)
+
+
+@dataclass(frozen=True)
+class AuthDiscovery:
+    """Public auth metadata advertised by a Config Manager deployment."""
+
+    auth_required: bool
+    issuer_url: str | None = None
+    client_id: str | None = None
+    scopes: tuple[str, ...] = ()
+    services: Mapping[str, str] = field(default_factory=dict)
 
 
 def decode_jwt_claims(token: str) -> dict[str, Any] | None:
@@ -82,6 +95,170 @@ def decode_jwt_claims(token: str) -> dict[str, Any] | None:
         return None
 
 
+def _metadata_url(issuer_url: str) -> str:
+    """Return the standard OIDC discovery URL for an issuer."""
+    return f"{issuer_url.rstrip('/')}/.well-known/openid-configuration"
+
+
+def _fetch_oidc_metadata(issuer_url: str, verify: bool | str = True) -> dict[str, Any]:
+    """Fetch OIDC provider metadata for an issuer."""
+    metadata_url = _metadata_url(issuer_url)
+    response = requests.get(metadata_url, timeout=10, verify=verify)
+    response.raise_for_status()
+    try:
+        metadata = response.json()
+    except ValueError as e:
+        raise RuntimeError(
+            f"OIDC metadata discovery returned invalid JSON at {metadata_url}"
+        ) from e
+    if not isinstance(metadata, dict):
+        raise RuntimeError(
+            f"OIDC metadata discovery returned a non-object payload at {metadata_url}"
+        )
+    return metadata
+
+
+def _discover_issuer_from_authorization_redirect(
+    redirect_url: str,
+    verify: bool | str = True,
+) -> str | None:
+    """Discover the issuer whose metadata owns an authorization redirect URL."""
+    authorization_endpoint = _normalized_endpoint_url(redirect_url)
+    for candidate in _issuer_candidates_from_authorization_redirect(redirect_url):
+        try:
+            metadata = _fetch_oidc_metadata(candidate, verify)
+        except (requests.exceptions.RequestException, RuntimeError):
+            continue
+
+        metadata_authorization_endpoint = metadata.get("authorization_endpoint")
+        if not isinstance(metadata_authorization_endpoint, str):
+            continue
+        if _normalized_endpoint_url(metadata_authorization_endpoint) != authorization_endpoint:
+            continue
+
+        issuer = metadata.get("issuer")
+        if isinstance(issuer, str) and issuer:
+            return issuer.rstrip("/")
+        return candidate
+
+    return None
+
+
+def _issuer_candidates_from_authorization_redirect(redirect_url: str) -> list[str]:
+    """Return likely issuer URLs for an authorization endpoint redirect."""
+    parsed = urlparse(redirect_url)
+    origin = f"{parsed.scheme}://{parsed.netloc}"
+    path = parsed.path.rstrip("/")
+    candidates: list[str] = []
+
+    def add(path_value: str) -> None:
+        normalized_path = path_value.rstrip("/")
+        candidate = f"{origin}{normalized_path}" if normalized_path else origin
+        if candidate not in candidates:
+            candidates.append(candidate)
+
+    # Common provider-specific authorization endpoint shapes. These are path
+    # based, not hostname based, and are only used to find metadata to verify.
+    if path.endswith("/protocol/openid-connect/auth"):
+        add(path.rsplit("/protocol/openid-connect/auth", 1)[0])
+    if path.endswith("/oauth2/v2.0/authorize"):
+        prefix = path.rsplit("/oauth2/v2.0/authorize", 1)[0]
+        add(f"{prefix}/v2.0")
+    if path.endswith("/authorize"):
+        add(path.rsplit("/authorize", 1)[0])
+
+    parts = [part for part in path.strip("/").split("/") if part]
+    for index in range(len(parts), 0, -1):
+        add("/" + "/".join(parts[:index]))
+    add("")
+
+    return candidates
+
+
+def _fallback_issuer_from_authorization_redirect(redirect_url: str) -> str:
+    """Best-effort issuer derivation when provider metadata is unavailable."""
+    parsed = urlparse(redirect_url)
+    issuer_path = parsed.path.rstrip("/")
+
+    if issuer_path.endswith("/protocol/openid-connect/auth"):
+        issuer_path = issuer_path.rsplit("/protocol/openid-connect/auth", 1)[0]
+    elif issuer_path.endswith("/oauth2/v2.0/authorize"):
+        prefix = issuer_path.rsplit("/oauth2/v2.0/authorize", 1)[0]
+        issuer_path = f"{prefix}/v2.0"
+    elif issuer_path.endswith("/authorize"):
+        issuer_path = issuer_path.rsplit("/authorize", 1)[0]
+
+    return f"{parsed.scheme}://{parsed.netloc}{issuer_path}".rstrip("/")
+
+
+def _normalized_endpoint_url(url: str) -> str:
+    """Normalize an endpoint URL for metadata comparison."""
+    parsed = urlparse(url)
+    return parsed._replace(
+        netloc=parsed.netloc.lower(),
+        path=parsed.path.rstrip("/"),
+        params="",
+        query="",
+        fragment="",
+    ).geturl()
+
+
+def _parse_scope_payload(value: Any) -> tuple[str, ...]:
+    """Parse scope metadata from JSON arrays or delimited strings."""
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        if not value.strip():
+            return ()
+        return tuple(scope for scope in value.replace(",", " ").split() if scope)
+    if isinstance(value, list | tuple):
+        return tuple(str(scope).strip() for scope in value if str(scope).strip())
+    return ()
+
+
+def _parse_service_payload(value: Any) -> dict[str, str]:
+    """Parse service URL metadata, dropping non-string or empty values."""
+    if not isinstance(value, dict):
+        return {}
+    services: dict[str, str] = {}
+    for name, url in value.items():
+        if not isinstance(name, str) or not isinstance(url, str):
+            continue
+        normalized = url.rstrip("/")
+        if normalized:
+            services[name] = normalized
+    return services
+
+
+def _parse_auth_discovery_payload(payload: Any) -> AuthDiscovery:
+    """Validate and normalize /auth/discovery JSON."""
+    if not isinstance(payload, dict):
+        raise RuntimeError("Auth discovery returned a non-object payload.")
+
+    auth_required = payload.get("authRequired", payload.get("auth_required"))
+    if not isinstance(auth_required, bool):
+        raise RuntimeError("Auth discovery payload must include boolean authRequired.")
+
+    issuer_url = payload.get("issuerUrl", payload.get("issuer_url"))
+    client_id = payload.get("clientId", payload.get("client_id"))
+    scopes = _parse_scope_payload(payload.get("scopes"))
+    services = _parse_service_payload(payload.get("services"))
+
+    if auth_required:
+        if not isinstance(issuer_url, str) or not issuer_url:
+            raise RuntimeError("Auth discovery payload is missing issuerUrl.")
+        if not isinstance(client_id, str) or not client_id:
+            raise RuntimeError("Auth discovery payload is missing clientId.")
+
+    return AuthDiscovery(
+        auth_required=auth_required,
+        issuer_url=issuer_url.rstrip("/") if isinstance(issuer_url, str) and issuer_url else None,
+        client_id=client_id if isinstance(client_id, str) and client_id else None,
+        scopes=scopes,
+        services=services,
+    )
+
+
 class OIDCAuth:
     """OIDC PKCE authentication handler.
 
@@ -101,6 +278,7 @@ class OIDCAuth:
         redirect_port: int = 8765,
         scopes: list[str] | None = None,
         token_file: Path | None = None,
+        verify: bool | str = True,
     ) -> None:
         """Initialize OIDC auth handler.
 
@@ -110,14 +288,15 @@ class OIDCAuth:
             redirect_port: Local port for OAuth callback (default: 8765).
             scopes: OAuth scopes to request. Defaults to api://<client_id>/.default + openid + profile.
             token_file: Path for cached token storage. Defaults to ~/.nv-config-manager/token.json.
+            verify: Whether to verify TLS certificates, or a CA bundle path.
         """
         self.issuer_url = issuer_url.rstrip("/")
         self.client_id = client_id
         self.redirect_port = redirect_port
-        # Request app-specific scope to get a token for THIS app (not Microsoft Graph).
-        # Without api://<client_id>/.default, Azure AD issues a Graph token (aud=00000003-...).
-        self.scopes = scopes or [f"api://{client_id}/.default", "openid", "profile"]
+        self.verify = verify
+        self.scopes = scopes or self._default_scopes()
         self.redirect_uri = f"http://localhost:{redirect_port}/callback"
+        self._metadata: dict[str, Any] | None = None
 
         # Token storage
         self.token_file = token_file or (Path.home() / ".nv-config-manager" / "token.json")
@@ -142,28 +321,77 @@ class OIDCAuth:
     # ── Endpoint resolution ───────────────────────────────────────────────
 
     def _get_token_endpoint(self) -> str:
-        """Get token endpoint URL.
+        """Get token endpoint URL."""
+        if endpoint := self._metadata_endpoint("token_endpoint"):
+            return endpoint
 
-        Handles issuer as .../v2.0 or .../oauth2/v2.0 (from redirect discovery).
-        """
-        if "microsoftonline.com" in self.issuer_url:
+        if self._is_azure_issuer():
             if "/oauth2/v2.0" in self.issuer_url:
                 return f"{self.issuer_url.rstrip('/')}/token"
             base = self.issuer_url.replace("/v2.0", "").rstrip("/")
             return f"{base}/oauth2/v2.0/token"
+
+        if self._is_keycloak_issuer():
+            return f"{self.issuer_url}/protocol/openid-connect/token"
+
         return f"{self.issuer_url}/token"
 
     def _get_auth_endpoint(self) -> str:
-        """Get authorization endpoint URL.
+        """Get authorization endpoint URL."""
+        if endpoint := self._metadata_endpoint("authorization_endpoint"):
+            return endpoint
 
-        Handles issuer as .../v2.0 or .../oauth2/v2.0 (from redirect discovery).
-        """
-        if "microsoftonline.com" in self.issuer_url:
+        if self._is_azure_issuer():
             if "/oauth2/v2.0" in self.issuer_url:
                 return f"{self.issuer_url.rstrip('/')}/authorize"
             base = self.issuer_url.replace("/v2.0", "").rstrip("/")
             return f"{base}/oauth2/v2.0/authorize"
+
+        if self._is_keycloak_issuer():
+            return f"{self.issuer_url}/protocol/openid-connect/auth"
+
         return f"{self.issuer_url}/authorize"
+
+    def _default_scopes(self) -> list[str]:
+        """Return provider-appropriate default scopes."""
+        if self._is_azure_issuer():
+            # Request app-specific scope to get a token for THIS app, not Microsoft Graph.
+            return [f"api://{self.client_id}/.default", "openid", "profile"]
+        return ["openid", "profile", "email"]
+
+    def _metadata_endpoint(self, key: str) -> str | None:
+        """Resolve an OIDC endpoint from provider metadata when available."""
+        metadata = self._provider_metadata()
+        value = metadata.get(key)
+        if isinstance(value, str) and value:
+            return value
+        return None
+
+    def _provider_metadata(self) -> dict[str, Any]:
+        """Fetch OIDC provider metadata, falling back to provider-specific heuristics."""
+        if self._metadata is not None:
+            return self._metadata
+
+        try:
+            metadata = _fetch_oidc_metadata(self.issuer_url, self.verify)
+        except (requests.exceptions.RequestException, RuntimeError) as e:
+            metadata_url = _metadata_url(self.issuer_url)
+            logger.debug("OIDC metadata discovery failed at %s: %s", metadata_url, e)
+            self._metadata = {}
+            return self._metadata
+
+        self._metadata = metadata
+        return self._metadata
+
+    def _is_azure_issuer(self) -> bool:
+        """Return True when the issuer URL looks like an Azure AD issuer."""
+        parsed = urlparse(self.issuer_url)
+        return "microsoftonline.com" in parsed.netloc.lower()
+
+    def _is_keycloak_issuer(self) -> bool:
+        """Return True when the issuer URL looks like a Keycloak realm issuer."""
+        parsed = urlparse(self.issuer_url)
+        return "keycloak" in parsed.netloc.lower() or "/realms/" in parsed.path
 
     # ── Authorization URL ─────────────────────────────────────────────────
 
@@ -213,7 +441,7 @@ class OIDCAuth:
         }
         token_endpoint = self._get_token_endpoint()
         try:
-            response = requests.post(token_endpoint, data=data, timeout=30)
+            response = requests.post(token_endpoint, data=data, timeout=30, verify=self.verify)
             response.raise_for_status()
             return response.json()  # type: ignore[no-any-return]
         except requests.exceptions.HTTPError as e:
@@ -501,22 +729,53 @@ class OIDCAuth:
 
         parsed = urlparse(redirect_url)
 
-        # Derive issuer from the redirect path (remove /authorize or Keycloak /auth suffix)
-        issuer_path = parsed.path.rstrip("/")
-        if issuer_path.endswith("/authorize"):
-            issuer_path = issuer_path[:-10]
-        elif issuer_path.endswith("/protocol/openid-connect/auth"):
-            issuer_path = issuer_path.rsplit("/protocol/openid-connect/auth", 1)[0]
-
-        issuer_url = f"{parsed.scheme}://{parsed.netloc}{issuer_path}"
-
         query_params = parse_qs(parsed.query)
         client_id = query_params.get("client_id", [None])[0]
 
         if not client_id:
             raise RuntimeError(f"Could not extract client_id from redirect URL: {redirect_url}")
 
+        issuer_url = _discover_issuer_from_authorization_redirect(redirect_url, verify)
+        if issuer_url is None:
+            issuer_url = _fallback_issuer_from_authorization_redirect(redirect_url)
+
         return issuer_url, client_id
+
+    @staticmethod
+    def discover_auth_config(
+        discovery_url: str,
+        verify: bool | str = True,
+    ) -> AuthDiscovery | None:
+        """Discover public Config Manager auth metadata from /auth/discovery.
+
+        A return value of ``None`` means the discovery endpoint is not available
+        on that deployment, so callers should fall back to legacy gateway
+        redirect discovery.
+        """
+        try:
+            response = requests.get(
+                discovery_url,
+                allow_redirects=False,
+                timeout=10,
+                verify=verify,
+            )
+        except requests.exceptions.RequestException as e:
+            raise RuntimeError(f"Failed to reach auth discovery at {discovery_url}: {e}") from e
+
+        if response.status_code in (301, 302, 303, 307, 308, 404):
+            return None
+
+        try:
+            response.raise_for_status()
+        except requests.exceptions.HTTPError as e:
+            raise RuntimeError(f"Auth discovery failed at {discovery_url}: {e}") from e
+
+        try:
+            payload = response.json()
+        except ValueError as e:
+            raise RuntimeError(f"Auth discovery returned invalid JSON at {discovery_url}") from e
+
+        return _parse_auth_discovery_payload(payload)
 
     @classmethod
     def discover_from_gateway(
@@ -542,4 +801,5 @@ class OIDCAuth:
         if result is None:
             return None
         issuer_url, client_id = result
+        kwargs.setdefault("verify", verify)
         return cls(issuer_url=issuer_url, client_id=client_id, **kwargs)

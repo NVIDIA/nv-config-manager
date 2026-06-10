@@ -86,6 +86,7 @@ user_domain = ztp.example.com
 grpc_service = temporal-frontend.example.local:7233
 api_service = http://temporal-api.example.local:9000
 api_url = https://temporal-api.example.com
+temporal_ui_url = https://temporal-ui.example.com
 ui_url = https://temporal-ui.example.com
 use_internal_endpoint = true
 

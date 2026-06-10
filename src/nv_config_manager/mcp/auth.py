@@ -20,7 +20,14 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any
 
+from fastapi import HTTPException, Request
+from fastapi.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
+
+from nv_config_manager.common.auth import (
+    DEFAULT_UNAUTHENTICATED_PATHS,
+    require_authenticated_identity,
+)
 
 AUTHORIZATION_HEADER = "authorization"
 AUTH_CONTEXT_HEADERS = {
@@ -87,6 +94,36 @@ class RequestAuthMiddleware:
             return await self.app(scope, receive, send)
         finally:
             _REQUEST_AUTH.reset(token)
+
+
+class ServiceAuthMiddleware:
+    """Enforce configured service-side auth for MCP HTTP requests."""
+
+    def __init__(
+        self,
+        app: ASGIApp,
+        unauthenticated_paths: frozenset[str] = DEFAULT_UNAUTHENTICATED_PATHS,
+    ) -> None:
+        self.app = app
+        self.unauthenticated_paths = unauthenticated_paths
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> Any:
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+
+        path = str(scope.get("path", "")).rstrip("/") or "/"
+        method = str(scope.get("method", ""))
+        if path in self.unauthenticated_paths or method == "OPTIONS":
+            return await self.app(scope, receive, send)
+
+        request = Request(scope, receive=receive)
+        try:
+            await require_authenticated_identity(request)
+        except HTTPException as exc:
+            response = JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+            return await response(scope, receive, send)
+
+        return await self.app(scope, receive, send)
 
 
 def current_request_auth() -> RequestAuth | None:

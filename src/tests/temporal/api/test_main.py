@@ -21,6 +21,7 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from temporalio.client import WorkflowExecutionStatus, WorkflowHandle
 
+from nv_config_manager.temporal.api.links import temporal_ui_workflow_href
 from nv_config_manager.temporal.api.main import app
 from nv_config_manager.temporal.api.workflow_v1 import (
     WorkflowSummaryResponse,
@@ -39,6 +40,8 @@ from nv_config_manager.temporal.hello_world.workflows.hello_world_workflow impor
 )
 from nv_config_manager.temporal.ngc.workflows.deploy import DeployInput, DeployWorkflow
 
+TEMPORAL_UI_WORKFLOW_BASE = "https://temporal-ui.example.com/namespaces/default/workflows"
+
 
 def test_healthcheck():
     """Verify healthcheck."""
@@ -46,6 +49,13 @@ def test_healthcheck():
     rsp = client.get("/healthcheck")
     assert rsp.status_code == 200
     assert rsp.json() == "OK"
+
+
+def test_temporal_ui_workflow_href_uses_ini(monkeypatch):
+    """Verify Workflow API href generation reads the INI, not TEMPORAL_UI."""
+    monkeypatch.setenv("TEMPORAL_UI", "http://localhost:8080")
+
+    assert temporal_ui_workflow_href("workflow-id") == f"{TEMPORAL_UI_WORKFLOW_BASE}/workflow-id"
 
 
 @pytest.mark.asyncio
@@ -164,7 +174,7 @@ async def test_hello_world_workflow(mock_rbac_config, mock_uuid, mock_get_client
     rsp = client.post("/v1/workflow/hello_world", json={"name": "test"})
     assert rsp.json() == {
         "id": "mockuuid",
-        "href": "http://localhost:8080/namespaces/default/workflows/mockuuid",
+        "href": f"{TEMPORAL_UI_WORKFLOW_BASE}/mockuuid",
     }
 
 
@@ -191,7 +201,7 @@ async def test_hello_world_approval_workflow(mock_rbac_config, mock_uuid, mock_g
     rsp = client.post("/v1/workflow/hello_world_approval", json={"name": "test"})
     assert rsp.json() == {
         "id": "mockuuid",
-        "href": "http://localhost:8080/namespaces/default/workflows/mockuuid",
+        "href": f"{TEMPORAL_UI_WORKFLOW_BASE}/mockuuid",
     }
 
 
@@ -205,7 +215,7 @@ async def test_approve(mock_signal):
     rsp = client.post(f"/v1/workflow/{workflow_id}/approve/prompt")
     assert rsp.json() == {
         "id": workflow_id,
-        "href": f"http://localhost:8080/namespaces/default/workflows/{workflow_id}",
+        "href": f"{TEMPORAL_UI_WORKFLOW_BASE}/{workflow_id}",
     }
 
     mock_signal.assert_called_with(
@@ -226,7 +236,7 @@ async def test_reject(mock_signal):
     rsp = client.post(f"/v1/workflow/{workflow_id}/reject/prompt")
     assert rsp.json() == {
         "id": workflow_id,
-        "href": f"http://localhost:8080/namespaces/default/workflows/{workflow_id}",
+        "href": f"{TEMPORAL_UI_WORKFLOW_BASE}/{workflow_id}",
     }
 
     mock_signal.assert_called_with(
@@ -247,7 +257,7 @@ async def test_retry(mock_signal):
     rsp = client.post(f"/v1/workflow/{workflow_id}/retry/prompt")
     assert rsp.json() == {
         "id": workflow_id,
-        "href": f"http://localhost:8080/namespaces/default/workflows/{workflow_id}",
+        "href": f"{TEMPORAL_UI_WORKFLOW_BASE}/{workflow_id}",
     }
 
     mock_signal.assert_called_with(ANY, workflow_id, "retry", "prompt")
@@ -288,7 +298,7 @@ async def test_terminate_success(mock_client, mock_redis):
     assert rsp.status_code == 200
     assert rsp.json() == {
         "id": workflow_id,
-        "href": f"http://localhost:8080/namespaces/default/workflows/{workflow_id}",
+        "href": f"{TEMPORAL_UI_WORKFLOW_BASE}/{workflow_id}",
     }
     mock_handle.terminate.assert_called_once()
     mock_redis.from_config.return_value.delete_cached_query.assert_any_await(
@@ -618,7 +628,7 @@ async def test_workflow_detail(mock_redis, mock_client):
             "ReadRoles": ["ngc-cfa"],
             "ExecuteRoles": ["ngc-cfa"],
         },
-        "href": "http://localhost:8080/namespaces/default/workflows/mockid",
+        "href": f"{TEMPORAL_UI_WORKFLOW_BASE}/mockid",
     }
 
 
@@ -926,7 +936,7 @@ async def test_workflows(mock_rbac_config, mock_redis, mock_client):
                 "pending_approval": True,
                 "failed_stage": False,
                 "search_attributes": {"User": ["test"]},
-                "href": "http://localhost:8080/namespaces/default/workflows/mock_uuid1",
+                "href": f"{TEMPORAL_UI_WORKFLOW_BASE}/mock_uuid1",
             },
             {
                 "id": "mock_uuid2",
@@ -939,7 +949,7 @@ async def test_workflows(mock_rbac_config, mock_redis, mock_client):
                 "pending_approval": True,
                 "failed_stage": False,
                 "search_attributes": {"User": ["test"]},
-                "href": "http://localhost:8080/namespaces/default/workflows/mock_uuid2",
+                "href": f"{TEMPORAL_UI_WORKFLOW_BASE}/mock_uuid2",
             },
             {
                 "id": "mock_uuid3",
@@ -952,7 +962,7 @@ async def test_workflows(mock_rbac_config, mock_redis, mock_client):
                 "pending_approval": True,
                 "failed_stage": False,
                 "search_attributes": {"User": ["test"]},
-                "href": "http://localhost:8080/namespaces/default/workflows/mock_uuid3",
+                "href": f"{TEMPORAL_UI_WORKFLOW_BASE}/mock_uuid3",
             },
         ],
         "next_page_token": None,
@@ -1320,6 +1330,7 @@ def test_cors_middleware_configured(custom_ini):
         grpc_service = temporal:7233
         api_service = http://temporal-api:9000
         api_url = https://temporal-api.example.com
+        temporal_ui_url = https://temporal-ui.example.com
         ui_url = https://temporal-ui.example.com
         use_internal_endpoint = true
         """
@@ -1360,6 +1371,7 @@ def test_cors_middleware_not_configured_when_section_missing(custom_ini):
         grpc_service = temporal:7233
         api_service = http://temporal-api:9000
         api_url = https://temporal-api.example.com
+        temporal_ui_url = https://temporal-ui.example.com
         ui_url = https://temporal-ui.example.com
         use_internal_endpoint = true
         """

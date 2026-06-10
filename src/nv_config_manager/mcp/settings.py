@@ -30,10 +30,11 @@ class MCPSettings:
     """Resolved MCP service configuration."""
 
     workflow_api_url: str
+    workflow_ui_url: str
     config_store_api_url: str
     dhcp_api_url: str
     nautobot_url: str
-    nautobot_token: str
+    nautobot_read_only_token: str
     nautobot_verify: bool | str
     nautobot_auth_mode: str
     nautobot_token_fallback_enabled: bool
@@ -52,10 +53,11 @@ class MCPSettings:
 
         return cls(
             workflow_api_url=_service_url(config, "temporal", use_internal),
+            workflow_ui_url=_workflow_ui_url(config),
             config_store_api_url=_service_url(config, "config_store.client", use_internal),
             dhcp_api_url=_service_url(config, "dhcp", use_internal),
             nautobot_url=_get_required(config, "nautobot", "server"),
-            nautobot_token=_get_value(config, "nautobot", "token", ""),
+            nautobot_read_only_token=_get_value(config, "mcp", "nautobot_read_only_token", ""),
             nautobot_verify=_verify_value(config, "nautobot"),
             nautobot_auth_mode=_resolve_nautobot_auth_mode(
                 configured_auth_mode, _get_required(config, "nautobot", "server")
@@ -94,6 +96,22 @@ def _get_int(config: ConfigParser, section: str, key: str, fallback: int) -> int
 def _service_url(config: ConfigParser, section: str, use_internal: bool) -> str:
     key = "api_service" if use_internal else "api_url"
     return _get_required(config, section, key).rstrip("/")
+
+
+def _workflow_ui_url(config: ConfigParser) -> str:
+    configured = _get_value(config, "temporal", "ui_url", "").strip()
+    if configured:
+        return configured.rstrip("/")
+
+    api_url = _get_value(config, "temporal", "api_url", "").strip()
+    parsed = urlparse(api_url)
+    if not parsed.scheme or not parsed.netloc:
+        return api_url.rstrip("/")
+
+    hostname = parsed.netloc
+    if hostname.startswith("workflow."):
+        hostname = hostname.removeprefix("workflow.")
+    return f"{parsed.scheme}://{hostname}"
 
 
 def _verify_value(config: ConfigParser, section: str) -> bool | str:

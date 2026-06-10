@@ -16,7 +16,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from mcp.server.fastmcp import FastMCP
 
@@ -41,9 +41,34 @@ from nv_config_manager.mcp.workflows import (
     normalize_workflow_parameters,
 )
 
+PUBLIC_DOCS_MCP_SERVER_URL = (
+    "https://docs.nvidia.com/switch-infrastructure/config-manager/_mcp/server"
+)
+
 
 def register_tools(server: FastMCP, settings: MCPSettings) -> None:
     """Register NVIDIA Config Manager MCP tools."""
+
+    @server.tool()
+    async def list_related_mcp_servers() -> dict[str, Any]:
+        """List related MCP servers that clients can connect to directly."""
+        return {
+            "servers": [
+                {
+                    "name": "nvidia-config-manager-public-docs",
+                    "url": PUBLIC_DOCS_MCP_SERVER_URL,
+                    "purpose": (
+                        "Public NVIDIA Config Manager documentation. Use this server for "
+                        "product documentation, usage guidance, and conceptual reference."
+                    ),
+                    "authentication": "none",
+                    "notes": (
+                        "Connect the MCP-capable client directly to this URL; the operational "
+                        "Config Manager MCP server does not proxy public documentation tools."
+                    ),
+                }
+            ]
+        }
 
     @server.tool()
     async def search_devices(
@@ -285,9 +310,16 @@ def _register_workflow_starter(
         """Start a safe diagnostic workflow."""
         normalized = normalize_workflow_parameters(workflow, parameters)
         result = await start_workflow(settings, workflow.endpoint, normalized)
+        workflow_result = result.get("data") if isinstance(result, dict) else None
+        workflow_id = workflow_result.get("id") if isinstance(workflow_result, dict) else None
+        workflow_ui_href = (
+            workflow_result.get("ui_href") if isinstance(workflow_result, dict) else None
+        )
         return {
             "workflow": workflow.workflow_name,
             "endpoint": workflow.endpoint,
+            "workflow_id": workflow_id,
+            "workflow_ui_href": workflow_ui_href,
             "input_schema": workflow.input_schema,
             "result": result,
         }
@@ -296,6 +328,7 @@ def _register_workflow_starter(
     run_workflow.__doc__ = (
         f"{workflow.description}\n\n"
         "Pass workflow input fields as the `parameters` object. "
+        "Use `workflow_ui_href` as the end-user Config Manager workflow link. "
         "The response includes the workflow input schema for reference."
     )
     server.tool(name=workflow.tool_name, description=workflow.description)(run_workflow)
@@ -308,13 +341,24 @@ def _drop_none(values: dict[str, Any]) -> dict[str, Any]:
 def _extract_devices(data: Any) -> list[dict[str, Any]]:
     if isinstance(data, dict) and isinstance(data.get("data"), dict):
         data = data["data"]
-    if isinstance(data, dict) and isinstance(data.get("results"), list):
-        return data["results"]
-    if isinstance(data, dict) and isinstance(data.get("interfaces"), list):
+    if isinstance(data, dict):
+        results = data.get("results")
+        if isinstance(results, list):
+            return [cast(dict[str, Any], result) for result in results if isinstance(result, dict)]
+    if isinstance(data, dict):
+        interfaces = data.get("interfaces")
+        if not isinstance(interfaces, list):
+            return []
         devices: dict[str, dict[str, Any]] = {}
-        for interface in data["interfaces"]:
-            device = interface.get("device") or (interface.get("module") or {}).get("device")
-            if isinstance(device, dict) and device.get("id"):
-                devices[device["id"]] = device
+        for interface in interfaces:
+            if not isinstance(interface, dict):
+                continue
+            module = interface.get("module")
+            device = interface.get("device")
+            if not isinstance(device, dict) and isinstance(module, dict):
+                device = module.get("device")
+            device_id = device.get("id") if isinstance(device, dict) else None
+            if device_id:
+                devices[str(device_id)] = cast(dict[str, Any], device)
         return list(devices.values())
     return []

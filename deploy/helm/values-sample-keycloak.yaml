@@ -52,6 +52,11 @@ oidc:
   
   # NVIDIA Config Manager client (created by setup-vm-prereqs.sh)
   clientId: "nv-config-manager"
+
+  # Public/native client used by CLI PKCE auth discovery
+  cliClientId: "nv-config-manager-cli"
+  authUtility:
+    enabled: true
   
   # Name of K8s secret containing client-secret key
   # Create with: kubectl create secret generic oidc-client-secret --from-literal=client-secret=nv-config-manager-client-secret -n nv-config-manager
@@ -128,6 +133,9 @@ gateway:
           header: X-Forwarded-Preferred-Username
         - claim: sub
           header: X-Forwarded-User
+
+mcp:
+  enabled: true
 
 # =============================================================================
 # Note: Browser Access Setup

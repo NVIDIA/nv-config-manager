@@ -17,7 +17,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, get_args
+from typing import Any, cast, get_args
 
 from pydantic import BaseModel
 
@@ -50,13 +50,14 @@ def discover_mcp_workflows() -> list[MCPWorkflow]:
     for workflow_class in NGC_WORKFLOWS + HELLO_WORLD_WORKFLOWS:
         if not issubclass(workflow_class, WorkflowMetadataMixin):
             continue
-        if not workflow_class.has_complete_metadata():
+        metadata_workflow = cast(type[WorkflowMetadataMixin], workflow_class)
+        if not metadata_workflow.has_complete_metadata():
             continue
-        if not workflow_class.get_workflow_mcp_enabled():
+        if not metadata_workflow.get_workflow_mcp_enabled():
             continue
 
-        endpoint = workflow_class.get_workflow_api_endpoint()
-        input_class = workflow_class.get_workflow_input_class()
+        endpoint = metadata_workflow.get_workflow_api_endpoint()
+        input_class = metadata_workflow.get_workflow_input_class()
         if not endpoint or not input_class:
             continue
 
@@ -65,7 +66,7 @@ def discover_mcp_workflows() -> list[MCPWorkflow]:
             MCPWorkflow(
                 tool_name=_tool_name_from_endpoint(endpoint),
                 workflow_name=workflow_name,
-                description=workflow_class.get_workflow_description(),
+                description=metadata_workflow.get_workflow_description(),
                 endpoint=endpoint,
                 input_class=input_class,
             )

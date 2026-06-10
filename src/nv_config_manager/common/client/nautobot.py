@@ -154,10 +154,11 @@ class NautobotClient:
 
     def _resolve_headers(self) -> dict[str, str] | None:
         """Return auth headers for the current request/session."""
-        if callable(self._headers):
-            return self._headers()
-        if self._headers:
-            return self._headers
+        headers = self._headers
+        if isinstance(headers, dict):
+            return cast(dict[str, str], headers)
+        if headers is not None:
+            return headers()
         if self.token:
             return {"Authorization": f"Token {self.token}"}
         return None
