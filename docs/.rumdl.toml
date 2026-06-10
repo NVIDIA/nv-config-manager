@@ -18,7 +18,6 @@ disable = [
   "commands-show-output",
   "no-inline-html",
   "no-emphasis-as-heading",
-  "list-continuation-indent",
 ]
 
 # List of rules to enable exclusively (replaces defaults; only these rules will run)

@@ -39,11 +39,11 @@ The workflow runs four stages. Only `perform_configuration_diff` requires manual
 
 1. **`load_intended_configuration` — Load the device's intended config from the Config Store.**
 
-    Pulls the rendered configuration plus its commit SHA for the device. A missing intended config fails the workflow at this stage.
+   Pulls the rendered configuration plus its commit SHA for the device. A missing intended config fails the workflow at this stage.
 
 1. **`perform_configuration_diff` — Compute the diff and request approval.**
 
-    Runs a candidate diff between the intended configuration and the device's running configuration, renders the diff on the stage page, and transitions to `PENDING_APPROVAL`. The stage has three outcomes:
+   Runs a candidate diff between the intended configuration and the device's running configuration, renders the diff on the stage page, and transitions to `PENDING_APPROVAL`. The stage has three outcomes:
 
    - **Empty diff** — nothing to apply. The stage auto-clears its approval requirement and the workflow proceeds straight to `perform_backup`; `apply_configuration` is marked UNREACHABLE.
    - **Approved diff** — the workflow records the approver and proceeds to `apply_configuration`.
@@ -51,7 +51,7 @@ The workflow runs four stages. Only `perform_configuration_diff` requires manual
 
 1. **`apply_configuration` — Apply the approved diff to the device.**
 
-    Pushes the approved configuration through `apply_approved_configuration` with the device's commit SHA attached and `commit_confirm` honored. Three error types are non-retryable and surface immediately:
+   Pushes the approved configuration through `apply_approved_configuration` with the device's commit SHA attached and `commit_confirm` honored. Three error types are non-retryable and surface immediately:
 
    - `ConfigSyntaxException` — the rendered config does not parse on the device.
    - `ConfigApplyFailureException` — apply failed mid-flight.
@@ -59,7 +59,7 @@ The workflow runs four stages. Only `perform_configuration_diff` requires manual
 
 1. **`perform_backup` — Capture a fresh backup of the device.**
 
-    Starts the [Configuration Backup](../configuration-backup/index.mdx) workflow as a child workflow with `trigger=WORKFLOW` and the just-applied commit SHA, so the new backup is correlated with the configuration version that was just deployed. Runs after a successful apply, or after the empty-diff path to record the unchanged state.
+   Starts the [Configuration Backup](../configuration-backup/index.mdx) workflow as a child workflow with `trigger=WORKFLOW` and the just-applied commit SHA, so the new backup is correlated with the configuration version that was just deployed. Runs after a successful apply, or after the empty-diff path to record the unchanged state.
 
 ## Verifying outcomes
 
