@@ -56,7 +56,8 @@ oidc:
   # Public/native client used by CLI PKCE auth discovery
   cliClientId: "nv-config-manager-cli"
   authUtility:
-    enabled: true
+    # Keep disabled unless the UI image tag includes /auth/discovery and /auth/logout.
+    enabled: false
   
   # Name of K8s secret containing client-secret key
   # Create with: kubectl create secret generic oidc-client-secret --from-literal=client-secret=nv-config-manager-client-secret -n nv-config-manager
@@ -135,7 +136,8 @@ gateway:
           header: X-Forwarded-User
 
 mcp:
-  enabled: true
+  # Keep disabled unless the nv-config-manager image tag includes the MCP entrypoint.
+  enabled: false
 
 # =============================================================================
 # Note: Browser Access Setup

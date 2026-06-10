@@ -74,6 +74,10 @@ def fake_workflow_client(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(clients, "workflow_client", lambda settings: FakeWorkflowClient())
 
 
+def test_redact_text_handles_single_line_secret_assignments() -> None:
+    assert clients.redact_text("token = secret-value") == "token = <redacted>"
+
+
 async def test_start_workflow_adds_config_manager_ui_href(settings: MCPSettings) -> None:
     result = await clients.start_workflow(settings, "/ngc/backup", {"device_id": "device-1"})
 

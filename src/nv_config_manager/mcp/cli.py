@@ -182,6 +182,17 @@ def _discover_auth_config(
         raise click.ClickException(f"OIDC auto-discovery failed: {e}") from e
 
 
+def _enforce_secure_endpoint(endpoint_url: str, auth_required: bool) -> None:
+    """Refuse bearer-token use over plaintext MCP endpoints."""
+    if not auth_required:
+        return
+    parsed = urlparse(endpoint_url)
+    if parsed.scheme.lower() != "https":
+        raise click.ClickException(
+            f"Refusing non-HTTPS MCP endpoint for bearer auth: {endpoint_url}"
+        )
+
+
 def _resolve_connection(
     hostname: str | None,
     environment: str | None,
@@ -201,7 +212,7 @@ def _resolve_connection(
     )
 
     if auth_mode == AUTH_MODE_NONE:
-        return ResolvedMCPConnection(
+        connection = ResolvedMCPConnection(
             endpoint_url=_resolve_mcp_endpoint(
                 hostname=hostname,
                 environment=environment,
@@ -212,9 +223,11 @@ def _resolve_connection(
             discovery_url=resolved_discovery_url,
             auth_required=False,
         )
+        _enforce_secure_endpoint(connection.endpoint_url, connection.auth_required)
+        return connection
 
     if auth_mode == AUTH_MODE_SSO:
-        return ResolvedMCPConnection(
+        connection = ResolvedMCPConnection(
             endpoint_url=_resolve_mcp_endpoint(
                 hostname=hostname,
                 environment=environment,
@@ -225,6 +238,8 @@ def _resolve_connection(
             discovery_url=resolved_discovery_url,
             auth_required=True,
         )
+        _enforce_secure_endpoint(connection.endpoint_url, connection.auth_required)
+        return connection
 
     redirect_discovery_url = _resolve_redirect_discovery_endpoint(
         hostname=hostname,
@@ -241,7 +256,7 @@ def _resolve_connection(
         auth_required = auth_discovery.auth_required
         service_endpoint = auth_discovery.services.get("mcp")
         resolved_auth_mode = AUTH_MODE_SSO if auth_required else AUTH_MODE_NONE
-        return ResolvedMCPConnection(
+        connection = ResolvedMCPConnection(
             endpoint_url=(_normalize_url(service_endpoint) if service_endpoint else None)
             or _resolve_mcp_endpoint(
                 hostname=hostname,
@@ -255,9 +270,11 @@ def _resolve_connection(
             discovered_oidc=discovered,
             discovered_scopes=auth_discovery.scopes,
         )
+        _enforce_secure_endpoint(connection.endpoint_url, connection.auth_required)
+        return connection
 
     resolved_auth_mode = AUTH_MODE_SSO if discovered else AUTH_MODE_NONE
-    return ResolvedMCPConnection(
+    connection = ResolvedMCPConnection(
         endpoint_url=_resolve_mcp_endpoint(
             hostname=hostname,
             environment=environment,
@@ -269,6 +286,8 @@ def _resolve_connection(
         auth_required=discovered is not None,
         discovered_oidc=discovered,
     )
+    _enforce_secure_endpoint(connection.endpoint_url, connection.auth_required)
+    return connection
 
 
 def _resolve_healthcheck_url(mcp_endpoint: str) -> str:
@@ -603,6 +622,8 @@ def config_command(
         "--mcp-url",
         connection.endpoint_url,
     ]
+    if insecure:
+        token_command.append("--insecure")
     if issuer:
         token_command.extend(["--issuer", issuer])
     if client_id:

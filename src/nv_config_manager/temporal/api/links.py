@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 from configparser import ConfigParser
+from urllib.parse import quote
 
 from nv_config_manager.common.config import load_config
 
@@ -26,11 +27,12 @@ def temporal_ui_workflow_href(workflow_id: str, config: ConfigParser | None = No
     if config is None:
         config = load_config()
 
+    safe_workflow_id = quote(workflow_id, safe="")
     ui_url = config.get("temporal", "temporal_ui_url", fallback="").strip()
     if not ui_url:
-        raise RuntimeError("Missing [temporal] temporal_ui_url in nv-config-manager.ini")
+        return ""
 
-    return f"{_normalize_base_url(ui_url)}/namespaces/default/workflows/{workflow_id}"
+    return f"{_normalize_base_url(ui_url)}/namespaces/default/workflows/{safe_workflow_id}"
 
 
 def _normalize_base_url(url: str) -> str:

@@ -91,7 +91,6 @@ class DHCPClient:
         self._session = aiohttp.ClientSession(
             connector=_connector(self._verify, self._client_certificate),
             timeout=ClientTimeout(total=30, connect=10),
-            headers=self._resolve_headers(),
         )
         return self
 
@@ -130,6 +129,7 @@ class DHCPClient:
                 method,
                 f"{self.base_url}{path}",
                 params=params,
+                headers=self._resolve_headers(),
             ) as rsp:
                 payload = await _response_payload(rsp)
                 if not rsp.ok:

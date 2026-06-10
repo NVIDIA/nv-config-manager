@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from configparser import ConfigParser
 from datetime import datetime
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -54,8 +55,21 @@ def test_healthcheck():
 def test_temporal_ui_workflow_href_uses_ini(monkeypatch):
     """Verify Workflow API href generation reads the INI, not TEMPORAL_UI."""
     monkeypatch.setenv("TEMPORAL_UI", "http://localhost:8080")
+    config = ConfigParser()
+    config.read_dict({"temporal": {"temporal_ui_url": "https://temporal-ui.example.com"}})
 
-    assert temporal_ui_workflow_href("workflow-id") == f"{TEMPORAL_UI_WORKFLOW_BASE}/workflow-id"
+    assert (
+        temporal_ui_workflow_href("workflow-id", config=config)
+        == f"{TEMPORAL_UI_WORKFLOW_BASE}/workflow-id"
+    )
+
+
+def test_temporal_ui_workflow_href_returns_empty_without_ini_url():
+    """Verify missing Temporal UI URL does not raise after workflow start."""
+    config = ConfigParser()
+    config.read_dict({"temporal": {}})
+
+    assert temporal_ui_workflow_href("workflow-id", config=config) == ""
 
 
 @pytest.mark.asyncio

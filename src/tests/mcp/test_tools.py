@@ -123,3 +123,36 @@ async def test_related_mcp_servers_includes_public_docs(
             ),
         }
     ]
+
+
+async def test_list_nautobot_types_preserves_upstream_truncation(
+    monkeypatch: pytest.MonkeyPatch,
+    settings: MCPSettings,
+) -> None:
+    async def fake_nautobot_graphql_query(
+        settings: MCPSettings,
+        query: str,
+        variables: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return {
+            "truncated": True,
+            "data": {
+                "data": {
+                    "__schema": {
+                        "types": [
+                            {"name": "Device", "kind": "OBJECT", "description": "Device type"}
+                        ]
+                    }
+                }
+            },
+        }
+
+    monkeypatch.setattr(tools, "discover_mcp_workflows", lambda: [])
+    monkeypatch.setattr(tools, "nautobot_graphql_query", fake_nautobot_graphql_query)
+    server = FakeServer()
+
+    tools.register_tools(server, settings)
+    result = await server.tools["list_nautobot_types"]()
+
+    assert result["truncated"] is True
+    assert result["data"]["types"][0]["name"] == "Device"

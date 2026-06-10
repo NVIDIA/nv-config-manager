@@ -146,7 +146,6 @@ class NautobotClient:
             timeout = ClientTimeout(total=self._timeout, connect=10)
 
             self._session = aiohttp.ClientSession(
-                headers=self._resolve_headers(),
                 connector=connector,
                 timeout=timeout,
             )
@@ -223,7 +222,10 @@ class NautobotClient:
 
         request_timeout = aiohttp.ClientTimeout(total=timeout or self._timeout)
         async with session.post(
-            self.graphql_endpoint, json=payload, timeout=request_timeout
+            self.graphql_endpoint,
+            json=payload,
+            timeout=request_timeout,
+            headers=self._resolve_headers(),
         ) as rsp:
             if rsp.status == 400:
                 data = await rsp.json()
@@ -255,6 +257,7 @@ class NautobotClient:
             f"{self.rest_endpoint}{path}",
             params=params,
             timeout=request_timeout,
+            headers=self._resolve_headers(),
         ) as rsp:
             if not rsp.ok:
                 await self._handle_error_response(rsp, "GET", path)
@@ -277,6 +280,7 @@ class NautobotClient:
             f"{self.rest_endpoint}{path}",
             json=data,
             timeout=request_timeout,
+            headers=self._resolve_headers(),
         ) as rsp:
             if not rsp.ok:
                 await self._handle_error_response(rsp, "POST", path)
@@ -299,6 +303,7 @@ class NautobotClient:
             f"{self.rest_endpoint}{path}",
             json=data,
             timeout=request_timeout,
+            headers=self._resolve_headers(),
         ) as rsp:
             if not rsp.ok:
                 await self._handle_error_response(rsp, "PATCH", path)
@@ -316,6 +321,7 @@ class NautobotClient:
         async with session.delete(
             f"{self.rest_endpoint}{path}",
             timeout=request_timeout,
+            headers=self._resolve_headers(),
         ) as rsp:
             if not rsp.ok:
                 await self._handle_error_response(rsp, "DELETE", path)

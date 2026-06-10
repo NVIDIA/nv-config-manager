@@ -41,7 +41,7 @@ class FakeOIDCAuth:
         issuer_url: str,
         client_id: str,
         scopes: list[str] | None = None,
-        verify: bool = True,
+        verify: bool | str = True,
     ) -> None:
         self.issuer_url = issuer_url
         self.client_id = client_id
@@ -53,13 +53,17 @@ class FakeOIDCAuth:
     def discover_auth_config(
         cls,
         discovery_url: str,
-        verify: bool = True,
+        verify: bool | str = True,
     ) -> AuthDiscovery | None:
         cls.auth_discovered.append((discovery_url, verify))
         return cls.auth_discovery_result
 
     @classmethod
-    def discover_oidc_config(cls, gateway_url: str, verify: bool = True) -> tuple[str, str] | None:
+    def discover_oidc_config(
+        cls,
+        gateway_url: str,
+        verify: bool | str = True,
+    ) -> tuple[str, str] | None:
         cls.discovered.append((gateway_url, verify))
         return cls.discovery_result
 
@@ -292,6 +296,38 @@ def test_config_output_is_generic() -> None:
     ) in result.output
     assert "agent" not in result.output.lower()
     assert "model" not in result.output.lower()
+
+
+def test_config_output_includes_insecure_in_token_command() -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(mcp_cli.main, ["config", "-H", "config-manager.example.com", "-k"])
+
+    assert result.exit_code == 0
+    assert (
+        "nvcm-mcp-cli token --auth-mode sso "
+        "--mcp-url https://svc-mcp.config-manager.example.com/mcp --insecure"
+    ) in result.output
+
+
+def test_token_rejects_http_mcp_url_when_bearer_auth_is_explicit() -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(
+        mcp_cli.main,
+        [
+            "token",
+            "--mcp-url",
+            "http://svc-mcp.config-manager.example.com/mcp",
+            "--issuer",
+            "https://issuer.example.com",
+            "--client-id",
+            "cli-client-id",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "Refusing non-HTTPS MCP endpoint for bearer auth" in result.output
 
 
 def test_config_output_omits_auth_when_sso_is_not_enabled() -> None:

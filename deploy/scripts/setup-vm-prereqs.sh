@@ -1153,7 +1153,7 @@ spec:
                 "serviceAccountsEnabled": false,
                 "protocol": "openid-connect",
                 "redirectUris": ["http://localhost:*", "http://127.0.0.1:*"],
-                "webOrigins": ["*"],
+                "webOrigins": ["http://localhost:*", "http://127.0.0.1:*"],
                 "attributes": {
                   "access.token.lifespan": "3600",
                   "pkce.code.challenge.method": "S256"

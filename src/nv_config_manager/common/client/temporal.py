@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import json
 import ssl
 import types
 from collections.abc import Callable
@@ -132,7 +133,6 @@ class TemporalClient:
         self._session = aiohttp.ClientSession(
             connector=connector,
             timeout=ClientTimeout(total=30),
-            headers=self._resolve_headers(),
         )
         return self
 
@@ -163,7 +163,10 @@ class TemporalClient:
         if not self._session:
             raise RuntimeError("TemporalClient must be used as async context manager")
         try:
-            async with self._session.get(f"{self.base_url}/whoami") as rsp:
+            async with self._session.get(
+                f"{self.base_url}/whoami",
+                headers=self._resolve_headers(),
+            ) as rsp:
                 rsp.raise_for_status()
                 data: WhoamiResult = await rsp.json()
                 return data
@@ -210,6 +213,7 @@ class TemporalClient:
             async with self._session.post(
                 f"{self.base_url}/v1/workflow/ngc/backup",
                 json=payload,
+                headers=self._resolve_headers(),
             ) as rsp:
                 rsp.raise_for_status()
                 result = await rsp.json()
@@ -249,6 +253,7 @@ class TemporalClient:
                 f"{self.base_url}{path}",
                 params=params,
                 json=json_body,
+                headers=self._resolve_headers(),
             ) as rsp:
                 payload = await _response_payload(rsp)
                 if not rsp.ok:
@@ -263,5 +268,5 @@ class TemporalClient:
 async def _response_payload(response: aiohttp.ClientResponse) -> Any:
     try:
         return await response.json()
-    except aiohttp.ContentTypeError:
+    except (aiohttp.ContentTypeError, json.JSONDecodeError):
         return await response.text()

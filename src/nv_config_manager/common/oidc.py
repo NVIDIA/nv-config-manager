@@ -653,7 +653,7 @@ class OIDCAuth:
     # ── SSO detection and OIDC discovery from gateway redirect ─────────────
 
     @staticmethod
-    def is_sso_enabled(gateway_url: str, verify: bool = True) -> bool:
+    def is_sso_enabled(gateway_url: str, verify: bool | str = True) -> bool:
         """Probe the gateway to determine whether SSO/OIDC is enabled.
 
         Makes a lightweight unauthenticated request (to /whoami relative to the
@@ -688,7 +688,7 @@ class OIDCAuth:
     @staticmethod
     def discover_oidc_config(
         gateway_url: str,
-        verify: bool = True,
+        verify: bool | str = True,
     ) -> tuple[str, str] | None:
         """Discover OIDC issuer and client_id from a gateway's login redirect.
 
@@ -781,7 +781,7 @@ class OIDCAuth:
     def discover_from_gateway(
         cls,
         gateway_url: str,
-        verify: bool = True,
+        verify: bool | str = True,
         **kwargs: Any,
     ) -> "OIDCAuth | None":
         """Create an OIDCAuth instance by auto-discovering config from a gateway.

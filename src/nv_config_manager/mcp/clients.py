@@ -75,10 +75,7 @@ def redact_data(value: Any) -> Any:
 
 def redact_text(value: str) -> str:
     """Redact likely secret assignments from text blobs."""
-    lines = value.splitlines()
-    if len(lines) <= 1:
-        return value
-    return "\n".join(SECRET_LINE_RE.sub(r"\1<redacted>", line) for line in lines)
+    return "\n".join(SECRET_LINE_RE.sub(r"\1<redacted>", line) for line in value.splitlines())
 
 
 def bounded_response(value: Any, max_response_bytes: int) -> dict[str, Any]:

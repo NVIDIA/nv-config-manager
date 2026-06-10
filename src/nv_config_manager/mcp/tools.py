@@ -175,11 +175,12 @@ def register_tools(server: FastMCP, settings: MCPSettings) -> None:
             }
         """
         result = await nautobot_graphql_query(settings, gql_query)
+        upstream_truncated = bool(result.get("truncated", False))
         types = result.get("data", {}).get("data", {}).get("__schema", {}).get("types", [])
         if name_contains:
             needle = name_contains.lower()
             types = [item for item in types if needle in str(item.get("name", "")).lower()]
-        return {"truncated": False, "data": {"types": types[: clamp_limit(limit)]}}
+        return {"truncated": upstream_truncated, "data": {"types": types[: clamp_limit(limit)]}}
 
     @server.tool()
     async def get_nautobot_type(type_name: str) -> dict[str, Any]:

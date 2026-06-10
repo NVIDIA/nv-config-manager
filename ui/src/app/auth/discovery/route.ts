@@ -85,9 +85,25 @@ export async function GET() {
   };
 
   if (authRequired) {
-    response.issuerUrl = normalizeUrl(process.env.OIDC_ISSUER_URL);
-    response.clientId =
+    const issuerUrl = normalizeUrl(process.env.OIDC_ISSUER_URL);
+    const clientId =
       process.env.OIDC_CLI_CLIENT_ID || process.env.OIDC_CLIENT_ID || "";
+    if (!issuerUrl || !clientId) {
+      return NextResponse.json(
+        {
+          error:
+            "OIDC discovery misconfigured: missing OIDC_ISSUER_URL or OIDC_CLI_CLIENT_ID/OIDC_CLIENT_ID",
+        },
+        {
+          status: 500,
+          headers: {
+            "Cache-Control": "no-store",
+          },
+        },
+      );
+    }
+    response.issuerUrl = issuerUrl;
+    response.clientId = clientId;
     response.scopes = parseScopes(process.env.OIDC_SCOPES);
   }
 
