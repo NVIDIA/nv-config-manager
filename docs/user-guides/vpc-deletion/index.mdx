@@ -37,7 +37,7 @@ The workflow runs one stage. No human approval is required.
 
 1. **`delete_vpc` — Delete the VPC's VRFs.**
 
-    Queries Nautobot for the VPC's VRFs by `vpc_id` + `namespace_tag` + `site`. If none exist, the stage short-circuits with the message "No VRFs exist for this VPC at the site" — a successful no-op for a VPC that was never created or is already gone. For each VRF that does exist:
+   Queries Nautobot for the VPC's VRFs by `vpc_id` + `namespace_tag` + `site`. If none exist, the stage short-circuits with the message "No VRFs exist for this VPC at the site" — a successful no-op for a VPC that was never created or is already gone. For each VRF that does exist:
 
    - If the VRF's `interface_count > 0`, it is added to `in_use_vrfs` and skipped.
    - Otherwise the workflow invokes `delete_vrf` against it.

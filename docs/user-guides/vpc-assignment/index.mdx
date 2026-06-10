@@ -32,15 +32,15 @@ The workflow runs three stages in order. None require manual approval.
 
 1. **`get_device_and_vrf` — Resolve the device and the VPC's VRF.**
 
-    Loads the target device record and queries Nautobot for the VRF matching `vpc_id` + `namespace_tag` + `site`. The query is asserted to return exactly one VRF — zero or more than one raises `ApplicationError` and halts the workflow.
+   Loads the target device record and queries Nautobot for the VRF matching `vpc_id` + `namespace_tag` + `site`. The query is asserted to return exactly one VRF — zero or more than one raises `ApplicationError` and halts the workflow.
 
 1. **`assign_vrf_to_device` — Bind the VRF to the device record.**
 
-    Attaches the VRF to the device's VRF list in Nautobot. If the VRF is already assigned to this device, the stage short-circuits with `vrf_assigned=False` (meaning "no change made"); otherwise it returns `vrf_assigned=True`.
+   Attaches the VRF to the device's VRF list in Nautobot. If the VRF is already assigned to this device, the stage short-circuits with `vrf_assigned=False` (meaning "no change made"); otherwise it returns `vrf_assigned=True`.
 
 1. **`assign_vrf_to_ports` — Bind the VRF to each named port.**
 
-    For each port in `port_names`, assigns the VRF to the interface in Nautobot, running all per-port writes in parallel. Ports that already have this VRF assigned are skipped and recorded in `already_assigned_ports`. The final `assigned_ports` list contains the ports actually changed by this run.
+   For each port in `port_names`, assigns the VRF to the interface in Nautobot, running all per-port writes in parallel. Ports that already have this VRF assigned are skipped and recorded in `already_assigned_ports`. The final `assigned_ports` list contains the ports actually changed by this run.
 
 ## Verifying outcomes
 

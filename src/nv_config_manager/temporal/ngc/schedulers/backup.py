@@ -18,6 +18,7 @@ import asyncio
 import logging
 import os
 import signal
+from collections.abc import Sequence
 from datetime import timedelta
 from uuid import uuid4
 
@@ -38,6 +39,13 @@ from nv_config_manager.common.config import load_config
 from nv_config_manager.common.log import LogCategory, get_logger
 from nv_config_manager.temporal.client.nautobot import NautobotClient, NautobotException
 from nv_config_manager.temporal.common.rbac_config import RBACConfig
+from nv_config_manager.temporal.common.search_attributes import (
+    EXECUTE_ROLES_SEARCH_ATTRIBUTE,
+    FAILED_STAGE_SEARCH_ATTRIBUTE,
+    PENDING_APPROVAL_SEARCH_ATTRIBUTE,
+    READ_ROLES_SEARCH_ATTRIBUTE,
+    USER_SEARCH_ATTRIBUTE,
+)
 from nv_config_manager.temporal.converter import get_data_converter
 from nv_config_manager.temporal.ngc.workflows.backup import BackupInput, BackupWorkflow, TriggerEnum
 
@@ -123,16 +131,24 @@ query ($is_aggregate_managed: Boolean) {
             return
 
         # Create properly typed search attributes
-        user_key = SearchAttributeKey.for_keyword("User")
-        read_roles_key = SearchAttributeKey.for_keyword_list("ReadRoles")
-        execute_roles_key = SearchAttributeKey.for_keyword_list("ExecuteRoles")
+        user_key = SearchAttributeKey.for_keyword(USER_SEARCH_ATTRIBUTE)
+        read_roles_key = SearchAttributeKey.for_keyword_list(READ_ROLES_SEARCH_ATTRIBUTE)
+        execute_roles_key = SearchAttributeKey.for_keyword_list(EXECUTE_ROLES_SEARCH_ATTRIBUTE)
+        pending_approval_key = SearchAttributeKey.for_bool(PENDING_APPROVAL_SEARCH_ATTRIBUTE)
+        failed_stage_key = SearchAttributeKey.for_bool(FAILED_STAGE_SEARCH_ATTRIBUTE)
 
         typed_search_attributes = TypedSearchAttributes(
-            [
+            (
                 SearchAttributePair(user_key, "nv-config-manager-temporal"),
-                SearchAttributePair(read_roles_key, sorted(workflow_roles["read_roles"])),
-                SearchAttributePair(execute_roles_key, sorted(workflow_roles["execute_roles"])),
-            ]
+                SearchAttributePair[Sequence[str]](
+                    read_roles_key, sorted(workflow_roles["read_roles"])
+                ),
+                SearchAttributePair[Sequence[str]](
+                    execute_roles_key, sorted(workflow_roles["execute_roles"])
+                ),
+                SearchAttributePair[bool](pending_approval_key, False),
+                SearchAttributePair[bool](failed_stage_key, False),
+            )
         )
 
         await temporal_client.create_schedule(

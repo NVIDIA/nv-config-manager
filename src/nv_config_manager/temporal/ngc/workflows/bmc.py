@@ -102,6 +102,7 @@ class RedfishProvisioningWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixi
     """Redfish BMC discovery and provisioning workflow for server management."""
 
     # Workflow metadata
+    workflow_name = "Redfish Provisioning"
     workflow_description = "Discover and provision Redfish-capable BMCs for server management"
     workflow_input_class = RedfishProvisioningInput
     workflow_api_endpoint = "/ngc/redfish_provisioning"

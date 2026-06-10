@@ -3,7 +3,8 @@
 {{- $createOwnProxy := or .Values.gateway.hostNetwork.enabled .Values.gateway.hostPorts.enabled (dig "nodePort" "enabled" false .Values.gateway) .Values.gateway.nlb (dig "envoyProxy" "enabled" false .Values.gateway) $envoyImage }}
 {{- $proxyName := .Values.gateway.envoyProxy.name | default (printf "%s-proxy" .Values.gateway.name) }}
 {{- $needsPortPatch := or .Values.gateway.hostNetwork.enabled .Values.gateway.hostPorts.enabled (dig "nodePort" "enabled" false .Values.gateway) }}
-{{- $needsContainerPatch := or $envoyImage (and (not .Values.gateway.hostNetwork.enabled) (or .Values.gateway.hostPorts.enabled (dig "nodePort" "enabled" false .Values.gateway))) }}
+{{- $envoyResources := dig "envoyProxy" "resources" nil .Values.gateway }}
+{{- $needsContainerPatch := or $envoyImage $envoyResources (and (not .Values.gateway.hostNetwork.enabled) (or .Values.gateway.hostPorts.enabled (dig "nodePort" "enabled" false .Values.gateway))) }}
 {{- if $createOwnProxy }}
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: EnvoyProxy
@@ -54,7 +55,7 @@ spec:
           {{- toYaml .Values.gateway.envoyProxy.envoyService.labels | nindent 10 }}
         {{- end }}
       {{- end }}
-      {{- if or $needsPortPatch $envoyImage }}
+      {{- if or $needsPortPatch $needsContainerPatch }}
       envoyDeployment:
         patch:
           type: StrategicMerge
@@ -77,6 +78,10 @@ spec:
                   {{- if $needsContainerPatch }}
                   containers:
                   - name: envoy
+                    {{- if $envoyResources }}
+                    resources:
+                      {{- toYaml $envoyResources | nindent 22 }}
+                    {{- end }}
                     {{- if $envoyImage }}
                     image: {{ $envoyImage | quote }}
                     {{- end }}

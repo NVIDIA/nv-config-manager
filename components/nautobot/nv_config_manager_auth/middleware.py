@@ -79,3 +79,17 @@ class JWTCookieMiddleware:
                 login(request, user, backend="nautobot.core.authentication.ObjectPermissionBackend")
                 log.debug("JWT cookie login: %s via %s", user.username, provider.name)
                 return
+
+
+class LogoutRedirectMiddleware:
+    """Redirect Nautobot's hard-coded logout response to gateway OIDC logout."""
+
+    def __init__(self, get_response: Any) -> None:
+        self.get_response = get_response
+        self._redirect_url = os.getenv("NAUTOBOT_LOGOUT_REDIRECT_URL", "")
+
+    def __call__(self, request: HttpRequest) -> HttpResponse:
+        response = self.get_response(request)
+        if self._redirect_url and request.path_info == "/logout/" and response.status_code in {301, 302, 303, 307, 308}:
+            response["Location"] = self._redirect_url
+        return response

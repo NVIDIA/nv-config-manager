@@ -14,10 +14,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import * as React from "react";
 import { WorkflowStage } from "./data-table.types";
 
 export interface StagesListProps {
   stages: WorkflowStage[];
-  handleClick: React.Dispatch<React.SetStateAction<WorkflowStage | null>>;
+  selectedStageName?: string | null;
+  handleClick: (stage: WorkflowStage) => void;
 }

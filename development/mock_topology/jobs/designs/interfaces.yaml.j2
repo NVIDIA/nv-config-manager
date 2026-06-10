@@ -22,6 +22,10 @@ interfaces:
     {% if intf.mac_address is defined and intf.mac_address %}
     mac_address: "{{ intf.mac_address }}"
     {% endif %}
+    {% if intf.custom_fields is defined and intf.custom_fields and intf.custom_fields.ib_guid %}
+    custom_fields:
+      ib_guid: "{{ intf.custom_fields.ib_guid }}"
+    {% endif %}
     {% if intf.mode is defined and intf.mode %}
     mode: {{ intf.mode }}
     {% elif intf.tagged_vlans is defined and intf.tagged_vlans | length > 0 %}

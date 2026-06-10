@@ -14,7 +14,8 @@
 # limitations under the License.
 """Temporal test configuration - INI mocking handled by top-level conftest.py."""
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator, Callable
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from typing import Any
 
 import pytest
@@ -25,10 +26,56 @@ from temporalio.api.operatorservice.v1 import (
     AddSearchAttributesRequest,
     ListSearchAttributesRequest,
 )
+from temporalio.service import RPCError, RPCStatusCode
 from temporalio.testing import WorkflowEnvironment
 
+from nv_config_manager.temporal.common.search_attributes import (
+    DEVICE_ID_SEARCH_ATTRIBUTE,
+    DEVICE_NAME_SEARCH_ATTRIBUTE,
+    DEVICE_PLATFORM_SEARCH_ATTRIBUTE,
+    DEVICE_ROLE_SEARCH_ATTRIBUTE,
+    EXECUTE_ROLES_SEARCH_ATTRIBUTE,
+    FAILED_STAGE_SEARCH_ATTRIBUTE,
+    ISSUE_KEY_SEARCH_ATTRIBUTE,
+    PENDING_APPROVAL_SEARCH_ATTRIBUTE,
+    READ_ROLES_SEARCH_ATTRIBUTE,
+    SITE_SEARCH_ATTRIBUTE,
+    USER_SEARCH_ATTRIBUTE,
+)
 from nv_config_manager.temporal.converter import get_data_converter
 from nv_config_manager.temporal.ngc.activities.nats import PublishNatsInput
+
+_SEARCH_ATTRIBUTES = {
+    USER_SEARCH_ATTRIBUTE: IndexedValueType.INDEXED_VALUE_TYPE_KEYWORD,
+    DEVICE_ID_SEARCH_ATTRIBUTE: IndexedValueType.INDEXED_VALUE_TYPE_KEYWORD,
+    DEVICE_ROLE_SEARCH_ATTRIBUTE: IndexedValueType.INDEXED_VALUE_TYPE_KEYWORD,
+    SITE_SEARCH_ATTRIBUTE: IndexedValueType.INDEXED_VALUE_TYPE_KEYWORD,
+    DEVICE_NAME_SEARCH_ATTRIBUTE: IndexedValueType.INDEXED_VALUE_TYPE_TEXT,
+    DEVICE_PLATFORM_SEARCH_ATTRIBUTE: IndexedValueType.INDEXED_VALUE_TYPE_KEYWORD,
+    READ_ROLES_SEARCH_ATTRIBUTE: IndexedValueType.INDEXED_VALUE_TYPE_KEYWORD_LIST,
+    EXECUTE_ROLES_SEARCH_ATTRIBUTE: IndexedValueType.INDEXED_VALUE_TYPE_KEYWORD_LIST,
+    PENDING_APPROVAL_SEARCH_ATTRIBUTE: IndexedValueType.INDEXED_VALUE_TYPE_BOOL,
+    FAILED_STAGE_SEARCH_ATTRIBUTE: IndexedValueType.INDEXED_VALUE_TYPE_BOOL,
+    ISSUE_KEY_SEARCH_ATTRIBUTE: IndexedValueType.INDEXED_VALUE_TYPE_KEYWORD,
+}
+
+
+async def _register_search_attributes(env: WorkflowEnvironment) -> None:
+    """Register custom search attributes for a Temporal test environment."""
+    await env.client.operator_service.add_search_attributes(
+        AddSearchAttributesRequest(
+            namespace=env.client.namespace,
+            search_attributes=_SEARCH_ATTRIBUTES,
+        )
+    )
+    try:
+        # Read to force the cache refresh when the test server supports it.
+        await env.client.operator_service.list_search_attributes(
+            ListSearchAttributesRequest(namespace=env.client.namespace)
+        )
+    except RPCError as exc:
+        if exc.status != RPCStatusCode.UNIMPLEMENTED:
+            raise
 
 
 @activity.defn(name="publish_nats")
@@ -96,25 +143,22 @@ async def env() -> AsyncGenerator[WorkflowEnvironment]:
             "system.forceSearchAttributesCacheRefreshOnRead=true",
         ],
     )
-    await env.client.operator_service.add_search_attributes(
-        AddSearchAttributesRequest(
-            namespace=env.client.namespace,
-            search_attributes={
-                "User": IndexedValueType.INDEXED_VALUE_TYPE_KEYWORD,
-                "DeviceID": IndexedValueType.INDEXED_VALUE_TYPE_KEYWORD,
-                "DeviceRole": IndexedValueType.INDEXED_VALUE_TYPE_KEYWORD,
-                "Site": IndexedValueType.INDEXED_VALUE_TYPE_KEYWORD,
-                "DeviceName": IndexedValueType.INDEXED_VALUE_TYPE_TEXT,
-                "DevicePlatform": IndexedValueType.INDEXED_VALUE_TYPE_KEYWORD,
-                "ReadRoles": IndexedValueType.INDEXED_VALUE_TYPE_KEYWORD_LIST,
-                "ExecuteRoles": IndexedValueType.INDEXED_VALUE_TYPE_KEYWORD_LIST,
-                "IssueKey": IndexedValueType.INDEXED_VALUE_TYPE_KEYWORD,
-            },
-        )
-    )
-    # Read to force the cache refresh
-    await env.client.operator_service.list_search_attributes(
-        ListSearchAttributesRequest(namespace=env.client.namespace)
-    )
+    await _register_search_attributes(env)
     yield env
     await env.shutdown()
+
+
+@pytest.fixture()
+def time_skipping_env() -> Callable[[], AbstractAsyncContextManager[WorkflowEnvironment]]:
+    """Return a time-skipping Temporal environment with custom search attributes."""
+
+    @asynccontextmanager
+    async def _env() -> AsyncIterator[WorkflowEnvironment]:
+        env = await WorkflowEnvironment.start_time_skipping(data_converter=get_data_converter())
+        try:
+            await _register_search_attributes(env)
+            yield env
+        finally:
+            await env.shutdown()
+
+    return _env

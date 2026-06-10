@@ -32,6 +32,7 @@ spec:
     matchLabels:
       app.kubernetes.io/name: health-check
       app.kubernetes.io/instance: {{ .Release.Name }}
+  {{- include "nv-config-manager.deploymentStrategy" (dict "root" .) | nindent 2 }}
   template:
     metadata:
       labels:
@@ -58,4 +59,3 @@ spec:
             cpu: 50m
             memory: 32Mi
 {{- end }}
-

@@ -181,7 +181,7 @@ test.describe("Site Cable Validation Form", () => {
     page,
   }) => {
     // Test multiple selections for Roles
-    await page.getByRole("button", { name: "Roles" }).click();
+    await page.locator("form").getByRole("button", { name: "Roles" }).click();
     await page.getByRole("dialog").getByText(ROLES_LIST.leaf).click();
     await page.getByRole("dialog").getByText(ROLES_LIST.spine).click();
     // Click outside to close any dropdown that might be open
@@ -230,7 +230,7 @@ test.describe("Site Cable Validation Form", () => {
       .getByRole("heading", { name: "New Site Cable Validation Workflow" })
       .click();
 
-    await page.getByRole("button", { name: "Roles" }).click();
+    await page.locator("form").getByRole("button", { name: "Roles" }).click();
     await page.getByRole("dialog").getByText(ROLES_LIST.leaf).click();
     await page.getByRole("dialog").getByText(ROLES_LIST.spine).click();
     // Click outside to close any dropdown that might be open
@@ -282,7 +282,7 @@ test.describe("Site Cable Validation Form", () => {
       .getByRole("heading", { name: "New Site Cable Validation Workflow" })
       .click();
 
-    await page.getByRole("button", { name: "Roles" }).click();
+    await page.locator("form").getByRole("button", { name: "Roles" }).click();
     await page.getByRole("dialog").getByText(ROLES_LIST.leaf).click();
     await page.getByRole("dialog").getByText(ROLES_LIST.spine).click();
     // Click outside to close any dropdown that might be open
@@ -338,7 +338,7 @@ test.describe("Site Cable Validation Form", () => {
     await page.getByRole("dialog").getByText(FORBIDDEN_SITE_ID).click();
 
     // Fill other required fields
-    await page.getByRole("button", { name: "Roles" }).click();
+    await page.locator("form").getByRole("button", { name: "Roles" }).click();
     await page.getByRole("dialog").getByText(ROLES_LIST.leaf).click();
     await page
       .getByRole("heading", { name: "New Site Cable Validation Workflow" })

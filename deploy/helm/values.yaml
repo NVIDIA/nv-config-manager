@@ -170,6 +170,8 @@ localDev:
   # Enable mock network device connections (returns stub data, no real SSH/API calls)
   # Set to true in local Kind environments where worker pods can't reach real devices
   mockDevices: false
+  # Register long-running test workflows used by local workflow-list latency seeding.
+  enableLocalTestWorkflows: false
 # =============================================================================
 # Secrets Configuration
 # =============================================================================
@@ -846,8 +848,8 @@ gateway:
   #
   # When a path is in authBypass:
   #   - OIDC redirect is DISABLED (no login prompt)
-  #   - JWT validation is OPTIONAL (allow_missing_or_failed)
-  #   - If valid JWT present: claims extracted to X-Auth-Request-* headers
+  #   - Authorization bearer JWT validation is OPTIONAL
+  #   - If valid bearer JWT present: claims extracted to X-Auth-Request-* headers
   #   - If no JWT: request passes through, service handles its own auth
   #
   # This creates separate HTTPRoutes with SecurityPolicies that have
@@ -936,6 +938,9 @@ oidc:
   # with JWT claim extraction.
   # WARNING: Only enable in secure environments (HTTPS, secure cookie flags)
   disableTokenEncryption: true
+  # OIDC cookie names used by Envoy Gateway and downstream JWT extraction.
+  cookieName: "NVConfigManagerAccessToken"
+  idTokenCookieName: "NVConfigManagerIdToken"
   # JWKS URI for token validation (auto-derived from issuerUrl if not set)
   # For Keycloak: https://<host>/realms/<realm>/protocol/openid-connect/certs
   # For Azure AD: https://login.microsoftonline.com/<tenant>/discovery/v2.0/keys
@@ -945,6 +950,10 @@ oidc:
   # (usually auto-discovered from issuer)
   # authorizationEndpoint: ""
   # tokenEndpoint: ""
+  # Optional: Provider logout endpoint used by Envoy Gateway to clear the
+  # upstream OIDC session on oidc.logoutPath. Auto-derived by the installer
+  # for Keycloak and Azure AD.
+  # endSessionEndpoint: ""
 
   # Optional: Internal issuer URL for token exchange (if external URL isn't reachable from cluster)
   # internalIssuerUrl: ""
@@ -1498,7 +1507,7 @@ networkDhcp:
   resources:
     dhcp:
       requests:
-        cpu: 4
+        cpu: 1
         memory: 1Gi
       limits:
         memory: 2Gi
@@ -2378,6 +2387,18 @@ nautobot:
         memory: 8Gi
       limits:
         memory: 16Gi
+    strategy:
+      type: RollingUpdate
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 0
+    migrations:
+      resources:
+        requests:
+          cpu: 250m
+          memory: 512Mi
+        limits:
+          memory: 2Gi
     # Database configuration
     # Host: set to CNPG cluster service name (e.g., "cluster-nautobot-rw") or external host
     db:
@@ -2489,7 +2510,7 @@ nautobot:
     #
     # For /api/ paths:
     #   - OIDC redirect is disabled (no login prompt)
-    #   - JWT is optional but claims extracted if present (for remote user auth)
+    #   - Authorization bearer JWT is optional and claims are extracted if present
     #   - Nautobot handles its own token auth for requests without JWT
     #
     # This enables both SSO users (with JWT) and API clients (with native tokens)
@@ -2498,6 +2519,7 @@ nautobot:
     authBypass:
       enabled: true
       paths:
+        - /logout/
         - /api/
   # Ingress (optional, for direct access)
   ingress:

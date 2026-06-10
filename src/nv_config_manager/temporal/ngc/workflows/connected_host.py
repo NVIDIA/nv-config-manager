@@ -107,6 +107,7 @@ class ConnectedHostMetadataWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMix
     """Connected host metadata discovery workflow."""
 
     # Workflow metadata
+    workflow_name = "Connected Host Metadata"
     workflow_description = (
         "Discover and analyze connected hosts via MAC table and LLDP neighbor data"
     )

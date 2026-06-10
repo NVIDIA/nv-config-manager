@@ -294,6 +294,7 @@ class SSOConfig(BaseModel):
     client_secret: str = ""
     jwks_uri: str = ""
     internal_issuer: str = ""
+    end_session_endpoint: str = ""
     audiences: str = ""
     scopes: str = ""
     jwt_providers: list[JWTProvider] = Field(default_factory=list)
