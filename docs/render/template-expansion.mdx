@@ -107,10 +107,10 @@ The common base defines the output skeleton and required blocks:
 The final render is the merged result of those layers:
 
 1. The version-specific entrypoint selects the firmware-specific overrides.
-2. The role base supplies role-level blocks and includes.
-3. The common base supplies the file skeleton and default blocks.
-4. Jinja replaces each `include` with the included template output.
-5. Filters convert Nautobot and plugin data into the values used by the templates.
+1. The role base supplies role-level blocks and includes.
+1. The common base supplies the file skeleton and default blocks.
+1. Jinja replaces each `include` with the included template output.
+1. Filters convert Nautobot and plugin data into the values used by the templates.
 
 ## Plugin Discovery
 
@@ -154,11 +154,11 @@ def get_location_name(device_data: dict[str, Any]) -> str | None:
 At renderer startup, Config Manager:
 
 1. Discovers installed entry points from `nv_config_manager_templates.plugins`.
-2. Calls plugin hooks such as `get_template_paths()`, `get_custom_filters()`, and `get_graphql_queries()`.
-3. Adds plugin template paths before the built-in package templates.
-4. Loads built-in filters.
-5. Loads plugin filters that do not conflict with an existing filter name.
-6. Executes plugin GraphQL queries during data loading and passes results as `plugin_data`.
+1. Calls plugin hooks such as `get_template_paths()`, `get_custom_filters()`, and `get_graphql_queries()`.
+1. Adds plugin template paths before the built-in package templates.
+1. Loads built-in filters.
+1. Loads plugin filters that do not conflict with an existing filter name.
+1. Executes plugin GraphQL queries during data loading and passes results as `plugin_data`.
 
 Because plugin template paths are loaded before the built-in templates, a plugin can add new logical paths or intentionally shadow a built-in template path. Shadowing should be explicit and covered by render tests. Prefer `extends` and small block overrides when the plugin only needs to adjust part of a built-in template.
 

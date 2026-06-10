@@ -43,11 +43,18 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-      - run: uv sync --frozen
-      - run: make openapi-check
-      - run: make docs-assets-check
-      - run: make docs-lint
-      - run: make docs-lint-fern
+      - name: Sync dependencies
+        run: uv sync --frozen
+      - name: Check OpenAPI specs
+        run: make openapi-check
+      - name: Check docs assets
+        run: make docs-assets-check
+      - name: Lint the docs
+        run: make docs-lint
+      - name: Check Fern configuration and markdown
+        env:
+          FERN_TOKEN: ${{ secrets.FERN_TOKEN }}
+        run: make docs-lint-fern
 
   preview:
     name: Preview Docs

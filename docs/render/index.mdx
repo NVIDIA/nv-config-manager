@@ -40,19 +40,19 @@ Device Configuration Files
    * Dynamically registers custom filters
    * Renders templates with device and location data
 
-2. **Filters**: Python functions that transform data within templates
+1. **Filters**: Python functions that transform data within templates
 
    * Located in `filters/` modules (bgp, device, ip, isis, location, vault)
    * Automatically loaded and registered as Jinja2 filters
    * Must have unique names across all modules
 
-3. **Templates**: Jinja2 templates organized by platform, role, and version
+1. **Templates**: Jinja2 templates organized by platform, role, and version
 
    * **Entrypoint templates**: Top-level templates that generate final configs
    * **Base templates**: Define configuration structure with named blocks
    * **Include templates**: Implement specific configuration sections
 
-4. **Dataclasses**: Structured Python objects for type-safe data handling
+1. **Dataclasses**: Structured Python objects for type-safe data handling
 
    * `Interface`: Network interface representation
    * `BGPPeer`: BGP peering information
@@ -91,8 +91,8 @@ templates/
 The renderer determines which entrypoint templates to use based on device attributes:
 
 1. **Platform**: Extracted from device's platform field (e.g., "Cumulus Linux" → `cumulus-linux`)
-2. **Role**: Extracted from device's role field (e.g., "TAN-Leaf" → `tan-leaf`)
-3. **Version**: Extracted from device's config context `intended-firmware.version`
+1. **Role**: Extracted from device's role field (e.g., "TAN-Leaf" → `tan-leaf`)
+1. **Version**: Extracted from device's config context `intended-firmware.version`
 
 **Example Path**: `cumulus-linux/tan-leaf/5.6.0/entrypoint/startup.yaml.j2`
 
@@ -461,8 +461,8 @@ Secret management and encryption (for passwords, keys, and so on).
 **Secret Loading Modes:**
 
 1. **Production**: Queries Hashicorp Vault directly
-2. **Kubernetes**: Reads from injected secret files
-3. **Development**: Returns dummy value (`{path}:{key}`) when `NV_CONFIG_MANAGER_SKIP_VAULT=1`
+1. **Kubernetes**: Reads from injected secret files
+1. **Development**: Returns dummy value (`{path}:{key}`) when `NV_CONFIG_MANAGER_SKIP_VAULT=1`
 
 **Example Usage:**
 
@@ -572,8 +572,8 @@ Allowed password-mapping roles are `admin`, `ro`, and `rw`.
 Based on your device, identify:
 
 1. **Platform**: `cumulus-linux`, `arista-eos`, `mlnx-os`, `nv-os`
-2. **Role**: `tan-leaf`, `smn-spine`, `wan`, `oob-switch`, and so on
-3. **Version**: Firmware version like `5.6.0`, `4.29.3M`
+1. **Role**: `tan-leaf`, `smn-spine`, `wan`, `oob-switch`, and so on
+1. **Version**: Firmware version like `5.6.0`, `4.29.3M`
 
 ### Create or Extend Base Template
 
@@ -640,9 +640,9 @@ new-feature enable
 Ensure the device in Nautobot has:
 
 1. **Platform** set correctly
-2. **Role** set correctly
-3. **Config Context** with `intended-firmware.version` matching your template path
-4. Required interface, IP, and BGP data populated
+1. **Role** set correctly
+1. **Config Context** with `intended-firmware.version` matching your template path
+1. Required interface, IP, and BGP data populated
 
 ### Test your template
 
@@ -654,7 +654,7 @@ Ensure the device in Nautobot has:
      --output-location-file tests/resources/nautobot/MY-SITE.json
    ```
 
-2. Render locally:
+1. Render locally:
 
    ```bash
    uv run template-cli render \
@@ -663,9 +663,9 @@ Ensure the device in Nautobot has:
      --entrypoint startup.yaml.j2
    ```
 
-3. Add expected output: save the rendered output to `tests/resources/expected_config/my-device_startup.yaml` (naming convention is `{hostname}_{entrypoint}`).
+1. Add expected output: save the rendered output to `tests/resources/expected_config/my-device_startup.yaml` (naming convention is `{hostname}_{entrypoint}`).
 
-4. Run tests: `uv run pytest tests/nv_config_manager_templates/test_render.py`.
+1. Run tests: `uv run pytest tests/nv_config_manager_templates/test_render.py`.
 
 ## Best Practices
 
@@ -673,85 +673,85 @@ Ensure the device in Nautobot has:
 
 1. **Use Inheritance**: Do not duplicate configuration. Extend base templates and override only what differs.
 
-2. **Keep Includes Focused**: Each include template should handle one logical section (interfaces, routing, QoS, and so on).
+1. **Keep Includes Focused**: Each include template should handle one logical section (interfaces, routing, QoS, and so on).
 
-3. **Fail Explicitly**: Use filters with `fail_if_missing=True` (default) to catch data issues early.
+1. **Fail Explicitly**: Use filters with `fail_if_missing=True` (default) to catch data issues early.
 
-4. **Handle Optional Data**: Check for None before using optional fields:
+1. **Handle Optional Data**: Check for None before using optional fields:
 
-    ```jinja
-    {% if intf.description %}
-    description {{ intf.description }}
-    {% endif %}
-    ```
+   ```jinja
+   {% if intf.description %}
+   description {{ intf.description }}
+   {% endif %}
+   ```
 
-5. **Use Filters for Logic**: Move complex logic into filters rather than templates:
+1. **Use Filters for Logic**: Move complex logic into filters rather than templates:
 
-    ```jinja
-    {# Bad - complex logic in template #}
-    {% if intf.connected_interface and not intf.primary_ipv4 and not intf.untagged_vlan %}
+   ```jinja
+   {# Bad - complex logic in template #}
+   {% if intf.connected_interface and not intf.primary_ipv4 and not intf.untagged_vlan %}
 
-    {# Good - logic in filter #}
-    {% if intf.has_bgp_peer() %}
-    ```
+   {# Good - logic in filter #}
+   {% if intf.has_bgp_peer() %}
+   ```
 
-6. **Whitespace Management**: Jinja2 `trim_blocks=True` is enabled. Use `{%-` and `-%}` for additional control:
+1. **Whitespace Management**: Jinja2 `trim_blocks=True` is enabled. Use `{%-` and `-%}` for additional control:
 
-    ```jinja
-    {%- for item in items %}
-    line {{ item }}
-    {%- endfor %}
-    ```
+   ```jinja
+   {%- for item in items %}
+   line {{ item }}
+   {%- endfor %}
+   ```
 
 ### Filter Development
 
 1. **Single Responsibility**: Each filter should do one thing well.
 
-2. **Type Hints**: Use type hints for clarity:
+1. **Type Hints**: Use type hints for clarity:
 
-    ```python
-    def my_filter(value: dict[str, Any], option: str = "default") -> list[str]:
-        """Clear docstring explaining purpose."""
-        ...
-    ```
+   ```python
+   def my_filter(value: dict[str, Any], option: str = "default") -> list[str]:
+       """Clear docstring explaining purpose."""
+       ...
+   ```
 
-3. **Error Handling**: Raise `FilterException` with clear messages:
+1. **Error Handling**: Raise `FilterException` with clear messages:
 
-    ```python
-    if not result:
-        raise FilterException(f"No data found for {identifier}")
-    ```
+   ```python
+   if not result:
+       raise FilterException(f"No data found for {identifier}")
+   ```
 
-4. **Test Coverage**: Every filter must have unit tests:
+1. **Test Coverage**: Every filter must have unit tests:
 
-    ```python
-    def test_my_filter(device_fixture):
-        result = my_filter(device_fixture, "option")
-        assert result == expected_value
-    ```
+   ```python
+   def test_my_filter(device_fixture):
+       result = my_filter(device_fixture, "option")
+       assert result == expected_value
+   ```
 
-5. **Immutable Data**: Use `frozen=True` dataclasses to prevent accidental mutations.
+1. **Immutable Data**: Use `frozen=True` dataclasses to prevent accidental mutations.
 
 ### Nautobot Data Management
 
 1. **Consistent Naming**: Follow consistent naming conventions for devices, interfaces, VLANs, and so on.
 
-2. **Config Context**: Use config context for:
+1. **Config Context**: Use config context for:
 
    * Intended firmware versions
    * BGP ASNs and configuration
    * Password key mappings
    * Feature flags
 
-3. **Interface Roles**: Define and use interface roles consistently (Uplink, Downlink, Management, and so on)
+1. **Interface Roles**: Define and use interface roles consistently (Uplink, Downlink, Management, and so on)
 
-4. **Tags**: Use tags for:
+1. **Tags**: Use tags for:
 
    * Feature enablement (`enable-feature-x`)
    * Grouping devices (`production`, `staging`)
    * Interface classification
 
-5. **IP Hierarchy**: Maintain proper prefix parent-child relationships:
+1. **IP Hierarchy**: Maintain proper prefix parent-child relationships:
 
    * Rail aggregates → Device prefixes → /31 point-to-point links
 
@@ -759,17 +759,17 @@ Ensure the device in Nautobot has:
 
 1. **Version-Specific Changes Only**: Only create version-specific templates when absolutely necessary.
 
-2. **Feature Detection**: When possible, use tags rather than version checks:
+1. **Feature Detection**: When possible, use tags rather than version checks:
 
-    ```jinja
-    {# Better #}
-    {% if device_data|has_tag("supports-feature-x") %}
+   ```jinja
+   {# Better #}
+   {% if device_data|has_tag("supports-feature-x") %}
 
-    {# Avoid #}
-    {% if device_data|desired_firmware >= "5.0.0" %}
-    ```
+   {# Avoid #}
+   {% if device_data|desired_firmware >= "5.0.0" %}
+   ```
 
-3. **Deprecation Path**: When deprecating old versions, keep templates for graceful migration.
+1. **Deprecation Path**: When deprecating old versions, keep templates for graceful migration.
 
 ## Examples
 

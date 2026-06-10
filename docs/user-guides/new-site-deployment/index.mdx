@@ -73,10 +73,10 @@ kubectl -n <config-manager-namespace> logs \
 - **By uplink network address** — for management-network switches that provision via Front Panel Ports (FPP) using a /31 DHCP pool of size 1, the MAC is not known ahead of time. Instead query by the /31 prefix; for example, an uplink of `10.0.0.1/31` is searchable as `10.0.0.0/31`.
 - **By serial number (hex)** — Cumulus 5.10+ switches send the serial number as DHCP client ID. Convert the serial to colon-separated hex and query for it:
 
-    ```bash
-    python3 -c "import sys; print(':'.join(f'{ord(c):02x}' for c in sys.argv[1]))" "MT2519J002PD"
-    # 4d:54:32:35:31:39:4a:30:30:32:50:44
-    ```
+  ```bash
+  python3 -c "import sys; print(':'.join(f'{ord(c):02x}' for c in sys.argv[1]))" "MT2519J002PD"
+  # 4d:54:32:35:31:39:4a:30:30:32:50:44
+  ```
 
 ### ZTP logs by device ID
 
@@ -186,9 +186,9 @@ The rendered configuration is failing to apply or has broken connectivity back t
 
   From the Cumulus shell, you can verify that the ZTP URL is reachable by fetching the boot script directly. On a non-management switch, run the request in the management VRF so it leaves the switch over eth0:
 
-    ```bash
-    sudo ip vrf exec mgmt curl -v http://<ztp-server>/v1/device/<device-uuid>/boot-script
-    ```
+  ```bash
+  sudo ip vrf exec mgmt curl -v http://<ztp-server>/v1/device/<device-uuid>/boot-script
+  ```
 
   A 200 response (or a 403, which still confirms the network path is open) means HTTP reachability is fine and the problem is elsewhere. A connection refused, timeout, or no route to host indicates a firewall, security-group, or routing issue between the device and Config Manager.
 
@@ -222,15 +222,15 @@ To perform the swap:
 
 1. On the console for both switches, reset the DHCP/ZTP state and reboot:
 
-    ```bash
-    nv unset interface eth0
-    nv set interface eth0 ip address dhcp
-    nv config apply
-    nv config save
-    sudo ztp -X
-    nv action enable system ztp force
-    sudo reboot
-    ```
+   ```bash
+   nv unset interface eth0
+   nv set interface eth0 ip address dhcp
+   nv config apply
+   nv config save
+   sudo ztp -X
+   nv action enable system ztp force
+   sudo reboot
+   ```
 
 After reboot, each switch will ZTP again and pick up the configuration that now corresponds to its physical position.
 
@@ -272,9 +272,9 @@ If a device directly upstream of the stuck switch has already provisioned, you c
 1. SSH to one of the upstream device's loopback IPs.
 1. Drop into the appropriate VRF on the upstream device:
 
-    ```bash
-    ip vrf exec <vrf> bash
-    ```
+   ```bash
+   ip vrf exec <vrf> bash
+   ```
 
    For management-network devices this is the `default` VRF; for non-management devices, choose the VRF that carries the eth0 management connection.
 
