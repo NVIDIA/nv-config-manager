@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import json
 import ssl
 import types
 from collections.abc import Callable
@@ -144,7 +145,7 @@ class DHCPClient:
 async def _response_payload(response: aiohttp.ClientResponse) -> Any:
     try:
         return await response.json()
-    except aiohttp.ContentTypeError:
+    except (aiohttp.ContentTypeError, json.JSONDecodeError):
         return await response.text()
 
 
