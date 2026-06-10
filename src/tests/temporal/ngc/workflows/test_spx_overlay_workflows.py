@@ -25,7 +25,10 @@ import pytest
 from temporalio import activity
 from temporalio.worker import Worker
 
+from nv_config_manager.temporal.ngc.activities.nats import publish_nats
 from nv_config_manager.temporal.ngc.activities.nautobot import (
+    DeleteOverlayInput,
+    DeleteOverlayOutput,
     GetAvailableRouteDistinguishersInput,
     GetAvailableRouteDistinguishersOutput,
     ProvisionVrfInput,
@@ -33,13 +36,13 @@ from nv_config_manager.temporal.ngc.activities.nautobot import (
     Vrf,
     VrfDeletionActivityInput,
 )
-from nv_config_manager.temporal.ngc.workflows.vpc import (
-    VpcCreationInput,
-    VpcCreationWorkflow,
-    VpcCreationWorkflowOutput,
-    VpcDeletionInput,
-    VpcDeletionWorkflow,
-    VpcDeletionWorkflowOutput,
+from nv_config_manager.temporal.ngc.workflows.spx_overlay import (
+    SpXOverlayCreationInput,
+    SpXOverlayCreationWorkflow,
+    SpXOverlayCreationWorkflowOutput,
+    SpXOverlayDeletionInput,
+    SpXOverlayDeletionWorkflow,
+    SpXOverlayDeletionWorkflowOutput,
 )
 
 
@@ -56,7 +59,6 @@ def make_test_vrf(namespace: int, with_interfaces: bool = False) -> Any:
         "id": namespace,
         "name": "SpXTenant60004",
         "rd": "*:60004",
-        "cf_forge_vpc_id": "mock_vpc_id",
         "namespace": {"name": namespace, "location": {"name": "mock_site"}},
         "interfaces": mock_interfaces,
     }
@@ -82,8 +84,8 @@ async def mock_get_available_route_distinguishers(
     )
 
 
-@activity.defn(name="get_vrfs_by_vpc_id")
-async def mock_get_vrfs_by_vpc_id(
+@activity.defn(name="get_vrfs_by_overlay_id")
+async def mock_get_vrfs_by_overlay_id(
     input: QueryVRFByVPCInput,
 ) -> list[Vrf] | None:
     """Mock activity for getting VRFs by VPC ID."""
@@ -119,15 +121,20 @@ async def mock_delete_vrf(input: VrfDeletionActivityInput) -> None:
     pass
 
 
+@activity.defn(name="delete_overlay")
+async def mock_delete_overlay(input: DeleteOverlayInput) -> DeleteOverlayOutput:
+    """Mock activity for deleting a VPC overlay."""
+    return DeleteOverlayOutput(deleted=True, overlay_name=input.overlay_id)
+
+
 @pytest.mark.asyncio
 @patch("nv_config_manager.temporal.ngc.activities.nats.NatsProducer", autospec=True)
 @patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
-async def test_vpc_creation_workflow(
+async def test_spx_overlay_creation_workflow(
     mock_time,
     mock_nats_client,
     env,
 ):
-    from nv_config_manager.temporal.ngc.activities.nats import publish_nats
 
     # Reset mock state
     _mock_state["failure_scenario"] = True
@@ -138,24 +145,25 @@ async def test_vpc_creation_workflow(
     async with Worker(
         env.client,
         task_queue=task_queue_name,
-        workflows=[VpcCreationWorkflow],
+        workflows=[SpXOverlayCreationWorkflow],
         activities=[
             mock_get_available_route_distinguishers,
-            mock_get_vrfs_by_vpc_id,
+            mock_get_vrfs_by_overlay_id,
             mock_provision_vrf,
             publish_nats,
         ],
         activity_executor=ThreadPoolExecutor(1),
     ):
-        workflow_input = VpcCreationInput(
+        workflow_input = SpXOverlayCreationInput(
             namespace_tag="mock_tag",
             site="mock_site",
-            vpc_id="mock_vpc_id",
+            overlay_id="mock_overlay_id",
+            tenant="mock_tenant",
         )
         workflow_id = str(uuid.uuid4())
 
         handle = await env.client.start_workflow(
-            VpcCreationWorkflow.run,
+            SpXOverlayCreationWorkflow.run,
             workflow_input,
             id=workflow_id,
             task_queue=task_queue_name,
@@ -170,10 +178,10 @@ async def test_vpc_creation_workflow(
         # Disable failure scenario for retry
         _mock_state["failure_scenario"] = False
 
-        await handle.signal("retry", "create_vpc")
+        await handle.signal("retry", "create_spx_overlay")
 
         result = await handle.result()
-        assert result == VpcCreationWorkflowOutput(
+        assert result == SpXOverlayCreationWorkflowOutput(
             created_vrfs=[
                 Vrf.from_nautobot_graphql(make_test_vrf("mock_namespace1")),
                 Vrf.from_nautobot_graphql(make_test_vrf("mock_namespace2")),
@@ -196,9 +204,10 @@ async def test_vpc_creation_workflow(
                     "rd_max": 65000,
                     "rd_min": 60000,
                     "site": "mock_site",
-                    "vpc_id": "mock_vpc_id",
+                    "tenant": "mock_tenant",
+                    "overlay_id": "mock_overlay_id",
                 },
-                "name": "create_vpc",
+                "name": "create_spx_overlay",
                 "output": {
                     "created_vrfs": [
                         {
@@ -209,7 +218,6 @@ async def test_vpc_creation_workflow(
                             "namespace": "mock_namespace1",
                             "rd": "*:60004",
                             "site": "mock_site",
-                            "vpc_id": "mock_vpc_id",
                         },
                         {
                             "id": "mock_namespace2",
@@ -219,7 +227,6 @@ async def test_vpc_creation_workflow(
                             "namespace": "mock_namespace2",
                             "rd": "*:60004",
                             "site": "mock_site",
-                            "vpc_id": "mock_vpc_id",
                         },
                         {
                             "id": "mock_namespace3",
@@ -229,16 +236,15 @@ async def test_vpc_creation_workflow(
                             "namespace": "mock_namespace3",
                             "rd": "*:60004",
                             "site": "mock_site",
-                            "vpc_id": "mock_vpc_id",
                         },
                     ],
                     "display": (
                         "Created VRFs:\n"
-                        "|     name     |   namespace   |   site  |       id      |   rd  |   vpc_id  |interface_count|\n"
-                        "|--------------|---------------|---------|---------------|-------|-----------|---------------|\n"
-                        "|SpXTenant60004|mock_namespace1|mock_site|mock_namespace1|*:60004|mock_vpc_id|       0       |\n"
-                        "|SpXTenant60004|mock_namespace2|mock_site|mock_namespace2|*:60004|mock_vpc_id|       0       |\n"
-                        "|SpXTenant60004|mock_namespace3|mock_site|mock_namespace3|*:60004|mock_vpc_id|       0       |"
+                        "|     name     |   namespace   |   site  |       id      |   rd  |interface_count|\n"
+                        "|--------------|---------------|---------|---------------|-------|---------------|\n"
+                        "|SpXTenant60004|mock_namespace1|mock_site|mock_namespace1|*:60004|       0       |\n"
+                        "|SpXTenant60004|mock_namespace2|mock_site|mock_namespace2|*:60004|       0       |\n"
+                        "|SpXTenant60004|mock_namespace3|mock_site|mock_namespace3|*:60004|       0       |"
                     ),
                     "existing_vrfs": [],
                 },
@@ -264,7 +270,7 @@ async def test_vpc_creation_workflow(
 
         workflow_id_2 = str(uuid.uuid4())
         handle = await env.client.start_workflow(
-            VpcCreationWorkflow.run,
+            SpXOverlayCreationWorkflow.run,
             workflow_input,
             id=workflow_id_2,
             task_queue=task_queue_name,
@@ -272,7 +278,7 @@ async def test_vpc_creation_workflow(
         )
 
         result = await handle.result()
-        assert result == VpcCreationWorkflowOutput(
+        assert result == SpXOverlayCreationWorkflowOutput(
             created_vrfs=[],
             existing_vrfs=[
                 Vrf.from_nautobot_graphql(make_test_vrf("mock_namespace1")),
@@ -295,18 +301,19 @@ async def test_vpc_creation_workflow(
                     "rd_max": 65000,
                     "rd_min": 60000,
                     "site": "mock_site",
-                    "vpc_id": "mock_vpc_id",
+                    "tenant": "mock_tenant",
+                    "overlay_id": "mock_overlay_id",
                 },
-                "name": "create_vpc",
+                "name": "create_spx_overlay",
                 "output": {
                     "created_vrfs": [],
                     "display": (
-                        "VRFs already exists for VPC ID mock_vpc_id:\n"
-                        " |     name     |   namespace   |   site  |       id      |   rd  |   vpc_id  |interface_count|\n"
-                        "|--------------|---------------|---------|---------------|-------|-----------|---------------|\n"
-                        "|SpXTenant60004|mock_namespace1|mock_site|mock_namespace1|*:60004|mock_vpc_id|       0       |\n"
-                        "|SpXTenant60004|mock_namespace2|mock_site|mock_namespace2|*:60004|mock_vpc_id|       0       |\n"
-                        "|SpXTenant60004|mock_namespace3|mock_site|mock_namespace3|*:60004|mock_vpc_id|       0       |"
+                        "VRFs already exist for Overlay ID mock_overlay_id:\n"
+                        " |     name     |   namespace   |   site  |       id      |   rd  |interface_count|\n"
+                        "|--------------|---------------|---------|---------------|-------|---------------|\n"
+                        "|SpXTenant60004|mock_namespace1|mock_site|mock_namespace1|*:60004|       0       |\n"
+                        "|SpXTenant60004|mock_namespace2|mock_site|mock_namespace2|*:60004|       0       |\n"
+                        "|SpXTenant60004|mock_namespace3|mock_site|mock_namespace3|*:60004|       0       |"
                     ),
                     "existing_vrfs": [
                         {
@@ -317,7 +324,6 @@ async def test_vpc_creation_workflow(
                             "namespace": "mock_namespace1",
                             "rd": "*:60004",
                             "site": "mock_site",
-                            "vpc_id": "mock_vpc_id",
                         },
                         {
                             "id": "mock_namespace2",
@@ -327,7 +333,6 @@ async def test_vpc_creation_workflow(
                             "namespace": "mock_namespace2",
                             "rd": "*:60004",
                             "site": "mock_site",
-                            "vpc_id": "mock_vpc_id",
                         },
                         {
                             "id": "mock_namespace3",
@@ -337,7 +342,6 @@ async def test_vpc_creation_workflow(
                             "namespace": "mock_namespace3",
                             "rd": "*:60004",
                             "site": "mock_site",
-                            "vpc_id": "mock_vpc_id",
                         },
                     ],
                 },
@@ -361,27 +365,27 @@ async def test_vpc_creation_workflow(
 @pytest.mark.asyncio
 @patch("nv_config_manager.temporal.ngc.activities.nats.NatsProducer", autospec=True)
 @patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
-async def test_vpc_deletion_workflow(
+async def test_spx_overlay_deletion_workflow(
     mock_time,
     mock_nats_client,
     env,
 ):
-    from nv_config_manager.temporal.ngc.activities.nats import publish_nats
 
     task_queue_name = str(uuid.uuid4())
     async with Worker(
         env.client,
         task_queue=task_queue_name,
-        workflows=[VpcDeletionWorkflow],
+        workflows=[SpXOverlayDeletionWorkflow],
         activities=[
-            mock_get_vrfs_by_vpc_id,
+            mock_get_vrfs_by_overlay_id,
             mock_delete_vrf,
+            mock_delete_overlay,
             publish_nats,
         ],
         activity_executor=ThreadPoolExecutor(1),
     ):
-        workflow_input = VpcDeletionInput(
-            vpc_id="mock_vpc_id",
+        workflow_input = SpXOverlayDeletionInput(
+            overlay_id="mock_overlay_id",
             site="mock_site",
             namespace_tag="mock_tag",
         )
@@ -392,14 +396,14 @@ async def test_vpc_deletion_workflow(
         _mock_state["provision_succeeded"] = False
 
         handle = await env.client.start_workflow(
-            VpcDeletionWorkflow.run,
+            SpXOverlayDeletionWorkflow.run,
             workflow_input,
             id=workflow_id,
             task_queue=task_queue_name,
             run_timeout=timedelta(seconds=30),
         )
         result = await handle.result()
-        assert result == VpcDeletionWorkflowOutput(
+        assert result == SpXOverlayDeletionWorkflowOutput(
             deleted_vrfs=[],
             in_use_vrfs=[],
         )
@@ -416,12 +420,12 @@ async def test_vpc_deletion_workflow(
                 "input": {
                     "namespace_tag": "mock_tag",
                     "site": "mock_site",
-                    "vpc_id": "mock_vpc_id",
+                    "overlay_id": "mock_overlay_id",
                 },
-                "name": "delete_vpc",
+                "name": "delete_spx_overlay",
                 "output": {
                     "deleted_vrfs": [],
-                    "display": "No VRFs exist for VPC ID mock_vpc_id",
+                    "display": "No VRFs exist for Overlay ID mock_overlay_id",
                     "in_use_vrfs": [],
                 },
                 "rejecters": [],
@@ -445,14 +449,14 @@ async def test_vpc_deletion_workflow(
 
         workflow_id_2 = str(uuid.uuid4())
         handle = await env.client.start_workflow(
-            VpcDeletionWorkflow.run,
+            SpXOverlayDeletionWorkflow.run,
             workflow_input,
             id=workflow_id_2,
             task_queue=task_queue_name,
             run_timeout=timedelta(seconds=30),
         )
         result = await handle.result()
-        assert result == VpcDeletionWorkflowOutput(
+        assert result == SpXOverlayDeletionWorkflowOutput(
             deleted_vrfs=[],
             in_use_vrfs=[
                 Vrf.from_nautobot_graphql(make_test_vrf("mock_namespace1", with_interfaces=True))
@@ -471,16 +475,16 @@ async def test_vpc_deletion_workflow(
                 "input": {
                     "namespace_tag": "mock_tag",
                     "site": "mock_site",
-                    "vpc_id": "mock_vpc_id",
+                    "overlay_id": "mock_overlay_id",
                 },
-                "name": "delete_vpc",
+                "name": "delete_spx_overlay",
                 "output": {
                     "deleted_vrfs": [],
                     "display": (
-                        "Unable to delete VPC mock_vpc_id, the following VRFs are in use:\n"
-                        " |     name     |   namespace   |   site  |       id      |   rd  |   vpc_id  |interface_count|\n"
-                        "|--------------|---------------|---------|---------------|-------|-----------|---------------|\n"
-                        "|SpXTenant60004|mock_namespace1|mock_site|mock_namespace1|*:60004|mock_vpc_id|       1       |"
+                        "Unable to delete Overlay mock_overlay_id, the following VRFs are in use:\n"
+                        " |     name     |   namespace   |   site  |       id      |   rd  |interface_count|\n"
+                        "|--------------|---------------|---------|---------------|-------|---------------|\n"
+                        "|SpXTenant60004|mock_namespace1|mock_site|mock_namespace1|*:60004|       1       |"
                     ),
                     "in_use_vrfs": [
                         {
@@ -491,7 +495,6 @@ async def test_vpc_deletion_workflow(
                             "namespace": "mock_namespace1",
                             "rd": "*:60004",
                             "site": "mock_site",
-                            "vpc_id": "mock_vpc_id",
                         }
                     ],
                 },
@@ -516,14 +519,14 @@ async def test_vpc_deletion_workflow(
 
         workflow_id_3 = str(uuid.uuid4())
         handle = await env.client.start_workflow(
-            VpcDeletionWorkflow.run,
+            SpXOverlayDeletionWorkflow.run,
             workflow_input,
             id=workflow_id_3,
             task_queue=task_queue_name,
             run_timeout=timedelta(seconds=30),
         )
         result = await handle.result()
-        assert result == VpcDeletionWorkflowOutput(
+        assert result == SpXOverlayDeletionWorkflowOutput(
             deleted_vrfs=[
                 Vrf.from_nautobot_graphql(make_test_vrf("mock_namespace1")),
                 Vrf.from_nautobot_graphql(make_test_vrf("mock_namespace2")),
@@ -544,9 +547,9 @@ async def test_vpc_deletion_workflow(
                 "input": {
                     "namespace_tag": "mock_tag",
                     "site": "mock_site",
-                    "vpc_id": "mock_vpc_id",
+                    "overlay_id": "mock_overlay_id",
                 },
-                "name": "delete_vpc",
+                "name": "delete_spx_overlay",
                 "output": {
                     "deleted_vrfs": [
                         {
@@ -557,7 +560,6 @@ async def test_vpc_deletion_workflow(
                             "namespace": "mock_namespace1",
                             "rd": "*:60004",
                             "site": "mock_site",
-                            "vpc_id": "mock_vpc_id",
                         },
                         {
                             "id": "mock_namespace2",
@@ -567,7 +569,6 @@ async def test_vpc_deletion_workflow(
                             "namespace": "mock_namespace2",
                             "rd": "*:60004",
                             "site": "mock_site",
-                            "vpc_id": "mock_vpc_id",
                         },
                         {
                             "id": "mock_namespace3",
@@ -577,16 +578,16 @@ async def test_vpc_deletion_workflow(
                             "namespace": "mock_namespace3",
                             "rd": "*:60004",
                             "site": "mock_site",
-                            "vpc_id": "mock_vpc_id",
                         },
                     ],
                     "display": (
-                        "VRFs deleted for VPC ID mock_vpc_id:\n"
-                        " |     name     |   namespace   |   site  |       id      |   rd  |   vpc_id  |interface_count|\n"
-                        "|--------------|---------------|---------|---------------|-------|-----------|---------------|\n"
-                        "|SpXTenant60004|mock_namespace1|mock_site|mock_namespace1|*:60004|mock_vpc_id|       0       |\n"
-                        "|SpXTenant60004|mock_namespace2|mock_site|mock_namespace2|*:60004|mock_vpc_id|       0       |\n"
-                        "|SpXTenant60004|mock_namespace3|mock_site|mock_namespace3|*:60004|mock_vpc_id|       0       |"
+                        "VRFs deleted for Overlay ID mock_overlay_id:\n"
+                        "|     name     |   namespace   |   site  |       id      |   rd  |interface_count|\n"
+                        "|--------------|---------------|---------|---------------|-------|---------------|\n"
+                        "|SpXTenant60004|mock_namespace1|mock_site|mock_namespace1|*:60004|       0       |\n"
+                        "|SpXTenant60004|mock_namespace2|mock_site|mock_namespace2|*:60004|       0       |\n"
+                        "|SpXTenant60004|mock_namespace3|mock_site|mock_namespace3|*:60004|       0       |\n"
+                        "\nDeleted overlay mock_overlay_id"
                     ),
                     "in_use_vrfs": [],
                 },

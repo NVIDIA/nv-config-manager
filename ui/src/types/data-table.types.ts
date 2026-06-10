@@ -106,22 +106,22 @@ export type InfinibandCableValidationWorkflowInput = {
   switch_device_ids: string[];
 };
 
-export type VPCCreationWorkflowInput = {
+export type SpXOverlayCreationWorkflowInput = {
   site: string;
-  vpc_id: string;
-  description: string;
+  overlay_id: string;
+  tenant: string;
   namespace_tag: string;
   rd_min: number;
   rd_max: number;
 };
-export interface VPCDeletionWorkflowInput {
+export interface SpXOverlayDeletionWorkflowInput {
   site: string;
-  vpc_id: string;
+  overlay_id: string;
   namespace_tag: string;
 }
 
-export type VpcTenantChangeWorkflowInput = {
-  vpc_id: string;
+export type SpXOverlayTenantChangeWorkflowInput = {
+  overlay_id: string;
   device_id: string;
   port_names: string[];
   site: string;

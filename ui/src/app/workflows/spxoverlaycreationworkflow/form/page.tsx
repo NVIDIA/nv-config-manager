@@ -16,8 +16,10 @@
  * limitations under the License.
  */
 
-import { VpcTenantChangeWorkflowForm } from "./vpc-tenant-change-workflow-form";
+import { SpXOverlayCreationWorkflowForm } from "./spx-overlay-creation-workflow-form";
 
-export default function Page() {
-  return <VpcTenantChangeWorkflowForm />;
-}
+const SpXOverlayCreationWorkflowPage = () => {
+  return <SpXOverlayCreationWorkflowForm />;
+};
+
+export default SpXOverlayCreationWorkflowPage;
