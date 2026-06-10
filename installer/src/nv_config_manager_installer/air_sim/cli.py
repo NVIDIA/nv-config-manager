@@ -22,7 +22,7 @@ from pathlib import Path
 
 import click
 
-from nv_config_manager_installer.air_sim.constants import DEFAULT_AIR_SIM_CONFIG_PATH
+from nv_config_manager_installer.air_sim.constants import DEFAULT_AIR_SIM_CONFIG_PATH, NVCM_BOX_USER
 from nv_config_manager_installer.air_sim.orchestrator import (
     SimOrchestrator,
     StepStatus,
@@ -95,7 +95,12 @@ class _CliCallback:
         click.echo(line)
 
     def _ssh_cmd(self, host: str, port: int) -> str:
-        return f"sshpass -p {shlex.quote(self._ssh_password)} ssh -p {port} nvcm@{host}"
+        return (
+            f"sshpass -p {shlex.quote(self._ssh_password)} ssh"
+            f" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+            f" -o PreferredAuthentications=password"
+            f" -p {port} {NVCM_BOX_USER}@{host}"
+        )
 
     def on_ssh_ready(self, host: str, port: int) -> None:
         click.echo(f"SSH ready: {host}:{port}")
