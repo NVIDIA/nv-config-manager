@@ -989,7 +989,7 @@ class AirSimulationManager:
                     ],
                     capture_output=True,
                     text=True,
-                    timeout=60,
+                    timeout=15,
                 )
                 .stdout.strip()
                 .strip("'")

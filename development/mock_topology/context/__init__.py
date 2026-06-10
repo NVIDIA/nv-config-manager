@@ -776,17 +776,15 @@ class BaseContext(Context):
         """Load config contexts from locations.yaml in the context directory."""
         locations_file = Path(__file__).parent / self.context_dir / "locations.yaml"
         self.json["config_contexts"] = []
-        self.json["spx_namespaces"] = []
 
         if locations_file.exists():
             try:
                 with open(locations_file) as f:
-                    data = yaml.safe_load(f) or {}
+                    data = yaml.safe_load(f)
                     self.json["config_contexts"] = [
                         self._render_config_context_metadata(config_context)
                         for config_context in data.get("config_contexts", [])
                     ]
-                    self.json["spx_namespaces"] = data.get("spx_namespaces", [])
             except (OSError, yaml.YAMLError) as e:
                 print(f"Warning: Could not load config contexts from {locations_file}: {e}")
 
