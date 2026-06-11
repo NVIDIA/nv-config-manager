@@ -62,6 +62,7 @@ sso:
   internal_issuer: http://keycloak.keycloak.svc.cluster.local:80/realms/nv-config-manager
   jwks_uri: http://keycloak.keycloak.svc.cluster.local:80/realms/nv-config-manager/protocol/openid-connect/certs
   client_id: nv-config-manager
+  cli_client_id: nv-config-manager-cli
   client_secret: nvcm-local-client-secret
   scopes: openid,email,profile
   audiences: account,nv-config-manager

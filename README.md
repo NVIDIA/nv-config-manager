@@ -1,6 +1,8 @@
 # NVIDIA Config Manager
 
-NVIDIA Config Manager is an open-source network automation and configuration management platform for large-scale datacenter operations. It combines Nautobot inventory, event-driven rendering, ZTP, DHCP, workflow automation, and configuration storage behind a single Helm deployment.
+NVIDIA Config Manager (NVCM) is an open-source network automation and configuration management platform for large-scale datacenter operations. It combines Nautobot inventory, event-driven rendering, ZTP, DHCP, workflow automation, and configuration storage behind a single Helm deployment.
+
+NVCM is currently in Developer Preview and is not recommended for production use.
 
 ## Overview
 
@@ -141,6 +143,8 @@ The local SuperPOD profile uses `config-manager.local` as the base hostname. Add
 127.0.0.1 workflow.config-manager.local
 127.0.0.1 config-store.config-manager.local
 127.0.0.1 temporal.config-manager.local
+127.0.0.1 mcp.config-manager.local
+127.0.0.1 svc-mcp.config-manager.local
 127.0.0.1 svc-workflow.config-manager.local
 127.0.0.1 svc-config-store.config-manager.local
 127.0.0.1 svc-render.config-manager.local
@@ -155,6 +159,7 @@ Local endpoints:
 - Nautobot: <https://nautobot.config-manager.local>
 - Workflow API: <https://workflow.config-manager.local>
 - Config Store API: <https://config-store.config-manager.local>
+- MCP endpoint: <https://mcp.config-manager.local/mcp>
 
 For the local SuperPOD profile, Nautobot login is `admin` / `admin`. For generated credentials:
 
@@ -334,6 +339,7 @@ The `svc-*` hostnames, such as `svc-workflow.<base-hostname>`, accept bearer tok
 - [Temporal](docs/temporal/index.mdx)
 - [Render](docs/render/index.mdx)
 - [Config Store](docs/config-store/index.mdx)
+- [Remote MCP](docs/overview/mcp.mdx)
 - [UI and API interfaces](docs/getting-started/interfaces.mdx)
 - [Nautobot](docs/nautobot/index.mdx)
 - [Device Authentication](docs/overview/device-authentication.mdx)

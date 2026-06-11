@@ -52,11 +52,14 @@ from nv_config_manager_installer.schema import (
     ImageSource,
     JobPath,
     JobsConfig,
+    K8sSecretGroup,
+    KubernetesSecretsConfig,
     NetworkSecretEntry,
     NVConfigManagerInstallConfig,
     RedfishConfig,
     RedfishVendorCreds,
     SecretsConfig,
+    SecretsMethod,
     ServicesConfig,
     SiteConfig,
     TemplatePath,
@@ -1297,6 +1300,46 @@ class TestK8sClientIntegration:
         assert "redis-password" in secret_names
         assert "nautobot-token" in secret_names
         assert "nautobot-admin" in secret_names
+        nautobot_token_call = next(
+            call
+            for call in mock_k8s.apply_secret.call_args_list
+            if call.args[0] == "nautobot-token"
+        )
+        assert "read-only-token" not in nautobot_token_call.args[2]
+
+    @patch("nv_config_manager_installer.deployer._run_logged")
+    @patch("nv_config_manager_installer.deployer._run")
+    @patch("nv_config_manager_installer.deployer.K8sClient")
+    @patch("nv_config_manager_installer.deployer.shutil.which", return_value="/usr/bin/kubectl")
+    def test_create_secrets_includes_configured_nautobot_read_only_token(
+        self,
+        mock_which,
+        mock_k8s_class,
+        mock_run,
+        mock_run_logged,
+    ):
+        mock_k8s = _mock_k8s()
+        mock_k8s_class.return_value = mock_k8s
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        mock_run_logged.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+        config = _make_config()
+        config.secrets = SecretsConfig(
+            method=SecretsMethod.KUBERNETES,
+            k8s=KubernetesSecretsConfig(
+                nautobot=K8sSecretGroup(values={"readOnlyToken": "ro-token"}),
+            ),
+        )
+        cb = RecordingCallback()
+        deployer = Deployer(config, DeployOptions(dry_run=True), cb)
+        deployer.run()
+
+        nautobot_token_call = next(
+            call
+            for call in mock_k8s.apply_secret.call_args_list
+            if call.args[0] == "nautobot-token"
+        )
+        assert nautobot_token_call.args[2]["read-only-token"] == "ro-token"
 
     def test_api_token_retrieval(self):
         config = _make_config()

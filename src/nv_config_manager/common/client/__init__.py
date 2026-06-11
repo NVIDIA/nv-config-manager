@@ -23,6 +23,9 @@ from nv_config_manager.common.client.config_store import (
     ConfigStoreFileNotFound,
 )
 
+# DHCP Client
+from nv_config_manager.common.client.dhcp import DHCPClient, DHCPClientException
+
 # NATS Client
 from nv_config_manager.common.client.nats import (
     NatsClient,
@@ -71,6 +74,9 @@ __all__ = [
     "ConfigStoreClient",
     "ConfigStoreException",
     "ConfigStoreFileNotFound",
+    # DHCP
+    "DHCPClient",
+    "DHCPClientException",
     # NATS
     "NatsClient",
     "NatsConsumer",

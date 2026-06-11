@@ -114,6 +114,7 @@ class ConnectedHostMetadataWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMix
     workflow_input_class = ConnectedHostWorkflowInput
     workflow_api_endpoint = "/ngc/connected_host_metadata"
     workflow_namespace = "ngc"
+    workflow_mcp_enabled = True
 
     def __init__(self) -> None:
         """Initialize workflow."""

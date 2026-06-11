@@ -126,6 +126,19 @@ navigation:
       - page: Site Password Rotation
         path: ../user-guides/site-password-rotation/index.mdx
 
+    - section: InfiniBand PKey Lifecycle
+      collapsible: true
+      collapsed-by-default: true
+      contents:
+      - page: IB PKey Creation
+        path: ../user-guides/ib-pkey-creation/index.mdx
+      - page: IB PKey Member Add
+        path: ../user-guides/ib-pkey-member-add/index.mdx
+      - page: IB PKey Member Update
+        path: ../user-guides/ib-pkey-member-update/index.mdx
+      - page: IB PKey Member Delete
+        path: ../user-guides/ib-pkey-member-delete/index.mdx
+
     - section: SpX Overlay Lifecycle
       collapsible: true
       collapsed-by-default: true

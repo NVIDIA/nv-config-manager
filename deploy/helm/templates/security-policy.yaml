@@ -154,10 +154,8 @@ spec:
 # Auth Bypass SecurityPolicy Helper Template
 # =============================================================================
 # Creates a SecurityPolicy with jwt.optional=true but NO oidc.
-# This allows requests without JWT to pass through while still extracting
-# claims from Authorization bearer tokens. Browser cookies are left to the
-# backend on these bypass paths so stale local OIDC cookies do not poison
-# health checks or native-token APIs.
+# This allows requests without JWT to pass through while still
+# extracting claims if a valid JWT is present.
 # =============================================================================
 {{- define "nv-config-manager.authBypassSecurityPolicy" }}
 {{- if and $.root.Values.oidc.enabled $.root.Values.gateway.authBypass.enabled $.enabled (or (gt (len $.paths) 0) $.pathRegex) }}
@@ -238,6 +236,10 @@ spec:
           headers:
             - name: Authorization
               valuePrefix: "Bearer "
+          {{- if $.root.Values.oidc.disableTokenEncryption }}
+          cookies:
+            - {{ $.root.Values.oidc.cookieName | default "NVConfigManagerAccessToken" | quote }}
+          {{- end }}
         {{- if $.root.Values.oidc.claimToHeaders }}
         claimToHeaders:
         {{- range $.root.Values.oidc.claimToHeaders }}
@@ -403,21 +405,21 @@ spec:
       idToken: {{ .Values.oidc.idTokenCookieName | default "NVConfigManagerIdToken" | quote }}
   {{- end }}
 
-{{- if and .Values.oidc.enabled .Values.ui.enabled }}
+{{- if and .Values.oidc.enabled .Values.oidc.authUtility.enabled .Values.ui.enabled }}
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: SecurityPolicy
 metadata:
-  name: {{ $uiName }}-auth-logout
+  name: {{ $uiName }}-auth-utility
   namespace: {{ .Values.global.namespace }}
   labels:
     {{- include "nv-config-manager.labels" . | nindent 4 }}
 spec:
-  # Override the gateway-level OIDC/JWT policy so stale JWT cookies can be cleared.
+  # Override the gateway-level OIDC/JWT policy for public auth utility routes.
   targetRef:
     group: gateway.networking.k8s.io
     kind: HTTPRoute
-    name: {{ $uiName }}-auth-logout
+    name: {{ $uiName }}-auth-utility
   cors:
     allowOrigins:
     {{- if .Values.gateway.cors.allowOrigins }}
@@ -539,6 +541,19 @@ spec:
 {{- end }}
 {{- end }}
 
+# MCP Auth Bypass SecurityPolicy
+{{- if .Values.mcp.enabled }}
+{{- if .Values.mcp.gateway.authBypass }}
+{{- $mcpName := include "nv-config-manager.componentName" (dict "root" . "component" "mcp") }}
+{{- include "nv-config-manager.authBypassSecurityPolicy" (dict
+    "root" .
+    "routeName" $mcpName
+    "enabled" (.Values.mcp.gateway.authBypass.enabled | default false)
+    "paths" (.Values.mcp.gateway.authBypass.paths | default list)
+) }}
+{{- end }}
+{{- end }}
+
 # =============================================================================
 # Service (svc-*) SecurityPolicies
 # =============================================================================
@@ -609,6 +624,16 @@ spec:
     "root" .
     "routeName" (printf "%s-api" $configStoreName)
     "svcHostname" (tpl (.Values.configStore.gateway.api.svcHostname | default "") .)
+) }}
+{{- end }}
+
+# MCP svc-* SecurityPolicy
+{{- if .Values.mcp.enabled }}
+{{- $mcpName := include "nv-config-manager.componentName" (dict "root" . "component" "mcp") }}
+{{- include "nv-config-manager.svcSecurityPolicy" (dict
+    "root" .
+    "routeName" $mcpName
+    "svcHostname" (tpl (.Values.mcp.gateway.svcHostname | default "") .)
 ) }}
 {{- end }}
 
