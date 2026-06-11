@@ -20,6 +20,7 @@ from typing import Literal
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from pydantic import BaseModel
 
 from nv_config_manager.common.auth import install_identity_probe
@@ -27,8 +28,10 @@ from nv_config_manager.common.config import load_config
 from nv_config_manager.common.log import LogCategory, configure_logging, get_logger
 from nv_config_manager.temporal.api import codec_server, parameter_v1, workflow_v1
 from nv_config_manager.temporal.common.rbac_config import RBACConfig
+from nv_config_manager.temporal.telemetry import setup_telemetry
 
 configure_logging(service="temporal-api")
+setup_telemetry("nv-config-manager-temporal-api")
 logger = get_logger(__name__, category=LogCategory.TEMPORAL_API)
 
 rbac_config = RBACConfig()
@@ -38,6 +41,7 @@ logger.info(
 )
 
 app = FastAPI()
+FastAPIInstrumentor.instrument_app(app)
 
 # Configure CORS for cross-origin requests from the UI
 # CORS origins are configured in nv-config-manager.ini [temporal.api] section

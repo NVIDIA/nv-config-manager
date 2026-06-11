@@ -392,6 +392,12 @@ spec:
         - name: BMC_CREDS_PATH
           value: "/vault/secrets/bmc-creds.json"
         {{- end }}
+        {{- if .Values.temporal.observability.enabled }}
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://localhost:4317"
+        - name: OTEL_SERVICE_NAME
+          value: "nv-config-manager-temporal-worker"
+        {{- end }}
         resources:
           {{- toYaml .Values.temporal.configManagerWorker.resources | nindent 10 }}
         volumeMounts:
@@ -405,6 +411,34 @@ spec:
           mountPath: /var/run/secrets/spiffe
           readOnly: true
         {{- end }}
+      {{- if .Values.temporal.observability.enabled }}
+      - name: otel-collector
+        image: "{{ .Values.global.images.otelCollector.repository }}:{{ .Values.global.images.otelCollector.tag }}"
+        imagePullPolicy: {{ .Values.global.images.otelCollector.pullPolicy | default "IfNotPresent" }}
+        env:
+        - name: K8S_POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: K8S_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: K8S_NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        resources:
+          {{- toYaml .Values.temporal.observability.resources | nindent 10 }}
+        volumeMounts:
+        - name: otel-collector-config
+          mountPath: /etc/otelcol-contrib/config.yaml
+          subPath: config.yaml
+          readOnly: true
+        - name: panoptes-mtls
+          mountPath: /etc/certs
+          readOnly: true
+      {{- end }}
       {{- include "nv-config-manager.spiffeClientSidecar" (dict "root" .) | nindent 6 }}
       volumes:
       {{- include "nv-config-manager.vaultAgent.projectedSATokenVolume" . | nindent 6 }}
@@ -412,6 +446,14 @@ spec:
       {{- include "nv-config-manager.vaultAgent.bmcVolume" . | nindent 6 }}
       {{- if .Values.secrets.vault.configSecrets.enabled }}
       {{- include "nv-config-manager.vaultAgent.configSecretsVolume" . | nindent 6 }}
+      {{- end }}
+      {{- if .Values.temporal.observability.enabled }}
+      - name: otel-collector-config
+        configMap:
+          name: {{ $temporalName }}-otel-collector-config
+      - name: panoptes-mtls
+        secret:
+          secretName: {{ $temporalName }}-panoptes-mtls
       {{- end }}
       {{- /* SPIFFE volumes for outbound mTLS */ -}}
       {{- include "nv-config-manager.spiffeClientVolumes" (dict "root" .) | nindent 6 }}
@@ -474,6 +516,12 @@ spec:
         {{- include "nv-config-manager.customLabelsEnv" . | nindent 8 }}
         - name: TEMPORAL_ADDRESS
           value: "{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.temporal.services.frontend.port }}"
+        {{- if .Values.temporal.observability.enabled }}
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://localhost:4317"
+        - name: OTEL_SERVICE_NAME
+          value: "nv-config-manager-temporal-api"
+        {{- end }}
         ports:
         - containerPort: 9000
           name: http
@@ -495,6 +543,34 @@ spec:
           periodSeconds: 30
           timeoutSeconds: 5
           failureThreshold: 3
+      {{- if .Values.temporal.observability.enabled }}
+      - name: otel-collector
+        image: "{{ .Values.global.images.otelCollector.repository }}:{{ .Values.global.images.otelCollector.tag }}"
+        imagePullPolicy: {{ .Values.global.images.otelCollector.pullPolicy | default "IfNotPresent" }}
+        env:
+        - name: K8S_POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: K8S_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: K8S_NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        resources:
+          {{- toYaml .Values.temporal.observability.resources | nindent 10 }}
+        volumeMounts:
+        - name: otel-collector-config
+          mountPath: /etc/otelcol-contrib/config.yaml
+          subPath: config.yaml
+          readOnly: true
+        - name: panoptes-mtls
+          mountPath: /etc/certs
+          readOnly: true
+      {{- end }}
       {{- /* SPIFFE helper sidecar for outbound JWT-SVID */ -}}
       {{- include "nv-config-manager.authSidecar" (dict "root" . "serviceName" "nv-config-manager-temporal-api") | nindent 6 }}
       volumes:
@@ -504,6 +580,14 @@ spec:
       - name: rbac-config
         configMap:
           name: {{ $temporalName }}-rbac-config
+      {{- end }}
+      {{- if .Values.temporal.observability.enabled }}
+      - name: otel-collector-config
+        configMap:
+          name: {{ $temporalName }}-otel-collector-config
+      - name: panoptes-mtls
+        secret:
+          secretName: {{ $temporalName }}-panoptes-mtls
       {{- end }}
       {{- /* SPIFFE volumes */ -}}
       {{- include "nv-config-manager.authSidecar.volumes" (dict "root" .) | nindent 6 }}

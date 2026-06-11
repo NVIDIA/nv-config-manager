@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Hello World Temporal Worker."""
+"""Temporal Worker — NVIDIA Config Manager."""
 
 import asyncio
 import os
@@ -20,6 +20,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from temporalio.client import Client
+from temporalio.contrib.opentelemetry import TracingInterceptor
 from temporalio.worker import Worker
 
 from nv_config_manager.common.log import configure_logging
@@ -39,6 +40,7 @@ from nv_config_manager.temporal.ngc.activities import (
 from nv_config_manager.temporal.ngc.workflows import (
     REGISTERED_WORKFLOWS as NGC_REGISTERED_WORKFLOWS,
 )
+from nv_config_manager.temporal.telemetry import setup_telemetry
 
 configure_logging(service="temporal-worker")
 
@@ -51,10 +53,14 @@ def _enabled_env_flag(name: str) -> bool:
 async def main() -> None:
     """Run the temporal worker."""
     temporal_server = os.getenv("TEMPORAL_ADDRESS", "localhost:7233")
+    runtime = setup_telemetry("nv-config-manager-temporal-worker")
+
     client = await Client.connect(
         temporal_server,
         namespace="default",
         data_converter=get_data_converter(),
+        interceptors=[TracingInterceptor()],
+        runtime=runtime,
     )
 
     # Combine activity lists - registered activities are lists of callables
@@ -69,6 +75,7 @@ async def main() -> None:
         workflows=workflows,
         activities=all_activities,  # type: ignore[arg-type]
         activity_executor=ThreadPoolExecutor(100),
+        interceptors=[TracingInterceptor()],
     )
 
     await worker.run()

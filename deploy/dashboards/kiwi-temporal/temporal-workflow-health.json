@@ -1,0 +1,506 @@
+{
+  "uid": "kiwi-temporal-wfhlth",
+  "title": "Kiwi Temporal — Workflow Health",
+  "description": "Golden-signal panels for nv-config-manager Temporal workflows (GNINWD-1588). Metrics sourced from the Temporal SDK via OTLP push to Panoptes Mimir.",
+  "tags": [
+    "temporal",
+    "kiwi",
+    "nv-config-manager",
+    "gni"
+  ],
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "1m",
+  "time": {
+    "from": "now-3h",
+    "to": "now"
+  },
+  "timezone": "browser",
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "liveNow": false,
+  "timepicker": {},
+  "weekStart": "",
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "[[.datasourceName]]"
+        },
+        "definition": "label_values(temporal_workflow_completed_total, deployment_environment)",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Environment",
+        "multi": false,
+        "name": "env",
+        "options": [],
+        "query": {
+          "query": "label_values(temporal_workflow_completed_total, deployment_environment)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "[[.datasourceName]]"
+        },
+        "definition": "label_values(temporal_workflow_completed_total{deployment_environment=~\"$env\"}, workflow_type)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Workflow type",
+        "multi": true,
+        "name": "workflow_type",
+        "options": [],
+        "query": {
+          "query": "label_values(temporal_workflow_completed_total{deployment_environment=~\"$env\"}, workflow_type)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "[[.datasourceName]]"
+        },
+        "definition": "label_values(temporal_activity_execution_latency_seconds_bucket{deployment_environment=~\"$env\"}, activity_type)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Activity type",
+        "multi": true,
+        "name": "activity_type",
+        "options": [],
+        "query": {
+          "query": "label_values(temporal_activity_execution_latency_seconds_bucket{deployment_environment=~\"$env\"}, activity_type)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Workflow completion rate by type",
+      "description": "Rate of workflows completing (success) vs failing per workflow type.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "[[.datasourceName]]"
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "[[.datasourceName]]"
+          },
+          "editorMode": "code",
+          "expr": "sum by (workflow_type) (rate(temporal_workflow_completed_total{deployment_environment=~\"$env\", workflow_type=~\"$workflow_type\"}[5m]))",
+          "legendFormat": "completed / {{workflow_type}}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "[[.datasourceName]]"
+          },
+          "editorMode": "code",
+          "expr": "sum by (workflow_type) (rate(temporal_workflow_failed_total{deployment_environment=~\"$env\", workflow_type=~\"$workflow_type\"}[5m]))",
+          "legendFormat": "failed / {{workflow_type}}",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "wps",
+          "color": {"mode": "palette-classic"},
+          "custom": {"lineWidth": 1, "fillOpacity": 5}
+        },
+        "overrides": [
+          {
+            "matcher": {"id": "byFrameRefID", "options": "B"},
+            "properties": [
+              {"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}
+            ]
+          }
+        ]
+      },
+      "options": {
+        "tooltip": {"mode": "multi", "sort": "desc"},
+        "legend": {"displayMode": "list", "placement": "bottom"}
+      }
+    },
+    {
+      "id": 2,
+      "title": "Workflow failure rate %",
+      "description": "Percentage of workflow executions that failed over the last 5 minutes.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "[[.datasourceName]]"
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "[[.datasourceName]]"
+          },
+          "editorMode": "code",
+          "expr": "100 * sum(rate(temporal_workflow_failed_total{deployment_environment=~\"$env\", workflow_type=~\"$workflow_type\"}[5m])) / (sum(rate(temporal_workflow_completed_total{deployment_environment=~\"$env\", workflow_type=~\"$workflow_type\"}[5m])) + sum(rate(temporal_workflow_failed_total{deployment_environment=~\"$env\", workflow_type=~\"$workflow_type\"}[5m])))",
+          "legendFormat": "failure rate %",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "color": {"mode": "fixed", "fixedColor": "orange"},
+          "custom": {"lineWidth": 2, "fillOpacity": 10},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "orange", "value": 5},
+              {"color": "red", "value": 20}
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {"mode": "single", "sort": "none"},
+        "legend": {"displayMode": "list", "placement": "bottom"}
+      }
+    },
+    {
+      "id": 3,
+      "title": "Activity failure rate by activity type",
+      "description": "Rate of activity task failures. Persistent failures indicate retried or broken activities.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "[[.datasourceName]]"
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "[[.datasourceName]]"
+          },
+          "editorMode": "code",
+          "expr": "sum by (activity_type) (rate(temporal_activity_execution_failed_total{deployment_environment=~\"$env\", activity_type=~\"$activity_type\"}[5m]))",
+          "legendFormat": "{{activity_type}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "color": {"mode": "palette-classic"},
+          "custom": {"lineWidth": 1, "fillOpacity": 5}
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {"mode": "multi", "sort": "desc"},
+        "legend": {"displayMode": "list", "placement": "bottom"}
+      }
+    },
+    {
+      "id": 4,
+      "title": "In-flight workflows by type",
+      "description": "Number of active (running) workflows at any instant. Sustained growth = backlog or worker under-provisioning.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "[[.datasourceName]]"
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "[[.datasourceName]]"
+          },
+          "editorMode": "code",
+          "expr": "sum by (workflow_type) (temporal_workflow_active{deployment_environment=~\"$env\", workflow_type=~\"$workflow_type\"})",
+          "legendFormat": "{{workflow_type}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {"mode": "palette-classic"},
+          "custom": {"lineWidth": 1, "fillOpacity": 10}
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {"mode": "multi", "sort": "desc"},
+        "legend": {"displayMode": "list", "placement": "bottom"}
+      }
+    },
+    {
+      "id": 5,
+      "title": "Activity execution latency p50 / p95 / p99",
+      "description": "End-to-end activity task latency (schedule → close). Verify unit: Temporal SDK emits in ms; check if metric name suffix is _seconds or _milliseconds in your Mimir instance.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "[[.datasourceName]]"
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "[[.datasourceName]]"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.50, sum by (le, activity_type) (rate(temporal_activity_execution_latency_seconds_bucket{deployment_environment=~\"$env\", activity_type=~\"$activity_type\"}[5m])))",
+          "legendFormat": "p50 / {{activity_type}}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "[[.datasourceName]]"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum by (le, activity_type) (rate(temporal_activity_execution_latency_seconds_bucket{deployment_environment=~\"$env\", activity_type=~\"$activity_type\"}[5m])))",
+          "legendFormat": "p95 / {{activity_type}}",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "[[.datasourceName]]"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.99, sum by (le, activity_type) (rate(temporal_activity_execution_latency_seconds_bucket{deployment_environment=~\"$env\", activity_type=~\"$activity_type\"}[5m])))",
+          "legendFormat": "p99 / {{activity_type}}",
+          "range": true,
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {"mode": "palette-classic"},
+          "custom": {"lineWidth": 1}
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {"mode": "multi", "sort": "desc"},
+        "legend": {"displayMode": "list", "placement": "bottom"}
+      }
+    },
+    {
+      "id": 6,
+      "title": "Workflow task schedule-to-start latency p50 / p95 / p99",
+      "description": "Time from workflow task scheduled to worker pickup. High p99 = worker backlog or under-provisioned slots.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "[[.datasourceName]]"
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "[[.datasourceName]]"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(temporal_workflow_task_schedule_to_start_latency_seconds_bucket{deployment_environment=~\"$env\"}[5m])))",
+          "legendFormat": "p50",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "[[.datasourceName]]"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(temporal_workflow_task_schedule_to_start_latency_seconds_bucket{deployment_environment=~\"$env\"}[5m])))",
+          "legendFormat": "p95",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "[[.datasourceName]]"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(temporal_workflow_task_schedule_to_start_latency_seconds_bucket{deployment_environment=~\"$env\"}[5m])))",
+          "legendFormat": "p99",
+          "range": true,
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {"mode": "palette-classic"},
+          "custom": {"lineWidth": 1}
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {"mode": "multi", "sort": "desc"},
+        "legend": {"displayMode": "list", "placement": "bottom"}
+      }
+    },
+    {
+      "id": 7,
+      "title": "Worker slot saturation",
+      "description": "Percentage of worker task slots in use. >80% sustained = bottleneck; consider increasing maxConcurrentActivityTaskExecutors or worker replicas.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "[[.datasourceName]]"
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24},
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "[[.datasourceName]]"
+          },
+          "editorMode": "code",
+          "expr": "100 * sum(temporal_worker_task_slots_used{deployment_environment=~\"$env\", slot_type=\"ActivitySlot\"}) / (sum(temporal_worker_task_slots_available{deployment_environment=~\"$env\", slot_type=\"ActivitySlot\"}) + sum(temporal_worker_task_slots_used{deployment_environment=~\"$env\", slot_type=\"ActivitySlot\"}))",
+          "legendFormat": "activity slot utilization %",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "[[.datasourceName]]"
+          },
+          "editorMode": "code",
+          "expr": "100 * sum(temporal_worker_task_slots_used{deployment_environment=~\"$env\", slot_type=\"WorkflowSlot\"}) / (sum(temporal_worker_task_slots_available{deployment_environment=~\"$env\", slot_type=\"WorkflowSlot\"}) + sum(temporal_worker_task_slots_used{deployment_environment=~\"$env\", slot_type=\"WorkflowSlot\"}))",
+          "legendFormat": "workflow slot utilization %",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "color": {"mode": "palette-classic"},
+          "custom": {"lineWidth": 2, "fillOpacity": 10},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "orange", "value": 80},
+              {"color": "red", "value": 95}
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {"mode": "multi", "sort": "desc"},
+        "legend": {"displayMode": "list", "placement": "bottom"}
+      }
+    },
+    {
+      "id": 8,
+      "title": "SDK request failures by operation",
+      "description": "Temporal SDK gRPC call failures. Sustained failures indicate connectivity or Temporal server issues.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "[[.datasourceName]]"
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24},
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "[[.datasourceName]]"
+          },
+          "editorMode": "code",
+          "expr": "sum by (operation) (rate(temporal_long_request_failure_total{deployment_environment=~\"$env\"}[5m]))",
+          "legendFormat": "long_request / {{operation}}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "[[.datasourceName]]"
+          },
+          "editorMode": "code",
+          "expr": "sum by (operation) (rate(temporal_request_failure_total{deployment_environment=~\"$env\"}[5m]))",
+          "legendFormat": "request / {{operation}}",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "color": {"mode": "palette-classic"},
+          "custom": {"lineWidth": 1, "fillOpacity": 5}
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {"mode": "multi", "sort": "desc"},
+        "legend": {"displayMode": "list", "placement": "bottom"}
+      }
+    }
+  ]
+}
