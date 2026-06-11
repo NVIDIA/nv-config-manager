@@ -1040,10 +1040,10 @@ mock-devices-up: docker-build-mock-device
 mock-devices-down:
 	@echo "🗑️  Removing mock devices..."
 	$(KUBECTL_KIND) delete -f development/mock_devices/manifests/mock-devices.yaml --ignore-not-found
-	$(KUBECTL_KIND) delete -f development/mock_devices/manifests/mock-dhcp-discover.yaml --ignore-not-found
-	$(KUBECTL_KIND) delete -f development/mock_devices/manifests/mock-dhcp-validate.yaml --ignore-not-found
+	NAMESPACE="$(NAMESPACE)" envsubst < development/mock_devices/manifests/mock-dhcp-discover.yaml | $(KUBECTL_KIND) delete -f - --ignore-not-found
+	NAMESPACE="$(NAMESPACE)" envsubst < development/mock_devices/manifests/mock-dhcp-validate.yaml | $(KUBECTL_KIND) delete -f - --ignore-not-found
 	$(KUBECTL_KIND) delete -f development/mock_devices/manifests/mock-wire-devices.yaml --ignore-not-found
-	$(KUBECTL_KIND) delete -f development/mock_devices/manifests/mock-ztp-validate.yaml --ignore-not-found
+	NAMESPACE="$(NAMESPACE)" envsubst < development/mock_devices/manifests/mock-ztp-validate.yaml | $(KUBECTL_KIND) delete -f - --ignore-not-found
 	$(KUBECTL_KIND) delete -f development/mock_devices/manifests/dhcp-dev-service.yaml --ignore-not-found
 	@echo "✅ Mock devices removed."
 
