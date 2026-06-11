@@ -44,27 +44,27 @@ After submission, a status page shows the execution stages.
 
 The workflow runs the following stages. `validate_diff` requires approval when removals are present.
 
-1. **`resolve_context` — Resolve site, overlay, and canonical PKey from Nautobot.**
+1. `resolve_context` — Resolve site, overlay, and canonical PKey from Nautobot.
 
-1. **`resolve_desired` — Resolve the submitted interfaces or GUIDs to canonical interface records.**
+1. `resolve_desired` — Resolve the submitted interfaces or GUIDs to canonical interface records.
 
-1. **`query_current` — Fetch current OverlayAssignments and compute the diff.**
+1. `query_current` — Fetch current OverlayAssignments and compute the diff.
 
    Reads the current `OverlayAssignment` set from Nautobot, intersects it with the desired set, and produces three lists: members to add, members to remove, and members unchanged. The stage output displays the diff with device/interface/GUID for each line.
 
-1. **`validate_diff` — Approval gate.**
+1. `validate_diff` — Approval gate.
 
-   If there are no removals, the workflow auto-approves and continues. If there are removals, the stage pauses in `PENDING_APPROVAL` and shows the full diff. An operator must approve or reject through the status page before the workflow proceeds. Rejection aborts cleanly without modifying Nautobot or UFM.
+   If there are no removals, the workflow auto-approves and continues. If there are removals, the stage pauses in `PENDING_APPROVAL` state and shows the full diff. An operator must approve or reject through the status page before the workflow proceeds. Rejection aborts cleanly without modifying Nautobot or UFM.
 
-1. **`update_nautobot` — Sync OverlayAssignment records.**
+1. `update_nautobot` — Sync OverlayAssignment records.
 
    Creates new assignments and deletes removed ones in Nautobot.
 
-1. **`update_ufm` — Apply the diff to UFM.**
+1. `update_ufm` — Apply the diff to UFM.
 
    Removes the stale GUIDs from the PKey first, then adds the new GUIDs with the chosen membership type.
 
-1. **`verify_ufm` — Verify final UFM state matches the desired set.**
+1. `verify_ufm` — Verify final UFM state matches the desired set.
 
    Re-reads the PKey membership from UFM and confirms it equals the resolved desired set, no more and no less.
 
