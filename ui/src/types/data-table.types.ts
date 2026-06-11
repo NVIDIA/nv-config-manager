@@ -106,22 +106,22 @@ export type InfinibandCableValidationWorkflowInput = {
   switch_device_ids: string[];
 };
 
-export type VPCCreationWorkflowInput = {
+export type SpXOverlayCreationWorkflowInput = {
   site: string;
-  vpc_id: string;
-  description: string;
+  overlay_id: string;
+  tenant: string;
   namespace_tag: string;
   rd_min: number;
   rd_max: number;
 };
-export interface VPCDeletionWorkflowInput {
+export interface SpXOverlayDeletionWorkflowInput {
   site: string;
-  vpc_id: string;
+  overlay_id: string;
   namespace_tag: string;
 }
 
-export type VpcTenantChangeWorkflowInput = {
-  vpc_id: string;
+export type SpXOverlayTenantChangeWorkflowInput = {
+  overlay_id: string;
   device_id: string;
   port_names: string[];
   site: string;
@@ -204,6 +204,7 @@ export type Workflow = {
   close_time: ISODateTimeString | null;
   status: string;
   pending_approval: boolean;
+  failed_stage?: boolean;
   stages: WorkflowStage[];
   result: unknown;
   search_attributes: {
@@ -212,18 +213,36 @@ export type Workflow = {
   href: string; //readonly
 };
 
+export type WorkflowListResponse = {
+  workflows: Workflow[];
+  next_page_token: string | null;
+};
+
+export type WorkflowMetadata = {
+  name: string;
+  display_name: string;
+  description: string;
+  endpoint: string;
+  namespace: string | null;
+  cli_name: string;
+  input_class: string;
+  read_roles: string[];
+  execute_roles: string[];
+};
+
+export type WorkflowMetadataResponse = {
+  workflows: WorkflowMetadata[];
+};
+
 export type WorkflowTableProps = {
-  title: string;
-  //workflowData: Workflow[];
-  workflowType: string;
+  title?: string;
+  workflowMetadata: WorkflowMetadata[];
 };
 
 export type WorkflowColumns = Workflow;
 
 export interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[];
-  //data: TData[];
-  workflowType: string;
 }
 
 export interface SortableHeaderButtonProps<TData> {

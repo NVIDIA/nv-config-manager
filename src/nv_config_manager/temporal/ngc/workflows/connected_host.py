@@ -107,12 +107,14 @@ class ConnectedHostMetadataWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMix
     """Connected host metadata discovery workflow."""
 
     # Workflow metadata
+    workflow_name = "Connected Host Metadata"
     workflow_description = (
         "Discover and analyze connected hosts via MAC table and LLDP neighbor data"
     )
     workflow_input_class = ConnectedHostWorkflowInput
     workflow_api_endpoint = "/ngc/connected_host_metadata"
     workflow_namespace = "ngc"
+    workflow_mcp_enabled = True
 
     def __init__(self) -> None:
         """Initialize workflow."""

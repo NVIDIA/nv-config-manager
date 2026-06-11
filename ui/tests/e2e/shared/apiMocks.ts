@@ -19,6 +19,7 @@ import { createGenericWorkflow } from "@/mocks/data/workflows/genericWorkflow";
 import {
   SITES_LIST_API_RESPONSE,
   DEVICES_LIST,
+  ALL_WORKFLOW_DATA,
   workflowsMockData,
   ROLES_LIST_API_RESPONSE,
   STATUS_LIST_API_RESPONSE,
@@ -59,11 +60,12 @@ export async function setupApiMocks(page: Page) {
 
   // Runtime config endpoint (must be first!)
   await mockRuntimeConfigEndpoint(page);
+  await mockWhoamiEndpoint(page);
 
   // Workflow submission endpoints
   await mockSiteCableValidationEndpoint(page);
-  await mockVpcCreationEndpoint(page);
-  await mockVpcDeletionEndpoint(page);
+  await mockSpxOverlayCreationEndpoint(page);
+  await mockSpxOverlayDeletionEndpoint(page);
   await mockBackupEndpoint(page);
   await mockDeployEndpoint(page);
   await mockPortLLDPInfoEndpoint(page);
@@ -74,6 +76,10 @@ export async function setupApiMocks(page: Page) {
   await mockIbGetUnhealthyPortsEndpoint(page);
   await mockIbOsUpgradeEndpoint(page);
   await mockInfinibandCableValidationEndpoint(page);
+  await mockIbPkeyCreationEndpoint(page);
+  await mockIbPkeyMemberAddEndpoint(page);
+  await mockIbPkeyMemberDeleteEndpoint(page);
+  await mockIbPkeyMemberUpdateEndpoint(page);
   await mockReprovisionEndpoint(page);
   await mockSwitchOsUpgradeEndpoint(page);
   await mockCumulusHardwareValidationEndpoint(page);
@@ -90,6 +96,7 @@ export async function setupApiMocks(page: Page) {
 
   // Workflow listing endpoints
   await mockWorkflowTypesEndpoint(page);
+  await mockWorkflowMetadataEndpoint(page);
   await mockWorkflowsListEndpoint(page);
   await mockWorkflowDetailsEndpoint(page);
 
@@ -101,6 +108,18 @@ export async function setupApiMocks(page: Page) {
 
   // Health check
   await mockHealthCheckEndpoint(page);
+}
+
+export async function mockWhoamiEndpoint(page: Page) {
+  await page.route('**/whoami', async (route) => {
+    await route.fulfill({
+      status: 200,
+      json: {
+        user: 'joliao@nvidia.com',
+        roles: ['all', 'nvcm-network'],
+      },
+    });
+  });
 }
 
 export async function mockDevicePasswordRotationEndpoint(page: Page) {
@@ -294,8 +313,8 @@ export async function mockSiteCableValidationEndpoint(page: Page) {
   );
 }
 
-export async function mockVpcCreationEndpoint(page: Page) {
-  await page.route(`**/v1/workflow/ngc/vpc_creation`, async (route) => {
+export async function mockSpxOverlayCreationEndpoint(page: Page) {
+  await page.route(`**/v1/workflow/ngc/spx_overlay_creation`, async (route) => {
     const request = route.request();
     const body = JSON.parse((await request.postData()) || "{}");
 
@@ -309,7 +328,7 @@ export async function mockVpcCreationEndpoint(page: Page) {
       return;
     }
 
-    if (!body.vpc_id || !body.site) {
+    if (!body.overlay_id || !body.site) {
       await route.fulfill({
         status: 400,
         json: { error: "Missing required fields" },
@@ -330,16 +349,16 @@ export async function mockVpcCreationEndpoint(page: Page) {
     await route.fulfill({
       status: 201,
       json: {
-        id: body.vpc_id,
-        href: `https://url-to-temporal.com/namespaces/default/workflows/${body.vpc_id}`,
+        id: body.overlay_id,
+        href: `https://url-to-temporal.com/namespaces/default/workflows/${body.overlay_id}`,
         submitted_data: body,
       },
     });
   });
 }
 
-export async function mockVpcDeletionEndpoint(page: Page) {
-  await page.route(`**/v1/workflow/ngc/vpc_deletion`, async (route) => {
+export async function mockSpxOverlayDeletionEndpoint(page: Page) {
+  await page.route(`**/v1/workflow/ngc/spx_overlay_deletion`, async (route) => {
     const request = route.request();
     const body = JSON.parse((await request.postData()) || "{}");
 
@@ -353,7 +372,7 @@ export async function mockVpcDeletionEndpoint(page: Page) {
       return;
     }
 
-    if (!body.vpc_id || !body.site) {
+    if (!body.overlay_id || !body.site) {
       await route.fulfill({
         status: 400,
         json: { error: "Missing required fields" },
@@ -366,8 +385,8 @@ export async function mockVpcDeletionEndpoint(page: Page) {
     await route.fulfill({
       status: 200,
       json: {
-        id: body.vpc_id,
-        href: `https://url-to-temporal.com/namespaces/default/workflows/${body.vpc_id}`,
+        id: body.overlay_id,
+        href: `https://url-to-temporal.com/namespaces/default/workflows/${body.overlay_id}`,
         submitted_data: body,
       },
     });
@@ -710,6 +729,158 @@ export async function mockInfinibandCableValidationEndpoint(page: Page) {
   );
 }
 
+const IB_PKEY_PATTERN = /^0[xX][0-9a-fA-F]{1,4}$/;
+const IB_GUID_PATTERN = /^0[xX][0-9a-fA-F]{16}$/;
+
+function isValidIbInterfaceRef(entry: unknown): entry is {
+  device: string;
+  interface: string;
+} {
+  if (!entry || typeof entry !== "object") {
+    return false;
+  }
+  const ref = entry as { device?: unknown; interface?: unknown };
+  return (
+    typeof ref.device === "string" &&
+    ref.device.trim().length > 0 &&
+    typeof ref.interface === "string" &&
+    ref.interface.trim().length > 0
+  );
+}
+
+function validateIbPkeyMembershipBody(body: {
+  host?: string;
+  pkey?: string;
+  interfaces?: { device?: string; interface?: string }[];
+  guids?: string[];
+}): { status: number; json: { error: string } } | null {
+  if (!body.host) {
+    return { status: 400, json: { error: "Missing required field: host" } };
+  }
+  if (!body.pkey) {
+    return { status: 400, json: { error: "Missing required field: pkey" } };
+  }
+  if (!IB_PKEY_PATTERN.test(body.pkey)) {
+    return {
+      status: 400,
+      json: { error: "pkey must match /^0[xX][0-9a-fA-F]{1,4}$/" },
+    };
+  }
+  const hasInterfaces =
+    Array.isArray(body.interfaces) && body.interfaces.length > 0;
+  const hasGuids = Array.isArray(body.guids) && body.guids.length > 0;
+  if (hasInterfaces === hasGuids) {
+    return {
+      status: 400,
+      json: { error: "Provide exactly one of 'interfaces' or 'guids'" },
+    };
+  }
+  if (
+    hasInterfaces &&
+    body.interfaces!.some((entry) => !isValidIbInterfaceRef(entry))
+  ) {
+    return {
+      status: 400,
+      json: {
+        error: "Each interfaces entry must include non-empty 'device' and 'interface'",
+      },
+    };
+  }
+  if (hasGuids && body.guids!.some((g) => !IB_GUID_PATTERN.test(g))) {
+    return {
+      status: 400,
+      json: { error: "Each guid must match 0x + 16 hex digits" },
+    };
+  }
+  return null;
+}
+
+async function registerIbPkeyMembershipRoute(
+  page: Page,
+  endpoint: string,
+  workflowKind: string,
+) {
+  await page.route(`**${endpoint}`, async (route) => {
+    const body = JSON.parse((await route.request().postData()) || "{}");
+    const err = validateIbPkeyMembershipBody(body);
+    if (err) {
+      await route.fulfill({ status: err.status, json: err.json });
+      return;
+    }
+    await delay(100);
+    const workflowId = `${workflowKind}-${Date.now()}`;
+    await route.fulfill({
+      status: 201,
+      json: {
+        id: workflowId,
+        href: `https://url-to-temporal.com/namespaces/default/workflows/${workflowId}`,
+        submitted_data: body,
+      },
+    });
+  });
+}
+
+export async function mockIbPkeyMemberAddEndpoint(page: Page) {
+  await registerIbPkeyMembershipRoute(
+    page,
+    "/v1/workflow/ngc/ib_pkey_member_add",
+    "ib-pkey-member-add",
+  );
+}
+
+export async function mockIbPkeyMemberDeleteEndpoint(page: Page) {
+  await registerIbPkeyMembershipRoute(
+    page,
+    "/v1/workflow/ngc/ib_pkey_member_delete",
+    "ib-pkey-member-delete",
+  );
+}
+
+export async function mockIbPkeyMemberUpdateEndpoint(page: Page) {
+  await registerIbPkeyMembershipRoute(
+    page,
+    "/v1/workflow/ngc/ib_pkey_member_update",
+    "ib-pkey-member-update",
+  );
+}
+
+export async function mockIbPkeyCreationEndpoint(page: Page) {
+  const PKEY_PATTERN = /^0[xX][0-9a-fA-F]{1,4}$/;
+
+  await page.route(`**/v1/workflow/ngc/ib_pkey_creation`, async (route) => {
+    const request = route.request();
+    const body = JSON.parse((await request.postData()) || "{}");
+
+    if (!body.host) {
+      await route.fulfill({
+        status: 400,
+        json: { error: "Missing required field: host" },
+      });
+      return;
+    }
+
+    if (body.pkey && !PKEY_PATTERN.test(body.pkey)) {
+      await route.fulfill({
+        status: 400,
+        json: { error: "pkey must match /^0[xX][0-9a-fA-F]{1,4}$/" },
+      });
+      return;
+    }
+
+    await delay(100);
+
+    const workflowId = `ib-pkey-creation-${Date.now()}`;
+    await route.fulfill({
+      status: 201,
+      json: {
+        id: workflowId,
+        href: `https://url-to-temporal.com/namespaces/default/workflows/${workflowId}`,
+        submitted_data: body,
+      },
+    });
+  });
+}
+
 export async function mockReprovisionEndpoint(page: Page) {
   await page.route(`**/v1/workflow/ngc/reprovision`, async (route) => {
     const request = route.request();
@@ -788,9 +959,6 @@ export async function mockSwitchOsUpgradeEndpoint(page: Page) {
 // Data fetching endpoints
 export async function mockSitesEndpoint(page: Page) {
   await page.route(`**/v1/parameter/location*`, async (route) => {
-    const url = new URL(route.request().url());
-    const locationTypes = url.searchParams.getAll("location_type");
-
     await route.fulfill({
       status: 200,
       json: SITES_LIST_API_RESPONSE,
@@ -913,6 +1081,7 @@ export async function mockWorkflowTypesEndpoint(page: Page) {
     "BackupWorkflow",
     "ConnectedHostMetadataWorkflow",
     "DeployWorkflow",
+    "TenantDeployWorkflow",
     "MultiDeployWorkflow",
     "DeviceCableValidationWorkflow",
     "DevicePasswordRotationWorkflow",
@@ -921,14 +1090,19 @@ export async function mockWorkflowTypesEndpoint(page: Page) {
     "PortLLDPInfoWorkflow",
     "RedfishProvisioningWorkflow",
     "SiteCableValidationWorkflow",
-    "VpcCreationWorkflow",
-    "VpcDeletionWorkflow",
+    "SitePasswordRotationWorkflow",
+    "SpXOverlayCreationWorkflow",
+    "SpXOverlayDeletionWorkflow",
+    "SpXOverlayAssignmentWorkflow",
+    "SpXOverlayTenantChangeWorkflow",
     "InfinibandGetUnhealthyPortsWorkflow",
     "InfinibandCableValidationWorkflow",
     "InfinibandMlnxOSUpgradeWorkflow",
     "ReprovisionWorkflow",
     "SwitchOsUpgradeWorkflow",
     "CumulusHardwareValidationWorkflow",
+    "DiagnosticsWorkflow",
+    "IBPortGuidDiscoveryWorkflow",
   ];
 
   await page.route(`**/v1/workflow/types`, async (route) => {
@@ -939,13 +1113,122 @@ export async function mockWorkflowTypesEndpoint(page: Page) {
   });
 }
 
-export async function mockWorkflowsListEndpoint(page: Page) {
-  await page.route(`**/v1/workflow*`, async (route) => {
-    const url = new URL(route.request().url());
+export async function mockWorkflowMetadataEndpoint(page: Page) {
+  const workflowTypes = [
+    "BackupWorkflow",
+    "ConnectedHostMetadataWorkflow",
+    "DeployWorkflow",
+    "TenantDeployWorkflow",
+    "MultiDeployWorkflow",
+    "DeviceCableValidationWorkflow",
+    "DevicePasswordRotationWorkflow",
+    "HelloWorld",
+    "HelloWorldApproval",
+    "PortLLDPInfoWorkflow",
+    "RedfishProvisioningWorkflow",
+    "SiteCableValidationWorkflow",
+    "SitePasswordRotationWorkflow",
+    "SpXOverlayCreationWorkflow",
+    "SpXOverlayDeletionWorkflow",
+    "SpXOverlayAssignmentWorkflow",
+    "SpXOverlayTenantChangeWorkflow",
+    "InfinibandGetUnhealthyPortsWorkflow",
+    "InfinibandCableValidationWorkflow",
+    "InfinibandMlnxOSUpgradeWorkflow",
+    "ReprovisionWorkflow",
+    "SwitchOsUpgradeWorkflow",
+    "CumulusHardwareValidationWorkflow",
+    "DiagnosticsWorkflow",
+    "IBPortGuidDiscoveryWorkflow",
+  ];
+  const workflowDisplayNames: Record<string, string> = {
+    BackupWorkflow: "Configuration Backup",
+    ConnectedHostMetadataWorkflow: "Connected Host Metadata",
+    DeployWorkflow: "Configuration Deploy",
+    TenantDeployWorkflow: "Tenant Deploy",
+    MultiDeployWorkflow: "Multi-Configuration Deploy",
+    DeviceCableValidationWorkflow: "Device Cable Validation",
+    DevicePasswordRotationWorkflow: "Device Password Rotation",
+    PortLLDPInfoWorkflow: "Port LLDP Info",
+    SiteCableValidationWorkflow: "Site Cable Validation",
+    SitePasswordRotationWorkflow: "Site Password Rotation",
+    SpXOverlayCreationWorkflow: "SpX Overlay Creation",
+    SpXOverlayDeletionWorkflow: "SpX Overlay Deletion",
+    SpXOverlayAssignmentWorkflow: "SpX Overlay Assignment",
+    SpXOverlayTenantChangeWorkflow: "SpX Overlay Tenant Change",
+    InfinibandGetUnhealthyPortsWorkflow: "InfiniBand Get Unhealthy Ports",
+    InfinibandCableValidationWorkflow: "InfiniBand Cable Validation",
+    InfinibandMlnxOSUpgradeWorkflow: "InfiniBand MLNX-OS Upgrade",
+    ReprovisionWorkflow: "Reprovision",
+    SwitchOsUpgradeWorkflow: "Switch OS Upgrade",
+    CumulusHardwareValidationWorkflow: "Cumulus Hardware Validation",
+    DiagnosticsWorkflow: "Device Diagnostics",
+    IBPortGuidDiscoveryWorkflow: "InfiniBand Port GUID Discovery",
+  };
+  const workflowEndpoints: Record<string, string> = {
+    BackupWorkflow: "/ngc/backup",
+    ConnectedHostMetadataWorkflow: "/ngc/connected_host_metadata",
+    DeployWorkflow: "/ngc/deploy",
+    TenantDeployWorkflow: "/ngc/tenant-deploy",
+    MultiDeployWorkflow: "/ngc/multi_deploy",
+    DeviceCableValidationWorkflow: "/ngc/device_cable_validation",
+    DevicePasswordRotationWorkflow: "/ngc/device_password_rotation",
+    HelloWorld: "/hello_world",
+    HelloWorldApproval: "/hello_world_approval",
+    PortLLDPInfoWorkflow: "/ngc/port_lldp_info",
+    RedfishProvisioningWorkflow: "/ngc/redfish_provisioning",
+    SiteCableValidationWorkflow: "/ngc/site_cable_validation",
+    SitePasswordRotationWorkflow: "/ngc/site_password_rotation",
+    SpXOverlayCreationWorkflow: "/ngc/spx_overlay_creation",
+    SpXOverlayDeletionWorkflow: "/ngc/spx_overlay_deletion",
+    SpXOverlayAssignmentWorkflow: "/ngc/spx_overlay_assignment",
+    SpXOverlayTenantChangeWorkflow: "/ngc/spx_overlay_tenant_change",
+    InfinibandGetUnhealthyPortsWorkflow: "/ngc/infiniband_get_unhealthy_ports",
+    InfinibandCableValidationWorkflow: "/ngc/infiniband_cable_validation",
+    InfinibandMlnxOSUpgradeWorkflow: "/ngc/infiniband_mlnx_os_upgrade",
+    ReprovisionWorkflow: "/ngc/reprovision",
+    SwitchOsUpgradeWorkflow: "/ngc/switch_os_upgrade",
+    CumulusHardwareValidationWorkflow: "/ngc/cumulus_hardware_validation",
+    DiagnosticsWorkflow: "/ngc/diagnostics",
+    IBPortGuidDiscoveryWorkflow: "/ngc/ib_port_guid_discovery",
+  };
+  const getWorkflowEndpoint = (workflowType: string) => {
+    const endpoint = workflowEndpoints[workflowType];
+    if (!endpoint) {
+      throw new Error(`Missing mock workflow endpoint for ${workflowType}`);
+    }
+    return endpoint;
+  };
+  const getWorkflowExecuteRoles = (workflowType: string) =>
+    workflowType === "MultiDeployWorkflow" ? ["nvcm-admin"] : ["all"];
+  const workflowMetadata = {
+    workflows: workflowTypes.map((workflowType) => ({
+      name: workflowType,
+      display_name: workflowDisplayNames[workflowType] ?? workflowType,
+      description: `${workflowDisplayNames[workflowType] ?? workflowType} workflow`,
+      endpoint: getWorkflowEndpoint(workflowType),
+      namespace: "ngc",
+      cli_name: workflowType.toLowerCase(),
+      input_class: `${workflowType}Input`,
+      read_roles: ["all"],
+      execute_roles: getWorkflowExecuteRoles(workflowType),
+    })),
+  };
 
+  await page.route(`**/v1/workflow/metadata`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      json: workflowMetadata,
+    });
+  });
+}
+
+export async function mockWorkflowsListEndpoint(page: Page) {
+  await page.route(/.*\/v1\/workflow\/?(\?.*)?$/, async (route) => {
+    const url = new URL(route.request().url());
     // Skip if this is a specific workflow ID request
-    if (!url.searchParams.has("workflow_type")) {
-      return route.continue();
+    if (!url.pathname.endsWith("/v1/workflow") && !url.pathname.endsWith("/v1/workflow/")) {
+      return route.fallback();
     }
 
     const workflowType = url.searchParams.get("workflow_type");
@@ -955,9 +1238,75 @@ export async function mockWorkflowsListEndpoint(page: Page) {
     const pageSize = limit ? parseInt(limit) : 10;
     const page = nextPageToken ? parseInt(nextPageToken) : 0;
 
-    const workflows =
-      workflowsMockData[workflowType as keyof typeof workflowsMockData]
-        ?.workflows || [];
+    const searchAttributeFilters = [
+      ["device_id", "DeviceID"],
+      ["device_name", "DeviceName"],
+      ["device_platform", "DevicePlatform"],
+      ["device_role", "DeviceRole"],
+      ["site", "Site"],
+      ["user", "User"],
+    ];
+    const workflows = (
+      workflowType
+        ? workflowsMockData[workflowType as keyof typeof workflowsMockData]
+            ?.workflows || []
+        : ALL_WORKFLOW_DATA.workflows
+    ).filter((workflow) => {
+      if (workflowType && workflow.workflow_type !== workflowType) {
+        return false;
+      }
+
+      const status = url.searchParams.get("status");
+      const pendingApproval =
+        url.searchParams.get("pending_approval")?.toLowerCase() === "true";
+      const failedStage = Boolean((workflow as { failed_stage?: boolean }).failed_stage);
+      const displayStatus = failedStage
+        ? "FAILED"
+        : workflow.pending_approval
+          ? "PENDING_APPROVAL"
+          : workflow.status;
+
+      if (pendingApproval && !workflow.pending_approval) {
+        return false;
+      }
+      if (
+        status &&
+        displayStatus !== status &&
+        !(pendingApproval && status === "RUNNING" && workflow.pending_approval)
+      ) {
+        return false;
+      }
+
+      const startTimeFilter = Date.parse(url.searchParams.get("start_time") ?? "");
+      const endTimeFilter = Date.parse(url.searchParams.get("end_time") ?? "");
+      if (!Number.isNaN(startTimeFilter) || !Number.isNaN(endTimeFilter)) {
+        const workflowStartTime = Date.parse(workflow.start_time);
+
+        if (Number.isNaN(workflowStartTime)) {
+          return false;
+        }
+        if (!Number.isNaN(startTimeFilter) && workflowStartTime < startTimeFilter) {
+          return false;
+        }
+        if (!Number.isNaN(endTimeFilter) && workflowStartTime > endTimeFilter) {
+          return false;
+        }
+      }
+
+      return searchAttributeFilters.every(([param, attribute]) => {
+        const value = url.searchParams.get(param);
+        if (!value) {
+          return true;
+        }
+
+        const searchAttributes = workflow.search_attributes as Record<
+          string,
+          Array<string | number | boolean> | undefined
+        >;
+        const attributeValue = String(searchAttributes[attribute]?.[0] ?? "").toLowerCase();
+        return attributeValue.includes(value.toLowerCase());
+      });
+    });
     const paginatedWorkflows = workflows.slice(
       page * pageSize,
       (page + 1) * pageSize
@@ -978,9 +1327,17 @@ export async function mockWorkflowsListEndpoint(page: Page) {
 
 export async function mockWorkflowDetailsEndpoint(page: Page) {
   // Use a regex pattern to match any workflow ID
-  await page.route(/.*\/v1\/workflow\/([^\/]+)$/, async (route) => {
-    const url = route.request().url();
-    const id = url.split("/").pop();
+  await page.route(/.*\/v1\/workflow\/([^/?]+)(\?.*)?$/, async (route) => {
+    const url = new URL(route.request().url());
+    if (
+      url.pathname.endsWith("/v1/workflow") ||
+      url.pathname.endsWith("/v1/workflow/") ||
+      url.pathname.endsWith("/v1/workflow/types") ||
+      url.pathname.endsWith("/v1/workflow/metadata")
+    ) {
+      return route.fallback();
+    }
+    const id = url.pathname.split("/").pop();
 
     console.log(`Workflow details requested for ID: ${id}`);
 

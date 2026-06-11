@@ -88,11 +88,13 @@ def _derive_oidc_endpoints(provider: SSOProvider, issuer_url: str) -> dict[str, 
         return {
             "authorizationEndpoint": f"{base}/oauth2/v2.0/authorize",
             "tokenEndpoint": f"{base}/oauth2/v2.0/token",
+            "endSessionEndpoint": f"{base}/oauth2/v2.0/logout",
             "jwksUri": f"{base}/discovery/v2.0/keys",
         }
 
     if provider == SSOProvider.KEYCLOAK:
         return {
+            "endSessionEndpoint": f"{issuer}/protocol/openid-connect/logout",
             "jwksUri": f"{issuer}/protocol/openid-connect/certs",
         }
 
@@ -371,6 +373,9 @@ def _build_global(
         "serviceAccountName": "vault-access-sa",
     }
 
+    if c.environment == "local":
+        section["deploymentStrategy"] = {"type": "Recreate"}
+
     if is_local:
         section["imagePullSecrets"] = []
         section["imagePullPolicy"] = "IfNotPresent"
@@ -543,6 +548,8 @@ def _build_oidc(config: NVConfigManagerInstallConfig, values: dict[str, Any]) ->
         "enabled": True,
         "issuerUrl": config.sso.issuer_url,
         "clientId": config.sso.client_id,
+        "cliClientId": config.sso.cli_client_id or config.sso.client_id,
+        "authUtility": {"enabled": True},
         "audiences": (
             config.sso.audiences.split(",") if config.sso.audiences else sso_defaults["audiences"]
         ),
@@ -560,10 +567,16 @@ def _build_oidc(config: NVConfigManagerInstallConfig, values: dict[str, Any]) ->
         oidc["authorizationEndpoint"] = endpoints["authorizationEndpoint"]
     if endpoints.get("tokenEndpoint"):
         oidc["tokenEndpoint"] = endpoints["tokenEndpoint"]
+    if config.sso.end_session_endpoint:
+        oidc["endSessionEndpoint"] = config.sso.end_session_endpoint
+    elif endpoints.get("endSessionEndpoint"):
+        oidc["endSessionEndpoint"] = endpoints["endSessionEndpoint"]
     values["oidc"] = oidc
 
     if config.cluster.mock_devices:
-        values.setdefault("localDev", {})["mockDevices"] = True
+        local_dev = values.setdefault("localDev", {})
+        local_dev["mockDevices"] = True
+        local_dev["enableLocalTestWorkflows"] = True
 
 
 def _build_postgres_section(pg: ExternalPostgresConfig) -> dict[str, Any]:
@@ -864,6 +877,10 @@ def build_values(
     values["temporal"] = temporal_section
     values["rbac"] = _build_rbac(config)
     values["configStore"] = {"enabled": svc.config_store, "client": {"useInternalEndpoint": True}}
+    has_nautobot = svc.nautobot or bool(svc.external_nautobot_url)
+    values["mcp"] = {
+        "enabled": has_nautobot and svc.temporal and svc.config_store and svc.dhcp,
+    }
     values["nautobot"] = _build_nautobot(config)
 
     nats: dict[str, Any] = {"enabled": False}

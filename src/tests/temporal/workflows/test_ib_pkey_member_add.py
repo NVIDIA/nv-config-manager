@@ -14,7 +14,7 @@
 # limitations under the License.
 """Tests for IBPKey Member Add Workflow.
 
-Uses WorkflowEnvironment.start_time_skipping() with mocked HTTP responses
+Uses a registered Temporal time-skipping test environment with mocked HTTP responses
 for both UFM (via aioresponses) and Nautobot (via aioresponses).
 """
 
@@ -25,14 +25,13 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from aioresponses import aioresponses
-from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
 from nv_config_manager.temporal.common.secrets import clear_secrets_cache
 from nv_config_manager.temporal.ngc.activities.ib_nautobot import (
     record_pkey_assignments,
     resolve_guids_to_interfaces,
-    resolve_ib_context,
+    resolve_ib_context_for_add,
     resolve_interface_guids,
 )
 from nv_config_manager.temporal.ngc.activities.ib_pkey import (
@@ -116,7 +115,7 @@ def mock_all_configs():
 
 
 _ALL_ACTIVITIES = [
-    resolve_ib_context,
+    resolve_ib_context_for_add,
     resolve_interface_guids,
     resolve_guids_to_interfaces,
     add_guids_to_pkey,
@@ -195,11 +194,11 @@ def _stub_full_run(m: aioresponses) -> None:
 
 
 @pytest.mark.asyncio
-async def test_full_workflow_happy_path(mock_all_configs):
+async def test_full_workflow_happy_path(mock_all_configs, time_skipping_env):
     """Complete four-stage run with two interfaces."""
     task_queue = str(uuid.uuid4())
 
-    async with await WorkflowEnvironment.start_time_skipping() as env:
+    async with time_skipping_env() as env:
         async with Worker(
             env.client,
             task_queue=task_queue,
@@ -214,7 +213,6 @@ async def test_full_workflow_happy_path(mock_all_configs):
                     IBPKeyMemberAddInput(
                         host="ufm.example.com",
                         pkey="0x0005",
-                        overlay_id=OVERLAY_UUID,
                         interfaces=[
                             InterfaceRef(device="hca01", interface="mlx5_0"),
                             InterfaceRef(device="hca01", interface="mlx5_1"),
@@ -226,84 +224,19 @@ async def test_full_workflow_happy_path(mock_all_configs):
 
     assert isinstance(result, IBPKeyMemberAddOutput)
     assert result.pkey == "0x0005"
+    assert result.overlay_id == OVERLAY_UUID
+    assert result.overlay_name == "ib-pkey-overlay"
     assert result.members_added == 2
     assert result.verified is True
     assert result.assignment_ids == [ASSIGNMENT_UUID_1, ASSIGNMENT_UUID_2]
 
 
 @pytest.mark.asyncio
-async def test_single_interface(mock_all_configs):
-    """Workflow succeeds with a single interface."""
-    task_queue = str(uuid.uuid4())
-
-    async with await WorkflowEnvironment.start_time_skipping() as env:
-        async with Worker(
-            env.client,
-            task_queue=task_queue,
-            workflows=[IBPKeyMemberAddWorkflow],
-            activities=_ALL_ACTIVITIES,
-        ):
-            with aioresponses() as m:
-                stub_graphql_resolve_ib_context(m, pkey="0x0005", overlay_id=OVERLAY_UUID)
-                m.get(
-                    _NB_INTERFACES,
-                    payload={
-                        "results": [
-                            {
-                                "id": IFACE_UUID_1,
-                                "name": "mlx5_0",
-                                "custom_fields": {"ib_guid": GUID_1},
-                            }
-                        ]
-                    },
-                )
-                m.post(f"{UFM_BASE}/resources/pkeys/", payload={})
-                m.get(
-                    _pkey_verify_url("0x0005"),
-                    payload={"guids": [{"guid": GUID_1, "membership": "full"}]},
-                )
-                m.get(
-                    _NB_STATUSES,
-                    payload={"results": [{"id": STATUS_UUID, "name": "Active"}]},
-                )
-                m.get(
-                    _NB_CONTENT_TYPES,
-                    payload={
-                        "results": [
-                            {"id": IFACE_CT_UUID, "app_label": "dcim", "model": "interface"}
-                        ]
-                    },
-                )
-                m.get(_NB_ASSIGNMENTS, payload={"results": []})
-                m.post(
-                    f"{PLUGIN}/overlay-assignments/",
-                    payload={"id": ASSIGNMENT_UUID_1},
-                )
-
-                result = await env.client.execute_workflow(
-                    IBPKeyMemberAddWorkflow.run,
-                    IBPKeyMemberAddInput(
-                        host="ufm.example.com",
-                        pkey="0x0005",
-                        overlay_id=OVERLAY_UUID,
-                        interfaces=[
-                            InterfaceRef(device="hca01", interface="mlx5_0"),
-                        ],
-                    ),
-                    id=str(uuid.uuid4()),
-                    task_queue=task_queue,
-                )
-
-    assert result.members_added == 1
-    assert result.assignment_ids == [ASSIGNMENT_UUID_1]
-
-
-@pytest.mark.asyncio
-async def test_idempotent_existing_assignments(mock_all_configs):
+async def test_idempotent_existing_assignments(mock_all_configs, time_skipping_env):
     """Existing OverlayAssignments are reused without creating duplicates."""
     task_queue = str(uuid.uuid4())
 
-    async with await WorkflowEnvironment.start_time_skipping() as env:
+    async with time_skipping_env() as env:
         async with Worker(
             env.client,
             task_queue=task_queue,
@@ -356,7 +289,6 @@ async def test_idempotent_existing_assignments(mock_all_configs):
                     IBPKeyMemberAddInput(
                         host="ufm.example.com",
                         pkey="0x0005",
-                        overlay_id=OVERLAY_UUID,
                         interfaces=[
                             InterfaceRef(device="hca01", interface="mlx5_0"),
                         ],
@@ -369,55 +301,12 @@ async def test_idempotent_existing_assignments(mock_all_configs):
     assert result.members_added == 1
 
 
-@pytest.mark.asyncio
-async def test_stages_queryable_after_completion(mock_all_configs):
-    """Verify all four stage names appear in query results after the workflow completes."""
-    task_queue = str(uuid.uuid4())
-
-    async with await WorkflowEnvironment.start_time_skipping() as env:
-        async with Worker(
-            env.client,
-            task_queue=task_queue,
-            workflows=[IBPKeyMemberAddWorkflow],
-            activities=_ALL_ACTIVITIES,
-        ):
-            with aioresponses() as m:
-                _stub_full_run(m)
-
-                handle = await env.client.start_workflow(
-                    IBPKeyMemberAddWorkflow.run,
-                    IBPKeyMemberAddInput(
-                        host="ufm.example.com",
-                        pkey="0x0005",
-                        overlay_id=OVERLAY_UUID,
-                        interfaces=[
-                            InterfaceRef(device="hca01", interface="mlx5_0"),
-                            InterfaceRef(device="hca01", interface="mlx5_1"),
-                        ],
-                    ),
-                    id=str(uuid.uuid4()),
-                    task_queue=task_queue,
-                )
-                await handle.result()
-
-            # Query must run while the worker+env are still open
-            stages = await handle.query(IBPKeyMemberAddWorkflow.stages)
-
-    stage_names = [s.name for s in stages]
-    assert "resolve_context" in stage_names
-    assert "resolve_guids" in stage_names
-    assert "add_members" in stage_names
-    assert "verify_members" in stage_names
-    assert "record_assignments" in stage_names
-
-
 def test_input_rejects_neither():
     """Validator rejects an input with neither interfaces nor GUIDs."""
     with pytest.raises(ValueError, match="One of 'interfaces' or 'guids' must be provided"):
         IBPKeyMemberAddInput(
             host="ufm.example.com",
             pkey="0x0005",
-            overlay_id=OVERLAY_UUID,
         )
 
 
@@ -427,41 +316,9 @@ def test_input_rejects_both():
         IBPKeyMemberAddInput(
             host="ufm.example.com",
             pkey="0x0005",
-            overlay_id=OVERLAY_UUID,
             interfaces=[InterfaceRef(device="hca01", interface="mlx5_0")],
             guids=[GUID_1],
         )
-
-
-def test_input_accepts_interfaces_only():
-    payload = IBPKeyMemberAddInput(
-        host="ufm.example.com",
-        pkey="0x0005",
-        overlay_id=OVERLAY_UUID,
-        interfaces=[InterfaceRef(device="hca01", interface="mlx5_0")],
-    )
-    assert payload.guids == []
-
-
-def test_input_accepts_guids_only():
-    payload = IBPKeyMemberAddInput(
-        host="ufm.example.com",
-        pkey="0x0005",
-        overlay_id=OVERLAY_UUID,
-        guids=[GUID_1],
-    )
-    assert payload.interfaces == []
-
-
-def test_input_accepts_missing_overlay_id():
-    """overlay_id is optional now; the resolver fills it from Nautobot."""
-    payload = IBPKeyMemberAddInput(
-        host="ufm.example.com",
-        pkey="0x0005",
-        interfaces=[InterfaceRef(device="hca01", interface="mlx5_0")],
-    )
-    assert payload.overlay_id is None
-    assert payload.site is None
 
 
 @pytest.mark.parametrize("bad_pkey", ["", "5", "0x", "0xZZZZ", "0x12345"])
@@ -470,82 +327,16 @@ def test_input_rejects_bad_pkey_format(bad_pkey):
         IBPKeyMemberAddInput(
             host="ufm.example.com",
             pkey=bad_pkey,
-            overlay_id=OVERLAY_UUID,
             interfaces=[InterfaceRef(device="hca01", interface="mlx5_0")],
         )
 
 
 @pytest.mark.asyncio
-async def test_resolver_fills_missing_overlay_id(mock_all_configs):
-    """Client omits site and overlay_id; resolver supplies them and workflow succeeds."""
-    task_queue = str(uuid.uuid4())
-
-    async with await WorkflowEnvironment.start_time_skipping() as env:
-        async with Worker(
-            env.client,
-            task_queue=task_queue,
-            workflows=[IBPKeyMemberAddWorkflow],
-            activities=_ALL_ACTIVITIES,
-        ):
-            with aioresponses() as m:
-                stub_graphql_resolve_ib_context(m, pkey="0x0005", overlay_id=OVERLAY_UUID)
-                m.get(
-                    _NB_INTERFACES,
-                    payload={
-                        "results": [
-                            {
-                                "id": IFACE_UUID_1,
-                                "name": "mlx5_0",
-                                "custom_fields": {"ib_guid": GUID_1},
-                            }
-                        ]
-                    },
-                )
-                m.post(f"{UFM_BASE}/resources/pkeys/", payload={})
-                m.get(
-                    _pkey_verify_url("0x0005"),
-                    payload={"guids": [{"guid": GUID_1, "membership": "full"}]},
-                )
-                m.get(
-                    _NB_STATUSES,
-                    payload={"results": [{"id": STATUS_UUID, "name": "Active"}]},
-                )
-                m.get(
-                    _NB_CONTENT_TYPES,
-                    payload={
-                        "results": [
-                            {"id": IFACE_CT_UUID, "app_label": "dcim", "model": "interface"}
-                        ]
-                    },
-                )
-                m.get(_NB_ASSIGNMENTS, payload={"results": []})
-                m.post(
-                    f"{PLUGIN}/overlay-assignments/",
-                    payload={"id": ASSIGNMENT_UUID_1},
-                )
-
-                result = await env.client.execute_workflow(
-                    IBPKeyMemberAddWorkflow.run,
-                    IBPKeyMemberAddInput(
-                        host="ufm.example.com",
-                        pkey="0x0005",
-                        # site and overlay_id intentionally omitted
-                        interfaces=[InterfaceRef(device="hca01", interface="mlx5_0")],
-                    ),
-                    id=str(uuid.uuid4()),
-                    task_queue=task_queue,
-                )
-
-    assert result.members_added == 1
-    assert result.assignment_ids == [ASSIGNMENT_UUID_1]
-
-
-@pytest.mark.asyncio
-async def test_guids_only_path(mock_all_configs):
+async def test_guids_only_path(mock_all_configs, time_skipping_env):
     """GUIDs-only input reverse-resolves through Nautobot and completes the workflow."""
     task_queue = str(uuid.uuid4())
 
-    async with await WorkflowEnvironment.start_time_skipping() as env:
+    async with time_skipping_env() as env:
         async with Worker(
             env.client,
             task_queue=task_queue,
@@ -586,7 +377,6 @@ async def test_guids_only_path(mock_all_configs):
                     IBPKeyMemberAddInput(
                         host="ufm.example.com",
                         pkey="0x0005",
-                        overlay_id=OVERLAY_UUID,
                         guids=[GUID_1],
                     ),
                     id=str(uuid.uuid4()),

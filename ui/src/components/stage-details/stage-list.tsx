@@ -27,22 +27,13 @@ import { StagesListProps } from "@/types/stage-details.types";
 
 export const StagesList: React.FC<StagesListProps> = ({
   stages,
+  selectedStageName,
   handleClick,
 }) => {
-  const [selectedStage, setSelectedStage] =
-    React.useState<WorkflowStage | null>(getInitialStage(stages));
-
-  React.useEffect(() => {
-    const initialStage = getInitialStage(stages);
-    if (initialStage) {
-      handleClick(initialStage);
-    }
-  }, [stages, handleClick]);
-
   const handleSelect = (stage: WorkflowStage) => {
-    setSelectedStage(stage);
     handleClick(stage);
   };
+  const selectedName = selectedStageName ?? getInitialStage(stages)?.name;
 
   return (
     <Table>
@@ -52,7 +43,7 @@ export const StagesList: React.FC<StagesListProps> = ({
             <TableRow
               key={stage.name}
               className={`${
-                selectedStage?.name === stage.name
+                selectedName === stage.name
                   ? "bg-blue-100 dark:bg-blue-700"
                   : ""
               }`}

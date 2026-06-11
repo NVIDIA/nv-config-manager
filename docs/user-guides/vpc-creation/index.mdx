@@ -1,12 +1,12 @@
 ---
-title: VPC Creation
-sidebar-title: VPC Creation
+title: SpX Overlay Creation
+sidebar-title: SpX Overlay Creation
 position: 10
 ---
 
-The VPC Creation workflow provisions the VRF metadata for a new VPC at a site. A VPC in this context is a tenant-scoped routing domain modeled as a VRF on the managed switches; creation is the metadata step that allocates the route distinguisher (RD) and registers the VRF objects in Nautobot. No switches are touched by this workflow — applying the new VPC to a device happens through [VPC Assignment](../vpc-assignment/index.mdx), and re-rendering and redeploying tenant configuration happens through [VPC Tenant Change](../vpc-tenant-change/index.mdx).
+The SpX Overlay Creation workflow provisions a SpectrumX overlay, VRFs, and L3 VXLANs for a new overlay at a site. An overlay in this context is a tenant-scoped routing domain: creation allocates a route distinguisher (RD), registers the VRF objects in Nautobot, and creates an L3 VXLAN per namespace bound to a location-scoped Overlay object in the overlays plugin. No switches are touched by this workflow — applying the new overlay to a device happens through [SpX Overlay Assignment](../vpc-assignment/index.mdx), and re-rendering and redeploying tenant configuration happens through [SpX Overlay Tenant Change](../vpc-tenant-change/index.mdx).
 
-Creation is idempotent on `vpc_id` — re-running with an existing ID returns the already-existing VRFs rather than creating new ones.
+Creation is idempotent on `overlay_id` — re-running with an existing ID returns the already-existing VRFs rather than creating new ones.
 
 <Warning title="Experimental">
 This workflow is experimental and not intended for general use. Use it only in test or pilot environments.
@@ -17,59 +17,69 @@ This workflow is experimental and not intended for general use. Use it only in t
 Before running, confirm:
 
 - **Site exists in Nautobot** and is correctly tagged so RD allocation can find an available range.
-- **vpc_id chosen.** Pick a unique identifier; if the same ID is reused, the workflow short-circuits and returns the existing VRFs without creating new ones.
+- **Tenant exists in Nautobot.** The tenant is used to scope the created Overlay object.
+- **overlay_id chosen.** Pick a unique identifier; if the same ID is reused, the workflow short-circuits and returns the existing VRFs without creating new ones.
 - **Route-distinguisher range has free entries** within the site's allocated `rd_min`..`rd_max` window. The workflow's RD allocator pulls the first available RD in that window.
 
 ## Running the workflow
 
 1. Navigate to the Config Manager URL for your environment.
-1. Click the **+** in the top right and select **VpcCreationWorkflow**.
+1. Click the **+** in the top right and select **SpXOverlayCreationWorkflow**.
 1. Fill in the form using the field reference below and submit.
 
 | Field | Description | Required |
 | :---- | :---------- | :------- |
-| **Site** | The site the VPC belongs to. | Yes |
-| **VPC** | Unique identifier for the VPC. Idempotency key — re-running with the same ID returns existing VRFs. | Yes |
-| **Description** | Free-form description for the VPC. | Yes |
-| **Namespace** | Tag used to identify the VPC namespace in Nautobot. | Yes |
+| **Site** | The site the overlay belongs to. | Yes |
+| **Overlay ID** | Unique identifier for the overlay. Idempotency key — re-running with the same ID returns existing VRFs. | Yes |
+| **Tenant** | The Nautobot tenant to associate with the created Overlay. | Yes |
+| **Namespace** | Tag used to identify the overlay namespace in Nautobot. | Yes |
 | **RD Min** | Lower bound of the route-distinguisher allocation range (0-65535). | No (default: 60000) |
 | **RD Max** | Upper bound of the route-distinguisher allocation range (0-65535). | No (default: 65000) |
 
-After submission, a status page shows the single `create_vpc` stage. The workflow returns a result with two lists: `created_vrfs` (newly provisioned in this run) and `existing_vrfs` (already present at start time).
+After submission, a status page shows the single `create_spx_overlay` stage. The workflow returns a result with two lists: `created_vrfs` (newly provisioned in this run) and `existing_vrfs` (already present at start time).
 
 ## Execution stages
 
 The workflow runs one stage. No human approval is required.
 
-1. **`create_vpc` — Allocate the RD and provision VRF objects.**
+1. **`create_spx_overlay` — Allocate the RD and provision the Overlay, VRF, and VXLAN objects.**
 
-    Queries Nautobot for any existing VRFs matching the `vpc_id` + `namespace_tag`. If they exist, the stage short-circuits with the existing-VRFs list and the result is treated as a successful no-op. Otherwise, the activity allocates the first available RD in `[rd_min, rd_max]` and calls `provision_vrf` to register the VRF in Nautobot. The stage display reports the created VRFs.
+   Queries Nautobot for any existing VRFs matching the `overlay_id` + `namespace_tag`. If they exist, the stage short-circuits with the existing-VRFs list and the result is treated as a successful no-op. Otherwise:
+
+    - Finds or creates a location-scoped `SpXTenant<VNI>` Overlay object of type `spectrum_x_vrf` in the overlays plugin.
+    - For each namespace, creates a VRF and an L3 VXLAN bound to both the VRF and the Overlay.
+    - VRFs and VXLANs are rolled back on failure; the Overlay is left in place since it may be shared across retries.
 
 ## Verifying outcomes
 
 After the workflow reports success, confirm:
 
-- **`create_vpc` shows green** and the result's `created_vrfs` or `existing_vrfs` list contains the expected VRF objects.
+- **`create_spx_overlay` shows green** and the result's `created_vrfs` or `existing_vrfs` list contains the expected VRF objects.
 - **Nautobot shows the VRFs** under the site with the allocated RD.
-- **Re-running the workflow** with the same `vpc_id` returns immediately with `existing_vrfs` populated — confirming idempotency.
+- **Nautobot overlays plugin** (`/plugins/overlays/`) shows the new `SpXTenant<VNI>` Overlay with the bound L3 VXLANs.
+- **Re-running the workflow** with the same `overlay_id` returns immediately with `existing_vrfs` populated — confirming idempotency.
 
 ## Common issues
 
-**`create_vpc` fails with "no available route distinguishers".**
+**`create_spx_overlay` fails with "no available route distinguishers".**
 
 The `[rd_min, rd_max]` window is exhausted. Either widen the window via the optional inputs, or audit the site's existing VRFs and reclaim RDs no longer in use before retrying.
 
-**`create_vpc` fails with "Failed to create VRFs".**
+**`create_spx_overlay` fails with "Failed to provision overlay".**
 
-The Nautobot write to register the VRF failed. Check Nautobot's logs and confirm the site, tenant, and namespace tag are correctly modeled before re-running.
+The Nautobot write to register the VRF or VXLAN failed. Check Nautobot's logs and confirm the site, tenant, and namespace tag are correctly modeled before re-running. Partial VRF/VXLAN objects created before the failure are rolled back automatically.
+
+**`create_spx_overlay` fails with "Status 'Active' not found in Nautobot".**
+
+The `Active` status object is missing from Nautobot. Ensure the bootstrap data job has been run.
 
 **The result has empty `created_vrfs` and a populated `existing_vrfs`.**
 
-The VPC already existed — the workflow short-circuited. This is the expected idempotent behavior.
+The overlay already existed — the workflow short-circuited. This is the expected idempotent behavior.
 
 ## Related guides
 
-- [VPC Deletion](../vpc-deletion/index.mdx) — tear down a VPC (only when it is not in use on any device).
-- [VPC Assignment](../vpc-assignment/index.mdx) — bind the new VRF to a device and specific ports.
-- [VPC Tenant Change](../vpc-tenant-change/index.mdx) — assign + render + deploy a VPC change against a device end-to-end.
-- [Render Service](../../render/index.mdx) — produces the tenant-scoped configurations that get deployed onto devices once a VPC is assigned.
+- [SpX Overlay Deletion](../vpc-deletion/index.mdx) — tear down an overlay (only when it is not in use on any device).
+- [SpX Overlay Assignment](../vpc-assignment/index.mdx) — bind the new VRF to a device and specific ports.
+- [SpX Overlay Tenant Change](../vpc-tenant-change/index.mdx) — assign + render + deploy an overlay change against a device end-to-end.
+- [Render Service](../../render/index.mdx) — produces the tenant-scoped configurations that get deployed onto devices once an overlay is assigned.

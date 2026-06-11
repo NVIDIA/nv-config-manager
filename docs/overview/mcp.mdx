@@ -1,0 +1,112 @@
+---
+title: Remote MCP Access
+sidebar-title: Remote MCP
+position: 95
+---
+
+NVIDIA Config Manager includes a remote Model Context Protocol (MCP) server for MCP-capable clients. The MCP server runs inside the Config Manager deployment. You do not need to run a local MCP server.
+
+Use MCP when you want an assistant or other MCP-capable client to answer operational questions from Config Manager data, such as Nautobot inventory, DHCP reservations, stored device configs, workflow history, and selected safe workflow actions.
+
+## Quick Setup
+
+There are two supported ways to discover the MCP connection details.
+
+### Use the helper CLI
+
+The `nvcm-mcp-cli` helper discovers the MCP endpoint, handles OIDC login when SSO is enabled, and prints generic Streamable HTTP connection details.
+
+```sh
+nvcm-mcp-cli config -H config-manager.example.com
+```
+
+For SSO-enabled environments, sign in first:
+
+```sh
+nvcm-mcp-cli login -H config-manager.example.com
+```
+
+The helper opens a browser when a fresh OIDC login is required. If the browser does not open automatically, it prints the login URL. After login, the helper caches the user token locally.
+
+You can also print just the endpoint or token:
+
+```sh
+nvcm-mcp-cli endpoint -H config-manager.example.com
+nvcm-mcp-cli token -H config-manager.example.com
+```
+
+For local development environments that use a self-signed certificate, add `-k`.
+
+### Use discovery directly
+
+You can also tell an MCP-capable assistant or client to discover the server details from:
+
+```text
+https://config-manager.example.com/auth/discovery
+```
+
+For example:
+
+```text
+Connect to the NVIDIA Config Manager MCP server. Discover the MCP endpoint and auth details from https://config-manager.example.com/auth/discovery. Do not start a local MCP server.
+```
+
+The discovery response tells the client which remote MCP endpoint to use and whether bearer authentication is required. In SSO-enabled environments, the MCP tools act with the signed-in user's bearer token. They do not switch to broader service credentials for Config Manager APIs.
+
+## Client Settings
+
+Use these settings when configuring a client manually:
+
+| Setting | Value |
+| :------ | :---- |
+| Transport | Streamable HTTP |
+| URL | Use `nvcm-mcp-cli endpoint -H <hostname>` or the endpoint from `/auth/discovery` |
+| Authentication | Use bearer authentication only when discovery or the helper says it is required |
+
+When bearer authentication is required, prefer an environment variable or the client's secret storage instead of writing tokens into static configuration files.
+
+## What You Can Ask
+
+The available tools are discoverable at runtime, so exact tool names may vary by deployment. In general, the operational Config Manager MCP server can answer questions like these:
+
+- "Find device `leaf1.example.com` and summarize its role, site, serial number, platform, and Nautobot ID."
+- "How many DHCP reservations do we have, split by pool reservations and static reservations?"
+- "Show the DHCP reservation details for `leaf1.example.com`."
+- "List the intended config files for `leaf1.example.com`."
+- "Show the latest stored running config for this device, with secrets redacted."
+- "Compare two stored config versions for this device and summarize the differences."
+- "List recent failed workflows for this site and include the Config Manager workflow links."
+- "Run a backup for `leaf1.example.com` and give me the workflow URL."
+- "Run cable validation for this site and summarize the result."
+- "Check the InfiniBand fabric for unhealthy ports."
+
+MCP clients can also inspect the Nautobot GraphQL schema through the server. If you are asking a broad inventory question, it is usually best to let the client explore the schema and then issue targeted read-only queries.
+
+## Public Documentation MCP
+
+NVIDIA also publishes a public documentation MCP server for Config Manager:
+
+```text
+https://docs.nvidia.com/switch-infrastructure/config-manager/_mcp/server
+```
+
+Connect to this as a separate MCP server when you want product documentation, usage guidance, or conceptual reference. It does not require authentication.
+
+The operational Config Manager MCP server includes a `list_related_mcp_servers` tool that returns the public docs MCP URL for clients that support discovering related servers.
+
+Examples of documentation-focused questions:
+
+- "Find the Config Manager documentation for MCP setup."
+- "Explain how Config Manager handles workflow approvals."
+- "What does the backup workflow do?"
+- "Find the installation guidance for SSO-enabled deployments."
+- "Which documented workflow should I use to validate cabling?"
+
+For the best results, connect both MCP servers: use the deployment MCP server for live operational data, and use the public documentation MCP server for product guidance.
+
+## Security Notes
+
+- The bearer token represents the signed-in user.
+- MCP tools use the caller's access for Config Manager APIs.
+- External Nautobot deployments may use a configured read-only Nautobot token for MCP Nautobot queries.
+- Token values should be treated as secrets and kept out of documentation, logs, and committed configuration.

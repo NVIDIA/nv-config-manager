@@ -15,6 +15,7 @@ The dynamic API endpoint generation system automatically creates FastAPI endpoin
 The `WorkflowMetadataMixin` allows workflows to define their API metadata directly in the workflow class:
 
 - `workflow_description`: Human-readable description
+- `workflow_name`: Human-readable workflow name
 - `workflow_input_class`: Pydantic input model
 - `workflow_api_endpoint`: API endpoint path
 - `workflow_namespace`: Workflow namespace
@@ -59,6 +60,7 @@ class BackupWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, ArchiveMixi
     """Network device configuration backup workflow."""
 
     # Workflow metadata
+    workflow_name = "Backup"
     workflow_description = "Backup network device configuration to Config Store"
     workflow_input_class = BackupInput
     workflow_api_endpoint = "/ngc/backup"
@@ -108,8 +110,8 @@ def register_dynamic_endpoints(router: APIRouter) -> None:
 
 - Adding a new workflow requires only:
   1. Adding `WorkflowMetadataMixin` to the workflow class
-  2. Setting the metadata attributes
-  3. Adding to `REGISTERED_WORKFLOWS` list
+  1. Setting the metadata attributes
+  1. Adding to `REGISTERED_WORKFLOWS` list
 - System automatically handles the rest
 
 ### Comprehensive Documentation
@@ -148,11 +150,11 @@ graph TD
 class WorkflowMetadataMixin:
     """Mixin for defining workflow metadata."""
 
-    workflow_description: str = ""
-    workflow_input_class: Type[BaseModel]
-    workflow_api_endpoint: str = ""
-    workflow_namespace: str = ""
-    workflow_cli_name: Optional[str] = None
+    workflow_name: str | None = None
+    workflow_description: str | None = None
+    workflow_input_class: type[BaseModel] | None = None
+    workflow_api_endpoint: str | None = None
+    workflow_namespace: str | None = None
 
     @classmethod
     def get_workflow_description(cls) -> str:
@@ -279,13 +281,15 @@ The workflow is now automatically:
 
 ## Workflow Discovery API
 
-### List All Workflows
+### List Workflow Executions
 
 ```bash
 GET /v1/workflow/
 ```
 
-Returns metadata for all registered workflows.
+Returns workflow execution summaries. Query parameters such as `workflow_type`,
+`status`, `user`, `site`, `device_name`, `device_id`, `device_role`, and
+`device_platform` filter the execution list.
 
 ### Get Registered Workflow Types
 
@@ -293,22 +297,29 @@ Returns metadata for all registered workflows.
 GET /v1/workflow/types
 ```
 
-Returns the list of registered workflow type names.
+Returns the legacy list of registered workflow type names.
 
-### Get Workflow Info
+### Get Workflow Metadata
 
-The following endpoint returns metadata for a specific registered workflow:
+```bash
+GET /v1/workflow/metadata
+```
+
+Returns registered workflow metadata and the RBAC roles needed by the UI:
 
 ```json
 {
   "workflows": [
     {
       "name": "BackupWorkflow",
+      "display_name": "Backup",
       "description": "Backup network device configuration to Config Store",
       "endpoint": "/ngc/backup",
       "namespace": "ngc",
       "cli_name": "backup",
-      "input_class": "BackupInput"
+      "input_class": "BackupInput",
+      "read_roles": ["all"],
+      "execute_roles": ["all"]
     }
   ]
 }

@@ -76,18 +76,18 @@ export const siteConfig = {
       enabled: false,
     },
     {
-      title: "VPC Creation",
-      slug: "vpccreationworkflow",
+      title: "SpX Overlay Creation",
+      slug: "spxoverlaycreationworkflow",
       enabled: true,
     },
     {
-      title: "VPC Deletion",
-      slug: "vpcdeletionworkflow",
+      title: "SpX Overlay Deletion",
+      slug: "spxoverlaydeletionworkflow",
       enabled: true,
     },
     {
-      title: "VPC Tenant Change",
-      slug: "vpctenantchangeworkflow",
+      title: "SpX Overlay Tenant Change",
+      slug: "spxoverlaytenantchangeworkflow",
       enabled: true,
     },
     {
@@ -138,6 +138,26 @@ export const siteConfig = {
     {
       title: "IB Port GUID Discovery",
       slug: "ibportguiddiscoveryworkflow",
+      enabled: true,
+    },
+    {
+      title: "IB PKey Creation",
+      slug: "ibpkeycreationworkflow",
+      enabled: true,
+    },
+    {
+      title: "IB PKey Member Add",
+      slug: "ibpkeymemberaddworkflow",
+      enabled: true,
+    },
+    {
+      title: "IB PKey Member Update",
+      slug: "ibpkeymemberupdateworkflow",
+      enabled: true,
+    },
+    {
+      title: "IB PKey Member Delete",
+      slug: "ibpkeymemberdeleteworkflow",
       enabled: true,
     },
   ],

@@ -52,11 +52,14 @@ from nv_config_manager_installer.schema import (
     ImageSource,
     JobPath,
     JobsConfig,
+    K8sSecretGroup,
+    KubernetesSecretsConfig,
     NetworkSecretEntry,
     NVConfigManagerInstallConfig,
     RedfishConfig,
     RedfishVendorCreds,
     SecretsConfig,
+    SecretsMethod,
     ServicesConfig,
     SiteConfig,
     TemplatePath,
@@ -70,6 +73,22 @@ CNPG_OPERATOR_VERSION=0.28.0
 INGRESS_NGINX_VERSION=4.15.1
 PROMETHEUS_CRD_VERSION=v0.90.1
 PROMETHEUS_OPERATOR_VERSION=84.5.0
+"""
+
+_ENVOY_GATEWAY_CRDS = """\
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: referencegrants.gateway.networking.k8s.io
+spec:
+  group: gateway.networking.k8s.io
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: envoyproxies.gateway.envoyproxy.io
+spec:
+  group: gateway.envoyproxy.io
 """
 
 
@@ -320,6 +339,8 @@ class TestInstallCrds:
 
         def fake_run(cmd, **kwargs):
             run_commands.append(cmd)
+            if cmd[:3] == ["helm", "show", "crds"]:
+                return MagicMock(returncode=0, stdout=_ENVOY_GATEWAY_CRDS, stderr="")
             return MagicMock(returncode=0, stdout="", stderr="")
 
         def fake_run_logged(cmd, step, callback, **kwargs):
@@ -349,13 +370,15 @@ class TestInstallCrds:
         deployer._install_crds()
 
         rendered_commands = [" ".join(cmd) for cmd in logged_commands]
-        assert not any(
+        assert any(
             str(manifests_dir / "gateway-api-v1.4.1.yaml") in cmd for cmd in rendered_commands
         )
+        assert any("envoy-gateway-crds.yaml" in cmd for cmd in rendered_commands)
         assert any(str(charts_dir / "gateway-helm-v1.6.5.tgz") in cmd for cmd in rendered_commands)
         envoy_cmd = next(
             cmd for cmd in logged_commands if cmd[:4] == ["helm", "upgrade", "--install", "eg"]
         )
+        assert "--skip-crds" in envoy_cmd
         assert "--force-conflicts" not in envoy_cmd
         assert "--take-ownership" not in envoy_cmd
         assert (
@@ -414,7 +437,9 @@ class TestInstallCrds:
             if cmd[:4] == ["helm", "upgrade", "--install", "nv-config-manager-prom-crds"]
         )
         assert str(charts_dir / "prometheus-operator-crds-28.0.1.tgz") in prom_crds_cmd
-        assert run_commands == []
+        assert run_commands == [
+            ["helm", "show", "crds", str(charts_dir / "gateway-helm-v1.6.5.tgz")]
+        ]
         assert not any("github.com/cert-manager" in cmd for cmd in rendered_commands)
 
 
@@ -1275,6 +1300,46 @@ class TestK8sClientIntegration:
         assert "redis-password" in secret_names
         assert "nautobot-token" in secret_names
         assert "nautobot-admin" in secret_names
+        nautobot_token_call = next(
+            call
+            for call in mock_k8s.apply_secret.call_args_list
+            if call.args[0] == "nautobot-token"
+        )
+        assert "read-only-token" not in nautobot_token_call.args[2]
+
+    @patch("nv_config_manager_installer.deployer._run_logged")
+    @patch("nv_config_manager_installer.deployer._run")
+    @patch("nv_config_manager_installer.deployer.K8sClient")
+    @patch("nv_config_manager_installer.deployer.shutil.which", return_value="/usr/bin/kubectl")
+    def test_create_secrets_includes_configured_nautobot_read_only_token(
+        self,
+        mock_which,
+        mock_k8s_class,
+        mock_run,
+        mock_run_logged,
+    ):
+        mock_k8s = _mock_k8s()
+        mock_k8s_class.return_value = mock_k8s
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        mock_run_logged.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+        config = _make_config()
+        config.secrets = SecretsConfig(
+            method=SecretsMethod.KUBERNETES,
+            k8s=KubernetesSecretsConfig(
+                nautobot=K8sSecretGroup(values={"readOnlyToken": "ro-token"}),
+            ),
+        )
+        cb = RecordingCallback()
+        deployer = Deployer(config, DeployOptions(dry_run=True), cb)
+        deployer.run()
+
+        nautobot_token_call = next(
+            call
+            for call in mock_k8s.apply_secret.call_args_list
+            if call.args[0] == "nautobot-token"
+        )
+        assert nautobot_token_call.args[2]["read-only-token"] == "ro-token"
 
     def test_api_token_retrieval(self):
         config = _make_config()

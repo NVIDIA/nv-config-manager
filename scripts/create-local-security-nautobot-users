@@ -1,0 +1,178 @@
+#!/usr/bin/env bash
+# Create the Nautobot users that match the local Keycloak users installed by
+# make kind-up-sec.
+
+set -euo pipefail
+
+NAMESPACE="nv-config-manager"
+RELEASE_NAME="nv-config-manager"
+TIMEOUT="15m"
+
+usage() {
+    cat <<'EOF'
+Usage: ./scripts/create-local-security-nautobot-users [OPTIONS]
+
+Options:
+  --namespace NAME     Kubernetes namespace containing Nautobot (default: nv-config-manager)
+  --release-name NAME  Helm release name used for Nautobot labels (default: nv-config-manager)
+  --timeout DURATION   Wait timeout for Nautobot readiness (default: 15m)
+  --help               Show this help
+
+Environment:
+  ALLOW_WEAK_LOCAL_USERS=true
+      Allow static local test credentials outside the default kind namespace/context guard.
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --namespace)
+            NAMESPACE="$2"
+            shift 2
+            ;;
+        --release-name)
+            RELEASE_NAME="$2"
+            shift 2
+            ;;
+        --timeout)
+            TIMEOUT="$2"
+            shift 2
+            ;;
+        --help|-h)
+            usage
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1" >&2
+            usage >&2
+            exit 1
+            ;;
+    esac
+done
+
+require_cmd() {
+    local cmd="$1"
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+        echo "Required command not found: $cmd" >&2
+        exit 1
+    fi
+}
+
+require_cmd kubectl
+
+selector="app.kubernetes.io/component=nautobot,app.kubernetes.io/instance=${RELEASE_NAME}"
+deployment="$(
+    kubectl get deployment -n "$NAMESPACE" -l "$selector" \
+        -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true
+)"
+
+if [[ -z "$deployment" ]] && kubectl get deployment -n "$NAMESPACE" "${RELEASE_NAME}-nautobot" >/dev/null 2>&1; then
+    deployment="${RELEASE_NAME}-nautobot"
+fi
+
+if [[ -z "$deployment" ]]; then
+    echo "No Nautobot deployment found in namespace ${NAMESPACE}; skipping local user sync."
+    exit 0
+fi
+
+echo "Waiting for Nautobot deployment ${deployment} in namespace ${NAMESPACE}..."
+kubectl rollout status "deployment/${deployment}" -n "$NAMESPACE" --timeout="$TIMEOUT"
+pod_selector="app.kubernetes.io/name=${deployment},app.kubernetes.io/instance=${RELEASE_NAME}"
+kubectl wait --for=condition=Ready pod -n "$NAMESPACE" -l "$pod_selector" --timeout="$TIMEOUT"
+
+pod="$(
+    kubectl get pod -n "$NAMESPACE" -l "$pod_selector" \
+        -o jsonpath='{.items[0].metadata.name}'
+)"
+
+if [[ -z "$pod" ]]; then
+    echo "Unable to find a Nautobot pod after rollout." >&2
+    exit 1
+fi
+
+if [[ "${ALLOW_WEAK_LOCAL_USERS:-false}" != "true" ]]; then
+    current_context="$(kubectl config current-context 2>/dev/null || true)"
+    if [[ "$NAMESPACE" != "nv-config-manager" || "$current_context" != kind-* ]]; then
+        echo "Refusing to create static local security users outside the default kind test environment." >&2
+        echo "Set ALLOW_WEAK_LOCAL_USERS=true only for local security test environments." >&2
+        exit 1
+    fi
+fi
+
+echo "Creating local security users in Nautobot pod ${pod}..."
+kubectl exec -i -n "$NAMESPACE" "$pod" -- nautobot-server nbshell <<'PY'
+exec("""
+from django.contrib.auth import get_user_model
+
+
+User = get_user_model()
+
+LOCAL_USERS = [
+    {
+        "username": "nvcm-readonly",
+        "password": "nvcm-readonly",
+        "email": "nvcm-readonly@config-manager.local",
+        "first_name": "NVCM",
+        "last_name": "Readonly",
+        "is_staff": False,
+        "is_superuser": False,
+    },
+    {
+        "username": "nvcm-network",
+        "password": "nvcm-network",
+        "email": "nvcm-network@config-manager.local",
+        "first_name": "NVCM",
+        "last_name": "Network",
+        "is_staff": False,
+        "is_superuser": False,
+    },
+    {
+        "username": "nvcm-admin",
+        "password": "nvcm-admin",
+        "email": "nvcm-admin@config-manager.local",
+        "first_name": "NVCM",
+        "last_name": "Admin",
+        "is_staff": True,
+        "is_superuser": True,
+    },
+    {
+        "username": "demo",
+        "password": "demo",
+        "email": "demo@config-manager.local",
+        "first_name": "Demo",
+        "last_name": "User",
+        "is_staff": False,
+        "is_superuser": False,
+    },
+]
+
+
+for user_data in LOCAL_USERS:
+    username = user_data["username"]
+    password = user_data["password"]
+    desired_fields = {
+        key: value
+        for key, value in user_data.items()
+        if key not in {"password", "username"}
+    }
+    user, created = User.objects.get_or_create(
+        username=username,
+        defaults=desired_fields,
+    )
+
+    changed_fields = []
+    for field, value in desired_fields.items():
+        if getattr(user, field) != value:
+            setattr(user, field, value)
+            changed_fields.append(field)
+
+    user.set_password(password)
+    user.save()
+
+    action = "created" if created else "updated"
+    detail = f" ({', '.join(changed_fields)})" if changed_fields else ""
+    print(f"{action} {username}{detail}")
+""")
+PY
+
+echo "Local security users are present in Nautobot."

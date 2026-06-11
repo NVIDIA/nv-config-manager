@@ -170,6 +170,8 @@ localDev:
   # Enable mock network device connections (returns stub data, no real SSH/API calls)
   # Set to true in local Kind environments where worker pods can't reach real devices
   mockDevices: false
+  # Register long-running test workflows used by local workflow-list latency seeding.
+  enableLocalTestWorkflows: false
 # =============================================================================
 # Secrets Configuration
 # =============================================================================
@@ -334,6 +336,7 @@ secrets:
         path: "" # Required: e.g., "my-org/nv-config-manager/dev/nautobot"
         keys:
           token: "token"
+          readOnlyToken: "read_only_token"
           natsPassword: "nats_password"
           natsSysPassword: "nats_sys_password"
           natsNautobotPassword: "nats_nautobot_password"
@@ -846,8 +849,8 @@ gateway:
   #
   # When a path is in authBypass:
   #   - OIDC redirect is DISABLED (no login prompt)
-  #   - JWT validation is OPTIONAL (allow_missing_or_failed)
-  #   - If valid JWT present: claims extracted to X-Auth-Request-* headers
+  #   - Authorization bearer JWT validation is OPTIONAL
+  #   - If valid bearer JWT present: claims extracted to X-Auth-Request-* headers
   #   - If no JWT: request passes through, service handles its own auth
   #
   # This creates separate HTTPRoutes with SecurityPolicies that have
@@ -918,6 +921,14 @@ oidc:
   issuerUrl: ""
   # OAuth2 client ID
   clientId: ""
+  # Optional public/native client ID for CLI PKCE auth discovery.
+  # Defaults to clientId when unset.
+  cliClientId: ""
+  # Public UI-backed auth utility endpoints for native clients.
+  # Keep disabled by default so current chart main remains compatible with
+  # pre-1.3.0 UI images that do not serve /auth/discovery or /auth/logout.
+  authUtility:
+    enabled: false
   # Name of K8s secret containing client-secret key
   # Secret must have key 'client-secret'
   clientSecretName: "oidc-client-secret"
@@ -936,6 +947,9 @@ oidc:
   # with JWT claim extraction.
   # WARNING: Only enable in secure environments (HTTPS, secure cookie flags)
   disableTokenEncryption: true
+  # OIDC cookie names used by Envoy Gateway and downstream JWT extraction.
+  cookieName: "NVConfigManagerAccessToken"
+  idTokenCookieName: "NVConfigManagerIdToken"
   # JWKS URI for token validation (auto-derived from issuerUrl if not set)
   # For Keycloak: https://<host>/realms/<realm>/protocol/openid-connect/certs
   # For Azure AD: https://login.microsoftonline.com/<tenant>/discovery/v2.0/keys
@@ -945,6 +959,10 @@ oidc:
   # (usually auto-discovered from issuer)
   # authorizationEndpoint: ""
   # tokenEndpoint: ""
+  # Optional: Provider logout endpoint used by Envoy Gateway to clear the
+  # upstream OIDC session on oidc.logoutPath. Auto-derived by the installer
+  # for Keycloak and Azure AD.
+  # endSessionEndpoint: ""
 
   # Optional: Internal issuer URL for token exchange (if external URL isn't reachable from cluster)
   # internalIssuerUrl: ""
@@ -1498,10 +1516,24 @@ networkDhcp:
   resources:
     dhcp:
       requests:
-        cpu: 4
+        cpu: 1
         memory: 1Gi
       limits:
         memory: 2Gi
+    healthcheck:
+      requests:
+        cpu: 200m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
+    api:
+      requests:
+        cpu: 200m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
     confgen:
       requests:
         cpu: 100m
@@ -1837,6 +1869,49 @@ configStore:
     useInternalEndpoint: false
     # SSL verification: true, false, or path to CA cert file
     verify: true
+# =============================================================================
+# Service: MCP
+# =============================================================================
+mcp:
+  # Keep disabled by default so current chart main remains compatible with
+  # pre-1.3.0 environment values that pin nv-config-manager images to 1.2.x.
+  # Enable explicitly in values once the image contains the MCP entrypoint.
+  enabled: false
+  # Gateway routing - Streamable HTTP MCP endpoint
+  gateway:
+    # Hostname: mcp.<baseHostname> (OIDC+JWT, browser access)
+    hostname: "mcp.{{ .Values.gateway.baseHostname }}"
+    # Hostname: svc-mcp.<baseHostname> (JWT-only, machine access)
+    svcHostname: "svc-mcp.{{ .Values.gateway.baseHostname }}"
+    # Auth bypass - healthcheck and metrics must be accessible without OIDC/JWT
+    authBypass:
+      enabled: true
+      paths:
+        - /healthcheck
+        - /metrics
+  api:
+    replicas: 2
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        memory: 512Mi
+    nodeSelector: null
+    affinity: null
+  client:
+    # MCP always calls Config Manager APIs through internal service endpoints
+    # and forwards the caller's inbound Bearer token. It never falls back to
+    # service-to-service auth for these APIs.
+    useInternalEndpoints: true
+    maxResponseBytes: 100000
+  nautobot:
+    # auto: bundled/local Nautobot uses user JWT, external Nautobot uses the MCP read-only token
+    # jwt: always forward the user's Bearer token to Nautobot
+    # token: always use [mcp] nautobot_read_only_token
+    authMode: auto
+    # Optional escape hatch for dev-only environments. Keep false in production.
+    tokenFallbackEnabled: false
 # =============================================================================
 # SPIFFE Configuration (Service-to-Service Authentication)
 # =============================================================================
@@ -2378,6 +2453,18 @@ nautobot:
         memory: 8Gi
       limits:
         memory: 16Gi
+    strategy:
+      type: RollingUpdate
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 0
+    migrations:
+      resources:
+        requests:
+          cpu: 250m
+          memory: 512Mi
+        limits:
+          memory: 2Gi
     # Database configuration
     # Host: set to CNPG cluster service name (e.g., "cluster-nautobot-rw") or external host
     db:
@@ -2489,7 +2576,7 @@ nautobot:
     #
     # For /api/ paths:
     #   - OIDC redirect is disabled (no login prompt)
-    #   - JWT is optional but claims extracted if present (for remote user auth)
+    #   - Authorization bearer JWT is optional and claims are extracted if present
     #   - Nautobot handles its own token auth for requests without JWT
     #
     # This enables both SSO users (with JWT) and API clients (with native tokens)
@@ -2498,6 +2585,7 @@ nautobot:
     authBypass:
       enabled: true
       paths:
+        - /logout/
         - /api/
   # Ingress (optional, for direct access)
   ingress:

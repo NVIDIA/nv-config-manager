@@ -81,12 +81,14 @@ class InfinibandCableValidationWorkflow(WorkflowMetadataMixin, StageMixin):
     """Infiniband cable validation workflow for high-performance computing networks."""
 
     # Workflow metadata
+    workflow_name = "InfiniBand Cable Validation"
     workflow_description = (
         "Validate Infiniband cable connections against intended topology using UFM data"
     )
     workflow_input_class = InfinibandCableValidationInput
     workflow_api_endpoint = "/ngc/infiniband_cable_validation"
     workflow_namespace = "ngc"
+    workflow_mcp_enabled = True
 
     def __init__(self) -> None:
         """Initialize workflow."""

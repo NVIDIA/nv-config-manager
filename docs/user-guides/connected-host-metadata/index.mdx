@@ -36,15 +36,15 @@ The workflow runs three stages. The first two are independent and run in paralle
 
 1. **`get_device_mac_table` — Read the FDB from the device.**
 
-    Queries the device for its MAC forwarding table, drops entries without a VLAN (typically CPU/local MACs), and renders the result as a Markdown table of (Interface, MAC, VLAN). On an empty FDB the stage display reads "No MAC Addresses found on device." rather than failing.
+   Queries the device for its MAC forwarding table, drops entries without a VLAN (typically CPU/local MACs), and renders the result as a Markdown table of (Interface, MAC, VLAN). On an empty FDB the stage display reads "No MAC Addresses found on device." rather than failing.
 
 1. **`get_device_neighbors` — Read the LLDP neighbor table from the device.**
 
-    Queries the device for its LLDP neighbors and renders (Interface, Neighbor Device, Neighbor Interface, Link Status). On an empty table the stage display reads "No LLDP neighbors found on device." rather than failing.
+   Queries the device for its LLDP neighbors and renders (Interface, Neighbor Device, Neighbor Interface, Link Status). On an empty table the stage display reads "No LLDP neighbors found on device." rather than failing.
 
 1. **`get_connected_host_data` — Join MAC + LLDP against Nautobot.**
 
-    Depends on the prior two stages. For each interface with a MAC or LLDP entry, the workflow:
+   Depends on the prior two stages. For each interface with a MAC or LLDP entry, the workflow:
 
    - Looks up hosts by MAC via `get_host_data_by_macs`.
    - Looks up hosts by device name via `get_host_data_by_names` (used when the LLDP neighbor name resolves to a Nautobot host).

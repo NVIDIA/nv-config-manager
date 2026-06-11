@@ -1,5 +1,5 @@
 .PHONY: help install dev test lint format clean docker-build docker-push ui-install ui-dev ui-build \
-        local-up local-down local-destroy local-status local-logs deploy kind-up kind-down topology install-cert \
+        local-up local-down local-destroy local-status local-logs deploy kind-up kind-up-sec kind-down topology install-cert workflow-perf-seed \
         openapi openapi-check docs-assets docs-assets-check docs-format docs-lint docs-lint-fern docs-live docs-preview docs-publish docs-publish-in-ci docs-screenshots docs-air-sim-screenshots docs-ui-screenshots \
         obs-grafana obs-prometheus obs-loki obs-alloy obs-port-forward obs-port-forward-stop
 
@@ -10,6 +10,17 @@ HOSTNAME ?= config-manager.local
 KIND_CLUSTER_NAME ?= nv-config-manager
 DEPLOY_SIZE ?= small  # Resource sizing: small (24GB Mac) or medium (64GB VM)
 INSTALL_CONFIG ?= deploy/configs/local-superpod.yaml
+KIND_SEC_INSTALL_CONFIG ?= deploy/configs/local-sec.yaml
+KIND_SEC_NAMESPACE ?= nv-config-manager
+KIND_SEC_HOSTNAME ?= config-manager.local
+KIND_SEC_KEYCLOAK_HOSTNAME ?= keycloak.$(KIND_SEC_HOSTNAME)
+KIND_SEC_SPIFFE_TRUST_DOMAIN ?= $(KIND_SEC_HOSTNAME)
+KIND_SEC_OIDC_CLIENT_SECRET ?= nvcm-local-client-secret
+KIND_SEC_KEYCLOAK_ADMIN_PASSWORD ?= admin
+KIND_SEC_RENDERED_CONFIG ?= /tmp/nvcm-local-sec-$(KIND_CLUSTER_NAME).yaml
+WORKFLOW_PERF_COUNT ?= 100
+WORKFLOW_PERF_RUNNING_COUNT ?= 150
+WORKFLOW_PERF_FAILED_COUNT ?= 1
 
 # Generate unique image tag: SHA-TIMESTAMP (e.g., abc1234-1704067200)
 GIT_SHA := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
@@ -49,9 +60,11 @@ help:
 	@echo ""
 	@echo "Kind Cluster Management:"
 	@echo "  make kind-up                      - Create Kind cluster and deploy NVIDIA Config Manager (small sizing, 24GB)"
+	@echo "  make kind-up-sec                  - Create Kind cluster with local Keycloak, SPIRE, and workflow RBAC"
 	@echo "  make kind-up DEPLOY_SIZE=medium   - Deploy with medium sizing (64GB VM)"
 	@echo "  make kind-down                    - Delete Kind cluster"
 	@echo "  make topology                     - Populate Nautobot with mock topology data"
+	@echo "  make workflow-perf-seed           - Seed local Temporal with pending/running/failing workflows for list latency testing"
 	@echo "  make install-cert                 - Install self-signed CA certificate in system keychain"
 	@echo ""
 	@echo "Docker Build:"
@@ -256,9 +269,9 @@ docs-lint:
 	echo "Linting documentation markdown with rumdl..."; \
 	cd docs; \
 	if command -v rumdl >/dev/null 2>&1; then \
-		rumdl check .; \
+		rumdl check --fail-on warning .; \
 	else \
-		npx --yes rumdl check .; \
+		npx --yes rumdl check --fail-on warning .; \
 	fi
 
 docs-format:
@@ -276,9 +289,9 @@ docs-lint-fern:
 	cd docs; \
 	echo "Checking Fern configuration..."; \
 	if command -v fern >/dev/null 2>&1; then \
-		fern check --local --warnings; \
+		fern check --warnings; \
 	else \
-		npx --yes fern-api check --local --warnings; \
+		npx --yes fern-api check --warnings; \
 	fi; \
 	echo ""; \
 	echo "Checking Fern markdown..."; \
@@ -759,6 +772,55 @@ kind-up:
 		--install-cnpg-operator \
 		--install-cert-manager \
 		$(HELM_DEBUG_FLAG) --helm-timeout $(HELM_TIMEOUT)
+
+# Deploy with Kind plus local Keycloak SSO, SPIRE SPIFFE, and workflow RBAC.
+kind-up-sec:
+	@echo "🚀 Deploying NVIDIA Config Manager with local security stack to Kind (config: $(KIND_SEC_INSTALL_CONFIG))..."
+	@if ! kind get clusters 2>/dev/null | grep -q "^$(KIND_CLUSTER_NAME)$$"; then \
+		echo "Creating Kind cluster: $(KIND_CLUSTER_NAME)"; \
+		kind create cluster --name $(KIND_CLUSTER_NAME) --config deploy/kind-config.yaml --wait 5m; \
+	fi
+	kind export kubeconfig --name $(KIND_CLUSTER_NAME)
+	./scripts/install-security-dependencies \
+		--cluster-name $(KIND_CLUSTER_NAME) \
+		--app-namespace $(KIND_SEC_NAMESPACE) \
+		--base-hostname $(KIND_SEC_HOSTNAME) \
+		--keycloak-hostname $(KIND_SEC_KEYCLOAK_HOSTNAME) \
+		--spiffe-trust-domain $(KIND_SEC_SPIFFE_TRUST_DOMAIN) \
+		--keycloak-admin-password $(KIND_SEC_KEYCLOAK_ADMIN_PASSWORD) \
+		--oidc-client-secret $(KIND_SEC_OIDC_CLIENT_SECRET)
+	uv run python scripts/render-local-security-config \
+		--input $(KIND_SEC_INSTALL_CONFIG) \
+		--output $(abspath $(KIND_SEC_RENDERED_CONFIG)) \
+		--namespace $(KIND_SEC_NAMESPACE) \
+		--release-name $(RELEASE_NAME) \
+		--hostname $(KIND_SEC_HOSTNAME) \
+		--keycloak-hostname $(KIND_SEC_KEYCLOAK_HOSTNAME) \
+		--spiffe-trust-domain $(KIND_SEC_SPIFFE_TRUST_DOMAIN) \
+		--oidc-client-secret $(KIND_SEC_OIDC_CLIENT_SECRET)
+	cd installer && uv run nv-config-manager-installer deploy $(abspath $(KIND_SEC_RENDERED_CONFIG)) \
+		--image-source local \
+		--build-images \
+		--load-kind \
+		--kind-cluster $(KIND_CLUSTER_NAME) \
+		--install-envoy-gateway \
+		--install-cnpg-operator \
+		--install-cert-manager \
+		$(HELM_DEBUG_FLAG) --helm-timeout $(HELM_TIMEOUT)
+	./scripts/create-local-security-nautobot-users \
+		--namespace $(KIND_SEC_NAMESPACE) \
+		--release-name $(RELEASE_NAME)
+
+# Seed Temporal with many non-terminal workflows to test workflow list latency.
+workflow-perf-seed:
+	@echo "🌱 Seeding workflow latency fixtures (pending: $(WORKFLOW_PERF_COUNT), running non-pending: $(WORKFLOW_PERF_RUNNING_COUNT), failed: $(WORKFLOW_PERF_FAILED_COUNT))..."
+	uv run scripts/seed-workflow-latency-data \
+		--port-forward \
+		--kube-namespace $(NAMESPACE) \
+		--release-name $(RELEASE_NAME) \
+		--count $(WORKFLOW_PERF_COUNT) \
+		--running-count $(WORKFLOW_PERF_RUNNING_COUNT) \
+		--failed-count $(WORKFLOW_PERF_FAILED_COUNT)
 
 # Create Kind cluster, deploy NVIDIA Config Manager, and populate with mock topology.
 # The topology job is declared in the config profile's content.run_after_deploy,

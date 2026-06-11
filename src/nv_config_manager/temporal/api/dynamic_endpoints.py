@@ -14,7 +14,6 @@
 # limitations under the License.
 """Dynamic API endpoint generation from workflow metadata."""
 
-import os
 from collections.abc import Awaitable, Callable
 from typing import Any, cast
 
@@ -23,7 +22,9 @@ from pydantic import BaseModel, computed_field
 
 from nv_config_manager.common.auth import get_sso_user
 from nv_config_manager.common.log import LogCategory, get_logger
+from nv_config_manager.temporal.api.links import temporal_ui_workflow_href
 from nv_config_manager.temporal.common.mixins.metadata import WorkflowMetadataMixin
+from nv_config_manager.temporal.common.rbac_config import RBACConfig
 from nv_config_manager.temporal.hello_world.workflows import (
     REGISTERED_WORKFLOWS as HELLO_WORLD_WORKFLOWS,
 )
@@ -40,8 +41,7 @@ class WorkflowResponse(BaseModel):
     @computed_field
     def href(self) -> str:
         """Calculate URL to Temporal UI Workflow View."""
-        ui_server = os.getenv("TEMPORAL_UI", "http://localhost:8080")
-        return f"{ui_server}/namespaces/default/workflows/{self.id}"
+        return temporal_ui_workflow_href(self.id)
 
 
 # Import the start_workflow function - this will be available when this module is imported
@@ -160,9 +160,10 @@ def register_dynamic_endpoints(router: APIRouter) -> None:
     logger.info(f"Successfully registered {registered_count} dynamic workflow endpoints")
 
 
-def get_registered_workflows_info() -> dict[str, dict[str, Any]]:
+def get_registered_workflows_info(*, include_rbac: bool = False) -> dict[str, dict[str, Any]]:
     """Get information about all registered workflows with metadata."""
-    workflows_info = {}
+    workflows_info: dict[str, dict[str, Any]] = {}
+    rbac_config = RBACConfig() if include_rbac else None
 
     all_workflows = NGC_WORKFLOWS + HELLO_WORLD_WORKFLOWS
 
@@ -173,12 +174,26 @@ def get_registered_workflows_info() -> dict[str, dict[str, Any]]:
 
             if metadata_workflow.has_complete_metadata():
                 input_class = metadata_workflow.get_workflow_input_class()
+                workflow_roles = (
+                    rbac_config.get_workflow_roles(workflow_class.__name__)
+                    if rbac_config is not None
+                    else None
+                )
                 workflows_info[workflow_class.__name__] = {
+                    "name": workflow_class.__name__,
+                    "display_name": metadata_workflow.get_workflow_name(),
                     "endpoint": metadata_workflow.get_workflow_api_endpoint(),
                     "input_class": input_class.__name__ if input_class else "Unknown",
                     "description": metadata_workflow.get_workflow_description(),
                     "namespace": metadata_workflow.get_workflow_namespace(),
                     "cli_name": metadata_workflow.get_workflow_cli_name(),
                 }
+                if include_rbac:
+                    workflows_info[workflow_class.__name__]["read_roles"] = sorted(
+                        workflow_roles["read_roles"] if workflow_roles else []
+                    )
+                    workflows_info[workflow_class.__name__]["execute_roles"] = sorted(
+                        workflow_roles["execute_roles"] if workflow_roles else []
+                    )
 
     return workflows_info

@@ -17,6 +17,8 @@ global:
   environment: local
   replicas: 1
   domain: config-manager.local
+  deploymentStrategy:
+    type: Recreate
 
 # =============================================================================
 # Mock SSO Authentication for Local Development
@@ -93,6 +95,9 @@ configStore:
     replicas: 1
   cacheRefresh:
     replicas: 1
+
+mcp:
+  enabled: true
 
 # Local infrastructure - single replicas
 redis:

@@ -145,7 +145,11 @@ class VaultPathsConfig(BaseModel):
     """All vault secret path groups consumed by the Helm chart."""
 
     nautobot: VaultPathConfig = Field(
-        default_factory=lambda: _path(token="token", natsPassword="nats_password")
+        default_factory=lambda: _path(
+            token="token",
+            readOnlyToken="read_only_token",
+            natsPassword="nats_password",
+        )
     )
     redis: VaultPathConfig = Field(default_factory=lambda: _path(password="password"))
     postgres: VaultPathConfig = Field(
@@ -291,9 +295,11 @@ class SSOConfig(BaseModel):
     provider: SSOProvider = SSOProvider.KEYCLOAK
     issuer_url: str = ""
     client_id: str = ""
+    cli_client_id: str = ""
     client_secret: str = ""
     jwks_uri: str = ""
     internal_issuer: str = ""
+    end_session_endpoint: str = ""
     audiences: str = ""
     scopes: str = ""
     jwt_providers: list[JWTProvider] = Field(default_factory=list)

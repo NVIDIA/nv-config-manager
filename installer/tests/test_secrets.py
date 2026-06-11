@@ -61,10 +61,24 @@ class TestGenerateSecrets:
 
         assert "nautobot_token" in state
         assert len(state["nautobot_token"]) == 40
+        assert "nautobot_read_only_token" not in state
         assert "redis_password" in state
         assert "nats_password" in state
         assert "django_secret_key" in state
         assert "temporal_db_password" in state
+
+    def test_kubernetes_nautobot_read_only_token_passes_through(self):
+        config = NVConfigManagerInstallConfig(
+            secrets=SecretsConfig(
+                method=SecretsMethod.KUBERNETES,
+                k8s=KubernetesSecretsConfig(
+                    nautobot=K8sSecretGroup(values={"readOnlyToken": "ro-token"}),
+                ),
+            ),
+        )
+        state = generate_secrets(config)
+
+        assert state["nautobot_read_only_token"] == "ro-token"
 
     def test_kubernetes_nautobot_admin_password_override(self):
         config = NVConfigManagerInstallConfig(

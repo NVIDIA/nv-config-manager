@@ -108,6 +108,13 @@ class SSOScreen(Container):
             yield Label("Client ID", classes="field-label")
             yield Input(value=sso.client_id, placeholder="OIDC client ID", id="sso-client-id")
 
+            yield Label("CLI Client ID (optional)", classes="field-label")
+            yield Input(
+                value=sso.cli_client_id,
+                placeholder="Defaults to client ID",
+                id="sso-cli-client-id",
+            )
+
             yield Label("Client Secret", classes="field-label")
             yield Input(
                 value=sso.client_secret,
@@ -183,6 +190,7 @@ class SSOScreen(Container):
 
         config.sso.issuer_url = self.query_one("#sso-issuer-url", Input).value
         config.sso.client_id = self.query_one("#sso-client-id", Input).value
+        config.sso.cli_client_id = self.query_one("#sso-cli-client-id", Input).value
         config.sso.client_secret = self.query_one("#sso-client-secret", Input).value
         config.sso.jwks_uri = self.query_one("#sso-jwks-uri", Input).value
         config.sso.audiences = self.query_one("#sso-audiences", Input).value
@@ -201,6 +209,7 @@ class SSOScreen(Container):
 
         self.query_one("#sso-issuer-url", Input).value = sso.issuer_url
         self.query_one("#sso-client-id", Input).value = sso.client_id
+        self.query_one("#sso-cli-client-id", Input).value = sso.cli_client_id
         self.query_one("#sso-client-secret", Input).value = sso.client_secret
         self.query_one("#sso-jwks-uri", Input).value = sso.jwks_uri
         self.query_one("#sso-audiences", Input).value = sso.audiences

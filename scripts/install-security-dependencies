@@ -1,0 +1,847 @@
+#!/usr/bin/env bash
+# Install the local security dependencies used by make kind-up-sec.
+#
+# This intentionally does not set up a VM, storage, MetalLB, OpenBao, or ESO.
+# It only installs the dependencies needed to exercise local SSO, SPIFFE, and
+# workflow RBAC:
+#   - cert-manager and the local self-signed issuer
+#   - Envoy Gateway CRDs and controller
+#   - SPIRE with CSI and OIDC discovery enabled
+#   - Keycloak with sample nvcm-* users and roles
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+DEPLOY_DIR="$REPO_ROOT/deploy"
+OPERATOR_VERSIONS_FILE="$DEPLOY_DIR/operator-versions.env"
+
+CLUSTER_NAME="nv-config-manager"
+APP_NAMESPACE="nv-config-manager"
+BASE_HOSTNAME="config-manager.local"
+KEYCLOAK_HOSTNAME=""
+SPIFFE_TRUST_DOMAIN=""
+KEYCLOAK_ADMIN_PASSWORD="admin"
+OIDC_CLIENT_SECRET="nvcm-local-client-secret"
+
+GATEWAY_API_VERSION="v1.4.1"
+ENVOY_GATEWAY_VERSION="v1.6.5"
+CERT_MANAGER_VERSION="v1.20.2"
+SPIRE_CRDS_VERSION="0.5.0"
+SPIRE_VERSION="0.29.0"
+KEYCLOAK_CONFIG_IMAGE="curlimages/curl:8.15.0"
+if [[ -f "$OPERATOR_VERSIONS_FILE" ]]; then
+    # shellcheck disable=SC1090
+    source "$OPERATOR_VERSIONS_FILE"
+fi
+
+usage() {
+    cat <<'EOF'
+Usage: ./scripts/install-security-dependencies [OPTIONS]
+
+Options:
+  --cluster-name NAME              Kind cluster name used by SPIRE (default: nv-config-manager)
+  --app-namespace NAME             NVCM namespace that owns the Gateway (default: nv-config-manager)
+  --base-hostname HOST             Base hostname for local Gateway certs (default: config-manager.local)
+  --keycloak-hostname HOST         Keycloak hostname (default: keycloak.<base-hostname>)
+  --spiffe-trust-domain DOMAIN     SPIRE trust domain (default: <base-hostname>)
+  --keycloak-admin-password PASS   Local Keycloak admin password (default: admin)
+  --oidc-client-secret SECRET      OIDC client secret shared with installer config
+  --help                           Show this help
+EOF
+}
+
+require_option_value() {
+    local option="$1"
+    local value="${2:-}"
+
+    if [[ -z "$value" || "$value" == --* ]]; then
+        echo "Missing value for $option" >&2
+        usage >&2
+        exit 1
+    fi
+
+    printf '%s\n' "$value"
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --cluster-name)
+            CLUSTER_NAME="$(require_option_value "$1" "${2:-}")"
+            shift 2
+            ;;
+        --app-namespace)
+            APP_NAMESPACE="$(require_option_value "$1" "${2:-}")"
+            shift 2
+            ;;
+        --base-hostname)
+            BASE_HOSTNAME="$(require_option_value "$1" "${2:-}")"
+            shift 2
+            ;;
+        --keycloak-hostname)
+            KEYCLOAK_HOSTNAME="$(require_option_value "$1" "${2:-}")"
+            shift 2
+            ;;
+        --spiffe-trust-domain)
+            SPIFFE_TRUST_DOMAIN="$(require_option_value "$1" "${2:-}")"
+            shift 2
+            ;;
+        --keycloak-admin-password)
+            KEYCLOAK_ADMIN_PASSWORD="$(require_option_value "$1" "${2:-}")"
+            shift 2
+            ;;
+        --oidc-client-secret)
+            OIDC_CLIENT_SECRET="$(require_option_value "$1" "${2:-}")"
+            shift 2
+            ;;
+        --help|-h)
+            usage
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1" >&2
+            usage >&2
+            exit 1
+            ;;
+    esac
+done
+
+if [[ -z "$KEYCLOAK_HOSTNAME" ]]; then
+    KEYCLOAK_HOSTNAME="keycloak.${BASE_HOSTNAME}"
+fi
+if [[ -z "$SPIFFE_TRUST_DOMAIN" ]]; then
+    SPIFFE_TRUST_DOMAIN="$BASE_HOSTNAME"
+fi
+
+require_cmd() {
+    local cmd="$1"
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+        echo "Required command not found: $cmd" >&2
+        exit 1
+    fi
+}
+
+require_cmd kubectl
+require_cmd helm
+
+ensure_local_host() {
+    local local_host="$1"
+
+    if awk -v host="$local_host" '
+        $1 == "127.0.0.1" {
+            for (i = 2; i <= NF; i++) {
+                if ($i == host) {
+                    found = 1
+                }
+            }
+        }
+        END { exit found ? 0 : 1 }
+    ' /etc/hosts; then
+        echo "Local host entry exists: ${local_host} -> 127.0.0.1"
+        return
+    fi
+
+    echo "Adding local host entry: ${local_host} -> 127.0.0.1"
+    local tmp_hosts
+    tmp_hosts="$(mktemp)"
+    awk -v host="$local_host" -v base_host="$BASE_HOSTNAME" '
+        $1 == "127.0.0.1" && !added {
+            has_base = 0
+            for (i = 2; i <= NF; i++) {
+                if ($i == base_host) {
+                    has_base = 1
+                }
+            }
+            if (has_base) {
+                print $0 " " host
+                added = 1
+                next
+            }
+        }
+        { print }
+        END {
+            if (!added) {
+                print "127.0.0.1\t" host
+            }
+        }
+    ' /etc/hosts > "$tmp_hosts"
+
+    if [[ -w /etc/hosts ]]; then
+        cp "$tmp_hosts" /etc/hosts
+    elif command -v sudo >/dev/null 2>&1; then
+        sudo cp "$tmp_hosts" /etc/hosts
+    else
+        rm -f "$tmp_hosts"
+        echo "Unable to update /etc/hosts. Add this entry manually:" >&2
+        echo "127.0.0.1 ${local_host}" >&2
+        exit 1
+    fi
+    rm -f "$tmp_hosts"
+}
+
+echo "Installing local security dependencies"
+echo "  Cluster:              $CLUSTER_NAME"
+echo "  App namespace:        $APP_NAMESPACE"
+echo "  Base hostname:        $BASE_HOSTNAME"
+echo "  Keycloak hostname:    $KEYCLOAK_HOSTNAME"
+echo "  SPIFFE trust domain:  $SPIFFE_TRUST_DOMAIN"
+echo ""
+
+ensure_local_host "$KEYCLOAK_HOSTNAME"
+
+install_cert_manager() {
+    echo "Installing cert-manager ${CERT_MANAGER_VERSION}"
+    helm repo add jetstack https://charts.jetstack.io 2>/dev/null || true
+    helm repo update
+
+    kubectl apply -f "https://github.com/cert-manager/cert-manager/releases/download/${CERT_MANAGER_VERSION}/cert-manager.crds.yaml"
+    helm upgrade --install cert-manager jetstack/cert-manager \
+        --namespace cert-manager \
+        --create-namespace \
+        --version "${CERT_MANAGER_VERSION}" \
+        --wait --timeout 5m
+
+    kubectl wait --timeout=2m -n cert-manager deployment/cert-manager --for=condition=Available
+    kubectl wait --timeout=2m -n cert-manager deployment/cert-manager-webhook --for=condition=Available
+    kubectl wait --timeout=2m -n cert-manager deployment/cert-manager-cainjector --for=condition=Available
+
+    kubectl apply -f - <<'ISSUER_EOF'
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-issuer
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: selfsigned-ca
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: "NVIDIA Config Manager CA"
+  secretName: selfsigned-ca-secret
+  duration: 8760h
+  renewBefore: 720h
+  privateKey:
+    algorithm: RSA
+    size: 2048
+  issuerRef:
+    name: selfsigned-issuer
+    kind: ClusterIssuer
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: nv-config-manager-ca-issuer
+spec:
+  ca:
+    secretName: selfsigned-ca-secret
+ISSUER_EOF
+
+    kubectl wait --timeout=60s -n cert-manager certificate/selfsigned-ca --for=condition=Ready 2>/dev/null || true
+}
+
+install_envoy_gateway() {
+    echo "Installing Envoy Gateway ${ENVOY_GATEWAY_VERSION}"
+    echo "Installing Gateway API ${GATEWAY_API_VERSION} CRDs"
+    kubectl apply --server-side --force-conflicts \
+        -f "https://github.com/kubernetes-sigs/gateway-api/releases/download/${GATEWAY_API_VERSION}/standard-install.yaml"
+
+    local envoy_crds
+    envoy_crds="$(helm show crds oci://docker.io/envoyproxy/gateway-helm \
+        --version "${ENVOY_GATEWAY_VERSION}" \
+        | awk '
+            function flush() {
+                if (keep && doc != "") {
+                    if (printed) {
+                        print "---"
+                    }
+                    printf "%s", doc
+                    printed = 1
+                }
+                doc = ""
+                keep = 0
+            }
+            /^---[[:space:]]*$/ {
+                flush()
+                next
+            }
+            {
+                doc = doc $0 "\n"
+                if ($0 ~ /^  name: .*[.]gateway[.]envoyproxy[.]io$/) {
+                    keep = 1
+                }
+            }
+            END {
+                flush()
+            }
+        ')"
+    if [[ -z "$envoy_crds" ]]; then
+        echo "Envoy Gateway chart did not include gateway.envoyproxy.io CRDs" >&2
+        exit 1
+    fi
+    printf '%s\n' "$envoy_crds" | kubectl apply --server-side --force-conflicts -f -
+
+    helm upgrade --install eg oci://docker.io/envoyproxy/gateway-helm \
+        --version "${ENVOY_GATEWAY_VERSION}" \
+        -n envoy-gateway-system \
+        --create-namespace \
+        --skip-crds \
+        --wait --timeout 5m
+}
+
+install_spire() {
+    echo "Installing SPIRE"
+    helm repo add spiffe https://spiffe.github.io/helm-charts-hardened 2>/dev/null || true
+    helm repo update
+
+    helm upgrade --install spire-crds spiffe/spire-crds \
+        --version "${SPIRE_CRDS_VERSION}" \
+        --namespace spire-system \
+        --create-namespace \
+        --wait --timeout 2m
+
+    helm upgrade --install spire spiffe/spire \
+        --version "${SPIRE_VERSION}" \
+        --namespace spire-system \
+        --set global.spire.trustDomain="$SPIFFE_TRUST_DOMAIN" \
+        --set global.spire.clusterName="$CLUSTER_NAME" \
+        --set spire-server.controllerManager.enabled=true \
+        --set spire-server.controllerManager.identities.clusterSPIFFEIDs.default.enabled=true \
+        --set spiffe-csi-driver.enabled=true \
+        --set spiffe-oidc-discovery-provider.enabled=true \
+        --wait --timeout 5m
+
+    kubectl wait --for=condition=ready pod -n spire-system -l app.kubernetes.io/name=server --timeout=120s 2>/dev/null || true
+    kubectl wait --for=condition=ready pod -n spire-system -l app.kubernetes.io/name=agent --timeout=120s 2>/dev/null || true
+}
+
+install_keycloak() {
+    echo "Installing Keycloak"
+    kubectl create namespace keycloak 2>/dev/null || true
+    kubectl create secret generic keycloak-admin \
+        --from-literal=KEYCLOAK_ADMIN=admin \
+        --from-literal=KEYCLOAK_ADMIN_PASSWORD="$KEYCLOAK_ADMIN_PASSWORD" \
+        -n keycloak \
+        --dry-run=client -o yaml | kubectl apply -f -
+    kubectl create secret generic shared-oidc-secret \
+        --namespace keycloak \
+        --from-literal=client-secret="$OIDC_CLIENT_SECRET" \
+        --dry-run=client -o yaml | kubectl apply -f -
+
+    local keycloak_external_url="https://${KEYCLOAK_HOSTNAME}"
+
+    kubectl apply -f - <<KEYCLOAK_DEPLOY_EOF
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+  namespace: keycloak
+  labels:
+    app: keycloak
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: keycloak
+  template:
+    metadata:
+      labels:
+        app: keycloak
+    spec:
+      containers:
+      - name: keycloak
+        image: quay.io/keycloak/keycloak:26.0
+        args:
+        - "start-dev"
+        - "--hostname=${keycloak_external_url}"
+        env:
+        - name: KC_BOOTSTRAP_ADMIN_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: keycloak-admin
+              key: KEYCLOAK_ADMIN
+        - name: KC_BOOTSTRAP_ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: keycloak-admin
+              key: KEYCLOAK_ADMIN_PASSWORD
+        - name: KC_PROXY_HEADERS
+          value: "xforwarded"
+        - name: KC_HTTP_ENABLED
+          value: "true"
+        - name: KC_HEALTH_ENABLED
+          value: "true"
+        - name: JAVA_OPTS_APPEND
+          value: "-Xms256m -Xmx768m"
+        ports:
+        - name: http
+          containerPort: 8080
+        - name: health
+          containerPort: 9000
+        startupProbe:
+          httpGet:
+            path: /health/started
+            port: 9000
+          periodSeconds: 1
+          failureThreshold: 600
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 9000
+          periodSeconds: 10
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: 9000
+          periodSeconds: 10
+          failureThreshold: 3
+        resources:
+          requests:
+            memory: 768Mi
+            cpu: 25m
+          limits:
+            memory: 1024Mi
+            cpu: 500m
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+  namespace: keycloak
+  labels:
+    app: keycloak
+spec:
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8080
+  selector:
+    app: keycloak
+KEYCLOAK_DEPLOY_EOF
+
+    kubectl rollout status deployment/keycloak -n keycloak --timeout=300s
+    configure_keycloak_realm
+    expose_keycloak_gateway
+
+    echo ""
+    echo "Keycloak access:"
+    echo "  URL:   ${keycloak_external_url}"
+    echo "  Admin: admin / ${KEYCLOAK_ADMIN_PASSWORD}"
+    echo "  Users:"
+    echo "    nvcm-readonly / nvcm-readonly  (roles: nvcm-readonly)"
+    echo "    nvcm-network  / nvcm-network   (roles: nvcm-network)"
+    echo "    nvcm-admin    / nvcm-admin     (roles: nvcm-admin, nvcm-network)"
+    echo "    demo          / demo           (roles: nvcm-network)"
+}
+
+configure_keycloak_realm() {
+    kubectl delete job keycloak-config -n keycloak 2>/dev/null || true
+    cat <<'KEYCLOAK_CONFIG_EOF' | sed "s|__KEYCLOAK_CONFIG_IMAGE__|${KEYCLOAK_CONFIG_IMAGE}|g" | kubectl apply -f -
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: keycloak-config
+  namespace: keycloak
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: config
+        image: __KEYCLOAK_CONFIG_IMAGE__
+        env:
+        - name: KEYCLOAK_ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: keycloak-admin
+              key: KEYCLOAK_ADMIN_PASSWORD
+        - name: OIDC_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: shared-oidc-secret
+              key: client-secret
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          set -e
+
+          until curl -sf http://keycloak:80/realms/master >/dev/null 2>&1; do
+            echo "Waiting for Keycloak..."
+            sleep 5
+          done
+
+          TOKEN=$(curl -sf -X POST "http://keycloak:80/realms/master/protocol/openid-connect/token" \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            -d "username=admin" \
+            -d "password=${KEYCLOAK_ADMIN_PASSWORD}" \
+            -d "grant_type=password" \
+            -d "client_id=admin-cli" | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
+
+          if [ -z "$TOKEN" ]; then
+            echo "Failed to get admin token"
+            exit 1
+          fi
+
+          if curl -sf -H "Authorization: Bearer $TOKEN" "http://keycloak:80/admin/realms/nv-config-manager" >/dev/null 2>&1; then
+            echo "Realm exists"
+          else
+            curl -sf -X POST "http://keycloak:80/admin/realms" \
+              -H "Authorization: Bearer $TOKEN" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "realm": "nv-config-manager",
+                "enabled": true,
+                "sslRequired": "none",
+                "registrationAllowed": false,
+                "loginWithEmailAllowed": true,
+                "duplicateEmailsAllowed": false,
+                "resetPasswordAllowed": true,
+                "bruteForceProtected": true,
+                "accessTokenLifespan": 3600,
+                "ssoSessionIdleTimeout": 1800,
+                "ssoSessionMaxLifespan": 36000
+              }'
+          fi
+
+          client_uuid() {
+            curl -sf -H "Authorization: Bearer $TOKEN" \
+              "http://keycloak:80/admin/realms/nv-config-manager/clients?clientId=nv-config-manager" \
+              | tr '{' '\n' \
+              | grep '"clientId":"nv-config-manager"' \
+              | sed -n 's/.*"id":"\([^"]*\)".*/\1/p' \
+              | head -n 1
+          }
+
+          if [ -z "$(client_uuid)" ]; then
+            curl -sf -X POST "http://keycloak:80/admin/realms/nv-config-manager/clients" \
+              -H "Authorization: Bearer $TOKEN" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "clientId": "nv-config-manager",
+                "name": "NVIDIA Config Manager",
+                "enabled": true,
+                "publicClient": false,
+                "directAccessGrantsEnabled": true,
+                "standardFlowEnabled": true,
+                "implicitFlowEnabled": true,
+                "serviceAccountsEnabled": true,
+                "protocol": "openid-connect",
+                "redirectUris": ["*", "http://127.0.0.1:*"],
+                "webOrigins": ["*"],
+                "attributes": {
+                  "access.token.lifespan": "3600"
+                }
+              }'
+          fi
+
+          CLIENT_UUID=$(client_uuid)
+          if [ -z "$CLIENT_UUID" ]; then
+            echo "Failed to resolve nv-config-manager client id"
+            exit 1
+          fi
+
+          curl -sf -X PUT "http://keycloak:80/admin/realms/nv-config-manager/clients/${CLIENT_UUID}" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"clientId\": \"nv-config-manager\",
+              \"name\": \"NVIDIA Config Manager\",
+              \"enabled\": true,
+              \"publicClient\": false,
+              \"secret\": \"${OIDC_CLIENT_SECRET}\",
+              \"directAccessGrantsEnabled\": true,
+              \"standardFlowEnabled\": true,
+              \"implicitFlowEnabled\": true,
+              \"serviceAccountsEnabled\": true,
+              \"protocol\": \"openid-connect\",
+              \"redirectUris\": [\"*\", \"http://127.0.0.1:*\"],
+              \"webOrigins\": [\"*\"],
+              \"attributes\": {\"access.token.lifespan\": \"3600\"}
+            }"
+
+          if curl -sf -H "Authorization: Bearer $TOKEN" \
+            "http://keycloak:80/admin/realms/nv-config-manager/clients/${CLIENT_UUID}/protocol-mappers/models" \
+            | grep -q '"name":"realm roles"'; then
+            echo "Realm roles mapper exists"
+          else
+            curl -sf -X POST \
+              "http://keycloak:80/admin/realms/nv-config-manager/clients/${CLIENT_UUID}/protocol-mappers/models" \
+              -H "Authorization: Bearer $TOKEN" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "name": "realm roles",
+                "protocol": "openid-connect",
+                "protocolMapper": "oidc-usermodel-realm-role-mapper",
+                "consentRequired": false,
+                "config": {
+                  "multivalued": "true",
+                  "userinfo.token.claim": "true",
+                  "id.token.claim": "true",
+                  "access.token.claim": "true",
+                  "claim.name": "roles",
+                  "jsonType.label": "String"
+                }
+              }'
+          fi
+
+          cli_client_uuid() {
+            curl -sf -H "Authorization: Bearer $TOKEN" \
+              "http://keycloak:80/admin/realms/nv-config-manager/clients?clientId=nv-config-manager-cli" \
+              | tr '{' '\n' \
+              | grep '"clientId":"nv-config-manager-cli"' \
+              | sed -n 's/.*"id":"\([^"]*\)".*/\1/p' \
+              | head -n 1
+          }
+
+          if [ -z "$(cli_client_uuid)" ]; then
+            curl -sf -X POST "http://keycloak:80/admin/realms/nv-config-manager/clients" \
+              -H "Authorization: Bearer $TOKEN" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "clientId": "nv-config-manager-cli",
+                "name": "NVIDIA Config Manager CLI",
+                "enabled": true,
+                "publicClient": true,
+                "directAccessGrantsEnabled": false,
+                "standardFlowEnabled": true,
+                "implicitFlowEnabled": false,
+                "serviceAccountsEnabled": false,
+                "protocol": "openid-connect",
+                "redirectUris": ["http://localhost:*", "http://127.0.0.1:*"],
+                "webOrigins": ["*"],
+                "attributes": {
+                  "access.token.lifespan": "3600",
+                  "pkce.code.challenge.method": "S256"
+                }
+              }'
+          fi
+
+          CLI_CLIENT_UUID=$(cli_client_uuid)
+          if [ -z "$CLI_CLIENT_UUID" ]; then
+            echo "Failed to resolve nv-config-manager-cli client id"
+            exit 1
+          fi
+
+          curl -sf -X PUT "http://keycloak:80/admin/realms/nv-config-manager/clients/${CLI_CLIENT_UUID}" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "clientId": "nv-config-manager-cli",
+              "name": "NVIDIA Config Manager CLI",
+              "enabled": true,
+              "publicClient": true,
+              "directAccessGrantsEnabled": false,
+              "standardFlowEnabled": true,
+              "implicitFlowEnabled": false,
+              "serviceAccountsEnabled": false,
+              "protocol": "openid-connect",
+              "redirectUris": ["http://localhost:*", "http://127.0.0.1:*"],
+              "webOrigins": ["*"],
+              "attributes": {
+                "access.token.lifespan": "3600",
+                "pkce.code.challenge.method": "S256"
+              }
+            }'
+
+          if curl -sf -H "Authorization: Bearer $TOKEN" \
+            "http://keycloak:80/admin/realms/nv-config-manager/clients/${CLI_CLIENT_UUID}/protocol-mappers/models" \
+            | grep -q '"name":"realm roles"'; then
+            echo "CLI realm roles mapper exists"
+          else
+            curl -sf -X POST \
+              "http://keycloak:80/admin/realms/nv-config-manager/clients/${CLI_CLIENT_UUID}/protocol-mappers/models" \
+              -H "Authorization: Bearer $TOKEN" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "name": "realm roles",
+                "protocol": "openid-connect",
+                "protocolMapper": "oidc-usermodel-realm-role-mapper",
+                "consentRequired": false,
+                "config": {
+                  "multivalued": "true",
+                  "userinfo.token.claim": "true",
+                  "id.token.claim": "true",
+                  "access.token.claim": "true",
+                  "claim.name": "roles",
+                  "jsonType.label": "String"
+                }
+              }'
+          fi
+
+          ensure_realm_role() {
+            role="$1"
+            description="$2"
+            if curl -sf -H "Authorization: Bearer $TOKEN" \
+              "http://keycloak:80/admin/realms/nv-config-manager/roles/${role}" >/dev/null 2>&1; then
+              return
+            fi
+            curl -sf -X POST "http://keycloak:80/admin/realms/nv-config-manager/roles" \
+              -H "Authorization: Bearer $TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "{\"name\":\"${role}\",\"description\":\"${description}\"}"
+          }
+
+          user_uuid() {
+            username="$1"
+            curl -sf -H "Authorization: Bearer $TOKEN" \
+              "http://keycloak:80/admin/realms/nv-config-manager/users?username=${username}&exact=true" \
+              | tr '{' '\n' \
+              | grep "\"username\":\"${username}\"" \
+              | sed -n 's/.*"id":"\([^"]*\)".*/\1/p' \
+              | head -n 1
+          }
+
+          assign_realm_role() {
+            uid="$1"
+            role="$2"
+            if curl -sf -H "Authorization: Bearer $TOKEN" \
+              "http://keycloak:80/admin/realms/nv-config-manager/users/${uid}/role-mappings/realm" \
+              | grep -q "\"name\":\"${role}\""; then
+              return
+            fi
+            role_payload=$(curl -sf -H "Authorization: Bearer $TOKEN" \
+              "http://keycloak:80/admin/realms/nv-config-manager/roles/${role}")
+            curl -sf -X POST \
+              "http://keycloak:80/admin/realms/nv-config-manager/users/${uid}/role-mappings/realm" \
+              -H "Authorization: Bearer $TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "[${role_payload}]"
+          }
+
+          ensure_user() {
+            username="$1"
+            password="$2"
+            email="$3"
+            first_name="$4"
+            last_name="$5"
+            shift 5
+
+            uid=$(user_uuid "$username")
+            if [ -z "$uid" ]; then
+              curl -sf -X POST "http://keycloak:80/admin/realms/nv-config-manager/users" \
+                -H "Authorization: Bearer $TOKEN" \
+                -H "Content-Type: application/json" \
+                -d "{
+                  \"username\": \"${username}\",
+                  \"email\": \"${email}\",
+                  \"firstName\": \"${first_name}\",
+                  \"lastName\": \"${last_name}\",
+                  \"enabled\": true,
+                  \"emailVerified\": true
+                }"
+              uid=$(user_uuid "$username")
+            fi
+
+            curl -sf -X PUT "http://keycloak:80/admin/realms/nv-config-manager/users/${uid}/reset-password" \
+              -H "Authorization: Bearer $TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "{\"type\":\"password\",\"value\":\"${password}\",\"temporary\":false}"
+
+            for role in "$@"; do
+              assign_realm_role "$uid" "$role"
+            done
+          }
+
+          ensure_realm_role "nvcm-readonly" "Read-only NVIDIA Config Manager access"
+          ensure_realm_role "nvcm-network" "Workflow execution access for network operators"
+          ensure_realm_role "nvcm-admin" "Administrative NVIDIA Config Manager access"
+
+          ensure_user "nvcm-readonly" "nvcm-readonly" "nvcm-readonly@config-manager.local" "NVCM" "Readonly" "nvcm-readonly"
+          ensure_user "nvcm-network" "nvcm-network" "nvcm-network@config-manager.local" "NVCM" "Network" "nvcm-network"
+          ensure_user "nvcm-admin" "nvcm-admin" "nvcm-admin@config-manager.local" "NVCM" "Admin" "nvcm-admin" "nvcm-network"
+          ensure_user "demo" "demo" "demo@config-manager.local" "Demo" "User" "nvcm-network"
+KEYCLOAK_CONFIG_EOF
+
+    kubectl wait --for=condition=complete job/keycloak-config -n keycloak --timeout=120s
+    kubectl logs job/keycloak-config -n keycloak
+}
+
+expose_keycloak_gateway() {
+    kubectl create namespace "$APP_NAMESPACE" 2>/dev/null || true
+    kubectl apply -f - <<KEYCLOAK_ROUTE_EOF
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: keycloak
+  namespace: ${APP_NAMESPACE}
+spec:
+  parentRefs:
+    - name: nv-config-manager-gateway
+      namespace: ${APP_NAMESPACE}
+      sectionName: https
+  hostnames:
+    - "${KEYCLOAK_HOSTNAME}"
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: keycloak
+          namespace: keycloak
+          port: 80
+---
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: allow-${APP_NAMESPACE}-keycloak-route
+  namespace: keycloak
+spec:
+  from:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      namespace: ${APP_NAMESPACE}
+  to:
+    - group: ""
+      kind: Service
+      name: keycloak
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: keycloak-auth-bypass
+  namespace: ${APP_NAMESPACE}
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: keycloak
+  cors:
+    allowOrigins:
+      - "https://${BASE_HOSTNAME}"
+      - "https://*.${BASE_HOSTNAME}"
+    allowMethods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - PATCH
+      - OPTIONS
+    allowHeaders:
+      - "*"
+    exposeHeaders:
+      - "*"
+    allowCredentials: true
+    maxAge: 86400s
+KEYCLOAK_ROUTE_EOF
+
+    if kubectl get gateway -n "$APP_NAMESPACE" nv-config-manager-gateway >/dev/null 2>&1; then
+        kubectl wait --timeout=120s -n "$APP_NAMESPACE" httproute/keycloak --for=condition=Accepted 2>/dev/null || true
+    fi
+}
+
+install_cert_manager
+install_envoy_gateway
+install_spire
+install_keycloak
+
+echo ""
+echo "Local security dependencies are installed."
+echo "If a browser has stale OIDC cookies from an older local cluster, open:"
+echo "  https://${BASE_HOSTNAME}/auth/logout"
