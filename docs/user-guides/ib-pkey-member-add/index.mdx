@@ -28,7 +28,7 @@ Before running, confirm:
 | :---- | :---------- | :------- |
 | **UFM Host** | Nautobot device name of the UFM server that owns the PKey. | Yes |
 | **PKey** | Partition key the members are joining, for example `0x8001`. | Yes |
-| **Membership Type** | `full` (read/write) or `limited` (read-only). Default `full`. | Yes |
+| **Membership Type** | `full` (read/write) or `limited` (read-only). Defaults to `full`. | Yes |
 | **Member Source** | `By Interfaces` accepts `device/interface` rows. `By GUIDs` accepts raw `0x` + 16 hex GUIDs, one per line or comma-separated. | Yes |
 | **Interfaces** / **GUIDs** | The list itself, depending on **Member Source**. | At least one row/GUID required |
 

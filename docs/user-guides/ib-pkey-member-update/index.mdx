@@ -32,7 +32,7 @@ Before running, confirm:
 | :---- | :---------- | :------- |
 | **UFM Host** | Nautobot device name of the UFM server that owns the PKey. | Yes |
 | **PKey** | Partition key whose membership is being reconciled. | Yes |
-| **Membership Type** | `full` or `limited`. Applied to any newly added members. | Yes |
+| **Membership Type** | `full` or `limited`, applied to any newly added members. Defaults to `full`. | Yes |
 | **Member Source** | `By Interfaces` or `By GUIDs`. | Yes |
 | **Interfaces** / **GUIDs** | The desired complete member list. Any current member not in this list is queued for removal. | At least one row/GUID required |
 

@@ -18,14 +18,14 @@ When the computed diff contains any removals, the workflow pauses at `validate_d
 
 ### Form Inputs
 
-| Field | Description | Selection Type | Required |
-| :---- | :---------- | :------------- | :------- |
-| **UFM Host** | Nautobot device name of the UFM server that owns the PKey | Text input field | Yes |
-| **PKey** | Partition key whose membership is being reconciled | Text input field | Yes |
-| **Membership Type** | `full` or `limited`, applied to any newly added members | Single dropdown (default `full`) | Yes |
-| **Member Source** | `By Interfaces` or `By GUIDs` | Radio group | Yes |
-| **Interfaces** | Desired complete list of device + interface rows | Repeating text input pair | When **Member Source** is `By Interfaces` |
-| **GUIDs** | Desired complete list of `0x` + 16 hex GUIDs | Multi-line text input | When **Member Source** is `By GUIDs` |
+| Field | Description | Required |
+| :---- | :---------- | :------- |
+| **UFM Host** | Nautobot device name of the UFM server that owns the PKey | Yes |
+| **PKey** | Partition key whose membership is being reconciled | Yes |
+| **Membership Type** | `full` or `limited`, applied to any newly added members. Defaults to `full`. | Yes |
+| **Member Source** | `By Interfaces` or `By GUIDs` | Yes |
+| **Interfaces** | Desired complete list of device + interface rows | When **Member Source** is `By Interfaces` |
+| **GUIDs** | Desired complete list of `0x` + 16 hex GUIDs | When **Member Source** is `By GUIDs` |
 
 ![InfiniBand PKey Member Update workflow form](../../assets/images/workflows/ibpkeymemberupdateworkflow-form.png)
 

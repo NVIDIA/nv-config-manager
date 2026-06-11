@@ -16,10 +16,10 @@ The workflow is idempotent on the canonical PKey value. Re-running with the same
 
 ### Form Inputs
 
-| Field | Description | Selection Type | Required |
-| :---- | :---------- | :------------- | :------- |
-| **UFM Host** | Nautobot device name of the UFM server that will own the PKey | Text input field | Yes |
-| **PKey** | Specific partition key to allocate (`0x` + 1-4 hex digits). Leave blank to auto-assign in `[0x0001, 0x7FFE]` | Text input field | No |
+| Field | Description | Required |
+| :---- | :---------- | :------- |
+| **UFM Host** | Nautobot device name of the UFM server that will own the PKey | Yes |
+| **PKey** | Specific partition key to allocate (`0x` + 1-4 hex digits). Leave blank to auto-assign in `[0x0001, 0x7FFE]` | No |
 
 ![InfiniBand PKey Creation workflow form](../../assets/images/workflows/ibpkeycreationworkflow-form.png)
 
