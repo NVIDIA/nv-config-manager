@@ -36,6 +36,7 @@ from temporalio.client import (
     WorkflowQueryFailedError,
 )
 from temporalio.common import SearchAttributes
+from temporalio.contrib.opentelemetry import TracingInterceptor
 from temporalio.service import RPCError, RPCStatusCode
 
 from nv_config_manager.common.config import load_config
@@ -68,6 +69,7 @@ from nv_config_manager.temporal.common.search_attributes import (
     USER_SEARCH_ATTRIBUTE,
 )
 from nv_config_manager.temporal.converter import get_data_converter
+from nv_config_manager.temporal.telemetry import get_runtime
 from nv_config_manager.temporal.hello_world.workflows import (
     REGISTERED_WORKFLOWS as HELLO_WORLD_REGISTERED_WORKFLOWS,
 )
@@ -464,6 +466,8 @@ async def get_client() -> Client:
         temporal_server,
         namespace="default",
         data_converter=get_data_converter(),
+        interceptors=[TracingInterceptor()],
+        runtime=get_runtime(),
     )
 
 

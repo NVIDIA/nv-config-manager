@@ -50,7 +50,11 @@ dependencies = [
     "nkeys>=0.2.0",
     # Temporal
     # Security: Fix rustls-webpki vulnerability in Temporal bridge (GHSA-82j2-j2ch-gfr8)
-    "temporalio>=1.29.0",
+    "temporalio[opentelemetry]>=1.29.0",
+    # OpenTelemetry — trace export and FastAPI HTTP instrumentation
+    # (opentelemetry-api and opentelemetry-sdk come via temporalio[opentelemetry])
+    "opentelemetry-exporter-otlp-proto-grpc>=1.11.1,<2",
+    "opentelemetry-instrumentation-fastapi>=0.46b0",
     # Security: Fix protobuf JSON recursion depth bypass (GHSA-7gcm-g887-7qv7)
     "protobuf>=6.33.5",
     # Network Automation

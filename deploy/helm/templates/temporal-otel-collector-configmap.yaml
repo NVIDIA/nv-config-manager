@@ -1,0 +1,87 @@
+# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
+{{- if and .Values.temporal.enabled .Values.temporal.observability.enabled }}
+{{- $temporalName := include "nv-config-manager.componentName" (dict "root" . "component" "temporal") }}
+---
+# OTel Collector configuration for the Temporal worker and API sidecar (GNINWD-1588).
+# Both pods share this ConfigMap; each pod's sidecar reads it at /etc/otelcol-contrib/config.yaml.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $temporalName }}-otel-collector-config
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: temporal-otel-collector
+data:
+  config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: "0.0.0.0:4317"
+          http:
+            endpoint: "0.0.0.0:4318"
+
+    processors:
+      # Enrich every signal with Kubernetes identity (pod/namespace/node).
+      # Requires the collector pod's ServiceAccount to have get/list/watch on pods.
+      k8sattributes:
+        auth_type: "serviceAccount"
+        extract:
+          metadata:
+            - k8s.pod.name
+            - k8s.namespace.name
+            - k8s.node.name
+
+      # Inject the four attributes required by Panoptes for tenant routing.
+      attributes/panoptes:
+        actions:
+          - key: customer
+            value: {{ .Values.temporal.observability.panoptes.customer | quote }}
+            action: upsert
+          - key: mgmt_owner
+            value: {{ .Values.temporal.observability.panoptes.mgmtOwner | quote }}
+            action: upsert
+          - key: nspect_id
+            value: {{ .Values.temporal.observability.panoptes.nspectId | quote }}
+            action: upsert
+          - key: nv_visible
+            value: "1"
+            action: upsert
+
+      # Stamp deployment.environment on every signal's resource.
+      resource:
+        attributes:
+          - key: deployment.environment
+            value: {{ .Values.global.environment | quote }}
+            action: upsert
+
+      # Batch for efficiency — 5-second flush window, max 8192 records per batch.
+      batch:
+        timeout: 5s
+        send_batch_max_size: 8192
+
+    exporters:
+      otlphttp/panoptes:
+        endpoint: {{ required "temporal.observability.panoptes.endpoint is required when observability is enabled" .Values.temporal.observability.panoptes.endpoint | quote }}
+        tls:
+          ca_file: /etc/certs/ca.crt
+          cert_file: /etc/certs/tls.crt
+          key_file: /etc/certs/tls.key
+          # Reload certs from disk every 10 minutes so vault-agent cert rotation
+          # is picked up without restarting the sidecar.
+          reload_interval: 10m
+          insecure: false
+          insecure_skip_verify: false
+
+    service:
+      pipelines:
+        metrics:
+          receivers: [otlp]
+          processors: [k8sattributes, attributes/panoptes, resource, batch]
+          exporters: [otlphttp/panoptes]
+        traces:
+          receivers: [otlp]
+          processors: [k8sattributes, attributes/panoptes, resource, batch]
+          exporters: [otlphttp/panoptes]
+{{- end }}
