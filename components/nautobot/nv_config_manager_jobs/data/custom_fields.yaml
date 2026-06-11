@@ -25,3 +25,13 @@
   content_types:
     - dcim.device
   deployment_types: [all, superpod]
+
+# Scalar field so interfaces are filterable by NICo machine interface ID.
+- key: nico_interface_id
+  label: NICo Interface ID
+  type: text
+  description: NICo machine interface ID.
+  filter_logic: exact
+  content_types:
+    - dcim.interface
+  deployment_types: [all, superpod]
