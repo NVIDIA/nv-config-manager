@@ -336,6 +336,7 @@ secrets:
         path: "" # Required: e.g., "my-org/nv-config-manager/dev/nautobot"
         keys:
           token: "token"
+          readOnlyToken: "read_only_token"
           natsPassword: "nats_password"
           natsSysPassword: "nats_sys_password"
           natsNautobotPassword: "nats_nautobot_password"
@@ -920,6 +921,14 @@ oidc:
   issuerUrl: ""
   # OAuth2 client ID
   clientId: ""
+  # Optional public/native client ID for CLI PKCE auth discovery.
+  # Defaults to clientId when unset.
+  cliClientId: ""
+  # Public UI-backed auth utility endpoints for native clients.
+  # Keep disabled by default so current chart main remains compatible with
+  # pre-1.3.0 UI images that do not serve /auth/discovery or /auth/logout.
+  authUtility:
+    enabled: false
   # Name of K8s secret containing client-secret key
   # Secret must have key 'client-secret'
   clientSecretName: "oidc-client-secret"
@@ -1511,6 +1520,20 @@ networkDhcp:
         memory: 1Gi
       limits:
         memory: 2Gi
+    healthcheck:
+      requests:
+        cpu: 200m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
+    api:
+      requests:
+        cpu: 200m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
     confgen:
       requests:
         cpu: 100m
@@ -1846,6 +1869,49 @@ configStore:
     useInternalEndpoint: false
     # SSL verification: true, false, or path to CA cert file
     verify: true
+# =============================================================================
+# Service: MCP
+# =============================================================================
+mcp:
+  # Keep disabled by default so current chart main remains compatible with
+  # pre-1.3.0 environment values that pin nv-config-manager images to 1.2.x.
+  # Enable explicitly in values once the image contains the MCP entrypoint.
+  enabled: false
+  # Gateway routing - Streamable HTTP MCP endpoint
+  gateway:
+    # Hostname: mcp.<baseHostname> (OIDC+JWT, browser access)
+    hostname: "mcp.{{ .Values.gateway.baseHostname }}"
+    # Hostname: svc-mcp.<baseHostname> (JWT-only, machine access)
+    svcHostname: "svc-mcp.{{ .Values.gateway.baseHostname }}"
+    # Auth bypass - healthcheck and metrics must be accessible without OIDC/JWT
+    authBypass:
+      enabled: true
+      paths:
+        - /healthcheck
+        - /metrics
+  api:
+    replicas: 2
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        memory: 512Mi
+    nodeSelector: null
+    affinity: null
+  client:
+    # MCP always calls Config Manager APIs through internal service endpoints
+    # and forwards the caller's inbound Bearer token. It never falls back to
+    # service-to-service auth for these APIs.
+    useInternalEndpoints: true
+    maxResponseBytes: 100000
+  nautobot:
+    # auto: bundled/local Nautobot uses user JWT, external Nautobot uses the MCP read-only token
+    # jwt: always forward the user's Bearer token to Nautobot
+    # token: always use [mcp] nautobot_read_only_token
+    authMode: auto
+    # Optional escape hatch for dev-only environments. Keep false in production.
+    tokenFallbackEnabled: false
 # =============================================================================
 # SPIFFE Configuration (Service-to-Service Authentication)
 # =============================================================================

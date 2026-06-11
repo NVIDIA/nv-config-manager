@@ -580,10 +580,10 @@ spec:
               mountPath: /opt/nautobot/jobs
               readOnly: true
             {{- end }}
-          {{- with .Values.nautobot.server.migrations.resources }}
+          {{- $defaultMigrationResources := dict "requests" (dict "cpu" "250m" "memory" "512Mi") "limits" (dict "memory" "2Gi") }}
+          {{- $migrationResources := dig "server" "migrations" "resources" $defaultMigrationResources .Values.nautobot }}
           resources:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
+            {{- toYaml $migrationResources | nindent 12 }}
       containers:
         - name: nautobot
           image: {{ .Values.global.images.nautobot.repository }}:{{ .Values.global.images.nautobot.tag }}

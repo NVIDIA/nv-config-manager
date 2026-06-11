@@ -104,6 +104,7 @@ from nv_config_manager.temporal.ngc.activities.nautobot import (
     assign_vrf_to_device,
     assign_vrf_to_interface,
     check_recorded_config_drift,
+    delete_overlay,
     delete_vrf,
     get_available_route_distinguishers,
     get_device_interfaces,
@@ -115,7 +116,7 @@ from nv_config_manager.temporal.ngc.activities.nautobot import (
     get_network_device,
     get_network_devices,
     get_switch_port_by_remote_mac_address,
-    get_vrfs_by_vpc_id,
+    get_vrfs_by_overlay_id,
     provision_vrf,
 )
 from nv_config_manager.temporal.ngc.activities.nvlinkswitch_firmware import (
@@ -193,8 +194,9 @@ REGISTERED_ACTIVITIES = [
     provision_vrf,
     load_neighbor_data_by_switch_port,
     get_switch_port_by_remote_mac_address,
-    get_vrfs_by_vpc_id,
+    get_vrfs_by_overlay_id,
     delete_vrf,
+    delete_overlay,
     get_device_vrfs,
     assign_vrf_to_device,
     get_device_interfaces,

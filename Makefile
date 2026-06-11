@@ -269,9 +269,9 @@ docs-lint:
 	echo "Linting documentation markdown with rumdl..."; \
 	cd docs; \
 	if command -v rumdl >/dev/null 2>&1; then \
-		rumdl check .; \
+		rumdl check --fail-on warning .; \
 	else \
-		npx --yes rumdl check .; \
+		npx --yes rumdl check --fail-on warning .; \
 	fi
 
 docs-format:
@@ -289,9 +289,9 @@ docs-lint-fern:
 	cd docs; \
 	echo "Checking Fern configuration..."; \
 	if command -v fern >/dev/null 2>&1; then \
-		fern check --local --warnings; \
+		fern check --warnings; \
 	else \
-		npx --yes fern-api check --local --warnings; \
+		npx --yes fern-api check --warnings; \
 	fi; \
 	echo ""; \
 	echo "Checking Fern markdown..."; \

@@ -45,6 +45,7 @@ def main() -> int:
 
     sso = require_mapping(config.setdefault("sso", {}), "sso")
     sso["issuer_url"] = f"https://{args.keycloak_hostname}/realms/nv-config-manager"
+    sso["cli_client_id"] = "nv-config-manager-cli"
     sso["client_secret"] = args.oidc_client_secret
 
     spiffe = require_mapping(config.setdefault("spiffe", {}), "spiffe")

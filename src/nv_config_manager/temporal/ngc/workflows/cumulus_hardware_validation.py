@@ -214,6 +214,7 @@ class ValidateHardwareWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, A
     workflow_input_class = ValidateHardwareInput
     workflow_api_endpoint = "/ngc/cumulus_hardware_validation"
     workflow_namespace = "ngc"
+    workflow_mcp_enabled = True
 
     def __init__(self) -> None:
         """Initialize workflow."""

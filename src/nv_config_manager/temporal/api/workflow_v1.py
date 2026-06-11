@@ -45,6 +45,7 @@ from nv_config_manager.temporal.api.dynamic_endpoints import (
     register_dynamic_endpoints,
     set_start_workflow_function,
 )
+from nv_config_manager.temporal.api.links import temporal_ui_workflow_href
 from nv_config_manager.temporal.client.redis import RedisClient
 from nv_config_manager.temporal.common.mixins.base import BaseMixin
 from nv_config_manager.temporal.common.mixins.stage import (
@@ -176,8 +177,7 @@ class WorkflowResponse(BaseModel):
     @computed_field
     def href(self) -> str:
         """Calculate URL to Temporal UI Workflow View."""
-        ui_server = os.getenv("TEMPORAL_UI", "http://localhost:8080")
-        return f"{ui_server}/namespaces/default/workflows/{self.id}"
+        return temporal_ui_workflow_href(self.id)
 
 
 class WorkflowSummaryResponse(WorkflowResponse):

@@ -77,3 +77,6 @@ monitoring:
   probes:
     enabled: true
     blackboxExporterUrl: "blackbox:9115"
+
+mcp:
+  enabled: true

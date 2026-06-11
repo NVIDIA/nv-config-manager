@@ -417,6 +417,85 @@ class TestLoadTags:
 
 
 # ---------------------------------------------------------------------------
+# load_custom_fields
+# ---------------------------------------------------------------------------
+
+
+class TestLoadCustomFields:
+    def test_creates_custom_field(self, tmp_path):
+        from django.contrib.contenttypes.models import ContentType
+        from nautobot.extras.models import CustomField
+
+        mod = _import_module()
+
+        mock_cf = MagicMock()
+        mock_ct = MagicMock()
+        CustomField.objects.update_or_create.return_value = (mock_cf, True)
+        ContentType.objects.get.return_value = mock_ct
+
+        data = [
+            {
+                "key": "nico_info",
+                "label": "NICo Info",
+                "type": "json",
+                "description": "NICo machine info.",
+                "content_types": ["dcim.device"],
+            }
+        ]
+        _write_yaml(tmp_path / "custom_fields.yaml", data)
+
+        job = _make_job(mod, tmp_path)
+        job.load_custom_fields()
+
+        CustomField.objects.update_or_create.assert_called_once_with(
+            key="nico_info",
+            defaults={
+                "label": "NICo Info",
+                "type": "json",
+                "description": "NICo machine info.",
+            },
+        )
+        mock_cf.content_types.add.assert_called_once_with(mock_ct)
+        job.logger.success.assert_called()
+
+    def test_filter_logic_passed_when_set(self, tmp_path):
+        from nautobot.extras.models import CustomField
+
+        mod = _import_module()
+
+        CustomField.objects.update_or_create.return_value = (MagicMock(), True)
+
+        data = [{"key": "nico_machine_id", "label": "NICo Machine ID", "type": "text", "filter_logic": "exact"}]
+        _write_yaml(tmp_path / "custom_fields.yaml", data)
+
+        job = _make_job(mod, tmp_path)
+        job.load_custom_fields()
+
+        _, kwargs = CustomField.objects.update_or_create.call_args
+        assert kwargs["defaults"]["filter_logic"] == "exact"
+
+    def test_missing_file(self, tmp_path):
+        mod = _import_module()
+        job = _make_job(mod, tmp_path)
+        job.load_custom_fields()
+        job.logger.failure.assert_called()
+
+    def test_missing_key_logs_failure_and_skips(self, tmp_path):
+        mod = _import_module()
+
+        _write_yaml(tmp_path / "custom_fields.yaml", [{"label": "no key here"}])
+
+        job = _make_job(mod, tmp_path)
+        job.load_custom_fields()
+
+        job.logger.failure.assert_called_once()
+        assert "key" in job.logger.failure.call_args[0][0]
+        from nautobot.extras.models import CustomField
+
+        CustomField.objects.update_or_create.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
 # load_platforms
 # ---------------------------------------------------------------------------
 

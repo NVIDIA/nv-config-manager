@@ -16,10 +16,12 @@
 
 from __future__ import annotations
 
+import json
 import ssl
 import types
 from collections.abc import Callable
 from configparser import ConfigParser
+from typing import Any, cast
 
 import aiohttp
 from aiohttp import ClientTimeout, TCPConnector
@@ -103,6 +105,21 @@ class TemporalClient:
                 client_certificate=get_mtls_cert_paths(config),
             )
 
+    @classmethod
+    def for_mcp(
+        cls,
+        base_url: str,
+        headers: dict[str, str] | Callable[[], dict[str, str]],
+        user_domain: str = "nvidia.com",
+    ) -> TemporalClient:
+        """Create a Temporal API client for MCP with explicit caller-scoped headers."""
+        return cls(
+            base_url=base_url,
+            user_domain=user_domain,
+            client_certificate=None,
+            headers=headers,
+        )
+
     async def __aenter__(self) -> TemporalClient:
         """Async context manager entry."""
         if self._client_certificate:
@@ -113,11 +130,9 @@ class TemporalClient:
         else:
             connector = TCPConnector()
 
-        headers = self._headers() if callable(self._headers) else self._headers  # type: ignore[ty:call-top-callable]  # ty can't narrow dict|Callable union
         self._session = aiohttp.ClientSession(
             connector=connector,
             timeout=ClientTimeout(total=30),
-            headers=headers,
         )
         return self
 
@@ -148,12 +163,27 @@ class TemporalClient:
         if not self._session:
             raise RuntimeError("TemporalClient must be used as async context manager")
         try:
-            async with self._session.get(f"{self.base_url}/whoami") as rsp:
+            async with self._session.get(
+                f"{self.base_url}/whoami",
+                headers=self._resolve_headers(),
+            ) as rsp:
                 rsp.raise_for_status()
                 data: WhoamiResult = await rsp.json()
                 return data
         except aiohttp.ClientError as exc:
             raise TemporalClientException(f"Failed to fetch whoami: {exc}") from exc
+
+    async def list_workflows(self, params: dict[str, Any] | None = None) -> Any:
+        """List workflow executions from the Workflow API."""
+        return await self._request("GET", "/v1/workflow", params=params)
+
+    async def get_workflow(self, workflow_id: str) -> Any:
+        """Get a workflow execution from the Workflow API."""
+        return await self._request("GET", f"/v1/workflow/{workflow_id}")
+
+    async def start_workflow(self, endpoint: str, payload: dict[str, Any]) -> Any:
+        """Start a workflow through a dynamic Workflow API endpoint."""
+        return await self._request("POST", f"/v1/workflow{endpoint}", json_body=payload)
 
     async def invoke_backup_workflow(self, device_id: str, user: str = "nv-config-manager") -> str:
         """Invoke the backup workflow for a device.
@@ -183,6 +213,7 @@ class TemporalClient:
             async with self._session.post(
                 f"{self.base_url}/v1/workflow/ngc/backup",
                 json=payload,
+                headers=self._resolve_headers(),
             ) as rsp:
                 rsp.raise_for_status()
                 result = await rsp.json()
@@ -198,3 +229,44 @@ class TemporalClient:
                 str(exc),
             )
             raise TemporalClientException(f"Failed to invoke backup workflow: {exc}") from exc
+
+    def _resolve_headers(self) -> dict[str, str] | None:
+        """Return headers for the current request/session."""
+        headers = self._headers
+        if isinstance(headers, dict) or headers is None:
+            return cast(dict[str, str] | None, headers)
+        return headers()
+
+    async def _request(
+        self,
+        method: str,
+        path: str,
+        params: dict[str, Any] | None = None,
+        json_body: dict[str, Any] | None = None,
+    ) -> Any:
+        if not self._session:
+            raise RuntimeError("TemporalClient must be used as async context manager")
+
+        try:
+            async with self._session.request(
+                method,
+                f"{self.base_url}{path}",
+                params=params,
+                json=json_body,
+                headers=self._resolve_headers(),
+            ) as rsp:
+                payload = await _response_payload(rsp)
+                if not rsp.ok:
+                    raise TemporalClientException(
+                        f"{method} {path} failed with HTTP {rsp.status}: {payload}"
+                    )
+                return payload
+        except aiohttp.ClientError as exc:
+            raise TemporalClientException(f"{method} {path} failed: {exc}") from exc
+
+
+async def _response_payload(response: aiohttp.ClientResponse) -> Any:
+    try:
+        return await response.json()
+    except (aiohttp.ContentTypeError, json.JSONDecodeError):
+        return await response.text()

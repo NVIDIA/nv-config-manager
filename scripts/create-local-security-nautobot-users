@@ -17,6 +17,10 @@ Options:
   --release-name NAME  Helm release name used for Nautobot labels (default: nv-config-manager)
   --timeout DURATION   Wait timeout for Nautobot readiness (default: 15m)
   --help               Show this help
+
+Environment:
+  ALLOW_WEAK_LOCAL_USERS=true
+      Allow static local test credentials outside the default kind namespace/context guard.
 EOF
 }
 
@@ -84,6 +88,15 @@ pod="$(
 if [[ -z "$pod" ]]; then
     echo "Unable to find a Nautobot pod after rollout." >&2
     exit 1
+fi
+
+if [[ "${ALLOW_WEAK_LOCAL_USERS:-false}" != "true" ]]; then
+    current_context="$(kubectl config current-context 2>/dev/null || true)"
+    if [[ "$NAMESPACE" != "nv-config-manager" || "$current_context" != kind-* ]]; then
+        echo "Refusing to create static local security users outside the default kind test environment." >&2
+        echo "Set ALLOW_WEAK_LOCAL_USERS=true only for local security test environments." >&2
+        exit 1
+    fi
 fi
 
 echo "Creating local security users in Nautobot pod ${pod}..."

@@ -536,6 +536,8 @@ async def test_load_config_manager_plugin_backup_config():
             config = await client.load_config_manager_plugin_backup_config("device-1")
 
         assert config["commit_id"] == 12345
+        request_call = next(iter(m.requests.values()))[0]
+        assert request_call.kwargs["headers"] == {"Authorization": "Token DUMMY"}
 
 
 @pytest.mark.asyncio
@@ -576,6 +578,9 @@ async def test_update_config_manager_plugin_backup_config():
                 commit_message="Updated config",
                 workflow_id="workflow-1",
             )
+
+        request_call = next(iter(m.requests.values()))[0]
+        assert request_call.kwargs["headers"] == {"Authorization": "Token DUMMY"}
 
 
 def test_get_device_ui_url():

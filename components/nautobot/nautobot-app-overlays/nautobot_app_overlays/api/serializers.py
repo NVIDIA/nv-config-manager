@@ -111,8 +111,13 @@ class VXLANSerializer(NautobotModelSerializer):
         data = super().validate(data)
         overlay = data.get("overlay") or (self.instance.overlay if self.instance else None)
 
-        if overlay and overlay.isolation_type != IsolationTypeChoices.VXLAN_EVPN:
-            raise serializers.ValidationError({"overlay": "VXLANs can only be associated with VXLAN/EVPN overlays."})
+        if overlay and overlay.isolation_type not in (
+            IsolationTypeChoices.VXLAN_EVPN,
+            IsolationTypeChoices.SPECTRUM_X_VRF,
+        ):
+            raise serializers.ValidationError(
+                {"overlay": "VXLANs can only be associated with VXLAN/EVPN or Spectrum X overlays."}
+            )
         return data
 
 

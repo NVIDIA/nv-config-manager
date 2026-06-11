@@ -2,9 +2,8 @@
 name = "nautobot-app-overlays"
 dynamic = ["version"]
 description = "A Nautobot app that provides data models and UI for network overlay segregation and multi-tenancy."
-authors = [
-    {name = "Susan Hooks", email = "shooks@nvidia.com"}
-]
+authors = [{ name = "NVIDIA Corporation" }]
+maintainers = [{ name = "NVIDIA Config Manager Team", email = "ngc-cfa@nvidia.com" }]
 readme = "README.md"
 requires-python = ">=3.10,<3.13"
 classifiers = [

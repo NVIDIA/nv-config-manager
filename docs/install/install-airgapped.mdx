@@ -38,28 +38,28 @@ The following components are assumed to be pre-installed and configured by your 
 
 1. List configured IP address pools:
 
-    ```bash
-    kubectl get ipaddresspool -n metallb-system
-    ```
+   ```bash
+   kubectl get ipaddresspool -n metallb-system
+   ```
 
 1. View pool details including address ranges:
 
-    ```bash
-    kubectl get ipaddresspool -n metallb-system -o yaml
-    ```
+   ```bash
+   kubectl get ipaddresspool -n metallb-system -o yaml
+   ```
 
    The output of the second command will be similar to the following example. In this case, the output shows a pool of available IP addresses from `10.0.100.200` through `10.0.100.210`:
 
-    ```yaml
-    apiVersion: metallb.io/v1beta1
-    kind: IPAddressPool
-    metadata:
-      name: nv-config-manager-pool
-      namespace: metallb-system
-    spec:
-      addresses:
-      - 10.0.100.200-10.0.100.210
-    ```
+   ```yaml
+   apiVersion: metallb.io/v1beta1
+   kind: IPAddressPool
+   metadata:
+     name: nv-config-manager-pool
+     namespace: metallb-system
+   spec:
+     addresses:
+     - 10.0.100.200-10.0.100.210
+   ```
 
 1. From the output of the second command, select two unused IP addresses for ZTP and DHCP services.
 
