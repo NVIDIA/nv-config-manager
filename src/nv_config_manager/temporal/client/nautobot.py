@@ -553,6 +553,7 @@ class NautobotClient(BaseNautobotClient):
         session = await self._ensure_session()
         async with session.get(
             f"{self.rest_endpoint}{CONFIG_MANAGER_BACKUP_CONFIG_PATH}/{device_id}/",
+            headers=self._resolve_headers(),
         ) as rsp:
             if rsp.status == 404:
                 # No existing backup to reference
@@ -589,6 +590,7 @@ class NautobotClient(BaseNautobotClient):
         async with session.post(
             f"{self.rest_endpoint}{CONFIG_MANAGER_BACKUP_CONFIG_PATH}/",
             json=data,
+            headers=self._resolve_headers(),
         ) as rsp:
             rsp.raise_for_status()
 

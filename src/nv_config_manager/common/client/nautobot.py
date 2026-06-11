@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import ssl
 import types
+from collections.abc import Callable
 from configparser import ConfigParser
 from typing import Any, Self, cast
 
@@ -51,9 +52,10 @@ class NautobotClient:
     def __init__(
         self,
         nautobot_url: str,
-        token: str,
+        token: str = "",
         verify: bool | str = True,
         timeout: int = 30,
+        headers: dict[str, str] | Callable[[], dict[str, str]] | None = None,
     ) -> None:
         """Initialize the Nautobot client.
 
@@ -62,11 +64,14 @@ class NautobotClient:
             token: API token for authentication
             verify: SSL verification - True (default), False (disable), or str (path to CA cert)
             timeout: Default request timeout in seconds
+            headers: Static dict or callable returning fresh headers per-request.
+                If set, these headers take precedence over token auth.
         """
         self.nautobot_url = nautobot_url.rstrip("/") + "/"
         self.token = token
         self._verify = verify
         self._timeout = timeout
+        self._headers = headers
         self.graphql_endpoint = f"{self.nautobot_url}api/graphql/"
         self.rest_endpoint = f"{self.nautobot_url}api/"
         self._session: aiohttp.ClientSession | None = None
@@ -90,6 +95,22 @@ class NautobotClient:
             nautobot_url=nautobot_config["server"],
             token=nautobot_config["token"],
             verify=parse_verify_param(nautobot_config),
+        )
+
+    @classmethod
+    def for_mcp(
+        cls,
+        nautobot_url: str,
+        headers: dict[str, str] | Callable[[], dict[str, str]],
+        verify: bool | str = True,
+        timeout: int = 30,
+    ) -> Self:
+        """Create a Nautobot client for MCP with explicit caller-scoped headers."""
+        return cls(
+            nautobot_url=nautobot_url,
+            verify=verify,
+            timeout=timeout,
+            headers=headers,
         )
 
     async def __aenter__(self) -> Self:
@@ -125,11 +146,21 @@ class NautobotClient:
             timeout = ClientTimeout(total=self._timeout, connect=10)
 
             self._session = aiohttp.ClientSession(
-                headers={"Authorization": f"Token {self.token}"},
                 connector=connector,
                 timeout=timeout,
             )
         return self._session
+
+    def _resolve_headers(self) -> dict[str, str] | None:
+        """Return auth headers for the current request/session."""
+        headers = self._headers
+        if isinstance(headers, dict):
+            return cast(dict[str, str], headers)
+        if headers is not None:
+            return headers()
+        if self.token:
+            return {"Authorization": f"Token {self.token}"}
+        return None
 
     async def close(self) -> None:
         """Close the HTTP client session.
@@ -191,7 +222,10 @@ class NautobotClient:
 
         request_timeout = aiohttp.ClientTimeout(total=timeout or self._timeout)
         async with session.post(
-            self.graphql_endpoint, json=payload, timeout=request_timeout
+            self.graphql_endpoint,
+            json=payload,
+            timeout=request_timeout,
+            headers=self._resolve_headers(),
         ) as rsp:
             if rsp.status == 400:
                 data = await rsp.json()
@@ -223,6 +257,7 @@ class NautobotClient:
             f"{self.rest_endpoint}{path}",
             params=params,
             timeout=request_timeout,
+            headers=self._resolve_headers(),
         ) as rsp:
             if not rsp.ok:
                 await self._handle_error_response(rsp, "GET", path)
@@ -245,6 +280,7 @@ class NautobotClient:
             f"{self.rest_endpoint}{path}",
             json=data,
             timeout=request_timeout,
+            headers=self._resolve_headers(),
         ) as rsp:
             if not rsp.ok:
                 await self._handle_error_response(rsp, "POST", path)
@@ -267,6 +303,7 @@ class NautobotClient:
             f"{self.rest_endpoint}{path}",
             json=data,
             timeout=request_timeout,
+            headers=self._resolve_headers(),
         ) as rsp:
             if not rsp.ok:
                 await self._handle_error_response(rsp, "PATCH", path)
@@ -284,6 +321,7 @@ class NautobotClient:
         async with session.delete(
             f"{self.rest_endpoint}{path}",
             timeout=request_timeout,
+            headers=self._resolve_headers(),
         ) as rsp:
             if not rsp.ok:
                 await self._handle_error_response(rsp, "DELETE", path)

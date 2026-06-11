@@ -154,6 +154,7 @@ class SiteCableValidationWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixi
     workflow_input_class = SiteCableValidationInput
     workflow_api_endpoint = "/ngc/site_cable_validation"
     workflow_namespace = "ngc"
+    workflow_mcp_enabled = True
 
     def __init__(self) -> None:
         """Workflow Constructor."""
@@ -452,6 +453,7 @@ class DeviceCableValidationWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMix
     workflow_input_class = DeviceCableValidationInput
     workflow_api_endpoint = "/ngc/device_cable_validation"
     workflow_namespace = "ngc"
+    workflow_mcp_enabled = True
 
     def __init__(self) -> None:
         """Workflow constructor."""

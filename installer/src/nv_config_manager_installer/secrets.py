@@ -87,6 +87,8 @@ _DB_GROUPS: list[tuple[str, str, str]] = [
 def _generate_core_k8s_secrets(state: dict[str, str], _v: Any) -> None:
     """Populate core Kubernetes secrets (Nautobot, Redis, PostgreSQL)."""
     state["nautobot_token"] = _v("nautobot", "token") or _generate_token(40)
+    if ro_token := _v("nautobot", "readOnlyToken"):
+        state["nautobot_read_only_token"] = ro_token
     state["nats_password"] = _v("nautobot", "natsPassword") or _generate_url_safe_password()
     state["redis_password"] = _v("redis", "password") or _generate_url_safe_password()
     state["nautobot_admin_password"] = _v("nautobot_app", "adminPassword") or _generate_password()

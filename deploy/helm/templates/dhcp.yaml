@@ -130,12 +130,7 @@ spec:
           periodSeconds: 10
           timeoutSeconds: 3
         resources:
-          requests:
-            memory: "128Mi"
-            cpu: 200m
-          limits:
-            memory: "128Mi"
-            cpu: 200m
+          {{- toYaml .Values.networkDhcp.resources.healthcheck | nindent 10 }}
         volumeMounts:
         {{- include "nv-config-manager.vaultAgent.configManagerSecretsDirEtcVault" . | nindent 8 }}
       # API container
@@ -173,12 +168,7 @@ spec:
           periodSeconds: 10
           timeoutSeconds: 3
         resources:
-          requests:
-            memory: "128Mi"
-            cpu: 200m
-          limits:
-            memory: "128Mi"
-            cpu: 200m
+          {{- toYaml .Values.networkDhcp.resources.api | nindent 10 }}
         volumeMounts:
         {{- include "nv-config-manager.vaultAgent.configManagerSecretsDirEtcVault" . | nindent 8 }}
         {{- include "nv-config-manager.authVolumeMounts" . | nindent 8 }}

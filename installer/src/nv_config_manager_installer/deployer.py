@@ -1953,7 +1953,10 @@ class Deployer:
     def _create_core_secrets(self, step: DeployStep, s: dict[str, str]) -> None:
         """Create Redis, Nautobot, DB, NATS, and device credential secrets."""
         self._apply_secret(step, "redis-password", {"password": s.get("redis_password", "")})
-        self._apply_secret(step, "nautobot-token", {"token": s.get("nautobot_token", "")})
+        nautobot_token_data = {"token": s.get("nautobot_token", "")}
+        if ro_token := s.get("nautobot_read_only_token"):
+            nautobot_token_data["read-only-token"] = ro_token
+        self._apply_secret(step, "nautobot-token", nautobot_token_data)
 
         for db in ["temporal", "temporal_visibility", "config_store", "dhcp", "nautobot"]:
             self._apply_secret(

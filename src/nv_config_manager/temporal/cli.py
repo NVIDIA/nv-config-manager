@@ -23,16 +23,18 @@ OIDCAuth class from nv_config_manager.common.oidc.
 """
 
 import json
+import re
 import sys
 from typing import Any, NoReturn, get_type_hints
 
 import click
 import requests
+import urllib3
 from pydantic import BaseModel
 
-from nv_config_manager.common.oidc import OIDCAuth, decode_jwt_claims
+from nv_config_manager.common.oidc import AuthDiscovery, OIDCAuth, decode_jwt_claims
 
-# Import workflows and metadata mixin
+# Keep workflow imports guarded so a packaging/import issue produces a CLI-friendly error.
 try:
     from nv_config_manager.temporal.common.mixins.metadata import WorkflowMetadataMixin
     from nv_config_manager.temporal.hello_world.workflows import (
@@ -200,8 +202,6 @@ class WorkflowDiscovery:
     @staticmethod
     def _camel_to_kebab(name: str) -> str:
         """Convert CamelCase to kebab-case."""
-        import re
-
         # Insert hyphens before uppercase letters (except the first one)
         s1 = re.sub("(.)([A-Z][a-z]+)", r"\1-\2", name)
         # Insert hyphens before uppercase letters that follow lowercase letters or numbers
@@ -221,20 +221,30 @@ class WorkflowClient:
         base_hostname: str,
         auth: OIDCAuth | None = None,
         insecure: bool = False,
+        base_url: str | None = None,
     ) -> None:
         self.base_hostname = base_hostname
         self.auth = auth
         self.verify = not insecure
 
-        if auth:
+        if base_url:
+            self.base_url = base_url.rstrip("/")
+        elif auth:
             self.base_url = f"https://svc-workflow.{base_hostname}/v1/workflow"
         else:
             self.base_url = f"https://workflow.{base_hostname}/v1/workflow"
+        self.api_root_url = self._derive_api_root_url(self.base_url)
 
         if insecure:
-            import urllib3
-
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+    @staticmethod
+    def _derive_api_root_url(workflow_base_url: str) -> str:
+        """Return the /v1 API root from a /v1/workflow URL."""
+        suffix = "/workflow"
+        if workflow_base_url.endswith(suffix):
+            return workflow_base_url[: -len(suffix)]
+        return workflow_base_url.rstrip("/")
 
     def _prepare_auth_headers(
         self,
@@ -339,10 +349,7 @@ class WorkflowClient:
         Raises:
             click.ClickException: If conversion fails.
         """
-        if self.auth:
-            param_url = f"https://svc-workflow.{self.base_hostname}/v1/parameter/device-id"
-        else:
-            param_url = f"https://workflow.{self.base_hostname}/v1/parameter/device-id"
+        param_url = f"{self.api_root_url}/parameter/device-id"
 
         headers: dict[str, str] = {}
         if self.auth:
@@ -427,24 +434,93 @@ def _resolve_base_hostname(
     raise click.ClickException("Either --hostname or --environment is required.")
 
 
+def _default_workflow_url(base_hostname: str, auth_required: bool) -> str:
+    """Return the default workflow API URL for an auth mode."""
+    if not base_hostname:
+        return ""
+    prefix = "svc-workflow" if auth_required else "workflow"
+    return f"https://{prefix}.{base_hostname}/v1/workflow"
+
+
+def _auth_discovery_url(base_hostname: str) -> str:
+    """Return the base-host auth discovery URL."""
+    return f"https://{base_hostname}/auth/discovery"
+
+
+def _workflow_url_from_discovery(
+    discovery: AuthDiscovery | None,
+    base_hostname: str,
+    auth_required: bool,
+) -> str:
+    """Resolve workflow URL from discovery metadata or defaults."""
+    if discovery:
+        workflow_url = discovery.services.get("workflow")
+        if workflow_url:
+            return workflow_url.rstrip("/")
+    return _default_workflow_url(base_hostname, auth_required)
+
+
 def _build_auth(
     base_hostname: str,
     issuer: str | None,
     client_id: str | None,
     insecure: bool,
-) -> OIDCAuth | None:
+) -> tuple[OIDCAuth | None, str]:
     """Build an OIDCAuth instance, auto-discovering if needed.
 
-    Returns None if SSO is not enabled on the target environment (the gateway
-    returns a non-redirect response to an unauthenticated probe).
+    Returns an auth helper and the workflow API URL. The auth helper is None
+    when SSO is not enabled on the target environment.
     """
     if issuer and client_id:
         # Explicit config — always use SSO
-        return OIDCAuth(issuer_url=issuer, client_id=client_id)
+        return (
+            OIDCAuth(issuer_url=issuer, client_id=client_id, verify=not insecure),
+            _default_workflow_url(base_hostname, auth_required=True),
+        )
 
-    # Auto-discover from gateway
-    gateway_url = f"https://workflow.{base_hostname}/v1/workflow"
+    # Auto-discover from the public base-host metadata endpoint first.
+    discovery_url = _auth_discovery_url(base_hostname)
     click.echo(f"Auto-discovering OIDC configuration from {base_hostname}...")
+    try:
+        auth_discovery = OIDCAuth.discover_auth_config(discovery_url, verify=not insecure)
+    except RuntimeError as e:
+        raise click.ClickException(
+            f"OIDC auto-discovery failed: {e}\nPlease provide --issuer and --client-id manually."
+        ) from e
+
+    if auth_discovery is not None:
+        if not auth_discovery.auth_required:
+            click.echo("  SSO is not enabled — skipping authentication.")
+            return None, _workflow_url_from_discovery(
+                auth_discovery,
+                base_hostname,
+                auth_required=False,
+            )
+
+        discovered_issuer = auth_discovery.issuer_url
+        discovered_client_id = auth_discovery.client_id
+        issuer = issuer or discovered_issuer
+        client_id = client_id or discovered_client_id
+        if not issuer or not client_id:
+            raise click.ClickException("Auth discovery did not include complete OIDC settings.")
+        click.echo(f"  Discovered issuer: {issuer}")
+        click.echo(f"  Discovered client ID: {client_id}")
+        return (
+            OIDCAuth(
+                issuer_url=issuer,
+                client_id=client_id,
+                scopes=list(auth_discovery.scopes) or None,
+                verify=not insecure,
+            ),
+            _workflow_url_from_discovery(
+                auth_discovery,
+                base_hostname,
+                auth_required=True,
+            ),
+        )
+
+    # Fallback for older deployments that predate /auth/discovery.
+    gateway_url = f"https://workflow.{base_hostname}/v1/workflow"
     try:
         result = OIDCAuth.discover_oidc_config(gateway_url, verify=not insecure)
     except RuntimeError as e:
@@ -454,7 +530,7 @@ def _build_auth(
 
     if result is None:
         click.echo("  SSO is not enabled — skipping authentication.")
-        return None
+        return None, _default_workflow_url(base_hostname, auth_required=False)
 
     discovered_issuer, discovered_client_id = result
     issuer = issuer or discovered_issuer
@@ -462,7 +538,10 @@ def _build_auth(
     click.echo(f"  Discovered issuer: {issuer}")
     click.echo(f"  Discovered client ID: {client_id}")
 
-    return OIDCAuth(issuer_url=issuer, client_id=client_id)
+    return (
+        OIDCAuth(issuer_url=issuer, client_id=client_id, verify=not insecure),
+        _default_workflow_url(base_hostname, auth_required=True),
+    )
 
 
 # ── Global workflow discovery ────────────────────────────────────────────
@@ -488,7 +567,7 @@ def create_workflow_command(workflow_name: str, workflow_info: WorkflowInfo) -> 
         insecure = kwargs.pop("insecure", False)
 
         base_hostname = _resolve_base_hostname(hostname, environment, domain)
-        auth = _build_auth(base_hostname, issuer, client_id, insecure)
+        auth, workflow_api_url = _build_auth(base_hostname, issuer, client_id, insecure)
 
         # Handle device name to device ID conversion
         device_name = kwargs.pop("device_name", None)
@@ -514,7 +593,12 @@ def create_workflow_command(workflow_name: str, workflow_info: WorkflowInfo) -> 
                 if verbose:
                     click.echo(f"Converting device name '{device_name}' to device ID...")
                 try:
-                    client = WorkflowClient(base_hostname, auth=auth, insecure=insecure)
+                    client = WorkflowClient(
+                        base_hostname,
+                        auth=auth,
+                        insecure=insecure,
+                        base_url=workflow_api_url,
+                    )
                     device_id = client.get_device_id_by_name(
                         device_name, force_auth_refresh=force_auth_refresh, verbose=verbose
                     )
@@ -544,7 +628,12 @@ def create_workflow_command(workflow_name: str, workflow_info: WorkflowInfo) -> 
                     parameters[key] = value
 
         # Create client and invoke workflow
-        client = WorkflowClient(base_hostname, auth=auth, insecure=insecure)
+        client = WorkflowClient(
+            base_hostname,
+            auth=auth,
+            insecure=insecure,
+            base_url=workflow_api_url,
+        )
         client.invoke_workflow(
             workflow_info, parameters, verbose=verbose, force_auth_refresh=force_auth_refresh
         )
@@ -749,8 +838,6 @@ def login(
     them from the gateway using --hostname or --environment.
     """
     if insecure:
-        import urllib3
-
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
     # Allow fully manual config (no hostname needed if issuer+client_id given)
@@ -759,7 +846,7 @@ def login(
     else:
         base_hostname = _resolve_base_hostname(hostname, environment, domain)
 
-    auth = _build_auth(base_hostname or "", issuer, client_id, insecure)
+    auth, _workflow_api_url = _build_auth(base_hostname or "", issuer, client_id, insecure)
 
     if auth is None:
         click.echo("SSO is not enabled on this environment — no login required.")

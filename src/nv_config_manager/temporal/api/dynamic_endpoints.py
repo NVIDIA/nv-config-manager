@@ -14,7 +14,6 @@
 # limitations under the License.
 """Dynamic API endpoint generation from workflow metadata."""
 
-import os
 from collections.abc import Awaitable, Callable
 from typing import Any, cast
 
@@ -23,6 +22,7 @@ from pydantic import BaseModel, computed_field
 
 from nv_config_manager.common.auth import get_sso_user
 from nv_config_manager.common.log import LogCategory, get_logger
+from nv_config_manager.temporal.api.links import temporal_ui_workflow_href
 from nv_config_manager.temporal.common.mixins.metadata import WorkflowMetadataMixin
 from nv_config_manager.temporal.common.rbac_config import RBACConfig
 from nv_config_manager.temporal.hello_world.workflows import (
@@ -41,8 +41,7 @@ class WorkflowResponse(BaseModel):
     @computed_field
     def href(self) -> str:
         """Calculate URL to Temporal UI Workflow View."""
-        ui_server = os.getenv("TEMPORAL_UI", "http://localhost:8080")
-        return f"{ui_server}/namespaces/default/workflows/{self.id}"
+        return temporal_ui_workflow_href(self.id)
 
 
 # Import the start_workflow function - this will be available when this module is imported

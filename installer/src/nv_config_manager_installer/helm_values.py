@@ -373,6 +373,9 @@ def _build_global(
         "serviceAccountName": "vault-access-sa",
     }
 
+    if c.environment == "local":
+        section["deploymentStrategy"] = {"type": "Recreate"}
+
     if is_local:
         section["imagePullSecrets"] = []
         section["imagePullPolicy"] = "IfNotPresent"
@@ -545,6 +548,8 @@ def _build_oidc(config: NVConfigManagerInstallConfig, values: dict[str, Any]) ->
         "enabled": True,
         "issuerUrl": config.sso.issuer_url,
         "clientId": config.sso.client_id,
+        "cliClientId": config.sso.cli_client_id or config.sso.client_id,
+        "authUtility": {"enabled": True},
         "audiences": (
             config.sso.audiences.split(",") if config.sso.audiences else sso_defaults["audiences"]
         ),
@@ -872,6 +877,10 @@ def build_values(
     values["temporal"] = temporal_section
     values["rbac"] = _build_rbac(config)
     values["configStore"] = {"enabled": svc.config_store, "client": {"useInternalEndpoint": True}}
+    has_nautobot = svc.nautobot or bool(svc.external_nautobot_url)
+    values["mcp"] = {
+        "enabled": has_nautobot and svc.temporal and svc.config_store and svc.dhcp,
+    }
     values["nautobot"] = _build_nautobot(config)
 
     nats: dict[str, Any] = {"enabled": False}

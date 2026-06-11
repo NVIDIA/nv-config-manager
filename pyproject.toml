@@ -95,6 +95,8 @@ dependencies = [
     "py-markdown-table>=1.1.0",
     # Documentation
     "mkdocs>=1.6.1",
+    # Model Context Protocol
+    "mcp>=1.8.0",
     # Network Templates (render service)
     "nv-config-manager-templates",
 ]
@@ -122,6 +124,10 @@ nv-config-manager-render-template-updater = "nv_config_manager.render.producer:c
 # Config Store Service
 nv-config-manager-config-store-api = "nv_config_manager.config_store.api.main:main"
 nv-config-manager-config-store-cache-refresh = "nv_config_manager.config_store.cache_refresh_service:cli_main"
+
+# MCP Service
+nvidia-config-manager-mcp = "nv_config_manager.mcp.main:main"
+nvcm-mcp-cli = "nv_config_manager.mcp.cli:main"
 
 [dependency-groups]
 integration-test = [

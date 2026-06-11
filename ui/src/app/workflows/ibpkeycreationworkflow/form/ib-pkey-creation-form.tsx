@@ -57,10 +57,11 @@ export const IBPKeyCreationWorkflowForm = () => {
   });
 
   const pkeyValue = form.watch("pkey");
+  const normalizedPkeyValue = pkeyValue?.trim() ?? "";
   const pkeyHint =
-    pkeyValue && !PKEY_HINT_PATTERN.test(pkeyValue)
+    normalizedPkeyValue && !PKEY_HINT_PATTERN.test(normalizedPkeyValue)
       ? "Expected format: 0x followed by 1-4 hex digits (e.g. 0x8001). Server will reject if invalid."
-      : pkeyValue
+      : normalizedPkeyValue
         ? "Will be canonicalized server-side to 0xNNNN."
         : "Leave blank to auto-assign the next free PKey.";
 

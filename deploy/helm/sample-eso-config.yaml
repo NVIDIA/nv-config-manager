@@ -15,6 +15,7 @@
 #           path: "prod/nautobot"  # Full path within the secrets engine
 #           keys:
 #             token: "token"
+#             readOnlyToken: "read_only_token"
 # =============================================================================
 
 # =============================================================================
@@ -65,6 +66,7 @@ secrets:
         path: "prod/nautobot"  # Full path within secretsPath
         keys:
           token: "token"
+          readOnlyToken: "read_only_token"
           natsPassword: "nats_password"
       
       # Redis credentials
