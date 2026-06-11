@@ -289,7 +289,7 @@ class WorkflowSummaryResponse(WorkflowResponse):
                 results[query] = data
             except WorkflowQueryFailedError:
                 logger.exception(
-                    "Workflow %s of type %s has not implemented the %s query.",
+                    "Workflow %s of type %s failed the %s query.",
                     handle.id,
                     description.workflow_type,
                     query,
