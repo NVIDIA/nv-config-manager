@@ -51,6 +51,15 @@ The Redfish, BMC, InfiniBand, and VPC workflows are currently experimental and h
 | [VPC Creation](vpc-creation.mdx) | Create virtual private clouds | Cloud infrastructure deployment |
 | [VPC Deletion](vpc-deletion.mdx) | Delete virtual private clouds | Infrastructure cleanup |
 
+### InfiniBand Partition Management
+
+| Workflow | Description | Purpose |
+| :------- | :---------- | :------ |
+| [IB PKey Creation](ib-pkey-creation.mdx) | Allocate an InfiniBand Partition Key on UFM and record it in Nautobot | Tenant isolation on the IB fabric |
+| [IB PKey Member Add](ib-pkey-member-add.mdx) | Attach device interfaces to an existing PKey | Grow a PKey's membership |
+| [IB PKey Member Update](ib-pkey-member-update.mdx) | Reconcile a PKey's membership to a declarative interface list | Replace a PKey's exact member set |
+| [IB PKey Member Delete](ib-pkey-member-delete.mdx) | Detach device interfaces from an existing PKey | Shrink a PKey's membership |
+
 ### Network Discovery
 
 | Workflow | Description | Purpose |
@@ -97,6 +106,10 @@ For detailed information about each workflow, click the workflow names in the ta
 - [Device Reprovisioning](reprovision.mdx)
 - [Hardware Validation](hardware-validation.mdx)
 - [Host Metadata Management](connected-host-metadata.mdx)
+- [IB PKey Creation](ib-pkey-creation.mdx)
+- [IB PKey Member Add](ib-pkey-member-add.mdx)
+- [IB PKey Member Delete](ib-pkey-member-delete.mdx)
+- [IB PKey Member Update](ib-pkey-member-update.mdx)
 - [Infiniband: Get Unhealthy Ports](infiniband-get-unhealthy-ports.mdx)
 - [Infiniband: MLNX OS Upgrade](infiniband-mlnx-os-upgrade.mdx)
 - [Multi-Deploy Workflow](multi-deploy.mdx)
