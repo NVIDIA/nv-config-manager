@@ -31,7 +31,7 @@ spec:
         - --serial=${MOCK_DHCP_SERIAL}
         - --mac=${MOCK_DHCP_MAC}
         - --client-id-template=${MOCK_DHCP_CLIENT_ID_TPL}
-        - --dhcp-api-url=http://nv-config-manager-dhcp-internal.nv-config-manager.svc.cluster.local:9000
+        - --dhcp-api-url=http://nv-config-manager-dhcp-internal.${NAMESPACE}.svc.cluster.local:9000
         resources:
           requests:
             memory: "64Mi"

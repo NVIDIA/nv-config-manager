@@ -1211,6 +1211,9 @@ MOCK_BACKUP_DEVICE ?= a04-u44-p01-tor-01
 mock-workflow-backup:
 	@echo "📦 Starting backup workflow for $(MOCK_BACKUP_DEVICE)..."
 	@NB_TOKEN=$$($(KUBECTL_KIND) get secret nautobot-token -n $(NAMESPACE) -o jsonpath='{.data.token}' | base64 -d); \
+	if [ -z "$$NB_TOKEN" ]; then \
+		echo "ERROR: Nautobot token missing or secret not found"; exit 1; \
+	fi; \
 	DEVICE_ID=$$(curl -sk -H "Authorization: Token $$NB_TOKEN" \
 		"https://nautobot.$(HOSTNAME)/api/dcim/devices/?name=$(MOCK_BACKUP_DEVICE)" | \
 		python3 -c "import sys,json; r=json.load(sys.stdin)['results']; print(r[0]['id'] if r else '')" 2>/dev/null); \
@@ -1234,6 +1237,9 @@ MOCK_CABLE_DEVICE ?= a04-u44-p01-tor-01
 mock-workflow-cable-validate:
 	@echo "🔗 Starting cable validation for $(MOCK_CABLE_DEVICE)..."
 	@NB_TOKEN=$$($(KUBECTL_KIND) get secret nautobot-token -n $(NAMESPACE) -o jsonpath='{.data.token}' | base64 -d); \
+	if [ -z "$$NB_TOKEN" ]; then \
+		echo "ERROR: Nautobot token missing or secret not found"; exit 1; \
+	fi; \
 	DEVICE_ID=$$(curl -sk -H "Authorization: Token $$NB_TOKEN" \
 		"https://nautobot.$(HOSTNAME)/api/dcim/devices/?name=$(MOCK_CABLE_DEVICE)" | \
 		python3 -c "import sys,json; r=json.load(sys.stdin)['results']; print(r[0]['id'] if r else '')" 2>/dev/null); \

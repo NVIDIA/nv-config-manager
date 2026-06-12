@@ -264,7 +264,7 @@ def _step_fetch_boot_script(result: ZtpValidationResult, ztp_api_url: str) -> Zt
         step="fetch-boot-script",
         success=True,
         message=f"Boot script retrieved ({len(content)} bytes)",
-        details={"size_bytes": len(content), "preview": content[:200]},
+        details={"size_bytes": len(content)},
     )
 
 
@@ -352,5 +352,5 @@ def _step_fetch_config(result: ZtpValidationResult, ztp_api_url: str) -> ZtpStep
         step="fetch-config",
         success=True,
         message=f"Config retrieved ({len(content)} bytes)",
-        details={"size_bytes": len(content), "preview": content[:200]},
+        details={"size_bytes": len(content)},
     )

@@ -45,8 +45,8 @@ spec:
         - --serial=${MOCK_ZTP_SERIAL}
         - --mac=${MOCK_ZTP_MAC}
         - --client-id-template=${MOCK_ZTP_CLIENT_ID_TPL}
-        - --dhcp-api-url=http://nv-config-manager-dhcp-internal.nv-config-manager.svc.cluster.local:9000
-        - --ztp-api-url=http://nv-config-manager-ztp-api.nv-config-manager.svc.cluster.local:9000
+        - --dhcp-api-url=http://nv-config-manager-dhcp-internal.${NAMESPACE}.svc.cluster.local:9000
+        - --ztp-api-url=http://nv-config-manager-ztp-api.${NAMESPACE}.svc.cluster.local:9000
         resources:
           requests:
             memory: "64Mi"

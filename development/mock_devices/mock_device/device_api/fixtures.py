@@ -98,7 +98,11 @@ class FixtureLoader:
         for path in candidates:
             if path.is_file():
                 logger.debug("FixtureLoader: hit %s", path)
-                return self._read(path)
+                try:
+                    return self._read(path)
+                except (json.JSONDecodeError, ValueError) as exc:
+                    logger.warning("FixtureLoader: skipping malformed fixture %s: %s", path, exc)
+                    continue
 
         return None
 

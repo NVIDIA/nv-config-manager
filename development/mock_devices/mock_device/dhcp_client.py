@@ -23,6 +23,7 @@ The giaddr field simulates a relay agent so Kea can match the correct subnet.
 from __future__ import annotations
 
 import logging
+import secrets
 import socket
 import time
 from dataclasses import dataclass, field
@@ -71,7 +72,7 @@ def _build_bootp_dhcp_payload(
 
     Returns (payload_bytes, transaction_id).
     """
-    xid = int.from_bytes(device.mac_bytes[:4], "big")
+    xid = secrets.randbits(32)
 
     bootp_kwargs: dict = {
         "chaddr": device.mac_bytes + b"\x00" * 10,
@@ -332,7 +333,16 @@ def validate_dhcp_config(
     except requests.RequestException as exc:
         return DhcpResult(success=False, error=f"Failed to query DHCP API: {exc}")
 
-    config = response.json()
+    try:
+        config = response.json()
+    except ValueError as exc:
+        return DhcpResult(
+            success=False,
+            error=(
+                f"Failed to parse DHCP API response as JSON: {exc} "
+                f"(status={response.status_code}, body={response.text[:200]!r})"
+            ),
+        )
 
     dhcp4 = None
     if isinstance(config, list) and len(config) > 0:

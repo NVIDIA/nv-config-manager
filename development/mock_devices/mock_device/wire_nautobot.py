@@ -343,7 +343,13 @@ def wire_all_devices(
                 results.append(WireResult(device_name, "", False, str(e)))
                 continue
 
-            result = wire_device(client, device_name, service_ip, namespace_id, status_id)
+            try:
+                result = wire_device(client, device_name, service_ip, namespace_id, status_id)
+            except Exception as exc:
+                logger.error("Unexpected error wiring %s: %s", device_name, exc)
+                results.append(WireResult(device_name, service_ip, False, str(exc)))
+                continue
+
             results.append(result)
             if result.success:
                 logger.info("Wired %s -> %s", device_name, service_ip)

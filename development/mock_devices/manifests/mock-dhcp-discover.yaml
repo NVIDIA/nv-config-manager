@@ -37,7 +37,7 @@ spec:
         - --platform=${MOCK_DHCP_PLATFORM}
         - --serial=${MOCK_DHCP_SERIAL}
         - --mac=${MOCK_DHCP_MAC}
-        - --dhcp-server=nv-config-manager-dhcp-dev.nv-config-manager.svc.cluster.local
+        - --dhcp-server=nv-config-manager-dhcp-dev.${NAMESPACE}.svc.cluster.local
         - --client-id-template=${MOCK_DHCP_CLIENT_ID_TPL}
         - --timeout=15
         resources:
