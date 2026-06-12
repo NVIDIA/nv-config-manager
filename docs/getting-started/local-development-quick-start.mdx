@@ -93,9 +93,9 @@ This runs `kind-up` with the superpod topology, then builds the mock device imag
 
 After `sandbox-up` completes:
 
-1. Run `make mock-dhcp-validate` to confirm DHCP reservations exist for all mock devices.
-1. Run `make mock-ztp-validate` to walk the full ZTP provisioning chain.
-1. Run `make mock-workflow-backup` and check the Temporal UI at `https://temporal.config-manager.local` to confirm the workflow completes.
+1. Run `make mock-dhcp-validate` to confirm a DHCP reservation exists for the device named by `MOCK_DHCP_DEVICE` (default `a04-u44-p01-tor-01`; override with `make mock-dhcp-validate MOCK_DHCP_DEVICE=<name>`).
+1. Run `make mock-ztp-validate` to walk the ZTP provisioning chain for the device named by `MOCK_ZTP_DEVICE` (default `a04-u44-p01-tor-01`; override with `make mock-ztp-validate MOCK_ZTP_DEVICE=<name>`).
+1. Run `make mock-workflow-backup` to start the Temporal backup workflow, then check the Temporal UI at `https://temporal.config-manager.local` to confirm the workflow completes.
 
 ## Access the local services
 

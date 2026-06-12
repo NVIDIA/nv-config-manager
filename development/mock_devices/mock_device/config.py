@@ -16,10 +16,13 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import random
 
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
 
 
 def _generate_mac() -> str:
@@ -79,7 +82,11 @@ class DeviceConfig(BaseModel):
             hex_compound = ":".join(f"{ord(c):02x}" for c in compound)
             rendered = hex_compound
 
-        return bytes.fromhex(rendered.replace(":", ""))
+        try:
+            return bytes.fromhex(rendered.replace(":", ""))
+        except ValueError as exc:
+            logger.warning("client_id: invalid hex in rendered template %r: %s", rendered, exc)
+            return None
 
     @property
     def mac_bytes(self) -> bytes:
@@ -89,6 +96,15 @@ class DeviceConfig(BaseModel):
     @staticmethod
     def from_env() -> DeviceConfig:
         """Load device configuration from environment variables."""
+        port_str = os.environ.get("MOCK_DEVICE_API_PORT", "0")
+        try:
+            api_port = int(port_str)
+        except ValueError:
+            logger.warning(
+                "MOCK_DEVICE_API_PORT=%r is not a valid integer; defaulting to 0", port_str
+            )
+            api_port = 0
+
         return DeviceConfig(
             name=os.environ.get("MOCK_DEVICE_NAME", "mock-device-1"),
             platform=os.environ.get("MOCK_DEVICE_PLATFORM", "cumulus"),
@@ -100,7 +116,7 @@ class DeviceConfig(BaseModel):
             dhcp_server=os.environ.get("MOCK_DHCP_SERVER", ""),
             relay_gateway=os.environ.get("MOCK_DHCP_RELAY_GATEWAY", ""),
             client_id_template=os.environ.get("MOCK_DHCP_CLIENT_ID_TEMPLATE", ""),
-            api_port=int(os.environ.get("MOCK_DEVICE_API_PORT", "0")),
+            api_port=api_port,
             os_version=os.environ.get("MOCK_DEVICE_OS_VERSION", ""),
             running_config=os.environ.get("MOCK_DEVICE_RUNNING_CONFIG", ""),
         )
