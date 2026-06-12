@@ -665,6 +665,8 @@ spec:
           value: {{ tpl .Values.temporal.gateway.api.hostname . | quote }}
         - name: TEMPORAL_ADDRESS
           value: "{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.temporal.services.frontend.port }}"
+        resources:
+          {{- toYaml .Values.temporal.archive.resources | nindent 10 }}
         volumeMounts:
         {{- include "nv-config-manager.vaultAgent.configManagerIniVolumeMount" . | nindent 8 }}
         {{- /* SPIFFE volume mount for outbound mTLS */ -}}
