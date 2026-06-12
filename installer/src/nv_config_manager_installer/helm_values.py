@@ -444,7 +444,7 @@ def _build_gateway(config: NVConfigManagerInstallConfig) -> dict[str, Any]:
     gateway: dict[str, Any] = {
         "enabled": True,
         "baseHostname": config.cluster.hostname,
-        "createGatewayClass": True,
+        "createGatewayClass": config.infrastructure.create_gateway_class,
         "certificates": {"enabled": config.infrastructure.tls},
     }
     if config.infrastructure.tls:
