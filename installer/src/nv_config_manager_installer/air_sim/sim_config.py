@@ -72,6 +72,11 @@ class SimConfig:
     cumulus_version: str = ""
     deploy: bool = True
 
+    image_source: str = "local"
+    image_registry: str = "nvcr.io/nvidian/cfa"
+    image_tag: str = ""
+    upload_local_content: bool = False
+
     run_mock_topology_job: bool = True
     mock_topology_path: str = field(
         default_factory=lambda: _default_path(DEFAULT_MOCK_TOPOLOGY_PATH)

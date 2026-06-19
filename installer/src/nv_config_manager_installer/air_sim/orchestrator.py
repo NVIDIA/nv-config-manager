@@ -28,12 +28,15 @@ from typing import Protocol
 from nv_config_manager_installer.air_sim.cloud_init import generate_server_cloud_init
 from nv_config_manager_installer.air_sim.constants import (
     CONFIG_MANAGER_INSTALL_CONFIG,
+    CONFIG_MANAGER_REMOTE_DIR,
     NVCM_BOX_USER,
+    PROJECT_ROOT,
 )
 from nv_config_manager_installer.air_sim.context_topology import write_site_design_from_mock_context
 from nv_config_manager_installer.air_sim.installer_config import (
     build_deploy_command,
     generate_air_sim_install_yaml,
+    local_content_paths,
 )
 from nv_config_manager_installer.air_sim.models import NVCMServerConfig
 from nv_config_manager_installer.air_sim.sim_config import SimConfig
@@ -51,6 +54,30 @@ class StepStatus(Enum):
     SUCCESS = "success"
     FAILED = "failed"
     SKIPPED = "skipped"
+
+
+def _local_content_uploads(cfg: SimConfig) -> list[tuple[Path, str]]:
+    """Map local AIR content paths to the matching paths in the remote repo clone."""
+    uploads: list[tuple[Path, str]] = []
+
+    for content_path in local_content_paths(cfg):
+        local_path = Path(content_path).expanduser()
+        if not local_path.is_absolute():
+            local_path = PROJECT_ROOT / local_path
+        local_path = local_path.resolve()
+        if not local_path.exists():
+            raise RuntimeError(f"Local AIR content path not found: {local_path}")
+
+        try:
+            relative_path = local_path.relative_to(PROJECT_ROOT)
+        except ValueError:
+            remote_path = content_path
+        else:
+            remote_path = f"{CONFIG_MANAGER_REMOTE_DIR}/{relative_path.as_posix()}"
+
+        uploads.append((local_path, remote_path))
+
+    return uploads
 
 
 STEPS: list[tuple[str, str]] = [
@@ -298,6 +325,14 @@ class SimOrchestrator:
         self._step("wait-setup", StepStatus.SUCCESS)
 
         self._step("upload-files", StepStatus.RUNNING)
+        if cfg.upload_local_content:
+            for local_path, remote_path in _local_content_uploads(cfg):
+                ok = manager.upload_to_server(host, port, str(local_path), remote_path)
+                if not ok:
+                    self._step("upload-files", StepStatus.FAILED)
+                    raise RuntimeError(f"Failed to upload local AIR content path {local_path}")
+                self._log(f"Uploaded {local_path} -> {remote_path}")
+
         install_yaml = generate_air_sim_install_yaml(
             cfg,
             site_name=builder.site_name,

@@ -76,6 +76,31 @@ class OptionsScreen(Container):
         yield Label("Deployment", classes="subsection-label")
         yield Label("nv-config-manager Git Ref", classes="field-label")
         yield Input(value=self._config.config_manager_ref, id="config-manager-ref")
+        yield Label("NVCM Image Source", classes="field-label")
+        with RadioSet(id="image-source-radio"):
+            yield RadioButton(
+                "Build local images",
+                id="image-source-local",
+                value=self._config.image_source != "registry",
+            )
+            yield RadioButton(
+                "Pull registry images",
+                id="image-source-registry",
+                value=self._config.image_source == "registry",
+            )
+        yield Label("Image Registry", classes="field-label")
+        yield Input(value=self._config.image_registry, id="image-registry")
+        yield Label("Image Tag", classes="field-label")
+        yield Input(
+            value=self._config.image_tag,
+            placeholder="1.3.0-rc.2",
+            id="image-tag",
+        )
+        yield LabeledSwitch(
+            "Upload local content paths",
+            value=self._config.upload_local_content,
+            id="upload-local-content",
+        )
         yield Static("", id="build-mode-hint", classes="field-hint")
         yield Label(
             "Cumulus Version Override  (leave blank to use topology values)",
@@ -102,17 +127,28 @@ class OptionsScreen(Container):
         self._update_build_mode_hint()
 
     def on_input_changed(self, event: Input.Changed) -> None:
-        if event.input.id == "config-manager-ref":
+        if event.input.id in {"config-manager-ref", "image-registry", "image-tag"}:
             self._update_build_mode_hint()
+
+    def on_radio_set_changed(self, _event: RadioSet.Changed) -> None:
+        self._update_build_mode_hint()
 
     def _update_build_mode_hint(self) -> None:
         branch = self.query_one("#config-manager-ref", Input).value.strip()
+        image_registry = self.query_one("#image-registry", Input).value.strip()
+        image_tag = self.query_one("#image-tag", Input).value.strip() or "chart default"
         hint = self.query_one("#build-mode-hint", Static)
         ref = branch or "main"
-        hint.update(
-            f"[dim]Images will be built locally from nv-config-manager ref {ref!r}; "
-            "registry pulls are disabled for DSX Air demos.[/dim]"
-        )
+        if self.query_one("#image-source-registry", RadioButton).value:
+            hint.update(
+                f"[dim]The AIR server will clone nv-config-manager ref {ref!r}, "
+                f"then deploy NVCM images from {image_registry or 'configured registry'}:{image_tag}. "
+                "Enable local content upload to mirror workstation topology/template paths.[/dim]"
+            )
+        else:
+            hint.update(
+                f"[dim]Images will be built locally from nv-config-manager ref {ref!r}.[/dim]"
+            )
 
     def write_to_config(self, config: SimConfig) -> None:
         config.ngc_api_key = self.query_one("#ngc-api-key", Input).value.strip()
@@ -125,6 +161,12 @@ class OptionsScreen(Container):
         config.git_token = self.query_one("#git-token", Input).value.strip()
         config.config_manager_repo = self.query_one("#config-manager-repo", Input).value.strip()
         config.config_manager_ref = self.query_one("#config-manager-ref", Input).value.strip()
+        config.image_source = (
+            "registry" if self.query_one("#image-source-registry", RadioButton).value else "local"
+        )
+        config.image_registry = self.query_one("#image-registry", Input).value.strip()
+        config.image_tag = self.query_one("#image-tag", Input).value.strip()
+        config.upload_local_content = self.query_one("#upload-local-content", LabeledSwitch).value
         config.cumulus_version = self.query_one("#cumulus-version", Input).value.strip()
         for s in _SIZES:
             if self.query_one(f"#size-{s}", RadioButton).value:
@@ -146,6 +188,13 @@ class OptionsScreen(Container):
         self.query_one("#git-token", Input).value = config.git_token
         self.query_one("#config-manager-repo", Input).value = config.config_manager_repo
         self.query_one("#config-manager-ref", Input).value = config.config_manager_ref
+        self.query_one("#image-source-local", RadioButton).value = config.image_source != "registry"
+        self.query_one("#image-source-registry", RadioButton).value = (
+            config.image_source == "registry"
+        )
+        self.query_one("#image-registry", Input).value = config.image_registry
+        self.query_one("#image-tag", Input).value = config.image_tag
+        self.query_one("#upload-local-content", LabeledSwitch).value = config.upload_local_content
         self.query_one("#cumulus-version", Input).value = config.cumulus_version
         for s in _SIZES:
             self.query_one(f"#size-{s}", RadioButton).value = config.size == s

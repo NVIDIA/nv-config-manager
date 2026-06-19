@@ -18,7 +18,8 @@ from __future__ import annotations
 
 import pytest
 
-from nv_config_manager_installer.air_sim.orchestrator import SimOrchestrator
+from nv_config_manager_installer.air_sim.constants import CONFIG_MANAGER_REMOTE_DIR, PROJECT_ROOT
+from nv_config_manager_installer.air_sim.orchestrator import SimOrchestrator, _local_content_uploads
 from nv_config_manager_installer.air_sim.sim_config import SimConfig
 
 
@@ -75,3 +76,14 @@ def test_resolve_topology_requires_direct_path_for_custom_flows() -> None:
 
     with pytest.raises(RuntimeError, match="topology_path is required"):
         orchestrator._resolve_topology_path(cfg)
+
+
+def test_local_content_uploads_map_repo_paths_to_remote_clone() -> None:
+    cfg = SimConfig(mock_topology_path="development/mock_topology")
+
+    uploads = _local_content_uploads(cfg)
+
+    assert (
+        (PROJECT_ROOT / "development/mock_topology").resolve(),
+        f"{CONFIG_MANAGER_REMOTE_DIR}/development/mock_topology",
+    ) in uploads

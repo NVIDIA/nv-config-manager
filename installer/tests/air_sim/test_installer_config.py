@@ -26,8 +26,10 @@ from nv_config_manager_installer.air_sim.constants import (
 from nv_config_manager_installer.air_sim.installer_config import (
     build_content_jobs,
     build_deploy_command,
+    build_images_config,
     build_template_plugins,
     generate_air_sim_install_config,
+    local_content_paths,
 )
 from nv_config_manager_installer.air_sim.prebuilt_configs import load_prebuilt_config
 from nv_config_manager_installer.air_sim.sim_config import SimConfig
@@ -143,6 +145,64 @@ def test_default_superpod_mock_topology_includes_static_template_plugin() -> Non
 
     assert cfg.mock_blueprint == "air_superpod"
     assert build_template_plugins(cfg) == [{"path": f"{CONFIG_MANAGER_REMOTE_DIR}/{expected}"}]
+
+
+def test_registry_image_config_uses_requested_rc_tag() -> None:
+    cfg = SimConfig(
+        image_source="registry",
+        image_tag="1.3.0-rc.2",
+        ngc_api_key="nvapi-test",
+    )
+
+    images = build_images_config(cfg)
+    install_config = generate_air_sim_install_config(
+        cfg,
+        site_name="air-demo",
+        lb_allowed_prefixes=["172.18.255.0/24"],
+    )
+
+    assert images == {
+        "source": "registry",
+        "registry": "nvcr.io/nvidian/cfa",
+        "tag": "1.3.0-rc.2",
+        "pull_secret": {"password": "nvapi-test"},
+    }
+    assert install_config["images"] == images
+
+
+def test_registry_deploy_command_skips_local_image_builds() -> None:
+    command = build_deploy_command(
+        SimConfig(
+            image_source="registry",
+            image_tag="1.3.0-rc.2",
+            ngc_api_key="nvapi-test",
+        )
+    )
+
+    assert "--image-source registry" in command
+    assert "--build-images" not in command
+    assert "--load-kind" not in command
+    assert "nvapi-test" not in command
+
+
+def test_local_deploy_command_builds_and_loads_images() -> None:
+    command = build_deploy_command(SimConfig(image_source="local"))
+
+    assert "--image-source local" in command
+    assert "--build-images" in command
+    assert "--load-kind" in command
+
+
+def test_local_content_paths_include_mock_topology_and_template_plugins_once() -> None:
+    expected_plugin = DEFAULT_AIR_DEMO_TEMPLATE_PLUGIN_PATH.as_posix()
+    cfg = SimConfig(
+        mock_topology_path="development/mock_topology",
+        template_plugin_paths=[expected_plugin],
+    )
+
+    paths = local_content_paths(cfg)
+
+    assert paths == ["development/mock_topology", expected_plugin]
 
 
 def test_sim_config_generates_oob_ssh_password() -> None:

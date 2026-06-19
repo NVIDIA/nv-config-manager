@@ -47,6 +47,16 @@ _NETWORK_SECRET_KEYS = [
 
 _MOCK_TOPOLOGY_JOB = "mock_topology.jobs.mock_topology_design.MockTopologyDesign"
 _DEMO_TEMPLATE_BLUEPRINTS = {"air_trial", "air_superpod"}
+_IMAGE_SOURCES = {"local", "registry"}
+
+
+def _normalized_image_source(cfg: SimConfig) -> str:
+    source = (cfg.image_source or "local").strip().lower()
+    if source not in _IMAGE_SOURCES:
+        raise ValueError(
+            f"Unsupported AIR sim image_source {cfg.image_source!r}; expected 'local' or 'registry'"
+        )
+    return source
 
 
 def _remote_repo_path(path: str) -> str:
@@ -116,6 +126,48 @@ def build_template_plugins(cfg: SimConfig) -> list[dict[str, str]]:
     return [{"path": _remote_repo_path(path)} for path in paths]
 
 
+def local_content_paths(cfg: SimConfig) -> list[str]:
+    """Return local content paths that should be mirrored into the AIR server clone."""
+    paths: list[str] = []
+
+    if cfg.run_mock_topology_job and cfg.mock_topology_path:
+        paths.append(cfg.mock_topology_path)
+
+    paths.extend(path for path in cfg.extra_job_paths if path)
+    paths.extend(path for path in cfg.template_plugin_paths if path)
+
+    if cfg.run_mock_topology_job and cfg.mock_blueprint in _DEMO_TEMPLATE_BLUEPRINTS:
+        default_path = DEFAULT_AIR_DEMO_TEMPLATE_PLUGIN_PATH.as_posix()
+        default_remote_path = _remote_repo_path(default_path)
+        if all(_remote_repo_path(path) != default_remote_path for path in paths):
+            paths.append(default_path)
+
+    seen: set[str] = set()
+    unique_paths: list[str] = []
+    for path in paths:
+        if path in seen:
+            continue
+        seen.add(path)
+        unique_paths.append(path)
+    return unique_paths
+
+
+def build_images_config(cfg: SimConfig) -> dict[str, Any]:
+    """Return installer images config for the AIR deploy."""
+    source = _normalized_image_source(cfg)
+    images: dict[str, Any] = {"source": source}
+
+    if source == "registry":
+        if cfg.image_registry:
+            images["registry"] = cfg.image_registry
+        if cfg.image_tag:
+            images["tag"] = cfg.image_tag
+        if cfg.ngc_api_key:
+            images["pull_secret"] = {"password": cfg.ngc_api_key}
+
+    return images
+
+
 def generate_air_sim_install_config(
     cfg: SimConfig,
     site_name: str,
@@ -180,7 +232,7 @@ def generate_air_sim_install_config(
             },
             "ztp_storage": {"type": "file", "pvc_size": "10Gi"},
         },
-        "images": {"source": "local"},
+        "images": build_images_config(cfg),
         "rbac": {
             "admin_roles": ["all"],
             "default_read_roles": ["all"],
@@ -200,13 +252,14 @@ def generate_air_sim_install_yaml(
     return yaml.safe_dump(data, default_flow_style=False, sort_keys=False)
 
 
-def build_deploy_command(_cfg: SimConfig) -> str:
+def build_deploy_command(cfg: SimConfig) -> str:
     """Return the remote command that runs nv-config-manager-installer deploy."""
     user = NVCM_BOX_USER
     kube = f"KUBECONFIG=/home/{user}/.kube/config"
     config_path = f"/home/{user}/{CONFIG_MANAGER_INSTALL_CONFIG}"
+    image_source = _normalized_image_source(cfg)
 
-    return (
+    command = (
         f"sudo NO_COLOR=1 {kube} uv run"
         f" --directory {CONFIG_MANAGER_REMOTE_DIR}"
         f" --project {CONFIG_MANAGER_REMOTE_DIR}/installer"
@@ -214,5 +267,10 @@ def build_deploy_command(_cfg: SimConfig) -> str:
         f" --chart-dir {CONFIG_MANAGER_REMOTE_DIR}/deploy/helm"
         f" --kind-cluster {CONFIG_MANAGER_KIND_CLUSTER}"
         f" --install-envoy-gateway --install-cert-manager --install-cnpg-operator"
-        f" --image-source local --build-images --load-kind"
+        f" --image-source {image_source}"
     )
+
+    if image_source == "local":
+        command += " --build-images --load-kind"
+
+    return command
