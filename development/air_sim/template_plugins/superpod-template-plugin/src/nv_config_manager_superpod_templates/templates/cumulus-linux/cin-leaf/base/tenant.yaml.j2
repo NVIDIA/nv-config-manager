@@ -1,0 +1,25 @@
+{% set attached_vrfs = device_data|attached_vrfs|rejectattr("vni", "none")|sort(attribute="vni") %}
+{% if attached_vrfs|length > 0 %}
+- set:
+{% block evpn %}
+{% include "cumulus-linux/cin-leaf/include/evpn.j2" %}
+{% endblock evpn %}
+
+{% block interface %}
+{% set tenant_interfaces = device_data|interfaces(prefix="swp")|rejectattr("vrf", "in", [None, "default"])|list %}
+{% if tenant_interfaces|length > 0 %}
+    interface:
+{% for intf in tenant_interfaces %}
+      {{ intf.name }}:
+        vrf: {{ intf.vrf }}
+{% endfor %}
+{% endif %}
+{% endblock interface %}
+
+{% block vrf %}
+    vrf:
+{% include "cumulus-linux/cin-leaf/include/tenant_vrf.j2" %}
+{% endblock vrf %}
+{% else %}
+- set: {}
+{% endif %}
