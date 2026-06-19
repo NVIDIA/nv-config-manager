@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from jinja2 import Environment, FileSystemLoader
 
 MOCK_TOPOLOGY_ROOT = Path(__file__).resolve().parents[1]
 PROJECT_ROOT = MOCK_TOPOLOGY_ROOT.parents[1]
@@ -152,6 +153,74 @@ def test_air_demo_network_management_contexts_include_public_dns() -> None:
         }
 
         assert contexts[context_name]["data"]["dns"]["ipv4"] == ["8.8.8.8"]
+
+
+def test_air_superpod_spx_namespace_prerequisites_are_rendered_after_locations() -> None:
+    context_data = _load_yaml(MOCK_TOPOLOGY_CONTEXT / "air_superpod" / "locations.yaml")
+    spx_namespaces = context_data["spx_namespaces"]
+
+    environment = Environment(loader=FileSystemLoader(str(MOCK_TOPOLOGY_DESIGNS)))
+    rendered = environment.get_template("spx_namespaces.yaml.j2").render(
+        json={"spx_namespaces": spx_namespaces}
+    )
+
+    assert yaml.safe_load(rendered) == {
+        "namespaces": [
+            {
+                "!create_or_update:name": "SuperPOD Demo",
+                "location": {"!get:name": "SPO01"},
+                "tags": [{"!get:name": "spectrumx"}],
+            }
+        ]
+    }
+
+    rendered = environment.get_template("spx_namespaces.yaml.j2").render(
+        json={"spx_namespaces": [{"name": "SuperPOD: #1", "location": 'SPO "West"'}]}
+    )
+    assert yaml.safe_load(rendered)["namespaces"][0] == {
+        "!create_or_update:name": "SuperPOD: #1",
+        "location": {"!get:name": 'SPO "West"'},
+        "tags": [{"!get:name": "spectrumx"}],
+    }
+
+    job_source = (MOCK_TOPOLOGY_ROOT / "jobs" / "mock_topology_design.py").read_text()
+    assert job_source.index('"designs/locations.yaml.j2"') < job_source.index(
+        '"designs/spx_namespaces.yaml.j2"'
+    )
+
+
+def test_preferred_primary_ipv4_interfaces_exist_and_have_addresses() -> None:
+    invalid_preferences = []
+
+    for path in sorted(MOCK_TOPOLOGY_CONTEXT.glob("*/devices/*.json")):
+        device = _load_device(path)
+        preferred_interface = device.get("primary_ip4_interface")
+        if not preferred_interface:
+            continue
+
+        interface = _interface_by_name(device, preferred_interface)
+        if not interface.get("ip_addresses"):
+            invalid_preferences.append(f"{path.name}:{preferred_interface}")
+
+    assert invalid_preferences == []
+
+
+def test_primary_ipv4_template_honors_air_management_interface_preference() -> None:
+    device = _load_device(
+        MOCK_TOPOLOGY_CONTEXT / "air_superpod" / "devices" / "su01-cin-leaf-r01.json"
+    )
+    environment = Environment(loader=FileSystemLoader(str(MOCK_TOPOLOGY_DESIGNS)))
+    rendered = environment.get_template("primary_ip4.yaml.j2").render(json={"devices": [device]})
+
+    assert yaml.safe_load(rendered) == {
+        "devices": [
+            {
+                "!create_or_update:name": "su01-cin-leaf-r01",
+                "!create_or_update:location": "!ref:location",
+                "primary_ip4": {"!get:address": "10.100.1.27/25"},
+            }
+        ]
+    }
 
 
 def test_cumulus_mock_devices_define_intended_firmware() -> None:
