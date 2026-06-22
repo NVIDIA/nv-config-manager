@@ -2755,6 +2755,26 @@ monitoring:
     # Default scrape timeout
     scrapeTimeout: 10s
     # Per-endpoint metricRelabelings for global.customLabels are rendered in monitoring.yaml (job-based).
+    # -------------------------------------------------------------------------
+    # Envoy Gateway data-plane proxy metrics (ingress.type=envoyGateway)
+    # -------------------------------------------------------------------------
+    # Envoy Gateway exposes Prometheus metrics on the managed proxy pods' named
+    # "metrics" port at /stats/prometheus (enabled by default unless disabled
+    # via the EnvoyProxy CR's telemetry.metrics.prometheus.disable). The proxy
+    # pods are labelled app.kubernetes.io/name=envoy and
+    # app.kubernetes.io/component=proxy and normally live in the Envoy Gateway
+    # system namespace, so this PodMonitor selects them by namespace.
+    #
+    # Rendered only when podMonitors.enabled, envoyProxy.enabled, AND
+    # ingress.type=envoyGateway.
+    envoyProxy:
+      enabled: false
+      # Namespace where Envoy Gateway places the managed proxy pods.
+      # Defaults to networkPolicy.gatewayNamespace when left empty.
+      namespace: ""
+      # Named port and metrics path exposed by the Envoy proxy pods.
+      port: metrics
+      path: /stats/prometheus
 # =============================================================================
 # Local Observability Stack (subcharts)
 # =============================================================================
