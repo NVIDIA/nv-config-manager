@@ -332,17 +332,16 @@ async def get_available_route_distinguishers(
         }
         logger.info("Found RDs: %s", route_distinguishers)
 
-        assigned_numbers = sorted(
-            [int(rd.split(":")[1]) for rd in route_distinguishers if re.match(r"\*:\d+", rd)]
-        )
+        assigned_numbers = {
+            int(rd.split(":")[1]) for rd in route_distinguishers if re.match(r"\*:\d+", rd)
+        }
 
-        if not assigned_numbers or assigned_numbers[-1] < activity_input.rd_min:
-            route_distinguisher = f"*:{activity_input.rd_min}"
-        elif assigned_numbers[-1] >= activity_input.rd_max:
-            # TODO: Reclaim any gaps in the range
+        available_numbers = (
+            set(range(activity_input.rd_min, activity_input.rd_max + 1)) - assigned_numbers
+        )
+        if not available_numbers:
             raise ApplicationError(f"Namespaces {namespaces} out of space for new RDs")
-        else:
-            route_distinguisher = f"*:{assigned_numbers[-1] + 1}"
+        route_distinguisher = f"*:{min(available_numbers)}"
     return GetAvailableRouteDistinguishersOutput(
         route_distinguisher=route_distinguisher,
         namespaces=namespaces,
