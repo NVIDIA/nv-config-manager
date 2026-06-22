@@ -86,6 +86,16 @@ STATUSES = {
     }
 }
 
+NAMESPACE_TAGS = {
+    "data": {
+        "namespaces": [
+            {"tags": [{"name": "spectrumx"}, {"name": "tenant-a"}]},
+            {"tags": [{"name": "spectrumx"}]},
+            {"tags": []},
+        ]
+    }
+}
+
 
 def test_site_v2():
     with aioresponses() as m:
@@ -191,6 +201,191 @@ def test_role_managed_only():
         assert len(result) == 2
         names = {r["name"] for r in result}
         assert names == {"leaf", "spine"}
+
+
+def test_namespace_tag():
+    """Test the namespace tag parameter endpoint."""
+    with aioresponses() as m:
+        m.post("https://nautobot.example.com/api/graphql/", payload=NAMESPACE_TAGS)
+
+        client = TestClient(app)
+        rsp = client.get("/v1/parameter/namespace-tag?location=RNO1")
+        assert rsp.json() == [
+            {"id": "spectrumx", "name": "spectrumx"},
+            {"id": "tenant-a", "name": "tenant-a"},
+        ]
+
+
+def test_namespace_tag_no_location():
+    """Test the namespace tag endpoint without a location parameter."""
+    with aioresponses() as m:
+        m.post("https://nautobot.example.com/api/graphql/", payload=NAMESPACE_TAGS)
+
+        client = TestClient(app)
+        rsp = client.get("/v1/parameter/namespace-tag")
+        assert rsp.status_code == 200
+        result = rsp.json()
+        assert isinstance(result, list)
+        names = {t["name"] for t in result}
+        assert "spectrumx" in names
+        assert "tenant-a" in names
+
+
+def test_namespace_tag_empty_namespaces():
+    """Test that an empty namespaces list returns an empty tag list."""
+    payload = {"data": {"namespaces": []}}
+    with aioresponses() as m:
+        m.post("https://nautobot.example.com/api/graphql/", payload=payload)
+
+        client = TestClient(app)
+        rsp = client.get("/v1/parameter/namespace-tag?location=NOWHERE")
+        assert rsp.status_code == 200
+        assert rsp.json() == []
+
+
+def test_namespace_tag_all_empty_tag_lists():
+    """Test that namespaces with empty tag arrays return an empty list."""
+    payload = {
+        "data": {
+            "namespaces": [
+                {"tags": []},
+                {"tags": []},
+            ]
+        }
+    }
+    with aioresponses() as m:
+        m.post("https://nautobot.example.com/api/graphql/", payload=payload)
+
+        client = TestClient(app)
+        rsp = client.get("/v1/parameter/namespace-tag")
+        assert rsp.status_code == 200
+        assert rsp.json() == []
+
+
+def test_namespace_tag_deduplication():
+    """Test that duplicate tag names across namespaces are deduplicated."""
+    payload = {
+        "data": {
+            "namespaces": [
+                {"tags": [{"name": "shared-tag"}, {"name": "only-in-ns1"}]},
+                {"tags": [{"name": "shared-tag"}, {"name": "only-in-ns2"}]},
+                {"tags": [{"name": "shared-tag"}]},
+            ]
+        }
+    }
+    with aioresponses() as m:
+        m.post("https://nautobot.example.com/api/graphql/", payload=payload)
+
+        client = TestClient(app)
+        rsp = client.get("/v1/parameter/namespace-tag")
+        assert rsp.status_code == 200
+        result = rsp.json()
+        names = [t["name"] for t in result]
+        # shared-tag should appear exactly once
+        assert names.count("shared-tag") == 1
+        assert len(result) == 3
+
+
+def test_namespace_tag_filters_empty_name():
+    """Test that tags with an empty string name are filtered out."""
+    payload = {
+        "data": {
+            "namespaces": [
+                {"tags": [{"name": ""}, {"name": "valid-tag"}]},
+                {"tags": [{"name": "another-tag"}]},
+            ]
+        }
+    }
+    with aioresponses() as m:
+        m.post("https://nautobot.example.com/api/graphql/", payload=payload)
+
+        client = TestClient(app)
+        rsp = client.get("/v1/parameter/namespace-tag")
+        assert rsp.status_code == 200
+        result = rsp.json()
+        names = [t["name"] for t in result]
+        assert "" not in names
+        assert "valid-tag" in names
+        assert "another-tag" in names
+
+
+def test_namespace_tag_filters_missing_name_key():
+    """Test that tags without a 'name' key are filtered out."""
+    payload = {
+        "data": {
+            "namespaces": [
+                {"tags": [{"id": "some-id"}, {"name": "good-tag"}]},
+            ]
+        }
+    }
+    with aioresponses() as m:
+        m.post("https://nautobot.example.com/api/graphql/", payload=payload)
+
+        client = TestClient(app)
+        rsp = client.get("/v1/parameter/namespace-tag")
+        assert rsp.status_code == 200
+        result = rsp.json()
+        assert result == [{"id": "good-tag", "name": "good-tag"}]
+
+
+def test_namespace_tag_missing_tags_key():
+    """Test that namespaces without a 'tags' key are handled gracefully."""
+    payload = {
+        "data": {
+            "namespaces": [
+                {},  # no "tags" key at all
+                {"tags": [{"name": "present-tag"}]},
+            ]
+        }
+    }
+    with aioresponses() as m:
+        m.post("https://nautobot.example.com/api/graphql/", payload=payload)
+
+        client = TestClient(app)
+        rsp = client.get("/v1/parameter/namespace-tag")
+        assert rsp.status_code == 200
+        assert rsp.json() == [{"id": "present-tag", "name": "present-tag"}]
+
+
+def test_namespace_tag_sorted_alphabetically():
+    """Test that returned tags are sorted alphabetically by name."""
+    payload = {
+        "data": {
+            "namespaces": [
+                {"tags": [{"name": "zebra"}, {"name": "alpha"}, {"name": "middle"}]},
+            ]
+        }
+    }
+    with aioresponses() as m:
+        m.post("https://nautobot.example.com/api/graphql/", payload=payload)
+
+        client = TestClient(app)
+        rsp = client.get("/v1/parameter/namespace-tag")
+        assert rsp.status_code == 200
+        result = rsp.json()
+        names = [t["name"] for t in result]
+        assert names == sorted(names)
+
+
+def test_namespace_tag_id_equals_name():
+    """Regression test: Tag id must equal Tag name (id is derived from name)."""
+    payload = {
+        "data": {
+            "namespaces": [
+                {"tags": [{"name": "spectrumx"}]},
+            ]
+        }
+    }
+    with aioresponses() as m:
+        m.post("https://nautobot.example.com/api/graphql/", payload=payload)
+
+        client = TestClient(app)
+        rsp = client.get("/v1/parameter/namespace-tag")
+        assert rsp.status_code == 200
+        result = rsp.json()
+        assert len(result) == 1
+        tag = result[0]
+        assert tag["id"] == tag["name"] == "spectrumx"
 
 
 def test_status_with_content_type():
