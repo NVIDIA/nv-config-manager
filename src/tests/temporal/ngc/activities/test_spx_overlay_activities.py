@@ -24,11 +24,13 @@ from nv_config_manager.common.client.nautobot import NautobotException
 from nv_config_manager.temporal.client.nautobot import NautobotClient
 from nv_config_manager.temporal.ngc.activities.nautobot import (
     DeleteOverlayInput,
+    GetAvailableRouteDistinguishersInput,
     ProvisionVrfInput,
     VrfDeletionActivityInput,
     _vni_from_rd,
     delete_overlay,
     delete_vrf,
+    get_available_route_distinguishers,
     provision_vrf,
 )
 
@@ -54,6 +56,20 @@ def _lookup(id_):
     return {"results": [{"id": id_}]}
 
 
+def _namespace_graphql_response(namespace_id=NS_ID, namespace_name="spectrumx_rno1", rds=None):
+    return {
+        "data": {
+            "namespaces": [
+                {
+                    "id": namespace_id,
+                    "name": namespace_name,
+                    "vrfs": [{"rd": rd} for rd in rds or []],
+                }
+            ]
+        }
+    }
+
+
 # ---------------------------------------------------------------------------
 # _vni_from_rd
 # ---------------------------------------------------------------------------
@@ -76,6 +92,32 @@ def test_vni_from_rd_non_numeric():
 def test_vni_from_rd_extra_colons():
     with pytest.raises(ValueError, match="Invalid route distinguisher"):
         _vni_from_rd("1:2:3")
+
+
+# ---------------------------------------------------------------------------
+# get_available_route_distinguishers
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_available_route_distinguishers_returns_namespace_ids():
+    with aioresponses() as m:
+        m.post(
+            f"{NAUTOBOT}/api/graphql/",
+            payload=_namespace_graphql_response(rds=["*:60000"]),
+        )
+
+        result = await get_available_route_distinguishers(
+            GetAvailableRouteDistinguishersInput(
+                site=LOCATION_ID,
+                namespace_tag="spectrumx",
+                rd_min=60000,
+                rd_max=65000,
+            )
+        )
+
+    assert result.namespaces == [NS_ID]
+    assert result.route_distinguisher == "*:60001"
 
 
 # ---------------------------------------------------------------------------
