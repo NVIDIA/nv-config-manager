@@ -104,6 +104,13 @@ class Role(BaseModel):
     name: str
 
 
+class Tag(BaseModel):
+    """Tag data for dropdown population."""
+
+    id: str
+    name: str
+
+
 # Minimal managed-device query for unique tenants only
 NV_CONFIG_MANAGER_DEVICES_TENANTS_QUERY = """
     query ($limit: Int!, $offset: Int!) {
@@ -243,6 +250,37 @@ async def get_roles(
         roles = [{"id": r["id"], "name": r["name"]} for r in data["data"]["roles"]]
 
     return [Role(id=r["id"], name=r["name"]) for r in roles]
+
+
+@router.get("/namespace-tag")
+async def get_namespace_tags(
+    location: Annotated[
+        str | None, Query(description="Limit to namespace tags at this location")
+    ] = None,
+) -> list[Tag]:
+    """Return a list of tags used by Nautobot namespaces."""
+    client = NautobotClient()
+    query = """
+        query ($location: String) {
+            namespaces(location: $location) {
+                tags {
+                    name
+                }
+            }
+        }
+    """
+    variables = {"location": location}
+
+    async with client:
+        data = await client.graphql_query(query, variables=variables)
+
+    tag_names = {
+        tag["name"]
+        for namespace in data["data"]["namespaces"]
+        for tag in namespace.get("tags", [])
+        if tag.get("name")
+    }
+    return [Tag(id=name, name=name) for name in sorted(tag_names)]
 
 
 class Status(BaseModel):
