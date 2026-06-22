@@ -271,15 +271,44 @@ async def get_namespace_tags(
     """
     variables = {"location": location}
 
-    async with client:
-        data = await client.graphql_query(query, variables=variables)
+    try:
+        async with client:
+            data = await client.graphql_query(query, variables=variables)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to query Nautobot namespace tags.",
+        ) from exc
 
-    tag_names = {
-        tag["name"]
-        for namespace in data["data"]["namespaces"]
-        for tag in namespace.get("tags", [])
-        if tag.get("name")
-    }
+    namespaces = data.get("data", {}).get("namespaces") if isinstance(data, dict) else None
+    if not isinstance(namespaces, list):
+        raise HTTPException(
+            status_code=500,
+            detail="Malformed Nautobot namespace tag response.",
+        )
+
+    tag_names: set[str] = set()
+    for namespace in namespaces:
+        if not isinstance(namespace, dict):
+            raise HTTPException(
+                status_code=500,
+                detail="Malformed Nautobot namespace tag response.",
+            )
+        tags = namespace.get("tags", [])
+        if not isinstance(tags, list):
+            raise HTTPException(
+                status_code=500,
+                detail="Malformed Nautobot namespace tag response.",
+            )
+        for tag in tags:
+            if not isinstance(tag, dict):
+                raise HTTPException(
+                    status_code=500,
+                    detail="Malformed Nautobot namespace tag response.",
+                )
+            tag_name = tag.get("name")
+            if isinstance(tag_name, str) and tag_name:
+                tag_names.add(tag_name)
     return [Tag(id=name, name=name) for name in sorted(tag_names)]
 
 
