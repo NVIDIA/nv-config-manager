@@ -56,14 +56,14 @@ def _lookup(id_):
     return {"results": [{"id": id_}]}
 
 
-def _namespace_graphql_response(namespace_id=NS_ID, namespace_name="spectrumx_rno1", rds=None):
+def _namespace_graphql_response(*rds, namespace_id=NS_ID, namespace_name="spectrumx_rno1"):
     return {
         "data": {
             "namespaces": [
                 {
                     "id": namespace_id,
                     "name": namespace_name,
-                    "vrfs": [{"rd": rd} for rd in rds or []],
+                    "vrfs": [{"rd": rd} for rd in rds],
                 }
             ]
         }
@@ -104,7 +104,7 @@ async def test_get_available_route_distinguishers_returns_namespace_ids():
     with aioresponses() as m:
         m.post(
             f"{NAUTOBOT}/api/graphql/",
-            payload=_namespace_graphql_response(rds=["*:60000"]),
+            payload=_namespace_graphql_response("*:60000"),
         )
 
         result = await get_available_route_distinguishers(
@@ -118,6 +118,46 @@ async def test_get_available_route_distinguishers_returns_namespace_ids():
 
     assert result.namespaces == [NS_ID]
     assert result.route_distinguisher == "*:60001"
+
+
+@pytest.mark.asyncio
+async def test_get_available_route_distinguishers_reuses_gap_below_max():
+    with aioresponses() as m:
+        m.post(
+            f"{NAUTOBOT}/api/graphql/",
+            payload=_namespace_graphql_response("*:60000", "*:60002", "*:65000"),
+        )
+
+        result = await get_available_route_distinguishers(
+            GetAvailableRouteDistinguishersInput(
+                site=LOCATION_ID,
+                namespace_tag="tenant-a",
+                rd_min=60000,
+                rd_max=65000,
+            )
+        )
+
+    assert result.route_distinguisher == "*:60001"
+    assert result.namespaces == [NS_ID]
+
+
+@pytest.mark.asyncio
+async def test_get_available_route_distinguishers_raises_when_range_full():
+    with aioresponses() as m:
+        m.post(
+            f"{NAUTOBOT}/api/graphql/",
+            payload=_namespace_graphql_response("*:60000", "*:60001", "*:60002"),
+        )
+
+        with pytest.raises(ApplicationError, match="out of space for new RDs"):
+            await get_available_route_distinguishers(
+                GetAvailableRouteDistinguishersInput(
+                    site=LOCATION_ID,
+                    namespace_tag="tenant-a",
+                    rd_min=60000,
+                    rd_max=60002,
+                )
+            )
 
 
 # ---------------------------------------------------------------------------
