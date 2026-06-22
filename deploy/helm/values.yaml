@@ -1895,6 +1895,28 @@ mcp:
       paths:
         - /healthcheck
         - /metrics
+        - /.well-known/oauth-protected-resource
+        - /.well-known/oauth-protected-resource/mcp
+        - /.well-known/oauth-authorization-server
+  auth:
+    oauth:
+      # Defaults to oidc.enabled when unset. Set false to disable MCP OAuth
+      # discovery metadata even when OIDC is enabled.
+      # enabled: true
+      # Defaults to https://<svc-mcp-hostname>/mcp
+      resourceUrl: ""
+      # Defaults to oidc.issuerUrl.
+      issuerUrl: ""
+      # Defaults to oidc.cliClientId, then oidc.clientId.
+      clientId: ""
+      # Defaults to oidc.scopes, or openid email profile when oidc.scopes is empty.
+      scopes: []
+      # Defaults to oidc.authorizationEndpoint, or {issuerUrl}/protocol/openid-connect/auth.
+      authorizationEndpoint: ""
+      # Defaults to oidc.tokenEndpoint, or {issuerUrl}/protocol/openid-connect/token.
+      tokenEndpoint: ""
+      # Defaults to oidc.jwksUri when set. Optional for OAuth discovery clients.
+      jwksUri: ""
   api:
     replicas: 2
     resources:

@@ -26,16 +26,28 @@ from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp
 
 from nv_config_manager.common.log import configure_logging
-from nv_config_manager.mcp.auth import RequestAuthMiddleware, ServiceAuthMiddleware
-from nv_config_manager.mcp.settings import MCPSettings
+from nv_config_manager.mcp.auth import (
+    DEFAULT_MCP_UNAUTHENTICATED_PATHS,
+    RequestAuthMiddleware,
+    ServiceAuthMiddleware,
+)
+from nv_config_manager.mcp.oauth_metadata import (
+    authorization_server_metadata,
+    protected_resource_metadata,
+)
+from nv_config_manager.mcp.settings import MCPOAuthSettings, MCPSettings
 from nv_config_manager.mcp.tools import register_tools
 
 configure_logging(service="mcp")
 
 
-def create_mcp_server(settings: MCPSettings | None = None) -> FastMCP:
+def create_mcp_server(
+    settings: MCPSettings | None = None,
+    oauth_settings: MCPOAuthSettings | None = None,
+) -> FastMCP:
     """Create the FastMCP server and register tools."""
     resolved_settings = settings or MCPSettings.from_config()
+    resolved_oauth_settings = oauth_settings or MCPOAuthSettings.from_config()
     server = FastMCP(
         "nvidia-config-manager-mcp",
         instructions=(
@@ -60,15 +72,73 @@ def create_mcp_server(settings: MCPSettings | None = None) -> FastMCP:
     async def metrics(request: Request) -> Response:
         return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
+    if resolved_oauth_settings.enabled:
+        _register_oauth_metadata_routes(server, resolved_oauth_settings)
+
     register_tools(server, resolved_settings)
     return server
 
 
-def create_app(settings: MCPSettings | None = None) -> ASGIApp:
+def create_app(
+    settings: MCPSettings | None = None,
+    oauth_settings: MCPOAuthSettings | None = None,
+) -> ASGIApp:
     """Create the ASGI application for Streamable HTTP MCP."""
+    resolved_oauth_settings = oauth_settings or MCPOAuthSettings.from_config()
+    unauthenticated_paths = DEFAULT_MCP_UNAUTHENTICATED_PATHS
+    resource_metadata_url = ""
+    if resolved_oauth_settings.enabled:
+        resource_metadata_url = resolved_oauth_settings.resource_metadata_url
     return ServiceAuthMiddleware(
-        RequestAuthMiddleware(create_mcp_server(settings).streamable_http_app())
+        RequestAuthMiddleware(
+            create_mcp_server(settings, resolved_oauth_settings).streamable_http_app()
+        ),
+        unauthenticated_paths=unauthenticated_paths,
+        resource_metadata_url=resource_metadata_url,
     )
+
+
+def _register_oauth_metadata_routes(server: FastMCP, settings: MCPOAuthSettings) -> None:
+    @server.custom_route(
+        "/.well-known/oauth-protected-resource",
+        methods=["GET", "OPTIONS"],
+        include_in_schema=False,
+    )
+    async def protected_resource_metadata_root(request: Request) -> JSONResponse | Response:
+        if request.method == "OPTIONS":
+            return Response(status_code=204)
+        return JSONResponse(
+            protected_resource_metadata(settings),
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @server.custom_route(
+        "/.well-known/oauth-protected-resource/mcp",
+        methods=["GET", "OPTIONS"],
+        include_in_schema=False,
+    )
+    async def protected_resource_metadata_mcp(request: Request) -> JSONResponse | Response:
+        if request.method == "OPTIONS":
+            return Response(status_code=204)
+        return JSONResponse(
+            protected_resource_metadata(settings),
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @server.custom_route(
+        "/.well-known/oauth-authorization-server",
+        methods=["GET", "OPTIONS"],
+        include_in_schema=False,
+    )
+    async def oauth_authorization_server_metadata(
+        request: Request,
+    ) -> JSONResponse | Response:
+        if request.method == "OPTIONS":
+            return Response(status_code=204)
+        return JSONResponse(
+            authorization_server_metadata(settings),
+            headers={"Cache-Control": "no-store"},
+        )
 
 
 def main() -> None:

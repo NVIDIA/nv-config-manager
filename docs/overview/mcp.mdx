@@ -10,7 +10,7 @@ Use MCP when you want an assistant or other MCP-capable client to answer operati
 
 ## Quick Setup
 
-There are two supported ways to discover the MCP connection details.
+There are three supported ways to connect to the MCP server.
 
 ### Use the helper CLI
 
@@ -37,6 +37,79 @@ nvcm-mcp-cli token -H config-manager.example.com
 
 For local development environments that use a self-signed certificate, add `-k`.
 
+### Use client-native OAuth
+
+Remote MCP clients with native OAuth support can authenticate directly against the MCP endpoint when SSO is enabled. The MCP service exposes standard OAuth discovery metadata at the MCP host under `/.well-known/`.
+
+The OAuth client ID is required. Config Manager does not support OAuth Dynamic Client Registration, so the client must be configured with the public/native OIDC client ID from the Config Manager auth discovery endpoint.
+
+Get the client ID, MCP URL, and scopes from `/auth/discovery`:
+
+```sh
+DISCOVERY_JSON=$(curl -fsS https://config-manager.example.com/auth/discovery)
+
+CLIENT_ID=$(printf '%s' "$DISCOVERY_JSON" | jq -r '.clientId')
+MCP_URL=$(printf '%s' "$DISCOVERY_JSON" | jq -r '.services.mcp')
+SCOPES=$(printf '%s' "$DISCOVERY_JSON" | jq -r '.scopes | join(",")')
+```
+
+The response includes the same fields directly:
+
+```json
+{
+  "authRequired": true,
+  "issuerUrl": "https://idp.example.com/realms/nv-config-manager",
+  "clientId": "nv-config-manager-cli",
+  "scopes": ["openid", "profile", "email"],
+  "services": {
+    "mcp": "https://svc-mcp.config-manager.example.com/mcp"
+  }
+}
+```
+
+For Codex, add the Streamable HTTP MCP server with the client ID, then log in:
+
+```sh
+codex mcp add nv-config-manager \
+  --url "$MCP_URL" \
+  --oauth-client-id "$CLIENT_ID"
+
+codex mcp login nv-config-manager --scopes "$SCOPES"
+```
+
+If your deployment requires an OAuth resource parameter, include the MCP endpoint as the resource:
+
+```sh
+codex mcp add nv-config-manager \
+  --url "$MCP_URL" \
+  --oauth-client-id "$CLIENT_ID" \
+  --oauth-resource "$MCP_URL"
+```
+
+For Claude Code, add the HTTP MCP server with the same client ID:
+
+```sh
+claude mcp add --transport http \
+  --client-id "$CLIENT_ID" \
+  nv-config-manager "$MCP_URL"
+```
+
+If your identity provider requires a pre-registered localhost callback URI, also pass `--callback-port <port>` and register `http://localhost:<port>/callback` with the client.
+
+After adding the server, run `/mcp` in Claude Code and select Authenticate. Claude Code should discover the MCP OAuth metadata from the remote endpoint and print or open the browser login URL.
+
+For other MCP clients, configure:
+
+| Setting | Value |
+| :------ | :---- |
+| Transport | Streamable HTTP |
+| URL | `https://svc-mcp.<hostname>/mcp`, or the endpoint from `/auth/discovery` |
+| OAuth flow | Authorization Code with PKCE |
+| Client ID | Required; use `clientId` from `/auth/discovery` |
+| Scopes | Use the scopes in the OAuth metadata; the default is `openid email profile` |
+
+Clients that expect OAuth Dynamic Client Registration and do not let you provide a client ID cannot complete the native OAuth flow. Use the `nvcm-mcp-cli` helper and bearer-token configuration for those clients.
+
 ### Use discovery directly
 
 You can also tell an MCP-capable assistant or client to discover the server details from:
@@ -61,7 +134,8 @@ Use these settings when configuring a client manually:
 | :------ | :---- |
 | Transport | Streamable HTTP |
 | URL | Use `nvcm-mcp-cli endpoint -H <hostname>` or the endpoint from `/auth/discovery` |
-| Authentication | Use bearer authentication only when discovery or the helper says it is required |
+| Authentication | Use client-native OAuth with an explicit client ID, or use bearer authentication when discovery or the helper says it is required |
+| OAuth client ID | Required for client-native OAuth; use `clientId` from `/auth/discovery` |
 
 When bearer authentication is required, prefer an environment variable or the client's secret storage instead of writing tokens into static configuration files.
 
@@ -109,4 +183,6 @@ For the best results, connect both MCP servers: use the deployment MCP server fo
 - The bearer token represents the signed-in user.
 - MCP tools use the caller's access for Config Manager APIs.
 - External Nautobot deployments may use a configured read-only Nautobot token for MCP Nautobot queries.
+- OAuth discovery metadata does not register clients. Native OAuth MCP clients must use a preconfigured public/native OIDC client ID.
+- Native OAuth MCP clients should not use an OIDC client secret.
 - Token values should be treated as secrets and kept out of documentation, logs, and committed configuration.

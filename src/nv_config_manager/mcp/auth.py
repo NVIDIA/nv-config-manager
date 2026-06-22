@@ -38,6 +38,14 @@ AUTH_CONTEXT_HEADERS = {
     "x-auth-request-groups": "X-Auth-Request-Groups",
     "x-auth-request-subject": "X-Auth-Request-Subject",
 }
+OAUTH_METADATA_PATHS = frozenset(
+    {
+        "/.well-known/oauth-protected-resource",
+        "/.well-known/oauth-protected-resource/mcp",
+        "/.well-known/oauth-authorization-server",
+    }
+)
+DEFAULT_MCP_UNAUTHENTICATED_PATHS = DEFAULT_UNAUTHENTICATED_PATHS | OAUTH_METADATA_PATHS
 
 
 class MissingBearerTokenError(Exception):
@@ -102,10 +110,12 @@ class ServiceAuthMiddleware:
     def __init__(
         self,
         app: ASGIApp,
-        unauthenticated_paths: frozenset[str] = DEFAULT_UNAUTHENTICATED_PATHS,
+        unauthenticated_paths: frozenset[str] = DEFAULT_MCP_UNAUTHENTICATED_PATHS,
+        resource_metadata_url: str = "",
     ) -> None:
         self.app = app
         self.unauthenticated_paths = unauthenticated_paths
+        self.resource_metadata_url = resource_metadata_url
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> Any:
         if scope["type"] != "http":
@@ -120,7 +130,12 @@ class ServiceAuthMiddleware:
         try:
             await require_authenticated_identity(request)
         except HTTPException as exc:
-            response = JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+            headers = _auth_failure_headers(exc, self.resource_metadata_url)
+            response = JSONResponse(
+                status_code=exc.status_code,
+                content={"detail": exc.detail},
+                headers=headers,
+            )
             return await response(scope, receive, send)
 
         return await self.app(scope, receive, send)
@@ -153,3 +168,19 @@ def user_bearer_authorization() -> str | None:
     if not auth:
         return None
     return auth.bearer_authorization
+
+
+def _auth_failure_headers(exc: HTTPException, resource_metadata_url: str) -> dict[str, str]:
+    if not resource_metadata_url or exc.status_code not in (401, 403):
+        return {}
+    detail = str(exc.detail or "Authentication required")
+    www_authenticate = (
+        'Bearer error="invalid_token", '
+        f'error_description="{_escape_www_authenticate_value(detail)}", '
+        f'resource_metadata="{_escape_www_authenticate_value(resource_metadata_url)}"'
+    )
+    return {"WWW-Authenticate": www_authenticate}
+
+
+def _escape_www_authenticate_value(value: str) -> str:
+    return value.replace("\\", "\\\\").replace('"', '\\"')
