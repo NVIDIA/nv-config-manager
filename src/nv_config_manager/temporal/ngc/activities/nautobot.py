@@ -299,6 +299,7 @@ async def get_available_route_distinguishers(
     namespace_query = """
         query ($tag: String, $location: String) {
             namespaces(location: $location, tags: [$tag]) {
+                id
                 name
                 vrfs {
                     rd
@@ -315,7 +316,7 @@ async def get_available_route_distinguishers(
                 "location": activity_input.site,
             },
         )
-        namespaces = [namespace["name"] for namespace in results["data"]["namespaces"]]
+        namespaces = [namespace["id"] for namespace in results["data"]["namespaces"]]
         if not namespaces:
             raise ApplicationError(
                 f"No namespaces for site {activity_input.site} and "
