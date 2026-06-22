@@ -16,7 +16,7 @@ This workflow is experimental and not intended for general use. Use it only in t
 
 Before running, confirm:
 
-- **Site exists in Nautobot** and is correctly tagged so RD allocation can find an available range.
+- **Site exists in Nautobot** and has at least one namespace tagged for SpX overlay creation.
 - **Tenant exists in Nautobot.** The tenant is used to scope the created Overlay object.
 - **overlay_id chosen.** Pick a unique identifier; if the same ID is reused, the workflow short-circuits and returns the existing VRFs without creating new ones.
 - **Route-distinguisher range has free entries** within the site's allocated `rd_min`..`rd_max` window. The workflow's RD allocator pulls the first available RD in that window.
@@ -32,7 +32,7 @@ Before running, confirm:
 | **Site** | The site the overlay belongs to. | Yes |
 | **Overlay ID** | Unique identifier for the overlay. Idempotency key — re-running with the same ID returns existing VRFs. | Yes |
 | **Tenant** | The Nautobot tenant to associate with the created Overlay. | Yes |
-| **Namespace** | Tag used to identify the overlay namespace in Nautobot. | Yes |
+| **Namespace Tag** | Nautobot namespace tag used to identify the overlay namespaces for this site. The form lists tags from Nautobot namespaces. | Yes |
 | **RD Min** | Lower bound of the route-distinguisher allocation range (0-65535). | No (default: 60000) |
 | **RD Max** | Upper bound of the route-distinguisher allocation range (0-65535). | No (default: 65000) |
 
