@@ -114,6 +114,23 @@ def test_mcp_oauth_settings_parse_metadata_config() -> None:
     }
 
 
+def test_mcp_oauth_well_known_paths_follow_resource_url_path() -> None:
+    config = _oauth_config()
+    config["mcp.oauth"]["resource_url"] = "https://svc-mcp.example.test/custom/mcp/"
+
+    settings = MCPOAuthSettings.from_config(config)
+
+    assert (
+        settings.resource_metadata_url
+        == "https://svc-mcp.example.test/.well-known/oauth-protected-resource/custom/mcp"
+    )
+    assert settings.well_known_paths == {
+        "/.well-known/oauth-protected-resource",
+        "/.well-known/oauth-protected-resource/custom/mcp",
+        "/.well-known/oauth-authorization-server",
+    }
+
+
 def test_mcp_oauth_settings_requires_valid_urls_when_enabled() -> None:
     config = _oauth_config()
     config["mcp.oauth"]["resource_url"] = "svc-mcp.example.test/mcp"

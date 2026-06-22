@@ -35,7 +35,11 @@ from nv_config_manager.mcp.oauth_metadata import (
     authorization_server_metadata,
     protected_resource_metadata,
 )
-from nv_config_manager.mcp.settings import MCPOAuthSettings, MCPSettings
+from nv_config_manager.mcp.settings import (
+    AUTHORIZATION_SERVER_METADATA_PATH,
+    MCPOAuthSettings,
+    MCPSettings,
+)
 from nv_config_manager.mcp.tools import register_tools
 
 configure_logging(service="mcp")
@@ -89,6 +93,7 @@ def create_app(
     resource_metadata_url = ""
     if resolved_oauth_settings.enabled:
         resource_metadata_url = resolved_oauth_settings.resource_metadata_url
+        unauthenticated_paths = unauthenticated_paths | resolved_oauth_settings.well_known_paths
     return ServiceAuthMiddleware(
         RequestAuthMiddleware(
             create_mcp_server(settings, resolved_oauth_settings).streamable_http_app()
@@ -99,12 +104,9 @@ def create_app(
 
 
 def _register_oauth_metadata_routes(server: FastMCP, settings: MCPOAuthSettings) -> None:
-    @server.custom_route(
-        "/.well-known/oauth-protected-resource",
-        methods=["GET", "OPTIONS"],
-        include_in_schema=False,
-    )
-    async def protected_resource_metadata_root(request: Request) -> JSONResponse | Response:
+    async def oauth_protected_resource_metadata(
+        request: Request,
+    ) -> JSONResponse | Response:
         if request.method == "OPTIONS":
             return Response(status_code=204)
         return JSONResponse(
@@ -112,21 +114,15 @@ def _register_oauth_metadata_routes(server: FastMCP, settings: MCPOAuthSettings)
             headers={"Cache-Control": "no-store"},
         )
 
-    @server.custom_route(
-        "/.well-known/oauth-protected-resource/mcp",
-        methods=["GET", "OPTIONS"],
-        include_in_schema=False,
-    )
-    async def protected_resource_metadata_mcp(request: Request) -> JSONResponse | Response:
-        if request.method == "OPTIONS":
-            return Response(status_code=204)
-        return JSONResponse(
-            protected_resource_metadata(settings),
-            headers={"Cache-Control": "no-store"},
-        )
+    for metadata_path in settings.well_known_paths - {AUTHORIZATION_SERVER_METADATA_PATH}:
+        server.custom_route(
+            metadata_path,
+            methods=["GET", "OPTIONS"],
+            include_in_schema=False,
+        )(oauth_protected_resource_metadata)
 
     @server.custom_route(
-        "/.well-known/oauth-authorization-server",
+        AUTHORIZATION_SERVER_METADATA_PATH,
         methods=["GET", "OPTIONS"],
         include_in_schema=False,
     )

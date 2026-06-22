@@ -26,6 +26,8 @@ from nv_config_manager.common.config import load_config, parse_verify_param
 NAUTOBOT_AUTH_MODES = {"auto", "jwt", "token"}
 MCP_AUTH_CONFIG_ENV_VAR = "NV_CONFIG_MANAGER_MCP_AUTH_INI"
 DEFAULT_MCP_AUTH_CONFIG_PATH = "/etc/nv-config-manager/mcp-auth.ini"
+PROTECTED_RESOURCE_METADATA_PATH = "/.well-known/oauth-protected-resource"
+AUTHORIZATION_SERVER_METADATA_PATH = "/.well-known/oauth-authorization-server"
 
 
 @dataclass(frozen=True)
@@ -130,13 +132,14 @@ class MCPOAuthSettings:
     @property
     def well_known_paths(self) -> frozenset[str]:
         """Return unauthenticated well-known metadata paths served by MCP."""
-        return frozenset(
-            {
-                "/.well-known/oauth-protected-resource",
-                "/.well-known/oauth-protected-resource/mcp",
-                "/.well-known/oauth-authorization-server",
-            }
-        )
+        paths = {
+            PROTECTED_RESOURCE_METADATA_PATH,
+            AUTHORIZATION_SERVER_METADATA_PATH,
+        }
+        if self.enabled and self.resource_metadata_url:
+            metadata_path = urlparse(self.resource_metadata_url).path.rstrip("/") or "/"
+            paths.add(metadata_path)
+        return frozenset(paths)
 
 
 def load_mcp_auth_config() -> ConfigParser:

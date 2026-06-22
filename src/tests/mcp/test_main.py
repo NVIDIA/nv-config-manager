@@ -141,6 +141,28 @@ def test_oauth_metadata_endpoints_bypass_service_auth(monkeypatch: pytest.Monkey
     }
 
 
+def test_configured_oauth_metadata_path_bypasses_service_auth(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def reject_identity(request: object) -> object:
+        raise HTTPException(status_code=403, detail="This endpoint requires SSO authentication.")
+
+    monkeypatch.setattr(
+        "nv_config_manager.mcp.auth.require_authenticated_identity",
+        reject_identity,
+    )
+    oauth_settings = _oauth_settings(resource_url="https://svc-mcp.config-manager.local/custom/mcp")
+
+    with TestClient(
+        create_app(_settings(), oauth_settings),
+        base_url="https://svc-mcp.config-manager.local",
+    ) as client:
+        response = client.get("/.well-known/oauth-protected-resource/custom/mcp")
+
+    assert response.status_code == 200
+    assert response.json()["resource"] == "https://svc-mcp.config-manager.local/custom/mcp"
+
+
 def test_oauth_metadata_endpoints_not_registered_when_disabled() -> None:
     client = TestClient(create_app(_settings(), MCPOAuthSettings(enabled=False)))
 
@@ -206,10 +228,12 @@ def _settings() -> MCPSettings:
     )
 
 
-def _oauth_settings() -> MCPOAuthSettings:
+def _oauth_settings(
+    resource_url: str = "https://svc-mcp.config-manager.local/mcp",
+) -> MCPOAuthSettings:
     return MCPOAuthSettings(
         enabled=True,
-        resource_url="https://svc-mcp.config-manager.local/mcp",
+        resource_url=resource_url,
         issuer_url="https://idp.example.test/realms/nvcm",
         client_id="nvcm-cli",
         scopes=("openid", "email", "profile"),
