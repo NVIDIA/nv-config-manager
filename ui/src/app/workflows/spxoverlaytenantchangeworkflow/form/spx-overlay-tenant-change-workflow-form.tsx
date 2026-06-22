@@ -159,7 +159,7 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
                 type="input"
                 control={form.control}
                 name="overlay_id"
-                label="VPC ID"
+                label="Overlay ID"
                 isSubmitting={isSubmitting}
               />
               <WorkflowFormField
