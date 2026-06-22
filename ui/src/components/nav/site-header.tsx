@@ -74,10 +74,15 @@ const canExecuteWorkflow = (
 
 const getDisabledWorkflowReason = (
   metadata: WorkflowMetadata | undefined,
-  isFormEnabled: boolean
+  isFormEnabled: boolean,
+  isUnauthorized: boolean
 ): string => {
   if (!isFormEnabled) {
     return "Form Coming Soon!";
+  }
+
+  if (isUnauthorized) {
+    return "Unauthorized";
   }
 
   if (!metadata) {
@@ -100,13 +105,15 @@ const NewWorkflowChooser = () => {
     apiURL ? sanitizeUrl(`${apiURL}/v1/workflow/metadata`) : null,
     fetcher
   );
-  const { data: userInfo } = useSWRImmutable<WhoamiResponse>(
-    apiURL ? sanitizeUrl(`${apiURL}/whoami`) : null,
-    fetcher
-  );
+  const { data: userInfo, error: whoamiError } =
+    useSWRImmutable<WhoamiResponse>(
+      apiURL ? sanitizeUrl(`${apiURL}/whoami`) : null,
+      fetcher
+    );
 
   const metadataBySlug = workflowMetadataBySlug(workflowMetadata?.workflows);
-  const userRoles = new Set(userInfo?.roles ?? []);
+  const isUnauthorized = Boolean(whoamiError);
+  const userRoles = new Set(isUnauthorized ? [] : (userInfo?.roles ?? []));
 
   return (
     <div className="relative inline-block text-left">
@@ -125,11 +132,13 @@ const NewWorkflowChooser = () => {
         <PopoverContent align="end" className="max-h-[70vh] overflow-y-auto">
           {siteConfig.workflows.map((item) => {
             const metadata = metadataBySlug.get(item.slug);
-            const hasPermission = canExecuteWorkflow(metadata, userRoles);
+            const hasPermission =
+              !isUnauthorized && canExecuteWorkflow(metadata, userRoles);
             const isEnabled = item.enabled && hasPermission;
             const disabledReason = getDisabledWorkflowReason(
               metadata,
-              item.enabled
+              item.enabled,
+              isUnauthorized
             );
 
             return isEnabled ? (
@@ -177,7 +186,11 @@ const UserRolesMenu = () => {
     fetcher
   );
 
-  const roles = (userInfo?.roles ?? []).filter(
+  const isUnauthorized = Boolean(error);
+  const username = isUnauthorized
+    ? "Unauthorized"
+    : userInfo?.user ?? "Unknown user";
+  const roles = (isUnauthorized ? [] : (userInfo?.roles ?? [])).filter(
     (role) => role.toLowerCase() !== "all"
   );
 
@@ -199,14 +212,7 @@ const UserRolesMenu = () => {
             <div className="text-xs font-medium text-muted-foreground">
               Username
             </div>
-            <div className="break-all text-sm font-medium">
-              {userInfo?.user ?? "Unknown user"}
-            </div>
-            {error && (
-              <div className="text-xs text-destructive">
-                Unable to load roles
-              </div>
-            )}
+            <div className="break-all text-sm font-medium">{username}</div>
           </div>
           <div className="space-y-2">
             <div className="text-xs font-medium text-muted-foreground">
