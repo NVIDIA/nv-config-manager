@@ -52,6 +52,14 @@ def test_healthcheck():
     assert rsp.json() == "OK"
 
 
+def test_metrics():
+    """Verify /metrics returns Prometheus metrics without auth."""
+    client = TestClient(app)
+    rsp = client.get("/metrics")
+    assert rsp.status_code == 200
+    assert "nv_config_manager_temporal_api" in rsp.text
+
+
 def test_temporal_ui_workflow_href_uses_ini(monkeypatch):
     """Verify Workflow API href generation reads the INI, not TEMPORAL_UI."""
     monkeypatch.setenv("TEMPORAL_UI", "http://localhost:8080")
