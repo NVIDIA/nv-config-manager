@@ -107,6 +107,10 @@ File paths for secrets.method=vault-agent: the injector mounts volume "vault-sec
 {{- end -}}
 {{- end -}}
 
+{{- define "nv-config-manager.vaultAgent.ztpS3EnvFilePath" -}}
+/vault/secrets/ztp-s3.env
+{{- end -}}
+
 {{/*
 nv-config-manager.ini volume mount: ESO secret dir vs Vault Agent (injector provides /vault/secrets)
 */}}
@@ -194,6 +198,14 @@ Usage: ctKv2Key emits a full consul-template action (including outer braces). In
 {{- $vn := required "var is required" .var -}}
 {{- $vk := .key | toString -}}
 {{- printf "{{if $%s}}{{if $%s.Data}}{{index (or (index $%s.Data \"data\") (index $%s.Data \"Data\")) %q}}{{end}}{{end}}" $vn $vn $vn $vn $vk -}}
+{{- end -}}
+
+{{- define "nv-config-manager.vaultAgent.ctKv2ShellExport" -}}
+{{- $vn := required "var is required" .var -}}
+{{- $vk := .key | toString -}}
+{{- $env := required "env is required" .env -}}
+{{- $marker := printf "__NV_CONFIG_MANAGER_%s__" $env -}}
+{{- printf "%s=$(cat <<'%s'\n%s\n%s\n)\nexport %s\n" $env $marker (include "nv-config-manager.vaultAgent.ctKv2Key" (dict "var" $vn "key" $vk)) $marker $env -}}
 {{- end -}}
 
 {{- define "nv-config-manager.vaultAgent.ctKv2OptionalIniLine" -}}
@@ -577,6 +589,20 @@ Using template { source = ... } avoids HCL <<-EOT heredocs, which break if gener
 {{- include "nv-config-manager.vaultAgent.configSecretsIniBody" . -}}
 {{- end -}}
 
+{{- define "nv-config-manager.vaultAgent.ztpS3EnvTplFile" -}}
+{{- $root := . -}}
+{{- $m := include "nv-config-manager.vault.kvMountPath" $root -}}
+{{- $p := include "nv-config-manager.vault.secretPath" (dict "root" $root "secret" "ztpS3") -}}
+{{- $s3 := $root.Values.networkZtp.storage.s3 | default dict -}}
+{{- printf "{{- $ztpS3 := secret %q -}}\n" (printf "%s/data/%s" $m $p) -}}
+{{- $endpointKey := include "nv-config-manager.vault.keyName" (dict "root" $root "secret" "ztpS3" "key" "endpoint") -}}
+{{- if and (not $s3.endpoint) $endpointKey -}}
+{{ include "nv-config-manager.vaultAgent.ctKv2ShellExport" (dict "var" "ztpS3" "key" $endpointKey "env" "CUSTOM_S3_ENDPOINT") -}}
+{{- end -}}
+{{ include "nv-config-manager.vaultAgent.ctKv2ShellExport" (dict "var" "ztpS3" "key" (include "nv-config-manager.vault.keyName" (dict "root" $root "secret" "ztpS3" "key" "accessKeyId")) "env" "CUSTOM_S3_ACCESS_KEY") -}}
+{{ include "nv-config-manager.vaultAgent.ctKv2ShellExport" (dict "var" "ztpS3" "key" (include "nv-config-manager.vault.keyName" (dict "root" $root "secret" "ztpS3" "key" "secretAccessKey")) "env" "CUSTOM_S3_SECRET_KEY") -}}
+{{- end -}}
+
 {{- define "nv-config-manager.vaultAgent.bmcJsonTplFile" -}}
 {{- $m := include "nv-config-manager.vault.kvMountPath" . -}}
 {{- $bp := include "nv-config-manager.vault.secretPath" (dict "root" . "secret" "bmc") -}}
@@ -636,6 +662,14 @@ template {
 template {
   source      = "/vault/configs/config-secrets.ini.tpl"
   destination = "/vault/secrets/config-secrets.ini"
+  error_on_missing_key = true
+}
+{{- end }}
+{{- if eq (include "nv-config-manager.networkZtp.s3VaultAgentEnvEnabled" .) "true" }}
+
+template {
+  source      = "/vault/configs/ztp-s3.env.tpl"
+  destination = {{ include "nv-config-manager.vaultAgent.ztpS3EnvFilePath" . | quote }}
   error_on_missing_key = true
 }
 {{- end }}
