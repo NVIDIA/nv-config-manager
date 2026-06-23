@@ -645,6 +645,10 @@ def pynautobot_client() -> Any:
 # =============================================================================
 
 
+def _nonblank_config_value(value: str | None) -> str | None:
+    return value if value and value.strip() else None
+
+
 def get_storage_client() -> ObjectStorageClient:
     """Return the appropriate storage client based on ZTP configuration.
 
@@ -666,10 +670,10 @@ def get_storage_client() -> ObjectStorageClient:
             raise ValueError("storage_type is 'file' but file_store_path is not set.")
         return FileStoreClient(base_path=file_store_path)
     return S3Client(
-        bucket=ztp_config.get("s3_bucket"),
-        custom_endpoint=ztp_config.get("s3_endpoint"),
-        custom_access_key=ztp_config.get("s3_access_key"),
-        custom_secret_key=ztp_config.get("s3_secret_key"),
+        bucket=_nonblank_config_value(ztp_config.get("s3_bucket")),
+        custom_endpoint=_nonblank_config_value(ztp_config.get("s3_endpoint")),
+        custom_access_key=_nonblank_config_value(ztp_config.get("s3_access_key")),
+        custom_secret_key=_nonblank_config_value(ztp_config.get("s3_secret_key")),
     )
 
 

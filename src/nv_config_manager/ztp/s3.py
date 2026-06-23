@@ -118,6 +118,11 @@ class S3Client(ObjectStorageClient):
 
     async def connect(self) -> Self:
         """Connect to S3 and initialize the client session."""
+        client_kwargs: dict[str, Any] = {}
+        if self.custom_access_key is not None:
+            client_kwargs["aws_access_key_id"] = self.custom_access_key
+        if self.custom_secret_key is not None:
+            client_kwargs["aws_secret_access_key"] = self.custom_secret_key
         if self.custom_endpoint:
             custom_config = Config(
                 signature_version="s3v4",
@@ -129,13 +134,16 @@ class S3Client(ObjectStorageClient):
             self._client_instance = await self.session.client(
                 "s3",
                 endpoint_url=self.custom_endpoint,
-                aws_access_key_id=self.custom_access_key,
-                aws_secret_access_key=self.custom_secret_key,
                 config=custom_config,
                 verify=False,
+                **client_kwargs,
             ).__aenter__()
         else:
-            self._client_instance = await self.session.client("s3", config=self.config).__aenter__()
+            self._client_instance = await self.session.client(
+                "s3",
+                config=self.config,
+                **client_kwargs,
+            ).__aenter__()
         return self
 
     async def close(self) -> None:

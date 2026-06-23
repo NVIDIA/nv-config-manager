@@ -40,6 +40,21 @@ class MockBoto3S3Client(MagicMock):
         return {"TagSet": []}
 
 
+class RecordingSession:
+    def __init__(self):
+        self.calls = []
+
+    def client(self, *args, **kwargs):
+        self.calls.append((args, kwargs))
+        return self
+
+    async def __aenter__(self):
+        return MockBoto3S3Client()
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        return None
+
+
 def test_s3_client_uses_constructor_overrides(monkeypatch):
     monkeypatch.setenv("CUSTOM_S3_BUCKET", "env-bucket")
     monkeypatch.setenv("CUSTOM_S3_ENDPOINT", "https://env-s3.example.test")
@@ -72,6 +87,21 @@ def test_s3_client_uses_constructor_overrides(monkeypatch):
 def test_s3_client_rejects_empty_constructor_overrides(kwarg: str, value: str):
     with pytest.raises(ValueError, match=f"{kwarg} cannot be empty"):
         S3Client(**{kwarg: value})
+
+
+@pytest.mark.asyncio
+async def test_s3_client_passes_credentials_without_custom_endpoint():
+    client = S3Client(custom_access_key="access", custom_secret_key="secret")
+    session = RecordingSession()
+    client.session = session
+
+    await client.connect()
+
+    args, kwargs = session.calls[0]
+    assert args == ("s3",)
+    assert kwargs["aws_access_key_id"] == "access"
+    assert kwargs["aws_secret_access_key"] == "secret"
+    assert "endpoint_url" not in kwargs
 
 
 @pytest.mark.asyncio

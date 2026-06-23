@@ -117,6 +117,36 @@ def test_get_storage_client_s3_from_ini(monkeypatch, tmp_path):
     assert client.custom_secret_key == "ini-secret-key"
 
 
+def test_get_storage_client_s3_blank_ini_values_fall_back_to_env(monkeypatch, tmp_path):
+    """Blank S3 INI values should not suppress environment fallback."""
+    config_file = tmp_path / "nv-config-manager.ini"
+    config_file.write_text(
+        "\n".join(
+            [
+                "[ztp]",
+                "storage_type = s3",
+                "s3_bucket = ",
+                "s3_endpoint = ",
+                "s3_access_key = ",
+                "s3_secret_key = ",
+            ]
+        )
+    )
+    monkeypatch.setenv("NV_CONFIG_MANAGER_INI", str(config_file))
+    monkeypatch.setenv("CUSTOM_S3_BUCKET", "env-bucket")
+    monkeypatch.setenv("CUSTOM_S3_ENDPOINT", "https://env-s3.example.test")
+    monkeypatch.setenv("CUSTOM_S3_ACCESS_KEY", "env-access-key")
+    monkeypatch.setenv("CUSTOM_S3_SECRET_KEY", "env-secret-key")
+
+    client = get_storage_client()
+
+    assert isinstance(client, S3Client)
+    assert client.bucket == "env-bucket"
+    assert client.custom_endpoint == "https://env-s3.example.test"
+    assert client.custom_access_key == "env-access-key"
+    assert client.custom_secret_key == "env-secret-key"
+
+
 def test_get_storage_client_file_storage_from_ini(monkeypatch, tmp_path):
     """Test that file storage can be configured from [ztp]."""
     storage_path = tmp_path / "images"
