@@ -1318,3 +1318,60 @@ Usage: {{ include "nv-config-manager.externalDnsHostname" .Values.networkZtp.ing
   {{- fail "secrets.vaultAgent.serviceAccountTokenAudience is required when secrets.vaultAgent.autoAuthMethod=jwt (projected SA token / ESO kubernetesServiceAccountToken audiences)" -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+OTel collector sidecar wiring shared by every Temporal pod (worker, api,
+scheduler, archive). Call sites guard each include with
+`if .Values.temporal.observability.enabled`.
+
+  otelAppEnv  — app-container env pointing the SDK at the local sidecar.
+                Context: (dict "root" $ "serviceName" "<service.name>").
+  otelSidecar — the otel-collector sidecar container. Context: root ($).
+  otelVolumes — the shared collector config + Panoptes mTLS volumes.
+                Context: root ($).
+*/}}
+{{- define "nv-config-manager.temporal.otelAppEnv" -}}
+- name: OTEL_EXPORTER_OTLP_ENDPOINT
+  value: "http://localhost:4317"
+- name: OTEL_SERVICE_NAME
+  value: {{ .serviceName | quote }}
+{{- end -}}
+
+{{- define "nv-config-manager.temporal.otelSidecar" -}}
+- name: otel-collector
+  image: "{{ .Values.global.images.otelCollector.repository }}:{{ .Values.global.images.otelCollector.tag }}"
+  imagePullPolicy: {{ .Values.global.images.otelCollector.pullPolicy | default "IfNotPresent" }}
+  env:
+  - name: K8S_POD_NAME
+    valueFrom:
+      fieldRef:
+        fieldPath: metadata.name
+  - name: K8S_NAMESPACE
+    valueFrom:
+      fieldRef:
+        fieldPath: metadata.namespace
+  - name: K8S_NODE_NAME
+    valueFrom:
+      fieldRef:
+        fieldPath: spec.nodeName
+  resources:
+    {{- toYaml .Values.temporal.observability.resources | nindent 4 }}
+  volumeMounts:
+  - name: otel-collector-config
+    mountPath: /etc/otelcol-contrib/config.yaml
+    subPath: config.yaml
+    readOnly: true
+  - name: panoptes-mtls
+    mountPath: /etc/certs
+    readOnly: true
+{{- end -}}
+
+{{- define "nv-config-manager.temporal.otelVolumes" -}}
+{{- $temporalName := include "nv-config-manager.componentName" (dict "root" . "component" "temporal") -}}
+- name: otel-collector-config
+  configMap:
+    name: {{ $temporalName }}-otel-collector-config
+- name: panoptes-mtls
+  secret:
+    secretName: {{ $temporalName }}-panoptes-mtls
+{{- end -}}

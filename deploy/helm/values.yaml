@@ -137,9 +137,8 @@ global:
       repository: docker.io/temporalio/ui
       tag: "v2.37.4"
     # OpenTelemetry Collector sidecar (contrib distribution — needed for k8sattributes processor)
-    # Mirrored from docker.io/otel/opentelemetry-collector-contrib via .github/workflows/mirror-otel-collector.yml
     otelCollector:
-      repository: nvcr.io/nvidian/gni/opentelemetry-collector-contrib
+      repository: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib
       tag: "0.124.1"
       pullPolicy: IfNotPresent
 # =============================================================================
@@ -411,11 +410,10 @@ secrets:
           caCert: "ca.crt"
           tlsCert: "tls.crt"
           tlsKey: "tls.key"
-      # Panoptes mTLS certificates for OTel collector sidecar (GNINWD-1588)
-      # Vault path confirmed by Garrett: ngc/secrets/groups/ngc-gni-netdev/observability/panoptes/<env>/mtls
+      # Panoptes mTLS certificates for OTel collector sidecar
       # Leave path empty to skip ExternalSecret creation (observability.enabled must also be true)
       panoptesMtls:
-        path: "" # e.g., "ngc/secrets/groups/ngc-gni-netdev/observability/panoptes/staging/mtls"
+        path: "" # e.g., "my-org/nv-config-manager/dev/panoptes-mtls"
         keys:
           caCert: "ca.crt"
           tlsCert: "tls.crt"
@@ -1805,7 +1803,7 @@ temporal:
   #   value: true
   #   constraints: []
   # ---------------------------------------------------------------------------
-  # Observability — OTel collector sidecar + Panoptes push (GNINWD-1588)
+  # Observability — OTel collector sidecar + Panoptes push
   # ---------------------------------------------------------------------------
   # When enabled, adds an opentelemetry-collector-contrib sidecar to the worker
   # and API pods. The sidecar receives OTLP from the Temporal SDK (metrics) and
@@ -1814,20 +1812,12 @@ temporal:
   observability:
     enabled: false
     panoptes:
-      # Panoptes OTLP ingestion endpoints (confirmed from Panoptes Command Center docs, 2026-06-11):
-      #   Staging (us-east-1): https://otlp.us-east-1.aws.telemetry.dgxc.nonprod-nvkong.com
-      #   Prod    (us-east-1): https://otlp.us-east-1.aws.telemetry.dgxc.ngc.nvidia.com
-      #   Prod    (us-west-2): https://otlp.us-west-2.aws.telemetry.dgxc.ngc.nvidia.com
-      # mTLS cert provisioning: panoptes secret create --customer-name <customer> --name kiwi-temporal-ingest --type ingest
-      # then panoptes secret get --customer-name <customer> --name kiwi-temporal-ingest -c -w
-      # Store the resulting certs in Vault at secrets.vault.paths.panoptesMtls.path (keys: ca.crt, tls.crt, tls.key)
+      # OTLP ingestion endpoint. Set per-environment in a values override.
       endpoint: ""
-      # Required Panoptes metadata attributes.
-      # mgmtOwner and nspectId confirmed from pylon-core charts (same team, same values).
-      # customer: not used by the GNI/CFA team — pylon-core omits it across all services.
+      # Tenant-routing metadata attributes. Set per-environment.
       customer: ""
-      mgmtOwner: "gni-netdev"
-      nspectId: "NSPECT-OF94-06WA"
+      mgmtOwner: ""
+      nspectId: ""
     # Resource limits for the otel-collector sidecar (3 worker replicas × 50m = 150m cluster-wide)
     resources:
       requests:
