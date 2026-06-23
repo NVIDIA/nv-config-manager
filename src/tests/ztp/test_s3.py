@@ -40,6 +40,40 @@ class MockBoto3S3Client(MagicMock):
         return {"TagSet": []}
 
 
+def test_s3_client_uses_constructor_overrides(monkeypatch):
+    monkeypatch.setenv("CUSTOM_S3_BUCKET", "env-bucket")
+    monkeypatch.setenv("CUSTOM_S3_ENDPOINT", "https://env-s3.example.test")
+    monkeypatch.setenv("CUSTOM_S3_ACCESS_KEY", "env-access-key")
+    monkeypatch.setenv("CUSTOM_S3_SECRET_KEY", "env-secret-key")
+
+    client = S3Client(
+        bucket="ini-bucket",
+        custom_endpoint="https://s3.example.test",
+        custom_access_key="ini-access-key",
+        custom_secret_key="ini-secret-key",
+    )
+
+    assert client.bucket == "ini-bucket"
+    assert client.custom_endpoint == "https://s3.example.test"
+    assert client.custom_access_key == "ini-access-key"
+    assert client.custom_secret_key == "ini-secret-key"
+
+
+@pytest.mark.parametrize(
+    ("kwarg", "value"),
+    [
+        ("bucket", ""),
+        ("bucket", "   "),
+        ("custom_endpoint", ""),
+        ("custom_access_key", ""),
+        ("custom_secret_key", ""),
+    ],
+)
+def test_s3_client_rejects_empty_constructor_overrides(kwarg: str, value: str):
+    with pytest.raises(ValueError, match=f"{kwarg} cannot be empty"):
+        S3Client(**{kwarg: value})
+
+
 @pytest.mark.asyncio
 async def test_get_firmware_object():
     client = S3Client()

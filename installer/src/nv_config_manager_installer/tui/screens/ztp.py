@@ -19,7 +19,7 @@ from __future__ import annotations
 from textual import work
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, Vertical
-from textual.widgets import Button, Input, Label, RadioButton, RadioSet, Select
+from textual.widgets import Button, Checkbox, Input, Label, RadioButton, RadioSet, Select
 from textual_fspicker import FileOpen
 
 from nv_config_manager_installer.schema import (
@@ -65,12 +65,32 @@ class ZTPScreen(Container):
             )
 
         with Container(id="ztp-s3-fields"):
-            yield Label("S3 Bucket", classes="field-label")
-            yield Input(
-                value=zs.s3_bucket,
-                placeholder="ngc-network-firmware-images",
-                id="ztp-s3-bucket",
+            yield Checkbox(
+                "Use Rook Ceph object storage",
+                value=zs.s3_ceph.enabled,
+                id="ztp-s3-ceph-enabled",
             )
+            with Container(id="ztp-s3-bucket-fields"):
+                yield Label("S3 Bucket", classes="field-label")
+                yield Input(
+                    value=zs.s3_bucket,
+                    placeholder="ngc-network-firmware-images",
+                    id="ztp-s3-bucket",
+                )
+            with Container(id="ztp-s3-endpoint-fields"):
+                yield Label("S3 Endpoint", classes="field-label")
+                yield Input(
+                    value=zs.s3_endpoint,
+                    placeholder="https://s3.example.com",
+                    id="ztp-s3-endpoint",
+                )
+            with Container(id="ztp-s3-ceph-fields"):
+                yield Label("Ceph ObjectBucketClaim Storage Class", classes="field-label")
+                yield Input(
+                    value=zs.s3_ceph.object_bucket_claim.storage_class_name,
+                    placeholder="ceph-object-store",
+                    id="ztp-s3-ceph-storage-class",
+                )
 
         with Container(id="ztp-file-fields"):
             yield Label("PVC Name", classes="field-label")
@@ -120,6 +140,10 @@ class ZTPScreen(Container):
         if event.radio_set.id == "ztp-storage-type":
             self._toggle_storage_fields()
 
+    def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
+        if event.checkbox.id == "ztp-s3-ceph-enabled":
+            self._toggle_storage_fields()
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         bid = event.button.id or ""
         if bid == "ztp-img-add":
@@ -153,8 +177,16 @@ class ZTPScreen(Container):
 
     def _toggle_storage_fields(self) -> None:
         is_file = self.query_one(_W_ZTP_FILE, RadioButton).value
+        ceph_enabled = False
+        try:
+            ceph_enabled = self.query_one("#ztp-s3-ceph-enabled", Checkbox).value
+        except LookupError:
+            pass
         self.query_one("#ztp-file-fields").display = is_file
         self.query_one("#ztp-s3-fields").display = not is_file
+        self.query_one("#ztp-s3-bucket-fields").display = not is_file
+        self.query_one("#ztp-s3-endpoint-fields").display = not is_file and not ceph_enabled
+        self.query_one("#ztp-s3-ceph-fields").display = not is_file and ceph_enabled
         self.query_one("#ztp-file-only-fields").display = is_file
 
     def _rebuild_image_rows(self) -> None:
@@ -213,7 +245,15 @@ class ZTPScreen(Container):
             if self.query_one(_W_ZTP_FILE, RadioButton).value
             else ZTPStorageType.S3
         )
+        zs.s3_ceph.enabled = self.query_one("#ztp-s3-ceph-enabled", Checkbox).value
         zs.s3_bucket = self.query_one("#ztp-s3-bucket", Input).value
+        if zs.s3_ceph.enabled:
+            zs.s3_endpoint = ""
+        else:
+            zs.s3_endpoint = self.query_one("#ztp-s3-endpoint", Input).value
+        zs.s3_ceph.object_bucket_claim.storage_class_name = self.query_one(
+            "#ztp-s3-ceph-storage-class", Input
+        ).value
         zs.pvc_name = self.query_one("#ztp-pvc-name", Input).value
         zs.pvc_size = self.query_one("#ztp-pvc-size", Input).value
         zs.storage_class = self.query_one("#ztp-storage-class", Input).value
@@ -235,6 +275,11 @@ class ZTPScreen(Container):
             self.query_one("#ztp-storage-s3", RadioButton).value = zs.type == ZTPStorageType.S3
             self.query_one(_W_ZTP_FILE, RadioButton).value = zs.type == ZTPStorageType.FILE
             self.query_one("#ztp-s3-bucket", Input).value = zs.s3_bucket
+            self.query_one("#ztp-s3-endpoint", Input).value = zs.s3_endpoint
+            self.query_one("#ztp-s3-ceph-enabled", Checkbox).value = zs.s3_ceph.enabled
+            self.query_one(
+                "#ztp-s3-ceph-storage-class", Input
+            ).value = zs.s3_ceph.object_bucket_claim.storage_class_name
             self.query_one("#ztp-pvc-name", Input).value = zs.pvc_name
             self.query_one("#ztp-pvc-size", Input).value = zs.pvc_size
             self.query_one("#ztp-storage-class", Input).value = zs.storage_class

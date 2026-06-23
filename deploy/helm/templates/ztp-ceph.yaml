@@ -4,7 +4,7 @@
 {{- $user := $ceph.objectStoreUser | default dict -}}
 {{- $obc := $ceph.objectBucketClaim | default dict -}}
 {{- $userName := $user.name | default "ztp-user" -}}
-{{- $bucketName := "ngc-network-firmware-images" -}}
+{{- $bucketName := $s3.bucketName | default "ngc-network-firmware-images" -}}
 ---
 apiVersion: ceph.rook.io/v1
 kind: CephObjectStoreUser
@@ -21,7 +21,7 @@ spec:
 apiVersion: objectbucket.io/v1alpha1
 kind: ObjectBucketClaim
 metadata:
-  name: {{ $obc.name | default $bucketName }}
+  name: {{ $bucketName }}
   namespace: {{ .Values.global.namespace }}
   annotations:
     argocd.argoproj.io/sync-wave: "0"

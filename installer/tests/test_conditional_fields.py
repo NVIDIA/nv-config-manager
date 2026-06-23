@@ -23,8 +23,17 @@ from nv_config_manager_installer.schema import (
     NVConfigManagerInstallConfig,
     SecretsMethod,
     SiteConfig,
+    ZTPStorageType,
 )
 from nv_config_manager_installer.tui.app import NVConfigManagerInstallerApp
+
+
+def _assert_displayed(widget: object) -> None:
+    node = widget
+    while node is not None:
+        display = getattr(node, "display", True)
+        assert display is True
+        node = getattr(node, "parent", None)
 
 
 @pytest.mark.asyncio
@@ -138,3 +147,66 @@ async def test_site_vault_paths_reflect_cluster_sites():
         secrets_screen = app._screens["secrets"]
         inp = secrets_screen.query_one("#site-vault-0", Input)
         assert inp.value == "prod/site/dc01/cfg"
+
+
+@pytest.mark.asyncio
+async def test_ztp_s3_app_secret_fields_shown_in_kubernetes_mode():
+    """ZTP S3 app secret inputs should be available in Kubernetes secret mode."""
+    config = NVConfigManagerInstallConfig()
+    config.secrets.method = SecretsMethod.KUBERNETES
+    config.secrets.k8s.ztp_s3.enabled = True
+    app = NVConfigManagerInstallerApp(config=config)
+    async with app.run_test() as pilot:
+        app.switch_section("secrets")
+        await pilot.pause(0.1)
+        secrets_screen = app._screens["secrets"]
+        card = secrets_screen.query_one("#k8s-card-ztp_s3")
+        fields = secrets_screen.query_one("#k8s-fields-ztp_s3")
+        endpoint = secrets_screen.query_one("#k8s-ztp_s3-endpoint", Input)
+        access_key = secrets_screen.query_one("#k8s-ztp_s3-accessKeyId", Input)
+        secret_key = secrets_screen.query_one("#k8s-ztp_s3-secretAccessKey", Input)
+        for widget in (card, fields, endpoint, access_key, secret_key):
+            _assert_displayed(widget)
+
+
+@pytest.mark.asyncio
+async def test_ztp_s3_app_secret_fields_shown_in_eso_mode():
+    """ZTP S3 Vault path inputs should be available in ESO secret mode."""
+    config = NVConfigManagerInstallConfig()
+    config.secrets.method = SecretsMethod.ESO
+    app = NVConfigManagerInstallerApp(config=config)
+    async with app.run_test() as pilot:
+        app.switch_section("secrets")
+        await pilot.pause(0.1)
+        secrets_screen = app._screens["secrets"]
+        card = secrets_screen.query_one("#vp-card-ztp_s3")
+        path = secrets_screen.query_one("#vp-path-ztp_s3", Input)
+        endpoint = secrets_screen.query_one("#vp-key-ztp_s3-endpoint", Input)
+        access_key = secrets_screen.query_one("#vp-key-ztp_s3-accessKeyId", Input)
+        secret_key = secrets_screen.query_one("#vp-key-ztp_s3-secretAccessKey", Input)
+        for widget in (card, path, endpoint, access_key, secret_key):
+            _assert_displayed(widget)
+
+
+@pytest.mark.asyncio
+async def test_ztp_ceph_keeps_bucket_input_visible():
+    """Ceph uses the S3 bucket setting but hides the custom endpoint."""
+    config = NVConfigManagerInstallConfig()
+    ztp_storage = config.infrastructure.ztp_storage
+    ztp_storage.type = ZTPStorageType.S3
+    ztp_storage.s3_bucket = "firmware-images"
+    ztp_storage.s3_endpoint = "https://ignored.example"
+    ztp_storage.s3_ceph.enabled = True
+
+    app = NVConfigManagerInstallerApp(config=config)
+    async with app.run_test() as pilot:
+        app.switch_section("ztp")
+        await pilot.pause(0.1)
+        ztp_screen = app._screens["ztp"]
+        assert ztp_screen.query_one("#ztp-s3-bucket-fields").display is True
+        assert ztp_screen.query_one("#ztp-s3-endpoint-fields").display is False
+        assert ztp_screen.query_one("#ztp-s3-bucket", Input).value == "firmware-images"
+        app.collect_config()
+
+    assert config.infrastructure.ztp_storage.s3_bucket == "firmware-images"
+    assert config.infrastructure.ztp_storage.s3_endpoint == ""

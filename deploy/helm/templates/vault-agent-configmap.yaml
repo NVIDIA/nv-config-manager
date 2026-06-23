@@ -15,10 +15,6 @@ data:
   config-secrets.ini.tpl: |
 {{- include "nv-config-manager.vaultAgent.configSecretsTplFile" . | nindent 4 }}
 {{- end }}
-{{- if eq (include "nv-config-manager.networkZtp.s3VaultAgentEnvEnabled" .) "true" }}
-  ztp-s3.env.tpl: |
-{{- include "nv-config-manager.vaultAgent.ztpS3EnvTplFile" . | nindent 4 }}
-{{- end }}
 {{- if .Values.temporal.enabled }}
   bmc-creds.json.tpl: |
 {{- include "nv-config-manager.vaultAgent.bmcJsonTplFile" . | nindent 4 }}

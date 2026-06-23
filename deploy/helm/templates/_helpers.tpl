@@ -810,6 +810,19 @@ Usage: {{ include "nv-config-manager.vault.keyName" (dict "root" . "secret" "nau
 {{- end -}}
 
 {{/*
+Get a configured Vault key name for optional fields. Unlike vault.keyName, this
+does not fall back to the logical key name when the field is absent or empty.
+*/}}
+{{- define "nv-config-manager.vault.configuredKeyName" -}}
+{{- if hasKey .root.Values.secrets.vault.paths .secret -}}
+{{- $secretConfig := index .root.Values.secrets.vault.paths .secret -}}
+{{- if and (hasKey $secretConfig "keys") (hasKey $secretConfig.keys .key) (index $secretConfig.keys .key) -}}
+{{- index $secretConfig.keys .key -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 =============================================================================
 Template Plugins Init Container Helper
 =============================================================================
@@ -1171,16 +1184,21 @@ Usage: {{ include "nv-config-manager.customLabelsEnv" . | nindent 8 }}
 {{- end -}}
 
 {{/*
-Network ZTP storage env vars. S3/Ceph custom settings map to the env vars
-consumed by nv_config_manager.ztp.s3.S3Client.
+Network ZTP storage env vars. Only Ceph uses env refs because Rook generates
+the endpoint and credentials Secret at runtime. Other storage settings render
+into the main INI.
 Usage: {{ include "nv-config-manager.networkZtpStorageEnv" . | nindent 8 }}
 */}}
-{{- define "nv-config-manager.networkZtp.s3CredentialsSecretName" -}}
+{{- define "nv-config-manager.networkZtp.s3CephUserSecretName" -}}
 {{- $s3 := .Values.networkZtp.storage.s3 | default dict -}}
-{{- $s3.credentialsSecret | default ($s3.vaultCredentialsSecret | default "ztp-s3-credentials") -}}
+{{- $ceph := $s3.ceph | default dict -}}
+{{- $user := $ceph.objectStoreUser | default dict -}}
+{{- $storeName := $user.store | default "ceph-objectstore" -}}
+{{- $userName := $user.name | default "ztp-user" -}}
+{{- $ceph.userSecretName | default (printf "rook-ceph-object-user-%s-%s" $storeName $userName) -}}
 {{- end -}}
 
-{{- define "nv-config-manager.networkZtp.s3EsoSecretEnabled" -}}
+{{- define "nv-config-manager.networkZtp.s3EsoIniEnabled" -}}
 {{- $s3 := .Values.networkZtp.storage.s3 | default dict -}}
 {{- $ceph := $s3.ceph | default dict -}}
 {{- $ztpS3 := index (.Values.secrets.vault.paths | default dict) "ztpS3" | default dict -}}
@@ -1189,11 +1207,19 @@ true
 {{- end -}}
 {{- end -}}
 
-{{- define "nv-config-manager.networkZtp.s3VaultAgentEnvEnabled" -}}
+{{- define "nv-config-manager.networkZtp.s3VaultAgentIniEnabled" -}}
 {{- $s3 := .Values.networkZtp.storage.s3 | default dict -}}
 {{- $ceph := $s3.ceph | default dict -}}
 {{- $ztpS3 := index (.Values.secrets.vault.paths | default dict) "ztpS3" | default dict -}}
 {{- if and .Values.networkZtp.enabled (eq .Values.networkZtp.storage.type "s3") (eq .Values.secrets.method "vault-agent") (not ($ceph.enabled | default false)) (not $s3.credentialsSecret) ($ztpS3.path | default "") -}}
+true
+{{- end -}}
+{{- end -}}
+
+{{- define "nv-config-manager.networkZtp.s3ExistingSecretIniEnabled" -}}
+{{- $s3 := .Values.networkZtp.storage.s3 | default dict -}}
+{{- $ceph := $s3.ceph | default dict -}}
+{{- if and .Values.networkZtp.enabled (eq .Values.networkZtp.storage.type "s3") (eq .Values.secrets.method "kubernetes") (not ($ceph.enabled | default false)) $s3.credentialsSecret -}}
 true
 {{- end -}}
 {{- end -}}
@@ -1203,65 +1229,57 @@ true
 {{- $ceph := $s3.ceph | default dict -}}
 {{- if $ceph.enabled | default false -}}
 ceph
-{{- else if eq (include "nv-config-manager.networkZtp.s3VaultAgentEnvEnabled" .) "true" -}}
+{{- else if eq (include "nv-config-manager.networkZtp.s3VaultAgentIniEnabled" .) "true" -}}
 vault-agent
 {{- else if $s3.credentialsSecret -}}
 existing-secret
-{{- else if eq (include "nv-config-manager.networkZtp.s3EsoSecretEnabled" .) "true" -}}
+{{- else if eq (include "nv-config-manager.networkZtp.s3EsoIniEnabled" .) "true" -}}
 eso
 {{- else -}}
 default
 {{- end -}}
 {{- end -}}
 
+{{- define "nv-config-manager.networkZtpIniStorageConfig" -}}
+{{- $storage := .Values.networkZtp.storage | default dict -}}
+{{- $storageType := $storage.type | default "s3" -}}
+storage_type = {{ $storageType }}
+{{ if eq $storageType "file" -}}
+file_store_path = {{ $storage.file.mountPath | default "/mnt/images" }}
+{{ else if eq $storageType "s3" -}}
+{{- $s3 := $storage.s3 | default dict -}}
+{{- $ceph := $s3.ceph | default dict -}}
+s3_bucket = {{ $s3.bucketName | default "ngc-network-firmware-images" }}
+{{ if and (not ($ceph.enabled | default false)) $s3.endpoint -}}
+s3_endpoint = {{ $s3.endpoint }}
+{{ end -}}
+{{ end -}}
+{{- end -}}
+
+{{- define "nv-config-manager.networkZtpExistingSecretIniConfig" -}}
+{{- if eq (include "nv-config-manager.networkZtp.s3ExistingSecretIniEnabled" .) "true" -}}
+{{- $s3 := .Values.networkZtp.storage.s3 | default dict -}}
+{{- $mountPath := "/secrets/ztp-s3-credentials" -}}
+{{- $endpointSecretKey := $s3.endpointSecretKey | default "CUSTOM_S3_ENDPOINT" -}}
+{{- if and (not $s3.endpoint) $endpointSecretKey }}
+s3_endpoint = $(cat {{ $mountPath }}/{{ $endpointSecretKey }})
+{{- end }}
+s3_access_key = $(cat {{ $mountPath }}/{{ $s3.accessKeySecretKey | default "CUSTOM_S3_ACCESS_KEY" }})
+s3_secret_key = $(cat {{ $mountPath }}/{{ $s3.secretKeySecretKey | default "CUSTOM_S3_SECRET_KEY" }})
+{{- end -}}
+{{- end -}}
+
 {{- define "nv-config-manager.networkZtpStorageEnv" -}}
-{{- if eq .Values.networkZtp.storage.type "file" }}
-- name: STORAGE_TYPE
-  value: "file"
-- name: FILE_STORE_PATH
-  value: {{ .Values.networkZtp.storage.file.mountPath | default "/mnt/images" | quote }}
-{{- else }}
 {{- $s3 := .Values.networkZtp.storage.s3 | default dict }}
 {{- $ceph := $s3.ceph | default dict }}
-{{- $cephSecret := $ceph.userSecretName | default "rook-ceph-object-user-ceph-objectstore-ztp-user" }}
+{{- $cephSecret := include "nv-config-manager.networkZtp.s3CephUserSecretName" . }}
 {{- $credentialSource := include "nv-config-manager.networkZtp.s3CredentialSource" . }}
-{{- $credentialsSecret := "" }}
-{{- if eq $credentialSource "existing-secret" }}
-{{- $credentialsSecret = $s3.credentialsSecret }}
-{{- else if eq $credentialSource "eso" }}
-{{- $credentialsSecret = include "nv-config-manager.networkZtp.s3CredentialsSecretName" . }}
-{{- end }}
-{{- $ztpS3EndpointKey := "" }}
-{{- if hasKey (.Values.secrets.vault.paths | default dict) "ztpS3" }}
-{{- $ztpS3EndpointKey = include "nv-config-manager.vault.keyName" (dict "root" . "secret" "ztpS3" "key" "endpoint") }}
-{{- end }}
-{{- $endpointSecretKey := $s3.endpointSecretKey | default "CUSTOM_S3_ENDPOINT" }}
-{{- $endpointSecretOptional := true }}
-{{- if hasKey $s3 "endpointSecretOptional" }}
-{{- $endpointSecretOptional = $s3.endpointSecretOptional }}
-{{- end }}
-- name: STORAGE_TYPE
-  value: "s3"
-{{- if $s3.endpoint }}
-- name: CUSTOM_S3_ENDPOINT
-  value: {{ $s3.endpoint | quote }}
-{{- else if eq $credentialSource "ceph" }}
+{{- if and (eq .Values.networkZtp.storage.type "s3") (eq $credentialSource "ceph") }}
 - name: CUSTOM_S3_ENDPOINT
   valueFrom:
     secretKeyRef:
       name: {{ $cephSecret | quote }}
       key: {{ $ceph.endpointSecretKey | default "Endpoint" | quote }}
-{{- else if and $credentialsSecret $endpointSecretKey (or (eq $credentialSource "existing-secret") $ztpS3EndpointKey) }}
-- name: CUSTOM_S3_ENDPOINT
-  valueFrom:
-    secretKeyRef:
-      name: {{ $credentialsSecret | quote }}
-      key: {{ $endpointSecretKey | quote }}
-      {{- if $endpointSecretOptional }}
-      optional: true
-      {{- end }}
-{{- end }}
-{{- if eq $credentialSource "ceph" }}
 - name: CUSTOM_S3_ACCESS_KEY
   valueFrom:
     secretKeyRef:
@@ -1272,41 +1290,15 @@ default
     secretKeyRef:
       name: {{ $cephSecret | quote }}
       key: {{ $ceph.secretKeySecretKey | default "SecretKey" | quote }}
-{{- else if $credentialsSecret }}
-- name: CUSTOM_S3_ACCESS_KEY
-  valueFrom:
-    secretKeyRef:
-      name: {{ $credentialsSecret | quote }}
-      key: {{ $s3.accessKeySecretKey | default "CUSTOM_S3_ACCESS_KEY" | quote }}
-- name: CUSTOM_S3_SECRET_KEY
-  valueFrom:
-    secretKeyRef:
-      name: {{ $credentialsSecret | quote }}
-      key: {{ $s3.secretKeySecretKey | default "CUSTOM_S3_SECRET_KEY" | quote }}
-{{- end }}
 {{- end }}
 {{- end -}}
 
-{{/*
-Network ZTP command/args. Pure vault-agent S3 credentials are rendered as a
-shell-readable env file, so the process must source it before exec.
-*/}}
 {{- define "nv-config-manager.networkZtpEntrypoint" -}}
-{{- $root := .root -}}
 {{- $command := required "command is required" .command -}}
 {{- $args := .args | default (list) -}}
-{{- if eq (include "nv-config-manager.networkZtp.s3VaultAgentEnvEnabled" $root) "true" }}
-{{- $exec := concat $command $args }}
-command: ["/bin/sh", "-ec"]
-args:
-  - |
-    . {{ include "nv-config-manager.vaultAgent.ztpS3EnvFilePath" $root }}
-    exec {{ join " " $exec }}
-{{- else }}
 command: {{ $command | toJson }}
 {{- if hasKey . "args" }}
 args: {{ $args | toJson }}
-{{- end }}
 {{- end }}
 {{- end -}}
 
@@ -1456,5 +1448,10 @@ Usage: {{ include "nv-config-manager.externalDnsHostname" .Values.networkZtp.ing
 {{- end -}}
 {{- if and (eq .Values.secrets.method "vault-agent") (eq (.Values.secrets.vaultAgent.autoAuthMethod | default "kubernetes") "jwt") (not .Values.secrets.vaultAgent.serviceAccountTokenAudience) -}}
   {{- fail "secrets.vaultAgent.serviceAccountTokenAudience is required when secrets.vaultAgent.autoAuthMethod=jwt (projected SA token / ESO kubernetesServiceAccountToken audiences)" -}}
+{{- end -}}
+{{- $s3 := .Values.networkZtp.storage.s3 | default dict -}}
+{{- $ceph := $s3.ceph | default dict -}}
+{{- if and .Values.networkZtp.enabled (eq .Values.networkZtp.storage.type "s3") $s3.credentialsSecret (not ($ceph.enabled | default false)) (ne .Values.secrets.method "kubernetes") -}}
+  {{- fail "networkZtp.storage.s3.credentialsSecret now uses the Kubernetes secret-assembler and requires secrets.method=kubernetes; use secrets.vault.paths.ztpS3 with secrets.method=eso or vault-agent" -}}
 {{- end -}}
 {{- end -}}

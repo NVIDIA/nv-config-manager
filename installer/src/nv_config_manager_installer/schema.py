@@ -188,6 +188,14 @@ class VaultPathsConfig(BaseModel):
             enabled=False, accessKeyId="ACCESS_KEY_ID", accessSecretKey="ACCESS_SECRET_KEY"
         )
     )
+    ztp_s3: VaultPathConfig = Field(
+        default_factory=lambda: _path(
+            enabled=False,
+            endpoint="",
+            accessKeyId="access_key_id",
+            secretAccessKey="secret_access_key",
+        )
+    )
 
 
 class VaultConfig(BaseModel):
@@ -235,6 +243,7 @@ class KubernetesSecretsConfig(BaseModel):
     slack: K8sSecretGroup = Field(default_factory=lambda: K8sSecretGroup(enabled=False))
     jira: K8sSecretGroup = Field(default_factory=lambda: K8sSecretGroup(enabled=False))
     cnpg_backup: K8sSecretGroup = Field(default_factory=lambda: K8sSecretGroup(enabled=False))
+    ztp_s3: K8sSecretGroup = Field(default_factory=lambda: K8sSecretGroup(enabled=False))
 
 
 class SecretsConfig(BaseModel):
@@ -493,6 +502,34 @@ class ZTPOSImage(BaseModel):
     path: str = ""
 
 
+class ZTPS3CephObjectStoreUserConfig(BaseModel):
+    """Rook Ceph object store user settings for ZTP S3 storage."""
+
+    name: str = "ztp-user"
+    store: str = "ceph-objectstore"
+    cluster_namespace: str = "rook-ceph"
+
+
+class ZTPS3CephObjectBucketClaimConfig(BaseModel):
+    """Rook ObjectBucketClaim settings for ZTP S3 storage."""
+
+    storage_class_name: str = "ceph-object-store"
+    bucket_max_size: str = "50G"
+
+
+class ZTPS3CephConfig(BaseModel):
+    """Rook Ceph-backed ZTP S3 storage configuration."""
+
+    enabled: bool = False
+    object_store_user: ZTPS3CephObjectStoreUserConfig = Field(
+        default_factory=ZTPS3CephObjectStoreUserConfig
+    )
+    object_bucket_claim: ZTPS3CephObjectBucketClaimConfig = Field(
+        default_factory=ZTPS3CephObjectBucketClaimConfig
+    )
+    user_secret_name: str = ""
+
+
 class ZTPStorageConfig(BaseModel):
     """ZTP service storage configuration for OS images and firmware."""
 
@@ -503,6 +540,8 @@ class ZTPStorageConfig(BaseModel):
     access_mode: str = "ReadWriteOnce"
     node_selector: dict[str, str] = Field(default_factory=dict)
     s3_bucket: str = ""
+    s3_endpoint: str = ""
+    s3_ceph: ZTPS3CephConfig = Field(default_factory=ZTPS3CephConfig)
     os_images: list[ZTPOSImage] = Field(default_factory=list)
 
 
@@ -924,8 +963,19 @@ def _prune_ztp_storage(ztp_storage: dict[str, Any]) -> None:
     if storage_type == ZTPStorageType.S3.value:
         for key in file_keys:
             ztp_storage.pop(key, None)
+        s3_ceph = _as_dict(ztp_storage.get("s3_ceph"))
+        if not ztp_storage.get("s3_bucket"):
+            ztp_storage.pop("s3_bucket", None)
+        if s3_ceph.get("enabled"):
+            ztp_storage.pop("s3_endpoint", None)
+        else:
+            ztp_storage.pop("s3_ceph", None)
+            if not ztp_storage.get("s3_endpoint"):
+                ztp_storage.pop("s3_endpoint", None)
     else:
         ztp_storage.pop("s3_bucket", None)
+        ztp_storage.pop("s3_endpoint", None)
+        ztp_storage.pop("s3_ceph", None)
 
 
 def _prune_images(images: dict[str, Any]) -> None:
