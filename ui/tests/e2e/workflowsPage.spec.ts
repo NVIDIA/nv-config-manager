@@ -25,6 +25,37 @@ test.describe("Workflows Page", () => {
     expect(response.headers().location).toBe("/oauth2/logout");
   });
 
+  test("logout expires cookies sent by the site", async ({ request }) => {
+    const response = await request.get("/auth/logout", {
+      headers: {
+        Cookie:
+          "NVConfigManagerAccessToken=access; azureSession=session; appPreference=compact",
+      },
+      maxRedirects: 0,
+    });
+    const setCookieHeaders = response
+      .headersArray()
+      .filter((header) => header.name.toLowerCase() === "set-cookie")
+      .map((header) => header.value);
+
+    expect(
+      setCookieHeaders.some((header) =>
+        header.startsWith("NVConfigManagerAccessToken=;")
+      )
+    ).toBe(true);
+    expect(
+      setCookieHeaders.some((header) =>
+        header.startsWith("NVConfigManagerIdToken=;")
+      )
+    ).toBe(true);
+    expect(
+      setCookieHeaders.some((header) => header.startsWith("azureSession=;"))
+    ).toBe(true);
+    expect(
+      setCookieHeaders.some((header) => header.startsWith("appPreference=;"))
+    ).toBe(true);
+  });
+
   test("renders a unified metadata-backed workflow table", async ({ page }) => {
     await page.goto("/workflows?workflow_type=DeployWorkflow");
 
@@ -79,6 +110,40 @@ test.describe("Workflows Page", () => {
       page.getByRole("tooltip", {
         name: "Required execute roles: nvcm-admin",
       })
+    ).toBeVisible();
+  });
+
+  test("shows unauthorized when workflow whoami cannot be accessed", async ({
+    page,
+  }) => {
+    await page.unroute("**/whoami");
+    await page.route("**/whoami", async (route) => {
+      await route.fulfill({
+        status: 403,
+        json: { error: "Forbidden" },
+      });
+    });
+
+    await page.goto("/workflows?workflow_type=DeployWorkflow");
+
+    await page.getByRole("button", { name: "User roles" }).click();
+    await expect(page.getByText("Unauthorized", { exact: true })).toBeVisible();
+    await expect(page.getByText("Unknown user", { exact: true })).toHaveCount(0);
+    await expect(
+      page.getByText("Unable to load roles", { exact: true })
+    ).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Logout" })).toHaveAttribute(
+      "href",
+      "/auth/logout"
+    );
+
+    await page.getByRole("button", { name: "New workflow" }).click();
+    await expect(
+      page.getByRole("link", { name: "Config Deploy" })
+    ).toHaveCount(0);
+    await page.getByText("Multi-Deploy").hover();
+    await expect(
+      page.getByRole("tooltip", { name: "Unauthorized" }).first()
     ).toBeVisible();
   });
 

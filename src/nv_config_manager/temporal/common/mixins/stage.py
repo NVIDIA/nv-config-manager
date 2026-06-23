@@ -46,6 +46,7 @@ from nv_config_manager.temporal.common.search_attributes import (
 )
 
 F = TypeVar("F", bound=Callable[..., Any])
+STAGE_STATE_SEARCH_ATTRIBUTES_PATCH = "stage-state-search-attributes-v1"
 
 
 def stage_executor(stage_name: str) -> Callable[[F], F]:
@@ -415,6 +416,9 @@ class StageMixin(BaseMixin):
 
     def _upsert_stage_state_search_attributes(self) -> None:
         """Index workflow stage state summary flags."""
+        # Keep histories from before stage-state search attributes replayable.
+        if not workflow.patched(STAGE_STATE_SEARCH_ATTRIBUTES_PATCH):
+            return
         workflow.upsert_search_attributes(
             {
                 FAILED_STAGE_SEARCH_ATTRIBUTE: [self.failed_stage()],

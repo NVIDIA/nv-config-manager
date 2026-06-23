@@ -52,8 +52,9 @@ from nv_config_manager.temporal.ngc.activities.slack import SlackMessageInput, S
 
 
 @patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
+@patch("nv_config_manager.temporal.common.mixins.stage.workflow.patched", return_value=True)
 @patch("nv_config_manager.temporal.common.mixins.stage.workflow.upsert_search_attributes")
-def test_unreachable_stage_cascades_to_direct_dependents(mock_upsert, mock_time):
+def test_unreachable_stage_cascades_to_direct_dependents(mock_upsert, mock_patched, mock_time):
     workflow_state = StageMixin()
     workflow_state.define_stage(
         name="source",
@@ -80,7 +81,28 @@ def test_unreachable_stage_cascades_to_direct_dependents(mock_upsert, mock_time)
     assert workflow_state.get_stage_state("dependent") == StateEnum.UNREACHABLE
     assert workflow_state.get_stage_state("unrelated") == StateEnum.NOT_STARTED
     assert mock_time.called
+    assert mock_patched.called
     assert mock_upsert.called
+
+
+@patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
+@patch("nv_config_manager.temporal.common.mixins.stage.workflow.patched", return_value=False)
+@patch("nv_config_manager.temporal.common.mixins.stage.workflow.upsert_search_attributes")
+def test_stage_state_search_attributes_skip_old_histories(mock_upsert, mock_patched, mock_time):
+    workflow_state = StageMixin()
+    workflow_state.define_stage(
+        name="test",
+        description="test",
+        depends_on=[],
+        requires_approval=False,
+    )
+
+    workflow_state.set_stage_state("test", StateEnum.IN_PROGRESS)
+
+    assert workflow_state.get_stage_state("test") == StateEnum.IN_PROGRESS
+    assert mock_time.called
+    assert mock_patched.called
+    mock_upsert.assert_not_called()
 
 
 @activity.defn(name="send_slack_message")
@@ -814,9 +836,10 @@ class MockHelloWorldRunActivityTimeout(StageMixin):
 
 @pytest.mark.asyncio
 @patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
+@patch("nv_config_manager.temporal.common.mixins.stage.workflow.patched", return_value=True)
 @patch("nv_config_manager.temporal.common.mixins.stage.workflow.upsert_search_attributes")
 @patch("nv_config_manager.temporal.common.mixins.stage.traceback.format_exc", return_value="exists")
-async def test_workflow_activity_timeout(mock_tb, mock_upsert, mock_time):
+async def test_workflow_activity_timeout(mock_tb, mock_upsert, mock_patched, mock_time):
     task_queue_name = str(uuid.uuid4())
 
     async with await WorkflowEnvironment.start_time_skipping() as env:
