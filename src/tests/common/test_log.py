@@ -15,7 +15,6 @@
 """Tests for structured logging trace/span correlation."""
 
 import logging
-import sys
 from unittest import mock
 
 import pytest
@@ -65,20 +64,21 @@ class TestOtelTraceFields:
         with mock.patch("opentelemetry.trace.get_current_span", return_value=span):
             assert log._otel_trace_fields() == {}
 
-    def test_missing_opentelemetry_returns_empty(self):
-        """When opentelemetry is not importable, no fields are emitted."""
-        with mock.patch.dict(sys.modules, {"opentelemetry": None}):
-            assert log._otel_trace_fields() == {}
-
 
 @pytest.fixture
 def _restore_logging():
-    """Restore the global record factory and config flag after the test."""
+    """Restore global logging state mutated by configure_logging() after the test."""
     original_factory = logging.getLogRecordFactory()
     original_configured = log._logging_configured
+    original_handlers = logging.root.handlers[:]
+    original_level = logging.root.level
+    original_labels = log._custom_labels
     yield
     logging.setLogRecordFactory(original_factory)
     log._logging_configured = original_configured
+    logging.root.handlers[:] = original_handlers
+    logging.root.setLevel(original_level)
+    log._custom_labels = original_labels
 
 
 class TestRecordFactoryIntegration:

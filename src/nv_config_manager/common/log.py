@@ -22,6 +22,7 @@ import os
 import re
 from typing import Any
 
+from opentelemetry import trace
 from pythonjsonlogger import jsonlogger
 
 # =============================================================================
@@ -96,13 +97,9 @@ _RESERVED_FIELDS = frozenset(
 def _otel_trace_fields() -> dict[str, str]:
     """Return trace_id/span_id for the active span.
 
-    Empty when OpenTelemetry is not installed or no valid span is in context
-    (e.g. observability disabled, or logging outside a workflow/request span).
+    Empty when no valid span is in context (e.g. observability disabled, or
+    logging outside a workflow/request span).
     """
-    try:
-        from opentelemetry import trace
-    except ImportError:
-        return {}
     ctx = trace.get_current_span().get_span_context()
     if not ctx.is_valid:
         return {}
