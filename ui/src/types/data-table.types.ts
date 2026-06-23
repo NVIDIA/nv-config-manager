@@ -216,6 +216,8 @@ export type Workflow = {
 export type WorkflowListResponse = {
   workflows: Workflow[];
   next_page_token: string | null;
+  total_count: number;
+  page_count: number;
 };
 
 export type WorkflowMetadata = {

@@ -578,6 +578,19 @@ export function DataTable<TData, TValue>({ columns }: DataTableProps<TData, TVal
   const hasLoadedNextPage =
     tableData.length > nextPageIndex * pagination.pageSize;
   const hasNextPage = hasMoreData || hasLoadedNextPage;
+  const totalWorkflowCount = isHideCompletedChecked
+    ? tableData.length
+    : (lastWorkflowPage?.total_count ?? tableData.length);
+  const totalPageCount =
+    lastWorkflowPage?.page_count ??
+    (hasNextPage ? nextPageIndex + 1 : pagination.pageIndex + 1);
+  const pageLabel =
+    totalPageCount === 0
+      ? "Page 0 of 0"
+      : `Page ${table.getState().pagination.pageIndex + 1} of ${totalPageCount}`;
+  const workflowCountLabel = `${totalWorkflowCount.toLocaleString()} ${
+    totalWorkflowCount === 1 ? "workflow" : "workflows"
+  }`;
 
   const handleNextPage = () => {
     if (hasLoadedNextPage) {
@@ -784,10 +797,10 @@ export function DataTable<TData, TValue>({ columns }: DataTableProps<TData, TVal
 
           <div className="flex flex-grow flex-col items-center text-center">
             <div className="text-sm font-medium">
-              Page {table.getState().pagination.pageIndex + 1}
+              {pageLabel}
             </div>
             <div className="text-xs text-muted-foreground">
-              {hasNextPage ? "More pages available" : "End of results"}
+              {workflowCountLabel}
             </div>
           </div>
 

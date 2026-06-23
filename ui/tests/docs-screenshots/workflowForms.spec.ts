@@ -746,6 +746,8 @@ function createDocWorkflow(fixture: DocWorkflowFixture): DocWorkflow {
 function getWorkflowListResponse(url: URL): {
   workflows: DocWorkflow[];
   next_page_token: string | null;
+  total_count: number;
+  page_count: number;
 } {
   const nextPageToken = url.searchParams.get("next_page_token");
   const page = nextPageToken ? Number(nextPageToken) : 0;
@@ -761,6 +763,11 @@ function getWorkflowListResponse(url: URL): {
   return {
     workflows: paginatedWorkflows,
     next_page_token: hasMore ? String(page + 1) : null,
+    total_count: filteredWorkflows.length,
+    page_count:
+      filteredWorkflows.length === 0
+        ? 0
+        : Math.ceil(filteredWorkflows.length / pageSize),
   };
 }
 

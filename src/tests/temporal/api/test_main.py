@@ -933,6 +933,7 @@ async def test_workflows(mock_rbac_config, mock_redis, mock_client):
 
     mock_client.return_value.get_workflow_handle = mock_get_workflow_handle
     mock_client.return_value.list_workflows = MagicMock(side_effect=mock_list_queries)
+    mock_client.return_value.count_workflows = AsyncMock(return_value=MagicMock(count=3))
 
     client = TestClient(app)
     rsp = client.get("/v1/workflow")
@@ -980,7 +981,10 @@ async def test_workflows(mock_rbac_config, mock_redis, mock_client):
             },
         ],
         "next_page_token": None,
+        "total_count": 3,
+        "page_count": 1,
     }
+    mock_client.return_value.count_workflows.assert_called_with("(ReadRoles = 'all')")
 
     rsp = client.get("/v1/workflow", params={"status": "PENDING_APPROVAL"})
     assert rsp.status_code == 200
@@ -991,6 +995,9 @@ async def test_workflows(mock_rbac_config, mock_redis, mock_client):
         limit=100,
         page_size=100,
         next_page_token=None,
+    )
+    mock_client.return_value.count_workflows.assert_called_with(
+        "ExecutionStatus = 'Running' and PendingApproval = true and (ReadRoles = 'all')"
     )
 
     rsp = client.get(
@@ -1137,6 +1144,58 @@ def test_workflows_invalid_status_returns_400():
     assert rsp.json() == {"detail": "Invalid workflow status 'NOT_A_STATUS'"}
 
 
+def test_workflows_invalid_limit_returns_400():
+    """Verify workflow list limit must be positive."""
+    client = TestClient(app)
+    rsp = client.get("/v1/workflow", params={"limit": "0"})
+
+    assert rsp.status_code == 400
+    assert rsp.json() == {"detail": "limit must be greater than 0"}
+
+
+@pytest.mark.asyncio
+@patch("nv_config_manager.temporal.api.workflow_v1.get_client")
+@patch("nv_config_manager.temporal.api.workflow_v1.RBACConfig")
+async def test_workflows_zero_count_has_zero_pages(mock_rbac_config, mock_client):
+    """Verify workflow count metadata for empty result sets."""
+    mock_rbac_instance = MagicMock()
+    mock_rbac_instance.get_admin_roles.return_value = {"all"}
+    mock_rbac_config.return_value = mock_rbac_instance
+
+    class MockWorkflowExecutionAsyncIterator:
+        async def __aiter__(self):
+            return
+            yield  # pragma: no cover
+
+        @property
+        def next_page_token(self) -> bytes | None:
+            """Token for the next page request if any."""
+            return None
+
+    mock_client.return_value.list_workflows = MagicMock(
+        return_value=MockWorkflowExecutionAsyncIterator()
+    )
+    mock_client.return_value.count_workflows = AsyncMock(return_value=MagicMock(count=0))
+
+    client = TestClient(app)
+    rsp = client.get("/v1/workflow", params={"limit": "50"})
+
+    assert rsp.status_code == 200
+    assert rsp.json() == {
+        "workflows": [],
+        "next_page_token": None,
+        "total_count": 0,
+        "page_count": 0,
+    }
+    mock_client.return_value.list_workflows.assert_called_once_with(
+        None,
+        limit=50,
+        page_size=50,
+        next_page_token=None,
+    )
+    mock_client.return_value.count_workflows.assert_awaited_once_with(None)
+
+
 @pytest.mark.asyncio
 @patch("nv_config_manager.temporal.api.workflow_v1.get_client")
 @patch("nv_config_manager.temporal.api.workflow_v1.RedisClient")
@@ -1197,6 +1256,7 @@ async def test_workflows_pending_approval_filter_uses_search_attribute(
 
     mock_client.return_value.get_workflow_handle = mock_get_workflow_handle
     mock_client.return_value.list_workflows = MagicMock(side_effect=mock_list_queries)
+    mock_client.return_value.count_workflows = AsyncMock(return_value=MagicMock(count=5))
 
     client = TestClient(app)
     rsp = client.get(
@@ -1210,11 +1270,16 @@ async def test_workflows_pending_approval_filter_uses_search_attribute(
         "pending_uuid2",
     ]
     assert rsp.json()["next_page_token"] is not None
+    assert rsp.json()["total_count"] == 5
+    assert rsp.json()["page_count"] == 3
     mock_client.return_value.list_workflows.assert_called_once_with(
         "ExecutionStatus = 'Running' and PendingApproval = true and (ReadRoles = 'all')",
         limit=2,
         page_size=2,
         next_page_token=None,
+    )
+    mock_client.return_value.count_workflows.assert_awaited_once_with(
+        "ExecutionStatus = 'Running' and PendingApproval = true and (ReadRoles = 'all')"
     )
 
 

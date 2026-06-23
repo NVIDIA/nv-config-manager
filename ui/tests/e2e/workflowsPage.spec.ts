@@ -155,8 +155,8 @@ test.describe("Workflows Page", () => {
     await expect(page.getByText("LEAF1-GP1-CIN2-PDX01").first()).toBeVisible();
     await page.getByRole("button", { exact: true, name: "Next" }).click();
 
-    await expect(page.getByText("Page 2")).toBeVisible();
-    await expect(page.getByText("More pages available")).toBeVisible();
+    await expect(page.getByText(/Page 2 of \d+/)).toBeVisible();
+    await expect(page.getByText(/\d+ workflows/)).toBeVisible();
     await expect(page.getByText("Port LLDP Info").first()).toBeVisible();
   });
 

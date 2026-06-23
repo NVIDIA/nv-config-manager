@@ -270,6 +270,9 @@ export const workflowFetchingHandlers = [
       {
         workflows: paginatedWorkflows,
         next_page_token: hasMore ? (page + 1).toString() : null,
+        total_count: workflows.length,
+        page_count:
+          workflows.length === 0 ? 0 : Math.ceil(workflows.length / pageSize),
       },
       { status: 200 }
     );
