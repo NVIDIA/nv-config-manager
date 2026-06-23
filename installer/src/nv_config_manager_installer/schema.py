@@ -550,6 +550,7 @@ class InfrastructureConfig(BaseModel):
     """Infrastructure and gateway settings."""
 
     gateway: GatewayType = GatewayType.ENVOY_GATEWAY
+    create_gateway_class: bool = True
     tls: bool = True
     cnpg_s3_backup: CNPGBackupConfig = Field(default_factory=CNPGBackupConfig)
     monitoring: MonitoringConfig = Field(default_factory=MonitoringConfig)

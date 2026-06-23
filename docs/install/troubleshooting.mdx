@@ -57,7 +57,10 @@ kubectl logs -n external-secrets -l app.kubernetes.io/name=external-secrets
 
 ## GatewayClass Already Exists
 
-Use the `--skip-gateway-class` flag with the deploy script to skip the creation of the GatewayClass.
+Set `infrastructure.create_gateway_class: false` in `nv-config-manager-install.yaml`,
+or disable **Create GatewayClass** on the Infrastructure screen in the installer TUI.
+This makes NVIDIA Config Manager reuse the existing GatewayClass instead of trying
+to take Helm ownership of it.
 
 ```text title="Sample error message" wordWrap
 Error: INSTALLATION FAILED: Unable to continue with install: GatewayClass "envoy-gateway" in namespace "" exists and cannot be imported into the current release: invalid ownership metadata; annotation validation error: key "meta.helm.sh/release-namespace" must equal "config-manager": current value is "config-manager-qa"
