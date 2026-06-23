@@ -119,10 +119,15 @@ def _stub_kube_context_helpers():
     * ``pin_kubeconfig_to_current_context()`` — Deployer.run() calls this
       first thing to materialize a single-context kubeconfig under /tmp. We
       don't want tests touching the host filesystem or invoking kubectl.
+    * ``_gateway_class_helm_owner()`` — helm install checks whether an
+      existing GatewayClass belongs to another Helm release. Most deployer
+      tests are not exercising that cluster probe and should not require
+      kubectl to be installed.
 
-    Pin both: the context helper returns the same value the mock K8sClient
-    advertises; the pinning helper is a no-op (returns None, deployer just
-    logs a warning and proceeds).
+    Pin these boundaries: the context helper returns the same value the mock
+    K8sClient advertises; the pinning helper is a no-op (returns None,
+    deployer just logs a warning and proceeds); the GatewayClass helper
+    behaves as though the resource is absent.
     """
     with (
         patch(
@@ -131,6 +136,10 @@ def _stub_kube_context_helpers():
         ),
         patch(
             "nv_config_manager_installer.deployer.pin_kubeconfig_to_current_context",
+            return_value=None,
+        ),
+        patch(
+            "nv_config_manager_installer.deployer._gateway_class_helm_owner",
             return_value=None,
         ),
     ):
