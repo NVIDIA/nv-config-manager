@@ -69,13 +69,15 @@ async def main() -> None:
     if _enabled_env_flag("NVCM_ENABLE_LOCAL_TEST_WORKFLOWS"):
         workflows.extend(HELLO_WORLD_LOCAL_TEST_WORKFLOWS)
 
+    # The TracingInterceptor is registered on the client above, which already
+    # covers worker activity/workflow calls. Registering it again here would
+    # double-instrument and emit duplicate spans.
     worker = Worker(
         client,
         task_queue="default-task-queue",
         workflows=workflows,
         activities=all_activities,  # type: ignore[arg-type]
         activity_executor=ThreadPoolExecutor(100),
-        interceptors=[TracingInterceptor()],
     )
 
     await worker.run()

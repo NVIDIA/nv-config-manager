@@ -69,13 +69,13 @@ from nv_config_manager.temporal.common.search_attributes import (
     USER_SEARCH_ATTRIBUTE,
 )
 from nv_config_manager.temporal.converter import get_data_converter
-from nv_config_manager.temporal.telemetry import get_runtime
 from nv_config_manager.temporal.hello_world.workflows import (
     REGISTERED_WORKFLOWS as HELLO_WORLD_REGISTERED_WORKFLOWS,
 )
 from nv_config_manager.temporal.ngc.workflows import (
     REGISTERED_WORKFLOWS as NGC_REGISTERED_WORKFLOWS,
 )
+from nv_config_manager.temporal.telemetry import get_runtime
 
 logger = get_logger(__name__, category=LogCategory.TEMPORAL_API)
 

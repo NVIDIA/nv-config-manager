@@ -87,8 +87,29 @@ _RESERVED_FIELDS = frozenset(
         "stack_info",
         "service",
         "category",
+        "trace_id",
+        "span_id",
     }
 )
+
+
+def _otel_trace_fields() -> dict[str, str]:
+    """Return trace_id/span_id for the active span.
+
+    Empty when OpenTelemetry is not installed or no valid span is in context
+    (e.g. observability disabled, or logging outside a workflow/request span).
+    """
+    try:
+        from opentelemetry import trace
+    except ImportError:
+        return {}
+    ctx = trace.get_current_span().get_span_context()
+    if not ctx.is_valid:
+        return {}
+    return {
+        "trace_id": format(ctx.trace_id, "032x"),
+        "span_id": format(ctx.span_id, "016x"),
+    }
 
 
 def _load_custom_labels() -> dict[str, str]:
@@ -191,6 +212,8 @@ def configure_logging(service: str | None = None) -> None:
         if service:
             record.service = service  # type: ignore[attr-defined]
         for key, value in _custom_labels.items():
+            setattr(record, key, value)
+        for key, value in _otel_trace_fields().items():
             setattr(record, key, value)
         return record
 

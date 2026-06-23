@@ -2,8 +2,8 @@
 {{- if and .Values.temporal.enabled .Values.temporal.observability.enabled }}
 {{- $temporalName := include "nv-config-manager.componentName" (dict "root" . "component" "temporal") }}
 ---
-# OTel Collector configuration for the Temporal worker and API sidecar (GNINWD-1588).
-# Both pods share this ConfigMap; each pod's sidecar reads it at /etc/otelcol-contrib/config.yaml.
+# OTel Collector configuration for the Temporal pod sidecars.
+# All Temporal pods share this ConfigMap; each sidecar reads it at /etc/otelcol-contrib/config.yaml.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -24,16 +24,20 @@ data:
 
     processors:
       # Enrich every signal with Kubernetes identity (pod/namespace/node).
-      # Requires the collector pod's ServiceAccount to have get/list/watch on pods.
+      # Scoped to this namespace so a namespaced Role (not a ClusterRole) suffices;
+      # see temporal-otel-collector RBAC below for the required pod read access.
       k8sattributes:
         auth_type: "serviceAccount"
+        filter:
+          namespace: {{ .Values.global.namespace }}
         extract:
           metadata:
             - k8s.pod.name
             - k8s.namespace.name
             - k8s.node.name
 
-      # Inject the four attributes required by Panoptes for tenant routing.
+      # Attributes required by Panoptes for tenant routing. Values are set
+      # per-environment via a values override.
       attributes/panoptes:
         actions:
           - key: customer
@@ -84,4 +88,38 @@ data:
           receivers: [otlp]
           processors: [k8sattributes, attributes/panoptes, resource, batch]
           exporters: [otlphttp/panoptes]
+---
+# RBAC for the k8sattributes processor. The collector runs in the Temporal pods
+# under the shared ServiceAccount and needs to read pods in this namespace to
+# resolve k8s.pod.name / k8s.namespace.name / k8s.node.name. Namespaced Role
+# only — the processor is filtered to this namespace above.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $temporalName }}-otel-collector
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: temporal-otel-collector
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "namespaces"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $temporalName }}-otel-collector
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: temporal-otel-collector
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $temporalName }}-otel-collector
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "nv-config-manager.serviceAccountName" . }}
+    namespace: {{ .Values.global.namespace }}
 {{- end }}
