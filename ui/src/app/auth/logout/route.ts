@@ -16,10 +16,12 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 
-const OIDC_COOKIE_NAMES = [
+const DEFAULT_AUTH_COOKIE_NAMES = [
   "NVConfigManagerAccessToken",
   "NVConfigManagerIdToken",
 ];
+
+const COOKIE_NAME_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 
 const expiredCookie = (name: string, domain?: string): string => {
   const domainPart = domain ? ` Domain=${domain};` : "";
@@ -54,6 +56,18 @@ const cookieDomains = (hostname: string): string[] => {
   return Array.from(domains);
 };
 
+const cookieNamesToClear = (request: NextRequest): string[] => {
+  const names = new Set(DEFAULT_AUTH_COOKIE_NAMES);
+
+  request.cookies.getAll().forEach((cookie) => {
+    if (COOKIE_NAME_PATTERN.test(cookie.name)) {
+      names.add(cookie.name);
+    }
+  });
+
+  return Array.from(names);
+};
+
 export async function GET(request: NextRequest) {
   const response = new NextResponse(null, {
     status: 302,
@@ -64,7 +78,7 @@ export async function GET(request: NextRequest) {
   const hostname = request.nextUrl.hostname;
   const domains = cookieDomains(hostname);
 
-  OIDC_COOKIE_NAMES.forEach((name) => {
+  cookieNamesToClear(request).forEach((name) => {
     response.headers.append("Set-Cookie", expiredCookie(name));
     domains.forEach((domain) => {
       response.headers.append("Set-Cookie", expiredCookie(name, domain));

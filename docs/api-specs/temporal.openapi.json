@@ -1566,6 +1566,25 @@
         "title": "SwitchOSUpgradeInput",
         "type": "object"
       },
+      "Tag": {
+        "description": "Tag data for dropdown population.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "Tag",
+        "type": "object"
+      },
       "Tenant": {
         "description": "Tenant data for dropdown population.",
         "properties": {
@@ -2676,6 +2695,62 @@
           }
         },
         "summary": "Get Locations",
+        "tags": [
+          "parameters"
+        ]
+      }
+    },
+    "/v1/parameter/namespace-tag": {
+      "get": {
+        "description": "Return a list of tags used by Nautobot namespaces.",
+        "operationId": "get_namespace_tags_v1_parameter_namespace_tag_get",
+        "parameters": [
+          {
+            "description": "Limit to namespace tags at this location",
+            "in": "query",
+            "name": "location",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Limit to namespace tags at this location",
+              "title": "Location"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Tag"
+                  },
+                  "title": "Response Get Namespace Tags V1 Parameter Namespace Tag Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Namespace Tags",
         "tags": [
           "parameters"
         ]

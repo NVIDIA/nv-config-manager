@@ -24,6 +24,7 @@ import {
   ROLES_LIST_API_RESPONSE,
   STATUS_LIST_API_RESPONSE,
   TENANT_LIST_API_RESPONSE,
+  NAMESPACE_TAGS_LIST_API_RESPONSE,
   DEVICE_TYPES_LIST_API_RESPONSE,
   FORBIDDEN_WORKFLOW_ID,
   FORBIDDEN_SITE_ID,
@@ -90,6 +91,7 @@ export async function setupApiMocks(page: Page) {
   await mockRolesEndpoint(page);
   await mockStatusEndpoint(page);
   await mockTenantsEndpoint(page);
+  await mockNamespaceTagsEndpoint(page);
   await mockDeviceTypesEndpoint(page);
   await mockDevicesEndpoint(page);
   await mockPasswordUsersEndpoint(page);
@@ -989,6 +991,15 @@ export async function mockTenantsEndpoint(page: Page) {
     await route.fulfill({
       status: 200,
       json: TENANT_LIST_API_RESPONSE,
+    });
+  });
+}
+
+export async function mockNamespaceTagsEndpoint(page: Page) {
+  await page.route(/.*\/v1\/parameter\/namespace-tag/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      json: NAMESPACE_TAGS_LIST_API_RESPONSE,
     });
   });
 }
