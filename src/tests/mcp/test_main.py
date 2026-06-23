@@ -116,10 +116,7 @@ def test_oauth_metadata_endpoints_bypass_service_auth(monkeypatch: pytest.Monkey
     assert root_protected_resource_response.status_code == 200
     assert protected_resource_response.json() == {
         "resource": "https://svc-mcp.config-manager.local/mcp",
-        "authorization_servers": [
-            "https://svc-mcp.config-manager.local",
-            "https://idp.example.test/realms/nvcm",
-        ],
+        "authorization_servers": ["https://idp.example.test/realms/nvcm"],
         "bearer_methods_supported": ["header"],
         "resource_name": "NVIDIA Config Manager MCP",
         "scopes_supported": ["openid", "email", "profile"],

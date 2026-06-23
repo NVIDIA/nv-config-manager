@@ -23,10 +23,9 @@ from nv_config_manager.mcp.settings import MCPOAuthSettings
 
 def protected_resource_metadata(settings: MCPOAuthSettings) -> dict[str, Any]:
     """Build RFC 9728 protected resource metadata for the MCP endpoint."""
-    authorization_servers = _unique_urls([settings.authorization_server_url, settings.issuer_url])
     metadata: dict[str, Any] = {
         "resource": settings.resource_url,
-        "authorization_servers": authorization_servers,
+        "authorization_servers": [settings.issuer_url],
         "bearer_methods_supported": ["header"],
         "resource_name": "NVIDIA Config Manager MCP",
     }
@@ -35,14 +34,6 @@ def protected_resource_metadata(settings: MCPOAuthSettings) -> dict[str, Any]:
     if settings.jwks_uri:
         metadata["jwks_uri"] = settings.jwks_uri
     return metadata
-
-
-def _unique_urls(values: list[str]) -> list[str]:
-    unique_values: list[str] = []
-    for value in values:
-        if value and value not in unique_values:
-            unique_values.append(value)
-    return unique_values
 
 
 def authorization_server_metadata(settings: MCPOAuthSettings) -> dict[str, Any]:
