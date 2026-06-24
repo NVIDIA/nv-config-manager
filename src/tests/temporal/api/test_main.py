@@ -1000,6 +1000,18 @@ async def test_workflows(mock_rbac_config, mock_redis, mock_client):
         "ExecutionStatus = 'Running' and PendingApproval = true and (ReadRoles = 'all')"
     )
 
+    rsp = client.get("/v1/workflow", params={"hide_completed": "true"})
+    assert rsp.status_code == 200
+    mock_client.return_value.list_workflows.assert_called_with(
+        "ExecutionStatus != 'Completed' and (ReadRoles = 'all')",
+        limit=100,
+        page_size=100,
+        next_page_token=None,
+    )
+    mock_client.return_value.count_workflows.assert_called_with(
+        "ExecutionStatus != 'Completed' and (ReadRoles = 'all')"
+    )
+
     rsp = client.get(
         "/v1/workflow",
         params={"status": "RUNNING", "pending_approval": "true"},
@@ -1049,7 +1061,7 @@ async def test_workflows(mock_rbac_config, mock_redis, mock_client):
         "Site = 'test' and "
         "ExecutionStatus = 'Running' and "
         "StartTime >= '2025-03-04T02:32:00Z' and "
-        "StartTime <= '2025-03-04T02:35:00Z' and "
+        "CloseTime <= '2025-03-04T02:35:00Z' and "
         "(ReadRoles = 'all')",
         limit=100,
         page_size=100,
@@ -1094,7 +1106,7 @@ async def test_workflows(mock_rbac_config, mock_redis, mock_client):
         "Site = 'test' and "
         "ExecutionStatus = 'Running' and "
         "StartTime >= '2025-03-04T02:32:00Z' and "
-        "StartTime <= '2025-03-04T02:35:00Z'",
+        "CloseTime <= '2025-03-04T02:35:00Z'",
         limit=100,
         page_size=100,
         next_page_token=None,
@@ -1127,7 +1139,7 @@ async def test_workflows(mock_rbac_config, mock_redis, mock_client):
         "Site = 'test' and "
         "ExecutionStatus = 'Running' and "
         "StartTime >= '2025-03-04T02:32:00Z' and "
-        "StartTime <= '2025-03-04T02:35:00Z' and "
+        "CloseTime <= '2025-03-04T02:35:00Z' and "
         "(ReadRoles = 'all' or ReadRoles = 'ngc-gni')",
         limit=100,
         page_size=100,

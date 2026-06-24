@@ -659,6 +659,7 @@ async def get_workflows(  # pylint: disable=R0913,R0914
     pending_approval: bool | None = None,
     start_time: datetime | None = None,
     end_time: datetime | None = None,
+    hide_completed: bool = False,
     limit: int = 100,
     next_page_token: str | None = None,
 ) -> WorkflowListResponse:
@@ -714,7 +715,9 @@ async def get_workflows(  # pylint: disable=R0913,R0914
     if start_time:
         filters.append(f"StartTime >= '{_format_visibility_time(start_time)}'")
     if end_time:
-        filters.append(f"StartTime <= '{_format_visibility_time(end_time)}'")
+        filters.append(f"CloseTime <= '{_format_visibility_time(end_time)}'")
+    if hide_completed:
+        filters.append("ExecutionStatus != 'Completed'")
     if limit <= 0:
         raise HTTPException(status_code=400, detail="limit must be greater than 0")
     # Add role filters

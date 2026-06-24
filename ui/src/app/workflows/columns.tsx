@@ -23,19 +23,62 @@ import { WorkflowColumns, WorkflowMetadata } from "@/types/data-table.types";
 import { renderDeviceNameField } from "@/lib/utils";
 import { useRuntimeConfig } from "@/config/runtime";
 import Link from "next/link";
-import { Search } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { CircleMinus, Search } from "lucide-react";
 
-function filterHref(param: string, value: string): string {
-  const params = new URLSearchParams();
+type SearchParamsLike = {
+  get: (name: string) => string | null;
+  toString: () => string;
+};
 
-  if (param == "status" && value == "PENDING_APPROVAL") {
+function normalizeWorkflowStatusParam(value: string): string {
+  return value.trim().replaceAll("-", "_").replaceAll(" ", "_").toUpperCase();
+}
+
+function isFilterActive(
+  searchParams: SearchParamsLike,
+  param: string,
+  value: string
+): boolean {
+  if (param != "status") {
+    return searchParams.get(param) == value;
+  }
+
+  const status = normalizeWorkflowStatusParam(searchParams.get("status") ?? "");
+  const pendingApproval =
+    searchParams.get("pending_approval")?.toLowerCase() == "true";
+
+  if (value == "PENDING_APPROVAL") {
+    return status == "RUNNING" && pendingApproval;
+  }
+
+  return status == value && !pendingApproval;
+}
+
+function filterHref(
+  currentSearchParams: SearchParamsLike,
+  param: string,
+  value: string
+): string {
+  const params = new URLSearchParams(currentSearchParams.toString());
+
+  if (isFilterActive(currentSearchParams, param, value)) {
+    params.delete(param);
+    if (param == "status") {
+      params.delete("pending_approval");
+    }
+  } else if (param == "status" && value == "PENDING_APPROVAL") {
     params.set("status", "RUNNING");
     params.set("pending_approval", "true");
   } else {
     params.set(param, value);
+    if (param == "status") {
+      params.delete("pending_approval");
+    }
   }
 
-  return `/workflows?${params.toString()}`;
+  const queryString = params.toString();
+  return queryString ? `/workflows?${queryString}` : "/workflows";
 }
 
 const workflowStatusOptions = [
@@ -74,14 +117,24 @@ function FilterValueIcon({
   param: string;
   value: string;
 }) {
+  const searchParams = useSearchParams();
+  const isActive = isFilterActive(searchParams, param, value);
+  const ariaLabel = isActive
+    ? `Remove ${label} filter: ${value}`
+    : `Filter by ${label}: ${value}`;
+
   return (
     <Link
-      aria-label={`Filter by ${label}: ${value}`}
+      aria-label={ariaLabel}
       className="relative -top-1 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-sm !border-b-0 align-super text-muted-foreground no-underline hover:!border-b-0 hover:bg-accent hover:text-accent-foreground hover:no-underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-      href={filterHref(param, value)}
-      title={`Filter by ${label}: ${value}`}
+      href={filterHref(searchParams, param, value)}
+      title={ariaLabel}
     >
-      <Search className="h-2.5 w-2.5" />
+      {isActive ? (
+        <CircleMinus className="h-2.5 w-2.5" />
+      ) : (
+        <Search className="h-2.5 w-2.5" />
+      )}
     </Link>
   );
 }

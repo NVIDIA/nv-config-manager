@@ -784,6 +784,8 @@ function filterWorkflows(url: URL): DocWorkflow[] {
   const status = url.searchParams.get("status");
   const pendingApproval =
     url.searchParams.get("pending_approval")?.toLowerCase() === "true";
+  const hideCompleted =
+    url.searchParams.get("hide_completed")?.toLowerCase() === "true";
   const startTimeFilter = Date.parse(url.searchParams.get("start_time") ?? "");
   const endTimeFilter = Date.parse(url.searchParams.get("end_time") ?? "");
 
@@ -795,6 +797,9 @@ function filterWorkflows(url: URL): DocWorkflow[] {
         : workflow.status;
 
     if (workflowType && workflow.workflow_type !== workflowType) {
+      return false;
+    }
+    if (hideCompleted && workflow.status === "COMPLETED") {
       return false;
     }
 

@@ -151,6 +151,11 @@ const getWorkflowStartTimestamp = (workflow: unknown): number => {
   return Date.parse(workflowRecord.start_time ?? "");
 };
 
+const getWorkflowCloseTimestamp = (workflow: unknown): number => {
+  const workflowRecord = workflow as { close_time?: string | null };
+  return Date.parse(workflowRecord.close_time ?? "");
+};
+
 const getWorkflowDisplayStatus = (workflow: unknown): string => {
   const workflowRecord = workflow as {
     failed_stage?: boolean;
@@ -187,10 +192,15 @@ const filterWorkflows = (workflows: unknown[], url: URL) => {
     const status = url.searchParams.get("status");
     const pendingApproval =
       url.searchParams.get("pending_approval")?.toLowerCase() === "true";
+    const hideCompleted =
+      url.searchParams.get("hide_completed")?.toLowerCase() === "true";
     const startTimeFilter = Date.parse(url.searchParams.get("start_time") ?? "");
     const endTimeFilter = Date.parse(url.searchParams.get("end_time") ?? "");
 
     if (workflowType && workflowRecord.workflow_type !== workflowType) {
+      return false;
+    }
+    if (hideCompleted && workflowRecord.status === "COMPLETED") {
       return false;
     }
     if (pendingApproval && !workflowRecord.pending_approval) {
@@ -205,6 +215,7 @@ const filterWorkflows = (workflows: unknown[], url: URL) => {
     }
     if (!Number.isNaN(startTimeFilter) || !Number.isNaN(endTimeFilter)) {
       const workflowStartTime = getWorkflowStartTimestamp(workflow);
+      const workflowCloseTime = getWorkflowCloseTimestamp(workflow);
 
       if (Number.isNaN(workflowStartTime)) {
         return false;
@@ -212,7 +223,10 @@ const filterWorkflows = (workflows: unknown[], url: URL) => {
       if (!Number.isNaN(startTimeFilter) && workflowStartTime < startTimeFilter) {
         return false;
       }
-      if (!Number.isNaN(endTimeFilter) && workflowStartTime > endTimeFilter) {
+      if (!Number.isNaN(endTimeFilter) && Number.isNaN(workflowCloseTime)) {
+        return false;
+      }
+      if (!Number.isNaN(endTimeFilter) && workflowCloseTime > endTimeFilter) {
         return false;
       }
     }
