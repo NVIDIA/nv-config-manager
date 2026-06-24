@@ -49,12 +49,10 @@ type WhoamiResponse = {
   roles: string[];
 };
 
-const workflowMetadataBySlug = (
+const workflowMetadataByName = (
   workflows: WorkflowMetadata[] | undefined
 ): Map<string, WorkflowMetadata> => {
-  return new Map(
-    workflows?.map((workflow) => [workflow.name.toLowerCase(), workflow]) ?? []
-  );
+  return new Map(workflows?.map((workflow) => [workflow.name, workflow]) ?? []);
 };
 
 const canExecuteWorkflow = (
@@ -74,13 +72,8 @@ const canExecuteWorkflow = (
 
 const getDisabledWorkflowReason = (
   metadata: WorkflowMetadata | undefined,
-  isFormEnabled: boolean,
   isUnauthorized: boolean
 ): string => {
-  if (!isFormEnabled) {
-    return "Form Coming Soon!";
-  }
-
   if (isUnauthorized) {
     return "Unauthorized";
   }
@@ -111,9 +104,10 @@ const NewWorkflowChooser = () => {
       fetcher
     );
 
-  const metadataBySlug = workflowMetadataBySlug(workflowMetadata?.workflows);
+  const metadataByName = workflowMetadataByName(workflowMetadata?.workflows);
   const isUnauthorized = Boolean(whoamiError);
   const userRoles = new Set(isUnauthorized ? [] : (userInfo?.roles ?? []));
+  const workflowForms = siteConfig.workflows.filter((item) => item.enabled);
 
   return (
     <div className="relative inline-block text-left">
@@ -130,14 +124,14 @@ const NewWorkflowChooser = () => {
         </PopoverTrigger>
 
         <PopoverContent align="end" className="max-h-[70vh] overflow-y-auto">
-          {siteConfig.workflows.map((item) => {
-            const metadata = metadataBySlug.get(item.slug);
+          {workflowForms.map((item) => {
+            const metadata = metadataByName.get(item.workflowName);
+            const workflowTitle = metadata?.display_name ?? item.title;
             const hasPermission =
               !isUnauthorized && canExecuteWorkflow(metadata, userRoles);
-            const isEnabled = item.enabled && hasPermission;
+            const isEnabled = hasPermission;
             const disabledReason = getDisabledWorkflowReason(
               metadata,
-              item.enabled,
               isUnauthorized
             );
 
@@ -148,7 +142,7 @@ const NewWorkflowChooser = () => {
                 className="flex rounded-sm border-none px-3 py-2 hover:border-none hover:bg-accent hover:text-accent-foreground"
                 onClick={() => setIsOpen(false)}
               >
-                {item.title}
+                {workflowTitle}
               </Link>
             ) : (
               <TooltipProvider delayDuration={0} key={item.slug}>
@@ -162,7 +156,7 @@ const NewWorkflowChooser = () => {
                       )}
                       type="button"
                     >
-                      {item.title}
+                      {workflowTitle}
                     </button>
                   </TooltipTrigger>
                   <TooltipContent side="left">

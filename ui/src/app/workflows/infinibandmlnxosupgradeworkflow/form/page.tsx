@@ -43,7 +43,7 @@ const IBOSUpgradeWorkflowForm = () => {
 
   return (
     <DeviceWorkflowForm
-      title="IB MLNX OS Upgrade Workflow"
+      title="New InfiniBand MLNX-OS Upgrade Workflow"
       onSubmit={onSubmit}
       deviceFilterParams={[["platform", "MLNX-OS"]]}
     />

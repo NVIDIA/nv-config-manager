@@ -24,16 +24,16 @@ import {
   FORBIDDEN_SITE_ID,
 } from "@/mocks/data";
 
-test.describe("Multi-Deploy Workflow Form", () => {
+test.describe("New Multi-Configuration Deploy Workflow", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/workflows/multideployworkflow/form");
   });
 
-  test("renders Multi-Deploy Workflow form with correct title", async ({
+  test("renders Multi-Configuration Deploy form with correct title", async ({
     page,
   }) => {
     await expect(
-      page.getByRole("heading", { name: "Multi-Deploy Workflow Form" })
+      page.getByRole("heading", { name: "New Multi-Configuration Deploy Workflow" })
     ).toBeVisible();
   });
 
@@ -63,7 +63,7 @@ test.describe("Multi-Deploy Workflow Form", () => {
     await page.getByRole("dialog").getByText(STATUS_LIST.provisioning).click();
     // Click outside to close dropdown
     await page
-      .getByRole("heading", { name: "Multi-Deploy Workflow Form" })
+      .getByRole("heading", { name: "New Multi-Configuration Deploy Workflow" })
       .click();
 
     // Fill in tenant
@@ -235,7 +235,7 @@ test.describe("Multi-Deploy Workflow Form", () => {
     await page.getByRole("button", { name: STATUS_LIST.active }).click();
     await page.getByRole("dialog").getByText(STATUS_LIST.provisioning).click();
     await page
-      .getByRole("heading", { name: "Multi-Deploy Workflow Form" })
+      .getByRole("heading", { name: "New Multi-Configuration Deploy Workflow" })
       .click();
 
     // Submit form
@@ -301,7 +301,7 @@ test.describe("Multi-Deploy Workflow Form", () => {
     await page.getByRole("dialog").getByText(STATUS_LIST.provisioning).click();
     await page.getByRole("dialog").getByText(STATUS_LIST.planned).click();
     await page
-      .getByRole("heading", { name: "Multi-Deploy Workflow Form" })
+      .getByRole("heading", { name: "New Multi-Configuration Deploy Workflow" })
       .click();
 
     await page.waitForTimeout(200);

@@ -44,7 +44,7 @@ const ConfigDeployWorkflowForm = () => {
 
   return (
     <DeviceWorkflowForm
-      title="Config Deploy Workflow"
+      title="New Configuration Deploy Workflow"
       onSubmit={onSubmit}
       showCommitConfirm
     />
@@ -52,4 +52,3 @@ const ConfigDeployWorkflowForm = () => {
 };
 
 export default ConfigDeployWorkflowForm;
-

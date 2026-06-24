@@ -43,7 +43,7 @@ const IBValidationWorkflowForm = () => {
 
   return (
     <DeviceWorkflowForm
-      title="IB Get Unhealthy Ports Workflow"
+      title="New InfiniBand Get Unhealthy Ports Workflow"
       onSubmit={onSubmit}
       deviceFilterParams={[["platform", "UFM"]]}
     />
