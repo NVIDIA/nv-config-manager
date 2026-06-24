@@ -1,0 +1,14 @@
+# Copyright (c) 2026, NVIDIA CORPORATION.  All rights reserved.
+{{- if .Values.mcp.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "nv-config-manager.mcpAuthConfigMapName" . }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mcp
+data:
+{{- include "nv-config-manager.configmap.mcp-auth" . | nindent 2 }}
+{{- end }}
