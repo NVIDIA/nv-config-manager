@@ -394,7 +394,7 @@ async def get_devices(  # pylint: disable=R0913,R0914
             }
         """
 
-    variables = {}
+    variables: dict[str, list[str] | bool] = {}
     if site:
         variables["site"] = site
     if status:
