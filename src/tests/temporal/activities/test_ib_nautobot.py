@@ -336,6 +336,63 @@ class TestResolveGuidsToInterfaces:
             assert result.resolved[0].interface_id == "iface-1"
 
     @pytest.mark.asyncio
+    async def test_normalizes_0x_prefixed_input_guid(self, mock_nb_config):
+        """A user-entered ``0x``-prefixed GUID resolves against bare-hex storage."""
+        with aioresponses() as m:
+            m.post(
+                _NB_GRAPHQL,
+                payload=_graphql_payload(
+                    [
+                        {
+                            "id": "iface-1",
+                            "name": "HCA-7/1",
+                            "cf_ib_guid": "946dae0300598000",
+                            "device": {"name": "dgx-05"},
+                        }
+                    ]
+                ),
+            )
+
+            result = await resolve_guids_to_interfaces(
+                ResolveGuidsToInterfacesInput(guids=["0x946dae0300598000"])
+            )
+
+            assert len(result.resolved) == 1
+            assert result.resolved[0].interface_id == "iface-1"
+            assert result.resolved[0].guid == "946dae0300598000"
+
+            sent = next(iter(m.requests.values()))[0]
+            assert sent.kwargs["json"]["variables"]["guids"] == ["946dae0300598000"]
+
+    @pytest.mark.asyncio
+    async def test_prefixed_and_bare_guid_dedupe(self, mock_nb_config):
+        """``0x``-prefixed and bare forms of the same GUID collapse to one lookup."""
+        with aioresponses() as m:
+            m.post(
+                _NB_GRAPHQL,
+                payload=_graphql_payload(
+                    [
+                        {
+                            "id": "iface-1",
+                            "name": "HCA-7/1",
+                            "cf_ib_guid": "946dae0300598000",
+                            "device": {"name": "dgx-05"},
+                        }
+                    ]
+                ),
+            )
+
+            result = await resolve_guids_to_interfaces(
+                ResolveGuidsToInterfacesInput(
+                    guids=["0x946dae0300598000", "946dae0300598000"],
+                )
+            )
+
+            assert len(result.resolved) == 1
+            sent = next(iter(m.requests.values()))[0]
+            assert sent.kwargs["json"]["variables"]["guids"] == ["946dae0300598000"]
+
+    @pytest.mark.asyncio
     async def test_all_empty_guids_raises(self, mock_nb_config):
         with pytest.raises(ApplicationError, match="All provided GUIDs were empty"):
             await resolve_guids_to_interfaces(ResolveGuidsToInterfacesInput(guids=["", ""]))
