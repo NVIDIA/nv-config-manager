@@ -44,6 +44,6 @@ test.describe("Config File Page", () => {
       page.waitForEvent("download", { timeout: 15000 }),
       page.getByRole("button", { name: "Download" }).click(),
     ]);
-    expect(download.suggestedFilename()).toBe("pdx01-spine-001_running-config.txt");
+    expect(download.suggestedFilename()).toBe("spine-001_running-config.txt");
   });
 });

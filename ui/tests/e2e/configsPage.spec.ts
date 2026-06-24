@@ -69,13 +69,13 @@ test.describe("Device Configurations Page", () => {
 
   test("displays devices from API in the table", async ({ page }) => {
     // Wait for devices to load - use links for device names
-    await expect(page.getByRole("link", { name: "pdx01-spine-001" })).toBeVisible({
+    await expect(page.getByRole("link", { name: "spine-001" })).toBeVisible({
       timeout: TEST_TIMEOUT,
     });
-    await expect(page.getByRole("link", { name: "pdx01-leaf-001" })).toBeVisible({
+    await expect(page.getByRole("link", { name: "leaf-001" })).toBeVisible({
       timeout: TEST_TIMEOUT,
     });
-    await expect(page.getByRole("link", { name: "rno1-core-001" })).toBeVisible({
+    await expect(page.getByRole("link", { name: "core-001" })).toBeVisible({
       timeout: TEST_TIMEOUT,
     });
 
@@ -93,19 +93,15 @@ test.describe("Device Configurations Page", () => {
       "Start typing to search devices..."
     );
 
-    // Search for PDX devices
-    await searchInput.fill("pdx");
+    await searchInput.fill("spine");
 
     // Wait for filter to apply
-    await expect(page.getByText("pdx01-spine-001")).toBeVisible({
+    await expect(page.getByText("spine-001")).toBeVisible({
       timeout: TEST_TIMEOUT,
     });
-    await expect(page.getByText("pdx01-leaf-001")).toBeVisible({
+    await expect(page.getByText("leaf-001")).not.toBeVisible({
       timeout: TEST_TIMEOUT,
     });
-
-    // RNO device should still be in results (API returns filtered data)
-    // The client-side filter also applies
   });
 
   test("switches between intended and backup config tabs", async ({ page }) => {
@@ -134,7 +130,7 @@ test.describe("Device Configurations Page", () => {
     page,
   }) => {
     // Wait for device to be visible
-    const deviceLink = page.getByRole("link", { name: "pdx01-spine-001" });
+    const deviceLink = page.getByRole("link", { name: "spine-001" });
     await expect(deviceLink).toBeVisible({ timeout: TEST_TIMEOUT });
 
     // Click on the device name
@@ -166,7 +162,7 @@ test.describe("Device Configurations Page", () => {
     page,
   }) => {
     // Wait for devices to load
-    await expect(page.getByRole("link", { name: "pdx01-spine-001" })).toBeVisible(
+    await expect(page.getByRole("link", { name: "spine-001" })).toBeVisible(
       { timeout: TEST_TIMEOUT }
     );
 
@@ -180,7 +176,7 @@ test.describe("Device Configurations Page", () => {
     page,
   }) => {
     // Wait for devices to load
-    await expect(page.getByRole("link", { name: "pdx01-spine-001" })).toBeVisible(
+    await expect(page.getByRole("link", { name: "spine-001" })).toBeVisible(
       { timeout: TEST_TIMEOUT }
     );
 
@@ -206,12 +202,12 @@ test.describe("Device Configurations Page", () => {
 
   test("inactive devices are hidden by default", async ({ page }) => {
     // Active devices should be visible
-    await expect(page.getByRole("link", { name: "pdx01-spine-001" })).toBeVisible({
+    await expect(page.getByRole("link", { name: "spine-001" })).toBeVisible({
       timeout: TEST_TIMEOUT,
     });
 
     // Inactive device should NOT be visible
-    await expect(page.getByRole("link", { name: "pdx01-decomm-001" })).not.toBeVisible({
+    await expect(page.getByRole("link", { name: "decomm-001" })).not.toBeVisible({
       timeout: TEST_TIMEOUT,
     });
   });
@@ -220,7 +216,7 @@ test.describe("Device Configurations Page", () => {
     page,
   }) => {
     // Wait for initial load
-    await expect(page.getByRole("link", { name: "pdx01-spine-001" })).toBeVisible({
+    await expect(page.getByRole("link", { name: "spine-001" })).toBeVisible({
       timeout: TEST_TIMEOUT,
     });
 
@@ -228,7 +224,7 @@ test.describe("Device Configurations Page", () => {
     await page.getByLabel("Show inactive devices").click();
 
     // Inactive device should now appear
-    await expect(page.getByRole("link", { name: "pdx01-decomm-001" })).toBeVisible({
+    await expect(page.getByRole("link", { name: "decomm-001" })).toBeVisible({
       timeout: TEST_TIMEOUT,
     });
 
@@ -240,7 +236,7 @@ test.describe("Device Configurations Page", () => {
 
   test("delete button appears only on inactive devices", async ({ page }) => {
     // Wait for initial load
-    await expect(page.getByRole("link", { name: "pdx01-spine-001" })).toBeVisible({
+    await expect(page.getByRole("link", { name: "spine-001" })).toBeVisible({
       timeout: TEST_TIMEOUT,
     });
 
@@ -251,12 +247,12 @@ test.describe("Device Configurations Page", () => {
     await page.getByLabel("Show inactive devices").click();
 
     // Inactive device should appear
-    await expect(page.getByRole("link", { name: "pdx01-decomm-001" })).toBeVisible({
+    await expect(page.getByRole("link", { name: "decomm-001" })).toBeVisible({
       timeout: TEST_TIMEOUT,
     });
 
     // Delete button should be visible (trash icon) on the inactive row
-    const inactiveRow = page.locator("tr").filter({ hasText: "pdx01-decomm-001" });
+    const inactiveRow = page.locator("tr").filter({ hasText: "decomm-001" });
     await expect(inactiveRow.locator("button").filter({ has: page.locator("svg") }).first()).toBeVisible({
       timeout: TEST_TIMEOUT,
     });
@@ -267,12 +263,12 @@ test.describe("Device Configurations Page", () => {
     await page.getByLabel("Show inactive devices").click();
 
     // Wait for inactive device
-    await expect(page.getByRole("link", { name: "pdx01-decomm-001" })).toBeVisible({
+    await expect(page.getByRole("link", { name: "decomm-001" })).toBeVisible({
       timeout: TEST_TIMEOUT,
     });
 
     // Click the delete button on the inactive row
-    const inactiveRow = page.locator("tr").filter({ hasText: "pdx01-decomm-001" });
+    const inactiveRow = page.locator("tr").filter({ hasText: "decomm-001" });
     await inactiveRow.locator("button").filter({ has: page.locator("svg") }).first().click();
 
     // Confirmation dialog should appear
@@ -280,7 +276,7 @@ test.describe("Device Configurations Page", () => {
     await expect(dialog.getByText("Permanently Delete Device Configs?")).toBeVisible({
       timeout: TEST_TIMEOUT,
     });
-    await expect(dialog.getByText("pdx01-decomm-001")).toBeVisible({
+    await expect(dialog.getByText("decomm-001")).toBeVisible({
       timeout: TEST_TIMEOUT,
     });
     await expect(page.getByRole("button", { name: "Cancel" })).toBeVisible({
@@ -298,12 +294,12 @@ test.describe("Device Configurations Page", () => {
     await page.getByLabel("Show inactive devices").click();
 
     // Wait for inactive device
-    await expect(page.getByRole("link", { name: "pdx01-decomm-001" })).toBeVisible({
+    await expect(page.getByRole("link", { name: "decomm-001" })).toBeVisible({
       timeout: TEST_TIMEOUT,
     });
 
     // Open delete dialog
-    const inactiveRow = page.locator("tr").filter({ hasText: "pdx01-decomm-001" });
+    const inactiveRow = page.locator("tr").filter({ hasText: "decomm-001" });
     await inactiveRow.locator("button").filter({ has: page.locator("svg") }).first().click();
 
     // Click cancel
@@ -315,7 +311,7 @@ test.describe("Device Configurations Page", () => {
     });
 
     // Device should still be in the list
-    await expect(page.getByRole("link", { name: "pdx01-decomm-001" })).toBeVisible({
+    await expect(page.getByRole("link", { name: "decomm-001" })).toBeVisible({
       timeout: TEST_TIMEOUT,
     });
   });
@@ -325,19 +321,19 @@ test.describe("Device Configurations Page", () => {
     await page.getByLabel("Show inactive devices").click();
 
     // Wait for inactive device
-    await expect(page.getByRole("link", { name: "pdx01-decomm-001" })).toBeVisible({
+    await expect(page.getByRole("link", { name: "decomm-001" })).toBeVisible({
       timeout: TEST_TIMEOUT,
     });
 
     // Open delete dialog
-    const inactiveRow = page.locator("tr").filter({ hasText: "pdx01-decomm-001" });
+    const inactiveRow = page.locator("tr").filter({ hasText: "decomm-001" });
     await inactiveRow.locator("button").filter({ has: page.locator("svg") }).first().click();
 
     // Confirm deletion
     await page.getByRole("button", { name: "Delete Permanently" }).click();
 
     // Device should be removed from the list
-    await expect(page.getByRole("link", { name: "pdx01-decomm-001" })).not.toBeVisible({
+    await expect(page.getByRole("link", { name: "decomm-001" })).not.toBeVisible({
       timeout: TEST_TIMEOUT,
     });
 
@@ -347,7 +343,7 @@ test.describe("Device Configurations Page", () => {
     });
 
     // Active devices should still be there
-    await expect(page.getByRole("link", { name: "pdx01-spine-001" })).toBeVisible({
+    await expect(page.getByRole("link", { name: "spine-001" })).toBeVisible({
       timeout: TEST_TIMEOUT,
     });
   });

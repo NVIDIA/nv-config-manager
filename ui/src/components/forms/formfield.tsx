@@ -16,7 +16,6 @@
  */
 import {
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -123,9 +122,6 @@ export const WorkflowFormField = ({
               />
             ) : null}
           </FormControl>
-          {label && (
-            <FormDescription>{`${label} to create workflow for.`}</FormDescription>
-          )}
         </FormItem>
       )}
     />

@@ -30,7 +30,7 @@ const AIR_TAN_LEAF_01_ID = "air-trial-tan-leaf-01";
 const PDX_SITE = "PDX01";
 const PDX_CUMULUS_ID = "pdx01-cumulus-leaf-01";
 const PDX_MLNX_ID = "pdx01-mlx-switch-01";
-const PDX_UFM_ID = "pdx01-ufm-01";
+const UFM_DEVICE_ID = "ufm-01";
 const DEMO_VPC_ID = "vpc-demo-101";
 
 const DOC_WORKFLOW_DISPLAY_NAMES: Record<string, string> = {
@@ -251,8 +251,8 @@ const DOC_DEVICES_BY_SITE: Record<string, Device[]> = {
       tenant: "TenantB",
     },
     {
-      id: PDX_UFM_ID,
-      name: "pdx01-ufm-01",
+      id: UFM_DEVICE_ID,
+      name: "ufm-01",
       platform: "UFM",
       role: "UFM",
       status: "Active",
@@ -405,7 +405,7 @@ const WORKFLOW_SCREENSHOTS: WorkflowScreenshot[] = [
     fileName: "ibpkeycreationworkflow-form.png",
     path: "/workflows/ibpkeycreationworkflow/form",
     query: {
-      host: "ufm.pdx01.example.com",
+      host: "ufm.example.com",
       pkey: "0x8001",
     },
     title: "New InfiniBand PKey Creation Workflow",
@@ -414,7 +414,7 @@ const WORKFLOW_SCREENSHOTS: WorkflowScreenshot[] = [
     fileName: "ibpkeymemberaddworkflow-form.png",
     path: "/workflows/ibpkeymemberaddworkflow/form",
     query: {
-      host: "ufm.pdx01.example.com",
+      host: "ufm.example.com",
       pkey: "0x8001",
     },
     title: "New InfiniBand PKey Member Add Workflow",
@@ -423,7 +423,7 @@ const WORKFLOW_SCREENSHOTS: WorkflowScreenshot[] = [
     fileName: "ibpkeymemberdeleteworkflow-form.png",
     path: "/workflows/ibpkeymemberdeleteworkflow/form",
     query: {
-      host: "ufm.pdx01.example.com",
+      host: "ufm.example.com",
       pkey: "0x8001",
     },
     title: "New InfiniBand PKey Member Delete Workflow",
@@ -432,7 +432,7 @@ const WORKFLOW_SCREENSHOTS: WorkflowScreenshot[] = [
     fileName: "ibpkeymemberupdateworkflow-form.png",
     path: "/workflows/ibpkeymemberupdateworkflow/form",
     query: {
-      host: "ufm.pdx01.example.com",
+      host: "ufm.example.com",
       pkey: "0x8001",
     },
     title: "New InfiniBand PKey Member Update Workflow",
