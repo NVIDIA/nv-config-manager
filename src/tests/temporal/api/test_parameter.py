@@ -156,8 +156,8 @@ UFM_DEVICES = {
     }
 }
 
-# A managed switch and an unmanaged switch at the same site
-DEVICES_MIXED = {
+# Server-side managed_only filter returns only the managed switch.
+MANAGED_DEVICES = {
     "data": {
         "devices": [
             {
@@ -165,20 +165,6 @@ DEVICES_MIXED = {
                 "name": "managed-switch",
                 "platform": {"name": "Cumulus Linux"},
             },
-            {
-                "id": "unmanaged-uuid-2",
-                "name": "unmanaged-switch",
-                "platform": {"name": "Cumulus Linux"},
-            },
-        ]
-    }
-}
-
-# config_manager_devices id-only response used by the managed_only intersection
-MANAGED_DEVICE_IDS = {
-    "data": {
-        "config_manager_devices": [
-            {"device": {"id": "aa6ef75b-00fe-45e6-8adb-62609509cb4f"}},
         ]
     }
 }
@@ -214,10 +200,9 @@ def test_device_role_without_platform_filter():
 
 
 def test_device_managed_only():
-    """managed_only=true intersects the filtered devices with config_manager_devices."""
+    """managed_only=true sets the nv_config_manager_device_status filter in one query."""
     with aioresponses() as m:
-        m.post("https://nautobot.example.com/api/graphql/", payload=DEVICES_MIXED)
-        m.post("https://nautobot.example.com/api/graphql/", payload=MANAGED_DEVICE_IDS)
+        m.post("https://nautobot.example.com/api/graphql/", payload=MANAGED_DEVICES)
 
         client = TestClient(app)
         rsp = client.get("/v1/parameter/device?site=SITEA&managed_only=true")
@@ -228,6 +213,24 @@ def test_device_managed_only():
                 "platform": "cumulus-linux",
             }
         ]
+
+        # Single round-trip; the managed filter is passed as a GraphQL variable.
+        assert len(m.requests) == 1
+        sent = next(iter(m.requests.values()))[0]
+        assert sent.kwargs["json"]["variables"]["managed_only"] is True
+
+
+def test_device_managed_only_omitted_by_default():
+    """Without managed_only, the filter variable is omitted (null = no constraint)."""
+    with aioresponses() as m:
+        m.post("https://nautobot.example.com/api/graphql/", payload=DEVICES)
+
+        client = TestClient(app)
+        rsp = client.get("/v1/parameter/device?site=SITEA")
+        assert rsp.status_code == 200
+
+        sent = next(iter(m.requests.values()))[0]
+        assert "managed_only" not in sent.kwargs["json"]["variables"]
 
 
 def test_device_graphql_error_returns_400():
