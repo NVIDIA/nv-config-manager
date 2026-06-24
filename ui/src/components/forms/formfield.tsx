@@ -84,8 +84,11 @@ export const WorkflowFormField = ({
                     handleChange?.(name, value as string);
                     field.onChange(value);
                   }}
-                  placeholder={`Select a ${label}...`}
-                  //placeholder={props.multiple ? `Select ${label}...` : `Select a ${label}...`}
+                  placeholder={
+                    props.multiple
+                      ? `Select ${label}...`
+                      : `Select a ${label}...`
+                  }
                   inputPlaceholder={`Search ${label}`}
                   emptyPlaceholder={`No ${label} found.`}
                   multiple={props.multiple}
