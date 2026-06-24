@@ -155,9 +155,46 @@ test.describe("Workflows Page", () => {
     await expect(page.getByText("LEAF1-GP1-CIN2-PDX01").first()).toBeVisible();
     await page.getByRole("button", { exact: true, name: "Next" }).click();
 
-    await expect(page.getByText("Page 2")).toBeVisible();
-    await expect(page.getByText("More pages available")).toBeVisible();
-    await expect(page.getByText("Port LLDP Info").first()).toBeVisible();
+    await expect(page.getByText(/Page 2 of \d+/)).toBeVisible();
+    await expect(page.getByText(/\d+ workflows/)).toBeVisible();
+    await expect(page.locator("tbody tr").first()).toBeVisible();
+  });
+
+  test("uses backend hide-completed filtering and disables header sorting", async ({
+    page,
+  }) => {
+    await page.goto("/workflows");
+
+    const hideCompletedResponse = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+
+      return (
+        url.pathname.endsWith("/v1/workflow/") &&
+        url.searchParams.get("hide_completed") === "true"
+      );
+    });
+    await page.getByRole("checkbox", { name: "Hide completed workflows" }).click();
+    const hiddenResponse = await hideCompletedResponse;
+    const hiddenResponseUrl = new URL(hiddenResponse.url());
+    const hiddenPageSize = Number(hiddenResponseUrl.searchParams.get("limit") ?? "10");
+    const hiddenResponseBody = (await hiddenResponse.json()) as {
+      page_count: number;
+      total_count: number;
+      workflows: { status: string }[];
+    };
+
+    expect(
+      hiddenResponseBody.workflows.every((workflow) => workflow.status !== "COMPLETED")
+    ).toBe(true);
+    expect(hiddenResponseBody.page_count).toBe(
+      hiddenResponseBody.total_count === 0
+        ? 0
+        : Math.ceil(hiddenResponseBody.total_count / hiddenPageSize)
+    );
+
+    await expect(
+      page.locator("thead").getByRole("button", { name: /Workflow Type/ })
+    ).toHaveCount(0);
   });
 
   test("supports value filter icons through workflow list filters", async ({
@@ -165,20 +202,26 @@ test.describe("Workflows Page", () => {
   }) => {
     await page.goto("/workflows?workflow_type=DeployWorkflow");
 
-    await page
+    const deviceNameFilter = page
       .getByRole("link", {
         name: "Filter by Device Name: LEAF2-GP1-CIN2-PDX01",
       })
-      .click();
+      .first();
 
+    await deviceNameFilter.click();
+    await expect(page).toHaveURL(/workflow_type=DeployWorkflow/);
     await expect(page).toHaveURL(/device_name=LEAF2-GP1-CIN2-PDX01/);
     await expect(page.getByText("LEAF2-GP1-CIN2-PDX01")).toBeVisible();
 
-    await expect(
-      page.getByRole("link", {
-        name: "Filter by Device Name: LEAF2-GP1-CIN2-PDX01",
-      })
-    ).toHaveCSS("border-bottom-width", "0px");
+    const removeDeviceNameFilter = page.getByRole("link", {
+      name: "Remove Device Name filter: LEAF2-GP1-CIN2-PDX01",
+    });
+
+    await expect(removeDeviceNameFilter).toHaveCSS("border-bottom-width", "0px");
+    await removeDeviceNameFilter.click();
+
+    await expect(page).toHaveURL(/\/workflows\?workflow_type=DeployWorkflow$/);
+    await expect(deviceNameFilter).toBeVisible();
   });
 
   test("hydrates status filters from the URL", async ({ page }) => {
@@ -189,6 +232,24 @@ test.describe("Workflows Page", () => {
     await expect(
       page.locator("tbody").getByText("Failed", { exact: true })
     ).toBeVisible();
+
+    await page.goto("/workflows?status=Completed");
+    const statusFilter = page
+      .locator("thead")
+      .getByRole("cell", { name: /Status/ })
+      .getByRole("combobox");
+
+    await expect(statusFilter).toContainText("Completed");
+    await expect(page).toHaveURL(/status=COMPLETED/);
+    await expect(
+      page.locator("tbody").getByText("Completed", { exact: true }).first()
+    ).toBeVisible();
+
+    await statusFilter.click();
+    await page.getByRole("option", { name: "All" }).click();
+
+    await expect(page).toHaveURL(/\/workflows$/);
+    await expect(page.getByText("LEAF1-GP1-CIN2-PDX01").first()).toBeVisible();
   });
 
   test("supports dropdown filters and clearing all filters", async ({ page }) => {
@@ -279,6 +340,9 @@ test.describe("Workflows Page", () => {
     await page.getByLabel("End time").fill(timeframe.end.time);
 
     await expect(page.getByText("Connected Host Metadata")).toBeVisible();
+    await expect(
+      page.getByRole("cell", { name: "Configuration Deploy" })
+    ).toHaveCount(0);
     await expect(
       page.getByRole("cell", { name: "Configuration Backup" })
     ).toHaveCount(0);

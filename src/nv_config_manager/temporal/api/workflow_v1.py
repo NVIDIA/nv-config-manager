@@ -147,6 +147,8 @@ class WorkflowListResponse(BaseModel):
 
     workflows: list[WorkflowSummaryResponse]
     next_page_token: str | None
+    total_count: int
+    page_count: int
 
 
 class WorkflowMetadata(BaseModel):
@@ -657,6 +659,7 @@ async def get_workflows(  # pylint: disable=R0913,R0914
     pending_approval: bool | None = None,
     start_time: datetime | None = None,
     end_time: datetime | None = None,
+    hide_completed: bool = False,
     limit: int = 100,
     next_page_token: str | None = None,
 ) -> WorkflowListResponse:
@@ -712,7 +715,11 @@ async def get_workflows(  # pylint: disable=R0913,R0914
     if start_time:
         filters.append(f"StartTime >= '{_format_visibility_time(start_time)}'")
     if end_time:
-        filters.append(f"StartTime <= '{_format_visibility_time(end_time)}'")
+        filters.append(f"CloseTime <= '{_format_visibility_time(end_time)}'")
+    if hide_completed:
+        filters.append("ExecutionStatus != 'Completed'")
+    if limit <= 0:
+        raise HTTPException(status_code=400, detail="limit must be greater than 0")
     # Add role filters
     # Permit admin roles to view workflows that are missing
     # RBAC search attributes
@@ -731,12 +738,21 @@ async def get_workflows(  # pylint: disable=R0913,R0914
     next_page_token = (
         brotli.decompress(base64.urlsafe_b64decode(next_page_token)) if next_page_token else None
     )
-    workflows, new_token = await _get_workflow_summaries(client, query, limit, next_page_token)
+    (workflows, new_token), workflow_count = await asyncio.gather(
+        _get_workflow_summaries(client, query, limit, next_page_token),
+        client.count_workflows(query),
+    )
     encoded_token = (
         base64.urlsafe_b64encode(brotli.compress(new_token)).decode() if new_token else None
     )
+    page_count = 0 if workflow_count.count == 0 else (workflow_count.count + limit - 1) // limit
 
-    return WorkflowListResponse(workflows=workflows, next_page_token=encoded_token)
+    return WorkflowListResponse(
+        workflows=workflows,
+        next_page_token=encoded_token,
+        total_count=workflow_count.count,
+        page_count=page_count,
+    )
 
 
 @router.get("/types")
