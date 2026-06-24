@@ -18,6 +18,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
+from temporalio.exceptions import ApplicationError
 
 from nv_config_manager.temporal.client.nautobot import NautobotClient
 from nv_config_manager.temporal.common.mixins.device import NetworkDeviceData, Platform
@@ -455,10 +456,11 @@ async def get_ufm_devices(
     if site:
         variables["site"] = site
 
-    async with client:
-        data = await client.graphql_query(query, variables)
-    if "errors" in data:
-        raise HTTPException(status_code=400, detail=data["errors"][0]["message"])
+    try:
+        async with client:
+            data = await client.graphql_query(query, variables)
+    except ApplicationError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
     return [
         Device(
             id=device["id"],

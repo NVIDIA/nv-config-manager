@@ -189,6 +189,19 @@ def test_ufm_device_without_site():
         assert "platform" not in variables
 
 
+def test_ufm_device_graphql_error_returns_400():
+    """A GraphQL error is translated to HTTP 400 instead of an unhandled 500."""
+    with aioresponses() as m:
+        m.post(
+            "https://nautobot.example.com/api/graphql/",
+            payload={"errors": [{"message": "invalid query"}]},
+        )
+
+        client = TestClient(app)
+        rsp = client.get("/v1/parameter/ufm-device?site=SITEA")
+        assert rsp.status_code == 400
+
+
 def test_tenant_default():
     """Test the tenant parameter endpoint (default: all tenants)."""
     with aioresponses() as m:
