@@ -21,6 +21,10 @@ import { SortableHeaderButtonProps } from "@/types/data-table.types";
 export const SortableHeaderButton = <TData,>(
   { column, title }: SortableHeaderButtonProps<TData>,
 ) => {
+  if (!column.getCanSort()) {
+    return <span>{title}</span>;
+  }
+
   return (
     <Button
       className="-ml-2 h-8 px-2"

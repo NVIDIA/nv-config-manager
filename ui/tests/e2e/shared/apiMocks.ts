@@ -1245,6 +1245,8 @@ export async function mockWorkflowsListEndpoint(page: Page) {
     const workflowType = url.searchParams.get("workflow_type");
     const nextPageToken = url.searchParams.get("next_page_token");
     const limit = url.searchParams.get("limit");
+    const hideCompleted =
+      url.searchParams.get("hide_completed")?.toLowerCase() === "true";
 
     const pageSize = limit ? parseInt(limit) : 10;
     const page = nextPageToken ? parseInt(nextPageToken) : 0;
@@ -1264,6 +1266,9 @@ export async function mockWorkflowsListEndpoint(page: Page) {
         : ALL_WORKFLOW_DATA.workflows
     ).filter((workflow) => {
       if (workflowType && workflow.workflow_type !== workflowType) {
+        return false;
+      }
+      if (hideCompleted && workflow.status === "COMPLETED") {
         return false;
       }
 
@@ -1292,6 +1297,7 @@ export async function mockWorkflowsListEndpoint(page: Page) {
       const endTimeFilter = Date.parse(url.searchParams.get("end_time") ?? "");
       if (!Number.isNaN(startTimeFilter) || !Number.isNaN(endTimeFilter)) {
         const workflowStartTime = Date.parse(workflow.start_time);
+        const workflowCloseTime = Date.parse(workflow.close_time ?? "");
 
         if (Number.isNaN(workflowStartTime)) {
           return false;
@@ -1299,7 +1305,10 @@ export async function mockWorkflowsListEndpoint(page: Page) {
         if (!Number.isNaN(startTimeFilter) && workflowStartTime < startTimeFilter) {
           return false;
         }
-        if (!Number.isNaN(endTimeFilter) && workflowStartTime > endTimeFilter) {
+        if (!Number.isNaN(endTimeFilter) && Number.isNaN(workflowCloseTime)) {
+          return false;
+        }
+        if (!Number.isNaN(endTimeFilter) && workflowCloseTime > endTimeFilter) {
           return false;
         }
       }
@@ -1331,6 +1340,9 @@ export async function mockWorkflowsListEndpoint(page: Page) {
       json: {
         workflows: paginatedWorkflows,
         next_page_token: hasMore ? (page + 1).toString() : null,
+        total_count: workflows.length,
+        page_count:
+          workflows.length === 0 ? 0 : Math.ceil(workflows.length / pageSize),
       },
     });
   });

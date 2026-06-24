@@ -1881,6 +1881,14 @@
             ],
             "title": "Next Page Token"
           },
+          "page_count": {
+            "title": "Page Count",
+            "type": "integer"
+          },
+          "total_count": {
+            "title": "Total Count",
+            "type": "integer"
+          },
           "workflows": {
             "items": {
               "$ref": "#/components/schemas/WorkflowSummaryResponse"
@@ -1891,7 +1899,9 @@
         },
         "required": [
           "workflows",
-          "next_page_token"
+          "next_page_token",
+          "total_count",
+          "page_count"
         ],
         "title": "WorkflowListResponse",
         "type": "object"
@@ -3119,6 +3129,16 @@
                 }
               ],
               "title": "End Time"
+            }
+          },
+          {
+            "in": "query",
+            "name": "hide_completed",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Hide Completed",
+              "type": "boolean"
             }
           },
           {
