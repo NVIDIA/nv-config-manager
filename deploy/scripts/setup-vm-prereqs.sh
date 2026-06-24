@@ -1133,6 +1133,34 @@ spec:
               }'
             echo "Client created"
           fi
+
+          # Check if public CLI client exists
+          if curl -sf -H "Authorization: Bearer \$TOKEN" "http://keycloak:80/admin/realms/nv-config-manager/clients?clientId=nv-config-manager-cli" | grep -q "nv-config-manager-cli"; then
+            echo "Client nv-config-manager-cli already exists, skipping creation"
+          else
+            echo "Creating nv-config-manager-cli public client..."
+            curl -sf -X POST "http://keycloak:80/admin/realms/nv-config-manager/clients" \
+              -H "Authorization: Bearer \$TOKEN" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "clientId": "nv-config-manager-cli",
+                "name": "NVIDIA Config Manager CLI",
+                "enabled": true,
+                "publicClient": true,
+                "directAccessGrantsEnabled": false,
+                "standardFlowEnabled": true,
+                "implicitFlowEnabled": false,
+                "serviceAccountsEnabled": false,
+                "protocol": "openid-connect",
+                "redirectUris": ["http://localhost:*", "http://127.0.0.1:*"],
+                "webOrigins": ["http://localhost:*", "http://127.0.0.1:*"],
+                "attributes": {
+                  "access.token.lifespan": "3600",
+                  "pkce.code.challenge.method": "S256"
+                }
+              }'
+            echo "CLI client created"
+          fi
           
           # Check if demo user exists
           if curl -sf -H "Authorization: Bearer \$TOKEN" "http://keycloak:80/admin/realms/nv-config-manager/users?username=demo" | grep -q "demo"; then
@@ -1474,11 +1502,6 @@ if [[ "$INSTALL_OPENBAO" == "true" ]]; then
     write_bao_secret "demo/dhcp" \
         password="demo-dhcp-password"
     
-    # AIR
-    write_bao_secret "demo/air" \
-        ssa_client_id="demo-air-client-id" \
-        ssa_client_secret="demo-air-client-secret"
-    
     # UFM
     write_bao_secret "demo/ufm" \
         ufm_api_user="admin" \
@@ -1665,13 +1688,6 @@ secrets:
     path: ${ENVIRONMENT_PATH}/dhcp
     keys:
       password: "password"
-
-  # AIR service credentials
-  air:
-    path: ${ENVIRONMENT_PATH}/air
-    keys:
-      ssaClientId: "ssa_client_id"
-      ssaClientSecret: "ssa_client_secret"
 
   # UFM API credentials
   ufm:

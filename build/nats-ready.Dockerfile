@@ -47,7 +47,7 @@ RUN go build -ldflags="-s -w" -o bin/nats-ready ./cmd/nats-ready
 # =============================================================================
 # Runtime stage - NVIDIA distroless Go image (minimal, no shell)
 # =============================================================================
-FROM nvcr.io/nvidia/distroless/go:v4.0.6
+FROM nvcr.io/nvidia/distroless/go:v4.0.7
 
 COPY --from=builder /build/bin/nats-ready /nats-ready
 ENTRYPOINT ["/nats-ready"]

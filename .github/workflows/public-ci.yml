@@ -237,6 +237,27 @@ jobs:
           helm dependency build deploy/helm/
       - run: helm lint deploy/helm/ --values deploy/helm/values-ci.yaml
       - run: helm template test deploy/helm/ --values deploy/helm/values-ci.yaml >/tmp/nvcm-helm.yaml
+      - name: Probe SLO customLabels render
+        run: |
+          # Blackbox Probe samples don't inherit the CR's metadata.labels, so
+          # global.customLabels must be surfaced under each Probe's
+          # spec.targets.staticConfig.labels for SLO rules to select the series.
+          # Render-time check only (no cluster) so it stays out of the slow
+          # kind-integration path.
+          helm template test deploy/helm/ \
+            --values deploy/helm/values-ci.yaml \
+            --set monitoring.probes.enabled=true \
+            --set-string global.customLabels.include_in_slo=true \
+            --show-only templates/monitoring.yaml >/tmp/nvcm-probes.yaml
+          awk '
+            /^[[:space:]]+staticConfig:[[:space:]]*$/ { sc++; inblk=1; haslabel=0; next }
+            inblk && /^[[:space:]]+static:[[:space:]]*$/ { if (haslabel) ok++; inblk=0; next }
+            inblk && /include_in_slo: "true"/ { haslabel=1 }
+            END {
+              printf "%d Probe staticConfig block(s); %d carry the SLO label\n", sc, ok
+              if (sc == 0 || sc != ok) exit 1
+            }
+          ' /tmp/nvcm-probes.yaml
 
   openapi:
     name: OpenAPI Check
@@ -312,111 +333,3 @@ jobs:
           path: |
             ui/playwright-report/
             ui/test-results/
-
-  sonarqube:
-    name: SonarQube Cloud
-    needs:
-      - python-tests
-      - installer-tests
-      - network-template-tests
-      - ui-lint
-      - ui-e2e
-    runs-on: linux-amd64-cpu4
-    permissions:
-      contents: read
-      pull-requests: read
-    steps:
-      - name: Check SonarQube token
-        id: sonar-token
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        run: |
-          if [ -n "${SONAR_TOKEN}" ]; then
-            echo "has-token=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "SONAR_TOKEN is not configured; skipping SonarQube Cloud scan."
-            echo "has-token=false" >> "$GITHUB_OUTPUT"
-          fi
-      - name: Get PR info
-        id: get-pr-info
-        if: steps.sonar-token.outputs.has-token == 'true' && startsWith(github.ref, 'refs/heads/pull-request/')
-        uses: nv-gha-runners/get-pr-info@090577647b8ddc4e06e809e264f7881650ecdccf
-      - uses: actions/checkout@v4
-        if: steps.sonar-token.outputs.has-token == 'true'
-        with:
-          fetch-depth: 0
-      - name: Setup proxy cache
-        if: steps.sonar-token.outputs.has-token == 'true'
-        uses: *setup_proxy_cache
-        with:
-          enable-apt: true
-      - name: Install SonarQube scanner dependencies
-        if: steps.sonar-token.outputs.has-token == 'true'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ca-certificates curl unzip
-      - uses: actions/download-artifact@v4
-        if: steps.sonar-token.outputs.has-token == 'true'
-        with:
-          name: python-test-artifacts
-          path: /tmp/sonar-coverage/python
-      - uses: actions/download-artifact@v4
-        if: steps.sonar-token.outputs.has-token == 'true'
-        with:
-          name: installer-test-artifacts
-          path: /tmp/sonar-coverage/installer
-      - uses: actions/download-artifact@v4
-        if: steps.sonar-token.outputs.has-token == 'true'
-        with:
-          name: network-template-test-artifacts
-          path: /tmp/sonar-coverage/network
-      - name: Restore coverage reports
-        if: steps.sonar-token.outputs.has-token == 'true'
-        run: |
-          set -euo pipefail
-
-          restore_report() {
-            dest="$1"
-            shift
-
-            for src in "$@"; do
-              if [ -f "$src" ]; then
-                mkdir -p "$(dirname "$dest")"
-                cp "$src" "$dest"
-                return
-              fi
-            done
-
-            echo "Missing coverage report for ${dest}"
-            find /tmp/sonar-coverage -type f | sort
-            exit 1
-          }
-
-          restore_report coverage.xml \
-            /tmp/sonar-coverage/python/coverage.xml
-
-          restore_report components/nautobot/coverage.xml \
-            /tmp/sonar-coverage/python/components/nautobot/coverage.xml
-
-          restore_report installer/coverage.xml \
-            /tmp/sonar-coverage/installer/coverage.xml \
-            /tmp/sonar-coverage/installer/installer/coverage.xml
-
-          restore_report components/network-templates/coverage.xml \
-            /tmp/sonar-coverage/network/coverage.xml \
-            /tmp/sonar-coverage/network/components/network-templates/coverage.xml
-      - name: SonarQube branch scan
-        if: steps.sonar-token.outputs.has-token == 'true' && !startsWith(github.ref, 'refs/heads/pull-request/')
-        uses: &sonarqube_scan SonarSource/sonarqube-scan-action@c7ee0f9df90b7aa20e8dcf9695dcfe2e7da5b4f2
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-      - name: SonarQube pull request scan
-        if: steps.sonar-token.outputs.has-token == 'true' && startsWith(github.ref, 'refs/heads/pull-request/')
-        uses: *sonarqube_scan
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        with:
-          args: >
-            -Dsonar.pullrequest.key=${{ fromJSON(steps.get-pr-info.outputs.pr-info).number }}
-            -Dsonar.pullrequest.branch=${{ fromJSON(steps.get-pr-info.outputs.pr-info).head.ref }}
-            -Dsonar.pullrequest.base=${{ fromJSON(steps.get-pr-info.outputs.pr-info).base.ref }}

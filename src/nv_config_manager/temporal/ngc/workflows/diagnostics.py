@@ -31,6 +31,7 @@ from nv_config_manager.temporal.common.mixins.stage import (
     StateEnum,
     stage_executor,
 )
+from nv_config_manager.temporal.common.search_attributes import ISSUE_KEY_SEARCH_ATTRIBUTE
 
 with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.common.mixins.archive import ArchiveMixin
@@ -275,6 +276,7 @@ def _format_comment(
 class DiagnosticsWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, ArchiveMixin):
     """Run diagnostic commands against network devices and attach results to a ticket."""
 
+    workflow_name = "Device Diagnostics"
     workflow_description = (
         "Run diagnostic commands against network devices and attach results to a ticketing issue"
     )
@@ -586,8 +588,17 @@ class DiagnosticsWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
         self, workflow_input: DiagnosticsWorkflowInput, ticketless: bool
     ) -> None:
         """Mark optional/skipped stages UNREACHABLE so they never appear as NOT_STARTED."""
+
+        def skip_stage(stage_name: str) -> None:
+            self.set_stage_state(
+                stage_name,
+                StateEnum.UNREACHABLE,
+                cascade_unreachable=False,
+            )
+
         if not workflow_input.include_tech_support:
-            self.set_stage_state("collect_tech_support", StateEnum.UNREACHABLE)
+            skip_stage("collect_tech_support")
+            skip_stage("upload_tech_support")
         if ticketless:
             for stage in (
                 "validate_ticket",
@@ -595,7 +606,7 @@ class DiagnosticsWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
                 "upload_tech_support",
                 "post_comment",
             ):
-                self.set_stage_state(stage, StateEnum.UNREACHABLE)
+                skip_stage(stage)
 
     async def _ticketless_result(
         self,
@@ -626,7 +637,9 @@ class DiagnosticsWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
     ) -> DiagnosticsWorkflowResult:
         self.set_input(workflow_input)
         if workflow_input.issue_key:
-            workflow.upsert_search_attributes({"IssueKey": [workflow_input.issue_key]})
+            workflow.upsert_search_attributes(
+                {ISSUE_KEY_SEARCH_ATTRIBUTE: [workflow_input.issue_key]}
+            )
 
         ticketless = not workflow_input.issue_key
         self._mark_unreachable_stages(workflow_input, ticketless)
@@ -645,7 +658,11 @@ class DiagnosticsWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
                 ticketless = True
                 for stage_name in ("upload_attachment", "upload_tech_support", "post_comment"):
                     if self.get_stage_state(stage_name) == StateEnum.NOT_STARTED:
-                        self.set_stage_state(stage_name, StateEnum.UNREACHABLE)
+                        self.set_stage_state(
+                            stage_name,
+                            StateEnum.UNREACHABLE,
+                            cascade_unreachable=False,
+                        )
 
         # Stage 2 — resolve Nautobot UUIDs → NetworkDeviceData
         resolve_output = await self.resolve_devices_stage(

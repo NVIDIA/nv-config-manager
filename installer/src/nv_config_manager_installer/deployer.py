@@ -26,12 +26,14 @@ import hashlib
 import io
 import json
 import os
+import platform
 import selectors
 import shutil
 import subprocess
 import sys
 import tarfile
 import tempfile
+import threading
 import time
 import traceback
 from dataclasses import dataclass, field
@@ -39,9 +41,12 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, Protocol
 
+import yaml
+
 from nv_config_manager_installer.accounts import build_config_secrets_ini
 from nv_config_manager_installer.helm_values import generate_helm_values
 from nv_config_manager_installer.k8s import (
+    LOADER_POD_IMAGE,
     K8sClient,
     ServiceProxy,
     kubectl_current_context,
@@ -59,6 +64,9 @@ from nv_config_manager_installer.schema import (
 from nv_config_manager_installer.secrets import generate_secrets
 
 _PROJECT_ROOT_MARKERS = ("deploy", "Makefile", ".git")
+_DEFAULT_GATEWAY_CLASS_NAME = "envoy-gateway"
+_HELM_RELEASE_NAME_ANNOTATION = "meta.helm.sh/release-name"
+_HELM_RELEASE_NAMESPACE_ANNOTATION = "meta.helm.sh/release-namespace"
 
 
 def find_project_root(start: Path | None = None) -> Path:
@@ -99,6 +107,29 @@ class DeployStep:
     error: str = ""
 
 
+@dataclass(frozen=True)
+class _ParallelCommand:
+    """A subprocess command that can run alongside other commands."""
+
+    label: str
+    cmd: list[str]
+    timeout: int | None = 600
+    env: dict[str, str] | None = None
+
+
+@dataclass
+class _RunningCommand:
+    """Runtime state for a command managed by _run_logged_parallel."""
+
+    command: _ParallelCommand
+    proc: subprocess.Popen[str]
+    started_at: float
+    stdout_lines: list[str] = field(default_factory=list)
+    stderr_lines: list[str] = field(default_factory=list)
+    latest_line: str = "waiting for output"
+    open_streams: int = 0
+
+
 class DeployCallback(Protocol):
     """Protocol for deployment progress callbacks."""
 
@@ -129,6 +160,8 @@ class DeployOptions:
     install_cert_manager: bool = False
     install_cnpg_operator: bool = False
     helm_timeout: str = "15m"
+    helm_debug: bool = False
+    watch_pods: bool = False
     recreate_secrets: bool = False
     run_tests: bool = False
     dry_run: bool = False
@@ -148,6 +181,14 @@ _IGNORE_COMMON = (".venv", "__pycache__", ".git", "*.pyc")
 _IGNORE_TEMPLATES = (".venv", "__pycache__", ".git", "tests")
 _SKIP_REASON = "Not requested"
 _BOOTSTRAP_JOBS_PATH = Path("components/nautobot/nv_config_manager_jobs")
+_CI_ENV_VAR = "CI"
+_DOCKER_SYSTEM_PRUNE_COMMAND = ("docker", "system", "prune", "-af")
+_TRUTHY_ENV_VALUES = {"1", "true", "yes", "on"}
+
+
+def _is_ci_environment() -> bool:
+    """Return whether installer-side CI-only behavior should be enabled."""
+    return os.environ.get(_CI_ENV_VAR, "").strip().lower() in _TRUTHY_ENV_VALUES
 
 
 def _build_job_paths(config: NVConfigManagerInstallConfig) -> list[Path]:
@@ -234,9 +275,99 @@ def _run(
     )
 
 
+def _gateway_class_helm_owner(name: str = _DEFAULT_GATEWAY_CLASS_NAME) -> tuple[str, str] | None:
+    """Return the Helm release owner for an existing GatewayClass, if one exists."""
+    result = _run(["kubectl", "get", "gatewayclass", name, "-o", "json"], check=False)
+    if result.returncode != 0:
+        return None
+    try:
+        data = json.loads(result.stdout or "{}")
+    except json.JSONDecodeError:
+        return ("", "")
+    metadata = data.get("metadata")
+    if not isinstance(metadata, dict):
+        return ("", "")
+    annotations = metadata.get("annotations") or {}
+    if not isinstance(annotations, dict):
+        return ("", "")
+    return (
+        str(annotations.get(_HELM_RELEASE_NAME_ANNOTATION, "")),
+        str(annotations.get(_HELM_RELEASE_NAMESPACE_ANNOTATION, "")),
+    )
+
+
+def _docker_server_platform() -> str:
+    """Return Docker server OS/architecture for platform-specific image pulls."""
+    result = _run(
+        ["docker", "version", "--format", "{{.Server.Os}}/{{.Server.Arch}}"],
+        check=False,
+    )
+    value = result.stdout.strip()
+    if result.returncode == 0 and "/" in value:
+        return value
+
+    arch = platform.machine().lower()
+    arch = {
+        "aarch64": "arm64",
+        "arm64": "arm64",
+        "x86_64": "amd64",
+        "amd64": "amd64",
+    }.get(arch, arch)
+    return f"linux/{arch}"
+
+
+def _docker_image_id(image: str) -> str:
+    """Return Docker's local image ID for an image reference."""
+    result = _run(["docker", "image", "inspect", "--format", "{{.Id}}", image], check=True)
+    return result.stdout.strip()
+
+
 _DEFAULT_IMAGE_REGISTRY = "nvcr.io/nvidian/cfa"
 _CNPG_OPERATOR_IMAGE_TAG = "1.29.0"
 _PROMETHEUS_OPERATOR_CRDS_CHART_VERSION = "28.0.1"
+_KIND_PRELOAD_IMAGES_ENV = "NVCM_KIND_PRELOAD_IMAGES"
+_KIND_PRELOAD_IMAGES = (LOADER_POD_IMAGE,)
+_KIND_PRELOAD_PLATFORM_IMAGES: dict[str, dict[str, str]] = {
+    LOADER_POD_IMAGE: {
+        "linux/amd64": "docker.io/amd64/busybox:1.36",
+        "linux/arm64": "docker.io/arm64v8/busybox:1.36",
+    },
+}
+
+
+def _kind_preload_source_image(image: str, platform_name: str) -> str:
+    """Return a single-platform source image to tag as *image* before Kind import."""
+    return _KIND_PRELOAD_PLATFORM_IMAGES.get(image, {}).get(platform_name, image)
+
+
+def _env_kind_preload_images() -> list[str]:
+    """Return additional Kind preload images from the environment."""
+    value = os.environ.get(_KIND_PRELOAD_IMAGES_ENV, "")
+    return [part for part in value.replace(",", " ").split() if part]
+
+
+def _kind_preload_images(config: NVConfigManagerInstallConfig) -> list[str]:
+    """Return the effective ordered list of images to preload into Kind."""
+    images: list[str] = []
+    seen: set[str] = set()
+    for image in (
+        *_KIND_PRELOAD_IMAGES,
+        *config.images.kind_preload_images,
+        *_env_kind_preload_images(),
+    ):
+        image = image.strip()
+        if not image or image in seen:
+            continue
+        seen.add(image)
+        images.append(image)
+    return images
+
+
+def _kind_node_names(cluster: str) -> list[str]:
+    """Return Docker container names for nodes in a Kind cluster."""
+    result = _run(["kind", "get", "nodes", "--name", cluster], check=True)
+    nodes = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    return nodes or [f"{cluster}-control-plane"]
 
 
 def _strip_image_registry(repository: str) -> str:
@@ -395,6 +526,505 @@ def _run_logged(
         raise subprocess.CalledProcessError(proc.returncode, cmd, stdout_text, stderr_text)
 
     return subprocess.CompletedProcess(cmd, proc.returncode, stdout_text, stderr_text)
+
+
+def _run_logged_pipe(
+    source_cmd: list[str],
+    sink_cmd: list[str],
+    step: DeployStep,
+    callback: DeployCallback,
+    *,
+    check: bool = True,
+    timeout: int | None = 600,
+) -> subprocess.CompletedProcess[str]:
+    """Run source_cmd with stdout piped to sink_cmd, streaming command output."""
+    source_str = " ".join(source_cmd[:4]) + ("..." if len(source_cmd) > 4 else "")
+    sink_str = " ".join(sink_cmd[:4]) + ("..." if len(sink_cmd) > 4 else "")
+    callback.on_log(f"$ {source_str} | {sink_str}")
+
+    source = subprocess.Popen(source_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    sink = subprocess.Popen(
+        sink_cmd,
+        stdin=source.stdout,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    if source.stdout:
+        source.stdout.close()
+
+    stdout_lines: list[str] = []
+    stderr_lines: list[str] = []
+    source_stderr_lines: list[str] = []
+    deadline = time.monotonic() + timeout if timeout else None
+    sel = selectors.DefaultSelector()
+    try:
+        if source.stderr:
+            sel.register(source.stderr, selectors.EVENT_READ, "source-stderr")
+        if sink.stdout:
+            sel.register(sink.stdout, selectors.EVENT_READ, "sink-stdout")
+        if sink.stderr:
+            sel.register(sink.stderr, selectors.EVENT_READ, "sink-stderr")
+
+        while sel.get_map():
+            for proc, cmd in ((source, source_cmd), (sink, sink_cmd)):
+                _check_deadline(deadline, proc, cmd, timeout)
+            wait = None if deadline is None else max(0.0, deadline - time.monotonic())
+            for key, _ in sel.select(timeout=wait):
+                line_bytes = key.fileobj.readline()  # type: ignore[union-attr]
+                if not line_bytes:
+                    sel.unregister(key.fileobj)
+                    continue
+                line = line_bytes.decode(errors="replace").rstrip("\n")
+                step.output.append(line)
+                callback.on_log(line)
+                if key.data == "sink-stdout":
+                    stdout_lines.append(line)
+                elif key.data == "sink-stderr":
+                    stderr_lines.append(line)
+                else:
+                    source_stderr_lines.append(line)
+
+        source.wait()
+        sink.wait()
+    except BaseException:
+        source.kill()
+        sink.kill()
+        source.wait()
+        sink.wait()
+        raise
+    finally:
+        sel.close()
+
+    stdout_text = "\n".join(stdout_lines)
+    stderr_text = "\n".join(stderr_lines)
+    source_stderr_text = "\n".join(source_stderr_lines)
+
+    if check and sink.returncode != 0:
+        raise subprocess.CalledProcessError(sink.returncode, sink_cmd, stdout_text, stderr_text)
+    if check and source.returncode != 0:
+        raise subprocess.CalledProcessError(
+            source.returncode,
+            source_cmd,
+            "",
+            source_stderr_text,
+        )
+
+    return subprocess.CompletedProcess(sink_cmd, sink.returncode, stdout_text, stderr_text)
+
+
+def _filter_envoy_gateway_crds(crd_stream: str) -> str:
+    """Keep only Envoy Gateway CRDs from a Helm chart CRD stream."""
+    documents = [
+        document
+        for document in yaml.safe_load_all(crd_stream)
+        if isinstance(document, dict)
+        and _document_metadata_name(document).endswith(".gateway.envoyproxy.io")
+    ]
+    if not documents:
+        raise RuntimeError("Envoy Gateway chart did not include gateway.envoyproxy.io CRDs")
+    return (
+        "\n---\n".join(yaml.safe_dump(document, sort_keys=False).strip() for document in documents)
+        + "\n"
+    )
+
+
+def _document_metadata_name(document: dict[str, Any]) -> str:
+    """Return metadata.name from a parsed Kubernetes document."""
+    metadata = document.get("metadata")
+    if not isinstance(metadata, dict):
+        return ""
+    return str(metadata.get("name", ""))
+
+
+def _apply_envoy_gateway_crds(
+    chart_ref: str,
+    version: str | None,
+    step: DeployStep,
+    callback: DeployCallback,
+) -> None:
+    """Apply only Envoy Gateway CRDs from the Envoy chart."""
+    helm_args = ["helm", "show", "crds", chart_ref]
+    if version is not None:
+        helm_args.extend(["--version", version])
+    callback.on_log("$ helm show crds...")
+    result = _run(helm_args, timeout=300)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        crd_path = Path(tmpdir) / "envoy-gateway-crds.yaml"
+        crd_path.write_text(_filter_envoy_gateway_crds(result.stdout))
+        _run_logged(
+            [
+                "kubectl",
+                "apply",
+                "--server-side",
+                "--force-conflicts",
+                "-f",
+                str(crd_path),
+            ],
+            step,
+            callback,
+            timeout=300,
+        )
+
+
+def _short_pod_text(value: str, *, limit: int = 140) -> str:
+    """Return a compact single-line pod status detail."""
+    value = " ".join(value.split())
+    if len(value) <= limit:
+        return value
+    return f"{value[: limit - 3]}..."
+
+
+def _pod_ready_counts(pod: Any) -> tuple[int, int]:
+    statuses = (pod.status.container_statuses if pod.status else None) or []
+    total = len(statuses)
+    ready = sum(1 for status in statuses if status.ready)
+    return ready, total
+
+
+def _pod_restart_count(pod: Any) -> int:
+    statuses = []
+    if pod.status:
+        statuses.extend(pod.status.init_container_statuses or [])
+        statuses.extend(pod.status.container_statuses or [])
+    return sum(status.restart_count or 0 for status in statuses)
+
+
+def _pod_is_ready(pod: Any) -> bool:
+    if pod.status and pod.status.phase == "Succeeded":
+        return True
+    conditions = (pod.status.conditions if pod.status else None) or []
+    for condition in conditions:
+        if condition.type == "Ready":
+            return condition.status == "True"
+    ready, total = _pod_ready_counts(pod)
+    return total > 0 and ready == total
+
+
+def _container_waiting_details(statuses: list[Any] | None, *, prefix: str) -> list[str]:
+    details: list[str] = []
+    for status in statuses or []:
+        if status.ready:
+            continue
+        name = status.name or "<unknown>"
+        state = status.state
+        if state and state.waiting:
+            reason = state.waiting.reason or "Waiting"
+            message = state.waiting.message or ""
+            text = f"{prefix} {name}: {reason}"
+            if message:
+                text = f"{text} ({_short_pod_text(message)})"
+            details.append(text)
+        elif state and state.terminated:
+            reason = state.terminated.reason or "Terminated"
+            details.append(f"{prefix} {name}: {reason} exitCode={state.terminated.exit_code}")
+        elif state and state.running:
+            details.append(f"{prefix} {name}: Running but not ready")
+        else:
+            details.append(f"{prefix} {name}: status unknown")
+    return details
+
+
+def _pod_waiting_details(pod: Any) -> list[str]:
+    details: list[str] = []
+    if pod.status:
+        for condition in pod.status.conditions or []:
+            if condition.type in {"Ready", "ContainersReady"} or condition.status == "True":
+                continue
+            text = f"condition {condition.type}={condition.status}"
+            if condition.reason:
+                text = f"{text} ({condition.reason})"
+            if condition.message:
+                text = f"{text}: {_short_pod_text(condition.message)}"
+            details.append(text)
+
+        details.extend(
+            _container_waiting_details(
+                pod.status.init_container_statuses,
+                prefix="init",
+            )
+        )
+        details.extend(
+            _container_waiting_details(
+                pod.status.container_statuses,
+                prefix="container",
+            )
+        )
+
+        if not details and (pod.status.reason or pod.status.message):
+            text = pod.status.reason or "Waiting"
+            if pod.status.message:
+                text = f"{text}: {_short_pod_text(pod.status.message)}"
+            details.append(text)
+    return details or ["waiting for readiness"]
+
+
+def _unready_pod_summary_lines(k8s: K8sClient, namespace: str, *, limit: int = 8) -> list[str]:
+    """Return concise status lines for pods that are not ready."""
+    try:
+        pods = k8s.v1.list_namespaced_pod(namespace).items
+    except Exception as exc:
+        return [f"pod summary unavailable: {exc}"]
+
+    if not pods:
+        return ["no pods found yet"]
+
+    unready = [pod for pod in pods if not _pod_is_ready(pod)]
+    unready.sort(key=lambda pod: pod.metadata.name or "")
+    if not unready:
+        return ["all pods ready"]
+
+    visible = unready[:limit]
+    lines = [
+        f"{len(unready)} pod(s) not ready"
+        + (f"; showing first {limit}" if len(unready) > limit else "")
+    ]
+    for pod in visible:
+        name = pod.metadata.name or "<unknown>"
+        ready, total = _pod_ready_counts(pod)
+        phase = pod.status.phase if pod.status and pod.status.phase else "Unknown"
+        restarts = _pod_restart_count(pod)
+        details = "; ".join(_pod_waiting_details(pod)[:3])
+        lines.append(f"{name} ready={ready}/{total} phase={phase} restarts={restarts}: {details}")
+    return lines
+
+
+def _emit_pod_summary(lines: list[str], step: DeployStep, callback: DeployCallback) -> None:
+    for line in lines:
+        msg = f"[pods] {line}"
+        step.output.append(msg)
+        callback.on_log(msg)
+
+
+def _poll_pod_summary(
+    k8s: K8sClient,
+    namespace: str,
+    step: DeployStep,
+    callback: DeployCallback,
+    stop_event: threading.Event,
+    *,
+    interval: float,
+    heartbeat_interval: float,
+) -> None:
+    """Poll and emit changed pod readiness summaries until stopped."""
+    last_signature = ""
+    last_emit = 0.0
+    while not stop_event.is_set():
+        lines = _unready_pod_summary_lines(k8s, namespace)
+        # list_namespaced_pod() can take seconds; re-check stop_event before
+        # emitting so a shutdown that races the in-flight list doesn't produce
+        # one last batch after _run_logged_with_pod_summary() has returned.
+        if stop_event.is_set():
+            break
+        signature = "\n".join(lines)
+        now = time.monotonic()
+        has_blockers = lines != ["all pods ready"]
+        if signature != last_signature or (has_blockers and now - last_emit >= heartbeat_interval):
+            _emit_pod_summary(lines, step, callback)
+            last_signature = signature
+            last_emit = now
+        if stop_event.wait(interval):
+            break
+
+
+def _run_logged_with_pod_summary(
+    cmd: list[str],
+    k8s: K8sClient | None,
+    namespace: str,
+    step: DeployStep,
+    callback: DeployCallback,
+    *,
+    check: bool = True,
+    timeout: int | None = 600,
+    poll_interval: float = 10.0,
+    heartbeat_interval: float = 60.0,
+) -> subprocess.CompletedProcess[str]:
+    """Run a command while periodically logging unready pod summaries."""
+    if k8s is None:
+        callback.on_log("Pod readiness summaries unavailable: Kubernetes client is not initialized")
+        return _run_logged(cmd, step, callback, check=check, timeout=timeout)
+
+    callback.on_log("Streaming pod readiness summaries while Helm waits...")
+    stop_event = threading.Event()
+    poll_thread = threading.Thread(
+        target=_poll_pod_summary,
+        args=(k8s, namespace, step, callback, stop_event),
+        kwargs={"interval": poll_interval, "heartbeat_interval": heartbeat_interval},
+        daemon=True,
+    )
+    poll_thread.start()
+    try:
+        return _run_logged(cmd, step, callback, check=check, timeout=timeout)
+    finally:
+        stop_event.set()
+        poll_thread.join(timeout=2)
+
+
+def _format_elapsed(seconds: float) -> str:
+    """Return a compact elapsed-time string for long-running command status."""
+    seconds_int = max(0, int(seconds))
+    minutes, sec = divmod(seconds_int, 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours}h{minutes:02d}m{sec:02d}s"
+    if minutes:
+        return f"{minutes}m{sec:02d}s"
+    return f"{sec}s"
+
+
+def _command_summary(cmd: list[str]) -> str:
+    """Return a concise shell-style command summary for logs."""
+    return " ".join(cmd[:4]) + ("..." if len(cmd) > 4 else "")
+
+
+def _parallel_build_limit(command_count: int) -> int:
+    """Return how many Docker builds to run at once."""
+    configured = os.environ.get("NVCM_DOCKER_BUILD_PARALLELISM", "").strip()
+    if configured:
+        try:
+            return max(1, min(command_count, int(configured)))
+        except ValueError:
+            pass
+    cpu_count = os.cpu_count() or 2
+    return max(1, min(command_count, 4, cpu_count))
+
+
+def _append_command_line(
+    state: _RunningCommand,
+    stream: str,
+    line: str,
+    step: DeployStep,
+    callback: DeployCallback,
+) -> None:
+    """Record and emit one line from a parallel subprocess."""
+    for part in line.replace("\r", "\n").splitlines():
+        text = part.strip()
+        if not text:
+            continue
+        if stream == "stdout":
+            state.stdout_lines.append(text)
+        else:
+            state.stderr_lines.append(text)
+        state.latest_line = text
+        msg = f"[{state.command.label}] {text}"
+        step.output.append(msg)
+        callback.on_log(msg)
+
+
+def _kill_running_commands(states: list[_RunningCommand]) -> None:
+    """Terminate all still-running commands."""
+    for state in states:
+        if state.proc.poll() is None:
+            state.proc.kill()
+    for state in states:
+        if state.proc.poll() is None:
+            state.proc.wait()
+
+
+def _emit_parallel_status(
+    states: list[_RunningCommand],
+    step: DeployStep,
+    callback: DeployCallback,
+) -> None:
+    """Emit elapsed-time status for each currently running command."""
+    now = time.monotonic()
+    for state in states:
+        elapsed = _format_elapsed(now - state.started_at)
+        msg = f"[{state.command.label}] running {elapsed} | latest: {state.latest_line}"
+        step.output.append(msg)
+        callback.on_log(msg)
+
+
+def _run_logged_parallel(
+    commands: list[_ParallelCommand],
+    step: DeployStep,
+    callback: DeployCallback,
+    *,
+    max_parallel: int,
+    progress_interval: float = 15.0,
+) -> None:
+    """Run subprocess commands concurrently, streaming prefixed output to callback."""
+    if not commands:
+        return
+
+    pending = list(commands)
+    running: dict[subprocess.Popen[str], _RunningCommand] = {}
+    selector = selectors.DefaultSelector()
+    next_progress = time.monotonic() + progress_interval
+
+    def start_available() -> None:
+        while pending and len(running) < max_parallel:
+            command = pending.pop(0)
+            callback.on_log(f"[{command.label}] $ {_command_summary(command.cmd)}")
+            proc = subprocess.Popen(
+                command.cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                env=command.env,
+            )
+            state = _RunningCommand(command=command, proc=proc, started_at=time.monotonic())
+            if proc.stdout:
+                selector.register(proc.stdout, selectors.EVENT_READ, (state, "stdout"))
+                state.open_streams += 1
+            if proc.stderr:
+                selector.register(proc.stderr, selectors.EVENT_READ, (state, "stderr"))
+                state.open_streams += 1
+            running[proc] = state
+
+    def finish_completed() -> None:
+        completed: list[subprocess.Popen[str]] = []
+        for proc, state in running.items():
+            if proc.poll() is not None and state.open_streams == 0:
+                completed.append(proc)
+
+        for proc in completed:
+            state = running.pop(proc)
+            elapsed = _format_elapsed(time.monotonic() - state.started_at)
+            if proc.returncode != 0:
+                _kill_running_commands(list(running.values()))
+                raise subprocess.CalledProcessError(
+                    proc.returncode,
+                    state.command.cmd,
+                    "\n".join(state.stdout_lines),
+                    "\n".join(state.stderr_lines),
+                )
+            msg = f"[{state.command.label}] completed in {elapsed}"
+            step.output.append(msg)
+            callback.on_log(msg)
+
+    try:
+        start_available()
+        while running or pending:
+            now = time.monotonic()
+            for state in list(running.values()):
+                if state.command.timeout is not None and (
+                    now - state.started_at > state.command.timeout
+                ):
+                    _kill_running_commands(list(running.values()))
+                    raise subprocess.TimeoutExpired(state.command.cmd, state.command.timeout)
+
+            if now >= next_progress and running:
+                _emit_parallel_status(list(running.values()), step, callback)
+                next_progress = now + progress_interval
+
+            timeout = max(0.1, min(1.0, next_progress - now))
+            for key, _ in selector.select(timeout=timeout):
+                state, stream = key.data
+                line = key.fileobj.readline()  # type: ignore[union-attr]
+                if line:
+                    _append_command_line(state, stream, line.rstrip("\n"), step, callback)
+                    continue
+                selector.unregister(key.fileobj)
+                state.open_streams -= 1
+
+            finish_completed()
+            start_available()
+    except BaseException:
+        _kill_running_commands(list(running.values()))
+        raise
+    finally:
+        selector.close()
 
 
 class Deployer:
@@ -569,8 +1199,28 @@ class Deployer:
                 "use-context <name>`) to align them and retry."
             )
 
-        if self.options.build_images and not shutil.which("docker"):
-            raise RuntimeError("docker is required for --build-images")
+        needs_docker = self.options.build_images or self.options.load_kind
+        if needs_docker:
+            flags = " and ".join(
+                flag
+                for enabled, flag in (
+                    (self.options.build_images, "--build-images"),
+                    (self.options.load_kind, "--load-kind"),
+                )
+                if enabled
+            )
+            if not shutil.which("docker"):
+                raise RuntimeError(f"docker is required for {flags}")
+            # `docker info` exits non-zero if the CLI is installed but the daemon
+            # is unreachable. Catching that here turns later subprocess errors
+            # from `docker pull` / `docker save` into a clear prereq message.
+            probe = _run(["docker", "info"], check=False)
+            if probe.returncode != 0:
+                stderr = (probe.stderr or "").strip().splitlines()
+                detail = stderr[-1] if stderr else "docker info failed"
+                raise RuntimeError(
+                    f"docker daemon is required for {flags} but is not reachable: {detail}"
+                )
         if self.options.load_kind and not shutil.which("kind"):
             raise RuntimeError("kind is required for --load-kind")
 
@@ -698,28 +1348,63 @@ class Deployer:
             val = os.environ.get(env_var, "")
             if val:
                 apt_mirror_args += ["--build-arg", f"{env_var}={val}"]
+        nv_config_manager_build_args: list[str] = []
+        for env_var in (
+            "NVCM_NUMPY_FROM_SOURCE",
+            "NVCM_NUMPY_CPU_BASELINE",
+            "NVCM_NUMPY_CPU_DISPATCH",
+            "NVCM_NUMPY_ALLOW_NOBLAS",
+        ):
+            val = os.environ.get(env_var, "")
+            if val:
+                nv_config_manager_build_args += ["--build-arg", f"{env_var}={val}"]
 
+        build_env = {**os.environ, "DOCKER_BUILDKIT": "1"}
+        use_buildx = bool(build_env.get("BUILDX_BUILDER"))
+        build_cmd = ["docker", "buildx", "build"] if use_buildx else ["docker", "build"]
+        build_output_args = ["--load"] if use_buildx else []
+        build_commands: list[_ParallelCommand] = []
         for name, dockerfile, context in images:
             build_tag = f"{name}:local"
-            self.callback.on_log(f"Building {build_tag}...")
-            _run_logged(
-                [
-                    "docker",
-                    "build",
-                    "--provenance=false",
-                    "--build-context",
-                    "scripts=build/",
-                    *apt_mirror_args,
-                    "-t",
-                    build_tag,
-                    "-f",
-                    dockerfile,
-                    context,
-                ],
-                step,
-                self.callback,
-                timeout=900,
+            image_build_args = [*apt_mirror_args]
+            if name == "nv-config-manager":
+                image_build_args += nv_config_manager_build_args
+            build_commands.append(
+                _ParallelCommand(
+                    label=name,
+                    cmd=[
+                        *build_cmd,
+                        "--provenance=false",
+                        "--progress=plain",
+                        *build_output_args,
+                        "--build-context",
+                        "scripts=build/",
+                        *image_build_args,
+                        "-t",
+                        build_tag,
+                        "-f",
+                        dockerfile,
+                        context,
+                    ],
+                    timeout=900,
+                    env=build_env,
+                )
             )
+
+        max_parallel = _parallel_build_limit(len(build_commands))
+        self.callback.on_log(
+            f"Building {len(build_commands)} local image(s) with up to "
+            f"{max_parallel} parallel Docker build(s)..."
+        )
+        _run_logged_parallel(
+            build_commands,
+            step,
+            self.callback,
+            max_parallel=max_parallel,
+        )
+
+        for name, _, _ in images:
+            build_tag = f"{name}:local"
             digest_tag = _get_image_digest_tag(build_tag)
             if digest_tag:
                 content_tag = f"{name}:{digest_tag}"
@@ -756,7 +1441,88 @@ class Deployer:
                 self.callback,
                 timeout=300,
             )
+        platform_name = _docker_server_platform()
+        for img in _kind_preload_images(self.config):
+            # Pull arch-scoped official images when available. Docker can keep
+            # multi-platform tags as manifest lists even after --platform,
+            # which makes kind's default --all-platforms import fail on missing
+            # platform content. Import helper images directly into node
+            # containerd with the selected platform instead. Avoid ctr's
+            # digest refs here; the tag is what Kubernetes needs to resolve.
+            #
+            # CI has hit docker/cli#6457-like failures where Docker's
+            # containerd image store refuses to `docker save --platform <p>` a
+            # freshly pulled multi-arch tag after related helper images were
+            # pulled earlier in the loop. The prune is intentionally CI-only:
+            # it is too broad for local developer machines.
+            if _is_ci_environment():
+                self.callback.on_log("Pruning host docker content store before next helper pull...")
+                _run_logged(
+                    list(_DOCKER_SYSTEM_PRUNE_COMMAND),
+                    step,
+                    self.callback,
+                    timeout=120,
+                )
+            source_img = _kind_preload_source_image(img, platform_name)
+            self.callback.on_log(
+                f"Pulling helper image {source_img} for platform {platform_name}..."
+            )
+            _run_logged(
+                ["docker", "pull", "--platform", platform_name, source_img],
+                step,
+                self.callback,
+                timeout=300,
+            )
+            image_id = _docker_image_id(source_img)
+            self.callback.on_log(f"Tagging selected-platform helper image {image_id} as {img}...")
+            _run_logged(
+                ["docker", "tag", image_id, img],
+                step,
+                self.callback,
+                timeout=300,
+            )
+            self._load_kind_helper_image(img, cluster, platform_name, step)
         self._finish_step(step)
+
+    def _load_kind_helper_image(
+        self,
+        image: str,
+        cluster: str,
+        platform_name: str,
+        step: DeployStep,
+    ) -> None:
+        """Load a helper image into Kind node containerd for one platform."""
+        # Pass --platform to `docker save` so the OCI archive only contains the
+        # selected platform's index/manifest/config/layers. With Docker's
+        # containerd image store, a plain `docker save` of a multi-arch tag
+        # exports an index that still references the other platforms (and may
+        # even drop the selected platform's config blob), causing
+        # `ctr images import` to later fail with
+        # `failed to resolve rootfs: content digest ...: not found`.
+        nodes = _kind_node_names(cluster)
+        for node in nodes:
+            self.callback.on_log(f"Loading helper image {image} into Kind node {node}...")
+            _run_logged_pipe(
+                ["docker", "save", "--platform", platform_name, image],
+                [
+                    "docker",
+                    "exec",
+                    "--privileged",
+                    "-i",
+                    node,
+                    "ctr",
+                    "--namespace=k8s.io",
+                    "images",
+                    "import",
+                    "--platform",
+                    platform_name,
+                    "--snapshotter=overlayfs",
+                    "-",
+                ],
+                step,
+                self.callback,
+                timeout=300,
+            )
 
     def _operator_bundle_root(self) -> Path | None:
         """Return the airgap bundle root if local charts/manifests are available."""
@@ -830,11 +1596,36 @@ class Deployer:
         bundle_root = self._operator_bundle_root()
 
         if opts.install_envoy_gateway:
-            # The Envoy Gateway Helm chart carries the matching Gateway API and
-            # Envoy Gateway CRDs. Pre-applying Gateway API CRDs with kubectl
-            # creates server-side field-manager ownership that Helm 4 conflicts
-            # with during chart CRD installation.
             self.callback.on_log("Installing Envoy Gateway...")
+            gateway_api_manifest = self._require_airgap_artifact(
+                self._local_operator_manifest(
+                    bundle_root,
+                    "gateway-api",
+                    versions.gateway_api_version,
+                ),
+                f"Gateway API manifest {versions.gateway_api_version}",
+            )
+            gateway_api_ref = (
+                str(gateway_api_manifest)
+                if gateway_api_manifest is not None
+                else "https://github.com/kubernetes-sigs/gateway-api/releases/download/"
+                f"{versions.gateway_api_version}/standard-install.yaml"
+            )
+            self.callback.on_log(f"Installing Gateway API {versions.gateway_api_version} CRDs...")
+            _run_logged(
+                [
+                    "kubectl",
+                    "apply",
+                    "--server-side",
+                    "--force-conflicts",
+                    "-f",
+                    gateway_api_ref,
+                ],
+                step,
+                self.callback,
+                timeout=300,
+            )
+
             envoy_chart = self._require_airgap_artifact(
                 self._local_operator_chart(
                     bundle_root,
@@ -865,6 +1656,13 @@ class Deployer:
                 self.callback.on_log(f"Using local chart: {envoy_chart}")
             else:
                 envoy_args.extend(["--version", versions.envoy_gateway_version])
+            _apply_envoy_gateway_crds(
+                envoy_chart_ref,
+                None if envoy_chart is not None else versions.envoy_gateway_version,
+                step,
+                self.callback,
+            )
+            envoy_args.append("--skip-crds")
             _append_full_image_set_string(
                 envoy_args,
                 self.config,
@@ -1179,7 +1977,10 @@ class Deployer:
     def _create_core_secrets(self, step: DeployStep, s: dict[str, str]) -> None:
         """Create Redis, Nautobot, DB, NATS, and device credential secrets."""
         self._apply_secret(step, "redis-password", {"password": s.get("redis_password", "")})
-        self._apply_secret(step, "nautobot-token", {"token": s.get("nautobot_token", "")})
+        nautobot_token_data = {"token": s.get("nautobot_token", "")}
+        if ro_token := s.get("nautobot_read_only_token"):
+            nautobot_token_data["read-only-token"] = ro_token
+        self._apply_secret(step, "nautobot-token", nautobot_token_data)
 
         for db in ["temporal", "temporal_visibility", "config_store", "dhcp", "nautobot"]:
             self._apply_secret(
@@ -1285,7 +2086,7 @@ class Deployer:
             self.callback.on_log(msg)
 
     def _create_optional_integration_secrets(self, step: DeployStep, s: dict[str, str]) -> None:
-        """Create Kubernetes secrets for optional integrations (Slack, AIR, Jira, CNPG backup)."""
+        """Create Kubernetes secrets for optional integrations (Slack, Jira, CNPG backup)."""
         k8s = self.config.secrets.k8s
 
         if k8s.slack.enabled:
@@ -1293,17 +2094,6 @@ class Deployer:
             if not token:
                 raise ValueError("Slack is enabled but slack_token is empty")
             self._apply_secret(step, "slack-token", {"token": token})
-
-        if k8s.air.enabled:
-            client_id = s.get("air_ssa_client_id", "")
-            client_secret = s.get("air_ssa_client_secret", "")
-            if not client_secret:
-                raise ValueError("AIR is enabled but air_ssa_client_secret is empty")
-            self._apply_secret(
-                step,
-                "air-creds",
-                {"ssa-client-id": client_id, "ssa-client-secret": client_secret},
-            )
 
         if k8s.jira.enabled:
             api_token = s.get("jira_api_token", "")
@@ -1779,8 +2569,14 @@ class Deployer:
             self.options.helm_timeout,
         ]
 
+        if self.options.helm_debug:
+            helm_args.append("--debug")
+
         if size_values.exists():
             helm_args.extend(["-f", str(size_values)])
+
+        if self._should_reuse_existing_gateway_class():
+            helm_args.extend(["--set", "gateway.createGatewayClass=false"])
 
         # Local-dev metrics overlay (Prometheus + Alloy).
         # See deploy/helm/values-observability.yaml for the LOCAL-DEV-ONLY warning.
@@ -1796,9 +2592,43 @@ class Deployer:
                     f"WARNING: observability enabled but {observability_values} not found"
                 )
 
-        self.callback.on_log(f"Running: helm upgrade --install {release} ...")
-        _run_logged(helm_args, step, self.callback, timeout=1200)
+        debug_suffix = " --debug" if "--debug" in helm_args else ""
+        self.callback.on_log(f"Running: helm upgrade --install {release}{debug_suffix} ...")
+        if self.options.helm_debug and self.options.watch_pods:
+            _run_logged_with_pod_summary(
+                helm_args,
+                self._k8s,
+                ns,
+                step,
+                self.callback,
+                timeout=1200,
+            )
+        else:
+            _run_logged(helm_args, step, self.callback, timeout=1200)
         self._finish_step(step)
+
+    def _should_reuse_existing_gateway_class(self) -> bool:
+        """Return True when an existing GatewayClass is owned by another Helm release."""
+        if not self.config.infrastructure.create_gateway_class:
+            return False
+
+        owner = _gateway_class_helm_owner()
+        if owner is None:
+            return False
+
+        release_name, release_namespace = owner
+        expected = (self.config.cluster.release_name, self.config.cluster.namespace)
+        if owner == expected:
+            return False
+
+        self.callback.on_log(
+            "GatewayClass "
+            f"{_DEFAULT_GATEWAY_CLASS_NAME!r} already exists"
+            f" and is owned by Helm release {release_name or '<unowned>'!r}"
+            f" in namespace {release_namespace or '<unowned>'!r};"
+            " reusing it by setting gateway.createGatewayClass=false"
+        )
+        return True
 
     def _patch_gateway(self) -> None:
         lb = self.config.infrastructure.load_balancer

@@ -76,7 +76,7 @@ dependencies = [
     # Security: Fix GitPython vulnerability (GHSA-mv93-w799-cj2w)
     "gitpython>=3.1.50",
     # Data Processing
-    "numpy<2.0.0",
+    "numpy>=2.1.0,<3.0.0",
     "pandas>=2.3.0",
     "pandas-stubs>=2.0.0",
     "openpyxl>=3.1.0",
@@ -89,14 +89,14 @@ dependencies = [
     "brotli>=1.1.0",
     # Slack
     "slack-sdk>=3.35.0",
-    # AIR SDK (NVIDIA)
-    "air-sdk>=2.16.0",
     # Logging
     "python-json-logger>=2.0.7",
     # Markdown
     "py-markdown-table>=1.1.0",
     # Documentation
     "mkdocs>=1.6.1",
+    # Model Context Protocol
+    "mcp>=1.8.0",
     # Network Templates (render service)
     "nv-config-manager-templates",
 ]
@@ -124,6 +124,10 @@ nv-config-manager-render-template-updater = "nv_config_manager.render.producer:c
 # Config Store Service
 nv-config-manager-config-store-api = "nv_config_manager.config_store.api.main:main"
 nv-config-manager-config-store-cache-refresh = "nv_config_manager.config_store.cache_refresh_service:cli_main"
+
+# MCP Service
+nvidia-config-manager-mcp = "nv_config_manager.mcp.main:main"
+nvcm-mcp-cli = "nv_config_manager.mcp.cli:main"
 
 [dependency-groups]
 integration-test = [
@@ -198,7 +202,7 @@ packages = ["src/nv_config_manager"]
 [tool.pytest.ini_options]
 cache_dir = ".cache/pytest_cache"
 asyncio_mode = "auto"
-testpaths = ["src/tests"]
+testpaths = ["src/tests", "development/mock_topology/tests", "development/ufm_mock/tests"]
 timeout = 30  # Global timeout in seconds per test
 # Exclude integration tests by default (they require a running cluster)
 addopts = "--ignore=src/tests/integration"
@@ -228,7 +232,6 @@ module = [
     "py_markdown_table.*",
     "ruamel.*",
     "brotli.*",
-    "air_sdk.*",
     "netaddr.*",
     "pynautobot.*",
     "macaddress",

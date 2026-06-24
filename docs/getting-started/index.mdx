@@ -13,6 +13,8 @@ Use Config Manager when you need to:
 - Review and approve Day-2 configuration changes before they reach devices.
 - Run operational workflows such as backup, deploy, cable validation, password rotation, OS upgrades, and reprovisioning.
 
+The project's GitHub repository is [https://github.com/nvidia/nv-config-manager](https://github.com/nvidia/nv-config-manager).
+
 ## Primary Personas
 
 | Persona | Primary work |
@@ -35,6 +37,7 @@ Use Config Manager when you need to:
 | [DHCP Service](../dhcp/index.mdx) | Enable Kea-backed DHCP and model reservations/options in Nautobot. | Inspect reservations, leases, and generated DHCP config when provisioning stalls. |
 | [Config Manager UI](interfaces.mdx) | Set `global.baseHostname`, SSO callbacks, and gateway/TLS access. | Use workflow and config views for day-0 and day-2 operations. |
 | Observability and troubleshooting | Enable monitoring resources and the local observability stack when appropriate. | Use [Troubleshooting](../install/troubleshooting.mdx), pod logs, and workflow status to investigate failed operations. |
+| [DSX Air Simulation User Guide](../user-guides/air-simulation/index.mdx) | Bring up a public NVIDIA DSX Air demo with Config Manager installed inside the simulation. | Exercise Ethernet/Cumulus workflows against simulated switches before using a physical lab. |
 
 ## Recommended first path
 
@@ -42,8 +45,9 @@ Use Config Manager when you need to:
 1. Before pointing Config Manager at real devices, confirm network secrets, DHCP/ZTP exposure, device authentication prerequisites, and maintenance controls.
 1. Operators should start with [Which Interface Should I Use?](interfaces.mdx), then review [Temporal Workflows](../temporal/index.mdx), [Workflow Lifecycle](../user-guides/workflow-lifecycle/index.mdx), and [Config Store](../config-store/index.mdx).
 1. To preview Config Manager locally without a real lab, use [Local Development Quick Start](local-development-quick-start.mdx).
+1. To validate device-facing workflows without a physical lab, use [DSX Air Simulation User Guide](../user-guides/air-simulation/index.mdx).
 1. After installation, follow [First Run Tour](first-run-tour.mdx) to verify the deployment and choose the first workflows to run.
 
 <Warning>
-The local development quick start is not a deployment path and is not a workflow validation environment. It exists only to help developers preview rendered configuration, inspect UI flows, and understand Nautobot modeling shape without touching real devices.
+The local development quick start is not a deployment path and is not a workflow validation environment. Use the [DSX Air Simulation User Guide](../user-guides/air-simulation/index.mdx) when you need simulated Cumulus switches for workflow validation without touching real devices.
 </Warning>

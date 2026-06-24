@@ -20,6 +20,7 @@ spec:
     matchLabels:
       app: {{ $uiName }}
       component: ui
+  {{- include "nv-config-manager.deploymentStrategy" (dict "root" .) | nindent 2 }}
   template:
     metadata:
       labels:
@@ -50,9 +51,35 @@ spec:
         # Application version (matches image tag - git tag/semver)
         - name: APP_VERSION
           value: "{{ .Values.global.images.nvConfigManagerUi.tag }}"
+        {{- if .Values.oidc.authUtility.enabled }}
+        # Public auth discovery metadata for native clients
+        - name: OIDC_ENABLED
+          value: {{ .Values.oidc.enabled | quote }}
+        - name: OIDC_ISSUER_URL
+          value: {{ .Values.oidc.issuerUrl | default "" | quote }}
+        - name: OIDC_CLIENT_ID
+          value: {{ .Values.oidc.clientId | default "" | quote }}
+        - name: OIDC_CLI_CLIENT_ID
+          value: {{ (.Values.oidc.cliClientId | default .Values.oidc.clientId | default "") | quote }}
+        - name: OIDC_SCOPES
+          value: {{ toJson (.Values.oidc.scopes | default (list)) | quote }}
         # Workflow API URL
         - name: WORKFLOW_API_URL
           value: "https://{{ tpl .Values.temporal.gateway.api.hostname . }}"
+        - name: SVC_WORKFLOW_API_URL
+          value: "https://{{ tpl .Values.temporal.gateway.api.svcHostname . }}/v1/workflow"
+        {{- if .Values.mcp.enabled }}
+        # MCP API URL
+        - name: MCP_URL
+          value: "https://{{ tpl .Values.mcp.gateway.hostname . }}/mcp"
+        - name: SVC_MCP_URL
+          value: "https://{{ tpl .Values.mcp.gateway.svcHostname . }}/mcp"
+        {{- end }}
+        {{- else }}
+        # Workflow API URL
+        - name: WORKFLOW_API_URL
+          value: "https://{{ tpl .Values.temporal.gateway.api.hostname . }}"
+        {{- end }}
         # Config Store API URL
         - name: CONFIG_STORE_API_URL
           value: "https://{{ tpl .Values.configStore.gateway.api.hostname . }}"
@@ -139,4 +166,3 @@ spec:
     app: {{ $uiName }}
     component: ui
 {{- end }}
-

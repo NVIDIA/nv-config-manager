@@ -236,8 +236,10 @@ spec:
           headers:
             - name: Authorization
               valuePrefix: "Bearer "
+          {{- if $.root.Values.oidc.disableTokenEncryption }}
           cookies:
-            - "NVConfigManagerAccessToken"
+            - {{ $.root.Values.oidc.cookieName | default "NVConfigManagerAccessToken" | quote }}
+          {{- end }}
         {{- if $.root.Values.oidc.claimToHeaders }}
         claimToHeaders:
         {{- range $.root.Values.oidc.claimToHeaders }}
@@ -252,6 +254,7 @@ spec:
 {{- if and .Values.gateway.enabled (eq (.Values.ingress.type | default "envoyGateway") "envoyGateway") }}
 
 {{- $gatewaySecurityName := include "nv-config-manager.componentName" (dict "root" . "component" "gateway-security") }}
+{{- $uiName := include "nv-config-manager.componentName" (dict "root" . "component" "ui") }}
 
 # =============================================================================
 # SecurityPolicy for Gateway (CORS + OIDC)
@@ -339,7 +342,7 @@ spec:
             - name: Authorization
               valuePrefix: "Bearer "
           cookies:
-            - "NVConfigManagerAccessToken"
+            - {{ .Values.oidc.cookieName | default "NVConfigManagerAccessToken" | quote }}
         {{- if .Values.oidc.claimToHeaders }}
         claimToHeaders:
         {{- range .Values.oidc.claimToHeaders }}
@@ -363,6 +366,9 @@ spec:
       tokenEndpoint: {{ printf "%s/protocol/openid-connect/token" (trimSuffix "/" .Values.oidc.internalIssuerUrl) | quote }}
       {{- else }}
       tokenEndpoint: {{ printf "%s/protocol/openid-connect/token" (trimSuffix "/" .Values.oidc.issuerUrl) | quote }}
+      {{- end }}
+      {{- if .Values.oidc.endSessionEndpoint }}
+      endSessionEndpoint: {{ .Values.oidc.endSessionEndpoint | quote }}
       {{- end }}
     clientID: {{ .Values.oidc.clientId | quote }}
     clientSecret:
@@ -395,9 +401,56 @@ spec:
     cookieDomain: {{ .Values.gateway.baseHostname | quote }}
     {{- end }}
     cookieNames:
-      accessToken: "NVConfigManagerAccessToken"
-      idToken: "NVConfigManagerIdToken"
+      accessToken: {{ .Values.oidc.cookieName | default "NVConfigManagerAccessToken" | quote }}
+      idToken: {{ .Values.oidc.idTokenCookieName | default "NVConfigManagerIdToken" | quote }}
   {{- end }}
+
+{{- if and .Values.oidc.enabled .Values.oidc.authUtility.enabled .Values.ui.enabled }}
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: {{ $uiName }}-auth-utility
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+spec:
+  # Override the gateway-level OIDC/JWT policy for public auth utility routes.
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: {{ $uiName }}-auth-utility
+  cors:
+    allowOrigins:
+    {{- if .Values.gateway.cors.allowOrigins }}
+    {{- range .Values.gateway.cors.allowOrigins }}
+    {{- if kindIs "string" . }}
+    - {{ . | quote }}
+    {{- else if .regex }}
+    - {{ .regex | quote }}
+    {{- else if .exact }}
+    - {{ .exact | quote }}
+    {{- end }}
+    {{- end }}
+    {{- else if .Values.gateway.baseHostname }}
+    - {{ printf "https://%s" .Values.gateway.baseHostname | quote }}
+    - {{ printf "https://*.%s" .Values.gateway.baseHostname | quote }}
+    {{- end }}
+    allowMethods:
+    {{- range .Values.gateway.cors.allowMethods }}
+    - {{ . | quote }}
+    {{- end }}
+    allowHeaders:
+    {{- range .Values.gateway.cors.allowHeaders }}
+    - {{ . | quote }}
+    {{- end }}
+    exposeHeaders:
+    {{- range .Values.gateway.cors.exposeHeaders }}
+    - {{ . | quote }}
+    {{- end }}
+    allowCredentials: {{ .Values.gateway.cors.allowCredentials | default true }}
+    maxAge: {{ .Values.gateway.cors.maxAge | quote }}
+{{- end }}
 
 # =============================================================================
 # Auth Bypass SecurityPolicies (per-service)
@@ -488,6 +541,19 @@ spec:
 {{- end }}
 {{- end }}
 
+# MCP Auth Bypass SecurityPolicy
+{{- if .Values.mcp.enabled }}
+{{- if .Values.mcp.gateway.authBypass }}
+{{- $mcpName := include "nv-config-manager.componentName" (dict "root" . "component" "mcp") }}
+{{- include "nv-config-manager.authBypassSecurityPolicy" (dict
+    "root" .
+    "routeName" $mcpName
+    "enabled" (.Values.mcp.gateway.authBypass.enabled | default false)
+    "paths" (.Values.mcp.gateway.authBypass.paths | default list)
+) }}
+{{- end }}
+{{- end }}
+
 # =============================================================================
 # Service (svc-*) SecurityPolicies
 # =============================================================================
@@ -558,6 +624,16 @@ spec:
     "root" .
     "routeName" (printf "%s-api" $configStoreName)
     "svcHostname" (tpl (.Values.configStore.gateway.api.svcHostname | default "") .)
+) }}
+{{- end }}
+
+# MCP svc-* SecurityPolicy
+{{- if .Values.mcp.enabled }}
+{{- $mcpName := include "nv-config-manager.componentName" (dict "root" . "component" "mcp") }}
+{{- include "nv-config-manager.svcSecurityPolicy" (dict
+    "root" .
+    "routeName" $mcpName
+    "svcHostname" (tpl (.Values.mcp.gateway.svcHostname | default "") .)
 ) }}
 {{- end }}
 

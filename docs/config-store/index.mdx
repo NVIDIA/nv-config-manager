@@ -276,26 +276,26 @@ In general:
 
 - Check pod status and logs:
 
-    ```bash
-    # Get pod status
-    kubectl get pods -n $NAMESPACE
+  ```bash
+  # Get pod status
+  kubectl get pods -n $NAMESPACE
 
-    # Describe problematic pod
-    kubectl describe pod -n $NAMESPACE <pod-name>
+  # Describe problematic pod
+  kubectl describe pod -n $NAMESPACE <pod-name>
 
-    # View logs
-    kubectl logs -n $NAMESPACE <pod-name>
-    ```
+  # View logs
+  kubectl logs -n $NAMESPACE <pod-name>
+  ```
 
 - Check an application's (for example, `redis` or `postgres`) status and logs:
 
-    ```bash
-    # Get pod status
-    kubectl get pods -n $NAMESPACE -l app=<app-name>
+  ```bash
+  # Get pod status
+  kubectl get pods -n $NAMESPACE -l app=<app-name>
 
-    # View logs
-    kubectl logs -n $NAMESPACE -l app=<app-name>
-    ```
+  # View logs
+  kubectl logs -n $NAMESPACE -l app=<app-name>
+  ```
 
 ### Nautobot Integration Issues
 

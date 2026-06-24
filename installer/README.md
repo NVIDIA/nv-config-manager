@@ -35,16 +35,16 @@ cd installer
 uv sync
 
 # Launch the interactive wizard
-uv run nv-config-manager-installer init
+uv run nvcm-installer init
 
 # Re-open an existing config
-uv run nv-config-manager-installer init --config nv-config-manager-install.yaml
+uv run nvcm-installer init --config nv-config-manager-install.yaml
 
 # Validate a config file
-uv run nv-config-manager-installer validate nv-config-manager-install.yaml
+uv run nvcm-installer validate nv-config-manager-install.yaml
 
 # Generate Helm values without deploying
-uv run nv-config-manager-installer generate-values nv-config-manager-install.yaml -o ./generated
+uv run nvcm-installer generate-values nv-config-manager-install.yaml -o ./generated
 ```
 
 ---
@@ -56,7 +56,7 @@ uv run nv-config-manager-installer generate-values nv-config-manager-install.yam
 ```bash
 cd installer
 uv sync
-uv run nv-config-manager-installer --help
+uv run nvcm-installer --help
 ```
 
 ### As a standalone tool
@@ -64,14 +64,17 @@ uv run nv-config-manager-installer --help
 ```bash
 cd installer
 uv tool install .
-nv-config-manager-installer --help
+nvcm-installer --help
 ```
+
+`nvcm-installer` is the short command name. The longer `nv-config-manager-installer`
+command remains available for compatibility and accepts the same subcommands and flags.
 
 ---
 
 ## CLI Commands
 
-### `nv-config-manager-installer init`
+### `nvcm-installer init`
 
 Launch the interactive TUI wizard.
 
@@ -82,12 +85,12 @@ Launch the interactive TUI wizard.
 The wizard walks through all configuration sections, saves to `nv-config-manager-install.yaml`
 (with `0600` permissions), and can deploy directly from within the TUI.
 
-### `nv-config-manager-installer validate`
+### `nvcm-installer validate`
 
 Validate a configuration file without deploying.
 
 ```bash
-nv-config-manager-installer validate nv-config-manager-install.yaml
+nvcm-installer validate nv-config-manager-install.yaml
 ```
 
 Checks include:
@@ -97,12 +100,12 @@ Checks include:
 - `sso.issuer_url` required when SSO is enabled
 - Custom jobs require local Nautobot (`services.nautobot: true`)
 
-### `nv-config-manager-installer generate-values`
+### `nvcm-installer generate-values`
 
 Generate deployment artifacts without running a deployment.
 
 ```bash
-nv-config-manager-installer generate-values nv-config-manager-install.yaml --output-dir ./generated
+nvcm-installer generate-values nv-config-manager-install.yaml --output-dir ./generated
 ```
 
 | Flag | Default | Description |
@@ -115,12 +118,12 @@ Produces:
 - `values-generated.yaml` — Combined override file with TUI-generated values and the selected `cluster.size` profile
 - `config-secrets.ini` — Site-specific credential INI files
 
-### `nv-config-manager-installer deploy`
+### `nvcm-installer deploy`
 
 Run a headless (non-interactive) deployment.
 
 ```bash
-nv-config-manager-installer deploy nv-config-manager-install.yaml \
+nvcm-installer deploy nv-config-manager-install.yaml \
   --build-images \
   --load-kind \
   --install-envoy-gateway \
@@ -295,7 +298,7 @@ When **ESO** is selected, additional Vault fields appear:
 **Vault Paths** — Each secret group maps to a Vault path. Toggle groups on/off and
 customize paths to match your Vault layout. Click "Keys" to override individual
 key name mappings. Supported groups: Nautobot, Redis, PostgreSQL, Network/Device Creds,
-Nautobot App, OIDC, Redfish, BMC, Slack, AIR, Jira, CNPG Backup.
+Nautobot App, OIDC, Redfish, BMC, Slack, Jira, CNPG Backup.
 
 **Git Tokens** — Add/remove Git repository tokens for Nautobot Git sync:
 
@@ -502,6 +505,7 @@ Gateway, TLS, database backups, monitoring, and load balancer configuration.
 
 | Field | Description |
 |-------|-------------|
+| Create GatewayClass | Create the cluster-scoped `envoy-gateway` GatewayClass; disable when reusing a shared Envoy Gateway installation |
 | Enable TLS | Self-signed TLS certificates for public endpoints |
 | CNPG S3 Backup | Enable CloudNativePG Postgres backups to S3 |
 | Monitoring | Enable PodMonitors and monitoring resources |
@@ -729,7 +733,7 @@ sites:
 
 ## Deployment Steps
 
-When deploying (either via TUI or `nv-config-manager-installer deploy`), the following steps
+When deploying (either via TUI or `nvcm-installer deploy`), the following steps
 execute in order. Steps are automatically skipped when not applicable.
 
 | # | Step | Description |

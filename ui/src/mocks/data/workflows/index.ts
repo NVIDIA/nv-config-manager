@@ -20,8 +20,8 @@ import { CONFIG_DEPLOY_WORKFLOWS } from "./configDeployWorkflows";
 import { DEVICE_CABLE_VALIDATION_WORKFLOWS } from "./deviceCableValidationWorkflows";
 import { SITE_CABLE_VALIDATION_WORKFLOWS } from "./siteCableValidationWorkflows";
 import { PORT_LLDP_INFO_WORKFLOWS } from "./portLldpInfoWorkflows";
-import { VPC_CREATION_WORKFLOWS } from "./vpcCreationWorkflows";
-import { VPC_DELETION_WORKFLOWS } from "./vpcDeletionWorkflow";
+import { SPX_OVERLAY_CREATION_WORKFLOWS } from "./spxOverlayCreationWorkflows";
+import { SPX_OVERLAY_DELETION_WORKFLOWS } from "./spxOverlayDeletionWorkflow";
 import { INFINIBAND_GET_UNHEALTHY_PORTS_WORKFLOWS } from "./infinibandGetUnhealthyWorkflows";
 import { REPROVISION_WORKFLOWS } from "./reprovisionWorkflow";
 
@@ -33,8 +33,8 @@ export const ALL_WORKFLOW_DATA = {
     ...DEVICE_CABLE_VALIDATION_WORKFLOWS.workflows,
     ...SITE_CABLE_VALIDATION_WORKFLOWS.workflows,
     ...PORT_LLDP_INFO_WORKFLOWS.workflows,
-    ...VPC_CREATION_WORKFLOWS.workflows,
-    ...VPC_DELETION_WORKFLOWS.workflows,
+    ...SPX_OVERLAY_CREATION_WORKFLOWS.workflows,
+    ...SPX_OVERLAY_DELETION_WORKFLOWS.workflows,
     ...INFINIBAND_GET_UNHEALTHY_PORTS_WORKFLOWS.workflows,
     ...REPROVISION_WORKFLOWS.workflows,
   ],
@@ -48,8 +48,8 @@ export const workflowsMockData = {
   DeviceCableValidationWorkflow: DEVICE_CABLE_VALIDATION_WORKFLOWS,
   SiteCableValidationWorkflow: SITE_CABLE_VALIDATION_WORKFLOWS,
   PortLLDPInfoWorkflow: PORT_LLDP_INFO_WORKFLOWS,
-  VpcCreationWorkflow: VPC_CREATION_WORKFLOWS,
-  VpcDeletionWorkflow: VPC_DELETION_WORKFLOWS,
+  SpXOverlayCreationWorkflow: SPX_OVERLAY_CREATION_WORKFLOWS,
+  SpXOverlayDeletionWorkflow: SPX_OVERLAY_DELETION_WORKFLOWS,
   InfinibandGetUnhealthyPortsWorkflow: INFINIBAND_GET_UNHEALTHY_PORTS_WORKFLOWS,
   ReprovisionWorkflow: REPROVISION_WORKFLOWS,
 };

@@ -1,0 +1,73 @@
+{
+  "data": {
+    "device": {
+      "id": "air-trial-tan-leaf-01",
+      "name": "tan-leaf-01",
+      "tags": [
+        {
+          "name": "air-trial"
+        },
+        {
+          "name": "ztp"
+        }
+      ],
+      "tenant": {
+        "name": "Public Demo"
+      },
+      "role": {
+        "name": "TAN-HLEAF"
+      },
+      "device_type": {
+        "manufacturer": {
+          "name": "NVIDIA"
+        },
+        "model": "SN5600"
+      },
+      "platform": {
+        "name": "Cumulus Linux"
+      },
+      "status": {
+        "name": "Provisioning"
+      },
+      "serial": "44:38:39:00:00:03",
+      "config_context": {
+        "intended-firmware": {
+          "version": "5.16.1"
+        }
+      },
+      "interfaces": [
+        {
+          "name": "eth0",
+          "type": "1000base-t",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": true,
+          "mac_address": "44:38:39:00:00:03",
+          "mtu": 9216,
+          "description": "oob-mleaf-01:swp2",
+          "role": {
+            "name": "Management"
+          },
+          "ip_addresses": [
+            {
+              "address": "10.120.1.11/24",
+              "mask_length": 24,
+              "ip_version": 4
+            }
+          ],
+          "connected_interface": {
+            "name": "swp2",
+            "device": {
+              "name": "oob-mleaf-01",
+              "role": {
+                "name": "OOB-MLEAF"
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

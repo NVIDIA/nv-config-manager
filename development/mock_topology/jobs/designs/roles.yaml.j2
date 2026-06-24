@@ -4,11 +4,6 @@
 roles:
 {% for role in json.roles %}
   - "!create_or_update:name": {{ role.name }}
-    content_types:
-      {% for content_type in role.content_types %}
-      - "!get:app_label": {{ content_type.split(".")[0] }}
-        "!get:model": {{ content_type.split(".")[1] }}
-      {% endfor %}
     color: {{ role.color | default(color("blue")) }}
 {% endfor %}
 {% else %}

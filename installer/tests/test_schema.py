@@ -1,5 +1,17 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 """Tests for nv_config_manager_installer.schema -- config validation and serialization."""
 
 from __future__ import annotations
@@ -75,6 +87,7 @@ class TestNVConfigManagerInstallConfig:
                 enabled=True,
                 provider=SSOProvider.KEYCLOAK,
                 issuer_url="https://kc.test/realms/nv-config-manager",
+                cli_client_id="nv-config-manager-cli",
             ),
         )
 
@@ -95,6 +108,7 @@ class TestNVConfigManagerInstallConfig:
             assert loaded.sites[0].name == "dc01"
             assert loaded.sso.enabled is True
             assert loaded.sso.provider == SSOProvider.KEYCLOAK
+            assert loaded.sso.cli_client_id == "nv-config-manager-cli"
         finally:
             path.unlink(missing_ok=True)
 
@@ -287,6 +301,7 @@ class TestImagesConfig:
         assert img.pull_secret.server == "nvcr.io"
         assert img.pull_secret.username == "$oauthtoken"
         assert img.pull_secret.password == ""
+        assert img.kind_preload_images == []
         assert img.overrides == {}
 
     def test_local_source(self):
@@ -350,6 +365,27 @@ class TestImagesConfig:
             assert loaded.images.overrides["nvConfigManager"].tag == "special"
         finally:
             path.unlink(missing_ok=True)
+
+    def test_kind_preload_images_roundtrip_for_local_source(self):
+        config = NVConfigManagerInstallConfig(
+            images=ImagesConfig(
+                source=ImageSource.LOCAL,
+                registry="old.example.com/nv-config-manager",
+                tag="old",
+                kind_preload_images=["docker.io/library/redis:7-alpine"],
+                pull_secret=ImagePullSecret(password="secret"),
+                overrides={"nvConfigManager": ImageOverride(tag="old")},
+            )
+        )
+
+        data = yaml.safe_load(config.to_yaml_str())
+        assert data["images"] == {
+            "source": "local",
+            "kind_preload_images": ["docker.io/library/redis:7-alpine"],
+        }
+
+        loaded = NVConfigManagerInstallConfig.model_validate(data)
+        assert loaded.images.kind_preload_images == ["docker.io/library/redis:7-alpine"]
 
     def test_empty_password_optional(self):
         config = NVConfigManagerInstallConfig(

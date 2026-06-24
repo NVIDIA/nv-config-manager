@@ -47,6 +47,7 @@ spec:
     matchLabels:
       app.kubernetes.io/name: {{ $natsName }}
       app.kubernetes.io/instance: {{ .Release.Name }}
+  {{- include "nv-config-manager.deploymentStrategy" (dict "root" .) | nindent 2 }}
   template:
     metadata:
       labels:
@@ -171,6 +172,7 @@ spec:
       app.kubernetes.io/component: {{ $natsName }}-box
       app.kubernetes.io/instance: {{ .Release.Name }}
       app.kubernetes.io/name: {{ $natsName }}
+  {{- include "nv-config-manager.deploymentStrategy" (dict "root" .) | nindent 2 }}
   template:
     metadata:
       labels:
@@ -450,11 +452,7 @@ spec:
     matchLabels:
       app.kubernetes.io/name: {{ $nautobotName }}
       app.kubernetes.io/instance: {{ .Release.Name }}
-  strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 25%
-      maxUnavailable: 0
+  {{- include "nv-config-manager.deploymentStrategy" (dict "root" . "strategy" .Values.nautobot.server.strategy) | nindent 2 }}
   template:
     metadata:
       labels:
@@ -582,12 +580,10 @@ spec:
               mountPath: /opt/nautobot/jobs
               readOnly: true
             {{- end }}
+          {{- $defaultMigrationResources := dict "requests" (dict "cpu" "250m" "memory" "512Mi") "limits" (dict "memory" "2Gi") }}
+          {{- $migrationResources := dig "server" "migrations" "resources" $defaultMigrationResources .Values.nautobot }}
           resources:
-            requests:
-              cpu: 250m
-              memory: 512Mi
-            limits:
-              memory: 2Gi
+            {{- toYaml $migrationResources | nindent 12 }}
       containers:
         - name: nautobot
           image: {{ .Values.global.images.nautobot.repository }}:{{ .Values.global.images.nautobot.tag }}
@@ -830,6 +826,7 @@ spec:
     matchLabels:
       app.kubernetes.io/name: {{ $nautobotName }}-celery
       app.kubernetes.io/instance: {{ .Release.Name }}
+  {{- include "nv-config-manager.deploymentStrategy" (dict "root" .) | nindent 2 }}
   template:
     metadata:
       labels:
@@ -983,6 +980,7 @@ spec:
     matchLabels:
       app.kubernetes.io/name: {{ $nautobotName }}-celery-beat
       app.kubernetes.io/instance: {{ .Release.Name }}
+  {{- include "nv-config-manager.deploymentStrategy" (dict "root" .) | nindent 2 }}
   template:
     metadata:
       labels:

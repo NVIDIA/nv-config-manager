@@ -1,5 +1,17 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 """Tests for nv_config_manager_installer.helm_values -- Helm values generation."""
 
 from __future__ import annotations
@@ -101,6 +113,14 @@ class TestGenerateHelmValues:
         assert ext["redis"]["localHost"] == "redis-master"
         assert ext["postgres"]["temporal"]["host"] == "cluster-temporal-rw"
         assert ext["postgres"]["configStore"]["host"] == "cluster-config-store-rw"
+        assert values["mcp"]["enabled"] is True
+
+    def test_local_environment_uses_recreate_deployment_strategy(self):
+        values = _gen(
+            _make_config(cluster=ClusterConfig(hostname="local.test", environment="local"))
+        )
+
+        assert values["global"]["deploymentStrategy"] == {"type": "Recreate"}
 
     def test_key_names_match_chart(self):
         values = _gen(_make_config())
@@ -337,9 +357,15 @@ class TestGenerateHelmValues:
 
         assert values["oidc"]["enabled"] is True
         assert values["oidc"]["issuerUrl"] == "https://kc.test/realms/nv-config-manager"
+        assert values["oidc"]["cliClientId"] == "test-client"
+        assert values["oidc"]["authUtility"]["enabled"] is True
         assert (
             values["oidc"]["jwksUri"]
             == "https://kc.test/realms/nv-config-manager/protocol/openid-connect/certs"
+        )
+        assert (
+            values["oidc"]["endSessionEndpoint"]
+            == "https://kc.test/realms/nv-config-manager/protocol/openid-connect/logout"
         )
         assert "auth" in values["gateway"]
         assert "authorizationEndpoint" not in values["oidc"]
@@ -347,6 +373,21 @@ class TestGenerateHelmValues:
         # Keycloak default audiences include "account"
         assert "account" in values["oidc"]["audiences"]
         assert "test-client" in values["oidc"]["audiences"]
+
+    def test_sso_cli_client_id_can_be_configured(self):
+        config = _make_config(
+            sso=SSOConfig(
+                enabled=True,
+                provider=SSOProvider.KEYCLOAK,
+                issuer_url="https://kc.test/realms/nv-config-manager",
+                client_id="test-client",
+                cli_client_id="test-cli-client",
+            ),
+        )
+        values = _gen(config)
+
+        assert values["oidc"]["clientId"] == "test-client"
+        assert values["oidc"]["cliClientId"] == "test-cli-client"
 
     def test_sso_azure_endpoints(self):
         tenant = "43083d15-7273-40c1-b7db-39efd9ccc17a"
@@ -364,6 +405,7 @@ class TestGenerateHelmValues:
         base = f"https://login.microsoftonline.com/{tenant}"
         assert values["oidc"]["authorizationEndpoint"] == f"{base}/oauth2/v2.0/authorize"
         assert values["oidc"]["tokenEndpoint"] == f"{base}/oauth2/v2.0/token"
+        assert values["oidc"]["endSessionEndpoint"] == f"{base}/oauth2/v2.0/logout"
         assert values["oidc"]["jwksUri"] == f"{base}/discovery/v2.0/keys"
         # Azure-specific scopes and audiences (needed for v2 access tokens)
         assert "api://test-client/access" in values["oidc"]["scopes"]
@@ -398,10 +440,12 @@ class TestGenerateHelmValues:
                 client_id="c",
                 client_secret="s",
                 jwks_uri="https://custom.jwks/keys",
+                end_session_endpoint="https://logout.example.com/end",
             ),
         )
         values = _gen(config)
         assert values["oidc"]["jwksUri"] == "https://custom.jwks/keys"
+        assert values["oidc"]["endSessionEndpoint"] == "https://logout.example.com/end"
 
     def test_sso_scopes_and_internal_issuer(self):
         config = _make_config(
@@ -481,6 +525,7 @@ class TestGenerateHelmValues:
         assert values["renderService"]["enabled"] is False
         assert values["networkDhcp"]["enabled"] is False
         assert values["networkZtp"]["enabled"] is True
+        assert values["mcp"]["enabled"] is False
 
     def test_nodeport_when_no_lb(self):
         config = _make_config(
@@ -490,6 +535,13 @@ class TestGenerateHelmValues:
         )
         values = _gen(config)
         assert values["gateway"]["nodePort"]["enabled"] is True
+
+    def test_gateway_class_creation_can_be_disabled(self):
+        config = _make_config(
+            infrastructure=InfrastructureConfig(create_gateway_class=False),
+        )
+        values = _gen(config)
+        assert values["gateway"]["createGatewayClass"] is False
 
     def test_custom_jobs_in_values(self):
         config = _make_config(
@@ -556,6 +608,7 @@ class TestGenerateHelmValues:
         assert "nats" not in ext
         assert ext["redis"]["local"] is True
         assert ext["postgres"]["temporal"]["host"] == "cluster-temporal-rw"
+        assert values["mcp"]["enabled"] is True
 
 
 class TestImagesInHelmValues:

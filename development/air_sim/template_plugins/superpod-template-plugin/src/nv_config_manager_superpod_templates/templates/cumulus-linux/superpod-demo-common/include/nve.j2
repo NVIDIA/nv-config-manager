@@ -1,0 +1,14 @@
+{% if superpod_vtep|default(false) %}
+    nve:
+      vxlan:
+        arp-nd-suppress: enabled
+        decapsulation:
+          dscp:
+            action: preserve
+        encapsulation:
+          dscp:
+            action: copy
+        source:
+          address: {{ device_data|router_id }}
+        state: enabled
+{% endif %}

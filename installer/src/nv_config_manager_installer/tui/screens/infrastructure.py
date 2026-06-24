@@ -77,6 +77,11 @@ class InfraScreen(Container):
         yield Label("Infrastructure", classes="section-title")
         yield Label("─" * 40, classes="section-divider")
 
+        yield LabeledSwitch(
+            "Create GatewayClass",
+            value=infra.create_gateway_class,
+            id="infra-create-gateway-class",
+        )
         yield LabeledSwitch("Enable TLS", value=infra.tls, id="infra-tls")
 
         yield Label("CNPG S3 Backup", classes="field-label")
@@ -242,6 +247,9 @@ class InfraScreen(Container):
 
     def write_to_config(self, config: NVConfigManagerInstallConfig) -> None:
         infra = config.infrastructure
+        infra.create_gateway_class = self.query_one(
+            "#infra-create-gateway-class", LabeledSwitch
+        ).value
         infra.tls = self.query_one("#infra-tls", LabeledSwitch).value
         infra.cnpg_s3_backup.enabled = self.query_one(_W_CNPG_BACKUP, LabeledSwitch).value
         infra.cnpg_s3_backup.bucket = self.query_one("#cnpg-bucket", Input).value
@@ -277,6 +285,9 @@ class InfraScreen(Container):
 
     def sync_from_config(self, config: NVConfigManagerInstallConfig) -> None:
         infra = config.infrastructure
+        self.query_one(
+            "#infra-create-gateway-class", LabeledSwitch
+        ).value = infra.create_gateway_class
         self.query_one("#infra-tls", LabeledSwitch).value = infra.tls
         self.query_one(_W_CNPG_BACKUP, LabeledSwitch).value = infra.cnpg_s3_backup.enabled
         self.query_one("#cnpg-bucket", Input).value = infra.cnpg_s3_backup.bucket

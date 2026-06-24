@@ -14,12 +14,6 @@
 # limitations under the License.
 """NGC Workflow Definitions."""
 
-from nv_config_manager.temporal.ngc.workflows.air import (
-    AIRCreateBlueprintSimulationWorkflow,
-    AIRCreateSimulationWorkflow,
-    AIRDeleteSimulationWorkflow,
-    AIRValidateSiteWorkflow,
-)
 from nv_config_manager.temporal.ngc.workflows.backup import BackupWorkflow
 from nv_config_manager.temporal.ngc.workflows.bmc import RedfishProvisioningWorkflow
 from nv_config_manager.temporal.ngc.workflows.cable_validation import (
@@ -68,11 +62,11 @@ from nv_config_manager.temporal.ngc.workflows.reprovision import ReprovisionWork
 from nv_config_manager.temporal.ngc.workflows.site_password_rotation import (
     SitePasswordRotationWorkflow,
 )
-from nv_config_manager.temporal.ngc.workflows.vpc import (
-    VpcAssignmentWorkflow,
-    VpcCreationWorkflow,
-    VpcDeletionWorkflow,
-    VpcTenantChangeWorkflow,
+from nv_config_manager.temporal.ngc.workflows.spx_overlay import (
+    SpXOverlayAssignmentWorkflow,
+    SpXOverlayCreationWorkflow,
+    SpXOverlayDeletionWorkflow,
+    SpXOverlayTenantChangeWorkflow,
 )
 
 REGISTERED_WORKFLOWS = [
@@ -85,19 +79,15 @@ REGISTERED_WORKFLOWS = [
     BatchDeployWorkflow,
     ConnectedHostMetadataWorkflow,
     RedfishProvisioningWorkflow,
-    VpcCreationWorkflow,
-    VpcDeletionWorkflow,
-    VpcAssignmentWorkflow,
-    VpcTenantChangeWorkflow,
+    SpXOverlayCreationWorkflow,
+    SpXOverlayDeletionWorkflow,
+    SpXOverlayAssignmentWorkflow,
+    SpXOverlayTenantChangeWorkflow,
     PortLLDPInfoWorkflow,
     InfinibandGetUnhealthyPortsWorkflow,
     SwitchOSUpgradeWorkflow,
     ReprovisionWorkflow,
     InfinibandCableValidationWorkflow,
-    AIRCreateBlueprintSimulationWorkflow,
-    AIRCreateSimulationWorkflow,
-    AIRDeleteSimulationWorkflow,
-    AIRValidateSiteWorkflow,
     InfinibandMlnxOSUpgradeWorkflow,
     ValidateHardwareWorkflow,
     DevicePasswordRotationWorkflow,

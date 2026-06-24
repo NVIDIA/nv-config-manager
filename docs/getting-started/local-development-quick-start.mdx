@@ -12,7 +12,7 @@ The bundled mock topology data is not production data and must never be used for
 Real device interaction is not meaningfully mocked today. Workflows such as ZTP, cable validation, deploy, multi-deploy, backup, reprovision, password rotation, hardware validation, and LLDP-based discovery require reachable real devices to be useful.
 </Warning>
 
-Future work will include a more robust mocking infrastructure for local development. Until then, treat the local quick start as a render and interface preview only.
+Future work will include a more robust mocking infrastructure for local development. Until then, treat the local quick start as a render and interface preview only. To exercise workflows against simulated Cumulus switches, use the [DSX Air Simulation User Guide](../user-guides/air-simulation/index.mdx).
 
 ## What this gives you
 
@@ -50,7 +50,7 @@ Equivalent headless installer command:
 
 ```bash
 cd installer
-uv run nv-config-manager-installer deploy ../deploy/configs/local-superpod.yaml \
+uv run nvcm-installer deploy ../deploy/configs/local-superpod.yaml \
   --image-source local \
   --build-images \
   --load-kind \
@@ -73,6 +73,7 @@ Add local hostnames for the Envoy Gateway.
 127.0.0.1 workflow.config-manager.local
 127.0.0.1 config-store.config-manager.local
 127.0.0.1 temporal.config-manager.local
+127.0.0.1 mcp.config-manager.local
 ```
 
 Then open:
@@ -83,6 +84,7 @@ Then open:
 | Nautobot | `https://nautobot.config-manager.local` |
 | Workflow API | `https://workflow.config-manager.local` |
 | Config Store API | `https://config-store.config-manager.local` |
+| MCP endpoint | `https://mcp.config-manager.local/mcp` |
 
 For the local profile, Nautobot login is `admin` / `admin`.
 

@@ -29,15 +29,19 @@ from typing import TYPE_CHECKING
 import click
 
 from nv_config_manager_installer import __version__
+from nv_config_manager_installer.air_sim.cli import air_sim
 
 if TYPE_CHECKING:
     from nv_config_manager_installer.schema import NVConfigManagerInstallConfig
 
 
 @click.group()
-@click.version_option(version=__version__, prog_name="nv-config-manager-installer")
+@click.version_option(version=__version__)
 def main() -> None:
     """NVIDIA Config Manager Install Wizard."""
+
+
+main.add_command(air_sim)
 
 
 @main.command()
@@ -180,6 +184,12 @@ def generate_values(
 @click.option("--install-cert-manager", is_flag=True, help="Install cert-manager.")
 @click.option("--install-cnpg-operator", is_flag=True, help="Install CNPG operator.")
 @click.option("--helm-timeout", default="15m", help="Helm install/upgrade timeout.")
+@click.option("--helm-debug", is_flag=True, help="Enable Helm debug output during install/upgrade.")
+@click.option(
+    "--watch-pods/--no-watch-pods",
+    default=True,
+    help="Stream pod readiness summaries while Helm waits when --helm-debug is set.",
+)
 @click.option("--recreate-secrets", is_flag=True, help="Recreate existing K8s secrets.")
 @click.option("--dry-run", is_flag=True, help="Generate values only, skip helm install.")
 def deploy(
@@ -194,6 +204,8 @@ def deploy(
     install_cert_manager: bool,
     install_cnpg_operator: bool,
     helm_timeout: str,
+    helm_debug: bool,
+    watch_pods: bool,
     recreate_secrets: bool,
     dry_run: bool,
 ) -> None:
@@ -222,6 +234,8 @@ def deploy(
         install_cert_manager=install_cert_manager,
         install_cnpg_operator=install_cnpg_operator,
         helm_timeout=helm_timeout,
+        helm_debug=helm_debug,
+        watch_pods=watch_pods,
         recreate_secrets=recreate_secrets,
         dry_run=dry_run,
     )

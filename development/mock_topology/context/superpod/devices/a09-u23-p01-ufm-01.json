@@ -1,0 +1,107 @@
+{
+    "data": {
+        "device": {
+            "id": "a9000000-0000-0000-0000-000000000001",
+            "name": "a09-u23-p01-ufm-01",
+            "tenant": {
+                "name": "SuperPod"
+            },
+            "role": {
+                "name": "UFM"
+            },
+            "tags": [],
+            "vrfs": [],
+            "device_type": {
+                "manufacturer": {
+                    "name": "NVIDIA"
+                },
+                "model": "UFM Appliance"
+            },
+            "platform": {
+                "name": "MLNX-OS"
+            },
+            "serial": "",
+            "config_context": {
+                "dns": {
+                    "ipv4": [
+                        "192.0.2.8",
+                        "192.0.2.9"
+                    ]
+                },
+                "ntp": {
+                    "ipv4": [
+                        "192.0.2.8",
+                        "192.0.2.9"
+                    ]
+                }
+            },
+            "interfaces": [
+                {
+                    "role": null,
+                    "type": "A_1000BASE_T",
+                    "mtu": 1500,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "eth0",
+                    "description": "UFM management",
+                    "vrf": null,
+                    "mgmt_only": true,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": null,
+                    "tagged_vlans": [],
+                    "ip_addresses": [
+                        {
+                            "host": "192.0.2.38",
+                            "mask_length": 23,
+                            "address": "192.0.2.38/23",
+                            "ip_version": 4
+                        }
+                    ]
+                },
+                {
+                    "role": {
+                        "name": "Uplink"
+                    },
+                    "type": "A_1000BASE_T",
+                    "mtu": 1500,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "rf0",
+                    "description": "OOB to mleaf swp37",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": {
+                        "vid": 201,
+                        "name": "Vlan201"
+                    },
+                    "tagged_vlans": [],
+                    "ip_addresses": []
+                },
+                {
+                    "role": {
+                        "name": "Uplink"
+                    },
+                    "type": "A_400GBASE_X_OSFP",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "enp171s0f0np0",
+                    "description": "IB data uplink to bleaf swp13s0",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": null,
+                    "tagged_vlans": [],
+                    "ip_addresses": []
+                }
+            ]
+        }
+    }
+}

@@ -28,7 +28,7 @@
             "platform": {
                 "name": "Cumulus Linux"
             },
-            "serial": "",
+            "serial": "7C:8C:09:B9:F8:9E",
             "config_context": {
                 "intended-firmware": {
                     "version": "5.13.1"
@@ -76,9 +76,6 @@
                             "record-types": ""
                         }
                     ]
-                },
-                "bgp": {
-                    "asn": 4230000016
                 }
             },
             "nvlink_domain": [],
@@ -820,9 +817,6 @@
                                             "record-types": ""
                                         }
                                     ]
-                                },
-                                "bgp": {
-                                    "asn": 4230000014
                                 }
                             }
                         },
@@ -3277,6 +3271,206 @@
                 },
                 {
                     "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "INFINIBAND_NDR",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp9s0",
+                    "description": "IB downlink to gpu-01 mlx5_0",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": null,
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": {
+                        "device": {
+                            "name": "a09-u01-p01-gpu-01"
+                        },
+                        "name": "mlx5_0"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "INFINIBAND_NDR",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp10s0",
+                    "description": "IB downlink to gpu-01 mlx5_1",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": null,
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": {
+                        "device": {
+                            "name": "a09-u01-p01-gpu-01"
+                        },
+                        "name": "mlx5_1"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "INFINIBAND_NDR",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp11s0",
+                    "description": "IB downlink to gpu-02 mlx5_0",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": null,
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": {
+                        "device": {
+                            "name": "a09-u02-p01-gpu-02"
+                        },
+                        "name": "mlx5_0"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "INFINIBAND_NDR",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp12s0",
+                    "description": "IB downlink to gpu-02 mlx5_1",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": null,
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": {
+                        "device": {
+                            "name": "a09-u02-p01-gpu-02"
+                        },
+                        "name": "mlx5_1"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "INFINIBAND_NDR",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp13s0",
+                    "description": "IB downlink to gpu-03 mlx5_0",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": null,
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": {
+                        "device": {
+                            "name": "a09-u03-p01-gpu-03"
+                        },
+                        "name": "mlx5_0"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "INFINIBAND_NDR",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp14s0",
+                    "description": "IB downlink to gpu-03 mlx5_1",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": null,
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": {
+                        "device": {
+                            "name": "a09-u03-p01-gpu-03"
+                        },
+                        "name": "mlx5_1"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "INFINIBAND_NDR",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp15s0",
+                    "description": "IB downlink to gpu-04 mlx5_0",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": null,
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": {
+                        "device": {
+                            "name": "a09-u04-p01-gpu-04"
+                        },
+                        "name": "mlx5_0"
+                    }
+                },
+                {
+                    "role": {
+                        "name": "Downlink"
+                    },
+                    "type": "INFINIBAND_NDR",
+                    "mtu": null,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "swp16s0",
+                    "description": "IB downlink to gpu-04 mlx5_1",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": null,
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "connected_interface": {
+                        "device": {
+                            "name": "a09-u04-p01-gpu-04"
+                        },
+                        "name": "mlx5_1"
+                    }
+                },
+                {
+                    "role": {
                         "name": "Uplink"
                     },
                     "type": "A_400GBASE_X_OSFP",
@@ -3373,9 +3567,6 @@
                                             "record-types": ""
                                         }
                                     ]
-                                },
-                                "bgp": {
-                                    "asn": 4230000001
                                 }
                             }
                         },
@@ -3481,9 +3672,6 @@
                                             "record-types": ""
                                         }
                                     ]
-                                },
-                                "bgp": {
-                                    "asn": 4230000001
                                 }
                             }
                         },
@@ -3589,9 +3777,6 @@
                                             "record-types": ""
                                         }
                                     ]
-                                },
-                                "bgp": {
-                                    "asn": 4230000001
                                 }
                             }
                         },
@@ -3697,9 +3882,6 @@
                                             "record-types": ""
                                         }
                                     ]
-                                },
-                                "bgp": {
-                                    "asn": 4230000001
                                 }
                             }
                         },
@@ -3805,9 +3987,6 @@
                                             "record-types": ""
                                         }
                                     ]
-                                },
-                                "bgp": {
-                                    "asn": 4230000001
                                 }
                             }
                         },
@@ -3913,9 +4092,6 @@
                                             "record-types": ""
                                         }
                                     ]
-                                },
-                                "bgp": {
-                                    "asn": 4230000001
                                 }
                             }
                         },
@@ -4021,9 +4197,6 @@
                                             "record-types": ""
                                         }
                                     ]
-                                },
-                                "bgp": {
-                                    "asn": 4230000001
                                 }
                             }
                         },
@@ -4129,9 +4302,6 @@
                                             "record-types": ""
                                         }
                                     ]
-                                },
-                                "bgp": {
-                                    "asn": 4230000001
                                 }
                             }
                         },
@@ -4237,9 +4407,6 @@
                                             "record-types": ""
                                         }
                                     ]
-                                },
-                                "bgp": {
-                                    "asn": 4230000003
                                 }
                             }
                         },
@@ -4345,9 +4512,6 @@
                                             "record-types": ""
                                         }
                                     ]
-                                },
-                                "bgp": {
-                                    "asn": 4230000003
                                 }
                             }
                         },
@@ -4453,9 +4617,6 @@
                                             "record-types": ""
                                         }
                                     ]
-                                },
-                                "bgp": {
-                                    "asn": 4230000003
                                 }
                             }
                         },
@@ -4561,9 +4722,6 @@
                                             "record-types": ""
                                         }
                                     ]
-                                },
-                                "bgp": {
-                                    "asn": 4230000003
                                 }
                             }
                         },
@@ -4669,9 +4827,6 @@
                                             "record-types": ""
                                         }
                                     ]
-                                },
-                                "bgp": {
-                                    "asn": 4230000003
                                 }
                             }
                         },
@@ -4777,9 +4932,6 @@
                                             "record-types": ""
                                         }
                                     ]
-                                },
-                                "bgp": {
-                                    "asn": 4230000003
                                 }
                             }
                         },
@@ -4885,9 +5037,6 @@
                                             "record-types": ""
                                         }
                                     ]
-                                },
-                                "bgp": {
-                                    "asn": 4230000003
                                 }
                             }
                         },
@@ -4993,9 +5142,6 @@
                                             "record-types": ""
                                         }
                                     ]
-                                },
-                                "bgp": {
-                                    "asn": 4230000003
                                 }
                             }
                         },

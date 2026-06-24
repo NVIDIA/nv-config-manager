@@ -1,0 +1,103 @@
+{
+    "data": {
+        "device": {
+            "id": "a9000001-0000-0000-0000-000000000002",
+            "name": "a09-u02-p01-gpu-02",
+            "tenant": {
+                "name": "SuperPod"
+            },
+            "role": {
+                "name": "GPU"
+            },
+            "tags": [],
+            "vrfs": [],
+            "device_type": {
+                "manufacturer": {
+                    "name": "NVIDIA"
+                },
+                "model": "DGX H100"
+            },
+            "platform": null,
+            "serial": "",
+            "config_context": {},
+            "interfaces": [
+                {
+                    "role": null,
+                    "type": "A_1000BASE_T",
+                    "mtu": 1500,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "eth0",
+                    "description": "BMC / mgmt",
+                    "vrf": null,
+                    "mgmt_only": true,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": null,
+                    "tagged_vlans": [],
+                    "ip_addresses": [
+                        {
+                            "host": "192.0.2.52",
+                            "mask_length": 23,
+                            "address": "192.0.2.52/23",
+                            "ip_version": 4
+                        }
+                    ]
+                },
+                {
+                    "role": null,
+                    "type": "INFINIBAND_NDR",
+                    "mtu": 4092,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "mlx5_0",
+                    "description": "IB HCA port 0 to sleaf-01 swp11s0",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": null,
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "custom_fields": {
+                        "ib_guid": "0x002c903002112211"
+                    },
+                    "connected_interface": {
+                        "device": {
+                            "name": "a09-u32-p01-sleaf-01"
+                        },
+                        "name": "swp11s0"
+                    }
+                },
+                {
+                    "role": null,
+                    "type": "INFINIBAND_NDR",
+                    "mtu": 4092,
+                    "mac_address": null,
+                    "enabled": true,
+                    "tags": [],
+                    "name": "mlx5_1",
+                    "description": "IB HCA port 1 to sleaf-01 swp12s0",
+                    "vrf": null,
+                    "mgmt_only": false,
+                    "member_interfaces": [],
+                    "parent_interface": null,
+                    "untagged_vlan": null,
+                    "tagged_vlans": [],
+                    "ip_addresses": [],
+                    "custom_fields": {
+                        "ib_guid": "0x002c903002112212"
+                    },
+                    "connected_interface": {
+                        "device": {
+                            "name": "a09-u32-p01-sleaf-01"
+                        },
+                        "name": "swp12s0"
+                    }
+                }
+            ]
+        }
+    }
+}

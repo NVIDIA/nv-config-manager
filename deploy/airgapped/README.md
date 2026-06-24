@@ -56,8 +56,8 @@ cd nv-config-manager-airgapped-v1.0.0-amd64
   --username '<user>' \
   --password-stdin
 ./installer/install.sh
-./installer/nv-config-manager-installer init --config install.yaml
-./installer/nv-config-manager-installer deploy install.yaml --chart-dir helm --image-source registry
+./installer/nvcm-installer init --config install.yaml
+./installer/nvcm-installer deploy install.yaml --chart-dir helm --image-source registry
 ```
 
 The upload helper uses bundled Skopeo when present, then system Skopeo, then Docker in `--mode auto`. It uploads the packaged chart with `helm push` and writes `image-map.tsv` for image source-to-target mapping. Use `--plain-http` only for local HTTP registries such as `registry:2` test containers. When using Docker mode with an architecture-specific bundle, pass `--platform linux/amd64` or `--platform linux/arm64` so Docker pushes a single-platform manifest. The installer uses local dependency charts and manifests when `cluster.airgapped` is enabled in the config.

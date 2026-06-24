@@ -12,13 +12,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from unittest.mock import MagicMock, patch
-
 from aioresponses import aioresponses
 from fastapi.testclient import TestClient
 
 from nv_config_manager.temporal.api.main import app
-from nv_config_manager.temporal.client.air import Simulation
 
 V2_SITES = {
     "data": {"locations": [{"id": "ddadde54-cbdd-4fa5-94ce-ca649b7e2aa8", "name": "SITEA"}]}
@@ -85,6 +82,16 @@ STATUSES = {
             {"id": "status-uuid-1", "name": "Active"},
             {"id": "status-uuid-2", "name": "Provisioned"},
             {"id": "status-uuid-3", "name": "Decommissioned"},
+        ]
+    }
+}
+
+NAMESPACE_TAGS = {
+    "data": {
+        "namespaces": [
+            {"tags": [{"name": "spectrumx"}, {"name": "tenant-a"}]},
+            {"tags": [{"name": "spectrumx"}]},
+            {"tags": []},
         ]
     }
 }
@@ -196,6 +203,47 @@ def test_role_managed_only():
         assert names == {"leaf", "spine"}
 
 
+def test_namespace_tag():
+    """Test the namespace tag parameter endpoint."""
+    with aioresponses() as m:
+        m.post("https://nautobot.example.com/api/graphql/", payload=NAMESPACE_TAGS)
+
+        client = TestClient(app)
+        rsp = client.get("/v1/parameter/namespace-tag?location=RNO1")
+        assert rsp.json() == [
+            {"id": "spectrumx", "name": "spectrumx"},
+            {"id": "tenant-a", "name": "tenant-a"},
+        ]
+
+
+def test_namespace_tag_graphql_error():
+    """Test the namespace tag endpoint handles Nautobot GraphQL errors."""
+    with aioresponses() as m:
+        m.post(
+            "https://nautobot.example.com/api/graphql/",
+            payload={"errors": [{"message": "boom"}]},
+        )
+
+        client = TestClient(app)
+        rsp = client.get("/v1/parameter/namespace-tag")
+        assert rsp.status_code == 500
+        assert rsp.json() == {"detail": "Failed to query Nautobot namespace tags."}
+
+
+def test_namespace_tag_malformed_response():
+    """Test the namespace tag endpoint handles malformed Nautobot responses."""
+    with aioresponses() as m:
+        m.post(
+            "https://nautobot.example.com/api/graphql/",
+            payload={"data": {"namespaces": {}}},
+        )
+
+        client = TestClient(app)
+        rsp = client.get("/v1/parameter/namespace-tag")
+        assert rsp.status_code == 500
+        assert rsp.json() == {"detail": "Malformed Nautobot namespace tag response."}
+
+
 def test_status_with_content_type():
     """Test the status parameter endpoint with content_type filter."""
     with aioresponses() as m:
@@ -222,26 +270,3 @@ def test_status_without_content_type():
             {"id": "status-uuid-2", "name": "Provisioned"},
             {"id": "status-uuid-3", "name": "Decommissioned"},
         ]
-
-
-@patch("nv_config_manager.temporal.api.parameter_v1.AirClient")
-def test_simulations(mock_air_client):
-    """Test the simulations parameter endpoint."""
-    # Use actual Simulation model objects
-    sim1 = Simulation(id="sim-12345-abcde", name="Test Simulation 1", state="LOADED")
-    sim2 = Simulation(id="sim-67890-fghij", name="Test Simulation 2", state="RUNNING")
-
-    mock_client_instance = MagicMock()
-    mock_air_client.return_value = mock_client_instance
-    mock_client_instance.list_simulations.return_value = [sim1, sim2]
-
-    client = TestClient(app)
-    rsp = client.get("/v1/parameter/simulations")
-
-    expected_response = [
-        {"id": "sim-12345-abcde", "name": "Test Simulation 1", "state": "LOADED"},
-        {"id": "sim-67890-fghij", "name": "Test Simulation 2", "state": "RUNNING"},
-    ]
-
-    assert rsp.json() == expected_response
-    mock_client_instance.list_simulations.assert_called_once()

@@ -20,17 +20,6 @@
         role: system-admin
   deployment_types: [all]
 
-- name: Cumulus Linux Firmware 5.14.0
-  description: Intended firmware version for Cumulus Linux switches
-  weight: 1000
-  is_active: true
-  platforms:
-    - Cumulus Linux
-  data:
-    intended-firmware:
-      version: "5.14.0"
-  deployment_types: [all]
-
 - name: NVIDIA Config Manager DHCP Custom Options
   description: Custom DHCP option definitions for KEA (cumulus-provision-url)
   weight: 1000

@@ -87,6 +87,8 @@ _DB_GROUPS: list[tuple[str, str, str]] = [
 def _generate_core_k8s_secrets(state: dict[str, str], _v: Any) -> None:
     """Populate core Kubernetes secrets (Nautobot, Redis, PostgreSQL)."""
     state["nautobot_token"] = _v("nautobot", "token") or _generate_token(40)
+    if ro_token := _v("nautobot", "readOnlyToken"):
+        state["nautobot_read_only_token"] = ro_token
     state["nats_password"] = _v("nautobot", "natsPassword") or _generate_url_safe_password()
     state["redis_password"] = _v("redis", "password") or _generate_url_safe_password()
     state["nautobot_admin_password"] = _v("nautobot_app", "adminPassword") or _generate_password()
@@ -101,15 +103,10 @@ def _generate_core_k8s_secrets(state: dict[str, str], _v: Any) -> None:
 def _generate_optional_k8s_secrets(
     config: NVConfigManagerInstallConfig, state: dict[str, str], _v: Any
 ) -> None:
-    """Populate optional integration secrets (Slack, AIR, Jira, CNPG backup)."""
+    """Populate optional integration secrets (Slack, Jira, CNPG backup)."""
     k8s = config.secrets.k8s
     if k8s.slack.enabled:
         state["slack_token"] = _v("slack", "token") or _generate_url_safe_password()
-    if k8s.air.enabled:
-        state["air_ssa_client_id"] = _v("air", "ssaClientId") or ""
-        state["air_ssa_client_secret"] = (
-            _v("air", "ssaClientSecret") or _generate_url_safe_password()
-        )
     if k8s.jira.enabled:
         state["jira_base_url"] = _v("jira", "baseUrl") or ""
         state["jira_api_token"] = _v("jira", "apiToken") or ""
@@ -181,7 +178,6 @@ _VAULT_PATH_GROUPS: list[tuple[str, str, str]] = [
     ("nautobot_app", "nautobotApp", "nautobot-app"),
     ("oidc", "oidc", "oidc"),
     ("slack", "slack", "slack"),
-    ("air", "air", "air"),
     ("jira", "jira", "jira"),
     ("cnpg_backup", "cnpgBackup", "cnpg-backup"),
 ]

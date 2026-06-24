@@ -12,12 +12,13 @@
 
 [global]
 # List of rules to disable
-# disable = ["MD013", "MD014", "MD033", "MD036"]
+# disable = ["MD013", "MD014", "MD033", "MD036", "MD077"]
 disable = [
   "line-length",
   "commands-show-output",
   "no-inline-html",
   "no-emphasis-as-heading",
+#  "list-continuation-indent",
 ]
 
 # List of rules to enable exclusively (replaces defaults; only these rules will run)
@@ -55,7 +56,7 @@ exclude = [
 ]
 
 # Respect .gitignore files when scanning directories (default: true)
-respect_gitignore = true
+respect-gitignore = true
 
 # Markdown flavor/dialect (uncomment to enable)
 # Options: standard (default), gfm, commonmark, mkdocs, mdx, quarto
@@ -114,7 +115,7 @@ allow-with-separators = true    # Allow multiple H1s as document section titles 
 # - "ordered0": Zero-based sequential (0, 1, 2...)
 # - "one-or-ordered": Auto-detect per list (either all-ones OR sequential)
 # - "consistent": Document-wide consistency - uses most common style across all lists
-style = "one-or-ordered"
+style = "one-one"
 
 [MD041]
 # first-line-heading
@@ -154,3 +155,7 @@ style = "compact"
 # list-item-spacing
 style = "consistent"              # "consistent" (default), "loose", or "tight"
 allow-loose-continuation = true  # allow blank lines around continuation paragraphs
+
+[MD077]
+# list-continuation-indent
+# severity = "info"

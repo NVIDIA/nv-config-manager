@@ -30,6 +30,7 @@
 {{- $ztpName := include "nv-config-manager.componentName" (dict "root" . "component" "ztp") }}
 {{- $dhcpName := include "nv-config-manager.componentName" (dict "root" . "component" "dhcp") }}
 {{- $configStoreName := include "nv-config-manager.componentName" (dict "root" . "component" "config-store") }}
+{{- $mcpName := include "nv-config-manager.componentName" (dict "root" . "component" "mcp") }}
 {{- $temporalName := include "nv-config-manager.componentName" (dict "root" . "component" "temporal") }}
 {{- $nautobotName := include "nv-config-manager.componentName" (dict "root" . "component" "nautobot") }}
 {{- $uiName := include "nv-config-manager.componentName" (dict "root" . "component" "ui") }}
@@ -72,6 +73,7 @@ spec:
     url: {{ .Values.monitoring.probes.blackboxExporterUrl }}
   targets:
     staticConfig:
+      {{- include "nv-config-manager.probeStaticConfigLabels" . | nindent 6 }}
       static:
       - {{ $probeScheme }}://{{ tpl .Values.renderService.gateway.hostname . }}/healthcheck
 {{- end }}
@@ -99,6 +101,7 @@ spec:
     url: {{ .Values.monitoring.probes.blackboxExporterUrl }}
   targets:
     staticConfig:
+      {{- include "nv-config-manager.probeStaticConfigLabels" . | nindent 6 }}
       static:
       - {{ $probeScheme }}://{{ tpl .Values.networkZtp.gateway.hostname . }}/healthcheck
 {{- end }}
@@ -126,6 +129,7 @@ spec:
     url: {{ .Values.monitoring.probes.blackboxExporterUrl }}
   targets:
     staticConfig:
+      {{- include "nv-config-manager.probeStaticConfigLabels" . | nindent 6 }}
       static:
       - {{ $probeScheme }}://{{ tpl .Values.networkDhcp.gateway.hostname . }}/healthcheck
 {{- end }}
@@ -153,8 +157,37 @@ spec:
     url: {{ .Values.monitoring.probes.blackboxExporterUrl }}
   targets:
     staticConfig:
+      {{- include "nv-config-manager.probeStaticConfigLabels" . | nindent 6 }}
       static:
       - {{ $probeScheme }}://{{ tpl .Values.configStore.gateway.api.hostname . }}/healthcheck
+{{- end }}
+
+{{- /* MCP Probe */}}
+{{- if and .Values.monitoring.probes.enabled .Values.mcp.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: {{ $mcpName }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mcp
+    {{- with $monitoringCRLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  interval: 30s
+  module: http_2xx
+  jobName: {{ $probeJobPrefix }}{{ $mcpName }}-probe
+  prober:
+    scheme: {{ $probeScheme }}
+    url: {{ .Values.monitoring.probes.blackboxExporterUrl }}
+  targets:
+    staticConfig:
+      {{- include "nv-config-manager.probeStaticConfigLabels" . | nindent 6 }}
+      static:
+      - {{ $probeScheme }}://{{ tpl .Values.mcp.gateway.hostname . }}/healthcheck
 {{- end }}
 
 {{- /* Temporal API Probe */}}
@@ -180,6 +213,7 @@ spec:
     url: {{ .Values.monitoring.probes.blackboxExporterUrl }}
   targets:
     staticConfig:
+      {{- include "nv-config-manager.probeStaticConfigLabels" . | nindent 6 }}
       static:
       - {{ $probeScheme }}://{{ tpl .Values.temporal.gateway.api.hostname . }}/healthcheck
 {{- end }}
@@ -207,6 +241,7 @@ spec:
     url: {{ .Values.monitoring.probes.blackboxExporterUrl }}
   targets:
     staticConfig:
+      {{- include "nv-config-manager.probeStaticConfigLabels" . | nindent 6 }}
       static:
       - {{ $probeScheme }}://{{ tpl .Values.temporal.gateway.devUi.hostname . }}/healthz
 {{- end }}
@@ -234,6 +269,7 @@ spec:
     url: {{ .Values.monitoring.probes.blackboxExporterUrl }}
   targets:
     staticConfig:
+      {{- include "nv-config-manager.probeStaticConfigLabels" . | nindent 6 }}
       static:
       - {{ $probeScheme }}://{{ tpl .Values.ui.gateway.hostname . }}/api/health
 {{- end }}
@@ -261,6 +297,7 @@ spec:
     url: {{ .Values.monitoring.probes.blackboxExporterUrl }}
   targets:
     staticConfig:
+      {{- include "nv-config-manager.probeStaticConfigLabels" . | nindent 6 }}
       static:
       - {{ $probeScheme }}://{{ tpl .Values.nautobot.gateway.hostname . }}/health
 {{- end }}
@@ -405,6 +442,40 @@ spec:
   selector:
     matchLabels:
       app: {{ $configStoreName }}
+      component: api
+  podMetricsEndpoints:
+    - port: http
+      path: /metrics
+      interval: {{ $scrapeInterval }}
+      scrapeTimeout: {{ $scrapeTimeout }}
+      {{- if .Values.global.customLabels }}
+      metricRelabelings:
+        {{- include "nv-config-manager.podMonitorMetricRelabelings" . | nindent 8 }}
+      {{- end }}
+{{- end }}
+
+{{- /* MCP PodMonitor */}}
+{{- if and .Values.monitoring.podMonitors.enabled .Values.mcp.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ $mcpName }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mcp
+    {{- with $monitoringCRLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- include "nv-config-manager.podTargetLabels" . | nindent 2 }}
+  namespaceSelector:
+    matchNames:
+      - {{ $namespace }}
+  selector:
+    matchLabels:
+      app: {{ $mcpName }}
       component: api
   podMetricsEndpoints:
     - port: http

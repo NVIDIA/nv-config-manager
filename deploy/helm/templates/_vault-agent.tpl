@@ -196,6 +196,13 @@ Usage: ctKv2Key emits a full consul-template action (including outer braces). In
 {{- printf "{{if $%s}}{{if $%s.Data}}{{index (or (index $%s.Data \"data\") (index $%s.Data \"Data\")) %q}}{{end}}{{end}}" $vn $vn $vn $vn $vk -}}
 {{- end -}}
 
+{{- define "nv-config-manager.vaultAgent.ctKv2OptionalIniLine" -}}
+{{- $vn := required "var is required" .var -}}
+{{- $vk := .key | toString -}}
+{{- $name := required "name is required" .name -}}
+{{- printf "{{with $%s}}{{with $%s.Data}}{{with index (or (index $%s.Data \"data\") (index $%s.Data \"Data\")) %q}}%s = {{.}}{{end}}{{end}}{{end}}" $vn $vn $vn $vn $vk $name -}}
+{{- end -}}
+
 {{/*
 Consul-template prelude: declare $secret vars for nv-config-manager.ini (same KV paths as ESO unified ExternalSecret)
 */}}
@@ -219,10 +226,6 @@ Consul-template prelude: declare $secret vars for nv-config-manager.ini (same KV
 {{- printf "{{- $network := secret %q -}}\n" (printf "%s/data/%s" $m $np) -}}
 {{- $rf := include "nv-config-manager.vault.secretPath" (dict "root" $root "secret" "redfish") -}}
 {{- printf "{{- $redfish := secret %q -}}\n" (printf "%s/data/%s" $m $rf) -}}
-{{- if $root.Values.temporal.air.orgId -}}
-{{- $ap := include "nv-config-manager.vault.secretPath" (dict "root" $root "secret" "air") -}}
-{{- printf "{{- $air := secret %q -}}\n" (printf "%s/data/%s" $m $ap) -}}
-{{- end -}}
 {{- end -}}
 {{- if $root.Values.networkDhcp.enabled -}}
 {{- printf "{{- $leasedb := secret %q -}}\n" (printf "%s/data/%s" $m $pg) -}}
@@ -354,12 +357,13 @@ nv-config-manager.ini body (consul-template): must stay in sync with vault-secre
           # -----------------------------------------------------------------
           [temporal]
           # Internal: Temporal gRPC frontend (for workers, SDK clients)
-          grpc_service = {{ $temporalName }}-frontend-service.{{ $root.Values.global.namespace }}.svc:{{ $root.Values.temporal.services.frontend.port }}
+          grpc_service = {{ $temporalName }}-frontend-service.{{ $root.Values.global.namespace }}.svc.cluster.local:{{ $root.Values.temporal.services.frontend.port }}
           # Internal: NVIDIA Config Manager Temporal API (for internal service calls)
           # Uses sidecar port when auth sidecars are enabled for header injection
           api_service = http://{{ $temporalName }}-api:{{ $internalPort }}
           # External: Gateway URLs for user-facing links
           api_url = https://{{ tpl $root.Values.temporal.gateway.api.hostname $root }}
+          temporal_ui_url = https://{{ tpl $root.Values.temporal.gateway.devUi.hostname $root }}
           ui_url = https://{{ $root.Values.gateway.baseHostname }}
           # Set to true for internal cluster communication (uses api_service)
           # Set to false for external mTLS communication (uses api_url)
@@ -370,16 +374,6 @@ nv-config-manager.ini body (consul-template): must stay in sync with vault-secre
           server = {{ tpl $root.Values.externalServices.elasticsearch.server $root }}
           {{- if $root.Values.externalServices.elasticsearch.domain }}
           domain = {{ $root.Values.externalServices.elasticsearch.domain }}
-          {{- end }}
-
-          {{- if $root.Values.temporal.air.orgId }}
-          [temporal.air]
-          ssa_client_id = {{ include "nv-config-manager.vaultAgent.ctKv2Key" (dict "var" "air" "key" (include "nv-config-manager.vault.keyName" (dict "root" $root "secret" "air" "key" "ssaClientId"))) }}
-          ssa_client_secret = {{ include "nv-config-manager.vaultAgent.ctKv2Key" (dict "var" "air" "key" (include "nv-config-manager.vault.keyName" (dict "root" $root "secret" "air" "key" "ssaClientSecret"))) }}
-          org_id = {{ $root.Values.temporal.air.orgId }}
-          air_api_url = {{ $root.Values.temporal.air.airApiUrl }}
-          air_node_user = {{ $root.Values.temporal.air.airNodeUser }}
-          air_node_password = {{ $root.Values.temporal.air.airNodePassword }}
           {{- end }}
 
           # -----------------------------------------------------------------
@@ -492,6 +486,22 @@ nv-config-manager.ini body (consul-template): must stay in sync with vault-secre
           {{- if $root.Values.networkZtp.gateway.allowedGroups }}
           allowed_groups = {{ $root.Values.networkZtp.gateway.allowedGroups | join "," }}
           {{- end }}
+
+          {{- end }}
+
+          {{- if $root.Values.mcp.enabled }}
+          # -----------------------------------------------------------------
+          # MCP Service Configuration
+          # -----------------------------------------------------------------
+          [mcp]
+          # When auth is enabled, MCP forwards the caller's inbound Bearer token
+          # to Config Manager APIs. It does not fall back to service-to-service auth.
+          use_internal_endpoints = {{ $root.Values.mcp.client.useInternalEndpoints | default true }}
+          max_response_bytes = {{ $root.Values.mcp.client.maxResponseBytes | default 100000 }}
+          {{ include "nv-config-manager.vaultAgent.ctKv2OptionalIniLine" (dict "var" "nautobot" "key" (include "nv-config-manager.vault.keyName" (dict "root" $root "secret" "nautobot" "key" "readOnlyToken")) "name" "nautobot_read_only_token") }}
+          # auto resolves to jwt for bundled/local Nautobot and the MCP read-only token for external Nautobot.
+          nautobot_auth_mode = {{ $root.Values.mcp.nautobot.authMode | default "auto" }}
+          nautobot_token_fallback_enabled = {{ $root.Values.mcp.nautobot.tokenFallbackEnabled | default false }}
 
           {{- end }}
 

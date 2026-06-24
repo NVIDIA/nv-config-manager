@@ -59,22 +59,22 @@ rbac:
         - all
       execute_roles:
         - all
-    - name: VpcCreationWorkflow
+    - name: SpXOverlayCreationWorkflow
       read_roles:
         - all
       execute_roles:
         - all
-    - name: VpcDeletionWorkflow
+    - name: SpXOverlayDeletionWorkflow
       read_roles:
         - all
       execute_roles:
         - all
-    - name: VpcAssignmentWorkflow
+    - name: SpXOverlayAssignmentWorkflow
       read_roles:
         - all
       execute_roles:
         - all
-    - name: VpcTenantChangeWorkflow
+    - name: SpXOverlayTenantChangeWorkflow
       read_roles:
         - all
       execute_roles:
@@ -110,26 +110,6 @@ rbac:
       execute_roles:
         - all
     - name: RedfishProvisioningWorkflow
-      read_roles:
-        - all
-      execute_roles:
-        - all
-    - name: AIRCreateSimulationWorkflow
-      read_roles:
-        - all
-      execute_roles:
-        - all
-    - name: AIRCreateBlueprintSimulationWorkflow
-      read_roles:
-        - all
-      execute_roles:
-        - all
-    - name: AIRDeleteSimulationWorkflow
-      read_roles:
-        - all
-      execute_roles:
-        - all
-    - name: AIRValidateSiteWorkflow
       read_roles:
         - all
       execute_roles:
@@ -179,4 +159,3 @@ rbac:
         - all
       execute_roles:
         - all
-

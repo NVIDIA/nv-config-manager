@@ -80,8 +80,8 @@ PYTHON_DIRS = [
     "scripts",
     "components/nautobot",
     "components/network-templates",
-    "development/mock_topology",
-    "installer/src",
+    "development/",
+    "installer/",
 ]
 
 JS_TS_DIRS = [
@@ -275,9 +275,9 @@ def main() -> None:
         total_modified += modified
         total_skipped += skipped
 
-    print("\nProcessing TypeScript files...")
+    print("\nProcessing TypeScript/JavaScript files...")
     for dir_path in JS_TS_DIRS:
-        for ext in (".ts", ".tsx"):
+        for ext in (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"):
             modified, skipped = process_directory(repo_root, dir_path, ext, add_header_to_js_ts)
             total_modified += modified
             total_skipped += skipped

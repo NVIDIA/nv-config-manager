@@ -61,23 +61,23 @@ The workflow runs five stages in order. None require human approval — the thir
 
 1. **`load_tenant_configuration` — Load the tenant intended config from the Config Store.**
 
-    Pulls the tenant-scoped intended configuration plus its commit SHA for the device.
+   Pulls the tenant-scoped intended configuration plus its commit SHA for the device.
 
 1. **`perform_configuration_diff` — Compute the diff vs the device's running config.**
 
-    Generates a candidate diff. If the diff is empty, the workflow exits successfully without applying anything. Otherwise the diff text is passed to validation.
+   Generates a candidate diff. If the diff is empty, the workflow exits successfully without applying anything. Otherwise the diff text is passed to validation.
 
 1. **`validate_configuration_diff` — Apply the allow/deny regex rules.**
 
-    Runs the rules in [Diff validation rules](#diff-validation-rules). Pass → continue to apply. Fail → raise `StageRuntimeFailure` and halt; no change is applied.
+   Runs the rules in [Diff validation rules](#diff-validation-rules). Pass → continue to apply. Fail → raise `StageRuntimeFailure` and halt; no change is applied.
 
 1. **`apply_configuration` — Apply the validated diff to the device.**
 
-    Pushes the configuration through `apply_approved_configuration` with `partial=True` (NVUE partial commit), so only the tenant-scoped sections are touched. The same non-retryable error set as Configuration Deploy applies — `ConfigSyntaxException`, `ConfigApplyFailureException`, `DiffChangedException`.
+   Pushes the configuration through `apply_approved_configuration` with `partial=True` (NVUE partial commit), so only the tenant-scoped sections are touched. The same non-retryable error set as Configuration Deploy applies — `ConfigSyntaxException`, `ConfigApplyFailureException`, `DiffChangedException`.
 
 1. **`perform_backup` — Capture a fresh backup.**
 
-    Starts the [Configuration Backup](../configuration-backup/index.mdx) workflow as a child workflow with `trigger=WORKFLOW` and the just-applied commit SHA.
+   Starts the [Configuration Backup](../configuration-backup/index.mdx) workflow as a child workflow with `trigger=WORKFLOW` and the just-applied commit SHA.
 
 ## Verifying outcomes
 

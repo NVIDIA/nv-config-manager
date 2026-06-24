@@ -38,32 +38,32 @@ The following components are assumed to be pre-installed and configured by your 
 
 1. List configured IP address pools:
 
-    ```bash
-    kubectl get ipaddresspool -n metallb-system
-    ```
+   ```bash
+   kubectl get ipaddresspool -n metallb-system
+   ```
 
 1. View pool details including address ranges:
 
-    ```bash
-    kubectl get ipaddresspool -n metallb-system -o yaml
-    ```
+   ```bash
+   kubectl get ipaddresspool -n metallb-system -o yaml
+   ```
 
-    The output of the second command will be similar to the following example. In this case, the output shows a pool of available IP addresses from `10.0.100.200` through `10.0.100.210`:
+   The output of the second command will be similar to the following example. In this case, the output shows a pool of available IP addresses from `10.0.100.200` through `10.0.100.210`:
 
-    ```yaml
-    apiVersion: metallb.io/v1beta1
-    kind: IPAddressPool
-    metadata:
-      name: nv-config-manager-pool
-      namespace: metallb-system
-    spec:
-      addresses:
-      - 10.0.100.200-10.0.100.210
-    ```
+   ```yaml
+   apiVersion: metallb.io/v1beta1
+   kind: IPAddressPool
+   metadata:
+     name: nv-config-manager-pool
+     namespace: metallb-system
+   spec:
+     addresses:
+     - 10.0.100.200-10.0.100.210
+   ```
 
 1. From the output of the second command, select two unused IP addresses for ZTP and DHCP services.
 
-    You will use these with the `--ztp-lb-ip` and `--dhcp-lb-ip` flags when deploying Config Manager.
+   You will use these with the `--ztp-lb-ip` and `--dhcp-lb-ip` flags when deploying Config Manager.
 
 1. Set the `--lb-allowed-prefixes` flag for the deploy script to the OOB (out-of-band) management network CIDR(s) from which devices will reach these services.
 
@@ -157,17 +157,17 @@ Install the bundled installer package on the target host and verify the TUI is a
 
 ```bash
 ./installer/install.sh
-./installer/nv-config-manager-installer --help
+./installer/nvcm-installer --help
 ```
 
-The bootstrap script creates a local virtual environment from bundled wheels and does not require internet access on the target host.
+The bootstrap script creates a local virtual environment from bundled wheels and does not require internet access on the target host. It also exposes the longer `./installer/nv-config-manager-installer` command for compatibility.
 
 ## Create a Configuration
 
 Launch the TUI and save a repeatable installer configuration.
 
 ```bash
-./installer/nv-config-manager-installer init install.yaml
+./installer/nvcm-installer init install.yaml
 ```
 
 At minimum, confirm the following sections before deploying:
@@ -205,7 +205,7 @@ The requirements for the `large` profile are cumulative across all nodes. For ex
 Deploy from the extracted bundle after `install.yaml` is complete and images are either reachable from the configured registry or preloaded on the cluster nodes.
 
 ```bash
-./installer/nv-config-manager-installer deploy install.yaml \
+./installer/nvcm-installer deploy install.yaml \
   --chart-dir helm \
   --image-source registry \
   --install-envoy-gateway \
@@ -292,10 +292,10 @@ kubectl logs -n nv-config-manager -l app=nv-config-manager-platform-dhcp-refresh
 
 ## Iterative Deployment and Post-Deploy Changes
 
-You do not need to redeploy from scratch when you change data, add images, update templates, or upgrade versions. Treat `install.yaml` as the source of truth: re-open it with `./installer/nv-config-manager-installer init install.yaml`, adjust the configuration, and deploy again.
+You do not need to redeploy from scratch when you change data, add images, update templates, or upgrade versions. Treat `install.yaml` as the source of truth: re-open it with `./installer/nvcm-installer init install.yaml`, adjust the configuration, and deploy again.
 
 ```bash
-./installer/nv-config-manager-installer deploy install.yaml \
+./installer/nvcm-installer deploy install.yaml \
   --chart-dir helm \
   --image-source registry \
   --helm-timeout 30m
@@ -411,14 +411,14 @@ Verify the offline installer can bootstrap from the bundled wheels:
 
 ```bash
 ./installer/install.sh
-./installer/nv-config-manager-installer --help
+./installer/nvcm-installer --help
 ```
 
 After you create an `install.yaml`, validate the installer config and generated Helm values against the bundled chart:
 
 ```bash
-./installer/nv-config-manager-installer validate install.yaml
-./installer/nv-config-manager-installer generate-values install.yaml \
+./installer/nvcm-installer validate install.yaml
+./installer/nvcm-installer generate-values install.yaml \
   --chart-dir helm \
   --output-dir /tmp/nvcm-airgap-values
 ```

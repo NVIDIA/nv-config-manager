@@ -8,6 +8,11 @@ on:
         required: true
         default: src/tests/integration/
         type: string
+      observability:
+        description: Deploy the observability stack (Prometheus + Alloy) and run observability tests
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -40,19 +45,30 @@ jobs:
       TEST_PATH: ${{ inputs.test_path }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        timeout-minutes: 5
         with:
           persist-credentials: false
       - name: Setup proxy cache
+        timeout-minutes: 5
         uses: nv-gha-runners/setup-proxy-cache@14229018fe157c83e03c008f27d183d8e99bc67c
         with:
           enable-apt: true
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        timeout-minutes: 5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86
+        timeout-minutes: 5
         with:
           enable-cache: true
+      - name: Set up Docker Buildx
+        id: buildx
+        timeout-minutes: 5
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+        with:
+          buildkitd-config: /etc/buildkit/buildkitd.toml
       - name: Install tools
+        timeout-minutes: 15
         run: |
           set -euo pipefail
 
@@ -81,41 +97,106 @@ jobs:
 
           docker info
       - name: Install Python dependencies
+        timeout-minutes: 15
         run: |
           uv sync --frozen
           cd installer
           uv sync --frozen
       - name: Configure hostnames
+        timeout-minutes: 2
         run: |
           HOSTS="config-manager.local nautobot.config-manager.local render.config-manager.local ztp.config-manager.local dhcp.config-manager.local workflow.config-manager.local temporal.config-manager.local config-store.config-manager.local svc-workflow.config-manager.local svc-render.config-manager.local svc-ztp.config-manager.local svc-dhcp.config-manager.local svc-nautobot.config-manager.local svc-config-store.config-manager.local"
           echo "127.0.0.1 ${HOSTS}" | sudo tee -a /etc/hosts
       - name: Deploy to Kind
+        timeout-minutes: 65
+        env:
+          BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
+          OBSERVABILITY: ${{ inputs.observability }}
         run: |
           sudo sysctl -w fs.inotify.max_user_instances=512
           sudo sysctl -w fs.inotify.max_user_watches=524288
+
+          # Opt-in observability: flip the two monitoring switches on the base
+          # config in place (the runner checkout is throwaway, so we keep a
+          # single source of truth instead of a near-duplicate config file).
+          # This installs the prometheus-operator CRDs + standalone
+          # Prometheus/Alloy and enables monitoring.probes, so the Probe CRs
+          # render with the SLO customLabels from values-observability.yaml.
+          # Defaults off so normal kind runs stay fast.
+          #
+          # We also append the observability stack's runtime images to
+          # kind_preload_images. The installer preloads these on the host (which
+          # goes through the runner proxy cache) and `kind load`s them, so
+          # helm's --wait doesn't stall on anonymous in-cluster pulls from
+          # quay.io / docker.io — those uncached pulls are what blow the deploy
+          # timeout. Keep the tags in sync with the prometheus (Chart.yaml) and
+          # alloy subchart versions; derive current refs with:
+          #   helm template t deploy/helm -f deploy/helm/values-ci.yaml \
+          #     -f deploy/helm/values-observability.yaml | grep -E 'image:'
+          if [ "${OBSERVABILITY}" = "true" ]; then
+            echo "Observability enabled for this run"
+            yq -i '
+              .infrastructure.monitoring.enabled = true |
+              .infrastructure.monitoring.observability_enabled = true |
+              .images.kind_preload_images += [
+                "quay.io/prometheus/prometheus:v3.11.3",
+                "quay.io/prometheus-operator/prometheus-config-reloader:v0.90.1",
+                "docker.io/grafana/alloy:v1.16.0"
+              ]
+            ' deploy/configs/ci-integration-test.yaml
+          fi
+
           make kind-up \
             KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME}" \
             INSTALL_CONFIG=deploy/configs/ci-integration-test.yaml \
             HELM_TIMEOUT=20m
           kubectl get pods -n "${NV_CONFIG_MANAGER_NAMESPACE}" -o wide
       - name: Run integration tests
+        timeout-minutes: 50
+        env:
+          # Gates observability-only tests (e.g. test_probe_labels.py), which
+          # skip themselves unless this is "true". Mirrors the JIRA_ISSUE_KEY
+          # gate on the diagnostics tests.
+          OBSERVABILITY: ${{ inputs.observability }}
         run: |
           for attempt in 1 2 3; do
             echo "Attempt ${attempt} of 3"
-            if uv run pytest "${TEST_PATH}" -v \
+            results_file="integration-test-results-${attempt}.xml"
+            set +e
+            timeout --kill-after=1m 15m uv run pytest "${TEST_PATH}" -v \
               --ci \
               --nv-config-manager-namespace "${NV_CONFIG_MANAGER_NAMESPACE}" \
               --tb=short \
-              --junitxml=integration-test-results.xml; then
+              --junitxml="${results_file}"
+            test_status=$?
+            set -e
+
+            if [ "${test_status}" -eq 0 ]; then
+              cp -f "${results_file}" integration-test-results.xml
               exit 0
             fi
-            if [ "${attempt}" -lt 3 ]; then
-              sleep 10
+
+            if [ -f "${results_file}" ]; then
+              cp -f "${results_file}" integration-test-results.xml
+            fi
+
+            if [ "${test_status}" -eq 124 ] || \
+              { [ "${test_status}" -ge 128 ] && [ "${test_status}" -le 192 ]; }; then
+              echo "Attempt ${attempt} failed with retryable status ${test_status}"
+              if [ "${attempt}" -lt 3 ]; then
+                sleep 10
+                continue
+              fi
+              exit "${test_status}"
+            else
+              echo "Attempt ${attempt} failed with non-retryable status ${test_status}"
+              exit "${test_status}"
             fi
           done
           exit 1
       - name: Collect integration logs
         if: always()
+        timeout-minutes: 10
         run: |
           mkdir -p integration-test-logs
           kubectl get pods -n "${NV_CONFIG_MANAGER_NAMESPACE}" -o wide > integration-test-logs/pods.txt 2>&1 || true
@@ -125,9 +206,11 @@ jobs:
           done
       - name: Delete Kind cluster
         if: always()
+        timeout-minutes: 5
         run: kind delete cluster --name "${KIND_CLUSTER_NAME}" || true
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
+        timeout-minutes: 5
         with:
           name: integration-test-artifacts
           path: |

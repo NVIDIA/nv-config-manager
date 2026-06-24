@@ -71,8 +71,9 @@ class InfinibandMlnxOSUpgradeWorkflow(WorkflowMetadataMixin, StageMixin):
     """
 
     # Workflow metadata
+    workflow_name = "InfiniBand MLNX-OS Upgrade"
     workflow_description = (
-        "Upgrade Mellanox OS on Infiniband switches with validation and rollback capabilities"
+        "Upgrade MLNX-OS on Infiniband switches with validation and rollback capabilities"
     )
     workflow_input_class = InfinibandMlnxOSUpgradeInput
     workflow_api_endpoint = "/ngc/infiniband_mlnx_os_upgrade"

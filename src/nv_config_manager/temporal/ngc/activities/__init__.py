@@ -14,17 +14,6 @@
 # limitations under the License.
 """NGC Network Activities."""
 
-from nv_config_manager.temporal.ngc.activities.air import (
-    create_simulation,
-    create_simulation_node_services,
-    delete_simulation,
-    generate_air_topology_for_location,
-    generate_minimal_topology_for_site,
-    prepare_simulation_nodes,
-    start_simulation,
-    validate_configuration_against_air_device,
-    wait_for_simulation_node,
-)
 from nv_config_manager.temporal.ngc.activities.backup import (
     load_running_configuration,
     persist_config_backup,
@@ -94,6 +83,9 @@ from nv_config_manager.temporal.ngc.activities.ib_nautobot import (
     record_pkey_assignments,
     remove_pkey_assignments,
     resolve_guids_to_interfaces,
+    resolve_ib_context,
+    resolve_ib_context_for_add,
+    resolve_ib_site_for_host,
     resolve_interface_guids,
     sync_pkey_assignments,
 )
@@ -112,6 +104,7 @@ from nv_config_manager.temporal.ngc.activities.nautobot import (
     assign_vrf_to_device,
     assign_vrf_to_interface,
     check_recorded_config_drift,
+    delete_overlay,
     delete_vrf,
     get_available_route_distinguishers,
     get_device_interfaces,
@@ -123,7 +116,7 @@ from nv_config_manager.temporal.ngc.activities.nautobot import (
     get_network_device,
     get_network_devices,
     get_switch_port_by_remote_mac_address,
-    get_vrfs_by_vpc_id,
+    get_vrfs_by_overlay_id,
     provision_vrf,
 )
 from nv_config_manager.temporal.ngc.activities.nvlinkswitch_firmware import (
@@ -201,8 +194,9 @@ REGISTERED_ACTIVITIES = [
     provision_vrf,
     load_neighbor_data_by_switch_port,
     get_switch_port_by_remote_mac_address,
-    get_vrfs_by_vpc_id,
+    get_vrfs_by_overlay_id,
     delete_vrf,
+    delete_overlay,
     get_device_vrfs,
     assign_vrf_to_device,
     get_device_interfaces,
@@ -220,15 +214,6 @@ REGISTERED_ACTIVITIES = [
     validate_rendered_password_change,
     check_recorded_config_drift,
     wait_reboot,
-    generate_air_topology_for_location,
-    create_simulation,
-    prepare_simulation_nodes,
-    start_simulation,
-    create_simulation_node_services,
-    wait_for_simulation_node,
-    delete_simulation,
-    generate_minimal_topology_for_site,
-    validate_configuration_against_air_device,
     get_mlnx_os_version,
     download_mlnx_os,
     install_mlnx_os,
@@ -261,6 +246,9 @@ REGISTERED_ACTIVITIES = [
     create_partition_in_nautobot,
     resolve_interface_guids,
     resolve_guids_to_interfaces,
+    resolve_ib_context,
+    resolve_ib_context_for_add,
+    resolve_ib_site_for_host,
     record_pkey_assignments,
     fetch_pkey_assignments,
     sync_pkey_assignments,

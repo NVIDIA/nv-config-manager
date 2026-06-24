@@ -61,10 +61,12 @@ class PortLLDPInfoWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archi
     """LLDP neighbor discovery workflow for network port analysis."""
 
     # Workflow metadata
+    workflow_name = "Port LLDP Info"
     workflow_description = "Gather LLDP neighbor data for network port analysis and troubleshooting"
     workflow_input_class = PortLLDPInfoInput
     workflow_api_endpoint = "/ngc/port_lldp_info"
     workflow_namespace = "ngc"
+    workflow_mcp_enabled = True
 
     def __init__(self) -> None:
         """Initialize workflow."""

@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 # NVIDIA Config Manager - Unified Python Image
 # Build with: docker build -t nv-config-manager .
 # Run different services by changing the entrypoint
@@ -12,6 +13,10 @@ FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim AS builder
 
 ARG APT_MIRROR_DEBIAN=""
 ARG APT_MIRROR_GPG_KEY_URL=""
+ARG NVCM_NUMPY_FROM_SOURCE=false
+ARG NVCM_NUMPY_CPU_BASELINE=min
+ARG NVCM_NUMPY_CPU_DISPATCH=max
+ARG NVCM_NUMPY_ALLOW_NOBLAS=true
 
 # Install build dependencies for native extensions (numpy, psycopg2, etc.)
 # Also install openssh-server to get the moduli file and sftp binary for SFTP server
@@ -46,17 +51,30 @@ COPY db/alembic.ini /code/nv-config-manager/db/
 # Create venv and install dependencies (--no-editable ensures package is in site-packages, not linked to source)
 # --group integration-test includes pytest so tests can run from any nv-config-manager component
 RUN uv venv /code/nv-config-manager/.venv
-RUN set -eux; \
+RUN --mount=type=cache,id=nvcm-uv-cache,target=/root/.cache/uv \
+    set -eux; \
     if [ -n "$TEMPLATE_ENGINE_VERSION" ]; then \
         export SETUPTOOLS_SCM_PRETEND_VERSION="$TEMPLATE_ENGINE_VERSION"; \
     fi; \
-    uv sync --frozen --no-dev --group integration-test --no-editable && \
+    if [ "$NVCM_NUMPY_FROM_SOURCE" = "true" ]; then \
+        uv sync \
+            --frozen \
+            --no-dev \
+            --group integration-test \
+            --no-editable \
+            --no-binary-package numpy \
+            --config-settings-package "numpy:setup-args=-Dcpu-baseline=${NVCM_NUMPY_CPU_BASELINE}" \
+            --config-settings-package "numpy:setup-args=-Dcpu-dispatch=${NVCM_NUMPY_CPU_DISPATCH}" \
+            --config-settings-package "numpy:setup-args=-Dallow-noblas=${NVCM_NUMPY_ALLOW_NOBLAS}"; \
+    else \
+        uv sync --frozen --no-dev --group integration-test --no-editable; \
+    fi; \
     chmod -R a+rX /code/nv-config-manager/.venv /code/nv-config-manager/db /code/nv-config-manager/src
 
 # =============================================================================
 # Runtime stage - NVIDIA distroless Python
 # =============================================================================
-FROM nvcr.io/nvidia/distroless/python:3.13-v4.0.6
+FROM nvcr.io/nvidia/distroless/python:3.13-v4.0.7
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1

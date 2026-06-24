@@ -92,7 +92,7 @@ Choose where application secrets are stored, and configure Git repository tokens
 | Token Secret Name | Kubernetes secret name for token auth |
 | Vault Secret Paths | Vault secret paths for ESO. Enable and customize only the groups you need. |
 
-Vault paths map secret groups such as Nautobot, Redis, PostgreSQL, network credentials, OIDC, Redfish, BMC, Slack, AIR, Jira, and CNPG backup settings to the paths used in your Vault layout.
+Vault paths map secret groups such as Nautobot, Redis, PostgreSQL, network credentials, OIDC, Redfish, BMC, Slack, Jira, and CNPG backup settings to the paths used in your Vault layout.
 
 Git tokens create `git-token-<name>` Kubernetes secrets or ESO-backed Vault references for Nautobot Git sync.
 
@@ -231,6 +231,7 @@ Configure OIDC Single Sign-On for Config Manager services.
 | Provider | OIDC provider. The bundled sample uses `keycloak`; any compatible OIDC provider can be substituted. |
 | Issuer URL | OIDC issuer URL |
 | Client ID | OIDC client identifier |
+| CLI Client ID | Optional public/native client identifier for CLI PKCE auth. Defaults to Client ID when unset. |
 | Client Secret | OIDC client secret |
 | JWKS URI | Override for JWKS endpoint |
 | Audiences | Comma-separated audience list |
@@ -264,6 +265,7 @@ Configure gateway behavior, TLS, database backups, monitoring resources, and loa
 
 | Field | Description |
 | :---- | :---------- |
+| Create GatewayClass | Create the cluster-scoped `envoy-gateway` GatewayClass. Disable when a shared Envoy Gateway installation already owns it. |
 | Enable TLS | Use self-signed TLS certificates for public endpoints |
 | CNPG S3 Backup | CloudNativePG PostgreSQL backups to S3 |
 | Monitoring | PodMonitors and monitoring resources |

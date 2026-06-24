@@ -205,6 +205,50 @@ class InfiniBandPKeyModelTest(TestCase):
             with self.assertRaises(ValidationError, msg=f"Expected ValidationError for pkey={invalid!r}"):
                 pkey.full_clean()
 
+    def test_normalize_pkey_helper(self):
+        """normalize_pkey() produces '0x' + 4 lowercase hex digits for all valid inputs."""
+        cases = {
+            "0x1": "0x0001",
+            "0x01": "0x0001",
+            "0x001": "0x0001",
+            "0x0001": "0x0001",
+            "0X100": "0x0100",
+            "0xFFFF": "0xffff",
+            "0xffff": "0xffff",
+            "  0x100  ": "0x0100",
+        }
+        for raw, expected in cases.items():
+            self.assertEqual(
+                InfiniBandPKey.normalize_pkey(raw),
+                expected,
+                msg=f"normalize_pkey({raw!r})",
+            )
+
+    def test_normalize_pkey_passes_through_invalid_input(self):
+        """normalize_pkey() leaves invalid input alone so the field validator can reject it."""
+        for raw in ("", "not-a-pkey", "8001", "0x1234567", None, 0x100):
+            self.assertEqual(
+                InfiniBandPKey.normalize_pkey(raw),
+                raw if not isinstance(raw, str) else raw.strip(),
+                msg=f"normalize_pkey({raw!r})",
+            )
+
+    def test_save_normalizes_pkey(self):
+        """Raw ORM save() normalizes pkey."""
+        pkey = InfiniBandPKey.objects.create(
+            pkey="0x100",
+            name="Raw ORM PKey",
+            status=self.status,
+        )
+        pkey.refresh_from_db()
+        self.assertEqual(pkey.pkey, "0x0100")
+
+    def test_full_clean_normalizes_pkey(self):
+        """full_clean() normalizes pkey."""
+        pkey = InfiniBandPKey(pkey="0x1", name="Form PKey", status=self.status)
+        pkey.full_clean()
+        self.assertEqual(pkey.pkey, "0x0001")
+
 
 class InfiniBandMKeyModelTest(TestCase):
     """Test cases for InfiniBandMKey model."""

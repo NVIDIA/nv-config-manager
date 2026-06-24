@@ -19,6 +19,7 @@ spec:
     matchLabels:
       app: {{ $configStoreName }}
       component: api
+  {{- include "nv-config-manager.deploymentStrategy" (dict "root" .) | nindent 2 }}
   template:
     metadata:
       labels:
@@ -201,6 +202,7 @@ spec:
     matchLabels:
       app: {{ $configStoreName }}
       component: cache-refresh
+  {{- include "nv-config-manager.deploymentStrategy" (dict "root" .) | nindent 2 }}
   template:
     metadata:
       labels:

@@ -1,10 +1,10 @@
 ---
-title: VPC Deletion
-sidebar-title: VPC Deletion
+title: SpX Overlay Deletion
+sidebar-title: SpX Overlay Deletion
 position: 20
 ---
 
-The VPC Deletion workflow removes the VRF metadata for an existing VPC from Nautobot. It is the cleanup counterpart to [VPC Creation](../vpc-creation/index.mdx) and refuses to delete VRFs that are still in use — any VRF currently bound to interfaces on a device is reported in the result's `in_use_vrfs` list rather than deleted.
+The SpX Overlay Deletion workflow removes the VRF, L3 VXLAN, and Overlay metadata for an existing overlay from Nautobot. It is the cleanup counterpart to [SpX Overlay Creation](../vpc-creation/index.mdx) and refuses to delete VRFs that are still in use — any VRF currently bound to interfaces on a device is reported in the result's `in_use_vrfs` list rather than deleted. The Overlay object is only deleted once all of its VXLANs and member assignments are gone.
 
 <Warning title="Experimental">
 This workflow is experimental and not intended for general use. Use it only in test or pilot environments.
@@ -14,60 +14,65 @@ This workflow is experimental and not intended for general use. Use it only in t
 
 Before running, confirm:
 
-- **VPC is no longer in use on any device.** Query Nautobot to confirm no interfaces remain bound to the VPC's VRFs. There is no automated unassign workflow today — unbind any remaining interfaces directly in Nautobot, then re-deploy affected devices so the running configuration drops the VRF. The workflow's `interface_count > 0` guard will refuse to delete any in-use VRF; resolving the bindings up front is easier than retrying after the fact.
-- **vpc_id and site are known.** These are the same identifiers used at creation time.
+- **overlay is no longer in use on any device.** Query Nautobot to confirm no interfaces remain bound to the overlay's VRFs. The workflow's `interface_count > 0` guard will refuse to delete any in-use VRF; resolving the bindings up front is easier than retrying after the fact.
+- **overlay_id and site are known.** These are the same identifiers used at creation time.
 
 ## Running the workflow
 
 1. Navigate to the Config Manager URL for your environment.
-1. Click the **+** in the top right and select **VpcDeletionWorkflow**.
+1. Click the **+** in the top right and select **SpXOverlayDeletionWorkflow**.
 1. Fill in the form using the field reference below and submit.
 
 | Field | Description | Required |
 | :---- | :---------- | :------- |
-| **Site** | The site the VPC belongs to. | Yes |
-| **VPC** | Identifier of the VPC to delete. | Yes |
-| **Namespace** | Tag used to identify the VPC namespace in Nautobot. | Yes |
+| **Site** | The site the overlay belongs to. | Yes |
+| **Overlay ID** | Identifier of the overlay to delete. | Yes |
+| **Namespace** | Tag used to identify the overlay namespace in Nautobot. | Yes |
 
-After submission, a status page shows the single `delete_vpc` stage. The result distinguishes `deleted_vrfs` from `in_use_vrfs` — the latter are VRFs the workflow refused to delete because they still had bound interfaces.
+After submission, a status page shows the single `delete_spx_overlay` stage. The result distinguishes `deleted_vrfs` from `in_use_vrfs` — the latter are VRFs the workflow refused to delete because they still had bound interfaces.
 
 ## Execution stages
 
 The workflow runs one stage. No human approval is required.
 
-1. **`delete_vpc` — Delete the VPC's VRFs.**
+1. **`delete_spx_overlay` — Delete the overlay's VRFs, VXLANs, and Overlay.**
 
-    Queries Nautobot for the VPC's VRFs by `vpc_id` + `namespace_tag` + `site`. If none exist, the stage short-circuits with the message "No VRFs exist for this VPC at the site" — a successful no-op for a VPC that was never created or is already gone. For each VRF that does exist:
+   Queries Nautobot for the overlay's VRFs by `overlay_id` + `namespace_tag` + `site`. If none exist, the stage short-circuits — a successful no-op for an overlay that was never created or is already gone. For each VRF that does exist:
 
-   - If the VRF's `interface_count > 0`, it is added to `in_use_vrfs` and skipped.
-   - Otherwise the workflow invokes `delete_vrf` against it.
+    - If the VRF's `interface_count > 0`, it is added to `in_use_vrfs` and skipped.
+    - Otherwise the workflow deletes the VRF's bound L3 VXLAN (the VXLAN's VRF FK is `SET_NULL` on VRF deletion, so explicit cleanup is required) and then deletes the VRF.
 
-     All eligible VRF deletions run in parallel via `asyncio.gather`. The stage display reports the deleted and skipped VRF lists.
+   All eligible VRF/VXLAN deletions run in parallel. After all VRFs are removed, the workflow attempts to delete the `SpXTenant<VNI>` Overlay — it is left in place if any VXLANs or member assignments still remain, and a message indicating the outcome is included in the stage display.
 
 ## Verifying outcomes
 
 After the workflow reports success, confirm:
 
-- **`delete_vpc` shows green** and the result lists `deleted_vrfs` and `in_use_vrfs` as expected.
+- **`delete_spx_overlay` shows green** and the result lists `deleted_vrfs` and `in_use_vrfs` as expected.
 - **Nautobot no longer shows the deleted VRFs.**
-- **Any `in_use_vrfs` entries** are VRFs still bound to interfaces. Unbind them directly in Nautobot, re-deploy the affected devices so the VRF is removed from the running config, then re-run VPC Deletion.
+- **Nautobot overlays plugin** shows the Overlay deleted (or still present with a note if members remain).
+- **Any `in_use_vrfs` entries** are VRFs still bound to interfaces. Unbind them directly in Nautobot, re-deploy the affected devices, then re-run SpX Overlay Deletion.
 
 ## Common issues
 
 **Result lists VRFs as `in_use_vrfs`.**
 
-Those VRFs are still bound to interfaces on at least one device. There is no automated unassign workflow today — open Nautobot, remove the VRF binding from each interface, re-deploy the affected devices so the running configuration drops the VRF, then re-run VPC Deletion. (VPC Assignment is bind-only and will not perform the unbind.)
+Those VRFs are still bound to interfaces on at least one device. Open Nautobot, remove the VRF binding from each interface, re-deploy the affected devices so the running configuration drops the VRF, then re-run SpX Overlay Deletion.
 
-**Workflow returns "No VRFs exist for this VPC at the site".**
+**Workflow returns "No VRFs exist for this overlay at the site".**
 
-The VPC was never created at this site, or it has already been fully deleted. Treat as a successful no-op.
+The overlay was never created at this site, or it has already been fully deleted. Treat as a successful no-op.
 
-**`delete_vpc` fails with a Nautobot write error.**
+**Overlay left in place after VRF deletion.**
+
+The Overlay still has VXLANs or member assignments. This can happen if a VXLAN deletion failed mid-run or if there are assignments from another workflow. Inspect the Overlay in Nautobot's overlays plugin and clean up manually, then re-run.
+
+**`delete_spx_overlay` fails with a Nautobot write error.**
 
 A Nautobot transaction failed mid-delete. Some VRFs may have been deleted; others not. Re-run — the workflow is naturally idempotent because already-deleted VRFs are simply absent on the second pass.
 
 ## Related guides
 
-- [VPC Creation](../vpc-creation/index.mdx) — provision the VRF metadata in the first place.
-- [VPC Assignment](../vpc-assignment/index.mdx) — bind VRFs to devices and ports (assignment is bind-only; unbinding is a direct Nautobot edit today).
-- [VPC Tenant Change](../vpc-tenant-change/index.mdx) — full assign + render + deploy lifecycle workflow.
+- [SpX Overlay Creation](../vpc-creation/index.mdx) — provision the VRF metadata in the first place.
+- [SpX Overlay Assignment](../vpc-assignment/index.mdx) — bind VRFs to devices and ports.
+- [SpX Overlay Tenant Change](../vpc-tenant-change/index.mdx) — full assign + render + deploy lifecycle workflow.

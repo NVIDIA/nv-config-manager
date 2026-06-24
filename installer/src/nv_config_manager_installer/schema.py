@@ -145,7 +145,11 @@ class VaultPathsConfig(BaseModel):
     """All vault secret path groups consumed by the Helm chart."""
 
     nautobot: VaultPathConfig = Field(
-        default_factory=lambda: _path(token="token", natsPassword="nats_password")
+        default_factory=lambda: _path(
+            token="token",
+            readOnlyToken="read_only_token",
+            natsPassword="nats_password",
+        )
     )
     redis: VaultPathConfig = Field(default_factory=lambda: _path(password="password"))
     postgres: VaultPathConfig = Field(
@@ -176,11 +180,6 @@ class VaultPathsConfig(BaseModel):
         default_factory=lambda: _path(clientSecret="client_secret", cookieSecret="cookie_secret")
     )
     slack: VaultPathConfig = Field(default_factory=lambda: _path(enabled=False, token="token"))
-    air: VaultPathConfig = Field(
-        default_factory=lambda: _path(
-            enabled=False, ssaClientId="ssa_client_id", ssaClientSecret="ssa_client_secret"
-        )
-    )
     jira: VaultPathConfig = Field(
         default_factory=lambda: _path(enabled=False, baseUrl="base_url", apiToken="api_token")
     )
@@ -234,7 +233,6 @@ class KubernetesSecretsConfig(BaseModel):
     network: K8sSecretGroup = Field(default_factory=K8sSecretGroup)
     nautobot_app: K8sSecretGroup = Field(default_factory=K8sSecretGroup)
     slack: K8sSecretGroup = Field(default_factory=lambda: K8sSecretGroup(enabled=False))
-    air: K8sSecretGroup = Field(default_factory=lambda: K8sSecretGroup(enabled=False))
     jira: K8sSecretGroup = Field(default_factory=lambda: K8sSecretGroup(enabled=False))
     cnpg_backup: K8sSecretGroup = Field(default_factory=lambda: K8sSecretGroup(enabled=False))
 
@@ -297,9 +295,11 @@ class SSOConfig(BaseModel):
     provider: SSOProvider = SSOProvider.KEYCLOAK
     issuer_url: str = ""
     client_id: str = ""
+    cli_client_id: str = ""
     client_secret: str = ""
     jwks_uri: str = ""
     internal_issuer: str = ""
+    end_session_endpoint: str = ""
     audiences: str = ""
     scopes: str = ""
     jwt_providers: list[JWTProvider] = Field(default_factory=list)
@@ -550,6 +550,7 @@ class InfrastructureConfig(BaseModel):
     """Infrastructure and gateway settings."""
 
     gateway: GatewayType = GatewayType.ENVOY_GATEWAY
+    create_gateway_class: bool = True
     tls: bool = True
     cnpg_s3_backup: CNPGBackupConfig = Field(default_factory=CNPGBackupConfig)
     monitoring: MonitoringConfig = Field(default_factory=MonitoringConfig)
@@ -580,6 +581,7 @@ class ImagesConfig(BaseModel):
     registry: str = "nvcr.io/nvidian/cfa"
     tag: str = ""
     pull_policy: str = "IfNotPresent"
+    kind_preload_images: list[str] = Field(default_factory=list)
     pull_secret: ImagePullSecret = Field(default_factory=ImagePullSecret)
     overrides: dict[str, ImageOverride] = Field(default_factory=dict)
 
@@ -927,9 +929,11 @@ def _prune_ztp_storage(ztp_storage: dict[str, Any]) -> None:
 
 
 def _prune_images(images: dict[str, Any]) -> None:
+    if not images.get("kind_preload_images"):
+        images.pop("kind_preload_images", None)
     if images.get("source") != ImageSource.LOCAL.value:
         return
-    _replace_with_keys(images, {"source"})
+    _replace_with_keys(images, {"source", "kind_preload_images"})
 
 
 def _prune_redfish(redfish: dict[str, Any]) -> None:

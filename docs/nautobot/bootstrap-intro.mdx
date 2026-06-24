@@ -647,13 +647,13 @@ You might notice that bootstrap data focuses on foundational objects like device
 For a typical deployment, here is the order you would create these objects:
 
 1. **Load bootstrap data** (device types, roles, locations, statuses, config contexts, and so on)
-2. **Create or load the topology** with a Design Builder job, Nautobot API script, CSV import, migration script, or manual UI changes
-3. **Verify devices and identifiers** used by DHCP/ZTP, such as serial numbers, MAC addresses, management interfaces, and primary IPs
-4. **Verify prefixes and IP addresses** for management networks, loopback ranges, point-to-point links, and service networks
-5. **Verify cables** against the planned physical topology
-6. **Run cable validation** after devices are reachable to compare the documented topology with LLDP neighbor data
-7. **Power on or reprovision devices through DHCP/ZTP** after the Nautobot records and rendered configuration inputs exist
-8. **Generate and deploy configurations** using Config Manager's template rendering system and workflows
+1. **Create or load the topology** with a Design Builder job, Nautobot API script, CSV import, migration script, or manual UI changes
+1. **Verify devices and identifiers** used by DHCP/ZTP, such as serial numbers, MAC addresses, management interfaces, and primary IPs
+1. **Verify prefixes and IP addresses** for management networks, loopback ranges, point-to-point links, and service networks
+1. **Verify cables** against the planned physical topology
+1. **Run cable validation** after devices are reachable to compare the documented topology with LLDP neighbor data
+1. **Power on or reprovision devices through DHCP/ZTP** after the Nautobot records and rendered configuration inputs exist
+1. **Generate and deploy configurations** using Config Manager's template rendering system and workflows
 
 The bootstrap data you have learned about in this guide provides the _foundation_&mdash;the device types, roles, locations, and config contexts that these operational objects will use when they are created.
 

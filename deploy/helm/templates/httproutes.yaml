@@ -13,7 +13,7 @@
 # For services that need to support both OIDC/JWT and native token auth,
 # separate HTTPRoutes are created for bypass paths. These routes get a
 # SecurityPolicy with jwt.optional=true but NO oidc block, allowing:
-#   - Valid JWT: claims extracted to headers (for remote user auth)
+#   - Valid Authorization bearer JWT: claims extracted to headers
 #   - No JWT: request passes through (service handles its own auth)
 # =============================================================================
 
@@ -58,8 +58,9 @@ spec:
 # Auth Bypass HTTPRoute Helper Template
 # =============================================================================
 # Creates a separate HTTPRoute for paths that bypass OIDC but still support
-# optional JWT auth. A SecurityPolicy (in security-policy.yaml) attaches to
-# this route with jwt.optional=true and no oidc block.
+# optional Authorization bearer JWT auth. A SecurityPolicy (in
+# security-policy.yaml) attaches to this route with jwt.optional=true and no
+# oidc block.
 # =============================================================================
 {{- define "nv-config-manager.authBypassHTTPRoute" }}
 {{- if and $.root.Values.oidc.enabled $.root.Values.gateway.authBypass.enabled $.enabled (gt (len $.paths) 0) }}
@@ -70,7 +71,7 @@ metadata:
   name: {{ $.routeName }}-auth-bypass
   namespace: {{ $.root.Values.global.namespace }}
   annotations:
-    # Auth bypass route - OIDC disabled, JWT optional with claim extraction
+    # Auth bypass route - OIDC disabled, bearer JWT optional with claim extraction
     nv-config-manager.nvidia.com/auth-bypass: "true"
 spec:
   parentRefs:
@@ -98,6 +99,7 @@ spec:
 {{- $uiName := include "nv-config-manager.componentName" (dict "root" . "component" "ui") }}
 {{- $nautobotName := include "nv-config-manager.componentName" (dict "root" . "component" "nautobot") }}
 {{- $configStoreName := include "nv-config-manager.componentName" (dict "root" . "component" "config-store") }}
+{{- $mcpName := include "nv-config-manager.componentName" (dict "root" . "component" "mcp") }}
 
 {{- if and .Values.gateway.enabled (eq (.Values.ingress.type | default "envoyGateway") "envoyGateway") }}
 
@@ -309,6 +311,34 @@ spec:
 ---
 # Unified UI HTTPRoute (at base hostname) - OIDC-only, direct to app port
 {{- if .Values.ui.enabled }}
+{{- if and .Values.oidc.enabled .Values.oidc.authUtility.enabled }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $uiName }}-auth-utility
+  namespace: {{ .Values.global.namespace }}
+  annotations:
+    # Allows unauthenticated access to public auth utility endpoints.
+    nv-config-manager.nvidia.com/no-auth: "true"
+spec:
+  parentRefs:
+  - name: {{ .Values.gateway.name }}
+    namespace: {{ .Values.global.namespace }}
+  hostnames:
+  - {{ .Values.gateway.baseHostname | quote }}
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /auth/logout
+    - path:
+        type: PathPrefix
+        value: /auth/discovery
+    backendRefs:
+    - name: {{ $uiName }}
+      port: 3000
+---
+{{- end }}
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -430,6 +460,52 @@ spec:
         value: /
     backendRefs:
     - name: {{ $configStoreName }}-api
+      port: 9000
+{{- end }}
+
+# MCP svc-* HTTPRoute (JWT-only)
+{{- if .Values.mcp.enabled }}
+{{- include "nv-config-manager.svcHTTPRoute" (dict
+    "root" .
+    "routeName" $mcpName
+    "svcHostname" (tpl (.Values.mcp.gateway.svcHostname | default "") .)
+    "backendName" $mcpName
+    "backendPort" 9000
+) }}
+{{- end }}
+
+# MCP HTTPRoute
+{{- if .Values.mcp.enabled }}
+{{- if .Values.mcp.gateway.authBypass }}
+{{- include "nv-config-manager.authBypassHTTPRoute" (dict
+    "root" .
+    "routeName" $mcpName
+    "enabled" (.Values.mcp.gateway.authBypass.enabled | default false)
+    "paths" (.Values.mcp.gateway.authBypass.paths | default list)
+    "hostname" (tpl .Values.mcp.gateway.hostname .)
+    "backendName" $mcpName
+    "backendPort" 9000
+) }}
+{{- end }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $mcpName }}
+  namespace: {{ .Values.global.namespace }}
+spec:
+  parentRefs:
+  - name: {{ .Values.gateway.name }}
+    namespace: {{ .Values.global.namespace }}
+  hostnames:
+  - {{ tpl .Values.mcp.gateway.hostname . | quote }}
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: {{ $mcpName }}
       port: 9000
 {{- end }}
 

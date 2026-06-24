@@ -97,6 +97,17 @@ export const TENANT_LIST_API_RESPONSE = [
   },
 ];
 
+export const NAMESPACE_TAGS_LIST_API_RESPONSE = [
+  {
+    id: "spectrumx",
+    name: "spectrumx",
+  },
+  {
+    id: "tenant-a",
+    name: "tenant-a",
+  },
+];
+
 export const DEVICE_TYPES_LIST = [
   "a28b0c1f-2ca9-53cf-ab24-7acc0008e7e4",
   "ce01ade9-ed54-5ae2-8b9d-1d3859233cfe",

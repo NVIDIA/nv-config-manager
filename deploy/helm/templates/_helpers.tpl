@@ -41,6 +41,29 @@ Workload ServiceAccount (Vault K8s/JWT auth binds to this identity; must match V
 {{- end }}
 
 {{/*
+Deployment rollout strategy.
+Pass root and, optionally, strategy. Global strategy wins when set so local
+overrides can switch every Deployment to Recreate in one place.
+*/}}
+{{- define "nv-config-manager.deploymentStrategy" -}}
+{{- $strategy := .strategy | default dict -}}
+{{- if .root.Values.global.deploymentStrategy -}}
+{{- $strategy = .root.Values.global.deploymentStrategy -}}
+{{- end -}}
+{{- if $strategy }}
+{{- $type := $strategy.type | default "RollingUpdate" -}}
+strategy:
+  type: {{ $type }}
+{{- if eq $type "RollingUpdate" }}
+{{- $rollingUpdate := $strategy.rollingUpdate | default dict }}
+  rollingUpdate:
+    maxSurge: {{ $rollingUpdate.maxSurge | default "25%" }}
+    maxUnavailable: {{ $rollingUpdate.maxUnavailable | default 0 }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{/*
 Generate the base hostname for the gateway
 */}}
 {{- define "nv-config-manager.hostname" -}}
@@ -706,7 +729,7 @@ Usage: {{ include "nv-config-manager.waitForTemporalNamespace" . | nindent 6 }}
     - /bin/bash
     - -c
     - |
-      TEMPORAL_ADDR="{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc:{{ .Values.temporal.services.frontend.port }}"
+      TEMPORAL_ADDR="{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.temporal.services.frontend.port }}"
 
       echo "Waiting for Temporal default namespace..."
       until tctl --address "$TEMPORAL_ADDR" --namespace default namespace describe >/dev/null 2>&1; do
@@ -903,6 +926,62 @@ Common secret names
 */}}
 {{- define "nv-config-manager.iniSecretName" -}}
 {{- include "nv-config-manager.componentName" (dict "root" . "component" "ini") -}}
+{{- end }}
+
+{{- define "nv-config-manager.mcpAuthConfigMapName" -}}
+{{- include "nv-config-manager.componentName" (dict "root" . "component" "mcp-auth") -}}
+{{- end }}
+
+{{/*
+Public MCP OAuth metadata ConfigMap data.
+*/}}
+{{- define "nv-config-manager.configmap.mcp-auth" -}}
+{{- $oauth := dig "auth" "oauth" (dict) .Values.mcp -}}
+{{- $enabled := .Values.oidc.enabled -}}
+{{- if hasKey $oauth "enabled" -}}
+{{- $enabled = $oauth.enabled -}}
+{{- end -}}
+mcp-auth.ini: |
+  [mcp.oauth]
+  enabled = {{ $enabled }}
+  {{- if $enabled }}
+  {{- $resourceUrl := get $oauth "resourceUrl" | default (printf "https://%s/mcp" (tpl (.Values.mcp.gateway.svcHostname | default "") .)) -}}
+  {{- $resourceUrl = trimSuffix "/" (tpl $resourceUrl .) -}}
+  {{- $issuerUrl := get $oauth "issuerUrl" | default .Values.oidc.issuerUrl -}}
+  {{- $issuerUrl = required "mcp.auth.oauth.issuerUrl or oidc.issuerUrl is required when MCP OAuth metadata is enabled" $issuerUrl -}}
+  {{- $issuerUrl = trimSuffix "/" (tpl $issuerUrl .) -}}
+  {{- $clientId := get $oauth "clientId" | default .Values.oidc.cliClientId | default .Values.oidc.clientId -}}
+  {{- $clientId = required "mcp.auth.oauth.clientId or oidc.cliClientId/clientId is required when MCP OAuth metadata is enabled" $clientId -}}
+  {{- $authorizationEndpoint := get $oauth "authorizationEndpoint" | default .Values.oidc.authorizationEndpoint -}}
+  {{- if $authorizationEndpoint -}}
+  {{- $authorizationEndpoint = trimSuffix "/" (tpl $authorizationEndpoint .) -}}
+  {{- else -}}
+  {{- $authorizationEndpoint = printf "%s/protocol/openid-connect/auth" $issuerUrl -}}
+  {{- end -}}
+  {{- $tokenEndpoint := get $oauth "tokenEndpoint" | default .Values.oidc.tokenEndpoint -}}
+  {{- if $tokenEndpoint -}}
+  {{- $tokenEndpoint = trimSuffix "/" (tpl $tokenEndpoint .) -}}
+  {{- else -}}
+  {{- $tokenEndpoint = printf "%s/protocol/openid-connect/token" $issuerUrl -}}
+  {{- end -}}
+  {{- $jwksUri := get $oauth "jwksUri" | default .Values.oidc.jwksUri -}}
+  {{- if $jwksUri -}}
+  {{- $jwksUri = trimSuffix "/" (tpl $jwksUri .) -}}
+  {{- end -}}
+  {{- $scopes := get $oauth "scopes" | default .Values.oidc.scopes -}}
+  {{- if not $scopes -}}
+  {{- $scopes = list "openid" "email" "profile" -}}
+  {{- end }}
+  resource_url = {{ $resourceUrl }}
+  issuer_url = {{ $issuerUrl }}
+  client_id = {{ $clientId }}
+  scopes = {{ if kindIs "string" $scopes }}{{ $scopes }}{{ else }}{{ join " " $scopes }}{{ end }}
+  authorization_endpoint = {{ $authorizationEndpoint }}
+  token_endpoint = {{ $tokenEndpoint }}
+  {{- if $jwksUri }}
+  jwks_uri = {{ $jwksUri }}
+  {{- end }}
+  {{- end }}
 {{- end }}
 
 {{- define "nv-config-manager.networkSecretsName" -}}
@@ -1106,6 +1185,30 @@ Usage under each endpoint:
   replacement: {{ $v | toString | quote }}
 {{ end }}
 {{- end }}
+
+{{/*
+Probe staticConfig labels -- emits global.customLabels under
+spec.targets.staticConfig.labels so Prometheus attaches them to every
+blackbox sample scraped from the Probe's static targets. The Probe CR's
+metadata.labels are NOT propagated onto samples by Prometheus Operator, so
+this helper is the only way to surface customLabels (e.g. `include_in_slo`,
+`production`) on probe metrics. Yields nothing when global.customLabels is
+empty/missing.
+
+Usage (the `labels:` key lives at 6 spaces under the Probe spec, hence
+`nindent 6`):
+  targets:
+    staticConfig:
+      {{- include "nv-config-manager.probeStaticConfigLabels" . | nindent 6 }}
+      static:
+      - {{ ... }}
+*/}}
+{{- define "nv-config-manager.probeStaticConfigLabels" -}}
+{{- with .Values.global.customLabels -}}
+labels:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end -}}
 
 {{/*
 =============================================================================

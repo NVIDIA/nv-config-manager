@@ -14,6 +14,7 @@
 # limitations under the License.
 """Shared helpers for InfiniBand PKey member workflows."""
 
+import re
 from datetime import timedelta
 
 from temporalio import workflow
@@ -25,14 +26,31 @@ with workflow.unsafe.imports_passed_through():
         ResolvedInterface,
         ResolveGuidsToInterfacesInput,
         ResolveGuidsToInterfacesOutput,
+        ResolveIBContextInput,
+        ResolveIBContextOutput,
+        ResolveIBSiteForHostInput,
+        ResolveIBSiteForHostOutput,
         ResolveInterfaceGuidsInput,
         ResolveInterfaceGuidsOutput,
         resolve_guids_to_interfaces,
+        resolve_ib_context,
+        resolve_ib_context_for_add,
+        resolve_ib_site_for_host,
         resolve_interface_guids,
     )
 
 
 DEFAULT_ACTIVITY_RETRY_POLICY = RetryPolicy(maximum_attempts=3)
+
+_PKEY_INPUT_PATTERN = re.compile(r"\A0[xX][0-9a-fA-F]{1,4}\Z")
+
+
+def validate_pkey_format(pkey: str) -> str:
+    """Validate and canonicalize a pkey to '0x' + 4 lowercase hex digits."""
+    stripped = (pkey or "").strip()
+    if not _PKEY_INPUT_PATTERN.match(stripped):
+        raise ValueError("pkey must be hex like '0x8001'")
+    return f"0x{int(stripped, 16):04x}"
 
 
 def validate_interfaces_xor_guids(interfaces: list[InterfaceRef], guids: list[str]) -> None:
@@ -62,3 +80,33 @@ async def resolve_members(
         retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
     )
     return guid_result.resolved, guid_result.display
+
+
+async def call_resolve_ib_context(host: str, pkey: str) -> ResolveIBContextOutput:
+    """Invoke the resolve_ib_context activity from a workflow."""
+    return await workflow.execute_activity(
+        resolve_ib_context,
+        ResolveIBContextInput(host=host, pkey=pkey),
+        start_to_close_timeout=timedelta(minutes=1),
+        retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+    )
+
+
+async def call_resolve_ib_context_for_add(host: str, pkey: str) -> ResolveIBContextOutput:
+    """Invoke resolve_ib_context_for_add, which lazily creates an Overlay for orphan PKeys."""
+    return await workflow.execute_activity(
+        resolve_ib_context_for_add,
+        ResolveIBContextInput(host=host, pkey=pkey),
+        start_to_close_timeout=timedelta(minutes=1),
+        retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+    )
+
+
+async def call_resolve_ib_site_for_host(host: str) -> ResolveIBSiteForHostOutput:
+    """Invoke the resolve_ib_site_for_host activity from a workflow."""
+    return await workflow.execute_activity(
+        resolve_ib_site_for_host,
+        ResolveIBSiteForHostInput(host=host),
+        start_to_close_timeout=timedelta(minutes=1),
+        retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+    )

@@ -19,6 +19,11 @@ from aioresponses import aioresponses
 NB_API = "https://nautobot.example.com/api"
 NB_GRAPHQL = f"{NB_API}/graphql/"
 
+DEFAULT_RESOLVED_DEVICE_ID = "ufm-dev-001"
+DEFAULT_RESOLVED_LOCATION_ID = "loc-001"
+DEFAULT_RESOLVED_LOCATION_NAME = "test-site"
+DEFAULT_RESOLVED_PKEY_ID = "pkey-rec-001"
+
 
 def stub_graphql_resolve_guids(m: aioresponses, guid_to_iface: list[tuple]) -> None:
     """Stub the GraphQL batched reverse-lookup of GUIDs to Nautobot interfaces."""
@@ -34,6 +39,47 @@ def stub_graphql_resolve_guids(m: aioresponses, guid_to_iface: list[tuple]) -> N
                         "device": {"name": "hca01"},
                     }
                     for guid, iface_uuid in guid_to_iface
+                ]
+            }
+        },
+    )
+
+
+def stub_graphql_resolve_ib_context(
+    m: aioresponses,
+    *,
+    host: str = "ufm.example.com",
+    pkey: str = "0x0005",
+    overlay_id: str,
+    overlay_name: str = "ib-pkey-overlay",
+    location_name: str = DEFAULT_RESOLVED_LOCATION_NAME,
+    location_id: str = DEFAULT_RESOLVED_LOCATION_ID,
+    device_id: str = DEFAULT_RESOLVED_DEVICE_ID,
+    pkey_id: str = DEFAULT_RESOLVED_PKEY_ID,
+) -> None:
+    """Stub the GraphQL lookup for resolve_ib_context (name-based device path)."""
+    m.post(
+        NB_GRAPHQL,
+        payload={
+            "data": {
+                "devices": [
+                    {
+                        "id": device_id,
+                        "name": host,
+                        "primary_ip4": {"host": "10.0.0.1"},
+                        "location": {
+                            "id": location_id,
+                            "name": location_name,
+                            "location_type": {"name": "Site"},
+                            "overlays": [
+                                {
+                                    "id": overlay_id,
+                                    "name": overlay_name,
+                                    "pkeys": [{"id": pkey_id, "pkey": pkey}],
+                                }
+                            ],
+                        },
+                    }
                 ]
             }
         },

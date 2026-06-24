@@ -81,6 +81,7 @@ class DeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, ArchiveMixi
     """Network device configuration deployment workflow."""
 
     # Workflow metadata
+    workflow_name = "Configuration Deploy"
     workflow_description = "Deploy intended configuration to network device with approval workflow"
     workflow_input_class = DeployInput
     workflow_api_endpoint = "/ngc/deploy"
@@ -362,6 +363,7 @@ class TenantDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archi
     """Network device tenant configuration deployment workflow."""
 
     # Workflow metadata
+    workflow_name = "Tenant Deploy"
     workflow_description = "Deploy tenant configuration to network device without approval"
     workflow_input_class = TenantDeployInput
     workflow_api_endpoint = "/ngc/tenant-deploy"
@@ -512,7 +514,7 @@ class TenantDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archi
         allowed_patterns = [
             r"^nv (set|unset) nve vxlan\b",
             r"^nv (set|unset) evpn\b",
-            r"^nv (set|unset) interface \S+ ip vrf\b",
+            r"^nv (set|unset) interface \S+ (ip )?vrf\b",
             r"^nv (set|unset) vrf \S+ evpn\b",
             r"^nv (set|unset) vrf \S+ router\b",
         ]

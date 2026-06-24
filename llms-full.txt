@@ -1,0 +1,157 @@
+# NVIDIA Config Manager
+
+> NVIDIA Config Manager - open-source platform for datacenter network automation and configuration lifecycle management
+
+NVIDIA Config Manager is a Kubernetes-deployed platform that combines inventory, event processing, workflow orchestration, provisioning, and configuration persistence for large-scale network operations.
+
+## Repository Structure
+
+- `src/nv_config_manager/`: Core Python packages
+  - `common/` - shared config, auth, and client utilities
+  - `render/` - event-driven rendering pipeline and API
+  - `config_store/` - configuration storage APIs and data access
+  - `dhcp/` - Kea DHCP configuration generation
+  - `ztp/` - ZTP and provisioning services
+  - `temporal/` - workflow APIs, workers, activities, and clients
+- `src/tests/`: Unit, integration, and workflow tests
+- `installer/`: `nv-config-manager-installer` package (TUI + CLI)
+  - `README.md` - installer usage and operational flow
+- `deploy/helm/`: Main chart and values overlays
+  - `values-ci.yaml` - CI-safe values for chart validation
+- `deploy/configs/`: Example installer configuration profiles
+- `deploy/airgapped/`: Air-gapped bundle creation and upload scripts
+- `ui/`: Next.js user interface
+- `docs/`: Fern docs source, snippets, and API spec material
+- `build/`: Dockerfiles and image build assets
+- `db/`: Database migration assets
+- `Makefile`: Local development, build, test, and deployment commands
+
+## Platform Architecture
+
+NVIDIA Config Manager exposes multiple services behind Envoy/Gateway ingress:
+
+- UI
+- Nautobot
+- Workflow API and Temporal UI
+- Render API
+- Config Store API
+- ZTP and DHCP services
+
+Key data and control paths:
+
+- Nautobot events are published to NATS JetStream
+- Render and workflow consumers process events and update downstream state
+- Render writes output artifacts into Config Store
+- ZTP and DHCP services consume Nautobot/Config Store context for provisioning
+- Temporal workers orchestrate long-running actions across Nautobot, render, config-store, and external devices
+
+## Installer and Deployment Model
+
+The supported entry point is the installer package:
+
+- Interactive TUI and headless CLI share the same schema-driven config file (`nv-config-manager-install.yaml`)
+- Installer handles value generation, secrets, image actions, optional operator installation, Kind support, and post-deploy jobs
+
+Common installer workflow:
+
+1. `uv run nv-config-manager-installer init`
+2. `uv run nv-config-manager-installer validate <config>`
+3. `uv run nv-config-manager-installer generate-values <config>`
+4. `uv run nv-config-manager-installer deploy <config> [options]`
+
+Deployment targets:
+
+- Local Kind clusters (`make kind-up`)
+- Existing Kubernetes clusters (`make local-up`)
+- Air-gapped environments (`deploy/airgapped/create-airgapped.sh`)
+
+## Core Domains
+
+### Inventory and Source of Truth
+
+- Nautobot models network and infrastructure state
+- Custom jobs and integrations publish data into processing pipelines
+
+### Rendering
+
+- Template and event processing pipelines generate intended configurations
+- Supports API-triggered and event-driven rendering flows
+
+### Workflow Orchestration
+
+- Temporal coordinates asynchronous and multi-step operational workflows
+- Includes deployment, validation, upgrade, backup, password rotation, and cable/workflow lifecycle operations
+
+### DHCP and ZTP
+
+- DHCP service generates Kea configuration from modeled data
+- ZTP service supports bootstrap and image/provisioning flows for managed devices
+
+### Configuration Storage
+
+- Config Store persists rendered, intended, and backup configuration artifacts
+- Exposes APIs for retrieval and lifecycle operations
+
+## Documentation Map
+
+- `docs/index.mdx` - primary docs entry
+- `docs/overview/index.mdx` - conceptual overview
+- `docs/overview/architecture.mdx` - service-level architecture
+- `docs/overview/configuration.mdx` - configuration model and behavior
+- `docs/overview/observability.mdx` - monitoring and telemetry guidance
+- `docs/overview/workflows.mdx` - workflow landscape
+- `docs/install/index.mdx` - install guide
+- `docs/install/tui-wizard-reference.mdx` - installer TUI reference
+- `docs/install/install-airgapped.mdx` - offline deployment
+- `docs/getting-started/interfaces.mdx` - service endpoints and interface overview
+- `docs/getting-started/local-development-quick-start.mdx` - local dev workflow
+- `docs/network-ztp/index.mdx` - ZTP docs
+- `docs/dhcp/index.mdx` - DHCP docs
+- `docs/render/index.mdx` - rendering docs
+- `docs/config-store/index.mdx` - config store docs
+- `docs/temporal/index.mdx` - Temporal docs
+- `docs/nautobot/index.mdx` - Nautobot docs
+- `docs/user-guides/` - operator and task-driven procedures
+
+## Development and Validation
+
+Primary development commands:
+
+- `uv sync --dev`
+- `make test`
+- `make lint`
+- `make format`
+- `make openapi-check`
+- `make docs-lint`
+- `make docs-lint-fern`
+
+Python tooling in this repository is run through `uv run` (pytest, ruff, mypy, and related commands).
+
+Test coverage includes:
+
+- Domain-specific unit tests (`src/tests/*`)
+- Integration tests for deployed environments (`src/tests/integration/`)
+- Workflow and activity tests for Temporal components
+- Service-specific test suites (render, ztp, dhcp, config_store, common)
+
+## Technology Stack
+
+- Python 3.11+ with `uv`
+- FastAPI-based APIs and Python workers
+- Temporal orchestration and worker runtime
+- Nautobot inventory/source-of-truth platform
+- NATS JetStream event transport
+- PostgreSQL persistence layers
+- Kubernetes + Helm deployment model
+- Envoy Gateway / ingress routing
+- React/Next.js user interface
+- Fern documentation tooling
+
+## Governance and Project Metadata
+
+- Release notes: `CHANGELOG.md`
+- Contribution process: `CONTRIBUTING.md`
+- Governance: `GOVERNANCE.md`
+- Maintainers: `MAINTAINERS.md`
+- Security reporting: `SECURITY.md`
+- License: `LICENSE` and `NOTICE`

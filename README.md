@@ -1,18 +1,20 @@
 # NVIDIA Config Manager
 
-NVIDIA Config Manager is an open-source network automation and configuration management platform for large-scale datacenter operations. It combines Nautobot inventory, event-driven rendering, ZTP, DHCP, workflow automation, and configuration storage behind a single Helm deployment.
+NVIDIA Config Manager (NVCM) is an open-source network automation and configuration management platform for large-scale datacenter operations. It combines Nautobot inventory, event-driven rendering, ZTP, DHCP, workflow automation, and configuration storage behind a single Helm deployment.
+
+NVCM is currently in Developer Preview and is not recommended for production use.
 
 ## Overview
 
 | Service | Description |
 | :------ | :---------- |
-| **[ZTP](docs/network-ztp/index.mdx)** | Zero Touch Provisioning, boot scripts, OS image delivery, and provisioning status updates |
-| **[DHCP](docs/dhcp/index.mdx)** | Kea DHCP configuration generation from Nautobot data |
-| **[Temporal](docs/temporal/index.mdx)** | Long-running network operations and approval workflows |
-| **[Render](docs/render/index.mdx)** | Template rendering and event processing from Nautobot and workflow events |
-| **[Config Store](docs/config-store/index.mdx)** | PostgreSQL-backed rendered, intended, and backup configuration storage |
-| **[UI](docs/getting-started/interfaces.mdx)** | React/Next.js interface for workflows and configuration browsing |
-| **[Nautobot](docs/nautobot/index.mdx)** | Network source of truth, custom jobs, and event publication |
+| **[ZTP](https://docs.nvidia.com/switch-infrastructure/config-manager/services/network-ztp/overview)** | Zero Touch Provisioning, boot scripts, OS image delivery, and provisioning status updates |
+| **[DHCP](https://docs.nvidia.com/switch-infrastructure/config-manager/services/dhcp/overview)** | Kea DHCP configuration generation from Nautobot data |
+| **[Temporal](https://docs.nvidia.com/switch-infrastructure/config-manager/services/temporal/overview)** | Long-running network operations and approval workflows |
+| **[Render](https://docs.nvidia.com/switch-infrastructure/config-manager/services/render/overview)** | Template rendering and event processing from Nautobot and workflow events |
+| **[Config Store](https://docs.nvidia.com/switch-infrastructure/config-manager/services/config-store/overview)** | PostgreSQL-backed rendered, intended, and backup configuration storage |
+| **[UI](https://docs.nvidia.com/switch-infrastructure/config-manager/getting-started/which-interface-should-i-use)** | React/Next.js interface for workflows and configuration browsing |
+| **[Nautobot](https://docs.nvidia.com/switch-infrastructure/config-manager/config-manager/nautobot)** | Network source of truth, custom jobs, and event publication |
 
 ## Installer
 
@@ -51,6 +53,29 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 uv sync --dev
 ./scripts/install-hooks.sh
 ```
+
+### Git Hooks
+
+Install the repository hooks after cloning and whenever hook scripts change:
+
+```bash
+./scripts/install-hooks.sh
+```
+
+Installed hooks:
+
+- `pre-commit`: formats all staged Python files outside ignored/generated
+  directories with `uv run ruff format`, re-stages those files, and checks SPDX
+  license headers for supported source files (`.py`, `.ts`, `.tsx`, `.js`,
+  `.jsx`, `.mjs`, `.cjs`, and `.go`) under `src/`, `ui/src/`, `ui/tests/`,
+  `components/`, `db/migrations/`, `scripts/`, `development/`,
+  `installer/src/`, `installer/tests/`, and `installer/scripts/`.
+- `commit-msg`: rejects commits that do not include a valid DCO
+  `Signed-off-by: Name <email>` trailer. Use `git commit -s` or
+  `git commit --amend -s` to add the trailer automatically.
+
+Local hooks can be skipped with `git commit --no-verify`, so the organization DCO
+app remains the merge-time enforcement gate in CI.
 
 For UI work:
 
@@ -118,6 +143,8 @@ The local SuperPOD profile uses `config-manager.local` as the base hostname. Add
 127.0.0.1 workflow.config-manager.local
 127.0.0.1 config-store.config-manager.local
 127.0.0.1 temporal.config-manager.local
+127.0.0.1 mcp.config-manager.local
+127.0.0.1 svc-mcp.config-manager.local
 127.0.0.1 svc-workflow.config-manager.local
 127.0.0.1 svc-config-store.config-manager.local
 127.0.0.1 svc-render.config-manager.local
@@ -132,6 +159,7 @@ Local endpoints:
 - Nautobot: <https://nautobot.config-manager.local>
 - Workflow API: <https://workflow.config-manager.local>
 - Config Store API: <https://config-store.config-manager.local>
+- MCP endpoint: <https://mcp.config-manager.local/mcp>
 
 For the local SuperPOD profile, Nautobot login is `admin` / `admin`. For generated credentials:
 
@@ -311,6 +339,7 @@ The `svc-*` hostnames, such as `svc-workflow.<base-hostname>`, accept bearer tok
 - [Temporal](docs/temporal/index.mdx)
 - [Render](docs/render/index.mdx)
 - [Config Store](docs/config-store/index.mdx)
+- [Remote MCP](docs/overview/mcp.mdx)
 - [UI and API interfaces](docs/getting-started/interfaces.mdx)
 - [Nautobot](docs/nautobot/index.mdx)
 - [Device Authentication](docs/overview/device-authentication.mdx)
@@ -334,8 +363,9 @@ Developer Certificate of Origin sign-off process described there.
 1. Fork the repository.
 2. Create a feature branch.
 3. Make changes.
-4. Run tests and linting with `make test lint`.
-5. Submit a pull request using the repository PR template.
+4. Install local hooks with `./scripts/install-hooks.sh`.
+5. Run tests and linting with `make test lint`.
+6. Submit a pull request using the repository PR template.
 
 Please also follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 

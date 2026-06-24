@@ -19,7 +19,6 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from nv_config_manager.temporal.client.air import AirClient, Simulation
 from nv_config_manager.temporal.client.nautobot import NautobotClient
 from nv_config_manager.temporal.common.mixins.device import NetworkDeviceData, Platform
 from nv_config_manager.temporal.ngc.activities.diagnostics import get_available_commands
@@ -100,6 +99,13 @@ class Tenant(BaseModel):
 
 class Role(BaseModel):
     """Role data for dropdown population."""
+
+    id: str
+    name: str
+
+
+class Tag(BaseModel):
+    """Tag data for dropdown population."""
 
     id: str
     name: str
@@ -244,6 +250,66 @@ async def get_roles(
         roles = [{"id": r["id"], "name": r["name"]} for r in data["data"]["roles"]]
 
     return [Role(id=r["id"], name=r["name"]) for r in roles]
+
+
+@router.get("/namespace-tag")
+async def get_namespace_tags(
+    location: Annotated[
+        str | None, Query(description="Limit to namespace tags at this location")
+    ] = None,
+) -> list[Tag]:
+    """Return a list of tags used by Nautobot namespaces."""
+    client = NautobotClient()
+    query = """
+        query ($location: String) {
+            namespaces(location: $location) {
+                tags {
+                    name
+                }
+            }
+        }
+    """
+    variables = {"location": location}
+
+    try:
+        async with client:
+            data = await client.graphql_query(query, variables=variables)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to query Nautobot namespace tags.",
+        ) from exc
+
+    namespaces = data.get("data", {}).get("namespaces") if isinstance(data, dict) else None
+    if not isinstance(namespaces, list):
+        raise HTTPException(
+            status_code=500,
+            detail="Malformed Nautobot namespace tag response.",
+        )
+
+    tag_names: set[str] = set()
+    for namespace in namespaces:
+        if not isinstance(namespace, dict):
+            raise HTTPException(
+                status_code=500,
+                detail="Malformed Nautobot namespace tag response.",
+            )
+        tags = namespace.get("tags", [])
+        if not isinstance(tags, list):
+            raise HTTPException(
+                status_code=500,
+                detail="Malformed Nautobot namespace tag response.",
+            )
+        for tag in tags:
+            if not isinstance(tag, dict):
+                raise HTTPException(
+                    status_code=500,
+                    detail="Malformed Nautobot namespace tag response.",
+                )
+            tag_name = tag.get("name")
+            if isinstance(tag_name, str) and tag_name:
+                tag_names.add(tag_name)
+    return [Tag(id=name, name=name) for name in sorted(tag_names)]
 
 
 class Status(BaseModel):
@@ -392,16 +458,6 @@ async def get_diagnostics_commands(
                 seen[name] = description
 
     return [CommandEntry(name=name, description=desc) for name, desc in sorted(seen.items())]
-
-
-@router.get(
-    "/simulations",
-    summary="Get AIR Simulations",
-)
-async def get_simulations() -> list[Simulation]:
-    """Return a list of NVIDIA Config Manager-managed AIR simulations."""
-    air_client = AirClient()
-    return air_client.list_simulations()
 
 
 @router.get("/device/{device_id}/secrets")

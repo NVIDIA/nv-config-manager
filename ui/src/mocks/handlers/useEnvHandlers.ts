@@ -19,6 +19,7 @@ import { sanitizeUrl } from "@/lib/utils";
 import { mockApiURL as apiURL } from "@/config/mockApiUrl";
 import {
   DEVICE_TYPES_LIST_API_RESPONSE,
+  NAMESPACE_TAGS_LIST_API_RESPONSE,
   ROLES_LIST_API_RESPONSE,
   SITES_LIST_API_RESPONSE,
   STATUS_LIST_API_RESPONSE,
@@ -48,6 +49,9 @@ export const useEnvDataHandlers = [
   }),
   http.get(sanitizeUrl(`${apiURL}/v1/parameter/tenant`), async () => {
     return HttpResponse.json(TENANT_LIST_API_RESPONSE, { status: 200 });
+  }),
+  http.get(sanitizeUrl(`${apiURL}/v1/parameter/namespace-tag`), async () => {
+    return HttpResponse.json(NAMESPACE_TAGS_LIST_API_RESPONSE, { status: 200 });
   }),
   http.get(sanitizeUrl(`${apiURL}/v1/parameter/devicetypeid`), async () => {
     return HttpResponse.json(DEVICE_TYPES_LIST_API_RESPONSE, { status: 200 });

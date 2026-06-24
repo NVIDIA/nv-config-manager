@@ -17,67 +17,26 @@
  */
 
 import * as React from "react";
-import Link from "next/link";
 import { DataTable } from "@/components/data-table/data-table";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { Button } from "@/components/ui/button";
-import { workflowColumns } from "./columns";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { getWorkflowColumns } from "./columns";
 import { WorkflowTableProps } from "@/types/data-table.types";
-import { siteConfig } from "@/config/site";
 
 const WorkflowTable: React.FC<WorkflowTableProps> = ({
-  title,
-  workflowType,
+  title = "Workflows",
+  workflowMetadata,
 }) => {
-  const enableWorkflowFormCreation = siteConfig.workflows.find(
-    (workflow) =>
-      workflow.slug.includes(title.toLowerCase()) && workflow.enabled,
+  const workflowColumns = React.useMemo(
+    () => getWorkflowColumns(workflowMetadata),
+    [workflowMetadata]
   );
 
   return (
-    <Card className="mt-4 w-full" key={title}>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <div className="space-y-4">
-          <CardTitle className="mr-4">{title}</CardTitle>
-        </div>
-        {enableWorkflowFormCreation ? (
-          <Link
-            className="btn-primary"
-            href={`workflows/${title.toLowerCase()}/form`}
-          >
-            New Workflow
-          </Link>
-        ) : (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="cursor-not-allowed">
-                  <Button
-                    className="btn-primary pointer-events-none"
-                    disabled
-                    variant="default"
-                  >
-                    New Workflow
-                  </Button>
-                </div>
-              </TooltipTrigger>
-              <TooltipContent side="left">
-                <p>Form Coming Soon!</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
-      </CardHeader>
-      <CardContent>
-        <DataTable columns={workflowColumns} workflowType={workflowType} />
-      </CardContent>
-    </Card>
+    <div className="container py-6" key={title}>
+      <div className="mb-4 flex flex-row items-center justify-between">
+        <h1 className="mr-4 text-2xl font-semibold">{title}</h1>
+      </div>
+      <DataTable columns={workflowColumns} />
+    </div>
   );
 };
 

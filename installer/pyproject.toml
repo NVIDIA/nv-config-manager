@@ -7,6 +7,7 @@ readme = "README.md"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.11"
 dependencies = [
+    "nv-air-sdk==1.4.0",
     "click>=8.1.7",
     "kubernetes>=32.0.0",
     "pydantic>=2.10.2",
@@ -18,6 +19,7 @@ dependencies = [
 
 [project.scripts]
 nv-config-manager-installer = "nv_config_manager_installer.cli:main"
+nvcm-installer = "nv_config_manager_installer.cli:main"
 
 [build-system]
 requires = ["hatchling"]

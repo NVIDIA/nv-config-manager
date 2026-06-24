@@ -16,8 +16,9 @@
 
 from datetime import timedelta
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from temporalio import workflow
+from temporalio.exceptions import ApplicationError
 
 from nv_config_manager.temporal.common.decorators.workflow import run_nv_config_manager_workflow
 from nv_config_manager.temporal.common.mixins.metadata import WorkflowMetadataMixin
@@ -37,9 +38,12 @@ with workflow.unsafe.imports_passed_through():
         FetchPKeyAssignmentsOutput,
         InterfaceRef,
         ResolvedInterface,
+        ResolveGuidsToInterfacesInput,
+        ResolveGuidsToInterfacesOutput,
         SyncPKeyAssignmentsInput,
         SyncPKeyAssignmentsOutput,
         fetch_pkey_assignments,
+        resolve_guids_to_interfaces,
         sync_pkey_assignments,
     )
     from nv_config_manager.temporal.ngc.activities.ib_pkey import (
@@ -55,22 +59,66 @@ with workflow.unsafe.imports_passed_through():
     )
     from nv_config_manager.temporal.ngc.workflows._ib_pkey_helpers import (
         DEFAULT_ACTIVITY_RETRY_POLICY,
+        call_resolve_ib_context,
         resolve_members,
         validate_interfaces_xor_guids,
+        validate_pkey_format,
     )
 
 
+def _format_diff_lines(
+    *,
+    pkey: str,
+    ifaces_to_add: list[ResolvedInterface],
+    ifaces_to_remove: list[ResolvedInterface],
+    guids_unchanged: list[str],
+) -> str:
+    """Format a human-readable diff with device/interface/GUID per member."""
+    lines: list[str] = [f"**PKey {pkey} membership diff:**"]
+
+    lines.append(f"- Add {len(ifaces_to_add)} member(s):")
+    if ifaces_to_add:
+        for r in ifaces_to_add:
+            lines.append(f"    + Add PKey {pkey} to {r.device}/{r.interface} (GUID {r.guid})")
+    else:
+        lines.append("    (none)")
+
+    lines.append(f"- Remove {len(ifaces_to_remove)} member(s):")
+    if ifaces_to_remove:
+        for r in ifaces_to_remove:
+            lines.append(f"    - Remove PKey {pkey} from {r.device}/{r.interface} (GUID {r.guid})")
+    else:
+        lines.append("    (none)")
+
+    lines.append(f"- Unchanged: {len(guids_unchanged)} member(s)")
+    return "\n".join(lines)
+
+
+def _unresolved_guid_values(
+    requested_guids: list[str], resolved_interfaces: list[ResolvedInterface]
+) -> list[str]:
+    """Return requested GUIDs that are missing from a reverse-resolution result."""
+    resolved_guids = {resolved.guid.lower() for resolved in resolved_interfaces}
+    return [guid for guid in requested_guids if guid.lower() not in resolved_guids]
+
+
 class IBPKeyMemberUpdateInput(BaseModel):
-    """InfiniBand PKey Member Update Workflow Input."""
+    """InfiniBand PKey Member Update Workflow Input.
+
+    Site and Overlay are resolved server-side from ``host`` and ``pkey``.
+    """
 
     host: str
-    site: str | None = None
     pkey: str
-    overlay_id: str
     interfaces: list[InterfaceRef] = []
     guids: list[str] = []
     membership_type: str = "full"
     ip_over_ib: bool = True
+
+    @field_validator("pkey")
+    @classmethod
+    def _validate_pkey(cls, v: str) -> str:
+        return validate_pkey_format(v)
 
     @model_validator(mode="after")
     def _validate(self) -> "IBPKeyMemberUpdateInput":
@@ -82,6 +130,8 @@ class IBPKeyMemberUpdateOutput(BaseModel):
     """InfiniBand PKey Member Update Workflow Output."""
 
     pkey: str
+    overlay_id: str
+    overlay_name: str
     members_added: int
     members_removed: int
     members_unchanged: int
@@ -95,19 +145,26 @@ class IBPKeyMemberUpdateOutput(BaseModel):
 class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin):
     """Declarative reconciliation of IB PKey membership."""
 
+    workflow_name = "InfiniBand PKey Member Update"
     workflow_description = "Reconcile InfiniBand PKey membership to a desired interface list"
     workflow_input_class = IBPKeyMemberUpdateInput
     workflow_api_endpoint = "/ngc/ib_pkey_member_update"
     workflow_namespace = "ngc"
 
     def __init__(self) -> None:
-        """Initialize workflow with six stages."""
+        """Initialize workflow with seven stages."""
         StageMixin.__init__(self)
+        self.define_stage(
+            name="resolve_context",
+            description="Resolve site, overlay, and canonical pkey from Nautobot",
+            requires_approval=False,
+            depends_on=[],
+        )
         self.define_stage(
             name="resolve_desired",
             description="Resolve desired interfaces to IB GUIDs from Nautobot",
             requires_approval=False,
-            depends_on=[],
+            depends_on=["resolve_context"],
         )
         self.define_stage(
             name="query_current",
@@ -124,7 +181,7 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
         )
         self.define_stage(
             name="update_nautobot",
-            description="Sync OverlayAssignment records in Nautobot (SoT committed first)",
+            description="Sync OverlayAssignment records in Nautobot",
             requires_approval=False,
             depends_on=["validate_diff"],
         )
@@ -139,6 +196,48 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
             description="Verify final UFM GUID membership matches desired set",
             requires_approval=False,
             depends_on=["update_ufm"],
+        )
+
+    # ------------------------------------------------------------------
+    # Stage 0: Resolve site / overlay / canonical pkey from Nautobot
+    # ------------------------------------------------------------------
+
+    class ResolveContextStageInput(StageInput):
+        """Resolve Context Stage Input."""
+
+        host: str
+        pkey: str
+
+    class ResolveContextStageOutput(StageOutput):
+        """Resolve Context Stage Output."""
+
+        host: str
+        site: str
+        pkey: str
+        overlay_id: str
+        ufm_device_id: str
+        location_id: str
+        overlay_name: str
+
+    @stage_executor("resolve_context")
+    async def resolve_context(
+        self, stage_input: ResolveContextStageInput
+    ) -> ResolveContextStageOutput:
+        """Resolve site/overlay from Nautobot and canonicalize pkey."""
+        resolved = await call_resolve_ib_context(stage_input.host, stage_input.pkey)
+
+        return self.ResolveContextStageOutput(
+            host=stage_input.host,
+            site=resolved.location_name,
+            pkey=resolved.pkey,
+            overlay_id=resolved.overlay_id,
+            ufm_device_id=resolved.ufm_device_id,
+            location_id=resolved.location_id,
+            overlay_name=resolved.overlay_name,
+            display=(
+                f"Context: host={stage_input.host} site={resolved.location_name} "
+                f"pkey={resolved.pkey} overlay={resolved.overlay_name}"
+            ),
         )
 
     # ------------------------------------------------------------------
@@ -171,6 +270,7 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
     class QueryCurrentStageInput(StageInput):
         """Query Current Stage Input."""
 
+        pkey: str
         overlay_id: str
         resolved: list[ResolvedInterface]
 
@@ -182,6 +282,7 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
         guids_to_remove: list[str]
         guids_unchanged: list[str]
         ifaces_to_add: list[ResolvedInterface]
+        ifaces_to_remove: list[ResolvedInterface]
         ifaces_unchanged: list[ResolvedInterface]
 
     @stage_executor("query_current")
@@ -210,12 +311,28 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
         ifaces_to_add = [desired_by_id[i] for i in to_add_iface_ids]
         ifaces_unchanged = [desired_by_id[i] for i in unchanged_iface_ids]
 
-        lines = [
-            "**PKey membership diff:**",
-            f"- Add {len(guids_to_add)} member(s): {guids_to_add or 'none'}",
-            f"- Remove {len(guids_to_remove)} member(s): {guids_to_remove or 'none'}",
-            f"- Unchanged {len(guids_unchanged)} member(s)",
-        ]
+        ifaces_to_remove: list[ResolvedInterface] = []
+        if guids_to_remove:
+            remove_resolution: ResolveGuidsToInterfacesOutput = await workflow.execute_activity(
+                resolve_guids_to_interfaces,
+                ResolveGuidsToInterfacesInput(guids=guids_to_remove),
+                start_to_close_timeout=timedelta(minutes=2),
+                retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+            )
+            ifaces_to_remove = remove_resolution.resolved
+            unresolved_guids = _unresolved_guid_values(guids_to_remove, ifaces_to_remove)
+            if unresolved_guids:
+                raise ApplicationError(
+                    f"Unable to resolve removal GUID(s) to Nautobot interfaces: {unresolved_guids}",
+                    non_retryable=True,
+                )
+
+        display = _format_diff_lines(
+            pkey=stage_input.pkey,
+            ifaces_to_add=ifaces_to_add,
+            ifaces_to_remove=ifaces_to_remove,
+            guids_unchanged=guids_unchanged,
+        )
 
         return self.QueryCurrentStageOutput(
             current_assignments=result.assignments,
@@ -223,8 +340,9 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
             guids_to_remove=guids_to_remove,
             guids_unchanged=guids_unchanged,
             ifaces_to_add=ifaces_to_add,
+            ifaces_to_remove=ifaces_to_remove,
             ifaces_unchanged=ifaces_unchanged,
-            display="\n".join(lines),
+            display=display,
         )
 
     # ------------------------------------------------------------------
@@ -234,8 +352,9 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
     class ValidateDiffStageInput(StageInput):
         """Validate Diff Stage Input."""
 
-        guids_to_add: list[str]
-        guids_to_remove: list[str]
+        pkey: str
+        ifaces_to_add: list[ResolvedInterface]
+        ifaces_to_remove: list[ResolvedInterface]
         guids_unchanged: list[str]
 
     class ValidateDiffStageOutput(StageOutput):
@@ -248,25 +367,23 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
         """Gate on approval when the diff contains removals; auto-approve additions-only."""
         stage_name = "validate_diff"
 
-        if not stage_input.guids_to_remove:
-            # Additions-only or no-op — safe to auto-approve
+        if not stage_input.ifaces_to_remove:
             self.get_stage_by_name(stage_name).requires_approval = False
             return self.ValidateDiffStageOutput(
                 approved=True,
                 display=(
-                    f"Auto-approved: no members being removed "
-                    f"(+{len(stage_input.guids_to_add)} additions, "
+                    f"Auto-approved: no members being removed from PKey {stage_input.pkey} "
+                    f"(+{len(stage_input.ifaces_to_add)} additions, "
                     f"{len(stage_input.guids_unchanged)} unchanged)"
                 ),
             )
 
-        lines = [
-            "**Approval required — members will be removed:**",
-            f"- Remove {len(stage_input.guids_to_remove)} GUID(s): {stage_input.guids_to_remove}",
-            f"- Add {len(stage_input.guids_to_add)} GUID(s): {stage_input.guids_to_add or 'none'}",
-            f"- Unchanged: {len(stage_input.guids_unchanged)}",
-        ]
-        display = "\n".join(lines)
+        display = "Approval required.\n" + _format_diff_lines(
+            pkey=stage_input.pkey,
+            ifaces_to_add=stage_input.ifaces_to_add,
+            ifaces_to_remove=stage_input.ifaces_to_remove,
+            guids_unchanged=stage_input.guids_unchanged,
+        )
 
         output = self.ValidateDiffStageOutput(approved=False, display=display)
         self.set_stage_output(stage_name, output)
@@ -432,6 +549,13 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
         """Execute the IB PKey Member Update workflow."""
         self.set_input(workflow_input)
 
+        context = await self.resolve_context(
+            self.ResolveContextStageInput(
+                host=workflow_input.host,
+                pkey=workflow_input.pkey,
+            )
+        )
+
         resolve_output = await self.resolve_desired(
             self.ResolveDesiredStageInput(
                 interfaces=workflow_input.interfaces,
@@ -441,15 +565,17 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
 
         query_output = await self.query_current(
             self.QueryCurrentStageInput(
-                overlay_id=workflow_input.overlay_id,
+                pkey=context.pkey,
+                overlay_id=context.overlay_id,
                 resolved=resolve_output.resolved,
             )
         )
 
         validate_output = await self.validate_diff(
             self.ValidateDiffStageInput(
-                guids_to_add=query_output.guids_to_add,
-                guids_to_remove=query_output.guids_to_remove,
+                pkey=context.pkey,
+                ifaces_to_add=query_output.ifaces_to_add,
+                ifaces_to_remove=query_output.ifaces_to_remove,
                 guids_unchanged=query_output.guids_unchanged,
             )
         )
@@ -460,7 +586,9 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
             self.set_stage_state("verify_ufm", StateEnum.UNREACHABLE)
             await self.archive_results()
             return IBPKeyMemberUpdateOutput(
-                pkey=workflow_input.pkey,
+                pkey=context.pkey,
+                overlay_id=context.overlay_id,
+                overlay_name=context.overlay_name,
                 members_added=0,
                 members_removed=0,
                 members_unchanged=len(query_output.guids_unchanged),
@@ -472,7 +600,7 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
 
         nautobot_output = await self.update_nautobot(
             self.UpdateNautobotStageInput(
-                overlay_id=workflow_input.overlay_id,
+                overlay_id=context.overlay_id,
                 desired=resolve_output.resolved,
                 membership_type=workflow_input.membership_type,
             )
@@ -480,9 +608,9 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
 
         await self.update_ufm(
             self.UpdateUFMStageInput(
-                host=workflow_input.host,
-                site=workflow_input.site,
-                pkey=workflow_input.pkey,
+                host=context.host,
+                site=context.site,
+                pkey=context.pkey,
                 guids_to_remove=query_output.guids_to_remove,
                 guids_to_add=query_output.guids_to_add,
                 membership_type=workflow_input.membership_type,
@@ -493,9 +621,9 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
         desired_guids = [r.guid for r in resolve_output.resolved]
         verify_output = await self.verify_ufm(
             self.VerifyUFMStageInput(
-                host=workflow_input.host,
-                site=workflow_input.site,
-                pkey=workflow_input.pkey,
+                host=context.host,
+                site=context.site,
+                pkey=context.pkey,
                 expected_guids=desired_guids,
             )
         )
@@ -503,6 +631,8 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
         await self.archive_results()
         return IBPKeyMemberUpdateOutput(
             pkey=verify_output.pkey,
+            overlay_id=context.overlay_id,
+            overlay_name=context.overlay_name,
             members_added=len(nautobot_output.added),
             members_removed=len(nautobot_output.removed),
             members_unchanged=len(nautobot_output.unchanged),

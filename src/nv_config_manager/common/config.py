@@ -40,6 +40,7 @@ from requests.adapters import HTTPAdapter
 # =============================================================================
 from nv_config_manager.common.client import (
     ConfigStoreClient,
+    DHCPClient,
     NatsClient,
     NautobotClient,
     RedisClient,
@@ -381,6 +382,20 @@ def config_store_ui_url(config: ConfigParser | None = None) -> str:
     if config is None:
         config = load_config()
     return config["config_store.client"]["ui_url"]
+
+
+def dhcp_client(config: ConfigParser | None = None) -> DHCPClient:
+    """Create a DHCPClient for this environment.
+
+    Args:
+        config: ConfigParser instance (uses load_config() if None)
+
+    Returns:
+        Configured DHCPClient instance
+    """
+    if config is None:
+        config = load_config()
+    return DHCPClient.from_config(config)
 
 
 def nautobot_client(config: ConfigParser | None = None) -> NautobotClient:

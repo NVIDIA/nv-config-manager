@@ -30,6 +30,7 @@ from nautobot.dcim.models import (
 from nautobot.extras.models import (
     ConfigContext,
     ConfigContextSchema,
+    CustomField,
     Relationship,
     Role,
     Status,
@@ -49,9 +50,9 @@ class LoadBootstrapData(Job):
 
         name = "Load Bootstrap Data"
         description = (
-            "Load manufacturers, roles, tags, platforms, device types, tenants, location types, "
-            "namespaces, statuses, relationships, config context schemas, and config contexts "
-            "from YAML templates"
+            "Load manufacturers, roles, tags, custom fields, platforms, device types, tenants, "
+            "location types, namespaces, statuses, relationships, config context schemas, and "
+            "config contexts from YAML templates"
         )
         has_sensitive_variables = False
         approval_required = False
@@ -106,6 +107,12 @@ class LoadBootstrapData(Job):
                 self.logger.warning(f"Could not find content type: {ct_string}")
         return content_types
 
+    def add_content_types(self, obj, content_type_strings):
+        """Add content type memberships without removing existing memberships."""
+        content_types = self.get_content_types(content_type_strings)
+        if content_types:
+            obj.content_types.add(*content_types)
+
     def run(self):
         """Execute the job to load bootstrap data.
 
@@ -125,6 +132,7 @@ class LoadBootstrapData(Job):
         self.load_statuses()
         self.load_roles()
         self.load_tags()
+        self.load_custom_fields()
         self.load_platforms()
         self.load_device_types()
         self.load_relationships()
@@ -314,10 +322,10 @@ class LoadBootstrapData(Job):
                         },
                     )
 
-                    # Set content_types for both new and existing roles
+                    # Add content_types for both new and existing roles without
+                    # removing memberships created by other jobs.
                     if "content_types" in role_data:
-                        content_types = self.get_content_types(role_data["content_types"])
-                        role.content_types.set(content_types)
+                        self.add_content_types(role, role_data["content_types"])
                         role.validated_save()
 
                     if created:
@@ -380,10 +388,9 @@ class LoadBootstrapData(Job):
                         },
                     )
 
-                    # Set content_types for both new and existing tags
+                    # Add content_types without removing memberships created by other jobs.
                     if "content_types" in tag_data:
-                        content_types = self.get_content_types(tag_data["content_types"])
-                        tag.content_types.set(content_types)
+                        self.add_content_types(tag, tag_data["content_types"])
 
                     if created:
                         self.logger.success(
@@ -406,6 +413,56 @@ class LoadBootstrapData(Job):
         except Exception as e:
             self.logger.failure("Error reading tags file", extra={"grouping": "tags"})
             self.logger.debug(str(e))
+
+    def load_custom_fields(self):
+        """Load custom fields from YAML template."""
+        self.logger.info("Loading Custom Fields", extra={"grouping": "custom_fields"})
+
+        cf_file = self.data_path / "custom_fields.yaml"
+        if not cf_file.exists():
+            self.logger.failure(f"Custom fields file not found: {cf_file}")
+            return
+
+        try:
+            with open(cf_file) as f:
+                custom_fields = yaml.safe_load(f) or []
+        except yaml.YAMLError as exc:
+            self.logger.failure(f"Failed to parse custom fields file: {exc}")
+            return
+
+        for cf_data in custom_fields:
+            if not isinstance(cf_data, dict):
+                self.logger.failure(f"Custom field entry is not a dict, skipping: {cf_data!r}")
+                continue
+
+            key = cf_data.get("key")
+            if not key:
+                self.logger.failure(f"Custom field entry missing required 'key': {cf_data}")
+                continue
+            if not self.should_load_item(cf_data, f"custom field '{key}'"):
+                continue
+
+            try:
+                defaults = {
+                    "label": cf_data.get("label", key),
+                    "type": cf_data.get("type", "text"),
+                    "description": cf_data.get("description", ""),
+                }
+                # filter_logic is optional; only override Nautobot's default when set.
+                if "filter_logic" in cf_data:
+                    defaults["filter_logic"] = cf_data["filter_logic"]
+                cf, created = CustomField.objects.update_or_create(key=key, defaults=defaults)
+                # Add content_types without removing memberships created by other jobs.
+                if "content_types" in cf_data:
+                    self.add_content_types(cf, cf_data["content_types"])
+            except Exception as exc:
+                self.logger.failure(f"Error processing custom field '{key}': {exc}")
+                continue
+
+            self.logger.success(
+                f"{'Created' if created else 'Updated'} custom field: {key}",
+                extra={"grouping": "custom_fields", "object": cf},
+            )
 
     def load_platforms(self):
         """Load platforms from YAML template."""
@@ -585,10 +642,9 @@ class LoadBootstrapData(Job):
                         },
                     )
 
-                    # Set content_types for both new and existing location types
+                    # Add content_types without removing memberships created by other jobs.
                     if "content_types" in lt_data:
-                        content_types = self.get_content_types(lt_data["content_types"])
-                        lt.content_types.set(content_types)
+                        self.add_content_types(lt, lt_data["content_types"])
 
                     if created:
                         self.logger.success(
@@ -709,10 +765,9 @@ class LoadBootstrapData(Job):
                         },
                     )
 
-                    # Set content_types for both new and existing statuses
+                    # Add content_types without removing memberships created by other jobs.
                     if "content_types" in status_data:
-                        content_types = self.get_content_types(status_data["content_types"])
-                        status.content_types.set(content_types)
+                        self.add_content_types(status, status_data["content_types"])
 
                     if created:
                         self.logger.success(

@@ -1,5 +1,17 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 """Tests for nv_config_manager_installer.secrets -- secret generation and ESO config building."""
 
 from __future__ import annotations
@@ -49,10 +61,24 @@ class TestGenerateSecrets:
 
         assert "nautobot_token" in state
         assert len(state["nautobot_token"]) == 40
+        assert "nautobot_read_only_token" not in state
         assert "redis_password" in state
         assert "nats_password" in state
         assert "django_secret_key" in state
         assert "temporal_db_password" in state
+
+    def test_kubernetes_nautobot_read_only_token_passes_through(self):
+        config = NVConfigManagerInstallConfig(
+            secrets=SecretsConfig(
+                method=SecretsMethod.KUBERNETES,
+                k8s=KubernetesSecretsConfig(
+                    nautobot=K8sSecretGroup(values={"readOnlyToken": "ro-token"}),
+                ),
+            ),
+        )
+        state = generate_secrets(config)
+
+        assert state["nautobot_read_only_token"] == "ro-token"
 
     def test_kubernetes_nautobot_admin_password_override(self):
         config = NVConfigManagerInstallConfig(
@@ -221,7 +247,7 @@ class TestESOVaultConfig:
             assert "keys" in paths[group]
 
         # Optional groups disabled by default
-        for group in ("slack", "air", "jira", "cnpgBackup"):
+        for group in ("slack", "jira", "cnpgBackup"):
             assert group not in paths, f"{group} should be disabled by default"
 
     def test_custom_path_preserves_default_keys(self):

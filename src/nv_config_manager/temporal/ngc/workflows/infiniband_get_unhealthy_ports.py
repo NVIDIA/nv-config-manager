@@ -58,10 +58,12 @@ class InfinibandGetUnhealthyPortsWorkflow(WorkflowMetadataMixin, StageMixin):
     """Infiniband fabric health monitoring workflow for unhealthy port detection."""
 
     # Workflow metadata
+    workflow_name = "InfiniBand Get Unhealthy Ports"
     workflow_description = "Validate and report unhealthy ports in Infiniband network fabric"
     workflow_input_class = InfinibandGetUnhealthyPortsInput
     workflow_api_endpoint = "/ngc/infiniband_get_unhealthy_ports"
     workflow_namespace = "ngc"
+    workflow_mcp_enabled = True
 
     def __init__(self) -> None:
         """Initialize workflow."""

@@ -16,7 +16,7 @@
 
 from datetime import timedelta
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from temporalio import workflow
 
 from nv_config_manager.temporal.common.decorators.workflow import run_nv_config_manager_workflow
@@ -47,8 +47,10 @@ with workflow.unsafe.imports_passed_through():
     )
     from nv_config_manager.temporal.ngc.workflows._ib_pkey_helpers import (
         DEFAULT_ACTIVITY_RETRY_POLICY,
+        call_resolve_ib_context,
         resolve_members,
         validate_interfaces_xor_guids,
+        validate_pkey_format,
     )
 
 
@@ -56,15 +58,19 @@ class IBPKeyMemberDeleteInput(BaseModel):
     """InfiniBand PKey Member Delete Workflow Input.
 
     Provide either ``interfaces`` (resolved to GUIDs via Nautobot) or
-    ``guids`` directly, but not both.
+    ``guids`` directly, but not both. Site and Overlay are resolved
+    server-side from ``host`` and ``pkey``.
     """
 
     host: str
-    site: str | None = None
     pkey: str
-    overlay_id: str
     interfaces: list[InterfaceRef] = []
     guids: list[str] = []
+
+    @field_validator("pkey")
+    @classmethod
+    def _validate_pkey(cls, v: str) -> str:
+        return validate_pkey_format(v)
 
     @model_validator(mode="after")
     def _validate(self) -> "IBPKeyMemberDeleteInput":
@@ -76,6 +82,8 @@ class IBPKeyMemberDeleteOutput(BaseModel):
     """InfiniBand PKey Member Delete Workflow Output."""
 
     pkey: str
+    overlay_id: str
+    overlay_name: str
     members_removed: int
     verified: bool
     assignment_ids_removed: list[str]
@@ -86,19 +94,26 @@ class IBPKeyMemberDeleteOutput(BaseModel):
 class IBPKeyMemberDeleteWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin):
     """Remove device interface GUIDs from an existing IB PKey partition."""
 
+    workflow_name = "InfiniBand PKey Member Delete"
     workflow_description = "Remove device interfaces from an existing InfiniBand PKey partition"
     workflow_input_class = IBPKeyMemberDeleteInput
     workflow_api_endpoint = "/ngc/ib_pkey_member_delete"
     workflow_namespace = "ngc"
 
     def __init__(self) -> None:
-        """Initialize workflow with four stages."""
+        """Initialize workflow with five stages."""
         StageMixin.__init__(self)
+        self.define_stage(
+            name="resolve_context",
+            description="Resolve site, overlay, and canonical pkey from Nautobot",
+            requires_approval=False,
+            depends_on=[],
+        )
         self.define_stage(
             name="resolve_guids",
             description="Resolve IB GUIDs for interfaces from Nautobot",
             requires_approval=False,
-            depends_on=[],
+            depends_on=["resolve_context"],
         )
         self.define_stage(
             name="remove_members",
@@ -117,6 +132,48 @@ class IBPKeyMemberDeleteWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
             description="Delete OverlayAssignment records in Nautobot",
             requires_approval=False,
             depends_on=["verify_removed"],
+        )
+
+    # ------------------------------------------------------------------
+    # Stage 0: Resolve site / overlay / canonical pkey from Nautobot
+    # ------------------------------------------------------------------
+
+    class ResolveContextStageInput(StageInput):
+        """Resolve Context Stage Input."""
+
+        host: str
+        pkey: str
+
+    class ResolveContextStageOutput(StageOutput):
+        """Resolve Context Stage Output."""
+
+        host: str
+        site: str
+        pkey: str
+        overlay_id: str
+        ufm_device_id: str
+        location_id: str
+        overlay_name: str
+
+    @stage_executor("resolve_context")
+    async def resolve_context(
+        self, stage_input: ResolveContextStageInput
+    ) -> ResolveContextStageOutput:
+        """Resolve site/overlay from Nautobot and canonicalize pkey."""
+        resolved = await call_resolve_ib_context(stage_input.host, stage_input.pkey)
+
+        return self.ResolveContextStageOutput(
+            host=stage_input.host,
+            site=resolved.location_name,
+            pkey=resolved.pkey,
+            overlay_id=resolved.overlay_id,
+            ufm_device_id=resolved.ufm_device_id,
+            location_id=resolved.location_id,
+            overlay_name=resolved.overlay_name,
+            display=(
+                f"Context: host={stage_input.host} site={resolved.location_name} "
+                f"pkey={resolved.pkey} overlay={resolved.overlay_name}"
+            ),
         )
 
     # ------------------------------------------------------------------
@@ -267,6 +324,13 @@ class IBPKeyMemberDeleteWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
         """Execute the IB PKey Member Delete workflow."""
         self.set_input(workflow_input)
 
+        context = await self.resolve_context(
+            self.ResolveContextStageInput(
+                host=workflow_input.host,
+                pkey=workflow_input.pkey,
+            )
+        )
+
         resolve_output = await self.resolve_guids(
             self.ResolveGuidsStageInput(
                 interfaces=workflow_input.interfaces,
@@ -279,25 +343,25 @@ class IBPKeyMemberDeleteWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
 
         remove_output = await self.remove_members(
             self.RemoveMembersStageInput(
-                host=workflow_input.host,
-                site=workflow_input.site,
-                pkey=workflow_input.pkey,
+                host=context.host,
+                site=context.site,
+                pkey=context.pkey,
                 guids=guids,
             )
         )
 
         verify_output = await self.verify_removed(
             self.VerifyRemovedStageInput(
-                host=workflow_input.host,
-                site=workflow_input.site,
-                pkey=workflow_input.pkey,
+                host=context.host,
+                site=context.site,
+                pkey=context.pkey,
                 forbidden_guids=remove_output.guids_removed,
             )
         )
 
         assignments_output = await self.remove_assignments(
             self.RemoveAssignmentsStageInput(
-                overlay_id=workflow_input.overlay_id,
+                overlay_id=context.overlay_id,
                 interface_ids=interface_ids,
             )
         )
@@ -305,6 +369,8 @@ class IBPKeyMemberDeleteWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
         await self.archive_results()
         return IBPKeyMemberDeleteOutput(
             pkey=verify_output.pkey,
+            overlay_id=context.overlay_id,
+            overlay_name=context.overlay_name,
             members_removed=len(remove_output.guids_removed),
             verified=verify_output.verified,
             assignment_ids_removed=assignments_output.assignment_ids_removed,

@@ -60,6 +60,8 @@ navigation:
       path: ../getting-started/interfaces.mdx
     - page: Local Development Quick Start
       path: ../getting-started/local-development-quick-start.mdx
+    - page: DSX Air Simulation User Guide
+      path: ../user-guides/air-simulation/index.mdx
     - page: First Run Tour
       path: ../getting-started/first-run-tour.mdx
 
@@ -124,17 +126,30 @@ navigation:
       - page: Site Password Rotation
         path: ../user-guides/site-password-rotation/index.mdx
 
-    - section: VPC Lifecycle
+    - section: InfiniBand PKey Lifecycle
       collapsible: true
       collapsed-by-default: true
       contents:
-      - page: VPC Creation
+      - page: IB PKey Creation
+        path: ../user-guides/ib-pkey-creation/index.mdx
+      - page: IB PKey Member Add
+        path: ../user-guides/ib-pkey-member-add/index.mdx
+      - page: IB PKey Member Update
+        path: ../user-guides/ib-pkey-member-update/index.mdx
+      - page: IB PKey Member Delete
+        path: ../user-guides/ib-pkey-member-delete/index.mdx
+
+    - section: SpX Overlay Lifecycle
+      collapsible: true
+      collapsed-by-default: true
+      contents:
+      - page: SpX Overlay Creation
         path: ../user-guides/vpc-creation/index.mdx
-      - page: VPC Deletion
+      - page: SpX Overlay Deletion
         path: ../user-guides/vpc-deletion/index.mdx
-      - page: VPC Assignment
+      - page: SpX Overlay Assignment
         path: ../user-guides/vpc-assignment/index.mdx
-      - page: VPC Tenant Change
+      - page: SpX Overlay Tenant Change
         path: ../user-guides/vpc-tenant-change/index.mdx
 
   - section: Deployment
