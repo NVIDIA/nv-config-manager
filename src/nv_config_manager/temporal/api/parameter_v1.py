@@ -140,6 +140,7 @@ NV_CONFIG_MANAGER_DEVICES_ROLES_QUERY = """
     }
 """
 
+
 async def _get_managed_device_tenants() -> list[dict]:
     """Query managed device records and return unique tenants."""
     client = NautobotClient()
