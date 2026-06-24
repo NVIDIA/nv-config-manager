@@ -3133,6 +3133,16 @@
           },
           {
             "in": "query",
+            "name": "hide_completed",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Hide Completed",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
             "name": "limit",
             "required": false,
             "schema": {

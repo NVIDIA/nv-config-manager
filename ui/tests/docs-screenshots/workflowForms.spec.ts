@@ -817,6 +817,7 @@ function filterWorkflows(url: URL): DocWorkflow[] {
 
     if (!Number.isNaN(startTimeFilter) || !Number.isNaN(endTimeFilter)) {
       const workflowStartTime = Date.parse(workflow.start_time);
+      const workflowCloseTime = Date.parse(workflow.close_time ?? "");
 
       if (Number.isNaN(workflowStartTime)) {
         return false;
@@ -824,7 +825,10 @@ function filterWorkflows(url: URL): DocWorkflow[] {
       if (!Number.isNaN(startTimeFilter) && workflowStartTime < startTimeFilter) {
         return false;
       }
-      if (!Number.isNaN(endTimeFilter) && workflowStartTime > endTimeFilter) {
+      if (!Number.isNaN(endTimeFilter) && Number.isNaN(workflowCloseTime)) {
+        return false;
+      }
+      if (!Number.isNaN(endTimeFilter) && workflowCloseTime > endTimeFilter) {
         return false;
       }
     }
