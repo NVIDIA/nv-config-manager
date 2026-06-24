@@ -56,6 +56,13 @@ def _lookup(id_):
     return {"results": [{"id": id_}]}
 
 
+def _request_json(mocked, method, url):
+    for (request_method, request_url), calls in mocked.requests.items():
+        if request_method.lower() == method.lower() and str(request_url) == url:
+            return calls[0].kwargs["json"]
+    raise AssertionError(f"No {method.upper()} request found for {url}")
+
+
 def _namespace_graphql_response(*rds, namespace_id=NS_ID, namespace_name="spectrumx_rno1"):
     return {
         "data": {
@@ -184,6 +191,13 @@ async def test_provision_vrf_creates_overlay_vrf_vxlan():
                 tenant="Public Demo",
             )
         )
+
+        assert _request_json(m, "post", f"{NAUTOBOT}/api/ipam/vrfs/") == {
+            "name": "SpXTenant60004",
+            "rd": "*:60004",
+            "namespace": NS_ID,
+            "tenant": TENANT_ID,
+        }
 
 
 @pytest.mark.asyncio

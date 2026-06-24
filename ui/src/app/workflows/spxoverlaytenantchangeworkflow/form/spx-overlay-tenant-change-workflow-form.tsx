@@ -35,7 +35,6 @@ const SpXOverlayTenantChangeFormSchema = z.object({
   overlay_id: z.string().trim().min(1, { message: "Overlay ID is required" }),
   device: z.string().trim().min(1, { message: "Device is required" }),
   port_names: z.string().trim().min(1, { message: "Port names are required" }),
-  namespace: z.string().trim().optional(),
 });
 
 type SpXOverlayTenantChangeFormData = z.infer<typeof SpXOverlayTenantChangeFormSchema>;
@@ -48,7 +47,6 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
   const queryOverlayId = searchParams?.get("overlay_id") ?? "";
   const queryDevice = searchParams?.get("device-id") ?? "";
   const queryPortNames = searchParams?.get("port_names") ?? "";
-  const queryNamespace = searchParams?.get("namespace") ?? "spectrumx";
   const {
     data: { siteData: sites },
     isLoading: { siteIsLoading },
@@ -61,7 +59,6 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
       overlay_id: queryOverlayId,
       device: queryDevice,
       port_names: queryPortNames,
-      namespace: queryNamespace,
     },
   });
 
@@ -121,7 +118,6 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
       overlay_id: data.overlay_id,
       device_id: data.device,
       port_names: portNamesArray,
-      namespace_tag: data.namespace,
     };
     await startWorkflow(
       "/v1/workflow/ngc/spx_overlay_tenant_change",
@@ -140,7 +136,7 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
     <div className="flex items-center justify-center p-6">
       <Card className="h-full border-2 shadow-md justify-center">
         <CardHeader>
-          <CardTitle>SpX Overlay Tenant Change Workflow Form</CardTitle>
+          <CardTitle>New SpX Overlay Tenant Change Workflow</CardTitle>
         </CardHeader>
         <CardContent>
           <Form {...form}>
@@ -180,13 +176,6 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
                 placeholder="swp1, swp2, swp3"
                 isSubmitting={isSubmitting}
                 disabled={!site || !form.watch("device") || isSubmitting}
-              />
-              <WorkflowFormField
-                type="input"
-                control={form.control}
-                name="namespace"
-                label="Namespace (optional)"
-                isSubmitting={isSubmitting}
               />
               <Button
                 type="submit"

@@ -21,7 +21,7 @@ import { IBPKeyMembershipForm } from "@/components/forms/workflow/ib-pkey-member
 const IBPKeyMemberDeleteWorkflowFormPage = () => {
   return (
     <IBPKeyMembershipForm
-      title="Remove PKey Members"
+      title="New InfiniBand PKey Member Delete Workflow"
       endpoint="/v1/workflow/ngc/ib_pkey_member_delete"
       submitLabel="Remove Members"
     />

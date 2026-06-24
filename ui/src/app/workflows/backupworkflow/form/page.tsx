@@ -48,11 +48,10 @@ const BackupWorkflowForm = () => {
 
   return (
     <DeviceWorkflowForm
-      title="New Config Backup Workflow"
+      title="New Configuration Backup Workflow"
       onSubmit={onSubmit}
     />
   );
 };
 
 export default BackupWorkflowForm;
-

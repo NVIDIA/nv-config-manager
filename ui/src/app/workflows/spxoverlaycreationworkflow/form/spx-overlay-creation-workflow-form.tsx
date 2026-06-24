@@ -135,7 +135,7 @@ export const SpXOverlayCreationWorkflowForm = () => {
     <div className="flex items-center justify-center p-6">
       <Card className="h-full border-2 shadow-md justify-center">
         <CardHeader>
-          <CardTitle>SpX Overlay Creation Workflow Form</CardTitle>
+          <CardTitle>New SpX Overlay Creation Workflow</CardTitle>
         </CardHeader>
         <CardContent>
           <Form {...form}>

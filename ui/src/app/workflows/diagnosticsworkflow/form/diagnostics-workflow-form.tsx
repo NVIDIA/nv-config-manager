@@ -185,7 +185,7 @@ export const DiagnosticsWorkflowForm = () => {
     <div className="flex items-center justify-center p-6">
       <Card className="w-full max-w-4xl border-2 shadow-md">
         <CardHeader>
-          <CardTitle>Diagnostics Workflow</CardTitle>
+          <CardTitle>New Device Diagnostics Workflow</CardTitle>
         </CardHeader>
         <CardContent>
           <Form {...form}>

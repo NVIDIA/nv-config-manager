@@ -21,7 +21,7 @@ import { IBPKeyMembershipForm } from "@/components/forms/workflow/ib-pkey-member
 const IBPKeyMemberUpdateWorkflowFormPage = () => {
   return (
     <IBPKeyMembershipForm
-      title="Replace PKey Membership"
+      title="New InfiniBand PKey Member Update Workflow"
       endpoint="/v1/workflow/ngc/ib_pkey_member_update"
       submitLabel="Replace Members"
       includeMembershipType

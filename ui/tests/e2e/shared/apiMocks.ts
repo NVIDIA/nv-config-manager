@@ -1110,8 +1110,8 @@ export async function mockWorkflowTypesEndpoint(page: Page) {
     "InfinibandCableValidationWorkflow",
     "InfinibandMlnxOSUpgradeWorkflow",
     "ReprovisionWorkflow",
-    "SwitchOsUpgradeWorkflow",
-    "CumulusHardwareValidationWorkflow",
+    "SwitchOSUpgradeWorkflow",
+    "ValidateHardwareWorkflow",
     "DiagnosticsWorkflow",
     "IBPortGuidDiscoveryWorkflow",
   ];
@@ -1147,8 +1147,8 @@ export async function mockWorkflowMetadataEndpoint(page: Page) {
     "InfinibandCableValidationWorkflow",
     "InfinibandMlnxOSUpgradeWorkflow",
     "ReprovisionWorkflow",
-    "SwitchOsUpgradeWorkflow",
-    "CumulusHardwareValidationWorkflow",
+    "SwitchOSUpgradeWorkflow",
+    "ValidateHardwareWorkflow",
     "DiagnosticsWorkflow",
     "IBPortGuidDiscoveryWorkflow",
   ];
@@ -1171,8 +1171,8 @@ export async function mockWorkflowMetadataEndpoint(page: Page) {
     InfinibandCableValidationWorkflow: "InfiniBand Cable Validation",
     InfinibandMlnxOSUpgradeWorkflow: "InfiniBand MLNX-OS Upgrade",
     ReprovisionWorkflow: "Reprovision",
-    SwitchOsUpgradeWorkflow: "Switch OS Upgrade",
-    CumulusHardwareValidationWorkflow: "Cumulus Hardware Validation",
+    SwitchOSUpgradeWorkflow: "Switch OS Upgrade",
+    ValidateHardwareWorkflow: "Cumulus Hardware Validation",
     DiagnosticsWorkflow: "Device Diagnostics",
     IBPortGuidDiscoveryWorkflow: "InfiniBand Port GUID Discovery",
   };
@@ -1198,8 +1198,8 @@ export async function mockWorkflowMetadataEndpoint(page: Page) {
     InfinibandCableValidationWorkflow: "/ngc/infiniband_cable_validation",
     InfinibandMlnxOSUpgradeWorkflow: "/ngc/infiniband_mlnx_os_upgrade",
     ReprovisionWorkflow: "/ngc/reprovision",
-    SwitchOsUpgradeWorkflow: "/ngc/switch_os_upgrade",
-    CumulusHardwareValidationWorkflow: "/ngc/cumulus_hardware_validation",
+    SwitchOSUpgradeWorkflow: "/ngc/switch_os_upgrade",
+    ValidateHardwareWorkflow: "/ngc/cumulus_hardware_validation",
     DiagnosticsWorkflow: "/ngc/diagnostics",
     IBPortGuidDiscoveryWorkflow: "/ngc/ib_port_guid_discovery",
   };
@@ -1402,7 +1402,7 @@ export async function mockHealthCheckEndpoint(page: Page) {
 const CONFIG_STORE_DEVICES = [
   {
     uuid: "device-uuid-1",
-    name: "pdx01-spine-001",
+    name: "spine-001",
     site: "PDX01",
     latest_update: new Date().toISOString(),
     latest_author: "admin",
@@ -1411,7 +1411,7 @@ const CONFIG_STORE_DEVICES = [
   },
   {
     uuid: "device-uuid-2",
-    name: "pdx01-leaf-001",
+    name: "leaf-001",
     site: "PDX01",
     latest_update: new Date(Date.now() - 3600000).toISOString(),
     latest_author: "automation",
@@ -1420,7 +1420,7 @@ const CONFIG_STORE_DEVICES = [
   },
   {
     uuid: "device-uuid-3",
-    name: "rno1-core-001",
+    name: "core-001",
     site: "RNO1",
     latest_update: new Date(Date.now() - 86400000).toISOString(),
     latest_author: "admin",
@@ -1429,7 +1429,7 @@ const CONFIG_STORE_DEVICES = [
   },
   {
     uuid: "device-uuid-4",
-    name: "pdx01-decomm-001",
+    name: "decomm-001",
     site: "PDX01",
     latest_update: new Date(Date.now() - 604800000).toISOString(),
     latest_author: "admin",
@@ -1452,11 +1452,7 @@ export async function mockConfigStoreSearchEndpoint(page: Page) {
     
     if (query) {
       const lowerQuery = query.toLowerCase();
-      results = results.filter(d => 
-        d.name.toLowerCase().includes(lowerQuery) ||
-        d.site.toLowerCase().includes(lowerQuery) ||
-        d.uuid.toLowerCase().includes(lowerQuery)
-      );
+      results = results.filter(d => d.name.toLowerCase().includes(lowerQuery));
     }
 
     await delay(100);
@@ -1505,13 +1501,13 @@ export async function mockConfigStoreDeviceConfigsEndpoint(page: Page) {
         filename: "running-config.txt",
         file_type: "intended",
         version: 3,
-        content: "! Sample running config\nhostname pdx01-spine-001\n",
+        content: "! Sample running config\nhostname spine-001\n",
         content_hash: "abc123",
         author: "admin",
         commit_message: "Updated hostname",
         created_at: new Date().toISOString(),
         device: {
-          name: "pdx01-spine-001",
+          name: "spine-001",
           site: "PDX01",
           platform: "Cumulus Linux",
           role: "spine",
@@ -1560,13 +1556,13 @@ export async function mockConfigStoreConfigFileEndpoint(page: Page) {
       filename: "running-config.txt",
       file_type: "intended",
       version: 3,
-      content: "! Sample running config\nhostname pdx01-spine-001\ninterface eth0\n  ip address 10.0.0.1/24\n",
+      content: "! Sample running config\nhostname spine-001\ninterface eth0\n  ip address 10.0.0.1/24\n",
       content_hash: "abc123",
       author: "admin",
       commit_message: "Updated hostname",
       created_at: new Date().toISOString(),
       device: {
-        name: "pdx01-spine-001",
+        name: "spine-001",
         site: "PDX01",
         platform: "Cumulus Linux",
         role: "spine",
