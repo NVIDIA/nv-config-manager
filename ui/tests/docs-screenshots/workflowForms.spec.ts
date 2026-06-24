@@ -771,7 +771,10 @@ function getWorkflowListResponse(url: URL): {
   };
 }
 
-function filterWorkflows(url: URL): DocWorkflow[] {
+function filterWorkflows(
+  url: URL,
+  workflows: DocWorkflow[] = DOC_WORKFLOWS
+): DocWorkflow[] {
   const searchAttributeFilters = [
     ["device_id", "DeviceID"],
     ["device_name", "DeviceName"],
@@ -789,7 +792,7 @@ function filterWorkflows(url: URL): DocWorkflow[] {
   const startTimeFilter = Date.parse(url.searchParams.get("start_time") ?? "");
   const endTimeFilter = Date.parse(url.searchParams.get("end_time") ?? "");
 
-  return DOC_WORKFLOWS.filter((workflow) => {
+  return workflows.filter((workflow) => {
     const displayStatus = workflow.failed_stage
       ? "FAILED"
       : workflow.pending_approval
@@ -815,20 +818,18 @@ function filterWorkflows(url: URL): DocWorkflow[] {
       return false;
     }
 
-    if (!Number.isNaN(startTimeFilter) || !Number.isNaN(endTimeFilter)) {
+    if (!Number.isNaN(startTimeFilter)) {
       const workflowStartTime = Date.parse(workflow.start_time);
+
+      if (Number.isNaN(workflowStartTime) || workflowStartTime < startTimeFilter) {
+        return false;
+      }
+    }
+
+    if (!Number.isNaN(endTimeFilter)) {
       const workflowCloseTime = Date.parse(workflow.close_time ?? "");
 
-      if (Number.isNaN(workflowStartTime)) {
-        return false;
-      }
-      if (!Number.isNaN(startTimeFilter) && workflowStartTime < startTimeFilter) {
-        return false;
-      }
-      if (!Number.isNaN(endTimeFilter) && Number.isNaN(workflowCloseTime)) {
-        return false;
-      }
-      if (!Number.isNaN(endTimeFilter) && workflowCloseTime > endTimeFilter) {
+      if (Number.isNaN(workflowCloseTime) || workflowCloseTime > endTimeFilter) {
         return false;
       }
     }
@@ -849,6 +850,57 @@ function filterWorkflows(url: URL): DocWorkflow[] {
 function getFirstSearchAttribute(workflow: DocWorkflow, key: string): string {
   return String(workflow.search_attributes[key]?.[0] ?? "");
 }
+
+test.describe("workflow docs mock filtering", () => {
+  const baseFixture = {
+    deviceId: AIR_TAN_LEAF_01_ID,
+    deviceName: "tan-leaf-01",
+    devicePlatform: "Cumulus Linux",
+    deviceRole: "TAN-HLEAF",
+    pendingApproval: false,
+    site: AIR_SITE,
+    status: "COMPLETED",
+    user: "demo",
+    workflowType: "BackupWorkflow",
+  };
+
+  test("matches end-time-only filters by close time without requiring valid start time", () => {
+    const closedBeforeEnd = createDocWorkflow({
+      ...baseFixture,
+      id: "closed-before-end",
+      startTime: "not-a-date",
+      closeTime: "2026-06-08T15:51:00Z",
+    });
+    const unfinished = createDocWorkflow({
+      ...baseFixture,
+      id: "unfinished",
+      startTime: "not-a-date",
+      closeTime: null,
+    });
+    const closedAfterEnd = createDocWorkflow({
+      ...baseFixture,
+      id: "closed-after-end",
+      startTime: "not-a-date",
+      closeTime: "2026-06-08T15:53:00Z",
+    });
+
+    const endTimeOnlyUrl = new URL(
+      "https://docs.test/v1/workflow?end_time=2026-06-08T15:52:00Z"
+    );
+    expect(
+      filterWorkflows(endTimeOnlyUrl, [
+        closedBeforeEnd,
+        unfinished,
+        closedAfterEnd,
+      ]).map((workflow) => workflow.id)
+    ).toEqual(["closed-before-end"]);
+
+    const startAndEndTimeUrl = new URL(
+      "https://docs.test/v1/workflow?start_time=2026-06-08T15:00:00Z&end_time=2026-06-08T15:52:00Z"
+    );
+    expect(filterWorkflows(startAndEndTimeUrl, [closedBeforeEnd])).toEqual([]);
+  });
+});
 
 function filterDevices(url: URL): Device[] {
   const site = url.searchParams.get("site") || AIR_SITE;
