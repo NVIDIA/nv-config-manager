@@ -178,6 +178,10 @@ const DOC_TENANTS: ParameterOption[] = [
   { id: "TenantB", name: "TenantB" },
 ];
 
+const DOC_NAMESPACE_TAGS: ParameterOption[] = [
+  { id: "spectrumx", name: "spectrumx" },
+];
+
 const DOC_DEVICES_BY_SITE: Record<string, Device[]> = {
   [AIR_SITE]: [
     {
@@ -526,7 +530,7 @@ const WORKFLOW_SCREENSHOTS: WorkflowScreenshot[] = [
       namespace: "spectrumx",
       rd_max: "65010",
       rd_min: "65000",
-      site: PDX_SITE,
+      site: AIR_SITE,
       tenant: "TenantB",
     },
     title: "New SpX Overlay Creation Workflow",
@@ -537,7 +541,7 @@ const WORKFLOW_SCREENSHOTS: WorkflowScreenshot[] = [
     query: {
       overlay_id: DEMO_VPC_ID,
       namespace: "spectrumx",
-      site: PDX_SITE,
+      site: AIR_SITE,
     },
     title: "New SpX Overlay Deletion Workflow",
   },
@@ -545,11 +549,11 @@ const WORKFLOW_SCREENSHOTS: WorkflowScreenshot[] = [
     fileName: "spxoverlaytenantchangeworkflow-form.png",
     path: "/workflows/spxoverlaytenantchangeworkflow/form",
     query: {
-      "device-id": PDX_CUMULUS_ID,
+      "device-id": AIR_TAN_LEAF_01_ID,
       overlay_id: DEMO_VPC_ID,
       namespace: "spectrumx",
       port_names: "swp1, swp2",
-      site: PDX_SITE,
+      site: AIR_SITE,
     },
     title: "New SpX Overlay Tenant Change Workflow",
   },
@@ -691,6 +695,10 @@ async function setupDocsMocks(page: Page): Promise<void> {
 
   await page.route(/.*\/v1\/parameter\/tenant/, async (route) => {
     await fulfillJson(route, DOC_TENANTS);
+  });
+
+  await page.route(/.*\/v1\/parameter\/namespace-tag/, async (route) => {
+    await fulfillJson(route, DOC_NAMESPACE_TAGS);
   });
 
   await page.route(/^.*\/v1\/parameter\/device(\?.*)?$/, async (route) => {
