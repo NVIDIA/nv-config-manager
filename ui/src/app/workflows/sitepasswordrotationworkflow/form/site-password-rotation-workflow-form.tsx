@@ -79,7 +79,7 @@ export const SitePasswordRotationWorkflowForm = () => {
 
   // Build filter parameters for device API
   const filterParams = React.useMemo(() => {
-    const params: string[][] = [];
+    const params: string[][] = [["managed_only", "true"]];
     if (location) params.push(["site", location]);
     if (roles?.length) {
       roles.forEach(role => params.push(["role", role]));

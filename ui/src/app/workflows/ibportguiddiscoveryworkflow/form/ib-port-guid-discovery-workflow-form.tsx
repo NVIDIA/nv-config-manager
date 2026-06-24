@@ -34,7 +34,7 @@ import {
 import { useToast } from "@/components/ui/use-toast";
 import { Checkbox } from "@/components/ui/checkbox";
 import { WorkflowFormField } from "@/components/forms/formfield";
-import { useEnvData, useDevices, useUfmDevices } from "@/hooks";
+import { useEnvData, useDevices } from "@/hooks";
 import { startWorkflow } from "@/lib/utils";
 import { IBPortGuidDiscoveryWorkflowInput } from "@/types/data-table.types";
 
@@ -66,16 +66,28 @@ export const IBPortGuidDiscoveryWorkflowForm = () => {
 
   const site = form.watch("site");
 
-  const filterParams = site ? [["site", site]] : [];
+  const switchFilterParams = site
+    ? [
+        ["site", site],
+        ["managed_only", "true"],
+      ]
+    : [];
   const { devices, isLoading: devicesLoading } = useDevices({
     site: site || "",
-    filterParams,
+    filterParams: switchFilterParams,
   });
 
-  // UFM appliances are unmanaged and carry a non-switch platform, so they come
-  // from the dedicated UFM device query rather than the generic switch list.
-  const { devices: ufmDevices, isLoading: ufmDevicesLoading } = useUfmDevices({
+  // UFM appliances are identified by role, not platform, so query by role=UFM
+  // instead of the managed-switch list.
+  const ufmFilterParams = site
+    ? [
+        ["site", site],
+        ["role", "UFM"],
+      ]
+    : [];
+  const { devices: ufmDevices, isLoading: ufmDevicesLoading } = useDevices({
     site: site || "",
+    filterParams: ufmFilterParams,
   });
 
   // Clear device selections when site changes, since the device list is

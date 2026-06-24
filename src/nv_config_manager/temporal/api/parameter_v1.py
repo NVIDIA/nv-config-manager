@@ -140,6 +140,16 @@ NV_CONFIG_MANAGER_DEVICES_ROLES_QUERY = """
     }
 """
 
+NV_CONFIG_MANAGER_DEVICE_IDS_QUERY = """
+    query ($limit: Int!, $offset: Int!) {
+        config_manager_devices(limit: $limit, offset: $offset) {
+            device {
+                id
+            }
+        }
+    }
+"""
+
 
 async def _get_managed_device_tenants() -> list[dict]:
     """Query managed device records and return unique tenants."""
@@ -201,6 +211,36 @@ async def _get_managed_device_roles() -> list[dict]:
             offset += page_size
 
     return list(seen.values())
+
+
+async def _get_managed_device_ids() -> set[str]:
+    """Return the set of device IDs that are NVIDIA Config Manager-managed."""
+    client = NautobotClient()
+    ids: set[str] = set()
+    page_size = 1000
+    offset = 0
+
+    async with client:
+        while True:
+            data = await client.graphql_query(
+                NV_CONFIG_MANAGER_DEVICE_IDS_QUERY,
+                variables={"limit": page_size, "offset": offset},
+            )
+            managed_devices = data.get("data", {}).get("config_manager_devices", [])
+
+            if not managed_devices:
+                break
+
+            for entry in managed_devices:
+                device_id = (entry.get("device") or {}).get("id")
+                if device_id:
+                    ids.add(device_id)
+
+            if len(managed_devices) < page_size:
+                break
+            offset += page_size
+
+    return ids
 
 
 @router.get("/tenant")
@@ -356,12 +396,12 @@ async def get_devices(  # pylint: disable=R0913,R0914
     device_type_id: Annotated[list[str] | None, Query()] = None,
     manufacturer: Annotated[list[str] | None, Query()] = None,
     platform: Annotated[list[str] | None, Query()] = None,
+    managed_only: Annotated[
+        bool, Query(description="Limit to NVIDIA Config Manager-managed devices")
+    ] = False,
 ) -> list[Device]:
     """Return a list of filtered devices."""
     client = NautobotClient()
-
-    if not platform:
-        platform = ["Arista EOS", "Cumulus Linux", "MLNX-OS", "NV-OS"]
 
     query = """
             query (
@@ -405,62 +445,23 @@ async def get_devices(  # pylint: disable=R0913,R0914
         variables["device_type_id"] = device_type_id
     if manufacturer:
         variables["manufacturer"] = manufacturer
-    variables["platform"] = platform
+    if platform:
+        variables["platform"] = platform
 
-    if not variables:
+    if not variables and not managed_only:
         raise HTTPException(status_code=400, detail="Must apply at least one filter.")
-    async with client:
-        data = await client.graphql_query(query, variables)
-    if "errors" in data:
-        raise HTTPException(status_code=400, detail=data["errors"][0]["message"])
-    return [
-        Device(
-            id=device["id"],
-            name=device["name"],
-            platform=NetworkDeviceData._slugify((device.get("platform") or {}).get("name") or "")
-            or None,
-        )
-        for device in data["data"]["devices"]
-        if device["name"]
-    ]
-
-
-UFM_DEVICE_ROLE = "UFM"
-
-
-@router.get("/ufm-device")
-async def get_ufm_devices(
-    site: Annotated[list[str] | None, Query()] = None,
-) -> list[Device]:
-    """Return UFM appliances for forms that take a UFM as input."""
-
-    client = NautobotClient()
-
-    query = """
-            query ($site: [String], $role: [String]) {
-                devices(
-                    location: $site,
-                    role: $role,
-                    has_primary_ip: true
-                ) {
-                    id
-                    name
-                    platform {
-                        name
-                    }
-                }
-            }
-        """
-
-    variables: dict[str, list[str]] = {"role": [UFM_DEVICE_ROLE]}
-    if site:
-        variables["site"] = site
 
     try:
         async with client:
             data = await client.graphql_query(query, variables)
     except ApplicationError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+
+    devices = [device for device in data["data"]["devices"] if device["name"]]
+    if managed_only:
+        managed_ids = await _get_managed_device_ids()
+        devices = [device for device in devices if device["id"] in managed_ids]
+
     return [
         Device(
             id=device["id"],
@@ -468,8 +469,7 @@ async def get_ufm_devices(
             platform=NetworkDeviceData._slugify((device.get("platform") or {}).get("name") or "")
             or None,
         )
-        for device in data["data"]["devices"]
-        if device["name"]
+        for device in devices
     ]
 
 

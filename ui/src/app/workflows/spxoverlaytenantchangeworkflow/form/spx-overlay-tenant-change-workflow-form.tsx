@@ -63,7 +63,12 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
   });
 
   const site = form.watch("site");
-  const filterParams: [string, string][] = site ? [["site", site]] : [];
+  const filterParams: [string, string][] = site
+    ? [
+        ["site", site],
+        ["managed_only", "true"],
+      ]
+    : [];
   const {
     devices: deviceData,
     error: deviceError,

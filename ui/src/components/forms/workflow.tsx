@@ -174,7 +174,13 @@ export const DeviceWorkflowForm = ({
   const statusFilters = selectedStatuses && selectedStatuses.length > 0
     ? selectedStatuses.map(status => ["status", status] as [string, string])
     : [];
-  const filterParams = [["site", site], ...tenantFilters, ...statusFilters, ...deviceFilterParams];
+  const filterParams = [
+    ["site", site],
+    ["managed_only", "true"],
+    ...tenantFilters,
+    ...statusFilters,
+    ...deviceFilterParams,
+  ];
   
   const {
     devices: deviceData,

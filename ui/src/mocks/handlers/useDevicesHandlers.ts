@@ -30,6 +30,7 @@ export const useDevicesHandlers = [
       // Process all filter parameters
       url.searchParams.forEach((value, key) => {
         if (key === "site") return; // Already handled above
+        if (key === "managed_only") return; // Membership flag, not a device field
 
         // Filter devices based on the parameter
         devices = devices.filter((device) => {
@@ -51,20 +52,6 @@ export const useDevicesHandlers = [
           return device[key as keyof typeof device] === value;
         });
       });
-
-      await delay(500);
-
-      return HttpResponse.json(devices, { status: 200 });
-    }
-  ),
-  http.get(
-    sanitizeUrl(`${apiURL}/v1/parameter/ufm-device`),
-    async ({ request }) => {
-      const url = new URL(request.url);
-      const site = url.searchParams.get("site") || "PDX01";
-      const devices = (
-        DEVICES_LIST[site as keyof typeof DEVICES_LIST] || []
-      ).filter((device) => "role" in device && device.role === "UFM");
 
       await delay(500);
 

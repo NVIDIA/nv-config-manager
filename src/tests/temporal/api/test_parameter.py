@@ -156,40 +156,81 @@ UFM_DEVICES = {
     }
 }
 
+# A managed switch and an unmanaged switch at the same site
+DEVICES_MIXED = {
+    "data": {
+        "devices": [
+            {
+                "id": "aa6ef75b-00fe-45e6-8adb-62609509cb4f",
+                "name": "managed-switch",
+                "platform": {"name": "Cumulus Linux"},
+            },
+            {
+                "id": "unmanaged-uuid-2",
+                "name": "unmanaged-switch",
+                "platform": {"name": "Cumulus Linux"},
+            },
+        ]
+    }
+}
 
-def test_ufm_device():
-    """The dedicated UFM endpoint filters by role=UFM + primary IP, with no platform allow-list."""
+# config_manager_devices id-only response used by the managed_only intersection
+MANAGED_DEVICE_IDS = {
+    "data": {
+        "config_manager_devices": [
+            {"device": {"id": "aa6ef75b-00fe-45e6-8adb-62609509cb4f"}},
+        ]
+    }
+}
+
+
+def test_device_no_platform_allow_list():
+    """Without an explicit platform, no default platform allow-list is injected."""
+    with aioresponses() as m:
+        m.post("https://nautobot.example.com/api/graphql/", payload=DEVICES)
+
+        client = TestClient(app)
+        rsp = client.get("/v1/parameter/device?site=SITEA")
+        assert rsp.status_code == 200
+
+        sent = next(iter(m.requests.values()))[0]
+        variables = sent.kwargs["json"]["variables"]
+        assert "platform" not in variables
+
+
+def test_device_role_without_platform_filter():
+    """A role-scoped query is trusted as-is, with no platform allow-list injected."""
     with aioresponses() as m:
         m.post("https://nautobot.example.com/api/graphql/", payload=UFM_DEVICES)
 
         client = TestClient(app)
-        rsp = client.get("/v1/parameter/ufm-device?site=SITEA")
+        rsp = client.get("/v1/parameter/device?role=UFM")
         assert rsp.json() == [{"id": "ufm-uuid-1", "name": "ufm-test-device", "platform": "ufm"}]
 
         sent = next(iter(m.requests.values()))[0]
         variables = sent.kwargs["json"]["variables"]
         assert variables["role"] == ["UFM"]
-        assert variables["site"] == ["SITEA"]
         assert "platform" not in variables
 
 
-def test_ufm_device_without_site():
-    """Site is optional; role=UFM is always applied and no platform allow-list leaks in."""
+def test_device_managed_only():
+    """managed_only=true intersects the filtered devices with config_manager_devices."""
     with aioresponses() as m:
-        m.post("https://nautobot.example.com/api/graphql/", payload=UFM_DEVICES)
+        m.post("https://nautobot.example.com/api/graphql/", payload=DEVICES_MIXED)
+        m.post("https://nautobot.example.com/api/graphql/", payload=MANAGED_DEVICE_IDS)
 
         client = TestClient(app)
-        rsp = client.get("/v1/parameter/ufm-device")
-        assert rsp.status_code == 200
+        rsp = client.get("/v1/parameter/device?site=SITEA&managed_only=true")
+        assert rsp.json() == [
+            {
+                "id": "aa6ef75b-00fe-45e6-8adb-62609509cb4f",
+                "name": "managed-switch",
+                "platform": "cumulus-linux",
+            }
+        ]
 
-        sent = next(iter(m.requests.values()))[0]
-        variables = sent.kwargs["json"]["variables"]
-        assert variables["role"] == ["UFM"]
-        assert "site" not in variables
-        assert "platform" not in variables
 
-
-def test_ufm_device_graphql_error_returns_400():
+def test_device_graphql_error_returns_400():
     """A GraphQL error is translated to HTTP 400 instead of an unhandled 500."""
     with aioresponses() as m:
         m.post(
@@ -198,7 +239,7 @@ def test_ufm_device_graphql_error_returns_400():
         )
 
         client = TestClient(app)
-        rsp = client.get("/v1/parameter/ufm-device?site=SITEA")
+        rsp = client.get("/v1/parameter/device?site=SITEA")
         assert rsp.status_code == 400
 
 
