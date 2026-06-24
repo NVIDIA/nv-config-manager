@@ -25,7 +25,7 @@ test.describe("Site Password Rotation Form", () => {
 
   test("renders form with correct title", async ({ page }) => {
     await expect(
-      page.getByRole("heading", { name: "Site Password Rotation Workflow" })
+      page.getByRole("heading", { name: "New Site Password Rotation Workflow" })
     ).toBeVisible();
   });
 
@@ -39,7 +39,7 @@ test.describe("Site Password Rotation Form", () => {
     await page.getByRole("button", { name: /Select a Location/i }).click();
     await page.getByRole("dialog").getByText(SITES_LIST.rno1).click();
     await page
-      .getByRole("heading", { name: "Site Password Rotation Workflow" })
+      .getByRole("heading", { name: "New Site Password Rotation Workflow" })
       .click();
 
     // Wait for devices to load and secret field to become available
@@ -54,7 +54,7 @@ test.describe("Site Password Rotation Form", () => {
     await page.getByRole("button", { name: /Select a Location/i }).click();
     await page.getByRole("dialog").getByText(SITES_LIST.rno1).click();
     await page
-      .getByRole("heading", { name: "Site Password Rotation Workflow" })
+      .getByRole("heading", { name: "New Site Password Rotation Workflow" })
       .click();
 
     // Should show device count feedback

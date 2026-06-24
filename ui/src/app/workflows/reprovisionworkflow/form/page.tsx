@@ -43,7 +43,7 @@ const ReprovisionWorkflowForm = () => {
 
   return (
     <DeviceWorkflowForm
-      title="Reprovision Workflow"
+      title="New Reprovision Workflow"
       onSubmit={onSubmit}
       deviceFilterParams={[["platform", "Cumulus Linux"], ["platform", "NV-OS"]]}
     />
@@ -51,4 +51,3 @@ const ReprovisionWorkflowForm = () => {
 };
 
 export default ReprovisionWorkflowForm;
-

@@ -27,14 +27,14 @@ import { test, TEST_TIMEOUT } from "./shared/utils";
 const SAMPLE_MAC_ADDRESS = "00:11:22:33:44:55";
 const SAMPLE_INTERFACE = "Ethernet1/1";
 
-test.describe("Port LLDP Info Workflow Form", () => {
+test.describe("New Port LLDP Info Workflow", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/workflows/portlldpinfoworkflow/form");
   });
 
   test("renders form with correct title", async ({ page }) => {
     const title = await page.getByRole("heading", {
-      name: "Port LLDP Info Workflow Form",
+      name: "New Port LLDP Info Workflow",
     });
     await expect(title).toBeVisible();
   });
@@ -59,7 +59,7 @@ test.describe("Port LLDP Info Workflow Form", () => {
     await page.getByRole("dialog").getByText(SITES_LIST.pdx01).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "Port LLDP Info Workflow Form" })
+      .getByRole("heading", { name: "New Port LLDP Info Workflow" })
       .click();
 
     await page.getByRole("button", { name: "Submit" }).click();
@@ -78,7 +78,7 @@ test.describe("Port LLDP Info Workflow Form", () => {
     await page.getByRole("dialog").getByText(SITES_LIST.pdx01).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "Port LLDP Info Workflow Form" })
+      .getByRole("heading", { name: "New Port LLDP Info Workflow" })
       .click();
 
     await page.getByRole("button", { name: "Device" }).click();
@@ -88,7 +88,7 @@ test.describe("Port LLDP Info Workflow Form", () => {
       .click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "Port LLDP Info Workflow Form" })
+      .getByRole("heading", { name: "New Port LLDP Info Workflow" })
       .click();
 
     await page.getByRole("button", { name: "Submit" }).click();
@@ -128,7 +128,7 @@ test.describe("Port LLDP Info Workflow Form", () => {
     await page.getByRole("dialog").getByText(SITES_LIST.pdx01).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "Port LLDP Info Workflow Form" })
+      .getByRole("heading", { name: "New Port LLDP Info Workflow" })
       .click();
 
     // Verify MAC address field is disabled
@@ -141,7 +141,7 @@ test.describe("Port LLDP Info Workflow Form", () => {
     await page.getByRole("dialog").getByText(SITES_LIST.pdx01).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "Port LLDP Info Workflow Form" })
+      .getByRole("heading", { name: "New Port LLDP Info Workflow" })
       .click();
 
     await page.getByRole("button", { name: "Device" }).click();
@@ -151,7 +151,7 @@ test.describe("Port LLDP Info Workflow Form", () => {
       .click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "Port LLDP Info Workflow Form" })
+      .getByRole("heading", { name: "New Port LLDP Info Workflow" })
       .click();
 
     await page.getByLabel("Interface").fill(SAMPLE_INTERFACE);
@@ -183,7 +183,7 @@ test.describe("Port LLDP Info Workflow Form", () => {
     await page.getByRole("dialog").getByText(SITES_LIST.pdx01).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "Port LLDP Info Workflow Form" })
+      .getByRole("heading", { name: "New Port LLDP Info Workflow" })
       .click();
 
     // Verify MAC address field is empty and disabled
@@ -202,7 +202,7 @@ test.describe("Port LLDP Info Workflow Form", () => {
     await page.getByRole("dialog").getByText(SITES_LIST.pdx01).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "Port LLDP Info Workflow Form" })
+      .getByRole("heading", { name: "New Port LLDP Info Workflow" })
       .click();
 
     await page.getByRole("button", { name: "Device" }).click();
@@ -212,7 +212,7 @@ test.describe("Port LLDP Info Workflow Form", () => {
       .click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "Port LLDP Info Workflow Form" })
+      .getByRole("heading", { name: "New Port LLDP Info Workflow" })
       .click();
 
     await page.getByLabel("Interface").fill(SAMPLE_INTERFACE);
@@ -387,7 +387,7 @@ test.describe("Port LLDP Info Workflow Form", () => {
     await page.getByRole("dialog").getByText(SITES_LIST.pdx01).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "Port LLDP Info Workflow Form" })
+      .getByRole("heading", { name: "New Port LLDP Info Workflow" })
       .click();
 
     await page.getByRole("button", { name: "Device" }).click();
@@ -397,7 +397,7 @@ test.describe("Port LLDP Info Workflow Form", () => {
       .click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "Port LLDP Info Workflow Form" })
+      .getByRole("heading", { name: "New Port LLDP Info Workflow" })
       .click();
 
     await page.getByLabel("Interface").fill(SAMPLE_INTERFACE);
@@ -434,7 +434,7 @@ test.describe("Port LLDP Info Workflow Form", () => {
     await page.getByRole("dialog").getByText(SITES_LIST.pdx01).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "Port LLDP Info Workflow Form" })
+      .getByRole("heading", { name: "New Port LLDP Info Workflow" })
       .click();
 
     await page.getByRole("button", { name: "Device" }).click();
@@ -444,7 +444,7 @@ test.describe("Port LLDP Info Workflow Form", () => {
       .click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "Port LLDP Info Workflow Form" })
+      .getByRole("heading", { name: "New Port LLDP Info Workflow" })
       .click();
 
     await page.getByLabel("Interface").fill(SAMPLE_INTERFACE);
@@ -517,7 +517,7 @@ test.describe("Port LLDP Info Workflow Form", () => {
     await page.getByRole("dialog").getByText(FORBIDDEN_SITE_ID).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "Port LLDP Info Workflow" })
+      .getByRole("heading", { name: "New Port LLDP Info Workflow" })
       .click();
 
     await page.getByRole("button", { name: "Device" }).click();
@@ -527,7 +527,7 @@ test.describe("Port LLDP Info Workflow Form", () => {
       .click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "Port LLDP Info Workflow" })
+      .getByRole("heading", { name: "New Port LLDP Info Workflow" })
       .click();
     await page.getByLabel("Interface").fill(SAMPLE_INTERFACE);
 
@@ -726,7 +726,7 @@ test.describe("Port LLDP Info Workflow Form", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Port LLDP Info Workflow Form",
+        name: "New Port LLDP Info Workflow",
       })
       .click();
 
@@ -735,7 +735,7 @@ test.describe("Port LLDP Info Workflow Form", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Port LLDP Info Workflow Form",
+        name: "New Port LLDP Info Workflow",
       })
       .click();
 

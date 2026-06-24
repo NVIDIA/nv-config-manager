@@ -110,7 +110,7 @@ export const IBPortGuidDiscoveryWorkflowForm = () => {
     <div className="flex items-center justify-center p-6">
       <Card className="w-full max-w-4xl border-2 shadow-md">
         <CardHeader>
-          <CardTitle>IB Port GUID Discovery</CardTitle>
+          <CardTitle>New InfiniBand Port GUID Discovery Workflow</CardTitle>
         </CardHeader>
         <CardContent>
           <Form {...form}>

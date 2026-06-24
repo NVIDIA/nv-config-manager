@@ -25,7 +25,7 @@ test.describe("Device Password Rotation Form", () => {
 
   test("renders form with correct title", async ({ page }) => {
     await expect(
-      page.getByRole("heading", { name: "Device Password Rotation Workflow" })
+      page.getByRole("heading", { name: "New Device Password Rotation Workflow" })
     ).toBeVisible();
   });
 
@@ -39,7 +39,7 @@ test.describe("Device Password Rotation Form", () => {
     await page.getByRole("button", { name: "Site" }).click();
     await page.getByRole("dialog").getByText(SITES_LIST.rno1).click();
     await page
-      .getByRole("heading", { name: "Device Password Rotation Workflow" })
+      .getByRole("heading", { name: "New Device Password Rotation Workflow" })
       .click();
 
     await page.getByRole("button", { name: "Device" }).click();
@@ -48,14 +48,14 @@ test.describe("Device Password Rotation Form", () => {
       .getByText(DEVICES_LIST.RNO1[0].name)
       .click();
     await page
-      .getByRole("heading", { name: "Device Password Rotation Workflow" })
+      .getByRole("heading", { name: "New Device Password Rotation Workflow" })
       .click();
 
     // Select secret (unique to password rotation workflow)
     await page.getByRole("button", { name: /Secret/i }).click();
     await page.getByRole("dialog").getByText("admin", { exact: true }).click();
     await page
-      .getByRole("heading", { name: "Device Password Rotation Workflow" })
+      .getByRole("heading", { name: "New Device Password Rotation Workflow" })
       .click();
 
     await page.getByRole("button", { name: "Submit" }).click();

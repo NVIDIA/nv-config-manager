@@ -27,14 +27,14 @@ import { runWorkflowFormTests } from "./shared/workflowFormTests";
 // Run the standard workflow form tests with a device filter for Cumulus Linux devices
 runWorkflowFormTests({
   formPath: "/workflows/reprovisionworkflow/form",
-  formTitle: "Reprovision Workflow",
+  formTitle: "New Reprovision Workflow",
   deviceFilter: (devices) =>
     devices.find((d) => d.platform === "Cumulus Linux") || devices[0],
   defaultPlatform: "Cumulus Linux",
 });
 
 // Add additional tests specific to the reprovision workflow
-test.describe("Reprovision Workflow Form - Additional Tests", () => {
+test.describe("New Reprovision Workflow Form - Additional Tests", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/workflows/reprovisionworkflow/form");
   });
@@ -46,7 +46,7 @@ test.describe("Reprovision Workflow Form - Additional Tests", () => {
     await page.getByRole("button", { name: "Site" }).click();
     await page.getByRole("dialog").getByText(SITES_LIST.pdx01).click();
     // Click outside to close any dropdown that might be open
-    await page.getByRole("heading", { name: "Reprovision Workflow" }).click();
+    await page.getByRole("heading", { name: "New Reprovision Workflow" }).click();
 
     // Open the device dropdown
     await page.getByRole("button", { name: "Device" }).click();
@@ -70,7 +70,7 @@ test.describe("Reprovision Workflow Form - Additional Tests", () => {
     }
 
     // Close the dropdown
-    await page.getByRole("heading", { name: "Reprovision Workflow" }).click();
+    await page.getByRole("heading", { name: "New Reprovision Workflow" }).click();
   });
 
   test("submits correct data to the API", async ({ page }) => {
@@ -90,12 +90,12 @@ test.describe("Reprovision Workflow Form - Additional Tests", () => {
     await page.getByRole("button", { name: "Site" }).click();
     await page.getByRole("dialog").getByText(site).click();
     // Click outside to close any dropdown that might be open
-    await page.getByRole("heading", { name: "Reprovision Workflow" }).click();
+    await page.getByRole("heading", { name: "New Reprovision Workflow" }).click();
 
     await page.getByRole("button", { name: "Device" }).click();
     await page.getByRole("dialog").getByText(cumulusDevice.name).click();
     // Click outside to close any dropdown that might be open
-    await page.getByRole("heading", { name: "Reprovision Workflow" }).click();
+    await page.getByRole("heading", { name: "New Reprovision Workflow" }).click();
 
     await page.getByRole("button", { name: "Submit" }).click();
 
@@ -153,13 +153,13 @@ test.describe("Reprovision Workflow Form - Additional Tests", () => {
       .click();
     await page.getByRole("dialog").getByText(newSite).click();
     // Click outside to close any dropdown that might be open
-    await page.getByRole("heading", { name: "Reprovision Workflow" }).click();
+    await page.getByRole("heading", { name: "New Reprovision Workflow" }).click();
 
     // Select a new device from the new site
     await page.getByRole("button", { name: "Select a Device" }).click();
     await page.getByRole("dialog").getByText(newDevice.name).click();
     // Click outside to close any dropdown that might be open
-    await page.getByRole("heading", { name: "Reprovision Workflow" }).click();
+    await page.getByRole("heading", { name: "New Reprovision Workflow" }).click();
 
     // Verify the form is updated with the new values
     await expect(
@@ -252,7 +252,7 @@ test.describe("Reprovision Workflow Form - Additional Tests", () => {
     await page.getByRole("button", { name: "Site" }).click();
     await page.getByRole("dialog").getByText(FORBIDDEN_SITE_ID).click();
     // Click outside to close any dropdown that might be open
-    await page.getByRole("heading", { name: "Reprovision Workflow" }).click();
+    await page.getByRole("heading", { name: "New Reprovision Workflow" }).click();
 
     await page.getByRole("button", { name: "Device" }).click();
     await page
@@ -260,7 +260,7 @@ test.describe("Reprovision Workflow Form - Additional Tests", () => {
       .getByText(forbiddenCumulusDevice?.name || "")
       .click();
     // Click outside to close any dropdown that might be open
-    await page.getByRole("heading", { name: "Reprovision Workflow" }).click();
+    await page.getByRole("heading", { name: "New Reprovision Workflow" }).click();
 
     await page.getByRole("button", { name: "Submit" }).click();
 
@@ -288,12 +288,12 @@ test.describe("Reprovision Workflow Form - Additional Tests", () => {
     await page.getByRole("button", { name: "Site" }).click();
     await page.getByRole("dialog").getByText(site).click();
     // Click outside to close any dropdown that might be open
-    await page.getByRole("heading", { name: "Reprovision Workflow" }).click();
+    await page.getByRole("heading", { name: "New Reprovision Workflow" }).click();
 
     await page.getByRole("button", { name: "Device" }).click();
     await page.getByRole("dialog").getByText(cumulusDevice.name).click();
     // Click outside to close any dropdown that might be open
-    await page.getByRole("heading", { name: "Reprovision Workflow" }).click();
+    await page.getByRole("heading", { name: "New Reprovision Workflow" }).click();
 
     await page.getByRole("button", { name: "Submit" }).click();
 

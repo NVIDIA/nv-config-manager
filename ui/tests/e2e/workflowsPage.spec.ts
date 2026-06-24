@@ -101,11 +101,13 @@ test.describe("Workflows Page", () => {
 
     await page.getByRole("button", { name: "New workflow" }).click();
     await expect(
-      page.getByRole("link", { name: "Config Deploy" })
+      page.getByRole("link", { name: "Configuration Deploy" })
     ).toBeVisible();
-    await expect(page.getByRole("link", { name: "Multi-Deploy" })).toHaveCount(0);
+    await expect(
+      page.getByRole("link", { name: "Multi-Configuration Deploy" })
+    ).toHaveCount(0);
 
-    await page.getByText("Multi-Deploy").hover();
+    await page.getByText("Multi-Configuration Deploy").hover();
     await expect(
       page.getByRole("tooltip", {
         name: "Required execute roles: nvcm-admin",
@@ -139,9 +141,9 @@ test.describe("Workflows Page", () => {
 
     await page.getByRole("button", { name: "New workflow" }).click();
     await expect(
-      page.getByRole("link", { name: "Config Deploy" })
+      page.getByRole("link", { name: "Configuration Deploy" })
     ).toHaveCount(0);
-    await page.getByText("Multi-Deploy").hover();
+    await page.getByText("Multi-Configuration Deploy").hover();
     await expect(
       page.getByRole("tooltip", { name: "Unauthorized" }).first()
     ).toBeVisible();

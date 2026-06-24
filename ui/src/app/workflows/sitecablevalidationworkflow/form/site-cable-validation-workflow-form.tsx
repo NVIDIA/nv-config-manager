@@ -141,7 +141,7 @@ export const SiteCableValidationWorkflowForm = () => {
     <div className="flex items-center justify-center p-6">
       <Card className="h-full border-2 shadow-md justify-center">
         <CardHeader>
-          <CardTitle>New Site Cable Validation Workflow Form</CardTitle>
+          <CardTitle>New Site Cable Validation Workflow</CardTitle>
         </CardHeader>
         <CardContent>
           <Form {...form}>

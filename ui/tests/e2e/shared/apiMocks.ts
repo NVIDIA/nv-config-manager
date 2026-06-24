@@ -1110,8 +1110,8 @@ export async function mockWorkflowTypesEndpoint(page: Page) {
     "InfinibandCableValidationWorkflow",
     "InfinibandMlnxOSUpgradeWorkflow",
     "ReprovisionWorkflow",
-    "SwitchOsUpgradeWorkflow",
-    "CumulusHardwareValidationWorkflow",
+    "SwitchOSUpgradeWorkflow",
+    "ValidateHardwareWorkflow",
     "DiagnosticsWorkflow",
     "IBPortGuidDiscoveryWorkflow",
   ];
@@ -1147,8 +1147,8 @@ export async function mockWorkflowMetadataEndpoint(page: Page) {
     "InfinibandCableValidationWorkflow",
     "InfinibandMlnxOSUpgradeWorkflow",
     "ReprovisionWorkflow",
-    "SwitchOsUpgradeWorkflow",
-    "CumulusHardwareValidationWorkflow",
+    "SwitchOSUpgradeWorkflow",
+    "ValidateHardwareWorkflow",
     "DiagnosticsWorkflow",
     "IBPortGuidDiscoveryWorkflow",
   ];
@@ -1171,8 +1171,8 @@ export async function mockWorkflowMetadataEndpoint(page: Page) {
     InfinibandCableValidationWorkflow: "InfiniBand Cable Validation",
     InfinibandMlnxOSUpgradeWorkflow: "InfiniBand MLNX-OS Upgrade",
     ReprovisionWorkflow: "Reprovision",
-    SwitchOsUpgradeWorkflow: "Switch OS Upgrade",
-    CumulusHardwareValidationWorkflow: "Cumulus Hardware Validation",
+    SwitchOSUpgradeWorkflow: "Switch OS Upgrade",
+    ValidateHardwareWorkflow: "Cumulus Hardware Validation",
     DiagnosticsWorkflow: "Device Diagnostics",
     IBPortGuidDiscoveryWorkflow: "InfiniBand Port GUID Discovery",
   };
@@ -1198,8 +1198,8 @@ export async function mockWorkflowMetadataEndpoint(page: Page) {
     InfinibandCableValidationWorkflow: "/ngc/infiniband_cable_validation",
     InfinibandMlnxOSUpgradeWorkflow: "/ngc/infiniband_mlnx_os_upgrade",
     ReprovisionWorkflow: "/ngc/reprovision",
-    SwitchOsUpgradeWorkflow: "/ngc/switch_os_upgrade",
-    CumulusHardwareValidationWorkflow: "/ngc/cumulus_hardware_validation",
+    SwitchOSUpgradeWorkflow: "/ngc/switch_os_upgrade",
+    ValidateHardwareWorkflow: "/ngc/cumulus_hardware_validation",
     DiagnosticsWorkflow: "/ngc/diagnostics",
     IBPortGuidDiscoveryWorkflow: "/ngc/ib_port_guid_discovery",
   };

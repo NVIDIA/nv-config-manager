@@ -17,7 +17,7 @@
 import { expect } from "@playwright/test";
 import { test, TEST_TIMEOUT, WORKFLOW_DETAILS_TIMEOUT } from "./shared/utils";
 
-const FORM_TITLE = "Add PKey Members";
+const FORM_TITLE = "New InfiniBand PKey Member Add Workflow";
 const FORM_PATH = "/workflows/ibpkeymemberaddworkflow/form";
 const ENDPOINT = "/v1/workflow/ngc/ib_pkey_member_add";
 

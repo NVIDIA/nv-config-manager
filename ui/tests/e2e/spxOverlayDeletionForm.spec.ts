@@ -25,14 +25,14 @@ const VPC_DATA = {
   site: SITES_LIST.pdx01,
 };
 
-test.describe("SpX Overlay Deletion Workflow Form", () => {
+test.describe("New SpX Overlay Deletion Workflow", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/workflows/spxoverlaydeletionworkflow/form");
   });
 
   test("renders form with correct title", async ({ page }) => {
     const title = await page.getByRole("heading", {
-      name: "SpX Overlay Deletion Workflow Form",
+      name: "New SpX Overlay Deletion Workflow",
     });
     await expect(title).toBeVisible({ timeout: TEST_TIMEOUT });
   });
@@ -74,7 +74,7 @@ test.describe("SpX Overlay Deletion Workflow Form", () => {
 });
 
 // Tests that handle their own navigation with URL parameters
-test.describe("SpX Overlay Deletion Workflow Form - URL Parameters", () => {
+test.describe("New SpX Overlay Deletion Workflow - URL Parameters", () => {
   test("handles URL parameters correctly and submits with those values", async ({
     page,
   }) => {
@@ -141,7 +141,7 @@ test.describe("SpX Overlay Deletion Workflow Form - URL Parameters", () => {
     await page.getByRole("dialog").getByText(SITES_LIST.rno1).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "SpX Overlay Deletion Workflow Form" })
+      .getByRole("heading", { name: "New SpX Overlay Deletion Workflow" })
       .click();
 
     // Change the VPC ID
@@ -177,7 +177,7 @@ test.describe("SpX Overlay Deletion Workflow Form - URL Parameters", () => {
 });
 
 // Tests that use beforeEach navigation
-test.describe("SpX Overlay Deletion Workflow Form - Standard Tests", () => {
+test.describe("New SpX Overlay Deletion Workflow - Standard Tests", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/workflows/spxoverlaydeletionworkflow/form");
   });
@@ -193,7 +193,7 @@ test.describe("SpX Overlay Deletion Workflow Form - Standard Tests", () => {
     await page.getByRole("dialog").getByText(SITES_LIST.pdx01).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "SpX Overlay Deletion Workflow Form" })
+      .getByRole("heading", { name: "New SpX Overlay Deletion Workflow" })
       .click();
 
     await page.getByLabel("Overlay ID").fill("test-overlay-submission");
@@ -224,7 +224,7 @@ test.describe("SpX Overlay Deletion Workflow Form - Standard Tests", () => {
     await page.getByRole("dialog").getByText(SITES_LIST.pdx01).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "SpX Overlay Deletion Workflow Form" })
+      .getByRole("heading", { name: "New SpX Overlay Deletion Workflow" })
       .click();
 
     await page.getByLabel("Overlay ID").fill("test-overlay-submission");
@@ -269,7 +269,7 @@ test.describe("SpX Overlay Deletion Workflow Form - Standard Tests", () => {
 });
 
 // Test that needs to be in URL Parameters group
-test.describe("SpX Overlay Deletion Workflow Form - URL Parameters 2", () => {
+test.describe("New SpX Overlay Deletion Workflow - URL Parameters 2", () => {
   test("submits form directly from URL parameters without changes", async ({
     page,
   }) => {

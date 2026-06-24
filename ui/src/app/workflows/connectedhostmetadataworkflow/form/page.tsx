@@ -43,11 +43,10 @@ const ConnectedHostMetadataWorkflowForm = () => {
 
   return (
     <DeviceWorkflowForm
-      title="Connected Host Metadata Workflow"
+      title="New Connected Host Metadata Workflow"
       onSubmit={onSubmit}
     />
   );
 };
 
 export default ConnectedHostMetadataWorkflowForm;
-

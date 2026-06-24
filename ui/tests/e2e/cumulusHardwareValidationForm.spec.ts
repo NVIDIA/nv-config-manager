@@ -31,7 +31,7 @@ test.describe("Cumulus Hardware Validation Form", () => {
 
   test("renders form with correct title", async ({ page }) => {
     const title = await page.getByRole("heading", {
-      name: "Cumulus Hardware Validation Workflow Form",
+      name: "New Cumulus Hardware Validation Workflow",
     });
     await expect(title).toBeVisible({ timeout: TEST_TIMEOUT });
   });
@@ -148,7 +148,7 @@ test.describe("Cumulus Hardware Validation Form", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Cumulus Hardware Validation Workflow Form",
+        name: "New Cumulus Hardware Validation Workflow",
       })
       .click();
 
@@ -158,7 +158,7 @@ test.describe("Cumulus Hardware Validation Form", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Cumulus Hardware Validation Workflow Form",
+        name: "New Cumulus Hardware Validation Workflow",
       })
       .click();
 
@@ -195,7 +195,7 @@ test.describe("Cumulus Hardware Validation Form", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Cumulus Hardware Validation Workflow Form",
+        name: "New Cumulus Hardware Validation Workflow",
       })
       .click();
 
@@ -214,7 +214,7 @@ test.describe("Cumulus Hardware Validation Form", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Cumulus Hardware Validation Workflow Form",
+        name: "New Cumulus Hardware Validation Workflow",
       })
       .click();
 
@@ -242,7 +242,7 @@ test.describe("Cumulus Hardware Validation Form", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Cumulus Hardware Validation Workflow Form",
+        name: "New Cumulus Hardware Validation Workflow",
       })
       .click();
 
@@ -252,7 +252,7 @@ test.describe("Cumulus Hardware Validation Form", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Cumulus Hardware Validation Workflow Form",
+        name: "New Cumulus Hardware Validation Workflow",
       })
       .click();
 
@@ -262,7 +262,7 @@ test.describe("Cumulus Hardware Validation Form", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Cumulus Hardware Validation Workflow Form",
+        name: "New Cumulus Hardware Validation Workflow",
       })
       .click();
 
@@ -271,7 +271,7 @@ test.describe("Cumulus Hardware Validation Form", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Cumulus Hardware Validation Workflow Form",
+        name: "New Cumulus Hardware Validation Workflow",
       })
       .click();
 
@@ -303,7 +303,7 @@ test.describe("Cumulus Hardware Validation Form", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Cumulus Hardware Validation Workflow Form",
+        name: "New Cumulus Hardware Validation Workflow",
       })
       .click();
 
@@ -312,7 +312,7 @@ test.describe("Cumulus Hardware Validation Form", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Cumulus Hardware Validation Workflow Form",
+        name: "New Cumulus Hardware Validation Workflow",
       })
       .click();
 
@@ -321,7 +321,7 @@ test.describe("Cumulus Hardware Validation Form", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Cumulus Hardware Validation Workflow Form",
+        name: "New Cumulus Hardware Validation Workflow",
       })
       .click();
 
@@ -330,7 +330,7 @@ test.describe("Cumulus Hardware Validation Form", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Cumulus Hardware Validation Workflow Form",
+        name: "New Cumulus Hardware Validation Workflow",
       })
       .click();
 
@@ -350,7 +350,7 @@ test.describe("Cumulus Hardware Validation Form", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Cumulus Hardware Validation Workflow Form",
+        name: "New Cumulus Hardware Validation Workflow",
       })
       .click();
 
@@ -359,7 +359,7 @@ test.describe("Cumulus Hardware Validation Form", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Cumulus Hardware Validation Workflow Form",
+        name: "New Cumulus Hardware Validation Workflow",
       })
       .click();
 
@@ -368,7 +368,7 @@ test.describe("Cumulus Hardware Validation Form", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Cumulus Hardware Validation Workflow Form",
+        name: "New Cumulus Hardware Validation Workflow",
       })
       .click();
 
@@ -387,7 +387,7 @@ test.describe("Cumulus Hardware Validation Form", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Cumulus Hardware Validation Workflow Form",
+        name: "New Cumulus Hardware Validation Workflow",
       })
       .click();
 
@@ -405,7 +405,7 @@ test.describe("Cumulus Hardware Validation Form", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Cumulus Hardware Validation Workflow Form",
+        name: "New Cumulus Hardware Validation Workflow",
       })
       .click();
 
