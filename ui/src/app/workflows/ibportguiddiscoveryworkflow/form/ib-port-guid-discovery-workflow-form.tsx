@@ -34,7 +34,7 @@ import {
 import { useToast } from "@/components/ui/use-toast";
 import { Checkbox } from "@/components/ui/checkbox";
 import { WorkflowFormField } from "@/components/forms/formfield";
-import { useEnvData, useDevices } from "@/hooks";
+import { useEnvData, useDevices, useUfmDevices } from "@/hooks";
 import { startWorkflow } from "@/lib/utils";
 import { IBPortGuidDiscoveryWorkflowInput } from "@/types/data-table.types";
 
@@ -70,6 +70,12 @@ export const IBPortGuidDiscoveryWorkflowForm = () => {
   const { devices, isLoading: devicesLoading } = useDevices({
     site: site || "",
     filterParams,
+  });
+
+  // UFM appliances are unmanaged and carry a non-switch platform, so they come
+  // from the dedicated UFM device query rather than the generic switch list.
+  const { devices: ufmDevices, isLoading: ufmDevicesLoading } = useUfmDevices({
+    site: site || "",
   });
 
   // Clear device selections when site changes, since the device list is
@@ -129,9 +135,9 @@ export const IBPortGuidDiscoveryWorkflowForm = () => {
                 control={form.control}
                 name="ufm_device_id"
                 label="UFM Device"
-                options={devices}
+                options={ufmDevices}
                 searchable={true}
-                isLoading={devicesLoading}
+                isLoading={ufmDevicesLoading}
                 isSubmitting={isSubmitting}
               />
 

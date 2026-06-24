@@ -23,6 +23,7 @@ import { DeviceOption } from "@/types/workflow-form.types";
 interface UseDevicesProps {
   site: string;
   filterParams?: string[][];
+  path?: string;
 }
 
 interface UseDevicesReturn {
@@ -34,13 +35,14 @@ interface UseDevicesReturn {
 const useDevices = ({
   site,
   filterParams = [],
+  path = "/v1/parameter/device",
 }: UseDevicesProps): UseDevicesReturn => {
   const { config } = useRuntimeConfig();
   const apiURL = config?.workflowApiUrl;
   const params = new URLSearchParams([...filterParams]).toString();
 
   const { data, error, isLoading } = useSWR(
-    site && apiURL ? sanitizeUrl(`${apiURL}/v1/parameter/device?${params}`) : null,
+    site && apiURL ? sanitizeUrl(`${apiURL}${path}?${params}`) : null,
     fetcher
     //{
     //  keepPreviousData: true

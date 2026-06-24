@@ -144,6 +144,51 @@ def test_device_v2():
         ]
 
 
+UFM_DEVICES = {
+    "data": {
+        "devices": [
+            {
+                "id": "ufm-uuid-1",
+                "name": "ufm-test-device",
+                "platform": {"name": "UFM"},
+            }
+        ]
+    }
+}
+
+
+def test_ufm_device():
+    """The dedicated UFM endpoint filters by role=UFM + primary IP, with no platform allow-list."""
+    with aioresponses() as m:
+        m.post("https://nautobot.example.com/api/graphql/", payload=UFM_DEVICES)
+
+        client = TestClient(app)
+        rsp = client.get("/v1/parameter/ufm-device?site=SITEA")
+        assert rsp.json() == [{"id": "ufm-uuid-1", "name": "ufm-test-device", "platform": "ufm"}]
+
+        sent = next(iter(m.requests.values()))[0]
+        variables = sent.kwargs["json"]["variables"]
+        assert variables["role"] == ["UFM"]
+        assert variables["site"] == ["SITEA"]
+        assert "platform" not in variables
+
+
+def test_ufm_device_without_site():
+    """Site is optional; role=UFM is always applied and no platform allow-list leaks in."""
+    with aioresponses() as m:
+        m.post("https://nautobot.example.com/api/graphql/", payload=UFM_DEVICES)
+
+        client = TestClient(app)
+        rsp = client.get("/v1/parameter/ufm-device")
+        assert rsp.status_code == 200
+
+        sent = next(iter(m.requests.values()))[0]
+        variables = sent.kwargs["json"]["variables"]
+        assert variables["role"] == ["UFM"]
+        assert "site" not in variables
+        assert "platform" not in variables
+
+
 def test_tenant_default():
     """Test the tenant parameter endpoint (default: all tenants)."""
     with aioresponses() as m:

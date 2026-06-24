@@ -424,6 +424,53 @@ async def get_devices(  # pylint: disable=R0913,R0914
     ]
 
 
+UFM_DEVICE_ROLE = "UFM"
+
+
+@router.get("/ufm-device")
+async def get_ufm_devices(
+    site: Annotated[list[str] | None, Query()] = None,
+) -> list[Device]:
+    """Return UFM appliances for forms that take a UFM as input."""
+
+    client = NautobotClient()
+
+    query = """
+            query ($site: [String], $role: [String]) {
+                devices(
+                    location: $site,
+                    role: $role,
+                    has_primary_ip: true
+                ) {
+                    id
+                    name
+                    platform {
+                        name
+                    }
+                }
+            }
+        """
+
+    variables: dict[str, list[str]] = {"role": [UFM_DEVICE_ROLE]}
+    if site:
+        variables["site"] = site
+
+    async with client:
+        data = await client.graphql_query(query, variables)
+    if "errors" in data:
+        raise HTTPException(status_code=400, detail=data["errors"][0]["message"])
+    return [
+        Device(
+            id=device["id"],
+            name=device["name"],
+            platform=NetworkDeviceData._slugify((device.get("platform") or {}).get("name") or "")
+            or None,
+        )
+        for device in data["data"]["devices"]
+        if device["name"]
+    ]
+
+
 class CommandEntry(BaseModel):
     """A single command in the diagnostics catalog."""
 

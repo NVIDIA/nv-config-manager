@@ -14,10 +14,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-export { default as useEnvData } from "./useEnvData";
-export { default as useDevices } from "./useDevices";
-export { default as useUfmDevices } from "./useUfmDevices";
-export { default as useNamespaceTags } from "./useNamespaceTags";
-export { default as useCommandCatalog } from "./useCommandCatalog";
-export { default as useCommandCatalogGrouped } from "./useCommandCatalogGrouped";
-export type { CommandGroup } from "./useCommandCatalogGrouped";
+import useDevices from "./useDevices";
+
+interface UseUfmDevicesProps {
+  site: string;
+}
+
+// UFM appliances are unmanaged and carry a non-switch platform, so they come
+// from the dedicated /v1/parameter/ufm-device endpoint rather than the generic
+// device query used for switches.
+const useUfmDevices = ({ site }: UseUfmDevicesProps) =>
+  useDevices({
+    site,
+    filterParams: site ? [["site", site]] : [],
+    path: "/v1/parameter/ufm-device",
+  });
+
+export default useUfmDevices;

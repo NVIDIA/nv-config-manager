@@ -2948,6 +2948,63 @@
         ]
       }
     },
+    "/v1/parameter/ufm-device": {
+      "get": {
+        "description": "Return UFM appliances for forms that take a UFM as input.\n\nScoped to role ``UFM`` with a primary IP. UFM appliances are unmanaged and\ncarry a non-switch platform, so this query is intentionally separate from\n``/device`` and its managed switch NOS platform allow-list.",
+        "operationId": "get_ufm_devices_v1_parameter_ufm_device_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "site",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Site"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Device"
+                  },
+                  "title": "Response Get Ufm Devices V1 Parameter Ufm Device Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Ufm Devices",
+        "tags": [
+          "parameters"
+        ]
+      }
+    },
     "/v1/workflow/": {
       "get": {
         "description": "Return a filtered list of workflows.",
