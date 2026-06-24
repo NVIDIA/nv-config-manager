@@ -46,7 +46,7 @@ NAUTOBOT_SUPERUSER_EMAIL: "{{ ((.Values.nautobot).admin).email | default "admin@
 NATS_HOST: "{{ include "nv-config-manager.natsServer" . }}"
 NV_CONFIG_MANAGER_DEPLOYMENT_TYPE: "all"
 NV_CONFIG_MANAGER_TEMPORAL_URL: "https://{{ .Values.gateway.baseHostname }}"
-NAUTOBOT_PLUGINS: "nautobot_fsus,nautobot_kiwi,nautobot_broker_nats,nautobot_firewall_models,nautobot_design_builder,nautobot_bgp_models"
+NAUTOBOT_PLUGINS: "nautobot_fsus,nv_config_manager,nautobot_firewall_models,nautobot_design_builder,nautobot_nvdatamodels,nautobot_bgp_models,nautobot_app_overlays"
 # Ensure Python uses UTF-8 encoding for file I/O
 PYTHONIOENCODING: "utf-8"
 LC_ALL: "C.UTF-8"
