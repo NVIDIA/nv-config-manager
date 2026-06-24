@@ -24,7 +24,7 @@ from typing import Any
 
 import click
 
-from nv_config_manager.common.config import load_config
+from nv_config_manager.common.config import is_remote_lease_db, load_config
 from nv_config_manager.common.log import LogCategory, configure_logging, get_logger
 from nv_config_manager.dhcp.kea import KeaClient
 from nv_config_manager.dhcp.kea_dhcp_confgen import generate_config, inject_lease_db_config
@@ -208,23 +208,28 @@ def refresh_kea_configuration(
     asyncio.run(_refresh_loop_async(ip_version, check, refresh_interval))
 
 
-async def _kea_running_config_diverged(
+async def _kea_running_config_is_bootstrap(
     kea_client: KeaClient,
     ip_version: int,
     remote_lease_db: bool,
 ) -> bool:
-    """Detect whether the running KEA config has drifted from what we last applied.
+    """Detect whether the running KEA config has reverted to the bootstrap default.
 
-    This handles the case where the ``kea`` container is recycled (e.g. by its
-    livenessProbe after a transient postgres outage) and reloads the baked-in
-    bootstrap ``/etc/kea/kea-dhcp4.conf`` from the image, which lacks the
-    ``lease-database`` section (and any subnets/reservations) that
+    This is not a full divergence comparison against what we last applied: KEA
+    reports back many defaults and minor formatting differences, so a direct
+    comparison would always look divergent. Instead this only detects the
+    specific bootstrap-default state where the ``kea`` container has been
+    recycled (e.g. by its livenessProbe after a transient postgres outage) and
+    reloaded the baked-in ``/etc/kea/kea-dhcp4.conf`` from the image, which
+    lacks the ``lease-database`` section (and any subnets/reservations) that
     ``inject_lease_db_config`` adds at sync time. Without this check the sync
     loop would never re-apply (Redis is unchanged) and the pod would deadlock
     with ``/healthcheck`` returning 500.
 
-    Returns True if the running config looks like the bootstrap (or is
-    otherwise unreachable in a way that warrants re-applying).
+    Returns True only when the running config looks like the bootstrap default.
+    Probe/query failures (e.g. KEA being unreachable) are treated as
+    non-divergence and return False, deferring to the existing
+    Redis-change-driven re-apply path.
     """
     if not remote_lease_db:
         # Local memfile configurations don't depend on the injected lease-db,
@@ -256,7 +261,7 @@ async def _sync_kea_configuration_async(
     ini_config = load_config()
     kea_client = KeaClient.from_config(ini_config, attached=True)
     redis_client = RedisClient.from_config(ini_config)
-    remote_lease_db = not ini_config["dhcp.lease_db"].getboolean("local")
+    remote_lease_db = is_remote_lease_db(ini_config)
 
     try:
         config = await redis_client.load_kea_config(ip_version)
@@ -291,10 +296,10 @@ async def _sync_kea_configuration_async(
                         await asyncio.sleep(refresh_interval)
                         continue
                     new_config = inject_lease_db_config(new_config, ip_version)
-                    diverged = await _kea_running_config_diverged(
+                    reverted_to_bootstrap = await _kea_running_config_is_bootstrap(
                         kea_client, ip_version, remote_lease_db
                     )
-                    if diverged:
+                    if reverted_to_bootstrap:
                         logger.warning(
                             "KEA running config is missing the remote lease-database "
                             "(likely a kea container restart). Re-applying configuration."

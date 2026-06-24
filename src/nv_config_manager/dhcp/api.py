@@ -26,7 +26,7 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_fastapi_instrumentator import metrics as instrumentator_metrics
 
 from nv_config_manager.common.auth import install_identity_probe
-from nv_config_manager.common.config import load_config
+from nv_config_manager.common.config import is_remote_lease_db, load_config
 from nv_config_manager.common.log import configure_logging
 from nv_config_manager.dhcp.kea import KeaClient
 from nv_config_manager.dhcp.redis import RedisClient
@@ -150,7 +150,7 @@ async def healthcheck() -> str:
                 raise HTTPException(status_code=500, detail=status)
         # Load the config and validate that the lease-db is present to validate
         # that initial config sync has occurred
-        remote_lease_db = not app_config["dhcp.lease_db"].getboolean("local")
+        remote_lease_db = is_remote_lease_db(app_config)
         config = await client.get_config(4)
         # KEA returns a list of responses, we want the first one
         config_list = config if isinstance(config, list) else [config]

@@ -64,6 +64,9 @@ if TYPE_CHECKING:
     import nats.aio.client
 
 
+logger = get_logger(__name__)
+
+
 # =============================================================================
 # ENUMS
 # =============================================================================
@@ -171,6 +174,26 @@ def nats_nautobot_change_config(config: ConfigParser | None = None) -> tuple[str
     stream = nats_config.get("nautobot_stream", DEFAULT_NAUTOBOT_NATS_STREAM)
     subject = nats_config.get("nautobot_subject", DEFAULT_NAUTOBOT_NATS_SUBJECT)
     return stream, subject
+
+
+def is_remote_lease_db(config: ConfigParser | None = None) -> bool:
+    """Return True when DHCP should use a remote (postgresql) lease database.
+
+    Reads ``[dhcp.lease_db] local`` defensively so a missing section or option
+    does not crash DHCP startup, the sync loop, or the ``/healthcheck`` path.
+    When the section/option is absent we default to remote lease-db mode (the
+    standard production deployment) and log a warning so the misconfiguration
+    is diagnosable.
+    """
+    if config is None:
+        config = load_config()
+    local = config.getboolean("dhcp.lease_db", "local", fallback=None)
+    if local is None:
+        logger.warning(
+            "Missing [dhcp.lease_db] 'local' option; defaulting to remote lease-db mode."
+        )
+        return True
+    return not local
 
 
 def parse_verify_param(

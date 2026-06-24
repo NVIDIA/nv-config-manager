@@ -29,7 +29,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from nv_config_manager.dhcp.cli import (
-    _kea_running_config_diverged,
+    _kea_running_config_is_bootstrap,
     _sync_kea_configuration_async,
 )
 
@@ -75,26 +75,26 @@ REDIS_CONFIG = {
 
 
 @pytest.mark.asyncio
-async def test_kea_running_config_diverged_when_lease_db_missing() -> None:
-    """If remote lease-db is configured but Kea has none, divergence is True."""
+async def test_kea_running_config_is_bootstrap_when_lease_db_missing() -> None:
+    """If remote lease-db is configured but Kea has none, this is bootstrap state."""
     kea_client = AsyncMock()
     kea_client.get_config = AsyncMock(return_value=RUNNING_BOOTSTRAP)
 
-    diverged = await _kea_running_config_diverged(kea_client, 4, remote_lease_db=True)
+    is_bootstrap = await _kea_running_config_is_bootstrap(kea_client, 4, remote_lease_db=True)
 
-    assert diverged is True
+    assert is_bootstrap is True
     kea_client.get_config.assert_awaited_once_with(version=4)
 
 
 @pytest.mark.asyncio
-async def test_kea_running_config_not_diverged_when_lease_db_present() -> None:
-    """A healthy postgres lease-database in the running config is not divergence."""
+async def test_kea_running_config_not_bootstrap_when_lease_db_present() -> None:
+    """A healthy postgres lease-database in the running config is not bootstrap state."""
     kea_client = AsyncMock()
     kea_client.get_config = AsyncMock(return_value=RUNNING_HEALTHY)
 
-    diverged = await _kea_running_config_diverged(kea_client, 4, remote_lease_db=True)
+    is_bootstrap = await _kea_running_config_is_bootstrap(kea_client, 4, remote_lease_db=True)
 
-    assert diverged is False
+    assert is_bootstrap is False
 
 
 @pytest.mark.asyncio
@@ -103,21 +103,21 @@ async def test_kea_running_config_not_checked_when_local_lease_db() -> None:
     kea_client = AsyncMock()
     kea_client.get_config = AsyncMock(return_value=RUNNING_BOOTSTRAP)
 
-    diverged = await _kea_running_config_diverged(kea_client, 4, remote_lease_db=False)
+    is_bootstrap = await _kea_running_config_is_bootstrap(kea_client, 4, remote_lease_db=False)
 
-    assert diverged is False
+    assert is_bootstrap is False
     kea_client.get_config.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_kea_running_config_diverged_swallows_query_errors() -> None:
-    """If we can't query KEA at all, fall back to non-divergence (best-effort)."""
+async def test_kea_running_config_is_bootstrap_swallows_query_errors() -> None:
+    """If we can't query KEA at all, fall back to non-bootstrap (best-effort)."""
     kea_client = AsyncMock()
     kea_client.get_config = AsyncMock(side_effect=ConnectionError("boom"))
 
-    diverged = await _kea_running_config_diverged(kea_client, 4, remote_lease_db=True)
+    is_bootstrap = await _kea_running_config_is_bootstrap(kea_client, 4, remote_lease_db=True)
 
-    assert diverged is False
+    assert is_bootstrap is False
 
 
 @pytest.mark.asyncio
@@ -159,9 +159,9 @@ async def test_sync_loop_reapplies_when_kea_diverges() -> None:
             await _sync_kea_configuration_async(ip_version=4, refresh_interval=10, debug=False)
 
     # set_config was called twice: once for the initial "Run once" sync at startup,
-    # and once more from the divergence-driven re-apply during the loop iteration.
+    # and once more from the bootstrap-driven re-apply during the loop iteration.
     assert kea_client.set_config.await_count == 2
-    # The divergence check must have actually probed Kea's running config.
+    # The bootstrap check must have actually probed Kea's running config.
     kea_client.get_config.assert_awaited_with(version=4)
 
 
@@ -174,7 +174,7 @@ async def test_sync_loop_skips_reapply_when_no_change_and_no_divergence() -> Non
 
     kea_client = AsyncMock()
     kea_client.set_config = AsyncMock()
-    # Loop iteration sees a healthy lease-database — no divergence.
+    # Loop iteration sees a healthy lease-database — not bootstrap state.
     kea_client.get_config = AsyncMock(return_value=RUNNING_HEALTHY)
     kea_client.close = AsyncMock()
 

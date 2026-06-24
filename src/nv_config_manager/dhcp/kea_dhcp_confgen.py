@@ -27,7 +27,7 @@ import netaddr
 from jinja2 import BaseLoader, TemplateSyntaxError, UndefinedError
 from jinja2.sandbox import SandboxedEnvironment, SecurityError
 
-from nv_config_manager.common.config import load_config
+from nv_config_manager.common.config import is_remote_lease_db, load_config
 from nv_config_manager.common.log import LogCategory, get_logger
 from nv_config_manager.dhcp.metrics import (
     DHCP_CONFIG_GENERATION_DURATION,
@@ -821,7 +821,7 @@ def inject_lease_db_config(
     """Inject the lease database configuration into the DHCP configuration."""
     app_config = load_config()
     dhcp_key = f"Dhcp{version}"
-    if not app_config["dhcp.lease_db"].getboolean("local"):
+    if is_remote_lease_db(app_config):
         dhcp_config[dhcp_key]["lease-database"] = {
             "type": "postgresql",
             "name": app_config["dhcp.lease_db"]["database"],
