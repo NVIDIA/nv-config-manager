@@ -119,14 +119,14 @@ test.describe("Device Configurations Page", () => {
 
     // The search description should update
     await expect(
-      page.getByText("Search by device name, site, or UUID for backup configs")
+      page.getByText("Search by device name for backup configs")
     ).toBeVisible({ timeout: TEST_TIMEOUT });
 
     // Switch back to intended
     await intendedTab.click();
     await expect(intendedTab).toHaveAttribute("data-state", "active");
     await expect(
-      page.getByText("Search by device name, site, or UUID for intended configs")
+      page.getByText("Search by device name for intended configs")
     ).toBeVisible({ timeout: TEST_TIMEOUT });
   });
 
@@ -352,4 +352,3 @@ test.describe("Device Configurations Page", () => {
     });
   });
 });
-

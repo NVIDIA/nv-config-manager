@@ -152,11 +152,7 @@ export default function ConfigsPage() {
   const filteredDevices = useMemo(() => {
     if (!searchQuery.trim()) return devices;
     const query = searchQuery.toLowerCase();
-    return devices.filter(device => 
-      device.name.toLowerCase().includes(query) ||
-      device.site.toLowerCase().includes(query) ||
-      device.uuid.toLowerCase().includes(query)
-    );
+    return devices.filter(device => device.name.toLowerCase().includes(query));
   }, [devices, searchQuery]);
 
   if (configLoading) {
@@ -195,7 +191,7 @@ export default function ConfigsPage() {
                   <div>
                     <CardTitle>Search Devices</CardTitle>
                     <CardDescription>
-                      Search by device name, site, or UUID for {fileType} configs
+                      Search by device name for {fileType} configs
                     </CardDescription>
                   </div>
                   <div className="flex items-center gap-2">

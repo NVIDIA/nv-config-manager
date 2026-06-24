@@ -1452,11 +1452,7 @@ export async function mockConfigStoreSearchEndpoint(page: Page) {
     
     if (query) {
       const lowerQuery = query.toLowerCase();
-      results = results.filter(d => 
-        d.name.toLowerCase().includes(lowerQuery) ||
-        d.site.toLowerCase().includes(lowerQuery) ||
-        d.uuid.toLowerCase().includes(lowerQuery)
-      );
+      results = results.filter(d => d.name.toLowerCase().includes(lowerQuery));
     }
 
     await delay(100);
