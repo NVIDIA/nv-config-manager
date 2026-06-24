@@ -465,6 +465,7 @@ async def provision_vrf(
                         "name": vrf_name,
                         "rd": activity_input.route_distinguisher,
                         "namespace": namespace,
+                        "tenant": tenant_id,
                     }
                 )
                 vrfs_created.append(vrf)
