@@ -20,6 +20,8 @@ from typing import Literal
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_fastapi_instrumentator import Instrumentator
+from prometheus_fastapi_instrumentator import metrics as instrumentator_metrics
 from pydantic import BaseModel
 
 from nv_config_manager.common.auth import install_identity_probe
@@ -59,6 +61,16 @@ if config.has_section("temporal.api"):
 app.include_router(parameter_v1.router, prefix="/v1")
 app.include_router(workflow_v1.router, prefix="/v1")
 app.include_router(codec_server.router, prefix="/v1")
+
+instrumentator = Instrumentator(excluded_handlers=["/healthcheck", "/metrics"])
+instrumentator.add(
+    instrumentator_metrics.default(
+        metric_namespace="nv-config-manager",
+        metric_subsystem="temporal_api",
+    )
+)
+instrumentator.instrument(app)
+instrumentator.expose(app, include_in_schema=False)
 
 
 @app.get("/healthcheck")
