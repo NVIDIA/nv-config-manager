@@ -48,6 +48,7 @@ with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.ngc.workflows._ib_pkey_helpers import (
         DEFAULT_ACTIVITY_RETRY_POLICY,
         call_resolve_ib_context_for_add,
+        normalize_membership_type,
         resolve_members,
         validate_interfaces_xor_guids,
         validate_pkey_format,
@@ -71,6 +72,11 @@ class IBPKeyMemberAddInput(BaseModel):
     @classmethod
     def _validate_pkey(cls, v: str) -> str:
         return validate_pkey_format(v)
+
+    @field_validator("membership_type", mode="before")
+    @classmethod
+    def _normalize_membership(cls, v: str | None) -> str:
+        return normalize_membership_type(v)
 
     @model_validator(mode="after")
     def _validate(self) -> "IBPKeyMemberAddInput":

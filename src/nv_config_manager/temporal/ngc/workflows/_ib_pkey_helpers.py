@@ -44,6 +44,9 @@ DEFAULT_ACTIVITY_RETRY_POLICY = RetryPolicy(maximum_attempts=3)
 
 _PKEY_INPUT_PATTERN = re.compile(r"\A0[xX][0-9a-fA-F]{1,4}\Z")
 
+DEFAULT_MEMBERSHIP_TYPE = "full"
+_VALID_MEMBERSHIP_TYPES = frozenset({"full", "limited"})
+
 
 def validate_pkey_format(pkey: str) -> str:
     """Validate and canonicalize a pkey to '0x' + 4 lowercase hex digits."""
@@ -51,6 +54,16 @@ def validate_pkey_format(pkey: str) -> str:
     if not _PKEY_INPUT_PATTERN.match(stripped):
         raise ValueError("pkey must be hex like '0x8001'")
     return f"0x{int(stripped, 16):04x}"
+
+
+def normalize_membership_type(membership_type: str | None) -> str:
+    """Normalize membership to 'full'/'limited', defaulting blank input to 'full'."""
+    normalized = (membership_type or "").strip().lower()
+    if not normalized:
+        return DEFAULT_MEMBERSHIP_TYPE
+    if normalized not in _VALID_MEMBERSHIP_TYPES:
+        raise ValueError("membership_type must be 'full' or 'limited'")
+    return normalized
 
 
 def validate_interfaces_xor_guids(interfaces: list[InterfaceRef], guids: list[str]) -> None:

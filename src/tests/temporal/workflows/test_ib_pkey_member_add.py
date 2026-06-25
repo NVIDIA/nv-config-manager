@@ -331,6 +331,43 @@ def test_input_rejects_bad_pkey_format(bad_pkey):
         )
 
 
+def _add_input(**overrides):
+    """Build a minimal valid Member Add input, allowing field overrides."""
+    params = {
+        "host": "ufm.example.com",
+        "pkey": "0x0005",
+        "interfaces": [InterfaceRef(device="hca01", interface="mlx5_0")],
+    }
+    params.update(overrides)
+    return IBPKeyMemberAddInput(**params)
+
+
+def test_membership_type_defaults_to_full_when_absent():
+    """An absent membership_type uses the PKey default 'full'."""
+    assert _add_input().membership_type == "full"
+
+
+@pytest.mark.parametrize("blank", ["", "   ", None])
+def test_membership_type_blank_defaults_to_full(blank):
+    """A blank/None membership_type no longer crashes; it defaults to 'full'."""
+    assert _add_input(membership_type=blank).membership_type == "full"
+
+
+@pytest.mark.parametrize(
+    ("supplied", "expected"),
+    [("limited", "limited"), ("LIMITED", "limited"), ("Full", "full")],
+)
+def test_membership_type_override_is_honored(supplied, expected):
+    """A supplied membership_type override is honored (case-insensitive)."""
+    assert _add_input(membership_type=supplied).membership_type == expected
+
+
+def test_membership_type_rejects_invalid():
+    """An invalid membership_type is rejected at the input boundary (422)."""
+    with pytest.raises(ValueError, match="membership_type must be 'full' or 'limited'"):
+        _add_input(membership_type="partial")
+
+
 @pytest.mark.asyncio
 async def test_guids_only_path(mock_all_configs, time_skipping_env):
     """GUIDs-only input reverse-resolves through Nautobot and completes the workflow."""

@@ -17,6 +17,7 @@
 import pytest
 
 from nv_config_manager.temporal.ngc.workflows._ib_pkey_helpers import (
+    normalize_membership_type,
     validate_pkey_format,
 )
 
@@ -65,3 +66,32 @@ def test_validate_pkey_format_rejects_none():
     """None is treated as an empty pkey and rejected."""
     with pytest.raises(ValueError, match="pkey must be hex"):
         validate_pkey_format(None)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("full", "full"),
+        ("limited", "limited"),
+        ("FULL", "full"),
+        ("Limited", "limited"),
+        ("  full  ", "full"),
+        ("\tlimited\n", "limited"),
+    ],
+)
+def test_normalize_membership_type_honors_supplied(raw, expected):
+    """A supplied full/limited value (any case/whitespace) is honored."""
+    assert normalize_membership_type(raw) == expected
+
+
+@pytest.mark.parametrize("blank", ["", "   ", "\t\n", None])
+def test_normalize_membership_type_defaults_blank_to_full(blank):
+    """Blank or missing membership defaults to the PKey default 'full'."""
+    assert normalize_membership_type(blank) == "full"
+
+
+@pytest.mark.parametrize("bad", ["partial", "none", "fll", "0", "limitedd"])
+def test_normalize_membership_type_rejects_invalid(bad):
+    """Anything other than full/limited is rejected with a clear message."""
+    with pytest.raises(ValueError, match="membership_type must be 'full' or 'limited'"):
+        normalize_membership_type(bad)
