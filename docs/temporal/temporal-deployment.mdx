@@ -30,3 +30,40 @@ Open the workflow API at `https://workflow.<hostname>/docs` and Temporal Web at 
 ## Operations
 
 For normal operator actions, use the Config Manager UI. Use Temporal Web for detailed workflow event history, retries, payload inspection, and child workflow troubleshooting. See [Which Interface Should I Use?](../getting-started/interfaces.mdx).
+
+## Worker Reliability
+
+### PodDisruptionBudgets
+
+Two PDBs protect Temporal worker pods from simultaneous eviction during voluntary node disruptions (cluster upgrades, autoscaler scale-downs, scheduled maintenance):
+
+| PDB name | Protects | `maxUnavailable` |
+|---|---|---|
+| `<release>-temporal-worker-pdb` | Temporal server worker role | 1 |
+| `<release>-temporal-nv-config-manager-worker-pdb` | nv-config-manager workflow executor | 1 |
+
+With `maxUnavailable: 1` and 3 replicas, the Kubernetes eviction API will allow at most one replica to be unavailable at any time. A node drain will block on the second eviction attempt until the first rescheduled pod is Ready.
+
+To inspect the current disruption budget:
+
+```bash
+kubectl get pdb -n <namespace>
+# NAME                                              MIN AVAILABLE   MAX UNAVAILABLE   ALLOWED DISRUPTIONS
+# <release>-temporal-worker-pdb                     N/A             1                 2
+# <release>-temporal-nv-config-manager-worker-pdb   N/A             1                 2
+```
+
+`ALLOWED DISRUPTIONS` should be `replicas - maxUnavailable`. If it shows `0`, all replicas are already disrupted or not Ready — investigate before draining further nodes.
+
+### Pod Anti-Affinity
+
+Both worker Deployments use `preferredDuringSchedulingIgnoredDuringExecution` pod anti-affinity with topology key `kubernetes.io/hostname`. The scheduler will prefer placing replicas on separate nodes. In clusters with fewer nodes than replicas the constraint degrades gracefully — pods still schedule, but may co-locate.
+
+To verify replicas are spread across nodes:
+
+```bash
+kubectl get pods -n <namespace> \
+  -l app.kubernetes.io/component=temporal-worker \
+  -o wide
+# NODE column should show distinct hostnames across all 3 replicas
+```
