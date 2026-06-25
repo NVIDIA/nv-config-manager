@@ -123,6 +123,8 @@ DEFAULT_UNAUTHENTICATED_PATHS = frozenset(
         "/ping",
         "/healthcheck",
         "/metrics",
+        "/v1/codec/decode",
+        "/v1/codec/encode",
     }
 )
 
