@@ -352,6 +352,45 @@ def test_input_rejects_bad_pkey_format(bad_pkey):
         )
 
 
+def _update_input(**overrides):
+    """Build a minimal valid Member Update input, allowing field overrides."""
+    params = {
+        "host": "ufm.example.com",
+        "pkey": "0x0005",
+        "interfaces": [InterfaceRef(device="hca01", interface="mlx5_0")],
+    }
+    params.update(overrides)
+    return IBPKeyMemberUpdateInput(**params)
+
+
+@pytest.mark.parametrize("blank", ["", "   ", None])
+def test_membership_type_blank_defaults_to_full(blank):
+    """A blank/None membership_type defaults to 'full' instead of crashing."""
+    assert _update_input(membership_type=blank).membership_type == "full"
+
+
+@pytest.mark.parametrize(
+    ("supplied", "expected"),
+    [("limited", "limited"), ("LIMITED", "limited"), ("Full", "full")],
+)
+def test_membership_type_override_is_honored(supplied, expected):
+    """A supplied membership_type override is honored (case-insensitive)."""
+    assert _update_input(membership_type=supplied).membership_type == expected
+
+
+def test_membership_type_rejects_invalid():
+    """An invalid membership_type is rejected at the input boundary (422)."""
+    with pytest.raises(ValueError, match="membership_type must be 'full' or 'limited'"):
+        _update_input(membership_type="partial")
+
+
+@pytest.mark.parametrize("bad", [1, True, 1.5])
+def test_membership_type_rejects_non_string(bad):
+    """Non-string membership_type yields a clean validation error, not a crash."""
+    with pytest.raises(ValueError, match="membership_type must be 'full' or 'limited'"):
+        _update_input(membership_type=bad)
+
+
 @pytest.mark.asyncio
 async def test_guids_only_path_resolves_via_graphql(mock_all_configs, time_skipping_env):
     """GUIDs-only input reverse-resolves to interfaces and completes the workflow."""
