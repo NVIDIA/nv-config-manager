@@ -1,4 +1,4 @@
-.PHONY: help install dev test lint format clean docker-build docker-push ui-install ui-dev ui-build \
+.PHONY: help install dev test lint format clean docker-build docker-push ui-install ui-dev ui-build ui-lint ui-test-deps ui-test-e2e ui-test-e2e-ui \
         local-up local-down local-destroy local-status local-logs deploy kind-up kind-up-sec kind-down topology install-cert workflow-perf-seed \
         openapi openapi-check docs-assets docs-assets-check docs-format docs-lint docs-lint-fern docs-live docs-preview docs-publish docs-publish-in-ci docs-screenshots docs-air-sim-screenshots docs-ui-screenshots \
         obs-grafana obs-prometheus obs-loki obs-alloy obs-port-forward obs-port-forward-stop
@@ -103,6 +103,8 @@ help:
 	@echo "  make ui-install       - Install UI dependencies"
 	@echo "  make ui-dev           - Run UI development server"
 	@echo "  make ui-build         - Build UI for production"
+	@echo "  make ui-test-e2e      - Run UI end-to-end tests (Playwright, chromium, headless; auto-installs deps+browser)"
+	@echo "  make ui-test-e2e-ui   - Run UI end-to-end tests in interactive Playwright UI mode"
 	@echo ""
 	@echo "Documentation:"
 	@echo "  make openapi          - Generate OpenAPI specs for all FastAPI services"
@@ -372,6 +374,17 @@ ui-build:
 
 ui-lint:
 	cd ui && npm run lint
+
+# Ensure UI deps and the Playwright chromium browser are present before e2e runs
+ui-test-deps:
+	cd ui && [ -d node_modules ] || npm ci
+	cd ui && npx playwright install chromium
+
+ui-test-e2e: ui-test-deps
+	cd ui && npm run test:e2e:chromium
+
+ui-test-e2e-ui: ui-test-deps
+	cd ui && npm run test:e2e
 
 # =============================================================================
 # Docker Build Targets
