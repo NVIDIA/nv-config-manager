@@ -51,6 +51,17 @@ _NATS_CONFIG_PASSWORD_CHARS = string.ascii_letters + string.digits
 _NATS_CONFIG_PASSWORD_MIN_LENGTH = 16
 
 
+def _validate_nats_config_password(password: str) -> str:
+    """Validate a password used in unquoted NATS config variable expansion."""
+    if len(password) < _NATS_CONFIG_PASSWORD_MIN_LENGTH:
+        raise ValueError(f"natsPassword must be at least {_NATS_CONFIG_PASSWORD_MIN_LENGTH} chars")
+    if password[0] not in _NATS_CONFIG_PASSWORD_FIRST_CHARS or any(
+        char not in _NATS_CONFIG_PASSWORD_CHARS for char in password[1:]
+    ):
+        raise ValueError("natsPassword must match [A-Za-z][A-Za-z0-9]*")
+    return password
+
+
 def _generate_password(length: int = 32) -> str:
     """Generate a random password using only sha512_crypt-safe characters [a-zA-Z0-9./]."""
     return "".join(secrets.choice(_CRYPT_SAFE_CHARS) for _ in range(length))
@@ -67,7 +78,7 @@ def _generate_nats_config_password(length: int = 32) -> str:
         raise ValueError(f"length must be at least {_NATS_CONFIG_PASSWORD_MIN_LENGTH}")
     first = secrets.choice(_NATS_CONFIG_PASSWORD_FIRST_CHARS)
     rest = "".join(secrets.choice(_NATS_CONFIG_PASSWORD_CHARS) for _ in range(length - 1))
-    return f"{first}{rest}"
+    return _validate_nats_config_password(f"{first}{rest}")
 
 
 def _generate_token(length: int = 40) -> str:
@@ -101,7 +112,8 @@ def _generate_core_k8s_secrets(state: dict[str, str], _v: Any) -> None:
     state["nautobot_token"] = _v("nautobot", "token") or _generate_token(40)
     if ro_token := _v("nautobot", "readOnlyToken"):
         state["nautobot_read_only_token"] = ro_token
-    state["nats_password"] = _v("nautobot", "natsPassword") or _generate_nats_config_password()
+    nats_password = _v("nautobot", "natsPassword") or _generate_nats_config_password()
+    state["nats_password"] = _validate_nats_config_password(nats_password)
     state["redis_password"] = _v("redis", "password") or _generate_url_safe_password()
     state["nautobot_admin_password"] = _v("nautobot_app", "adminPassword") or _generate_password()
     state["django_secret_key"] = _v("nautobot_app", "djangoSecretKey") or _generate_password(50)

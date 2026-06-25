@@ -77,6 +77,21 @@ class TestGenerateSecrets:
         with pytest.raises(ValueError, match="length must be at least 16"):
             secrets_module._generate_nats_config_password(2)
 
+    def test_kubernetes_nats_password_override_must_be_config_safe(self):
+        config = NVConfigManagerInstallConfig(
+            secrets=SecretsConfig(
+                method=SecretsMethod.KUBERNETES,
+                k8s=KubernetesSecretsConfig(
+                    nautobot=K8sSecretGroup(
+                        values={"natsPassword": "2026-06-25aaaaaaaaaaaaaaaaaaaaaa"}
+                    ),
+                ),
+            ),
+        )
+
+        with pytest.raises(ValueError, match=r"natsPassword must match"):
+            generate_secrets(config)
+
     def test_kubernetes_nautobot_read_only_token_passes_through(self):
         config = NVConfigManagerInstallConfig(
             secrets=SecretsConfig(
