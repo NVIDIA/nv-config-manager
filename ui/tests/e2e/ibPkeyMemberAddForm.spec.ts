@@ -116,6 +116,17 @@ test.describe("IB PKey Member Add Form", () => {
     });
   });
 
+  test("GUIDs textarea starts empty after switching modes", async ({
+    page,
+  }) => {
+    await page.getByLabel("By GUIDs").click();
+    const guids = page.getByRole("textbox", { name: "GUIDs" });
+    await expect(guids).toBeVisible({ timeout: TEST_TIMEOUT });
+    // Regression: the interfaces array used to bleed into this field and render
+    // as "[object Object]", hiding the placeholder.
+    await expect(guids).toHaveValue("");
+  });
+
   test("rejects malformed guids inline", async ({ page }) => {
     await page.getByLabel("UFM Host").fill("ufm-1.lab");
     await page.getByLabel("PKey").fill("0x8001");
