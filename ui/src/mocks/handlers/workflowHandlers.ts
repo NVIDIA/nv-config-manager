@@ -43,8 +43,8 @@ export const workflowTypes = [
   "InfinibandCableValidationWorkflow",
   "InfinibandMlnxOSUpgradeWorkflow",
   "ReprovisionWorkflow",
-  "SwitchOsUpgradeWorkflow",
-  "CumulusHardwareValidationWorkflow",
+  "SwitchOSUpgradeWorkflow",
+  "ValidateHardwareWorkflow",
   "IBPKeyCreationWorkflow",
   "IBPKeyMemberAddWorkflow",
   "IBPKeyMemberUpdateWorkflow",
@@ -72,8 +72,8 @@ const workflowDisplayNames: Record<string, string> = {
   InfinibandCableValidationWorkflow: "InfiniBand Cable Validation",
   InfinibandMlnxOSUpgradeWorkflow: "InfiniBand MLNX-OS Upgrade",
   ReprovisionWorkflow: "Reprovision",
-  SwitchOsUpgradeWorkflow: "Switch OS Upgrade",
-  CumulusHardwareValidationWorkflow: "Cumulus Hardware Validation",
+  SwitchOSUpgradeWorkflow: "Switch OS Upgrade",
+  ValidateHardwareWorkflow: "Cumulus Hardware Validation",
   IBPKeyCreationWorkflow: "InfiniBand PKey Creation",
   IBPKeyMemberAddWorkflow: "InfiniBand PKey Member Add",
   IBPKeyMemberUpdateWorkflow: "InfiniBand PKey Member Update",
@@ -104,8 +104,8 @@ const workflowEndpoints: Record<string, string> = {
   InfinibandCableValidationWorkflow: "/ngc/infiniband_cable_validation",
   InfinibandMlnxOSUpgradeWorkflow: "/ngc/infiniband_mlnx_os_upgrade",
   ReprovisionWorkflow: "/ngc/reprovision",
-  SwitchOsUpgradeWorkflow: "/ngc/switch_os_upgrade",
-  CumulusHardwareValidationWorkflow: "/ngc/cumulus_hardware_validation",
+  SwitchOSUpgradeWorkflow: "/ngc/switch_os_upgrade",
+  ValidateHardwareWorkflow: "/ngc/cumulus_hardware_validation",
   IBPKeyCreationWorkflow: "/ngc/ib_pkey_creation",
   IBPKeyMemberAddWorkflow: "/ngc/ib_pkey_member_add",
   IBPKeyMemberUpdateWorkflow: "/ngc/ib_pkey_member_update",
@@ -151,6 +151,11 @@ const getWorkflowStartTimestamp = (workflow: unknown): number => {
   return Date.parse(workflowRecord.start_time ?? "");
 };
 
+const getWorkflowCloseTimestamp = (workflow: unknown): number => {
+  const workflowRecord = workflow as { close_time?: string | null };
+  return Date.parse(workflowRecord.close_time ?? "");
+};
+
 const getWorkflowDisplayStatus = (workflow: unknown): string => {
   const workflowRecord = workflow as {
     failed_stage?: boolean;
@@ -187,10 +192,15 @@ const filterWorkflows = (workflows: unknown[], url: URL) => {
     const status = url.searchParams.get("status");
     const pendingApproval =
       url.searchParams.get("pending_approval")?.toLowerCase() === "true";
+    const hideCompleted =
+      url.searchParams.get("hide_completed")?.toLowerCase() === "true";
     const startTimeFilter = Date.parse(url.searchParams.get("start_time") ?? "");
     const endTimeFilter = Date.parse(url.searchParams.get("end_time") ?? "");
 
     if (workflowType && workflowRecord.workflow_type !== workflowType) {
+      return false;
+    }
+    if (hideCompleted && workflowRecord.status === "COMPLETED") {
       return false;
     }
     if (pendingApproval && !workflowRecord.pending_approval) {
@@ -205,6 +215,7 @@ const filterWorkflows = (workflows: unknown[], url: URL) => {
     }
     if (!Number.isNaN(startTimeFilter) || !Number.isNaN(endTimeFilter)) {
       const workflowStartTime = getWorkflowStartTimestamp(workflow);
+      const workflowCloseTime = getWorkflowCloseTimestamp(workflow);
 
       if (Number.isNaN(workflowStartTime)) {
         return false;
@@ -212,7 +223,10 @@ const filterWorkflows = (workflows: unknown[], url: URL) => {
       if (!Number.isNaN(startTimeFilter) && workflowStartTime < startTimeFilter) {
         return false;
       }
-      if (!Number.isNaN(endTimeFilter) && workflowStartTime > endTimeFilter) {
+      if (!Number.isNaN(endTimeFilter) && Number.isNaN(workflowCloseTime)) {
+        return false;
+      }
+      if (!Number.isNaN(endTimeFilter) && workflowCloseTime > endTimeFilter) {
         return false;
       }
     }
@@ -270,6 +284,9 @@ export const workflowFetchingHandlers = [
       {
         workflows: paginatedWorkflows,
         next_page_token: hasMore ? (page + 1).toString() : null,
+        total_count: workflows.length,
+        page_count:
+          workflows.length === 0 ? 0 : Math.ceil(workflows.length / pageSize),
       },
       { status: 200 }
     );

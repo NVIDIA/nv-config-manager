@@ -42,9 +42,7 @@ const TenantDeployWorkflowForm = () => {
     });
   };
 
-  return (
-    <DeviceWorkflowForm title="Tenant Deploy Workflow" onSubmit={onSubmit} />
-  );
+  return <DeviceWorkflowForm title="New Tenant Deploy Workflow" onSubmit={onSubmit} />;
 };
 
 export default TenantDeployWorkflowForm;

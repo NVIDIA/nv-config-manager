@@ -505,6 +505,7 @@ Gateway, TLS, database backups, monitoring, and load balancer configuration.
 
 | Field | Description |
 |-------|-------------|
+| Create GatewayClass | Create the cluster-scoped `envoy-gateway` GatewayClass; disable when reusing a shared Envoy Gateway installation |
 | Enable TLS | Self-signed TLS certificates for public endpoints |
 | CNPG S3 Backup | Enable CloudNativePG Postgres backups to S3 |
 | Monitoring | Enable PodMonitors and monitoring resources |

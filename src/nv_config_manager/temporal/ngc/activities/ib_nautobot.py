@@ -428,8 +428,21 @@ query ($guids: [String]) {
 """
 
 
+def _normalize_ib_guid(guid: str) -> str:
+    """Normalize an IB GUID for matching: trim, drop an optional ``0x`` prefix, lowercase.
+
+    UFM and Nautobot store port GUIDs as bare hex (e.g. ``946dae0300598000``),
+    but users commonly enter the ``0x``-prefixed form. Normalizing both sides
+    lets either representation resolve.
+    """
+    normalized = (guid or "").strip().lower()
+    if normalized.startswith("0x"):
+        normalized = normalized[2:]
+    return normalized
+
+
 def _index_resolved_interfaces(interfaces: list[dict[str, Any]]) -> dict[str, ResolvedInterface]:
-    """Group GraphQL interface results by lowercased GUID.
+    """Group GraphQL interface results by normalized GUID.
 
     Skips entries with no ``cf_ib_guid`` set. Raises ``ApplicationError`` if
     any GUID has more than one matching interface.
@@ -437,7 +450,7 @@ def _index_resolved_interfaces(interfaces: list[dict[str, Any]]) -> dict[str, Re
     grouped: dict[str, list[ResolvedInterface]] = {}
     for iface in interfaces:
         original_guid = iface.get("cf_ib_guid") or ""
-        guid_key = original_guid.lower()
+        guid_key = _normalize_ib_guid(original_guid)
         if not guid_key:
             continue
         device = (iface.get("device") or {}).get("name") or ""
@@ -477,7 +490,7 @@ async def resolve_guids_to_interfaces(
             display="No GUIDs to resolve",
         )
 
-    deduped = sorted({g for g in input.guids if g})
+    deduped = sorted({_normalize_ib_guid(g) for g in input.guids if _normalize_ib_guid(g)})
     if not deduped:
         raise ApplicationError("All provided GUIDs were empty", non_retryable=True)
 
@@ -491,14 +504,14 @@ async def resolve_guids_to_interfaces(
     interfaces = ((data.get("data") or {}).get("interfaces")) or []
     by_guid = _index_resolved_interfaces(interfaces)
 
-    missing = [g for g in deduped if g.lower() not in by_guid]
+    missing = [g for g in deduped if g not in by_guid]
     if missing:
         raise ApplicationError(
             f"No Nautobot interface found for GUID(s): {missing}",
             non_retryable=True,
         )
 
-    resolved = [by_guid[g.lower()] for g in deduped]
+    resolved = [by_guid[g] for g in deduped]
     for r in resolved:
         log.info(
             "Resolved GUID %s → %s/%s (id=%s)",

@@ -928,6 +928,62 @@ Common secret names
 {{- include "nv-config-manager.componentName" (dict "root" . "component" "ini") -}}
 {{- end }}
 
+{{- define "nv-config-manager.mcpAuthConfigMapName" -}}
+{{- include "nv-config-manager.componentName" (dict "root" . "component" "mcp-auth") -}}
+{{- end }}
+
+{{/*
+Public MCP OAuth metadata ConfigMap data.
+*/}}
+{{- define "nv-config-manager.configmap.mcp-auth" -}}
+{{- $oauth := dig "auth" "oauth" (dict) .Values.mcp -}}
+{{- $enabled := .Values.oidc.enabled -}}
+{{- if hasKey $oauth "enabled" -}}
+{{- $enabled = $oauth.enabled -}}
+{{- end -}}
+mcp-auth.ini: |
+  [mcp.oauth]
+  enabled = {{ $enabled }}
+  {{- if $enabled }}
+  {{- $resourceUrl := get $oauth "resourceUrl" | default (printf "https://%s/mcp" (tpl (.Values.mcp.gateway.svcHostname | default "") .)) -}}
+  {{- $resourceUrl = trimSuffix "/" (tpl $resourceUrl .) -}}
+  {{- $issuerUrl := get $oauth "issuerUrl" | default .Values.oidc.issuerUrl -}}
+  {{- $issuerUrl = required "mcp.auth.oauth.issuerUrl or oidc.issuerUrl is required when MCP OAuth metadata is enabled" $issuerUrl -}}
+  {{- $issuerUrl = trimSuffix "/" (tpl $issuerUrl .) -}}
+  {{- $clientId := get $oauth "clientId" | default .Values.oidc.cliClientId | default .Values.oidc.clientId -}}
+  {{- $clientId = required "mcp.auth.oauth.clientId or oidc.cliClientId/clientId is required when MCP OAuth metadata is enabled" $clientId -}}
+  {{- $authorizationEndpoint := get $oauth "authorizationEndpoint" | default .Values.oidc.authorizationEndpoint -}}
+  {{- if $authorizationEndpoint -}}
+  {{- $authorizationEndpoint = trimSuffix "/" (tpl $authorizationEndpoint .) -}}
+  {{- else -}}
+  {{- $authorizationEndpoint = printf "%s/protocol/openid-connect/auth" $issuerUrl -}}
+  {{- end -}}
+  {{- $tokenEndpoint := get $oauth "tokenEndpoint" | default .Values.oidc.tokenEndpoint -}}
+  {{- if $tokenEndpoint -}}
+  {{- $tokenEndpoint = trimSuffix "/" (tpl $tokenEndpoint .) -}}
+  {{- else -}}
+  {{- $tokenEndpoint = printf "%s/protocol/openid-connect/token" $issuerUrl -}}
+  {{- end -}}
+  {{- $jwksUri := get $oauth "jwksUri" | default .Values.oidc.jwksUri -}}
+  {{- if $jwksUri -}}
+  {{- $jwksUri = trimSuffix "/" (tpl $jwksUri .) -}}
+  {{- end -}}
+  {{- $scopes := get $oauth "scopes" | default .Values.oidc.scopes -}}
+  {{- if not $scopes -}}
+  {{- $scopes = list "openid" "email" "profile" -}}
+  {{- end }}
+  resource_url = {{ $resourceUrl }}
+  issuer_url = {{ $issuerUrl }}
+  client_id = {{ $clientId }}
+  scopes = {{ if kindIs "string" $scopes }}{{ $scopes }}{{ else }}{{ join " " $scopes }}{{ end }}
+  authorization_endpoint = {{ $authorizationEndpoint }}
+  token_endpoint = {{ $tokenEndpoint }}
+  {{- if $jwksUri }}
+  jwks_uri = {{ $jwksUri }}
+  {{- end }}
+  {{- end }}
+{{- end }}
+
 {{- define "nv-config-manager.networkSecretsName" -}}
 {{- include "nv-config-manager.componentName" (dict "root" . "component" "network-secrets") -}}
 {{- end }}

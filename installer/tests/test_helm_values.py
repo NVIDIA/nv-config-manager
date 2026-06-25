@@ -536,6 +536,13 @@ class TestGenerateHelmValues:
         values = _gen(config)
         assert values["gateway"]["nodePort"]["enabled"] is True
 
+    def test_gateway_class_creation_can_be_disabled(self):
+        config = _make_config(
+            infrastructure=InfrastructureConfig(create_gateway_class=False),
+        )
+        values = _gen(config)
+        assert values["gateway"]["createGatewayClass"] is False
+
     def test_custom_jobs_in_values(self):
         config = _make_config(
             content=ContentConfig(

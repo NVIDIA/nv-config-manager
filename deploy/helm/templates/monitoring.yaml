@@ -57,7 +57,7 @@ apiVersion: monitoring.coreos.com/v1
 kind: Probe
 metadata:
   name: {{ $renderName }}
-  namespace: {{ .Values.namespace }}
+  namespace: {{ $namespace }}
   labels:
     {{- include "nv-config-manager.labels" . | nindent 4 }}
     app.kubernetes.io/component: render-service
@@ -85,7 +85,7 @@ apiVersion: monitoring.coreos.com/v1
 kind: Probe
 metadata:
   name: {{ $ztpName }}
-  namespace: {{ .Values.namespace }}
+  namespace: {{ $namespace }}
   labels:
     {{- include "nv-config-manager.labels" . | nindent 4 }}
     app.kubernetes.io/component: network-ztp
@@ -113,7 +113,7 @@ apiVersion: monitoring.coreos.com/v1
 kind: Probe
 metadata:
   name: {{ $dhcpName }}
-  namespace: {{ .Values.namespace }}
+  namespace: {{ $namespace }}
   labels:
     {{- include "nv-config-manager.labels" . | nindent 4 }}
     app.kubernetes.io/component: network-dhcp
@@ -141,7 +141,7 @@ apiVersion: monitoring.coreos.com/v1
 kind: Probe
 metadata:
   name: {{ $configStoreName }}
-  namespace: {{ .Values.namespace }}
+  namespace: {{ $namespace }}
   labels:
     {{- include "nv-config-manager.labels" . | nindent 4 }}
     app.kubernetes.io/component: config-store
@@ -197,7 +197,7 @@ apiVersion: monitoring.coreos.com/v1
 kind: Probe
 metadata:
   name: {{ $temporalName }}-api
-  namespace: {{ .Values.namespace }}
+  namespace: {{ $namespace }}
   labels:
     {{- include "nv-config-manager.labels" . | nindent 4 }}
     app.kubernetes.io/component: temporal-api
@@ -225,7 +225,7 @@ apiVersion: monitoring.coreos.com/v1
 kind: Probe
 metadata:
   name: {{ $temporalName }}-ui
-  namespace: {{ .Values.namespace }}
+  namespace: {{ $namespace }}
   labels:
     {{- include "nv-config-manager.labels" . | nindent 4 }}
     app.kubernetes.io/component: temporal-ui
@@ -253,7 +253,7 @@ apiVersion: monitoring.coreos.com/v1
 kind: Probe
 metadata:
   name: {{ $uiName }}
-  namespace: {{ .Values.namespace }}
+  namespace: {{ $namespace }}
   labels:
     {{- include "nv-config-manager.labels" . | nindent 4 }}
     app.kubernetes.io/component: ui
@@ -281,7 +281,7 @@ apiVersion: monitoring.coreos.com/v1
 kind: Probe
 metadata:
   name: {{ $nautobotName }}
-  namespace: {{ .Values.namespace }}
+  namespace: {{ $namespace }}
   labels:
     {{- include "nv-config-manager.labels" . | nindent 4 }}
     app.kubernetes.io/component: nautobot

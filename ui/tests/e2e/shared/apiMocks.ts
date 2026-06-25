@@ -24,6 +24,7 @@ import {
   ROLES_LIST_API_RESPONSE,
   STATUS_LIST_API_RESPONSE,
   TENANT_LIST_API_RESPONSE,
+  NAMESPACE_TAGS_LIST_API_RESPONSE,
   DEVICE_TYPES_LIST_API_RESPONSE,
   FORBIDDEN_WORKFLOW_ID,
   FORBIDDEN_SITE_ID,
@@ -90,6 +91,7 @@ export async function setupApiMocks(page: Page) {
   await mockRolesEndpoint(page);
   await mockStatusEndpoint(page);
   await mockTenantsEndpoint(page);
+  await mockNamespaceTagsEndpoint(page);
   await mockDeviceTypesEndpoint(page);
   await mockDevicesEndpoint(page);
   await mockPasswordUsersEndpoint(page);
@@ -993,6 +995,15 @@ export async function mockTenantsEndpoint(page: Page) {
   });
 }
 
+export async function mockNamespaceTagsEndpoint(page: Page) {
+  await page.route(/.*\/v1\/parameter\/namespace-tag/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      json: NAMESPACE_TAGS_LIST_API_RESPONSE,
+    });
+  });
+}
+
 export async function mockDeviceTypesEndpoint(page: Page) {
   await page.route(`**/v1/parameter/devicetypeid`, async (route) => {
     await route.fulfill({
@@ -1099,8 +1110,8 @@ export async function mockWorkflowTypesEndpoint(page: Page) {
     "InfinibandCableValidationWorkflow",
     "InfinibandMlnxOSUpgradeWorkflow",
     "ReprovisionWorkflow",
-    "SwitchOsUpgradeWorkflow",
-    "CumulusHardwareValidationWorkflow",
+    "SwitchOSUpgradeWorkflow",
+    "ValidateHardwareWorkflow",
     "DiagnosticsWorkflow",
     "IBPortGuidDiscoveryWorkflow",
   ];
@@ -1136,8 +1147,8 @@ export async function mockWorkflowMetadataEndpoint(page: Page) {
     "InfinibandCableValidationWorkflow",
     "InfinibandMlnxOSUpgradeWorkflow",
     "ReprovisionWorkflow",
-    "SwitchOsUpgradeWorkflow",
-    "CumulusHardwareValidationWorkflow",
+    "SwitchOSUpgradeWorkflow",
+    "ValidateHardwareWorkflow",
     "DiagnosticsWorkflow",
     "IBPortGuidDiscoveryWorkflow",
   ];
@@ -1160,8 +1171,8 @@ export async function mockWorkflowMetadataEndpoint(page: Page) {
     InfinibandCableValidationWorkflow: "InfiniBand Cable Validation",
     InfinibandMlnxOSUpgradeWorkflow: "InfiniBand MLNX-OS Upgrade",
     ReprovisionWorkflow: "Reprovision",
-    SwitchOsUpgradeWorkflow: "Switch OS Upgrade",
-    CumulusHardwareValidationWorkflow: "Cumulus Hardware Validation",
+    SwitchOSUpgradeWorkflow: "Switch OS Upgrade",
+    ValidateHardwareWorkflow: "Cumulus Hardware Validation",
     DiagnosticsWorkflow: "Device Diagnostics",
     IBPortGuidDiscoveryWorkflow: "InfiniBand Port GUID Discovery",
   };
@@ -1187,8 +1198,8 @@ export async function mockWorkflowMetadataEndpoint(page: Page) {
     InfinibandCableValidationWorkflow: "/ngc/infiniband_cable_validation",
     InfinibandMlnxOSUpgradeWorkflow: "/ngc/infiniband_mlnx_os_upgrade",
     ReprovisionWorkflow: "/ngc/reprovision",
-    SwitchOsUpgradeWorkflow: "/ngc/switch_os_upgrade",
-    CumulusHardwareValidationWorkflow: "/ngc/cumulus_hardware_validation",
+    SwitchOSUpgradeWorkflow: "/ngc/switch_os_upgrade",
+    ValidateHardwareWorkflow: "/ngc/cumulus_hardware_validation",
     DiagnosticsWorkflow: "/ngc/diagnostics",
     IBPortGuidDiscoveryWorkflow: "/ngc/ib_port_guid_discovery",
   };
@@ -1234,6 +1245,8 @@ export async function mockWorkflowsListEndpoint(page: Page) {
     const workflowType = url.searchParams.get("workflow_type");
     const nextPageToken = url.searchParams.get("next_page_token");
     const limit = url.searchParams.get("limit");
+    const hideCompleted =
+      url.searchParams.get("hide_completed")?.toLowerCase() === "true";
 
     const pageSize = limit ? parseInt(limit) : 10;
     const page = nextPageToken ? parseInt(nextPageToken) : 0;
@@ -1253,6 +1266,9 @@ export async function mockWorkflowsListEndpoint(page: Page) {
         : ALL_WORKFLOW_DATA.workflows
     ).filter((workflow) => {
       if (workflowType && workflow.workflow_type !== workflowType) {
+        return false;
+      }
+      if (hideCompleted && workflow.status === "COMPLETED") {
         return false;
       }
 
@@ -1281,6 +1297,7 @@ export async function mockWorkflowsListEndpoint(page: Page) {
       const endTimeFilter = Date.parse(url.searchParams.get("end_time") ?? "");
       if (!Number.isNaN(startTimeFilter) || !Number.isNaN(endTimeFilter)) {
         const workflowStartTime = Date.parse(workflow.start_time);
+        const workflowCloseTime = Date.parse(workflow.close_time ?? "");
 
         if (Number.isNaN(workflowStartTime)) {
           return false;
@@ -1288,7 +1305,10 @@ export async function mockWorkflowsListEndpoint(page: Page) {
         if (!Number.isNaN(startTimeFilter) && workflowStartTime < startTimeFilter) {
           return false;
         }
-        if (!Number.isNaN(endTimeFilter) && workflowStartTime > endTimeFilter) {
+        if (!Number.isNaN(endTimeFilter) && Number.isNaN(workflowCloseTime)) {
+          return false;
+        }
+        if (!Number.isNaN(endTimeFilter) && workflowCloseTime > endTimeFilter) {
           return false;
         }
       }
@@ -1320,6 +1340,9 @@ export async function mockWorkflowsListEndpoint(page: Page) {
       json: {
         workflows: paginatedWorkflows,
         next_page_token: hasMore ? (page + 1).toString() : null,
+        total_count: workflows.length,
+        page_count:
+          workflows.length === 0 ? 0 : Math.ceil(workflows.length / pageSize),
       },
     });
   });
@@ -1379,7 +1402,7 @@ export async function mockHealthCheckEndpoint(page: Page) {
 const CONFIG_STORE_DEVICES = [
   {
     uuid: "device-uuid-1",
-    name: "pdx01-spine-001",
+    name: "spine-001",
     site: "PDX01",
     latest_update: new Date().toISOString(),
     latest_author: "admin",
@@ -1388,7 +1411,7 @@ const CONFIG_STORE_DEVICES = [
   },
   {
     uuid: "device-uuid-2",
-    name: "pdx01-leaf-001",
+    name: "leaf-001",
     site: "PDX01",
     latest_update: new Date(Date.now() - 3600000).toISOString(),
     latest_author: "automation",
@@ -1397,7 +1420,7 @@ const CONFIG_STORE_DEVICES = [
   },
   {
     uuid: "device-uuid-3",
-    name: "rno1-core-001",
+    name: "core-001",
     site: "RNO1",
     latest_update: new Date(Date.now() - 86400000).toISOString(),
     latest_author: "admin",
@@ -1406,7 +1429,7 @@ const CONFIG_STORE_DEVICES = [
   },
   {
     uuid: "device-uuid-4",
-    name: "pdx01-decomm-001",
+    name: "decomm-001",
     site: "PDX01",
     latest_update: new Date(Date.now() - 604800000).toISOString(),
     latest_author: "admin",
@@ -1429,11 +1452,7 @@ export async function mockConfigStoreSearchEndpoint(page: Page) {
     
     if (query) {
       const lowerQuery = query.toLowerCase();
-      results = results.filter(d => 
-        d.name.toLowerCase().includes(lowerQuery) ||
-        d.site.toLowerCase().includes(lowerQuery) ||
-        d.uuid.toLowerCase().includes(lowerQuery)
-      );
+      results = results.filter(d => d.name.toLowerCase().includes(lowerQuery));
     }
 
     await delay(100);
@@ -1482,13 +1501,13 @@ export async function mockConfigStoreDeviceConfigsEndpoint(page: Page) {
         filename: "running-config.txt",
         file_type: "intended",
         version: 3,
-        content: "! Sample running config\nhostname pdx01-spine-001\n",
+        content: "! Sample running config\nhostname spine-001\n",
         content_hash: "abc123",
         author: "admin",
         commit_message: "Updated hostname",
         created_at: new Date().toISOString(),
         device: {
-          name: "pdx01-spine-001",
+          name: "spine-001",
           site: "PDX01",
           platform: "Cumulus Linux",
           role: "spine",
@@ -1537,13 +1556,13 @@ export async function mockConfigStoreConfigFileEndpoint(page: Page) {
       filename: "running-config.txt",
       file_type: "intended",
       version: 3,
-      content: "! Sample running config\nhostname pdx01-spine-001\ninterface eth0\n  ip address 10.0.0.1/24\n",
+      content: "! Sample running config\nhostname spine-001\ninterface eth0\n  ip address 10.0.0.1/24\n",
       content_hash: "abc123",
       author: "admin",
       commit_message: "Updated hostname",
       created_at: new Date().toISOString(),
       device: {
-        name: "pdx01-spine-001",
+        name: "spine-001",
         site: "PDX01",
         platform: "Cumulus Linux",
         role: "spine",

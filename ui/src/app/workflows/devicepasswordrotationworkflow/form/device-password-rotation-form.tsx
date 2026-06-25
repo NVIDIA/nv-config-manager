@@ -135,7 +135,7 @@ export default function DevicePasswordRotationForm() {
   return (
     <Card className="w-full max-w-4xl mx-auto">
       <CardHeader>
-        <CardTitle>Device Password Rotation Workflow</CardTitle>
+        <CardTitle>New Device Password Rotation Workflow</CardTitle>
       </CardHeader>
       <CardContent>
         <Form {...form}>

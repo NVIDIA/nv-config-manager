@@ -27,7 +27,7 @@ import { runWorkflowFormTests } from "./shared/workflowFormTests";
 // Run the standard workflow form tests
 runWorkflowFormTests({
   formPath: "/workflows/infinibandmlnxosupgradeworkflow/form",
-  formTitle: "IB MLNX OS Upgrade Workflow",
+  formTitle: "New InfiniBand MLNX-OS Upgrade Workflow",
   deviceFilter: (devices) =>
     devices.find((d) => d.platform === "MLNX-OS") || devices[0],
   forbiddenFilter: (devices) =>
@@ -52,7 +52,7 @@ test.describe("IB OS Upgrade Form - Additional Tests", () => {
     await page.getByRole("dialog").getByText(SITES_LIST.pdx01).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "IB MLNX OS Upgrade Workflow" })
+      .getByRole("heading", { name: "New InfiniBand MLNX-OS Upgrade Workflow" })
       .click();
 
     // Open the device dropdown
@@ -78,7 +78,7 @@ test.describe("IB OS Upgrade Form - Additional Tests", () => {
 
     // Close the dropdown
     await page
-      .getByRole("heading", { name: "IB MLNX OS Upgrade Workflow" })
+      .getByRole("heading", { name: "New InfiniBand MLNX-OS Upgrade Workflow" })
       .click();
   });
 
@@ -102,14 +102,14 @@ test.describe("IB OS Upgrade Form - Additional Tests", () => {
     await page.getByRole("dialog").getByText(site).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "IB MLNX OS Upgrade Workflow" })
+      .getByRole("heading", { name: "New InfiniBand MLNX-OS Upgrade Workflow" })
       .click();
 
     await page.getByRole("button", { name: "Device" }).click();
     await page.getByRole("dialog").getByText(mlnxDevice.name).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "IB MLNX OS Upgrade Workflow" })
+      .getByRole("heading", { name: "New InfiniBand MLNX-OS Upgrade Workflow" })
       .click();
 
     await page.getByRole("button", { name: "Submit" }).click();
@@ -168,7 +168,7 @@ test.describe("IB OS Upgrade Form - Additional Tests", () => {
     await page.getByRole("dialog").getByText(newSite).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "IB MLNX OS Upgrade Workflow" })
+      .getByRole("heading", { name: "New InfiniBand MLNX-OS Upgrade Workflow" })
       .click();
 
     // Select a new device from the new site
@@ -176,7 +176,7 @@ test.describe("IB OS Upgrade Form - Additional Tests", () => {
     await page.getByRole("dialog").getByText(newDevice.name).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "IB MLNX OS Upgrade Workflow" })
+      .getByRole("heading", { name: "New InfiniBand MLNX-OS Upgrade Workflow" })
       .click();
 
     // Verify the form is updated with the new values
@@ -280,7 +280,7 @@ test.describe("IB OS Upgrade Form - Additional Tests", () => {
     await page.getByRole("dialog").getByText(SITES_LIST.pdx01).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "IB MLNX OS Upgrade Workflow" })
+      .getByRole("heading", { name: "New InfiniBand MLNX-OS Upgrade Workflow" })
       .click();
 
     // Select device
@@ -291,7 +291,7 @@ test.describe("IB OS Upgrade Form - Additional Tests", () => {
     await page.getByRole("dialog").getByText(mlnxDevices[0].name).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "IB MLNX OS Upgrade Workflow" })
+      .getByRole("heading", { name: "New InfiniBand MLNX-OS Upgrade Workflow" })
       .click();
 
     // Verify device is selected
@@ -304,7 +304,7 @@ test.describe("IB OS Upgrade Form - Additional Tests", () => {
     await page.getByRole("dialog").getByText(SITES_LIST.rno1).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "IB MLNX OS Upgrade Workflow" })
+      .getByRole("heading", { name: "New InfiniBand MLNX-OS Upgrade Workflow" })
       .click();
 
     // Verify device field has been cleared
@@ -326,14 +326,14 @@ test.describe("IB OS Upgrade Form - Additional Tests", () => {
     await page.getByRole("dialog").getByText(site).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "IB MLNX OS Upgrade Workflow" })
+      .getByRole("heading", { name: "New InfiniBand MLNX-OS Upgrade Workflow" })
       .click();
 
     await page.getByRole("button", { name: "Device" }).click();
     await page.getByRole("dialog").getByText(mlnxDevice.name).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "IB MLNX OS Upgrade Workflow" })
+      .getByRole("heading", { name: "New InfiniBand MLNX-OS Upgrade Workflow" })
       .click();
 
     await page.getByRole("button", { name: "Submit" }).click();
@@ -365,7 +365,7 @@ test.describe("IB OS Upgrade Form - Additional Tests", () => {
     await page.getByRole("dialog").getByText(forbiddenDevice.name).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "IB MLNX OS Upgrade Workflow" })
+      .getByRole("heading", { name: "New InfiniBand MLNX-OS Upgrade Workflow" })
       .click();
 
     await page.getByRole("button", { name: "Submit" }).click();

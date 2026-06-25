@@ -16,7 +16,9 @@ from __future__ import annotations
 
 from configparser import ConfigParser
 
-from nv_config_manager.mcp.settings import MCPSettings
+import pytest
+
+from nv_config_manager.mcp.settings import MCPOAuthSettings, MCPSettings
 
 
 def _config(nautobot_server: str, auth_mode: str = "auto") -> ConfigParser:
@@ -84,3 +86,69 @@ def test_workflow_ui_url_falls_back_to_base_hostname() -> None:
     settings = MCPSettings.from_config(config)
 
     assert settings.workflow_ui_url == "https://example.test"
+
+
+def test_mcp_oauth_settings_disabled_without_section() -> None:
+    settings = MCPOAuthSettings.from_config(ConfigParser())
+
+    assert settings.enabled is False
+
+
+def test_mcp_oauth_settings_parse_metadata_config() -> None:
+    settings = MCPOAuthSettings.from_config(_oauth_config())
+
+    assert settings.enabled is True
+    assert settings.resource_url == "https://svc-mcp.example.test/mcp"
+    assert settings.issuer_url == "https://idp.example.test/realms/nvcm"
+    assert settings.client_id == "nvcm-cli"
+    assert settings.scopes == ("openid", "email", "profile")
+    assert (
+        settings.resource_metadata_url
+        == "https://svc-mcp.example.test/.well-known/oauth-protected-resource/mcp"
+    )
+    assert settings.authorization_server_url == "https://svc-mcp.example.test"
+    assert settings.well_known_paths == {
+        "/.well-known/oauth-protected-resource",
+        "/.well-known/oauth-protected-resource/mcp",
+        "/.well-known/oauth-authorization-server",
+    }
+
+
+def test_mcp_oauth_well_known_paths_follow_resource_url_path() -> None:
+    config = _oauth_config()
+    config["mcp.oauth"]["resource_url"] = "https://svc-mcp.example.test/custom/mcp/"
+
+    settings = MCPOAuthSettings.from_config(config)
+
+    assert (
+        settings.resource_metadata_url
+        == "https://svc-mcp.example.test/.well-known/oauth-protected-resource/custom/mcp"
+    )
+    assert settings.well_known_paths == {
+        "/.well-known/oauth-protected-resource",
+        "/.well-known/oauth-protected-resource/custom/mcp",
+        "/.well-known/oauth-authorization-server",
+    }
+
+
+def test_mcp_oauth_settings_requires_valid_urls_when_enabled() -> None:
+    config = _oauth_config()
+    config["mcp.oauth"]["resource_url"] = "svc-mcp.example.test/mcp"
+
+    with pytest.raises(ValueError, match="resource_url"):
+        MCPOAuthSettings.from_config(config)
+
+
+def _oauth_config() -> ConfigParser:
+    config = ConfigParser()
+    config["mcp.oauth"] = {
+        "enabled": "true",
+        "resource_url": "https://svc-mcp.example.test/mcp/",
+        "issuer_url": "https://idp.example.test/realms/nvcm/",
+        "client_id": "nvcm-cli",
+        "scopes": "openid,email profile",
+        "authorization_endpoint": "https://idp.example.test/realms/nvcm/auth",
+        "token_endpoint": "https://idp.example.test/realms/nvcm/token",
+        "jwks_uri": "https://idp.example.test/realms/nvcm/certs/",
+    }
+    return config

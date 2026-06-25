@@ -31,7 +31,7 @@ test.describe("Infiniband Cable Validation Form", () => {
 
   test("renders form with correct title", async ({ page }) => {
     const title = await page.getByRole("heading", {
-      name: "Infiniband Cable Validation Workflow Form",
+      name: "New InfiniBand Cable Validation Workflow",
     });
     await expect(title).toBeVisible({ timeout: TEST_TIMEOUT });
   });
@@ -79,7 +79,7 @@ test.describe("Infiniband Cable Validation Form", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
@@ -88,7 +88,7 @@ test.describe("Infiniband Cable Validation Form", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
@@ -98,7 +98,7 @@ test.describe("Infiniband Cable Validation Form", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
@@ -142,7 +142,7 @@ test.describe("Infiniband Cable Validation Form", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
@@ -151,7 +151,7 @@ test.describe("Infiniband Cable Validation Form", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
@@ -160,7 +160,7 @@ test.describe("Infiniband Cable Validation Form", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
@@ -181,7 +181,7 @@ test.describe("Infiniband Cable Validation Form", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
@@ -277,7 +277,7 @@ test.describe("Infiniband Cable Validation Form", () => {
     // Wait for the form to load and process URL params
     await expect(
       page.getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
 
@@ -328,7 +328,7 @@ test.describe("Infiniband Cable Validation Form", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
@@ -337,7 +337,7 @@ test.describe("Infiniband Cable Validation Form", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
@@ -347,7 +347,7 @@ test.describe("Infiniband Cable Validation Form", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
@@ -386,7 +386,7 @@ test.describe("Infiniband Cable Validation Form", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
@@ -395,7 +395,7 @@ test.describe("Infiniband Cable Validation Form", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
@@ -404,7 +404,7 @@ test.describe("Infiniband Cable Validation Form", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
@@ -475,7 +475,7 @@ test.describe("Infiniband Cable Validation Form - Error Scenarios", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
@@ -485,7 +485,7 @@ test.describe("Infiniband Cable Validation Form - Error Scenarios", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
@@ -495,7 +495,7 @@ test.describe("Infiniband Cable Validation Form - Error Scenarios", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
@@ -545,7 +545,7 @@ test.describe("Infiniband Cable Validation Form - Error Scenarios", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
@@ -555,7 +555,7 @@ test.describe("Infiniband Cable Validation Form - Error Scenarios", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
@@ -565,7 +565,7 @@ test.describe("Infiniband Cable Validation Form - Error Scenarios", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
@@ -590,7 +590,7 @@ test.describe("Infiniband Cable Validation Form - Error Scenarios", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
@@ -618,7 +618,7 @@ test.describe("Infiniband Cable Validation Form - Error Scenarios", () => {
     // Close the dropdown
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
   });
@@ -632,7 +632,7 @@ test.describe("Infiniband Cable Validation Form - Error Scenarios", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
@@ -660,7 +660,7 @@ test.describe("Infiniband Cable Validation Form - Error Scenarios", () => {
     // Close the dropdown
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
   });
@@ -688,7 +688,7 @@ test.describe("Infiniband Cable Validation Form - Error Scenarios", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
@@ -697,7 +697,7 @@ test.describe("Infiniband Cable Validation Form - Error Scenarios", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
@@ -708,7 +708,7 @@ test.describe("Infiniband Cable Validation Form - Error Scenarios", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
@@ -792,7 +792,7 @@ test.describe("Infiniband Cable Validation Form - Error Scenarios", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
@@ -802,7 +802,7 @@ test.describe("Infiniband Cable Validation Form - Error Scenarios", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
@@ -812,7 +812,7 @@ test.describe("Infiniband Cable Validation Form - Error Scenarios", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 

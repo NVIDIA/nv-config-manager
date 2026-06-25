@@ -104,6 +104,13 @@ class Role(BaseModel):
     name: str
 
 
+class Tag(BaseModel):
+    """Tag data for dropdown population."""
+
+    id: str
+    name: str
+
+
 # Minimal managed-device query for unique tenants only
 NV_CONFIG_MANAGER_DEVICES_TENANTS_QUERY = """
     query ($limit: Int!, $offset: Int!) {
@@ -243,6 +250,66 @@ async def get_roles(
         roles = [{"id": r["id"], "name": r["name"]} for r in data["data"]["roles"]]
 
     return [Role(id=r["id"], name=r["name"]) for r in roles]
+
+
+@router.get("/namespace-tag")
+async def get_namespace_tags(
+    location: Annotated[
+        str | None, Query(description="Limit to namespace tags at this location")
+    ] = None,
+) -> list[Tag]:
+    """Return a list of tags used by Nautobot namespaces."""
+    client = NautobotClient()
+    query = """
+        query ($location: String) {
+            namespaces(location: $location) {
+                tags {
+                    name
+                }
+            }
+        }
+    """
+    variables = {"location": location}
+
+    try:
+        async with client:
+            data = await client.graphql_query(query, variables=variables)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to query Nautobot namespace tags.",
+        ) from exc
+
+    namespaces = data.get("data", {}).get("namespaces") if isinstance(data, dict) else None
+    if not isinstance(namespaces, list):
+        raise HTTPException(
+            status_code=500,
+            detail="Malformed Nautobot namespace tag response.",
+        )
+
+    tag_names: set[str] = set()
+    for namespace in namespaces:
+        if not isinstance(namespace, dict):
+            raise HTTPException(
+                status_code=500,
+                detail="Malformed Nautobot namespace tag response.",
+            )
+        tags = namespace.get("tags", [])
+        if not isinstance(tags, list):
+            raise HTTPException(
+                status_code=500,
+                detail="Malformed Nautobot namespace tag response.",
+            )
+        for tag in tags:
+            if not isinstance(tag, dict):
+                raise HTTPException(
+                    status_code=500,
+                    detail="Malformed Nautobot namespace tag response.",
+                )
+            tag_name = tag.get("name")
+            if isinstance(tag_name, str) and tag_name:
+                tag_names.add(tag_name)
+    return [Tag(id=name, name=name) for name in sorted(tag_names)]
 
 
 class Status(BaseModel):

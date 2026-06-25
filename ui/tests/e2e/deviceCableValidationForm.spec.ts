@@ -27,7 +27,7 @@ import { runWorkflowFormTests } from "./shared/workflowFormTests";
 // Run the standard workflow form tests
 runWorkflowFormTests({
   formPath: "/workflows/devicecablevalidationworkflow/form",
-  formTitle: "Device Cable Validation Workflow",
+  formTitle: "New Device Cable Validation Workflow",
   defaultPlatform: "Arista EOS", // Assuming this works with Arista devices
 });
 
@@ -48,7 +48,7 @@ test.describe("Device Cable Validation Form - Additional Tests", () => {
     await page.getByRole("dialog").getByText(SITES_LIST.pdx01).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "Device Cable Validation Workflow" })
+      .getByRole("heading", { name: "New Device Cable Validation Workflow" })
       .click();
 
     await page.getByRole("button", { name: "Device" }).click();
@@ -58,7 +58,7 @@ test.describe("Device Cable Validation Form - Additional Tests", () => {
       .click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "Device Cable Validation Workflow" })
+      .getByRole("heading", { name: "New Device Cable Validation Workflow" })
       .click();
 
     await page.getByRole("button", { name: "Submit" }).click();
@@ -102,7 +102,7 @@ test.describe("Device Cable Validation Form - Additional Tests", () => {
     await page.getByRole("dialog").getByText(newSiteName).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "Device Cable Validation Workflow" })
+      .getByRole("heading", { name: "New Device Cable Validation Workflow" })
       .click();
 
     // Select a new device from the new site
@@ -111,7 +111,7 @@ test.describe("Device Cable Validation Form - Additional Tests", () => {
     await page.getByRole("dialog").getByText(newDeviceName).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "Device Cable Validation Workflow" })
+      .getByRole("heading", { name: "New Device Cable Validation Workflow" })
       .click();
 
     // Verify the form is updated with the new values
@@ -199,7 +199,7 @@ test.describe("Device Cable Validation Form - Additional Tests", () => {
     await page.getByRole("dialog").getByText(FORBIDDEN_SITE_ID).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "Device Cable Validation Workflow" })
+      .getByRole("heading", { name: "New Device Cable Validation Workflow" })
       .click();
 
     await page.getByRole("button", { name: "Device" }).click();
@@ -209,7 +209,7 @@ test.describe("Device Cable Validation Form - Additional Tests", () => {
       .click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "Device Cable Validation Workflow" })
+      .getByRole("heading", { name: "New Device Cable Validation Workflow" })
       .click();
 
     await page.getByRole("button", { name: "Submit" }).click();

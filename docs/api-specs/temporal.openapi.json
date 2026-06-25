@@ -1566,6 +1566,25 @@
         "title": "SwitchOSUpgradeInput",
         "type": "object"
       },
+      "Tag": {
+        "description": "Tag data for dropdown population.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "Tag",
+        "type": "object"
+      },
       "Tenant": {
         "description": "Tenant data for dropdown population.",
         "properties": {
@@ -1862,6 +1881,14 @@
             ],
             "title": "Next Page Token"
           },
+          "page_count": {
+            "title": "Page Count",
+            "type": "integer"
+          },
+          "total_count": {
+            "title": "Total Count",
+            "type": "integer"
+          },
           "workflows": {
             "items": {
               "$ref": "#/components/schemas/WorkflowSummaryResponse"
@@ -1872,7 +1899,9 @@
         },
         "required": [
           "workflows",
-          "next_page_token"
+          "next_page_token",
+          "total_count",
+          "page_count"
         ],
         "title": "WorkflowListResponse",
         "type": "object"
@@ -2681,6 +2710,62 @@
         ]
       }
     },
+    "/v1/parameter/namespace-tag": {
+      "get": {
+        "description": "Return a list of tags used by Nautobot namespaces.",
+        "operationId": "get_namespace_tags_v1_parameter_namespace_tag_get",
+        "parameters": [
+          {
+            "description": "Limit to namespace tags at this location",
+            "in": "query",
+            "name": "location",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Limit to namespace tags at this location",
+              "title": "Location"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Tag"
+                  },
+                  "title": "Response Get Namespace Tags V1 Parameter Namespace Tag Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Namespace Tags",
+        "tags": [
+          "parameters"
+        ]
+      }
+    },
     "/v1/parameter/role": {
       "get": {
         "description": "Return a list of roles. Default: all. With managed_only=true: only those with managed devices.",
@@ -3044,6 +3129,16 @@
                 }
               ],
               "title": "End Time"
+            }
+          },
+          {
+            "in": "query",
+            "name": "hide_completed",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Hide Completed",
+              "type": "boolean"
             }
           },
           {

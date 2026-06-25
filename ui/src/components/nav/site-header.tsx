@@ -49,12 +49,10 @@ type WhoamiResponse = {
   roles: string[];
 };
 
-const workflowMetadataBySlug = (
+const workflowMetadataByName = (
   workflows: WorkflowMetadata[] | undefined
 ): Map<string, WorkflowMetadata> => {
-  return new Map(
-    workflows?.map((workflow) => [workflow.name.toLowerCase(), workflow]) ?? []
-  );
+  return new Map(workflows?.map((workflow) => [workflow.name, workflow]) ?? []);
 };
 
 const canExecuteWorkflow = (
@@ -74,10 +72,10 @@ const canExecuteWorkflow = (
 
 const getDisabledWorkflowReason = (
   metadata: WorkflowMetadata | undefined,
-  isFormEnabled: boolean
+  isUnauthorized: boolean
 ): string => {
-  if (!isFormEnabled) {
-    return "Form Coming Soon!";
+  if (isUnauthorized) {
+    return "Unauthorized";
   }
 
   if (!metadata) {
@@ -100,13 +98,16 @@ const NewWorkflowChooser = () => {
     apiURL ? sanitizeUrl(`${apiURL}/v1/workflow/metadata`) : null,
     fetcher
   );
-  const { data: userInfo } = useSWRImmutable<WhoamiResponse>(
-    apiURL ? sanitizeUrl(`${apiURL}/whoami`) : null,
-    fetcher
-  );
+  const { data: userInfo, error: whoamiError } =
+    useSWRImmutable<WhoamiResponse>(
+      apiURL ? sanitizeUrl(`${apiURL}/whoami`) : null,
+      fetcher
+    );
 
-  const metadataBySlug = workflowMetadataBySlug(workflowMetadata?.workflows);
-  const userRoles = new Set(userInfo?.roles ?? []);
+  const metadataByName = workflowMetadataByName(workflowMetadata?.workflows);
+  const isUnauthorized = Boolean(whoamiError);
+  const userRoles = new Set(isUnauthorized ? [] : (userInfo?.roles ?? []));
+  const workflowForms = siteConfig.workflows.filter((item) => item.enabled);
 
   return (
     <div className="relative inline-block text-left">
@@ -123,13 +124,15 @@ const NewWorkflowChooser = () => {
         </PopoverTrigger>
 
         <PopoverContent align="end" className="max-h-[70vh] overflow-y-auto">
-          {siteConfig.workflows.map((item) => {
-            const metadata = metadataBySlug.get(item.slug);
-            const hasPermission = canExecuteWorkflow(metadata, userRoles);
-            const isEnabled = item.enabled && hasPermission;
+          {workflowForms.map((item) => {
+            const metadata = metadataByName.get(item.workflowName);
+            const workflowTitle = metadata?.display_name ?? item.title;
+            const hasPermission =
+              !isUnauthorized && canExecuteWorkflow(metadata, userRoles);
+            const isEnabled = hasPermission;
             const disabledReason = getDisabledWorkflowReason(
               metadata,
-              item.enabled
+              isUnauthorized
             );
 
             return isEnabled ? (
@@ -139,7 +142,7 @@ const NewWorkflowChooser = () => {
                 className="flex rounded-sm border-none px-3 py-2 hover:border-none hover:bg-accent hover:text-accent-foreground"
                 onClick={() => setIsOpen(false)}
               >
-                {item.title}
+                {workflowTitle}
               </Link>
             ) : (
               <TooltipProvider delayDuration={0} key={item.slug}>
@@ -153,7 +156,7 @@ const NewWorkflowChooser = () => {
                       )}
                       type="button"
                     >
-                      {item.title}
+                      {workflowTitle}
                     </button>
                   </TooltipTrigger>
                   <TooltipContent side="left">
@@ -177,7 +180,11 @@ const UserRolesMenu = () => {
     fetcher
   );
 
-  const roles = (userInfo?.roles ?? []).filter(
+  const isUnauthorized = Boolean(error);
+  const username = isUnauthorized
+    ? "Unauthorized"
+    : userInfo?.user ?? "Unknown user";
+  const roles = (isUnauthorized ? [] : (userInfo?.roles ?? [])).filter(
     (role) => role.toLowerCase() !== "all"
   );
 
@@ -199,14 +206,7 @@ const UserRolesMenu = () => {
             <div className="text-xs font-medium text-muted-foreground">
               Username
             </div>
-            <div className="break-all text-sm font-medium">
-              {userInfo?.user ?? "Unknown user"}
-            </div>
-            {error && (
-              <div className="text-xs text-destructive">
-                Unable to load roles
-              </div>
-            )}
+            <div className="break-all text-sm font-medium">{username}</div>
           </div>
           <div className="space-y-2">
             <div className="text-xs font-medium text-muted-foreground">

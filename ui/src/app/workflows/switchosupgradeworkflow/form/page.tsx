@@ -43,7 +43,7 @@ const SwitchOSUpgradeWorkflowForm = () => {
 
   return (
     <DeviceWorkflowForm
-      title="Switch OS Upgrade Workflow"
+      title="New Switch OS Upgrade Workflow"
       onSubmit={onSubmit}
     />
   );

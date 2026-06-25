@@ -43,11 +43,10 @@ const CableValidationWorkflowForm = () => {
 
   return (
     <DeviceWorkflowForm
-      title="Device Cable Validation Workflow"
+      title="New Device Cable Validation Workflow"
       onSubmit={onSubmit}
     />
   );
 };
 
 export default CableValidationWorkflowForm;
-

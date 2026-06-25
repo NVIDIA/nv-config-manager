@@ -25,7 +25,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form } from "@/components/ui/form";
 import { useToast } from "@/components/ui/use-toast";
-import { useEnvData } from "@/hooks";
+import { useEnvData, useNamespaceTags } from "@/hooks";
 import { WorkflowFormField } from "@/components/forms/formfield";
 import { startWorkflow } from "@/lib/utils";
 import { SpXOverlayCreationWorkflowInput } from "@/types/data-table.types";
@@ -35,7 +35,7 @@ const SpXOverlayCreationFormSchema = z
     site: z.string().trim().min(1, { message: "Site is required" }),
     overlay_id: z.string().trim().min(1, { message: "Overlay ID is required" }),
     tenant: z.string().trim().min(1, { message: "Tenant is required" }),
-    namespace: z.string().trim().min(1, {message: "Namespace is required"}),
+    namespace_tag: z.string().trim().min(1, { message: "Namespace Tag is required" }),
     rd_min: z.number().min(0).max(65535),
     rd_max: z.number().min(0).max(65535),
   })
@@ -51,8 +51,10 @@ export const SpXOverlayCreationWorkflowForm = () => {
   const querySite = (searchParams && searchParams.get("site")) || "";
   const queryOverlayId = (searchParams && searchParams.get("overlay_id")) || "";
   const queryTenant = (searchParams && searchParams.get("tenant")) || "";
-  const queryNamespace =
-    (searchParams && searchParams.get("namespace")) || "spectrumx";
+  const queryNamespaceTag =
+    (searchParams &&
+      (searchParams.get("namespace_tag") || searchParams.get("namespace"))) ||
+    "spectrumx";
   const queryRDMin =
     (searchParams && Number(searchParams.get("rd_min"))) || 60000;
   const queryRDMax =
@@ -68,11 +70,17 @@ export const SpXOverlayCreationWorkflowForm = () => {
       site: querySite,
       overlay_id: queryOverlayId,
       tenant: queryTenant,
-      namespace: queryNamespace,
+      namespace_tag: queryNamespaceTag,
       rd_min: queryRDMin,
       rd_max: queryRDMax,
     },
   });
+  const selectedSite = form.watch("site");
+  const {
+    namespaceTags,
+    hasLoaded: namespaceTagsHasLoaded,
+    isLoading: namespaceTagsIsLoading,
+  } = useNamespaceTags(selectedSite);
 
   useEffect(() => {
     if (!siteIsLoading && sites && querySite) {
@@ -88,13 +96,25 @@ export const SpXOverlayCreationWorkflowForm = () => {
     }
   }, [sites, querySite, siteIsLoading, form]);
 
+  useEffect(() => {
+    if (!namespaceTagsHasLoaded || namespaceTagsIsLoading) return;
+
+    const namespaceTag = form.getValues("namespace_tag");
+    const namespaceTagExists = namespaceTags.some(
+      (tag) => tag.value === namespaceTag
+    );
+    if (namespaceTag && !namespaceTagExists) {
+      form.setValue("namespace_tag", "", { shouldValidate: true });
+    }
+  }, [namespaceTags, namespaceTagsHasLoaded, namespaceTagsIsLoading, form]);
+
   const onSubmit = async (data: z.infer<typeof SpXOverlayCreationFormSchema>) => {
     setIsSubmitting(true);
     const submissionData: SpXOverlayCreationWorkflowInput = {
       site: data.site,
       overlay_id: data.overlay_id,
       tenant: data.tenant,
-      namespace_tag: data.namespace,
+      namespace_tag: data.namespace_tag,
       rd_min: data.rd_min,
       rd_max: data.rd_max,
     };
@@ -115,7 +135,7 @@ export const SpXOverlayCreationWorkflowForm = () => {
     <div className="flex items-center justify-center p-6">
       <Card className="h-full border-2 shadow-md justify-center">
         <CardHeader>
-          <CardTitle>SpX Overlay Creation Workflow Form</CardTitle>
+          <CardTitle>New SpX Overlay Creation Workflow</CardTitle>
         </CardHeader>
         <CardContent>
           <Form {...form}>
@@ -144,11 +164,14 @@ export const SpXOverlayCreationWorkflowForm = () => {
                 isSubmitting={isSubmitting}
               />
               <WorkflowFormField
-                type="input"
+                type="select"
                 control={form.control}
-                name="namespace"
-                label="Namespace"
+                name="namespace_tag"
+                label="Namespace Tag"
+                options={namespaceTags}
+                isLoading={namespaceTagsIsLoading}
                 isSubmitting={isSubmitting}
+                searchable
               />
               <WorkflowFormField
                 type="number"
