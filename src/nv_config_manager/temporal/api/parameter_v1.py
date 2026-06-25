@@ -18,6 +18,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
+from temporalio.exceptions import ApplicationError
 
 from nv_config_manager.temporal.client.nautobot import NautobotClient
 from nv_config_manager.temporal.common.mixins.device import NetworkDeviceData, Platform
@@ -355,12 +356,12 @@ async def get_devices(  # pylint: disable=R0913,R0914
     device_type_id: Annotated[list[str] | None, Query()] = None,
     manufacturer: Annotated[list[str] | None, Query()] = None,
     platform: Annotated[list[str] | None, Query()] = None,
+    managed_only: Annotated[
+        bool, Query(description="Limit to NVIDIA Config Manager-managed devices")
+    ] = False,
 ) -> list[Device]:
     """Return a list of filtered devices."""
     client = NautobotClient()
-
-    if not platform:
-        platform = ["Arista EOS", "Cumulus Linux", "MLNX-OS", "NV-OS"]
 
     query = """
             query (
@@ -370,7 +371,8 @@ async def get_devices(  # pylint: disable=R0913,R0914
             $tenant: [String],
             $device_type_id: [String],
             $manufacturer: [String],
-            $platform: [String]
+            $platform: [String],
+            $managed_only: Boolean
             ) {
                 devices(
                     location: $site,
@@ -380,7 +382,8 @@ async def get_devices(  # pylint: disable=R0913,R0914
                     device_type: $device_type_id,
                     manufacturer: $manufacturer,
                     platform: $platform,
-                    has_primary_ip: true
+                    has_primary_ip: true,
+                    nv_config_manager_device_status: $managed_only
                 ) {
                     id
                     name
@@ -391,7 +394,7 @@ async def get_devices(  # pylint: disable=R0913,R0914
             }
         """
 
-    variables = {}
+    variables: dict[str, list[str] | bool] = {}
     if site:
         variables["site"] = site
     if status:
@@ -404,14 +407,22 @@ async def get_devices(  # pylint: disable=R0913,R0914
         variables["device_type_id"] = device_type_id
     if manufacturer:
         variables["manufacturer"] = manufacturer
-    variables["platform"] = platform
+    if platform:
+        variables["platform"] = platform
+    if managed_only:
+        variables["managed_only"] = True
 
     if not variables:
         raise HTTPException(status_code=400, detail="Must apply at least one filter.")
-    async with client:
-        data = await client.graphql_query(query, variables)
-    if "errors" in data:
-        raise HTTPException(status_code=400, detail=data["errors"][0]["message"])
+
+    try:
+        async with client:
+            data = await client.graphql_query(query, variables)
+    except ApplicationError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    devices = [device for device in data["data"]["devices"] if device["name"]]
+
     return [
         Device(
             id=device["id"],
@@ -419,8 +430,7 @@ async def get_devices(  # pylint: disable=R0913,R0914
             platform=NetworkDeviceData._slugify((device.get("platform") or {}).get("name") or "")
             or None,
         )
-        for device in data["data"]["devices"]
-        if device["name"]
+        for device in devices
     ]
 
 

@@ -123,6 +123,7 @@ export const PortLLDPInfoWorkflowForm = () => {
 
   const filterParams: string[][] = [
     ["site", watchSite],
+    ["managed_only", "true"],
   ];
   const { devices: deviceData, isLoading: deviceIsLoading } = useDevices({
     site: watchSite,

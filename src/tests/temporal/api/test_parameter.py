@@ -144,6 +144,108 @@ def test_device_v2():
         ]
 
 
+UFM_DEVICES = {
+    "data": {
+        "devices": [
+            {
+                "id": "ufm-uuid-1",
+                "name": "ufm-test-device",
+                "platform": {"name": "UFM"},
+            }
+        ]
+    }
+}
+
+# Server-side managed_only filter returns only the managed switch.
+MANAGED_DEVICES = {
+    "data": {
+        "devices": [
+            {
+                "id": "aa6ef75b-00fe-45e6-8adb-62609509cb4f",
+                "name": "managed-switch",
+                "platform": {"name": "Cumulus Linux"},
+            },
+        ]
+    }
+}
+
+
+def test_device_no_platform_allow_list():
+    """Without an explicit platform, no default platform allow-list is injected."""
+    with aioresponses() as m:
+        m.post("https://nautobot.example.com/api/graphql/", payload=DEVICES)
+
+        client = TestClient(app)
+        rsp = client.get("/v1/parameter/device?site=SITEA")
+        assert rsp.status_code == 200
+
+        sent = next(iter(m.requests.values()))[0]
+        variables = sent.kwargs["json"]["variables"]
+        assert "platform" not in variables
+
+
+def test_device_role_without_platform_filter():
+    """A role-scoped query is trusted as-is, with no platform allow-list injected."""
+    with aioresponses() as m:
+        m.post("https://nautobot.example.com/api/graphql/", payload=UFM_DEVICES)
+
+        client = TestClient(app)
+        rsp = client.get("/v1/parameter/device?role=UFM")
+        assert rsp.json() == [{"id": "ufm-uuid-1", "name": "ufm-test-device", "platform": "ufm"}]
+
+        sent = next(iter(m.requests.values()))[0]
+        variables = sent.kwargs["json"]["variables"]
+        assert variables["role"] == ["UFM"]
+        assert "platform" not in variables
+
+
+def test_device_managed_only():
+    """managed_only=true sets the nv_config_manager_device_status filter in one query."""
+    with aioresponses() as m:
+        m.post("https://nautobot.example.com/api/graphql/", payload=MANAGED_DEVICES)
+
+        client = TestClient(app)
+        rsp = client.get("/v1/parameter/device?site=SITEA&managed_only=true")
+        assert rsp.json() == [
+            {
+                "id": "aa6ef75b-00fe-45e6-8adb-62609509cb4f",
+                "name": "managed-switch",
+                "platform": "cumulus-linux",
+            }
+        ]
+
+        # Single round-trip; the managed filter is passed as a GraphQL variable.
+        assert len(m.requests) == 1
+        sent = next(iter(m.requests.values()))[0]
+        assert sent.kwargs["json"]["variables"]["managed_only"] is True
+
+
+def test_device_managed_only_omitted_by_default():
+    """Without managed_only, the filter variable is omitted (null = no constraint)."""
+    with aioresponses() as m:
+        m.post("https://nautobot.example.com/api/graphql/", payload=DEVICES)
+
+        client = TestClient(app)
+        rsp = client.get("/v1/parameter/device?site=SITEA")
+        assert rsp.status_code == 200
+
+        sent = next(iter(m.requests.values()))[0]
+        assert "managed_only" not in sent.kwargs["json"]["variables"]
+
+
+def test_device_graphql_error_returns_400():
+    """A GraphQL error is translated to HTTP 400 instead of an unhandled 500."""
+    with aioresponses() as m:
+        m.post(
+            "https://nautobot.example.com/api/graphql/",
+            payload={"errors": [{"message": "invalid query"}]},
+        )
+
+        client = TestClient(app)
+        rsp = client.get("/v1/parameter/device?site=SITEA")
+        assert rsp.status_code == 400
+
+
 def test_tenant_default():
     """Test the tenant parameter endpoint (default: all tenants)."""
     with aioresponses() as m:
