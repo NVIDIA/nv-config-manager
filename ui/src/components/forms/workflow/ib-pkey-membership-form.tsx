@@ -284,6 +284,7 @@ export const IBPKeyMembershipForm = ({
 
               {inputMode === "interfaces" ? (
                 <FormField
+                  key="interfaces"
                   control={form.control}
                   name="interfaces"
                   render={() => (
@@ -360,6 +361,7 @@ export const IBPKeyMembershipForm = ({
                 />
               ) : (
                 <FormField
+                  key="guids_text"
                   control={form.control}
                   name="guids_text"
                   render={({ field }) => (
