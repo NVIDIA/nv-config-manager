@@ -46,6 +46,8 @@ def _k8s_val(config: NVConfigManagerInstallConfig, group: str, vault_key: str) -
 
 _CRYPT_SAFE_CHARS = string.ascii_letters + string.digits + "./"
 _URL_SAFE_CHARS = string.ascii_letters + string.digits + "-_~"
+_NATS_CONFIG_PASSWORD_FIRST_CHARS = string.ascii_letters
+_NATS_CONFIG_PASSWORD_CHARS = string.ascii_letters + string.digits
 
 
 def _generate_password(length: int = 32) -> str:
@@ -56,6 +58,15 @@ def _generate_password(length: int = 32) -> str:
 def _generate_url_safe_password(length: int = 32) -> str:
     """Generate a random password safe for use in database/service connection string URLs."""
     return "".join(secrets.choice(_URL_SAFE_CHARS) for _ in range(length))
+
+
+def _generate_nats_config_password(length: int = 32) -> str:
+    """Generate a password safe for unquoted NATS config variable expansion."""
+    if length < 1:
+        raise ValueError("length must be at least 1")
+    first = secrets.choice(_NATS_CONFIG_PASSWORD_FIRST_CHARS)
+    rest = "".join(secrets.choice(_NATS_CONFIG_PASSWORD_CHARS) for _ in range(length - 1))
+    return f"{first}{rest}"
 
 
 def _generate_token(length: int = 40) -> str:
@@ -89,7 +100,7 @@ def _generate_core_k8s_secrets(state: dict[str, str], _v: Any) -> None:
     state["nautobot_token"] = _v("nautobot", "token") or _generate_token(40)
     if ro_token := _v("nautobot", "readOnlyToken"):
         state["nautobot_read_only_token"] = ro_token
-    state["nats_password"] = _v("nautobot", "natsPassword") or _generate_url_safe_password()
+    state["nats_password"] = _v("nautobot", "natsPassword") or _generate_nats_config_password()
     state["redis_password"] = _v("redis", "password") or _generate_url_safe_password()
     state["nautobot_admin_password"] = _v("nautobot_app", "adminPassword") or _generate_password()
     state["django_secret_key"] = _v("nautobot_app", "djangoSecretKey") or _generate_password(50)

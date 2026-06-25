@@ -16,6 +16,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from nv_config_manager_installer.schema import (
@@ -66,6 +68,15 @@ class TestGenerateSecrets:
         assert "nats_password" in state
         assert "django_secret_key" in state
         assert "temporal_db_password" in state
+
+    def test_generated_nats_password_is_safe_for_unquoted_nats_config_variable(self):
+        config = NVConfigManagerInstallConfig(
+            secrets=SecretsConfig(method=SecretsMethod.KUBERNETES)
+        )
+
+        for _ in range(100):
+            state = generate_secrets(config)
+            assert re.fullmatch(r"[A-Za-z][A-Za-z0-9]{31}", state["nats_password"])
 
     def test_kubernetes_nautobot_read_only_token_passes_through(self):
         config = NVConfigManagerInstallConfig(
