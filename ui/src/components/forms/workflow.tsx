@@ -52,6 +52,11 @@ type WorkflowFormProps = {
   deviceFilterParams?: string[][];
   /** When true, show the commit-confirm checkbox (for deploy workflow) */
   showCommitConfirm?: boolean;
+  /**
+   * Restrict the device list to NVCM-managed devices. Defaults to true.
+   * Set false for workflows that target unmanaged devices such as the UFM.
+   */
+  managedOnly?: boolean;
 };
 
 type TenantFieldProps = {
@@ -123,6 +128,7 @@ export const DeviceWorkflowForm = ({
   onSubmit,
   deviceFilterParams = [],
   showCommitConfirm = false,
+  managedOnly = true,
 }: WorkflowFormProps) => {
 
   const [isSubmitting, setIsSubmitting] = React.useState<boolean>(false);
@@ -176,7 +182,7 @@ export const DeviceWorkflowForm = ({
     : [];
   const filterParams = [
     ["site", site],
-    ["managed_only", "true"],
+    ...(managedOnly ? [["managed_only", "true"]] : []),
     ...tenantFilters,
     ...statusFilters,
     ...deviceFilterParams,

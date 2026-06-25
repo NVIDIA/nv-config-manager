@@ -46,6 +46,7 @@ const IBValidationWorkflowForm = () => {
       title="New InfiniBand Get Unhealthy Ports Workflow"
       onSubmit={onSubmit}
       deviceFilterParams={[["platform", "UFM"]]}
+      managedOnly={false}
     />
   );
 };
