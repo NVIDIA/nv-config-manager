@@ -118,7 +118,12 @@ export const DiagnosticsWorkflowForm = () => {
   const site = form.watch("site");
   const device_ids = form.watch("device_ids");
 
-  const filterParams = site ? [["site", site]] : [];
+  const filterParams = site
+    ? [
+        ["site", site],
+        ["managed_only", "true"],
+      ]
+    : [];
   const { devices, isLoading: devicesLoading } = useDevices({
     site: site || "",
     filterParams,

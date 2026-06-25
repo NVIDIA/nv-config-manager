@@ -2378,6 +2378,18 @@
               ],
               "title": "Platform"
             }
+          },
+          {
+            "description": "Limit to NVIDIA Config Manager-managed devices",
+            "in": "query",
+            "name": "managed_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Limit to NVIDIA Config Manager-managed devices",
+              "title": "Managed Only",
+              "type": "boolean"
+            }
           }
         ],
         "responses": {

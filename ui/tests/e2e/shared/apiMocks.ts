@@ -1025,6 +1025,9 @@ export async function mockDevicesEndpoint(page: Page) {
     // Process all filter parameters
     url.searchParams.forEach((value, key) => {
       if (key === "site") return; // Already handled above
+      // Mock devices are all NVCM-managed; managed_only does not map to a
+      // device field, so skip it instead of filtering everything out.
+      if (key === "managed_only") return;
 
       // Filter devices based on the parameter
       devices = devices.filter((device) => {

@@ -138,6 +138,8 @@ navigation:
         path: ../user-guides/ib-pkey-member-update/index.mdx
       - page: IB PKey Member Delete
         path: ../user-guides/ib-pkey-member-delete/index.mdx
+      - page: IB Port GUID Discovery
+        path: ../user-guides/ib-port-guid-discovery/index.mdx
 
     - section: SpX Overlay Lifecycle
       collapsible: true
