@@ -57,7 +57,10 @@ def validate_pkey_format(pkey: str) -> str:
 
 
 def normalize_membership_type(membership_type: object) -> str:
-    """Normalize membership to 'full'/'limited', defaulting None/non-string to 'full'."""
+    """Normalize membership to 'full'/'limited'.
+
+    None or a blank string defaults to 'full'; any other type or value raises ValueError.
+    """
     if membership_type is None:
         return DEFAULT_MEMBERSHIP_TYPE
     if not isinstance(membership_type, str):
