@@ -16,10 +16,9 @@
 
 from __future__ import annotations
 
-import re
-
 import pytest
 
+from nv_config_manager_installer import secrets as secrets_module
 from nv_config_manager_installer.schema import (
     K8sSecretGroup,
     KubernetesSecretsConfig,
@@ -69,14 +68,14 @@ class TestGenerateSecrets:
         assert "django_secret_key" in state
         assert "temporal_db_password" in state
 
-    def test_generated_nats_password_is_safe_for_unquoted_nats_config_variable(self):
-        config = NVConfigManagerInstallConfig(
-            secrets=SecretsConfig(method=SecretsMethod.KUBERNETES)
-        )
+    def test_generated_nats_password_is_safe_for_unquoted_nats_config_variable(self, monkeypatch):
+        monkeypatch.setattr(secrets_module.secrets, "choice", lambda alphabet: alphabet[-1])
 
-        for _ in range(100):
-            state = generate_secrets(config)
-            assert re.fullmatch(r"[A-Za-z][A-Za-z0-9]{31}", state["nats_password"])
+        assert secrets_module._generate_nats_config_password(16) == "Z" + ("9" * 15)
+
+    def test_generated_nats_password_rejects_too_short_lengths(self):
+        with pytest.raises(ValueError, match="length must be at least 16"):
+            secrets_module._generate_nats_config_password(2)
 
     def test_kubernetes_nautobot_read_only_token_passes_through(self):
         config = NVConfigManagerInstallConfig(

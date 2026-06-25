@@ -48,6 +48,7 @@ _CRYPT_SAFE_CHARS = string.ascii_letters + string.digits + "./"
 _URL_SAFE_CHARS = string.ascii_letters + string.digits + "-_~"
 _NATS_CONFIG_PASSWORD_FIRST_CHARS = string.ascii_letters
 _NATS_CONFIG_PASSWORD_CHARS = string.ascii_letters + string.digits
+_NATS_CONFIG_PASSWORD_MIN_LENGTH = 16
 
 
 def _generate_password(length: int = 32) -> str:
@@ -62,8 +63,8 @@ def _generate_url_safe_password(length: int = 32) -> str:
 
 def _generate_nats_config_password(length: int = 32) -> str:
     """Generate a password safe for unquoted NATS config variable expansion."""
-    if length < 1:
-        raise ValueError("length must be at least 1")
+    if length < _NATS_CONFIG_PASSWORD_MIN_LENGTH:
+        raise ValueError(f"length must be at least {_NATS_CONFIG_PASSWORD_MIN_LENGTH}")
     first = secrets.choice(_NATS_CONFIG_PASSWORD_FIRST_CHARS)
     rest = "".join(secrets.choice(_NATS_CONFIG_PASSWORD_CHARS) for _ in range(length - 1))
     return f"{first}{rest}"
