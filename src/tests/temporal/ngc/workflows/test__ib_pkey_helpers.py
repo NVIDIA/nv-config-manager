@@ -95,3 +95,10 @@ def test_normalize_membership_type_rejects_invalid(bad):
     """Anything other than full/limited is rejected with a clear message."""
     with pytest.raises(ValueError, match="membership_type must be 'full' or 'limited'"):
         normalize_membership_type(bad)
+
+
+@pytest.mark.parametrize("bad", [1, 0, True, False, 1.5, ["full"], {"full"}])
+def test_normalize_membership_type_rejects_non_string(bad):
+    """Non-string input raises ValueError, not AttributeError (clean 422)."""
+    with pytest.raises(ValueError, match="membership_type must be 'full' or 'limited'"):
+        normalize_membership_type(bad)

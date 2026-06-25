@@ -384,6 +384,13 @@ def test_membership_type_rejects_invalid():
         _update_input(membership_type="partial")
 
 
+@pytest.mark.parametrize("bad", [1, True, 1.5])
+def test_membership_type_rejects_non_string(bad):
+    """Non-string membership_type yields a clean validation error, not a crash."""
+    with pytest.raises(ValueError, match="membership_type must be 'full' or 'limited'"):
+        _update_input(membership_type=bad)
+
+
 @pytest.mark.asyncio
 async def test_guids_only_path_resolves_via_graphql(mock_all_configs, time_skipping_env):
     """GUIDs-only input reverse-resolves to interfaces and completes the workflow."""

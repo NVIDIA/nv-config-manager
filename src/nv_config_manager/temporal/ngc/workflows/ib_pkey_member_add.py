@@ -75,7 +75,7 @@ class IBPKeyMemberAddInput(BaseModel):
 
     @field_validator("membership_type", mode="before")
     @classmethod
-    def _normalize_membership(cls, v: str | None) -> str:
+    def _normalize_membership(cls, v: object) -> str:
         return normalize_membership_type(v)
 
     @model_validator(mode="after")
