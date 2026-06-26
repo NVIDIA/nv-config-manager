@@ -38,6 +38,7 @@ def test_install_config_uses_mock_topology_with_paired_template_plugin() -> None
         mock_blueprint="air_trial",
         deployment_name="demo",
         mock_topology_path="development/mock_topology",
+        config_manager_ref="1.3.0-rc.4",
     )
 
     install_config = generate_air_sim_install_config(
@@ -45,6 +46,8 @@ def test_install_config_uses_mock_topology_with_paired_template_plugin() -> None
         site_name="air-demo",
         lb_allowed_prefixes=["172.18.255.0/24"],
     )
+
+    assert install_config["images"] == {"source": "local", "tag": "1.3.0-rc.4"}
 
     content = install_config["content"]
     assert content["template_plugins"] == [

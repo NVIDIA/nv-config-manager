@@ -180,7 +180,7 @@ def generate_air_sim_install_config(
             },
             "ztp_storage": {"type": "file", "pvc_size": "10Gi"},
         },
-        "images": {"source": "local"},
+        "images": {"source": "local", "tag": cfg.config_manager_ref},
         "rbac": {
             "admin_roles": ["all"],
             "default_read_roles": ["all"],

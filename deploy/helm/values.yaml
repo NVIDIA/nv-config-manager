@@ -42,6 +42,10 @@ global:
   baseDomain: config-manager.example.com
   # Environment identifier (dev, test, staging, agg-prod, etc.)
   environment: dev
+  # Displayed application version. Defaults to the UI image tag when unset.
+  # The installer sets this separately for local builds because image tags are
+  # rewritten to content hashes.
+  appVersion: ""
   # Whether this is an aggregate deployment
   aggregate: false
   # Kubernetes namespace for all services

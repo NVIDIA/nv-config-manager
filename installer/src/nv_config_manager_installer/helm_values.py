@@ -372,6 +372,8 @@ def _build_global(
         "createServiceAccount": True,
         "serviceAccountName": "vault-access-sa",
     }
+    if img.tag:
+        section["appVersion"] = img.tag
 
     if c.environment == "local":
         section["deploymentStrategy"] = {"type": "Recreate"}

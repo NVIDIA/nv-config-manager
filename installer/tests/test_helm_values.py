@@ -622,6 +622,7 @@ class TestImagesInHelmValues:
         )
         values = _gen(config)
         images = values["global"]["images"]
+        assert values["global"]["appVersion"] == "v2.0"
         assert images["nvConfigManager"]["repository"] == "registry.corp.com/team/nv-config-manager"
         assert images["nvConfigManager"]["tag"] == "v2.0"
         assert (
@@ -710,10 +711,11 @@ class TestImagesInHelmValues:
             "nv-config-manager-nautobot": "deadbeef0123",
             "nv-config-manager-ui": "111222333444",
         }
-        config = _make_config(images=ImagesConfig(source=ImageSource.LOCAL))
+        config = _make_config(images=ImagesConfig(source=ImageSource.LOCAL, tag="1.3.0-rc.4"))
         values = _gen(config, local_tags=tags)
         images = values["global"]["images"]
 
+        assert values["global"]["appVersion"] == "1.3.0-rc.4"
         assert images["nvConfigManager"]["tag"] == "a1b2c3d4e5f6"
         assert images["nautobot"]["tag"] == "deadbeef0123"
         assert images["nvConfigManagerUi"]["tag"] == "111222333444"
