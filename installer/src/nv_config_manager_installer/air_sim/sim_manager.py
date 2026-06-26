@@ -763,9 +763,27 @@ class AirSimulationManager:
         return self.ssh_password
 
     _SETUP_COMPLETE_MARKER = "NVCM DSX Air Setup Complete"
+    _SETUP_LOG_PATHS = ("/var/log/cloud-init-output.log", "/var/log/nvcm-setup.log")
     _DEPLOY_COMPLETE_MARKER = "Deployment completed successfully!"
 
     _SOCKS_PORT = 8080
+
+    def _remote_setup_marker_exists(self, ssh_base: list[str]) -> bool:
+        result = subprocess.run(
+            [
+                *ssh_base,
+                "sudo",
+                "grep",
+                "-F",
+                "-q",
+                "--",
+                self._SETUP_COMPLETE_MARKER,
+                *self._SETUP_LOG_PATHS,
+            ],
+            capture_output=True,
+            timeout=10,
+        )
+        return result.returncode == 0
 
     def _ssh_run_and_tail(
         self,
@@ -2127,6 +2145,10 @@ class AirSimulationManager:
             LOG.warning("Timed out waiting for SSH. Log in manually to check status.")
             return False
 
+        if self._remote_setup_marker_exists(ssh_base):
+            LOG.info("\nCloud-init setup already finished successfully.")
+            return True
+
         # -- Phase 2: tail cloud-init output --------------------------------
         LOG.info("Tailing cloud-init output ...")
         LOG.info("(Ctrl+C to stop tailing and continue)\n")
@@ -2185,6 +2207,11 @@ class AirSimulationManager:
                 if "status: done" in status_text:
                     done_seen_at = done_seen_at or now
                     if now - done_seen_at > 5:
+                        if self._remote_setup_marker_exists(ssh_base):
+                            LOG.info("\nCloud-init setup finished successfully.")
+                            proc.terminate()
+                            proc.wait(timeout=5)
+                            return True
                         LOG.warning(
                             "Cloud-init completed without the setup-complete marker. "
                             "Check /var/log/nvcm-setup.log on the server."
