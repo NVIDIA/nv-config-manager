@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from nv_config_manager_installer.air_sim.constants import (
     CONFIG_MANAGER_REMOTE_DIR,
     DEFAULT_AIR_DEMO_TEMPLATE_PLUGIN_PATH,
@@ -67,19 +69,18 @@ def test_install_config_uses_mock_topology_with_paired_template_plugin() -> None
     assert "ingest" not in json.dumps(content).lower()
 
 
-def test_install_config_uses_explicit_config_manager_version_for_branch_ref() -> None:
+def test_install_config_rejects_config_manager_version_that_does_not_match_ref() -> None:
     cfg = SimConfig(
         config_manager_ref="codex/fix-ui-release-version",
         config_manager_version="1.3.0-rc.4",
     )
 
-    install_config = generate_air_sim_install_config(
-        cfg,
-        site_name="air-demo",
-        lb_allowed_prefixes=["172.18.255.0/24"],
-    )
-
-    assert install_config["images"] == {"source": "local", "tag": "1.3.0-rc.4"}
+    with pytest.raises(ValueError, match="Version must match"):
+        generate_air_sim_install_config(
+            cfg,
+            site_name="air-demo",
+            lb_allowed_prefixes=["172.18.255.0/24"],
+        )
 
 
 def test_install_config_does_not_use_branch_ref_as_image_tag() -> None:

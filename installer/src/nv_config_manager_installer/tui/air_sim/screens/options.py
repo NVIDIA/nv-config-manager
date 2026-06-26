@@ -20,6 +20,7 @@ from textual.app import ComposeResult
 from textual.containers import Container
 from textual.widgets import Input, Label, RadioButton, RadioSet, Static
 
+from nv_config_manager_installer.air_sim.installer_config import config_manager_version_error
 from nv_config_manager_installer.air_sim.sim_config import SimConfig, generate_oob_ssh_password
 from nv_config_manager_installer.tui.widgets import LabeledSwitch
 
@@ -115,6 +116,13 @@ class OptionsScreen(Container):
         ref = self.query_one("#config-manager-ref", Input).value.strip() or "main"
         version = self.query_one("#config-manager-version", Input).value.strip()
         hint = self.query_one("#build-mode-hint", Static)
+        error = config_manager_version_error(ref, version)
+        if error:
+            hint.update(
+                f"[red]{error}.[/red] [dim]Leave Version blank or set Git Ref to the same "
+                "release tag.[/dim]"
+            )
+            return
         version_text = f" and stamped as {version!r}" if version else ""
         hint.update(
             f"[dim]Images will be built locally from nv-config-manager ref {ref!r}{version_text}; "
@@ -165,6 +173,9 @@ class OptionsScreen(Container):
         self._update_build_mode_hint()
 
     def get_status(self, config: SimConfig) -> str:
-        if not config.ngc_api_key:
+        if not config.ngc_api_key or config_manager_version_error(
+            config.config_manager_ref,
+            config.config_manager_version,
+        ):
             return "[!]"
         return "[*]"

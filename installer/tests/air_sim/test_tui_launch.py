@@ -19,7 +19,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
-from textual.widgets import Input, RadioButton, Static
+from textual.widgets import Button, Input, RadioButton, Static
 
 import nv_config_manager_installer.air_sim.sim_manager as sim_manager_module
 from nv_config_manager_installer.air_sim.sim_config import SimConfig
@@ -534,6 +534,28 @@ async def test_launch_air_link_uses_public_dsx_endpoint() -> None:
 
 
 @pytest.mark.asyncio
+async def test_launch_rejects_config_manager_version_mismatch() -> None:
+    app = ClipboardAirSimApp(
+        config=SimConfig(
+            ngc_api_key="nvapi-test",
+            config_manager_ref="feature/air-demo",
+            config_manager_version="1.3.0-rc.4",
+        )
+    )
+
+    async with app.run_test(size=(180, 70)) as pilot:
+        app.switch_section("launch")
+        await pilot.pause(0.1)
+
+        await pilot.click("#btn-launch")
+        await pilot.pause(0.1)
+
+        launch = app.query_one("#screen-launch", LaunchScreen)
+        assert "Version must match" in str(launch.query_one("#launch-status", Static).render())
+        assert launch.query_one("#btn-launch", Button).disabled is False
+
+
+@pytest.mark.asyncio
 async def test_options_page_saves_visible_fields_without_resetting_hidden_flags(tmp_path) -> None:
     config = SimConfig(
         ngc_api_key="nvapi-test",
@@ -552,7 +574,7 @@ async def test_options_page_saves_visible_fields_without_resetting_hidden_flags(
         options = app.query_one("#screen-options")
         options.query_one("#use-public-air", LabeledSwitch).value = False
         options.query_one("#oob-ssh-password", Input).value = TEST_OOB_SSH_PASSWORD
-        options.query_one("#config-manager-ref", Input).value = "feature/air-demo"
+        options.query_one("#config-manager-ref", Input).value = "1.3.0-rc.4"
         options.query_one("#config-manager-version", Input).value = "1.3.0-rc.4"
         options.query_one("#size-large", RadioButton).value = True
         await pilot.pause(0.1)
@@ -561,7 +583,7 @@ async def test_options_page_saves_visible_fields_without_resetting_hidden_flags(
 
     assert config.use_internal is True
     assert config.oob_ssh_password == TEST_OOB_SSH_PASSWORD
-    assert config.config_manager_ref == "feature/air-demo"
+    assert config.config_manager_ref == "1.3.0-rc.4"
     assert config.config_manager_version == "1.3.0-rc.4"
     assert config.auto_configure is False
     assert config.deploy is False
