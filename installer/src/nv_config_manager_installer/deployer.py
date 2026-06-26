@@ -27,6 +27,7 @@ import io
 import json
 import os
 import platform
+import re
 import selectors
 import shutil
 import subprocess
@@ -67,6 +68,10 @@ _PROJECT_ROOT_MARKERS = ("deploy", "Makefile", ".git")
 _DEFAULT_GATEWAY_CLASS_NAME = "envoy-gateway"
 _HELM_RELEASE_NAME_ANNOTATION = "meta.helm.sh/release-name"
 _HELM_RELEASE_NAMESPACE_ANNOTATION = "meta.helm.sh/release-namespace"
+_PYTHON_PACKAGE_VERSION_RE = re.compile(
+    r"^(?:v)?(?P<version>\d+\.\d+\.\d+(?:(?:rc\d+)|(?:[-.]?rc\.?\d+))?"
+    r"(?:\+[A-Za-z0-9.]+)?)$"
+)
 
 
 def find_project_root(start: Path | None = None) -> Path:
@@ -256,6 +261,14 @@ def _get_image_digest_tag(image: str) -> str:
         return f"sha-{hex_part[:12]}"
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
         return ""
+
+
+def _python_package_version_from_ref(ref: str) -> str:
+    """Return a PEP 440-compatible package version for release refs."""
+    match = _PYTHON_PACKAGE_VERSION_RE.match(ref.strip())
+    if not match:
+        return ""
+    return match.group("version").replace("-rc.", "rc").replace("-rc", "rc").replace(".rc", "rc")
 
 
 def _run(
@@ -1358,6 +1371,12 @@ class Deployer:
             val = os.environ.get(env_var, "")
             if val:
                 nv_config_manager_build_args += ["--build-arg", f"{env_var}={val}"]
+        package_version = _python_package_version_from_ref(self.config.images.tag)
+        nautobot_build_args: list[str] = []
+        for env_var in ("NAUTOBOT_APP_OVERLAYS_VERSION", "NAUTOBOT_NV_CONFIG_MANAGER_VERSION"):
+            val = os.environ.get(env_var, "") or package_version
+            if val:
+                nautobot_build_args += ["--build-arg", f"{env_var}={val}"]
 
         build_env = {**os.environ, "DOCKER_BUILDKIT": "1"}
         use_buildx = bool(build_env.get("BUILDX_BUILDER"))
@@ -1369,6 +1388,8 @@ class Deployer:
             image_build_args = [*apt_mirror_args]
             if name == "nv-config-manager":
                 image_build_args += nv_config_manager_build_args
+            if name == "nv-config-manager-nautobot":
+                image_build_args += nautobot_build_args
             build_commands.append(
                 _ParallelCommand(
                     label=name,
