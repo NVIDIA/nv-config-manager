@@ -692,6 +692,8 @@ class TestImageBuilds:
             "nv_config_manager_installer.deployer._get_image_digest_tag",
             lambda image: "",
         )
+        monkeypatch.delenv("NAUTOBOT_APP_OVERLAYS_VERSION", raising=False)
+        monkeypatch.delenv("NAUTOBOT_NV_CONFIG_MANAGER_VERSION", raising=False)
 
         config = _make_config()
         config.images = ImagesConfig(source=ImageSource.LOCAL, tag="1.3.0-rc.4")
