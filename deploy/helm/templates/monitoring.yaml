@@ -305,42 +305,6 @@ spec:
 {{- end }}{{- /* end hasIngress check */}}
 
 {{- if and .Values.monitoring.podMonitors .Values.monitoring.podMonitors.enabled }}
-{{- /* Envoy Gateway Proxy PodMonitor */}}
-{{- if and (dig "envoyProxy" "enabled" false .Values.monitoring.podMonitors) (eq $ingressType "envoyGateway") }}
-{{- $envoyProxyMonitor := .Values.monitoring.podMonitors.envoyProxy }}
-{{- $gatewayNamespace := $envoyProxyMonitor.namespace | default .Values.networkPolicy.gatewayNamespace | default "envoy-gateway-system" }}
----
-apiVersion: monitoring.coreos.com/v1
-kind: PodMonitor
-metadata:
-  name: {{ include "nv-config-manager.componentName" (dict "root" . "component" "envoy-proxy") }}
-  namespace: {{ $namespace }}
-  labels:
-    {{- include "nv-config-manager.labels" . | nindent 4 }}
-    app.kubernetes.io/component: envoy-proxy
-    {{- with $monitoringCRLabels }}
-    {{- toYaml . | nindent 4 }}
-    {{- end }}
-spec:
-  {{- include "nv-config-manager.podTargetLabels" . | nindent 2 }}
-  namespaceSelector:
-    matchNames:
-      - {{ $gatewayNamespace }}
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: envoy
-      app.kubernetes.io/component: proxy
-  podMetricsEndpoints:
-    - port: {{ $envoyProxyMonitor.port | default "metrics" }}
-      path: {{ $envoyProxyMonitor.path | default "/stats/prometheus" }}
-      interval: {{ $scrapeInterval }}
-      scrapeTimeout: {{ $scrapeTimeout }}
-      {{- if .Values.global.customLabels }}
-      metricRelabelings:
-        {{- include "nv-config-manager.podMonitorMetricRelabelings" . | nindent 8 }}
-      {{- end }}
-{{- end }}
-
 {{- /* Render Service PodMonitor */}}
 {{- if and .Values.monitoring.podMonitors.enabled .Values.renderService.enabled }}
 ---

@@ -65,6 +65,8 @@ from nv_config_manager_installer.secrets import generate_secrets
 
 _PROJECT_ROOT_MARKERS = ("deploy", "Makefile", ".git")
 _DEFAULT_GATEWAY_CLASS_NAME = "envoy-gateway"
+_ENVOY_GATEWAY_NAMESPACE = "envoy-gateway-system"
+_ENVOY_PROXY_PODMONITOR_NAME = "envoy-proxy"
 _HELM_RELEASE_NAME_ANNOTATION = "meta.helm.sh/release-name"
 _HELM_RELEASE_NAMESPACE_ANNOTATION = "meta.helm.sh/release-namespace"
 
@@ -664,6 +666,68 @@ def _apply_envoy_gateway_crds(
             step,
             callback,
             timeout=300,
+        )
+
+
+def _envoy_proxy_podmonitor_manifest() -> dict[str, Any]:
+    """Return the PodMonitor that scrapes Envoy Gateway data-plane proxies.
+
+    Envoy Gateway exposes Prometheus metrics on each managed proxy pod's named
+    ``metrics`` port at ``/stats/prometheus``, but the stock gateway-helm chart
+    only annotates the pods (``prometheus.io/scrape``); it ships no PodMonitor.
+    Operator / CR-based scrapers (the installer's Alloy stack) ignore those
+    annotations, so without this CR the proxy metrics are exposed but never
+    collected.
+
+    A single cluster-scoped PodMonitor (``namespaceSelector.any: true``) is
+    installed alongside Envoy Gateway so it covers every per-release gateway
+    proxy at once. This mirrors how production clusters ship the PodMonitor
+    with their Envoy Gateway deployment, and avoids the duplicate-scraping that
+    a per-release chart PodMonitor would cause.
+    """
+    return {
+        "apiVersion": "monitoring.coreos.com/v1",
+        "kind": "PodMonitor",
+        "metadata": {
+            "name": _ENVOY_PROXY_PODMONITOR_NAME,
+            "namespace": _ENVOY_GATEWAY_NAMESPACE,
+            "labels": {
+                "app.kubernetes.io/name": "envoy",
+                "app.kubernetes.io/component": "proxy",
+                "app.kubernetes.io/managed-by": "nv-config-manager-installer",
+            },
+        },
+        "spec": {
+            "namespaceSelector": {"any": True},
+            "selector": {
+                "matchLabels": {
+                    "app.kubernetes.io/component": "proxy",
+                    "app.kubernetes.io/managed-by": "envoy-gateway",
+                },
+            },
+            "podMetricsEndpoints": [
+                {
+                    "port": "metrics",
+                    "path": "/stats/prometheus",
+                    "interval": "30s",
+                    "scrapeTimeout": "10s",
+                },
+            ],
+        },
+    }
+
+
+def _apply_envoy_proxy_podmonitor(step: DeployStep, callback: DeployCallback) -> None:
+    """Apply the Envoy Gateway proxy PodMonitor (requires monitoring CRDs)."""
+    manifest = yaml.safe_dump(_envoy_proxy_podmonitor_manifest(), sort_keys=False)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        manifest_path = Path(tmpdir) / "envoy-proxy-podmonitor.yaml"
+        manifest_path.write_text(manifest)
+        _run_logged(
+            ["kubectl", "apply", "-f", str(manifest_path)],
+            step,
+            callback,
+            timeout=120,
         )
 
 
@@ -1911,6 +1975,17 @@ class Deployer:
                 step,
                 self.callback,
             )
+
+        if opts.install_envoy_gateway and observability_on:
+            # Envoy Gateway only annotates its proxy pods (prometheus.io/scrape);
+            # it ships no PodMonitor, so the Alloy operator-CR scraper installed
+            # by the observability stack would collect nothing. Apply one
+            # cluster-scoped PodMonitor alongside the gateway -- now that the
+            # monitoring CRDs are registered -- so every per-release gateway
+            # proxy is scraped without the per-release duplication a chart-level
+            # PodMonitor would cause.
+            self.callback.on_log("Installing Envoy Gateway proxy PodMonitor...")
+            _apply_envoy_proxy_podmonitor(step, self.callback)
 
         self._finish_step(step)
 
