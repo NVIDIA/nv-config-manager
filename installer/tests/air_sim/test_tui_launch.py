@@ -19,7 +19,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
-from textual.widgets import Input, Static
+from textual.widgets import Input, RadioButton, Static
 
 import nv_config_manager_installer.air_sim.sim_manager as sim_manager_module
 from nv_config_manager_installer.air_sim.sim_config import SimConfig
@@ -553,7 +553,8 @@ async def test_options_page_saves_visible_fields_without_resetting_hidden_flags(
         options.query_one("#use-public-air", LabeledSwitch).value = False
         options.query_one("#oob-ssh-password", Input).value = TEST_OOB_SSH_PASSWORD
         options.query_one("#config-manager-ref", Input).value = "feature/air-demo"
-        await pilot.click("#size-large")
+        options.query_one("#config-manager-version", Input).value = "1.3.0-rc.4"
+        options.query_one("#size-large", RadioButton).value = True
         await pilot.pause(0.1)
 
         app.collect_config()
@@ -561,6 +562,7 @@ async def test_options_page_saves_visible_fields_without_resetting_hidden_flags(
     assert config.use_internal is True
     assert config.oob_ssh_password == TEST_OOB_SSH_PASSWORD
     assert config.config_manager_ref == "feature/air-demo"
+    assert config.config_manager_version == "1.3.0-rc.4"
     assert config.auto_configure is False
     assert config.deploy is False
     assert config.no_aggressive_dhcp is True

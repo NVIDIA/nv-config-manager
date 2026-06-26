@@ -76,6 +76,12 @@ class OptionsScreen(Container):
         yield Label("Deployment", classes="subsection-label")
         yield Label("nv-config-manager Git Ref", classes="field-label")
         yield Input(value=self._config.config_manager_ref, id="config-manager-ref")
+        yield Label("nv-config-manager Version", classes="field-label")
+        yield Input(
+            value=self._config.config_manager_version,
+            placeholder="1.3.0-rc.4",
+            id="config-manager-version",
+        )
         yield Static("", id="build-mode-hint", classes="field-hint")
         yield Label(
             "Cumulus Version Override  (leave blank to use topology values)",
@@ -102,15 +108,16 @@ class OptionsScreen(Container):
         self._update_build_mode_hint()
 
     def on_input_changed(self, event: Input.Changed) -> None:
-        if event.input.id == "config-manager-ref":
+        if event.input.id in {"config-manager-ref", "config-manager-version"}:
             self._update_build_mode_hint()
 
     def _update_build_mode_hint(self) -> None:
-        branch = self.query_one("#config-manager-ref", Input).value.strip()
+        ref = self.query_one("#config-manager-ref", Input).value.strip() or "main"
+        version = self.query_one("#config-manager-version", Input).value.strip()
         hint = self.query_one("#build-mode-hint", Static)
-        ref = branch or "main"
+        version_text = f" and stamped as {version!r}" if version else ""
         hint.update(
-            f"[dim]Images will be built locally from nv-config-manager ref {ref!r}; "
+            f"[dim]Images will be built locally from nv-config-manager ref {ref!r}{version_text}; "
             "registry pulls are disabled for DSX Air demos.[/dim]"
         )
 
@@ -125,6 +132,9 @@ class OptionsScreen(Container):
         config.git_token = self.query_one("#git-token", Input).value.strip()
         config.config_manager_repo = self.query_one("#config-manager-repo", Input).value.strip()
         config.config_manager_ref = self.query_one("#config-manager-ref", Input).value.strip()
+        config.config_manager_version = self.query_one(
+            "#config-manager-version", Input
+        ).value.strip()
         config.cumulus_version = self.query_one("#cumulus-version", Input).value.strip()
         for s in _SIZES:
             if self.query_one(f"#size-{s}", RadioButton).value:
@@ -146,6 +156,7 @@ class OptionsScreen(Container):
         self.query_one("#git-token", Input).value = config.git_token
         self.query_one("#config-manager-repo", Input).value = config.config_manager_repo
         self.query_one("#config-manager-ref", Input).value = config.config_manager_ref
+        self.query_one("#config-manager-version", Input).value = config.config_manager_version
         self.query_one("#cumulus-version", Input).value = config.cumulus_version
         for s in _SIZES:
             self.query_one(f"#size-{s}", RadioButton).value = config.size == s

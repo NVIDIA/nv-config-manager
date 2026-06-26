@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -47,6 +48,17 @@ _NETWORK_SECRET_KEYS = [
 
 _MOCK_TOPOLOGY_JOB = "mock_topology.jobs.mock_topology_design.MockTopologyDesign"
 _DEMO_TEMPLATE_BLUEPRINTS = {"air_trial", "air_superpod"}
+_RELEASE_VERSION_RE = re.compile(r"^v?\d+\.\d+\.\d+(?:(?:rc\d+)|(?:[-.]?rc\.?\d+))?$")
+
+
+def _config_manager_image_tag(cfg: SimConfig) -> str:
+    version = cfg.config_manager_version.strip()
+    if version:
+        return version
+    ref = cfg.config_manager_ref.strip()
+    if _RELEASE_VERSION_RE.match(ref):
+        return ref
+    return ""
 
 
 def _remote_repo_path(path: str) -> str:
@@ -124,6 +136,10 @@ def generate_air_sim_install_config(
     """Build the installer config structure for NVIDIA Config Manager."""
     content_jobs, run_after_deploy = build_content_jobs(cfg)
     template_plugins = build_template_plugins(cfg)
+    images = {"source": "local"}
+    image_tag = _config_manager_image_tag(cfg)
+    if image_tag:
+        images["tag"] = image_tag
 
     network_secrets = [
         {
@@ -180,7 +196,7 @@ def generate_air_sim_install_config(
             },
             "ztp_storage": {"type": "file", "pvc_size": "10Gi"},
         },
-        "images": {"source": "local", "tag": cfg.config_manager_ref},
+        "images": images,
         "rbac": {
             "admin_roles": ["all"],
             "default_read_roles": ["all"],

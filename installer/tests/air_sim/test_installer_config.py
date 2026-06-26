@@ -67,6 +67,33 @@ def test_install_config_uses_mock_topology_with_paired_template_plugin() -> None
     assert "ingest" not in json.dumps(content).lower()
 
 
+def test_install_config_uses_explicit_config_manager_version_for_branch_ref() -> None:
+    cfg = SimConfig(
+        config_manager_ref="codex/fix-ui-release-version",
+        config_manager_version="1.3.0-rc.4",
+    )
+
+    install_config = generate_air_sim_install_config(
+        cfg,
+        site_name="air-demo",
+        lb_allowed_prefixes=["172.18.255.0/24"],
+    )
+
+    assert install_config["images"] == {"source": "local", "tag": "1.3.0-rc.4"}
+
+
+def test_install_config_does_not_use_branch_ref_as_image_tag() -> None:
+    cfg = SimConfig(config_manager_ref="codex/fix-ui-release-version")
+
+    install_config = generate_air_sim_install_config(
+        cfg,
+        site_name="air-demo",
+        lb_allowed_prefixes=["172.18.255.0/24"],
+    )
+
+    assert install_config["images"] == {"source": "local"}
+
+
 def test_build_content_jobs_appends_extra_jobs() -> None:
     cfg = SimConfig(
         run_mock_topology_job=True,
