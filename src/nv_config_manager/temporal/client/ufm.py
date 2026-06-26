@@ -40,6 +40,9 @@ class UFMAuthError(Exception):
 
 class UFMClientError(Exception):
     """Raised for UFM client errors."""
+    def __init__(self, message: str, *, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
 
 
 class UFMClient:
@@ -198,7 +201,10 @@ class UFMClient:
 
                     if response.status >= 400:
                         text = await response.text()
-                        raise UFMClientError(f"UFM request failed: HTTP {response.status} - {text}")
+                        raise UFMClientError(
+                            f"UFM request failed: HTTP {response.status} - {text}",
+                            status_code=response.status,
+                        )
 
                     # Success - cache this password
                     self._working_password = password

@@ -14,13 +14,14 @@
 # limitations under the License.
 """Tests for IBPKeyMemberUpdateWorkflow."""
 
+import asyncio
 import re
 import uuid
 from configparser import ConfigParser
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from aioresponses import aioresponses
+from aioresponses import CallbackResult, aioresponses
 from temporalio.worker import Worker
 
 from nv_config_manager.temporal.common.secrets import clear_secrets_cache
@@ -33,8 +34,7 @@ from nv_config_manager.temporal.ngc.activities.ib_nautobot import (
     sync_pkey_assignments,
 )
 from nv_config_manager.temporal.ngc.activities.ib_pkey import (
-    add_guids_to_pkey,
-    remove_guids_from_pkey,
+    set_pkey_members,
     verify_pkey_members,
 )
 from nv_config_manager.temporal.ngc.activities.nats import publish_nats
@@ -68,6 +68,7 @@ GUID_2 = "0002c903000e0b73"
 _NB_INTERFACES = re.compile(rf"{re.escape(NB_API)}/dcim/interfaces/.*")
 _NB_STATUSES = re.compile(rf"{re.escape(NB_API)}/extras/statuses/.*")
 _NB_ASSIGNMENTS = re.compile(rf"{re.escape(PLUGIN)}/overlay-assignments/.*")
+_UFM_DELETE_GUIDS = re.compile(rf"{re.escape(UFM_BASE)}/resources/pkeys/.+/guids/.+")
 
 
 def test_unresolved_guid_values_detects_missing_removal_resolution():
@@ -129,8 +130,7 @@ _ALL_ACTIVITIES = [
     resolve_guids_to_interfaces,
     fetch_pkey_assignments,
     sync_pkey_assignments,
-    remove_guids_from_pkey,
-    add_guids_to_pkey,
+    set_pkey_members,
     verify_pkey_members,
     publish_nats,
 ]
@@ -204,7 +204,7 @@ async def test_additions_only_auto_approved(mock_all_configs, time_skipping_env)
                 )
 
                 # Stage 5: update_ufm
-                m.post(f"{UFM_BASE}/resources/pkeys/", payload={})
+                m.put(f"{UFM_BASE}/resources/pkeys/", payload={})
 
                 # Stage 6: verify_ufm
                 m.get(
@@ -240,6 +240,131 @@ async def test_additions_only_auto_approved(mock_all_configs, time_skipping_env)
     assert result.members_unchanged == 0
     assert result.verified is True
     assert len(result.assignment_ids_added) == 2
+
+
+@pytest.mark.asyncio
+async def test_per_interface_membership_sent_to_ufm(mock_all_configs, time_skipping_env):
+    """A per-interface membership override flows into the UFM."""
+    task_queue = str(uuid.uuid4())
+    put_bodies: list[dict] = []
+
+    def _record_set(url, **kwargs):
+        put_bodies.append(kwargs.get("json") or {})
+        return CallbackResult(status=200, payload={})
+
+    async with time_skipping_env() as env:
+        async with Worker(
+            env.client,
+            task_queue=task_queue,
+            workflows=[IBPKeyMemberUpdateWorkflow],
+            activities=_ALL_ACTIVITIES,
+        ):
+            with aioresponses() as m:
+                stub_graphql_resolve_ib_context(m, pkey="0x0005", overlay_id=OVERLAY_UUID)
+                _stub_resolve_interfaces(
+                    m,
+                    [(IFACE_UUID_1, GUID_1), (IFACE_UUID_2, GUID_2)],
+                )
+                m.get(_NB_ASSIGNMENTS, payload={"results": []})
+
+                _stub_status(m)
+                m.get(_NB_ASSIGNMENTS, payload={"results": []})
+                m.post(f"{PLUGIN}/overlay-assignments/", payload={"id": ASSIGNMENT_UUID_1})
+                m.post(f"{PLUGIN}/overlay-assignments/", payload={"id": ASSIGNMENT_UUID_2})
+
+                m.put(f"{UFM_BASE}/resources/pkeys/", callback=_record_set)
+
+                # verify_ufm: UFM reflects the per-port memberships we set
+                m.get(
+                    _pkey_verify_url("0x0005"),
+                    payload={
+                        "guids": [
+                            {"guid": GUID_1, "membership": "full"},
+                            {"guid": GUID_2, "membership": "limited"},
+                        ]
+                    },
+                )
+
+                result = await env.client.execute_workflow(
+                    IBPKeyMemberUpdateWorkflow.run,
+                    IBPKeyMemberUpdateInput(
+                        host="ufm.example.com",
+                        pkey="0x0005",
+                        interfaces=[
+                            InterfaceRef(device="hca01", interface="mlx5_0"),
+                            InterfaceRef(
+                                device="hca01", interface="mlx5_1", membership="limited"
+                            ),
+                        ],
+                    ),
+                    id=str(uuid.uuid4()),
+                    task_queue=task_queue,
+                )
+
+    assert result.verified is True
+    assert put_bodies[0].get("guids") == [GUID_1, GUID_2]
+    # mlx5_0 inherits the default (full); mlx5_1 overrides to limited.
+    assert put_bodies[0].get("memberships") == ["full", "limited"]
+    assert "membership" not in put_bodies[0]
+
+
+@pytest.mark.asyncio
+async def test_per_guid_membership_sent_to_ufm(mock_all_configs, time_skipping_env):
+    """Per-GUID memberships from the guids input flow into the UFM PUT memberships[]."""
+    task_queue = str(uuid.uuid4())
+    put_bodies: list[dict] = []
+
+    def _record_set(url, **kwargs):
+        put_bodies.append(kwargs.get("json") or {})
+        return CallbackResult(status=200, payload={})
+
+    async with time_skipping_env() as env:
+        async with Worker(
+            env.client,
+            task_queue=task_queue,
+            workflows=[IBPKeyMemberUpdateWorkflow],
+            activities=_ALL_ACTIVITIES,
+        ):
+            with aioresponses() as m:
+                stub_graphql_resolve_ib_context(m, pkey="0x0005", overlay_id=OVERLAY_UUID)
+                stub_graphql_resolve_guids(
+                    m, [(GUID_1, IFACE_UUID_1), (GUID_2, IFACE_UUID_2)]
+                )
+                m.get(_NB_ASSIGNMENTS, payload={"results": []})
+
+                _stub_status(m)
+                m.get(_NB_ASSIGNMENTS, payload={"results": []})
+                m.post(f"{PLUGIN}/overlay-assignments/", payload={"id": ASSIGNMENT_UUID_1})
+                m.post(f"{PLUGIN}/overlay-assignments/", payload={"id": ASSIGNMENT_UUID_2})
+
+                m.put(f"{UFM_BASE}/resources/pkeys/", callback=_record_set)
+
+                m.get(
+                    _pkey_verify_url("0x0005"),
+                    payload={
+                        "guids": [
+                            {"guid": GUID_1, "membership": "limited"},
+                            {"guid": GUID_2, "membership": "full"},
+                        ]
+                    },
+                )
+
+                result = await env.client.execute_workflow(
+                    IBPKeyMemberUpdateWorkflow.run,
+                    IBPKeyMemberUpdateInput(
+                        host="ufm.example.com",
+                        pkey="0x0005",
+                        guids=[GUID_1, GUID_2],
+                        guid_memberships=["limited", "full"],
+                    ),
+                    id=str(uuid.uuid4()),
+                    task_queue=task_queue,
+                )
+
+    assert result.verified is True
+    assert put_bodies[0].get("guids") == [GUID_1, GUID_2]
+    assert put_bodies[0].get("memberships") == ["limited", "full"]
+    assert "membership" not in put_bodies[0]
 
 
 @pytest.mark.asyncio
@@ -292,8 +417,7 @@ async def test_no_op_when_desired_matches_current(mock_all_configs, time_skippin
                     },
                 )
 
-                # Stage 5: update_ufm — empty remove, empty add
-                m.post(f"{UFM_BASE}/resources/pkeys/", payload={})
+                # Stage 5: update_ufm — no diff, so UFM is not touched at all
 
                 # Stage 6: verify_ufm
                 m.get(
@@ -352,6 +476,39 @@ def test_input_rejects_bad_pkey_format(bad_pkey):
         )
 
 
+def test_input_normalizes_guid_memberships():
+    """Per-GUID membership values are normalized to canonical 'full'/'limited'."""
+    parsed = IBPKeyMemberUpdateInput(
+        host="ufm.example.com",
+        pkey="0x0005",
+        guids=[GUID_1, GUID_2],
+        guid_memberships=["LIMITED", "Full"],
+    )
+    assert parsed.guid_memberships == ["limited", "full"]
+
+
+def test_input_rejects_guid_memberships_length_mismatch():
+    """guid_memberships must be index-aligned with guids."""
+    with pytest.raises(ValueError, match="same length as guids"):
+        IBPKeyMemberUpdateInput(
+            host="ufm.example.com",
+            pkey="0x0005",
+            guids=[GUID_1, GUID_2],
+            guid_memberships=["full"],
+        )
+
+
+def test_input_rejects_guid_memberships_with_interfaces():
+    """guid_memberships is only valid with the GUID input path."""
+    with pytest.raises(ValueError, match="only valid with the 'guids' input"):
+        IBPKeyMemberUpdateInput(
+            host="ufm.example.com",
+            pkey="0x0005",
+            interfaces=[InterfaceRef(device="hca01", interface="mlx5_0")],
+            guid_memberships=["full"],
+        )
+
+
 def _update_input(**overrides):
     """Build a minimal valid Member Update input, allowing field overrides."""
     params = {
@@ -392,6 +549,99 @@ def test_membership_type_rejects_non_string(bad):
 
 
 @pytest.mark.asyncio
+async def test_full_swap_atomically_replaces_membership(mock_all_configs, time_skipping_env):
+    """A full membership swap is applied to UFM as a single atomic PUT."""
+    task_queue = str(uuid.uuid4())
+    ufm_calls: list[str] = []
+    put_bodies: list[dict] = []
+
+    def _record_set(url, **kwargs):
+        ufm_calls.append("set")
+        put_bodies.append(kwargs.get("json") or {})
+        return CallbackResult(status=200, payload={})
+
+    def _record_add(url, **kwargs):
+        ufm_calls.append("add")
+        return CallbackResult(status=200, payload={})
+
+    def _record_remove(url, **kwargs):
+        ufm_calls.append("remove")
+        return CallbackResult(status=200, payload={})
+
+    current_assignment = {
+        "id": ASSIGNMENT_UUID_1,
+        "assigned_object_id": IFACE_UUID_1,
+        "guid": GUID_1,
+    }
+
+    async with time_skipping_env() as env:
+        async with Worker(
+            env.client,
+            task_queue=task_queue,
+            workflows=[IBPKeyMemberUpdateWorkflow],
+            activities=_ALL_ACTIVITIES,
+        ):
+            with aioresponses() as m:
+                # Stage 0: resolve_ib_context
+                stub_graphql_resolve_ib_context(m, pkey="0x0005", overlay_id=OVERLAY_UUID)
+
+                # Stage 1: resolve desired -> IFACE_UUID_2 / GUID_2
+                _stub_resolve_interfaces(m, [(IFACE_UUID_2, GUID_2)])
+
+                # Stage 2: query current -> IFACE_UUID_1 / GUID_1 is the stale member
+                m.get(_NB_ASSIGNMENTS, payload={"results": [current_assignment]})
+                # query_current reverse-resolves the removal GUID via GraphQL
+                stub_graphql_resolve_guids(m, [(GUID_1, IFACE_UUID_1)])
+
+                # Stage 3: validate_diff -> requires approval
+
+                # Stage 4: update_nautobot: status, current, delete stale, post new
+                _stub_status(m)
+                m.get(_NB_ASSIGNMENTS, payload={"results": [current_assignment]})
+                m.delete(f"{PLUGIN}/overlay-assignments/{ASSIGNMENT_UUID_1}/", payload={})
+                m.post(f"{PLUGIN}/overlay-assignments/", payload={"id": ASSIGNMENT_UUID_2})
+
+                # Stage 5: update_ufm -> exactly one PUT; any add/remove is a failure
+                m.put(f"{UFM_BASE}/resources/pkeys/", callback=_record_set)
+                m.post(f"{UFM_BASE}/resources/pkeys/", callback=_record_add)
+                m.delete(_UFM_DELETE_GUIDS, callback=_record_remove)
+
+                # Stage 6: verify_ufm -> only the incoming member remains
+                m.get(
+                    _pkey_verify_url("0x0005"),
+                    payload={"guids": [{"guid": GUID_2, "membership": "full"}]},
+                )
+
+                handle = await env.client.start_workflow(
+                    IBPKeyMemberUpdateWorkflow.run,
+                    IBPKeyMemberUpdateInput(
+                        host="ufm.example.com",
+                        pkey="0x0005",
+                        interfaces=[InterfaceRef(device="hca01", interface="mlx5_1")],
+                    ),
+                    id=str(uuid.uuid4()),
+                    task_queue=task_queue,
+                )
+
+                while await handle.query("pending_approval") is False:
+                    await asyncio.sleep(0.1)
+
+                await handle.signal(
+                    "approve", {"stage_name": "validate_diff", "user": "Test"}
+                )
+
+                result = await handle.result()
+
+    assert result.members_added == 1
+    assert result.members_removed == 1
+    assert result.verified is True
+    # Exactly one UFM mutation, and it is the atomic set (no add/remove calls).
+    assert ufm_calls == ["set"]
+    # The PUT carries the full desired membership (only the incoming GUID).
+    assert put_bodies[0].get("guids") == [GUID_2]
+
+
+@pytest.mark.asyncio
 async def test_guids_only_path_resolves_via_graphql(mock_all_configs, time_skipping_env):
     """GUIDs-only input reverse-resolves to interfaces and completes the workflow."""
     task_queue = str(uuid.uuid4())
@@ -416,7 +666,7 @@ async def test_guids_only_path_resolves_via_graphql(mock_all_configs, time_skipp
                     payload={"id": ASSIGNMENT_UUID_1},
                 )
 
-                m.post(f"{UFM_BASE}/resources/pkeys/", payload={})
+                m.put(f"{UFM_BASE}/resources/pkeys/", payload={})
 
                 m.get(
                     _pkey_verify_url("0x0005"),

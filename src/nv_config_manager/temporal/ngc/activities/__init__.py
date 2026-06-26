@@ -77,6 +77,7 @@ from nv_config_manager.temporal.ngc.activities.ib_guid_discovery import (
     sync_ib_guid_on_interface,
 )
 from nv_config_manager.temporal.ngc.activities.ib_nautobot import (
+    cleanup_empty_pkey_partition,
     create_partition_in_nautobot,
     fetch_pkey_assignments,
     record_ib_pkey_in_nautobot,
@@ -94,6 +95,7 @@ from nv_config_manager.temporal.ngc.activities.ib_pkey import (
     create_pkey_on_ufm,
     fetch_pkey_members,
     remove_guids_from_pkey,
+    set_pkey_members,
     validate_pkey_available,
     verify_pkey_created,
     verify_pkey_members,
@@ -253,7 +255,9 @@ REGISTERED_ACTIVITIES = [
     fetch_pkey_assignments,
     sync_pkey_assignments,
     remove_pkey_assignments,
+    cleanup_empty_pkey_partition,
     remove_guids_from_pkey,
+    set_pkey_members,
     verify_pkey_members_absent,
     fetch_pkey_members,
     discover_ib_port_guids,

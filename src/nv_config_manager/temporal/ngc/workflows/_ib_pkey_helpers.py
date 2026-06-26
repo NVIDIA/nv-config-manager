@@ -22,6 +22,7 @@ from temporalio.common import RetryPolicy
 
 with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.ngc.activities.ib_nautobot import (
+        DEFAULT_MEMBERSHIP_TYPE,
         InterfaceRef,
         ResolvedInterface,
         ResolveGuidsToInterfacesInput,
@@ -32,6 +33,7 @@ with workflow.unsafe.imports_passed_through():
         ResolveIBSiteForHostOutput,
         ResolveInterfaceGuidsInput,
         ResolveInterfaceGuidsOutput,
+        normalize_membership_type,
         resolve_guids_to_interfaces,
         resolve_ib_context,
         resolve_ib_context_for_add,
@@ -39,13 +41,20 @@ with workflow.unsafe.imports_passed_through():
         resolve_interface_guids,
     )
 
+__all__ = [
+    "DEFAULT_ACTIVITY_RETRY_POLICY",
+    "DEFAULT_MEMBERSHIP_TYPE",
+    "normalize_guid_membership_list",
+    "normalize_membership_type",
+    "resolve_members",
+    "validate_guid_memberships",
+    "validate_interfaces_xor_guids",
+    "validate_pkey_format",
+]
 
 DEFAULT_ACTIVITY_RETRY_POLICY = RetryPolicy(maximum_attempts=3)
 
 _PKEY_INPUT_PATTERN = re.compile(r"\A0[xX][0-9a-fA-F]{1,4}\Z")
-
-DEFAULT_MEMBERSHIP_TYPE = "full"
-_VALID_MEMBERSHIP_TYPES = frozenset({"full", "limited"})
 
 
 def validate_pkey_format(pkey: str) -> str:
@@ -56,38 +65,45 @@ def validate_pkey_format(pkey: str) -> str:
     return f"0x{int(stripped, 16):04x}"
 
 
-def normalize_membership_type(membership_type: object) -> str:
-    """Normalize membership to 'full'/'limited'.
-
-    None or a blank string defaults to 'full'; any other type or value raises ValueError.
-    """
-    if membership_type is None:
-        return DEFAULT_MEMBERSHIP_TYPE
-    if not isinstance(membership_type, str):
-        raise ValueError("membership_type must be 'full' or 'limited'")
-    normalized = membership_type.strip().lower()
-    if not normalized:
-        return DEFAULT_MEMBERSHIP_TYPE
-    if normalized not in _VALID_MEMBERSHIP_TYPES:
-        raise ValueError("membership_type must be 'full' or 'limited'")
-    return normalized
-
-
 def validate_interfaces_xor_guids(interfaces: list[InterfaceRef], guids: list[str]) -> None:
     """Raise ValueError unless exactly one of ``interfaces`` or ``guids`` is non-empty."""
     if bool(interfaces) == bool(guids):
         raise ValueError("One of 'interfaces' or 'guids' must be provided, but not both.")
 
 
+def normalize_guid_membership_list(values: object) -> list[str]:
+    """Normalize an optional per-GUID membership list to 'full'/'limited' entries."""
+    if values is None:
+        return []
+    if not isinstance(values, list):
+        raise ValueError("guid_memberships must be a list of 'full'/'limited'")
+    return [normalize_membership_type(v) for v in values]
+
+
+def validate_guid_memberships(guids: list[str], guid_memberships: list[str]) -> None:
+    """Validate per-GUID membership: only with GUIDs, and index-aligned with them."""
+    if not guid_memberships:
+        return
+    if not guids:
+        raise ValueError("guid_memberships is only valid with the 'guids' input")
+    if len(guid_memberships) != len(guids):
+        raise ValueError("guid_memberships must be the same length as guids")
+
+
 async def resolve_members(
-    interfaces: list[InterfaceRef], guids: list[str]
+    interfaces: list[InterfaceRef],
+    guids: list[str],
+    default_membership: str = DEFAULT_MEMBERSHIP_TYPE,
+    guid_memberships: list[str] | None = None,
 ) -> tuple[list[ResolvedInterface], str]:
     """Resolve members from interfaces or GUIDs into Nautobot interface records."""
 
     if interfaces:
         iface_result: ResolveInterfaceGuidsOutput = await workflow.execute_activity(
             resolve_interface_guids,
-            ResolveInterfaceGuidsInput(interfaces=interfaces),
+            ResolveInterfaceGuidsInput(
+                interfaces=interfaces, default_membership=default_membership
+            ),
             start_to_close_timeout=timedelta(minutes=2),
             retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
         )
@@ -95,7 +111,11 @@ async def resolve_members(
 
     guid_result: ResolveGuidsToInterfacesOutput = await workflow.execute_activity(
         resolve_guids_to_interfaces,
-        ResolveGuidsToInterfacesInput(guids=guids),
+        ResolveGuidsToInterfacesInput(
+            guids=guids,
+            default_membership=default_membership,
+            guid_memberships=guid_memberships or None,
+        ),
         start_to_close_timeout=timedelta(minutes=2),
         retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
     )

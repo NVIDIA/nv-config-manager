@@ -19,7 +19,7 @@ from configparser import ConfigParser
 from unittest.mock import patch
 
 import pytest
-from aioresponses import aioresponses
+from aioresponses import CallbackResult, aioresponses
 from temporalio.exceptions import ApplicationError
 
 from nv_config_manager.temporal.client.ufm import UFMClientError
@@ -34,9 +34,11 @@ from nv_config_manager.temporal.ngc.activities.ib_nautobot import (
 )
 from nv_config_manager.temporal.ngc.activities.ib_pkey import (
     AddGuidsInput,
+    VerifyPKeyMembersAbsentInput,
     VerifyPKeyMembersInput,
     add_guids_to_pkey,
     verify_pkey_members,
+    verify_pkey_members_absent,
 )
 
 UFM_BASE = "https://ufm.example.com/ufmRest"
@@ -114,6 +116,7 @@ class TestAddGuidsToPKey:
                     host="ufm.example.com",
                     pkey="0x0005",
                     guids=[GUID_1, GUID_2],
+                    memberships=["full", "full"],
                 )
             )
 
@@ -121,20 +124,45 @@ class TestAddGuidsToPKey:
         assert result.guids_added == [GUID_1, GUID_2]
 
     @pytest.mark.asyncio
-    async def test_limited_membership(self, mock_ufm_config):
+    async def test_per_guid_memberships_in_payload(self, mock_ufm_config):
+        """The POST payload carries index-aligned memberships."""
+        captured: dict = {}
+
+        def _capture(url, **kwargs):
+            captured.update(kwargs.get("json") or {})
+            return CallbackResult(status=200, payload={})
+
         with aioresponses() as m:
-            m.post(f"{UFM_BASE}/resources/pkeys/", payload={})
+            m.post(f"{UFM_BASE}/resources/pkeys/", callback=_capture)
 
             result = await add_guids_to_pkey(
                 AddGuidsInput(
                     host="ufm.example.com",
                     pkey="0x0005",
-                    guids=[GUID_1],
-                    membership="limited",
+                    guids=[GUID_1, GUID_2],
+                    memberships=["full", "limited"],
                 )
             )
 
-        assert result.guids_added == [GUID_1]
+        assert result.guids_added == [GUID_1, GUID_2]
+        assert captured["guids"] == [GUID_1, GUID_2]
+        assert captured["memberships"] == ["full", "limited"]
+        assert "membership" not in captured
+
+    @pytest.mark.asyncio
+    async def test_misaligned_memberships_rejected_without_http(self, mock_ufm_config):
+        with aioresponses() as m:
+            with pytest.raises(ApplicationError):
+                await add_guids_to_pkey(
+                    AddGuidsInput(
+                        host="ufm.example.com",
+                        pkey="0x0005",
+                        guids=[GUID_1, GUID_2],
+                        memberships=["full"],
+                    )
+                )
+
+            assert len(m.requests) == 0
 
     @pytest.mark.asyncio
     async def test_ufm_error_raises(self, mock_ufm_config):
@@ -147,6 +175,7 @@ class TestAddGuidsToPKey:
                         host="ufm.example.com",
                         pkey="0x0005",
                         guids=[GUID_1],
+                        memberships=["full"],
                     )
                 )
 
@@ -186,6 +215,52 @@ class TestVerifyPKeyMembers:
 
         assert result.verified is True
         assert result.missing_guids == []
+
+    @pytest.mark.asyncio
+    async def test_per_guid_membership_verified(self, mock_ufm_config):
+        """When expected_memberships is given, each GUID's membership is checked."""
+        with aioresponses() as m:
+            m.get(
+                _pkey_url("0x0005"),
+                payload={
+                    "guids": [
+                        {"guid": GUID_1, "membership": "full"},
+                        {"guid": GUID_2, "membership": "limited"},
+                    ],
+                },
+            )
+
+            result = await verify_pkey_members(
+                VerifyPKeyMembersInput(
+                    host="ufm.example.com",
+                    pkey="0x0005",
+                    expected_guids=[GUID_1, GUID_2],
+                    expected_memberships=["full", "limited"],
+                )
+            )
+
+        assert result.verified is True
+
+    @pytest.mark.asyncio
+    async def test_membership_mismatch_raises(self, mock_ufm_config):
+        """A GUID present but with the wrong membership fails verification."""
+        with aioresponses() as m:
+            m.get(
+                _pkey_url("0x0005"),
+                payload={
+                    "guids": [{"guid": GUID_1, "membership": "full"}],
+                },
+            )
+
+            with pytest.raises(ApplicationError, match="membership mismatch"):
+                await verify_pkey_members(
+                    VerifyPKeyMembersInput(
+                        host="ufm.example.com",
+                        pkey="0x0005",
+                        expected_guids=[GUID_1],
+                        expected_memberships=["limited"],
+                    )
+                )
 
     @pytest.mark.asyncio
     async def test_guid_case_insensitive(self, mock_ufm_config):
@@ -240,6 +315,75 @@ class TestVerifyPKeyMembers:
                         host="ufm.example.com",
                         pkey="0x0005",
                         expected_guids=[GUID_1],
+                    )
+                )
+
+
+class TestVerifyPKeyMembersAbsent:
+    @pytest.mark.asyncio
+    async def test_absent_when_empty(self, mock_ufm_config):
+        with aioresponses() as m:
+            m.get(_pkey_url("0x0005"), payload={"guids": []})
+
+            result = await verify_pkey_members_absent(
+                VerifyPKeyMembersAbsentInput(
+                    host="ufm.example.com",
+                    pkey="0x0005",
+                    forbidden_guids=[GUID_1, GUID_2],
+                )
+            )
+
+        assert result.verified is True
+        assert result.still_present_guids == []
+
+    @pytest.mark.asyncio
+    async def test_auto_removed_pkey_is_verified_absent(self, mock_ufm_config):
+        """A 404 means UFM removed the now-empty partition: members are absent."""
+        with aioresponses() as m:
+            m.get(_pkey_url("0x0005"), status=404, payload={"error": "not found"})
+
+            result = await verify_pkey_members_absent(
+                VerifyPKeyMembersAbsentInput(
+                    host="ufm.example.com",
+                    pkey="0x0005",
+                    forbidden_guids=[GUID_1],
+                )
+            )
+
+        assert result.verified is True
+        assert result.still_present_guids == []
+
+    @pytest.mark.asyncio
+    async def test_still_present_raises_retryable(self, mock_ufm_config):
+        with aioresponses() as m:
+            m.get(
+                _pkey_url("0x0005"),
+                payload={"guids": [{"guid": GUID_1, "membership": "full"}]},
+            )
+
+            with pytest.raises(ApplicationError) as exc_info:
+                await verify_pkey_members_absent(
+                    VerifyPKeyMembersAbsentInput(
+                        host="ufm.example.com",
+                        pkey="0x0005",
+                        forbidden_guids=[GUID_1],
+                    )
+                )
+
+        assert exc_info.value.non_retryable is False
+        assert GUID_1 in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_non_404_error_propagates(self, mock_ufm_config):
+        with aioresponses() as m:
+            m.get(_pkey_url("0x0005"), status=500, payload={"error": "boom"})
+
+            with pytest.raises(UFMClientError):
+                await verify_pkey_members_absent(
+                    VerifyPKeyMembersAbsentInput(
+                        host="ufm.example.com",
+                        pkey="0x0005",
+                        forbidden_guids=[GUID_1],
                     )
                 )
 
