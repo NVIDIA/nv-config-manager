@@ -79,7 +79,6 @@ class OptionsScreen(Container):
         yield Label("nv-config-manager Version", classes="field-label")
         yield Input(
             value=self._config.config_manager_version,
-            placeholder="1.3.0-rc.4",
             id="config-manager-version",
         )
         yield Static("", id="build-mode-hint", classes="field-hint")
