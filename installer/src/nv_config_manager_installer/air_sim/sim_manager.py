@@ -769,9 +769,9 @@ class AirSimulationManager:
     _SOCKS_PORT = 8080
 
     def _remote_setup_marker_exists(self, ssh_base: list[str]) -> bool:
-        result = subprocess.run(
-            [
-                *ssh_base,
+        grep_cmd = " ".join(
+            shlex.quote(part)
+            for part in (
                 "sudo",
                 "grep",
                 "-F",
@@ -779,7 +779,10 @@ class AirSimulationManager:
                 "--",
                 self._SETUP_COMPLETE_MARKER,
                 *self._SETUP_LOG_PATHS,
-            ],
+            )
+        )
+        result = subprocess.run(
+            [*ssh_base, grep_cmd],
             capture_output=True,
             timeout=10,
         )
