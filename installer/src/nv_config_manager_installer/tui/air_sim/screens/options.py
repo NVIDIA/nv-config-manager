@@ -20,7 +20,10 @@ from textual.app import ComposeResult
 from textual.containers import Container
 from textual.widgets import Input, Label, RadioButton, RadioSet, Static
 
-from nv_config_manager_installer.air_sim.installer_config import config_manager_version_error
+from nv_config_manager_installer.air_sim.installer_config import (
+    config_manager_version_error,
+    normalize_release_version,
+)
 from nv_config_manager_installer.air_sim.sim_config import SimConfig, generate_oob_ssh_password
 from nv_config_manager_installer.tui.widgets import LabeledSwitch
 
@@ -123,7 +126,12 @@ class OptionsScreen(Container):
                 "release tag.[/dim]"
             )
             return
-        version_text = f" and stamped as {version!r}" if version else ""
+        if version:
+            version_text = f" and stamped as {version!r}"
+        elif normalize_release_version(ref):
+            version_text = "; package version comes from the release ref"
+        else:
+            version_text = "; package version derives from Git metadata when available"
         hint.update(
             f"[dim]Images will be built locally from nv-config-manager ref {ref!r}{version_text}; "
             "registry pulls are disabled for DSX Air demos.[/dim]"

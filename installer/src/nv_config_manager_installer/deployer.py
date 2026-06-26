@@ -69,8 +69,10 @@ _DEFAULT_GATEWAY_CLASS_NAME = "envoy-gateway"
 _HELM_RELEASE_NAME_ANNOTATION = "meta.helm.sh/release-name"
 _HELM_RELEASE_NAMESPACE_ANNOTATION = "meta.helm.sh/release-namespace"
 _PYTHON_PACKAGE_VERSION_RE = re.compile(
-    r"^(?:v)?(?P<version>\d+\.\d+\.\d+(?:(?:rc\d+)|(?:[-.]?rc\.?\d+))?"
-    r"(?:\+[A-Za-z0-9.]+)?)$"
+    r"^(?:v)?(?P<base>\d+\.\d+\.\d+)(?:(?:[-.]?rc\.?)(?P<rc>\d+))?"
+    r"(?:-(?P<distance>\d+)-g(?P<sha>[A-Za-z0-9]+))?"
+    r"(?P<dirty>-dirty)?(?:\+(?P<local>[A-Za-z0-9.]+))?$",
+    re.IGNORECASE,
 )
 
 
@@ -264,11 +266,26 @@ def _get_image_digest_tag(image: str) -> str:
 
 
 def _python_package_version_from_ref(ref: str) -> str:
-    """Return a PEP 440-compatible package version for release refs."""
+    """Return a PEP 440-compatible package version for release refs or git-describe output."""
     match = _PYTHON_PACKAGE_VERSION_RE.match(ref.strip())
     if not match:
         return ""
-    return match.group("version").replace("-rc.", "rc").replace("-rc", "rc").replace(".rc", "rc")
+    version = match.group("base")
+    if match.group("rc") is not None:
+        version = f"{version}rc{int(match.group('rc'))}"
+    if match.group("distance") is not None:
+        version = f"{version}.dev{int(match.group('distance'))}"
+
+    local_segments: list[str] = []
+    if match.group("sha"):
+        local_segments.append(f"g{match.group('sha')}")
+    if match.group("dirty"):
+        local_segments.append("dirty")
+    if match.group("local"):
+        local_segments.append(match.group("local"))
+    if local_segments:
+        version = f"{version}+{'.'.join(local_segments)}"
+    return version
 
 
 def _run(
@@ -286,6 +303,21 @@ def _run(
         text=True,
         timeout=timeout,
     )
+
+
+def _python_package_version_from_git_describe() -> str:
+    """Return a PEP 440 version derived from the current Git checkout."""
+    try:
+        result = _run(
+            ["git", "describe", "--tags", "--dirty", "--always"],
+            check=False,
+            timeout=30,
+        )
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+        return ""
+    if result.returncode != 0:
+        return ""
+    return _python_package_version_from_ref(result.stdout.strip())
 
 
 def _gateway_class_helm_owner(name: str = _DEFAULT_GATEWAY_CLASS_NAME) -> tuple[str, str] | None:
@@ -1371,7 +1403,10 @@ class Deployer:
             val = os.environ.get(env_var, "")
             if val:
                 nv_config_manager_build_args += ["--build-arg", f"{env_var}={val}"]
-        package_version = _python_package_version_from_ref(self.config.images.tag)
+        package_version = (
+            _python_package_version_from_ref(self.config.images.tag)
+            or _python_package_version_from_git_describe()
+        )
         nautobot_build_args: list[str] = []
         for env_var in ("NAUTOBOT_APP_OVERLAYS_VERSION", "NAUTOBOT_NV_CONFIG_MANAGER_VERSION"):
             val = os.environ.get(env_var, "") or package_version

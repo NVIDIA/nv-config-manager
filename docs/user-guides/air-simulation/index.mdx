@@ -182,7 +182,7 @@ Recommended public DSX Air values:
 | **nv-config-manager Version** | Leave blank (`default`) unless you need to set the image/package version explicitly. When set, it must match the Git ref release version, such as `1.3.0-rc.4`. |
 | **Deployment Size** | Under **Advanced**. Use `small` for the public DSX Air trial demo. |
 
-The Git ref selects the source checkout for local image builds. The version field controls the local image tag and package version metadata, but it cannot stamp a branch build as a different release. When left blank, release-tag refs use that tag and branch refs use the installer default.
+The Git ref selects the source checkout for local image builds. The version field controls the local image tag and package version metadata, but it cannot stamp a branch build as a different release. When left blank, release-tag refs use that tag and branch refs derive package metadata from Git when possible.
 
 ### Launch
 
