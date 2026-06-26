@@ -76,7 +76,7 @@ class OptionsScreen(Container):
         yield Label("Deployment", classes="subsection-label")
         yield Label("nv-config-manager Git Ref", classes="field-label")
         yield Input(value=self._config.config_manager_ref, id="config-manager-ref")
-        yield Label("nv-config-manager Version Override", classes="field-label")
+        yield Label("nv-config-manager Version", classes="field-label")
         yield Input(
             value=self._config.config_manager_version,
             placeholder="default",
