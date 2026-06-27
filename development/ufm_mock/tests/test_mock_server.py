@@ -308,6 +308,21 @@ class TestSetMembers:
         assert {entry["guid"] for entry in body["guids"]} == {"0xabc"}
         assert body["ip_over_ib"] is False
 
+    def test_refreshes_flags_on_existing_partition(self, client: TestClient) -> None:
+        """PUT overwrites partition flags too, not just members, when it exists."""
+        client.put(
+            "/ufmRest/resources/pkeys/",
+            json={"pkey": "0x0001", "guids": ["0xa"], "ip_over_ib": True, "index0": True},
+        )
+        client.put(
+            "/ufmRest/resources/pkeys/",
+            json={"pkey": "0x0001", "guids": ["0xa"], "ip_over_ib": False, "index0": False},
+        )
+
+        body = client.get("/ufmRest/resources/pkeys/0x0001?guids_data=true").json()
+        assert body["ip_over_ib"] is False
+        assert body["index0"] is False
+
     def test_unchanged_member_preserved(self, client: TestClient) -> None:
         """Re-setting a superset leaves the existing member's record intact."""
         client.put(
