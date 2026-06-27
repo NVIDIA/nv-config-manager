@@ -302,9 +302,7 @@ async def test_per_interface_membership_sent_to_ufm(mock_all_configs, time_skipp
                         pkey="0x0005",
                         interfaces=[
                             InterfaceRef(device="hca01", interface="mlx5_0"),
-                            InterfaceRef(
-                                device="hca01", interface="mlx5_1", membership="limited"
-                            ),
+                            InterfaceRef(device="hca01", interface="mlx5_1", membership="limited"),
                         ],
                     ),
                     id=str(uuid.uuid4()),
@@ -337,9 +335,7 @@ async def test_per_guid_membership_sent_to_ufm(mock_all_configs, time_skipping_e
         ):
             with aioresponses() as m:
                 stub_graphql_resolve_ib_context(m, pkey="0x0005", overlay_id=OVERLAY_UUID)
-                stub_graphql_resolve_guids(
-                    m, [(GUID_1, IFACE_UUID_1), (GUID_2, IFACE_UUID_2)]
-                )
+                stub_graphql_resolve_guids(m, [(GUID_1, IFACE_UUID_1), (GUID_2, IFACE_UUID_2)])
                 m.get(_NB_ASSIGNMENTS, payload={"results": []})
 
                 _stub_status(m)
@@ -512,9 +508,7 @@ async def test_membership_only_change_sent_to_ufm(mock_all_configs, time_skippin
                         host="ufm.example.com",
                         pkey="0x0005",
                         interfaces=[
-                            InterfaceRef(
-                                device="hca01", interface="mlx5_0", membership="limited"
-                            ),
+                            InterfaceRef(device="hca01", interface="mlx5_0", membership="limited"),
                         ],
                     ),
                     id=str(uuid.uuid4()),
@@ -712,9 +706,7 @@ async def test_full_swap_atomically_replaces_membership(mock_all_configs, time_s
 
                 await _wait_for_pending_approval(handle)
 
-                await handle.signal(
-                    "approve", {"stage_name": "validate_diff", "user": "Test"}
-                )
+                await handle.signal("approve", {"stage_name": "validate_diff", "user": "Test"})
 
                 result = await handle.result()
 

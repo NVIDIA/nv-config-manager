@@ -267,10 +267,7 @@ class TestSetPKeyMembers:
                 )
             )
 
-            requests = [
-                (method, str(url))
-                for (method, url) in m.requests
-            ]
+            requests = [(method, str(url)) for (method, url) in m.requests]
 
         assert result.pkey == "0x0005"
         assert result.guids_set == [GUID_1, GUID_2]
@@ -559,14 +556,8 @@ class TestSyncPKeyAssignments:
 
         assert ASSIGNMENT_UUID_1 in result.unchanged
         # A membership-only change issues a PATCH but no add/remove.
-        patch_calls = [
-            (method, str(url))
-            for (method, url) in m.requests
-            if method == "PATCH"
-        ]
-        assert patch_calls == [
-            ("PATCH", f"{PLUGIN}/overlay-assignments/{ASSIGNMENT_UUID_1}/")
-        ]
+        patch_calls = [(method, str(url)) for (method, url) in m.requests if method == "PATCH"]
+        assert patch_calls == [("PATCH", f"{PLUGIN}/overlay-assignments/{ASSIGNMENT_UUID_1}/")]
 
     @pytest.mark.asyncio
     async def test_mixed_add_remove_unchanged(self, mock_nb_config):

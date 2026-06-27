@@ -14,8 +14,17 @@ Implements the six endpoints exercised by the IB PKey Temporal workflows:
 - POST   /ufmRest/resources/pkeys/add
 - GET    /ufmRest/resources/pkeys/{pkey}
 - POST   /ufmRest/resources/pkeys/
+- PUT    /ufmRest/resources/pkeys/    (atomic set/overwrite, create-on-missing)
 - DELETE /ufmRest/resources/pkeys/{pkey}/guids/{guids_csv}
 - POST   /ufmRest/resources/pkeys/{pkey}/guids/{guids_csv} (alias path used by some clients)
+
+Like real UFM, a partition is auto-removed once its last member is removed, so a
+subsequent GET of that pkey returns 404.
+
+Plus read-only inventory endpoints backed by captured fixtures (when mounted):
+
+- GET    /ufmRest/resources/ports    - IB Port GUID Discovery
+- GET    /ufmRest/resources/systems  - fabric inventory
 
 Plus dev helpers:
 
@@ -29,8 +38,11 @@ Not production-grade. Not security-reviewed.
 
 from __future__ import annotations
 
+import gzip
+import json
 import os
 import threading
+from pathlib import Path as FsPath
 from typing import Annotated, Any
 
 import uvicorn
@@ -38,14 +50,54 @@ from fastapi import Body, FastAPI, HTTPException, Path
 from pydantic import BaseModel, Field
 
 
+def _load_fixture(name: str) -> list[dict[str, Any]]:
+    """Load a read-only UFM fixture list (``<name>.json`` or ``<name>.json.gz``).
+
+    Returns an empty list when the fixture is absent so unit tests that run
+    without mounted fixtures still get a valid (empty) response.
+    """
+    base = FsPath(os.environ.get("FIXTURES_DIR", "/app/fixtures"))
+    for candidate in (base / f"{name}.json.gz", base / f"{name}.json"):
+        if not candidate.exists():
+            continue
+        raw = candidate.read_bytes()
+        if candidate.suffix == ".gz":
+            raw = gzip.decompress(raw)
+        data = json.loads(raw)
+        return data if isinstance(data, list) else []
+    return []
+
+
 class PKeyAddRequest(BaseModel):
-    """Body of POST /resources/pkeys/add (create) and POST /resources/pkeys/ (add members)."""
+    """Body of POST /resources/pkeys/add (create) and POST/PUT /resources/pkeys/.
+
+    ``membership`` (one value for all GUIDs) and ``memberships`` (one per GUID,
+    index-aligned) are mutually exclusive, mirroring UFM.
+    """
 
     pkey: str
     ip_over_ib: bool = True
     index0: bool = True
     guids: list[str] = Field(default_factory=list)
     membership: str = "full"
+    memberships: list[str] | None = None
+
+
+def _memberships_for(req: PKeyAddRequest) -> list[str]:
+    """Resolve a per-GUID membership list, enforcing UFM's mutual-exclusion rule."""
+    if req.memberships is not None:
+        if "membership" in req.model_fields_set:
+            raise HTTPException(
+                status_code=400,
+                detail="Only one of Memberships or Membership is allowed",
+            )
+        if len(req.memberships) != len(req.guids):
+            raise HTTPException(
+                status_code=400,
+                detail="memberships length must match guids length",
+            )
+        return list(req.memberships)
+    return [req.membership] * len(req.guids)
 
 
 class _PKeyState:
@@ -108,20 +160,53 @@ class _Store:
                 raise HTTPException(status_code=404, detail=f"PKey {pkey} not found")
             return state.to_detail() if with_guids else state.to_summary()
 
-    def add_members(self, pkey: str, guids: list[str], membership: str) -> int:
-        normalized = [g.lower() for g in guids if g]
+    def set_members(
+        self,
+        pkey: str,
+        guids: list[str],
+        memberships: list[str],
+        *,
+        ip_over_ib: bool,
+        index0: bool,
+    ) -> int:
+        """Atomically replace a partition's member list, mirroring UFM's PUT.
+
+        Creates the partition if absent (UFM's create-on-missing) and overwrites
+        the entire member list in one step. ``memberships`` is index-aligned with
+        ``guids``, giving per-GUID membership.
+        """
+        pairs = [(g.lower(), m) for g, m in zip(guids, memberships, strict=False) if g]
+        with self._lock:
+            state = self._pkeys.get(pkey)
+            if state is None:
+                state = _PKeyState(pkey=pkey, ip_over_ib=ip_over_ib, index0=index0)
+                self._pkeys[pkey] = state
+            state.guids = {guid: {"membership": membership} for guid, membership in pairs}
+            return len(state.guids)
+
+    def add_members(self, pkey: str, guids: list[str], memberships: list[str]) -> int:
+        pairs = [(g.lower(), m) for g, m in zip(guids, memberships, strict=False) if g]
         with self._lock:
             state = self._pkeys.get(pkey)
             if state is None:
                 raise HTTPException(status_code=404, detail=f"PKey {pkey} not found")
             added = 0
-            for guid in normalized:
+            for guid, membership in pairs:
                 if guid not in state.guids:
                     added += 1
                 state.guids[guid] = {"membership": membership}
             return added
 
-    def remove_members(self, pkey: str, guids: list[str]) -> int:
+    def remove_members(self, pkey: str, guids: list[str]) -> tuple[int, bool]:
+        """Remove members and, mirroring UFM, drop the partition once it is empty.
+
+        Real UFM deletes a PKey partition when its last member is removed. The
+        partition is only removed when a removal actually empties it, so a no-op
+        delete (or a delete against an already-empty partition) leaves it intact,
+        matching UFM's create-then-add-members window.
+
+        Returns ``(removed_count, pkey_removed)``.
+        """
         normalized = [g.lower() for g in guids if g]
         with self._lock:
             state = self._pkeys.get(pkey)
@@ -131,7 +216,10 @@ class _Store:
             for guid in normalized:
                 if state.guids.pop(guid, None) is not None:
                     removed += 1
-            return removed
+            pkey_removed = removed > 0 and not state.guids
+            if pkey_removed:
+                del self._pkeys[pkey]
+            return removed, pkey_removed
 
 
 def create_app(store: _Store | None = None) -> FastAPI:
@@ -140,9 +228,24 @@ def create_app(store: _Store | None = None) -> FastAPI:
     app = FastAPI(title="Mock UFM", version="0.1.0")
     app.state.store = store
 
+    # Read-only inventory fixtures captured from a real UFM fabric. Used by the
+    # IB Port GUID Discovery workflow (ports) and for fabric realism (systems).
+    ports_fixture = _load_fixture("ports")
+    systems_fixture = _load_fixture("systems")
+
     @app.get("/healthcheck")
     def healthcheck() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/ufmRest/resources/ports")
+    def list_ports() -> list[dict[str, Any]]:
+        """Return the captured UFM port inventory (bare list, as UFM does)."""
+        return ports_fixture
+
+    @app.get("/ufmRest/resources/systems")
+    def list_systems() -> list[dict[str, Any]]:
+        """Return the captured UFM systems inventory."""
+        return systems_fixture
 
     @app.get("/ufmRest/resources/pkeys")
     def list_pkeys() -> dict[str, dict[str, Any]]:
@@ -161,8 +264,22 @@ def create_app(store: _Store | None = None) -> FastAPI:
     @app.post("/ufmRest/resources/pkeys/")
     @app.post("/ufmRest/resources/pkeys")
     def add_members(payload: Annotated[PKeyAddRequest, Body()]) -> dict[str, Any]:
-        added = store.add_members(payload.pkey, payload.guids, payload.membership)
+        memberships = _memberships_for(payload)
+        added = store.add_members(payload.pkey, payload.guids, memberships)
         return {"pkey": payload.pkey, "added": added}
+
+    @app.put("/ufmRest/resources/pkeys/")
+    @app.put("/ufmRest/resources/pkeys")
+    def set_members(payload: Annotated[PKeyAddRequest, Body()]) -> dict[str, Any]:
+        memberships = _memberships_for(payload)
+        count = store.set_members(
+            payload.pkey,
+            payload.guids,
+            memberships,
+            ip_over_ib=payload.ip_over_ib,
+            index0=payload.index0,
+        )
+        return {"pkey": payload.pkey, "guids_set": count}
 
     @app.delete("/ufmRest/resources/pkeys/{pkey}/guids/{guids_csv}")
     @app.post("/ufmRest/resources/pkeys/{pkey}/guids/{guids_csv}")
@@ -170,8 +287,8 @@ def create_app(store: _Store | None = None) -> FastAPI:
         pkey: Annotated[str, Path()], guids_csv: Annotated[str, Path()]
     ) -> dict[str, Any]:
         guids = [g for g in guids_csv.split(",") if g]
-        removed = store.remove_members(pkey, guids)
-        return {"pkey": pkey, "removed": removed}
+        removed, pkey_removed = store.remove_members(pkey, guids)
+        return {"pkey": pkey, "removed": removed, "pkey_removed": pkey_removed}
 
     @app.post("/_dev/reset")
     def reset_state() -> dict[str, str]:

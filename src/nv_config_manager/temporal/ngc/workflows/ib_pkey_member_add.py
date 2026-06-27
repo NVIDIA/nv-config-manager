@@ -372,9 +372,7 @@ class IBPKeyMemberAddWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin):
 
         guids = [r.guid for r in resolve_output.resolved]
         memberships = [r.membership for r in resolve_output.resolved]
-        membership_by_guid = {
-            r.guid: r.membership for r in resolve_output.resolved
-        }
+        membership_by_guid = {r.guid: r.membership for r in resolve_output.resolved}
 
         add_output = await self.add_members(
             self.AddMembersStageInput(
@@ -393,9 +391,7 @@ class IBPKeyMemberAddWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin):
                 site=context.site,
                 pkey=context.pkey,
                 expected_guids=add_output.guids_added,
-                expected_memberships=[
-                    membership_by_guid[g] for g in add_output.guids_added
-                ],
+                expected_memberships=[membership_by_guid[g] for g in add_output.guids_added],
             )
         )
 

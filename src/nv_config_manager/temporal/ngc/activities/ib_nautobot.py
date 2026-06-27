@@ -578,9 +578,7 @@ async def resolve_guids_to_interfaces(
         )
 
     interfaces = ((data.get("data") or {}).get("interfaces")) or []
-    by_guid = _index_resolved_interfaces(
-        interfaces, input.default_membership, membership_by_guid
-    )
+    by_guid = _index_resolved_interfaces(interfaces, input.default_membership, membership_by_guid)
 
     missing = [g for g in deduped if g not in by_guid]
     if missing:
