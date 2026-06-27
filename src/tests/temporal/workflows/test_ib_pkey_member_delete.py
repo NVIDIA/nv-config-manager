@@ -227,6 +227,9 @@ async def test_full_workflow_happy_path(mock_all_configs, time_skipping_env):
     assert result.verified is True
     assert sorted(result.assignment_ids_removed) == sorted([ASSIGNMENT_UUID_1, ASSIGNMENT_UUID_2])
     assert result.interface_ids_not_assigned == []
+    assert result.partition_empty is True
+    assert result.pkey_deleted is True
+    assert result.overlay_deleted is False
 
 
 @pytest.mark.asyncio
@@ -282,6 +285,9 @@ async def test_idempotent_no_existing_assignment(mock_all_configs, time_skipping
     assert result.members_removed == 1
     assert result.assignment_ids_removed == []
     assert result.interface_ids_not_assigned == [IFACE_UUID_1]
+    assert result.partition_empty is True
+    assert result.pkey_deleted is True
+    assert result.overlay_deleted is False
 
 
 def test_input_rejects_neither():

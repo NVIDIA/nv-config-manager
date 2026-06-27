@@ -19,7 +19,12 @@
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useFieldArray, useForm } from "react-hook-form";
+import {
+  type Control,
+  type FieldPath,
+  useFieldArray,
+  useForm,
+} from "react-hook-form";
 import { z } from "zod";
 import { Plus, Trash2 } from "lucide-react";
 
@@ -164,6 +169,46 @@ interface MembershipRequest {
   guids?: string[];
   guid_memberships?: string[];
 }
+
+const MembershipSelect = ({
+  control,
+  name,
+  ariaLabel,
+  disabled,
+}: {
+  control: Control<MembershipFormValues>;
+  name: FieldPath<MembershipFormValues>;
+  ariaLabel: string;
+  disabled?: boolean;
+}) => (
+  <FormField
+    control={control}
+    name={name}
+    render={({ field }) => (
+      <FormItem className="w-40">
+        <Select
+          value={(field.value as string) || undefined}
+          onValueChange={field.onChange}
+          disabled={disabled}
+        >
+          <FormControl>
+            <SelectTrigger aria-label={ariaLabel}>
+              <SelectValue placeholder="Membership Type" />
+            </SelectTrigger>
+          </FormControl>
+          <SelectContent>
+            {MEMBERSHIP_OPTIONS.map((opt) => (
+              <SelectItem key={opt.key} value={opt.value}>
+                {opt.value}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <FormMessage />
+      </FormItem>
+    )}
+  />
+);
 
 export interface IBPKeyMembershipFormProps {
   title: string;
@@ -370,37 +415,11 @@ export const IBPKeyMembershipForm = ({
                               )}
                             />
                             {includeMembershipType ? (
-                              <FormField
+                              <MembershipSelect
                                 control={form.control}
                                 name={`interfaces.${idx}.membership`}
-                                render={({ field }) => (
-                                  <FormItem className="w-40">
-                                    <Select
-                                      value={field.value || undefined}
-                                      onValueChange={field.onChange}
-                                      disabled={isSubmitting}
-                                    >
-                                      <FormControl>
-                                        <SelectTrigger
-                                          aria-label={`Membership for interface row ${idx + 1}`}
-                                        >
-                                          <SelectValue placeholder="Membership Type" />
-                                        </SelectTrigger>
-                                      </FormControl>
-                                      <SelectContent>
-                                        {MEMBERSHIP_OPTIONS.map((opt) => (
-                                          <SelectItem
-                                            key={opt.key}
-                                            value={opt.value}
-                                          >
-                                            {opt.value}
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                    <FormMessage />
-                                  </FormItem>
-                                )}
+                                ariaLabel={`Membership for interface row ${idx + 1}`}
+                                disabled={isSubmitting}
                               />
                             ) : null}
                             <Button
@@ -472,37 +491,11 @@ export const IBPKeyMembershipForm = ({
                               )}
                             />
                             {includeMembershipType ? (
-                              <FormField
+                              <MembershipSelect
                                 control={form.control}
                                 name={`guids.${idx}.membership`}
-                                render={({ field }) => (
-                                  <FormItem className="w-40">
-                                    <Select
-                                      value={field.value || undefined}
-                                      onValueChange={field.onChange}
-                                      disabled={isSubmitting}
-                                    >
-                                      <FormControl>
-                                        <SelectTrigger
-                                          aria-label={`Membership for GUID row ${idx + 1}`}
-                                        >
-                                          <SelectValue placeholder="Membership Type" />
-                                        </SelectTrigger>
-                                      </FormControl>
-                                      <SelectContent>
-                                        {MEMBERSHIP_OPTIONS.map((opt) => (
-                                          <SelectItem
-                                            key={opt.key}
-                                            value={opt.value}
-                                          >
-                                            {opt.value}
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                    <FormMessage />
-                                  </FormItem>
-                                )}
+                                ariaLabel={`Membership for GUID row ${idx + 1}`}
+                                disabled={isSubmitting}
                               />
                             ) : null}
                             <Button
