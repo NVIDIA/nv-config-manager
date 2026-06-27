@@ -22,6 +22,7 @@ import pytest
 from aioresponses import aioresponses
 from temporalio.exceptions import ApplicationError
 
+from nv_config_manager.temporal.client.nautobot import NautobotException
 from nv_config_manager.temporal.ngc.activities.ib_nautobot import (
     CleanupEmptyPartitionInput,
     CreatePartitionInNautobotInput,
@@ -525,3 +526,33 @@ class TestCleanupEmptyPkeyPartition:
             assert result.partition_empty is True
             assert result.pkey_deleted is True
             assert result.overlay_deleted is False
+
+    @pytest.mark.asyncio
+    async def test_retry_tolerates_already_deleted_pkey_and_overlay(self, mock_nb_config):
+        """A retry after partial cleanup: PKey/overlay already gone (404) still finishes.
+
+        Mirrors the case where a prior attempt deleted the PKey but failed before
+        completing overlay cleanup. The retry must treat the 404s as already-cleaned
+        and still delete the auto-created overlay rather than aborting.
+        """
+        with aioresponses() as m:
+            m.get(_NB_ASSIGNMENTS, payload={"results": []})
+            m.delete(_NB_PKEYS, status=404)
+            m.get(_NB_PKEYS, payload={"results": []})
+            m.delete(_NB_OVERLAYS, status=404)
+
+            result = await cleanup_empty_pkey_partition(self._input())
+
+            assert result.partition_empty is True
+            assert result.pkey_deleted is True
+            assert result.overlay_deleted is True
+
+    @pytest.mark.asyncio
+    async def test_non_404_delete_error_still_raises(self, mock_nb_config):
+        """Non-404 delete failures are not swallowed; the activity surfaces them."""
+        with aioresponses() as m:
+            m.get(_NB_ASSIGNMENTS, payload={"results": []})
+            m.delete(_NB_PKEYS, status=500)
+
+            with pytest.raises(NautobotException):
+                await cleanup_empty_pkey_partition(self._input())

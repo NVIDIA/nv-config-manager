@@ -24,7 +24,7 @@ from pydantic import BaseModel, field_validator
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
-from nv_config_manager.temporal.client.nautobot import NautobotClient
+from nv_config_manager.temporal.client.nautobot import NautobotClient, NautobotException
 from nv_config_manager.temporal.common.mixins.stage import StageOutput
 
 log = logging.getLogger(__name__)
@@ -697,6 +697,16 @@ async def remove_pkey_assignments(
     )
 
 
+async def _delete_if_present(client: NautobotClient, path: str, *, description: str) -> None:
+    """Delete a Nautobot record, treating an already-deleted (404) record as success."""
+    try:
+        await client.delete(path)
+    except NautobotException as error:
+        if "returned 404" not in str(error):
+            raise
+        log.info("%s already absent in Nautobot; treating as cleaned", description)
+
+
 def _is_auto_created_overlay_name(overlay_name: str, pkey: str) -> bool:
     """True when the overlay matches the member-add auto-created naming scheme.
 
@@ -758,7 +768,11 @@ async def cleanup_empty_pkey_partition(
             input.overlay_id,
             input.pkey_id,
         )
-        await client.delete(f"{PLUGIN_BASE}/pkeys/{input.pkey_id}/")
+        await _delete_if_present(
+            client,
+            f"{PLUGIN_BASE}/pkeys/{input.pkey_id}/",
+            description=f"InfiniBandPKey {input.pkey_id}",
+        )
 
         overlay_deleted = await _delete_overlay_if_auto_created(client, input)
 
@@ -796,7 +810,11 @@ async def _delete_overlay_if_auto_created(
         input.overlay_name,
         input.overlay_id,
     )
-    await client.delete(f"{PLUGIN_BASE}/overlays/{input.overlay_id}/")
+    await _delete_if_present(
+        client,
+        f"{PLUGIN_BASE}/overlays/{input.overlay_id}/",
+        description=f"Overlay {input.overlay_id}",
+    )
     return True
 
 

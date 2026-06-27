@@ -304,6 +304,7 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
         ifaces_to_add: list[ResolvedInterface]
         ifaces_to_remove: list[ResolvedInterface]
         ifaces_unchanged: list[ResolvedInterface]
+        membership_changed: bool
 
     @stage_executor("query_current")
     async def query_current(self, stage_input: QueryCurrentStageInput) -> QueryCurrentStageOutput:
@@ -330,6 +331,13 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
         guids_unchanged = [desired_by_id[i].guid for i in unchanged_iface_ids]
         ifaces_to_add = [desired_by_id[i] for i in to_add_iface_ids]
         ifaces_unchanged = [desired_by_id[i] for i in unchanged_iface_ids]
+
+        # A member that stays in the set but flips full<->limited produces no GUID
+        # add/remove, yet still needs a UFM PUT so verify_ufm sees the new membership.
+        membership_changed = any(
+            desired_by_id[i].membership != current_by_id[i].membership_type
+            for i in unchanged_iface_ids
+        )
 
         ifaces_to_remove: list[ResolvedInterface] = []
         if guids_to_remove:
@@ -362,6 +370,7 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
             ifaces_to_add=ifaces_to_add,
             ifaces_to_remove=ifaces_to_remove,
             ifaces_unchanged=ifaces_unchanged,
+            membership_changed=membership_changed,
             display=display,
         )
 
@@ -473,6 +482,7 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
         desired_memberships: list[str]
         guids_to_add: list[str]
         guids_to_remove: list[str]
+        membership_changed: bool
         ip_over_ib: bool
 
     class UpdateUFMStageOutput(StageOutput):
@@ -483,7 +493,11 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
     @stage_executor("update_ufm")
     async def update_ufm(self, stage_input: UpdateUFMStageInput) -> UpdateUFMStageOutput:
         """Atomically set UFM membership to the desired GUID set."""
-        if not stage_input.guids_to_add and not stage_input.guids_to_remove:
+        if (
+            not stage_input.guids_to_add
+            and not stage_input.guids_to_remove
+            and not stage_input.membership_changed
+        ):
             return self.UpdateUFMStageOutput(
                 guids_set=[],
                 display=f"No UFM membership changes for PKey {stage_input.pkey}",
@@ -509,6 +523,12 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
             f"- (+{len(stage_input.guids_to_add)} added, "
             f"-{len(stage_input.guids_to_remove)} removed vs previous)",
         ]
+        if (
+            stage_input.membership_changed
+            and not stage_input.guids_to_add
+            and not stage_input.guids_to_remove
+        ):
+            lines.append("- Membership type changed on existing member(s)")
         return self.UpdateUFMStageOutput(
             guids_set=set_result.guids_set,
             display="\n".join(lines),
@@ -635,6 +655,7 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
                 desired_memberships=desired_memberships,
                 guids_to_add=query_output.guids_to_add,
                 guids_to_remove=query_output.guids_to_remove,
+                membership_changed=query_output.membership_changed,
                 ip_over_ib=workflow_input.ip_over_ib,
             )
         )

@@ -164,6 +164,16 @@ def _stub_status(m: aioresponses) -> None:
     )
 
 
+async def _wait_for_pending_approval(handle, timeout: float = 10.0) -> None:
+    """Poll until the workflow reports pending_approval, bounded by ``timeout``."""
+
+    async def _poll() -> None:
+        while await handle.query("pending_approval") is False:
+            await asyncio.sleep(0.1)
+
+    await asyncio.wait_for(_poll(), timeout=timeout)
+
+
 @pytest.mark.asyncio
 async def test_additions_only_auto_approved(mock_all_configs, time_skipping_env):
     """Workflow completes without approval gate when only adding members."""
@@ -444,6 +454,83 @@ async def test_no_op_when_desired_matches_current(mock_all_configs, time_skippin
     assert result.verified is True
 
 
+@pytest.mark.asyncio
+async def test_membership_only_change_sent_to_ufm(mock_all_configs, time_skipping_env):
+    """Flipping an existing member's membership (no GUID add/remove) still PUTs to UFM."""
+    task_queue = str(uuid.uuid4())
+    put_bodies: list[dict] = []
+
+    def _record_set(url, **kwargs):
+        put_bodies.append(kwargs.get("json") or {})
+        return CallbackResult(status=200, payload={})
+
+    current_assignment = {
+        "results": [
+            {
+                "id": ASSIGNMENT_UUID_1,
+                "assigned_object_id": IFACE_UUID_1,
+                "guid": GUID_1,
+                "membership_type": "full",
+            }
+        ]
+    }
+
+    async with time_skipping_env() as env:
+        async with Worker(
+            env.client,
+            task_queue=task_queue,
+            workflows=[IBPKeyMemberUpdateWorkflow],
+            activities=_ALL_ACTIVITIES,
+        ):
+            with aioresponses() as m:
+                stub_graphql_resolve_ib_context(m, pkey="0x0005", overlay_id=OVERLAY_UUID)
+                _stub_resolve_interfaces(m, [(IFACE_UUID_1, GUID_1)])
+
+                # query_current: member already present with membership "full"
+                m.get(_NB_ASSIGNMENTS, payload=current_assignment)
+
+                # update_nautobot: same member, membership patched full -> limited
+                _stub_status(m)
+                m.get(_NB_ASSIGNMENTS, payload=current_assignment)
+                m.patch(
+                    f"{PLUGIN}/overlay-assignments/{ASSIGNMENT_UUID_1}/",
+                    payload={"id": ASSIGNMENT_UUID_1},
+                )
+
+                # update_ufm: PUT must still fire even though no GUID was added/removed
+                m.put(f"{UFM_BASE}/resources/pkeys/", callback=_record_set)
+
+                # verify_ufm: UFM now reflects the new membership
+                m.get(
+                    _pkey_verify_url("0x0005"),
+                    payload={"guids": [{"guid": GUID_1, "membership": "limited"}]},
+                )
+
+                result = await env.client.execute_workflow(
+                    IBPKeyMemberUpdateWorkflow.run,
+                    IBPKeyMemberUpdateInput(
+                        host="ufm.example.com",
+                        pkey="0x0005",
+                        interfaces=[
+                            InterfaceRef(
+                                device="hca01", interface="mlx5_0", membership="limited"
+                            ),
+                        ],
+                    ),
+                    id=str(uuid.uuid4()),
+                    task_queue=task_queue,
+                )
+
+    assert result.verified is True
+    assert result.members_added == 0
+    assert result.members_removed == 0
+    assert result.members_unchanged == 1
+    # The membership-only change must still produce one UFM PUT with the new membership.
+    assert len(put_bodies) == 1
+    assert put_bodies[0].get("guids") == [GUID_1]
+    assert put_bodies[0].get("memberships") == ["limited"]
+
+
 def test_input_rejects_neither_interfaces_nor_guids():
     """Validator rejects an input with neither interfaces nor GUIDs."""
     with pytest.raises(ValueError, match="One of 'interfaces' or 'guids'"):
@@ -623,8 +710,7 @@ async def test_full_swap_atomically_replaces_membership(mock_all_configs, time_s
                     task_queue=task_queue,
                 )
 
-                while await handle.query("pending_approval") is False:
-                    await asyncio.sleep(0.1)
+                await _wait_for_pending_approval(handle)
 
                 await handle.signal(
                     "approve", {"stage_name": "validate_diff", "user": "Test"}

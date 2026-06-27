@@ -320,7 +320,10 @@ class TestSetMembers:
         )
 
         state = client.get("/ufmRest/resources/pkeys/0x0001?guids_data=true").json()
-        assert {entry["guid"] for entry in state["guids"]} == {"0xa", "0xb"}
+        by_guid = {entry["guid"]: entry for entry in state["guids"]}
+        assert set(by_guid) == {"0xa", "0xb"}
+        assert by_guid["0xa"] == {"guid": "0xa", "membership": "full"}
+        assert by_guid["0xb"]["membership"] == "full"
 
     def test_put_per_guid_memberships_array(self, client: TestClient) -> None:
         """PUT honors the per-GUID `memberships` array for an atomic set."""
