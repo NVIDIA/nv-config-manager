@@ -181,6 +181,10 @@ class _Store:
             if state is None:
                 state = _PKeyState(pkey=pkey, ip_over_ib=ip_over_ib, index0=index0)
                 self._pkeys[pkey] = state
+            # UFM's PUT overwrites the whole partition, so refresh flags too,
+            # not just the member list, even when the partition already exists.
+            state.ip_over_ib = ip_over_ib
+            state.index0 = index0
             state.guids = {guid: {"membership": membership} for guid, membership in pairs}
             return len(state.guids)
 
