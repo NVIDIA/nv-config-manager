@@ -368,9 +368,18 @@ async def test_per_guid_membership_sent_to_ufm(mock_all_configs, time_skipping_e
 
 
 @pytest.mark.asyncio
-async def test_no_op_when_desired_matches_current(mock_all_configs, time_skipping_env):
-    """Workflow completes with no writes when desired == current."""
+async def test_idempotent_put_when_desired_matches_current(mock_all_configs, time_skipping_env):
+    """No Nautobot writes when desired == current, but UFM still gets the reconciling PUT.
+
+    The workflow reconciles UFM to the exact desired set, so even when Nautobot
+    already matches it issues the idempotent PUT to correct any UFM drift.
+    """
     task_queue = str(uuid.uuid4())
+    put_bodies: list[dict] = []
+
+    def _record_set(url, **kwargs):
+        put_bodies.append(kwargs.get("json") or {})
+        return CallbackResult(status=200, payload={})
 
     async with time_skipping_env() as env:
         async with Worker(
@@ -417,7 +426,8 @@ async def test_no_op_when_desired_matches_current(mock_all_configs, time_skippin
                     },
                 )
 
-                # Stage 5: update_ufm — no diff, so UFM is not touched at all
+                # Stage 5: update_ufm — idempotent PUT still fires to reconcile UFM
+                m.put(f"{UFM_BASE}/resources/pkeys/", callback=_record_set)
 
                 # Stage 6: verify_ufm
                 m.get(
@@ -442,6 +452,9 @@ async def test_no_op_when_desired_matches_current(mock_all_configs, time_skippin
     assert result.members_removed == 0
     assert result.members_unchanged == 1
     assert result.verified is True
+    # UFM reconciliation PUT fires once with the exact desired set, even on a no-op diff.
+    assert len(put_bodies) == 1
+    assert put_bodies[0].get("guids") == [GUID_1]
 
 
 def test_input_rejects_neither_interfaces_nor_guids():
@@ -546,6 +559,77 @@ def test_membership_type_rejects_non_string(bad):
     """Non-string membership_type yields a clean validation error, not a crash."""
     with pytest.raises(ValueError, match="membership_type must be 'full' or 'limited'"):
         _update_input(membership_type=bad)
+
+
+@pytest.mark.asyncio
+async def test_membership_only_change_sent_to_ufm(mock_all_configs, time_skipping_env):
+    """Flipping an existing member's membership (no GUID add/remove) still PUTs to UFM."""
+    task_queue = str(uuid.uuid4())
+    put_bodies: list[dict] = []
+
+    def _record_set(url, **kwargs):
+        put_bodies.append(kwargs.get("json") or {})
+        return CallbackResult(status=200, payload={})
+
+    current_assignment = {
+        "id": ASSIGNMENT_UUID_1,
+        "assigned_object_id": IFACE_UUID_1,
+        "guid": GUID_1,
+        "membership_type": "full",
+    }
+
+    async with time_skipping_env() as env:
+        async with Worker(
+            env.client,
+            task_queue=task_queue,
+            workflows=[IBPKeyMemberUpdateWorkflow],
+            activities=_ALL_ACTIVITIES,
+        ):
+            with aioresponses() as m:
+                stub_graphql_resolve_ib_context(m, pkey="0x0005", overlay_id=OVERLAY_UUID)
+                _stub_resolve_interfaces(m, [(IFACE_UUID_1, GUID_1)])
+
+                # query_current: member already present with membership "full"
+                m.get(_NB_ASSIGNMENTS, payload={"results": [current_assignment]})
+
+                # update_nautobot: same member, membership patched full -> limited
+                _stub_status(m)
+                m.get(_NB_ASSIGNMENTS, payload={"results": [current_assignment]})
+                m.patch(
+                    f"{PLUGIN}/overlay-assignments/{ASSIGNMENT_UUID_1}/",
+                    payload={"id": ASSIGNMENT_UUID_1},
+                )
+
+                # update_ufm: the PUT must still fire though no GUID was added/removed
+                m.put(f"{UFM_BASE}/resources/pkeys/", callback=_record_set)
+
+                # verify_ufm: UFM now reflects the new membership
+                m.get(
+                    _pkey_verify_url("0x0005"),
+                    payload={"guids": [{"guid": GUID_1, "membership": "limited"}]},
+                )
+
+                result = await env.client.execute_workflow(
+                    IBPKeyMemberUpdateWorkflow.run,
+                    IBPKeyMemberUpdateInput(
+                        host="ufm.example.com",
+                        pkey="0x0005",
+                        interfaces=[
+                            InterfaceRef(device="hca01", interface="mlx5_0", membership="limited"),
+                        ],
+                    ),
+                    id=str(uuid.uuid4()),
+                    task_queue=task_queue,
+                )
+
+    assert result.verified is True
+    assert result.members_added == 0
+    assert result.members_removed == 0
+    assert result.members_unchanged == 1
+    # The membership-only change must still produce one UFM PUT with the new membership.
+    assert len(put_bodies) == 1
+    assert put_bodies[0].get("guids") == [GUID_1]
+    assert put_bodies[0].get("memberships") == ["limited"]
 
 
 @pytest.mark.asyncio

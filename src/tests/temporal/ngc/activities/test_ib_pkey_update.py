@@ -405,6 +405,46 @@ class TestFetchPKeyAssignments:
 
         assert result.assignments == []
 
+    @pytest.mark.asyncio
+    async def test_follows_pagination(self, mock_nb_config):
+        """Assignments spanning multiple Nautobot pages are all collected."""
+        with aioresponses() as m:
+            m.get(
+                _NB_ASSIGNMENTS,
+                payload={
+                    "next": "http://nautobot/api/.../overlay-assignments/?offset=1",
+                    "results": [
+                        {
+                            "id": ASSIGNMENT_UUID_1,
+                            "assigned_object_id": IFACE_UUID_1,
+                            "guid": GUID_1,
+                        }
+                    ],
+                },
+            )
+            m.get(
+                _NB_ASSIGNMENTS,
+                payload={
+                    "next": None,
+                    "results": [
+                        {
+                            "id": ASSIGNMENT_UUID_2,
+                            "assigned_object_id": IFACE_UUID_2,
+                            "guid": GUID_2,
+                        }
+                    ],
+                },
+            )
+
+            result = await fetch_pkey_assignments(
+                FetchPKeyAssignmentsInput(overlay_id=OVERLAY_UUID)
+            )
+
+        assert [a.assignment_id for a in result.assignments] == [
+            ASSIGNMENT_UUID_1,
+            ASSIGNMENT_UUID_2,
+        ]
+
 
 # ---------------------------------------------------------------------------
 # sync_pkey_assignments

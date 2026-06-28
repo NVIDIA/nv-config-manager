@@ -263,6 +263,54 @@ class TestVerifyPKeyMembers:
                 )
 
     @pytest.mark.asyncio
+    async def test_exact_rejects_unexpected_member(self, mock_ufm_config):
+        """In exact mode, a member present on UFM but not expected fails verification."""
+        with aioresponses() as m:
+            m.get(
+                _pkey_url("0x0005"),
+                payload={
+                    "guids": [
+                        {"guid": GUID_1, "membership": "full"},
+                        {"guid": GUID_2, "membership": "full"},
+                    ],
+                },
+            )
+
+            with pytest.raises(ApplicationError, match="unexpected GUID"):
+                await verify_pkey_members(
+                    VerifyPKeyMembersInput(
+                        host="ufm.example.com",
+                        pkey="0x0005",
+                        expected_guids=[GUID_1],
+                        exact=True,
+                    )
+                )
+
+    @pytest.mark.asyncio
+    async def test_extra_member_tolerated_without_exact(self, mock_ufm_config):
+        """Without exact mode (add workflow), other members may coexist."""
+        with aioresponses() as m:
+            m.get(
+                _pkey_url("0x0005"),
+                payload={
+                    "guids": [
+                        {"guid": GUID_1, "membership": "full"},
+                        {"guid": GUID_2, "membership": "full"},
+                    ],
+                },
+            )
+
+            result = await verify_pkey_members(
+                VerifyPKeyMembersInput(
+                    host="ufm.example.com",
+                    pkey="0x0005",
+                    expected_guids=[GUID_1],
+                )
+            )
+
+        assert result.verified is True
+
+    @pytest.mark.asyncio
     async def test_guid_case_insensitive(self, mock_ufm_config):
         with aioresponses() as m:
             m.get(
@@ -572,6 +620,44 @@ class TestRecordPKeyAssignments:
             )
 
         assert result.assignment_ids == [ASSIGNMENT_UUID_1, ASSIGNMENT_UUID_2]
+
+    @pytest.mark.asyncio
+    async def test_patches_existing_membership_change(self, mock_nb_config):
+        """Re-adding an existing member with a new membership patches Nautobot."""
+        patched: list[dict] = []
+
+        def _record_patch(url, **kwargs):
+            patched.append(kwargs.get("json") or {})
+            return CallbackResult(status=200, payload={"id": ASSIGNMENT_UUID_1})
+
+        with aioresponses() as m:
+            self._stub_status(m)
+            m.get(
+                _NB_ASSIGNMENTS,
+                payload={"results": [{"id": ASSIGNMENT_UUID_1, "membership_type": "full"}]},
+            )
+            m.patch(
+                f"{PLUGIN}/overlay-assignments/{ASSIGNMENT_UUID_1}/",
+                callback=_record_patch,
+            )
+
+            result = await record_pkey_assignments(
+                RecordPKeyAssignmentsInput(
+                    overlay_id=OVERLAY_UUID,
+                    resolved=[
+                        ResolvedInterface(
+                            device="hca01",
+                            interface="mlx5_0",
+                            interface_id=IFACE_UUID_1,
+                            guid=GUID_1,
+                            membership="limited",
+                        )
+                    ],
+                )
+            )
+
+        assert result.assignment_ids == [ASSIGNMENT_UUID_1]
+        assert patched == [{"membership_type": "limited"}]
 
     @pytest.mark.asyncio
     async def test_status_not_found_raises(self, mock_nb_config):
