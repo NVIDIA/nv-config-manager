@@ -650,6 +650,7 @@ async def get_workflows(  # pylint: disable=R0913,R0914
     request: Request,
     user: str | None = None,
     workflow_type: str | None = None,
+    workflow_id: str | None = None,
     device_id: str | None = None,
     device_name: str | None = None,
     device_role: str | None = None,
@@ -673,6 +674,8 @@ async def get_workflows(  # pylint: disable=R0913,R0914
         filters.append(
             f"WorkflowType = '{_sanitize_visibility_value(workflow_type, 'workflow_type')}'"
         )
+    if workflow_id:
+        filters.append(f"WorkflowId = '{_sanitize_visibility_value(workflow_id, 'workflow_id')}'")
     if device_id:
         filters.append(
             f"{DEVICE_ID_SEARCH_ATTRIBUTE} = '{_sanitize_visibility_value(device_id, 'device_id')}'"

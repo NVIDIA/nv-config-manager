@@ -162,6 +162,64 @@ test.describe("Workflows Page", () => {
     await expect(page.locator("tbody tr").first()).toBeVisible();
   });
 
+  test("applies workflow ID filtering through the backend from page 2", async ({
+    page,
+  }) => {
+    await page.goto("/workflows");
+    await page.getByRole("button", { exact: true, name: "Next" }).click();
+    await expect(page.getByText(/Page 2 of \d+/)).toBeVisible();
+
+    const workflowId = (
+      await page.locator("tbody tr").last().locator("a").first().innerText()
+    ).trim();
+    const filteredResponse = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+
+      return (
+        url.pathname.endsWith("/v1/workflow/") &&
+        url.searchParams.get("workflow_id") === workflowId &&
+        !url.searchParams.has("next_page_token")
+      );
+    });
+
+    await page
+      .locator("thead")
+      .getByRole("textbox", { name: "Search..." })
+      .first()
+      .fill(workflowId);
+    await filteredResponse;
+
+    await expect(page.getByText("Page 1 of 1")).toBeVisible();
+    await expect(page.getByText("1 workflow", { exact: true })).toBeVisible();
+    await expect(page.locator("tbody").getByText(workflowId)).toBeVisible();
+  });
+
+  test("uses exact case-sensitive workflow attribute filters", async ({
+    page,
+  }) => {
+    await page.goto("/workflows");
+
+    const siteFilter = page
+      .locator("thead th")
+      .filter({ hasText: "Site" })
+      .getByRole("textbox");
+
+    await siteFilter.fill("rno1");
+    await expect(page.getByText("No results.")).toBeVisible();
+
+    await siteFilter.fill("RNO1");
+    await expect(page.getByText("RNO1").first()).toBeVisible();
+    await page
+      .locator("thead th")
+      .filter({ hasText: "Device Name" })
+      .getByRole("textbox")
+      .fill("rno1-m04-c10-core1-cg1-tan-lab1");
+
+    await expect(page.getByText("RNO1").first()).toBeVisible();
+    await expect(page.getByText("rno1-m04-c10-core1-cg1-tan-lab1").first()).toBeVisible();
+    await expect(page.getByText("No results.")).toHaveCount(0);
+  });
+
   test("uses backend hide-completed filtering and disables header sorting", async ({
     page,
   }) => {
@@ -296,6 +354,38 @@ test.describe("Workflows Page", () => {
 
     await expect(page).toHaveURL(/\/workflows$/);
     await expect(page.getByText("LEAF1-GP1-CIN2-PDX01").first()).toBeVisible();
+  });
+
+  test("renders the backend result set without additional status filtering", async ({
+    page,
+  }) => {
+    await page.goto("/workflows");
+
+    const runningResponse = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+
+      return (
+        url.pathname.endsWith("/v1/workflow/") &&
+        url.searchParams.get("status") === "RUNNING" &&
+        !url.searchParams.has("pending_approval")
+      );
+    });
+    await page
+      .locator("thead")
+      .getByRole("cell", { name: /Status/ })
+      .getByRole("combobox")
+      .click();
+    await page.getByRole("option", { name: "Running", exact: true }).click();
+
+    const responseBody = (await (await runningResponse).json()) as {
+      workflows: unknown[];
+    };
+    await expect(page.locator("tbody tr")).toHaveCount(
+      responseBody.workflows.length
+    );
+    await expect(
+      page.locator("tbody").getByText("Pending Approval", { exact: true }).first()
+    ).toBeVisible();
   });
 
   test("supports top-level workflow timeframe filters", async ({ page }) => {
