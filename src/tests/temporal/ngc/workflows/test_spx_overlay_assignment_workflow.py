@@ -23,7 +23,7 @@ from unittest.mock import patch
 
 import pytest
 from pydantic import ValidationError
-from temporalio import activity
+from temporalio import activity, workflow
 from temporalio.exceptions import ApplicationError
 from temporalio.worker import Worker
 
@@ -32,6 +32,7 @@ from nv_config_manager.temporal.ngc.activities.nats import publish_nats
 from nv_config_manager.temporal.ngc.activities.nautobot import (
     AssignVrfToDeviceInput,
     AssignVrfToInterfaceInput,
+    CheckRecordedConfigDriftInput,
     DeviceVrfInfo,
     GetDeviceInterfacesInput,
     GetDeviceInterfacesOutput,
@@ -92,6 +93,7 @@ _mock_state = {
     "interfaces_with_vrf": [],
     "newer_commit_allowed": True,
     "reconcile_calls": 0,
+    "recorded_config_drift": False,
 }
 
 
@@ -181,6 +183,24 @@ async def mock_reconcile_spx_overlay_assignments(
         created=1 + len(activity_input.interface_ids),
         removed=0,
     )
+
+
+@activity.defn(name="check_recorded_config_drift")
+async def mock_check_recorded_config_drift(
+    _activity_input: CheckRecordedConfigDriftInput,
+) -> bool:
+    """Mock pending deployment check."""
+    return bool(_mock_state["recorded_config_drift"])
+
+
+@workflow.defn(name="TenantDeployWorkflow", sandboxed=False)
+class MockTenantDeployWorkflow:
+    """Mock tenant deploy child workflow."""
+
+    @workflow.run
+    async def run(self, _workflow_input: Any) -> bool:
+        """Mock tenant deploy run."""
+        return True
 
 
 def test_spx_render_stage_output_requires_snapshot_commit_ids():
@@ -303,6 +323,7 @@ async def test_spx_overlay_tenant_change_is_noop_when_already_assigned(
     _mock_state["vrf_exists"] = True
     _mock_state["interfaces_with_vrf"] = ["swp1", "swp2"]
     _mock_state["reconcile_calls"] = 0
+    _mock_state["recorded_config_drift"] = False
 
     task_queue_name = str(uuid.uuid4())
     async with Worker(
@@ -317,6 +338,7 @@ async def test_spx_overlay_tenant_change_is_noop_when_already_assigned(
             mock_get_device_interfaces,
             mock_assign_vrf_to_interface,
             mock_reconcile_spx_overlay_assignments,
+            mock_check_recorded_config_drift,
             publish_nats,
         ],
         activity_executor=ThreadPoolExecutor(1),
@@ -346,6 +368,69 @@ async def test_spx_overlay_tenant_change_is_noop_when_already_assigned(
         assert stages["render_tenant_config"]["state"] == "UNREACHABLE"
         assert stages["wait_for_render"]["state"] == "UNREACHABLE"
         assert stages["deploy"]["state"] == "UNREACHABLE"
+
+
+@pytest.mark.asyncio
+@patch("nv_config_manager.temporal.ngc.activities.nats.NatsProducer", autospec=True)
+@patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
+async def test_spx_overlay_tenant_change_retries_deploy_when_already_assigned_but_pending(
+    _mock_time, _mock_nats_client, env
+):
+    """A rerun deploys if Nautobot assignment is complete but deployment is still pending."""
+
+    _mock_state["vrf_exists"] = True
+    _mock_state["interfaces_with_vrf"] = ["swp1", "swp2"]
+    _mock_state["reconcile_calls"] = 0
+    _mock_state["recorded_config_drift"] = True
+
+    task_queue_name = str(uuid.uuid4())
+    async with Worker(
+        env.client,
+        task_queue=task_queue_name,
+        workflows=[
+            SpXOverlayAssignmentWorkflow,
+            SpXOverlayTenantChangeWorkflow,
+            MockTenantDeployWorkflow,
+        ],
+        activities=[
+            mock_get_network_device,
+            mock_get_vrfs_by_overlay_id,
+            mock_get_device_vrfs,
+            mock_assign_vrf_to_device,
+            mock_get_device_interfaces,
+            mock_assign_vrf_to_interface,
+            mock_reconcile_spx_overlay_assignments,
+            mock_check_recorded_config_drift,
+            publish_nats,
+        ],
+        activity_executor=ThreadPoolExecutor(1),
+    ):
+        handle = await env.client.start_workflow(
+            SpXOverlayTenantChangeWorkflow.run,
+            SpXOverlayTenantChangeInput(
+                overlay_id="mock_overlay_id",
+                device_id="mock_device_id_with_vrf",
+                port_names=["swp1", "swp2"],
+                site="mock_site",
+            ),
+            id=str(uuid.uuid4()),
+            task_queue=task_queue_name,
+            run_timeout=timedelta(seconds=30),
+        )
+
+        result = await handle.result()
+
+        assert result.assigned_ports == []
+        assert result.vrf_assigned is False
+        assert result.device_deployed == "mock_device_id_with_vrf"
+
+        stages = {stage["name"]: stage for stage in await handle.query("stages")}
+        assert stages["determine_deployment_action"]["state"] == "COMPLETE"
+        assert stages["render_tenant_config"]["state"] == "UNREACHABLE"
+        assert stages["wait_for_render"]["state"] == "UNREACHABLE"
+        assert stages["deploy"]["state"] == "COMPLETE"
+        assert stages["deploy"]["input"]["tenant_config_commit_id"] is None
+        assert stages["deploy"]["input"]["intended_config_commit_id"] is None
 
 
 @pytest.mark.asyncio
