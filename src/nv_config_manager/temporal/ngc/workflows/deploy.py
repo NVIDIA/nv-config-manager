@@ -528,7 +528,10 @@ class TenantDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archi
                 start_to_close_timeout=timedelta(minutes=1),
                 retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
             )
-        assert intended_config_commit_id is not None
+        if intended_config_commit_id is None:
+            raise ApplicationError(
+                "Unable to resolve intended configuration commit ID for tenant deployment"
+            )
         config_path = device.tenant_config_path
         markdown = f"Loaded tenant configuration from [{config_path}]({url})."
         return TenantDeployWorkflow.LoadConfigStageOutput(
