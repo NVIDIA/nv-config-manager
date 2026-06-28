@@ -50,6 +50,7 @@ with workflow.unsafe.imports_passed_through():
         GetNetworkDeviceInput,
         ProvisionVrfInput,
         QueryVRFByVPCInput,
+        ReconcileSpXOverlayAssignmentsInput,
         Vrf,
         VrfDeletionActivityInput,
         _vni_from_rd,
@@ -63,6 +64,7 @@ with workflow.unsafe.imports_passed_through():
         get_network_device,
         get_vrfs_by_overlay_id,
         provision_vrf,
+        reconcile_spx_overlay_assignments,
     )
     from nv_config_manager.temporal.ngc.activities.render import (
         ExecuteRenderInput,
@@ -555,6 +557,8 @@ class SpXOverlayAssignmentWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixi
         """Assign VRF to Ports Stage Input."""
 
         device_id: str
+        overlay_id: str
+        site: str
         vrf_id: str
         vrf_name: str
         port_names: list[str]
@@ -601,13 +605,27 @@ class SpXOverlayAssignmentWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixi
 
         await asyncio.gather(*tasks)
 
+        overlay_assignments = await workflow.execute_activity(
+            reconcile_spx_overlay_assignments,
+            ReconcileSpXOverlayAssignmentsInput(
+                overlay_id=stage_input.overlay_id,
+                site=stage_input.site,
+                device_id=stage_input.device_id,
+                interface_ids=[interface.id for interface in interfaces_output.interfaces],
+            ),
+            start_to_close_timeout=timedelta(minutes=1),
+            retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+        )
+
         return self.AssignVrfToPortsStageOutput(
             assigned_ports=assigned_ports,
             already_assigned_ports=already_assigned_ports,
             display=(
                 f"VRF {stage_input.vrf_name} assigned "
                 f"to ports: {', '.join(assigned_ports)}\n"
-                f"Ports already assigned: {', '.join(already_assigned_ports)}"
+                f"Ports already assigned: {', '.join(already_assigned_ports)}\n"
+                f"Overlay assignments created: {overlay_assignments.created}; "
+                f"stale assignments removed: {overlay_assignments.removed}"
             ),
         )
 
@@ -639,6 +657,8 @@ class SpXOverlayAssignmentWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixi
         ports_output = await self.assign_vrf_to_ports_stage(
             self.AssignVrfToPortsStageInput(
                 device_id=device_vrf_output.device.id,
+                overlay_id=workflow_input.overlay_id,
+                site=workflow_input.site,
                 vrf_id=device_vrf_output.vrf.id,
                 vrf_name=device_vrf_output.vrf.name,
                 port_names=workflow_input.port_names,

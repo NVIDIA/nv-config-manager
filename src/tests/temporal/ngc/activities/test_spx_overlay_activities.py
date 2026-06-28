@@ -26,12 +26,14 @@ from nv_config_manager.temporal.ngc.activities.nautobot import (
     DeleteOverlayInput,
     GetAvailableRouteDistinguishersInput,
     ProvisionVrfInput,
+    ReconcileSpXOverlayAssignmentsInput,
     VrfDeletionActivityInput,
     _vni_from_rd,
     delete_overlay,
     delete_vrf,
     get_available_route_distinguishers,
     provision_vrf,
+    reconcile_spx_overlay_assignments,
 )
 
 NAUTOBOT = "https://nautobot.example.com"
@@ -74,6 +76,106 @@ def _namespace_graphql_response(*rds, namespace_id=NS_ID, namespace_name="spectr
                 }
             ]
         }
+    }
+
+
+# ---------------------------------------------------------------------------
+# reconcile_spx_overlay_assignments
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_reconcile_spx_overlay_assignments_moves_port_between_overlays():
+    device_id = "22220000-0000-0000-0000-000000000001"
+    interface_id = "33330000-0000-0000-0000-000000000001"
+    existing_interface_id = "33330000-0000-0000-0000-000000000002"
+    old_overlay_id = "44440000-0000-0000-0000-000000000001"
+    ib_overlay_id = "55550000-0000-0000-0000-000000000001"
+    old_assignment_id = "66660000-0000-0000-0000-000000000001"
+
+    with aioresponses() as m:
+        m.get(
+            _r(f"{OVERLAYS_BASE}/overlays/"),
+            payload={"results": [{"id": OVERLAY_ID, "name": "Panda"}]},
+        )
+        m.get(
+            _r(f"{OVERLAYS_BASE}/overlay-assignments/"),
+            payload={
+                "results": [
+                    {
+                        "id": "device-assignment",
+                        "overlay": {
+                            "id": OVERLAY_ID,
+                            "isolation_type": "spectrum_x_vrf",
+                        },
+                    }
+                ]
+            },
+        )
+        m.get(
+            _r(f"{OVERLAYS_BASE}/overlay-assignments/"),
+            payload={
+                "results": [
+                    {
+                        "id": old_assignment_id,
+                        "overlay": {
+                            "id": old_overlay_id,
+                            "isolation_type": "spectrum_x_vrf",
+                        },
+                    },
+                    {
+                        "id": "ib-assignment",
+                        "overlay": {
+                            "id": ib_overlay_id,
+                            "isolation_type": "ib_pkey",
+                        },
+                    },
+                ]
+            },
+        )
+        m.delete(
+            f"{OVERLAYS_BASE}/overlay-assignments/{old_assignment_id}/",
+            status=204,
+        )
+        m.get(
+            _r(f"{NAUTOBOT}/api/extras/statuses/"),
+            payload={"results": [{"id": STATUS_ID}]},
+        )
+        m.post(
+            f"{OVERLAYS_BASE}/overlay-assignments/",
+            payload={"id": "new-interface-assignment"},
+        )
+        m.get(
+            _r(f"{OVERLAYS_BASE}/overlay-assignments/"),
+            payload={
+                "results": [
+                    {
+                        "id": "existing-interface-assignment",
+                        "overlay": {
+                            "id": OVERLAY_ID,
+                            "isolation_type": "spectrum_x_vrf",
+                        },
+                    }
+                ]
+            },
+        )
+
+        result = await reconcile_spx_overlay_assignments(
+            ReconcileSpXOverlayAssignmentsInput(
+                overlay_id="Panda",
+                site=LOCATION_ID,
+                device_id=device_id,
+                interface_ids=[interface_id, existing_interface_id],
+            )
+        )
+
+    assert result.created == 1
+    assert result.removed == 1
+    assert _request_json(m, "post", f"{OVERLAYS_BASE}/overlay-assignments/") == {
+        "overlay": OVERLAY_ID,
+        "assigned_object_type": "dcim.interface",
+        "assigned_object_id": interface_id,
+        "status": STATUS_ID,
     }
 
 

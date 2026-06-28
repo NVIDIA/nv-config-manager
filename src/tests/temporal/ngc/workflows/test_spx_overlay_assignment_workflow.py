@@ -18,11 +18,12 @@ import asyncio
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
-from typing import Any
+from typing import Any, cast
 from unittest.mock import patch
 
 import pytest
 from temporalio import activity
+from temporalio.exceptions import ApplicationError
 from temporalio.worker import Worker
 
 from nv_config_manager.temporal.common.mixins.device import InterfaceData, NetworkDeviceData
@@ -38,6 +39,8 @@ from nv_config_manager.temporal.ngc.activities.nautobot import (
     GetNetworkDeviceInput,
     GetNetworkDeviceOutput,
     QueryVRFByVPCInput,
+    ReconcileSpXOverlayAssignmentsInput,
+    ReconcileSpXOverlayAssignmentsOutput,
     Vrf,
 )
 from nv_config_manager.temporal.ngc.workflows.spx_overlay import (
@@ -87,6 +90,7 @@ _mock_state = {
     "vrf_exists": True,
     "interfaces_with_vrf": [],
     "newer_commit_allowed": True,
+    "reconcile_calls": 0,
 }
 
 
@@ -124,10 +128,6 @@ async def mock_get_device_interfaces(
     activity_input: GetDeviceInterfacesInput,
 ) -> GetDeviceInterfacesOutput:
     """Mock activity for getting device interfaces."""
-    from typing import cast
-
-    from temporalio.exceptions import ApplicationError
-
     interfaces_with_vrf = cast(list[str], _mock_state.get("interfaces_with_vrf", []))
 
     all_interfaces = [
@@ -170,6 +170,18 @@ async def mock_assign_vrf_to_interface(
     """Mock activity for assigning VRF to interface."""
 
 
+@activity.defn(name="reconcile_spx_overlay_assignments")
+async def mock_reconcile_spx_overlay_assignments(
+    activity_input: ReconcileSpXOverlayAssignmentsInput,
+) -> ReconcileSpXOverlayAssignmentsOutput:
+    """Mock reconciliation of overlay-plugin assignments."""
+    _mock_state["reconcile_calls"] = int(_mock_state["reconcile_calls"]) + 1
+    return ReconcileSpXOverlayAssignmentsOutput(
+        created=1 + len(activity_input.interface_ids),
+        removed=0,
+    )
+
+
 @pytest.mark.asyncio
 @patch("nv_config_manager.temporal.ngc.activities.nats.NatsProducer", autospec=True)
 @patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
@@ -191,6 +203,7 @@ async def test_spx_overlay_assignment_workflow_vrf_not_assigned(_mock_time, _moc
             mock_assign_vrf_to_device,
             mock_get_device_interfaces,
             mock_assign_vrf_to_interface,
+            mock_reconcile_spx_overlay_assignments,
             publish_nats,
         ],
         activity_executor=ThreadPoolExecutor(1),
@@ -241,6 +254,7 @@ async def test_spx_overlay_assignment_workflow_vrf_already_assigned(
             mock_assign_vrf_to_device,
             mock_get_device_interfaces,
             mock_assign_vrf_to_interface,
+            mock_reconcile_spx_overlay_assignments,
             publish_nats,
         ],
         activity_executor=ThreadPoolExecutor(1),
@@ -278,6 +292,7 @@ async def test_spx_overlay_tenant_change_is_noop_when_already_assigned(
 
     _mock_state["vrf_exists"] = True
     _mock_state["interfaces_with_vrf"] = ["swp1", "swp2"]
+    _mock_state["reconcile_calls"] = 0
 
     task_queue_name = str(uuid.uuid4())
     async with Worker(
@@ -291,6 +306,7 @@ async def test_spx_overlay_tenant_change_is_noop_when_already_assigned(
             mock_assign_vrf_to_device,
             mock_get_device_interfaces,
             mock_assign_vrf_to_interface,
+            mock_reconcile_spx_overlay_assignments,
             publish_nats,
         ],
         activity_executor=ThreadPoolExecutor(1),
@@ -314,6 +330,7 @@ async def test_spx_overlay_tenant_change_is_noop_when_already_assigned(
         assert result.vrf_assigned is False
         assert result.vrf is None
         assert result.device_deployed is None
+        assert _mock_state["reconcile_calls"] == 1
 
         stages = {stage["name"]: stage for stage in await handle.query("stages")}
         assert stages["render_tenant_config"]["state"] == "UNREACHABLE"
@@ -342,6 +359,7 @@ async def test_spx_overlay_assignment_workflow_vrf_not_found(_mock_time, _mock_n
             mock_assign_vrf_to_device,
             mock_get_device_interfaces,
             mock_assign_vrf_to_interface,
+            mock_reconcile_spx_overlay_assignments,
             publish_nats,
         ],
         activity_executor=ThreadPoolExecutor(1),
@@ -401,6 +419,7 @@ async def test_spx_overlay_assignment_workflow_interface_not_found(
             mock_assign_vrf_to_device,
             mock_get_device_interfaces,
             mock_assign_vrf_to_interface,
+            mock_reconcile_spx_overlay_assignments,
             publish_nats,
         ],
         activity_executor=ThreadPoolExecutor(1),

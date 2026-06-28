@@ -26,7 +26,11 @@ from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
 from nv_config_manager.common.log import LogCategory, get_logger
-from nv_config_manager.temporal.client.nautobot import DeviceVrfInfo, NautobotClient
+from nv_config_manager.temporal.client.nautobot import (
+    OVERLAYS_PLUGIN_BASE,
+    DeviceVrfInfo,
+    NautobotClient,
+)
 from nv_config_manager.temporal.common.mixins.device import (
     HostDeviceData,
     InterfaceData,
@@ -770,3 +774,107 @@ async def assign_vrf_to_interface(
         await client.update_interface(
             activity_input.interface_id, data={"vrf": activity_input.vrf_id}
         )
+
+
+class ReconcileSpXOverlayAssignmentsInput(BaseModel):
+    """Spectrum-X overlay assignments to reconcile in Nautobot."""
+
+    overlay_id: str
+    site: str
+    device_id: str
+    interface_ids: list[str]
+
+
+class ReconcileSpXOverlayAssignmentsOutput(BaseModel):
+    """Result of reconciling Spectrum-X overlay assignments."""
+
+    created: int
+    removed: int
+
+
+def _related_object_id(value: Any) -> str | None:
+    """Extract a related object's ID from a Nautobot REST value."""
+    if isinstance(value, dict):
+        object_id = value.get("id")
+        return str(object_id) if object_id else None
+    return str(value) if value else None
+
+
+@activity.defn
+async def reconcile_spx_overlay_assignments(
+    activity_input: ReconcileSpXOverlayAssignmentsInput,
+) -> ReconcileSpXOverlayAssignmentsOutput:
+    """Make overlay-plugin assignments match Spectrum-X device and port intent.
+
+    Device assignments are additive because a switch can host several VRFs. An
+    interface can belong to only one Spectrum-X VRF, so stale Spectrum-X
+    assignments are removed when a port moves between overlays.
+    """
+    client = NautobotClient()
+    created = 0
+    removed = 0
+    status_id: str | None = None
+
+    async with client:
+        overlay = await client.find_overlay(activity_input.overlay_id, activity_input.site)
+        if not overlay:
+            raise ApplicationError(
+                f"Overlay {activity_input.overlay_id} not found in site {activity_input.site}"
+            )
+        target_overlay_id = str(overlay["id"])
+
+        assigned_objects = [("dcim.device", activity_input.device_id, False)]
+        assigned_objects.extend(
+            ("dcim.interface", interface_id, True) for interface_id in activity_input.interface_ids
+        )
+        for object_type, object_id, remove_stale in assigned_objects:
+            response = await client.get(
+                f"{OVERLAYS_PLUGIN_BASE}/overlay-assignments/",
+                params={"assigned_object_id": object_id, "depth": 1},
+            )
+            target_exists = False
+            for assignment in response.get("results", []):
+                assignment_overlay = assignment.get("overlay")
+                assignment_overlay_id = _related_object_id(assignment_overlay)
+                if assignment_overlay_id == target_overlay_id:
+                    target_exists = True
+                    continue
+                if not remove_stale or not assignment_overlay_id:
+                    continue
+
+                if isinstance(assignment_overlay, dict) and assignment_overlay.get(
+                    "isolation_type"
+                ):
+                    isolation_type = assignment_overlay["isolation_type"]
+                else:
+                    overlay_details = await client.get_overlay(assignment_overlay_id)
+                    isolation_type = overlay_details.get("isolation_type")
+
+                if isolation_type == SPECTRUMX_ISOLATION_TYPE:
+                    await client.delete(
+                        f"{OVERLAYS_PLUGIN_BASE}/overlay-assignments/{assignment['id']}/"
+                    )
+                    removed += 1
+
+            if target_exists:
+                continue
+
+            if status_id is None:
+                status_id = await client.lookup_id_by_name("extras/statuses/", DEFAULT_STATUS_NAME)
+                if status_id is None:
+                    raise ApplicationError(
+                        f"Status {DEFAULT_STATUS_NAME} not found for overlay assignment"
+                    )
+
+            await client.post(
+                f"{OVERLAYS_PLUGIN_BASE}/overlay-assignments/",
+                data={
+                    "overlay": target_overlay_id,
+                    "assigned_object_type": object_type,
+                    "assigned_object_id": object_id,
+                    "status": status_id,
+                },
+            )
+            created += 1
+
+    return ReconcileSpXOverlayAssignmentsOutput(created=created, removed=removed)
