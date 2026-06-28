@@ -792,6 +792,7 @@ function filterWorkflows(
     ["user", "User"],
   ];
   const workflowType = url.searchParams.get("workflow_type");
+  const workflowId = url.searchParams.get("workflow_id");
   const status = url.searchParams.get("status");
   const pendingApproval =
     url.searchParams.get("pending_approval")?.toLowerCase() === "true";
@@ -810,6 +811,9 @@ function filterWorkflows(
     if (workflowType && workflow.workflow_type !== workflowType) {
       return false;
     }
+    if (workflowId && workflow.id !== workflowId) {
+      return false;
+    }
     if (hideCompleted && workflow.status === "COMPLETED") {
       return false;
     }
@@ -820,8 +824,8 @@ function filterWorkflows(
 
     if (
       status &&
-      displayStatus !== status &&
-      !(pendingApproval && status === "RUNNING" && workflow.pending_approval)
+      workflow.status !== status &&
+      displayStatus !== status
     ) {
       return false;
     }
@@ -848,9 +852,7 @@ function filterWorkflows(
         return true;
       }
 
-      return getFirstSearchAttribute(workflow, attribute)
-        .toLowerCase()
-        .includes(value.toLowerCase());
+      return getFirstSearchAttribute(workflow, attribute) === value;
     });
   });
 }

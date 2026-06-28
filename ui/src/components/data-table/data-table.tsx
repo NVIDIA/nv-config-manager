@@ -25,7 +25,6 @@ import {
   ColumnFiltersState,
   flexRender,
   getCoreRowModel,
-  getFilteredRowModel,
   getPaginationRowModel,
   RowData,
   Table as TanstackTable,
@@ -110,6 +109,7 @@ const setStoredWorkflowPageSize = (pageSize: number) => {
 };
 
 const workflowApiFilterParams: Record<string, string> = {
+  id: "workflow_id",
   search_attributes_DeviceID: "device_id",
   search_attributes_DeviceName: "device_name",
   search_attributes_DevicePlatform: "device_platform",
@@ -562,7 +562,6 @@ export function DataTable<TData, TValue>({ columns }: DataTableProps<TData, TVal
     onPaginationChange: setPagination,
     onColumnFiltersChange: handleColumnFiltersChange,
     getCoreRowModel: getCoreRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
   });
 
