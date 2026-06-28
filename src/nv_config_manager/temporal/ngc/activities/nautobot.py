@@ -45,6 +45,7 @@ logger.setLevel(logging.INFO)
 SPECTRUMX_ISOLATION_TYPE = "spectrum_x_vrf"
 VXLAN_L3_VNI_TYPE = "l3"
 DEFAULT_STATUS_NAME = "Active"
+OVERLAY_ASSIGNMENTS_PATH = f"{OVERLAYS_PLUGIN_BASE}/overlay-assignments/"
 
 
 def _vni_from_rd(route_distinguisher: str) -> int:
@@ -818,6 +819,100 @@ async def _get_all_results(
         next_params = dict(parse_qsl(urlparse(next_url).query))
 
 
+async def _get_overlay_assignments(
+    client: NautobotClient,
+    assigned_object_id: str,
+) -> list[dict[str, Any]]:
+    """Fetch all overlay-plugin assignments for a Nautobot object."""
+    return await _get_all_results(
+        client,
+        OVERLAY_ASSIGNMENTS_PATH,
+        {"assigned_object_id": assigned_object_id, "depth": 1},
+    )
+
+
+def _has_overlay_assignment(assignments: list[dict[str, Any]], overlay_id: str) -> bool:
+    """Return whether the object is already assigned to the target overlay."""
+    return any(
+        _related_object_id(assignment.get("overlay")) == overlay_id for assignment in assignments
+    )
+
+
+async def _get_assignment_overlay_isolation_type(
+    client: NautobotClient,
+    assignment: dict[str, Any],
+) -> str | None:
+    """Return the overlay isolation type for an overlay assignment."""
+    assignment_overlay = assignment.get("overlay")
+    if isinstance(assignment_overlay, dict) and assignment_overlay.get("isolation_type"):
+        return str(assignment_overlay["isolation_type"])
+
+    assignment_overlay_id = _related_object_id(assignment_overlay)
+    if not assignment_overlay_id:
+        return None
+
+    overlay_details = await client.get_overlay(assignment_overlay_id)
+    isolation_type = overlay_details.get("isolation_type")
+    return str(isolation_type) if isolation_type else None
+
+
+async def _stale_spectrumx_assignment_ids(
+    client: NautobotClient,
+    assignments: list[dict[str, Any]],
+    target_overlay_id: str,
+) -> list[str]:
+    """Return stale Spectrum-X assignment IDs, preserving other overlay types."""
+    stale_assignment_ids: list[str] = []
+    for assignment in assignments:
+        assignment_overlay_id = _related_object_id(assignment.get("overlay"))
+        if assignment_overlay_id == target_overlay_id:
+            continue
+
+        isolation_type = await _get_assignment_overlay_isolation_type(client, assignment)
+        if isolation_type == SPECTRUMX_ISOLATION_TYPE:
+            stale_assignment_ids.append(str(assignment["id"]))
+
+    return stale_assignment_ids
+
+
+async def _lookup_overlay_assignment_status_id(client: NautobotClient) -> str:
+    """Return the default status ID used for new overlay assignments."""
+    status_id = await client.lookup_id_by_name("extras/statuses/", DEFAULT_STATUS_NAME)
+    if status_id is None:
+        raise ApplicationError(f"Status {DEFAULT_STATUS_NAME} not found for overlay assignment")
+    return status_id
+
+
+async def _create_overlay_assignment(
+    client: NautobotClient,
+    *,
+    target_overlay_id: str,
+    assigned_object_type: str,
+    assigned_object_id: str,
+    status_id: str,
+) -> None:
+    """Create an overlay assignment for a Nautobot object."""
+    await client.post(
+        OVERLAY_ASSIGNMENTS_PATH,
+        data={
+            "overlay": target_overlay_id,
+            "assigned_object_type": assigned_object_type,
+            "assigned_object_id": assigned_object_id,
+            "status": status_id,
+        },
+    )
+
+
+async def _delete_overlay_assignments(
+    client: NautobotClient,
+    assignment_ids: list[str],
+) -> int:
+    """Delete the given overlay assignments and return the count removed."""
+    for assignment_id in assignment_ids:
+        await client.delete(f"{OVERLAY_ASSIGNMENTS_PATH}{assignment_id}/")
+    return len(assignment_ids)
+
+
 @activity.defn
 async def reconcile_spx_overlay_assignments(
     activity_input: ReconcileSpXOverlayAssignmentsInput,
@@ -841,61 +936,41 @@ async def reconcile_spx_overlay_assignments(
             )
         target_overlay_id = str(overlay["id"])
 
-        assigned_objects = [("dcim.device", activity_input.device_id, False)]
-        assigned_objects.extend(
-            ("dcim.interface", interface_id, True) for interface_id in activity_input.interface_ids
-        )
-        for object_type, object_id, remove_stale in assigned_objects:
-            assignments = await _get_all_results(
+        device_assignments = await _get_overlay_assignments(client, activity_input.device_id)
+        if not _has_overlay_assignment(device_assignments, target_overlay_id):
+            status_id = await _lookup_overlay_assignment_status_id(client)
+            await _create_overlay_assignment(
                 client,
-                f"{OVERLAYS_PLUGIN_BASE}/overlay-assignments/",
-                {"assigned_object_id": object_id, "depth": 1},
+                target_overlay_id=target_overlay_id,
+                assigned_object_type="dcim.device",
+                assigned_object_id=activity_input.device_id,
+                status_id=status_id,
             )
-            target_exists = False
-            stale_assignment_ids: list[str] = []
-            for assignment in assignments:
-                assignment_overlay = assignment.get("overlay")
-                assignment_overlay_id = _related_object_id(assignment_overlay)
-                if assignment_overlay_id == target_overlay_id:
-                    target_exists = True
-                    continue
-                if not remove_stale or not assignment_overlay_id:
-                    continue
+            created += 1
 
-                if isinstance(assignment_overlay, dict) and assignment_overlay.get(
-                    "isolation_type"
-                ):
-                    isolation_type = assignment_overlay["isolation_type"]
-                else:
-                    overlay_details = await client.get_overlay(assignment_overlay_id)
-                    isolation_type = overlay_details.get("isolation_type")
+        for interface_id in activity_input.interface_ids:
+            interface_assignments = await _get_overlay_assignments(client, interface_id)
+            stale_assignment_ids = await _stale_spectrumx_assignment_ids(
+                client,
+                interface_assignments,
+                target_overlay_id,
+            )
 
-                if isolation_type == SPECTRUMX_ISOLATION_TYPE:
-                    stale_assignment_ids.append(str(assignment["id"]))
-
-            if not target_exists:
+            if not _has_overlay_assignment(interface_assignments, target_overlay_id):
                 if status_id is None:
-                    status_id = await client.lookup_id_by_name(
-                        "extras/statuses/", DEFAULT_STATUS_NAME
-                    )
-                    if status_id is None:
-                        raise ApplicationError(
-                            f"Status {DEFAULT_STATUS_NAME} not found for overlay assignment"
-                        )
-
-                await client.post(
-                    f"{OVERLAYS_PLUGIN_BASE}/overlay-assignments/",
-                    data={
-                        "overlay": target_overlay_id,
-                        "assigned_object_type": object_type,
-                        "assigned_object_id": object_id,
-                        "status": status_id,
-                    },
+                    status_id = await _lookup_overlay_assignment_status_id(client)
+                await _create_overlay_assignment(
+                    client,
+                    target_overlay_id=target_overlay_id,
+                    assigned_object_type="dcim.interface",
+                    assigned_object_id=interface_id,
+                    status_id=status_id,
                 )
                 created += 1
 
-            for assignment_id in stale_assignment_ids:
-                await client.delete(f"{OVERLAYS_PLUGIN_BASE}/overlay-assignments/{assignment_id}/")
-                removed += 1
+            removed += await _delete_overlay_assignments(
+                client,
+                stale_assignment_ids,
+            )
 
     return ReconcileSpXOverlayAssignmentsOutput(created=created, removed=removed)
