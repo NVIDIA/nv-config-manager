@@ -418,6 +418,7 @@ class TenantDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archi
         device: NetworkDeviceData
         tenant_config: str
         commit_id: str
+        intended_config_commit_id: str
 
     @stage_executor("load_tenant_configuration")
     async def load_tenant_configuration(
@@ -446,10 +447,20 @@ class TenantDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archi
             start_to_close_timeout=timedelta(minutes=1),
             retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
         )
+        _, intended_config_commit_id, _ = await workflow.execute_activity(
+            load_intended_configuration,
+            device,
+            start_to_close_timeout=timedelta(minutes=1),
+            retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+        )
         config_path = device.tenant_config_path
         markdown = f"Loaded tenant configuration from [{config_path}]({url})."
         return TenantDeployWorkflow.LoadConfigStageOutput(
-            device=device, tenant_config=content, commit_id=commit_id, display=markdown
+            device=device,
+            tenant_config=content,
+            commit_id=commit_id,
+            intended_config_commit_id=intended_config_commit_id,
+            display=markdown,
         )
 
     class PerformDiffStageInput(StageInput):
@@ -661,7 +672,7 @@ class TenantDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archi
         await self.perform_backup(
             TenantDeployWorkflow.BackupStageInput(
                 device_id=load_config_output.device.id,
-                commit_id=load_config_output.commit_id,
+                commit_id=load_config_output.intended_config_commit_id,
             )
         )
         await self.archive_results()

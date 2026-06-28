@@ -861,6 +861,7 @@ async def test_execute_tenant_deploy_workflow(
         activities=[
             mock_get_network_device,
             mock_load_partial_configuration,
+            mock_load_intended_configuration,
             perform_candidate_diff,
             validate_config_diff,
             apply_approved_configuration,
@@ -932,6 +933,7 @@ nv set vrf test-ryan-2 router bgp router-id 172.28.0.2
                     "device": ANY,
                     "display": "Loaded tenant configuration from "
                     "[mock_device_uuid/tenant.yaml](https://gitlab.example.com/example-user/intended-network-configs/-/blob/mock_tenant_commit_id/SITEA/MOCK_DEVICE/tenant.yaml).",
+                    "intended_config_commit_id": "mock_commit_id",
                     "tenant_config": "mock tenant config",
                 },
                 "rejecters": [],
@@ -1033,7 +1035,7 @@ nv set vrf test-ryan-2 router bgp router-id 172.28.0.2
                 "description": "Run the backup workflow for the device..",
                 "execution_time": 0.0,
                 "input": {
-                    "commit_id": "mock_tenant_commit_id",
+                    "commit_id": "mock_commit_id",
                     "device_id": "mock_device_uuid",
                 },
                 "name": "perform_backup",
@@ -1116,11 +1118,11 @@ nv set vrf test-ryan-2 router bgp router-id 172.28.0.2
                 "execution_time": 0.0,
                 "input": {
                     "device_id": "mock_device_uuid",
-                    "intended_config_commit_id": "mock_tenant_commit_id",
+                    "intended_config_commit_id": "mock_commit_id",
                 },
                 "name": "check_drift",
                 "output": {
-                    "commit_id": "mock_tenant_commit_id",
+                    "commit_id": "mock_commit_id",
                     "diff": "",
                     "display": "No drift detected between running and intended configuration.",
                     "has_drift": False,
@@ -1169,7 +1171,7 @@ nv set vrf test-ryan-2 router bgp router-id 172.28.0.2
                         "ztp_enabled": False,
                         "config_context": None,
                     },
-                    "intended_config_commit_id": "mock_tenant_commit_id",
+                    "intended_config_commit_id": "mock_commit_id",
                     "running_config": "mock running config",
                     "trigger": "WORKFLOW",
                     "user": "nv-config-manager-temporal",
@@ -1203,7 +1205,7 @@ nv set vrf test-ryan-2 router bgp router-id 172.28.0.2
 
         expected_backup_input = {
             "device_id": "mock_device_uuid",
-            "intended_config_commit_id": "mock_tenant_commit_id",
+            "intended_config_commit_id": "mock_commit_id",
             "trigger": "WORKFLOW",
             "user": "nv-config-manager-temporal",
             "user_domain": None,
@@ -1353,6 +1355,7 @@ async def test_execute_tenant_deploy_workflow_invalid_config(
         activities=[
             mock_get_network_device,
             mock_load_partial_configuration,
+            mock_load_intended_configuration,
             perform_candidate_diff,
             validate_config_diff,
             apply_approved_configuration,
@@ -1423,6 +1426,7 @@ async def test_execute_tenant_deploy_workflow_newer_commit_allowed(
         activities=[
             mock_get_network_device,
             mock_load_partial_configuration,
+            mock_load_intended_configuration,
             perform_candidate_diff,
             validate_config_diff,
             apply_approved_configuration,
@@ -1497,6 +1501,7 @@ async def test_execute_tenant_deploy_workflow_newer_commit_disallowed(
         activities=[
             mock_get_network_device,
             mock_load_partial_configuration,
+            mock_load_intended_configuration,
             perform_candidate_diff,
             validate_config_diff,
             apply_approved_configuration,
