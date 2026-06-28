@@ -1644,6 +1644,28 @@
               }
             ],
             "title": "Device"
+          },
+          "intended_config_commit_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intended Config Commit Id"
+          },
+          "tenant_config_commit_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Config Commit Id"
           }
         },
         "required": [

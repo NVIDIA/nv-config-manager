@@ -16,7 +16,7 @@
 
 from datetime import timedelta
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 from temporalio.exceptions import ActivityError, ApplicationError
@@ -356,6 +356,17 @@ class TenantDeployInput(BaseModel):
     """Tenant Config Deployment Workflow Input Definiton."""
 
     device: str | NetworkDeviceData
+    tenant_config_commit_id: str | None = None
+    intended_config_commit_id: str | None = None
+
+    @model_validator(mode="after")
+    def validate_render_snapshot(self) -> "TenantDeployInput":
+        """Require tenant and intended commit IDs to be supplied as one snapshot pair."""
+        if (self.tenant_config_commit_id is None) != (self.intended_config_commit_id is None):
+            raise ValueError(
+                "tenant_config_commit_id and intended_config_commit_id must be supplied together"
+            )
+        return self
 
 
 @workflow.defn
@@ -411,6 +422,8 @@ class TenantDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archi
         """Load Tenant Config Stage Input."""
 
         device: str | NetworkDeviceData
+        tenant_config_commit_id: str | None = None
+        intended_config_commit_id: str | None = None
 
     class LoadConfigStageOutput(StageOutput):
         """Load Tenant Config Stage Output."""
@@ -443,16 +456,20 @@ class TenantDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archi
             LoadPartialConfigurationActivityInput(
                 device_data=device,
                 config_file=device.tenant_config_file,
+                commit_id=stage_input.tenant_config_commit_id,
             ),
             start_to_close_timeout=timedelta(minutes=1),
             retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
         )
-        _, intended_config_commit_id, _ = await workflow.execute_activity(
-            load_intended_configuration,
-            device,
-            start_to_close_timeout=timedelta(minutes=1),
-            retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
-        )
+        intended_config_commit_id = stage_input.intended_config_commit_id
+        if intended_config_commit_id is None:
+            _, intended_config_commit_id, _ = await workflow.execute_activity(
+                load_intended_configuration,
+                device,
+                start_to_close_timeout=timedelta(minutes=1),
+                retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+            )
+        assert intended_config_commit_id is not None
         config_path = device.tenant_config_path
         markdown = f"Loaded tenant configuration from [{config_path}]({url})."
         return TenantDeployWorkflow.LoadConfigStageOutput(
@@ -638,7 +655,11 @@ class TenantDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archi
         """Execute tenant deployment workflow."""
         self.set_input(workflow_input)
         load_config_output = await self.load_tenant_configuration(
-            TenantDeployWorkflow.LoadConfigStageInput(device=workflow_input.device)
+            TenantDeployWorkflow.LoadConfigStageInput(
+                device=workflow_input.device,
+                tenant_config_commit_id=workflow_input.tenant_config_commit_id,
+                intended_config_commit_id=workflow_input.intended_config_commit_id,
+            )
         )
 
         diff_output = await self.perform_configuration_diff(

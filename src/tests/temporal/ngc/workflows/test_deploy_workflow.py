@@ -92,16 +92,18 @@ _newer_commit_mock_state = {
 async def mock_load_partial_configuration(
     activity_input: LoadPartialConfigurationActivityInput,
 ) -> tuple[str, str, str]:
+    commit_id = activity_input.commit_id or "mock_tenant_commit_id"
     # Check if we should return a newer commit for testing
     if _newer_commit_mock_state.get("use_newer_commit", False):
+        commit_id = activity_input.commit_id or "7"
         if _newer_commit_mock_state.get("newer_commit_allowed", True):
             return (
                 "nv set vrf test-vrf router bgp router-id 172.28.0.2\n"
                 "nv set vrf test-vrf router bgp autonomous-system 4266990009\n"
                 "nv set interface swp1 ip vrf test-vrf\n"
                 "nv set interface swp2 ip vrf test-vrf\n",
-                "7",  # Newer commit ID
-                "https://config-manager.example.com/device/mock_device/tenant.yaml?commit=7",
+                commit_id,
+                f"https://config-manager.example.com/device/mock_device/tenant.yaml?commit={commit_id}",
             )
         else:
             return (
@@ -110,14 +112,14 @@ async def mock_load_partial_configuration(
                 "nv set interface swp1 ip vrf test-vrf\n"
                 "nv set interface swp2 ip vrf test-vrf\n"
                 "nv set system hostname disallowed-change\n",  # Disallowed line
-                "7",  # Newer commit ID
-                "https://config-manager.example.com/device/mock_device/tenant.yaml?commit=7",
+                commit_id,
+                f"https://config-manager.example.com/device/mock_device/tenant.yaml?commit={commit_id}",
             )
     # Default behavior for other tests
     return (
         "mock tenant config",
-        "mock_tenant_commit_id",
-        "https://gitlab.example.com/example-user/intended-network-configs/-/blob/mock_tenant_commit_id/SITEA/MOCK_DEVICE/tenant.yaml",
+        commit_id,
+        f"https://config-manager.example.com/device/mock_device_uuid/tenant.yaml?commit={commit_id}",
     )
 
 
@@ -903,7 +905,11 @@ nv set vrf test-ryan-2 router bgp router-id 172.28.0.2
 """
         mock_cumulus_connection.return_value.perform_candidate_diff.return_value = mock_tenant_diff
 
-        input = TenantDeployInput(device="mock_device_uuid")
+        input = TenantDeployInput(
+            device="mock_device_uuid",
+            tenant_config_commit_id="7",
+            intended_config_commit_id="11",
+        )
 
         workflow_id = str(uuid.uuid4())
         handle: WorkflowHandle = await env.client.start_workflow(
@@ -926,14 +932,18 @@ nv set vrf test-ryan-2 router bgp router-id 172.28.0.2
                 "depends_on": [],
                 "description": "Load the latest tenant configuration from config store.",
                 "execution_time": 0.0,
-                "input": {"device": "mock_device_uuid"},
+                "input": {
+                    "device": "mock_device_uuid",
+                    "intended_config_commit_id": "11",
+                    "tenant_config_commit_id": "7",
+                },
                 "name": "load_tenant_configuration",
                 "output": {
-                    "commit_id": "mock_tenant_commit_id",
+                    "commit_id": "7",
                     "device": ANY,
                     "display": "Loaded tenant configuration from "
-                    "[mock_device_uuid/tenant.yaml](https://gitlab.example.com/example-user/intended-network-configs/-/blob/mock_tenant_commit_id/SITEA/MOCK_DEVICE/tenant.yaml).",
-                    "intended_config_commit_id": "mock_commit_id",
+                    "[mock_device_uuid/tenant.yaml](https://config-manager.example.com/device/mock_device_uuid/tenant.yaml?commit=7).",
+                    "intended_config_commit_id": "11",
                     "tenant_config": "mock tenant config",
                 },
                 "rejecters": [],
@@ -1035,7 +1045,7 @@ nv set vrf test-ryan-2 router bgp router-id 172.28.0.2
                 "description": "Run the backup workflow for the device..",
                 "execution_time": 0.0,
                 "input": {
-                    "commit_id": "mock_commit_id",
+                    "commit_id": "11",
                     "device_id": "mock_device_uuid",
                 },
                 "name": "perform_backup",
@@ -1118,11 +1128,11 @@ nv set vrf test-ryan-2 router bgp router-id 172.28.0.2
                 "execution_time": 0.0,
                 "input": {
                     "device_id": "mock_device_uuid",
-                    "intended_config_commit_id": "mock_commit_id",
+                    "intended_config_commit_id": "11",
                 },
                 "name": "check_drift",
                 "output": {
-                    "commit_id": "mock_commit_id",
+                    "commit_id": "11",
                     "diff": "",
                     "display": "No drift detected between running and intended configuration.",
                     "has_drift": False,
@@ -1171,7 +1181,7 @@ nv set vrf test-ryan-2 router bgp router-id 172.28.0.2
                         "ztp_enabled": False,
                         "config_context": None,
                     },
-                    "intended_config_commit_id": "mock_commit_id",
+                    "intended_config_commit_id": "11",
                     "running_config": "mock running config",
                     "trigger": "WORKFLOW",
                     "user": "nv-config-manager-temporal",
@@ -1205,7 +1215,7 @@ nv set vrf test-ryan-2 router bgp router-id 172.28.0.2
 
         expected_backup_input = {
             "device_id": "mock_device_uuid",
-            "intended_config_commit_id": "mock_commit_id",
+            "intended_config_commit_id": "11",
             "trigger": "WORKFLOW",
             "user": "nv-config-manager-temporal",
             "user_domain": None,
@@ -1375,7 +1385,11 @@ nv set interface swp1 ip address 10.0.0.1/24
 """
         mock_cumulus_connection.return_value.perform_candidate_diff.return_value = mock_invalid_diff
 
-        input = TenantDeployInput(device="mock_device_uuid")
+        input = TenantDeployInput(
+            device="mock_device_uuid",
+            tenant_config_commit_id="7",
+            intended_config_commit_id="11",
+        )
 
         workflow_id = str(uuid.uuid4())
 
@@ -1450,7 +1464,11 @@ nv set interface swp2 ip vrf test-vrf
 """
         mock_cumulus_connection.return_value.perform_candidate_diff.return_value = mock_tenant_diff
 
-        input = TenantDeployInput(device="mock_device_uuid")
+        input = TenantDeployInput(
+            device="mock_device_uuid",
+            tenant_config_commit_id="7",
+            intended_config_commit_id="11",
+        )
 
         workflow_id = str(uuid.uuid4())
         handle: WorkflowHandle = await env.client.start_workflow(
@@ -1470,6 +1488,13 @@ nv set interface swp2 ip vrf test-vrf
         load_stage = next((s for s in stages if s["name"] == "load_tenant_configuration"), None)
         assert load_stage is not None
         assert load_stage["output"]["commit_id"] == "7"
+        assert load_stage["output"]["intended_config_commit_id"] == "11"
+        assert stages[-1]["input"]["commit_id"] == "11"
+
+        backup_workflow_id = stages[-1]["child_workflows"][0]
+        backup_handle = client.get_workflow_handle(backup_workflow_id)
+        backup_input = await backup_handle.query("input")
+        assert backup_input["intended_config_commit_id"] == "11"
 
     # Reset state for other tests
     _newer_commit_mock_state["use_newer_commit"] = False
@@ -1526,7 +1551,11 @@ nv set system hostname disallowed-change
 """
         mock_cumulus_connection.return_value.perform_candidate_diff.return_value = mock_tenant_diff
 
-        input = TenantDeployInput(device="mock_device_uuid")
+        input = TenantDeployInput(
+            device="mock_device_uuid",
+            tenant_config_commit_id="7",
+            intended_config_commit_id="11",
+        )
 
         workflow_id = str(uuid.uuid4())
 
@@ -1541,6 +1570,10 @@ nv set system hostname disallowed-change
         # Wait a bit for workflow to progress, then check stages
         await asyncio.sleep(2)
         stages = await handle.query("stages")
+        load_stage = next((s for s in stages if s["name"] == "load_tenant_configuration"), None)
+        assert load_stage is not None
+        assert load_stage["output"]["commit_id"] == "7"
+        assert load_stage["output"]["intended_config_commit_id"] == "11"
         validate_stage = next(
             (s for s in stages if s["name"] == "validate_configuration_diff"), None
         )

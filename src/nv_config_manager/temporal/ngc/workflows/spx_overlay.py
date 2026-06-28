@@ -818,7 +818,8 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
     class RenderStageOutput(StageOutput):
         """Render Stage Output."""
 
-        config_id: str | None = None
+        tenant_config_commit_id: str | None = None
+        intended_config_commit_id: str | None = None
 
     @stage_executor("render_tenant_config")
     async def render_stage(self, stage_input: RenderStageInput) -> RenderStageOutput:
@@ -835,14 +836,16 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
 
         # Get commit_id for tenant.yaml from the updated_files list
         tenant_config_file = stage_input.device.tenant_config_file
-        config_id = result.get_commit(tenant_config_file)
+        tenant_config_commit_id = result.get_commit(tenant_config_file)
+        intended_config_commit_id = result.get_commit(stage_input.device.intended_config_file)
 
         display_message = "Rendered tenant configuration"
-        if config_id:
-            display_message += f" (config ID: {config_id})"
+        if tenant_config_commit_id:
+            display_message += f" (config ID: {tenant_config_commit_id})"
 
         return self.RenderStageOutput(
-            config_id=config_id,
+            tenant_config_commit_id=tenant_config_commit_id,
+            intended_config_commit_id=intended_config_commit_id,
             display=display_message,
         )
 
@@ -885,6 +888,8 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
         """Deploy Stage Input."""
 
         device: NetworkDeviceData
+        tenant_config_commit_id: str | None = None
+        intended_config_commit_id: str | None = None
 
     class DeployStageOutput(StageOutput):
         """Deploy Stage Output."""
@@ -896,7 +901,11 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
         """Deploy tenant configuration to device."""
         await workflow.execute_child_workflow(
             TenantDeployWorkflow.run,
-            TenantDeployInput(device=stage_input.device),
+            TenantDeployInput(
+                device=stage_input.device,
+                tenant_config_commit_id=stage_input.tenant_config_commit_id,
+                intended_config_commit_id=stage_input.intended_config_commit_id,
+            ),
             run_timeout=timedelta(minutes=10),
         )
 
@@ -946,12 +955,16 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
             await self.wait_for_render_stage(
                 self.WaitForRenderStageInput(
                     device=device_output.device,
-                    config_id=render_output.config_id,
+                    config_id=render_output.tenant_config_commit_id,
                 )
             )
 
             deploy_output = await self.deploy_stage(
-                self.DeployStageInput(device=device_output.device)
+                self.DeployStageInput(
+                    device=device_output.device,
+                    tenant_config_commit_id=render_output.tenant_config_commit_id,
+                    intended_config_commit_id=render_output.intended_config_commit_id,
+                )
             )
             device_deployed = deploy_output.device_id
             assigned_ports = assign_output.assigned_ports
