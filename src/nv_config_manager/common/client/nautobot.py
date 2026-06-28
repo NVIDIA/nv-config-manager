@@ -263,6 +263,28 @@ class NautobotClient:
                 await self._handle_error_response(rsp, "GET", path)
             return await rsp.json()
 
+    async def get_all(
+        self,
+        path: str,
+        params: dict[str, Any] | None = None,
+        page_size: int = 250,
+        timeout: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return every page of a paginated Nautobot list endpoint."""
+        collected: list[dict[str, Any]] = []
+        query = dict(params or {})
+        query["limit"] = page_size
+        offset = 0
+        while True:
+            query["offset"] = offset
+            page = await self.get(path, params=query, timeout=timeout)
+            results = page.get("results", [])
+            collected.extend(results)
+            if not results or not page.get("next"):
+                break
+            offset += len(results)
+        return collected
+
     async def post(self, path: str, data: Any, timeout: int | None = None) -> Any:
         """Send an HTTP POST request.
 

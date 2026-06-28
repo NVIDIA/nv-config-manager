@@ -143,6 +143,7 @@ class VerifyPKeyMembersInput(BaseModel):
     pkey: str
     expected_guids: list[str]
     expected_memberships: list[str] | None = None
+    exact: bool = False
 
 
 class VerifyPKeyMembersOutput(StageOutput):
@@ -510,6 +511,15 @@ async def verify_pkey_members(input: VerifyPKeyMembersInput) -> VerifyPKeyMember
             f"PKey {input.pkey}: {len(missing)} GUID(s) not yet present on UFM: {missing}",
             non_retryable=False,
         )
+
+    if input.exact:
+        unexpected = sorted(present_set - expected_set)
+        if unexpected:
+            raise ApplicationError(
+                f"PKey {input.pkey}: {len(unexpected)} unexpected GUID(s) present on UFM: "
+                f"{unexpected}",
+                non_retryable=False,
+            )
 
     if input.expected_memberships is not None:
         _verify_memberships(

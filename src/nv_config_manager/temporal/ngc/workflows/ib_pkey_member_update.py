@@ -492,15 +492,11 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
 
     @stage_executor("update_ufm")
     async def update_ufm(self, stage_input: UpdateUFMStageInput) -> UpdateUFMStageOutput:
-        """Atomically set UFM membership to the desired GUID set."""
-        if (
-            not stage_input.guids_to_add
-            and not stage_input.guids_to_remove
-            and not stage_input.membership_changed
-        ):
+        """Reconcile UFM membership to the exact desired GUID set."""
+        if not stage_input.desired_guids:
             return self.UpdateUFMStageOutput(
                 guids_set=[],
-                display=f"No UFM membership changes for PKey {stage_input.pkey}",
+                display=f"No desired members for PKey {stage_input.pkey}; nothing to set on UFM",
             )
 
         set_result: SetGuidsOutput = await workflow.execute_activity(
@@ -564,6 +560,7 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
                 pkey=stage_input.pkey,
                 expected_guids=stage_input.expected_guids,
                 expected_memberships=stage_input.expected_memberships,
+                exact=True,
             ),
             start_to_close_timeout=timedelta(minutes=2),
             retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,

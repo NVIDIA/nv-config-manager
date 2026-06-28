@@ -626,10 +626,9 @@ class NautobotClient(BaseNautobotClient):
         """
         data = await self.get(path, params={"name": name})
         results = data.get("results", [])
-        if len(results) > 1:
-            raise NautobotException(
-                f"Ambiguous name '{name}' at {path}: {len(results)} objects match"
-            )
+        count = data.get("count", len(results))
+        if count > 1:
+            raise NautobotException(f"Ambiguous name '{name}' at {path}: {count} objects match")
         return cast(str, results[0]["id"]) if results else None
 
     async def create_overlay(self, data: Any) -> Any:
@@ -647,9 +646,11 @@ class NautobotClient(BaseNautobotClient):
             params={"name": name, "location": location_id},
         )
         results = data.get("results", [])
-        if len(results) > 1:
+        count = data.get("count", len(results))
+        if count > 1:
             raise NautobotException(
-                f"Ambiguous overlay: {len(results)} overlays match name={name!r} location={location_id!r}"
+                f"Ambiguous overlay: {count} overlays match "
+                f"name={name!r} location={location_id!r}"
             )
         return cast(dict[str, Any], results[0]) if results else None
 
@@ -670,16 +671,16 @@ class NautobotClient(BaseNautobotClient):
 
     async def get_vxlans_by_vnid(self, vnid: int) -> list[dict[str, Any]]:
         """Return overlay-plugin VXLANs with the given VNI (namespace resolved via depth)."""
-        data = await self.get(f"{OVERLAYS_PLUGIN_BASE}/vxlans/", params={"vnid": vnid, "depth": 1})
-        return cast(list[dict[str, Any]], data.get("results", []))
+        return await self.get_all(
+            f"{OVERLAYS_PLUGIN_BASE}/vxlans/", params={"vnid": vnid, "depth": 1}
+        )
 
     async def get_vxlans_by_overlay(self, overlay_id: str, depth: int = 0) -> list[dict[str, Any]]:
         """Return overlay-plugin VXLANs bound to the given overlay."""
         params: dict[str, Any] = {"overlay": overlay_id}
         if depth:
             params["depth"] = depth
-        data = await self.get(f"{OVERLAYS_PLUGIN_BASE}/vxlans/", params=params)
-        return cast(list[dict[str, Any]], data.get("results", []))
+        return await self.get_all(f"{OVERLAYS_PLUGIN_BASE}/vxlans/", params=params)
 
     async def delete_vxlan(self, vxlan_id: str) -> None:
         """Delete a VXLAN."""

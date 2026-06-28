@@ -620,13 +620,30 @@ async def record_pkey_assignments(
                 client, input.overlay_id, resolved.interface_id
             )
             if existing:
-                log.info(
-                    "OverlayAssignment for %s/%s already exists (%s), reusing",
-                    resolved.device,
-                    resolved.interface,
-                    existing["id"],
+                assignment_id = existing["id"]
+                desired_membership = normalize_membership_type(
+                    resolved.membership or input.membership_type
                 )
-                assignment_ids.append(existing["id"])
+                current_membership = normalize_membership_type(existing.get("membership_type"))
+                if desired_membership != current_membership:
+                    log.info(
+                        "Updating OverlayAssignment %s membership %s -> %s",
+                        assignment_id,
+                        current_membership,
+                        desired_membership,
+                    )
+                    await client.patch(
+                        f"{PLUGIN_BASE}/overlay-assignments/{assignment_id}/",
+                        data={"membership_type": desired_membership},
+                    )
+                else:
+                    log.info(
+                        "OverlayAssignment for %s/%s already exists (%s), reusing",
+                        resolved.device,
+                        resolved.interface,
+                        assignment_id,
+                    )
+                assignment_ids.append(assignment_id)
                 continue
 
             payload: dict[str, Any] = {
@@ -825,11 +842,11 @@ async def fetch_pkey_assignments(
     assignments: list[CurrentAssignment] = []
 
     async with client:
-        results = await client.get(
+        results = await client.get_all(
             f"{PLUGIN_BASE}/overlay-assignments/",
             params={"overlay": input.overlay_id},
         )
-        for item in results.get("results", []):
+        for item in results:
             assignments.append(
                 CurrentAssignment(
                     assignment_id=item["id"],
@@ -867,11 +884,10 @@ async def sync_pkey_assignments(
     async with client:
         status_id = await _resolve_status_id(client)
 
-        current_results = await client.get(
+        current_items = await client.get_all(
             f"{PLUGIN_BASE}/overlay-assignments/",
             params={"overlay": input.overlay_id},
         )
-        current_items: list[dict[str, Any]] = current_results.get("results", [])
         current_by_iface: dict[str, dict[str, Any]] = {
             item["assigned_object_id"]: item for item in current_items
         }

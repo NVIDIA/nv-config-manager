@@ -446,3 +446,47 @@ async def test_find_overlay_raises_on_multiple_results():
         async with client:
             with pytest.raises(NautobotException, match="Ambiguous overlay"):
                 await client.find_overlay("test-overlay-001", LOCATION_ID)
+
+
+# ---------------------------------------------------------------------------
+# NautobotClient pagination (get_all)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_vxlans_by_overlay_follows_pagination():
+    """All VXLAN pages are collected, not just the first."""
+    with aioresponses() as m:
+        m.get(
+            _r(f"{OVERLAYS_BASE}/vxlans/"),
+            payload={"next": f"{OVERLAYS_BASE}/vxlans/?offset=1", "results": [{"id": "v1"}]},
+        )
+        m.get(
+            _r(f"{OVERLAYS_BASE}/vxlans/"),
+            payload={"next": None, "results": [{"id": "v2"}]},
+        )
+
+        client = NautobotClient()
+        async with client:
+            result = await client.get_vxlans_by_overlay(OVERLAY_ID)
+
+    assert [v["id"] for v in result] == ["v1", "v2"]
+
+
+@pytest.mark.asyncio
+async def test_lookup_id_by_name_detects_ambiguity_across_pages():
+    """Ambiguity is detected from the server count even when results are paginated."""
+    with aioresponses() as m:
+        m.get(
+            _r(f"{NAUTOBOT}/api/dcim/locations/"),
+            payload={
+                "count": 2,
+                "next": f"{NAUTOBOT}/api/dcim/locations/?offset=1",
+                "results": [{"id": "id-1"}],
+            },
+        )
+
+        client = NautobotClient()
+        async with client:
+            with pytest.raises(NautobotException, match="Ambiguous name"):
+                await client.lookup_id_by_name("dcim/locations/", "SPO01")
