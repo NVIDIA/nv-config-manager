@@ -67,6 +67,15 @@ DEFAULT_ACTIVITY_RETRY_POLICY = RetryPolicy(
         "DiffChangedException",
     ],
 )
+TENANT_CONFIG_COMMIT_ID_DESCRIPTION = (
+    "Optional config-store commit ID for the tenant configuration. Must be supplied with "
+    "intended_config_commit_id; omit both to deploy the latest tenant and intended configurations."
+)
+INTENDED_CONFIG_COMMIT_ID_DESCRIPTION = (
+    "Optional config-store commit ID for the intended startup configuration from the same render "
+    "snapshot as tenant_config_commit_id. Must be supplied with tenant_config_commit_id; omit both "
+    "to deploy the latest tenant and intended configurations."
+)
 
 
 class DeployInput(BaseModel):
@@ -367,10 +376,12 @@ class TenantDeployInput(BaseModel):
                         "tenant_config_commit_id": {
                             "type": "string",
                             "pattern": r"^\d+$",
+                            "description": TENANT_CONFIG_COMMIT_ID_DESCRIPTION,
                         },
                         "intended_config_commit_id": {
                             "type": "string",
                             "pattern": r"^\d+$",
+                            "description": INTENDED_CONFIG_COMMIT_ID_DESCRIPTION,
                         },
                     },
                 },
@@ -387,8 +398,16 @@ class TenantDeployInput(BaseModel):
     )
 
     device: str | NetworkDeviceData
-    tenant_config_commit_id: str | None = Field(default=None, pattern=r"^\d+$")
-    intended_config_commit_id: str | None = Field(default=None, pattern=r"^\d+$")
+    tenant_config_commit_id: str | None = Field(
+        default=None,
+        pattern=r"^\d+$",
+        description=TENANT_CONFIG_COMMIT_ID_DESCRIPTION,
+    )
+    intended_config_commit_id: str | None = Field(
+        default=None,
+        pattern=r"^\d+$",
+        description=INTENDED_CONFIG_COMMIT_ID_DESCRIPTION,
+    )
 
     @model_validator(mode="after")
     def validate_render_snapshot(self) -> "TenantDeployInput":

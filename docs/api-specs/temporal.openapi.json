@@ -1637,10 +1637,12 @@
           {
             "properties": {
               "intended_config_commit_id": {
+                "description": "Optional config-store commit ID for the intended startup configuration from the same render snapshot as tenant_config_commit_id. Must be supplied with tenant_config_commit_id; omit both to deploy the latest tenant and intended configurations.",
                 "pattern": "^\\d+$",
                 "type": "string"
               },
               "tenant_config_commit_id": {
+                "description": "Optional config-store commit ID for the tenant configuration. Must be supplied with intended_config_commit_id; omit both to deploy the latest tenant and intended configurations.",
                 "pattern": "^\\d+$",
                 "type": "string"
               }
@@ -1689,6 +1691,7 @@
                 "type": "null"
               }
             ],
+            "description": "Optional config-store commit ID for the intended startup configuration from the same render snapshot as tenant_config_commit_id. Must be supplied with tenant_config_commit_id; omit both to deploy the latest tenant and intended configurations.",
             "title": "Intended Config Commit Id"
           },
           "tenant_config_commit_id": {
@@ -1701,6 +1704,7 @@
                 "type": "null"
               }
             ],
+            "description": "Optional config-store commit ID for the tenant configuration. Must be supplied with intended_config_commit_id; omit both to deploy the latest tenant and intended configurations.",
             "title": "Tenant Config Commit Id"
           }
         },

@@ -41,6 +41,8 @@ from nv_config_manager.temporal.ngc.activities.nautobot import (
 )
 from nv_config_manager.temporal.ngc.workflows.backup import BackupWorkflow
 from nv_config_manager.temporal.ngc.workflows.deploy import (
+    INTENDED_CONFIG_COMMIT_ID_DESCRIPTION,
+    TENANT_CONFIG_COMMIT_ID_DESCRIPTION,
     DeployInput,
     DeployWorkflow,
     TenantDeployInput,
@@ -112,10 +114,12 @@ def test_tenant_deploy_input_schema_requires_both_snapshot_commit_ids_or_neither
             ],
             "properties": {
                 "tenant_config_commit_id": {
+                    "description": TENANT_CONFIG_COMMIT_ID_DESCRIPTION,
                     "type": "string",
                     "pattern": r"^\d+$",
                 },
                 "intended_config_commit_id": {
+                    "description": INTENDED_CONFIG_COMMIT_ID_DESCRIPTION,
                     "type": "string",
                     "pattern": r"^\d+$",
                 },
