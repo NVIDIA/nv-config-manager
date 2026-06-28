@@ -184,11 +184,13 @@ const filterWorkflows = (workflows: unknown[], url: URL) => {
 
   return workflows.filter((workflow) => {
     const workflowRecord = workflow as {
+      id?: string;
       pending_approval?: boolean;
       status?: string;
       workflow_type?: string;
     };
     const workflowType = url.searchParams.get("workflow_type");
+    const workflowId = url.searchParams.get("workflow_id");
     const status = url.searchParams.get("status");
     const pendingApproval =
       url.searchParams.get("pending_approval")?.toLowerCase() === "true";
@@ -200,6 +202,9 @@ const filterWorkflows = (workflows: unknown[], url: URL) => {
     if (workflowType && workflowRecord.workflow_type !== workflowType) {
       return false;
     }
+    if (workflowId && workflowRecord.id !== workflowId) {
+      return false;
+    }
     if (hideCompleted && workflowRecord.status === "COMPLETED") {
       return false;
     }
@@ -208,8 +213,8 @@ const filterWorkflows = (workflows: unknown[], url: URL) => {
     }
     if (
       status &&
-      getWorkflowDisplayStatus(workflow) !== status &&
-      !(pendingApproval && status === "RUNNING" && workflowRecord.pending_approval)
+      workflowRecord.status !== status &&
+      getWorkflowDisplayStatus(workflow) !== status
     ) {
       return false;
     }
@@ -236,9 +241,7 @@ const filterWorkflows = (workflows: unknown[], url: URL) => {
       if (!value) {
         return true;
       }
-      return getFirstSearchAttribute(workflow, attribute)
-        .toLowerCase()
-        .includes(value.toLowerCase());
+      return getFirstSearchAttribute(workflow, attribute) === value;
     });
   });
 };
