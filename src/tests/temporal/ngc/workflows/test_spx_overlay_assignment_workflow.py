@@ -43,6 +43,8 @@ from nv_config_manager.temporal.ngc.activities.nautobot import (
 from nv_config_manager.temporal.ngc.workflows.spx_overlay import (
     SpXOverlayAssignmentInput,
     SpXOverlayAssignmentWorkflow,
+    SpXOverlayTenantChangeInput,
+    SpXOverlayTenantChangeWorkflow,
 )
 
 
@@ -264,6 +266,59 @@ async def test_spx_overlay_assignment_workflow_vrf_already_assigned(
         assert result.vrf.vrf_id == "mock_namespace1"
         assert result.vrf.vrf_name == "SpXTenant60004"
         assert set(result.assigned_ports) == {"swp2"}
+
+
+@pytest.mark.asyncio
+@patch("nv_config_manager.temporal.ngc.activities.nats.NatsProducer", autospec=True)
+@patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
+async def test_spx_overlay_tenant_change_is_noop_when_already_assigned(
+    _mock_time, _mock_nats_client, env
+):
+    """A repeated tenant change completes without rendering or deploying again."""
+
+    _mock_state["vrf_exists"] = True
+    _mock_state["interfaces_with_vrf"] = ["swp1", "swp2"]
+
+    task_queue_name = str(uuid.uuid4())
+    async with Worker(
+        env.client,
+        task_queue=task_queue_name,
+        workflows=[SpXOverlayAssignmentWorkflow, SpXOverlayTenantChangeWorkflow],
+        activities=[
+            mock_get_network_device,
+            mock_get_vrfs_by_overlay_id,
+            mock_get_device_vrfs,
+            mock_assign_vrf_to_device,
+            mock_get_device_interfaces,
+            mock_assign_vrf_to_interface,
+            publish_nats,
+        ],
+        activity_executor=ThreadPoolExecutor(1),
+    ):
+        handle = await env.client.start_workflow(
+            SpXOverlayTenantChangeWorkflow.run,
+            SpXOverlayTenantChangeInput(
+                overlay_id="mock_overlay_id",
+                device_id="mock_device_id_with_vrf",
+                port_names=["swp1", "swp2"],
+                site="mock_site",
+            ),
+            id=str(uuid.uuid4()),
+            task_queue=task_queue_name,
+            run_timeout=timedelta(seconds=30),
+        )
+
+        result = await handle.result()
+
+        assert result.assigned_ports == []
+        assert result.vrf_assigned is False
+        assert result.vrf is None
+        assert result.device_deployed is None
+
+        stages = {stage["name"]: stage for stage in await handle.query("stages")}
+        assert stages["render_tenant_config"]["state"] == "UNREACHABLE"
+        assert stages["wait_for_render"]["state"] == "UNREACHABLE"
+        assert stages["deploy"]["state"] == "UNREACHABLE"
 
 
 @pytest.mark.asyncio

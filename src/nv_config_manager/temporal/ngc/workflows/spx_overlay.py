@@ -929,7 +929,7 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
         )
 
         if not assign_output.assigned_ports and not assign_output.vrf_assigned:
-            self.set_stage_state("render", StateEnum.UNREACHABLE)
+            self.set_stage_state("render_tenant_config", StateEnum.UNREACHABLE)
             self.set_stage_state("wait_for_render", StateEnum.UNREACHABLE)
             self.set_stage_state("deploy", StateEnum.UNREACHABLE)
             assigned_ports = []
