@@ -109,7 +109,17 @@ def test_tenant_deploy_input_schema_requires_both_snapshot_commit_ids_or_neither
             "required": [
                 "tenant_config_commit_id",
                 "intended_config_commit_id",
-            ]
+            ],
+            "properties": {
+                "tenant_config_commit_id": {
+                    "type": "string",
+                    "pattern": r"^\d+$",
+                },
+                "intended_config_commit_id": {
+                    "type": "string",
+                    "pattern": r"^\d+$",
+                },
+            },
         },
         {
             "not": {
@@ -120,6 +130,35 @@ def test_tenant_deploy_input_schema_requires_both_snapshot_commit_ids_or_neither
             }
         },
     ]
+
+
+@pytest.mark.parametrize(
+    "snapshot_fields",
+    [
+        {"tenant_config_commit_id": None},
+        {"intended_config_commit_id": None},
+        {
+            "tenant_config_commit_id": None,
+            "intended_config_commit_id": None,
+        },
+        {
+            "tenant_config_commit_id": None,
+            "intended_config_commit_id": "11",
+        },
+    ],
+)
+def test_tenant_deploy_input_rejects_explicit_null_snapshot_commit_ids(snapshot_fields):
+    """Treat explicit null snapshot fields as invalid rather than omitted."""
+    with pytest.raises(ValidationError, match="must both be non-null or both be omitted"):
+        TenantDeployInput(device="mock_device_uuid", **snapshot_fields)
+
+
+def test_tenant_deploy_input_allows_snapshot_commit_ids_to_be_omitted():
+    """Keep the direct tenant-deploy latest-config path backwards compatible."""
+    deploy_input = TenantDeployInput(device="mock_device_uuid")
+
+    assert deploy_input.tenant_config_commit_id is None
+    assert deploy_input.intended_config_commit_id is None
 
 
 @activity.defn(name="load_partial_configuration")

@@ -1635,6 +1635,16 @@
         "description": "Tenant Config Deployment Workflow Input Definiton.",
         "oneOf": [
           {
+            "properties": {
+              "intended_config_commit_id": {
+                "pattern": "^\\d+$",
+                "type": "string"
+              },
+              "tenant_config_commit_id": {
+                "pattern": "^\\d+$",
+                "type": "string"
+              }
+            },
             "required": [
               "tenant_config_commit_id",
               "intended_config_commit_id"

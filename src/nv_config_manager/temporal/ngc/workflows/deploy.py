@@ -362,7 +362,17 @@ class TenantDeployInput(BaseModel):
                     "required": [
                         "tenant_config_commit_id",
                         "intended_config_commit_id",
-                    ]
+                    ],
+                    "properties": {
+                        "tenant_config_commit_id": {
+                            "type": "string",
+                            "pattern": r"^\d+$",
+                        },
+                        "intended_config_commit_id": {
+                            "type": "string",
+                            "pattern": r"^\d+$",
+                        },
+                    },
                 },
                 {
                     "not": {
@@ -382,10 +392,19 @@ class TenantDeployInput(BaseModel):
 
     @model_validator(mode="after")
     def validate_render_snapshot(self) -> "TenantDeployInput":
-        """Require tenant and intended commit IDs to be supplied as one snapshot pair."""
-        if (self.tenant_config_commit_id is None) != (self.intended_config_commit_id is None):
+        """Require non-null commit IDs to be supplied together or both omitted."""
+        snapshot_fields = {
+            "tenant_config_commit_id",
+            "intended_config_commit_id",
+        }
+        supplied_fields = self.model_fields_set & snapshot_fields
+        if supplied_fields and (
+            supplied_fields != snapshot_fields
+            or self.tenant_config_commit_id is None
+            or self.intended_config_commit_id is None
+        ):
             raise ValueError(
-                "tenant_config_commit_id and intended_config_commit_id must be supplied together"
+                "tenant_config_commit_id and intended_config_commit_id must both be non-null or both be omitted"
             )
         return self
 
