@@ -16,7 +16,7 @@
 
 from datetime import timedelta
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 from temporalio.exceptions import ActivityError, ApplicationError
@@ -355,9 +355,30 @@ class DeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, ArchiveMixi
 class TenantDeployInput(BaseModel):
     """Tenant Config Deployment Workflow Input Definiton."""
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "oneOf": [
+                {
+                    "required": [
+                        "tenant_config_commit_id",
+                        "intended_config_commit_id",
+                    ]
+                },
+                {
+                    "not": {
+                        "anyOf": [
+                            {"required": ["tenant_config_commit_id"]},
+                            {"required": ["intended_config_commit_id"]},
+                        ]
+                    }
+                },
+            ]
+        }
+    )
+
     device: str | NetworkDeviceData
-    tenant_config_commit_id: str | None = None
-    intended_config_commit_id: str | None = None
+    tenant_config_commit_id: str | None = Field(default=None, pattern=r"^\d+$")
+    intended_config_commit_id: str | None = Field(default=None, pattern=r"^\d+$")
 
     @model_validator(mode="after")
     def validate_render_snapshot(self) -> "TenantDeployInput":

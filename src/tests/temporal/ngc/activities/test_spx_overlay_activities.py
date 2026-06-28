@@ -117,20 +117,32 @@ async def test_reconcile_spx_overlay_assignments_moves_port_between_overlays():
             payload={
                 "results": [
                     {
-                        "id": old_assignment_id,
-                        "overlay": {
-                            "id": old_overlay_id,
-                            "isolation_type": "spectrum_x_vrf",
-                        },
-                    },
-                    {
                         "id": "ib-assignment",
                         "overlay": {
                             "id": ib_overlay_id,
                             "isolation_type": "ib_pkey",
                         },
                     },
-                ]
+                ],
+                "next": (
+                    f"{OVERLAYS_BASE}/overlay-assignments/"
+                    f"?assigned_object_id={interface_id}&depth=1&limit=50&offset=50"
+                ),
+            },
+        )
+        m.get(
+            _r(f"{OVERLAYS_BASE}/overlay-assignments/"),
+            payload={
+                "results": [
+                    {
+                        "id": old_assignment_id,
+                        "overlay": {
+                            "id": old_overlay_id,
+                            "isolation_type": "spectrum_x_vrf",
+                        },
+                    }
+                ],
+                "next": None,
             },
         )
         m.delete(
@@ -177,6 +189,79 @@ async def test_reconcile_spx_overlay_assignments_moves_port_between_overlays():
         "assigned_object_id": interface_id,
         "status": STATUS_ID,
     }
+    assignment_mutations = [
+        request_method.lower()
+        for (request_method, request_url) in m.requests
+        if str(request_url).startswith(f"{OVERLAYS_BASE}/overlay-assignments/")
+        and request_method.lower() in {"post", "delete"}
+    ]
+    assert assignment_mutations == ["post", "delete"]
+
+
+@pytest.mark.asyncio
+async def test_reconcile_spx_overlay_assignments_keeps_old_assignment_if_create_fails():
+    device_id = "22220000-0000-0000-0000-000000000001"
+    interface_id = "33330000-0000-0000-0000-000000000001"
+    old_assignment_id = "66660000-0000-0000-0000-000000000001"
+
+    with aioresponses() as m:
+        m.get(
+            _r(f"{OVERLAYS_BASE}/overlays/"),
+            payload={"results": [{"id": OVERLAY_ID, "name": "Panda"}]},
+        )
+        m.get(
+            _r(f"{OVERLAYS_BASE}/overlay-assignments/"),
+            payload={
+                "results": [
+                    {
+                        "id": "device-assignment",
+                        "overlay": {
+                            "id": OVERLAY_ID,
+                            "isolation_type": "spectrum_x_vrf",
+                        },
+                    }
+                ]
+            },
+        )
+        m.get(
+            _r(f"{OVERLAYS_BASE}/overlay-assignments/"),
+            payload={
+                "results": [
+                    {
+                        "id": old_assignment_id,
+                        "overlay": {
+                            "id": "44440000-0000-0000-0000-000000000001",
+                            "isolation_type": "spectrum_x_vrf",
+                        },
+                    }
+                ]
+            },
+        )
+        m.get(
+            _r(f"{NAUTOBOT}/api/extras/statuses/"),
+            payload={"results": [{"id": STATUS_ID}]},
+        )
+        m.post(
+            f"{OVERLAYS_BASE}/overlay-assignments/",
+            status=400,
+            payload={"detail": "replacement rejected"},
+        )
+        m.delete(
+            f"{OVERLAYS_BASE}/overlay-assignments/{old_assignment_id}/",
+            status=204,
+        )
+
+        with pytest.raises(NautobotException, match="replacement rejected"):
+            await reconcile_spx_overlay_assignments(
+                ReconcileSpXOverlayAssignmentsInput(
+                    overlay_id="Panda",
+                    site=LOCATION_ID,
+                    device_id=device_id,
+                    interface_ids=[interface_id],
+                )
+            )
+
+    assert all(request_method.lower() != "delete" for request_method, _ in m.requests)
 
 
 # ---------------------------------------------------------------------------

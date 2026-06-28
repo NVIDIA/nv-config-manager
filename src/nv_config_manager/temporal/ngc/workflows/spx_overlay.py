@@ -838,8 +838,8 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
     class RenderStageOutput(StageOutput):
         """Render Stage Output."""
 
-        tenant_config_commit_id: str | None = None
-        intended_config_commit_id: str | None = None
+        tenant_config_commit_id: str
+        intended_config_commit_id: str
 
     @stage_executor("render_tenant_config")
     async def render_stage(self, stage_input: RenderStageInput) -> RenderStageOutput:
@@ -858,10 +858,17 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
         tenant_config_file = stage_input.device.tenant_config_file
         tenant_config_commit_id = result.get_commit(tenant_config_file)
         intended_config_commit_id = result.get_commit(stage_input.device.intended_config_file)
+        if tenant_config_commit_id is None or intended_config_commit_id is None:
+            missing_files = []
+            if tenant_config_commit_id is None:
+                missing_files.append(tenant_config_file)
+            if intended_config_commit_id is None:
+                missing_files.append(stage_input.device.intended_config_file)
+            raise ApplicationError(
+                f"Render did not return commit IDs for: {', '.join(missing_files)}"
+            )
 
-        display_message = "Rendered tenant configuration"
-        if tenant_config_commit_id:
-            display_message += f" (config ID: {tenant_config_commit_id})"
+        display_message = f"Rendered tenant configuration (config ID: {tenant_config_commit_id})"
 
         return self.RenderStageOutput(
             tenant_config_commit_id=tenant_config_commit_id,
@@ -873,7 +880,7 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
         """Wait For Render Stage Input."""
 
         device: NetworkDeviceData
-        config_id: str | None
+        config_id: str
 
     class WaitForRenderStageOutput(StageOutput):
         """Wait For Render Stage Output."""
@@ -908,8 +915,8 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
         """Deploy Stage Input."""
 
         device: NetworkDeviceData
-        tenant_config_commit_id: str | None = None
-        intended_config_commit_id: str | None = None
+        tenant_config_commit_id: str
+        intended_config_commit_id: str
 
     class DeployStageOutput(StageOutput):
         """Deploy Stage Output."""

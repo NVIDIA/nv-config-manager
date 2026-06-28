@@ -1633,6 +1633,30 @@
       },
       "TenantDeployInput": {
         "description": "Tenant Config Deployment Workflow Input Definiton.",
+        "oneOf": [
+          {
+            "required": [
+              "tenant_config_commit_id",
+              "intended_config_commit_id"
+            ]
+          },
+          {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "tenant_config_commit_id"
+                  ]
+                },
+                {
+                  "required": [
+                    "intended_config_commit_id"
+                  ]
+                }
+              ]
+            }
+          }
+        ],
         "properties": {
           "device": {
             "anyOf": [
@@ -1648,6 +1672,7 @@
           "intended_config_commit_id": {
             "anyOf": [
               {
+                "pattern": "^\\d+$",
                 "type": "string"
               },
               {
@@ -1659,6 +1684,7 @@
           "tenant_config_commit_id": {
             "anyOf": [
               {
+                "pattern": "^\\d+$",
                 "type": "string"
               },
               {

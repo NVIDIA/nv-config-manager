@@ -22,6 +22,7 @@ from typing import Any, cast
 from unittest.mock import patch
 
 import pytest
+from pydantic import ValidationError
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 from temporalio.worker import Worker
@@ -180,6 +181,15 @@ async def mock_reconcile_spx_overlay_assignments(
         created=1 + len(activity_input.interface_ids),
         removed=0,
     )
+
+
+def test_spx_render_stage_output_requires_snapshot_commit_ids():
+    """Do not allow the SpX workflow to fall back to an unpinned deploy."""
+    with pytest.raises(ValidationError):
+        SpXOverlayTenantChangeWorkflow.RenderStageOutput(
+            tenant_config_commit_id=None,
+            intended_config_commit_id="11",
+        )
 
 
 @pytest.mark.asyncio

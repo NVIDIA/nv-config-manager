@@ -19,6 +19,7 @@ from __future__ import annotations
 import logging
 import re
 from typing import Any, ClassVar
+from urllib.parse import parse_qsl, urlparse
 
 import netaddr
 from pydantic import BaseModel, computed_field
@@ -800,6 +801,23 @@ def _related_object_id(value: Any) -> str | None:
     return str(value) if value else None
 
 
+async def _get_all_results(
+    client: NautobotClient,
+    path: str,
+    params: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Fetch every page from a paginated Nautobot REST endpoint."""
+    results: list[dict[str, Any]] = []
+    next_params = params
+    while True:
+        response = await client.get(path, params=next_params)
+        results.extend(response.get("results", []))
+        next_url = response.get("next")
+        if not next_url:
+            return results
+        next_params = dict(parse_qsl(urlparse(next_url).query))
+
+
 @activity.defn
 async def reconcile_spx_overlay_assignments(
     activity_input: ReconcileSpXOverlayAssignmentsInput,
@@ -828,12 +846,14 @@ async def reconcile_spx_overlay_assignments(
             ("dcim.interface", interface_id, True) for interface_id in activity_input.interface_ids
         )
         for object_type, object_id, remove_stale in assigned_objects:
-            response = await client.get(
+            assignments = await _get_all_results(
+                client,
                 f"{OVERLAYS_PLUGIN_BASE}/overlay-assignments/",
-                params={"assigned_object_id": object_id, "depth": 1},
+                {"assigned_object_id": object_id, "depth": 1},
             )
             target_exists = False
-            for assignment in response.get("results", []):
+            stale_assignment_ids: list[str] = []
+            for assignment in assignments:
                 assignment_overlay = assignment.get("overlay")
                 assignment_overlay_id = _related_object_id(assignment_overlay)
                 if assignment_overlay_id == target_overlay_id:
@@ -851,30 +871,31 @@ async def reconcile_spx_overlay_assignments(
                     isolation_type = overlay_details.get("isolation_type")
 
                 if isolation_type == SPECTRUMX_ISOLATION_TYPE:
-                    await client.delete(
-                        f"{OVERLAYS_PLUGIN_BASE}/overlay-assignments/{assignment['id']}/"
-                    )
-                    removed += 1
+                    stale_assignment_ids.append(str(assignment["id"]))
 
-            if target_exists:
-                continue
-
-            if status_id is None:
-                status_id = await client.lookup_id_by_name("extras/statuses/", DEFAULT_STATUS_NAME)
+            if not target_exists:
                 if status_id is None:
-                    raise ApplicationError(
-                        f"Status {DEFAULT_STATUS_NAME} not found for overlay assignment"
+                    status_id = await client.lookup_id_by_name(
+                        "extras/statuses/", DEFAULT_STATUS_NAME
                     )
+                    if status_id is None:
+                        raise ApplicationError(
+                            f"Status {DEFAULT_STATUS_NAME} not found for overlay assignment"
+                        )
 
-            await client.post(
-                f"{OVERLAYS_PLUGIN_BASE}/overlay-assignments/",
-                data={
-                    "overlay": target_overlay_id,
-                    "assigned_object_type": object_type,
-                    "assigned_object_id": object_id,
-                    "status": status_id,
-                },
-            )
-            created += 1
+                await client.post(
+                    f"{OVERLAYS_PLUGIN_BASE}/overlay-assignments/",
+                    data={
+                        "overlay": target_overlay_id,
+                        "assigned_object_type": object_type,
+                        "assigned_object_id": object_id,
+                        "status": status_id,
+                    },
+                )
+                created += 1
+
+            for assignment_id in stale_assignment_ids:
+                await client.delete(f"{OVERLAYS_PLUGIN_BASE}/overlay-assignments/{assignment_id}/")
+                removed += 1
 
     return ReconcileSpXOverlayAssignmentsOutput(created=created, removed=removed)

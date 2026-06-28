@@ -20,6 +20,7 @@ from typing import Any
 from unittest.mock import ANY, patch
 
 import pytest
+from pydantic import ValidationError
 from temporalio import activity
 from temporalio.client import Client, WorkflowFailureError, WorkflowHandle
 from temporalio.worker import Worker
@@ -86,6 +87,39 @@ _newer_commit_mock_state = {
     "newer_commit_allowed": True,
     "use_newer_commit": False,
 }
+
+
+@pytest.mark.parametrize("invalid_commit_id", ["abc", "12.5", "-1", ""])
+def test_tenant_deploy_input_rejects_non_numeric_commit_ids(invalid_commit_id):
+    """Reject invalid snapshot versions before starting the workflow."""
+    with pytest.raises(ValidationError, match="string_pattern_mismatch"):
+        TenantDeployInput(
+            device="mock_device_uuid",
+            tenant_config_commit_id=invalid_commit_id,
+            intended_config_commit_id="11",
+        )
+
+
+def test_tenant_deploy_input_schema_requires_both_snapshot_commit_ids_or_neither():
+    """Publish the runtime snapshot-pair constraint in the API schema."""
+    schema = TenantDeployInput.model_json_schema()
+
+    assert schema["oneOf"] == [
+        {
+            "required": [
+                "tenant_config_commit_id",
+                "intended_config_commit_id",
+            ]
+        },
+        {
+            "not": {
+                "anyOf": [
+                    {"required": ["tenant_config_commit_id"]},
+                    {"required": ["intended_config_commit_id"]},
+                ]
+            }
+        },
+    ]
 
 
 @activity.defn(name="load_partial_configuration")
