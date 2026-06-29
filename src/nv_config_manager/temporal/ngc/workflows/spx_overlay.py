@@ -629,7 +629,7 @@ class SpXOverlayAssignmentWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixi
                 device_id=stage_input.device_id,
                 interface_ids=[interface.id for interface in interfaces_output.interfaces],
             ),
-            start_to_close_timeout=timedelta(minutes=1),
+            start_to_close_timeout=timedelta(minutes=5),
             retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
         )
 
@@ -987,6 +987,14 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
     @stage_executor("deploy")
     async def deploy_stage(self, stage_input: DeployStageInput) -> DeployStageOutput:
         """Deploy tenant configuration to device."""
+        if (stage_input.tenant_config_commit_id is None) != (
+            stage_input.intended_config_commit_id is None
+        ):
+            raise ApplicationError(
+                "tenant_config_commit_id and intended_config_commit_id must both be supplied "
+                "or both be omitted"
+            )
+
         if (
             stage_input.tenant_config_commit_id is None
             and stage_input.intended_config_commit_id is None

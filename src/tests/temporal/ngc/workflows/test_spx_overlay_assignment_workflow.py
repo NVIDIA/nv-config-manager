@@ -229,6 +229,33 @@ async def mock_wait_for_tenant_render(
     return WaitForTenantRenderOutput(config_id=activity_input.config_id)
 
 
+@pytest.mark.parametrize(
+    "commit_ids",
+    [
+        {"tenant_config_commit_id": "7"},
+        {"intended_config_commit_id": "11"},
+    ],
+)
+@pytest.mark.asyncio
+async def test_spx_deploy_stage_rejects_partial_render_commit_pair(commit_ids):
+    device_output = await mock_get_network_device(GetNetworkDeviceInput(device_id="device-1"))
+    with patch(
+        "nv_config_manager.temporal.common.mixins.stage.workflow.time",
+        return_value=float(0),
+    ):
+        workflow_instance = SpXOverlayTenantChangeWorkflow()
+    stage_input = workflow_instance.DeployStageInput(
+        device=device_output.device,
+        **commit_ids,
+    )
+
+    with pytest.raises(ApplicationError, match="must both be supplied or both be omitted"):
+        await SpXOverlayTenantChangeWorkflow.deploy_stage.__wrapped__(
+            workflow_instance,
+            stage_input,
+        )
+
+
 @workflow.defn(name="TenantDeployWorkflow", sandboxed=False)
 class MockTenantDeployWorkflow:
     """Mock tenant deploy child workflow."""
