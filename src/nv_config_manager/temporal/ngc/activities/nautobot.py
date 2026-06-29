@@ -19,7 +19,6 @@ from __future__ import annotations
 import logging
 import re
 from typing import Any, ClassVar, cast
-from urllib.parse import parse_qsl, urlparse
 
 import netaddr
 from pydantic import BaseModel, computed_field
@@ -825,32 +824,14 @@ def _related_object_id(value: Any) -> str | None:
     return str(value) if value else None
 
 
-async def _get_all_results(
-    client: NautobotClient,
-    path: str,
-    params: dict[str, Any],
-) -> list[dict[str, Any]]:
-    """Fetch every page from a paginated Nautobot REST endpoint."""
-    results: list[dict[str, Any]] = []
-    next_params = params
-    while True:
-        response = await client.get(path, params=next_params)
-        results.extend(response.get("results", []))
-        next_url = response.get("next")
-        if not next_url:
-            return results
-        next_params = dict(parse_qsl(urlparse(next_url).query))
-
-
 async def _get_overlay_assignments(
     client: NautobotClient,
     assigned_object_id: str,
 ) -> list[dict[str, Any]]:
     """Fetch all overlay-plugin assignments for a Nautobot object."""
-    return await _get_all_results(
-        client,
+    return await client.get_all(
         OVERLAY_ASSIGNMENTS_PATH,
-        {"assigned_object_id": assigned_object_id, "depth": 1},
+        params={"assigned_object_id": assigned_object_id, "depth": 1},
     )
 
 
