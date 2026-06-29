@@ -75,6 +75,9 @@ sonarqube-vulnerability-report:
     - job: sonar-scanner
       optional: true
   image: $NVCM_CI_IMAGE_ALPINE
+  variables:
+    # This job only calls the SonarQube API and consumes scanner artifacts.
+    GIT_STRATEGY: empty
   script:
     - apk add -q curl
     - 'curl --retry 3 --retry-delay 5 --retry-connrefused -u "${SONAR_TOKEN}:" "${SONAR_HOST_URL}/api/issues/gitlab_sast_export?projectKey=${NVCM_SONAR_PROJECT_KEY}&branch=${CI_COMMIT_BRANCH}&pullRequest=${CI_MERGE_REQUEST_IID}" -o gl-sast-sonar-report.json'
