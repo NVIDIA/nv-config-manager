@@ -47,10 +47,13 @@ with workflow.unsafe.imports_passed_through():
         sync_pkey_assignments,
     )
     from nv_config_manager.temporal.ngc.activities.ib_pkey import (
+        FetchPKeyMembersInput,
+        FetchPKeyMembersOutput,
         SetGuidsInput,
         SetGuidsOutput,
         VerifyPKeyMembersInput,
         VerifyPKeyMembersOutput,
+        fetch_pkey_members,
         set_pkey_members,
         verify_pkey_members,
     )
@@ -73,8 +76,13 @@ def _format_diff_lines(
     ifaces_to_add: list[ResolvedInterface],
     ifaces_to_remove: list[ResolvedInterface],
     guids_unchanged: list[str],
+    ufm_only_removals: list[str] | None = None,
 ) -> str:
-    """Format a human-readable diff with device/interface/GUID per member."""
+    """Format a human-readable diff with device/interface/GUID per member.
+
+    ``ufm_only_removals`` are GUIDs present on UFM but absent from Nautobot; the
+    exact-set PUT will drop them, so they are surfaced explicitly for approval.
+    """
     lines: list[str] = [f"**PKey {pkey} membership diff:**"]
 
     lines.append(f"- Add {len(ifaces_to_add)} member(s):")
@@ -90,6 +98,15 @@ def _format_diff_lines(
             lines.append(f"    - Remove PKey {pkey} from {r.device}/{r.interface} (GUID {r.guid})")
     else:
         lines.append("    (none)")
+
+    ufm_only_removals = ufm_only_removals or []
+    if ufm_only_removals:
+        lines.append(
+            f"- Remove {len(ufm_only_removals)} untracked UFM-only member(s) "
+            "(present on UFM, not in Nautobot):"
+        )
+        for guid in ufm_only_removals:
+            lines.append(f"    - Remove PKey {pkey} from GUID {guid} (untracked on UFM)")
 
     lines.append(f"- Unchanged: {len(guids_unchanged)} member(s)")
     return "\n".join(lines)
@@ -290,6 +307,8 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
     class QueryCurrentStageInput(StageInput):
         """Query Current Stage Input."""
 
+        host: str
+        site: str | None
         pkey: str
         overlay_id: str
         resolved: list[ResolvedInterface]
@@ -305,6 +324,8 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
         ifaces_to_remove: list[ResolvedInterface]
         ifaces_unchanged: list[ResolvedInterface]
         membership_changed: bool
+        ufm_only_removals: list[str]
+        ufm_ip_over_ib: bool | None
 
     @stage_executor("query_current")
     async def query_current(self, stage_input: QueryCurrentStageInput) -> QueryCurrentStageOutput:
@@ -355,11 +376,26 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
                     non_retryable=True,
                 )
 
+        ufm_state: FetchPKeyMembersOutput = await workflow.execute_activity(
+            fetch_pkey_members,
+            FetchPKeyMembersInput(
+                host=stage_input.host,
+                site=stage_input.site,
+                pkey=stage_input.pkey,
+            ),
+            start_to_close_timeout=timedelta(minutes=2),
+            retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+        )
+        desired_guid_set = {r.guid.lower() for r in stage_input.resolved}
+        tracked_removals = {g.lower() for g in guids_to_remove}
+        ufm_only_removals = sorted(set(ufm_state.guids) - desired_guid_set - tracked_removals)
+
         display = _format_diff_lines(
             pkey=stage_input.pkey,
             ifaces_to_add=ifaces_to_add,
             ifaces_to_remove=ifaces_to_remove,
             guids_unchanged=guids_unchanged,
+            ufm_only_removals=ufm_only_removals,
         )
 
         return self.QueryCurrentStageOutput(
@@ -371,6 +407,8 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
             ifaces_to_remove=ifaces_to_remove,
             ifaces_unchanged=ifaces_unchanged,
             membership_changed=membership_changed,
+            ufm_only_removals=ufm_only_removals,
+            ufm_ip_over_ib=ufm_state.ip_over_ib if ufm_state.exists else None,
             display=display,
         )
 
@@ -385,6 +423,7 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
         ifaces_to_add: list[ResolvedInterface]
         ifaces_to_remove: list[ResolvedInterface]
         guids_unchanged: list[str]
+        ufm_only_removals: list[str]
 
     class ValidateDiffStageOutput(StageOutput):
         """Validate Diff Stage Output."""
@@ -393,10 +432,14 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
 
     @stage_executor("validate_diff")
     async def validate_diff(self, stage_input: ValidateDiffStageInput) -> ValidateDiffStageOutput:
-        """Gate on approval when the diff contains removals; auto-approve additions-only."""
+        """Gate on approval when the diff drops any UFM member; auto-approve additions-only.
+
+        Removals include both Nautobot-tracked members and untracked UFM-only
+        members, since the exact-set PUT drops both.
+        """
         stage_name = "validate_diff"
 
-        if not stage_input.ifaces_to_remove:
+        if not stage_input.ifaces_to_remove and not stage_input.ufm_only_removals:
             self.get_stage_by_name(stage_name).requires_approval = False
             return self.ValidateDiffStageOutput(
                 approved=True,
@@ -412,6 +455,7 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
             ifaces_to_add=stage_input.ifaces_to_add,
             ifaces_to_remove=stage_input.ifaces_to_remove,
             guids_unchanged=stage_input.guids_unchanged,
+            ufm_only_removals=stage_input.ufm_only_removals,
         )
 
         output = self.ValidateDiffStageOutput(approved=False, display=display)
@@ -600,6 +644,8 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
 
         query_output = await self.query_current(
             self.QueryCurrentStageInput(
+                host=context.host,
+                site=context.site,
                 pkey=context.pkey,
                 overlay_id=context.overlay_id,
                 resolved=resolve_output.resolved,
@@ -612,6 +658,7 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
                 ifaces_to_add=query_output.ifaces_to_add,
                 ifaces_to_remove=query_output.ifaces_to_remove,
                 guids_unchanged=query_output.guids_unchanged,
+                ufm_only_removals=query_output.ufm_only_removals,
             )
         )
 
@@ -643,6 +690,13 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
 
         desired_guids = [r.guid for r in resolve_output.resolved]
         desired_memberships = [r.membership for r in resolve_output.resolved]
+        # Preserve the partition's existing ip_over_ib instead of forcing the
+        # input default onto an already-configured partition.
+        ip_over_ib = (
+            query_output.ufm_ip_over_ib
+            if query_output.ufm_ip_over_ib is not None
+            else workflow_input.ip_over_ib
+        )
         await self.update_ufm(
             self.UpdateUFMStageInput(
                 host=context.host,
@@ -653,7 +707,7 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
                 guids_to_add=query_output.guids_to_add,
                 guids_to_remove=query_output.guids_to_remove,
                 membership_changed=query_output.membership_changed,
-                ip_over_ib=workflow_input.ip_over_ib,
+                ip_over_ib=ip_over_ib,
             )
         )
 

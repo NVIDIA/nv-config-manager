@@ -345,10 +345,13 @@ class FetchPKeyMembersInput(BaseModel):
 
 
 class FetchPKeyMembersOutput(StageOutput):
-    """Current GUID members of a PKey partition."""
+    """Current state of a PKey partition on UFM."""
 
     pkey: str
+    exists: bool = True
     guids: list[str]
+    memberships: list[str] = []
+    ip_over_ib: bool | None = None
 
 
 class RemoveGuidsInput(BaseModel):
@@ -369,32 +372,59 @@ class RemoveGuidsOutput(StageOutput):
 
 @activity.defn
 async def fetch_pkey_members(input: FetchPKeyMembersInput) -> FetchPKeyMembersOutput:
-    """Fetch the current GUID member list for a PKey from UFM."""
+    """Read a PKey partition's current members and settings from UFM.
+
+    Tolerates a 404 by returning ``exists=False`` so callers reconciling against
+    UFM can treat a missing partition as empty without special-casing the error.
+    """
     log.info("Fetching members for PKey %s on UFM at %s", input.pkey, input.host)
 
-    async with UFMClient(host=input.host, site=input.site) as client:
-        pkey_data = await client.request(
-            "GET",
-            f"/resources/pkeys/{input.pkey}",
-            params={"guids_data": "true"},
+    try:
+        async with UFMClient(host=input.host, site=input.site) as client:
+            pkey_data = await client.request(
+                "GET",
+                f"/resources/pkeys/{input.pkey}",
+                params={"guids_data": "true"},
+            )
+    except UFMClientError as e:
+        if e.status_code != 404:
+            raise
+        log.info("PKey %s does not exist on UFM", input.pkey)
+        return FetchPKeyMembersOutput(
+            pkey=input.pkey,
+            exists=False,
+            guids=[],
+            memberships=[],
+            ip_over_ib=None,
+            display=f"PKey {input.pkey} does not exist on UFM",
         )
 
     if not isinstance(pkey_data, dict):
         raise ApplicationError(
-            f"PKey {input.pkey} not found on UFM at {input.host}",
+            f"PKey {input.pkey} returned an unexpected response from UFM at {input.host}",
             non_retryable=True,
         )
 
     raw_guids = pkey_data.get("guids", [])
-    guids = [
-        (entry["guid"] if isinstance(entry, dict) else str(entry)).lower() for entry in raw_guids
-    ]
+    guids: list[str] = []
+    memberships: list[str] = []
+    for entry in raw_guids:
+        if isinstance(entry, dict):
+            guids.append(str(entry.get("guid", "")).lower())
+            memberships.append(str(entry.get("membership", "")).lower())
+        else:
+            guids.append(str(entry).lower())
+            memberships.append("")
 
+    ip_over_ib = pkey_data.get("ip_over_ib")
     log.info("PKey %s has %d current member(s): %s", input.pkey, len(guids), guids)
 
     return FetchPKeyMembersOutput(
         pkey=input.pkey,
+        exists=True,
         guids=guids,
+        memberships=memberships,
+        ip_over_ib=ip_over_ib if isinstance(ip_over_ib, bool) else None,
         display=f"PKey {input.pkey} has {len(guids)} current member(s)",
     )
 
@@ -582,11 +612,19 @@ class VerifyPKeyMembersAbsentInput(BaseModel):
 
 
 class VerifyPKeyMembersAbsentOutput(StageOutput):
-    """Result of a PKey membership-removal verification."""
+    """Result of a PKey membership-removal verification.
+
+    ``partition_exists`` is False when UFM 404s (the partition is gone), and
+    ``remaining_member_count`` reports how many members UFM still holds. Together
+    they let the delete workflow decide whether the partition is truly empty
+    before reconciling Nautobot, rather than inferring it from Nautobot alone.
+    """
 
     pkey: str
     verified: bool
     still_present_guids: list[str]
+    partition_exists: bool = True
+    remaining_member_count: int = 0
 
 
 @activity.defn
@@ -618,6 +656,8 @@ async def verify_pkey_members_absent(
             pkey=input.pkey,
             verified=True,
             still_present_guids=[],
+            partition_exists=False,
+            remaining_member_count=0,
             display=f"PKey {input.pkey} no longer exists on UFM; all members absent",
         )
 
@@ -645,6 +685,8 @@ async def verify_pkey_members_absent(
         pkey=input.pkey,
         verified=True,
         still_present_guids=[],
+        partition_exists=True,
+        remaining_member_count=len(present_set),
         display=(
             f"All {len(input.forbidden_guids)} GUID(s) confirmed absent from PKey {input.pkey}"
         ),

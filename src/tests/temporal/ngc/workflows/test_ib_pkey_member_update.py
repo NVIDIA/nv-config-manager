@@ -34,6 +34,7 @@ from nv_config_manager.temporal.ngc.activities.ib_nautobot import (
     sync_pkey_assignments,
 )
 from nv_config_manager.temporal.ngc.activities.ib_pkey import (
+    fetch_pkey_members,
     set_pkey_members,
     verify_pkey_members,
 )
@@ -130,10 +131,20 @@ _ALL_ACTIVITIES = [
     resolve_guids_to_interfaces,
     fetch_pkey_assignments,
     sync_pkey_assignments,
+    fetch_pkey_members,
     set_pkey_members,
     verify_pkey_members,
     publish_nats,
 ]
+
+
+def _stub_ufm_current(m: aioresponses, pkey: str, payload: dict) -> None:
+    """Stub the query_current UFM read (fetch_pkey_members) for a pkey.
+
+    Registered before the verify_ufm GET so aioresponses serves it to the
+    earlier query_current request (FIFO per URL).
+    """
+    m.get(_pkey_verify_url(pkey), payload=payload)
 
 
 def _pkey_verify_url(pkey: str) -> str:
@@ -198,6 +209,7 @@ async def test_additions_only_auto_approved(mock_all_configs, time_skipping_env)
 
                 # Stage 2: query current
                 m.get(_NB_ASSIGNMENTS, payload={"results": []})
+                _stub_ufm_current(m, "0x0005", {"guids": []})
 
                 # Stage 3: validate_diff auto-approved
 
@@ -276,6 +288,7 @@ async def test_per_interface_membership_sent_to_ufm(mock_all_configs, time_skipp
                     [(IFACE_UUID_1, GUID_1), (IFACE_UUID_2, GUID_2)],
                 )
                 m.get(_NB_ASSIGNMENTS, payload={"results": []})
+                _stub_ufm_current(m, "0x0005", {"guids": []})
 
                 _stub_status(m)
                 m.get(_NB_ASSIGNMENTS, payload={"results": []})
@@ -337,6 +350,7 @@ async def test_per_guid_membership_sent_to_ufm(mock_all_configs, time_skipping_e
                 stub_graphql_resolve_ib_context(m, pkey="0x0005", overlay_id=OVERLAY_UUID)
                 stub_graphql_resolve_guids(m, [(GUID_1, IFACE_UUID_1), (GUID_2, IFACE_UUID_2)])
                 m.get(_NB_ASSIGNMENTS, payload={"results": []})
+                _stub_ufm_current(m, "0x0005", {"guids": []})
 
                 _stub_status(m)
                 m.get(_NB_ASSIGNMENTS, payload={"results": []})
@@ -414,6 +428,8 @@ async def test_idempotent_put_when_desired_matches_current(mock_all_configs, tim
                         ]
                     },
                 )
+                # UFM already holds exactly the desired member -> no UFM-only removals
+                _stub_ufm_current(m, "0x0005", {"guids": [{"guid": GUID_1, "membership": "full"}]})
 
                 # Stage 3: validate_diff auto-approved
 
@@ -497,6 +513,7 @@ async def test_membership_only_change_sent_to_ufm(mock_all_configs, time_skippin
 
                 # query_current: member already present with membership "full"
                 m.get(_NB_ASSIGNMENTS, payload=current_assignment)
+                _stub_ufm_current(m, "0x0005", {"guids": [{"guid": GUID_1, "membership": "full"}]})
 
                 # update_nautobot: same member, membership patched full -> limited
                 _stub_status(m)
@@ -686,6 +703,8 @@ async def test_full_swap_atomically_replaces_membership(mock_all_configs, time_s
                 m.get(_NB_ASSIGNMENTS, payload={"results": [current_assignment]})
                 # query_current reverse-resolves the removal GUID via GraphQL
                 stub_graphql_resolve_guids(m, [(GUID_1, IFACE_UUID_1)])
+                # UFM holds the tracked stale member; its removal is already in the diff
+                _stub_ufm_current(m, "0x0005", {"guids": [{"guid": GUID_1, "membership": "full"}]})
 
                 # Stage 3: validate_diff -> requires approval
 
@@ -749,6 +768,7 @@ async def test_guids_only_path_resolves_via_graphql(mock_all_configs, time_skipp
                 stub_graphql_resolve_guids(m, [(GUID_1, IFACE_UUID_1)])
 
                 m.get(_NB_ASSIGNMENTS, payload={"results": []})
+                _stub_ufm_current(m, "0x0005", {"guids": []})
 
                 _stub_status(m)
                 m.get(_NB_ASSIGNMENTS, payload={"results": []})
@@ -778,3 +798,159 @@ async def test_guids_only_path_resolves_via_graphql(mock_all_configs, time_skipp
     assert result.members_added == 1
     assert result.members_removed == 0
     assert result.verified is True
+
+
+@pytest.mark.asyncio
+async def test_ufm_only_member_triggers_approval(mock_all_configs, time_skipping_env):
+    """A member present only on UFM (untracked by Nautobot) forces the approval gate.
+
+    The exact-set PUT drops it, so it must surface as a removal for approval
+    instead of being silently auto-approved off the Nautobot-only diff.
+    """
+    task_queue = str(uuid.uuid4())
+    put_bodies: list[dict] = []
+
+    def _record_set(url, **kwargs):
+        put_bodies.append(kwargs.get("json") or {})
+        return CallbackResult(status=200, payload={})
+
+    current_assignment = {
+        "results": [
+            {
+                "id": ASSIGNMENT_UUID_1,
+                "assigned_object_id": IFACE_UUID_1,
+                "guid": GUID_1,
+                "membership_type": "full",
+            }
+        ]
+    }
+
+    async with time_skipping_env() as env:
+        async with Worker(
+            env.client,
+            task_queue=task_queue,
+            workflows=[IBPKeyMemberUpdateWorkflow],
+            activities=_ALL_ACTIVITIES,
+        ):
+            with aioresponses() as m:
+                stub_graphql_resolve_ib_context(m, pkey="0x0005", overlay_id=OVERLAY_UUID)
+                _stub_resolve_interfaces(m, [(IFACE_UUID_1, GUID_1)])
+
+                # query_current: Nautobot tracks only GUID_1, so no tracked removals
+                m.get(_NB_ASSIGNMENTS, payload=current_assignment)
+                # UFM holds an extra untracked member GUID_2 the exact PUT would drop
+                _stub_ufm_current(
+                    m,
+                    "0x0005",
+                    {
+                        "guids": [
+                            {"guid": GUID_1, "membership": "full"},
+                            {"guid": GUID_2, "membership": "full"},
+                        ]
+                    },
+                )
+
+                # update_nautobot: unchanged
+                _stub_status(m)
+                m.get(_NB_ASSIGNMENTS, payload=current_assignment)
+
+                # update_ufm: exact PUT carries only the desired set
+                m.put(f"{UFM_BASE}/resources/pkeys/", callback=_record_set)
+
+                # verify_ufm: only the desired member remains
+                m.get(
+                    _pkey_verify_url("0x0005"),
+                    payload={"guids": [{"guid": GUID_1, "membership": "full"}]},
+                )
+
+                handle = await env.client.start_workflow(
+                    IBPKeyMemberUpdateWorkflow.run,
+                    IBPKeyMemberUpdateInput(
+                        host="ufm.example.com",
+                        pkey="0x0005",
+                        interfaces=[InterfaceRef(device="hca01", interface="mlx5_0")],
+                    ),
+                    id=str(uuid.uuid4()),
+                    task_queue=task_queue,
+                )
+
+                # Reaching pending_approval proves the UFM-only removal was not
+                # auto-approved; an additions-only diff would never gate here.
+                await _wait_for_pending_approval(handle)
+                await handle.signal("approve", {"stage_name": "validate_diff", "user": "Test"})
+                result = await handle.result()
+
+    assert result.verified is True
+    assert result.members_removed == 0  # Nautobot tracked no removals
+    assert result.members_unchanged == 1
+    # The exact PUT carries only the desired set, dropping the untracked UFM member.
+    assert len(put_bodies) == 1
+    assert put_bodies[0].get("guids") == [GUID_1]
+
+
+@pytest.mark.asyncio
+async def test_preserves_ip_over_ib_from_ufm(mock_all_configs, time_skipping_env):
+    """The reconciling PUT preserves the partition's existing ip_over_ib from UFM."""
+    task_queue = str(uuid.uuid4())
+    put_bodies: list[dict] = []
+
+    def _record_set(url, **kwargs):
+        put_bodies.append(kwargs.get("json") or {})
+        return CallbackResult(status=200, payload={})
+
+    current_assignment = {
+        "results": [
+            {
+                "id": ASSIGNMENT_UUID_1,
+                "assigned_object_id": IFACE_UUID_1,
+                "guid": GUID_1,
+                "membership_type": "full",
+            }
+        ]
+    }
+
+    async with time_skipping_env() as env:
+        async with Worker(
+            env.client,
+            task_queue=task_queue,
+            workflows=[IBPKeyMemberUpdateWorkflow],
+            activities=_ALL_ACTIVITIES,
+        ):
+            with aioresponses() as m:
+                stub_graphql_resolve_ib_context(m, pkey="0x0005", overlay_id=OVERLAY_UUID)
+                _stub_resolve_interfaces(m, [(IFACE_UUID_1, GUID_1)])
+
+                m.get(_NB_ASSIGNMENTS, payload=current_assignment)
+                # UFM partition is already configured with ip_over_ib disabled
+                _stub_ufm_current(
+                    m,
+                    "0x0005",
+                    {
+                        "guids": [{"guid": GUID_1, "membership": "full"}],
+                        "ip_over_ib": False,
+                    },
+                )
+
+                _stub_status(m)
+                m.get(_NB_ASSIGNMENTS, payload=current_assignment)
+                m.put(f"{UFM_BASE}/resources/pkeys/", callback=_record_set)
+                m.get(
+                    _pkey_verify_url("0x0005"),
+                    payload={"guids": [{"guid": GUID_1, "membership": "full"}]},
+                )
+
+                result = await env.client.execute_workflow(
+                    IBPKeyMemberUpdateWorkflow.run,
+                    IBPKeyMemberUpdateInput(
+                        host="ufm.example.com",
+                        pkey="0x0005",
+                        interfaces=[InterfaceRef(device="hca01", interface="mlx5_0")],
+                        ip_over_ib=True,  # input default; UFM's False must win
+                    ),
+                    id=str(uuid.uuid4()),
+                    task_queue=task_queue,
+                )
+
+    assert result.verified is True
+    # Despite the input requesting ip_over_ib=True, the PUT preserves UFM's False.
+    assert put_bodies[0].get("ip_over_ib") is False

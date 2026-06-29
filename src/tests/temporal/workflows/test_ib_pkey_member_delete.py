@@ -360,3 +360,68 @@ async def test_guids_only_path(mock_all_configs, time_skipping_env):
     assert result.members_removed == 1
     assert result.verified is True
     assert result.assignment_ids_removed == [ASSIGNMENT_UUID_1]
+
+
+@pytest.mark.asyncio
+async def test_untracked_ufm_member_blocks_cleanup(mock_all_configs, time_skipping_env):
+    """Last tracked member removed, but UFM still holds an untracked member.
+
+    The UFM partition is still live, so the Nautobot PKey/Overlay must be left in
+    place rather than orphaning the partition.
+    """
+    task_queue = str(uuid.uuid4())
+
+    async with time_skipping_env() as env:
+        async with Worker(
+            env.client,
+            task_queue=task_queue,
+            workflows=[IBPKeyMemberDeleteWorkflow],
+            activities=_ALL_ACTIVITIES,
+        ):
+            with aioresponses() as m:
+                stub_graphql_resolve_ib_context(m, pkey="0x0005", overlay_id=OVERLAY_UUID)
+                m.get(
+                    _NB_INTERFACES,
+                    payload={
+                        "results": [
+                            {
+                                "id": IFACE_UUID_1,
+                                "name": "mlx5_0",
+                                "custom_fields": {"ib_guid": GUID_1},
+                            }
+                        ]
+                    },
+                )
+                m.delete(_UFM_DELETE, payload={})
+                # verify_removed: GUID_1 gone, but untracked GUID_2 still present on UFM
+                m.get(
+                    _pkey_verify_url("0x0005"),
+                    payload={"guids": [{"guid": GUID_2, "membership": "full"}]},
+                )
+                m.get(
+                    _NB_ASSIGNMENTS,
+                    payload={"results": [{"id": ASSIGNMENT_UUID_1}]},
+                )
+                m.delete(f"{PLUGIN}/overlay-assignments/{ASSIGNMENT_UUID_1}/", payload={})
+                # cleanup_partition: Nautobot empty, but UFM not empty -> keep records.
+                # No PKey DELETE is registered; issuing one would fail the test.
+                m.get(_NB_ASSIGNMENTS, payload={"results": []})
+
+                result = await env.client.execute_workflow(
+                    IBPKeyMemberDeleteWorkflow.run,
+                    IBPKeyMemberDeleteInput(
+                        host="ufm.example.com",
+                        pkey="0x0005",
+                        interfaces=[InterfaceRef(device="hca01", interface="mlx5_0")],
+                    ),
+                    id=str(uuid.uuid4()),
+                    task_queue=task_queue,
+                )
+
+    assert result.members_removed == 1
+    assert result.verified is True
+    assert result.assignment_ids_removed == [ASSIGNMENT_UUID_1]
+    # UFM still has an untracked member, so the partition is not considered empty.
+    assert result.partition_empty is False
+    assert result.pkey_deleted is False
+    assert result.overlay_deleted is False

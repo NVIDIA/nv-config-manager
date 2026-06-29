@@ -268,6 +268,7 @@ class IBPKeyMemberDeleteWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
 
         pkey: str
         verified: bool
+        partition_empty: bool
 
     @stage_executor("verify_removed")
     async def verify_removed(
@@ -285,9 +286,11 @@ class IBPKeyMemberDeleteWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
             start_to_close_timeout=timedelta(minutes=2),
             retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
         )
+        partition_empty = (not result.partition_exists) or result.remaining_member_count == 0
         return self.VerifyRemovedStageOutput(
             pkey=result.pkey,
             verified=result.verified,
+            partition_empty=partition_empty,
             display=result.display,
         )
 
@@ -338,6 +341,7 @@ class IBPKeyMemberDeleteWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
         overlay_name: str
         pkey_id: str
         pkey: str
+        ufm_partition_empty: bool
 
     class CleanupPartitionStageOutput(StageOutput):
         """Cleanup Partition Stage Output."""
@@ -361,6 +365,7 @@ class IBPKeyMemberDeleteWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
                 overlay_name=stage_input.overlay_name,
                 pkey_id=stage_input.pkey_id,
                 pkey=stage_input.pkey,
+                ufm_partition_empty=stage_input.ufm_partition_empty,
             ),
             start_to_close_timeout=timedelta(minutes=2),
             retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
@@ -431,6 +436,7 @@ class IBPKeyMemberDeleteWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
                 overlay_name=context.overlay_name,
                 pkey_id=context.pkey_id,
                 pkey=context.pkey,
+                ufm_partition_empty=verify_output.partition_empty,
             )
         )
 
