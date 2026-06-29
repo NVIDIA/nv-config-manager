@@ -109,8 +109,8 @@ charts or updating downstream values.
 | `NVCM_CONTAINER_SCAN_POLICY_FILE` | URL-encoded scan policy file path |
 | `NVCM_CONTAINER_SCAN_POLICY_REF` | Ref for the scan policy file, usually `main` |
 | `SONAR_HOST_URL` | SonarQube URL |
-| `SONAR_TOKEN` | Token used for SonarQube analysis and report export |
-| `NVCM_SONAR_PROJECT_KEY` | SonarQube project key |
+| `SONAR_TOKEN` | Token authorized to analyze the SonarQube project and export its report |
+| `NVCM_SONAR_PROJECT_KEY` | SonarQube project key; configure as a protected CI/CD variable |
 
 ## Downstream Deployments
 
