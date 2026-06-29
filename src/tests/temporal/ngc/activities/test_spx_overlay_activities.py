@@ -46,6 +46,7 @@ TENANT_ID = "cccc0000-0000-0000-0000-000000000001"
 OVERLAY_ID = "dddd0000-0000-0000-0000-000000000001"
 VRF_ID = "eeee0000-0000-0000-0000-000000000001"
 VXLAN_ID = "ffff0000-0000-0000-0000-000000000001"
+ASSIGNMENT_ID = "99990000-0000-0000-0000-000000000001"
 NS_ID = "11110000-0000-0000-0000-000000000001"
 
 
@@ -360,13 +361,17 @@ async def test_get_available_route_distinguishers_raises_when_range_full():
 
 
 @pytest.mark.asyncio
-async def test_provision_vrf_creates_overlay_vrf_vxlan():
+async def test_provision_vrf_creates_overlay_vrf_assignment_and_vxlan():
     with aioresponses() as m:
         m.get(_r(f"{NAUTOBOT}/api/extras/statuses/"), payload=_lookup(STATUS_ID))
         m.get(_r(f"{NAUTOBOT}/api/tenancy/tenants/"), payload=_lookup(TENANT_ID))
         m.get(_r(f"{OVERLAYS_BASE}/overlays/"), payload={"results": []})
         m.post(f"{OVERLAYS_BASE}/overlays/", payload={"id": OVERLAY_ID})
         m.post(f"{NAUTOBOT}/api/ipam/vrfs/", payload={"id": VRF_ID})
+        m.post(
+            f"{OVERLAYS_BASE}/overlay-assignments/",
+            payload={"id": ASSIGNMENT_ID},
+        )
         m.post(f"{OVERLAYS_BASE}/vxlans/", payload={"id": VXLAN_ID})
 
         await provision_vrf(
@@ -385,6 +390,12 @@ async def test_provision_vrf_creates_overlay_vrf_vxlan():
             "namespace": NS_ID,
             "tenant": TENANT_ID,
         }
+        assert _request_json(m, "post", f"{OVERLAYS_BASE}/overlay-assignments/") == {
+            "overlay": OVERLAY_ID,
+            "assigned_object_type": "ipam.vrf",
+            "assigned_object_id": VRF_ID,
+            "status": STATUS_ID,
+        }
 
 
 @pytest.mark.asyncio
@@ -398,6 +409,10 @@ async def test_provision_vrf_reuses_existing_overlay():
         )
         # No create_overlay call — overlay already exists
         m.post(f"{NAUTOBOT}/api/ipam/vrfs/", payload={"id": VRF_ID})
+        m.post(
+            f"{OVERLAYS_BASE}/overlay-assignments/",
+            payload={"id": ASSIGNMENT_ID},
+        )
         m.post(f"{OVERLAYS_BASE}/vxlans/", payload={"id": VXLAN_ID})
 
         await provision_vrf(
@@ -419,9 +434,17 @@ async def test_provision_vrf_rolls_back_on_vxlan_failure():
         m.get(_r(f"{OVERLAYS_BASE}/overlays/"), payload={"results": []})
         m.post(f"{OVERLAYS_BASE}/overlays/", payload={"id": OVERLAY_ID})
         m.post(f"{NAUTOBOT}/api/ipam/vrfs/", payload={"id": VRF_ID})
+        m.post(
+            f"{OVERLAYS_BASE}/overlay-assignments/",
+            payload={"id": ASSIGNMENT_ID},
+        )
         # vxlan creation fails
         m.post(f"{OVERLAYS_BASE}/vxlans/", status=400, payload={"detail": "bad"})
-        # rollback: delete vrf (no vxlans were created)
+        # rollback: delete assignment and VRF (no VXLANs were created)
+        m.delete(
+            f"{OVERLAYS_BASE}/overlay-assignments/{ASSIGNMENT_ID}/",
+            status=204,
+        )
         m.delete(f"{NAUTOBOT}/api/ipam/vrfs/{VRF_ID}/", status=204)
 
         with pytest.raises(ApplicationError, match="Failed to provision VPC"):
@@ -477,13 +500,21 @@ async def test_provision_vrf_missing_tenant_raises():
 
 
 @pytest.mark.asyncio
-async def test_delete_vrf_deletes_vxlan_then_vrf():
+async def test_delete_vrf_deletes_vxlan_assignment_then_vrf():
     with aioresponses() as m:
         m.get(
             _r(f"{OVERLAYS_BASE}/vxlans/"),
             payload={"results": [{"id": VXLAN_ID, "vrf": {"id": VRF_ID}}]},
         )
         m.delete(f"{OVERLAYS_BASE}/vxlans/{VXLAN_ID}/", status=204)
+        m.get(
+            _r(f"{OVERLAYS_BASE}/overlay-assignments/"),
+            payload={"results": [{"id": ASSIGNMENT_ID}]},
+        )
+        m.delete(
+            f"{OVERLAYS_BASE}/overlay-assignments/{ASSIGNMENT_ID}/",
+            status=204,
+        )
         m.delete(f"{NAUTOBOT}/api/ipam/vrfs/{VRF_ID}/", status=204)
 
         await delete_vrf(VrfDeletionActivityInput(vrf_id=VRF_ID, vnid=60004))
@@ -497,6 +528,10 @@ async def test_delete_vrf_skips_vxlan_bound_to_different_vrf():
             payload={"results": [{"id": VXLAN_ID, "vrf": {"id": "other-vrf-id"}}]},
         )
         # No VXLAN delete — vrf_id doesn't match
+        m.get(
+            _r(f"{OVERLAYS_BASE}/overlay-assignments/"),
+            payload={"results": []},
+        )
         m.delete(f"{NAUTOBOT}/api/ipam/vrfs/{VRF_ID}/", status=204)
 
         await delete_vrf(VrfDeletionActivityInput(vrf_id=VRF_ID, vnid=60004))

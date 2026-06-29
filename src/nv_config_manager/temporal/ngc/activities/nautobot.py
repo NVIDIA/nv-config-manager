@@ -422,9 +422,9 @@ async def provision_vrf(
     """Provision the SpectrumX overlay, VRFs, and L3 VXLANs for a VPC.
 
     Finds or creates the (location-scoped) SpectrumX overlay, then creates one VRF
-    and one L3 VXLAN per namespace, binding each VXLAN to both its VRF and the
-    overlay. VRFs and VXLANs created in this call are rolled back on failure; the
-    overlay is left in place since it is found-or-created and may be shared.
+    and one L3 VXLAN per namespace, binding each VRF and VXLAN to the overlay.
+    Resources created in this call are rolled back on failure; the overlay is left
+    in place since it is found-or-created and may be shared.
     """
     client = NautobotClient()
     vni = _vni_from_rd(activity_input.route_distinguisher)
@@ -432,6 +432,7 @@ async def provision_vrf(
     overlay_name = activity_input.overlay_id
     vrfs_created: list[Any] = []
     vxlans_created: list[Any] = []
+    assignments_created: list[Any] = []
     async with client:
         status_id = await client.lookup_id_by_name("extras/statuses/", DEFAULT_STATUS_NAME)
         if not status_id:
@@ -475,6 +476,14 @@ async def provision_vrf(
                     }
                 )
                 vrfs_created.append(vrf)
+                assignment = await _create_overlay_assignment(
+                    client,
+                    target_overlay_id=str(overlay_id),
+                    assigned_object_type="ipam.vrf",
+                    assigned_object_id=str(vrf["id"]),
+                    status_id=status_id,
+                )
+                assignments_created.append(assignment)
                 vxlan = await client.create_vxlan(
                     data={
                         "vnid": vni,
@@ -494,6 +503,14 @@ async def provision_vrf(
                     await client.delete_vxlan(vxlan["id"])
                 except Exception:
                     logger.exception("Failed to delete vxlan %s during rollback", vxlan["id"])
+            for assignment in assignments_created:
+                try:
+                    await client.delete(f"{OVERLAY_ASSIGNMENTS_PATH}{assignment['id']}/")
+                except Exception:
+                    logger.exception(
+                        "Failed to delete overlay assignment %s during rollback",
+                        assignment["id"],
+                    )
             for vrf in vrfs_created:
                 try:
                     await client.delete_vrf(vrf["id"])
@@ -541,7 +558,7 @@ class VrfDeletionActivityInput(BaseModel):
 
 @activity.defn
 async def delete_vrf(activity_input: VrfDeletionActivityInput) -> None:
-    """Delete a VRF and the L3 VXLAN bound to it.
+    """Delete a VRF, its overlay assignments, and the L3 VXLAN bound to it.
 
     VXLANs are fetched by VNI then filtered to those whose vrf.id matches
     vrf_id (the VRF FK is SET_NULL on VRF deletion, so they are removed
@@ -553,6 +570,11 @@ async def delete_vrf(activity_input: VrfDeletionActivityInput) -> None:
         for vxlan in vxlans:
             if (vxlan.get("vrf") or {}).get("id") == activity_input.vrf_id:
                 await client.delete_vxlan(vxlan["id"])
+        assignments = await _get_overlay_assignments(client, activity_input.vrf_id)
+        await _delete_overlay_assignments(
+            client,
+            [str(assignment["id"]) for assignment in assignments],
+        )
         await client.delete_vrf(activity_input.vrf_id)
 
 
@@ -890,9 +912,9 @@ async def _create_overlay_assignment(
     assigned_object_type: str,
     assigned_object_id: str,
     status_id: str,
-) -> None:
+) -> dict[str, Any]:
     """Create an overlay assignment for a Nautobot object."""
-    await client.post(
+    return await client.post(
         OVERLAY_ASSIGNMENTS_PATH,
         data={
             "overlay": target_overlay_id,
