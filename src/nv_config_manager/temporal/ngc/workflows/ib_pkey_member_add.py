@@ -47,9 +47,12 @@ with workflow.unsafe.imports_passed_through():
     )
     from nv_config_manager.temporal.ngc.workflows._ib_pkey_helpers import (
         DEFAULT_ACTIVITY_RETRY_POLICY,
+        DEFAULT_MEMBERSHIP_TYPE,
         call_resolve_ib_context_for_add,
+        normalize_guid_membership_list,
         normalize_membership_type,
         resolve_members,
+        validate_guid_memberships,
         validate_interfaces_xor_guids,
         validate_pkey_format,
     )
@@ -65,6 +68,7 @@ class IBPKeyMemberAddInput(BaseModel):
     pkey: str
     interfaces: list[InterfaceRef] = []
     guids: list[str] = []
+    guid_memberships: list[str] = []
     membership_type: str = "full"
     ip_over_ib: bool = True
 
@@ -78,9 +82,15 @@ class IBPKeyMemberAddInput(BaseModel):
     def _normalize_membership(cls, v: object) -> str:
         return normalize_membership_type(v)
 
+    @field_validator("guid_memberships", mode="before")
+    @classmethod
+    def _normalize_guid_memberships(cls, v: object) -> list[str]:
+        return normalize_guid_membership_list(v)
+
     @model_validator(mode="after")
     def _validate(self) -> "IBPKeyMemberAddInput":
         validate_interfaces_xor_guids(self.interfaces, self.guids)
+        validate_guid_memberships(self.guids, self.guid_memberships)
         return self
 
 
@@ -194,6 +204,8 @@ class IBPKeyMemberAddWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin):
 
         interfaces: list[InterfaceRef] = Field(default_factory=list)
         guids: list[str] = Field(default_factory=list)
+        guid_memberships: list[str] = Field(default_factory=list)
+        default_membership: str = DEFAULT_MEMBERSHIP_TYPE
 
     class ResolveGuidsStageOutput(StageOutput):
         """Resolve GUIDs Stage Output."""
@@ -203,7 +215,12 @@ class IBPKeyMemberAddWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin):
     @stage_executor("resolve_guids")
     async def resolve_guids(self, stage_input: ResolveGuidsStageInput) -> ResolveGuidsStageOutput:
         """Resolve members from interfaces or GUIDs into Nautobot interface records."""
-        resolved, display = await resolve_members(stage_input.interfaces, stage_input.guids)
+        resolved, display = await resolve_members(
+            stage_input.interfaces,
+            stage_input.guids,
+            stage_input.default_membership,
+            stage_input.guid_memberships,
+        )
         return self.ResolveGuidsStageOutput(resolved=resolved, display=display)
 
     # ------------------------------------------------------------------
@@ -217,7 +234,7 @@ class IBPKeyMemberAddWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin):
         site: str | None
         pkey: str
         guids: list[str]
-        membership_type: str
+        memberships: list[str]
         ip_over_ib: bool
 
     class AddMembersStageOutput(StageOutput):
@@ -236,7 +253,7 @@ class IBPKeyMemberAddWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin):
                 site=stage_input.site,
                 pkey=stage_input.pkey,
                 guids=stage_input.guids,
-                membership=stage_input.membership_type,
+                memberships=stage_input.memberships,
                 ip_over_ib=stage_input.ip_over_ib,
             ),
             start_to_close_timeout=timedelta(minutes=2),
@@ -259,6 +276,7 @@ class IBPKeyMemberAddWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin):
         site: str | None
         pkey: str
         expected_guids: list[str]
+        expected_memberships: list[str]
 
     class VerifyMembersStageOutput(StageOutput):
         """Verify Members Stage Output."""
@@ -278,6 +296,7 @@ class IBPKeyMemberAddWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin):
                 site=stage_input.site,
                 pkey=stage_input.pkey,
                 expected_guids=stage_input.expected_guids,
+                expected_memberships=stage_input.expected_memberships,
             ),
             start_to_close_timeout=timedelta(minutes=2),
             retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
@@ -346,10 +365,14 @@ class IBPKeyMemberAddWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin):
             self.ResolveGuidsStageInput(
                 interfaces=workflow_input.interfaces,
                 guids=workflow_input.guids,
+                guid_memberships=workflow_input.guid_memberships,
+                default_membership=workflow_input.membership_type,
             )
         )
 
         guids = [r.guid for r in resolve_output.resolved]
+        memberships = [r.membership for r in resolve_output.resolved]
+        membership_by_guid = {r.guid: r.membership for r in resolve_output.resolved}
 
         add_output = await self.add_members(
             self.AddMembersStageInput(
@@ -357,7 +380,7 @@ class IBPKeyMemberAddWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin):
                 site=context.site,
                 pkey=context.pkey,
                 guids=guids,
-                membership_type=workflow_input.membership_type,
+                memberships=memberships,
                 ip_over_ib=workflow_input.ip_over_ib,
             )
         )
@@ -368,6 +391,7 @@ class IBPKeyMemberAddWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin):
                 site=context.site,
                 pkey=context.pkey,
                 expected_guids=add_output.guids_added,
+                expected_memberships=[membership_by_guid[g] for g in add_output.guids_added],
             )
         )
 

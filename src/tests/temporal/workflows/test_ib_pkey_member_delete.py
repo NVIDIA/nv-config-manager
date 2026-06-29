@@ -25,6 +25,7 @@ from temporalio.worker import Worker
 
 from nv_config_manager.temporal.common.secrets import clear_secrets_cache
 from nv_config_manager.temporal.ngc.activities.ib_nautobot import (
+    cleanup_empty_pkey_partition,
     remove_pkey_assignments,
     resolve_guids_to_interfaces,
     resolve_ib_context,
@@ -115,12 +116,14 @@ _ALL_ACTIVITIES = [
     remove_guids_from_pkey,
     verify_pkey_members_absent,
     remove_pkey_assignments,
+    cleanup_empty_pkey_partition,
     publish_nats,
 ]
 
 
 _NB_INTERFACES = re.compile(rf"{re.escape(NB_API)}/dcim/interfaces/.*")
 _NB_ASSIGNMENTS = re.compile(rf"{re.escape(PLUGIN)}/overlay-assignments/.*")
+_NB_PKEYS = re.compile(rf"{re.escape(PLUGIN)}/pkeys/.*")
 # UFM DELETE endpoint format: /resources/pkeys/<pkey>/guids/<csv>
 _UFM_DELETE = re.compile(rf"{re.escape(UFM_BASE)}/resources/pkeys/.+/guids/.+")
 
@@ -182,6 +185,10 @@ def _stub_full_run(m: aioresponses) -> None:
     )
     m.delete(f"{PLUGIN}/overlay-assignments/{ASSIGNMENT_UUID_2}/", payload={})
 
+    # Stage 5: cleanup_partition - overlay now empty, so the stale PKey is deleted.
+    m.get(_NB_ASSIGNMENTS, payload={"results": []})
+    m.delete(_NB_PKEYS, payload={})
+
 
 @pytest.mark.asyncio
 async def test_full_workflow_happy_path(mock_all_configs, time_skipping_env):
@@ -220,6 +227,9 @@ async def test_full_workflow_happy_path(mock_all_configs, time_skipping_env):
     assert result.verified is True
     assert sorted(result.assignment_ids_removed) == sorted([ASSIGNMENT_UUID_1, ASSIGNMENT_UUID_2])
     assert result.interface_ids_not_assigned == []
+    assert result.partition_empty is True
+    assert result.pkey_deleted is True
+    assert result.overlay_deleted is False
 
 
 @pytest.mark.asyncio
@@ -255,6 +265,9 @@ async def test_idempotent_no_existing_assignment(mock_all_configs, time_skipping
                 )
                 # No assignment found -> no DELETE issued, but workflow still succeeds
                 m.get(_NB_ASSIGNMENTS, payload={"results": []})
+                # cleanup_partition: overlay empty -> delete the stale PKey
+                m.get(_NB_ASSIGNMENTS, payload={"results": []})
+                m.delete(_NB_PKEYS, payload={})
 
                 result = await env.client.execute_workflow(
                     IBPKeyMemberDeleteWorkflow.run,
@@ -272,6 +285,9 @@ async def test_idempotent_no_existing_assignment(mock_all_configs, time_skipping
     assert result.members_removed == 1
     assert result.assignment_ids_removed == []
     assert result.interface_ids_not_assigned == [IFACE_UUID_1]
+    assert result.partition_empty is True
+    assert result.pkey_deleted is True
+    assert result.overlay_deleted is False
 
 
 def test_input_rejects_neither():
@@ -326,6 +342,9 @@ async def test_guids_only_path(mock_all_configs, time_skipping_env):
                     payload={"results": [{"id": ASSIGNMENT_UUID_1}]},
                 )
                 m.delete(f"{PLUGIN}/overlay-assignments/{ASSIGNMENT_UUID_1}/", payload={})
+                # cleanup_partition: overlay empty -> delete the stale PKey
+                m.get(_NB_ASSIGNMENTS, payload={"results": []})
+                m.delete(_NB_PKEYS, payload={})
 
                 result = await env.client.execute_workflow(
                     IBPKeyMemberDeleteWorkflow.run,

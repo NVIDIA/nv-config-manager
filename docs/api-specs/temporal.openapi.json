@@ -466,6 +466,14 @@
       "IBPKeyMemberAddInput": {
         "description": "InfiniBand PKey Member Add Workflow Input.\n\nSite and Overlay are resolved server-side from ``host`` and ``pkey``.",
         "properties": {
+          "guid_memberships": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Guid Memberships",
+            "type": "array"
+          },
           "guids": {
             "default": [],
             "items": {
@@ -546,6 +554,14 @@
       "IBPKeyMemberUpdateInput": {
         "description": "InfiniBand PKey Member Update Workflow Input.\n\nSite and Overlay are resolved server-side from ``host`` and ``pkey``.",
         "properties": {
+          "guid_memberships": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Guid Memberships",
+            "type": "array"
+          },
           "guids": {
             "default": [],
             "items": {
@@ -666,7 +682,7 @@
         "type": "object"
       },
       "InterfaceRef": {
-        "description": "A device/interface name pair used to look up an interface in Nautobot.",
+        "description": "A device/interface name pair used to look up an interface in Nautobot.\n\n``membership`` is an optional per-port override (\"full\"/\"limited\"); when unset\nthe caller's workflow-level default is applied.",
         "properties": {
           "device": {
             "title": "Device",
@@ -675,6 +691,17 @@
           "interface": {
             "title": "Interface",
             "type": "string"
+          },
+          "membership": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Membership"
           }
         },
         "required": [

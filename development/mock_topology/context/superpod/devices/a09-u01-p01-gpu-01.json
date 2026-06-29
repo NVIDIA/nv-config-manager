@@ -62,7 +62,7 @@
                     "tagged_vlans": [],
                     "ip_addresses": [],
                     "custom_fields": {
-                        "ib_guid": "0x002c903002112201"
+                        "ib_guid": "002c903002112201"
                     },
                     "connected_interface": {
                         "device": {
@@ -88,7 +88,7 @@
                     "tagged_vlans": [],
                     "ip_addresses": [],
                     "custom_fields": {
-                        "ib_guid": "0x002c903002112202"
+                        "ib_guid": "002c903002112202"
                     },
                     "connected_interface": {
                         "device": {

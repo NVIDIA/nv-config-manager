@@ -23,7 +23,7 @@ from pydantic import BaseModel
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
-from nv_config_manager.temporal.client.ufm import UFMClient
+from nv_config_manager.temporal.client.ufm import UFMClient, UFMClientError
 from nv_config_manager.temporal.common.mixins.stage import StageOutput
 
 log = logging.getLogger(__name__)
@@ -85,13 +85,17 @@ class VerifyPKeyOutput(StageOutput):
 
 
 class AddGuidsInput(BaseModel):
-    """Parameters for adding port GUIDs to an existing PKey partition."""
+    """Parameters for adding port GUIDs to an existing PKey partition.
+
+    ``memberships`` is index-aligned with ``guids`` (one "full"/"limited" per
+    GUID), the per-port form UFM accepts via the ``memberships`` array.
+    """
 
     host: str
     site: str | None = None
     pkey: str
     guids: list[str]
-    membership: str = "full"
+    memberships: list[str]
     ip_over_ib: bool = True
     index0: bool = False
 
@@ -103,13 +107,43 @@ class AddGuidsOutput(StageOutput):
     guids_added: list[str]
 
 
+class SetGuidsInput(BaseModel):
+    """Parameters for atomically setting a PKey's exact GUID membership.
+
+    ``memberships`` is index-aligned with ``guids`` (one "full"/"limited" per
+    GUID), the per-port form UFM accepts via the ``memberships`` array.
+    """
+
+    host: str
+    site: str | None = None
+    pkey: str
+    guids: list[str]
+    memberships: list[str]
+    ip_over_ib: bool = True
+    index0: bool = False
+
+
+class SetGuidsOutput(StageOutput):
+    """The exact GUID set the PKey was reset to."""
+
+    pkey: str
+    guids_set: list[str]
+    memberships_set: list[str]
+
+
 class VerifyPKeyMembersInput(BaseModel):
-    """Parameters for checking that expected GUIDs appear in a PKey's member list."""
+    """Parameters for checking that expected GUIDs appear in a PKey's member list.
+
+    When ``expected_memberships`` is supplied it is index-aligned with
+    ``expected_guids`` and each GUID's membership on UFM is verified too.
+    """
 
     host: str
     site: str | None = None
     pkey: str
     expected_guids: list[str]
+    expected_memberships: list[str] | None = None
+    exact: bool = False
 
 
 class VerifyPKeyMembersOutput(StageOutput):
@@ -119,6 +153,16 @@ class VerifyPKeyMembersOutput(StageOutput):
     verified: bool
     present_guids: list[str]
     missing_guids: list[str]
+
+
+def _validate_memberships_aligned(pkey: str, guids: list[str], memberships: list[str]) -> None:
+    """Ensure ``memberships`` is index-aligned with ``guids``."""
+    if len(memberships) != len(guids):
+        raise ApplicationError(
+            f"PKey {pkey}: memberships length ({len(memberships)}) must match "
+            f"guids length ({len(guids)})",
+            non_retryable=True,
+        )
 
 
 def _parse_pkey_int(pkey_str: str) -> int:
@@ -263,20 +307,23 @@ async def add_guids_to_pkey(input: AddGuidsInput) -> AddGuidsOutput:
             display=f"No GUIDs to add to PKey {input.pkey}",
         )
 
+    _validate_memberships_aligned(input.pkey, input.guids, input.memberships)
+
     payload: dict[str, Any] = {
         "pkey": input.pkey,
         "guids": input.guids,
-        "membership": input.membership,
+        "memberships": input.memberships,
         "ip_over_ib": input.ip_over_ib,
         "index0": input.index0,
     }
 
     log.info(
-        "Adding %d GUIDs to PKey %s on UFM at %s: %s",
+        "Adding %d GUIDs to PKey %s on UFM at %s: %s (memberships=%s)",
         len(input.guids),
         input.pkey,
         input.host,
         input.guids,
+        input.memberships,
     )
 
     async with UFMClient(host=input.host, site=input.site) as client:
@@ -388,6 +435,46 @@ async def remove_guids_from_pkey(input: RemoveGuidsInput) -> RemoveGuidsOutput:
 
 
 @activity.defn
+async def set_pkey_members(input: SetGuidsInput) -> SetGuidsOutput:
+    """Atomically replace a PKey's entire GUID membership on UFM."""
+    if not input.guids:
+        raise ApplicationError(
+            f"set_pkey_members requires a non-empty GUID set for PKey {input.pkey}; "
+            "emptying a partition is handled by the delete workflow",
+            non_retryable=True,
+        )
+
+    _validate_memberships_aligned(input.pkey, input.guids, input.memberships)
+
+    payload: dict[str, Any] = {
+        "pkey": input.pkey,
+        "guids": input.guids,
+        "memberships": input.memberships,
+        "ip_over_ib": input.ip_over_ib,
+        "index0": input.index0,
+    }
+
+    log.info(
+        "Setting PKey %s membership on UFM at %s to %d GUID(s): %s (memberships=%s)",
+        input.pkey,
+        input.host,
+        len(input.guids),
+        input.guids,
+        input.memberships,
+    )
+
+    async with UFMClient(host=input.host, site=input.site) as client:
+        await client.request("PUT", "/resources/pkeys/", json=payload)
+
+    return SetGuidsOutput(
+        pkey=input.pkey,
+        guids_set=input.guids,
+        memberships_set=input.memberships,
+        display=f"Set PKey {input.pkey} membership to {len(input.guids)} GUID(s)",
+    )
+
+
+@activity.defn
 async def verify_pkey_members(input: VerifyPKeyMembersInput) -> VerifyPKeyMembersOutput:
     """Verify that all expected GUIDs are present as members of a PKey on UFM."""
     log.info(
@@ -425,6 +512,23 @@ async def verify_pkey_members(input: VerifyPKeyMembersInput) -> VerifyPKeyMember
             non_retryable=False,
         )
 
+    if input.exact:
+        unexpected = sorted(present_set - expected_set)
+        if unexpected:
+            raise ApplicationError(
+                f"PKey {input.pkey}: {len(unexpected)} unexpected GUID(s) present on UFM: "
+                f"{unexpected}",
+                non_retryable=False,
+            )
+
+    if input.expected_memberships is not None:
+        _verify_memberships(
+            pkey=input.pkey,
+            raw_guids=raw_guids,
+            expected_guids=input.expected_guids,
+            expected_memberships=input.expected_memberships,
+        )
+
     log.info("All %d GUID(s) verified in PKey %s", len(input.expected_guids), input.pkey)
 
     return VerifyPKeyMembersOutput(
@@ -434,6 +538,38 @@ async def verify_pkey_members(input: VerifyPKeyMembersInput) -> VerifyPKeyMember
         missing_guids=[],
         display=f"All {len(input.expected_guids)} GUID(s) verified in PKey {input.pkey}",
     )
+
+
+def _verify_memberships(
+    pkey: str,
+    raw_guids: list[Any],
+    expected_guids: list[str],
+    expected_memberships: list[str],
+) -> None:
+    """Raise if any expected GUID's membership on UFM differs from what we set."""
+    if len(expected_memberships) != len(expected_guids):
+        raise ApplicationError(
+            f"PKey {pkey}: expected_memberships length ({len(expected_memberships)}) "
+            f"must match expected_guids length ({len(expected_guids)})",
+            non_retryable=True,
+        )
+
+    membership_by_guid: dict[str, str] = {}
+    for entry in raw_guids:
+        if isinstance(entry, dict):
+            guid = str(entry.get("guid", "")).lower()
+            membership_by_guid[guid] = str(entry.get("membership", "")).lower()
+
+    mismatches = {
+        guid.lower(): (membership_by_guid.get(guid.lower()), expected.lower())
+        for guid, expected in zip(expected_guids, expected_memberships, strict=True)
+        if membership_by_guid.get(guid.lower()) != expected.lower()
+    }
+    if mismatches:
+        raise ApplicationError(
+            f"PKey {pkey}: membership mismatch on UFM: {mismatches}",
+            non_retryable=False,
+        )
 
 
 class VerifyPKeyMembersAbsentInput(BaseModel):
@@ -465,11 +601,24 @@ async def verify_pkey_members_absent(
         input.host,
     )
 
-    async with UFMClient(host=input.host, site=input.site) as client:
-        pkey_data = await client.request(
-            "GET",
-            f"/resources/pkeys/{input.pkey}",
-            params={"guids_data": "true"},
+    try:
+        async with UFMClient(host=input.host, site=input.site) as client:
+            pkey_data = await client.request(
+                "GET",
+                f"/resources/pkeys/{input.pkey}",
+                params={"guids_data": "true"},
+            )
+    except UFMClientError as e:
+        if e.status_code != 404:
+            raise
+        # UFM auto-removes a partition once its last member is gone, so a 404
+        # here means the forbidden GUIDs are definitively absent.
+        log.info("PKey %s no longer exists on UFM; members are absent", input.pkey)
+        return VerifyPKeyMembersAbsentOutput(
+            pkey=input.pkey,
+            verified=True,
+            still_present_guids=[],
+            display=f"PKey {input.pkey} no longer exists on UFM; all members absent",
         )
 
     if not isinstance(pkey_data, dict):
