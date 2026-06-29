@@ -37,7 +37,9 @@ with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.common.mixins.archive import ArchiveMixin
     from nv_config_manager.temporal.common.mixins.device import DeviceMixin, NetworkDeviceData
     from nv_config_manager.temporal.ngc.activities.deploy import (
+        LoadPartialConfigurationActivityInput,
         WaitForTenantRenderInput,
+        load_partial_configuration,
         wait_for_tenant_render,
     )
     from nv_config_manager.temporal.ngc.activities.nautobot import (
@@ -911,14 +913,29 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
         tenant_config_file = stage_input.device.tenant_config_file
         tenant_config_commit_id = result.get_commit(tenant_config_file)
         intended_config_commit_id = result.get_commit(stage_input.device.intended_config_file)
-        if tenant_config_commit_id is None or intended_config_commit_id is None:
-            missing_files = []
-            if tenant_config_commit_id is None:
-                missing_files.append(tenant_config_file)
-            if intended_config_commit_id is None:
-                missing_files.append(stage_input.device.intended_config_file)
-            raise ApplicationError(
-                f"Render did not return commit IDs for: {', '.join(missing_files)}"
+
+        # A Nautobot-triggered render can commit the same content just before this
+        # forced render. In that case updated_files omits the unchanged file, so use
+        # the version that the successful forced render just confirmed as current.
+        if tenant_config_commit_id is None:
+            _, tenant_config_commit_id, _ = await workflow.execute_activity(
+                load_partial_configuration,
+                LoadPartialConfigurationActivityInput(
+                    device_data=stage_input.device,
+                    config_file=tenant_config_file,
+                ),
+                start_to_close_timeout=timedelta(minutes=1),
+                retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+            )
+        if intended_config_commit_id is None:
+            _, intended_config_commit_id, _ = await workflow.execute_activity(
+                load_partial_configuration,
+                LoadPartialConfigurationActivityInput(
+                    device_data=stage_input.device,
+                    config_file=stage_input.device.intended_config_file,
+                ),
+                start_to_close_timeout=timedelta(minutes=1),
+                retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
             )
 
         display_message = f"Rendered tenant configuration (config ID: {tenant_config_commit_id})"

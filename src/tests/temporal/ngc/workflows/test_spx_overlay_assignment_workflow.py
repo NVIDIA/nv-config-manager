@@ -28,6 +28,11 @@ from temporalio.exceptions import ApplicationError
 from temporalio.worker import Worker
 
 from nv_config_manager.temporal.common.mixins.device import InterfaceData, NetworkDeviceData
+from nv_config_manager.temporal.ngc.activities.deploy import (
+    LoadPartialConfigurationActivityInput,
+    WaitForTenantRenderInput,
+    WaitForTenantRenderOutput,
+)
 from nv_config_manager.temporal.ngc.activities.nats import publish_nats
 from nv_config_manager.temporal.ngc.activities.nautobot import (
     AssignVrfToDeviceInput,
@@ -44,6 +49,10 @@ from nv_config_manager.temporal.ngc.activities.nautobot import (
     ReconcileSpXOverlayAssignmentsInput,
     ReconcileSpXOverlayAssignmentsOutput,
     Vrf,
+)
+from nv_config_manager.temporal.ngc.activities.render import (
+    ExecuteRenderInput,
+    ExecuteRenderOutput,
 )
 from nv_config_manager.temporal.ngc.workflows.deploy import TenantDeployInput
 from nv_config_manager.temporal.ngc.workflows.spx_overlay import (
@@ -149,6 +158,13 @@ async def mock_get_device_interfaces(
             mac_address="00:00:00:00:00:02",
             vrf_id="mock_namespace1" if "swp2" in interfaces_with_vrf else None,
         ),
+        InterfaceData(
+            id="interface3_id",
+            name="swp3",
+            host="mock_device",
+            mac_address="00:00:00:00:00:03",
+            vrf_id="mock_namespace1" if "swp3" in interfaces_with_vrf else None,
+        ),
     ]
 
     if activity_input.interface_names:
@@ -192,6 +208,29 @@ async def mock_check_recorded_config_drift(
 ) -> bool:
     """Mock pending deployment check."""
     return bool(_mock_state["recorded_config_drift"])
+
+
+@activity.defn(name="execute_render")
+async def mock_execute_render(_activity_input: ExecuteRenderInput) -> ExecuteRenderOutput:
+    """Model the forced render losing a race with the Nautobot render consumer."""
+    return ExecuteRenderOutput(updated_files=[])
+
+
+@activity.defn(name="load_partial_configuration")
+async def mock_load_partial_configuration(
+    activity_input: LoadPartialConfigurationActivityInput,
+) -> tuple[str, str, str]:
+    """Return the versions already committed by the Nautobot-triggered render."""
+    commit_id = "7" if activity_input.config_file == "tenant.yaml" else "11"
+    return "mock config", commit_id, "https://config-store.example.com"
+
+
+@activity.defn(name="wait_for_tenant_render")
+async def mock_wait_for_tenant_render(
+    activity_input: WaitForTenantRenderInput,
+) -> WaitForTenantRenderOutput:
+    """Return the tenant version immediately."""
+    return WaitForTenantRenderOutput(config_id=activity_input.config_id)
 
 
 @workflow.defn(name="TenantDeployWorkflow", sandboxed=False)
@@ -369,6 +408,67 @@ async def test_spx_overlay_tenant_change_is_noop_when_already_assigned(
         assert stages["render_tenant_config"]["state"] == "UNREACHABLE"
         assert stages["wait_for_render"]["state"] == "UNREACHABLE"
         assert stages["deploy"]["state"] == "UNREACHABLE"
+
+
+@pytest.mark.asyncio
+@patch("nv_config_manager.temporal.ngc.activities.nats.NatsProducer", autospec=True)
+@patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
+async def test_spx_overlay_tenant_change_uses_current_versions_after_render_race(
+    _mock_time, _mock_nats_client, env
+):
+    """Use versions committed by the Nautobot consumer before the forced render."""
+
+    _mock_state["vrf_exists"] = True
+    _mock_state["interfaces_with_vrf"] = ["swp1", "swp2"]
+    _mock_state["reconcile_calls"] = 0
+
+    task_queue_name = str(uuid.uuid4())
+    async with Worker(
+        env.client,
+        task_queue=task_queue_name,
+        workflows=[
+            SpXOverlayAssignmentWorkflow,
+            SpXOverlayTenantChangeWorkflow,
+            MockTenantDeployWorkflow,
+        ],
+        activities=[
+            mock_get_network_device,
+            mock_get_vrfs_by_overlay_id,
+            mock_get_device_vrfs,
+            mock_assign_vrf_to_device,
+            mock_get_device_interfaces,
+            mock_assign_vrf_to_interface,
+            mock_reconcile_spx_overlay_assignments,
+            mock_execute_render,
+            mock_load_partial_configuration,
+            mock_wait_for_tenant_render,
+            publish_nats,
+        ],
+        activity_executor=ThreadPoolExecutor(1),
+    ):
+        handle = await env.client.start_workflow(
+            SpXOverlayTenantChangeWorkflow.run,
+            SpXOverlayTenantChangeInput(
+                overlay_id="mock_overlay_id",
+                device_id="mock_device_id_with_vrf",
+                port_names=["swp1", "swp2", "swp3"],
+                site="mock_site",
+            ),
+            id=str(uuid.uuid4()),
+            task_queue=task_queue_name,
+            run_timeout=timedelta(seconds=30),
+        )
+
+        result = await handle.result()
+
+        assert result.assigned_ports == ["swp3"]
+        assert result.device_deployed == "mock_device_id_with_vrf"
+
+        stages = {stage["name"]: stage for stage in await handle.query("stages")}
+        assert stages["render_tenant_config"]["state"] == "COMPLETE"
+        assert stages["render_tenant_config"]["output"]["tenant_config_commit_id"] == "7"
+        assert stages["render_tenant_config"]["output"]["intended_config_commit_id"] == "11"
+        assert stages["deploy"]["state"] == "COMPLETE"
 
 
 @pytest.mark.asyncio
