@@ -56,11 +56,21 @@ from nv_config_manager.temporal.ngc.activities.render import (
 )
 from nv_config_manager.temporal.ngc.workflows.deploy import TenantDeployInput
 from nv_config_manager.temporal.ngc.workflows.spx_overlay import (
+    SPX_OVERLAY_ASSIGNMENTS_PATCH,
+    SPX_TENANT_CHANGE_DEPLOYMENT_PATCH,
     SpXOverlayAssignmentInput,
     SpXOverlayAssignmentWorkflow,
     SpXOverlayTenantChangeInput,
     SpXOverlayTenantChangeWorkflow,
 )
+
+
+def _legacy_spx_patch(patch_id: str) -> bool:
+    """Select legacy SpX paths while leaving unrelated patches enabled."""
+    return patch_id not in {
+        SPX_OVERLAY_ASSIGNMENTS_PATCH,
+        SPX_TENANT_CHANGE_DEPLOYMENT_PATCH,
+    }
 
 
 def make_test_vrf(namespace: str) -> dict[str, Any]:
@@ -468,6 +478,71 @@ async def test_spx_overlay_tenant_change_uses_current_versions_after_render_race
         assert stages["render_tenant_config"]["state"] == "COMPLETE"
         assert stages["render_tenant_config"]["output"]["tenant_config_commit_id"] == "7"
         assert stages["render_tenant_config"]["output"]["intended_config_commit_id"] == "11"
+        assert stages["deploy"]["state"] == "COMPLETE"
+
+
+@pytest.mark.asyncio
+@patch(
+    "nv_config_manager.temporal.ngc.workflows.spx_overlay.workflow.patched",
+    side_effect=_legacy_spx_patch,
+)
+@patch("nv_config_manager.temporal.ngc.activities.nats.NatsProducer", autospec=True)
+@patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
+async def test_spx_overlay_tenant_change_preserves_legacy_command_path(
+    _mock_time, _mock_nats_client, _mock_patched, env
+):
+    """Histories without patch markers retain the original activity sequence."""
+    _mock_state["vrf_exists"] = True
+    _mock_state["interfaces_with_vrf"] = ["swp1"]
+    _mock_state["reconcile_calls"] = 0
+
+    task_queue_name = str(uuid.uuid4())
+    async with Worker(
+        env.client,
+        task_queue=task_queue_name,
+        workflows=[
+            SpXOverlayAssignmentWorkflow,
+            SpXOverlayTenantChangeWorkflow,
+            MockTenantDeployWorkflow,
+        ],
+        activities=[
+            mock_get_network_device,
+            mock_get_vrfs_by_overlay_id,
+            mock_get_device_vrfs,
+            mock_assign_vrf_to_device,
+            mock_get_device_interfaces,
+            mock_assign_vrf_to_interface,
+            mock_execute_render,
+            mock_wait_for_tenant_render,
+            publish_nats,
+        ],
+        activity_executor=ThreadPoolExecutor(1),
+    ):
+        handle = await env.client.start_workflow(
+            SpXOverlayTenantChangeWorkflow.run,
+            SpXOverlayTenantChangeInput(
+                overlay_id="mock_overlay_id",
+                device_id="mock_device_id_with_vrf",
+                port_names=["swp1", "swp2"],
+                site="mock_site",
+            ),
+            id=str(uuid.uuid4()),
+            task_queue=task_queue_name,
+            run_timeout=timedelta(seconds=30),
+        )
+
+        result = await handle.result()
+
+        assert result.assigned_ports == ["swp2"]
+        assert result.device_deployed == "mock_device_id_with_vrf"
+        assert _mock_state["reconcile_calls"] == 0
+
+        stages = {stage["name"]: stage for stage in await handle.query("stages")}
+        assert "determine_deployment_action" not in stages
+        assert stages["render_tenant_config"]["output"] == {
+            "config_id": None,
+            "display": "Rendered tenant configuration",
+        }
         assert stages["deploy"]["state"] == "COMPLETE"
 
 
