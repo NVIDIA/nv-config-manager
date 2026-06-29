@@ -26,6 +26,7 @@ from temporalio.client import Client, WorkflowFailureError, WorkflowHandle
 from temporalio.worker import Worker
 
 from nv_config_manager.temporal.common.mixins.device import NetworkDeviceData, Platform
+from nv_config_manager.temporal.converter import get_data_converter
 from nv_config_manager.temporal.ngc.activities.backup import (
     load_running_configuration,
 )
@@ -163,6 +164,18 @@ def test_tenant_deploy_input_allows_snapshot_commit_ids_to_be_omitted():
 
     assert deploy_input.tenant_config_commit_id is None
     assert deploy_input.intended_config_commit_id is None
+
+
+@pytest.mark.asyncio
+async def test_tenant_deploy_input_preserves_omitted_snapshot_ids_during_temporal_round_trip():
+    """Temporal serialization must not turn omitted snapshot IDs into explicit nulls."""
+    converter = get_data_converter()
+    deploy_input = TenantDeployInput(device="mock_device_uuid")
+
+    payloads = await converter.encode([deploy_input])
+    [decoded_input] = await converter.decode(payloads, [TenantDeployInput])
+
+    assert decoded_input == deploy_input
 
 
 @activity.defn(name="load_partial_configuration")

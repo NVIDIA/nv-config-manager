@@ -45,6 +45,7 @@ from nv_config_manager.temporal.ngc.activities.nautobot import (
     ReconcileSpXOverlayAssignmentsOutput,
     Vrf,
 )
+from nv_config_manager.temporal.ngc.workflows.deploy import TenantDeployInput
 from nv_config_manager.temporal.ngc.workflows.spx_overlay import (
     SpXOverlayAssignmentInput,
     SpXOverlayAssignmentWorkflow,
@@ -198,7 +199,7 @@ class MockTenantDeployWorkflow:
     """Mock tenant deploy child workflow."""
 
     @workflow.run
-    async def run(self, _workflow_input: Any) -> bool:
+    async def run(self, _workflow_input: TenantDeployInput) -> bool:
         """Mock tenant deploy run."""
         return True
 

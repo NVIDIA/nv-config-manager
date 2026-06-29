@@ -16,7 +16,14 @@
 
 from datetime import timedelta
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    model_serializer,
+    model_validator,
+)
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 from temporalio.exceptions import ActivityError, ApplicationError
@@ -426,6 +433,20 @@ class TenantDeployInput(BaseModel):
                 "tenant_config_commit_id and intended_config_commit_id must both be non-null or both be omitted"
             )
         return self
+
+    @model_serializer(mode="wrap")
+    def serialize_render_snapshot(
+        self, handler: SerializerFunctionWrapHandler
+    ) -> dict[str, object]:
+        """Keep omitted snapshot IDs absent during Temporal serialization."""
+        data = handler(self)
+        if not self.model_fields_set & {
+            "tenant_config_commit_id",
+            "intended_config_commit_id",
+        }:
+            data.pop("tenant_config_commit_id", None)
+            data.pop("intended_config_commit_id", None)
+        return data
 
 
 @workflow.defn
