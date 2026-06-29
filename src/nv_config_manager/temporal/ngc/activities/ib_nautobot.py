@@ -733,12 +733,18 @@ def _is_auto_created_overlay_name(overlay_name: str, pkey: str) -> bool:
 
 
 class CleanupEmptyPartitionInput(BaseModel):
-    """Parameters for reconciling Nautobot after a PKey partition empties out."""
+    """Parameters for reconciling Nautobot after a PKey partition empties out.
+
+    ``ufm_partition_empty`` is the verified UFM state (404 or zero members). The
+    Nautobot PKey/Overlay are only deleted when UFM agrees the partition is
+    empty, so untracked UFM-only members can't be silently orphaned.
+    """
 
     overlay_id: str
     overlay_name: str
     pkey_id: str
     pkey: str
+    ufm_partition_empty: bool = False
 
 
 class CleanupEmptyPartitionOutput(StageOutput):
@@ -756,7 +762,9 @@ async def cleanup_empty_pkey_partition(
     """Delete the Nautobot InfiniBandPKey and auto-created Overlay once empty.
 
     UFM auto-removes a PKey partition when its last member leaves.
-    After assignments are removed, this reconciles Nautobot.
+    After assignments are removed, this reconciles Nautobot -- but only when the
+    UFM partition is also verified empty, so UFM-only members (drift Nautobot
+    never tracked) don't get orphaned as a live partition with no Nautobot record.
     If the overlay was auto-created and has no other PKeys, it is also deleted.
     """
     client = NautobotClient()
@@ -774,6 +782,23 @@ async def cleanup_empty_pkey_partition(
                 display=(
                     f"Overlay {input.overlay_id} still has {len(remaining)} member(s); "
                     "leaving PKey and Overlay in place"
+                ),
+            )
+
+        if not input.ufm_partition_empty:
+            log.warning(
+                "PKey %s has no Nautobot assignments but its UFM partition still has "
+                "members; leaving Nautobot PKey/Overlay in place to avoid orphaning "
+                "untracked UFM members",
+                input.pkey,
+            )
+            return CleanupEmptyPartitionOutput(
+                partition_empty=False,
+                pkey_deleted=False,
+                overlay_deleted=False,
+                display=(
+                    f"PKey {input.pkey} still has untracked members on UFM; "
+                    "leaving Nautobot PKey and Overlay in place"
                 ),
             )
 

@@ -35,6 +35,7 @@ from nv_config_manager.temporal.ngc.activities.ib_nautobot import (
 from nv_config_manager.temporal.ngc.activities.ib_pkey import (
     AddGuidsInput,
     VerifyPKeyMembersAbsentInput,
+    VerifyPKeyMembersAbsentOutput,
     VerifyPKeyMembersInput,
     add_guids_to_pkey,
     verify_pkey_members,
@@ -383,6 +384,8 @@ class TestVerifyPKeyMembersAbsent:
 
         assert result.verified is True
         assert result.still_present_guids == []
+        assert result.partition_exists is True
+        assert result.remaining_member_count == 0
 
     @pytest.mark.asyncio
     async def test_auto_removed_pkey_is_verified_absent(self, mock_ufm_config):
@@ -400,6 +403,46 @@ class TestVerifyPKeyMembersAbsent:
 
         assert result.verified is True
         assert result.still_present_guids == []
+        assert result.partition_exists is False
+        assert result.remaining_member_count == 0
+
+    def test_legacy_payload_defaults_remaining_count_to_unknown(self):
+        """A payload missing remaining_member_count loads as None, not a proven 0.
+
+        Guards backward-compat: in-flight outputs serialized before the field
+        existed must not be mistaken for an empty partition.
+        """
+        legacy = VerifyPKeyMembersAbsentOutput(
+            pkey="0x0005",
+            verified=True,
+            still_present_guids=[],
+            display="legacy",
+        )
+
+        assert legacy.partition_exists is True
+        assert legacy.remaining_member_count is None
+
+    @pytest.mark.asyncio
+    async def test_reports_remaining_untracked_members(self, mock_ufm_config):
+        """Forbidden GUIDs gone, but other members remain: partition is NOT empty."""
+        with aioresponses() as m:
+            m.get(
+                _pkey_url("0x0005"),
+                payload={"guids": [{"guid": GUID_2, "membership": "full"}]},
+            )
+
+            result = await verify_pkey_members_absent(
+                VerifyPKeyMembersAbsentInput(
+                    host="ufm.example.com",
+                    pkey="0x0005",
+                    forbidden_guids=[GUID_1],
+                )
+            )
+
+        assert result.verified is True
+        assert result.still_present_guids == []
+        assert result.partition_exists is True
+        assert result.remaining_member_count == 1
 
     @pytest.mark.asyncio
     async def test_still_present_raises_retryable(self, mock_ufm_config):

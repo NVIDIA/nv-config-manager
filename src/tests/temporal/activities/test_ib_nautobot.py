@@ -465,12 +465,18 @@ class TestIsAutoCreatedOverlayName:
 class TestCleanupEmptyPkeyPartition:
     """Post-removal reconciliation of orphaned Nautobot PKey/Overlay records."""
 
-    def _input(self, *, overlay_name: str = "ib-pkey-overlay-0x8001") -> CleanupEmptyPartitionInput:
+    def _input(
+        self,
+        *,
+        overlay_name: str = "ib-pkey-overlay-0x8001",
+        ufm_partition_empty: bool = True,
+    ) -> CleanupEmptyPartitionInput:
         return CleanupEmptyPartitionInput(
             overlay_id=OVERLAY_UUID,
             overlay_name=overlay_name,
             pkey_id=PKEY_UUID,
             pkey="0x8001",
+            ufm_partition_empty=ufm_partition_empty,
         )
 
     @pytest.mark.asyncio
@@ -480,6 +486,22 @@ class TestCleanupEmptyPkeyPartition:
             m.get(_NB_ASSIGNMENTS, payload={"results": [{"id": "assign-1"}]})
 
             result = await cleanup_empty_pkey_partition(self._input())
+
+            assert result.partition_empty is False
+            assert result.pkey_deleted is False
+            assert result.overlay_deleted is False
+
+    @pytest.mark.asyncio
+    async def test_nautobot_empty_but_ufm_not_empty_keeps_records(self, mock_nb_config):
+        """Nautobot has no assignments, but UFM still holds untracked members.
+
+        The partition is live on UFM, so deleting the Nautobot PKey/Overlay would
+        orphan it. Cleanup must leave both in place.
+        """
+        with aioresponses() as m:
+            m.get(_NB_ASSIGNMENTS, payload={"results": []})
+
+            result = await cleanup_empty_pkey_partition(self._input(ufm_partition_empty=False))
 
             assert result.partition_empty is False
             assert result.pkey_deleted is False

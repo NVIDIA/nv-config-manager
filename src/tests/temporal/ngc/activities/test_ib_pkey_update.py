@@ -30,6 +30,7 @@ import pytest
 from aioresponses import CallbackResult, aioresponses
 from temporalio.exceptions import ApplicationError
 
+from nv_config_manager.temporal.client.ufm import UFMClientError
 from nv_config_manager.temporal.common.secrets import clear_secrets_cache
 from nv_config_manager.temporal.ngc.activities.ib_nautobot import (
     FetchPKeyAssignmentsInput,
@@ -164,14 +165,65 @@ class TestFetchPKeyMembers:
         assert result.guids == []
 
     @pytest.mark.asyncio
-    async def test_pkey_not_found_raises(self, mock_ufm_config):
+    async def test_unexpected_response_raises(self, mock_ufm_config):
+        """A non-dict UFM body (not a 404) is a hard error."""
         with aioresponses() as m:
             m.get(_pkey_members_url("0x0005"), payload=None)
 
-            with pytest.raises(ApplicationError, match="not found"):
+            with pytest.raises(ApplicationError, match="unexpected response"):
                 await fetch_pkey_members(
                     FetchPKeyMembersInput(host="ufm.example.com", pkey="0x0005")
                 )
+
+    @pytest.mark.asyncio
+    async def test_pkey_404_reports_not_exists(self, mock_ufm_config):
+        """A 404 is tolerated: the partition is reported as missing and empty."""
+        with aioresponses() as m:
+            m.get(_pkey_members_url("0x0005"), status=404)
+
+            result = await fetch_pkey_members(
+                FetchPKeyMembersInput(host="ufm.example.com", pkey="0x0005")
+            )
+
+        assert result.exists is False
+        assert result.guids == []
+        assert result.memberships == []
+        assert result.ip_over_ib is None
+
+    @pytest.mark.asyncio
+    async def test_non_404_error_propagates(self, mock_ufm_config):
+        """Only 404 is tolerated; other UFM errors must surface, not read as empty."""
+        with aioresponses() as m:
+            m.get(_pkey_members_url("0x0005"), status=500, payload={"error": "boom"})
+
+            with pytest.raises(UFMClientError):
+                await fetch_pkey_members(
+                    FetchPKeyMembersInput(host="ufm.example.com", pkey="0x0005")
+                )
+
+    @pytest.mark.asyncio
+    async def test_returns_memberships_and_ip_over_ib(self, mock_ufm_config):
+        """Membership per GUID and the partition ip_over_ib flag are surfaced."""
+        with aioresponses() as m:
+            m.get(
+                _pkey_members_url("0x0005"),
+                payload={
+                    "guids": [
+                        {"guid": GUID_1, "membership": "full"},
+                        {"guid": GUID_2, "membership": "limited"},
+                    ],
+                    "ip_over_ib": False,
+                },
+            )
+
+            result = await fetch_pkey_members(
+                FetchPKeyMembersInput(host="ufm.example.com", pkey="0x0005")
+            )
+
+        assert result.exists is True
+        assert result.guids == [GUID_1, GUID_2]
+        assert result.memberships == ["full", "limited"]
+        assert result.ip_over_ib is False
 
     @pytest.mark.asyncio
     async def test_handles_plain_string_guids(self, mock_ufm_config):
