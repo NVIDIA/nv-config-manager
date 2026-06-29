@@ -36,7 +36,6 @@ from nv_config_manager.temporal.ngc.activities.deploy import (
     perform_candidate_diff,
     validate_config_diff,
 )
-from nv_config_manager.temporal.ngc.activities.nats import publish_nats
 from nv_config_manager.temporal.ngc.activities.nautobot import (
     GetNetworkDeviceInput,
     GetNetworkDeviceOutput,
@@ -45,17 +44,11 @@ from nv_config_manager.temporal.ngc.workflows.backup import BackupWorkflow
 from nv_config_manager.temporal.ngc.workflows.deploy import (
     INTENDED_CONFIG_COMMIT_ID_DESCRIPTION,
     TENANT_CONFIG_COMMIT_ID_DESCRIPTION,
-    TENANT_DEPLOY_RENDER_SNAPSHOT_PATCH,
     DeployInput,
     DeployWorkflow,
     TenantDeployInput,
     TenantDeployWorkflow,
 )
-
-
-def _legacy_tenant_deploy_patch(patch_id: str) -> bool:
-    """Select the legacy tenant deploy path while leaving unrelated patches enabled."""
-    return patch_id != TENANT_DEPLOY_RENDER_SNAPSHOT_PATCH
 
 
 @activity.defn(name="get_network_device")
@@ -242,69 +235,6 @@ async def mock_get_ui_base_url() -> str:
 
 
 @pytest.mark.asyncio
-@patch(
-    "nv_config_manager.temporal.ngc.workflows.deploy.workflow.patched",
-    side_effect=_legacy_tenant_deploy_patch,
-)
-@patch("nv_config_manager.temporal.client.device.CumulusConnection")
-@patch("nv_config_manager.temporal.ngc.activities.nats.NatsProducer", autospec=True)
-@patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
-async def test_tenant_deploy_preserves_legacy_command_path(
-    _mock_time,
-    mock_nats_client,
-    mock_cumulus_connection,
-    _mock_patched,
-    env,
-):
-    """Histories without the snapshot marker do not load a second configuration."""
-    _newer_commit_mock_state["use_newer_commit"] = False
-    task_queue_name = str(uuid.uuid4())
-    client: Client = env.client
-
-    async with Worker(
-        client,
-        task_queue=task_queue_name,
-        workflows=[TenantDeployWorkflow, BackupWorkflow],
-        activities=[
-            mock_get_network_device,
-            mock_load_partial_configuration,
-            perform_candidate_diff,
-            load_running_configuration,
-            mock_persist_config_backup,
-            mock_record_backup_config_manager_plugin,
-            mock_get_ui_base_url,
-            publish_nats,
-        ],
-        activity_executor=ThreadPoolExecutor(5),
-    ):
-        mock_cumulus_connection.return_value.get_running_configuration.return_value = (
-            "mock running config"
-        )
-        mock_cumulus_connection.return_value.perform_candidate_diff.return_value = ""
-
-        handle: WorkflowHandle = await client.start_workflow(
-            TenantDeployWorkflow.run,
-            TenantDeployInput(device="mock_device_uuid"),
-            id=str(uuid.uuid4()),
-            task_queue=task_queue_name,
-            run_timeout=timedelta(minutes=10),
-        )
-
-        assert await handle.result() is False
-
-        stages = {stage["name"]: stage for stage in await handle.query("stages")}
-        assert stages["load_tenant_configuration"]["output"]["commit_id"] == (
-            "mock_tenant_commit_id"
-        )
-        assert (
-            stages["load_tenant_configuration"]["output"]["intended_config_commit_id"]
-            == "mock_tenant_commit_id"
-        )
-        assert stages["perform_backup"]["input"]["commit_id"] == "mock_tenant_commit_id"
-        assert mock_nats_client.return_value.publish.called
-
-
-@pytest.mark.asyncio
 @patch("nv_config_manager.temporal.client.device.CumulusConnection")
 @patch("nv_config_manager.temporal.ngc.activities.nats.NatsProducer", autospec=True)
 @patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
@@ -314,6 +244,8 @@ async def test_execute_workflow(
     mock_cumulus_connection: Any,
     env: Any,
 ) -> None:
+    from nv_config_manager.temporal.ngc.activities.nats import publish_nats
+
     task_queue_name = str(uuid.uuid4())
     client: Client = env.client
     async with Worker(
@@ -763,6 +695,8 @@ async def test_execute_workflow_no_diff(
     mock_cumulus_connection: Any,
     env: Any,
 ) -> None:
+    from nv_config_manager.temporal.ngc.activities.nats import publish_nats
+
     task_queue_name = str(uuid.uuid4())
     client: Client = env.client
     async with Worker(
@@ -930,6 +864,8 @@ async def test_execute_workflow_rejected_diff(
     env: Any,
 ) -> None:
     """Test that when a diff is rejected, apply and backup stages are UNREACHABLE."""
+    from nv_config_manager.temporal.ngc.activities.nats import publish_nats
+
     task_queue_name = str(uuid.uuid4())
     client: Client = env.client
     async with Worker(
@@ -1006,6 +942,8 @@ async def test_execute_tenant_deploy_workflow(
     mock_cumulus_connection,
     env,
 ):
+    from nv_config_manager.temporal.ngc.activities.nats import publish_nats
+
     task_queue_name = str(uuid.uuid4())
     client: Client = env.client
     async with Worker(
@@ -1408,6 +1346,7 @@ async def test_apply_config_with_ignore_fail_and_retry(
 ) -> None:
     """Test that ConfigApplyFailureException displays error message and fails workflow."""
     from nv_config_manager.temporal.client.device import ConfigApplyFailureException
+    from nv_config_manager.temporal.ngc.activities.nats import publish_nats
 
     task_queue_name = str(uuid.uuid4())
     client: Client = env.client
@@ -1505,6 +1444,8 @@ async def test_execute_tenant_deploy_workflow_invalid_config(
     mock_cumulus_connection,
     env,
 ):
+    from nv_config_manager.temporal.ngc.activities.nats import publish_nats
+
     task_queue_name = str(uuid.uuid4())
     client: Client = env.client
     async with Worker(
@@ -1575,6 +1516,8 @@ async def test_execute_tenant_deploy_workflow_newer_commit_allowed(
     env,
 ):
     """Test tenant deploy when commit is newer but all lines are allowed."""
+    from nv_config_manager.temporal.ngc.activities.nats import publish_nats
+
     _newer_commit_mock_state["use_newer_commit"] = True
     _newer_commit_mock_state["newer_commit_allowed"] = True
 
@@ -1659,6 +1602,8 @@ async def test_execute_tenant_deploy_workflow_newer_commit_disallowed(
     env,
 ):
     """Test tenant deploy when commit is newer but has disallowed lines."""
+    from nv_config_manager.temporal.ngc.activities.nats import publish_nats
+
     _newer_commit_mock_state["use_newer_commit"] = True
     _newer_commit_mock_state["newer_commit_allowed"] = False
 

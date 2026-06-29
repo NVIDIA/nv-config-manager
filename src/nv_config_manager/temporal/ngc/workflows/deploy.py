@@ -84,7 +84,6 @@ INTENDED_CONFIG_COMMIT_ID_DESCRIPTION = (
     "snapshot as tenant_config_commit_id. Must be supplied with tenant_config_commit_id; omit both "
     "to deploy the latest tenant and intended configurations."
 )
-TENANT_DEPLOY_RENDER_SNAPSHOT_PATCH = "tenant-deploy-render-snapshot-v1"
 
 
 class DeployInput(BaseModel):
@@ -543,16 +542,14 @@ class TenantDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archi
             start_to_close_timeout=timedelta(minutes=1),
             retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
         )
-        intended_config_commit_id: str | None = commit_id
-        if workflow.patched(TENANT_DEPLOY_RENDER_SNAPSHOT_PATCH):
-            intended_config_commit_id = stage_input.intended_config_commit_id
-            if intended_config_commit_id is None:
-                _, intended_config_commit_id, _ = await workflow.execute_activity(
-                    load_intended_configuration,
-                    device,
-                    start_to_close_timeout=timedelta(minutes=1),
-                    retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
-                )
+        intended_config_commit_id = stage_input.intended_config_commit_id
+        if intended_config_commit_id is None:
+            _, intended_config_commit_id, _ = await workflow.execute_activity(
+                load_intended_configuration,
+                device,
+                start_to_close_timeout=timedelta(minutes=1),
+                retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+            )
         if intended_config_commit_id is None:
             raise ApplicationError(
                 "Unable to resolve intended configuration commit ID for tenant deployment"
