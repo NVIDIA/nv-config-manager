@@ -951,6 +951,8 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
                 start_to_close_timeout=timedelta(minutes=1),
                 retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
             )
+        if tenant_config_commit_id is None or intended_config_commit_id is None:
+            raise ApplicationError("Failed to resolve rendered configuration commit IDs")
 
         display_message = f"Rendered tenant configuration (config ID: {tenant_config_commit_id})"
 

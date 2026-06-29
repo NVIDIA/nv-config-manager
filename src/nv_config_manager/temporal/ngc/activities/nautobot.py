@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 from urllib.parse import parse_qsl, urlparse
 
 import netaddr
@@ -915,14 +915,17 @@ async def _create_overlay_assignment(
     status_id: str,
 ) -> dict[str, Any]:
     """Create an overlay assignment for a Nautobot object."""
-    return await client.post(
-        OVERLAY_ASSIGNMENTS_PATH,
-        data={
-            "overlay": target_overlay_id,
-            "assigned_object_type": assigned_object_type,
-            "assigned_object_id": assigned_object_id,
-            "status": status_id,
-        },
+    return cast(
+        dict[str, Any],
+        await client.post(
+            OVERLAY_ASSIGNMENTS_PATH,
+            data={
+                "overlay": target_overlay_id,
+                "assigned_object_type": assigned_object_type,
+                "assigned_object_id": assigned_object_id,
+                "status": status_id,
+            },
+        ),
     )
 
 

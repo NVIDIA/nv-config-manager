@@ -15,6 +15,7 @@
 """Network Device Backup Workflow Definition."""
 
 from datetime import timedelta
+from typing import cast
 
 from pydantic import (
     BaseModel,
@@ -439,7 +440,7 @@ class TenantDeployInput(BaseModel):
         self, handler: SerializerFunctionWrapHandler
     ) -> dict[str, object]:
         """Keep omitted snapshot IDs absent during Temporal serialization."""
-        data = handler(self)
+        data = cast(dict[str, object], handler(self))
         if not self.model_fields_set & {
             "tenant_config_commit_id",
             "intended_config_commit_id",
