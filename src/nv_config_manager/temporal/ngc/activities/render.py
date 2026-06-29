@@ -17,7 +17,7 @@
 import asyncio
 from datetime import datetime, timedelta
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
@@ -36,11 +36,12 @@ class ExecuteRenderInput(BaseModel):
 class ExecuteRenderOutput(BaseModel):
     """Output for render operation."""
 
-    updated_files: list[FileCommit] = []
+    updated_files: list[FileCommit] = Field(default_factory=list)
+    snapshot_files: list[FileCommit] = Field(default_factory=list)
 
     def get_commit(self, filename: str) -> str | None:
-        """Look up the commit ID for a given filename."""
-        return next((fc.commit for fc in self.updated_files if fc.filename == filename), None)
+        """Look up a commit ID in the post-render Config Store snapshot."""
+        return next((fc.commit for fc in self.snapshot_files if fc.filename == filename), None)
 
 
 @activity.defn
@@ -53,13 +54,27 @@ async def execute_render(
         activity_input: Input containing the device ID
 
     Returns:
-        ExecuteRenderOutput containing updated_files list
+        ExecuteRenderOutput containing changed files and the post-render snapshot
     """
     client = render_client()
     updated_files = await client.execute_render(
         activity_input.device_id, activity_input.workflow_id
     )
-    return ExecuteRenderOutput(updated_files=updated_files)
+
+    # Config Store returns every latest file version in one response, keeping
+    # commit IDs used together for deployment pinned to the same snapshot.
+    config_client = config_store_client(ConfigStoreType.INTENDED)
+    async with config_client:
+        configs = await config_client.list_device_configs(activity_input.device_id)
+    snapshot_files = [
+        FileCommit(filename=str(config["filename"]), commit=str(config["version"]))
+        for config in configs
+    ]
+
+    return ExecuteRenderOutput(
+        updated_files=updated_files,
+        snapshot_files=snapshot_files,
+    )
 
 
 class ValidateRenderedImageChangeInput(BaseModel):

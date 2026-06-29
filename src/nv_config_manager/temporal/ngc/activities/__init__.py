@@ -120,6 +120,7 @@ from nv_config_manager.temporal.ngc.activities.nautobot import (
     get_switch_port_by_remote_mac_address,
     get_vrfs_by_overlay_id,
     provision_vrf,
+    reconcile_spx_overlay_assignments,
 )
 from nv_config_manager.temporal.ngc.activities.nvlinkswitch_firmware import (
     compare_running_desired,
@@ -203,6 +204,7 @@ REGISTERED_ACTIVITIES = [
     assign_vrf_to_device,
     get_device_interfaces,
     assign_vrf_to_interface,
+    reconcile_spx_overlay_assignments,
     get_ib_ports,
     send_slack_message,
     get_current_os,

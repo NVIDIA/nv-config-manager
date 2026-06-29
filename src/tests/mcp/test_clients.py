@@ -106,3 +106,34 @@ async def test_workflow_list_adds_config_manager_ui_href(settings: MCPSettings) 
     assert workflow["temporal_href"] == (
         "http://localhost:8080/namespaces/default/workflows/workflow-123"
     )
+
+
+async def test_fetch_device_configs_preserves_list_response_shape(
+    settings: MCPSettings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_files = [{"filename": "startup.yaml", "version": 5}]
+
+    class FakeConfigStoreClient:
+        async def __aenter__(self) -> FakeConfigStoreClient:
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+        async def list_device_configs(
+            self,
+            device_id: str,
+            file_type: str | None = "intended",
+        ) -> list[dict[str, object]]:
+            return config_files
+
+    monkeypatch.setattr(
+        clients,
+        "config_store_client",
+        lambda settings, file_type: FakeConfigStoreClient(),
+    )
+
+    result = await clients.fetch_device_configs(settings, "device-1")
+
+    assert result == {"truncated": False, "data": config_files}

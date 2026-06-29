@@ -20,11 +20,14 @@ from typing import Any
 from unittest.mock import ANY, patch
 
 import pytest
+from pydantic import ValidationError
 from temporalio import activity
 from temporalio.client import Client, WorkflowFailureError, WorkflowHandle
 from temporalio.worker import Worker
 
+from nv_config_manager.temporal.client.device import ConfigApplyFailureException
 from nv_config_manager.temporal.common.mixins.device import NetworkDeviceData, Platform
+from nv_config_manager.temporal.converter import get_data_converter
 from nv_config_manager.temporal.ngc.activities.backup import (
     load_running_configuration,
 )
@@ -34,12 +37,15 @@ from nv_config_manager.temporal.ngc.activities.deploy import (
     perform_candidate_diff,
     validate_config_diff,
 )
+from nv_config_manager.temporal.ngc.activities.nats import publish_nats
 from nv_config_manager.temporal.ngc.activities.nautobot import (
     GetNetworkDeviceInput,
     GetNetworkDeviceOutput,
 )
 from nv_config_manager.temporal.ngc.workflows.backup import BackupWorkflow
 from nv_config_manager.temporal.ngc.workflows.deploy import (
+    INTENDED_CONFIG_COMMIT_ID_DESCRIPTION,
+    TENANT_CONFIG_COMMIT_ID_DESCRIPTION,
     DeployInput,
     DeployWorkflow,
     TenantDeployInput,
@@ -88,20 +94,108 @@ _newer_commit_mock_state = {
 }
 
 
+@pytest.mark.parametrize("invalid_commit_id", ["abc", "12.5", "-1", ""])
+def test_tenant_deploy_input_rejects_non_numeric_commit_ids(invalid_commit_id):
+    """Reject invalid snapshot versions before starting the workflow."""
+    with pytest.raises(ValidationError, match="string_pattern_mismatch"):
+        TenantDeployInput(
+            device="mock_device_uuid",
+            tenant_config_commit_id=invalid_commit_id,
+            intended_config_commit_id="11",
+        )
+
+
+def test_tenant_deploy_input_schema_requires_both_snapshot_commit_ids_or_neither():
+    """Publish the runtime snapshot-pair constraint in the API schema."""
+    schema = TenantDeployInput.model_json_schema()
+
+    assert schema["oneOf"] == [
+        {
+            "required": [
+                "tenant_config_commit_id",
+                "intended_config_commit_id",
+            ],
+            "properties": {
+                "tenant_config_commit_id": {
+                    "description": TENANT_CONFIG_COMMIT_ID_DESCRIPTION,
+                    "type": "string",
+                    "pattern": r"^\d+$",
+                },
+                "intended_config_commit_id": {
+                    "description": INTENDED_CONFIG_COMMIT_ID_DESCRIPTION,
+                    "type": "string",
+                    "pattern": r"^\d+$",
+                },
+            },
+        },
+        {
+            "not": {
+                "anyOf": [
+                    {"required": ["tenant_config_commit_id"]},
+                    {"required": ["intended_config_commit_id"]},
+                ]
+            }
+        },
+    ]
+
+
+@pytest.mark.parametrize(
+    "snapshot_fields",
+    [
+        {"tenant_config_commit_id": None},
+        {"intended_config_commit_id": None},
+        {
+            "tenant_config_commit_id": None,
+            "intended_config_commit_id": None,
+        },
+        {
+            "tenant_config_commit_id": None,
+            "intended_config_commit_id": "11",
+        },
+    ],
+)
+def test_tenant_deploy_input_rejects_explicit_null_snapshot_commit_ids(snapshot_fields):
+    """Treat explicit null snapshot fields as invalid rather than omitted."""
+    with pytest.raises(ValidationError, match="must both be non-null or both be omitted"):
+        TenantDeployInput(device="mock_device_uuid", **snapshot_fields)
+
+
+def test_tenant_deploy_input_allows_snapshot_commit_ids_to_be_omitted():
+    """Keep the direct tenant-deploy latest-config path backwards compatible."""
+    deploy_input = TenantDeployInput(device="mock_device_uuid")
+
+    assert deploy_input.tenant_config_commit_id is None
+    assert deploy_input.intended_config_commit_id is None
+
+
+@pytest.mark.asyncio
+async def test_tenant_deploy_input_preserves_omitted_snapshot_ids_during_temporal_round_trip():
+    """Temporal serialization must not turn omitted snapshot IDs into explicit nulls."""
+    converter = get_data_converter()
+    deploy_input = TenantDeployInput(device="mock_device_uuid")
+
+    payloads = await converter.encode([deploy_input])
+    [decoded_input] = await converter.decode(payloads, [TenantDeployInput])
+
+    assert decoded_input == deploy_input
+
+
 @activity.defn(name="load_partial_configuration")
 async def mock_load_partial_configuration(
     activity_input: LoadPartialConfigurationActivityInput,
 ) -> tuple[str, str, str]:
+    commit_id = activity_input.commit_id or "mock_tenant_commit_id"
     # Check if we should return a newer commit for testing
     if _newer_commit_mock_state.get("use_newer_commit", False):
+        commit_id = activity_input.commit_id or "7"
         if _newer_commit_mock_state.get("newer_commit_allowed", True):
             return (
                 "nv set vrf test-vrf router bgp router-id 172.28.0.2\n"
                 "nv set vrf test-vrf router bgp autonomous-system 4266990009\n"
                 "nv set interface swp1 ip vrf test-vrf\n"
                 "nv set interface swp2 ip vrf test-vrf\n",
-                "7",  # Newer commit ID
-                "https://config-manager.example.com/device/mock_device/tenant.yaml?commit=7",
+                commit_id,
+                f"https://config-manager.example.com/device/mock_device/tenant.yaml?commit={commit_id}",
             )
         else:
             return (
@@ -110,14 +204,14 @@ async def mock_load_partial_configuration(
                 "nv set interface swp1 ip vrf test-vrf\n"
                 "nv set interface swp2 ip vrf test-vrf\n"
                 "nv set system hostname disallowed-change\n",  # Disallowed line
-                "7",  # Newer commit ID
-                "https://config-manager.example.com/device/mock_device/tenant.yaml?commit=7",
+                commit_id,
+                f"https://config-manager.example.com/device/mock_device/tenant.yaml?commit={commit_id}",
             )
     # Default behavior for other tests
     return (
         "mock tenant config",
-        "mock_tenant_commit_id",
-        "https://gitlab.example.com/example-user/intended-network-configs/-/blob/mock_tenant_commit_id/SITEA/MOCK_DEVICE/tenant.yaml",
+        commit_id,
+        f"https://config-manager.example.com/device/mock_device_uuid/tenant.yaml?commit={commit_id}",
     )
 
 
@@ -152,8 +246,6 @@ async def test_execute_workflow(
     mock_cumulus_connection: Any,
     env: Any,
 ) -> None:
-    from nv_config_manager.temporal.ngc.activities.nats import publish_nats
-
     task_queue_name = str(uuid.uuid4())
     client: Client = env.client
     async with Worker(
@@ -603,8 +695,6 @@ async def test_execute_workflow_no_diff(
     mock_cumulus_connection: Any,
     env: Any,
 ) -> None:
-    from nv_config_manager.temporal.ngc.activities.nats import publish_nats
-
     task_queue_name = str(uuid.uuid4())
     client: Client = env.client
     async with Worker(
@@ -772,8 +862,6 @@ async def test_execute_workflow_rejected_diff(
     env: Any,
 ) -> None:
     """Test that when a diff is rejected, apply and backup stages are UNREACHABLE."""
-    from nv_config_manager.temporal.ngc.activities.nats import publish_nats
-
     task_queue_name = str(uuid.uuid4())
     client: Client = env.client
     async with Worker(
@@ -850,8 +938,6 @@ async def test_execute_tenant_deploy_workflow(
     mock_cumulus_connection,
     env,
 ):
-    from nv_config_manager.temporal.ngc.activities.nats import publish_nats
-
     task_queue_name = str(uuid.uuid4())
     client: Client = env.client
     async with Worker(
@@ -861,6 +947,7 @@ async def test_execute_tenant_deploy_workflow(
         activities=[
             mock_get_network_device,
             mock_load_partial_configuration,
+            mock_load_intended_configuration,
             perform_candidate_diff,
             validate_config_diff,
             apply_approved_configuration,
@@ -902,7 +989,11 @@ nv set vrf test-ryan-2 router bgp router-id 172.28.0.2
 """
         mock_cumulus_connection.return_value.perform_candidate_diff.return_value = mock_tenant_diff
 
-        input = TenantDeployInput(device="mock_device_uuid")
+        input = TenantDeployInput(
+            device="mock_device_uuid",
+            tenant_config_commit_id="7",
+            intended_config_commit_id="11",
+        )
 
         workflow_id = str(uuid.uuid4())
         handle: WorkflowHandle = await env.client.start_workflow(
@@ -925,13 +1016,18 @@ nv set vrf test-ryan-2 router bgp router-id 172.28.0.2
                 "depends_on": [],
                 "description": "Load the latest tenant configuration from config store.",
                 "execution_time": 0.0,
-                "input": {"device": "mock_device_uuid"},
+                "input": {
+                    "device": "mock_device_uuid",
+                    "intended_config_commit_id": "11",
+                    "tenant_config_commit_id": "7",
+                },
                 "name": "load_tenant_configuration",
                 "output": {
-                    "commit_id": "mock_tenant_commit_id",
+                    "commit_id": "7",
                     "device": ANY,
                     "display": "Loaded tenant configuration from "
-                    "[mock_device_uuid/tenant.yaml](https://gitlab.example.com/example-user/intended-network-configs/-/blob/mock_tenant_commit_id/SITEA/MOCK_DEVICE/tenant.yaml).",
+                    "[mock_device_uuid/tenant.yaml](https://config-manager.example.com/device/mock_device_uuid/tenant.yaml?commit=7).",
+                    "intended_config_commit_id": "11",
                     "tenant_config": "mock tenant config",
                 },
                 "rejecters": [],
@@ -1033,7 +1129,7 @@ nv set vrf test-ryan-2 router bgp router-id 172.28.0.2
                 "description": "Run the backup workflow for the device..",
                 "execution_time": 0.0,
                 "input": {
-                    "commit_id": "mock_tenant_commit_id",
+                    "commit_id": "11",
                     "device_id": "mock_device_uuid",
                 },
                 "name": "perform_backup",
@@ -1116,11 +1212,11 @@ nv set vrf test-ryan-2 router bgp router-id 172.28.0.2
                 "execution_time": 0.0,
                 "input": {
                     "device_id": "mock_device_uuid",
-                    "intended_config_commit_id": "mock_tenant_commit_id",
+                    "intended_config_commit_id": "11",
                 },
                 "name": "check_drift",
                 "output": {
-                    "commit_id": "mock_tenant_commit_id",
+                    "commit_id": "11",
                     "diff": "",
                     "display": "No drift detected between running and intended configuration.",
                     "has_drift": False,
@@ -1169,7 +1265,7 @@ nv set vrf test-ryan-2 router bgp router-id 172.28.0.2
                         "ztp_enabled": False,
                         "config_context": None,
                     },
-                    "intended_config_commit_id": "mock_tenant_commit_id",
+                    "intended_config_commit_id": "11",
                     "running_config": "mock running config",
                     "trigger": "WORKFLOW",
                     "user": "nv-config-manager-temporal",
@@ -1203,7 +1299,7 @@ nv set vrf test-ryan-2 router bgp router-id 172.28.0.2
 
         expected_backup_input = {
             "device_id": "mock_device_uuid",
-            "intended_config_commit_id": "mock_tenant_commit_id",
+            "intended_config_commit_id": "11",
             "trigger": "WORKFLOW",
             "user": "nv-config-manager-temporal",
             "user_domain": None,
@@ -1243,9 +1339,6 @@ async def test_apply_config_with_ignore_fail_and_retry(
     env: Any,
 ) -> None:
     """Test that ConfigApplyFailureException displays error message and fails workflow."""
-    from nv_config_manager.temporal.client.device import ConfigApplyFailureException
-    from nv_config_manager.temporal.ngc.activities.nats import publish_nats
-
     task_queue_name = str(uuid.uuid4())
     client: Client = env.client
 
@@ -1342,8 +1435,6 @@ async def test_execute_tenant_deploy_workflow_invalid_config(
     mock_cumulus_connection,
     env,
 ):
-    from nv_config_manager.temporal.ngc.activities.nats import publish_nats
-
     task_queue_name = str(uuid.uuid4())
     client: Client = env.client
     async with Worker(
@@ -1353,6 +1444,7 @@ async def test_execute_tenant_deploy_workflow_invalid_config(
         activities=[
             mock_get_network_device,
             mock_load_partial_configuration,
+            mock_load_intended_configuration,
             perform_candidate_diff,
             validate_config_diff,
             apply_approved_configuration,
@@ -1372,7 +1464,11 @@ nv set interface swp1 ip address 10.0.0.1/24
 """
         mock_cumulus_connection.return_value.perform_candidate_diff.return_value = mock_invalid_diff
 
-        input = TenantDeployInput(device="mock_device_uuid")
+        input = TenantDeployInput(
+            device="mock_device_uuid",
+            tenant_config_commit_id="7",
+            intended_config_commit_id="11",
+        )
 
         workflow_id = str(uuid.uuid4())
 
@@ -1409,8 +1505,6 @@ async def test_execute_tenant_deploy_workflow_newer_commit_allowed(
     env,
 ):
     """Test tenant deploy when commit is newer but all lines are allowed."""
-    from nv_config_manager.temporal.ngc.activities.nats import publish_nats
-
     _newer_commit_mock_state["use_newer_commit"] = True
     _newer_commit_mock_state["newer_commit_allowed"] = True
 
@@ -1423,6 +1517,7 @@ async def test_execute_tenant_deploy_workflow_newer_commit_allowed(
         activities=[
             mock_get_network_device,
             mock_load_partial_configuration,
+            mock_load_intended_configuration,
             perform_candidate_diff,
             validate_config_diff,
             apply_approved_configuration,
@@ -1446,7 +1541,11 @@ nv set interface swp2 ip vrf test-vrf
 """
         mock_cumulus_connection.return_value.perform_candidate_diff.return_value = mock_tenant_diff
 
-        input = TenantDeployInput(device="mock_device_uuid")
+        input = TenantDeployInput(
+            device="mock_device_uuid",
+            tenant_config_commit_id="7",
+            intended_config_commit_id="11",
+        )
 
         workflow_id = str(uuid.uuid4())
         handle: WorkflowHandle = await env.client.start_workflow(
@@ -1466,6 +1565,13 @@ nv set interface swp2 ip vrf test-vrf
         load_stage = next((s for s in stages if s["name"] == "load_tenant_configuration"), None)
         assert load_stage is not None
         assert load_stage["output"]["commit_id"] == "7"
+        assert load_stage["output"]["intended_config_commit_id"] == "11"
+        assert stages[-1]["input"]["commit_id"] == "11"
+
+        backup_workflow_id = stages[-1]["child_workflows"][0]
+        backup_handle = client.get_workflow_handle(backup_workflow_id)
+        backup_input = await backup_handle.query("input")
+        assert backup_input["intended_config_commit_id"] == "11"
 
     # Reset state for other tests
     _newer_commit_mock_state["use_newer_commit"] = False
@@ -1483,8 +1589,6 @@ async def test_execute_tenant_deploy_workflow_newer_commit_disallowed(
     env,
 ):
     """Test tenant deploy when commit is newer but has disallowed lines."""
-    from nv_config_manager.temporal.ngc.activities.nats import publish_nats
-
     _newer_commit_mock_state["use_newer_commit"] = True
     _newer_commit_mock_state["newer_commit_allowed"] = False
 
@@ -1497,6 +1601,7 @@ async def test_execute_tenant_deploy_workflow_newer_commit_disallowed(
         activities=[
             mock_get_network_device,
             mock_load_partial_configuration,
+            mock_load_intended_configuration,
             perform_candidate_diff,
             validate_config_diff,
             apply_approved_configuration,
@@ -1521,7 +1626,11 @@ nv set system hostname disallowed-change
 """
         mock_cumulus_connection.return_value.perform_candidate_diff.return_value = mock_tenant_diff
 
-        input = TenantDeployInput(device="mock_device_uuid")
+        input = TenantDeployInput(
+            device="mock_device_uuid",
+            tenant_config_commit_id="7",
+            intended_config_commit_id="11",
+        )
 
         workflow_id = str(uuid.uuid4())
 
@@ -1536,6 +1645,10 @@ nv set system hostname disallowed-change
         # Wait a bit for workflow to progress, then check stages
         await asyncio.sleep(2)
         stages = await handle.query("stages")
+        load_stage = next((s for s in stages if s["name"] == "load_tenant_configuration"), None)
+        assert load_stage is not None
+        assert load_stage["output"]["commit_id"] == "7"
+        assert load_stage["output"]["intended_config_commit_id"] == "11"
         validate_stage = next(
             (s for s in stages if s["name"] == "validate_configuration_diff"), None
         )
