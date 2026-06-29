@@ -77,6 +77,7 @@ from nv_config_manager.temporal.ngc.activities.ib_guid_discovery import (
     sync_ib_guid_on_interface,
 )
 from nv_config_manager.temporal.ngc.activities.ib_nautobot import (
+    cleanup_empty_pkey_partition,
     create_partition_in_nautobot,
     fetch_pkey_assignments,
     record_ib_pkey_in_nautobot,
@@ -94,6 +95,7 @@ from nv_config_manager.temporal.ngc.activities.ib_pkey import (
     create_pkey_on_ufm,
     fetch_pkey_members,
     remove_guids_from_pkey,
+    set_pkey_members,
     validate_pkey_available,
     verify_pkey_created,
     verify_pkey_members,
@@ -118,6 +120,7 @@ from nv_config_manager.temporal.ngc.activities.nautobot import (
     get_switch_port_by_remote_mac_address,
     get_vrfs_by_overlay_id,
     provision_vrf,
+    reconcile_spx_overlay_assignments,
 )
 from nv_config_manager.temporal.ngc.activities.nvlinkswitch_firmware import (
     compare_running_desired,
@@ -201,6 +204,7 @@ REGISTERED_ACTIVITIES = [
     assign_vrf_to_device,
     get_device_interfaces,
     assign_vrf_to_interface,
+    reconcile_spx_overlay_assignments,
     get_ib_ports,
     send_slack_message,
     get_current_os,
@@ -253,7 +257,9 @@ REGISTERED_ACTIVITIES = [
     fetch_pkey_assignments,
     sync_pkey_assignments,
     remove_pkey_assignments,
+    cleanup_empty_pkey_partition,
     remove_guids_from_pkey,
+    set_pkey_members,
     verify_pkey_members_absent,
     fetch_pkey_members,
     discover_ib_port_guids,

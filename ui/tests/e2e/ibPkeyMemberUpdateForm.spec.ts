@@ -38,7 +38,9 @@ test.describe("IB PKey Member Update Form", () => {
     });
   });
 
-  test("submits with interfaces and full membership_type", async ({ page }) => {
+  test("submits with interfaces and per-interface membership", async ({
+    page,
+  }) => {
     const requestPromise = page.waitForRequest(
       (r) => r.url().includes(ENDPOINT) && r.method() === "POST",
     );
@@ -48,6 +50,9 @@ test.describe("IB PKey Member Update Form", () => {
     await page.getByPlaceholder("device (e.g. hca01)").fill("hca01");
     await page.getByPlaceholder("interface (e.g. mlx5_0)").fill("mlx5_0");
 
+    await page.getByLabel("Membership for interface row 1").click();
+    await page.getByRole("option", { name: "full" }).click();
+
     await page.getByRole("button", { name: "Replace Members" }).click();
 
     const request = await requestPromise;
@@ -55,8 +60,71 @@ test.describe("IB PKey Member Update Form", () => {
     expect(body).toEqual({
       host: "ufm-1.lab",
       pkey: "0x8001",
-      interfaces: [{ device: "hca01", interface: "mlx5_0" }],
-      membership_type: "full",
+      interfaces: [{ device: "hca01", interface: "mlx5_0", membership: "full" }],
+    });
+
+    await expect(
+      page.getByRole("heading", { name: "Workflow Details" }),
+    ).toBeVisible({ timeout: WORKFLOW_DETAILS_TIMEOUT });
+  });
+
+  test("submits per-interface membership override", async ({ page }) => {
+    const requestPromise = page.waitForRequest(
+      (r) => r.url().includes(ENDPOINT) && r.method() === "POST",
+    );
+
+    await page.getByLabel("UFM Host").fill("ufm-1.lab");
+    await page.getByLabel("PKey").fill("0x8001");
+    await page.getByPlaceholder("device (e.g. hca01)").fill("hca01");
+    await page.getByPlaceholder("interface (e.g. mlx5_0)").fill("mlx5_0");
+
+    await page.getByLabel("Membership for interface row 1").click();
+    await page.getByRole("option", { name: "limited" }).click();
+
+    await page.getByRole("button", { name: "Replace Members" }).click();
+
+    const request = await requestPromise;
+    const body = JSON.parse((await request.postData()) || "{}");
+    expect(body).toEqual({
+      host: "ufm-1.lab",
+      pkey: "0x8001",
+      interfaces: [
+        { device: "hca01", interface: "mlx5_0", membership: "limited" },
+      ],
+    });
+
+    await expect(
+      page.getByRole("heading", { name: "Workflow Details" }),
+    ).toBeVisible({ timeout: WORKFLOW_DETAILS_TIMEOUT });
+  });
+
+  test("submits per-GUID membership", async ({ page }) => {
+    const requestPromise = page.waitForRequest(
+      (r) => r.url().includes(ENDPOINT) && r.method() === "POST",
+    );
+
+    await page.getByLabel("UFM Host").fill("ufm-1.lab");
+    await page.getByLabel("PKey").fill("0x8001");
+    await page.getByLabel("By GUIDs").click();
+
+    await page.getByLabel("GUID 1").fill("0x0011223344556677");
+    await page.getByLabel("Membership for GUID row 1").click();
+    await page.getByRole("option", { name: "limited" }).click();
+
+    await page.getByRole("button", { name: "Add Row" }).click();
+    await page.getByLabel("GUID 2").fill("0x8899aabbccddeeff");
+    await page.getByLabel("Membership for GUID row 2").click();
+    await page.getByRole("option", { name: "full" }).click();
+
+    await page.getByRole("button", { name: "Replace Members" }).click();
+
+    const request = await requestPromise;
+    const body = JSON.parse((await request.postData()) || "{}");
+    expect(body).toEqual({
+      host: "ufm-1.lab",
+      pkey: "0x8001",
+      guids: ["0x0011223344556677", "0x8899aabbccddeeff"],
+      guid_memberships: ["limited", "full"],
     });
 
     await expect(

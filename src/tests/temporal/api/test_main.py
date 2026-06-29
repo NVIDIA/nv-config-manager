@@ -52,6 +52,14 @@ def test_healthcheck():
     assert rsp.json() == "OK"
 
 
+def test_metrics():
+    """Verify /metrics returns Prometheus metrics without auth."""
+    client = TestClient(app)
+    rsp = client.get("/metrics")
+    assert rsp.status_code == 200
+    assert "nv_config_manager_temporal_api" in rsp.text
+
+
 def test_temporal_ui_workflow_href_uses_ini(monkeypatch):
     """Verify Workflow API href generation reads the INI, not TEMPORAL_UI."""
     monkeypatch.setenv("TEMPORAL_UI", "http://localhost:8080")
@@ -1041,6 +1049,7 @@ async def test_workflows(mock_rbac_config, mock_redis, mock_client):
         params={
             "user": "test",
             "workflow_type": "test",
+            "workflow_id": "test-id",
             "device_id": "test",
             "device_name": "test",
             "device_role": "test",
@@ -1054,6 +1063,7 @@ async def test_workflows(mock_rbac_config, mock_redis, mock_client):
     mock_client.return_value.list_workflows.assert_called_with(
         "User = 'test' and "
         "WorkflowType = 'test' and "
+        "WorkflowId = 'test-id' and "
         "DeviceID = 'test' and "
         "DeviceName = 'test' and "
         "DeviceRole = 'test' and "
@@ -1067,6 +1077,8 @@ async def test_workflows(mock_rbac_config, mock_redis, mock_client):
         page_size=100,
         next_page_token=None,
     )
+    filter_query = mock_client.return_value.list_workflows.call_args.args[0]
+    mock_client.return_value.count_workflows.assert_awaited_with(filter_query)
 
     rsp = client.get(
         "/v1/workflow",
@@ -1085,6 +1097,7 @@ async def test_workflows(mock_rbac_config, mock_redis, mock_client):
         params={
             "user": "test",
             "workflow_type": "test",
+            "workflow_id": "test-id",
             "device_id": "test",
             "device_name": "test",
             "device_role": "test",
@@ -1099,6 +1112,7 @@ async def test_workflows(mock_rbac_config, mock_redis, mock_client):
     mock_client.return_value.list_workflows.assert_called_with(
         "User = 'test' and "
         "WorkflowType = 'test' and "
+        "WorkflowId = 'test-id' and "
         "DeviceID = 'test' and "
         "DeviceName = 'test' and "
         "DeviceRole = 'test' and "
@@ -1118,6 +1132,7 @@ async def test_workflows(mock_rbac_config, mock_redis, mock_client):
         params={
             "user": "test",
             "workflow_type": "test",
+            "workflow_id": "test-id",
             "device_id": "test",
             "device_name": "test",
             "device_role": "test",
@@ -1132,6 +1147,7 @@ async def test_workflows(mock_rbac_config, mock_redis, mock_client):
     mock_client.return_value.list_workflows.assert_called_with(
         "User = 'test' and "
         "WorkflowType = 'test' and "
+        "WorkflowId = 'test-id' and "
         "DeviceID = 'test' and "
         "DeviceName = 'test' and "
         "DeviceRole = 'test' and "

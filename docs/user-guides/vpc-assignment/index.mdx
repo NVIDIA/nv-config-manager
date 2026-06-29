@@ -4,7 +4,7 @@ sidebar-title: SpX Overlay Assignment
 position: 30
 ---
 
-The SpX Overlay Assignment workflow binds an existing overlay's VRF to a specific device and to a specific set of ports on that device. It updates Nautobot's intent — the model of which VRF terminates on which port — without touching the device itself; the device-side change happens when a subsequent deploy applies the resulting intended configuration. Assignment is the second step in the SpX Overlay lifecycle, after [SpX Overlay Creation](../vpc-creation/index.mdx) provisions the VRF and Overlay objects.
+The SpX Overlay Assignment workflow binds an existing overlay's VRF to a specific device and to a specific set of ports on that device. It updates Nautobot's IPAM intent and records matching device and interface `OverlayAssignment` entries in the overlays plugin without touching the device itself; the device-side change happens when a subsequent deploy applies the resulting intended configuration. Assignment is the second step in the SpX Overlay lifecycle, after [SpX Overlay Creation](../vpc-creation/index.mdx) provisions the VRF and Overlay objects.
 
 For the end-to-end assign + render + deploy lifecycle, use [SpX Overlay Tenant Change](../vpc-tenant-change/index.mdx) — it calls this workflow as a child plus the render and deploy steps.
 
@@ -40,7 +40,7 @@ The workflow runs three stages in order. None require manual approval.
 
 1. **`assign_vrf_to_ports` — Bind the VRF to each named port.**
 
-   For each port in `port_names`, assigns the VRF to the interface in Nautobot, running all per-port writes in parallel. Ports that already have this VRF assigned are skipped and recorded in `already_assigned_ports`. The final `assigned_ports` list contains the ports actually changed by this run.
+   For each port in `port_names`, assigns the VRF to the interface in Nautobot, running all per-port writes in parallel. It then reconciles the overlays plugin so the device and every named interface have an `OverlayAssignment` for the target overlay. When a port moves between Spectrum-X overlays, its stale assignment is removed; assignments for other overlay types are preserved. Ports that already have this VRF assigned are recorded in `already_assigned_ports`, but their overlay-plugin records are still reconciled so an earlier incomplete run can be repaired. The final `assigned_ports` list contains the ports whose VRF changed during this run.
 
 ## Verifying outcomes
 
@@ -49,6 +49,7 @@ After the workflow reports success, confirm:
 - **All three stages green** on the Config Manager run page.
 - **Result shape** — `assigned_ports` lists the ports actually changed; `vrf_assigned=true` means the device-level binding was new this run; `vrf` carries the bound VRF record.
 - **Nautobot** shows the VRF on the device and on each named interface.
+- **Nautobot overlays plugin** shows `OverlayAssignment` entries for the device and each named interface under the target overlay.
 - **Run a deploy** to push the resulting intended-config change to the device. The simplest path is [SpX Overlay Tenant Change](../vpc-tenant-change/index.mdx), which combines assignment with the subsequent re-render and deploy.
 
 ## Common issues

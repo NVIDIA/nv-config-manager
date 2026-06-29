@@ -56,6 +56,8 @@ spec:
       labels:
         app: {{ $temporalName }}
         component: {{ $service }}
+        app.kubernetes.io/name: nv-config-manager
+        app.kubernetes.io/component: temporal
         {{- include "nv-config-manager.spiffe.podLabels" $ | nindent 8 }}
         {{- include "nv-config-manager.customPodLabels" $ | nindent 8 }}
       annotations:

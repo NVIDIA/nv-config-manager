@@ -16,8 +16,13 @@
 """Tables for Overlays app."""
 
 import django_tables2 as tables
+from django.conf import settings
+from django.urls import reverse
+from django.utils.html import format_html
+from django.utils.http import urlencode
 from nautobot.apps.tables import BaseTable, ButtonsColumn, ToggleColumn
 from nautobot.core.tables import LinkedCountColumn
+from nautobot.core.templatetags import helpers
 from nautobot.extras.tables import StatusTableMixin
 
 from nautobot_app_overlays import models
@@ -96,6 +101,24 @@ VXLAN_VNI_TEMPLATE = """
 _OVERLAY_TYPE_COLUMNS = ["pk", "name", "status", "tenant", "location", "assignment_count", "actions"]
 
 
+class AssignmentCountColumn(LinkedCountColumn):
+    """Assignment count that always links to the filtered assignment list."""
+
+    def render(self, *, record, value):
+        """Render the count as a link to the filtered assignment list."""
+        if not value:
+            return helpers.placeholder(value)
+        url = reverse(self.viewname, kwargs=self.view_kwargs)
+        if self.url_params:
+            url += "?" + urlencode(
+                {
+                    key: (getattr(record, attr) or settings.FILTERS_NULL_CHOICE_VALUE)
+                    for key, attr in self.url_params.items()
+                }
+            )
+        return format_html('<a href="{}" class="badge">{}</a>', url, value)
+
+
 class OverlayTable(StatusTableMixin, BaseTable):
     """Table for displaying Overlay objects."""
 
@@ -104,7 +127,7 @@ class OverlayTable(StatusTableMixin, BaseTable):
     tenant = tables.LinkColumn()
     location = tables.LinkColumn()
     isolation_type = tables.Column()
-    assignment_count = LinkedCountColumn(
+    assignment_count = AssignmentCountColumn(
         viewname="plugins:nautobot_app_overlays:overlayassignment_list",
         url_params={"overlay": "pk"},
         verbose_name="Assignments",

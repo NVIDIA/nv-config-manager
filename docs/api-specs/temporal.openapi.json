@@ -466,6 +466,14 @@
       "IBPKeyMemberAddInput": {
         "description": "InfiniBand PKey Member Add Workflow Input.\n\nSite and Overlay are resolved server-side from ``host`` and ``pkey``.",
         "properties": {
+          "guid_memberships": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Guid Memberships",
+            "type": "array"
+          },
           "guids": {
             "default": [],
             "items": {
@@ -546,6 +554,14 @@
       "IBPKeyMemberUpdateInput": {
         "description": "InfiniBand PKey Member Update Workflow Input.\n\nSite and Overlay are resolved server-side from ``host`` and ``pkey``.",
         "properties": {
+          "guid_memberships": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Guid Memberships",
+            "type": "array"
+          },
           "guids": {
             "default": [],
             "items": {
@@ -666,7 +682,7 @@
         "type": "object"
       },
       "InterfaceRef": {
-        "description": "A device/interface name pair used to look up an interface in Nautobot.",
+        "description": "A device/interface name pair used to look up an interface in Nautobot.\n\n``membership`` is an optional per-port override (\"full\"/\"limited\"); when unset\nthe caller's workflow-level default is applied.",
         "properties": {
           "device": {
             "title": "Device",
@@ -675,6 +691,17 @@
           "interface": {
             "title": "Interface",
             "type": "string"
+          },
+          "membership": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Membership"
           }
         },
         "required": [
@@ -1606,6 +1633,42 @@
       },
       "TenantDeployInput": {
         "description": "Tenant Config Deployment Workflow Input Definiton.",
+        "oneOf": [
+          {
+            "properties": {
+              "intended_config_commit_id": {
+                "description": "Optional config-store commit ID for the intended startup configuration from the same render snapshot as tenant_config_commit_id. Must be supplied with tenant_config_commit_id; omit both to deploy the latest tenant and intended configurations.",
+                "pattern": "^\\d+$",
+                "type": "string"
+              },
+              "tenant_config_commit_id": {
+                "description": "Optional config-store commit ID for the tenant configuration. Must be supplied with intended_config_commit_id; omit both to deploy the latest tenant and intended configurations.",
+                "pattern": "^\\d+$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "tenant_config_commit_id",
+              "intended_config_commit_id"
+            ]
+          },
+          {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "tenant_config_commit_id"
+                  ]
+                },
+                {
+                  "required": [
+                    "intended_config_commit_id"
+                  ]
+                }
+              ]
+            }
+          }
+        ],
         "properties": {
           "device": {
             "anyOf": [
@@ -1617,6 +1680,32 @@
               }
             ],
             "title": "Device"
+          },
+          "intended_config_commit_id": {
+            "anyOf": [
+              {
+                "pattern": "^\\d+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional config-store commit ID for the intended startup configuration from the same render snapshot as tenant_config_commit_id. Must be supplied with tenant_config_commit_id; omit both to deploy the latest tenant and intended configurations.",
+            "title": "Intended Config Commit Id"
+          },
+          "tenant_config_commit_id": {
+            "anyOf": [
+              {
+                "pattern": "^\\d+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional config-store commit ID for the tenant configuration. Must be supplied with intended_config_commit_id; omit both to deploy the latest tenant and intended configurations.",
+            "title": "Tenant Config Commit Id"
           }
         },
         "required": [
@@ -2995,6 +3084,22 @@
                 }
               ],
               "title": "Workflow Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workflow_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workflow Id"
             }
           },
           {

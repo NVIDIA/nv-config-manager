@@ -167,6 +167,54 @@ class TestAddMembers:
         )
         assert response.status_code == 404
 
+    def test_per_guid_memberships_array(self, client: TestClient) -> None:
+        """The plural `memberships` array assigns membership per GUID."""
+        client.post(
+            "/ufmRest/resources/pkeys/add",
+            json={"pkey": "0x0001", "ip_over_ib": True},
+        )
+        response = client.post(
+            "/ufmRest/resources/pkeys/",
+            json={
+                "pkey": "0x0001",
+                "guids": ["0xa", "0xb"],
+                "memberships": ["full", "limited"],
+            },
+        )
+        assert response.status_code == 200
+
+        state = client.get("/ufmRest/resources/pkeys/0x0001?guids_data=true").json()
+        by_guid = {e["guid"]: e["membership"] for e in state["guids"]}
+        assert by_guid == {"0xa": "full", "0xb": "limited"}
+
+    def test_membership_and_memberships_conflict_rejected(self, client: TestClient) -> None:
+        """Sending both scalar and array membership is rejected, mirroring UFM."""
+        client.post(
+            "/ufmRest/resources/pkeys/add",
+            json={"pkey": "0x0001", "ip_over_ib": True},
+        )
+        response = client.post(
+            "/ufmRest/resources/pkeys/",
+            json={
+                "pkey": "0x0001",
+                "guids": ["0xa"],
+                "membership": "full",
+                "memberships": ["full"],
+            },
+        )
+        assert response.status_code == 400
+
+    def test_memberships_length_mismatch_rejected(self, client: TestClient) -> None:
+        client.post(
+            "/ufmRest/resources/pkeys/add",
+            json={"pkey": "0x0001", "ip_over_ib": True},
+        )
+        response = client.post(
+            "/ufmRest/resources/pkeys/",
+            json={"pkey": "0x0001", "guids": ["0xa", "0xb"], "memberships": ["full"]},
+        )
+        assert response.status_code == 400
+
 
 class TestRemoveMembers:
     def test_removes_guids_by_csv(self, client: TestClient) -> None:
@@ -181,7 +229,7 @@ class TestRemoveMembers:
 
         response = client.delete("/ufmRest/resources/pkeys/0x0001/guids/0xa,0xb")
         assert response.status_code == 200
-        assert response.json() == {"pkey": "0x0001", "removed": 2}
+        assert response.json() == {"pkey": "0x0001", "removed": 2, "pkey_removed": False}
 
         remaining = client.get("/ufmRest/resources/pkeys/0x0001?guids_data=true").json()
         assert {entry["guid"] for entry in remaining["guids"]} == {"0xc"}
@@ -194,11 +242,119 @@ class TestRemoveMembers:
 
         response = client.delete("/ufmRest/resources/pkeys/0x0001/guids/0xghost")
         assert response.status_code == 200
-        assert response.json() == {"pkey": "0x0001", "removed": 0}
+        assert response.json() == {"pkey": "0x0001", "removed": 0, "pkey_removed": False}
+        # An already-empty partition is left intact (no removal occurred).
+        assert client.get("/ufmRest/resources/pkeys/0x0001").status_code == 200
+
+    def test_removing_last_member_deletes_partition(self, client: TestClient) -> None:
+        """UFM auto-removes a PKey once its final member is removed."""
+        client.post(
+            "/ufmRest/resources/pkeys/add",
+            json={"pkey": "0x0001", "ip_over_ib": True},
+        )
+        client.post(
+            "/ufmRest/resources/pkeys/",
+            json={"pkey": "0x0001", "guids": ["0xa", "0xb"]},
+        )
+
+        # Removing one of two members keeps the partition.
+        first = client.delete("/ufmRest/resources/pkeys/0x0001/guids/0xa")
+        assert first.json() == {"pkey": "0x0001", "removed": 1, "pkey_removed": False}
+        assert client.get("/ufmRest/resources/pkeys/0x0001").status_code == 200
+
+        # Removing the last member deletes the partition.
+        last = client.delete("/ufmRest/resources/pkeys/0x0001/guids/0xb")
+        assert last.json() == {"pkey": "0x0001", "removed": 1, "pkey_removed": True}
+        assert client.get("/ufmRest/resources/pkeys/0x0001").status_code == 404
+        assert client.get("/ufmRest/resources/pkeys").json() == {}
 
     def test_404_when_pkey_missing(self, client: TestClient) -> None:
         response = client.delete("/ufmRest/resources/pkeys/0xnope/guids/0xa")
         assert response.status_code == 404
+
+
+class TestSetMembers:
+    def test_overwrites_membership_atomically(self, client: TestClient) -> None:
+        """PUT replaces the entire member list, dropping members not listed."""
+        client.post(
+            "/ufmRest/resources/pkeys/add",
+            json={"pkey": "0x0001", "ip_over_ib": True},
+        )
+        client.post(
+            "/ufmRest/resources/pkeys/",
+            json={"pkey": "0x0001", "guids": ["0xa", "0xb"]},
+        )
+
+        response = client.put(
+            "/ufmRest/resources/pkeys/",
+            json={"pkey": "0x0001", "guids": ["0xb", "0xc"]},
+        )
+        assert response.status_code == 200
+        assert response.json() == {"pkey": "0x0001", "guids_set": 2}
+
+        state = client.get("/ufmRest/resources/pkeys/0x0001?guids_data=true").json()
+        assert {entry["guid"] for entry in state["guids"]} == {"0xb", "0xc"}
+
+    def test_creates_partition_when_missing(self, client: TestClient) -> None:
+        """PUT creates the partition on the fly, mirroring UFM create-on-missing."""
+        response = client.put(
+            "/ufmRest/resources/pkeys/",
+            json={"pkey": "0x0009", "guids": ["0xABC"], "ip_over_ib": False},
+        )
+        assert response.status_code == 200
+        assert response.json() == {"pkey": "0x0009", "guids_set": 1}
+
+        body = client.get("/ufmRest/resources/pkeys/0x0009?guids_data=true").json()
+        assert {entry["guid"] for entry in body["guids"]} == {"0xabc"}
+        assert body["ip_over_ib"] is False
+
+    def test_refreshes_flags_on_existing_partition(self, client: TestClient) -> None:
+        """PUT overwrites partition flags too, not just members, when it exists."""
+        client.put(
+            "/ufmRest/resources/pkeys/",
+            json={"pkey": "0x0001", "guids": ["0xa"], "ip_over_ib": True, "index0": True},
+        )
+        client.put(
+            "/ufmRest/resources/pkeys/",
+            json={"pkey": "0x0001", "guids": ["0xa"], "ip_over_ib": False, "index0": False},
+        )
+
+        body = client.get("/ufmRest/resources/pkeys/0x0001?guids_data=true").json()
+        assert body["ip_over_ib"] is False
+        assert body["index0"] is False
+
+    def test_unchanged_member_preserved(self, client: TestClient) -> None:
+        """Re-setting a superset leaves the existing member's record intact."""
+        client.put(
+            "/ufmRest/resources/pkeys/",
+            json={"pkey": "0x0001", "guids": ["0xa"], "membership": "full"},
+        )
+        client.put(
+            "/ufmRest/resources/pkeys/",
+            json={"pkey": "0x0001", "guids": ["0xa", "0xb"], "membership": "full"},
+        )
+
+        state = client.get("/ufmRest/resources/pkeys/0x0001?guids_data=true").json()
+        by_guid = {entry["guid"]: entry for entry in state["guids"]}
+        assert set(by_guid) == {"0xa", "0xb"}
+        assert by_guid["0xa"] == {"guid": "0xa", "membership": "full"}
+        assert by_guid["0xb"]["membership"] == "full"
+
+    def test_put_per_guid_memberships_array(self, client: TestClient) -> None:
+        """PUT honors the per-GUID `memberships` array for an atomic set."""
+        response = client.put(
+            "/ufmRest/resources/pkeys/",
+            json={
+                "pkey": "0x0001",
+                "guids": ["0xa", "0xb"],
+                "memberships": ["limited", "full"],
+            },
+        )
+        assert response.status_code == 200
+
+        state = client.get("/ufmRest/resources/pkeys/0x0001?guids_data=true").json()
+        by_guid = {e["guid"]: e["membership"] for e in state["guids"]}
+        assert by_guid == {"0xa": "limited", "0xb": "full"}
 
 
 class TestDevHelpers:
