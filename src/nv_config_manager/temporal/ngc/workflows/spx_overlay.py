@@ -323,10 +323,24 @@ class SpXOverlayDeletionWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
             retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
         )
         if not existing_vrfs:
+            overlay_result = await workflow.execute_activity(
+                delete_overlay,
+                DeleteOverlayInput(
+                    overlay_id=stage_input.overlay_id,
+                    site=stage_input.site,
+                ),
+                start_to_close_timeout=timedelta(minutes=1),
+                retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+            )
+            display = (
+                f"Deleted overlay {overlay_result.overlay_name}"
+                if overlay_result.deleted
+                else f"No VRFs or overlay exist for Overlay ID {stage_input.overlay_id}"
+            )
             return self.DeleteSpXOverlayStageOutput(
                 deleted_vrfs=[],
                 in_use_vrfs=[],
-                display=f"No VRFs exist for Overlay ID {stage_input.overlay_id}",
+                display=display,
             )
 
         in_use_vrfs = [vrf for vrf in existing_vrfs if vrf.interface_count > 0]

@@ -594,7 +594,7 @@ class DeleteOverlayOutput(BaseModel):
 
 @activity.defn
 async def delete_overlay(activity_input: DeleteOverlayInput) -> DeleteOverlayOutput:
-    """Delete the SpectrumX overlay if no VXLANs or assignments remain."""
+    """Delete the SpectrumX overlay and its assignments if no VXLANs remain."""
     overlay_name = activity_input.overlay_id
     client = NautobotClient()
     async with client:
@@ -602,12 +602,13 @@ async def delete_overlay(activity_input: DeleteOverlayInput) -> DeleteOverlayOut
         if not overlay:
             return DeleteOverlayOutput(deleted=False, overlay_name=overlay_name)
 
-        details = await client.get_overlay(overlay["id"])
         remaining_vxlans = await client.get_vxlans_by_overlay(overlay["id"])
-        if remaining_vxlans or details.get("member_count"):
-            logger.info("Overlay %s still has members, leaving in place", overlay_name)
+        if remaining_vxlans:
+            logger.info("Overlay %s still has VXLANs, leaving in place", overlay_name)
             return DeleteOverlayOutput(deleted=False, overlay_name=overlay_name)
 
+        # OverlayAssignment.overlay uses on_delete=CASCADE, so deleting the
+        # overlay also removes its device, interface, and VRF assignments.
         await client.delete_overlay(overlay["id"])
         return DeleteOverlayOutput(deleted=True, overlay_name=overlay_name)
 

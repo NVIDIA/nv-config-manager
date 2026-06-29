@@ -549,10 +549,6 @@ async def test_delete_overlay_deletes_when_no_members():
             _r(f"{OVERLAYS_BASE}/overlays/"),
             payload={"results": [{"id": OVERLAY_ID, "name": "test-overlay-001"}]},
         )
-        m.get(
-            _r(f"{OVERLAYS_BASE}/overlays/{OVERLAY_ID}/"),
-            payload={"id": OVERLAY_ID, "member_count": 0},
-        )
         m.get(_r(f"{OVERLAYS_BASE}/vxlans/"), payload={"results": []})
         m.delete(f"{OVERLAYS_BASE}/overlays/{OVERLAY_ID}/", status=204)
 
@@ -571,10 +567,6 @@ async def test_delete_overlay_skips_when_vxlans_remain():
             _r(f"{OVERLAYS_BASE}/overlays/"),
             payload={"results": [{"id": OVERLAY_ID, "name": "test-overlay-001"}]},
         )
-        m.get(
-            _r(f"{OVERLAYS_BASE}/overlays/{OVERLAY_ID}/"),
-            payload={"id": OVERLAY_ID, "member_count": 0},
-        )
         m.get(_r(f"{OVERLAYS_BASE}/vxlans/"), payload={"results": [{"id": VXLAN_ID}]})
 
         result = await delete_overlay(
@@ -585,23 +577,20 @@ async def test_delete_overlay_skips_when_vxlans_remain():
 
 
 @pytest.mark.asyncio
-async def test_delete_overlay_skips_when_assignments_remain():
+async def test_delete_overlay_cascades_assignments_when_no_vxlans_remain():
     with aioresponses() as m:
         m.get(
             _r(f"{OVERLAYS_BASE}/overlays/"),
             payload={"results": [{"id": OVERLAY_ID, "name": "test-overlay-001"}]},
         )
-        m.get(
-            _r(f"{OVERLAYS_BASE}/overlays/{OVERLAY_ID}/"),
-            payload={"id": OVERLAY_ID, "member_count": 2},
-        )
         m.get(_r(f"{OVERLAYS_BASE}/vxlans/"), payload={"results": []})
+        m.delete(f"{OVERLAYS_BASE}/overlays/{OVERLAY_ID}/", status=204)
 
         result = await delete_overlay(
             DeleteOverlayInput(overlay_id="test-overlay-001", site=LOCATION_ID)
         )
 
-    assert result.deleted is False
+    assert result.deleted is True
 
 
 @pytest.mark.asyncio
