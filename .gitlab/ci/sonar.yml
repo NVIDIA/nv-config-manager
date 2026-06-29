@@ -13,13 +13,22 @@ sonar-scanner:
     - job: test-mr-py
       optional: true
       artifacts: true
+    - job: test-main-py
+      optional: true
+      artifacts: true
     - job: test-mr-installer
       optional: true
       artifacts: true
     - job: test-mr-network-templates
       optional: true
       artifacts: true
+    - job: test-main-network-templates
+      optional: true
+      artifacts: true
     - job: test-mr-ui-e2e
+      optional: true
+      artifacts: true
+    - job: test-main-ui-e2e
       optional: true
       artifacts: true
   image:
