@@ -13,13 +13,22 @@ sonar-scanner:
     - job: test-mr-py
       optional: true
       artifacts: true
+    - job: test-main-py
+      optional: true
+      artifacts: true
     - job: test-mr-installer
       optional: true
       artifacts: true
     - job: test-mr-network-templates
       optional: true
       artifacts: true
+    - job: test-main-network-templates
+      optional: true
+      artifacts: true
     - job: test-mr-ui-e2e
+      optional: true
+      artifacts: true
+    - job: test-main-ui-e2e
       optional: true
       artifacts: true
   image:
@@ -34,7 +43,7 @@ sonar-scanner:
     paths:
       - "${SONAR_USER_HOME}/cache"
   script:
-    - sonar-scanner -Dsonar.host.url="${SONAR_HOST_URL}"
+    - sonar-scanner -Dsonar.host.url="${SONAR_HOST_URL}" -Dsonar.projectKey="${NVCM_SONAR_PROJECT_KEY}"
   allow_failure: true
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -47,19 +56,12 @@ sonar-scanner:
         - pyproject.toml
         - uv.lock
         - sonar-project.properties
+        - .gitlab/ci/common.yml
+        - .gitlab/ci/sonar.yml
       when: always
-    - if: $GITLAB_USER_EMAIL == $CI_PUSH_EMAIL
-      when: never
+    # Pull-mirror updates arrive as default-branch pushes. Analyze every one,
+    # including bot-authored commits and commits outside the source paths above.
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-      changes:
-        - "src/**/*"
-        - "ui/**/*"
-        - "components/nautobot/**/*"
-        - "components/network-templates/**/*"
-        - "installer/**/*"
-        - pyproject.toml
-        - uv.lock
-        - sonar-project.properties
       when: always
     - when: never
 
@@ -88,19 +90,11 @@ sonarqube-vulnerability-report:
         - pyproject.toml
         - uv.lock
         - sonar-project.properties
+        - .gitlab/ci/common.yml
+        - .gitlab/ci/sonar.yml
       when: always
-    - if: $GITLAB_USER_EMAIL == $CI_PUSH_EMAIL
-      when: never
+    # Keep the SAST export paired with every default-branch analysis.
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-      changes:
-        - "src/**/*"
-        - "ui/**/*"
-        - "components/nautobot/**/*"
-        - "components/network-templates/**/*"
-        - "installer/**/*"
-        - pyproject.toml
-        - uv.lock
-        - sonar-project.properties
       when: always
     - when: never
   artifacts:
