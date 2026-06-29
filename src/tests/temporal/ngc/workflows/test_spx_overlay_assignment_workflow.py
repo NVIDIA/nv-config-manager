@@ -29,7 +29,6 @@ from temporalio.worker import Worker
 
 from nv_config_manager.temporal.common.mixins.device import InterfaceData, NetworkDeviceData
 from nv_config_manager.temporal.ngc.activities.deploy import (
-    LoadPartialConfigurationActivityInput,
     WaitForTenantRenderInput,
     WaitForTenantRenderOutput,
 )
@@ -213,16 +212,13 @@ async def mock_check_recorded_config_drift(
 @activity.defn(name="execute_render")
 async def mock_execute_render(_activity_input: ExecuteRenderInput) -> ExecuteRenderOutput:
     """Model the forced render losing a race with the Nautobot render consumer."""
-    return ExecuteRenderOutput(updated_files=[])
-
-
-@activity.defn(name="load_partial_configuration")
-async def mock_load_partial_configuration(
-    activity_input: LoadPartialConfigurationActivityInput,
-) -> tuple[str, str, str]:
-    """Return the versions already committed by the Nautobot-triggered render."""
-    commit_id = "7" if activity_input.config_file == "tenant.yaml" else "11"
-    return "mock config", commit_id, "https://config-store.example.com"
+    return ExecuteRenderOutput(
+        updated_files=[],
+        snapshot_files=[
+            {"filename": "tenant.yaml", "commit": "7"},
+            {"filename": "startup.yaml", "commit": "11"},
+        ],
+    )
 
 
 @activity.defn(name="wait_for_tenant_render")
@@ -440,7 +436,6 @@ async def test_spx_overlay_tenant_change_uses_current_versions_after_render_race
             mock_assign_vrf_to_interface,
             mock_reconcile_spx_overlay_assignments,
             mock_execute_render,
-            mock_load_partial_configuration,
             mock_wait_for_tenant_render,
             publish_nats,
         ],
@@ -468,6 +463,10 @@ async def test_spx_overlay_tenant_change_uses_current_versions_after_render_race
         assert stages["render_tenant_config"]["state"] == "COMPLETE"
         assert stages["render_tenant_config"]["output"]["tenant_config_commit_id"] == "7"
         assert stages["render_tenant_config"]["output"]["intended_config_commit_id"] == "11"
+        assert (
+            stages["wait_for_render"]["input"]["config_id"]
+            == stages["render_tenant_config"]["output"]["tenant_config_commit_id"]
+        )
         assert stages["deploy"]["state"] == "COMPLETE"
         assert stages["deploy"]["input"]["tenant_config_commit_id"] == "7"
         assert stages["deploy"]["input"]["intended_config_commit_id"] == "11"

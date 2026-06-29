@@ -25,6 +25,7 @@ from temporalio import activity
 from temporalio.client import Client, WorkflowFailureError, WorkflowHandle
 from temporalio.worker import Worker
 
+from nv_config_manager.temporal.client.device import ConfigApplyFailureException
 from nv_config_manager.temporal.common.mixins.device import NetworkDeviceData, Platform
 from nv_config_manager.temporal.converter import get_data_converter
 from nv_config_manager.temporal.ngc.activities.backup import (
@@ -36,6 +37,7 @@ from nv_config_manager.temporal.ngc.activities.deploy import (
     perform_candidate_diff,
     validate_config_diff,
 )
+from nv_config_manager.temporal.ngc.activities.nats import publish_nats
 from nv_config_manager.temporal.ngc.activities.nautobot import (
     GetNetworkDeviceInput,
     GetNetworkDeviceOutput,
@@ -244,8 +246,6 @@ async def test_execute_workflow(
     mock_cumulus_connection: Any,
     env: Any,
 ) -> None:
-    from nv_config_manager.temporal.ngc.activities.nats import publish_nats
-
     task_queue_name = str(uuid.uuid4())
     client: Client = env.client
     async with Worker(
@@ -695,8 +695,6 @@ async def test_execute_workflow_no_diff(
     mock_cumulus_connection: Any,
     env: Any,
 ) -> None:
-    from nv_config_manager.temporal.ngc.activities.nats import publish_nats
-
     task_queue_name = str(uuid.uuid4())
     client: Client = env.client
     async with Worker(
@@ -864,8 +862,6 @@ async def test_execute_workflow_rejected_diff(
     env: Any,
 ) -> None:
     """Test that when a diff is rejected, apply and backup stages are UNREACHABLE."""
-    from nv_config_manager.temporal.ngc.activities.nats import publish_nats
-
     task_queue_name = str(uuid.uuid4())
     client: Client = env.client
     async with Worker(
@@ -942,8 +938,6 @@ async def test_execute_tenant_deploy_workflow(
     mock_cumulus_connection,
     env,
 ):
-    from nv_config_manager.temporal.ngc.activities.nats import publish_nats
-
     task_queue_name = str(uuid.uuid4())
     client: Client = env.client
     async with Worker(
@@ -1345,9 +1339,6 @@ async def test_apply_config_with_ignore_fail_and_retry(
     env: Any,
 ) -> None:
     """Test that ConfigApplyFailureException displays error message and fails workflow."""
-    from nv_config_manager.temporal.client.device import ConfigApplyFailureException
-    from nv_config_manager.temporal.ngc.activities.nats import publish_nats
-
     task_queue_name = str(uuid.uuid4())
     client: Client = env.client
 
@@ -1444,8 +1435,6 @@ async def test_execute_tenant_deploy_workflow_invalid_config(
     mock_cumulus_connection,
     env,
 ):
-    from nv_config_manager.temporal.ngc.activities.nats import publish_nats
-
     task_queue_name = str(uuid.uuid4())
     client: Client = env.client
     async with Worker(
@@ -1516,8 +1505,6 @@ async def test_execute_tenant_deploy_workflow_newer_commit_allowed(
     env,
 ):
     """Test tenant deploy when commit is newer but all lines are allowed."""
-    from nv_config_manager.temporal.ngc.activities.nats import publish_nats
-
     _newer_commit_mock_state["use_newer_commit"] = True
     _newer_commit_mock_state["newer_commit_allowed"] = True
 
@@ -1602,8 +1589,6 @@ async def test_execute_tenant_deploy_workflow_newer_commit_disallowed(
     env,
 ):
     """Test tenant deploy when commit is newer but has disallowed lines."""
-    from nv_config_manager.temporal.ngc.activities.nats import publish_nats
-
     _newer_commit_mock_state["use_newer_commit"] = True
     _newer_commit_mock_state["newer_commit_allowed"] = False
 

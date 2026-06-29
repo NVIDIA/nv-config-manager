@@ -37,9 +37,7 @@ with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.common.mixins.archive import ArchiveMixin
     from nv_config_manager.temporal.common.mixins.device import DeviceMixin, NetworkDeviceData
     from nv_config_manager.temporal.ngc.activities.deploy import (
-        LoadPartialConfigurationActivityInput,
         WaitForTenantRenderInput,
-        load_partial_configuration,
         wait_for_tenant_render,
     )
     from nv_config_manager.temporal.ngc.activities.nautobot import (
@@ -923,34 +921,11 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
             retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
         )
 
-        # Get commit_id for tenant.yaml from the updated_files list
+        # Resolve both commit IDs from the same post-render Config Store snapshot.
         tenant_config_file = stage_input.device.tenant_config_file
         tenant_config_commit_id = result.get_commit(tenant_config_file)
         intended_config_commit_id = result.get_commit(stage_input.device.intended_config_file)
 
-        # A Nautobot-triggered render can commit the same content just before this
-        # forced render. In that case updated_files omits the unchanged file, so use
-        # the version that the successful forced render just confirmed as current.
-        if tenant_config_commit_id is None:
-            _, tenant_config_commit_id, _ = await workflow.execute_activity(
-                load_partial_configuration,
-                LoadPartialConfigurationActivityInput(
-                    device_data=stage_input.device,
-                    config_file=tenant_config_file,
-                ),
-                start_to_close_timeout=timedelta(minutes=1),
-                retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
-            )
-        if intended_config_commit_id is None:
-            _, intended_config_commit_id, _ = await workflow.execute_activity(
-                load_partial_configuration,
-                LoadPartialConfigurationActivityInput(
-                    device_data=stage_input.device,
-                    config_file=stage_input.device.intended_config_file,
-                ),
-                start_to_close_timeout=timedelta(minutes=1),
-                retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
-            )
         if tenant_config_commit_id is None or intended_config_commit_id is None:
             raise ApplicationError("Failed to resolve rendered configuration commit IDs")
 
