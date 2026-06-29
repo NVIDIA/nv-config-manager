@@ -197,3 +197,10 @@ include:
       needs: *pulse-scan-needs
       rules: *pulse-scan-rules
       vault_auth_role: ""
+
+# The component's template-usage jobs only post pipeline metadata. Avoid a
+# repository checkout so they can still run after a merged source branch has
+# been deleted while its pipeline is queued.
+.track_template_usage:
+  variables:
+    GIT_STRATEGY: empty
