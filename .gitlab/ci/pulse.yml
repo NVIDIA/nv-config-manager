@@ -59,7 +59,7 @@
     - jq -e . /tmp/nv-config-manager-scan-policy/${NVCM_CONTAINER_SCAN_POLICY_FILE} >/dev/null
 
 include:
-  - component: &pulse-scan-component gitlab-master.nvidia.com/security/devops-tools/ci-cd-components/pulse-container-scanner/scan-image@2.0.1
+  - component: &pulse-scan-component gitlab-master.nvidia.com/security/devops-tools/ci-cd-components/pulse-container-scanner/scan-image@3.0.3
     inputs:
       nspect_id: "$PULSE_NSPECT_ID"
       container_image: "${NVCM_IMAGE_REPOSITORY}/nv-config-manager:${CI_COMMIT_SHORT_SHA}"
