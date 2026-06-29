@@ -74,7 +74,7 @@ RUN --mount=type=cache,id=nvcm-uv-cache,target=/root/.cache/uv \
 # =============================================================================
 # Runtime stage - NVIDIA distroless Python
 # =============================================================================
-FROM nvcr.io/nvidia/distroless/python:3.13-v4.0.7
+FROM nvcr.io/nvidia/distroless/python:3.13-v4.0.8
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
