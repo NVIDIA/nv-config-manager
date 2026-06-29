@@ -649,8 +649,7 @@ class NautobotClient(BaseNautobotClient):
         count = data.get("count", len(results))
         if count > 1:
             raise NautobotException(
-                f"Ambiguous overlay: {count} overlays match "
-                f"name={name!r} location={location_id!r}"
+                f"Ambiguous overlay: {count} overlays match name={name!r} location={location_id!r}"
             )
         return cast(dict[str, Any], results[0]) if results else None
 
