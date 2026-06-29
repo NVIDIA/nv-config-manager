@@ -14,12 +14,16 @@
 # limitations under the License.
 """Test Render Activities."""
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from aioresponses import aioresponses
 
-from nv_config_manager.common.client.render import FileCommit, RenderClient
+from nv_config_manager.common.client.render import (
+    FileCommit,
+    RenderClient,
+    RenderClientException,
+)
 from nv_config_manager.temporal.ngc.activities.render import (
     ExecuteRenderInput,
     ExecuteRenderOutput,
@@ -32,10 +36,22 @@ async def test_execute_render_success() -> None:
     """Test execute_render activity when render succeeds."""
     base_url = "https://render.test.config-manager.example.com"
     mock_client = RenderClient(base_url=base_url)
+    mock_config_client = AsyncMock()
+    mock_config_client.__aenter__.return_value = mock_config_client
+    mock_config_client.list_device_configs.return_value = [
+        {"filename": "tenant.yaml", "version": 5},
+        {"filename": "startup.yaml", "version": 6},
+    ]
 
-    with patch(
-        "nv_config_manager.temporal.ngc.activities.render.render_client",
-        return_value=mock_client,
+    with (
+        patch(
+            "nv_config_manager.temporal.ngc.activities.render.render_client",
+            return_value=mock_client,
+        ),
+        patch(
+            "nv_config_manager.temporal.ngc.activities.render.config_store_client",
+            return_value=mock_config_client,
+        ),
     ):
         with aioresponses() as m:
             m.post(
@@ -61,6 +77,10 @@ async def test_execute_render_success() -> None:
         FileCommit(filename="tenant.yaml", commit="5"),
         FileCommit(filename="startup.yaml", commit="6"),
     ]
+    assert result.snapshot_files == [
+        FileCommit(filename="tenant.yaml", commit="5"),
+        FileCommit(filename="startup.yaml", commit="6"),
+    ]
     assert result.get_commit("tenant.yaml") == "5"
     assert result.get_commit("startup.yaml") == "6"
     assert result.get_commit("nonexistent.yaml") is None
@@ -71,10 +91,22 @@ async def test_execute_render_empty_result() -> None:
     """Test execute_render activity when no files are changed."""
     base_url = "https://render.test.config-manager.example.com"
     mock_client = RenderClient(base_url=base_url)
+    mock_config_client = AsyncMock()
+    mock_config_client.__aenter__.return_value = mock_config_client
+    mock_config_client.list_device_configs.return_value = [
+        {"filename": "tenant.yaml", "version": 7},
+        {"filename": "startup.yaml", "version": 11},
+    ]
 
-    with patch(
-        "nv_config_manager.temporal.ngc.activities.render.render_client",
-        return_value=mock_client,
+    with (
+        patch(
+            "nv_config_manager.temporal.ngc.activities.render.render_client",
+            return_value=mock_client,
+        ),
+        patch(
+            "nv_config_manager.temporal.ngc.activities.render.config_store_client",
+            return_value=mock_config_client,
+        ),
     ):
         with aioresponses() as m:
             m.post(
@@ -92,13 +124,17 @@ async def test_execute_render_empty_result() -> None:
 
     assert isinstance(result, ExecuteRenderOutput)
     assert result.updated_files == []
+    assert result.snapshot_files == [
+        FileCommit(filename="tenant.yaml", commit="7"),
+        FileCommit(filename="startup.yaml", commit="11"),
+    ]
+    assert result.get_commit("tenant.yaml") == "7"
+    assert result.get_commit("startup.yaml") == "11"
 
 
 @pytest.mark.asyncio
 async def test_execute_render_http_error() -> None:
     """Test execute_render activity when HTTP request fails."""
-    from nv_config_manager.common.client.render import RenderClientException
-
     base_url = "https://render.test.config-manager.example.com"
     mock_client = RenderClient(base_url=base_url)
 

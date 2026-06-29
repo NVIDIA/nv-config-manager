@@ -15,8 +15,16 @@
 """Network Device Backup Workflow Definition."""
 
 from datetime import timedelta
+from typing import cast
 
-from pydantic import BaseModel
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    model_serializer,
+    model_validator,
+)
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 from temporalio.exceptions import ActivityError, ApplicationError
@@ -66,6 +74,15 @@ DEFAULT_ACTIVITY_RETRY_POLICY = RetryPolicy(
         "ConfigApplyFailureException",
         "DiffChangedException",
     ],
+)
+TENANT_CONFIG_COMMIT_ID_DESCRIPTION = (
+    "Optional config-store commit ID for the tenant configuration. Must be supplied with "
+    "intended_config_commit_id; omit both to deploy the latest tenant and intended configurations."
+)
+INTENDED_CONFIG_COMMIT_ID_DESCRIPTION = (
+    "Optional config-store commit ID for the intended startup configuration from the same render "
+    "snapshot as tenant_config_commit_id. Must be supplied with tenant_config_commit_id; omit both "
+    "to deploy the latest tenant and intended configurations."
 )
 
 
@@ -355,7 +372,82 @@ class DeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, ArchiveMixi
 class TenantDeployInput(BaseModel):
     """Tenant Config Deployment Workflow Input Definiton."""
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "oneOf": [
+                {
+                    "required": [
+                        "tenant_config_commit_id",
+                        "intended_config_commit_id",
+                    ],
+                    "properties": {
+                        "tenant_config_commit_id": {
+                            "type": "string",
+                            "pattern": r"^\d+$",
+                            "description": TENANT_CONFIG_COMMIT_ID_DESCRIPTION,
+                        },
+                        "intended_config_commit_id": {
+                            "type": "string",
+                            "pattern": r"^\d+$",
+                            "description": INTENDED_CONFIG_COMMIT_ID_DESCRIPTION,
+                        },
+                    },
+                },
+                {
+                    "not": {
+                        "anyOf": [
+                            {"required": ["tenant_config_commit_id"]},
+                            {"required": ["intended_config_commit_id"]},
+                        ]
+                    }
+                },
+            ]
+        }
+    )
+
     device: str | NetworkDeviceData
+    tenant_config_commit_id: str | None = Field(
+        default=None,
+        pattern=r"^\d+$",
+        description=TENANT_CONFIG_COMMIT_ID_DESCRIPTION,
+    )
+    intended_config_commit_id: str | None = Field(
+        default=None,
+        pattern=r"^\d+$",
+        description=INTENDED_CONFIG_COMMIT_ID_DESCRIPTION,
+    )
+
+    @model_validator(mode="after")
+    def validate_render_snapshot(self) -> "TenantDeployInput":
+        """Require non-null commit IDs to be supplied together or both omitted."""
+        snapshot_fields = {
+            "tenant_config_commit_id",
+            "intended_config_commit_id",
+        }
+        supplied_fields = self.model_fields_set & snapshot_fields
+        if supplied_fields and (
+            supplied_fields != snapshot_fields
+            or self.tenant_config_commit_id is None
+            or self.intended_config_commit_id is None
+        ):
+            raise ValueError(
+                "tenant_config_commit_id and intended_config_commit_id must both be non-null or both be omitted"
+            )
+        return self
+
+    @model_serializer(mode="wrap")
+    def serialize_render_snapshot(
+        self, handler: SerializerFunctionWrapHandler
+    ) -> dict[str, object]:
+        """Keep omitted snapshot IDs absent during Temporal serialization."""
+        data = cast(dict[str, object], handler(self))
+        if not self.model_fields_set & {
+            "tenant_config_commit_id",
+            "intended_config_commit_id",
+        }:
+            data.pop("tenant_config_commit_id", None)
+            data.pop("intended_config_commit_id", None)
+        return data
 
 
 @workflow.defn
@@ -411,6 +503,8 @@ class TenantDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archi
         """Load Tenant Config Stage Input."""
 
         device: str | NetworkDeviceData
+        tenant_config_commit_id: str | None = None
+        intended_config_commit_id: str | None = None
 
     class LoadConfigStageOutput(StageOutput):
         """Load Tenant Config Stage Output."""
@@ -418,6 +512,7 @@ class TenantDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archi
         device: NetworkDeviceData
         tenant_config: str
         commit_id: str
+        intended_config_commit_id: str
 
     @stage_executor("load_tenant_configuration")
     async def load_tenant_configuration(
@@ -442,14 +537,31 @@ class TenantDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archi
             LoadPartialConfigurationActivityInput(
                 device_data=device,
                 config_file=device.tenant_config_file,
+                commit_id=stage_input.tenant_config_commit_id,
             ),
             start_to_close_timeout=timedelta(minutes=1),
             retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
         )
+        intended_config_commit_id = stage_input.intended_config_commit_id
+        if intended_config_commit_id is None:
+            _, intended_config_commit_id, _ = await workflow.execute_activity(
+                load_intended_configuration,
+                device,
+                start_to_close_timeout=timedelta(minutes=1),
+                retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+            )
+        if intended_config_commit_id is None:
+            raise ApplicationError(
+                "Unable to resolve intended configuration commit ID for tenant deployment"
+            )
         config_path = device.tenant_config_path
         markdown = f"Loaded tenant configuration from [{config_path}]({url})."
         return TenantDeployWorkflow.LoadConfigStageOutput(
-            device=device, tenant_config=content, commit_id=commit_id, display=markdown
+            device=device,
+            tenant_config=content,
+            commit_id=commit_id,
+            intended_config_commit_id=intended_config_commit_id,
+            display=markdown,
         )
 
     class PerformDiffStageInput(StageInput):
@@ -627,7 +739,11 @@ class TenantDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archi
         """Execute tenant deployment workflow."""
         self.set_input(workflow_input)
         load_config_output = await self.load_tenant_configuration(
-            TenantDeployWorkflow.LoadConfigStageInput(device=workflow_input.device)
+            TenantDeployWorkflow.LoadConfigStageInput(
+                device=workflow_input.device,
+                tenant_config_commit_id=workflow_input.tenant_config_commit_id,
+                intended_config_commit_id=workflow_input.intended_config_commit_id,
+            )
         )
 
         diff_output = await self.perform_configuration_diff(
@@ -661,7 +777,7 @@ class TenantDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archi
         await self.perform_backup(
             TenantDeployWorkflow.BackupStageInput(
                 device_id=load_config_output.device.id,
-                commit_id=load_config_output.commit_id,
+                commit_id=load_config_output.intended_config_commit_id,
             )
         )
         await self.archive_results()

@@ -43,6 +43,7 @@ with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.ngc.activities.nautobot import (
         AssignVrfToDeviceInput,
         AssignVrfToInterfaceInput,
+        CheckRecordedConfigDriftInput,
         DeleteOverlayInput,
         GetAvailableRouteDistinguishersInput,
         GetDeviceInterfacesInput,
@@ -50,11 +51,13 @@ with workflow.unsafe.imports_passed_through():
         GetNetworkDeviceInput,
         ProvisionVrfInput,
         QueryVRFByVPCInput,
+        ReconcileSpXOverlayAssignmentsInput,
         Vrf,
         VrfDeletionActivityInput,
         _vni_from_rd,
         assign_vrf_to_device,
         assign_vrf_to_interface,
+        check_recorded_config_drift,
         delete_overlay,
         delete_vrf,
         get_available_route_distinguishers,
@@ -63,6 +66,7 @@ with workflow.unsafe.imports_passed_through():
         get_network_device,
         get_vrfs_by_overlay_id,
         provision_vrf,
+        reconcile_spx_overlay_assignments,
     )
     from nv_config_manager.temporal.ngc.activities.render import (
         ExecuteRenderInput,
@@ -317,10 +321,24 @@ class SpXOverlayDeletionWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
             retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
         )
         if not existing_vrfs:
+            overlay_result = await workflow.execute_activity(
+                delete_overlay,
+                DeleteOverlayInput(
+                    overlay_id=stage_input.overlay_id,
+                    site=stage_input.site,
+                ),
+                start_to_close_timeout=timedelta(minutes=1),
+                retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+            )
+            display = (
+                f"Deleted overlay {overlay_result.overlay_name}"
+                if overlay_result.deleted
+                else f"No VRFs or overlay exist for Overlay ID {stage_input.overlay_id}"
+            )
             return self.DeleteSpXOverlayStageOutput(
                 deleted_vrfs=[],
                 in_use_vrfs=[],
-                display=f"No VRFs exist for Overlay ID {stage_input.overlay_id}",
+                display=display,
             )
 
         in_use_vrfs = [vrf for vrf in existing_vrfs if vrf.interface_count > 0]
@@ -555,6 +573,8 @@ class SpXOverlayAssignmentWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixi
         """Assign VRF to Ports Stage Input."""
 
         device_id: str
+        overlay_id: str
+        site: str
         vrf_id: str
         vrf_name: str
         port_names: list[str]
@@ -601,13 +621,27 @@ class SpXOverlayAssignmentWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixi
 
         await asyncio.gather(*tasks)
 
+        overlay_assignments = await workflow.execute_activity(
+            reconcile_spx_overlay_assignments,
+            ReconcileSpXOverlayAssignmentsInput(
+                overlay_id=stage_input.overlay_id,
+                site=stage_input.site,
+                device_id=stage_input.device_id,
+                interface_ids=[interface.id for interface in interfaces_output.interfaces],
+            ),
+            start_to_close_timeout=timedelta(minutes=5),
+            retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+        )
+
         return self.AssignVrfToPortsStageOutput(
             assigned_ports=assigned_ports,
             already_assigned_ports=already_assigned_ports,
             display=(
                 f"VRF {stage_input.vrf_name} assigned "
                 f"to ports: {', '.join(assigned_ports)}\n"
-                f"Ports already assigned: {', '.join(already_assigned_ports)}"
+                f"Ports already assigned: {', '.join(already_assigned_ports)}\n"
+                f"Overlay assignments created: {overlay_assignments.created}; "
+                f"stale assignments removed: {overlay_assignments.removed}"
             ),
         )
 
@@ -639,6 +673,8 @@ class SpXOverlayAssignmentWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixi
         ports_output = await self.assign_vrf_to_ports_stage(
             self.AssignVrfToPortsStageInput(
                 device_id=device_vrf_output.device.id,
+                overlay_id=workflow_input.overlay_id,
+                site=workflow_input.site,
                 vrf_id=device_vrf_output.vrf.id,
                 vrf_name=device_vrf_output.vrf.name,
                 port_names=workflow_input.port_names,
@@ -706,10 +742,17 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
         )
 
         self.define_stage(
+            name="determine_deployment_action",
+            description="Determine whether the tenant change needs deployment",
+            requires_approval=False,
+            depends_on=["assign_spx_overlay"],
+        )
+
+        self.define_stage(
             name="render_tenant_config",
             description="Render tenant configuration",
             requires_approval=False,
-            depends_on=["assign_spx_overlay"],
+            depends_on=["determine_deployment_action"],
         )
 
         self.define_stage(
@@ -810,6 +853,50 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
             display=display,
         )
 
+    class DetermineDeploymentActionStageInput(StageInput):
+        """Determine Deployment Action Stage Input."""
+
+        device_id: str
+        assignment_changed: bool
+
+    class DetermineDeploymentActionStageOutput(StageOutput):
+        """Determine Deployment Action Stage Output."""
+
+        deploy_required: bool
+        use_latest_render: bool = False
+
+    @stage_executor("determine_deployment_action")
+    async def determine_deployment_action_stage(
+        self, stage_input: DetermineDeploymentActionStageInput
+    ) -> DetermineDeploymentActionStageOutput:
+        """Determine whether a tenant deployment is required."""
+        if stage_input.assignment_changed:
+            return self.DetermineDeploymentActionStageOutput(
+                deploy_required=True,
+                display="Nautobot assignment changed; tenant render and deploy are required.",
+            )
+
+        has_pending_deployment = await workflow.execute_activity(
+            check_recorded_config_drift,
+            CheckRecordedConfigDriftInput(device_id=stage_input.device_id),
+            start_to_close_timeout=timedelta(minutes=1),
+            retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+        )
+        if has_pending_deployment:
+            return self.DetermineDeploymentActionStageOutput(
+                deploy_required=True,
+                use_latest_render=True,
+                display=(
+                    "Nautobot assignment was already complete, but the device has a pending "
+                    "deployment; deploying the latest rendered tenant configuration."
+                ),
+            )
+
+        return self.DetermineDeploymentActionStageOutput(
+            deploy_required=False,
+            display="Nautobot assignment is already complete and no deployment is pending.",
+        )
+
     class RenderStageInput(StageInput):
         """Render Stage Input."""
 
@@ -818,7 +905,8 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
     class RenderStageOutput(StageOutput):
         """Render Stage Output."""
 
-        config_id: str | None = None
+        tenant_config_commit_id: str
+        intended_config_commit_id: str
 
     @stage_executor("render_tenant_config")
     async def render_stage(self, stage_input: RenderStageInput) -> RenderStageOutput:
@@ -833,16 +921,19 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
             retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
         )
 
-        # Get commit_id for tenant.yaml from the updated_files list
+        # Resolve both commit IDs from the same post-render Config Store snapshot.
         tenant_config_file = stage_input.device.tenant_config_file
-        config_id = result.get_commit(tenant_config_file)
+        tenant_config_commit_id = result.get_commit(tenant_config_file)
+        intended_config_commit_id = result.get_commit(stage_input.device.intended_config_file)
 
-        display_message = "Rendered tenant configuration"
-        if config_id:
-            display_message += f" (config ID: {config_id})"
+        if tenant_config_commit_id is None or intended_config_commit_id is None:
+            raise ApplicationError("Failed to resolve rendered configuration commit IDs")
+
+        display_message = f"Rendered tenant configuration (config ID: {tenant_config_commit_id})"
 
         return self.RenderStageOutput(
-            config_id=config_id,
+            tenant_config_commit_id=tenant_config_commit_id,
+            intended_config_commit_id=intended_config_commit_id,
             display=display_message,
         )
 
@@ -850,7 +941,7 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
         """Wait For Render Stage Input."""
 
         device: NetworkDeviceData
-        config_id: str | None
+        config_id: str
 
     class WaitForRenderStageOutput(StageOutput):
         """Wait For Render Stage Output."""
@@ -885,6 +976,8 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
         """Deploy Stage Input."""
 
         device: NetworkDeviceData
+        tenant_config_commit_id: str | None = None
+        intended_config_commit_id: str | None = None
 
     class DeployStageOutput(StageOutput):
         """Deploy Stage Output."""
@@ -894,9 +987,29 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
     @stage_executor("deploy")
     async def deploy_stage(self, stage_input: DeployStageInput) -> DeployStageOutput:
         """Deploy tenant configuration to device."""
+        if (stage_input.tenant_config_commit_id is None) != (
+            stage_input.intended_config_commit_id is None
+        ):
+            raise ApplicationError(
+                "tenant_config_commit_id and intended_config_commit_id must both be supplied "
+                "or both be omitted"
+            )
+
+        if (
+            stage_input.tenant_config_commit_id is None
+            and stage_input.intended_config_commit_id is None
+        ):
+            tenant_deploy_input = TenantDeployInput(device=stage_input.device)
+        else:
+            tenant_deploy_input = TenantDeployInput(
+                device=stage_input.device,
+                tenant_config_commit_id=stage_input.tenant_config_commit_id,
+                intended_config_commit_id=stage_input.intended_config_commit_id,
+            )
+
         await workflow.execute_child_workflow(
             TenantDeployWorkflow.run,
-            TenantDeployInput(device=stage_input.device),
+            tenant_deploy_input,
             run_timeout=timedelta(minutes=10),
         )
 
@@ -928,14 +1041,38 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
             )
         )
 
-        if not assign_output.assigned_ports and not assign_output.vrf_assigned:
-            self.set_stage_state("render", StateEnum.UNREACHABLE)
+        deployment_action_output = await self.determine_deployment_action_stage(
+            self.DetermineDeploymentActionStageInput(
+                device_id=device_output.device.id,
+                assignment_changed=bool(assign_output.assigned_ports or assign_output.vrf_assigned),
+            )
+        )
+
+        if not deployment_action_output.deploy_required:
+            self.set_stage_state("render_tenant_config", StateEnum.UNREACHABLE)
             self.set_stage_state("wait_for_render", StateEnum.UNREACHABLE)
             self.set_stage_state("deploy", StateEnum.UNREACHABLE)
             assigned_ports = []
             vrf_assigned = False
             vrf = None
             device_deployed = None
+        elif deployment_action_output.use_latest_render:
+            self.set_stage_state(
+                "render_tenant_config", StateEnum.UNREACHABLE, cascade_unreachable=False
+            )
+            self.set_stage_state(
+                "wait_for_render", StateEnum.UNREACHABLE, cascade_unreachable=False
+            )
+
+            deploy_output = await self.deploy_stage(
+                self.DeployStageInput(
+                    device=device_output.device,
+                )
+            )
+            device_deployed = deploy_output.device_id
+            assigned_ports = assign_output.assigned_ports
+            vrf_assigned = assign_output.vrf_assigned
+            vrf = assign_output.vrf
         else:
             render_output = await self.render_stage(
                 self.RenderStageInput(
@@ -946,12 +1083,16 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
             await self.wait_for_render_stage(
                 self.WaitForRenderStageInput(
                     device=device_output.device,
-                    config_id=render_output.config_id,
+                    config_id=render_output.tenant_config_commit_id,
                 )
             )
 
             deploy_output = await self.deploy_stage(
-                self.DeployStageInput(device=device_output.device)
+                self.DeployStageInput(
+                    device=device_output.device,
+                    tenant_config_commit_id=render_output.tenant_config_commit_id,
+                    intended_config_commit_id=render_output.intended_config_commit_id,
+                )
             )
             device_deployed = deploy_output.device_id
             assigned_ports = assign_output.assigned_ports
