@@ -30,6 +30,7 @@ import pytest
 from aioresponses import CallbackResult, aioresponses
 from temporalio.exceptions import ApplicationError
 
+from nv_config_manager.temporal.client.ufm import UFMClientError
 from nv_config_manager.temporal.common.secrets import clear_secrets_cache
 from nv_config_manager.temporal.ngc.activities.ib_nautobot import (
     FetchPKeyAssignmentsInput,
@@ -188,6 +189,17 @@ class TestFetchPKeyMembers:
         assert result.guids == []
         assert result.memberships == []
         assert result.ip_over_ib is None
+
+    @pytest.mark.asyncio
+    async def test_non_404_error_propagates(self, mock_ufm_config):
+        """Only 404 is tolerated; other UFM errors must surface, not read as empty."""
+        with aioresponses() as m:
+            m.get(_pkey_members_url("0x0005"), status=500, payload={"error": "boom"})
+
+            with pytest.raises(UFMClientError):
+                await fetch_pkey_members(
+                    FetchPKeyMembersInput(host="ufm.example.com", pkey="0x0005")
+                )
 
     @pytest.mark.asyncio
     async def test_returns_memberships_and_ip_over_ib(self, mock_ufm_config):
