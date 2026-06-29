@@ -103,6 +103,7 @@ _OVERLAY_TYPE_COLUMNS = ["pk", "name", "status", "tenant", "location", "assignme
 
 class AssignmentCountColumn(LinkedCountColumn):
     """Assignment count that always links to the filtered assignment list."""
+
     def render(self, *, record, value):
         """Render the count as a link to the filtered assignment list."""
         if not value:
