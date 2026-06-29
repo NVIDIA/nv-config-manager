@@ -501,9 +501,7 @@ class TestCleanupEmptyPkeyPartition:
         with aioresponses() as m:
             m.get(_NB_ASSIGNMENTS, payload={"results": []})
 
-            result = await cleanup_empty_pkey_partition(
-                self._input(ufm_partition_empty=False)
-            )
+            result = await cleanup_empty_pkey_partition(self._input(ufm_partition_empty=False))
 
             assert result.partition_empty is False
             assert result.pkey_deleted is False
