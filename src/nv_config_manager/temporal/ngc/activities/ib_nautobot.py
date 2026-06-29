@@ -744,7 +744,7 @@ class CleanupEmptyPartitionInput(BaseModel):
     overlay_name: str
     pkey_id: str
     pkey: str
-    ufm_partition_empty: bool
+    ufm_partition_empty: bool = False
 
 
 class CleanupEmptyPartitionOutput(StageOutput):

@@ -624,7 +624,7 @@ class VerifyPKeyMembersAbsentOutput(StageOutput):
     verified: bool
     still_present_guids: list[str]
     partition_exists: bool = True
-    remaining_member_count: int = 0
+    remaining_member_count: int | None = None
 
 
 @activity.defn

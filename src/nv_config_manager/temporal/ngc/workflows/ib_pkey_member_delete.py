@@ -286,7 +286,12 @@ class IBPKeyMemberDeleteWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
             start_to_close_timeout=timedelta(minutes=2),
             retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
         )
-        partition_empty = (not result.partition_exists) or result.remaining_member_count == 0
+        if not result.partition_exists:
+            partition_empty = True
+        elif result.remaining_member_count is None:
+            partition_empty = False
+        else:
+            partition_empty = result.remaining_member_count == 0
         return self.VerifyRemovedStageOutput(
             pkey=result.pkey,
             verified=result.verified,
