@@ -941,6 +941,11 @@ async def reconcile_spx_overlay_assignments(
             raise ApplicationError(
                 f"Overlay {activity_input.overlay_id} not found in site {activity_input.site}"
             )
+        if overlay.get("isolation_type") != SPECTRUMX_ISOLATION_TYPE:
+            raise ApplicationError(
+                f"Overlay {activity_input.overlay_id} in site {activity_input.site} "
+                f"is not a {SPECTRUMX_ISOLATION_TYPE} overlay"
+            )
         target_overlay_id = str(overlay["id"])
 
         device_assignments = await _get_overlay_assignments(client, activity_input.device_id)

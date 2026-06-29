@@ -469,6 +469,8 @@ async def test_spx_overlay_tenant_change_uses_current_versions_after_render_race
         assert stages["render_tenant_config"]["output"]["tenant_config_commit_id"] == "7"
         assert stages["render_tenant_config"]["output"]["intended_config_commit_id"] == "11"
         assert stages["deploy"]["state"] == "COMPLETE"
+        assert stages["deploy"]["input"]["tenant_config_commit_id"] == "7"
+        assert stages["deploy"]["input"]["intended_config_commit_id"] == "11"
 
 
 @pytest.mark.asyncio

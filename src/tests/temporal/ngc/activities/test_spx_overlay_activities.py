@@ -97,7 +97,15 @@ async def test_reconcile_spx_overlay_assignments_moves_port_between_overlays():
     with aioresponses() as m:
         m.get(
             _r(f"{OVERLAYS_BASE}/overlays/"),
-            payload={"results": [{"id": OVERLAY_ID, "name": "Panda"}]},
+            payload={
+                "results": [
+                    {
+                        "id": OVERLAY_ID,
+                        "name": "Panda",
+                        "isolation_type": "spectrum_x_vrf",
+                    }
+                ]
+            },
         )
         m.get(
             _r(f"{OVERLAYS_BASE}/overlay-assignments/"),
@@ -200,6 +208,35 @@ async def test_reconcile_spx_overlay_assignments_moves_port_between_overlays():
 
 
 @pytest.mark.asyncio
+async def test_reconcile_spx_overlay_assignments_rejects_non_spx_overlay():
+    with aioresponses() as m:
+        m.get(
+            _r(f"{OVERLAYS_BASE}/overlays/"),
+            payload={
+                "results": [
+                    {
+                        "id": OVERLAY_ID,
+                        "name": "Panda",
+                        "isolation_type": "ib_pkey",
+                    }
+                ]
+            },
+        )
+
+        with pytest.raises(ApplicationError, match="is not a spectrum_x_vrf overlay"):
+            await reconcile_spx_overlay_assignments(
+                ReconcileSpXOverlayAssignmentsInput(
+                    overlay_id="Panda",
+                    site=LOCATION_ID,
+                    device_id="22220000-0000-0000-0000-000000000001",
+                    interface_ids=["33330000-0000-0000-0000-000000000001"],
+                )
+            )
+
+    assert all("overlay-assignments" not in str(request_url) for _, request_url in m.requests)
+
+
+@pytest.mark.asyncio
 async def test_reconcile_spx_overlay_assignments_keeps_old_assignment_if_create_fails():
     device_id = "22220000-0000-0000-0000-000000000001"
     interface_id = "33330000-0000-0000-0000-000000000001"
@@ -208,7 +245,15 @@ async def test_reconcile_spx_overlay_assignments_keeps_old_assignment_if_create_
     with aioresponses() as m:
         m.get(
             _r(f"{OVERLAYS_BASE}/overlays/"),
-            payload={"results": [{"id": OVERLAY_ID, "name": "Panda"}]},
+            payload={
+                "results": [
+                    {
+                        "id": OVERLAY_ID,
+                        "name": "Panda",
+                        "isolation_type": "spectrum_x_vrf",
+                    }
+                ]
+            },
         )
         m.get(
             _r(f"{OVERLAYS_BASE}/overlay-assignments/"),
