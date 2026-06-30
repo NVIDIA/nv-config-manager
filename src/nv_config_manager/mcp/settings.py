@@ -80,6 +80,7 @@ class MCPOAuthSettings:
 
     enabled: bool
     resource_url: str = ""
+    resource_identifier: str = ""
     issuer_url: str = ""
     client_id: str = ""
     scopes: tuple[str, ...] = ()
@@ -96,9 +97,14 @@ class MCPOAuthSettings:
         if not enabled:
             return cls(enabled=False)
 
+        resource_url = _normalized_required_url(config, "resource_url")
         settings = cls(
             enabled=True,
-            resource_url=_normalized_required_url(config, "resource_url"),
+            resource_url=resource_url,
+            resource_identifier=_normalize_url(
+                _get_value(config, "mcp.oauth", "resource_identifier", "")
+            )
+            or resource_url,
             issuer_url=_normalized_required_url(config, "issuer_url"),
             client_id=_get_required(config, "mcp.oauth", "client_id").strip(),
             scopes=_parse_scopes(_get_value(config, "mcp.oauth", "scopes", "")),

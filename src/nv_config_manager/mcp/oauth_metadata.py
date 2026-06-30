@@ -24,7 +24,7 @@ from nv_config_manager.mcp.settings import MCPOAuthSettings
 def protected_resource_metadata(settings: MCPOAuthSettings) -> dict[str, Any]:
     """Build RFC 9728 protected resource metadata for the MCP endpoint."""
     metadata: dict[str, Any] = {
-        "resource": settings.resource_url,
+        "resource": settings.resource_identifier,
         "authorization_servers": [settings.issuer_url],
         "bearer_methods_supported": ["header"],
         "resource_name": "NVIDIA Config Manager MCP",

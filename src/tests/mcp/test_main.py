@@ -160,6 +160,19 @@ def test_configured_oauth_metadata_path_bypasses_service_auth(
     assert response.json()["resource"] == "https://svc-mcp.config-manager.local/custom/mcp"
 
 
+def test_oauth_metadata_can_advertise_distinct_resource_identifier() -> None:
+    oauth_settings = _oauth_settings(resource_identifier="api://nvcm-api")
+
+    with TestClient(
+        create_app(_settings(), oauth_settings),
+        base_url="https://svc-mcp.config-manager.local",
+    ) as client:
+        response = client.get("/.well-known/oauth-protected-resource/mcp")
+
+    assert response.status_code == 200
+    assert response.json()["resource"] == "api://nvcm-api"
+
+
 def test_oauth_metadata_endpoints_not_registered_when_disabled() -> None:
     client = TestClient(create_app(_settings(), MCPOAuthSettings(enabled=False)))
 
@@ -227,10 +240,12 @@ def _settings() -> MCPSettings:
 
 def _oauth_settings(
     resource_url: str = "https://svc-mcp.config-manager.local/mcp",
+    resource_identifier: str | None = None,
 ) -> MCPOAuthSettings:
     return MCPOAuthSettings(
         enabled=True,
         resource_url=resource_url,
+        resource_identifier=resource_identifier or resource_url,
         issuer_url="https://idp.example.test/realms/nvcm",
         client_id="nvcm-cli",
         scopes=("openid", "email", "profile"),

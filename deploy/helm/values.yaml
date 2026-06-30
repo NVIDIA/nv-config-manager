@@ -934,7 +934,7 @@ oidc:
   clientSecretName: "oidc-client-secret"
   # OIDC scopes to request
   # Default: ["openid", "email", "profile"]
-  # For Azure AD JWT access tokens, use: ["api://{client-id}/.default", "openid", "profile"]
+  # For Azure AD JWT access tokens, use: ["openid", "email", "profile", "api://{client-id}/access"]
   scopes: []
   # Token audiences for JWT validation
   # Default: uses clientId as audience
@@ -1905,6 +1905,10 @@ mcp:
       # enabled: true
       # Defaults to https://<svc-mcp-hostname>/mcp
       resourceUrl: ""
+      # OAuth resource identifier advertised in protected-resource metadata.
+      # Defaults to resourceUrl. For Azure AD, set this to the API Application ID URI
+      # that owns the configured API scopes, for example api://{client-id}.
+      resourceIdentifier: ""
       # Defaults to oidc.issuerUrl.
       issuerUrl: ""
       # Defaults to oidc.cliClientId, then oidc.clientId.

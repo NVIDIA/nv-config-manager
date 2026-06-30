@@ -303,7 +303,7 @@ def test_azure_fallback_keeps_azure_paths_and_scope(
     assert auth._get_token_endpoint() == (
         "https://login.microsoftonline.com/tenant-id/oauth2/v2.0/token"
     )
-    assert auth.scopes == ["api://client-id/.default", "openid", "profile"]
+    assert auth.scopes == ["openid", "email", "profile", "api://client-id/access"]
 
 
 def test_generic_oidc_fallback_uses_issuer_relative_paths(

@@ -99,6 +99,7 @@ def test_mcp_oauth_settings_parse_metadata_config() -> None:
 
     assert settings.enabled is True
     assert settings.resource_url == "https://svc-mcp.example.test/mcp"
+    assert settings.resource_identifier == "https://svc-mcp.example.test/mcp"
     assert settings.issuer_url == "https://idp.example.test/realms/nvcm"
     assert settings.client_id == "nvcm-cli"
     assert settings.scopes == ("openid", "email", "profile")
@@ -112,6 +113,20 @@ def test_mcp_oauth_settings_parse_metadata_config() -> None:
         "/.well-known/oauth-protected-resource/mcp",
         "/.well-known/oauth-authorization-server",
     }
+
+
+def test_mcp_oauth_settings_accepts_distinct_resource_identifier() -> None:
+    config = _oauth_config()
+    config["mcp.oauth"]["resource_identifier"] = "api://client-id/"
+
+    settings = MCPOAuthSettings.from_config(config)
+
+    assert settings.resource_url == "https://svc-mcp.example.test/mcp"
+    assert settings.resource_identifier == "api://client-id"
+    assert (
+        settings.resource_metadata_url
+        == "https://svc-mcp.example.test/.well-known/oauth-protected-resource/mcp"
+    )
 
 
 def test_mcp_oauth_well_known_paths_follow_resource_url_path() -> None:
