@@ -174,6 +174,63 @@ For example:
 
 The discovery response tells the client which remote MCP endpoint to use and whether bearer authentication is required. In SSO-enabled environments, the MCP tools act with the signed-in user's bearer token. They do not switch to broader service credentials for Config Manager APIs.
 
+## Local Development (`kind-up-sec`)
+
+The `make kind-up-sec` environment runs Keycloak for SSO and exposes the MCP server on `svc-mcp.config-manager.local`. Follow these steps to connect Claude Code to a local deployment.
+
+### Prerequisites
+
+Ensure `/etc/hosts` includes the following entries (run `make kind-up-sec` output will remind you if any are missing):
+
+```text
+127.0.0.1 config-manager.local keycloak.config-manager.local
+127.0.0.1 svc-mcp.config-manager.local
+```
+
+### Install the TLS certificate
+
+Install the gateway certificate so browsers trust the local TLS endpoint:
+
+```sh
+make install-cert
+```
+
+Node.js-based tools, including Claude Code, do not use the macOS keychain. Set this environment variable in your shell profile so that Claude Code can reach the local endpoints:
+
+```sh
+export NODE_TLS_REJECT_UNAUTHORIZED=0
+```
+
+### Add the MCP server to Claude Code
+
+Fetch the pre-registered client ID and MCP URL from the local discovery endpoint, then add the server using the HTTP transport:
+
+```sh
+DISCOVERY=$(curl -s https://config-manager.local/auth/discovery)
+CLIENT_ID=$(printf '%s' "$DISCOVERY" | jq -r '.clientId')
+MCP_URL=$(printf '%s' "$DISCOVERY" | jq -r '.services.mcp')
+
+claude mcp add --transport http --client-id "$CLIENT_ID" nv-config-manager "$MCP_URL"
+```
+
+Using `--client-id` tells Claude Code to use the pre-registered `nv-config-manager-cli` public client instead of attempting OAuth Dynamic Client Registration, which is disabled in local Keycloak.
+
+### Authenticate
+
+```sh
+NODE_TLS_REJECT_UNAUTHORIZED=0 claude mcp login nv-config-manager
+```
+
+A browser window opens to the local Keycloak login. Use any of the pre-configured local accounts:
+
+| Username | Password | Roles |
+| :------- | :------- | :---- |
+| `nvcm-admin` | `nvcm-admin` | Admin + network |
+| `nvcm-network` | `nvcm-network` | Network operator |
+| `demo` | `demo` | Network operator |
+
+After login, start Claude Code from the repo directory. The `nv-config-manager` MCP tools will be available in the session.
+
 ## Client Settings
 
 Use these settings when configuring a client manually:

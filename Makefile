@@ -838,7 +838,28 @@ topology:
 	@echo "🌐 Deploying mock topology jobs and creating test topology..."
 	cd installer && uv run nv-config-manager-installer deploy ../$(INSTALL_CONFIG)
 
-# Install self-signed CA certificate in system keychain (macOS only)
+# Install self-signed CA certificate in system keychain (macOS only).
+# Trusts the gateway TLS cert for browsers and system tools.
+# Note: Node.js ignores the macOS keychain. For Node.js-based tools such as
+# Claude Code, set NODE_TLS_REJECT_UNAUTHORIZED=0 or use NODE_EXTRA_CA_CERTS
+# once the gateway cert is issued by a proper CA (CA:TRUE).
+install-cert:
+	@if [ "$$(uname)" != "Darwin" ]; then \
+		echo "install-cert is only supported on macOS"; exit 1; \
+	fi
+	@echo "Extracting gateway TLS certificate..."
+	@kubectl get secret -n $(KIND_SEC_NAMESPACE) nv-config-manager-gateway-tls \
+		-o jsonpath='{.data.tls\.crt}' | base64 -d > /tmp/nvcm-gateway.crt
+	@echo "Installing certificate to system keychain (sudo required)..."
+	@sudo security add-trusted-cert -d -r trustRoot \
+		-k /Library/Keychains/System.keychain /tmp/nvcm-gateway.crt
+	@rm -f /tmp/nvcm-gateway.crt
+	@echo "Certificate installed."
+	@echo ""
+	@echo "Note: Node.js tools (e.g. Claude Code) require NODE_TLS_REJECT_UNAUTHORIZED=0"
+	@echo "      because the gateway cert is self-signed with CA:FALSE."
+	@echo "      Add to your shell profile: export NODE_TLS_REJECT_UNAUTHORIZED=0"
+
 # Remove local deployment (preserves shared operators)
 local-down:
 	@echo "🗑️  Removing NVIDIA Config Manager from local Kubernetes..."
