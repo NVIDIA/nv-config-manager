@@ -172,33 +172,33 @@ kubectl get secret nautobot-admin -n nv-config-manager -o jsonpath='{.data.api_t
 
 The `kind-up-sec` environment includes the MCP server. To connect Claude Code:
 
-**1. Install the TLS certificate**
+1. Install the TLS certificate.
 
-```bash
-make install-cert
-```
+   ```bash
+   make install-cert
+   ```
 
-Node.js (and Claude Code) does not use the system trust store because the gateway cert is self-signed with `CA:FALSE`. Scope the variable to the specific command rather than exporting it globally (see step 3 below).
+   Node.js (and Claude Code) does not use the system trust store because the gateway cert is self-signed with `CA:FALSE`. Scope the variable to the specific command rather than exporting it globally (see step 3 below).
 
-**2. Add the MCP server**
+2. Add the MCP server.
 
-```bash
-DISCOVERY=$(curl -s https://config-manager.local/auth/discovery)
-CLIENT_ID=$(printf '%s' "$DISCOVERY" | jq -r '.clientId')
-MCP_URL=$(printf '%s' "$DISCOVERY" | jq -r '.services.mcp')
+   ```bash
+   DISCOVERY=$(curl -s https://config-manager.local/auth/discovery)
+   CLIENT_ID=$(printf '%s' "$DISCOVERY" | jq -r '.clientId')
+   MCP_URL=$(printf '%s' "$DISCOVERY" | jq -r '.services.mcp')
 
-claude mcp add --transport http --client-id "$CLIENT_ID" nv-config-manager "$MCP_URL"
-```
+   claude mcp add --transport http --client-id "$CLIENT_ID" nv-config-manager "$MCP_URL"
+   ```
 
-Using `--client-id` uses the pre-registered `nv-config-manager-cli` public client and avoids OAuth Dynamic Client Registration, which is disabled in local Keycloak.
+   Using `--client-id` uses the pre-registered `nv-config-manager-cli` public client and avoids OAuth Dynamic Client Registration, which is disabled in local Keycloak.
 
-**3. Authenticate**
+3. Authenticate.
 
-```bash
-NODE_TLS_REJECT_UNAUTHORIZED=0 claude mcp login nv-config-manager
-```
+   ```bash
+   NODE_TLS_REJECT_UNAUTHORIZED=0 claude mcp login nv-config-manager
+   ```
 
-Log in with any pre-configured local Keycloak account: `nvcm-admin` / `nvcm-admin`, `nvcm-network` / `nvcm-network`, or `demo` / `demo`.
+Then, log in with any pre-configured local Keycloak account: `nvcm-admin` / `nvcm-admin`, `nvcm-network` / `nvcm-network`, or `demo` / `demo`.
 
 ## Makefile Commands
 
