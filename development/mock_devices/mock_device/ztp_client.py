@@ -174,7 +174,17 @@ def _step_dhcp_reservation(
             message=f"Failed to query DHCP API: {exc}",
         )
 
-    dhcp4 = _extract_dhcp4(resp.json())
+    try:
+        dhcp4 = _extract_dhcp4(resp.json())
+    except ValueError as exc:
+        return ZtpStepResult(
+            step="dhcp-reservation",
+            success=False,
+            message=(
+                f"Failed to parse DHCP API response as JSON: {exc} "
+                f"(status={resp.status_code}, body={resp.text[:200]!r})"
+            ),
+        )
     if not dhcp4:
         return ZtpStepResult(
             step="dhcp-reservation",

@@ -1214,9 +1214,16 @@ mock-workflow-backup:
 	if [ -z "$$NB_TOKEN" ]; then \
 		echo "ERROR: Nautobot token missing or secret not found"; exit 1; \
 	fi; \
-	DEVICE_ID=$$(curl -sk -H "Authorization: Token $$NB_TOKEN" \
-		"https://nautobot.$(HOSTNAME)/api/dcim/devices/?name=$(MOCK_BACKUP_DEVICE)" | \
-		python3 -c "import sys,json; r=json.load(sys.stdin)['results']; print(r[0]['id'] if r else '')" 2>/dev/null); \
+	DEVICE_ID=$$(curl -sk -w "\n%{http_code}" -H "Authorization: Token $$NB_TOKEN" \
+		"https://nautobot.$(HOSTNAME)/api/dcim/devices/?name=$(MOCK_BACKUP_DEVICE)"); \
+	NB_BODY=$$(echo "$$DEVICE_ID" | sed '$$d'); \
+	NB_CODE=$$(echo "$$DEVICE_ID" | tail -n 1); \
+	if [ "$$NB_CODE" = "000" ] || [ "$$NB_CODE" -ge 400 ]; then \
+		echo "ERROR: Nautobot API returned HTTP $$NB_CODE for device lookup"; exit 1; \
+	fi; \
+	DEVICE_ID=$$(echo "$$NB_BODY" | python3 -c "import sys,json; r=json.load(sys.stdin)['results']; print(r[0]['id'] if r else '')" 2>&1) || { \
+		echo "ERROR: Failed to parse Nautobot device response"; exit 1; \
+	}; \
 	if [ -z "$$DEVICE_ID" ]; then \
 		echo "ERROR: Device $(MOCK_BACKUP_DEVICE) not found in Nautobot"; exit 1; \
 	fi; \
@@ -1240,9 +1247,16 @@ mock-workflow-cable-validate:
 	if [ -z "$$NB_TOKEN" ]; then \
 		echo "ERROR: Nautobot token missing or secret not found"; exit 1; \
 	fi; \
-	DEVICE_ID=$$(curl -sk -H "Authorization: Token $$NB_TOKEN" \
-		"https://nautobot.$(HOSTNAME)/api/dcim/devices/?name=$(MOCK_CABLE_DEVICE)" | \
-		python3 -c "import sys,json; r=json.load(sys.stdin)['results']; print(r[0]['id'] if r else '')" 2>/dev/null); \
+	DEVICE_ID=$$(curl -sk -w "\n%{http_code}" -H "Authorization: Token $$NB_TOKEN" \
+		"https://nautobot.$(HOSTNAME)/api/dcim/devices/?name=$(MOCK_CABLE_DEVICE)"); \
+	NB_BODY=$$(echo "$$DEVICE_ID" | sed '$$d'); \
+	NB_CODE=$$(echo "$$DEVICE_ID" | tail -n 1); \
+	if [ "$$NB_CODE" = "000" ] || [ "$$NB_CODE" -ge 400 ]; then \
+		echo "ERROR: Nautobot API returned HTTP $$NB_CODE for device lookup"; exit 1; \
+	fi; \
+	DEVICE_ID=$$(echo "$$NB_BODY" | python3 -c "import sys,json; r=json.load(sys.stdin)['results']; print(r[0]['id'] if r else '')" 2>&1) || { \
+		echo "ERROR: Failed to parse Nautobot device response"; exit 1; \
+	}; \
 	if [ -z "$$DEVICE_ID" ]; then \
 		echo "ERROR: Device $(MOCK_CABLE_DEVICE) not found in Nautobot"; exit 1; \
 	fi; \

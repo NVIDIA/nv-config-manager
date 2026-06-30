@@ -22,9 +22,11 @@ The giaddr field simulates a relay agent so Kea can match the correct subnet.
 
 from __future__ import annotations
 
+import fcntl
 import logging
 import secrets
 import socket
+import struct
 import time
 from dataclasses import dataclass, field
 
@@ -152,6 +154,21 @@ def _parse_bootp_dhcp_response(data: bytes, expected_xid: int) -> DhcpResult:
         return DhcpResult(success=False, error=f"Failed to parse response: {exc}")
 
 
+_SIOCGIFADDR = 0x8915
+
+
+def _get_iface_ip(iface: str) -> str:
+    """Return the IPv4 address of *iface*, falling back to the pod IP on error."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        result = fcntl.ioctl(s.fileno(), _SIOCGIFADDR, struct.pack("256s", iface.encode()[:15]))
+        return socket.inet_ntoa(result[20:24])
+    except OSError:
+        return _get_pod_ip()
+    finally:
+        s.close()
+
+
 def _resolve_server(server: str) -> str:
     """Resolve hostname to IP address."""
     try:
@@ -163,16 +180,28 @@ def _resolve_server(server: str) -> str:
 def send_dhcp_discover(
     device: DeviceConfig,
     timeout: int = 10,
+    iface: str = "eth0",
+    use_broadcast: bool = False,
 ) -> DhcpResult:
     """Send a DHCP DISCOVER via UDP and wait for an OFFER.
 
-    Acts as a relay agent: sets giaddr to this pod's IP so Kea unicasts
-    the response back to us on port 67, avoiding broadcast issues in
-    Kubernetes overlay networks.
+    When *use_broadcast* is False (default), acts as a relay agent: sets giaddr
+    to the *iface* IP so Kea unicasts the response back on port 67, avoiding
+    broadcast issues in Kubernetes overlay networks.
+
+    When *use_broadcast* is True, sends to 255.255.255.255 without giaddr so
+    Kea broadcasts the response (useful outside overlay networks).
     """
-    server_ip = _resolve_server(device.dhcp_server) if device.dhcp_server else "255.255.255.255"
-    pod_ip = _get_pod_ip()
-    giaddr = device.relay_gateway or pod_ip
+    if use_broadcast:
+        server_ip = "255.255.255.255"
+        giaddr = ""
+        bind_ip = "0.0.0.0"
+    else:
+        server_ip = _resolve_server(device.dhcp_server) if device.dhcp_server else "255.255.255.255"
+        iface_ip = _get_iface_ip(iface)
+        giaddr = device.relay_gateway or iface_ip
+        bind_ip = iface_ip
+
     payload, xid = _build_bootp_dhcp_payload(device, "discover", giaddr=giaddr)
 
     logger.info(
@@ -181,7 +210,7 @@ def send_dhcp_discover(
         device.mac_address,
         device.serial or "(none)",
         server_ip,
-        giaddr,
+        giaddr or "(broadcast)",
         xid,
     )
 
@@ -191,7 +220,7 @@ def send_dhcp_discover(
     sock.settimeout(timeout)
 
     try:
-        sock.bind(("0.0.0.0", 67))
+        sock.bind((bind_ip, 67))
         sock.sendto(payload, (server_ip, 67))
         logger.info(
             "DHCP DISCOVER sent (%d bytes) to %s:67 (relay giaddr=%s)",
@@ -216,6 +245,8 @@ def send_dhcp_discover(
         return DhcpResult(
             success=False, error=f"No DHCP response within {timeout}s from {server_ip}"
         )
+    except OSError as exc:
+        return DhcpResult(success=False, error=f"Socket error (DISCOVER): {exc}")
     finally:
         sock.close()
 
@@ -225,11 +256,20 @@ def send_dhcp_request(
     offered_ip: str,
     server_id: str,
     timeout: int = 10,
+    iface: str = "eth0",
+    use_broadcast: bool = False,
 ) -> DhcpResult:
     """Send a DHCP REQUEST for the offered IP and wait for ACK/NAK."""
-    server_ip = _resolve_server(device.dhcp_server) if device.dhcp_server else "255.255.255.255"
-    pod_ip = _get_pod_ip()
-    giaddr = device.relay_gateway or pod_ip
+    if use_broadcast:
+        server_ip = "255.255.255.255"
+        giaddr = ""
+        bind_ip = "0.0.0.0"
+    else:
+        server_ip = _resolve_server(device.dhcp_server) if device.dhcp_server else "255.255.255.255"
+        iface_ip = _get_iface_ip(iface)
+        giaddr = device.relay_gateway or iface_ip
+        bind_ip = iface_ip
+
     payload, xid = _build_bootp_dhcp_payload(
         device, "request", offered_ip, server_id, giaddr=giaddr
     )
@@ -248,7 +288,7 @@ def send_dhcp_request(
     sock.settimeout(timeout)
 
     try:
-        sock.bind(("0.0.0.0", 67))
+        sock.bind((bind_ip, 67))
         sock.sendto(payload, (server_ip, 67))
 
         deadline = time.monotonic() + timeout
@@ -264,6 +304,8 @@ def send_dhcp_request(
                 break
 
         return DhcpResult(success=False, error=f"No DHCP ACK/NAK within {timeout}s")
+    except OSError as exc:
+        return DhcpResult(success=False, error=f"Socket error (REQUEST): {exc}")
     finally:
         sock.close()
 
@@ -277,7 +319,7 @@ def run_dhcp_transaction(
     """Run a full DHCP DORA transaction (Discover -> Offer -> Request -> Ack)."""
     logger.info("Starting DHCP transaction for %s", device.name)
 
-    discover_result = send_dhcp_discover(device, timeout)
+    discover_result = send_dhcp_discover(device, timeout, iface=iface, use_broadcast=use_broadcast)
     if not discover_result.success:
         logger.error("DHCP DISCOVER failed for %s: %s", device.name, discover_result.error)
         return discover_result
@@ -294,6 +336,8 @@ def run_dhcp_transaction(
         discover_result.offered_ip,
         discover_result.server_id,
         timeout,
+        iface=iface,
+        use_broadcast=use_broadcast,
     )
     if not request_result.success:
         logger.error("DHCP REQUEST failed for %s: %s", device.name, request_result.error)
