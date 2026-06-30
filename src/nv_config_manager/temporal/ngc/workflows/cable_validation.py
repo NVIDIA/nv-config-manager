@@ -378,6 +378,7 @@ class SiteCableValidationWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixi
         devices: dict[str, CableValidationResultData]
         legacy_site: bool = False
         failed_devices: dict[str, str] = {}
+        site: str = ""
 
     class FormatResultStageOutput(StageOutput):
         """Format result stage output."""
@@ -392,6 +393,7 @@ class SiteCableValidationWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixi
                 # Legacy parameter, no longer used
                 ignore_no_neighbor=False,
                 failed_devices=stage_input.failed_devices,
+                site=stage_input.site,
             ),
             start_to_close_timeout=timedelta(minutes=1),
             retry_policy=ACTIVITY_NO_RETRY_POLICY,
@@ -433,6 +435,7 @@ class SiteCableValidationWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixi
             self.FormatResultStageInput(
                 devices=validation_output.devices,
                 failed_devices=validation_output.failed_devices,
+                site=workflow_input.site,
             )
         )
 

@@ -22,10 +22,13 @@ import copy
 import csv
 import hashlib
 import io
+import re
 from collections.abc import Iterable
 from typing import Any
 
 import netaddr
+import pandas as pd
+from openpyxl.utils import get_column_letter
 from py_markdown_table.markdown_table import markdown_table
 from pydantic import BaseModel, ConfigDict, Field
 from temporalio import activity
@@ -53,6 +56,37 @@ MARKDOWN_EXCLUDE_COLUMNS: frozenset[str] = frozenset(
 
 # Issue message constants
 LINK_UP_NO_NEIGHBOR_MSG = "Link is up but no neighbor found"
+LINK_DOWN_MSG = "Link is down."
+UNEXPECTED_CONNECTION_MSG = "Unexpected connection found"
+INCORRECT_CABLING_PREFIX = "Incorrect cabling"
+
+# Host summary tab (Excel) column headers, in display order. "Missing Cables" is
+# the primary triage signal NVIS sorts on.
+HOST_SUMMARY_COLUMNS: tuple[str, ...] = (
+    "Host",
+    "Rack",
+    "Missing Cables",
+    "Miscabled",
+    "Unexpected Connections",
+    "Total Issues",
+)
+
+# Excel sheet names for the site cable validation workbook.
+DETAIL_SHEET_NAME = "Cable Issues"
+HOST_SUMMARY_SHEET_NAME = "Host Summary"
+
+EXCEL_MIME_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def _xlsx_download_filename(site: str) -> str:
+    """Build a friendly download filename like ``site-cable-validation-<site>.xlsx``.
+
+    The site is slugified (lowercased, non-alphanumeric runs collapsed to ``-``)
+    so the name is safe across browsers and filesystems. ``site`` is always
+    present -- it is a required, non-empty field on the workflow input.
+    """
+    slug = re.sub(r"[^a-z0-9]+", "-", site.lower()).strip("-")
+    return f"site-cable-validation-{slug}.xlsx"
 
 
 def _rack_position_str(rack: str | None, position: int | None) -> str | None:
@@ -787,8 +821,11 @@ def _format_results_markdown(
     markdown_exclude_columns: Iterable[str],
     empty_message: str = "No invalid cabling found.",
     max_display_results: int = 1000,
+    export: str = "csv",
+    summary_devices: dict[str, CableValidationResultData] | None = None,
+    export_filename: str | None = None,
 ) -> str:
-    """Format validation results into markdown with CSV link, table, and notes.
+    """Format validation results into markdown with an export link, table, and notes.
 
     Args:
         results: List of CableValidationRow
@@ -796,6 +833,10 @@ def _format_results_markdown(
         markdown_exclude_columns: Columns to exclude from markdown table (unused; model uses MARKDOWN_EXCLUDE_COLUMNS)
         empty_message: Message to display when there are no results
         max_display_results: Maximum number of results to display in table
+        export: "csv" for a single CSV link, "xlsx" for a two-tab Excel download
+        summary_devices: All queried switches, used to seed the Excel summary tab so
+            healthy switches appear with zero counts
+        export_filename: Friendly download filename for the Excel link
 
     Returns:
         Formatted markdown string
@@ -804,9 +845,13 @@ def _format_results_markdown(
         return empty_message
 
     markdown_rows = [r.to_markdown() for r in results]
-    csv_link = _generate_csv_link(results)
+    export_link = (
+        _generate_xlsx_link(results, summary_devices, export_filename)
+        if export == "xlsx"
+        else _generate_csv_link(results)
+    )
 
-    markdown = f"{csv_link}\n"
+    markdown = f"{export_link}\n"
 
     if len(results) > max_display_results:
         markdown += (
@@ -822,6 +867,117 @@ def _format_results_markdown(
         markdown += "\n\n" + "\n".join(notes)
 
     return markdown
+
+
+def _classify_issue(issue: str | None) -> str:
+    """Bucket a row's issue into a host-summary category.
+
+    Returns one of: "missing", "miscabled", "unexpected", "other". "missing"
+    covers links that should exist but don't.
+    """
+    if issue in (LINK_DOWN_MSG, LINK_UP_NO_NEIGHBOR_MSG):
+        return "missing"
+    if issue and issue.startswith(INCORRECT_CABLING_PREFIX):
+        return "miscabled"
+    if issue == UNEXPECTED_CONNECTION_MSG:
+        return "unexpected"
+    return "other"
+
+
+def _build_host_summary(
+    results: list[CableValidationRow],
+    devices: dict[str, CableValidationResultData] | None = None,
+) -> list[dict[str, Any]]:
+    """Aggregate per-switch issue counts for the summary tab."""
+    summary: dict[str, dict[str, Any]] = {}
+
+    def _get_bucket(host: str, rack: str | None) -> dict[str, Any]:
+        bucket = summary.get(host)
+        if bucket is None:
+            bucket = {
+                "Host": host,
+                "Rack": rack,
+                "Missing Cables": 0,
+                "Miscabled": 0,
+                "Unexpected Connections": 0,
+                "Total Issues": 0,
+            }
+            summary[host] = bucket
+        elif not bucket["Rack"] and rack:
+            bucket["Rack"] = rack
+        return bucket
+
+    # Seed a row for every queried switch so healthy ones still appear (0 counts).
+    # Match the host key to how rows are keyed (_format_device_result_row lowercases
+    # the device name) so a switch is never listed twice.
+    for name, data in (devices or {}).items():
+        device = data.device
+        host = device.name.lower() if device and device.name else name
+        rack = _rack_position_str(device.rack, device.position) if device else None
+        _get_bucket(host, rack)
+
+    for row in results:
+        bucket = _get_bucket(row.start_device or "(unknown)", row.start_rack)
+        bucket["Total Issues"] += 1
+        category = _classify_issue(row.issue)
+        if category == "missing":
+            bucket["Missing Cables"] += 1
+        elif category == "miscabled":
+            bucket["Miscabled"] += 1
+        elif category == "unexpected":
+            bucket["Unexpected Connections"] += 1
+
+    return sorted(
+        summary.values(),
+        key=lambda r: (-r["Missing Cables"], -r["Total Issues"], r["Host"]),
+    )
+
+
+def _style_excel_sheet(writer: pd.ExcelWriter, sheet_name: str, df: pd.DataFrame) -> None:
+    """Apply uniform column widths and an autofilter to a worksheet."""
+    worksheet = writer.sheets[sheet_name]
+    for col_idx in range(len(df.columns)):
+        worksheet.column_dimensions[get_column_letter(col_idx + 1)].width = 22
+    if len(df) > 0:
+        last_col = get_column_letter(len(df.columns))
+        worksheet.auto_filter.ref = f"A1:{last_col}{len(df) + 1}"
+
+
+def _build_cable_validation_workbook(
+    results: list[CableValidationRow],
+    devices: dict[str, CableValidationResultData] | None = None,
+) -> bytes:
+    """Build a two-tab .xlsx: full cable issue detail plus a per-switch summary."""
+    detail_rows = [r.to_csv_dict() for r in results]
+    detail_columns = (
+        list(detail_rows[0].keys())
+        if detail_rows
+        else list(CableValidationRow().to_csv_dict().keys())  # type: ignore[call-arg]
+    )
+    detail_df = pd.DataFrame(detail_rows, columns=detail_columns)
+    summary_df = pd.DataFrame(
+        _build_host_summary(results, devices), columns=list(HOST_SUMMARY_COLUMNS)
+    )
+
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        detail_df.to_excel(writer, sheet_name=DETAIL_SHEET_NAME, index=False)
+        _style_excel_sheet(writer, DETAIL_SHEET_NAME, detail_df)
+        summary_df.to_excel(writer, sheet_name=HOST_SUMMARY_SHEET_NAME, index=False)
+        _style_excel_sheet(writer, HOST_SUMMARY_SHEET_NAME, summary_df)
+    return buffer.getvalue()
+
+
+def _generate_xlsx_link(
+    results: list[CableValidationRow],
+    devices: dict[str, CableValidationResultData] | None = None,
+    filename: str | None = None,
+) -> str:
+    """Generate an Excel download link with detail and host-summary tabs."""
+    workbook = _build_cable_validation_workbook(results, devices)
+    b64_xlsx = base64.b64encode(workbook).decode("utf-8")
+    fragment = f"#filename={filename}" if filename else ""
+    return f"[Download Excel](data:{EXCEL_MIME_TYPE};base64,{b64_xlsx}{fragment})"
 
 
 def _generate_csv_link(results: list[CableValidationRow]) -> str:
@@ -852,6 +1008,7 @@ class FormatResultsActivityInput(BaseModel):
     devices: dict[str, CableValidationResultData]
     failed_devices: dict[str, str]
     ignore_no_neighbor: bool = False
+    site: str
 
 
 @activity.defn
@@ -890,6 +1047,9 @@ def format_results(activity_input: FormatResultsActivityInput) -> str:
         results,
         csv_exclude_columns=CSV_EXCLUDE_COLUMNS,
         markdown_exclude_columns=MARKDOWN_EXCLUDE_COLUMNS,
+        export="xlsx",
+        summary_devices=activity_input.devices,
+        export_filename=_xlsx_download_filename(activity_input.site),
     )
     return markdown
 
