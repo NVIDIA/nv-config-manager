@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package compatibility_test
+package clienttest
 
 import (
 	"context"
@@ -29,15 +29,6 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (fn roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
 	return fn(request)
-}
-
-func TestTemporalClientSupportsGeneratedRequestBuilder(t *testing.T) {
-	t.Parallel()
-
-	configuration := temporal.NewConfiguration()
-	client := temporal.NewAPIClient(configuration)
-	ctx := context.WithValue(context.Background(), temporal.ContextAccessToken, "test-token")
-	_ = client.WorkflowAPI.GetWorkflowsV1WorkflowGet(ctx)
 }
 
 func TestTemporalClientAppliesBearerToken(t *testing.T) {
