@@ -323,7 +323,7 @@ jobs:
           CHANGED_FILES: ${{ steps.generation.outputs.changed_files }}
           DRIFT: ${{ steps.generation.outputs.drift }}
           GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ fromJSON(steps.get-pr-info.outputs.pr-info).number }}
+          PR_NUMBER: ${{ fromJSON(steps.get-pr-info.outputs.pr-info || '{}').number }}
         run: |
           set -euo pipefail
           marker="<!-- nv-config-manager-generated-api-status -->"
