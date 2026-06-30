@@ -24,6 +24,14 @@ type Location1Inner struct {
 // Unmarshal JSON data into any of the pointers in the struct
 func (dst *Location1Inner) UnmarshalJSON(data []byte) error {
 	var err error
+	*dst = Location1Inner{}
+	var value interface{}
+	if err = json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	if value == nil {
+		return fmt.Errorf("null is not valid for Location1Inner")
+	}
 	// try to unmarshal JSON data into Int32
 	err = json.Unmarshal(data, &dst.Int32)
 	if err == nil {
@@ -63,7 +71,7 @@ func (src Location1Inner) MarshalJSON() ([]byte, error) {
 		return json.Marshal(&src.String)
 	}
 
-	return nil, nil // no data in anyOf schemas
+	return nil, fmt.Errorf("no data in anyOf schemas for Location1Inner")
 }
 
 type NullableLocation1Inner struct {

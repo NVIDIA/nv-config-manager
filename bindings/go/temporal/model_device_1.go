@@ -24,6 +24,14 @@ type Device1 struct {
 // Unmarshal JSON data into any of the pointers in the struct
 func (dst *Device1) UnmarshalJSON(data []byte) error {
 	var err error
+	*dst = Device1{}
+	var value interface{}
+	if err = json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	if value == nil {
+		return fmt.Errorf("null is not valid for Device1")
+	}
 	// try to unmarshal JSON data into NetworkDeviceData
 	err = json.Unmarshal(data, &dst.NetworkDeviceData)
 	if err == nil {
@@ -63,7 +71,7 @@ func (src Device1) MarshalJSON() ([]byte, error) {
 		return json.Marshal(&src.String)
 	}
 
-	return nil, nil // no data in anyOf schemas
+	return nil, fmt.Errorf("no data in anyOf schemas for Device1")
 }
 
 type NullableDevice1 struct {

@@ -21,7 +21,6 @@ import (
 	"log"
 	"mime/multipart"
 	"net/http"
-	"net/http/httputil"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -246,11 +245,7 @@ func parameterToJson(obj interface{}) (string, error) {
 // callAPI do the request.
 func (c *APIClient) callAPI(request *http.Request) (*http.Response, error) {
 	if c.cfg.Debug {
-		dump, err := httputil.DumpRequestOut(request, true)
-		if err != nil {
-			return nil, err
-		}
-		log.Printf("\n%s\n", string(dump))
+		log.Printf("%s %s", request.Method, request.URL.EscapedPath())
 	}
 
 	resp, err := c.cfg.HTTPClient.Do(request)
@@ -259,11 +254,7 @@ func (c *APIClient) callAPI(request *http.Request) (*http.Response, error) {
 	}
 
 	if c.cfg.Debug {
-		dump, err := httputil.DumpResponse(resp, true)
-		if err != nil {
-			return resp, err
-		}
-		log.Printf("\n%s\n", string(dump))
+		log.Printf("%s", resp.Status)
 	}
 	return resp, err
 }
@@ -343,9 +334,12 @@ func (c *APIClient) prepareRequest(
 		// Set the Boundary in the Content-Type
 		headerParams["Content-Type"] = w.FormDataContentType()
 
+		if err = w.Close(); err != nil {
+			return nil, err
+		}
+
 		// Set Content-Length
 		headerParams["Content-Length"] = fmt.Sprintf("%d", body.Len())
-		w.Close()
 	}
 
 	if strings.HasPrefix(headerParams["Content-Type"], "application/x-www-form-urlencoded") && len(formParams) > 0 {
@@ -410,6 +404,9 @@ func (c *APIClient) prepareRequest(
 
 	// Add the user agent to the request.
 	localVarRequest.Header.Add("User-Agent", c.cfg.UserAgent)
+	for header, value := range c.cfg.DefaultHeader {
+		localVarRequest.Header.Set(header, value)
+	}
 
 	if ctx != nil {
 		// add context to the request
@@ -419,14 +416,11 @@ func (c *APIClient) prepareRequest(
 
 		// AccessToken Authentication
 		if auth, ok := ctx.Value(ContextAccessToken).(string); ok {
-			localVarRequest.Header.Add("Authorization", "Bearer "+auth)
+			localVarRequest.Header.Set("Authorization", "Bearer "+auth)
 		}
 
 	}
 
-	for header, value := range c.cfg.DefaultHeader {
-		localVarRequest.Header.Add(header, value)
-	}
 	return localVarRequest, nil
 }
 

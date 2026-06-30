@@ -92,6 +92,7 @@ func (o *NetworkDeviceData) GetBackupEnabled() bool {
 
 // GetBackupEnabledOk returns a tuple with the BackupEnabled field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 func (o *NetworkDeviceData) GetBackupEnabledOk() (*bool, bool) {
 	if o == nil || IsNil(o.BackupEnabled) {
 		return nil, false
@@ -124,10 +125,10 @@ func (o *NetworkDeviceData) GetConfigContext() map[string]interface{} {
 
 // GetConfigContextOk returns a tuple with the ConfigContext field value if set, nil otherwise
 // and a boolean to check if the value has been set.
-// NOTE: If the value is an explicit nil, `nil, true` will be returned
+
 func (o *NetworkDeviceData) GetConfigContextOk() (map[string]interface{}, bool) {
 	if o == nil || IsNil(o.ConfigContext) {
-		return map[string]interface{}{}, false
+		return nil, false
 	}
 	return o.ConfigContext, true
 }
@@ -157,6 +158,7 @@ func (o *NetworkDeviceData) GetDeployEnabled() bool {
 
 // GetDeployEnabledOk returns a tuple with the DeployEnabled field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 func (o *NetworkDeviceData) GetDeployEnabledOk() (*bool, bool) {
 	if o == nil || IsNil(o.DeployEnabled) {
 		return nil, false
@@ -285,7 +287,9 @@ func (o *NetworkDeviceData) GetPosition() int32 {
 
 // GetPositionOk returns a tuple with the Position field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 // NOTE: If the value is an explicit nil, `nil, true` will be returned
+
 func (o *NetworkDeviceData) GetPositionOk() (*int32, bool) {
 	if o == nil {
 		return nil, false
@@ -380,7 +384,9 @@ func (o *NetworkDeviceData) GetRack() string {
 
 // GetRackOk returns a tuple with the Rack field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 // NOTE: If the value is an explicit nil, `nil, true` will be returned
+
 func (o *NetworkDeviceData) GetRackOk() (*string, bool) {
 	if o == nil {
 		return nil, false
@@ -423,6 +429,7 @@ func (o *NetworkDeviceData) GetRenderEnabled() bool {
 
 // GetRenderEnabledOk returns a tuple with the RenderEnabled field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 func (o *NetworkDeviceData) GetRenderEnabledOk() (*bool, bool) {
 	if o == nil || IsNil(o.RenderEnabled) {
 		return nil, false
@@ -503,6 +510,7 @@ func (o *NetworkDeviceData) GetZtpEnabled() bool {
 
 // GetZtpEnabledOk returns a tuple with the ZtpEnabled field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 func (o *NetworkDeviceData) GetZtpEnabledOk() (*bool, bool) {
 	if o == nil || IsNil(o.ZtpEnabled) {
 		return nil, false
@@ -570,15 +578,15 @@ func (o *NetworkDeviceData) UnmarshalJSON(data []byte) (err error) {
 	// This validates that all required properties are included in the JSON object
 	// by unmarshalling the object into a generic map with string keys and checking
 	// that every required field exists as a key in the generic map.
-	requiredProperties := []string{
-		"device_type",
-		"id",
-		"name",
-		"platform",
-		"primary_ip4",
-		"primary_ip6",
-		"role",
-		"site",
+	requiredProperties := map[string]bool{
+		"device_type": false,
+		"id":          false,
+		"name":        false,
+		"platform":    false,
+		"primary_ip4": true,
+		"primary_ip6": true,
+		"role":        false,
+		"site":        false,
 	}
 
 	allProperties := make(map[string]interface{})
@@ -589,8 +597,8 @@ func (o *NetworkDeviceData) UnmarshalJSON(data []byte) (err error) {
 		return err
 	}
 
-	for _, requiredProperty := range requiredProperties {
-		if _, exists := allProperties[requiredProperty]; !exists {
+	for requiredProperty, nullable := range requiredProperties {
+		if value, exists := allProperties[requiredProperty]; !exists || (value == nil && !nullable) {
 			return fmt.Errorf("no value given for required property %v", requiredProperty)
 		}
 	}

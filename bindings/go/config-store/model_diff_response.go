@@ -78,7 +78,9 @@ func (o *DiffResponse) GetDevice() DeviceMetadata {
 
 // GetDeviceOk returns a tuple with the Device field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 // NOTE: If the value is an explicit nil, `nil, true` will be returned
+
 func (o *DiffResponse) GetDeviceOk() (*DeviceMetadata, bool) {
 	if o == nil {
 		return nil, false
@@ -330,15 +332,15 @@ func (o *DiffResponse) UnmarshalJSON(data []byte) (err error) {
 	// This validates that all required properties are included in the JSON object
 	// by unmarshalling the object into a generic map with string keys and checking
 	// that every required field exists as a key in the generic map.
-	requiredProperties := []string{
-		"device_uuid",
-		"diff",
-		"diff_stats",
-		"filename",
-		"from_version",
-		"new_content",
-		"old_content",
-		"to_version",
+	requiredProperties := map[string]bool{
+		"device_uuid":  false,
+		"diff":         false,
+		"diff_stats":   false,
+		"filename":     false,
+		"from_version": false,
+		"new_content":  false,
+		"old_content":  false,
+		"to_version":   false,
 	}
 
 	allProperties := make(map[string]interface{})
@@ -349,8 +351,8 @@ func (o *DiffResponse) UnmarshalJSON(data []byte) (err error) {
 		return err
 	}
 
-	for _, requiredProperty := range requiredProperties {
-		if _, exists := allProperties[requiredProperty]; !exists {
+	for requiredProperty, nullable := range requiredProperties {
+		if value, exists := allProperties[requiredProperty]; !exists || (value == nil && !nullable) {
 			return fmt.Errorf("no value given for required property %v", requiredProperty)
 		}
 	}

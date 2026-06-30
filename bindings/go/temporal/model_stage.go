@@ -85,6 +85,7 @@ func (o *Stage) GetApprovalThreshold() int32 {
 
 // GetApprovalThresholdOk returns a tuple with the ApprovalThreshold field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 func (o *Stage) GetApprovalThresholdOk() (*int32, bool) {
 	if o == nil || IsNil(o.ApprovalThreshold) {
 		return nil, false
@@ -117,6 +118,7 @@ func (o *Stage) GetApprovers() []Review {
 
 // GetApproversOk returns a tuple with the Approvers field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 func (o *Stage) GetApproversOk() ([]Review, bool) {
 	if o == nil || IsNil(o.Approvers) {
 		return nil, false
@@ -149,6 +151,7 @@ func (o *Stage) GetChildWorkflows() []string {
 
 // GetChildWorkflowsOk returns a tuple with the ChildWorkflows field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 func (o *Stage) GetChildWorkflowsOk() ([]string, bool) {
 	if o == nil || IsNil(o.ChildWorkflows) {
 		return nil, false
@@ -255,7 +258,7 @@ func (o *Stage) GetInput() interface{} {
 
 // GetInputOk returns a tuple with the Input field value if set, nil otherwise
 // and a boolean to check if the value has been set.
-// NOTE: If the value is an explicit nil, `nil, true` will be returned
+
 func (o *Stage) GetInputOk() (*interface{}, bool) {
 	if o == nil || IsNil(o.Input) {
 		return nil, false
@@ -312,7 +315,7 @@ func (o *Stage) GetOutput() interface{} {
 
 // GetOutputOk returns a tuple with the Output field value if set, nil otherwise
 // and a boolean to check if the value has been set.
-// NOTE: If the value is an explicit nil, `nil, true` will be returned
+
 func (o *Stage) GetOutputOk() (*interface{}, bool) {
 	if o == nil || IsNil(o.Output) {
 		return nil, false
@@ -345,6 +348,7 @@ func (o *Stage) GetRejecters() []Review {
 
 // GetRejectersOk returns a tuple with the Rejecters field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 func (o *Stage) GetRejectersOk() ([]Review, bool) {
 	if o == nil || IsNil(o.Rejecters) {
 		return nil, false
@@ -401,6 +405,7 @@ func (o *Stage) GetRetryCount() int32 {
 
 // GetRetryCountOk returns a tuple with the RetryCount field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 func (o *Stage) GetRetryCountOk() (*int32, bool) {
 	if o == nil || IsNil(o.RetryCount) {
 		return nil, false
@@ -481,6 +486,7 @@ func (o *Stage) GetStateHistory() []HistoryEntry {
 
 // GetStateHistoryOk returns a tuple with the StateHistory field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 func (o *Stage) GetStateHistoryOk() ([]HistoryEntry, bool) {
 	if o == nil || IsNil(o.StateHistory) {
 		return nil, false
@@ -577,15 +583,15 @@ func (o *Stage) UnmarshalJSON(data []byte) (err error) {
 	// This validates that all required properties are included in the JSON object
 	// by unmarshalling the object into a generic map with string keys and checking
 	// that every required field exists as a key in the generic map.
-	requiredProperties := []string{
-		"depends_on",
-		"description",
-		"execution_time",
-		"name",
-		"requires_approval",
-		"retryable",
-		"state",
-		"traceback",
+	requiredProperties := map[string]bool{
+		"depends_on":        false,
+		"description":       false,
+		"execution_time":    true,
+		"name":              false,
+		"requires_approval": false,
+		"retryable":         false,
+		"state":             false,
+		"traceback":         true,
 	}
 
 	allProperties := make(map[string]interface{})
@@ -596,8 +602,8 @@ func (o *Stage) UnmarshalJSON(data []byte) (err error) {
 		return err
 	}
 
-	for _, requiredProperty := range requiredProperties {
-		if _, exists := allProperties[requiredProperty]; !exists {
+	for requiredProperty, nullable := range requiredProperties {
+		if value, exists := allProperties[requiredProperty]; !exists || (value == nil && !nullable) {
 			return fmt.Errorf("no value given for required property %v", requiredProperty)
 		}
 	}

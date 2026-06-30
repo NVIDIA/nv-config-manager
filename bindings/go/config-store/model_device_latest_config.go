@@ -77,6 +77,7 @@ func (o *DeviceLatestConfig) GetActive() bool {
 
 // GetActiveOk returns a tuple with the Active field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 func (o *DeviceLatestConfig) GetActiveOk() (*bool, bool) {
 	if o == nil || IsNil(o.Active) {
 		return nil, false
@@ -268,13 +269,13 @@ func (o *DeviceLatestConfig) UnmarshalJSON(data []byte) (err error) {
 	// This validates that all required properties are included in the JSON object
 	// by unmarshalling the object into a generic map with string keys and checking
 	// that every required field exists as a key in the generic map.
-	requiredProperties := []string{
-		"latest_author",
-		"latest_message",
-		"latest_update",
-		"name",
-		"site",
-		"uuid",
+	requiredProperties := map[string]bool{
+		"latest_author":  false,
+		"latest_message": false,
+		"latest_update":  false,
+		"name":           false,
+		"site":           false,
+		"uuid":           false,
 	}
 
 	allProperties := make(map[string]interface{})
@@ -285,8 +286,8 @@ func (o *DeviceLatestConfig) UnmarshalJSON(data []byte) (err error) {
 		return err
 	}
 
-	for _, requiredProperty := range requiredProperties {
-		if _, exists := allProperties[requiredProperty]; !exists {
+	for requiredProperty, nullable := range requiredProperties {
+		if value, exists := allProperties[requiredProperty]; !exists || (value == nil && !nullable) {
 			return fmt.Errorf("no value given for required property %v", requiredProperty)
 		}
 	}

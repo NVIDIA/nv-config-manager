@@ -96,6 +96,7 @@ func (o *IBPKeyCreationInput) GetIpOverIb() bool {
 
 // GetIpOverIbOk returns a tuple with the IpOverIb field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 func (o *IBPKeyCreationInput) GetIpOverIbOk() (*bool, bool) {
 	if o == nil || IsNil(o.IpOverIb) {
 		return nil, false
@@ -128,7 +129,9 @@ func (o *IBPKeyCreationInput) GetPkey() string {
 
 // GetPkeyOk returns a tuple with the Pkey field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 // NOTE: If the value is an explicit nil, `nil, true` will be returned
+
 func (o *IBPKeyCreationInput) GetPkeyOk() (*string, bool) {
 	if o == nil {
 		return nil, false
@@ -171,6 +174,7 @@ func (o *IBPKeyCreationInput) GetPkeyMax() int32 {
 
 // GetPkeyMaxOk returns a tuple with the PkeyMax field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 func (o *IBPKeyCreationInput) GetPkeyMaxOk() (*int32, bool) {
 	if o == nil || IsNil(o.PkeyMax) {
 		return nil, false
@@ -203,6 +207,7 @@ func (o *IBPKeyCreationInput) GetPkeyMin() int32 {
 
 // GetPkeyMinOk returns a tuple with the PkeyMin field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 func (o *IBPKeyCreationInput) GetPkeyMinOk() (*int32, bool) {
 	if o == nil || IsNil(o.PkeyMin) {
 		return nil, false
@@ -235,7 +240,9 @@ func (o *IBPKeyCreationInput) GetSite() string {
 
 // GetSiteOk returns a tuple with the Site field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 // NOTE: If the value is an explicit nil, `nil, true` will be returned
+
 func (o *IBPKeyCreationInput) GetSiteOk() (*string, bool) {
 	if o == nil {
 		return nil, false
@@ -300,8 +307,8 @@ func (o *IBPKeyCreationInput) UnmarshalJSON(data []byte) (err error) {
 	// This validates that all required properties are included in the JSON object
 	// by unmarshalling the object into a generic map with string keys and checking
 	// that every required field exists as a key in the generic map.
-	requiredProperties := []string{
-		"host",
+	requiredProperties := map[string]bool{
+		"host": false,
 	}
 
 	allProperties := make(map[string]interface{})
@@ -312,8 +319,8 @@ func (o *IBPKeyCreationInput) UnmarshalJSON(data []byte) (err error) {
 		return err
 	}
 
-	for _, requiredProperty := range requiredProperties {
-		if _, exists := allProperties[requiredProperty]; !exists {
+	for requiredProperty, nullable := range requiredProperties {
+		if value, exists := allProperties[requiredProperty]; !exists || (value == nil && !nullable) {
 			return fmt.Errorf("no value given for required property %v", requiredProperty)
 		}
 	}

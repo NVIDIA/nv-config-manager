@@ -28,6 +28,14 @@ type SearchAttributesValue struct {
 // Unmarshal JSON data into any of the pointers in the struct
 func (dst *SearchAttributesValue) UnmarshalJSON(data []byte) error {
 	var err error
+	*dst = SearchAttributesValue{}
+	var value interface{}
+	if err = json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	if value == nil {
+		return fmt.Errorf("null is not valid for SearchAttributesValue")
+	}
 	// try to unmarshal JSON data into ArrayOfBool
 	err = json.Unmarshal(data, &dst.ArrayOfBool)
 	if err == nil {
@@ -118,7 +126,7 @@ func (src SearchAttributesValue) MarshalJSON() ([]byte, error) {
 		return json.Marshal(&src.ArrayOfTimeTime)
 	}
 
-	return nil, nil // no data in anyOf schemas
+	return nil, fmt.Errorf("no data in anyOf schemas for SearchAttributesValue")
 }
 
 type NullableSearchAttributesValue struct {

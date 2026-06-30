@@ -1,0 +1,187 @@
+--- a/client.mustache
++++ b/client.mustache
+@@ -12,7 +12,6 @@
+ 	"log"
+ 	"mime/multipart"
+ 	"net/http"
+-	"net/http/httputil"
+ 	"net/url"
+ 	"os"
+ 	"path/filepath"
+@@ -259,11 +258,7 @@
+ // callAPI do the request.
+ func (c *APIClient) callAPI(request *http.Request) (*http.Response, error) {
+ 	if c.cfg.Debug {
+-		dump, err := httputil.DumpRequestOut(request, true)
+-		if err != nil {
+-			return nil, err
+-		}
+-		log.Printf("\n%s\n", string(dump))
++		log.Printf("%s %s", request.Method, request.URL.EscapedPath())
+ 	}
+ 
+ 	resp, err := c.cfg.HTTPClient.Do(request)
+@@ -272,11 +267,7 @@
+ 	}
+ 
+ 	if c.cfg.Debug {
+-		dump, err := httputil.DumpResponse(resp, true)
+-		if err != nil {
+-			return resp, err
+-		}
+-		log.Printf("\n%s\n", string(dump))
++		log.Printf("%s", resp.Status)
+ 	}
+ 	return resp, err
+ }
+@@ -356,9 +347,12 @@
+ 		// Set the Boundary in the Content-Type
+ 		headerParams["Content-Type"] = w.FormDataContentType()
+ 
++		if err = w.Close(); err != nil {
++			return nil, err
++		}
++
+ 		// Set Content-Length
+ 		headerParams["Content-Length"] = fmt.Sprintf("%d", body.Len())
+-		w.Close()
+ 	}
+ 
+ 	if strings.HasPrefix(headerParams["Content-Type"], "application/x-www-form-urlencoded") && len(formParams) > 0 {
+@@ -423,6 +417,9 @@
+ 
+ 	// Add the user agent to the request.
+ 	localVarRequest.Header.Add("User-Agent", c.cfg.UserAgent)
++	for header, value := range c.cfg.DefaultHeader {
++		localVarRequest.Header.Set(header, value)
++	}
+ 
+ 	if ctx != nil {
+ 		// add context to the request
+@@ -453,7 +450,7 @@
+ 		{{#hasHttpBearerMethods}}
+ 		// AccessToken Authentication
+ 		if auth, ok := ctx.Value(ContextAccessToken).(string); ok {
+-			localVarRequest.Header.Add("Authorization", "Bearer "+auth)
++			localVarRequest.Header.Set("Authorization", "Bearer "+auth)
+ 		}
+ 
+ 		{{/hasHttpBearerMethods}}
+@@ -499,9 +496,6 @@
+ 		{{/withAWSV4Signature}}
+ 	}
+ 
+-	for header, value := range c.cfg.DefaultHeader {
+-		localVarRequest.Header.Add(header, value)
+-	}
+ {{#withCustomMiddlewareFunction}}
+ 
+ 	if c.cfg.Middleware != nil {
+--- a/model_simple.mustache
++++ b/model_simple.mustache
+@@ -205,7 +205,7 @@
+ // Get{{name}}Ok returns a tuple with the {{name}} field value if set, nil otherwise
+ // and a boolean to check if the value has been set.
+-{{#isNullable}}
++{{#isNullable}}{{^vendorExtensions.x-golang-is-container}}
+ // NOTE: If the value is an explicit nil, `nil, true` will be returned
+-{{/isNullable}}
++{{/vendorExtensions.x-golang-is-container}}{{/isNullable}}
+ {{#deprecated}}
+ // Deprecated
+@@ -219,7 +219,7 @@
+ 		return nil, false
+ 	{{/isFreeFormObject}}
+ 	{{#isFreeFormObject}}
+-		return {{vendorExtensions.x-go-base-type}}{}, false
++		return nil, false
+ 	{{/isFreeFormObject}}
+ 	}
+ {{#isNullable}}
+@@ -370,9 +370,9 @@
+ 	// This validates that all required properties are included in the JSON object
+ 	// by unmarshalling the object into a generic map with string keys and checking
+ 	// that every required field exists as a key in the generic map.
+-	requiredProperties := []string{
++	requiredProperties := map[string]bool{
+ {{#requiredVars}}
+-		"{{baseName}}",
++		"{{baseName}}": {{#isNullable}}true{{/isNullable}}{{^isNullable}}false{{/isNullable}},
+ {{/requiredVars}}
+ 	}
+ 
+@@ -398,18 +398,18 @@
+ 		return err;
+ 	}
+ 
+-	for _, requiredProperty := range(requiredProperties) {
++	for requiredProperty, nullable := range(requiredProperties) {
+ 		{{#useDefaultValuesForRequiredVars}}
+-		if value, exists := allProperties[requiredProperty]; !exists || value == "" {
++		if value, exists := allProperties[requiredProperty]; !exists || value == "" || (value == nil && !nullable) {
+ 			if _, ok := defaultValueFuncMap[requiredProperty]; ok {
+ 				allProperties[requiredProperty] = defaultValueFuncMap[requiredProperty]()
+ 				defaultValueApplied = true
+ 			}
+ 		}
+-		if value, exists := allProperties[requiredProperty]; !exists || value == ""{
++		if value, exists := allProperties[requiredProperty]; !exists || value == "" || (value == nil && !nullable) {
+ 		{{/useDefaultValuesForRequiredVars}}
+ 		{{^useDefaultValuesForRequiredVars}}
+-		if _, exists := allProperties[requiredProperty]; !exists {
++		if value, exists := allProperties[requiredProperty]; !exists || (value == nil && !nullable) {
+ 		{{/useDefaultValuesForRequiredVars}}
+ 			return fmt.Errorf("no value given for required property %v", requiredProperty)
+ 		}
+--- a/model_oneof.mustache
++++ b/model_oneof.mustache
+@@ -18,6 +18,14 @@
+ // Unmarshal JSON data into one of the pointers in the struct
+ func (dst *{{classname}}) UnmarshalJSON(data []byte) error {
+ 	var err error
++	*dst = {{classname}}{}
++	var value interface{}
++	if err = json.Unmarshal(data, &value); err != nil {
++		return err
++	}
++	if value == nil {
++		{{#isNullable}}return nil{{/isNullable}}{{^isNullable}}return fmt.Errorf("null is not valid for {{classname}}"){{/isNullable}}
++	}
+ 	{{#isNullable}}
+ 	// this object is nullable so check if the payload is null or empty string
+ 	if string(data) == "" || string(data) == "{}" {
+@@ -127,7 +135,7 @@
+ 	}
+ 
+ {{/oneOf}}
+-	return nil, nil // no data in oneOf schemas
++	{{#isNullable}}return []byte("null"), nil{{/isNullable}}{{^isNullable}}return nil, fmt.Errorf("no data in oneOf schemas for {{classname}}"){{/isNullable}}
+ }
+ 
+ // Get the actual instance
+--- a/model_anyof.mustache
++++ b/model_anyof.mustache
+@@ -13,6 +13,14 @@
+ // Unmarshal JSON data into any of the pointers in the struct
+ func (dst *{{classname}}) UnmarshalJSON(data []byte) error {
+ 	var err error
++	*dst = {{classname}}{}
++	var value interface{}
++	if err = json.Unmarshal(data, &value); err != nil {
++		return err
++	}
++	if value == nil {
++		{{#isNullable}}return nil{{/isNullable}}{{^isNullable}}return fmt.Errorf("null is not valid for {{classname}}"){{/isNullable}}
++	}
+ 	{{#isNullable}}
+ 	// this object is nullable so check if the payload is null or empty string
+ 	if string(data) == "" || string(data) == "{}" {
+@@ -75,7 +83,7 @@
+ 	}
+ 
+ {{/anyOf}}
+-	return nil, nil // no data in anyOf schemas
++	{{#isNullable}}return []byte("null"), nil{{/isNullable}}{{^isNullable}}return nil, fmt.Errorf("no data in anyOf schemas for {{classname}}"){{/isNullable}}
+ }
+ 
+ {{#discriminator}}

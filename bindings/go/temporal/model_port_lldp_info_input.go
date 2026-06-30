@@ -52,7 +52,9 @@ func (o *PortLLDPInfoInput) GetDeviceId() string {
 
 // GetDeviceIdOk returns a tuple with the DeviceId field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 // NOTE: If the value is an explicit nil, `nil, true` will be returned
+
 func (o *PortLLDPInfoInput) GetDeviceIdOk() (*string, bool) {
 	if o == nil {
 		return nil, false
@@ -95,7 +97,9 @@ func (o *PortLLDPInfoInput) GetInterface() string {
 
 // GetInterfaceOk returns a tuple with the Interface field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 // NOTE: If the value is an explicit nil, `nil, true` will be returned
+
 func (o *PortLLDPInfoInput) GetInterfaceOk() (*string, bool) {
 	if o == nil {
 		return nil, false
@@ -138,7 +142,9 @@ func (o *PortLLDPInfoInput) GetRemoteMacAddress() string {
 
 // GetRemoteMacAddressOk returns a tuple with the RemoteMacAddress field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 // NOTE: If the value is an explicit nil, `nil, true` will be returned
+
 func (o *PortLLDPInfoInput) GetRemoteMacAddressOk() (*string, bool) {
 	if o == nil {
 		return nil, false

@@ -89,7 +89,9 @@ func (o *BatchDeployInput) GetBatchNumber() int32 {
 
 // GetBatchNumberOk returns a tuple with the BatchNumber field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 // NOTE: If the value is an explicit nil, `nil, true` will be returned
+
 func (o *BatchDeployInput) GetBatchNumberOk() (*int32, bool) {
 	if o == nil {
 		return nil, false
@@ -132,6 +134,7 @@ func (o *BatchDeployInput) GetCommitConfirm() bool {
 
 // GetCommitConfirmOk returns a tuple with the CommitConfirm field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 func (o *BatchDeployInput) GetCommitConfirmOk() (*bool, bool) {
 	if o == nil || IsNil(o.CommitConfirm) {
 		return nil, false
@@ -227,10 +230,10 @@ func (o *BatchDeployInput) UnmarshalJSON(data []byte) (err error) {
 	// This validates that all required properties are included in the JSON object
 	// by unmarshalling the object into a generic map with string keys and checking
 	// that every required field exists as a key in the generic map.
-	requiredProperties := []string{
-		"batch_devices",
-		"diff_group",
-		"parent_workflow_id",
+	requiredProperties := map[string]bool{
+		"batch_devices":      false,
+		"diff_group":         false,
+		"parent_workflow_id": false,
 	}
 
 	allProperties := make(map[string]interface{})
@@ -241,8 +244,8 @@ func (o *BatchDeployInput) UnmarshalJSON(data []byte) (err error) {
 		return err
 	}
 
-	for _, requiredProperty := range requiredProperties {
-		if _, exists := allProperties[requiredProperty]; !exists {
+	for requiredProperty, nullable := range requiredProperties {
+		if value, exists := allProperties[requiredProperty]; !exists || (value == nil && !nullable) {
 			return fmt.Errorf("no value given for required property %v", requiredProperty)
 		}
 	}

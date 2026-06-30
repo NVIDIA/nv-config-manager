@@ -364,18 +364,18 @@ func (o *WorkflowSummaryResponse) UnmarshalJSON(data []byte) (err error) {
 	// This validates that all required properties are included in the JSON object
 	// by unmarshalling the object into a generic map with string keys and checking
 	// that every required field exists as a key in the generic map.
-	requiredProperties := []string{
-		"close_time",
-		"failed_stage",
-		"href",
-		"id",
-		"pending_approval",
-		"search_attributes",
-		"start_time",
-		"started_by",
-		"status",
-		"workflow_input",
-		"workflow_type",
+	requiredProperties := map[string]bool{
+		"close_time":        true,
+		"failed_stage":      false,
+		"href":              false,
+		"id":                false,
+		"pending_approval":  false,
+		"search_attributes": false,
+		"start_time":        false,
+		"started_by":        false,
+		"status":            false,
+		"workflow_input":    true,
+		"workflow_type":     false,
 	}
 
 	allProperties := make(map[string]interface{})
@@ -386,8 +386,8 @@ func (o *WorkflowSummaryResponse) UnmarshalJSON(data []byte) (err error) {
 		return err
 	}
 
-	for _, requiredProperty := range requiredProperties {
-		if _, exists := allProperties[requiredProperty]; !exists {
+	for requiredProperty, nullable := range requiredProperties {
+		if value, exists := allProperties[requiredProperty]; !exists || (value == nil && !nullable) {
 			return fmt.Errorf("no value given for required property %v", requiredProperty)
 		}
 	}

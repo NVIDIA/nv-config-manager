@@ -68,6 +68,7 @@ func (o *MultiDeployInput) GetCommitConfirm() bool {
 
 // GetCommitConfirmOk returns a tuple with the CommitConfirm field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 func (o *MultiDeployInput) GetCommitConfirmOk() (*bool, bool) {
 	if o == nil || IsNil(o.CommitConfirm) {
 		return nil, false
@@ -100,7 +101,9 @@ func (o *MultiDeployInput) GetLocation() string {
 
 // GetLocationOk returns a tuple with the Location field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 // NOTE: If the value is an explicit nil, `nil, true` will be returned
+
 func (o *MultiDeployInput) GetLocationOk() (*string, bool) {
 	if o == nil {
 		return nil, false
@@ -143,6 +146,7 @@ func (o *MultiDeployInput) GetMaxBatchSize() int32 {
 
 // GetMaxBatchSizeOk returns a tuple with the MaxBatchSize field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 func (o *MultiDeployInput) GetMaxBatchSizeOk() (*int32, bool) {
 	if o == nil || IsNil(o.MaxBatchSize) {
 		return nil, false
@@ -199,7 +203,7 @@ func (o *MultiDeployInput) GetStatus() []string {
 
 // GetStatusOk returns a tuple with the Status field value if set, nil otherwise
 // and a boolean to check if the value has been set.
-// NOTE: If the value is an explicit nil, `nil, true` will be returned
+
 func (o *MultiDeployInput) GetStatusOk() ([]string, bool) {
 	if o == nil || IsNil(o.Status) {
 		return nil, false
@@ -232,7 +236,9 @@ func (o *MultiDeployInput) GetTenant() string {
 
 // GetTenantOk returns a tuple with the Tenant field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 // NOTE: If the value is an explicit nil, `nil, true` will be returned
+
 func (o *MultiDeployInput) GetTenantOk() (*string, bool) {
 	if o == nil {
 		return nil, false
@@ -297,8 +303,8 @@ func (o *MultiDeployInput) UnmarshalJSON(data []byte) (err error) {
 	// This validates that all required properties are included in the JSON object
 	// by unmarshalling the object into a generic map with string keys and checking
 	// that every required field exists as a key in the generic map.
-	requiredProperties := []string{
-		"role",
+	requiredProperties := map[string]bool{
+		"role": false,
 	}
 
 	allProperties := make(map[string]interface{})
@@ -309,8 +315,8 @@ func (o *MultiDeployInput) UnmarshalJSON(data []byte) (err error) {
 		return err
 	}
 
-	for _, requiredProperty := range requiredProperties {
-		if _, exists := allProperties[requiredProperty]; !exists {
+	for requiredProperty, nullable := range requiredProperties {
+		if value, exists := allProperties[requiredProperty]; !exists || (value == nil && !nullable) {
 			return fmt.Errorf("no value given for required property %v", requiredProperty)
 		}
 	}

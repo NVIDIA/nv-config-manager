@@ -61,7 +61,9 @@ func (o *DeviceCableValidationInput) GetDevice() NetworkDeviceData {
 
 // GetDeviceOk returns a tuple with the Device field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 // NOTE: If the value is an explicit nil, `nil, true` will be returned
+
 func (o *DeviceCableValidationInput) GetDeviceOk() (*NetworkDeviceData, bool) {
 	if o == nil {
 		return nil, false
@@ -128,6 +130,7 @@ func (o *DeviceCableValidationInput) GetIgnoreNoNeighbor() bool {
 
 // GetIgnoreNoNeighborOk returns a tuple with the IgnoreNoNeighbor field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 func (o *DeviceCableValidationInput) GetIgnoreNoNeighborOk() (*bool, bool) {
 	if o == nil || IsNil(o.IgnoreNoNeighbor) {
 		return nil, false
@@ -173,8 +176,8 @@ func (o *DeviceCableValidationInput) UnmarshalJSON(data []byte) (err error) {
 	// This validates that all required properties are included in the JSON object
 	// by unmarshalling the object into a generic map with string keys and checking
 	// that every required field exists as a key in the generic map.
-	requiredProperties := []string{
-		"device_id",
+	requiredProperties := map[string]bool{
+		"device_id": false,
 	}
 
 	allProperties := make(map[string]interface{})
@@ -185,8 +188,8 @@ func (o *DeviceCableValidationInput) UnmarshalJSON(data []byte) (err error) {
 		return err
 	}
 
-	for _, requiredProperty := range requiredProperties {
-		if _, exists := allProperties[requiredProperty]; !exists {
+	for requiredProperty, nullable := range requiredProperties {
+		if value, exists := allProperties[requiredProperty]; !exists || (value == nil && !nullable) {
 			return fmt.Errorf("no value given for required property %v", requiredProperty)
 		}
 	}

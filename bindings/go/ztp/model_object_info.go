@@ -64,7 +64,9 @@ func (o *ObjectInfo) GetEtag() string {
 
 // GetEtagOk returns a tuple with the Etag field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 // NOTE: If the value is an explicit nil, `nil, true` will be returned
+
 func (o *ObjectInfo) GetEtagOk() (*string, bool) {
 	if o == nil {
 		return nil, false
@@ -155,10 +157,10 @@ func (o *ObjectInfo) GetMetadata() map[string]string {
 
 // GetMetadataOk returns a tuple with the Metadata field value if set, nil otherwise
 // and a boolean to check if the value has been set.
-// NOTE: If the value is an explicit nil, `nil, true` will be returned
+
 func (o *ObjectInfo) GetMetadataOk() (map[string]string, bool) {
 	if o == nil || IsNil(o.Metadata) {
-		return map[string]string{}, false
+		return nil, false
 	}
 	return o.Metadata, true
 }
@@ -212,10 +214,10 @@ func (o *ObjectInfo) GetTags() map[string]string {
 
 // GetTagsOk returns a tuple with the Tags field value if set, nil otherwise
 // and a boolean to check if the value has been set.
-// NOTE: If the value is an explicit nil, `nil, true` will be returned
+
 func (o *ObjectInfo) GetTagsOk() (map[string]string, bool) {
 	if o == nil || IsNil(o.Tags) {
-		return map[string]string{}, false
+		return nil, false
 	}
 	return o.Tags, true
 }
@@ -263,10 +265,10 @@ func (o *ObjectInfo) UnmarshalJSON(data []byte) (err error) {
 	// This validates that all required properties are included in the JSON object
 	// by unmarshalling the object into a generic map with string keys and checking
 	// that every required field exists as a key in the generic map.
-	requiredProperties := []string{
-		"key",
-		"last_modified",
-		"size",
+	requiredProperties := map[string]bool{
+		"key":           false,
+		"last_modified": false,
+		"size":          false,
 	}
 
 	allProperties := make(map[string]interface{})
@@ -277,8 +279,8 @@ func (o *ObjectInfo) UnmarshalJSON(data []byte) (err error) {
 		return err
 	}
 
-	for _, requiredProperty := range requiredProperties {
-		if _, exists := allProperties[requiredProperty]; !exists {
+	for requiredProperty, nullable := range requiredProperties {
+		if value, exists := allProperties[requiredProperty]; !exists || (value == nil && !nullable) {
 			return fmt.Errorf("no value given for required property %v", requiredProperty)
 		}
 	}

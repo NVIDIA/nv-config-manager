@@ -265,7 +265,7 @@ jobs:
     permissions:
       contents: read
       issues: write
-      pull-requests: write
+      pull-requests: read
     steps:
       - uses: actions/checkout@v4
       - name: Setup proxy cache
@@ -323,7 +323,6 @@ jobs:
           CHANGED_FILES: ${{ steps.generation.outputs.changed_files }}
           DRIFT: ${{ steps.generation.outputs.drift }}
           GH_TOKEN: ${{ github.token }}
-          GO_TEST_OUTCOME: ${{ steps.go_tests.outcome }}
           PR_NUMBER: ${{ fromJSON(steps.get-pr-info.outputs.pr-info).number }}
         run: |
           set -euo pipefail
@@ -340,7 +339,7 @@ jobs:
               'Regenerate them locally, review the changes, then commit and push the result:' \
               'This check will remain failing until the generated files are current.')"
           else
-            if [ "$GO_TEST_OUTCOME" != "success" ] || [ -z "$comment_id" ]; then
+            if [ -z "$comment_id" ]; then
               exit 0
             fi
             body="$(printf '%s\n\n%s' \

@@ -25,6 +25,14 @@ type LastModified struct {
 // Unmarshal JSON data into any of the pointers in the struct
 func (dst *LastModified) UnmarshalJSON(data []byte) error {
 	var err error
+	*dst = LastModified{}
+	var value interface{}
+	if err = json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	if value == nil {
+		return fmt.Errorf("null is not valid for LastModified")
+	}
 	// try to unmarshal JSON data into Float32
 	err = json.Unmarshal(data, &dst.Float32)
 	if err == nil {
@@ -64,7 +72,7 @@ func (src LastModified) MarshalJSON() ([]byte, error) {
 		return json.Marshal(&src.TimeTime)
 	}
 
-	return nil, nil // no data in anyOf schemas
+	return nil, fmt.Errorf("no data in anyOf schemas for LastModified")
 }
 
 type NullableLastModified struct {

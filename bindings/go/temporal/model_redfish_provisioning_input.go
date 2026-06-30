@@ -96,6 +96,7 @@ func (o *RedfishProvisioningInput) GetDpuManufacturers() []string {
 
 // GetDpuManufacturersOk returns a tuple with the DpuManufacturers field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 func (o *RedfishProvisioningInput) GetDpuManufacturersOk() ([]string, bool) {
 	if o == nil || IsNil(o.DpuManufacturers) {
 		return nil, false
@@ -128,6 +129,7 @@ func (o *RedfishProvisioningInput) GetHttpTimeoutS() int32 {
 
 // GetHttpTimeoutSOk returns a tuple with the HttpTimeoutS field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 func (o *RedfishProvisioningInput) GetHttpTimeoutSOk() (*int32, bool) {
 	if o == nil || IsNil(o.HttpTimeoutS) {
 		return nil, false
@@ -208,6 +210,7 @@ func (o *RedfishProvisioningInput) GetPort() int32 {
 
 // GetPortOk returns a tuple with the Port field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 func (o *RedfishProvisioningInput) GetPortOk() (*int32, bool) {
 	if o == nil || IsNil(o.Port) {
 		return nil, false
@@ -283,11 +286,11 @@ func (o *RedfishProvisioningInput) UnmarshalJSON(data []byte) (err error) {
 	// This validates that all required properties are included in the JSON object
 	// by unmarshalling the object into a generic map with string keys and checking
 	// that every required field exists as a key in the generic map.
-	requiredProperties := []string{
-		"bmc_switch_roles",
-		"ip_range_end",
-		"ip_range_start",
-		"site",
+	requiredProperties := map[string]bool{
+		"bmc_switch_roles": false,
+		"ip_range_end":     false,
+		"ip_range_start":   false,
+		"site":             false,
 	}
 
 	allProperties := make(map[string]interface{})
@@ -298,8 +301,8 @@ func (o *RedfishProvisioningInput) UnmarshalJSON(data []byte) (err error) {
 		return err
 	}
 
-	for _, requiredProperty := range requiredProperties {
-		if _, exists := allProperties[requiredProperty]; !exists {
+	for requiredProperty, nullable := range requiredProperties {
+		if value, exists := allProperties[requiredProperty]; !exists || (value == nil && !nullable) {
 			return fmt.Errorf("no value given for required property %v", requiredProperty)
 		}
 	}

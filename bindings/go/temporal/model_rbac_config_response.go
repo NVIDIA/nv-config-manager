@@ -60,7 +60,9 @@ func (o *RBACConfigResponse) GetError() string {
 
 // GetErrorOk returns a tuple with the Error field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 // NOTE: If the value is an explicit nil, `nil, true` will be returned
+
 func (o *RBACConfigResponse) GetErrorOk() (*string, bool) {
 	if o == nil {
 		return nil, false
@@ -151,10 +153,10 @@ func (o *RBACConfigResponse) GetWorkflows() map[string]WorkflowRoles {
 
 // GetWorkflowsOk returns a tuple with the Workflows field value if set, nil otherwise
 // and a boolean to check if the value has been set.
-// NOTE: If the value is an explicit nil, `nil, true` will be returned
+
 func (o *RBACConfigResponse) GetWorkflowsOk() (map[string]WorkflowRoles, bool) {
 	if o == nil || IsNil(o.Workflows) {
-		return map[string]WorkflowRoles{}, false
+		return nil, false
 	}
 	return o.Workflows, true
 }
@@ -184,7 +186,9 @@ func (o *RBACConfigResponse) GetWorkflowsCount() int32 {
 
 // GetWorkflowsCountOk returns a tuple with the WorkflowsCount field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 // NOTE: If the value is an explicit nil, `nil, true` will be returned
+
 func (o *RBACConfigResponse) GetWorkflowsCountOk() (*int32, bool) {
 	if o == nil {
 		return nil, false
@@ -244,9 +248,9 @@ func (o *RBACConfigResponse) UnmarshalJSON(data []byte) (err error) {
 	// This validates that all required properties are included in the JSON object
 	// by unmarshalling the object into a generic map with string keys and checking
 	// that every required field exists as a key in the generic map.
-	requiredProperties := []string{
-		"file_exists",
-		"status",
+	requiredProperties := map[string]bool{
+		"file_exists": false,
+		"status":      false,
 	}
 
 	allProperties := make(map[string]interface{})
@@ -257,8 +261,8 @@ func (o *RBACConfigResponse) UnmarshalJSON(data []byte) (err error) {
 		return err
 	}
 
-	for _, requiredProperty := range requiredProperties {
-		if _, exists := allProperties[requiredProperty]; !exists {
+	for requiredProperty, nullable := range requiredProperties {
+		if value, exists := allProperties[requiredProperty]; !exists || (value == nil && !nullable) {
 			return fmt.Errorf("no value given for required property %v", requiredProperty)
 		}
 	}

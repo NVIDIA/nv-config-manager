@@ -50,6 +50,7 @@ func (o *HTTPValidationError) GetDetail() []ValidationError {
 
 // GetDetailOk returns a tuple with the Detail field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 func (o *HTTPValidationError) GetDetailOk() ([]ValidationError, bool) {
 	if o == nil || IsNil(o.Detail) {
 		return nil, false

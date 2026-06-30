@@ -51,6 +51,7 @@ func (o *RenderResponse) GetUpdatedFiles() []FileCommit {
 
 // GetUpdatedFilesOk returns a tuple with the UpdatedFiles field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 func (o *RenderResponse) GetUpdatedFilesOk() ([]FileCommit, bool) {
 	if o == nil || IsNil(o.UpdatedFiles) {
 		return nil, false

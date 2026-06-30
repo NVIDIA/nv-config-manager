@@ -66,7 +66,9 @@ func (o *DeviceMetadata) GetLastUpdated() time.Time {
 
 // GetLastUpdatedOk returns a tuple with the LastUpdated field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 // NOTE: If the value is an explicit nil, `nil, true` will be returned
+
 func (o *DeviceMetadata) GetLastUpdatedOk() (*time.Time, bool) {
 	if o == nil {
 		return nil, false
@@ -133,7 +135,9 @@ func (o *DeviceMetadata) GetNautobotUrl() string {
 
 // GetNautobotUrlOk returns a tuple with the NautobotUrl field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 // NOTE: If the value is an explicit nil, `nil, true` will be returned
+
 func (o *DeviceMetadata) GetNautobotUrlOk() (*string, bool) {
 	if o == nil {
 		return nil, false
@@ -176,7 +180,9 @@ func (o *DeviceMetadata) GetPlatform() string {
 
 // GetPlatformOk returns a tuple with the Platform field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 // NOTE: If the value is an explicit nil, `nil, true` will be returned
+
 func (o *DeviceMetadata) GetPlatformOk() (*string, bool) {
 	if o == nil {
 		return nil, false
@@ -219,7 +225,9 @@ func (o *DeviceMetadata) GetPrimaryIp4() string {
 
 // GetPrimaryIp4Ok returns a tuple with the PrimaryIp4 field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 // NOTE: If the value is an explicit nil, `nil, true` will be returned
+
 func (o *DeviceMetadata) GetPrimaryIp4Ok() (*string, bool) {
 	if o == nil {
 		return nil, false
@@ -262,7 +270,9 @@ func (o *DeviceMetadata) GetRack() string {
 
 // GetRackOk returns a tuple with the Rack field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 // NOTE: If the value is an explicit nil, `nil, true` will be returned
+
 func (o *DeviceMetadata) GetRackOk() (*string, bool) {
 	if o == nil {
 		return nil, false
@@ -305,7 +315,9 @@ func (o *DeviceMetadata) GetRole() string {
 
 // GetRoleOk returns a tuple with the Role field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 // NOTE: If the value is an explicit nil, `nil, true` will be returned
+
 func (o *DeviceMetadata) GetRoleOk() (*string, bool) {
 	if o == nil {
 		return nil, false
@@ -398,9 +410,9 @@ func (o *DeviceMetadata) UnmarshalJSON(data []byte) (err error) {
 	// This validates that all required properties are included in the JSON object
 	// by unmarshalling the object into a generic map with string keys and checking
 	// that every required field exists as a key in the generic map.
-	requiredProperties := []string{
-		"name",
-		"site",
+	requiredProperties := map[string]bool{
+		"name": false,
+		"site": false,
 	}
 
 	allProperties := make(map[string]interface{})
@@ -411,8 +423,8 @@ func (o *DeviceMetadata) UnmarshalJSON(data []byte) (err error) {
 		return err
 	}
 
-	for _, requiredProperty := range requiredProperties {
-		if _, exists := allProperties[requiredProperty]; !exists {
+	for requiredProperty, nullable := range requiredProperties {
+		if value, exists := allProperties[requiredProperty]; !exists || (value == nil && !nullable) {
 			return fmt.Errorf("no value given for required property %v", requiredProperty)
 		}
 	}

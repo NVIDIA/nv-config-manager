@@ -88,6 +88,7 @@ func (o *SitePasswordRotationInput) GetRoles() []string {
 
 // GetRolesOk returns a tuple with the Roles field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 func (o *SitePasswordRotationInput) GetRolesOk() ([]string, bool) {
 	if o == nil || IsNil(o.Roles) {
 		return nil, false
@@ -144,6 +145,7 @@ func (o *SitePasswordRotationInput) GetStatus() []string {
 
 // GetStatusOk returns a tuple with the Status field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 func (o *SitePasswordRotationInput) GetStatusOk() ([]string, bool) {
 	if o == nil || IsNil(o.Status) {
 		return nil, false
@@ -176,6 +178,7 @@ func (o *SitePasswordRotationInput) GetTenant() string {
 
 // GetTenantOk returns a tuple with the Tenant field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 func (o *SitePasswordRotationInput) GetTenantOk() (*string, bool) {
 	if o == nil || IsNil(o.Tenant) {
 		return nil, false
@@ -225,9 +228,9 @@ func (o *SitePasswordRotationInput) UnmarshalJSON(data []byte) (err error) {
 	// This validates that all required properties are included in the JSON object
 	// by unmarshalling the object into a generic map with string keys and checking
 	// that every required field exists as a key in the generic map.
-	requiredProperties := []string{
-		"location",
-		"selected_secret",
+	requiredProperties := map[string]bool{
+		"location":        false,
+		"selected_secret": false,
 	}
 
 	allProperties := make(map[string]interface{})
@@ -238,8 +241,8 @@ func (o *SitePasswordRotationInput) UnmarshalJSON(data []byte) (err error) {
 		return err
 	}
 
-	for _, requiredProperty := range requiredProperties {
-		if _, exists := allProperties[requiredProperty]; !exists {
+	for requiredProperty, nullable := range requiredProperties {
+		if value, exists := allProperties[requiredProperty]; !exists || (value == nil && !nullable) {
 			return fmt.Errorf("no value given for required property %v", requiredProperty)
 		}
 	}

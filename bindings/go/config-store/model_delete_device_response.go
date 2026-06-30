@@ -143,10 +143,10 @@ func (o *DeleteDeviceResponse) UnmarshalJSON(data []byte) (err error) {
 	// This validates that all required properties are included in the JSON object
 	// by unmarshalling the object into a generic map with string keys and checking
 	// that every required field exists as a key in the generic map.
-	requiredProperties := []string{
-		"deleted_versions",
-		"device_uuid",
-		"message",
+	requiredProperties := map[string]bool{
+		"deleted_versions": false,
+		"device_uuid":      false,
+		"message":          false,
 	}
 
 	allProperties := make(map[string]interface{})
@@ -157,8 +157,8 @@ func (o *DeleteDeviceResponse) UnmarshalJSON(data []byte) (err error) {
 		return err
 	}
 
-	for _, requiredProperty := range requiredProperties {
-		if _, exists := allProperties[requiredProperty]; !exists {
+	for requiredProperty, nullable := range requiredProperties {
+		if value, exists := allProperties[requiredProperty]; !exists || (value == nil && !nullable) {
 			return fmt.Errorf("no value given for required property %v", requiredProperty)
 		}
 	}

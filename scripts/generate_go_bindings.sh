@@ -25,6 +25,15 @@ repo_root=$(git rev-parse --show-toplevel)
 output_root="$repo_root/bindings/go"
 staging_root=$(mktemp -d "${TMPDIR:-/tmp}/nvcm-go-bindings.XXXXXX")
 trap 'rm -rf -- "$staging_root"' EXIT
+template_root="$staging_root/templates"
+
+docker run --rm \
+    --user "$(id -u):$(id -g)" \
+    --volume "$staging_root:/out" \
+    "$GENERATOR_IMAGE" author template \
+    --generator-name go \
+    --output /out/templates
+patch --directory "$template_root" --strip 1 < "$repo_root/scripts/openapi-generator-go.patch"
 
 services=(config-store dhcp render temporal ztp)
 
@@ -38,6 +47,7 @@ for service in "${services[@]}"; do
         "$GENERATOR_IMAGE" generate \
         --input-spec "/repo/docs/api-specs/${service}.openapi.json" \
         --generator-name go \
+        --template-dir /out/templates \
         --output "/out/${service}" \
         --git-host github.com \
         --git-user-id nvidia \

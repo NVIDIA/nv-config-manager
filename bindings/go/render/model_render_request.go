@@ -50,7 +50,9 @@ func (o *RenderRequest) GetCommitMessage() string {
 
 // GetCommitMessageOk returns a tuple with the CommitMessage field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 // NOTE: If the value is an explicit nil, `nil, true` will be returned
+
 func (o *RenderRequest) GetCommitMessageOk() (*string, bool) {
 	if o == nil {
 		return nil, false

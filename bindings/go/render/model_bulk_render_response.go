@@ -65,7 +65,7 @@ func (o *BulkRenderResponse) GetFailedDevices() []FailedDevice {
 
 // GetFailedDevicesOk returns a tuple with the FailedDevices field value if set, nil otherwise
 // and a boolean to check if the value has been set.
-// NOTE: If the value is an explicit nil, `nil, true` will be returned
+
 func (o *BulkRenderResponse) GetFailedDevicesOk() ([]FailedDevice, bool) {
 	if o == nil || IsNil(o.FailedDevices) {
 		return nil, false
@@ -98,7 +98,9 @@ func (o *BulkRenderResponse) GetMaxConcurrency() int32 {
 
 // GetMaxConcurrencyOk returns a tuple with the MaxConcurrency field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 // NOTE: If the value is an explicit nil, `nil, true` will be returned
+
 func (o *BulkRenderResponse) GetMaxConcurrencyOk() (*int32, bool) {
 	if o == nil {
 		return nil, false
@@ -189,6 +191,7 @@ func (o *BulkRenderResponse) GetTotalDevices() int32 {
 
 // GetTotalDevicesOk returns a tuple with the TotalDevices field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 func (o *BulkRenderResponse) GetTotalDevicesOk() (*int32, bool) {
 	if o == nil || IsNil(o.TotalDevices) {
 		return nil, false
@@ -238,9 +241,9 @@ func (o *BulkRenderResponse) UnmarshalJSON(data []byte) (err error) {
 	// This validates that all required properties are included in the JSON object
 	// by unmarshalling the object into a generic map with string keys and checking
 	// that every required field exists as a key in the generic map.
-	requiredProperties := []string{
-		"message",
-		"queued_count",
+	requiredProperties := map[string]bool{
+		"message":      false,
+		"queued_count": false,
 	}
 
 	allProperties := make(map[string]interface{})
@@ -251,8 +254,8 @@ func (o *BulkRenderResponse) UnmarshalJSON(data []byte) (err error) {
 		return err
 	}
 
-	for _, requiredProperty := range requiredProperties {
-		if _, exists := allProperties[requiredProperty]; !exists {
+	for requiredProperty, nullable := range requiredProperties {
+		if value, exists := allProperties[requiredProperty]; !exists || (value == nil && !nullable) {
 			return fmt.Errorf("no value given for required property %v", requiredProperty)
 		}
 	}

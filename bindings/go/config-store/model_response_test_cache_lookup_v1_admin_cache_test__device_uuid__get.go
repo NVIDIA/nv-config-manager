@@ -25,6 +25,14 @@ type ResponseTestCacheLookupV1AdminCacheTestDeviceUuidGet struct {
 // Unmarshal JSON data into any of the pointers in the struct
 func (dst *ResponseTestCacheLookupV1AdminCacheTestDeviceUuidGet) UnmarshalJSON(data []byte) error {
 	var err error
+	*dst = ResponseTestCacheLookupV1AdminCacheTestDeviceUuidGet{}
+	var value interface{}
+	if err = json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	if value == nil {
+		return fmt.Errorf("null is not valid for ResponseTestCacheLookupV1AdminCacheTestDeviceUuidGet")
+	}
 	// try to unmarshal JSON data into CacheTestErrorResponse
 	err = json.Unmarshal(data, &dst.CacheTestErrorResponse)
 	if err == nil {
@@ -81,7 +89,7 @@ func (src ResponseTestCacheLookupV1AdminCacheTestDeviceUuidGet) MarshalJSON() ([
 		return json.Marshal(&src.CacheTestNotFoundResponse)
 	}
 
-	return nil, nil // no data in anyOf schemas
+	return nil, fmt.Errorf("no data in anyOf schemas for ResponseTestCacheLookupV1AdminCacheTestDeviceUuidGet")
 }
 
 type NullableResponseTestCacheLookupV1AdminCacheTestDeviceUuidGet struct {

@@ -16,8 +16,10 @@
 package clienttest
 
 import (
+	"bytes"
 	"context"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"testing"
@@ -32,27 +34,43 @@ func (fn roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error)
 }
 
 func TestTemporalClientAppliesBearerToken(t *testing.T) {
-	t.Parallel()
+	var logOutput bytes.Buffer
+	log.SetOutput(&logOutput)
+	t.Cleanup(func() { log.SetOutput(io.Discard) })
 
-	var authorizationHeader string
+	var authorizationHeaders []string
 	configuration := temporal.NewConfiguration()
+	configuration.Debug = true
 	configuration.Servers[0].URL = "https://example.test"
+	configuration.DefaultHeader["Authorization"] = "Bearer default-token"
 	configuration.HTTPClient = &http.Client{
 		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
-			authorizationHeader = request.Header.Get("Authorization")
+			authorizationHeaders = append(authorizationHeaders, request.Header.Values("Authorization")...)
 			return &http.Response{
 				StatusCode: http.StatusOK,
-				Header:     make(http.Header),
-				Body:       io.NopCloser(strings.NewReader("{}")),
+				Status:     "200 OK",
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body: io.NopCloser(strings.NewReader(
+					`{"next_page_token":null,"page_count":0,"total_count":0,"workflows":[]}`,
+				)),
 			}, nil
 		}),
 	}
 	client := temporal.NewAPIClient(configuration)
 	ctx := context.WithValue(context.Background(), temporal.ContextAccessToken, "test-token")
 
-	_, _, _ = client.WorkflowAPI.GetWorkflowsV1WorkflowGet(ctx).Execute()
+	_, _, err := client.WorkflowAPI.GetWorkflowsV1WorkflowGet(ctx).User("query-secret").Execute()
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
 
-	if authorizationHeader != "Bearer test-token" {
-		t.Errorf("authorization header = %q, want %q", authorizationHeader, "Bearer test-token")
+	if len(authorizationHeaders) != 1 || authorizationHeaders[0] != "Bearer test-token" {
+		t.Errorf("authorization headers = %q, want %q", authorizationHeaders, []string{"Bearer test-token"})
+	}
+	if strings.Contains(logOutput.String(), "test-token") || strings.Contains(logOutput.String(), "default-token") {
+		t.Errorf("debug log contains an authorization token: %q", logOutput.String())
+	}
+	if strings.Contains(logOutput.String(), "query-secret") {
+		t.Errorf("debug log contains a query value: %q", logOutput.String())
 	}
 }

@@ -125,6 +125,7 @@ func (o *DiagnosticsWorkflowInput) GetIncludeTechSupport() bool {
 
 // GetIncludeTechSupportOk returns a tuple with the IncludeTechSupport field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 func (o *DiagnosticsWorkflowInput) GetIncludeTechSupportOk() (*bool, bool) {
 	if o == nil || IsNil(o.IncludeTechSupport) {
 		return nil, false
@@ -157,6 +158,7 @@ func (o *DiagnosticsWorkflowInput) GetIssueKey() string {
 
 // GetIssueKeyOk returns a tuple with the IssueKey field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 func (o *DiagnosticsWorkflowInput) GetIssueKeyOk() (*string, bool) {
 	if o == nil || IsNil(o.IssueKey) {
 		return nil, false
@@ -189,6 +191,7 @@ func (o *DiagnosticsWorkflowInput) GetTicketingPlatform() string {
 
 // GetTicketingPlatformOk returns a tuple with the TicketingPlatform field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 func (o *DiagnosticsWorkflowInput) GetTicketingPlatformOk() (*string, bool) {
 	if o == nil || IsNil(o.TicketingPlatform) {
 		return nil, false
@@ -221,6 +224,7 @@ func (o *DiagnosticsWorkflowInput) GetUser() string {
 
 // GetUserOk returns a tuple with the User field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 func (o *DiagnosticsWorkflowInput) GetUserOk() (*string, bool) {
 	if o == nil || IsNil(o.User) {
 		return nil, false
@@ -273,9 +277,9 @@ func (o *DiagnosticsWorkflowInput) UnmarshalJSON(data []byte) (err error) {
 	// This validates that all required properties are included in the JSON object
 	// by unmarshalling the object into a generic map with string keys and checking
 	// that every required field exists as a key in the generic map.
-	requiredProperties := []string{
-		"commands",
-		"device_ids",
+	requiredProperties := map[string]bool{
+		"commands":   false,
+		"device_ids": false,
 	}
 
 	allProperties := make(map[string]interface{})
@@ -286,8 +290,8 @@ func (o *DiagnosticsWorkflowInput) UnmarshalJSON(data []byte) (err error) {
 		return err
 	}
 
-	for _, requiredProperty := range requiredProperties {
-		if _, exists := allProperties[requiredProperty]; !exists {
+	for requiredProperty, nullable := range requiredProperties {
+		if value, exists := allProperties[requiredProperty]; !exists || (value == nil && !nullable) {
 			return fmt.Errorf("no value given for required property %v", requiredProperty)
 		}
 	}

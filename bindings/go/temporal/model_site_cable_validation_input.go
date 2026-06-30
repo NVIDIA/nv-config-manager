@@ -68,6 +68,7 @@ func (o *SiteCableValidationInput) GetDeviceTypeIds() []string {
 
 // GetDeviceTypeIdsOk returns a tuple with the DeviceTypeIds field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 func (o *SiteCableValidationInput) GetDeviceTypeIdsOk() ([]string, bool) {
 	if o == nil || IsNil(o.DeviceTypeIds) {
 		return nil, false
@@ -100,6 +101,7 @@ func (o *SiteCableValidationInput) GetRaiseForInvalid() bool {
 
 // GetRaiseForInvalidOk returns a tuple with the RaiseForInvalid field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 func (o *SiteCableValidationInput) GetRaiseForInvalidOk() (*bool, bool) {
 	if o == nil || IsNil(o.RaiseForInvalid) {
 		return nil, false
@@ -132,6 +134,7 @@ func (o *SiteCableValidationInput) GetRoles() []string {
 
 // GetRolesOk returns a tuple with the Roles field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 func (o *SiteCableValidationInput) GetRolesOk() ([]string, bool) {
 	if o == nil || IsNil(o.Roles) {
 		return nil, false
@@ -188,6 +191,7 @@ func (o *SiteCableValidationInput) GetStatus() []string {
 
 // GetStatusOk returns a tuple with the Status field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 func (o *SiteCableValidationInput) GetStatusOk() ([]string, bool) {
 	if o == nil || IsNil(o.Status) {
 		return nil, false
@@ -220,6 +224,7 @@ func (o *SiteCableValidationInput) GetTenant() string {
 
 // GetTenantOk returns a tuple with the Tenant field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 func (o *SiteCableValidationInput) GetTenantOk() (*string, bool) {
 	if o == nil || IsNil(o.Tenant) {
 		return nil, false
@@ -274,8 +279,8 @@ func (o *SiteCableValidationInput) UnmarshalJSON(data []byte) (err error) {
 	// This validates that all required properties are included in the JSON object
 	// by unmarshalling the object into a generic map with string keys and checking
 	// that every required field exists as a key in the generic map.
-	requiredProperties := []string{
-		"site",
+	requiredProperties := map[string]bool{
+		"site": false,
 	}
 
 	allProperties := make(map[string]interface{})
@@ -286,8 +291,8 @@ func (o *SiteCableValidationInput) UnmarshalJSON(data []byte) (err error) {
 		return err
 	}
 
-	for _, requiredProperty := range requiredProperties {
-		if _, exists := allProperties[requiredProperty]; !exists {
+	for requiredProperty, nullable := range requiredProperties {
+		if value, exists := allProperties[requiredProperty]; !exists || (value == nil && !nullable) {
 			return fmt.Errorf("no value given for required property %v", requiredProperty)
 		}
 	}

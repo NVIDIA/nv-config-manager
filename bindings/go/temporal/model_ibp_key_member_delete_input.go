@@ -59,6 +59,7 @@ func (o *IBPKeyMemberDeleteInput) GetGuids() []string {
 
 // GetGuidsOk returns a tuple with the Guids field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 func (o *IBPKeyMemberDeleteInput) GetGuidsOk() ([]string, bool) {
 	if o == nil || IsNil(o.Guids) {
 		return nil, false
@@ -115,6 +116,7 @@ func (o *IBPKeyMemberDeleteInput) GetInterfaces() []InterfaceRef {
 
 // GetInterfacesOk returns a tuple with the Interfaces field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 func (o *IBPKeyMemberDeleteInput) GetInterfacesOk() ([]InterfaceRef, bool) {
 	if o == nil || IsNil(o.Interfaces) {
 		return nil, false
@@ -185,9 +187,9 @@ func (o *IBPKeyMemberDeleteInput) UnmarshalJSON(data []byte) (err error) {
 	// This validates that all required properties are included in the JSON object
 	// by unmarshalling the object into a generic map with string keys and checking
 	// that every required field exists as a key in the generic map.
-	requiredProperties := []string{
-		"host",
-		"pkey",
+	requiredProperties := map[string]bool{
+		"host": false,
+		"pkey": false,
 	}
 
 	allProperties := make(map[string]interface{})
@@ -198,8 +200,8 @@ func (o *IBPKeyMemberDeleteInput) UnmarshalJSON(data []byte) (err error) {
 		return err
 	}
 
-	for _, requiredProperty := range requiredProperties {
-		if _, exists := allProperties[requiredProperty]; !exists {
+	for requiredProperty, nullable := range requiredProperties {
+		if value, exists := allProperties[requiredProperty]; !exists || (value == nil && !nullable) {
 			return fmt.Errorf("no value given for required property %v", requiredProperty)
 		}
 	}
