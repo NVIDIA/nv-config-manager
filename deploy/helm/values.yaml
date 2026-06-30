@@ -1898,6 +1898,9 @@ mcp:
         - /.well-known/oauth-protected-resource
         - /.well-known/oauth-protected-resource/mcp
         - /.well-known/oauth-authorization-server
+        - /oauth/authorize
+        - /oauth/callback
+        - /oauth/token
   auth:
     oauth:
       # Defaults to oidc.enabled when unset. Set false to disable MCP OAuth
@@ -1905,10 +1908,11 @@ mcp:
       # enabled: true
       # Defaults to https://<svc-mcp-hostname>/mcp
       resourceUrl: ""
-      # OAuth resource identifier advertised in protected-resource metadata.
-      # Defaults to resourceUrl. For Azure AD, set this to the API Application ID URI
-      # that owns the configured API scopes, for example api://{client-id}.
-      resourceIdentifier: ""
+      # Forward RFC 8707 resource parameters to the upstream authorization server.
+      # Set false for Entra v2 applications whose immutable Application ID URI differs
+      # from resourceUrl; MCP will proxy OAuth requests, omit resource upstream, and
+      # use https://<svc-mcp-hostname>/oauth/callback as the fixed redirect URI.
+      forwardResourceParameter: true
       # Defaults to oidc.issuerUrl.
       issuerUrl: ""
       # Defaults to oidc.cliClientId, then oidc.clientId.

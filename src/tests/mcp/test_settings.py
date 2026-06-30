@@ -94,21 +94,11 @@ def test_mcp_oauth_settings_disabled_without_section() -> None:
     assert settings.enabled is False
 
 
-def test_mcp_oauth_settings_direct_construction_defaults_resource_identifier() -> None:
-    settings = MCPOAuthSettings(
-        enabled=True,
-        resource_url="https://svc-mcp.example.test/mcp",
-    )
-
-    assert settings.resource_identifier == "https://svc-mcp.example.test/mcp"
-
-
 def test_mcp_oauth_settings_parse_metadata_config() -> None:
     settings = MCPOAuthSettings.from_config(_oauth_config())
 
     assert settings.enabled is True
     assert settings.resource_url == "https://svc-mcp.example.test/mcp"
-    assert settings.resource_identifier == "https://svc-mcp.example.test/mcp"
     assert settings.issuer_url == "https://idp.example.test/realms/nvcm"
     assert settings.client_id == "nvcm-cli"
     assert settings.scopes == ("openid", "email", "profile")
@@ -117,6 +107,8 @@ def test_mcp_oauth_settings_parse_metadata_config() -> None:
         == "https://svc-mcp.example.test/.well-known/oauth-protected-resource/mcp"
     )
     assert settings.authorization_server_url == "https://svc-mcp.example.test"
+    assert settings.forward_resource_parameter is True
+    assert settings.oauth_proxy_paths == frozenset()
     assert settings.well_known_paths == {
         "/.well-known/oauth-protected-resource",
         "/.well-known/oauth-protected-resource/mcp",
@@ -124,18 +116,21 @@ def test_mcp_oauth_settings_parse_metadata_config() -> None:
     }
 
 
-def test_mcp_oauth_settings_accepts_distinct_resource_identifier() -> None:
+def test_mcp_oauth_settings_supports_resource_parameter_compatibility_proxy() -> None:
     config = _oauth_config()
-    config["mcp.oauth"]["resource_identifier"] = "api://client-id/"
+    config["mcp.oauth"]["forward_resource_parameter"] = "false"
 
     settings = MCPOAuthSettings.from_config(config)
 
-    assert settings.resource_url == "https://svc-mcp.example.test/mcp"
-    assert settings.resource_identifier == "api://client-id"
-    assert (
-        settings.resource_metadata_url
-        == "https://svc-mcp.example.test/.well-known/oauth-protected-resource/mcp"
-    )
+    assert settings.forward_resource_parameter is False
+    assert settings.authorization_proxy_url == "https://svc-mcp.example.test/oauth/authorize"
+    assert settings.callback_proxy_url == "https://svc-mcp.example.test/oauth/callback"
+    assert settings.token_proxy_url == "https://svc-mcp.example.test/oauth/token"
+    assert settings.oauth_proxy_paths == {
+        "/oauth/authorize",
+        "/oauth/callback",
+        "/oauth/token",
+    }
 
 
 def test_mcp_oauth_well_known_paths_follow_resource_url_path() -> None:
@@ -155,9 +150,18 @@ def test_mcp_oauth_well_known_paths_follow_resource_url_path() -> None:
     }
 
 
-def test_mcp_oauth_settings_requires_valid_urls_when_enabled() -> None:
+@pytest.mark.parametrize(
+    "resource_url",
+    [
+        "svc-mcp.example.test/mcp",
+        "http://svc-mcp.example.test/mcp",
+        "https://svc-mcp.example.test/mcp?tenant=test",
+        "https://svc-mcp.example.test/mcp#fragment",
+    ],
+)
+def test_mcp_oauth_settings_requires_rfc_9728_resource_url(resource_url: str) -> None:
     config = _oauth_config()
-    config["mcp.oauth"]["resource_url"] = "svc-mcp.example.test/mcp"
+    config["mcp.oauth"]["resource_url"] = resource_url
 
     with pytest.raises(ValueError, match="resource_url"):
         MCPOAuthSettings.from_config(config)

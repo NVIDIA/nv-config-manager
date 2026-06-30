@@ -947,8 +947,10 @@ mcp-auth.ini: |
   {{- if $enabled }}
   {{- $resourceUrl := get $oauth "resourceUrl" | default (printf "https://%s/mcp" (tpl (.Values.mcp.gateway.svcHostname | default "") .)) -}}
   {{- $resourceUrl = trimSuffix "/" (tpl $resourceUrl .) -}}
-  {{- $resourceIdentifier := get $oauth "resourceIdentifier" | default $resourceUrl -}}
-  {{- $resourceIdentifier = trimSuffix "/" (tpl $resourceIdentifier .) -}}
+  {{- $forwardResourceParameter := true -}}
+  {{- if hasKey $oauth "forwardResourceParameter" -}}
+  {{- $forwardResourceParameter = $oauth.forwardResourceParameter -}}
+  {{- end -}}
   {{- $issuerUrl := get $oauth "issuerUrl" | default .Values.oidc.issuerUrl -}}
   {{- $issuerUrl = required "mcp.auth.oauth.issuerUrl or oidc.issuerUrl is required when MCP OAuth metadata is enabled" $issuerUrl -}}
   {{- $issuerUrl = trimSuffix "/" (tpl $issuerUrl .) -}}
@@ -975,12 +977,12 @@ mcp-auth.ini: |
   {{- $scopes = list "openid" "email" "profile" -}}
   {{- end }}
   resource_url = {{ $resourceUrl }}
-  resource_identifier = {{ $resourceIdentifier }}
   issuer_url = {{ $issuerUrl }}
   client_id = {{ $clientId }}
   scopes = {{ if kindIs "string" $scopes }}{{ $scopes }}{{ else }}{{ join " " $scopes }}{{ end }}
   authorization_endpoint = {{ $authorizationEndpoint }}
   token_endpoint = {{ $tokenEndpoint }}
+  forward_resource_parameter = {{ $forwardResourceParameter }}
   {{- if $jwksUri }}
   jwks_uri = {{ $jwksUri }}
   {{- end }}

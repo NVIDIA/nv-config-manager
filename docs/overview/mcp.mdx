@@ -43,14 +43,13 @@ Remote MCP clients with native OAuth support can authenticate directly against t
 
 The OAuth client ID is required. Config Manager does not support OAuth Dynamic Client Registration, so the client must be configured with the public/native OIDC client ID from the Config Manager auth discovery endpoint.
 
-Get the client ID, MCP URL, and scopes from `/auth/discovery`:
+Get the client ID and MCP URL from `/auth/discovery`:
 
 ```sh
 DISCOVERY_JSON=$(curl -fsS https://config-manager.example.com/auth/discovery)
 
 CLIENT_ID=$(printf '%s' "$DISCOVERY_JSON" | jq -r '.clientId')
 MCP_URL=$(printf '%s' "$DISCOVERY_JSON" | jq -r '.services.mcp')
-SCOPES=$(printf '%s' "$DISCOVERY_JSON" | jq -r '.scopes | join(",")')
 ```
 
 The response includes the same fields directly:
@@ -74,17 +73,80 @@ codex mcp add nv-config-manager \
   --url "$MCP_URL" \
   --oauth-client-id "$CLIENT_ID"
 
-codex mcp login nv-config-manager --scopes "$SCOPES"
+codex mcp login nv-config-manager
 ```
 
-If your deployment requires an OAuth resource parameter, include the MCP endpoint as the resource:
+Do not set `--oauth-resource` unless the deployment administrator explicitly requires an
+override. The MCP protected-resource metadata supplies the resource identifier and the server
+handles provider-specific forwarding behavior.
+
+#### Keycloak
+
+Keycloak uses the direct OAuth pattern. Keep the default Helm setting:
+
+```yaml
+mcp:
+  auth:
+    oauth:
+      forwardResourceParameter: true
+```
+
+The MCP protected-resource metadata advertises the HTTPS MCP endpoint as `resource` and the
+Keycloak realm as its authorization server. OAuth requests go directly to Keycloak, including
+the RFC 8707 `resource` parameter supplied by the MCP client.
+
+Create a public/native Keycloak client for MCP clients and allow its loopback redirect URIs. For
+Codex, the redirect URI has the following form and includes an ephemeral port and per-login path:
+
+```text
+http://127.0.0.1:<port>/callback/<login-id>
+```
+
+Configure an appropriate Keycloak redirect URI pattern, such as `http://127.0.0.1:*`, and pass
+the preconfigured client ID when adding the server:
 
 ```sh
 codex mcp add nv-config-manager \
   --url "$MCP_URL" \
-  --oauth-client-id "$CLIENT_ID" \
-  --oauth-resource "$MCP_URL"
+  --oauth-client-id "$CLIENT_ID"
 ```
+
+#### Microsoft Entra ID
+
+Microsoft Entra ID v2 can reject a token request when the RFC 8707 `resource` parameter contains
+the HTTPS MCP resource while the requested API scopes use a different Application ID URI, such as
+`api://<application-id>`. Use the MCP compatibility bridge for this configuration:
+
+```yaml
+mcp:
+  auth:
+    oauth:
+      forwardResourceParameter: false
+```
+
+The compatibility bridge preserves the RFC 9728 metadata contract: `resource` remains the HTTPS
+MCP endpoint. It advertises OAuth endpoints on the MCP origin, removes `resource` before forwarding
+authorization and token requests to Entra, and leaves the configured API scopes unchanged.
+
+Codex generates a different loopback callback path for each login. The bridge presents one fixed
+HTTPS callback to Entra, then relays the authorization response to Codex's loopback listener while
+preserving OAuth state and PKCE. Register this exact redirect URI on the Entra public client:
+
+```text
+https://svc-mcp.<hostname>/oauth/callback
+```
+
+Add the server with the preconfigured Entra public-client ID and without `--oauth-resource`:
+
+```sh
+codex mcp add nv-config-manager \
+  --url "$MCP_URL" \
+  --oauth-client-id "$CLIENT_ID"
+```
+
+The callback relay accepts Codex loopback callbacks using `127.0.0.1`, an explicit port, and a
+`/callback/<login-id>` path. Other native MCP clients should use the direct provider pattern unless
+their callback format is supported by the bridge.
 
 For Claude Code, add the HTTP MCP server with the same client ID:
 
@@ -106,7 +168,7 @@ For other MCP clients, configure:
 | URL | `https://svc-mcp.<hostname>/mcp`, or the endpoint from `/auth/discovery` |
 | OAuth flow | Authorization Code with PKCE |
 | Client ID | Required; use `clientId` from `/auth/discovery` |
-| Scopes | Use the scopes in the OAuth metadata; the default is `openid email profile` |
+| Resource forwarding | Provider-specific; enabled for direct providers such as Keycloak and disabled by the Entra compatibility bridge |
 
 Clients that expect OAuth Dynamic Client Registration and do not let you provide a client ID cannot complete the native OAuth flow. Use the `nvcm-mcp-cli` helper and bearer-token configuration for those clients.
 
@@ -185,4 +247,6 @@ For the best results, connect both MCP servers: use the deployment MCP server fo
 - External Nautobot deployments may use a configured read-only Nautobot token for MCP Nautobot queries.
 - OAuth discovery metadata does not register clients. Native OAuth MCP clients must use a preconfigured public/native OIDC client ID.
 - Native OAuth MCP clients should not use an OIDC client secret.
+- Protected-resource metadata always advertises the HTTPS MCP endpoint as its RFC 9728 `resource`.
+- Entra compatibility mode changes upstream request forwarding, not the resource advertised in metadata.
 - Token values should be treated as secrets and kept out of documentation, logs, and committed configuration.
