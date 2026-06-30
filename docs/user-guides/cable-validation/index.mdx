@@ -11,7 +11,7 @@ Two variants are available:
 - **Site Cable Validation** — fans out across every in-scope device at a site. Used during new-site bringup and any time you want a full picture of cable health (before a maintenance window, after large-scale recabling, periodic auditing).
 - **Device Cable Validation** — targets a single device. Used to re-validate after fixing a specific cabling, MAC, or hostname issue without re-running the full site.
 
-The site workflow runs the device workflow as a child workflow per device, so the report format, the issue categories, and the underlying validation logic are identical between the two — only the scope differs.
+The site workflow runs the device workflow as a child workflow per device, so the issue categories and the underlying validation logic are identical between the two — only the scope and the report download format differ.
 
 Cable validation can detect:
 
@@ -94,7 +94,7 @@ The site workflow runs three stages. None require manual approval.
 
 1. **`format_result` — Aggregate per-device results into the site report.**
 
-   Combines every child's interface findings into the consolidated Markdown report, with the list of `failed_devices` preserved verbatim at the top so operators know which switches were skipped versus which were validated and clean. The report renders inline on the stage page and is also offered as a downloadable CSV for cases where the result set is too large to view in the UI.
+   Combines every child's interface findings into the consolidated Markdown report, with the list of `failed_devices` preserved verbatim at the top so operators know which switches were skipped versus which were validated and clean. The report renders inline on the stage page and is also offered as a downloadable Excel workbook for cases where the result set is too large to view in the UI. The workbook has two sheets: **Cable Issues** (every interface finding) and **Host Summary** (per-switch issue counts, sorted by missing cables) for triage.
 
 ### Device cable validation
 
@@ -144,9 +144,14 @@ An optional column containing any additional info the device provides about this
 
 A hash of certain columns of the report that persists across multiple reports. This helps track issues being fixed across runs since the ID remains the same for every (start device, start port, end device, end port) group.
 
-### CSV Report
+### Downloadable report
 
-A link to download a CSV report is included on the result page. If the result set is too large to display in the UI, the CSV will still contain the full set of results.
+A download link is included on the result page so you still get the full result set when it is too large to display in the UI.
+
+- **Site Cable Validation** downloads an Excel workbook (`.xlsx`) with two sheets:
+  - **Cable Issues** — every interface finding, the same rows shown inline.
+  - **Host Summary** — one row per switch with its rack, missing-cable count, miscabled count, unexpected connections, and total issues, sorted so the switches with the most missing cables come first. Use this tab to triage which switches to address first.
+- **Device Cable Validation** downloads a CSV of that single device's findings.
 
 ## Cable validation issues
 
