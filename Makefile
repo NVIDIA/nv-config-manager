@@ -838,7 +838,36 @@ topology:
 	@echo "🌐 Deploying mock topology jobs and creating test topology..."
 	cd installer && uv run nv-config-manager-installer deploy ../$(INSTALL_CONFIG)
 
-# Install self-signed CA certificate in system keychain (macOS only)
+# Install self-signed CA certificate into the system trust store (macOS and Linux).
+# Trusts the gateway TLS cert for browsers and system tools.
+# Note: Node.js ignores the system trust store. For Node.js-based tools such as
+# Claude Code, set NODE_TLS_REJECT_UNAUTHORIZED=0 or use NODE_EXTRA_CA_CERTS
+# once the gateway cert is issued by a proper CA (CA:TRUE).
+install-cert:
+	@CERT_TMP=$$(mktemp); \
+	trap "rm -f $$CERT_TMP" EXIT INT TERM; \
+	echo "Extracting gateway TLS certificate..."; \
+	kubectl get secret -n $(KIND_SEC_NAMESPACE) nv-config-manager-gateway-tls \
+		-o jsonpath='{.data.tls\.crt}' | base64 -d > "$$CERT_TMP"; \
+	echo "Installing certificate (sudo required)..."; \
+	if [ "$$(uname)" = "Darwin" ]; then \
+		sudo security add-trusted-cert -d -r trustRoot \
+			-k /Library/Keychains/System.keychain "$$CERT_TMP"; \
+	elif [ -d /usr/local/share/ca-certificates ]; then \
+		sudo cp "$$CERT_TMP" /usr/local/share/ca-certificates/nvcm-gateway.crt && \
+		sudo update-ca-certificates; \
+	elif [ -d /etc/pki/ca-trust/source/anchors ]; then \
+		sudo cp "$$CERT_TMP" /etc/pki/ca-trust/source/anchors/nvcm-gateway.crt && \
+		sudo update-ca-trust; \
+	else \
+		echo "Unsupported OS: install the gateway cert manually into your trust store"; exit 1; \
+	fi; \
+	echo "Certificate installed."; \
+	echo ""; \
+	echo "Note: Node.js tools (e.g. Claude Code) ignore the system trust store because"; \
+	echo "      the gateway cert is self-signed with CA:FALSE. Scope the variable to"; \
+	echo "      the specific command: NODE_TLS_REJECT_UNAUTHORIZED=0 claude mcp login ..."
+
 # Remove local deployment (preserves shared operators)
 local-down:
 	@echo "🗑️  Removing NVIDIA Config Manager from local Kubernetes..."

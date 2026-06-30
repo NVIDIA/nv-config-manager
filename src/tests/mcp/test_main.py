@@ -275,8 +275,38 @@ def test_oauth_compatibility_proxy_uses_local_issuer_and_strips_resource(
 @pytest.mark.parametrize(
     "redirect_uri",
     [
-        "https://127.0.0.1:8765/callback/id",
+        "http://127.0.0.1:8765/callback/id",
+        "http://127.0.0.1:8765/callback",
         "http://localhost:8765/callback/id",
+        "http://localhost:8765/callback",
+        "http://[::1]:8765/callback/id",
+        "http://[::1]:8765/callback",
+    ],
+)
+def test_oauth_compatibility_proxy_accepts_rfc8252_loopback_redirects(
+    redirect_uri: str,
+) -> None:
+    with TestClient(
+        create_app(_settings(), _oauth_settings(forward_resource_parameter=False)),
+        base_url="https://svc-mcp.config-manager.local",
+        follow_redirects=False,
+    ) as client:
+        response = client.get(
+            "/oauth/authorize",
+            params={
+                "client_id": "nvcm-cli",
+                "state": "state-value",
+                "redirect_uri": redirect_uri,
+            },
+        )
+
+    assert response.status_code == 302
+
+
+@pytest.mark.parametrize(
+    "redirect_uri",
+    [
+        "https://127.0.0.1:8765/callback/id",
         "http://127.0.0.1:8765/not-a-callback/id",
         "http://127.0.0.1:8765/callback/id?next=https://example.test",
     ],

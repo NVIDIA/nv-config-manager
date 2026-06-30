@@ -28,7 +28,7 @@ from starlette.responses import JSONResponse, RedirectResponse, Response
 
 from nv_config_manager.mcp.settings import MCPOAuthSettings
 
-_DCR_MCP_CLI_CALLBACK_PATH = re.compile(r"/callback/[A-Za-z0-9_-]+")
+_DCR_MCP_CLI_CALLBACK_PATH = re.compile(r"/callback(?:/[A-Za-z0-9_-]+)?")
 
 
 async def proxy_authorization_request(
@@ -144,6 +144,9 @@ def _merge_query_params(url: str, params: tuple[tuple[str, str], ...]) -> str:
     return parsed._replace(query=query).geturl()
 
 
+_RFC8252_LOOPBACK_HOSTNAMES = {"127.0.0.1", "::1", "localhost"}
+
+
 def _is_dcr_mcp_cli_loopback_uri(value: str) -> bool:
     parsed = urlparse(value)
     try:
@@ -152,9 +155,8 @@ def _is_dcr_mcp_cli_loopback_uri(value: str) -> bool:
         return False
     return (
         parsed.scheme == "http"
-        and parsed.hostname == "127.0.0.1"
+        and parsed.hostname in _RFC8252_LOOPBACK_HOSTNAMES
         and port is not None
-        and parsed.netloc == f"127.0.0.1:{port}"
         and _DCR_MCP_CLI_CALLBACK_PATH.fullmatch(parsed.path) is not None
         and not parsed.params
         and not parsed.query
