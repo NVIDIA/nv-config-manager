@@ -39,6 +39,7 @@ services=(config-store dhcp render temporal ztp)
 
 for service in "${services[@]}"; do
     repo_id="nv-config-manager/bindings/go/${service}"
+    package_name="${service//-/}"
 
     docker run --rm \
         --user "$(id -u):$(id -g)" \
@@ -52,7 +53,7 @@ for service in "${services[@]}"; do
         --git-host github.com \
         --git-user-id nvidia \
         --git-repo-id "$repo_id" \
-        --additional-properties "packageName=openapi,packageVersion=0.0.0,goVersion=${GO_VERSION},withGoMod=false,hideGenerationTimestamp=true" \
+        --additional-properties "packageName=${package_name},packageVersion=0.0.0,goVersion=${GO_VERSION},withGoMod=false,hideGenerationTimestamp=true" \
         --global-property apiDocs=false,apiTests=false,modelDocs=false,modelTests=false
 
     # Retain only the generated Go client. Markdown, copied specs, push helpers, and generator

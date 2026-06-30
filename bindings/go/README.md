@@ -9,14 +9,14 @@ Install a specific platform release:
 go get github.com/nvidia/nv-config-manager/bindings/go@v1.3.0
 ```
 
-Import the service package you need. Generated packages use the name `openapi`, so an explicit
-alias can make call sites clearer:
+Import the service package you need. Each package uses its service name (`configstore`, `dhcp`,
+`render`, `temporal`, or `ztp`), so multiple clients can be imported without aliases:
 
 ```go
 import (
     "context"
 
-    temporal "github.com/nvidia/nv-config-manager/bindings/go/temporal"
+    "github.com/nvidia/nv-config-manager/bindings/go/temporal"
 )
 
 ctx := context.WithValue(context.Background(), temporal.ContextAccessToken, accessToken)

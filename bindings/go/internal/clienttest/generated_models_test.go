@@ -13,10 +13,10 @@ import (
 	"strings"
 	"testing"
 
-	configstore "github.com/nvidia/nv-config-manager/bindings/go/config-store"
-	dhcp "github.com/nvidia/nv-config-manager/bindings/go/dhcp"
-	render "github.com/nvidia/nv-config-manager/bindings/go/render"
-	ztp "github.com/nvidia/nv-config-manager/bindings/go/ztp"
+	"github.com/nvidia/nv-config-manager/bindings/go/config-store"
+	"github.com/nvidia/nv-config-manager/bindings/go/dhcp"
+	"github.com/nvidia/nv-config-manager/bindings/go/render"
+	"github.com/nvidia/nv-config-manager/bindings/go/ztp"
 )
 
 func TestGeneratedModelsRejectNullForRequiredFields(t *testing.T) {

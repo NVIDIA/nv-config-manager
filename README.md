@@ -323,7 +323,7 @@ builder and bearer-token context:
 import (
     "context"
 
-    temporal "github.com/nvidia/nv-config-manager/bindings/go/temporal"
+    "github.com/nvidia/nv-config-manager/bindings/go/temporal"
 )
 
 ctx := context.WithValue(context.Background(), temporal.ContextAccessToken, accessToken)
