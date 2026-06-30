@@ -217,6 +217,8 @@ make test                     # Run Python tests
 make lint                     # Run Python linters and type checks
 make openapi                  # Regenerate OpenAPI specs
 make openapi-check            # Check OpenAPI specs are current
+make go-bindings              # Regenerate Go clients from committed OpenAPI specs
+make api-generate             # Regenerate OpenAPI specs and Go clients together
 make docs-lint                # Lint documentation markdown
 make docs-lint-fern           # Validate Fern docs configuration
 ```
@@ -336,6 +338,39 @@ uv run pytest src/tests/integration/ -v \
 Runtime service configuration is delivered through the `nv-config-manager-ini` Kubernetes secret. The installer generates the secret content from `nv-config-manager-install.yaml`, selected size profile overlays, and generated or user-supplied secrets.
 
 OpenAPI specs live in [docs/api-specs](docs/api-specs/README.md). Run `make openapi-check` before changing API handlers.
+
+## Go API Bindings
+
+Generated Go clients for the Temporal, Config Store, ZTP, Render, and DHCP APIs live in
+[`bindings/go`](bindings/go/README.md). Install a specific platform release with:
+
+```bash
+go get github.com/nvidia/nv-config-manager/bindings/go@v1.3.0
+```
+
+Each service is a separate package. For example, the Temporal client uses the generated request
+builder and bearer-token context:
+
+```go
+import (
+    "context"
+
+    "github.com/nvidia/nv-config-manager/bindings/go/temporal"
+)
+
+ctx := context.WithValue(context.Background(), temporal.ContextAccessToken, accessToken)
+configuration := temporal.NewConfiguration()
+client := temporal.NewAPIClient(configuration)
+request := client.WorkflowAPI.GetWorkflowsV1WorkflowGet(ctx)
+response, httpResponse, err := request.Execute()
+```
+
+CLI and machine clients use a bearer JWT by default. Explicit health, readiness, metrics, and
+Temporal codec endpoints remain public; ZTP device endpoints also support device-IP authorization.
+Deployments can disable authentication enforcement with `[auth] required = false`.
+
+Run `make api-generate` after changing API handlers. Public CI runs the same command and fails with
+a PR comment when committed specifications or bindings are stale.
 
 ## Releases and Roadmap
 

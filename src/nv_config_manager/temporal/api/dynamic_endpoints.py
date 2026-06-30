@@ -140,12 +140,13 @@ def register_dynamic_endpoints(router: APIRouter) -> None:
             endpoint_func = create_workflow_endpoint(workflow_class, input_class, endpoint_path)
 
             # Register the endpoint with the router
+            # The parent router supplies the workflow tag; repeating it here creates duplicate
+            # OpenAPI tags and duplicate suffixed methods in generated clients.
             router.post(
                 endpoint_path,
                 response_model=WorkflowResponse,
                 summary=f"Execute {workflow_class.__name__}",
                 description=description,
-                tags=["workflow"],
             )(endpoint_func)
 
             registered_count += 1
