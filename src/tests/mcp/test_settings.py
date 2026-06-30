@@ -94,6 +94,15 @@ def test_mcp_oauth_settings_disabled_without_section() -> None:
     assert settings.enabled is False
 
 
+def test_mcp_oauth_settings_direct_construction_defaults_resource_identifier() -> None:
+    settings = MCPOAuthSettings(
+        enabled=True,
+        resource_url="https://svc-mcp.example.test/mcp",
+    )
+
+    assert settings.resource_identifier == "https://svc-mcp.example.test/mcp"
+
+
 def test_mcp_oauth_settings_parse_metadata_config() -> None:
     settings = MCPOAuthSettings.from_config(_oauth_config())
 

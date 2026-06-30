@@ -88,6 +88,10 @@ class MCPOAuthSettings:
     token_endpoint: str = ""
     jwks_uri: str = ""
 
+    def __post_init__(self) -> None:
+        if not self.resource_identifier and self.resource_url:
+            object.__setattr__(self, "resource_identifier", self.resource_url)
+
     @classmethod
     def from_config(cls, config: ConfigParser | None = None) -> MCPOAuthSettings:
         """Resolve MCP OAuth discovery metadata from mcp-auth.ini."""
@@ -103,8 +107,7 @@ class MCPOAuthSettings:
             resource_url=resource_url,
             resource_identifier=_normalize_url(
                 _get_value(config, "mcp.oauth", "resource_identifier", "")
-            )
-            or resource_url,
+            ),
             issuer_url=_normalized_required_url(config, "issuer_url"),
             client_id=_get_required(config, "mcp.oauth", "client_id").strip(),
             scopes=_parse_scopes(_get_value(config, "mcp.oauth", "scopes", "")),

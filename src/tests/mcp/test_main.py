@@ -240,12 +240,12 @@ def _settings() -> MCPSettings:
 
 def _oauth_settings(
     resource_url: str = "https://svc-mcp.config-manager.local/mcp",
-    resource_identifier: str | None = None,
+    resource_identifier: str = "",
 ) -> MCPOAuthSettings:
     return MCPOAuthSettings(
         enabled=True,
         resource_url=resource_url,
-        resource_identifier=resource_identifier or resource_url,
+        resource_identifier=resource_identifier,
         issuer_url="https://idp.example.test/realms/nvcm",
         client_id="nvcm-cli",
         scopes=("openid", "email", "profile"),
