@@ -50,6 +50,7 @@ from nv_config_manager_installer.k8s import (
     K8sClient,
     ServiceProxy,
     kubectl_current_context,
+    nv_config_manager_helm_common_labels,
     pin_kubeconfig_to_current_context,
 )
 from nv_config_manager_installer.operator_versions import load_operator_versions
@@ -1170,7 +1171,7 @@ class Deployer:
             step.output.append(f"{tool}: found")
 
         try:
-            self._k8s = K8sClient()
+            self._k8s = K8sClient(release_name=self.config.cluster.release_name)
         except Exception as exc:
             raise RuntimeError(f"Cannot load kubeconfig: {exc}") from exc
         if not self._k8s.check_connectivity():
@@ -1577,6 +1578,37 @@ class Deployer:
             raise RuntimeError(f"Airgapped deployment requested but {description} was not found")
         return artifact
 
+    @staticmethod
+    def _helm_common_labels_args(prefix: str = "commonLabels") -> list[str]:
+        """Build ``--set-string`` args that stamp installer labels on every
+        resource a chart renders.
+
+        ``prefix`` is the values-file key path: ``commonLabels`` for most
+        charts (Envoy Gateway, CNPG, prometheus-operator) and
+        ``global.commonLabels`` for cert-manager. Helm's ``--set`` parser
+        treats unescaped dots as nested-key separators, so dots inside the
+        *label key* (e.g. ``nv-config-manager.nvidia.com/installer``) are
+        escaped with a backslash — the prefix itself never contains a label
+        key so it stays as-is.
+        """
+        args: list[str] = []
+        for key, value in nv_config_manager_helm_common_labels().items():
+            escaped_key = key.replace(".", "\\.")
+            args.extend(["--set-string", f"{prefix}.{escaped_key}={value}"])
+        return args
+
+    def _ensure_operator_namespace(self, name: str) -> None:
+        """Pre-create an operator namespace so it carries installer provenance labels.
+
+        Helm's ``--create-namespace`` flag would otherwise lazily create an
+        unlabelled namespace, which leaves no breadcrumb for cleanup. Calling
+        ``ensure_namespace`` first stamps the installer labels (via
+        ``_object_meta``) and turns ``--create-namespace`` into a no-op.
+        """
+        assert self._k8s is not None
+        if self._k8s.ensure_namespace(name):
+            self.callback.on_log(f"Created namespace: {name}")
+
     def _install_crds(self) -> None:
         opts = self.options
         observability_on = self.config.infrastructure.monitoring.observability_enabled
@@ -1594,6 +1626,7 @@ class Deployer:
         step = self._start_step("install-crds")
         versions = load_operator_versions(Path(opts.chart_dir))
         bundle_root = self._operator_bundle_root()
+        cert_manager_label_args = self._helm_common_labels_args("global.commonLabels")
 
         if opts.install_envoy_gateway:
             self.callback.on_log("Installing Envoy Gateway...")
@@ -1639,6 +1672,11 @@ class Deployer:
                 if envoy_chart is not None
                 else "oci://docker.io/envoyproxy/gateway-helm"
             )
+            # gateway-helm has no chart-wide ``commonLabels`` value, so passing
+            # one would be a silent no-op. The pre-created namespace above
+            # carries the installer labels instead, which is what cleanup
+            # selectors key off of.
+            self._ensure_operator_namespace("envoy-gateway-system")
             envoy_args = [
                 "helm",
                 "upgrade",
@@ -1714,6 +1752,7 @@ class Deployer:
                 if cert_manager_chart is not None
                 else "jetstack/cert-manager"
             )
+            self._ensure_operator_namespace("cert-manager")
             cert_manager_args = [
                 "helm",
                 "upgrade",
@@ -1726,6 +1765,7 @@ class Deployer:
                 "--wait",
                 "--timeout",
                 "120s",
+                *cert_manager_label_args,
             ]
             if cert_manager_chart is not None:
                 self.callback.on_log(f"Using local chart: {cert_manager_chart}")
@@ -1812,6 +1852,11 @@ class Deployer:
                 f"CNPG operator chart {versions.cnpg_operator_version}",
             )
             cnpg_chart_ref = str(cnpg_chart) if cnpg_chart is not None else "cnpg/cloudnative-pg"
+            self._ensure_operator_namespace("cnpg-system")
+            # cloudnative-pg ≤0.28 has no chart-wide commonLabels value, so we
+            # only get installer labels on the namespace + on the operator pod
+            # via podLabels. Namespace-level cleanup still works.
+            cnpg_pod_label_args = self._helm_common_labels_args("podLabels")
             cnpg_args = [
                 "helm",
                 "upgrade",
@@ -1824,6 +1869,7 @@ class Deployer:
                 "--wait",
                 "--timeout",
                 "120s",
+                *cnpg_pod_label_args,
             ]
             if cnpg_chart is not None:
                 self.callback.on_log(f"Using local chart: {cnpg_chart}")
@@ -1878,6 +1924,11 @@ class Deployer:
                 if prom_crds_chart is not None
                 else "prometheus-community/prometheus-operator-crds"
             )
+            self._ensure_operator_namespace("nv-config-manager-monitoring")
+            # The prometheus-operator-crds chart only exposes ``crds.annotations``
+            # (not labels) — CRDs are cluster-scoped so namespace-deletion can't
+            # reach them anyway. Tag them with our installer annotation so they
+            # show up in audits.
             prom_crds_args = [
                 "helm",
                 "upgrade",
@@ -1890,6 +1941,8 @@ class Deployer:
                 "--wait",
                 "--timeout",
                 "120s",
+                "--set-string",
+                "crds.annotations.nv-config-manager\\.nvidia\\.com/installer=nv-config-manager-installer",
             ]
             if prom_crds_chart is not None:
                 self.callback.on_log(f"Using local chart: {prom_crds_chart}")

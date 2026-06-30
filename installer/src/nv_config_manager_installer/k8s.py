@@ -47,7 +47,45 @@ from kubernetes import client, config, watch
 from kubernetes.client.rest import ApiException
 from kubernetes.stream import stream as k8s_stream
 
+from nv_config_manager_installer import __version__ as _INSTALLER_VERSION
+
 LOADER_POD_IMAGE = "docker.io/library/busybox:1.36"
+
+# Provenance metadata stamped onto every resource the installer creates
+# directly via the Kubernetes API (i.e. outside of any Helm release).
+# These mirror the Kubernetes "recommended labels" so cleanup commands like
+# ``kubectl delete -l app.kubernetes.io/managed-by=nv-config-manager-installer`` work.
+LABEL_MANAGED_BY = "app.kubernetes.io/managed-by"
+LABEL_PART_OF = "app.kubernetes.io/part-of"
+LABEL_INSTANCE = "app.kubernetes.io/instance"
+MANAGED_BY_VALUE = "nv-config-manager-installer"
+PART_OF_VALUE = "nv-config-manager"
+ANNOTATION_INSTALLER_VERSION = "nv-config-manager.nvidia.com/installer-version"
+
+# Cross-cutting label stamped on *both* direct-API resources AND on Helm
+# releases the installer drives (via each chart's commonLabels value). This
+# gives a single selector — ``nv-config-manager.nvidia.com/installer=nv-config-manager-installer`` —
+# that lights up every resource the installer brought into the cluster,
+# regardless of who actually created the K8s object (us, Helm, or an
+# operator that propagates commonLabels). Helm itself owns the
+# ``app.kubernetes.io/managed-by`` key on chart-rendered resources, so we
+# can't reuse that for chart resources — hence this installer-namespaced label.
+LABEL_INSTALLER = "nv-config-manager.nvidia.com/installer"
+INSTALLER_VALUE = "nv-config-manager-installer"
+
+
+def nv_config_manager_helm_common_labels() -> dict[str, str]:
+    """Return the label set the installer wants on every Helm release it drives.
+
+    Callers feed this to ``--set-string commonLabels.<key>=<value>`` (or
+    ``global.commonLabels.<key>=<value>`` for charts like cert-manager that
+    nest it under ``global``). Helm's set-string parser treats unescaped dots
+    as nested-key separators, so callers must escape dots in keys with ``\\.``.
+    """
+    return {
+        LABEL_INSTALLER: INSTALLER_VALUE,
+        LABEL_PART_OF: PART_OF_VALUE,
+    }
 
 
 def kubectl_current_context() -> str | None:
@@ -128,7 +166,13 @@ def pin_kubeconfig_to_current_context() -> tuple[Path, str] | None:
 class K8sClient:
     """High-level wrapper around the ``kubernetes`` Python client."""
 
-    def __init__(self, context: str | None = None) -> None:
+    def __init__(
+        self,
+        context: str | None = None,
+        *,
+        release_name: str | None = None,
+        installer_version: str = _INSTALLER_VERSION,
+    ) -> None:
         # The Python kubernetes client and kubectl/helm disagree on which
         # context is "current" when KUBECONFIG merges multiple files that each
         # set their own current-context: kubectl picks the FIRST file's value,
@@ -155,6 +199,37 @@ class K8sClient:
             self.api_server: str | None = self.v1.api_client.configuration.host
         except Exception:
             self.api_server = None
+        self._release_name = release_name
+        self._installer_version = installer_version
+
+    # -- Provenance metadata --------------------------------------------------
+
+    def _object_meta(
+        self,
+        name: str,
+        namespace: str | None = None,
+    ) -> client.V1ObjectMeta:
+        """Build a V1ObjectMeta stamped with installer provenance labels.
+
+        Used for every resource the installer creates directly via the
+        Kubernetes API (i.e. not via Helm). Lets users find and clean up
+        installer-created objects with selectors like
+        ``app.kubernetes.io/managed-by=nv-config-manager-installer``.
+        """
+        labels = {
+            LABEL_MANAGED_BY: MANAGED_BY_VALUE,
+            LABEL_PART_OF: PART_OF_VALUE,
+            LABEL_INSTALLER: INSTALLER_VALUE,
+        }
+        if self._release_name:
+            labels[LABEL_INSTANCE] = self._release_name
+        annotations = {ANNOTATION_INSTALLER_VERSION: self._installer_version}
+        return client.V1ObjectMeta(
+            name=name,
+            namespace=namespace,
+            labels=labels,
+            annotations=annotations,
+        )
 
     # -- Cluster connectivity -------------------------------------------------
 
@@ -187,7 +262,7 @@ class K8sClient:
         return getattr(ns.status, "phase", None) if ns.status else None
 
     def create_namespace(self, name: str) -> None:
-        body = client.V1Namespace(metadata=client.V1ObjectMeta(name=name))
+        body = client.V1Namespace(metadata=self._object_meta(name))
         self.v1.create_namespace(body)
 
     def ensure_namespace(self, name: str) -> bool:
@@ -239,7 +314,7 @@ class K8sClient:
     ) -> None:
         """Create or replace a secret with plaintext string data."""
         body = client.V1Secret(
-            metadata=client.V1ObjectMeta(name=name, namespace=namespace),
+            metadata=self._object_meta(name, namespace),
             string_data=string_data,
             type=secret_type,
         )
@@ -265,7 +340,7 @@ class K8sClient:
             {"auths": {server: {"username": username, "password": password, "auth": auth}}}
         )
         body = client.V1Secret(
-            metadata=client.V1ObjectMeta(name=name, namespace=namespace),
+            metadata=self._object_meta(name, namespace),
             data={".dockerconfigjson": base64.b64encode(docker_config.encode()).decode()},
             type="kubernetes.io/dockerconfigjson",
         )
@@ -286,7 +361,7 @@ class K8sClient:
         """Create or replace a secret with binary file data (e.g. from-file)."""
         encoded = {k: base64.b64encode(v).decode() for k, v in file_data.items()}
         body = client.V1Secret(
-            metadata=client.V1ObjectMeta(name=name, namespace=namespace),
+            metadata=self._object_meta(name, namespace),
             data=encoded,
             type="Opaque",
         )
@@ -419,7 +494,7 @@ class K8sClient:
             spec.storage_class_name = storage_class
 
         body = client.V1PersistentVolumeClaim(
-            metadata=client.V1ObjectMeta(name=name, namespace=namespace),
+            metadata=self._object_meta(name, namespace),
             spec=spec,
         )
         self.v1.create_namespaced_persistent_volume_claim(namespace, body)
@@ -487,7 +562,7 @@ class K8sClient:
     ) -> None:
         """Create a short-lived pod that mounts a PVC for content loading."""
         body = client.V1Pod(
-            metadata=client.V1ObjectMeta(name=name, namespace=namespace),
+            metadata=self._object_meta(name, namespace),
             spec=client.V1PodSpec(
                 restart_policy="Never",
                 containers=[
