@@ -110,12 +110,12 @@ def _generate_nvue(
         )
         written.append(_write_json(version_dir / "interface.json", {}))
         written.append(
-            _write_json(version_dir / "platform.json", {"model": model, "vendor": "NVIDIA"})
+            _write_json(version_dir / "platform.json", {"model": "Mock-Device", "vendor": "NVIDIA"})
         )
         written.append(
             _write_json(
                 version_dir / "platform_inventory.json",
-                {"model": model, "serial": "MOCK-SERIAL-0001"},
+                {"model": "Mock-Device", "serial": "MOCK-SERIAL-0001"},
             )
         )
 
@@ -255,7 +255,7 @@ def _generate_eapi(
         version_dir.mkdir(parents=True, exist_ok=True)
 
         show_version = {
-            "modelName": model,
+            "modelName": "Mock-Device",
             "internalVersion": f"{version}-mock",
             "systemMacAddress": "00:1c:73:00:00:01",
             "serialNumber": "MOCK-SERIAL-0001",
