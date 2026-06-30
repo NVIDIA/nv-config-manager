@@ -56,17 +56,8 @@ with workflow.unsafe.imports_passed_through():
     )
 
 # Default configurations
-DEFAULT_CONFIG_MANAGER_ROLES = [
-    "TAN-Core",
-    "TAN-Spine",
-    "TAN-Leaf",
-    "SMN-Core",
-    "SMN-Spine",
-    "SMN-Leaf",
-    "SMN-Aggleaf",
-]
 DEFAULT_CONFIG_MANAGER_STATUS = ["Active", "Provisioned"]
-DEFAULT_CONFIG_MANAGER_TENANT = "NGC"
+DEFAULT_CONFIG_MANAGER_TENANT = None
 SUPPORTED_PLATFORMS = ["cumulus", "nvos"]
 
 # Search attributes to clone from parent to child workflows
@@ -90,14 +81,14 @@ class SitePasswordRotationInput(BaseModel):
         description="Name of the managed secret containing the replacement password."
     )
     roles: list[str] = Field(
-        default=DEFAULT_CONFIG_MANAGER_ROLES,
+        default=[],
         description="Device roles used to filter the selected network devices.",
     )
     status: list[str] = Field(
         default=DEFAULT_CONFIG_MANAGER_STATUS,
         description="Device statuses used to filter the selected network devices.",
     )
-    tenant: str = Field(
+    tenant: str | None = Field(
         default=DEFAULT_CONFIG_MANAGER_TENANT,
         description="Tenant used to filter the selected network devices.",
     )
@@ -151,8 +142,8 @@ class SitePasswordRotationWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixi
         """Get Devices Stage Input."""
 
         location: str
-        roles: list[str] = DEFAULT_CONFIG_MANAGER_ROLES
-        tenant: str = DEFAULT_CONFIG_MANAGER_TENANT
+        roles: list[str] = []
+        tenant: str | None = DEFAULT_CONFIG_MANAGER_TENANT
         status: list[str] = DEFAULT_CONFIG_MANAGER_STATUS
 
     class GetDevicesStageOutput(StageOutput):
@@ -170,6 +161,7 @@ class SitePasswordRotationWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixi
                 roles=stage_input.roles,
                 tenant=stage_input.tenant,
                 status=stage_input.status,
+                managed_only=True,
             ),
             start_to_close_timeout=timedelta(minutes=2),
             retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,

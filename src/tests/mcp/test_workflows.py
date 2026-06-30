@@ -14,7 +14,12 @@
 # limitations under the License.
 from __future__ import annotations
 
-from nv_config_manager.mcp.workflows import discover_mcp_workflows, normalize_workflow_parameters
+from nv_config_manager.mcp.workflows import (
+    DEFAULT_SITE_LEVEL_DEVICE_STATUS,
+    SITE_LEVEL_DEVICE_FILTER_PROMPT,
+    discover_mcp_workflows,
+    normalize_workflow_parameters,
+)
 from nv_config_manager.temporal.common.mixins.metadata import WorkflowMetadataMixin
 from nv_config_manager.temporal.hello_world.workflows import (
     REGISTERED_WORKFLOWS as HELLO_WORLD_WORKFLOWS,
@@ -83,3 +88,34 @@ def test_workflow_input_schema_matches_normalized_mcp_parameters() -> None:
     assert schema["properties"]["trigger"]["description"]
     assert schema["properties"]["user"]["default"] is None
     assert schema["properties"]["device_id"]["description"]
+
+
+def test_site_level_filter_workflows_include_mcp_targeting_prompt() -> None:
+    workflows = {workflow.tool_name: workflow for workflow in discover_mcp_workflows()}
+
+    for tool_name in ("run_site_cable_validation", "run_cumulus_hardware_validation"):
+        assert workflows[tool_name].tool_prompt == SITE_LEVEL_DEVICE_FILTER_PROMPT
+        assert "does not accept a single `device_id`" in workflows[tool_name].tool_description
+        assert (
+            "`status` defaults to `Active` and `Provisioned`"
+            in workflows[tool_name].tool_description
+        )
+        assert "nv_config_manager_device_status: true" in workflows[tool_name].tool_description
+        assert "how many managed devices match" in workflows[tool_name].tool_description
+
+    assert workflows["run_backup"].tool_prompt is None
+    assert SITE_LEVEL_DEVICE_FILTER_PROMPT not in workflows["run_backup"].tool_description
+
+
+def test_site_level_filter_workflows_default_reachable_statuses() -> None:
+    workflows = {workflow.tool_name: workflow for workflow in discover_mcp_workflows()}
+
+    for tool_name in ("run_site_cable_validation", "run_cumulus_hardware_validation"):
+        normalized = normalize_workflow_parameters(workflows[tool_name], {"site": "PDX01"})
+        assert normalized["site"] == "PDX01"
+        assert normalized["status"] == DEFAULT_SITE_LEVEL_DEVICE_STATUS
+
+    backup_normalized = normalize_workflow_parameters(
+        workflows["run_backup"], {"device_id": "device-1"}
+    )
+    assert "status" not in backup_normalized

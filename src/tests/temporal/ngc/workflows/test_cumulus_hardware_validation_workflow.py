@@ -23,6 +23,7 @@ import pytest
 from temporalio import activity
 from temporalio.client import Client, WorkflowHandle
 from temporalio.common import RetryPolicy
+from temporalio.exceptions import ApplicationError
 from temporalio.worker import Worker
 
 from nv_config_manager.temporal.ngc.activities.hardware_validation import (
@@ -328,6 +329,18 @@ async def mock_get_network_devices_empty(
     return GetNetworkDevicesOutput(devices=[])
 
 
+@activity.defn(name="get_network_devices")
+async def mock_get_network_devices_invalid_filter(
+    _activity_input: GetNetworkDevicesInput,
+) -> GetNetworkDevicesOutput:
+    """Mock get_network_devices activity with a Nautobot GraphQL filter error."""
+    raise ApplicationError(
+        "GraphQL error: {'tenant': "
+        "['Select a valid choice. nsv is not one of the available choices.']}",
+        non_retryable=True,
+    )
+
+
 @activity.defn(name="create_consolidated_excel_export")
 async def mock_create_consolidated_excel_export_empty(
     activity_input: CreateConsolidatedExcelInput,
@@ -412,14 +425,83 @@ async def test_cumulus_hardware_validation_workflow_no_devices(
 
         result = await handle.result()
         assert isinstance(result, HardwareValidationResult)
-        assert result.success is True
+        assert result.success is False
         assert result.devices_validated == 0
         assert result.total_entries == 0
-        assert "no devices matched the filter" in result.message
+        assert "No devices matched the hardware validation filter" in result.message
 
         stages = await handle.query("stages")
         completed_stages = [s for s in stages if s["state"] == "COMPLETE"]
-        assert len(completed_stages) == len(stages)
+        unreachable_stages = [s for s in stages if s["state"] == "UNREACHABLE"]
+        assert [stage["name"] for stage in completed_stages] == ["get_devices_to_validate"]
+        assert len(unreachable_stages) == len(stages) - 1
 
-        report_stage = next(s for s in stages if s["name"] == "generate_consolidated_report")
-        assert report_stage["output"]["total_row_count"] == 0
+        discovery_stage = next(s for s in stages if s["name"] == "get_devices_to_validate")
+        assert "No devices matched the specified filters" in discovery_stage["output"]["display"]
+
+
+@pytest.mark.asyncio
+@patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
+@patch(
+    "nv_config_manager.temporal.ngc.workflows.cumulus_hardware_validation.DEFAULT_ACTIVITY_RETRY_POLICY",
+    return_value=TEST_RETRY_POLICY,
+)
+@patch(
+    "nv_config_manager.temporal.ngc.workflows.cumulus_hardware_validation.timedelta",
+    return_value=TEST_TIMEOUT,
+)
+async def test_cumulus_hardware_validation_workflow_invalid_filter(
+    _mock_timedelta,
+    _mock_retry_policy,
+    _mock_time,
+    env,
+):
+    """Test hardware validation returns a clean result for invalid Nautobot filters."""
+    task_queue_name = str(uuid.uuid4())
+    client: Client = env.client
+
+    async with Worker(
+        client,
+        task_queue=task_queue_name,
+        workflows=[ValidateHardwareWorkflow],
+        activities=[
+            mock_get_network_devices_invalid_filter,
+            mock_publish_nats,
+        ],
+    ):
+        workflow_input = ValidateHardwareInput(
+            site="test-site",
+            roles=["tor-switch"],
+            status=["active"],
+            tenant="nsv",
+            device_type_ids=[],
+            raise_for_invalid=False,
+        )
+        workflow_id = str(uuid.uuid4())
+
+        handle: WorkflowHandle = await client.start_workflow(
+            ValidateHardwareWorkflow.run,
+            workflow_input,
+            id=workflow_id,
+            task_queue=task_queue_name,
+            run_timeout=timedelta(minutes=2),
+        )
+
+        result = await handle.result()
+        assert isinstance(result, HardwareValidationResult)
+        assert result.success is False
+        assert result.devices_validated == 0
+        assert result.total_entries == 0
+        assert "Invalid hardware validation device filter" in result.message
+        assert "tenant: Select a valid choice" in result.message
+        assert "nsv is not one of the available choices" in result.message
+
+        stages = await handle.query("stages")
+        completed_stages = [s for s in stages if s["state"] == "COMPLETE"]
+        unreachable_stages = [s for s in stages if s["state"] == "UNREACHABLE"]
+        assert [stage["name"] for stage in completed_stages] == ["get_devices_to_validate"]
+        assert len(unreachable_stages) == len(stages) - 1
+
+        discovery_stage = next(s for s in stages if s["name"] == "get_devices_to_validate")
+        assert discovery_stage["output"]["invalid_filter"] is True
+        assert "tenant: Select a valid choice" in discovery_stage["output"]["display"]

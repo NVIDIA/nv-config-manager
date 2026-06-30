@@ -87,7 +87,7 @@ export type SiteCableValidationWorkflowInput = {
   site: string;
   roles: string[];
   status: string[];
-  tenant: string;
+  tenant?: string;
   device_type_ids: string[];
   raise_for_invalid: boolean;
 };
@@ -96,7 +96,7 @@ export type CumulusHardwareValidationWorkflowInput = {
   site: string;
   roles: string[];
   status: string[];
-  tenant: string;
+  tenant?: string;
   device_type_ids: string[];
   raise_for_invalid: boolean;
 };
@@ -141,7 +141,7 @@ export type SitePasswordRotationWorkflowInput = {
   location: string;
   selected_secret: string;
   roles: string[];
-  tenant: string;
+  tenant?: string;
   status: string[];
 };
 
