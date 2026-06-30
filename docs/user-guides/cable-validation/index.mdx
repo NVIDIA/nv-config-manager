@@ -149,7 +149,7 @@ A hash of certain columns of the report that persists across multiple reports. T
 A download link is included on the result page so you still get the full result set when it is too large to display in the UI.
 
 - **Site Cable Validation** downloads an Excel workbook (`.xlsx`) with two sheets:
-  - **Cable Issues** — every interface finding, the same rows shown inline.
+  - **Cable Issues** — the complete set of interface findings. The inline stage-page table is truncated for very large result sets (it shows a "too many results" notice instead), but this sheet always contains every finding.
   - **Host Summary** — one row per switch with its rack, missing-cable count, miscabled count, unexpected connections, and total issues, sorted so the switches with the most missing cables come first. Use this tab to triage which switches to address first.
 - **Device Cable Validation** downloads a CSV of that single device's findings.
 
