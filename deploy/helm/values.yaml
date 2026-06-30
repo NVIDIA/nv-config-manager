@@ -140,11 +140,6 @@ global:
     temporalUi:
       repository: docker.io/temporalio/ui
       tag: "v2.37.4"
-    # OpenTelemetry Collector sidecar (contrib distribution — needed for k8sattributes processor)
-    otelCollector:
-      repository: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib
-      tag: "0.124.1"
-      pullPolicy: IfNotPresent
 # =============================================================================
 # Local Development - Mock SSO Authentication
 # =============================================================================
@@ -410,14 +405,6 @@ secrets:
       # Contains ca.crt, tls.crt, tls.key for authenticated Prometheus access
       kedaPrometheusCerts:
         path: "" # e.g., "my-org/nv-config-manager/dev/keda-prometheus-certs"
-        keys:
-          caCert: "ca.crt"
-          tlsCert: "tls.crt"
-          tlsKey: "tls.key"
-      # Panoptes mTLS certificates for OTel collector sidecar
-      # Leave path empty to skip ExternalSecret creation (observability.enabled must also be true)
-      panoptesMtls:
-        path: "" # e.g., "my-org/nv-config-manager/dev/panoptes-mtls"
         keys:
           caCert: "ca.crt"
           tlsCert: "tls.crt"
@@ -1804,29 +1791,17 @@ temporal:
   #   value: true
   #   constraints: []
   # ---------------------------------------------------------------------------
-  # Observability — OTel collector sidecar + Panoptes push
+  # Observability — OTel trace + metric export
   # ---------------------------------------------------------------------------
-  # When enabled, adds an opentelemetry-collector-contrib sidecar to the worker
-  # and API pods. The sidecar receives OTLP from the Temporal SDK (metrics) and
-  # the Python OTel SDK (traces) on localhost:4317 and pushes them to Panoptes
-  # via mTLS. Set to true in per-environment values overrides once certs are in Vault.
+  # When enabled, the Temporal worker, API, scheduler, and archive export OTLP
+  # traces (Python OTel SDK) and Temporal runtime metrics to an existing OTLP
+  # collector via standard OTel env vars — no per-pod sidecar. Defaults to the
+  # in-cluster Grafana Alloy shipped with this chart (see values-observability.yaml).
+  # Set otlpEndpoint to target a managed/external collector instead.
   observability:
     enabled: false
-    panoptes:
-      # OTLP ingestion endpoint. Set per-environment in a values override.
-      endpoint: ""
-      # Tenant-routing metadata attributes. Set per-environment.
-      customer: ""
-      mgmtOwner: ""
-      nspectId: ""
-    # Resource limits for the otel-collector sidecar (3 worker replicas × 50m = 150m cluster-wide)
-    resources:
-      requests:
-        cpu: 50m
-        memory: 64Mi
-      limits:
-        cpu: 100m
-        memory: 128Mi
+    # OTLP gRPC endpoint. Empty = in-cluster Alloy (alloy.<namespace>.svc:4317).
+    otlpEndpoint: ""
 
   # Redfish / BMC workflows
   # Enable only if Redfish provisioning workflows are in use.

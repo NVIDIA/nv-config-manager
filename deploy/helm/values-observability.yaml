@@ -176,6 +176,18 @@ alloy:
       varlog: false
       dockercontainers: false
 
+    # Expose the OTLP gRPC receiver (below) on the Alloy Service so Temporal
+    # pods can reach it at alloy.<namespace>.svc.cluster.local:4317.
+    extraPorts:
+      - name: otlp-grpc
+        port: 4317
+        targetPort: 4317
+        protocol: TCP
+      - name: otlp-http
+        port: 4318
+        targetPort: 4318
+        protocol: TCP
+
     configMap:
       create: true
       content: |-
@@ -198,6 +210,40 @@ alloy:
 
         prometheus.operator.probes "nv_config_manager" {
           forward_to = [prometheus.remote_write.local.receiver]
+        }
+
+        // OTLP receiver for Temporal traces + runtime metrics. Apps point
+        // OTEL_EXPORTER_OTLP_ENDPOINT at alloy:4317 (see temporal.observability).
+        otelcol.receiver.otlp "default" {
+          grpc {
+            endpoint = "0.0.0.0:4317"
+          }
+          http {
+            endpoint = "0.0.0.0:4318"
+          }
+          output {
+            metrics = [otelcol.processor.batch.default.input]
+            traces  = [otelcol.processor.batch.default.input]
+          }
+        }
+
+        otelcol.processor.batch "default" {
+          output {
+            metrics = [otelcol.exporter.prometheus.default.input]
+            traces  = [otelcol.exporter.debug.default.input]
+          }
+        }
+
+        // OTLP metrics -> the same local Prometheus the scrapers write to.
+        otelcol.exporter.prometheus "default" {
+          forward_to = [prometheus.remote_write.local.receiver]
+        }
+
+        // The local OSS stack ships no trace backend (no Tempo); log a sample
+        // so traces are visible in Alloy logs. Swap for otelcol.exporter.otlp
+        // to a Tempo/managed collector in production.
+        otelcol.exporter.debug "default" {
+          verbosity = "basic"
         }
 
         prometheus.remote_write "local" {
