@@ -230,6 +230,14 @@
         "title": "WhoamiResponse",
         "type": "object"
       }
+    },
+    "securitySchemes": {
+      "BearerAuth": {
+        "bearerFormat": "JWT",
+        "description": "Bearer JWT used by CLI and machine clients on svc-* endpoints. Authentication is required by default, but deployments may disable it with [auth] required = false. Browser OIDC sessions, mTLS, SPIFFE identities, and trusted gateway identity headers may also satisfy authentication outside this generated client flow.",
+        "scheme": "bearer",
+        "type": "http"
+      }
     }
   },
   "info": {
@@ -255,6 +263,7 @@
             "description": "Successful Response"
           }
         },
+        "security": [],
         "summary": "Healthcheck"
       }
     },
@@ -298,6 +307,12 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {}
+        ],
         "summary": "Load Bootscript",
         "tags": [
           "device"
@@ -353,6 +368,12 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {}
+        ],
         "summary": "Load Configuration",
         "tags": [
           "device"
@@ -392,6 +413,12 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {}
+        ],
         "summary": "Load Firmware",
         "tags": [
           "device"
@@ -438,6 +465,12 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {}
+        ],
         "summary": "Load Firmware Checksum",
         "tags": [
           "device"
@@ -484,6 +517,12 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {}
+        ],
         "summary": "Load Firmware",
         "tags": [
           "device"
@@ -531,6 +570,12 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {}
+        ],
         "summary": "Mark Provisioned",
         "tags": [
           "device"
@@ -588,6 +633,12 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {}
+        ],
         "summary": "Validate Serial",
         "tags": [
           "device"
@@ -617,6 +668,11 @@
             "description": "Not found"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "List All Files",
         "tags": [
           "files"
@@ -676,6 +732,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "List Files",
         "tags": [
           "files"
@@ -733,6 +794,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Load Object",
         "tags": [
           "files"
@@ -835,6 +901,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Upload File",
         "tags": [
           "files"
@@ -899,6 +970,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Load Checksum",
         "tags": [
           "files"
@@ -947,6 +1023,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Load Firmware",
         "tags": [
           "firmware"
@@ -1002,6 +1083,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Load Firmware Checksum",
         "tags": [
           "firmware"
@@ -1024,6 +1110,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Current User Info"
       }
     }

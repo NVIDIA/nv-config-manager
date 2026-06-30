@@ -17,15 +17,51 @@ package compatibility_test
 
 import (
 	"context"
+	"io"
+	"net/http"
+	"strings"
 	"testing"
 
 	temporal "github.com/nvidia/nv-config-manager/bindings/go/temporal"
 )
 
-func TestTemporalClientRetainsKiwiBindingsCallPattern(t *testing.T) {
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return fn(request)
+}
+
+func TestTemporalClientSupportsGeneratedRequestBuilder(t *testing.T) {
 	t.Parallel()
 
 	configuration := temporal.NewConfiguration()
 	client := temporal.NewAPIClient(configuration)
-	_ = client.WorkflowAPI.GetWorkflowsV1WorkflowGet(context.Background())
+	ctx := context.WithValue(context.Background(), temporal.ContextAccessToken, "test-token")
+	_ = client.WorkflowAPI.GetWorkflowsV1WorkflowGet(ctx)
+}
+
+func TestTemporalClientAppliesBearerToken(t *testing.T) {
+	t.Parallel()
+
+	var authorizationHeader string
+	configuration := temporal.NewConfiguration()
+	configuration.Servers[0].URL = "https://example.test"
+	configuration.HTTPClient = &http.Client{
+		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			authorizationHeader = request.Header.Get("Authorization")
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader("{}")),
+			}, nil
+		}),
+	}
+	client := temporal.NewAPIClient(configuration)
+	ctx := context.WithValue(context.Background(), temporal.ContextAccessToken, "test-token")
+
+	_, _, _ = client.WorkflowAPI.GetWorkflowsV1WorkflowGet(ctx).Execute()
+
+	if authorizationHeader != "Bearer test-token" {
+		t.Errorf("authorization header = %q, want %q", authorizationHeader, "Bearer test-token")
+	}
 }

@@ -28,4 +28,9 @@ Regenerate the specifications and all committed Go clients together:
 make api-generate
 ```
 
+The specifications describe bearer JWT authentication as the default for CLI and machine clients.
+Explicit health, readiness, metrics, and Temporal codec routes are public. ZTP device routes also
+support device-IP authorization, and deployments can disable authentication enforcement with
+`[auth] required = false`.
+
 API path and method changes should be intentional and reviewed separately from documentation text changes.

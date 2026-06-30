@@ -43,7 +43,19 @@ for service in "${services[@]}"; do
         --git-user-id nvidia \
         --git-repo-id "$repo_id" \
         --additional-properties "packageName=openapi,packageVersion=0.0.0,goVersion=${GO_VERSION},withGoMod=false,hideGenerationTimestamp=true" \
-        --global-property apiTests=false,modelTests=false
+        --global-property apiDocs=false,apiTests=false,modelDocs=false,modelTests=false
+
+    # Retain only the generated Go client. Markdown, copied specs, push helpers, and generator
+    # bookkeeping duplicate repository-owned sources or describe standalone repositories.
+    rm -rf \
+        "$staging_root/$service/.gitignore" \
+        "$staging_root/$service/.openapi-generator" \
+        "$staging_root/$service/.openapi-generator-ignore" \
+        "$staging_root/$service/.travis.yml" \
+        "$staging_root/$service/README.md" \
+        "$staging_root/$service/api" \
+        "$staging_root/$service/docs" \
+        "$staging_root/$service/git_push.sh"
 done
 
 mkdir -p "$output_root"

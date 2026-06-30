@@ -101,6 +101,7 @@ def generate_openapi_spec(app: FastAPI, title: str | None = None) -> dict:
 
     spec = app.openapi()
     validate_unique_operation_tags(spec)
+    validate_bearer_auth(spec)
     return spec
 
 
@@ -120,6 +121,28 @@ def validate_unique_operation_tags(spec: dict) -> None:
     if duplicate_operations:
         details = "\n  ".join(duplicate_operations)
         raise ValueError(f"OpenAPI operations contain duplicate tags:\n  {details}")
+
+
+def validate_bearer_auth(spec: dict) -> None:
+    """Require the shared default bearer policy used by generated clients."""
+    bearer_scheme = spec.get("components", {}).get("securitySchemes", {}).get("BearerAuth")
+    if not isinstance(bearer_scheme, dict):
+        raise ValueError("OpenAPI schema does not define components.securitySchemes.BearerAuth")
+    if bearer_scheme.get("type") != "http" or bearer_scheme.get("scheme") != "bearer":
+        raise ValueError("OpenAPI BearerAuth must use the HTTP bearer security scheme")
+
+    http_methods = {"delete", "get", "head", "options", "patch", "post", "put", "trace"}
+    missing_security: list[str] = []
+    for path, path_item in spec.get("paths", {}).items():
+        for method, operation in path_item.items():
+            if method in http_methods and "security" not in operation:
+                missing_security.append(f"{method.upper()} {path}")
+
+    if missing_security:
+        details = "\n  ".join(missing_security)
+        raise ValueError(
+            f"OpenAPI operations must declare their authentication policy:\n  {details}"
+        )
 
 
 def main() -> int:

@@ -2234,6 +2234,14 @@
         "title": "WorkflowSummaryResponse",
         "type": "object"
       }
+    },
+    "securitySchemes": {
+      "BearerAuth": {
+        "bearerFormat": "JWT",
+        "description": "Bearer JWT used by CLI and machine clients on svc-* endpoints. Authentication is required by default, but deployments may disable it with [auth] required = false. Browser OIDC sessions, mTLS, SPIFFE identities, and trusted gateway identity headers may also satisfy authentication outside this generated client flow.",
+        "scheme": "bearer",
+        "type": "http"
+      }
     }
   },
   "info": {
@@ -2260,6 +2268,7 @@
             "description": "Successful Response"
           }
         },
+        "security": [],
         "summary": "Healthcheck"
       }
     },
@@ -2279,6 +2288,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "RBAC Config Status"
       }
     },
@@ -2300,6 +2314,7 @@
             "description": "Successful Response"
           }
         },
+        "security": [],
         "summary": "Decode payloads",
         "tags": [
           "codec"
@@ -2324,6 +2339,7 @@
             "description": "Successful Response"
           }
         },
+        "security": [],
         "summary": "Encode payloads",
         "tags": [
           "codec"
@@ -2507,6 +2523,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Get Devices",
         "tags": [
           "parameters"
@@ -2550,6 +2571,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Get Device ID by Name",
         "tags": [
           "parameters"
@@ -2597,6 +2623,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Get Device Password Users",
         "tags": [
           "parameters"
@@ -2644,6 +2675,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Get Secret Types for Device",
         "tags": [
           "parameters"
@@ -2691,6 +2727,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Get Device Secrets",
         "tags": [
           "parameters"
@@ -2748,6 +2789,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Get Diagnostics Commands",
         "tags": [
           "parameters"
@@ -2805,6 +2851,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Get Locations",
         "tags": [
           "parameters"
@@ -2861,6 +2912,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Get Namespace Tags",
         "tags": [
           "parameters"
@@ -2911,6 +2967,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Get Roles",
         "tags": [
           "parameters"
@@ -2937,6 +2998,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Get Sites",
         "tags": [
           "parameters"
@@ -2993,6 +3059,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Get Statuses",
         "tags": [
           "parameters"
@@ -3043,6 +3114,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Get Tenants",
         "tags": [
           "parameters"
@@ -3307,6 +3383,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Get Workflows",
         "tags": [
           "workflow"
@@ -3349,6 +3430,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Execute HelloWorld",
         "tags": [
           "workflow"
@@ -3391,6 +3477,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Execute HelloWorldApproval",
         "tags": [
           "workflow"
@@ -3413,6 +3504,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Get Workflow Metadata",
         "tags": [
           "workflow"
@@ -3455,6 +3551,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Execute BackupWorkflow",
         "tags": [
           "workflow"
@@ -3497,6 +3598,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Execute BatchDeployWorkflow",
         "tags": [
           "workflow"
@@ -3539,6 +3645,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Execute ConnectedHostMetadataWorkflow",
         "tags": [
           "workflow"
@@ -3581,6 +3692,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Execute ValidateHardwareWorkflow",
         "tags": [
           "workflow"
@@ -3623,6 +3739,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Execute DeployWorkflow",
         "tags": [
           "workflow"
@@ -3665,6 +3786,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Execute DeviceCableValidationWorkflow",
         "tags": [
           "workflow"
@@ -3707,6 +3833,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Execute DevicePasswordRotationWorkflow",
         "tags": [
           "workflow"
@@ -3749,6 +3880,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Execute DiagnosticsWorkflow",
         "tags": [
           "workflow"
@@ -3791,6 +3927,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Execute IBPKeyCreationWorkflow",
         "tags": [
           "workflow"
@@ -3833,6 +3974,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Execute IBPKeyMemberAddWorkflow",
         "tags": [
           "workflow"
@@ -3875,6 +4021,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Execute IBPKeyMemberDeleteWorkflow",
         "tags": [
           "workflow"
@@ -3917,6 +4068,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Execute IBPKeyMemberUpdateWorkflow",
         "tags": [
           "workflow"
@@ -3959,6 +4115,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Execute IBPortGuidDiscoveryWorkflow",
         "tags": [
           "workflow"
@@ -4001,6 +4162,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Execute InfinibandCableValidationWorkflow",
         "tags": [
           "workflow"
@@ -4043,6 +4209,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Execute InfinibandGetUnhealthyPortsWorkflow",
         "tags": [
           "workflow"
@@ -4085,6 +4256,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Execute InfinibandMlnxOSUpgradeWorkflow",
         "tags": [
           "workflow"
@@ -4127,6 +4303,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Execute MultiDeployWorkflow",
         "tags": [
           "workflow"
@@ -4169,6 +4350,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Execute NVLinkSwitchFirmwareUpgradeWorkflow",
         "tags": [
           "workflow"
@@ -4211,6 +4397,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Execute PortLLDPInfoWorkflow",
         "tags": [
           "workflow"
@@ -4253,6 +4444,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Execute RedfishProvisioningWorkflow",
         "tags": [
           "workflow"
@@ -4295,6 +4491,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Execute ReprovisionWorkflow",
         "tags": [
           "workflow"
@@ -4337,6 +4538,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Execute SiteCableValidationWorkflow",
         "tags": [
           "workflow"
@@ -4379,6 +4585,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Execute SitePasswordRotationWorkflow",
         "tags": [
           "workflow"
@@ -4421,6 +4632,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Execute SpXOverlayAssignmentWorkflow",
         "tags": [
           "workflow"
@@ -4463,6 +4679,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Execute SpXOverlayCreationWorkflow",
         "tags": [
           "workflow"
@@ -4505,6 +4726,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Execute SpXOverlayDeletionWorkflow",
         "tags": [
           "workflow"
@@ -4547,6 +4773,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Execute SpXOverlayTenantChangeWorkflow",
         "tags": [
           "workflow"
@@ -4589,6 +4820,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Execute SwitchOSUpgradeWorkflow",
         "tags": [
           "workflow"
@@ -4631,6 +4867,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Execute TenantDeployWorkflow",
         "tags": [
           "workflow"
@@ -4657,6 +4898,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Get Workflow Types",
         "tags": [
           "workflow"
@@ -4700,6 +4946,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Get Workflow",
         "tags": [
           "workflow"
@@ -4752,6 +5003,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Approve",
         "tags": [
           "workflow"
@@ -4804,6 +5060,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Reject",
         "tags": [
           "workflow"
@@ -4856,6 +5117,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Retry",
         "tags": [
           "workflow"
@@ -4906,6 +5172,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Download Tech Support",
         "tags": [
           "workflow"
@@ -4949,6 +5220,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Terminate",
         "tags": [
           "workflow"
@@ -4971,6 +5247,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Current User Info"
       }
     }

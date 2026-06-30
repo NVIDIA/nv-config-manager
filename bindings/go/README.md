@@ -13,8 +13,21 @@ Import the service package you need. Generated packages use the name `openapi`, 
 alias can make call sites clearer:
 
 ```go
-import temporal "github.com/nvidia/nv-config-manager/bindings/go/temporal"
+import (
+    "context"
+
+    temporal "github.com/nvidia/nv-config-manager/bindings/go/temporal"
+)
+
+ctx := context.WithValue(context.Background(), temporal.ContextAccessToken, accessToken)
+configuration := temporal.NewConfiguration()
+client := temporal.NewAPIClient(configuration)
+request := client.WorkflowAPI.GetWorkflowsV1WorkflowGet(ctx)
 ```
+
+CLI and machine clients use a bearer JWT by default. Health, readiness, metrics, and Temporal
+codec endpoints are explicitly public. ZTP device endpoints also support device-IP authorization.
+Deployments can disable authentication enforcement with `[auth] required = false`.
 
 Regenerate every OpenAPI specification and Go client from the repository root:
 
