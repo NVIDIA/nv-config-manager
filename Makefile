@@ -838,21 +838,28 @@ topology:
 	@echo "🌐 Deploying mock topology jobs and creating test topology..."
 	cd installer && uv run nv-config-manager-installer deploy ../$(INSTALL_CONFIG)
 
-# Install self-signed CA certificate in system keychain (macOS only).
+# Install self-signed CA certificate into the system trust store (macOS and Linux).
 # Trusts the gateway TLS cert for browsers and system tools.
-# Note: Node.js ignores the macOS keychain. For Node.js-based tools such as
+# Note: Node.js ignores the system trust store. For Node.js-based tools such as
 # Claude Code, set NODE_TLS_REJECT_UNAUTHORIZED=0 or use NODE_EXTRA_CA_CERTS
 # once the gateway cert is issued by a proper CA (CA:TRUE).
 install-cert:
-	@if [ "$$(uname)" != "Darwin" ]; then \
-		echo "install-cert is only supported on macOS"; exit 1; \
-	fi
 	@echo "Extracting gateway TLS certificate..."
 	@kubectl get secret -n $(KIND_SEC_NAMESPACE) nv-config-manager-gateway-tls \
 		-o jsonpath='{.data.tls\.crt}' | base64 -d > /tmp/nvcm-gateway.crt
-	@echo "Installing certificate to system keychain (sudo required)..."
-	@sudo security add-trusted-cert -d -r trustRoot \
-		-k /Library/Keychains/System.keychain /tmp/nvcm-gateway.crt
+	@echo "Installing certificate (sudo required)..."
+	@if [ "$$(uname)" = "Darwin" ]; then \
+		sudo security add-trusted-cert -d -r trustRoot \
+			-k /Library/Keychains/System.keychain /tmp/nvcm-gateway.crt; \
+	elif [ -d /usr/local/share/ca-certificates ]; then \
+		sudo cp /tmp/nvcm-gateway.crt /usr/local/share/ca-certificates/nvcm-gateway.crt && \
+		sudo update-ca-certificates; \
+	elif [ -d /etc/pki/ca-trust/source/anchors ]; then \
+		sudo cp /tmp/nvcm-gateway.crt /etc/pki/ca-trust/source/anchors/nvcm-gateway.crt && \
+		sudo update-ca-trust; \
+	else \
+		echo "Unsupported OS: install /tmp/nvcm-gateway.crt manually into your trust store"; exit 1; \
+	fi
 	@rm -f /tmp/nvcm-gateway.crt
 	@echo "Certificate installed."
 	@echo ""
