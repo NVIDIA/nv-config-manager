@@ -260,8 +260,12 @@ jobs:
           ' /tmp/nvcm-probes.yaml
 
   openapi:
-    name: OpenAPI Check
+    name: OpenAPI And Go Bindings Check
     runs-on: linux-amd64-cpu4
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
       - name: Setup proxy cache
@@ -272,8 +276,107 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: bindings/go/go.mod
+          cache: false
       - run: uv sync --frozen
-      - run: uv run python scripts/generate_openapi.py --check
+      - name: Regenerate OpenAPI specs and Go bindings
+        id: generation
+        run: |
+          set +e
+          make api-generate
+          generation_status=$?
+          set -e
+
+          if [ "$generation_status" -ne 0 ]; then
+            echo "failed=true" >> "$GITHUB_OUTPUT"
+            echo "drift=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "failed=false" >> "$GITHUB_OUTPUT"
+          changed_files="$(git status --short --untracked-files=all -- docs/api-specs bindings/go)"
+          if [ -n "$changed_files" ]; then
+            echo "drift=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "changed_files<<EOF"
+              printf '%s\n' "$changed_files"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo "drift=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Test generated Go bindings
+        id: go_tests
+        if: steps.generation.outputs.failed == 'false'
+        continue-on-error: true
+        working-directory: bindings/go
+        run: go test ./...
+      - name: Get PR info
+        id: get-pr-info
+        if: always() && startsWith(github.ref, 'refs/heads/pull-request/')
+        uses: nv-gha-runners/get-pr-info@090577647b8ddc4e06e809e264f7881650ecdccf
+      - name: Update generated API status comment
+        if: always() && startsWith(github.ref, 'refs/heads/pull-request/') && steps.generation.outputs.failed == 'false'
+        env:
+          CHANGED_FILES: ${{ steps.generation.outputs.changed_files }}
+          DRIFT: ${{ steps.generation.outputs.drift }}
+          GH_TOKEN: ${{ github.token }}
+          GO_TEST_OUTCOME: ${{ steps.go_tests.outcome }}
+          PR_NUMBER: ${{ fromJSON(steps.get-pr-info.outputs.pr-info).number }}
+        run: |
+          set -euo pipefail
+          marker="<!-- nv-config-manager-generated-api-status -->"
+          comment_id="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" --paginate \
+            --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | contains(\"${marker}\"))) | .id" \
+            | head -n 1)"
+
+          if [ "$DRIFT" = "true" ]; then
+            body="$(printf '%s\n\n%s\n\n```text\n%s\n```\n\n%s\n\n```bash\nmake api-generate\ngit add docs/api-specs bindings/go\n```\n\n%s' \
+              "$marker" \
+              '⚠️ The committed OpenAPI specifications and Go bindings are out of sync.' \
+              "$CHANGED_FILES" \
+              'Regenerate them locally, review the changes, then commit and push the result:' \
+              'This check will remain failing until the generated files are current.')"
+          else
+            if [ "$GO_TEST_OUTCOME" != "success" ] || [ -z "$comment_id" ]; then
+              exit 0
+            fi
+            body="$(printf '%s\n\n%s' \
+              "$marker" \
+              '✅ The committed OpenAPI specifications and Go bindings are back in sync.')"
+          fi
+
+          if [ -n "$comment_id" ]; then
+            gh api "repos/${GITHUB_REPOSITORY}/issues/comments/${comment_id}" \
+              --method PATCH \
+              --field body="$body" >/dev/null
+          else
+            gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+              --method POST \
+              --field body="$body" >/dev/null
+          fi
+      - name: Require generated APIs to be current
+        if: always()
+        env:
+          GENERATION_FAILED: ${{ steps.generation.outputs.failed }}
+          GO_TEST_OUTCOME: ${{ steps.go_tests.outcome }}
+          HAS_DRIFT: ${{ steps.generation.outputs.drift }}
+        run: |
+          set -euo pipefail
+          if [ "$GENERATION_FAILED" = "true" ]; then
+            echo "OpenAPI or Go binding generation failed. See the generation step above."
+            exit 1
+          fi
+          if [ "$GO_TEST_OUTCOME" != "success" ]; then
+            echo "Generated Go binding tests failed. See the test step above."
+            exit 1
+          fi
+          if [ "$HAS_DRIFT" = "true" ]; then
+            echo "Generated API files are out of date. Run 'make api-generate' and commit the result."
+            exit 1
+          fi
 
   ui-lint:
     name: UI Lint

@@ -185,6 +185,8 @@ make test                     # Run Python tests
 make lint                     # Run Python linters and type checks
 make openapi                  # Regenerate OpenAPI specs
 make openapi-check            # Check OpenAPI specs are current
+make go-bindings              # Regenerate Go clients from committed OpenAPI specs
+make api-generate             # Regenerate OpenAPI specs and Go clients together
 make docs-lint                # Lint documentation markdown
 make docs-lint-fern           # Validate Fern docs configuration
 ```
@@ -304,6 +306,34 @@ uv run pytest src/tests/integration/ -v \
 Runtime service configuration is delivered through the `nv-config-manager-ini` Kubernetes secret. The installer generates the secret content from `nv-config-manager-install.yaml`, selected size profile overlays, and generated or user-supplied secrets.
 
 OpenAPI specs live in [docs/api-specs](docs/api-specs/README.md). Run `make openapi-check` before changing API handlers.
+
+## Go API Bindings
+
+Generated Go clients for the Temporal, Config Store, ZTP, Render, and DHCP APIs live in
+[`bindings/go`](bindings/go/README.md). Install a specific platform release with:
+
+```bash
+go get github.com/nvidia/nv-config-manager/bindings/go@v1.3.0
+```
+
+Each service is a separate package. For example, the Temporal client retains the OpenAPI Generator
+calling pattern used by the earlier Kiwi bindings:
+
+```go
+import (
+    "context"
+
+    temporal "github.com/nvidia/nv-config-manager/bindings/go/temporal"
+)
+
+configuration := temporal.NewConfiguration()
+client := temporal.NewAPIClient(configuration)
+request := client.WorkflowAPI.GetWorkflowsV1WorkflowGet(context.Background())
+response, httpResponse, err := request.Execute()
+```
+
+Run `make api-generate` after changing API handlers. Public CI runs the same command and fails with
+a PR comment when committed specifications or bindings are stale.
 
 ## Releases and Roadmap
 

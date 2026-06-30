@@ -3351,7 +3351,6 @@
         },
         "summary": "Execute HelloWorld",
         "tags": [
-          "workflow",
           "workflow"
         ]
       }
@@ -3394,7 +3393,6 @@
         },
         "summary": "Execute HelloWorldApproval",
         "tags": [
-          "workflow",
           "workflow"
         ]
       }
@@ -3459,7 +3457,6 @@
         },
         "summary": "Execute BackupWorkflow",
         "tags": [
-          "workflow",
           "workflow"
         ]
       }
@@ -3502,7 +3499,6 @@
         },
         "summary": "Execute BatchDeployWorkflow",
         "tags": [
-          "workflow",
           "workflow"
         ]
       }
@@ -3545,7 +3541,6 @@
         },
         "summary": "Execute ConnectedHostMetadataWorkflow",
         "tags": [
-          "workflow",
           "workflow"
         ]
       }
@@ -3588,7 +3583,6 @@
         },
         "summary": "Execute ValidateHardwareWorkflow",
         "tags": [
-          "workflow",
           "workflow"
         ]
       }
@@ -3631,7 +3625,6 @@
         },
         "summary": "Execute DeployWorkflow",
         "tags": [
-          "workflow",
           "workflow"
         ]
       }
@@ -3674,7 +3667,6 @@
         },
         "summary": "Execute DeviceCableValidationWorkflow",
         "tags": [
-          "workflow",
           "workflow"
         ]
       }
@@ -3717,7 +3709,6 @@
         },
         "summary": "Execute DevicePasswordRotationWorkflow",
         "tags": [
-          "workflow",
           "workflow"
         ]
       }
@@ -3760,7 +3751,6 @@
         },
         "summary": "Execute DiagnosticsWorkflow",
         "tags": [
-          "workflow",
           "workflow"
         ]
       }
@@ -3803,7 +3793,6 @@
         },
         "summary": "Execute IBPKeyCreationWorkflow",
         "tags": [
-          "workflow",
           "workflow"
         ]
       }
@@ -3846,7 +3835,6 @@
         },
         "summary": "Execute IBPKeyMemberAddWorkflow",
         "tags": [
-          "workflow",
           "workflow"
         ]
       }
@@ -3889,7 +3877,6 @@
         },
         "summary": "Execute IBPKeyMemberDeleteWorkflow",
         "tags": [
-          "workflow",
           "workflow"
         ]
       }
@@ -3932,7 +3919,6 @@
         },
         "summary": "Execute IBPKeyMemberUpdateWorkflow",
         "tags": [
-          "workflow",
           "workflow"
         ]
       }
@@ -3975,7 +3961,6 @@
         },
         "summary": "Execute IBPortGuidDiscoveryWorkflow",
         "tags": [
-          "workflow",
           "workflow"
         ]
       }
@@ -4018,7 +4003,6 @@
         },
         "summary": "Execute InfinibandCableValidationWorkflow",
         "tags": [
-          "workflow",
           "workflow"
         ]
       }
@@ -4061,7 +4045,6 @@
         },
         "summary": "Execute InfinibandGetUnhealthyPortsWorkflow",
         "tags": [
-          "workflow",
           "workflow"
         ]
       }
@@ -4104,7 +4087,6 @@
         },
         "summary": "Execute InfinibandMlnxOSUpgradeWorkflow",
         "tags": [
-          "workflow",
           "workflow"
         ]
       }
@@ -4147,7 +4129,6 @@
         },
         "summary": "Execute MultiDeployWorkflow",
         "tags": [
-          "workflow",
           "workflow"
         ]
       }
@@ -4190,7 +4171,6 @@
         },
         "summary": "Execute NVLinkSwitchFirmwareUpgradeWorkflow",
         "tags": [
-          "workflow",
           "workflow"
         ]
       }
@@ -4233,7 +4213,6 @@
         },
         "summary": "Execute PortLLDPInfoWorkflow",
         "tags": [
-          "workflow",
           "workflow"
         ]
       }
@@ -4276,7 +4255,6 @@
         },
         "summary": "Execute RedfishProvisioningWorkflow",
         "tags": [
-          "workflow",
           "workflow"
         ]
       }
@@ -4319,7 +4297,6 @@
         },
         "summary": "Execute ReprovisionWorkflow",
         "tags": [
-          "workflow",
           "workflow"
         ]
       }
@@ -4362,7 +4339,6 @@
         },
         "summary": "Execute SiteCableValidationWorkflow",
         "tags": [
-          "workflow",
           "workflow"
         ]
       }
@@ -4405,7 +4381,6 @@
         },
         "summary": "Execute SitePasswordRotationWorkflow",
         "tags": [
-          "workflow",
           "workflow"
         ]
       }
@@ -4448,7 +4423,6 @@
         },
         "summary": "Execute SpXOverlayAssignmentWorkflow",
         "tags": [
-          "workflow",
           "workflow"
         ]
       }
@@ -4491,7 +4465,6 @@
         },
         "summary": "Execute SpXOverlayCreationWorkflow",
         "tags": [
-          "workflow",
           "workflow"
         ]
       }
@@ -4534,7 +4507,6 @@
         },
         "summary": "Execute SpXOverlayDeletionWorkflow",
         "tags": [
-          "workflow",
           "workflow"
         ]
       }
@@ -4577,7 +4549,6 @@
         },
         "summary": "Execute SpXOverlayTenantChangeWorkflow",
         "tags": [
-          "workflow",
           "workflow"
         ]
       }
@@ -4620,7 +4591,6 @@
         },
         "summary": "Execute SwitchOSUpgradeWorkflow",
         "tags": [
-          "workflow",
           "workflow"
         ]
       }
@@ -4663,7 +4633,6 @@
         },
         "summary": "Execute TenantDeployWorkflow",
         "tags": [
-          "workflow",
           "workflow"
         ]
       }

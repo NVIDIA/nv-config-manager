@@ -13,13 +13,19 @@ This directory contains generated OpenAPI JSON for the FastAPI services in NVIDI
 Regenerate specs from the repository root:
 
 ```bash
-uv run python scripts/generate_openapi.py
+make openapi
 ```
 
 Check that committed specs are current:
 
 ```bash
-uv run python scripts/generate_openapi.py --check
+make openapi-check
+```
+
+Regenerate the specifications and all committed Go clients together:
+
+```bash
+make api-generate
 ```
 
 API path and method changes should be intentional and reviewed separately from documentation text changes.

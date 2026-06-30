@@ -33,10 +33,8 @@ import os
 import sys
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from fastapi import FastAPI
+from fastapi import FastAPI
 
 # Service definitions: (module_path, app_name, output_filename, display_name)
 SERVICES = [
@@ -101,7 +99,27 @@ def generate_openapi_spec(app: FastAPI, title: str | None = None) -> dict:
     if title:
         app.title = title
 
-    return app.openapi()
+    spec = app.openapi()
+    validate_unique_operation_tags(spec)
+    return spec
+
+
+def validate_unique_operation_tags(spec: dict) -> None:
+    """Reject duplicate operation tags before they reach client generators."""
+    http_methods = {"delete", "get", "head", "options", "patch", "post", "put", "trace"}
+    duplicate_operations: list[str] = []
+
+    for path, path_item in spec.get("paths", {}).items():
+        for method, operation in path_item.items():
+            if method not in http_methods:
+                continue
+            tags = operation.get("tags", [])
+            if len(tags) != len(set(tags)):
+                duplicate_operations.append(f"{method.upper()} {path}: {tags}")
+
+    if duplicate_operations:
+        details = "\n  ".join(duplicate_operations)
+        raise ValueError(f"OpenAPI operations contain duplicate tags:\n  {details}")
 
 
 def main() -> int:
@@ -191,22 +209,20 @@ def _generate_specs(args: argparse.Namespace, mock_config_path: str) -> int:
             errors.append(error_msg)
             print(f"  ✗  {error_msg}")
 
-    if args.check:
-        if changes_detected:
-            print(
-                "\n❌ OpenAPI specs are out of date. Run 'uv run python scripts/generate_openapi.py' to update."
-            )
-            return 1
-        print("\n✅ All OpenAPI specs are up to date.")
-        return 0
-
-    print(f"\n✅ Generated {len(generated_files)} OpenAPI spec file(s)")
-
     if errors:
         print(f"\n⚠️  {len(errors)} error(s) occurred:")
         for error in errors:
             print(f"  - {error}")
         return 1
+
+    if args.check:
+        if changes_detected:
+            print("\n❌ OpenAPI specs are out of date. Run 'make api-generate' to update.")
+            return 1
+        print("\n✅ All OpenAPI specs are up to date.")
+        return 0
+
+    print(f"\n✅ Generated {len(generated_files)} OpenAPI spec file(s)")
 
     return 0
 

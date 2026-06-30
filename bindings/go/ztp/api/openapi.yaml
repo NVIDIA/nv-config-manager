@@ -1,0 +1,756 @@
+openapi: 3.1.0
+info:
+  title: ZTP API
+  version: 0.1.0
+servers:
+- url: /
+paths:
+  /healthcheck:
+    get:
+      description: Execute healthcheck.
+      operationId: healthcheck_healthcheck_get
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                title: Response Healthcheck Healthcheck Get
+                type: string
+          description: Successful Response
+      summary: Healthcheck
+  /v1/device/{device_uuid}/boot-script:
+    get:
+      description: Load the bootscript for the given nautobot device UUID.
+      operationId: load_bootscript_v1_device__device_uuid__boot_script_get
+      parameters:
+      - explode: false
+        in: path
+        name: device_uuid
+        required: true
+        schema:
+          title: Device Uuid
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            text/plain:
+              schema:
+                type: string
+          description: Successful Response
+        "404":
+          description: Not found
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+          description: Validation Error
+      summary: Load Bootscript
+      tags:
+      - device
+  /v1/device/{device_uuid}/config/{configlet}:
+    get:
+      description: Load the specified configuration file for the given nautobot device
+        UUID.
+      operationId: load_configuration_v1_device__device_uuid__config__configlet__get
+      parameters:
+      - explode: false
+        in: path
+        name: device_uuid
+        required: true
+        schema:
+          title: Device Uuid
+          type: string
+        style: simple
+      - explode: false
+        in: path
+        name: configlet
+        required: true
+        schema:
+          title: Configlet
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            text/plain:
+              schema:
+                type: string
+          description: Successful Response
+        "404":
+          description: Not found
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+          description: Validation Error
+      summary: Load Configuration
+      tags:
+      - device
+  /v1/device/{device_uuid}/firmware:
+    get:
+      description: Load the firmware for the given device.
+      operationId: load_firmware_v1_device__device_uuid__firmware_get
+      parameters:
+      - explode: false
+        in: path
+        name: device_uuid
+        required: true
+        schema:
+          title: Device Uuid
+          type: string
+        style: simple
+      responses:
+        "200":
+          description: Successful Response
+        "404":
+          description: Not found
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+          description: Validation Error
+      summary: Load Firmware
+      tags:
+      - device
+  /v1/device/{device_uuid}/firmware/checksum:
+    get:
+      description: Load the firmware checksum for the given device.
+      operationId: load_firmware_checksum_v1_device__device_uuid__firmware_checksum_get
+      parameters:
+      - explode: false
+        in: path
+        name: device_uuid
+        required: true
+        schema:
+          title: Device Uuid
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChecksumResponse"
+          description: Successful Response
+        "404":
+          description: Not found
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+          description: Validation Error
+      summary: Load Firmware Checksum
+      tags:
+      - device
+  /v1/device/{device_uuid}/onie:
+    get:
+      description: Load the firmware for the given device.
+      operationId: load_firmware_v1_device__device_uuid__onie_get
+      parameters:
+      - explode: false
+        in: path
+        name: device_uuid
+        required: true
+        schema:
+          title: Device Uuid
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            text/plain:
+              schema:
+                type: string
+          description: Successful Response
+        "404":
+          description: Not found
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+          description: Validation Error
+      summary: Load Firmware
+      tags:
+      - device
+  /v1/device/{device_uuid}/provisioned:
+    post:
+      description: Mark the ZTP process complete for the given device.
+      operationId: mark_provisioned_v1_device__device_uuid__provisioned_post
+      parameters:
+      - explode: false
+        in: path
+        name: device_uuid
+        required: true
+        schema:
+          title: Device Uuid
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                title: Response Mark Provisioned V1 Device  Device Uuid  Provisioned
+                  Post
+                type: string
+          description: Successful Response
+        "404":
+          description: Not found
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+          description: Validation Error
+      summary: Mark Provisioned
+      tags:
+      - device
+  /v1/device/{device_uuid}/validate_serial:
+    post:
+      description: Validate the device serial number matches nautobot.
+      operationId: validate_serial_v1_device__device_uuid__validate_serial_post
+      parameters:
+      - explode: false
+        in: path
+        name: device_uuid
+        required: true
+        schema:
+          title: Device Uuid
+          type: string
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ValidateSerialBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                title: Response Validate Serial V1 Device  Device Uuid  Validate Serial
+                  Post
+                type: string
+          description: Successful Response
+        "404":
+          description: Not found
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+          description: Validation Error
+      summary: Validate Serial
+      tags:
+      - device
+  /v1/files/:
+    get:
+      description: List all files and their metadata in the storage backend.
+      operationId: list_all_files_v1_files__get
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/ObjectInfo"
+                title: Response List All Files V1 Files  Get
+                type: array
+          description: Successful Response
+        "404":
+          description: Not found
+      summary: List All Files
+      tags:
+      - files
+  /v1/files/{platform}/{version}/:
+    get:
+      description: List files associated with the given platform and version.
+      operationId: list_files_v1_files__platform___version___get
+      parameters:
+      - explode: false
+        in: path
+        name: platform
+        required: true
+        schema:
+          title: Platform
+          type: string
+        style: simple
+      - explode: false
+        in: path
+        name: version
+        required: true
+        schema:
+          title: Version
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/FileInfo"
+                title: Response List Files V1 Files  Platform   Version   Get
+                type: array
+          description: Successful Response
+        "404":
+          description: Not found
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+          description: Validation Error
+      summary: List Files
+      tags:
+      - files
+  /v1/files/{platform}/{version}/{filename}:
+    get:
+      description: Load the firmware by platform and version.
+      operationId: load_object_v1_files__platform___version___filename__get
+      parameters:
+      - explode: false
+        in: path
+        name: platform
+        required: true
+        schema:
+          title: Platform
+          type: string
+        style: simple
+      - explode: false
+        in: path
+        name: version
+        required: true
+        schema:
+          title: Version
+          type: string
+        style: simple
+      - explode: false
+        in: path
+        name: filename
+        required: true
+        schema:
+          title: Filename
+          type: string
+        style: simple
+      responses:
+        "200":
+          description: Successful Response
+        "404":
+          description: Not found
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+          description: Validation Error
+      summary: Load Object
+      tags:
+      - files
+    post:
+      description: |-
+        Upload a file to the storage backend.
+
+        Set ``firmware_image=true`` to tag this file as the OS/firmware image for
+        the given platform and version. Only one firmware image is allowed per
+        platform/version directory; the upload will be rejected if a *different*
+        file already occupies that slot.
+      operationId: upload_file_v1_files__platform___version___filename__post
+      parameters:
+      - explode: false
+        in: path
+        name: platform
+        required: true
+        schema:
+          title: Platform
+          type: string
+        style: simple
+      - explode: false
+        in: path
+        name: version
+        required: true
+        schema:
+          title: Version
+          type: string
+        style: simple
+      - explode: false
+        in: path
+        name: filename
+        required: true
+        schema:
+          title: Filename
+          type: string
+        style: simple
+      - explode: true
+        in: query
+        name: checksum
+        required: true
+        schema:
+          title: Checksum
+          type: string
+        style: form
+      - explode: true
+        in: query
+        name: overwrite
+        required: false
+        schema:
+          default: false
+          title: Overwrite
+          type: boolean
+        style: form
+      - explode: true
+        in: query
+        name: firmware_image
+        required: false
+        schema:
+          default: false
+          title: Firmware Image
+          type: boolean
+        style: form
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/Body_upload_file_v1_files__platform___version___filename__post"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                title: Response Upload File V1 Files  Platform   Version   Filename  Post
+                type: string
+          description: Successful Response
+        "404":
+          description: Not found
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+          description: Validation Error
+      summary: Upload File
+      tags:
+      - files
+  /v1/files/{platform}/{version}/{filename}/checksum:
+    get:
+      description: Load the firmware checksum by platform and version.
+      operationId: load_checksum_v1_files__platform___version___filename__checksum_get
+      parameters:
+      - explode: false
+        in: path
+        name: platform
+        required: true
+        schema:
+          title: Platform
+          type: string
+        style: simple
+      - explode: false
+        in: path
+        name: version
+        required: true
+        schema:
+          title: Version
+          type: string
+        style: simple
+      - explode: false
+        in: path
+        name: filename
+        required: true
+        schema:
+          title: Filename
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChecksumResponse"
+          description: Successful Response
+        "404":
+          description: Not found
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+          description: Validation Error
+      summary: Load Checksum
+      tags:
+      - files
+  /v1/firmware/{platform}/{version}:
+    get:
+      description: |-
+        Load the firmware by platform and version.
+
+        Note: For large firmware files, use curl or direct browser download instead of
+        the OpenAPI UI, which may not handle large streaming responses properly.
+      operationId: load_firmware_v1_firmware__platform___version__get
+      parameters:
+      - explode: false
+        in: path
+        name: platform
+        required: true
+        schema:
+          title: Platform
+          type: string
+        style: simple
+      - explode: false
+        in: path
+        name: version
+        required: true
+        schema:
+          title: Version
+          type: string
+        style: simple
+      responses:
+        "200":
+          description: Successful Response
+        "404":
+          description: Not found
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+          description: Validation Error
+      summary: Load Firmware
+      tags:
+      - firmware
+  /v1/firmware/{platform}/{version}/checksum:
+    get:
+      description: Load the firmware checksum by platform and version.
+      operationId: load_firmware_checksum_v1_firmware__platform___version__checksum_get
+      parameters:
+      - explode: false
+        in: path
+        name: platform
+        required: true
+        schema:
+          title: Platform
+          type: string
+        style: simple
+      - explode: false
+        in: path
+        name: version
+        required: true
+        schema:
+          title: Version
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChecksumResponse"
+          description: Successful Response
+        "404":
+          description: Not found
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+          description: Validation Error
+      summary: Load Firmware Checksum
+      tags:
+      - firmware
+  /whoami:
+    get:
+      description: Reflect the caller's identity as seen by this service.
+      operationId: whoami_whoami_get
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhoamiResponse"
+          description: Successful Response
+      summary: Current User Info
+components:
+  schemas:
+    Body_upload_file_v1_files__platform___version___filename__post:
+      properties:
+        file:
+          title: File
+          type: string
+      required:
+      - file
+      title: Body_upload_file_v1_files__platform___version___filename__post
+    ChecksumResponse:
+      description: Response containing a file checksum.
+      example:
+        checksum: checksum
+      properties:
+        checksum:
+          title: Checksum
+          type: string
+      required:
+      - checksum
+      title: ChecksumResponse
+    FileInfo:
+      description: Metadata for a file in object storage.
+      example:
+        file: file
+        size: 0
+        last_modified: 2000-01-23T04:56:07.000+00:00
+      properties:
+        file:
+          description: Filename
+          title: File
+          type: string
+        last_modified:
+          $ref: "#/components/schemas/Last_Modified"
+        size:
+          description: File size in bytes
+          title: Size
+          type: integer
+      required:
+      - file
+      - last_modified
+      - size
+      title: FileInfo
+    HTTPValidationError:
+      example:
+        detail:
+        - msg: msg
+          input: ""
+          loc:
+          - Location_inner
+          - Location_inner
+          ctx: "{}"
+          type: type
+        - msg: msg
+          input: ""
+          loc:
+          - Location_inner
+          - Location_inner
+          ctx: "{}"
+          type: type
+      properties:
+        detail:
+          items:
+            $ref: "#/components/schemas/ValidationError"
+          title: Detail
+          type: array
+      title: HTTPValidationError
+    ObjectInfo:
+      description: Metadata for an object in the storage backend.
+      example:
+        metadata:
+          key: metadata
+        size: 0
+        etag: etag
+        last_modified: 2000-01-23T04:56:07.000+00:00
+        key: key
+        tags:
+          key: tags
+      properties:
+        etag:
+          nullable: true
+          type: string
+        key:
+          description: Object key/path
+          title: Key
+          type: string
+        last_modified:
+          $ref: "#/components/schemas/Last_Modified"
+        metadata:
+          additionalProperties:
+            type: string
+          nullable: true
+        size:
+          description: Object size in bytes
+          title: Size
+          type: integer
+        tags:
+          additionalProperties:
+            type: string
+          nullable: true
+      required:
+      - key
+      - last_modified
+      - size
+      title: ObjectInfo
+    ValidateSerialBody:
+      description: Request body for serial number validation.
+      example:
+        serial: serial
+      properties:
+        serial:
+          title: Serial
+          type: string
+      required:
+      - serial
+      title: ValidateSerialBody
+    ValidationError:
+      example:
+        msg: msg
+        input: ""
+        loc:
+        - Location_inner
+        - Location_inner
+        ctx: "{}"
+        type: type
+      properties:
+        ctx:
+          title: Context
+          type: object
+        input:
+          title: Input
+        loc:
+          items:
+            $ref: "#/components/schemas/Location_inner"
+          title: Location
+          type: array
+        msg:
+          title: Message
+          type: string
+        type:
+          title: Error Type
+          type: string
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+    WhoamiResponse:
+      description: Response shape for ``GET /whoami``.
+      example:
+        roles:
+        - roles
+        - roles
+        user: user
+      properties:
+        roles:
+          items:
+            type: string
+          title: Roles
+          type: array
+        user:
+          title: User
+          type: string
+      required:
+      - roles
+      - user
+      title: WhoamiResponse
+    Last_Modified:
+      anyOf:
+      - format: date-time
+        type: string
+      - type: number
+      description: Last modification timestamp
+      title: Last Modified
+    Location_inner:
+      anyOf:
+      - type: string
+      - type: integer

@@ -1,0 +1,171 @@
+openapi: 3.1.0
+info:
+  title: DHCP API
+  version: 0.1.0
+servers:
+- url: /
+paths:
+  /admin/cache:
+    delete:
+      description: Flush the cached KEA DHCP configuration from Redis.
+      operationId: flush_cache_admin_cache_delete
+      parameters:
+      - explode: true
+        in: query
+        name: ip_version
+        required: false
+        schema:
+          default: 4
+          title: Ip Version
+          type: integer
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                title: Response Flush Cache Admin Cache Delete
+          description: Successful Response
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+          description: Validation Error
+      summary: Flush Cache
+  /config:
+    get:
+      description: Get the running KEA DHCP Configuration.
+      operationId: get_config_config_get
+      parameters:
+      - explode: true
+        in: query
+        name: ip_version
+        required: false
+        schema:
+          default: 4
+          title: Ip Version
+          type: integer
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                title: Response Get Config Config Get
+          description: Successful Response
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+          description: Validation Error
+      summary: Get Config
+  /healthcheck:
+    get:
+      description: Execute healthcheck.
+      operationId: healthcheck_healthcheck_get
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                title: Response Healthcheck Healthcheck Get
+                type: string
+          description: Successful Response
+      summary: Healthcheck
+  /whoami:
+    get:
+      description: Reflect the caller's identity as seen by this service.
+      operationId: whoami_whoami_get
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhoamiResponse"
+          description: Successful Response
+      summary: Current User Info
+components:
+  schemas:
+    HTTPValidationError:
+      example:
+        detail:
+        - msg: msg
+          input: ""
+          loc:
+          - Location_inner
+          - Location_inner
+          ctx: "{}"
+          type: type
+        - msg: msg
+          input: ""
+          loc:
+          - Location_inner
+          - Location_inner
+          ctx: "{}"
+          type: type
+      properties:
+        detail:
+          items:
+            $ref: "#/components/schemas/ValidationError"
+          title: Detail
+          type: array
+      title: HTTPValidationError
+    ValidationError:
+      example:
+        msg: msg
+        input: ""
+        loc:
+        - Location_inner
+        - Location_inner
+        ctx: "{}"
+        type: type
+      properties:
+        ctx:
+          title: Context
+          type: object
+        input:
+          title: Input
+        loc:
+          items:
+            $ref: "#/components/schemas/Location_inner"
+          title: Location
+          type: array
+        msg:
+          title: Message
+          type: string
+        type:
+          title: Error Type
+          type: string
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+    WhoamiResponse:
+      description: Response shape for ``GET /whoami``.
+      example:
+        roles:
+        - roles
+        - roles
+        user: user
+      properties:
+        roles:
+          items:
+            type: string
+          title: Roles
+          type: array
+        user:
+          title: User
+          type: string
+      required:
+      - roles
+      - user
+      title: WhoamiResponse
+    Location_inner:
+      anyOf:
+      - type: string
+      - type: integer
