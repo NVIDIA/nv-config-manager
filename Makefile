@@ -847,8 +847,13 @@ install-cert:
 	@CERT_TMP=$$(mktemp); \
 	trap "rm -f $$CERT_TMP" EXIT INT TERM; \
 	echo "Extracting gateway TLS certificate..."; \
-	kubectl get secret -n $(KIND_SEC_NAMESPACE) nv-config-manager-gateway-tls \
-		-o jsonpath='{.data.tls\.crt}' | base64 -d > "$$CERT_TMP"; \
+	if ! CERT_DATA=$$(kubectl get secret -n $(KIND_SEC_NAMESPACE) nv-config-manager-gateway-tls \
+		-o jsonpath='{.data.tls\.crt}'); then \
+		echo "Error: gateway TLS secret was not found." >&2; exit 1; \
+	fi; \
+	if [ -z "$$CERT_DATA" ] || ! printf '%s' "$$CERT_DATA" | base64 -d > "$$CERT_TMP" || [ ! -s "$$CERT_TMP" ]; then \
+		echo "Error: gateway TLS secret does not contain a valid certificate." >&2; exit 1; \
+	fi; \
 	echo "Installing certificate (sudo required)..."; \
 	if [ "$$(uname)" = "Darwin" ]; then \
 		sudo security add-trusted-cert -d -r trustRoot \
