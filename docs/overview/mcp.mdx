@@ -102,7 +102,7 @@ Clients that expect OAuth Dynamic Client Registration and do not let you provide
 #### Provider examples
 
 <AccordionGroup>
-  <Accordion title="Keycloak direct OAuth">
+  <Accordion title="Keycloak">
     Keep the default Helm setting:
 
     ```yaml
@@ -127,7 +127,7 @@ Clients that expect OAuth Dynamic Client Registration and do not let you provide
     pass the preconfigured client ID when adding the server.
   </Accordion>
 
-  <Accordion title="Microsoft Entra ID compatibility bridge">
+  <Accordion title="Microsoft Entra ID">
     Microsoft Entra ID v2 can reject a token request when the RFC 8707 `resource` parameter
     contains the HTTPS MCP resource while the requested API scopes use a different Application ID
     URI, such as `api://<application-id>`. Use the MCP compatibility bridge for this configuration:
@@ -170,9 +170,7 @@ https://config-manager.example.com/auth/discovery
 
 For example:
 
-```text
-Connect to the NVIDIA Config Manager MCP server. Discover the MCP endpoint and auth details from https://config-manager.example.com/auth/discovery. Do not start a local MCP server.
-```
+> Connect to the NVIDIA Config Manager MCP server. Discover the MCP endpoint and auth details from `https://config-manager.example.com/auth/discovery`. Do not start a local MCP server.
 
 The discovery response tells the client which remote MCP endpoint to use and whether bearer authentication is required. In SSO-enabled environments, the MCP tools act with the signed-in user's bearer token. They do not switch to broader service credentials for Config Manager APIs.
 
