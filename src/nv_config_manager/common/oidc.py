@@ -286,7 +286,8 @@ class OIDCAuth:
             issuer_url: OIDC issuer URL (e.g., https://login.microsoftonline.com/<tenant>/v2.0)
             client_id: OIDC application (client) ID.
             redirect_port: Local port for OAuth callback (default: 8765).
-            scopes: OAuth scopes to request. Defaults to api://<client_id>/.default + openid + profile.
+            scopes: OAuth scopes to request. Defaults to provider-appropriate
+                interactive login scopes.
             token_file: Path for cached token storage. Defaults to ~/.nv-config-manager/token.json.
             verify: Whether to verify TLS certificates, or a CA bundle path.
         """
@@ -356,7 +357,7 @@ class OIDCAuth:
         """Return provider-appropriate default scopes."""
         if self._is_azure_issuer():
             # Request app-specific scope to get a token for THIS app, not Microsoft Graph.
-            return [f"api://{self.client_id}/.default", "openid", "profile"]
+            return ["openid", "email", "profile", f"api://{self.client_id}/access"]
         return ["openid", "profile", "email"]
 
     def _metadata_endpoint(self, key: str) -> str | None:

@@ -35,8 +35,16 @@ from nv_config_manager.mcp.oauth_metadata import (
     authorization_server_metadata,
     protected_resource_metadata,
 )
+from nv_config_manager.mcp.oauth_proxy import (
+    proxy_authorization_callback,
+    proxy_authorization_request,
+    proxy_token_request,
+)
 from nv_config_manager.mcp.settings import (
     AUTHORIZATION_SERVER_METADATA_PATH,
+    OAUTH_AUTHORIZE_PATH,
+    OAUTH_CALLBACK_PATH,
+    OAUTH_TOKEN_PATH,
     MCPOAuthSettings,
     MCPSettings,
 )
@@ -93,7 +101,11 @@ def create_app(
     resource_metadata_url = ""
     if resolved_oauth_settings.enabled:
         resource_metadata_url = resolved_oauth_settings.resource_metadata_url
-        unauthenticated_paths = unauthenticated_paths | resolved_oauth_settings.well_known_paths
+        unauthenticated_paths = (
+            unauthenticated_paths
+            | resolved_oauth_settings.well_known_paths
+            | resolved_oauth_settings.oauth_proxy_paths
+        )
     return ServiceAuthMiddleware(
         RequestAuthMiddleware(
             create_mcp_server(settings, resolved_oauth_settings).streamable_http_app()
@@ -135,6 +147,32 @@ def _register_oauth_metadata_routes(server: FastMCP, settings: MCPOAuthSettings)
             authorization_server_metadata(settings),
             headers={"Cache-Control": "no-store"},
         )
+
+    if not settings.forward_resource_parameter:
+
+        @server.custom_route(
+            OAUTH_AUTHORIZE_PATH,
+            methods=["GET"],
+            include_in_schema=False,
+        )
+        async def oauth_authorize_proxy(request: Request) -> Response:
+            return await proxy_authorization_request(request, settings)
+
+        @server.custom_route(
+            OAUTH_CALLBACK_PATH,
+            methods=["GET"],
+            include_in_schema=False,
+        )
+        async def oauth_callback_proxy(request: Request) -> Response:
+            return await proxy_authorization_callback(request)
+
+        @server.custom_route(
+            OAUTH_TOKEN_PATH,
+            methods=["POST"],
+            include_in_schema=False,
+        )
+        async def oauth_token_proxy(request: Request) -> Response:
+            return await proxy_token_request(request, settings)
 
 
 def main() -> None:

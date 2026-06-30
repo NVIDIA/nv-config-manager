@@ -23,9 +23,12 @@ from nv_config_manager.mcp.settings import MCPOAuthSettings
 
 def protected_resource_metadata(settings: MCPOAuthSettings) -> dict[str, Any]:
     """Build RFC 9728 protected resource metadata for the MCP endpoint."""
+    authorization_server = settings.issuer_url
+    if not settings.forward_resource_parameter:
+        authorization_server = settings.authorization_server_url
     metadata: dict[str, Any] = {
         "resource": settings.resource_url,
-        "authorization_servers": [settings.issuer_url],
+        "authorization_servers": [authorization_server],
         "bearer_methods_supported": ["header"],
         "resource_name": "NVIDIA Config Manager MCP",
     }
@@ -38,10 +41,17 @@ def protected_resource_metadata(settings: MCPOAuthSettings) -> dict[str, Any]:
 
 def authorization_server_metadata(settings: MCPOAuthSettings) -> dict[str, Any]:
     """Build OAuth authorization server metadata backed by the configured IdP."""
+    issuer = settings.issuer_url
+    authorization_endpoint = settings.authorization_endpoint
+    token_endpoint = settings.token_endpoint
+    if not settings.forward_resource_parameter:
+        issuer = settings.authorization_server_url
+        authorization_endpoint = settings.authorization_proxy_url
+        token_endpoint = settings.token_proxy_url
     metadata: dict[str, Any] = {
-        "issuer": settings.issuer_url,
-        "authorization_endpoint": settings.authorization_endpoint,
-        "token_endpoint": settings.token_endpoint,
+        "issuer": issuer,
+        "authorization_endpoint": authorization_endpoint,
+        "token_endpoint": token_endpoint,
         "response_types_supported": ["code"],
         "grant_types_supported": ["authorization_code", "refresh_token"],
         "token_endpoint_auth_methods_supported": ["none"],
