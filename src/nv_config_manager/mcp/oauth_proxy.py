@@ -28,7 +28,7 @@ from starlette.responses import JSONResponse, RedirectResponse, Response
 
 from nv_config_manager.mcp.settings import MCPOAuthSettings
 
-_DCR_MCP_CLI_CALLBACK_PATH = re.compile(r"/callback/[A-Za-z0-9_-]+")
+_DCR_MCP_CLI_CALLBACK_PATH = re.compile(r"/callback(?:/[A-Za-z0-9_-]+)?")
 
 
 async def proxy_authorization_request(
