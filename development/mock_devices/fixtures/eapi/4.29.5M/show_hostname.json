@@ -1,4 +1,4 @@
 {
-  "hostname": "bbr2-cp1-tan1-dc01",
-  "fqdn": "bbr2-cp1-tan1-dc01.local"
+  "hostname": "mock-device",
+  "fqdn": "mock-device.local"
 }

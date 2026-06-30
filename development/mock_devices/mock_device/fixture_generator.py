@@ -99,28 +99,30 @@ def _generate_nvue(
     written: list[Path] = []
 
     if not device_overrides:
-        # Shared version-level fixtures — only written when generating a baseline,
-        # not when generating per-device overrides (to avoid clobbering the generic
-        # fallbacks with one specific device's data).
+        # Shared version-level fixtures — schema/format only, no device-specific values.
+        # Using generic placeholders so multiple devices sharing a version don't clobber
+        # each other's hostname, serial, or interface data here.
         version_dir = root / "nvue" / version
         version_dir.mkdir(parents=True, exist_ok=True)
 
-        system = _nvue_system(hostname, version)
-        written.append(_write_json(version_dir / "system.json", system))
-
-        intf_data = _nvue_interfaces(version, interfaces)
-        written.append(_write_json(version_dir / "interface.json", intf_data))
-
+        written.append(
+            _write_json(version_dir / "system.json", _nvue_system("mock-device", version))
+        )
+        written.append(_write_json(version_dir / "interface.json", {}))
         written.append(
             _write_json(version_dir / "platform.json", {"model": model, "vendor": "NVIDIA"})
         )
-
-        inventory = {"model": model, "serial": serial}
-        written.append(_write_json(version_dir / "platform_inventory.json", inventory))
+        written.append(
+            _write_json(
+                version_dir / "platform_inventory.json",
+                {"model": model, "serial": "MOCK-SERIAL-0001"},
+            )
+        )
 
     if device_overrides:
         device_dir = root / "devices" / hostname
         device_dir.mkdir(parents=True, exist_ok=True)
+        written.append(_write_json(device_dir / "system.json", _nvue_system(hostname, version)))
         dev_intf = _nvue_interfaces(version, interfaces, include_lldp=True)
         written.append(_write_json(device_dir / "interface.json", dev_intf))
         written.append(
@@ -248,12 +250,64 @@ def _generate_eapi(
             }
 
     if not device_overrides:
-        # Shared version-level fixtures — only written when generating a baseline,
-        # not when generating per-device overrides.
+        # Shared version-level fixtures — schema/format only, no device-specific values.
         version_dir = root / "eapi" / version
         version_dir.mkdir(parents=True, exist_ok=True)
 
         show_version = {
+            "modelName": model,
+            "internalVersion": f"{version}-mock",
+            "systemMacAddress": "00:1c:73:00:00:01",
+            "serialNumber": "MOCK-SERIAL-0001",
+            "memTotal": 65777320,
+            "bootupTimestamp": 1700000000.0,
+            "memFree": 52000000,
+            "version": version,
+            "configMacAddress": "00:00:00:00:00:00",
+            "isIntlVersion": False,
+            "internalBuildId": "mock-build-id",
+            "hardwareRevision": "02.01",
+            "hwMacAddress": "00:1c:73:00:00:01",
+            "architecture": "x86_64",
+            "uptime": 86400,
+        }
+        written.append(_write_json(version_dir / "show_version.json", show_version))
+        written.append(
+            _write_json(
+                version_dir / "show_hostname.json",
+                {"hostname": "mock-device", "fqdn": "mock-device.local"},
+            )
+        )
+        written.append(
+            _write_json(
+                version_dir / "show_interfaces_status.json",
+                {"interfaceStatuses": {}},
+            )
+        )
+        written.append(
+            _write_json(
+                version_dir / "show_lldp_neighbors_detail.json",
+                {"lldpNeighbors": {}},
+            )
+        )
+        written.append(
+            _write_json(
+                version_dir / "show_mac_address_table.json",
+                {"unicastTable": {"tableEntries": []}},
+            )
+        )
+        written.append(
+            _write_json(
+                version_dir / "show_mpls_interface.json",
+                {"interfaces": {}},
+            )
+        )
+
+    if device_overrides:
+        device_dir = root / "devices" / hostname
+        device_dir.mkdir(parents=True, exist_ok=True)
+
+        show_version_device = {
             "modelName": model,
             "internalVersion": f"{version}-mock",
             "systemMacAddress": "00:1c:73:00:00:01",
@@ -270,10 +324,13 @@ def _generate_eapi(
             "architecture": "x86_64",
             "uptime": 86400,
         }
-        written.append(_write_json(version_dir / "show_version.json", show_version))
-
-        show_hostname = {"hostname": hostname, "fqdn": f"{hostname}.local"}
-        written.append(_write_json(version_dir / "show_hostname.json", show_hostname))
+        written.append(_write_json(device_dir / "show_version.json", show_version_device))
+        written.append(
+            _write_json(
+                device_dir / "show_hostname.json",
+                {"hostname": hostname, "fqdn": f"{hostname}.local"},
+            )
+        )
 
         statuses: dict[str, Any] = {}
         for iface in interfaces:
@@ -287,35 +344,11 @@ def _generate_eapi(
             }
         written.append(
             _write_json(
-                version_dir / "show_interfaces_status.json",
+                device_dir / "show_interfaces_status.json",
                 {"interfaceStatuses": statuses},
             )
         )
 
-        written.append(
-            _write_json(
-                version_dir / "show_lldp_neighbors_detail.json",
-                {"lldpNeighbors": neighbors},
-            )
-        )
-
-        written.append(
-            _write_json(
-                version_dir / "show_mac_address_table.json",
-                {"unicastTable": {"tableEntries": []}},
-            )
-        )
-
-        written.append(
-            _write_json(
-                version_dir / "show_mpls_interface.json",
-                {"interfaces": {}},
-            )
-        )
-
-    if device_overrides:
-        device_dir = root / "devices" / hostname
-        device_dir.mkdir(parents=True, exist_ok=True)
         if neighbors:
             written.append(
                 _write_json(

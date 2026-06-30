@@ -1,5 +1,5 @@
 {
-  "hostname": "mock-cumulus",
+  "hostname": "mock-device",
   "uptime": 86400,
   "version": {
     "product-release": "5.14.0",
