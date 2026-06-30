@@ -178,11 +178,7 @@ The `kind-up-sec` environment includes the MCP server. To connect Claude Code:
 make install-cert
 ```
 
-Node.js (and Claude Code) does not use the macOS keychain. Add this to your shell profile:
-
-```bash
-export NODE_TLS_REJECT_UNAUTHORIZED=0
-```
+Node.js (and Claude Code) does not use the system trust store because the gateway cert is self-signed with `CA:FALSE`. Scope the variable to the specific command rather than exporting it globally (see step 3 below).
 
 **2. Add the MCP server**
 

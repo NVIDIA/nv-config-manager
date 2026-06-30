@@ -844,28 +844,29 @@ topology:
 # Claude Code, set NODE_TLS_REJECT_UNAUTHORIZED=0 or use NODE_EXTRA_CA_CERTS
 # once the gateway cert is issued by a proper CA (CA:TRUE).
 install-cert:
-	@echo "Extracting gateway TLS certificate..."
-	@kubectl get secret -n $(KIND_SEC_NAMESPACE) nv-config-manager-gateway-tls \
-		-o jsonpath='{.data.tls\.crt}' | base64 -d > /tmp/nvcm-gateway.crt
-	@echo "Installing certificate (sudo required)..."
-	@if [ "$$(uname)" = "Darwin" ]; then \
+	@CERT_TMP=$$(mktemp); \
+	trap "rm -f $$CERT_TMP" EXIT INT TERM; \
+	echo "Extracting gateway TLS certificate..."; \
+	kubectl get secret -n $(KIND_SEC_NAMESPACE) nv-config-manager-gateway-tls \
+		-o jsonpath='{.data.tls\.crt}' | base64 -d > "$$CERT_TMP"; \
+	echo "Installing certificate (sudo required)..."; \
+	if [ "$$(uname)" = "Darwin" ]; then \
 		sudo security add-trusted-cert -d -r trustRoot \
-			-k /Library/Keychains/System.keychain /tmp/nvcm-gateway.crt; \
+			-k /Library/Keychains/System.keychain "$$CERT_TMP"; \
 	elif [ -d /usr/local/share/ca-certificates ]; then \
-		sudo cp /tmp/nvcm-gateway.crt /usr/local/share/ca-certificates/nvcm-gateway.crt && \
+		sudo cp "$$CERT_TMP" /usr/local/share/ca-certificates/nvcm-gateway.crt && \
 		sudo update-ca-certificates; \
 	elif [ -d /etc/pki/ca-trust/source/anchors ]; then \
-		sudo cp /tmp/nvcm-gateway.crt /etc/pki/ca-trust/source/anchors/nvcm-gateway.crt && \
+		sudo cp "$$CERT_TMP" /etc/pki/ca-trust/source/anchors/nvcm-gateway.crt && \
 		sudo update-ca-trust; \
 	else \
-		echo "Unsupported OS: install /tmp/nvcm-gateway.crt manually into your trust store"; exit 1; \
-	fi
-	@rm -f /tmp/nvcm-gateway.crt
-	@echo "Certificate installed."
-	@echo ""
-	@echo "Note: Node.js tools (e.g. Claude Code) require NODE_TLS_REJECT_UNAUTHORIZED=0"
-	@echo "      because the gateway cert is self-signed with CA:FALSE."
-	@echo "      Add to your shell profile: export NODE_TLS_REJECT_UNAUTHORIZED=0"
+		echo "Unsupported OS: install the gateway cert manually into your trust store"; exit 1; \
+	fi; \
+	echo "Certificate installed."; \
+	echo ""; \
+	echo "Note: Node.js tools (e.g. Claude Code) ignore the system trust store because"; \
+	echo "      the gateway cert is self-signed with CA:FALSE. Scope the variable to"; \
+	echo "      the specific command: NODE_TLS_REJECT_UNAUTHORIZED=0 claude mcp login ..."
 
 # Remove local deployment (preserves shared operators)
 local-down:
