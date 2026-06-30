@@ -18,14 +18,15 @@ Call setup_telemetry() once at process startup. When an OTLP endpoint is
 configured (OTEL_EXPORTER_OTLP_ENDPOINT, injected by the Helm chart only when
 temporal.observability.enabled), it:
   1. Configures the global Python OTel TracerProvider to export spans via
-     OTLP/gRPC to the sidecar collector.
+     OTLP/gRPC to the configured collector (in-cluster Grafana Alloy by
+     default, or a managed/external collector when otlpEndpoint is set).
   2. Returns a Temporal Runtime whose SDK core pushes built-in Temporal
      metrics (workflow_completed, activity_execution_latency, etc.) via
      OTLP to the same endpoint.
 
 When no endpoint is configured, observability is disabled: no exporters are
-created and a plain Runtime is returned, so deployments without the collector
-sidecar do not attempt to export to a nonexistent local collector.
+created and a plain Runtime is returned, so deployments without a collector
+do not attempt to export to a nonexistent endpoint.
 
 After setup_telemetry() returns, call get_runtime() to retrieve the
 Runtime for passing to Client.connect(runtime=...).

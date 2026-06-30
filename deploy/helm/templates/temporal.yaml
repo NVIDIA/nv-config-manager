@@ -285,9 +285,6 @@ spec:
         {{- include "nv-config-manager.customPodLabels" . | nindent 8 }}
       annotations:
         {{- include "nv-config-manager.authIniChecksum" . | nindent 8 }}
-        {{- if .Values.temporal.observability.enabled }}
-        checksum/otel-collector-config: {{ include (print $.Template.BasePath "/temporal-otel-collector-configmap.yaml") . | sha256sum }}
-        {{- end }}
         {{- if eq .Values.secrets.method "vault-agent" }}
         {{- include "nv-config-manager.vaultAgent.injectorAnnotations" . | nindent 8 }}
         {{- end }}
@@ -417,9 +414,6 @@ spec:
           mountPath: /var/run/secrets/spiffe
           readOnly: true
         {{- end }}
-      {{- if .Values.temporal.observability.enabled }}
-      {{- include "nv-config-manager.temporal.otelSidecar" . | nindent 6 }}
-      {{- end }}
       {{- include "nv-config-manager.spiffeClientSidecar" (dict "root" .) | nindent 6 }}
       volumes:
       {{- include "nv-config-manager.vaultAgent.projectedSATokenVolume" . | nindent 6 }}
@@ -427,9 +421,6 @@ spec:
       {{- include "nv-config-manager.vaultAgent.bmcVolume" . | nindent 6 }}
       {{- if .Values.secrets.vault.configSecrets.enabled }}
       {{- include "nv-config-manager.vaultAgent.configSecretsVolume" . | nindent 6 }}
-      {{- end }}
-      {{- if .Values.temporal.observability.enabled }}
-      {{- include "nv-config-manager.temporal.otelVolumes" . | nindent 6 }}
       {{- end }}
       {{- /* SPIFFE volumes for outbound mTLS */ -}}
       {{- include "nv-config-manager.spiffeClientVolumes" (dict "root" .) | nindent 6 }}
@@ -459,9 +450,6 @@ spec:
         {{- include "nv-config-manager.customPodLabels" . | nindent 8 }}
       annotations:
         {{- include "nv-config-manager.authIniChecksum" . | nindent 8 }}
-        {{- if .Values.temporal.observability.enabled }}
-        checksum/otel-collector-config: {{ include (print $.Template.BasePath "/temporal-otel-collector-configmap.yaml") . | sha256sum }}
-        {{- end }}
         {{- if eq .Values.secrets.method "vault-agent" }}
         {{- include "nv-config-manager.vaultAgent.injectorAnnotations" . | nindent 8 }}
         {{- end }}
@@ -519,9 +507,6 @@ spec:
           periodSeconds: 30
           timeoutSeconds: 5
           failureThreshold: 3
-      {{- if .Values.temporal.observability.enabled }}
-      {{- include "nv-config-manager.temporal.otelSidecar" . | nindent 6 }}
-      {{- end }}
       {{- /* SPIFFE helper sidecar for outbound JWT-SVID */ -}}
       {{- include "nv-config-manager.authSidecar" (dict "root" . "serviceName" "nv-config-manager-temporal-api") | nindent 6 }}
       volumes:
@@ -531,9 +516,6 @@ spec:
       - name: rbac-config
         configMap:
           name: {{ $temporalName }}-rbac-config
-      {{- end }}
-      {{- if .Values.temporal.observability.enabled }}
-      {{- include "nv-config-manager.temporal.otelVolumes" . | nindent 6 }}
       {{- end }}
       {{- /* SPIFFE volumes */ -}}
       {{- include "nv-config-manager.authSidecar.volumes" (dict "root" .) | nindent 6 }}
@@ -585,9 +567,6 @@ spec:
         {{- include "nv-config-manager.customPodLabels" . | nindent 8 }}
       annotations:
         {{- include "nv-config-manager.authIniChecksum" . | nindent 8 }}
-        {{- if .Values.temporal.observability.enabled }}
-        checksum/otel-collector-config: {{ include (print $.Template.BasePath "/temporal-otel-collector-configmap.yaml") . | sha256sum }}
-        {{- end }}
         {{- if eq .Values.secrets.method "vault-agent" }}
         {{- include "nv-config-manager.vaultAgent.injectorAnnotations" . | nindent 8 }}
         {{- end }}
@@ -635,9 +614,6 @@ spec:
           mountPath: /etc/rbac
           readOnly: true
         {{- end }}
-      {{- if .Values.temporal.observability.enabled }}
-      {{- include "nv-config-manager.temporal.otelSidecar" . | nindent 6 }}
-      {{- end }}
       volumes:
       {{- include "nv-config-manager.vaultAgent.projectedSATokenVolume" . | nindent 6 }}
       {{- include "nv-config-manager.vaultAgent.configManagerIniVolume" . | nindent 6 }}
@@ -645,9 +621,6 @@ spec:
       - name: rbac-config
         configMap:
           name: {{ $temporalName }}-rbac-config
-      {{- end }}
-      {{- if .Values.temporal.observability.enabled }}
-      {{- include "nv-config-manager.temporal.otelVolumes" . | nindent 6 }}
       {{- end }}
       {{- /* SPIFFE volumes for outbound JWT-SVID */ -}}
       {{- include "nv-config-manager.authSidecar.volumes" (dict "root" .) | nindent 6 }}
@@ -678,9 +651,6 @@ spec:
         {{- include "nv-config-manager.spiffe.podLabels" . | nindent 8 }}
       annotations:
         {{- include "nv-config-manager.authIniChecksum" . | nindent 8 }}
-        {{- if .Values.temporal.observability.enabled }}
-        checksum/otel-collector-config: {{ include (print $.Template.BasePath "/temporal-otel-collector-configmap.yaml") . | sha256sum }}
-        {{- end }}
         {{- if eq .Values.secrets.method "vault-agent" }}
         {{- include "nv-config-manager.vaultAgent.injectorAnnotations" . | nindent 8 }}
         {{- end }}
@@ -719,15 +689,9 @@ spec:
         {{- include "nv-config-manager.vaultAgent.configManagerIniVolumeMount" . | nindent 8 }}
         {{- /* SPIFFE volume mount for outbound mTLS */ -}}
         {{- include "nv-config-manager.spiffe.volumeMounts" . | nindent 8 }}
-      {{- if .Values.temporal.observability.enabled }}
-      {{- include "nv-config-manager.temporal.otelSidecar" . | nindent 6 }}
-      {{- end }}
       volumes:
       {{- include "nv-config-manager.vaultAgent.projectedSATokenVolume" . | nindent 6 }}
       {{- include "nv-config-manager.vaultAgent.configManagerIniVolume" . | nindent 6 }}
-      {{- if .Values.temporal.observability.enabled }}
-      {{- include "nv-config-manager.temporal.otelVolumes" . | nindent 6 }}
-      {{- end }}
       {{- /* SPIFFE volumes for outbound JWT-SVID */ -}}
       {{- include "nv-config-manager.authSidecar.volumes" (dict "root" .) | nindent 6 }}
 {{- end }}
