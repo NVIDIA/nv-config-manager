@@ -16,7 +16,6 @@ from __future__ import annotations
 
 from urllib.parse import parse_qs, urlparse
 
-import httpx
 import pytest
 from fastapi import HTTPException
 from starlette.testclient import TestClient
@@ -145,33 +144,47 @@ def test_oauth_compatibility_proxy_uses_local_issuer_and_strips_resource(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     token_request: dict[str, object] = {}
-    codex_callback = "http://127.0.0.1:8765/callback/codex-callback-id"
+    mcp_cli_callback = "http://127.0.0.1:8765/callback/mcp-cli-callback-id"
 
-    class StubAsyncClient:
-        def __init__(self, timeout: int) -> None:
-            assert timeout == 30
+    class StubResponse:
+        status = 200
+        headers = {
+            "Content-Type": "application/json",
+            "Cache-Control": "no-store",
+        }
 
-        async def __aenter__(self) -> StubAsyncClient:
+        async def __aenter__(self) -> StubResponse:
             return self
 
         async def __aexit__(self, *args: object) -> None:
             return None
 
-        async def post(
+        async def read(self) -> bytes:
+            return b'{"access_token":"redacted","token_type":"Bearer"}'
+
+    class StubClientSession:
+        def __init__(self, *, timeout: object) -> None:
+            assert getattr(timeout, "total") == 30
+
+        async def __aenter__(self) -> StubClientSession:
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+        def post(
             self,
             url: str,
             *,
-            content: str,
+            data: str,
             headers: dict[str, str],
-        ) -> httpx.Response:
-            token_request.update(url=url, content=content, headers=headers)
-            return httpx.Response(
-                200,
-                json={"access_token": "redacted", "token_type": "Bearer"},
-                headers={"Cache-Control": "no-store"},
-            )
+        ) -> StubResponse:
+            token_request.update(url=url, content=data, headers=headers)
+            return StubResponse()
 
-    monkeypatch.setattr("nv_config_manager.mcp.oauth_proxy.httpx.AsyncClient", StubAsyncClient)
+    monkeypatch.setattr(
+        "nv_config_manager.mcp.oauth_proxy.aiohttp.ClientSession", StubClientSession
+    )
     oauth_settings = _oauth_settings(forward_resource_parameter=False)
 
     with TestClient(
@@ -186,7 +199,7 @@ def test_oauth_compatibility_proxy_uses_local_issuer_and_strips_resource(
                 "client_id": "nvcm-cli",
                 "scope": "openid api://nvcm-api/access",
                 "state": "state-value",
-                "redirect_uri": codex_callback,
+                "redirect_uri": mcp_cli_callback,
                 "resource": "https://svc-mcp.config-manager.local/mcp",
             },
             follow_redirects=False,
@@ -209,7 +222,7 @@ def test_oauth_compatibility_proxy_uses_local_issuer_and_strips_resource(
                 "grant_type": "authorization_code",
                 "client_id": "nvcm-cli",
                 "code": "code-value",
-                "redirect_uri": codex_callback,
+                "redirect_uri": mcp_cli_callback,
                 "resource": "https://svc-mcp.config-manager.local/mcp",
             },
         )
@@ -240,7 +253,7 @@ def test_oauth_compatibility_proxy_uses_local_issuer_and_strips_resource(
     callback_location = urlparse(callback_response.headers["location"])
     assert callback_response.status_code == 302
     assert f"{callback_location.scheme}://{callback_location.netloc}{callback_location.path}" == (
-        codex_callback
+        mcp_cli_callback
     )
     assert parse_qs(callback_location.query) == {
         "code": ["code-value"],
@@ -268,7 +281,9 @@ def test_oauth_compatibility_proxy_uses_local_issuer_and_strips_resource(
         "http://127.0.0.1:8765/callback/id?next=https://example.test",
     ],
 )
-def test_oauth_compatibility_proxy_rejects_non_codex_redirects(redirect_uri: str) -> None:
+def test_oauth_compatibility_proxy_rejects_non_dcr_mcp_cli_redirects(
+    redirect_uri: str,
+) -> None:
     with TestClient(
         create_app(_settings(), _oauth_settings(forward_resource_parameter=False)),
         base_url="https://svc-mcp.config-manager.local",
