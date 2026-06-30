@@ -22,7 +22,6 @@ import copy
 import csv
 import hashlib
 import io
-import re
 from collections.abc import Iterable
 from typing import Any
 
@@ -76,17 +75,6 @@ DETAIL_SHEET_NAME = "Cable Issues"
 HOST_SUMMARY_SHEET_NAME = "Host Summary"
 
 EXCEL_MIME_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-
-
-def _xlsx_download_filename(site: str) -> str:
-    """Build a friendly download filename like ``site-cable-validation-<site>.xlsx``.
-
-    The site is slugified (lowercased, non-alphanumeric runs collapsed to ``-``)
-    so the name is safe across browsers and filesystems. ``site`` is always
-    present -- it is a required, non-empty field on the workflow input.
-    """
-    slug = re.sub(r"[^a-z0-9]+", "-", site.lower()).strip("-")
-    return f"site-cable-validation-{slug}.xlsx"
 
 
 def _rack_position_str(rack: str | None, position: int | None) -> str | None:
@@ -823,7 +811,6 @@ def _format_results_markdown(
     max_display_results: int = 1000,
     export: str = "csv",
     summary_devices: dict[str, CableValidationResultData] | None = None,
-    export_filename: str | None = None,
 ) -> str:
     """Format validation results into markdown with an export link, table, and notes.
 
@@ -836,7 +823,6 @@ def _format_results_markdown(
         export: "csv" for a single CSV link, "xlsx" for a two-tab Excel download
         summary_devices: All queried switches, used to seed the Excel summary tab so
             healthy switches appear with zero counts
-        export_filename: Friendly download filename for the Excel link
 
     Returns:
         Formatted markdown string
@@ -846,7 +832,7 @@ def _format_results_markdown(
 
     markdown_rows = [r.to_markdown() for r in results]
     export_link = (
-        _generate_xlsx_link(results, summary_devices, export_filename)
+        _generate_xlsx_link(results, summary_devices)
         if export == "xlsx"
         else _generate_csv_link(results)
     )
@@ -971,13 +957,11 @@ def _build_cable_validation_workbook(
 def _generate_xlsx_link(
     results: list[CableValidationRow],
     devices: dict[str, CableValidationResultData] | None = None,
-    filename: str | None = None,
 ) -> str:
     """Generate an Excel download link with detail and host-summary tabs."""
     workbook = _build_cable_validation_workbook(results, devices)
     b64_xlsx = base64.b64encode(workbook).decode("utf-8")
-    fragment = f"#filename={filename}" if filename else ""
-    return f"[Download Excel](data:{EXCEL_MIME_TYPE};base64,{b64_xlsx}{fragment})"
+    return f"[Download Excel](data:{EXCEL_MIME_TYPE};base64,{b64_xlsx})"
 
 
 def _generate_csv_link(results: list[CableValidationRow]) -> str:
@@ -1008,7 +992,6 @@ class FormatResultsActivityInput(BaseModel):
     devices: dict[str, CableValidationResultData]
     failed_devices: dict[str, str]
     ignore_no_neighbor: bool = False
-    site: str
 
 
 @activity.defn
@@ -1049,7 +1032,6 @@ def format_results(activity_input: FormatResultsActivityInput) -> str:
         markdown_exclude_columns=MARKDOWN_EXCLUDE_COLUMNS,
         export="xlsx",
         summary_devices=activity_input.devices,
-        export_filename=_xlsx_download_filename(activity_input.site),
     )
     return markdown
 

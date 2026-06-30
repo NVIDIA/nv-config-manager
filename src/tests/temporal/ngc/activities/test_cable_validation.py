@@ -36,7 +36,6 @@ from nv_config_manager.temporal.ngc.activities.cable_validation import (
     _classify_issue,
     _format_results_markdown,
     _generate_xlsx_link,
-    _xlsx_download_filename,
     decorate_result,
 )
 from tests.temporal.ngc.activities.test_cable_validation_activity_data import (
@@ -775,33 +774,6 @@ class TestGenerateXlsxLink:
         assert set(summary["Host"]) == {"switchA", "switchB"}
         assert summary.iloc[0]["Host"] == "switchA"
 
-    def test_filename_fragment_appended_when_provided(self):
-        rows = [_row("hostA", "Link is down.", "rack1:u1")]
-
-        link = _generate_xlsx_link(rows, None, "site-cable-validation-sitea.xlsx")
-
-        assert link.endswith("#filename=site-cable-validation-sitea.xlsx)")
-        # The fragment must not corrupt the decodable workbook.
-        sheets = _decode_workbook(link.split("#filename=", 1)[0] + ")")
-        assert set(sheets) == {"Cable Issues", "Host Summary"}
-
-    def test_no_fragment_when_filename_omitted(self):
-        rows = [_row("hostA", "Link is down.", "rack1:u1")]
-
-        link = _generate_xlsx_link(rows)
-
-        assert "#filename=" not in link
-
-
-class TestXlsxDownloadFilename:
-    """Friendly download filename derived from the site name."""
-
-    def test_slugifies_site(self):
-        assert _xlsx_download_filename("Site A") == "site-cable-validation-site-a.xlsx"
-
-    def test_collapses_special_characters(self):
-        assert _xlsx_download_filename("DC1 / Pod_2!") == "site-cable-validation-dc1-pod-2.xlsx"
-
 
 class TestFormatResultsMarkdownExport:
     """Export-link selection in the shared markdown formatter."""
@@ -818,19 +790,6 @@ class TestFormatResultsMarkdownExport:
 
         assert "[Download Excel](data:application/vnd.openxmlformats" in markdown
         assert "[Export to CSV]" not in markdown
-
-    def test_xlsx_export_includes_filename_fragment(self):
-        rows = [_row("hostA", "Link is down.", "rack1:u1")]
-
-        markdown = _format_results_markdown(
-            rows,
-            csv_exclude_columns=CSV_EXCLUDE_COLUMNS,
-            markdown_exclude_columns=MARKDOWN_EXCLUDE_COLUMNS,
-            export="xlsx",
-            export_filename="site-cable-validation-sitea.xlsx",
-        )
-
-        assert "#filename=site-cable-validation-sitea.xlsx)" in markdown
 
     def test_csv_export_is_default(self):
         rows = [_row("hostA", "Link is down.", "rack1:u1")]

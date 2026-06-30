@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useState, useMemo, type ComponentPropsWithoutRef } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { StagesList } from "@/components/stage-details";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -146,44 +146,6 @@ function customUrlTransform(url: string) {
   return sanitizeUrl(defaultUrlTransform(url));
 }
 
-const DATA_DOWNLOAD_PREFIXES = [
-  "data:text/csv",
-  "data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-];
-
-const FILENAME_FRAGMENT = "#filename=";
-
-function MarkdownDownloadLink({
-  href,
-  children,
-  node: _node,
-  ...props
-}: ComponentPropsWithoutRef<"a"> & { node?: unknown }) {
-  if (href && DATA_DOWNLOAD_PREFIXES.some((prefix) => href.startsWith(prefix))) {
-    const fragmentIndex = href.indexOf(FILENAME_FRAGMENT);
-    const downloadHref =
-      fragmentIndex === -1 ? href : href.slice(0, fragmentIndex);
-    const filename =
-      fragmentIndex === -1
-        ? ""
-        : decodeURIComponent(
-            href.slice(fragmentIndex + FILENAME_FRAGMENT.length)
-          );
-    return (
-      <a href={downloadHref} download={filename || ""} {...props}>
-        {children}
-      </a>
-    );
-  }
-  return (
-    <a href={href} {...props}>
-      {children}
-    </a>
-  );
-}
-
-const stageMarkdownComponents = { a: MarkdownDownloadLink };
-
 const StageOutput = ({ stage }: { stage: WorkflowStage }) => {
   if (stage.state === "FAILED") {
     return (
@@ -202,7 +164,6 @@ const StageOutput = ({ stage }: { stage: WorkflowStage }) => {
       className="stageMarkdown"
       remarkPlugins={[remarkGfm]}
       urlTransform={customUrlTransform}
-      components={stageMarkdownComponents}
     >
       {output}
     </Markdown>
