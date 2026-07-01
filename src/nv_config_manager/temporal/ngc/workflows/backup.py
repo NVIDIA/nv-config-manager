@@ -18,7 +18,7 @@ import asyncio
 from datetime import timedelta
 from enum import StrEnum
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 from temporalio.exceptions import ApplicationError
@@ -72,12 +72,14 @@ class TriggerEnum(StrEnum):
 class BackupInput(BaseModel):
     """Backup Workflow Input Definiton."""
 
-    device_id: str
-    trigger: TriggerEnum
-    user: str | None
-    user_domain: str | None
-    workflow_id: str | None
-    intended_config_commit_id: str | None
+    device_id: str = Field(description="Identifier of the network device to back up.")
+    trigger: TriggerEnum = Field(description="Reason the backup workflow was started.")
+    user: str | None = Field(description="User that requested the backup.")
+    user_domain: str | None = Field(description="Domain of the user requesting the backup.")
+    workflow_id: str | None = Field(description="Identifier of the parent workflow, if any.")
+    intended_config_commit_id: str | None = Field(
+        description="Config Store commit containing the intended configuration."
+    )
 
 
 @workflow.defn

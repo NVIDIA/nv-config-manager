@@ -20,7 +20,7 @@ import asyncio
 from datetime import timedelta
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 from temporalio.exceptions import ChildWorkflowError
@@ -113,20 +113,38 @@ SUPPORTED_PLATFORMS = [Platform.CUMULUS_LINUX, Platform.ARISTA_EOS, Platform.NV_
 class SiteCableValidationInput(BaseModel):
     """Input for Site Cable Validation Workflow."""
 
-    site: str
-    roles: list[str] = DEFAULT_CONFIG_MANAGER_ROLES
-    status: list[str] = DEFAULT_CONFIG_MANAGER_STATUS
-    tenant: str = DEFAULT_CONFIG_MANAGER_TENANT
-    device_type_ids: list[str] = []
-    raise_for_invalid: bool = False
+    site: str = Field(description="Site containing the network devices to validate.")
+    roles: list[str] = Field(
+        default=DEFAULT_CONFIG_MANAGER_ROLES,
+        description="Device roles used to filter the selected network devices.",
+    )
+    status: list[str] = Field(
+        default=DEFAULT_CONFIG_MANAGER_STATUS,
+        description="Device statuses used to filter the selected network devices.",
+    )
+    tenant: str = Field(
+        default=DEFAULT_CONFIG_MANAGER_TENANT,
+        description="Tenant used to filter the selected network devices.",
+    )
+    device_type_ids: list[str] = Field(
+        default=[], description="Device type identifiers used to filter network devices."
+    )
+    raise_for_invalid: bool = Field(
+        default=False, description="Whether invalid cabling should fail the workflow."
+    )
 
 
 class DeviceCableValidationInput(BaseModel):
     """Input for Device Cable Validation Workflow."""
 
-    device_id: str
-    device: NetworkDeviceData | None = None
-    ignore_no_neighbor: bool = False
+    device_id: str = Field(description="Identifier of the network device to validate.")
+    device: NetworkDeviceData | None = Field(
+        default=None, description="Preloaded data for the target network device, if available."
+    )
+    ignore_no_neighbor: bool = Field(
+        default=False,
+        description="Whether interfaces without discovered neighbors should be ignored.",
+    )
 
 
 class DeviceCableValidationResult(BaseModel, validate_assignment=True):

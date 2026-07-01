@@ -21,13 +21,20 @@ var _ MappedNullable = &RedfishProvisioningInput{}
 
 // RedfishProvisioningInput Input for Redfish provisioning workflow.
 type RedfishProvisioningInput struct {
-	BmcSwitchRoles   []string `json:"bmc_switch_roles"`
+	// Switch roles used to discover BMC-connected network interfaces.
+	BmcSwitchRoles []string `json:"bmc_switch_roles"`
+	// DPU manufacturer names eligible for Redfish provisioning.
 	DpuManufacturers []string `json:"dpu_manufacturers,omitempty"`
-	HttpTimeoutS     *int32   `json:"http_timeout_s,omitempty"`
-	IpRangeEnd       string   `json:"ip_range_end"`
-	IpRangeStart     string   `json:"ip_range_start"`
-	Port             *int32   `json:"port,omitempty"`
-	Site             string   `json:"site"`
+	// Timeout in seconds for Redfish HTTP requests.
+	HttpTimeoutS *int32 `json:"http_timeout_s,omitempty"`
+	// Last BMC IP address to scan.
+	IpRangeEnd string `json:"ip_range_end"`
+	// First BMC IP address to scan.
+	IpRangeStart string `json:"ip_range_start"`
+	// HTTPS port used to contact Redfish services.
+	Port *int32 `json:"port,omitempty"`
+	// Site containing the BMC network to provision.
+	Site string `json:"site"`
 }
 
 type _RedfishProvisioningInput RedfishProvisioningInput

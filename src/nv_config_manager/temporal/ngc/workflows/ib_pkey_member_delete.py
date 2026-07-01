@@ -65,10 +65,14 @@ class IBPKeyMemberDeleteInput(BaseModel):
     server-side from ``host`` and ``pkey``.
     """
 
-    host: str
-    pkey: str
-    interfaces: list[InterfaceRef] = []
-    guids: list[str] = []
+    host: str = Field(description="Hostname of the UFM server managing the InfiniBand fabric.")
+    pkey: str = Field(description="Partition key whose members will be removed.")
+    interfaces: list[InterfaceRef] = Field(
+        default=[], description="Nautobot interfaces to resolve to InfiniBand port GUIDs."
+    )
+    guids: list[str] = Field(
+        default=[], description="InfiniBand port GUIDs to remove directly from the partition."
+    )
 
     @field_validator("pkey")
     @classmethod

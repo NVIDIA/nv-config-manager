@@ -21,13 +21,20 @@ var _ MappedNullable = &IBPKeyMemberAddInput{}
 
 // IBPKeyMemberAddInput InfiniBand PKey Member Add Workflow Input.  Site and Overlay are resolved server-side from “host“ and “pkey“.
 type IBPKeyMemberAddInput struct {
-	GuidMemberships []string       `json:"guid_memberships,omitempty"`
-	Guids           []string       `json:"guids,omitempty"`
-	Host            string         `json:"host"`
-	Interfaces      []InterfaceRef `json:"interfaces,omitempty"`
-	IpOverIb        *bool          `json:"ip_over_ib,omitempty"`
-	MembershipType  *string        `json:"membership_type,omitempty"`
-	Pkey            string         `json:"pkey"`
+	// Per-GUID membership types corresponding to the supplied GUIDs.
+	GuidMemberships []string `json:"guid_memberships,omitempty"`
+	// InfiniBand port GUIDs to add directly to the partition.
+	Guids []string `json:"guids,omitempty"`
+	// Hostname of the UFM server managing the InfiniBand fabric.
+	Host string `json:"host"`
+	// Nautobot interfaces to resolve to InfiniBand port GUIDs.
+	Interfaces []InterfaceRef `json:"interfaces,omitempty"`
+	// Whether IP over InfiniBand is enabled for the partition.
+	IpOverIb *bool `json:"ip_over_ib,omitempty"`
+	// Default partition membership type for added members.
+	MembershipType *string `json:"membership_type,omitempty"`
+	// Partition key whose membership will be expanded.
+	Pkey string `json:"pkey"`
 }
 
 type _IBPKeyMemberAddInput IBPKeyMemberAddInput

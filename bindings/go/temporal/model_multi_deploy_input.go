@@ -21,12 +21,15 @@ var _ MappedNullable = &MultiDeployInput{}
 
 // MultiDeployInput Multi-Deploy Workflow Input Definition.
 type MultiDeployInput struct {
+	// Whether to use commit-confirmed mode when the platform supports it.
 	CommitConfirm *bool          `json:"commit_confirm,omitempty"`
 	Location      NullableString `json:"location,omitempty"`
-	MaxBatchSize  *int32         `json:"max_batch_size,omitempty"`
-	Role          string         `json:"role"`
-	Status        []string       `json:"status,omitempty"`
-	Tenant        NullableString `json:"tenant,omitempty"`
+	// Maximum number of devices included in each deployment batch.
+	MaxBatchSize *int32 `json:"max_batch_size,omitempty"`
+	// Device role used to select network devices for deployment.
+	Role   string         `json:"role"`
+	Status []string       `json:"status,omitempty"`
+	Tenant NullableString `json:"tenant,omitempty"`
 }
 
 type _MultiDeployInput MultiDeployInput

@@ -21,14 +21,17 @@ var _ MappedNullable = &SpXOverlayCreationInput{}
 
 // SpXOverlayCreationInput SpX Overlay Creation Workflow Input Definition.
 type SpXOverlayCreationInput struct {
+	// Tag identifying the namespace used for allocation.
 	NamespaceTag *string `json:"namespace_tag,omitempty"`
 	// Unique identifier for the SpX overlay. Used as an idempotency key — re-running with the same ID returns existing VRFs without creating new ones.
 	OverlayId string `json:"overlay_id"`
 	// Upper bound of the route-distinguisher allocation range (0–65535). Must be greater than rd_min.
 	RdMax *int32 `json:"rd_max,omitempty"`
 	// Lower bound of the route-distinguisher allocation range (0–65535). The first available RD in [rd_min, rd_max] is allocated.
-	RdMin  *int32 `json:"rd_min,omitempty"`
-	Site   string `json:"site"`
+	RdMin *int32 `json:"rd_min,omitempty"`
+	// Site where the SpX overlay will be created.
+	Site string `json:"site"`
+	// Tenant that will own the SpX overlay.
 	Tenant string `json:"tenant"`
 }
 

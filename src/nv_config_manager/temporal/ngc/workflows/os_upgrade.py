@@ -16,7 +16,7 @@
 
 from datetime import timedelta
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 from temporalio.exceptions import ApplicationError
@@ -74,7 +74,7 @@ SUPPORTED_PLATFORMS = [Platform.CUMULUS_LINUX]
 class SwitchOSUpgradeInput(BaseModel):
     """Firmware Upgrade Workflow Input Definition."""
 
-    device_id: str
+    device_id: str = Field(description="Identifier of the network switch to upgrade.")
 
 
 @workflow.defn

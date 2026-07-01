@@ -21,6 +21,7 @@ var _ MappedNullable = &ConnectedHostWorkflowInput{}
 
 // ConnectedHostWorkflowInput Connected Host Workflow Input.
 type ConnectedHostWorkflowInput struct {
+	// Identifier of the network device to analyze.
 	DeviceId string `json:"device_id"`
 }
 

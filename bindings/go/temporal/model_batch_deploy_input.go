@@ -21,11 +21,15 @@ var _ MappedNullable = &BatchDeployInput{}
 
 // BatchDeployInput Input for batch deploy child workflow.
 type BatchDeployInput struct {
-	BatchDevices     []DeviceDiffData `json:"batch_devices"`
-	BatchNumber      NullableInt32    `json:"batch_number,omitempty"`
-	CommitConfirm    *bool            `json:"commit_confirm,omitempty"`
-	DiffGroup        DiffGroup        `json:"diff_group"`
-	ParentWorkflowId string           `json:"parent_workflow_id"`
+	// Devices whose configurations will be deployed in this batch.
+	BatchDevices []DeviceDiffData `json:"batch_devices"`
+	BatchNumber  NullableInt32    `json:"batch_number,omitempty"`
+	// Whether to use commit-confirmed mode when the platform supports it.
+	CommitConfirm *bool `json:"commit_confirm,omitempty"`
+	// Shared configuration diff for the device batch.
+	DiffGroup DiffGroup `json:"diff_group"`
+	// Identifier of the parent multi-deploy workflow.
+	ParentWorkflowId string `json:"parent_workflow_id"`
 }
 
 type _BatchDeployInput BatchDeployInput
