@@ -27,7 +27,7 @@
 #   --skip-chart            Skip chart/dependency chart packaging
 #   --skip-docs             Skip copying documentation source
 #   --include-skopeo        Include the build host Skopeo binary in tools/skopeo/
-#   --include-agpl-observability Include AGPL Grafana/Loki observability charts and related images
+#   --include-agpl-observability Include AGPL Grafana/Loki/Tempo observability charts and related images
 #   --skopeo-binary PATH    Skopeo binary to include (default: command -v skopeo)
 #   --arch ARCH             Build only for specific architecture: amd64, arm64, or both (default: both)
 #   --help                  Show help message
@@ -352,8 +352,8 @@ sanitize_agpl_chart_dependencies() {
         return 0
     fi
 
-    log_warn "Excluding AGPL Grafana and Loki chart dependencies from the airgap bundle"
-    rm -f "$helm_dir"/charts/grafana-*.tgz "$helm_dir"/charts/loki-*.tgz
+    log_warn "Excluding AGPL Grafana, Loki, and Tempo chart dependencies from the airgap bundle"
+    rm -f "$helm_dir"/charts/grafana-*.tgz "$helm_dir"/charts/loki-*.tgz "$helm_dir"/charts/tempo-*.tgz
     rm -f "$helm_dir/Chart.lock"
 
     python3 - "$helm_dir/Chart.yaml" <<'PY'
@@ -366,7 +366,11 @@ out = []
 i = 0
 while i < len(lines):
     line = lines[i]
-    if line.startswith("  - name: grafana") or line.startswith("  - name: loki"):
+    if (
+        line.startswith("  - name: grafana")
+        or line.startswith("  - name: loki")
+        or line.startswith("  - name: tempo")
+    ):
         i += 1
         while i < len(lines):
             nxt = lines[i]

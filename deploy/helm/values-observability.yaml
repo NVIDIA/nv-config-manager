@@ -230,7 +230,7 @@ alloy:
         otelcol.processor.batch "default" {
           output {
             metrics = [otelcol.exporter.prometheus.default.input]
-            traces  = [otelcol.exporter.debug.default.input]
+            traces  = [otelcol.exporter.otlp.tempo.input]
           }
         }
 
@@ -239,11 +239,16 @@ alloy:
           forward_to = [prometheus.remote_write.local.receiver]
         }
 
-        // The local OSS stack ships no trace backend (no Tempo); log a sample
-        // so traces are visible in Alloy logs. Swap for otelcol.exporter.otlp
-        // to a Tempo/managed collector in production.
-        otelcol.exporter.debug "default" {
-          verbosity = "basic"
+        // Traces -> the bundled Tempo (tempo.enabled below). Grafana's Tempo
+        // datasource then renders them. In production, point this at your
+        // managed collector / Panoptes instead.
+        otelcol.exporter.otlp "tempo" {
+          client {
+            endpoint = "tempo:4317"
+            tls {
+              insecure = true
+            }
+          }
         }
 
         prometheus.remote_write "local" {
@@ -255,3 +260,74 @@ alloy:
   configReloader:
     image:
       tag: v0.90.1
+
+# -----------------------------------------------------------------------------
+# Tempo (trace storage backend)
+# -----------------------------------------------------------------------------
+tempo:
+  enabled: true
+  fullnameOverride: tempo
+
+  # Local dev: no usage reporting, ephemeral storage.
+  tempo:
+    reportingEnabled: false
+    # 1h retention is plenty for a local demo; keeps the WAL/blocks tiny.
+    retention: 1h
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        memory: 512Mi
+
+  persistence:
+    enabled: false
+
+# -----------------------------------------------------------------------------
+# Grafana (trace/metric UI)
+# -----------------------------------------------------------------------------
+# AGPLv3, off by default in values.yaml. Enabled here so the local stack has a
+# UI to actually view the traces Tempo stores (and the metrics Prometheus
+# holds). Port-forward with `make obs-grafana` -> http://localhost:3000
+# (admin/admin), then Explore -> Tempo.
+grafana:
+  enabled: true
+  fullnameOverride: grafana
+  
+  # Local-dev only: fixed password so `make obs-grafana` (admin/admin) works.
+  # A real deployment would use admin.existingSecret instead.
+  adminUser: admin
+  adminPassword: admin
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+        - name: Prometheus
+          type: prometheus
+          uid: prometheus
+          access: proxy
+          url: http://prometheus-server:9090
+          isDefault: true
+        - name: Tempo
+          type: tempo
+          uid: tempo
+          access: proxy
+          url: http://tempo:3200
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+
+# -----------------------------------------------------------------------------
+# Temporal OTel emission (local)
+# -----------------------------------------------------------------------------
+# Turn tracing on for the local stack. otlpEndpoint is left empty so the
+# otelAppEnv helper defaults to the in-cluster Alloy (alloy.<ns>.svc:4317),
+# which is enabled above. This is what makes traces actually flow:
+#   Temporal pods -> Alloy (OTLP receiver) -> Tempo -> Grafana.
+temporal:
+  observability:
+    enabled: true
