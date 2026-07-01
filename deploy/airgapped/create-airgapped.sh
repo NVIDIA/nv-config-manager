@@ -718,13 +718,21 @@ extract_images_from_chart() {
     local values_file="$SCRIPT_DIR/values-airgapped-extract.yaml"
     local templated_output
     local helm_err=""
+    local helm_exit
     
     if [[ -f "$values_file" ]]; then
-        helm_err=$(helm template test "$chart_dir" -f "$values_file" 2>&1)
+        if helm_err=$(helm template test "$chart_dir" -f "$values_file" 2>&1); then
+            helm_exit=0
+        else
+            helm_exit=$?
+        fi
     else
-        helm_err=$(helm template test "$chart_dir" 2>&1)
+        if helm_err=$(helm template test "$chart_dir" 2>&1); then
+            helm_exit=0
+        else
+            helm_exit=$?
+        fi
     fi
-    local helm_exit=$?
     
     if [[ $helm_exit -eq 0 ]]; then
         templated_output="$helm_err"
@@ -977,7 +985,7 @@ pull_docker_images() {
                         log_info "  Retrying pull (attempt $((retry_count + 1))/3)..."
                         sleep 2
                     fi
-                    pull_output=$(timeout 300 ctr image pull --snapshotter=native --platform linux/$arch -u '$oauthtoken:'"$NGC_API_KEY" "$image" 2>&1 || true)
+                    pull_output=$(timeout 300 ctr image pull --snapshotter=native --platform linux/$arch -u '$oauthtoken:'"$NGC_API_KEY" "$image" 2>&1)
                     pull_exit=$?
                     
                     # Check if timeout occurred
