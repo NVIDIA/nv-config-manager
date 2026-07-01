@@ -44,7 +44,7 @@ INI sections::
     audiences = spiffe://trust-domain
 
     ; Map SPIFFE ID prefixes to group names.  Matching callers get the
-    ; mapped group (plus spiffe:<workload_name> for tracking).
+    ; mapped group.
     [auth.spiffe.groups]
     spiffe://trust-domain/ns/nv-config-manager = nv-config-manager
     spiffe://trust-domain/ns/dgxc = dgxc
@@ -159,7 +159,7 @@ class SpiffeConfig:
 
     ``group_prefixes`` maps SPIFFE ID *path-segment* prefixes to group names.
     When a caller's SPIFFE ID matches a prefix the mapped group is added to
-    its identity (in addition to ``spiffe:<workload_name>``).
+    its identity.
 
     Match semantics: the prefix matches a SPIFFE ID iff either
     (a) the SPIFFE ID equals the prefix exactly, or
