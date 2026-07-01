@@ -2805,3 +2805,5 @@ loki:
   enabled: false
 alloy:
   enabled: false
+tempo:
+  enabled: false
