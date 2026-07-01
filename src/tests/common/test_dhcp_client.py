@@ -17,7 +17,9 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from nv_config_manager.common.client.dhcp import _response_payload
+import pytest
+
+from nv_config_manager.common.client.dhcp import DHCPClient, _response_payload
 
 
 class InvalidJSONResponse:
@@ -30,3 +32,8 @@ class InvalidJSONResponse:
 
 async def test_response_payload_falls_back_to_text_for_invalid_json() -> None:
     assert await _response_payload(InvalidJSONResponse()) == "not-json"  # type: ignore[arg-type]
+
+
+def test_client_rejects_disabled_ca_verification() -> None:
+    with pytest.raises(ValueError, match="TLS certificate verification cannot be disabled"):
+        DHCPClient("https://dhcp.example.com", verify=False)

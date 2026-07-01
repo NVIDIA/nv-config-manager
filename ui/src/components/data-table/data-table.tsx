@@ -88,6 +88,10 @@ const defaultColumnVisibility: VisibilityState = {
 const workflowPageSizeStorageKey = "nvcm.workflowTable.pageSize";
 const workflowPageSizeOptions = [10, 50, 100];
 
+const logWorkflowFetchError = (error: unknown): void => {
+  console.error("Failed to update workflow data", error);
+};
+
 const isWorkflowPageSize = (pageSize: number): boolean =>
   workflowPageSizeOptions.includes(pageSize);
 
@@ -523,7 +527,7 @@ export function DataTable<TData, TValue>({ columns }: DataTableProps<TData, TVal
 
   const resetWorkflowFetchState = React.useCallback(() => {
     setPendingPageIndex(null);
-    void setSize(1);
+    setSize(1).catch(logWorkflowFetchError);
     setPagination((currentPagination) => ({ ...currentPagination, pageIndex: 0 }));
   }, [setSize]);
   const didMountFilters = React.useRef(false);
@@ -617,7 +621,7 @@ export function DataTable<TData, TValue>({ columns }: DataTableProps<TData, TVal
     }
 
     resetWorkflowFetchState();
-    void mutate();
+    mutate().catch(logWorkflowFetchError);
   }, [apiFilterString, mutate, resetWorkflowFetchState]);
 
   React.useEffect(() => {
@@ -651,7 +655,7 @@ export function DataTable<TData, TValue>({ columns }: DataTableProps<TData, TVal
   };
 
   const handleRefresh = () => {
-    void mutate();
+    mutate().catch(logWorkflowFetchError);
   };
 
   const handlePageSizeChange = (value: string) => {
@@ -663,7 +667,7 @@ export function DataTable<TData, TValue>({ columns }: DataTableProps<TData, TVal
     setStoredWorkflowPageSize(pageSize);
     setPendingPageIndex(null);
     setPagination({ pageIndex: 0, pageSize });
-    void setSize(1);
+    setSize(1).catch(logWorkflowFetchError);
   };
 
   const nextPageIndex = pagination.pageIndex + 1;
@@ -693,7 +697,7 @@ export function DataTable<TData, TValue>({ columns }: DataTableProps<TData, TVal
 
     if (hasMoreData && pendingPageIndex === null) {
       setPendingPageIndex(nextPageIndex);
-      void setSize((currentSize) => currentSize + 1);
+      setSize((currentSize) => currentSize + 1).catch(logWorkflowFetchError);
     }
   };
 

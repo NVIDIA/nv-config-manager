@@ -79,12 +79,14 @@ class ConfigStoreClient(_WhoamiViaRetryClientMixin):
             target: Base URL of the nv-config-manager-config-store-service
             file_type: File type - "intended" or "backup"
             ui_url: UI base URL for generating user-facing links
-            verify: SSL verification - True (default), False (disable), or str (path to CA cert)
+            verify: SSL verification - True (default) or str (path to CA cert)
             client_certificate: Tuple of (cert_file, key_file) for mTLS
             headers: Static dict or callable returning fresh headers per-request
         """
         if file_type not in ["intended", "backup"]:
             raise ValueError(f"Invalid file_type: {file_type}, must be 'intended' or 'backup'")
+        if verify is False:
+            raise ValueError("TLS certificate verification cannot be disabled")
 
         self.base_url = target.rstrip("/")
         self.target = self.base_url
@@ -139,7 +141,6 @@ class ConfigStoreClient(_WhoamiViaRetryClientMixin):
                 target=config_section["api_service"],
                 file_type=file_type_str,
                 ui_url=ui_url,
-                verify=False,
                 client_certificate=None,
                 headers=get_internal_auth_headers,
             )
@@ -188,9 +189,6 @@ class ConfigStoreClient(_WhoamiViaRetryClientMixin):
         ssl_context = ssl.create_default_context()
         if isinstance(verify, str):
             ssl_context.load_verify_locations(verify)
-        elif verify is False:
-            ssl_context.check_hostname = False
-            ssl_context.verify_mode = ssl.CERT_NONE
 
         if client_certificate:
             ssl_context.load_cert_chain(client_certificate[0], client_certificate[1])

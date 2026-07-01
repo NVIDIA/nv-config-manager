@@ -154,7 +154,7 @@ export const startWorkflow = async (endpoint: string, params: object) => {
   const apiURL = config.workflowApiUrl;
   
   if (!apiURL) {
-    return Promise.reject("API URL not configured");
+    throw "API URL not configured";
   }
   
   const sanitizedUrl = sanitizeUrl(apiURL + endpoint);
@@ -169,9 +169,9 @@ export const startWorkflow = async (endpoint: string, params: object) => {
     if (!response.ok) {
       const result = await response.json();
       if (result.error) {
-        return Promise.reject(result.error);
+        throw result.error;
       } else {
-        return Promise.reject("Failed to submit workflow.");
+        throw "Failed to submit workflow.";
       }
     }
     const result = await response.json();

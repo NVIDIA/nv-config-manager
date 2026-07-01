@@ -127,7 +127,6 @@ class RedfishConnection:
     def get_session(self) -> requests.Session:
         """Get Redfish session."""
         sess = requests.Session()
-        sess.verify = False
         sess.auth = (self.username, self.password)
         return sess
 

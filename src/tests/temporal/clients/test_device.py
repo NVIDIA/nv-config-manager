@@ -13,12 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import json
+import ssl
 from configparser import ConfigParser
 from unittest.mock import patch
 
 import pytest
 
 from nv_config_manager.temporal.client.device import (
+    AristaConnection,
     ConfigSyntaxException,
     CumulusConnection,
     MockNetworkConnection,
@@ -286,3 +288,17 @@ def test_from_device_data_returns_cumulus_when_mock_false(mock_load_config):
     mock_load_config.return_value = _mock_config(mock=False)
     conn = NetworkConnection.from_device_data(_CUMULUS_DEVICE)
     assert isinstance(conn, CumulusConnection)
+    assert conn._session.verify is True
+
+
+@patch("nv_config_manager.temporal.client.device.pyeapi.connect")
+@patch("nv_config_manager.temporal.client.device.load_config")
+def test_arista_connection_verifies_server_hostname(mock_load_config, mock_connect):
+    mock_load_config.return_value = _mock_config(mock=False)
+    mock_connect.return_value = object()
+
+    AristaConnection("switch.example.com", username="admin", password="secret")
+
+    context = mock_connect.call_args.kwargs["context"]
+    assert context.check_hostname is True
+    assert context.verify_mode == ssl.CERT_REQUIRED

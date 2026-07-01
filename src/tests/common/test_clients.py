@@ -21,6 +21,12 @@ from unittest.mock import patch
 import pytest
 
 from nv_config_manager.common.client import RenderClient, TemporalClient, ZTPClient
+from nv_config_manager.common.client.nautobot import NautobotClient
+
+
+def test_nautobot_client_rejects_disabled_ca_verification():
+    with pytest.raises(ValueError, match="TLS certificate verification cannot be disabled"):
+        NautobotClient("https://nautobot.example.com", verify=False)
 
 
 @pytest.mark.asyncio

@@ -42,6 +42,8 @@ class DHCPClient:
         headers: dict[str, str] | Callable[[], dict[str, str]] | None = None,
     ) -> None:
         """Initialize the DHCP API client."""
+        if verify is False:
+            raise ValueError("TLS certificate verification cannot be disabled")
         self.base_url = base_url.rstrip("/")
         self._verify = verify
         self._client_certificate = client_certificate
@@ -67,7 +69,6 @@ class DHCPClient:
         if use_internal:
             return cls(
                 base_url=dhcp_config["api_service"],
-                verify=False,
                 client_certificate=None,
                 headers=get_internal_auth_headers,
             )
@@ -156,9 +157,6 @@ def _connector(
     ssl_context = ssl.create_default_context()
     if isinstance(verify, str):
         ssl_context.load_verify_locations(verify)
-    elif verify is False:
-        ssl_context.check_hostname = False
-        ssl_context.verify_mode = ssl.CERT_NONE
 
     if client_certificate:
         ssl_context.load_cert_chain(client_certificate[0], client_certificate[1])

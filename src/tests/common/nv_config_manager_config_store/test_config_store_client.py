@@ -73,16 +73,15 @@ async def test_init(async_config_store_client):
     assert async_config_store_client.config_url == "http://config-store.example.com/v1/config"
 
 
-@pytest.mark.asyncio
-async def test_init_with_ca_cert_disabled():
-    """Test client initialization with CA certificate disabled."""
-    client = ConfigStoreClient(
-        target="http://config-store.example.com",
-        file_type="intended",
-        ui_url="https://config-manager.example.com",
-        verify=False,
-    )
-    await client.close()
+def test_init_rejects_disabled_ca_verification():
+    """Test client initialization rejects disabled CA verification."""
+    with pytest.raises(ValueError, match="TLS certificate verification cannot be disabled"):
+        ConfigStoreClient(
+            target="https://config-store.example.com",
+            file_type="intended",
+            ui_url="https://config-manager.example.com",
+            verify=False,
+        )
 
 
 def _mock_retry_client(response_data):

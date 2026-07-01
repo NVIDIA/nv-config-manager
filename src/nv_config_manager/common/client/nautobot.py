@@ -62,11 +62,13 @@ class NautobotClient:
         Args:
             nautobot_url: Base URL for Nautobot instance
             token: API token for authentication
-            verify: SSL verification - True (default), False (disable), or str (path to CA cert)
+            verify: SSL verification - True (default) or str (path to CA cert)
             timeout: Default request timeout in seconds
             headers: Static dict or callable returning fresh headers per-request.
                 If set, these headers take precedence over token auth.
         """
+        if verify is False:
+            raise ValueError("TLS certificate verification cannot be disabled")
         self.nautobot_url = nautobot_url.rstrip("/") + "/"
         self.token = token
         self._verify = verify
@@ -137,10 +139,6 @@ class NautobotClient:
             if isinstance(self._verify, str):
                 # Use custom CA certificate for verification
                 ssl_context.load_verify_locations(self._verify)
-            elif self._verify is False:
-                # Disable SSL verification
-                ssl_context.check_hostname = False
-                ssl_context.verify_mode = ssl.CERT_NONE
 
             connector = TCPConnector(ssl=ssl_context)
             timeout = ClientTimeout(total=self._timeout, connect=10)
