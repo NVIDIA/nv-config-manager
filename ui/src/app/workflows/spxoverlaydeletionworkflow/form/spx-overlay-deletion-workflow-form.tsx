@@ -106,7 +106,7 @@ export const SpXOverlayDeletionWorkflowForm = () => {
       toast({
         variant: "destructive",
         title: "SpX Overlay Deletion Workflow Failed",
-        description: error,
+        description: error instanceof Error ? error.message : String(error),
       });
     });
     setIsSubmitting(false);

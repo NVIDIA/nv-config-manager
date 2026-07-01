@@ -131,7 +131,7 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
       toast({
         variant: "destructive",
         title: "SpX Overlay Tenant Change Workflow Failed",
-        description: error,
+        description: error instanceof Error ? error.message : String(error),
       });
     });
     setIsSubmitting(false);

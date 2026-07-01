@@ -127,7 +127,7 @@ export const CumulusHardwareValidationWorkflowForm = () => {
         toast({
           variant: "destructive",
           title: "Workflow Failed",
-        description: error,
+        description: error instanceof Error ? error.message : String(error),
       });
     });
     setIsSubmitting(false);
