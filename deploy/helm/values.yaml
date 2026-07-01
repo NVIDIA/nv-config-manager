@@ -1799,7 +1799,9 @@ temporal:
   # Set otlpEndpoint to target a managed/external collector instead.
   observability:
     enabled: false
-    # OTLP gRPC endpoint. Empty = in-cluster Alloy (alloy.<namespace>.svc:4317).
+    # OTLP gRPC endpoint. Empty falls back to the in-cluster Alloy
+    # (alloy.<namespace>.svc:4317) only when alloy.enabled=true; otherwise this
+    # must be set or rendering fails (no dead OTLP target).
     otlpEndpoint: ""
 
   # Redfish / BMC workflows

@@ -1324,14 +1324,22 @@ OTel app-container env shared by every Temporal pod (worker, api, scheduler,
 archive). Call sites guard the include with
 `if .Values.temporal.observability.enabled`.
 
-Points the OTel SDK at an existing OTLP collector. Defaults to the in-cluster
-Grafana Alloy service shipped with this chart; set
-`temporal.observability.otlpEndpoint` to target a managed/external collector.
+Points the OTel SDK at an existing OTLP collector:
+  - temporal.observability.otlpEndpoint when set (managed/external collector), else
+  - the in-cluster Grafana Alloy service, but only when the bundled Alloy is
+    enabled (alloy.enabled, e.g. via values-observability.yaml).
+Fails fast when neither is available so pods never point at a dead OTLP target.
 
   Context: (dict "root" $ "serviceName" "<service.name>").
 */}}
 {{- define "nv-config-manager.temporal.otelAppEnv" -}}
-{{- $endpoint := .root.Values.temporal.observability.otlpEndpoint | default (printf "http://alloy.%s.svc.cluster.local:4317" .root.Values.global.namespace) -}}
+{{- $endpoint := .root.Values.temporal.observability.otlpEndpoint -}}
+{{- if and (not $endpoint) .root.Values.alloy.enabled -}}
+{{- $endpoint = printf "http://alloy.%s.svc.cluster.local:4317" .root.Values.global.namespace -}}
+{{- end -}}
+{{- if not $endpoint -}}
+{{- fail "temporal.observability.enabled=true requires temporal.observability.otlpEndpoint to be set, or the bundled Alloy collector enabled (alloy.enabled=true, e.g. values-observability.yaml)" -}}
+{{- end -}}
 - name: OTEL_EXPORTER_OTLP_ENDPOINT
   value: {{ $endpoint | quote }}
 - name: OTEL_SERVICE_NAME
