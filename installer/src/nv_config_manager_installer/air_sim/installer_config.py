@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -47,6 +48,49 @@ _NETWORK_SECRET_KEYS = [
 
 _MOCK_TOPOLOGY_JOB = "mock_topology.jobs.mock_topology_design.MockTopologyDesign"
 _DEMO_TEMPLATE_BLUEPRINTS = {"air_trial", "air_superpod"}
+_RELEASE_VERSION_RE = re.compile(
+    r"^v?(?P<base>\d+\.\d+\.\d+)(?:(?:[-.]?rc\.?)(?P<rc>\d+))?$",
+    re.IGNORECASE,
+)
+
+
+def normalize_release_version(value: str) -> str:
+    """Return a comparable release version string, or empty string for branch refs."""
+    match = _RELEASE_VERSION_RE.fullmatch(value.strip())
+    if not match:
+        return ""
+    rc = match.group("rc")
+    if rc is None:
+        return match.group("base")
+    return f"{match.group('base')}-rc.{int(rc)}"
+
+
+def config_manager_version_error(ref: str, version: str) -> str:
+    """Return a validation error when an explicit version cannot be trusted."""
+    ref = ref.strip()
+    version = version.strip()
+    if not version:
+        return ""
+    normalized_ref = normalize_release_version(ref)
+    normalized_version = normalize_release_version(version)
+    if not normalized_version:
+        return "nv-config-manager Version must be a release version"
+    if normalized_ref != normalized_version:
+        return "nv-config-manager Version must match nv-config-manager Git Ref"
+    return ""
+
+
+def _config_manager_image_tag(cfg: SimConfig) -> str:
+    ref = cfg.config_manager_ref.strip()
+    version = cfg.config_manager_version.strip()
+    if version:
+        error = config_manager_version_error(ref, version)
+        if error:
+            raise ValueError(error)
+        return version
+    if normalize_release_version(ref):
+        return ref
+    return ""
 
 
 def _remote_repo_path(path: str) -> str:
@@ -124,6 +168,10 @@ def generate_air_sim_install_config(
     """Build the installer config structure for NVIDIA Config Manager."""
     content_jobs, run_after_deploy = build_content_jobs(cfg)
     template_plugins = build_template_plugins(cfg)
+    images = {"source": "local"}
+    image_tag = _config_manager_image_tag(cfg)
+    if image_tag:
+        images["tag"] = image_tag
 
     network_secrets = [
         {
@@ -180,7 +228,7 @@ def generate_air_sim_install_config(
             },
             "ztp_storage": {"type": "file", "pvc_size": "10Gi"},
         },
-        "images": {"source": "local"},
+        "images": images,
         "rbac": {
             "admin_roles": ["all"],
             "default_read_roles": ["all"],

@@ -38,6 +38,7 @@ from nv_config_manager_installer.deployer import (
     _parallel_build_limit,
     _ParallelCommand,
     _poll_pod_summary,
+    _python_package_version_from_ref,
     _RerunState,
     _run_logged_parallel,
     _unready_pod_summary_lines,
@@ -99,6 +100,20 @@ def _make_config() -> NVConfigManagerInstallConfig:
         secrets=SecretsConfig(config_manager_service_username="nv-config-manager"),
         sites=[SiteConfig(name="dc01")],
     )
+
+
+@pytest.mark.parametrize(
+    ("ref", "expected"),
+    [
+        ("1.3.0-rc.4", "1.3.0rc4"),
+        ("v1.3.0-rc.4", "1.3.0rc4"),
+        ("1.3.0-rc.4-2-gabcdef1", "1.3.0rc4.dev2+gabcdef1"),
+        ("1.3.0-rc.4-2-gabcdef1-dirty", "1.3.0rc4.dev2+gabcdef1.dirty"),
+        ("feature/air-demo", ""),
+    ],
+)
+def test_python_package_version_from_ref(ref: str, expected: str) -> None:
+    assert _python_package_version_from_ref(ref) == expected
 
 
 _TEST_KUBE_CONTEXT = "test-context"
@@ -620,6 +635,10 @@ class TestImageBuilds:
             "nv_config_manager_installer.deployer._get_image_digest_tag",
             fake_digest,
         )
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer._python_package_version_from_git_describe",
+            lambda: "",
+        )
         monkeypatch.setattr("nv_config_manager_installer.deployer._run", fake_run)
 
         deployer = Deployer(
@@ -675,6 +694,80 @@ class TestImageBuilds:
         assert all(
             command.env and command.env["BUILDX_BUILDER"] == "ci-builder" for command in commands
         )
+
+    def test_build_images_forwards_release_version_to_nautobot_plugins(self, monkeypatch):
+        parallel_calls: list[list[_ParallelCommand]] = []
+
+        def fake_run_logged_parallel(commands, step, callback, *, max_parallel, **kwargs):
+            parallel_calls.append(commands)
+            for command in commands:
+                callback.on_log(f"[{command.label}] completed in 0s")
+
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer._run_logged_parallel",
+            fake_run_logged_parallel,
+        )
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer._get_image_digest_tag",
+            lambda image: "",
+        )
+        monkeypatch.delenv("NAUTOBOT_APP_OVERLAYS_VERSION", raising=False)
+        monkeypatch.delenv("NAUTOBOT_NV_CONFIG_MANAGER_VERSION", raising=False)
+
+        config = _make_config()
+        config.images = ImagesConfig(source=ImageSource.LOCAL, tag="1.3.0-rc.4")
+        deployer = Deployer(
+            config,
+            DeployOptions(build_images=True),
+            RecordingCallback(),
+        )
+        deployer._build_images()
+
+        commands = parallel_calls[0]
+        nautobot_cmd = next(
+            command.cmd for command in commands if command.label == "nv-config-manager-nautobot"
+        )
+        assert "NAUTOBOT_APP_OVERLAYS_VERSION=1.3.0rc4" in nautobot_cmd
+        assert "NAUTOBOT_NV_CONFIG_MANAGER_VERSION=1.3.0rc4" in nautobot_cmd
+
+    def test_build_images_derives_nautobot_plugin_version_from_git_describe(self, monkeypatch):
+        parallel_calls: list[list[_ParallelCommand]] = []
+
+        def fake_run_logged_parallel(commands, step, callback, *, max_parallel, **kwargs):
+            parallel_calls.append(commands)
+            for command in commands:
+                callback.on_log(f"[{command.label}] completed in 0s")
+
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer._run_logged_parallel",
+            fake_run_logged_parallel,
+        )
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer._get_image_digest_tag",
+            lambda image: "",
+        )
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer._python_package_version_from_git_describe",
+            lambda: "1.3.0rc4.dev2+gabcdef1",
+        )
+        monkeypatch.delenv("NAUTOBOT_APP_OVERLAYS_VERSION", raising=False)
+        monkeypatch.delenv("NAUTOBOT_NV_CONFIG_MANAGER_VERSION", raising=False)
+
+        config = _make_config()
+        config.images = ImagesConfig(source=ImageSource.LOCAL, tag="")
+        deployer = Deployer(
+            config,
+            DeployOptions(build_images=True),
+            RecordingCallback(),
+        )
+        deployer._build_images()
+
+        commands = parallel_calls[0]
+        nautobot_cmd = next(
+            command.cmd for command in commands if command.label == "nv-config-manager-nautobot"
+        )
+        assert "NAUTOBOT_APP_OVERLAYS_VERSION=1.3.0rc4.dev2+gabcdef1" in nautobot_cmd
+        assert "NAUTOBOT_NV_CONFIG_MANAGER_VERSION=1.3.0rc4.dev2+gabcdef1" in nautobot_cmd
 
     def test_build_images_forwards_numpy_source_build_args_to_service_image(self, monkeypatch):
         parallel_calls: list[list[_ParallelCommand]] = []

@@ -933,7 +933,9 @@ def _prune_images(images: dict[str, Any]) -> None:
         images.pop("kind_preload_images", None)
     if images.get("source") != ImageSource.LOCAL.value:
         return
-    _replace_with_keys(images, {"source", "kind_preload_images"})
+    if not images.get("tag"):
+        images.pop("tag", None)
+    _replace_with_keys(images, {"source", "tag", "kind_preload_images"})
 
 
 def _prune_redfish(redfish: dict[str, Any]) -> None:

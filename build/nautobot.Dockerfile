@@ -37,6 +37,8 @@ RUN set -eux; \
 WORKDIR /opt/nautobot
 ARG NAUTOBOT_APP_OVERLAYS_VERSION=""
 ARG NAUTOBOT_NV_CONFIG_MANAGER_VERSION=""
+LABEL nvcm.nautobot-app-overlays-version="${NAUTOBOT_APP_OVERLAYS_VERSION}" \
+    nvcm.nautobot-nv-config-manager-version="${NAUTOBOT_NV_CONFIG_MANAGER_VERSION}"
 
 # Copy configuration and dependencies
 # Note: Build context is components/nautobot/

@@ -48,9 +48,9 @@ spec:
         imagePullPolicy: {{ .Values.global.images.nvConfigManagerUi.pullPolicy }}
         command: ["node", "server.js"]
         env:
-        # Application version (matches image tag - git tag/semver)
+        # Application version (release tag/ref when set, otherwise the UI image tag)
         - name: APP_VERSION
-          value: "{{ .Values.global.images.nvConfigManagerUi.tag }}"
+          value: "{{ .Values.global.appVersion | default .Values.global.images.nvConfigManagerUi.tag | default .Chart.AppVersion }}"
         {{- if .Values.oidc.authUtility.enabled }}
         # Public auth discovery metadata for native clients
         - name: OIDC_ENABLED

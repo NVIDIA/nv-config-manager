@@ -69,6 +69,7 @@ class SimConfig:
 
     size: str = "small"
     config_manager_ref: str = "main"
+    config_manager_version: str = ""
     cumulus_version: str = ""
     deploy: bool = True
 

@@ -240,7 +240,7 @@ class TestNVConfigManagerInstallConfig:
             "type": "s3",
             "s3_bucket": "firmware-images",
         }
-        assert data["images"] == {"source": "local"}
+        assert data["images"] == {"source": "local", "tag": "old"}
 
     def test_network_secrets_defaults(self):
         config = NVConfigManagerInstallConfig()
@@ -381,6 +381,7 @@ class TestImagesConfig:
         data = yaml.safe_load(config.to_yaml_str())
         assert data["images"] == {
             "source": "local",
+            "tag": "old",
             "kind_preload_images": ["docker.io/library/redis:7-alpine"],
         }
 

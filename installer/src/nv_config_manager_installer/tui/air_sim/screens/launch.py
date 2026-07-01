@@ -43,6 +43,7 @@ from nv_config_manager_installer.air_sim.constants import (
     DEFAULT_AIR_INTERNAL_FRONTEND_URL,
     NVCM_BOX_USER,
 )
+from nv_config_manager_installer.air_sim.installer_config import config_manager_version_error
 from nv_config_manager_installer.air_sim.orchestrator import (
     STEPS,
     OrchestratorCallback,
@@ -1257,6 +1258,13 @@ class LaunchScreen(Container):
             self._set_status(
                 "[bold red][!] NGC API key required — set it on the Options screen.[/bold red]"
             )
+            return
+        version_error = config_manager_version_error(
+            self._config.config_manager_ref,
+            self._config.config_manager_version,
+        )
+        if version_error:
+            self._set_status(f"[bold red][!] {version_error} — fix Options.[/bold red]")
             return
 
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
