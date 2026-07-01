@@ -46,6 +46,16 @@ TEST_RETRY_POLICY = RetryPolicy(maximum_attempts=1)
 TEST_TIMEOUT = timedelta(seconds=10)
 
 
+def test_backup_input_optional_metadata_defaults_to_none() -> None:
+    workflow_input = BackupInput(device_id="device-id", trigger=TriggerEnum.API)
+
+    assert workflow_input.user is None
+    assert workflow_input.user_domain is None
+    assert workflow_input.workflow_id is None
+    assert workflow_input.intended_config_commit_id is None
+    assert BackupInput.model_json_schema()["required"] == ["device_id", "trigger"]
+
+
 @activity.defn(name="get_network_device")
 async def mock_get_network_device(
     activity_input: GetNetworkDeviceInput,

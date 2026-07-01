@@ -21,8 +21,10 @@ var _ MappedNullable = &NVLinkSwitchFirmwareUpgradeInput{}
 
 // NVLinkSwitchFirmwareUpgradeInput NVLinkSwitch Firmware Upgrade Workflow Input Definition.
 type NVLinkSwitchFirmwareUpgradeInput struct {
+	// Target NVLink firmware bundle version.
 	BundleVersion string `json:"bundle_version"`
-	DeviceId      string `json:"device_id"`
+	// Identifier of the NVLink switch to upgrade.
+	DeviceId string `json:"device_id"`
 }
 
 type _NVLinkSwitchFirmwareUpgradeInput NVLinkSwitchFirmwareUpgradeInput

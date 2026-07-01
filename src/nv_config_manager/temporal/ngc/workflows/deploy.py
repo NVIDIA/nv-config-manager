@@ -89,8 +89,11 @@ INTENDED_CONFIG_COMMIT_ID_DESCRIPTION = (
 class DeployInput(BaseModel):
     """Config Deployment Workflow Input Definiton."""
 
-    device_id: str
-    commit_confirm: bool = True
+    device_id: str = Field(description="Identifier of the network device to configure.")
+    commit_confirm: bool = Field(
+        default=True,
+        description="Whether to use commit-confirmed mode when the platform supports it.",
+    )
 
 
 @workflow.defn
@@ -405,7 +408,9 @@ class TenantDeployInput(BaseModel):
         }
     )
 
-    device: str | NetworkDeviceData
+    device: str | NetworkDeviceData = Field(
+        description="Identifier or preloaded data for the network device to configure."
+    )
     tenant_config_commit_id: str | None = Field(
         default=None,
         pattern=r"^\d+$",

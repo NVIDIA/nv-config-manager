@@ -21,8 +21,10 @@ var _ MappedNullable = &InfinibandCableValidationInput{}
 
 // InfinibandCableValidationInput IB Cable Validation Workflow Input Definition.
 type InfinibandCableValidationInput struct {
+	// Identifiers of the InfiniBand switches to validate.
 	SwitchDeviceIds []string `json:"switch_device_ids"`
-	UfmDeviceId     string   `json:"ufm_device_id"`
+	// Identifier of the UFM device used to inspect the InfiniBand fabric.
+	UfmDeviceId string `json:"ufm_device_id"`
 }
 
 type _InfinibandCableValidationInput InfinibandCableValidationInput

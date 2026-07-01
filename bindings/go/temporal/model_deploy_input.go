@@ -21,8 +21,10 @@ var _ MappedNullable = &DeployInput{}
 
 // DeployInput Config Deployment Workflow Input Definiton.
 type DeployInput struct {
-	CommitConfirm *bool  `json:"commit_confirm,omitempty"`
-	DeviceId      string `json:"device_id"`
+	// Whether to use commit-confirmed mode when the platform supports it.
+	CommitConfirm *bool `json:"commit_confirm,omitempty"`
+	// Identifier of the network device to configure.
+	DeviceId string `json:"device_id"`
 }
 
 type _DeployInput DeployInput

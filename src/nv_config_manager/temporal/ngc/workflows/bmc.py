@@ -21,7 +21,7 @@ import copy
 import logging
 from datetime import timedelta
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 
@@ -81,13 +81,20 @@ NIC_MANUFACTURER_MELLANOX = ["Mellanox Technologies", "MLNX"]
 class RedfishProvisioningInput(BaseModel):
     """Input for Redfish provisioning workflow."""
 
-    site: str
-    bmc_switch_roles: list[str]
-    ip_range_start: str
-    ip_range_end: str
-    port: int = 443
-    http_timeout_s: int = 5
-    dpu_manufacturers: list[str] = NIC_MANUFACTURER_MELLANOX
+    site: str = Field(description="Site containing the BMC network to provision.")
+    bmc_switch_roles: list[str] = Field(
+        description="Switch roles used to discover BMC-connected network interfaces."
+    )
+    ip_range_start: str = Field(description="First BMC IP address to scan.")
+    ip_range_end: str = Field(description="Last BMC IP address to scan.")
+    port: int = Field(default=443, description="HTTPS port used to contact Redfish services.")
+    http_timeout_s: int = Field(
+        default=5, description="Timeout in seconds for Redfish HTTP requests."
+    )
+    dpu_manufacturers: list[str] = Field(
+        default=NIC_MANUFACTURER_MELLANOX,
+        description="DPU manufacturer names eligible for Redfish provisioning.",
+    )
 
 
 class RedfishProvisioningResult(BaseModel):

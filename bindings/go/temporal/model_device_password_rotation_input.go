@@ -21,7 +21,9 @@ var _ MappedNullable = &DevicePasswordRotationInput{}
 
 // DevicePasswordRotationInput Device Password Rotation Workflow Input Definition.
 type DevicePasswordRotationInput struct {
-	DeviceId       string `json:"device_id"`
+	// Identifier of the network device to update.
+	DeviceId string `json:"device_id"`
+	// Name of the managed secret containing the replacement password.
 	SelectedSecret string `json:"selected_secret"`
 }
 

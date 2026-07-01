@@ -21,10 +21,14 @@ var _ MappedNullable = &IBPKeyMemberDeleteInput{}
 
 // IBPKeyMemberDeleteInput InfiniBand PKey Member Delete Workflow Input.  Provide either “interfaces“ (resolved to GUIDs via Nautobot) or “guids“ directly, but not both. Site and Overlay are resolved server-side from “host“ and “pkey“.
 type IBPKeyMemberDeleteInput struct {
-	Guids      []string       `json:"guids,omitempty"`
-	Host       string         `json:"host"`
+	// InfiniBand port GUIDs to remove directly from the partition.
+	Guids []string `json:"guids,omitempty"`
+	// Hostname of the UFM server managing the InfiniBand fabric.
+	Host string `json:"host"`
+	// Nautobot interfaces to resolve to InfiniBand port GUIDs.
 	Interfaces []InterfaceRef `json:"interfaces,omitempty"`
-	Pkey       string         `json:"pkey"`
+	// Partition key whose members will be removed.
+	Pkey string `json:"pkey"`
 }
 
 type _IBPKeyMemberDeleteInput IBPKeyMemberDeleteInput

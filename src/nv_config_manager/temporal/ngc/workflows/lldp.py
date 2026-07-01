@@ -16,7 +16,7 @@
 
 from datetime import timedelta
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 from temporalio.exceptions import ApplicationError
@@ -51,9 +51,13 @@ DEFAULT_ACTIVITY_RETRY_POLICY = RetryPolicy(maximum_attempts=3)
 class PortLLDPInfoInput(BaseModel):
     """Input for Port LLDP Info Workflow."""
 
-    device_id: str | None = None
-    interface: str | None = None
-    remote_mac_address: str | None = None
+    device_id: str | None = Field(
+        default=None, description="Identifier of the network device to inspect."
+    )
+    interface: str | None = Field(default=None, description="Name of the local interface.")
+    remote_mac_address: str | None = Field(
+        default=None, description="MAC address of the remote device to locate."
+    )
 
 
 @workflow.defn

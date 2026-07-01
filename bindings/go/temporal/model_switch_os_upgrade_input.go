@@ -21,6 +21,7 @@ var _ MappedNullable = &SwitchOSUpgradeInput{}
 
 // SwitchOSUpgradeInput Firmware Upgrade Workflow Input Definition.
 type SwitchOSUpgradeInput struct {
+	// Identifier of the network switch to upgrade.
 	DeviceId string `json:"device_id"`
 }
 

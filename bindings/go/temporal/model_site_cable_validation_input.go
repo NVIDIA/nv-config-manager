@@ -21,12 +21,18 @@ var _ MappedNullable = &SiteCableValidationInput{}
 
 // SiteCableValidationInput Input for Site Cable Validation Workflow.
 type SiteCableValidationInput struct {
-	DeviceTypeIds   []string `json:"device_type_ids,omitempty"`
-	RaiseForInvalid *bool    `json:"raise_for_invalid,omitempty"`
-	Roles           []string `json:"roles,omitempty"`
-	Site            string   `json:"site"`
-	Status          []string `json:"status,omitempty"`
-	Tenant          *string  `json:"tenant,omitempty"`
+	// Device type identifiers used to filter network devices.
+	DeviceTypeIds []string `json:"device_type_ids,omitempty"`
+	// Whether invalid cabling should fail the workflow.
+	RaiseForInvalid *bool `json:"raise_for_invalid,omitempty"`
+	// Device roles used to filter the selected network devices.
+	Roles []string `json:"roles,omitempty"`
+	// Site containing the network devices to validate.
+	Site string `json:"site"`
+	// Device statuses used to filter the selected network devices.
+	Status []string `json:"status,omitempty"`
+	// Tenant used to filter the selected network devices.
+	Tenant *string `json:"tenant,omitempty"`
 }
 
 type _SiteCableValidationInput SiteCableValidationInput
