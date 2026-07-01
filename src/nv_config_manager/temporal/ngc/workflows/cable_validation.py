@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import timedelta
-from typing import Any
+from typing import Annotated, Any
 
 from pydantic import BaseModel, Field
 from temporalio import workflow
@@ -108,6 +108,9 @@ CLONE_SEARCH_ATTRS = [
 ]
 
 SUPPORTED_PLATFORMS = [Platform.CUMULUS_LINUX, Platform.ARISTA_EOS, Platform.NV_OS]
+DEVICE_CABLE_VALIDATION_DEVICE_DESCRIPTION = (
+    "Preloaded data for the target network device, if available."
+)
 
 
 class SiteCableValidationInput(BaseModel):
@@ -138,8 +141,15 @@ class DeviceCableValidationInput(BaseModel):
     """Input for Device Cable Validation Workflow."""
 
     device_id: str = Field(description="Identifier of the network device to validate.")
-    device: NetworkDeviceData | None = Field(
-        default=None, description="Preloaded data for the target network device, if available."
+    device: (
+        Annotated[
+            NetworkDeviceData,
+            Field(description=DEVICE_CABLE_VALIDATION_DEVICE_DESCRIPTION),
+        ]
+        | None
+    ) = Field(
+        default=None,
+        description=DEVICE_CABLE_VALIDATION_DEVICE_DESCRIPTION,
     )
     ignore_no_neighbor: bool = Field(
         default=False,

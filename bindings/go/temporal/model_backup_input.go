@@ -23,12 +23,12 @@ var _ MappedNullable = &BackupInput{}
 type BackupInput struct {
 	// Identifier of the network device to back up.
 	DeviceId               string         `json:"device_id"`
-	IntendedConfigCommitId NullableString `json:"intended_config_commit_id"`
+	IntendedConfigCommitId NullableString `json:"intended_config_commit_id,omitempty"`
 	// Reason the backup workflow was started.
 	Trigger    TriggerEnum    `json:"trigger"`
-	User       NullableString `json:"user"`
-	UserDomain NullableString `json:"user_domain"`
-	WorkflowId NullableString `json:"workflow_id"`
+	User       NullableString `json:"user,omitempty"`
+	UserDomain NullableString `json:"user_domain,omitempty"`
+	WorkflowId NullableString `json:"workflow_id,omitempty"`
 }
 
 type _BackupInput BackupInput
@@ -37,14 +37,10 @@ type _BackupInput BackupInput
 // This constructor will assign default values to properties that have it defined,
 // and makes sure properties required by API are set, but the set of arguments
 // will change when the set of required properties is changed
-func NewBackupInput(deviceId string, intendedConfigCommitId NullableString, trigger TriggerEnum, user NullableString, userDomain NullableString, workflowId NullableString) *BackupInput {
+func NewBackupInput(deviceId string, trigger TriggerEnum) *BackupInput {
 	this := BackupInput{}
 	this.DeviceId = deviceId
-	this.IntendedConfigCommitId = intendedConfigCommitId
 	this.Trigger = trigger
-	this.User = user
-	this.UserDomain = userDomain
-	this.WorkflowId = workflowId
 	return &this
 }
 
@@ -80,20 +76,20 @@ func (o *BackupInput) SetDeviceId(v string) {
 	o.DeviceId = v
 }
 
-// GetIntendedConfigCommitId returns the IntendedConfigCommitId field value
-// If the value is explicit nil, the zero value for string will be returned
+// GetIntendedConfigCommitId returns the IntendedConfigCommitId field value if set, zero value otherwise (both if not set or set to explicit null).
 func (o *BackupInput) GetIntendedConfigCommitId() string {
-	if o == nil || o.IntendedConfigCommitId.Get() == nil {
+	if o == nil || IsNil(o.IntendedConfigCommitId.Get()) {
 		var ret string
 		return ret
 	}
-
 	return *o.IntendedConfigCommitId.Get()
 }
 
-// GetIntendedConfigCommitIdOk returns a tuple with the IntendedConfigCommitId field value
+// GetIntendedConfigCommitIdOk returns a tuple with the IntendedConfigCommitId field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 // NOTE: If the value is an explicit nil, `nil, true` will be returned
+
 func (o *BackupInput) GetIntendedConfigCommitIdOk() (*string, bool) {
 	if o == nil {
 		return nil, false
@@ -101,9 +97,28 @@ func (o *BackupInput) GetIntendedConfigCommitIdOk() (*string, bool) {
 	return o.IntendedConfigCommitId.Get(), o.IntendedConfigCommitId.IsSet()
 }
 
-// SetIntendedConfigCommitId sets field value
+// HasIntendedConfigCommitId returns a boolean if a field has been set.
+func (o *BackupInput) HasIntendedConfigCommitId() bool {
+	if o != nil && o.IntendedConfigCommitId.IsSet() {
+		return true
+	}
+
+	return false
+}
+
+// SetIntendedConfigCommitId gets a reference to the given NullableString and assigns it to the IntendedConfigCommitId field.
 func (o *BackupInput) SetIntendedConfigCommitId(v string) {
 	o.IntendedConfigCommitId.Set(&v)
+}
+
+// SetIntendedConfigCommitIdNil sets the value for IntendedConfigCommitId to be an explicit nil
+func (o *BackupInput) SetIntendedConfigCommitIdNil() {
+	o.IntendedConfigCommitId.Set(nil)
+}
+
+// UnsetIntendedConfigCommitId ensures that no value is present for IntendedConfigCommitId, not even an explicit nil
+func (o *BackupInput) UnsetIntendedConfigCommitId() {
+	o.IntendedConfigCommitId.Unset()
 }
 
 // GetTrigger returns the Trigger field value
@@ -130,20 +145,20 @@ func (o *BackupInput) SetTrigger(v TriggerEnum) {
 	o.Trigger = v
 }
 
-// GetUser returns the User field value
-// If the value is explicit nil, the zero value for string will be returned
+// GetUser returns the User field value if set, zero value otherwise (both if not set or set to explicit null).
 func (o *BackupInput) GetUser() string {
-	if o == nil || o.User.Get() == nil {
+	if o == nil || IsNil(o.User.Get()) {
 		var ret string
 		return ret
 	}
-
 	return *o.User.Get()
 }
 
-// GetUserOk returns a tuple with the User field value
+// GetUserOk returns a tuple with the User field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 // NOTE: If the value is an explicit nil, `nil, true` will be returned
+
 func (o *BackupInput) GetUserOk() (*string, bool) {
 	if o == nil {
 		return nil, false
@@ -151,25 +166,44 @@ func (o *BackupInput) GetUserOk() (*string, bool) {
 	return o.User.Get(), o.User.IsSet()
 }
 
-// SetUser sets field value
+// HasUser returns a boolean if a field has been set.
+func (o *BackupInput) HasUser() bool {
+	if o != nil && o.User.IsSet() {
+		return true
+	}
+
+	return false
+}
+
+// SetUser gets a reference to the given NullableString and assigns it to the User field.
 func (o *BackupInput) SetUser(v string) {
 	o.User.Set(&v)
 }
 
-// GetUserDomain returns the UserDomain field value
-// If the value is explicit nil, the zero value for string will be returned
+// SetUserNil sets the value for User to be an explicit nil
+func (o *BackupInput) SetUserNil() {
+	o.User.Set(nil)
+}
+
+// UnsetUser ensures that no value is present for User, not even an explicit nil
+func (o *BackupInput) UnsetUser() {
+	o.User.Unset()
+}
+
+// GetUserDomain returns the UserDomain field value if set, zero value otherwise (both if not set or set to explicit null).
 func (o *BackupInput) GetUserDomain() string {
-	if o == nil || o.UserDomain.Get() == nil {
+	if o == nil || IsNil(o.UserDomain.Get()) {
 		var ret string
 		return ret
 	}
-
 	return *o.UserDomain.Get()
 }
 
-// GetUserDomainOk returns a tuple with the UserDomain field value
+// GetUserDomainOk returns a tuple with the UserDomain field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 // NOTE: If the value is an explicit nil, `nil, true` will be returned
+
 func (o *BackupInput) GetUserDomainOk() (*string, bool) {
 	if o == nil {
 		return nil, false
@@ -177,25 +211,44 @@ func (o *BackupInput) GetUserDomainOk() (*string, bool) {
 	return o.UserDomain.Get(), o.UserDomain.IsSet()
 }
 
-// SetUserDomain sets field value
+// HasUserDomain returns a boolean if a field has been set.
+func (o *BackupInput) HasUserDomain() bool {
+	if o != nil && o.UserDomain.IsSet() {
+		return true
+	}
+
+	return false
+}
+
+// SetUserDomain gets a reference to the given NullableString and assigns it to the UserDomain field.
 func (o *BackupInput) SetUserDomain(v string) {
 	o.UserDomain.Set(&v)
 }
 
-// GetWorkflowId returns the WorkflowId field value
-// If the value is explicit nil, the zero value for string will be returned
+// SetUserDomainNil sets the value for UserDomain to be an explicit nil
+func (o *BackupInput) SetUserDomainNil() {
+	o.UserDomain.Set(nil)
+}
+
+// UnsetUserDomain ensures that no value is present for UserDomain, not even an explicit nil
+func (o *BackupInput) UnsetUserDomain() {
+	o.UserDomain.Unset()
+}
+
+// GetWorkflowId returns the WorkflowId field value if set, zero value otherwise (both if not set or set to explicit null).
 func (o *BackupInput) GetWorkflowId() string {
-	if o == nil || o.WorkflowId.Get() == nil {
+	if o == nil || IsNil(o.WorkflowId.Get()) {
 		var ret string
 		return ret
 	}
-
 	return *o.WorkflowId.Get()
 }
 
-// GetWorkflowIdOk returns a tuple with the WorkflowId field value
+// GetWorkflowIdOk returns a tuple with the WorkflowId field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 // NOTE: If the value is an explicit nil, `nil, true` will be returned
+
 func (o *BackupInput) GetWorkflowIdOk() (*string, bool) {
 	if o == nil {
 		return nil, false
@@ -203,9 +256,28 @@ func (o *BackupInput) GetWorkflowIdOk() (*string, bool) {
 	return o.WorkflowId.Get(), o.WorkflowId.IsSet()
 }
 
-// SetWorkflowId sets field value
+// HasWorkflowId returns a boolean if a field has been set.
+func (o *BackupInput) HasWorkflowId() bool {
+	if o != nil && o.WorkflowId.IsSet() {
+		return true
+	}
+
+	return false
+}
+
+// SetWorkflowId gets a reference to the given NullableString and assigns it to the WorkflowId field.
 func (o *BackupInput) SetWorkflowId(v string) {
 	o.WorkflowId.Set(&v)
+}
+
+// SetWorkflowIdNil sets the value for WorkflowId to be an explicit nil
+func (o *BackupInput) SetWorkflowIdNil() {
+	o.WorkflowId.Set(nil)
+}
+
+// UnsetWorkflowId ensures that no value is present for WorkflowId, not even an explicit nil
+func (o *BackupInput) UnsetWorkflowId() {
+	o.WorkflowId.Unset()
 }
 
 func (o BackupInput) MarshalJSON() ([]byte, error) {
@@ -219,11 +291,19 @@ func (o BackupInput) MarshalJSON() ([]byte, error) {
 func (o BackupInput) ToMap() (map[string]interface{}, error) {
 	toSerialize := map[string]interface{}{}
 	toSerialize["device_id"] = o.DeviceId
-	toSerialize["intended_config_commit_id"] = o.IntendedConfigCommitId.Get()
+	if o.IntendedConfigCommitId.IsSet() {
+		toSerialize["intended_config_commit_id"] = o.IntendedConfigCommitId.Get()
+	}
 	toSerialize["trigger"] = o.Trigger
-	toSerialize["user"] = o.User.Get()
-	toSerialize["user_domain"] = o.UserDomain.Get()
-	toSerialize["workflow_id"] = o.WorkflowId.Get()
+	if o.User.IsSet() {
+		toSerialize["user"] = o.User.Get()
+	}
+	if o.UserDomain.IsSet() {
+		toSerialize["user_domain"] = o.UserDomain.Get()
+	}
+	if o.WorkflowId.IsSet() {
+		toSerialize["workflow_id"] = o.WorkflowId.Get()
+	}
 	return toSerialize, nil
 }
 
@@ -232,12 +312,8 @@ func (o *BackupInput) UnmarshalJSON(data []byte) (err error) {
 	// by unmarshalling the object into a generic map with string keys and checking
 	// that every required field exists as a key in the generic map.
 	requiredProperties := map[string]bool{
-		"device_id":                 false,
-		"intended_config_commit_id": true,
-		"trigger":                   false,
-		"user":                      true,
-		"user_domain":               true,
-		"workflow_id":               true,
+		"device_id": false,
+		"trigger":   false,
 	}
 
 	allProperties := make(map[string]interface{})

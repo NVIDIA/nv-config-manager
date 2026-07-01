@@ -64,11 +64,7 @@
         },
         "required": [
           "device_id",
-          "trigger",
-          "user",
-          "user_domain",
-          "workflow_id",
-          "intended_config_commit_id"
+          "trigger"
         ],
         "title": "BackupInput",
         "type": "object"
@@ -211,7 +207,8 @@
           "device": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/NetworkDeviceData"
+                "$ref": "#/components/schemas/NetworkDeviceData",
+                "description": "Preloaded data for the target network device, if available."
               },
               {
                 "type": "null"

@@ -6,10 +6,14 @@ package clienttest
 import (
 	"context"
 	"encoding/json"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"io"
 	"mime"
 	"mime/multipart"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -18,6 +22,29 @@ import (
 	"github.com/nvidia/nv-config-manager/bindings/go/render"
 	"github.com/nvidia/nv-config-manager/bindings/go/ztp"
 )
+
+func TestGeneratedDeviceCableValidationInputDocumentsDevice(t *testing.T) {
+	filename := filepath.Join("..", "..", "temporal", "model_device_cable_validation_input.go")
+	file, err := parser.ParseFile(token.NewFileSet(), filename, nil, parser.ParseComments)
+	if err != nil {
+		t.Fatalf("parse generated model: %v", err)
+	}
+
+	var deviceComment string
+	ast.Inspect(file, func(node ast.Node) bool {
+		field, ok := node.(*ast.Field)
+		if !ok || len(field.Names) != 1 || field.Names[0].Name != "Device" || field.Doc == nil {
+			return true
+		}
+		deviceComment = strings.TrimSpace(field.Doc.Text())
+		return false
+	})
+
+	const expected = "Preloaded data for the target network device, if available."
+	if deviceComment != expected {
+		t.Fatalf("Device comment = %q, want %q", deviceComment, expected)
+	}
+}
 
 func TestGeneratedModelsRejectNullForRequiredFields(t *testing.T) {
 	testCases := []struct {

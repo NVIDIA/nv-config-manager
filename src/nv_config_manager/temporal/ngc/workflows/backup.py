@@ -74,11 +74,15 @@ class BackupInput(BaseModel):
 
     device_id: str = Field(description="Identifier of the network device to back up.")
     trigger: TriggerEnum = Field(description="Reason the backup workflow was started.")
-    user: str | None = Field(description="User that requested the backup.")
-    user_domain: str | None = Field(description="Domain of the user requesting the backup.")
-    workflow_id: str | None = Field(description="Identifier of the parent workflow, if any.")
+    user: str | None = Field(default=None, description="User that requested the backup.")
+    user_domain: str | None = Field(
+        default=None, description="Domain of the user requesting the backup."
+    )
+    workflow_id: str | None = Field(
+        default=None, description="Identifier of the parent workflow, if any."
+    )
     intended_config_commit_id: str | None = Field(
-        description="Config Store commit containing the intended configuration."
+        default=None, description="Config Store commit containing the intended configuration."
     )
 
 

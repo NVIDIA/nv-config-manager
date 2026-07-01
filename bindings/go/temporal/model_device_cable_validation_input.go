@@ -21,6 +21,7 @@ var _ MappedNullable = &DeviceCableValidationInput{}
 
 // DeviceCableValidationInput Input for Device Cable Validation Workflow.
 type DeviceCableValidationInput struct {
+	// Preloaded data for the target network device, if available.
 	Device NullableNetworkDeviceData `json:"device,omitempty"`
 	// Identifier of the network device to validate.
 	DeviceId string `json:"device_id"`
