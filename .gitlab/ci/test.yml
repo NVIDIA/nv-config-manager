@@ -3,6 +3,12 @@
   - pyproject.toml
   - uv.lock
 
+.nautobot-coverage-script: &nautobot-coverage-script |
+  set -e
+  cd components/nautobot
+  uv run pytest tests/ -n auto --cov=nv_config_manager_auth --cov=nv_config_manager_jobs --cov-report=term
+  uv run coverage xml --include='nv_config_manager_auth/*,nv_config_manager_jobs/*' -o coverage.xml
+
 test-mr-py:
   stage: test
   tags:
@@ -38,9 +44,7 @@ test-mr-py:
     - uv sync --frozen
   script:
     - uv run pytest -n auto --cov=src/nv_config_manager --cov-report=xml:coverage.xml --cov-report=term
-    - cd components/nautobot
-    - uv run pytest tests/ -n auto --cov=nv_config_manager_auth --cov=nv_config_manager_jobs --cov-report=term
-    - uv run coverage xml --include='nv_config_manager_auth/*,nv_config_manager_jobs/*' -o coverage.xml
+    - *nautobot-coverage-script
   artifacts:
     when: always
     paths:
@@ -432,9 +436,7 @@ test-main-py:
     - uv sync --frozen
   script:
     - uv run pytest -n auto --cov=src/nv_config_manager --cov-report=xml:coverage.xml --cov-report=term
-    - cd components/nautobot
-    - uv run pytest tests/ -n auto --cov=nv_config_manager_auth --cov=nv_config_manager_jobs --cov-report=term
-    - uv run coverage xml --include='nv_config_manager_auth/*,nv_config_manager_jobs/*' -o coverage.xml
+    - *nautobot-coverage-script
   artifacts:
     when: always
     paths:
