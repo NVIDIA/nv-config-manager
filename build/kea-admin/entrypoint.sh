@@ -4,11 +4,11 @@
 # Reference: https://kea.readthedocs.io/en/kea-2.6.2/arm/admin.html
 set -e
 
-if [ -z "$INI_FILE" ]; then
+if [[ -z "$INI_FILE" ]]; then
   INI_FILE=/etc/vault/nv-config-manager.ini
 fi
 
-if [ ! -f "$INI_FILE" ]; then
+if [[ ! -f "$INI_FILE" ]]; then
   echo "Error: $INI_FILE does not exist"
   exit 1
 fi
@@ -27,7 +27,7 @@ echo "  User: $DB_USER"
 echo "  Database: $DB_NAME"
 
 # Validate required variables
-if [ -z "$DB_HOST" ] || [ -z "$DB_PORT" ] || [ -z "$DB_USER" ] || [ -z "$DB_PASSWORD" ] || [ -z "$DB_NAME" ]; then
+if [[ -z "$DB_HOST" || -z "$DB_PORT" || -z "$DB_USER" || -z "$DB_PASSWORD" || -z "$DB_NAME" ]]; then
     echo "Error: Required database configuration not found in $INI_FILE"
     echo "Please ensure [dhcp.lease_db] section has host, port, user, password, and database"
     exit 1
@@ -67,4 +67,3 @@ PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -p $DB_PORT -U "$DB_USER" -d "$DB_NAME"
 }
 
 echo "Kea database schema initialized successfully!"
-

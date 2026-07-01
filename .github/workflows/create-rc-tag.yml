@@ -22,10 +22,6 @@ on:
         default: true
         type: boolean
 
-permissions:
-  actions: read
-  contents: read
-
 concurrency:
   group: release-tagging-${{ github.repository }}
   cancel-in-progress: false
@@ -34,6 +30,9 @@ jobs:
   validate:
     name: Validate RC Tag
     runs-on: linux-amd64-cpu4
+    permissions:
+      actions: read
+      contents: read
     outputs:
       commit: ${{ steps.resolve.outputs.commit }}
       go_tag: ${{ steps.version.outputs.go_tag }}
@@ -167,6 +166,7 @@ jobs:
           COMMIT: ${{ steps.resolve.outputs.commit }}
           GO_TAG: ${{ steps.version.outputs.go_tag }}
           RC_TAG: ${{ steps.version.outputs.rc_tag }}
+          SOURCE_REF: ${{ inputs.source_ref }}
         run: |
           {
             echo "### RC tag request"
@@ -174,7 +174,7 @@ jobs:
             echo "- Tag: \`${RC_TAG}\`"
             echo "- Go module tag: \`${GO_TAG}\`"
             echo "- Commit: \`${COMMIT}\`"
-            echo "- Source ref: \`${{ inputs.source_ref }}\`"
+            echo "- Source ref: \`${SOURCE_REF}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
   create-tag:

@@ -21,7 +21,7 @@ apt-get install -y --no-install-recommends \
 
 # Map Ubuntu Noble (24.04) to Jammy (22.04) since Stork may not have Noble packages yet
 STORK_CODENAME="${VERSION_CODENAME}"
-if [ "${VERSION_CODENAME}" = "noble" ]; then
+if [[ "${VERSION_CODENAME}" = "noble" ]]; then
     echo "Ubuntu Noble detected, using Jammy repository (compatible packages)..."
     STORK_CODENAME="jammy"
 fi
