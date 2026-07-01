@@ -27,7 +27,7 @@ import { runWorkflowFormTests } from "./shared/workflowFormTests";
 // Run the standard workflow form tests
 runWorkflowFormTests({
   formPath: "/workflows/backupworkflow/form",
-  formTitle: "New Config Backup Workflow",
+  formTitle: "New Configuration Backup Workflow",
   defaultPlatform: "Arista EOS", // Assuming backup works primarily with Arista devices
 });
 
@@ -197,7 +197,7 @@ test.describe("Backup Config Form - Additional Tests", () => {
     await page.getByRole("dialog").getByText(FORBIDDEN_SITE_ID).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "New Config Backup Workflow" })
+      .getByRole("heading", { name: "New Configuration Backup Workflow" })
       .click();
 
     await page.getByRole("button", { name: "Device" }).click();
@@ -207,7 +207,7 @@ test.describe("Backup Config Form - Additional Tests", () => {
       .click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "New Config Backup Workflow" })
+      .getByRole("heading", { name: "New Configuration Backup Workflow" })
       .click();
 
     await page.getByRole("button", { name: "Submit" }).click();

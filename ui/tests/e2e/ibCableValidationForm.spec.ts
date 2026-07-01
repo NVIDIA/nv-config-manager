@@ -31,7 +31,7 @@ test.describe("Infiniband Cable Validation Form", () => {
 
   test("renders form with correct title", async ({ page }) => {
     const title = await page.getByRole("heading", {
-      name: "Infiniband Cable Validation Workflow Form",
+      name: "New InfiniBand Cable Validation Workflow",
     });
     await expect(title).toBeVisible({ timeout: TEST_TIMEOUT });
   });
@@ -79,7 +79,7 @@ test.describe("Infiniband Cable Validation Form", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
@@ -88,17 +88,17 @@ test.describe("Infiniband Cable Validation Form", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
     // Select a MLNX-OS device for the deviceIds field
-    await page.getByRole("button", { name: "Select a Device IDs..." }).click();
+    await page.getByRole("button", { name: "Select Device IDs..." }).click();
     await page.getByRole("dialog").getByText(mlnxDevice.name).click();
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
@@ -142,7 +142,7 @@ test.describe("Infiniband Cable Validation Form", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
@@ -151,16 +151,16 @@ test.describe("Infiniband Cable Validation Form", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
-    await page.getByRole("button", { name: "Select a Device IDs..." }).click();
+    await page.getByRole("button", { name: "Select Device IDs..." }).click();
     await page.getByRole("dialog").getByText(initialMlnxDevice.name).click();
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
@@ -181,7 +181,7 @@ test.describe("Infiniband Cable Validation Form", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
@@ -191,7 +191,7 @@ test.describe("Infiniband Cable Validation Form", () => {
       page.getByRole("button").getByText("Select a Device...")
     ).toBeVisible();
     await expect(
-      page.getByRole("button").getByText("Select a Device IDs...")
+      page.getByRole("button").getByText("Select Device IDs...")
     ).toBeVisible();
 
     // Verify that the device IDs list no longer shows the previously selected value
@@ -277,7 +277,7 @@ test.describe("Infiniband Cable Validation Form", () => {
     // Wait for the form to load and process URL params
     await expect(
       page.getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
 
@@ -292,7 +292,7 @@ test.describe("Infiniband Cable Validation Form", () => {
 
     // Device IDs field should be empty/default
     await expect(
-      page.getByRole("button", { name: "Select a Device IDs..." })
+      page.getByRole("button", { name: "Select Device IDs..." })
     ).toBeVisible();
 
     // Verify that clicking submit shows validation errors
@@ -328,7 +328,7 @@ test.describe("Infiniband Cable Validation Form", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
@@ -337,17 +337,17 @@ test.describe("Infiniband Cable Validation Form", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
     // Select a MLNX-OS device for the deviceIds field
-    await page.getByRole("button", { name: "Select a Device IDs..." }).click();
+    await page.getByRole("button", { name: "Select Device IDs..." }).click();
     await page.getByRole("dialog").getByText(mlnxDevice.name).click();
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
@@ -386,7 +386,7 @@ test.describe("Infiniband Cable Validation Form", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
@@ -395,16 +395,16 @@ test.describe("Infiniband Cable Validation Form", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
-    await page.getByRole("button", { name: "Select a Device IDs..." }).click();
+    await page.getByRole("button", { name: "Select Device IDs..." }).click();
     await page.getByRole("dialog").getByText(mlnxDevice.name).click();
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
@@ -431,7 +431,7 @@ test.describe("Infiniband Cable Validation Form", () => {
     ).toBeVisible();
 
     await expect(
-      page.getByRole("button").getByText("Select a Device IDs...")
+      page.getByRole("button").getByText("Select Device IDs...")
     ).toBeVisible();
 
     // Verify that the device IDs list no longer shows the previously selected value
@@ -475,7 +475,7 @@ test.describe("Infiniband Cable Validation Form - Error Scenarios", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
@@ -485,17 +485,17 @@ test.describe("Infiniband Cable Validation Form - Error Scenarios", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
     // Select an MLNX-OS device
-    await page.getByRole("button", { name: "Select a Device IDs..." }).click();
+    await page.getByRole("button", { name: "Select Device IDs..." }).click();
     await page.getByRole("dialog").getByText(mlnxDevice.name).click();
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
@@ -545,7 +545,7 @@ test.describe("Infiniband Cable Validation Form - Error Scenarios", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
@@ -555,17 +555,17 @@ test.describe("Infiniband Cable Validation Form - Error Scenarios", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
     // Select the forbidden MLNX-OS device
-    await page.getByRole("button", { name: "Select a Device IDs..." }).click();
+    await page.getByRole("button", { name: "Select Device IDs..." }).click();
     await page.getByRole("dialog").getByText(forbiddenMlnxDevice.name).click();
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
@@ -590,7 +590,7 @@ test.describe("Infiniband Cable Validation Form - Error Scenarios", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
@@ -618,7 +618,7 @@ test.describe("Infiniband Cable Validation Form - Error Scenarios", () => {
     // Close the dropdown
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
   });
@@ -632,12 +632,12 @@ test.describe("Infiniband Cable Validation Form - Error Scenarios", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
     // Open the device IDs dropdown - use more specific selector
-    await page.getByRole("button", { name: "Select a Device IDs..." }).click();
+    await page.getByRole("button", { name: "Select Device IDs..." }).click();
 
     // Get all device options in the dropdown
     const deviceIdOptions = page.getByRole("dialog").getByRole("option");
@@ -660,7 +660,7 @@ test.describe("Infiniband Cable Validation Form - Error Scenarios", () => {
     // Close the dropdown
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
   });
@@ -688,7 +688,7 @@ test.describe("Infiniband Cable Validation Form - Error Scenarios", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
@@ -697,18 +697,18 @@ test.describe("Infiniband Cable Validation Form - Error Scenarios", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
     // Select multiple MLNX-OS devices for the deviceIds field
-    await page.getByRole("button", { name: "Select a Device IDs..." }).click();
+    await page.getByRole("button", { name: "Select Device IDs..." }).click();
     await page.getByRole("dialog").getByText(mlnxDevice1.name).click();
     await page.getByRole("dialog").getByText(mlnxDevice2.name).click();
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
@@ -792,7 +792,7 @@ test.describe("Infiniband Cable Validation Form - Error Scenarios", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
@@ -802,17 +802,17 @@ test.describe("Infiniband Cable Validation Form - Error Scenarios", () => {
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 
     // Select a new MLNX-OS device from the new site
-    await page.getByRole("button", { name: "Select a Device IDs..." }).click();
+    await page.getByRole("button", { name: "Select Device IDs..." }).click();
     await page.getByRole("dialog").getByText(newMlnxDevice.name).click();
     // Click outside to close any dropdown that might be open
     await page
       .getByRole("heading", {
-        name: "Infiniband Cable Validation Workflow Form",
+        name: "New InfiniBand Cable Validation Workflow",
       })
       .click();
 

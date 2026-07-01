@@ -16,7 +16,6 @@
  */
 import {
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -85,8 +84,11 @@ export const WorkflowFormField = ({
                     handleChange?.(name, value as string);
                     field.onChange(value);
                   }}
-                  placeholder={`Select a ${label}...`}
-                  //placeholder={props.multiple ? `Select ${label}...` : `Select a ${label}...`}
+                  placeholder={
+                    props.multiple
+                      ? `Select ${label}...`
+                      : `Select a ${label}...`
+                  }
                   inputPlaceholder={`Search ${label}`}
                   emptyPlaceholder={`No ${label} found.`}
                   multiple={props.multiple}
@@ -123,9 +125,6 @@ export const WorkflowFormField = ({
               />
             ) : null}
           </FormControl>
-          {label && (
-            <FormDescription>{`${label} to create workflow for.`}</FormDescription>
-          )}
         </FormItem>
       )}
     />

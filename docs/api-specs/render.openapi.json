@@ -327,6 +327,14 @@
         "title": "WhoamiResponse",
         "type": "object"
       }
+    },
+    "securitySchemes": {
+      "BearerAuth": {
+        "bearerFormat": "JWT",
+        "description": "Bearer JWT used by CLI and machine clients on svc-* endpoints. Authentication is required by default, but deployments may disable it with [auth] required = false. Browser OIDC sessions, mTLS, SPIFFE identities, and trusted gateway identity headers may also satisfy authentication outside this generated client flow.",
+        "scheme": "bearer",
+        "type": "http"
+      }
     }
   },
   "info": {
@@ -352,6 +360,7 @@
             "description": "Successful Response"
           }
         },
+        "security": [],
         "summary": "Healthcheck"
       }
     },
@@ -377,6 +386,11 @@
             "description": "Internal server error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "List Consumers",
         "tags": [
           "admin"
@@ -409,6 +423,11 @@
             "description": "Internal server error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Reset All Consumers",
         "tags": [
           "admin"
@@ -457,6 +476,11 @@
             "description": "Internal server error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Get Consumer Info",
         "tags": [
           "admin"
@@ -505,6 +529,11 @@
             "description": "Internal server error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Reset Consumer",
         "tags": [
           "admin"
@@ -566,6 +595,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Render All",
         "tags": [
           "render"
@@ -620,6 +654,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Render Batch",
         "tags": [
           "render"
@@ -692,6 +731,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Render",
         "tags": [
           "render"
@@ -714,6 +758,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Current User Info"
       }
     }

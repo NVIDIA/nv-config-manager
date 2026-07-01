@@ -26,16 +26,40 @@ from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp
 
 from nv_config_manager.common.log import configure_logging
-from nv_config_manager.mcp.auth import RequestAuthMiddleware, ServiceAuthMiddleware
-from nv_config_manager.mcp.settings import MCPSettings
+from nv_config_manager.mcp.auth import (
+    DEFAULT_MCP_UNAUTHENTICATED_PATHS,
+    RequestAuthMiddleware,
+    ServiceAuthMiddleware,
+)
+from nv_config_manager.mcp.oauth_metadata import (
+    authorization_server_metadata,
+    protected_resource_metadata,
+)
+from nv_config_manager.mcp.oauth_proxy import (
+    proxy_authorization_callback,
+    proxy_authorization_request,
+    proxy_token_request,
+)
+from nv_config_manager.mcp.settings import (
+    AUTHORIZATION_SERVER_METADATA_PATH,
+    OAUTH_AUTHORIZE_PATH,
+    OAUTH_CALLBACK_PATH,
+    OAUTH_TOKEN_PATH,
+    MCPOAuthSettings,
+    MCPSettings,
+)
 from nv_config_manager.mcp.tools import register_tools
 
 configure_logging(service="mcp")
 
 
-def create_mcp_server(settings: MCPSettings | None = None) -> FastMCP:
+def create_mcp_server(
+    settings: MCPSettings | None = None,
+    oauth_settings: MCPOAuthSettings | None = None,
+) -> FastMCP:
     """Create the FastMCP server and register tools."""
     resolved_settings = settings or MCPSettings.from_config()
+    resolved_oauth_settings = oauth_settings or MCPOAuthSettings.from_config()
     server = FastMCP(
         "nvidia-config-manager-mcp",
         instructions=(
@@ -60,15 +84,95 @@ def create_mcp_server(settings: MCPSettings | None = None) -> FastMCP:
     async def metrics(request: Request) -> Response:
         return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
+    if resolved_oauth_settings.enabled:
+        _register_oauth_metadata_routes(server, resolved_oauth_settings)
+
     register_tools(server, resolved_settings)
     return server
 
 
-def create_app(settings: MCPSettings | None = None) -> ASGIApp:
+def create_app(
+    settings: MCPSettings | None = None,
+    oauth_settings: MCPOAuthSettings | None = None,
+) -> ASGIApp:
     """Create the ASGI application for Streamable HTTP MCP."""
+    resolved_oauth_settings = oauth_settings or MCPOAuthSettings.from_config()
+    unauthenticated_paths = DEFAULT_MCP_UNAUTHENTICATED_PATHS
+    resource_metadata_url = ""
+    if resolved_oauth_settings.enabled:
+        resource_metadata_url = resolved_oauth_settings.resource_metadata_url
+        unauthenticated_paths = (
+            unauthenticated_paths
+            | resolved_oauth_settings.well_known_paths
+            | resolved_oauth_settings.oauth_proxy_paths
+        )
     return ServiceAuthMiddleware(
-        RequestAuthMiddleware(create_mcp_server(settings).streamable_http_app())
+        RequestAuthMiddleware(
+            create_mcp_server(settings, resolved_oauth_settings).streamable_http_app()
+        ),
+        unauthenticated_paths=unauthenticated_paths,
+        resource_metadata_url=resource_metadata_url,
     )
+
+
+def _register_oauth_metadata_routes(server: FastMCP, settings: MCPOAuthSettings) -> None:
+    async def oauth_protected_resource_metadata(
+        request: Request,
+    ) -> JSONResponse | Response:
+        if request.method == "OPTIONS":
+            return Response(status_code=204)
+        return JSONResponse(
+            protected_resource_metadata(settings),
+            headers={"Cache-Control": "no-store"},
+        )
+
+    for metadata_path in settings.well_known_paths - {AUTHORIZATION_SERVER_METADATA_PATH}:
+        server.custom_route(
+            metadata_path,
+            methods=["GET", "OPTIONS"],
+            include_in_schema=False,
+        )(oauth_protected_resource_metadata)
+
+    @server.custom_route(
+        AUTHORIZATION_SERVER_METADATA_PATH,
+        methods=["GET", "OPTIONS"],
+        include_in_schema=False,
+    )
+    async def oauth_authorization_server_metadata(
+        request: Request,
+    ) -> JSONResponse | Response:
+        if request.method == "OPTIONS":
+            return Response(status_code=204)
+        return JSONResponse(
+            authorization_server_metadata(settings),
+            headers={"Cache-Control": "no-store"},
+        )
+
+    if not settings.forward_resource_parameter:
+
+        @server.custom_route(
+            OAUTH_AUTHORIZE_PATH,
+            methods=["GET"],
+            include_in_schema=False,
+        )
+        async def oauth_authorize_proxy(request: Request) -> Response:
+            return await proxy_authorization_request(request, settings)
+
+        @server.custom_route(
+            OAUTH_CALLBACK_PATH,
+            methods=["GET"],
+            include_in_schema=False,
+        )
+        async def oauth_callback_proxy(request: Request) -> Response:
+            return await proxy_authorization_callback(request)
+
+        @server.custom_route(
+            OAUTH_TOKEN_PATH,
+            methods=["POST"],
+            include_in_schema=False,
+        )
+        async def oauth_token_proxy(request: Request) -> Response:
+            return await proxy_token_request(request, settings)
 
 
 def main() -> None:

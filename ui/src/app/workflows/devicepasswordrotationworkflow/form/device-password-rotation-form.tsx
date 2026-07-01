@@ -62,7 +62,12 @@ export default function DevicePasswordRotationForm() {
   
   // Get devices filtered by site
   const site = form.watch("site");
-  const filterParams = site ? [["site", site]] : [];
+  const filterParams = site
+    ? [
+        ["site", site],
+        ["managed_only", "true"],
+      ]
+    : [];
   const { devices } = useDevices({
     site,
     filterParams: filterParams
@@ -135,7 +140,7 @@ export default function DevicePasswordRotationForm() {
   return (
     <Card className="w-full max-w-4xl mx-auto">
       <CardHeader>
-        <CardTitle>Device Password Rotation Workflow</CardTitle>
+        <CardTitle>New Device Password Rotation Workflow</CardTitle>
       </CardHeader>
       <CardContent>
         <Form {...form}>

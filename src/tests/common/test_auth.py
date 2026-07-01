@@ -297,6 +297,34 @@ class TestInstallIdentityProbe:
         assert resp.status_code == 200
         assert resp.json() == {"user": "anonymous"}
 
+    def test_openapi_describes_default_bearer_auth_and_public_paths(self):
+        schema = self._make_app().openapi()
+
+        assert schema["components"]["securitySchemes"]["BearerAuth"] == {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT",
+            "description": auth_mod.OPENAPI_BEARER_DESCRIPTION,
+        }
+        assert "security" not in schema
+        assert schema["paths"]["/healthcheck"]["get"]["security"] == []
+        assert schema["paths"]["/protected"]["get"]["security"] == [{"BearerAuth": []}]
+
+    def test_openapi_marks_deferred_device_auth_as_optional_bearer(self):
+        app = FastAPI()
+
+        @app.get("/v1/device/{device_id}")
+        async def device(device_id: str):
+            return {"device_id": device_id}
+
+        install_identity_probe(app, deferred_auth_prefixes=("/v1/device/",))
+        schema = app.openapi()
+
+        assert schema["paths"]["/v1/device/{device_id}"]["get"]["security"] == [
+            {"BearerAuth": []},
+            {},
+        ]
+
 
 # ── JWKS URI derivation tests ────────────────────────────────────────────
 

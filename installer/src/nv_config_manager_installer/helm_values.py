@@ -444,7 +444,7 @@ def _build_gateway(config: NVConfigManagerInstallConfig) -> dict[str, Any]:
     gateway: dict[str, Any] = {
         "enabled": True,
         "baseHostname": config.cluster.hostname,
-        "createGatewayClass": True,
+        "createGatewayClass": config.infrastructure.create_gateway_class,
         "certificates": {"enabled": config.infrastructure.tls},
     }
     if config.infrastructure.tls:
@@ -878,8 +878,10 @@ def build_values(
     values["rbac"] = _build_rbac(config)
     values["configStore"] = {"enabled": svc.config_store, "client": {"useInternalEndpoint": True}}
     has_nautobot = svc.nautobot or bool(svc.external_nautobot_url)
+    mcp_forward_resource = config.sso.provider != SSOProvider.AZURE
     values["mcp"] = {
         "enabled": has_nautobot and svc.temporal and svc.config_store and svc.dhcp,
+        "auth": {"oauth": {"forwardResourceParameter": mcp_forward_resource}},
     }
     values["nautobot"] = _build_nautobot(config)
 

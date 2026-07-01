@@ -425,7 +425,7 @@ async def test_spx_overlay_deletion_workflow(
                 "name": "delete_spx_overlay",
                 "output": {
                     "deleted_vrfs": [],
-                    "display": "No VRFs exist for Overlay ID mock_overlay_id",
+                    "display": "Deleted overlay mock_overlay_id",
                     "in_use_vrfs": [],
                 },
                 "rejecters": [],

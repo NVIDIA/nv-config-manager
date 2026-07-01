@@ -20,11 +20,11 @@ import logging
 import re
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
-from nv_config_manager.temporal.client.nautobot import NautobotClient
+from nv_config_manager.temporal.client.nautobot import NautobotClient, NautobotException
 from nv_config_manager.temporal.common.mixins.stage import StageOutput
 
 log = logging.getLogger(__name__)
@@ -33,8 +33,39 @@ PLUGIN_BASE = "plugins/overlays"
 ISOLATION_TYPE_IB_PKEY = "ib_pkey"
 DEFAULT_STATUS_NAME = "Active"
 
+DEFAULT_MEMBERSHIP_TYPE = "full"
+_VALID_MEMBERSHIP_TYPES = frozenset({"full", "limited"})
+
 _IPV4_PATTERN = re.compile(r"^\d{1,3}(\.\d{1,3}){3}$")
 _PKEY_PATTERN = re.compile(r"^0[xX][0-9a-fA-F]{1,4}$")
+
+
+def normalize_membership_type(membership_type: object) -> str:
+    """Normalize membership to 'full'/'limited'.
+
+    None or a blank string defaults to 'full'; any other type or value raises ValueError.
+    """
+    if membership_type is None:
+        return DEFAULT_MEMBERSHIP_TYPE
+    if not isinstance(membership_type, str):
+        raise ValueError("membership_type must be 'full' or 'limited'")
+    normalized = membership_type.strip().lower()
+    if not normalized:
+        return DEFAULT_MEMBERSHIP_TYPE
+    if normalized not in _VALID_MEMBERSHIP_TYPES:
+        raise ValueError("membership_type must be 'full' or 'limited'")
+    return normalized
+
+
+def _normalize_membership_override(value: object) -> str | None:
+    """Normalize an optional per-port membership override; blank/None stays None."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError("membership must be 'full' or 'limited'")
+    if not value.strip():
+        return None
+    return normalize_membership_type(value)
 
 
 class CreatePartitionInNautobotInput(BaseModel):
@@ -133,25 +164,41 @@ class RecordIBPKeyInNautobotOutput(StageOutput):
 
 
 class InterfaceRef(BaseModel):
-    """A device/interface name pair used to look up an interface in Nautobot."""
+    """A device/interface name pair used to look up an interface in Nautobot.
+
+    ``membership`` is an optional per-port override ("full"/"limited"); when unset
+    the caller's workflow-level default is applied.
+    """
 
     device: str
     interface: str
+    membership: str | None = None
+
+    @field_validator("membership", mode="before")
+    @classmethod
+    def _normalize_membership(cls, v: object) -> str | None:
+        return _normalize_membership_override(v)
 
 
 class ResolvedInterface(BaseModel):
-    """An interface that has been resolved to its Nautobot UUID and IB GUID."""
+    """An interface that has been resolved to its Nautobot UUID and IB GUID.
+
+    ``membership`` is the effective membership for this port (per-port override
+    if supplied, otherwise the workflow default).
+    """
 
     device: str
     interface: str
     interface_id: str
     guid: str
+    membership: str = DEFAULT_MEMBERSHIP_TYPE
 
 
 class ResolveInterfaceGuidsInput(BaseModel):
     """Device/interface pairs to resolve into GUIDs."""
 
     interfaces: list[InterfaceRef]
+    default_membership: str = DEFAULT_MEMBERSHIP_TYPE
 
 
 class ResolveInterfaceGuidsOutput(StageOutput):
@@ -161,9 +208,15 @@ class ResolveInterfaceGuidsOutput(StageOutput):
 
 
 class ResolveGuidsToInterfacesInput(BaseModel):
-    """A list of IB GUIDs to resolve back to Nautobot interface records."""
+    """A list of IB GUIDs to resolve back to Nautobot interface records.
+
+    ``guid_memberships`` is an optional per-GUID membership list index-aligned
+    with ``guids``; any GUID without an entry falls back to ``default_membership``.
+    """
 
     guids: list[str]
+    default_membership: str = DEFAULT_MEMBERSHIP_TYPE
+    guid_memberships: list[str] | None = None
 
 
 class ResolveGuidsToInterfacesOutput(StageOutput):
@@ -316,6 +369,7 @@ class CurrentAssignment(BaseModel):
     assignment_id: str
     interface_id: str
     guid: str
+    membership_type: str = DEFAULT_MEMBERSHIP_TYPE
 
 
 class FetchPKeyAssignmentsInput(BaseModel):
@@ -398,6 +452,7 @@ async def resolve_interface_guids(
                     interface=ref.interface,
                     interface_id=iface["id"],
                     guid=guid,
+                    membership=ref.membership or input.default_membership,
                 )
             )
             log.info(
@@ -428,16 +483,36 @@ query ($guids: [String]) {
 """
 
 
-def _index_resolved_interfaces(interfaces: list[dict[str, Any]]) -> dict[str, ResolvedInterface]:
-    """Group GraphQL interface results by lowercased GUID.
+def _normalize_ib_guid(guid: str) -> str:
+    """Normalize an IB GUID for matching: trim, drop an optional ``0x`` prefix, lowercase.
+
+    UFM and Nautobot store port GUIDs as bare hex (e.g. ``946dae0300598000``),
+    but users commonly enter the ``0x``-prefixed form. Normalizing both sides
+    lets either representation resolve.
+    """
+    normalized = (guid or "").strip().lower()
+    if normalized.startswith("0x"):
+        normalized = normalized[2:]
+    return normalized
+
+
+def _index_resolved_interfaces(
+    interfaces: list[dict[str, Any]],
+    default_membership: str,
+    membership_by_guid: dict[str, str] | None = None,
+) -> dict[str, ResolvedInterface]:
+    """Group GraphQL interface results by normalized GUID.
 
     Skips entries with no ``cf_ib_guid`` set. Raises ``ApplicationError`` if
-    any GUID has more than one matching interface.
+    any GUID has more than one matching interface. Each match takes its per-GUID
+    membership from ``membership_by_guid`` (keyed by normalized GUID), falling
+    back to ``default_membership``.
     """
+    membership_by_guid = membership_by_guid or {}
     grouped: dict[str, list[ResolvedInterface]] = {}
     for iface in interfaces:
         original_guid = iface.get("cf_ib_guid") or ""
-        guid_key = original_guid.lower()
+        guid_key = _normalize_ib_guid(original_guid)
         if not guid_key:
             continue
         device = (iface.get("device") or {}).get("name") or ""
@@ -447,6 +522,7 @@ def _index_resolved_interfaces(interfaces: list[dict[str, Any]]) -> dict[str, Re
                 interface=iface.get("name") or "",
                 interface_id=iface.get("id") or "",
                 guid=original_guid,
+                membership=membership_by_guid.get(guid_key, default_membership),
             )
         )
 
@@ -477,9 +553,22 @@ async def resolve_guids_to_interfaces(
             display="No GUIDs to resolve",
         )
 
-    deduped = sorted({g for g in input.guids if g})
+    deduped = sorted({_normalize_ib_guid(g) for g in input.guids if _normalize_ib_guid(g)})
     if not deduped:
         raise ApplicationError("All provided GUIDs were empty", non_retryable=True)
+
+    membership_by_guid: dict[str, str] = {}
+    if input.guid_memberships is not None:
+        if len(input.guid_memberships) != len(input.guids):
+            raise ApplicationError(
+                f"guid_memberships length ({len(input.guid_memberships)}) must match "
+                f"guids length ({len(input.guids)})",
+                non_retryable=True,
+            )
+        for guid, membership in zip(input.guids, input.guid_memberships, strict=True):
+            key = _normalize_ib_guid(guid)
+            if key:
+                membership_by_guid[key] = membership
 
     client = NautobotClient()
     async with client:
@@ -489,16 +578,16 @@ async def resolve_guids_to_interfaces(
         )
 
     interfaces = ((data.get("data") or {}).get("interfaces")) or []
-    by_guid = _index_resolved_interfaces(interfaces)
+    by_guid = _index_resolved_interfaces(interfaces, input.default_membership, membership_by_guid)
 
-    missing = [g for g in deduped if g.lower() not in by_guid]
+    missing = [g for g in deduped if g not in by_guid]
     if missing:
         raise ApplicationError(
             f"No Nautobot interface found for GUID(s): {missing}",
             non_retryable=True,
         )
 
-    resolved = [by_guid[g.lower()] for g in deduped]
+    resolved = [by_guid[g] for g in deduped]
     for r in resolved:
         log.info(
             "Resolved GUID %s → %s/%s (id=%s)",
@@ -531,13 +620,30 @@ async def record_pkey_assignments(
                 client, input.overlay_id, resolved.interface_id
             )
             if existing:
-                log.info(
-                    "OverlayAssignment for %s/%s already exists (%s), reusing",
-                    resolved.device,
-                    resolved.interface,
-                    existing["id"],
+                assignment_id = existing["id"]
+                desired_membership = normalize_membership_type(
+                    resolved.membership or input.membership_type
                 )
-                assignment_ids.append(existing["id"])
+                current_membership = normalize_membership_type(existing.get("membership_type"))
+                if desired_membership != current_membership:
+                    log.info(
+                        "Updating OverlayAssignment %s membership %s -> %s",
+                        assignment_id,
+                        current_membership,
+                        desired_membership,
+                    )
+                    await client.patch(
+                        f"{PLUGIN_BASE}/overlay-assignments/{assignment_id}/",
+                        data={"membership_type": desired_membership},
+                    )
+                else:
+                    log.info(
+                        "OverlayAssignment for %s/%s already exists (%s), reusing",
+                        resolved.device,
+                        resolved.interface,
+                        assignment_id,
+                    )
+                assignment_ids.append(assignment_id)
                 continue
 
             payload: dict[str, Any] = {
@@ -545,15 +651,16 @@ async def record_pkey_assignments(
                 "assigned_object_type": "dcim.interface",
                 "assigned_object_id": resolved.interface_id,
                 "guid": resolved.guid,
-                "membership_type": input.membership_type,
+                "membership_type": resolved.membership or input.membership_type,
                 "status": status_id,
             }
 
             log.info(
-                "Creating OverlayAssignment for %s/%s (guid=%s)",
+                "Creating OverlayAssignment for %s/%s (guid=%s, membership=%s)",
                 resolved.device,
                 resolved.interface,
                 resolved.guid,
+                payload["membership_type"],
             )
             assignment = await client.post(f"{PLUGIN_BASE}/overlay-assignments/", data=payload)
             assignment_ids.append(assignment["id"])
@@ -605,6 +712,152 @@ async def remove_pkey_assignments(
     )
 
 
+async def _delete_if_present(client: NautobotClient, path: str, *, description: str) -> None:
+    """Delete a Nautobot record, treating an already-deleted (404) record as success."""
+    try:
+        await client.delete(path)
+    except NautobotException as error:
+        if "returned 404" not in str(error):
+            raise
+        log.info("%s already absent in Nautobot; treating as cleaned", description)
+
+
+def _is_auto_created_overlay_name(overlay_name: str, pkey: str) -> bool:
+    """True when the overlay matches the member-add auto-created naming scheme.
+
+    Auto-created overlays are named ``ib-pkey-overlay-<pkey>`` and exist solely as
+    a container for one PKey with no members, so the delete workflow owns their lifecycle.
+    Operator- or VPC-owned overlays use other names and are left untouched.
+    """
+    return overlay_name == f"ib-pkey-overlay-{pkey}"
+
+
+class CleanupEmptyPartitionInput(BaseModel):
+    """Parameters for reconciling Nautobot after a PKey partition empties out.
+
+    ``ufm_partition_empty`` is the verified UFM state (404 or zero members). The
+    Nautobot PKey/Overlay are only deleted when UFM agrees the partition is
+    empty, so untracked UFM-only members can't be silently orphaned.
+    """
+
+    overlay_id: str
+    overlay_name: str
+    pkey_id: str
+    pkey: str
+    ufm_partition_empty: bool = False
+
+
+class CleanupEmptyPartitionOutput(StageOutput):
+    """Result of the post-removal Nautobot reconciliation."""
+
+    partition_empty: bool
+    pkey_deleted: bool
+    overlay_deleted: bool
+
+
+@activity.defn
+async def cleanup_empty_pkey_partition(
+    input: CleanupEmptyPartitionInput,
+) -> CleanupEmptyPartitionOutput:
+    """Delete the Nautobot InfiniBandPKey and auto-created Overlay once empty.
+
+    UFM auto-removes a PKey partition when its last member leaves.
+    After assignments are removed, this reconciles Nautobot -- but only when the
+    UFM partition is also verified empty, so UFM-only members (drift Nautobot
+    never tracked) don't get orphaned as a live partition with no Nautobot record.
+    If the overlay was auto-created and has no other PKeys, it is also deleted.
+    """
+    client = NautobotClient()
+    async with client:
+        assignments = await client.get(
+            f"{PLUGIN_BASE}/overlay-assignments/",
+            params={"overlay": input.overlay_id},
+        )
+        remaining = assignments.get("results", [])
+        if remaining:
+            return CleanupEmptyPartitionOutput(
+                partition_empty=False,
+                pkey_deleted=False,
+                overlay_deleted=False,
+                display=(
+                    f"Overlay {input.overlay_id} still has {len(remaining)} member(s); "
+                    "leaving PKey and Overlay in place"
+                ),
+            )
+
+        if not input.ufm_partition_empty:
+            log.warning(
+                "PKey %s has no Nautobot assignments but its UFM partition still has "
+                "members; leaving Nautobot PKey/Overlay in place to avoid orphaning "
+                "untracked UFM members",
+                input.pkey,
+            )
+            return CleanupEmptyPartitionOutput(
+                partition_empty=False,
+                pkey_deleted=False,
+                overlay_deleted=False,
+                display=(
+                    f"PKey {input.pkey} still has untracked members on UFM; "
+                    "leaving Nautobot PKey and Overlay in place"
+                ),
+            )
+
+        log.info(
+            "PKey partition %s (overlay=%s) is empty; deleting stale InfiniBandPKey %s",
+            input.pkey,
+            input.overlay_id,
+            input.pkey_id,
+        )
+        await _delete_if_present(
+            client,
+            f"{PLUGIN_BASE}/pkeys/{input.pkey_id}/",
+            description=f"InfiniBandPKey {input.pkey_id}",
+        )
+
+        overlay_deleted = await _delete_overlay_if_auto_created(client, input)
+
+        deleted = "InfiniBandPKey + Overlay" if overlay_deleted else "InfiniBandPKey"
+        return CleanupEmptyPartitionOutput(
+            partition_empty=True,
+            pkey_deleted=True,
+            overlay_deleted=overlay_deleted,
+            display=f"Empty PKey partition reconciled; deleted {deleted}",
+        )
+
+
+async def _delete_overlay_if_auto_created(
+    client: NautobotClient, input: CleanupEmptyPartitionInput
+) -> bool:
+    """Delete the overlay when it is auto-created and holds no remaining PKeys."""
+    if not _is_auto_created_overlay_name(input.overlay_name, input.pkey):
+        return False
+
+    pkeys = await client.get(
+        f"{PLUGIN_BASE}/pkeys/",
+        params={"overlay": input.overlay_id},
+    )
+    remaining_pkeys = pkeys.get("results", [])
+    if remaining_pkeys:
+        log.info(
+            "Auto-created overlay %s still has %d PKey(s); keeping overlay",
+            input.overlay_name,
+            len(remaining_pkeys),
+        )
+        return False
+
+    log.info(
+        "Deleting auto-created empty overlay %s (id=%s)",
+        input.overlay_name,
+        input.overlay_id,
+    )
+    await _delete_if_present(
+        client,
+        f"{PLUGIN_BASE}/overlays/{input.overlay_id}/",
+        description=f"Overlay {input.overlay_id}",
+    )
+    return True
+
+
 @activity.defn
 async def fetch_pkey_assignments(
     input: FetchPKeyAssignmentsInput,
@@ -614,16 +867,17 @@ async def fetch_pkey_assignments(
     assignments: list[CurrentAssignment] = []
 
     async with client:
-        results = await client.get(
+        results = await client.get_all(
             f"{PLUGIN_BASE}/overlay-assignments/",
             params={"overlay": input.overlay_id},
         )
-        for item in results.get("results", []):
+        for item in results:
             assignments.append(
                 CurrentAssignment(
                     assignment_id=item["id"],
                     interface_id=item.get("assigned_object_id", ""),
                     guid=item.get("guid", ""),
+                    membership_type=normalize_membership_type(item.get("membership_type")),
                 )
             )
 
@@ -655,16 +909,16 @@ async def sync_pkey_assignments(
     async with client:
         status_id = await _resolve_status_id(client)
 
-        current_results = await client.get(
+        current_items = await client.get_all(
             f"{PLUGIN_BASE}/overlay-assignments/",
             params={"overlay": input.overlay_id},
         )
-        current_items: list[dict[str, Any]] = current_results.get("results", [])
-        current_by_iface: dict[str, str] = {
-            item["assigned_object_id"]: item["id"] for item in current_items
+        current_by_iface: dict[str, dict[str, Any]] = {
+            item["assigned_object_id"]: item for item in current_items
         }
 
-        for iface_id, assignment_id in current_by_iface.items():
+        for iface_id, item in current_by_iface.items():
+            assignment_id = item["id"]
             if iface_id not in desired_by_iface:
                 log.info(
                     "Removing stale OverlayAssignment %s (interface %s)",
@@ -673,8 +927,22 @@ async def sync_pkey_assignments(
                 )
                 await client.delete(f"{PLUGIN_BASE}/overlay-assignments/{assignment_id}/")
                 removed.append(assignment_id)
-            else:
-                unchanged.append(assignment_id)
+                continue
+
+            unchanged.append(assignment_id)
+            desired_membership = desired_by_iface[iface_id].membership or input.membership_type
+            current_membership = normalize_membership_type(item.get("membership_type"))
+            if desired_membership != current_membership:
+                log.info(
+                    "Updating OverlayAssignment %s membership %s -> %s",
+                    assignment_id,
+                    current_membership,
+                    desired_membership,
+                )
+                await client.patch(
+                    f"{PLUGIN_BASE}/overlay-assignments/{assignment_id}/",
+                    data={"membership_type": desired_membership},
+                )
 
         for iface_id, resolved in desired_by_iface.items():
             if iface_id not in current_by_iface:
@@ -683,14 +951,15 @@ async def sync_pkey_assignments(
                     "assigned_object_type": "dcim.interface",
                     "assigned_object_id": iface_id,
                     "guid": resolved.guid,
-                    "membership_type": input.membership_type,
+                    "membership_type": resolved.membership or input.membership_type,
                     "status": status_id,
                 }
                 log.info(
-                    "Creating OverlayAssignment for %s/%s (guid=%s)",
+                    "Creating OverlayAssignment for %s/%s (guid=%s, membership=%s)",
                     resolved.device,
                     resolved.interface,
                     resolved.guid,
+                    payload["membership_type"],
                 )
                 new_assignment = await client.post(
                     f"{PLUGIN_BASE}/overlay-assignments/", data=payload

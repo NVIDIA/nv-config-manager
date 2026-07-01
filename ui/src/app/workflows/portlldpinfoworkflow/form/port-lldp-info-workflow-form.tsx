@@ -123,6 +123,7 @@ export const PortLLDPInfoWorkflowForm = () => {
 
   const filterParams: string[][] = [
     ["site", watchSite],
+    ["managed_only", "true"],
   ];
   const { devices: deviceData, isLoading: deviceIsLoading } = useDevices({
     site: watchSite,
@@ -289,7 +290,7 @@ export const PortLLDPInfoWorkflowForm = () => {
     <div className="flex items-center justify-center p-6">
       <Card className="h-full border-2 shadow-md justify-center">
         <CardHeader>
-          <CardTitle>Port LLDP Info Workflow Form</CardTitle>
+          <CardTitle>New Port LLDP Info Workflow</CardTitle>
         </CardHeader>
         <CardContent>
           <Form {...form}>

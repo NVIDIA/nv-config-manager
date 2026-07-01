@@ -27,7 +27,7 @@ import { runWorkflowFormTests } from "./shared/workflowFormTests";
 // Run the standard workflow form tests
 runWorkflowFormTests({
   formPath: "/workflows/switchosupgradeworkflow/form",
-  formTitle: "Switch OS Upgrade Workflow",
+  formTitle: "New Switch OS Upgrade Workflow",
   defaultPlatform: "Arista EOS", // Switch OS upgrades work primarily with Arista devices
 });
 
@@ -182,7 +182,7 @@ test.describe("Switch OS Upgrade Form - Additional Tests", () => {
     await page.getByRole("dialog").getByText(FORBIDDEN_SITE_ID).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "Switch OS Upgrade Workflow" })
+      .getByRole("heading", { name: "New Switch OS Upgrade Workflow" })
       .click();
 
     await page.getByRole("button", { name: "Device" }).click();
@@ -192,7 +192,7 @@ test.describe("Switch OS Upgrade Form - Additional Tests", () => {
       .click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "Switch OS Upgrade Workflow" })
+      .getByRole("heading", { name: "New Switch OS Upgrade Workflow" })
       .click();
 
     await page.getByRole("button", { name: "Submit" }).click();

@@ -222,7 +222,7 @@ def register_tools(server: FastMCP, settings: MCPSettings) -> None:
         device_id: str,
         file_type: str | None = "intended",
     ) -> dict[str, Any]:
-        """List configuration files for a device from Config Store."""
+        """Return a bounded response whose data is a list of Config Store files."""
         return await fetch_device_configs(settings, device_id, file_type=file_type)
 
     @server.tool()

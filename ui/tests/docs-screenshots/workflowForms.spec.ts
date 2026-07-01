@@ -30,7 +30,7 @@ const AIR_TAN_LEAF_01_ID = "air-trial-tan-leaf-01";
 const PDX_SITE = "PDX01";
 const PDX_CUMULUS_ID = "pdx01-cumulus-leaf-01";
 const PDX_MLNX_ID = "pdx01-mlx-switch-01";
-const PDX_UFM_ID = "pdx01-ufm-01";
+const UFM_DEVICE_ID = "ufm-01";
 const DEMO_VPC_ID = "vpc-demo-101";
 
 const DOC_WORKFLOW_DISPLAY_NAMES: Record<string, string> = {
@@ -51,8 +51,8 @@ const DOC_WORKFLOW_DISPLAY_NAMES: Record<string, string> = {
   InfinibandCableValidationWorkflow: "InfiniBand Cable Validation",
   InfinibandMlnxOSUpgradeWorkflow: "InfiniBand MLNX-OS Upgrade",
   ReprovisionWorkflow: "Reprovision",
-  SwitchOsUpgradeWorkflow: "Switch OS Upgrade",
-  CumulusHardwareValidationWorkflow: "Cumulus Hardware Validation",
+  SwitchOSUpgradeWorkflow: "Switch OS Upgrade",
+  ValidateHardwareWorkflow: "Cumulus Hardware Validation",
   IBPKeyCreationWorkflow: "InfiniBand PKey Creation",
   IBPKeyMemberAddWorkflow: "InfiniBand PKey Member Add",
   IBPKeyMemberUpdateWorkflow: "InfiniBand PKey Member Update",
@@ -79,8 +79,8 @@ const DOC_WORKFLOW_ENDPOINTS: Record<string, string> = {
   InfinibandCableValidationWorkflow: "/ngc/infiniband_cable_validation",
   InfinibandMlnxOSUpgradeWorkflow: "/ngc/infiniband_mlnx_os_upgrade",
   ReprovisionWorkflow: "/ngc/reprovision",
-  SwitchOsUpgradeWorkflow: "/ngc/switch_os_upgrade",
-  CumulusHardwareValidationWorkflow: "/ngc/cumulus_hardware_validation",
+  SwitchOSUpgradeWorkflow: "/ngc/switch_os_upgrade",
+  ValidateHardwareWorkflow: "/ngc/cumulus_hardware_validation",
   IBPKeyCreationWorkflow: "/ngc/ib_pkey_creation",
   IBPKeyMemberAddWorkflow: "/ngc/ib_pkey_member_add",
   IBPKeyMemberUpdateWorkflow: "/ngc/ib_pkey_member_update",
@@ -178,6 +178,10 @@ const DOC_TENANTS: ParameterOption[] = [
   { id: "TenantB", name: "TenantB" },
 ];
 
+const DOC_NAMESPACE_TAGS: ParameterOption[] = [
+  { id: "spectrumx", name: "spectrumx" },
+];
+
 const DOC_DEVICES_BY_SITE: Record<string, Device[]> = {
   [AIR_SITE]: [
     {
@@ -247,8 +251,8 @@ const DOC_DEVICES_BY_SITE: Record<string, Device[]> = {
       tenant: "TenantB",
     },
     {
-      id: PDX_UFM_ID,
-      name: "pdx01-ufm-01",
+      id: UFM_DEVICE_ID,
+      name: "ufm-01",
       platform: "UFM",
       role: "UFM",
       status: "Active",
@@ -361,31 +365,31 @@ const WORKFLOW_SCREENSHOTS: WorkflowScreenshot[] = [
     fileName: "backupworkflow-form.png",
     path: "/workflows/backupworkflow/form",
     query: AIR_DEVICE_QUERY,
-    title: "New Config Backup Workflow",
+    title: "New Configuration Backup Workflow",
   },
   {
     fileName: "connectedhostmetadataworkflow-form.png",
     path: "/workflows/connectedhostmetadataworkflow/form",
     query: AIR_DEVICE_QUERY,
-    title: "Connected Host Metadata Workflow",
+    title: "New Connected Host Metadata Workflow",
   },
   {
     fileName: "cumulushardwarevalidationworkflow-form.png",
     path: "/workflows/cumulushardwarevalidationworkflow/form",
     query: SITE_SCOPE_QUERY,
-    title: "Cumulus Hardware Validation Workflow Form",
+    title: "New Cumulus Hardware Validation Workflow",
   },
   {
     fileName: "deployworkflow-form.png",
     path: "/workflows/deployworkflow/form",
     query: AIR_DEVICE_QUERY,
-    title: "Config Deploy Workflow",
+    title: "New Configuration Deploy Workflow",
   },
   {
     fileName: "devicecablevalidationworkflow-form.png",
     path: "/workflows/devicecablevalidationworkflow/form",
     query: AIR_DEVICE_QUERY,
-    title: "Device Cable Validation Workflow",
+    title: "New Device Cable Validation Workflow",
   },
   {
     fileName: "devicepasswordrotationworkflow-form.png",
@@ -395,53 +399,53 @@ const WORKFLOW_SCREENSHOTS: WorkflowScreenshot[] = [
       selected_secret: "cumulus",
       site: AIR_SITE,
     },
-    title: "Device Password Rotation Workflow",
+    title: "New Device Password Rotation Workflow",
   },
   {
     fileName: "ibpkeycreationworkflow-form.png",
     path: "/workflows/ibpkeycreationworkflow/form",
     query: {
-      host: "ufm.pdx01.example.com",
+      host: "ufm.example.com",
       pkey: "0x8001",
     },
-    title: "InfiniBand PKey Creation Workflow",
+    title: "New InfiniBand PKey Creation Workflow",
   },
   {
     fileName: "ibpkeymemberaddworkflow-form.png",
     path: "/workflows/ibpkeymemberaddworkflow/form",
     query: {
-      host: "ufm.pdx01.example.com",
+      host: "ufm.example.com",
       pkey: "0x8001",
     },
-    title: "Add PKey Members",
+    title: "New InfiniBand PKey Member Add Workflow",
   },
   {
     fileName: "ibpkeymemberdeleteworkflow-form.png",
     path: "/workflows/ibpkeymemberdeleteworkflow/form",
     query: {
-      host: "ufm.pdx01.example.com",
+      host: "ufm.example.com",
       pkey: "0x8001",
     },
-    title: "Remove PKey Members",
+    title: "New InfiniBand PKey Member Delete Workflow",
   },
   {
     fileName: "ibpkeymemberupdateworkflow-form.png",
     path: "/workflows/ibpkeymemberupdateworkflow/form",
     query: {
-      host: "ufm.pdx01.example.com",
+      host: "ufm.example.com",
       pkey: "0x8001",
     },
-    title: "Replace PKey Membership",
+    title: "New InfiniBand PKey Member Update Workflow",
   },
   {
     fileName: "diagnosticsworkflow-form.png",
     path: "/workflows/diagnosticsworkflow/form",
-    title: "Diagnostics Workflow",
+    title: "New Device Diagnostics Workflow",
   },
   {
     fileName: "ibportguiddiscoveryworkflow-form.png",
     path: "/workflows/ibportguiddiscoveryworkflow/form",
-    title: "IB Port GUID Discovery",
+    title: "New InfiniBand Port GUID Discovery Workflow",
   },
   {
     fileName: "infinibandcablevalidationworkflow-form.png",
@@ -452,19 +456,19 @@ const WORKFLOW_SCREENSHOTS: WorkflowScreenshot[] = [
       status: "Active",
       tenant: "TenantB",
     },
-    title: "Infiniband Cable Validation Workflow Form",
+    title: "New InfiniBand Cable Validation Workflow",
   },
   {
     fileName: "infinibandgetunhealthyportsworkflow-form.png",
     path: "/workflows/infinibandgetunhealthyportsworkflow/form",
     query: PDX_MLNX_QUERY,
-    title: "IB Get Unhealthy Ports Workflow",
+    title: "New InfiniBand Get Unhealthy Ports Workflow",
   },
   {
     fileName: "infinibandmlnxosupgradeworkflow-form.png",
     path: "/workflows/infinibandmlnxosupgradeworkflow/form",
     query: PDX_MLNX_QUERY,
-    title: "IB MLNX OS Upgrade Workflow",
+    title: "New InfiniBand MLNX-OS Upgrade Workflow",
   },
   {
     fileName: "multideployworkflow-form.png",
@@ -475,24 +479,24 @@ const WORKFLOW_SCREENSHOTS: WorkflowScreenshot[] = [
       role: "TAN-HLEAF",
       status: "Provisioned",
     },
-    title: "Multi-Deploy Workflow Form",
+    title: "New Multi-Configuration Deploy Workflow",
   },
   {
     fileName: "portlldpinfoworkflow-form.png",
     path: "/workflows/portlldpinfoworkflow/form",
-    title: "Port LLDP Info Workflow Form",
+    title: "New Port LLDP Info Workflow",
   },
   {
     fileName: "reprovisionworkflow-form.png",
     path: "/workflows/reprovisionworkflow/form",
     query: AIR_DEVICE_QUERY,
-    title: "Reprovision Workflow",
+    title: "New Reprovision Workflow",
   },
   {
     fileName: "sitecablevalidationworkflow-form.png",
     path: "/workflows/sitecablevalidationworkflow/form",
     query: SITE_SCOPE_QUERY,
-    title: "New Site Cable Validation Workflow Form",
+    title: "New Site Cable Validation Workflow",
   },
   {
     fileName: "sitepasswordrotationworkflow-form.png",
@@ -504,54 +508,54 @@ const WORKFLOW_SCREENSHOTS: WorkflowScreenshot[] = [
       status: "Provisioned",
       tenant: "NGC",
     },
-    title: "Site Password Rotation Workflow",
+    title: "New Site Password Rotation Workflow",
   },
   {
     fileName: "switchosupgradeworkflow-form.png",
     path: "/workflows/switchosupgradeworkflow/form",
     query: AIR_DEVICE_QUERY,
-    title: "Switch OS Upgrade Workflow",
+    title: "New Switch OS Upgrade Workflow",
   },
   {
     fileName: "tenantdeployworkflow-form.png",
     path: "/workflows/tenantdeployworkflow/form",
     query: AIR_DEVICE_QUERY,
-    title: "Tenant Deploy Workflow",
+    title: "New Tenant Deploy Workflow",
   },
   {
-    fileName: "vpccreationworkflow-form.png",
-    path: "/workflows/vpccreationworkflow/form",
+    fileName: "spxoverlaycreationworkflow-form.png",
+    path: "/workflows/spxoverlaycreationworkflow/form",
     query: {
-      description: "Demo tenant network",
+      overlay_id: DEMO_VPC_ID,
       namespace: "spectrumx",
       rd_max: "65010",
       rd_min: "65000",
-      site: PDX_SITE,
-      vpc: DEMO_VPC_ID,
+      site: AIR_SITE,
+      tenant: "TenantB",
     },
-    title: "VPC Creation Workflow Form",
+    title: "New SpX Overlay Creation Workflow",
   },
   {
-    fileName: "vpcdeletionworkflow-form.png",
-    path: "/workflows/vpcdeletionworkflow/form",
+    fileName: "spxoverlaydeletionworkflow-form.png",
+    path: "/workflows/spxoverlaydeletionworkflow/form",
     query: {
+      overlay_id: DEMO_VPC_ID,
       namespace: "spectrumx",
-      site: PDX_SITE,
-      vpc: DEMO_VPC_ID,
+      site: AIR_SITE,
     },
-    title: "VPC Deletion Workflow Form",
+    title: "New SpX Overlay Deletion Workflow",
   },
   {
-    fileName: "vpctenantchangeworkflow-form.png",
-    path: "/workflows/vpctenantchangeworkflow/form",
+    fileName: "spxoverlaytenantchangeworkflow-form.png",
+    path: "/workflows/spxoverlaytenantchangeworkflow/form",
     query: {
-      "device-id": PDX_CUMULUS_ID,
+      "device-id": AIR_TAN_LEAF_01_ID,
+      overlay_id: DEMO_VPC_ID,
       namespace: "spectrumx",
       port_names: "swp1, swp2",
-      site: PDX_SITE,
-      vpc: DEMO_VPC_ID,
+      site: AIR_SITE,
     },
-    title: "VPC Tenant Change Workflow Form",
+    title: "New SpX Overlay Tenant Change Workflow",
   },
 ];
 
@@ -693,6 +697,10 @@ async function setupDocsMocks(page: Page): Promise<void> {
     await fulfillJson(route, DOC_TENANTS);
   });
 
+  await page.route(/.*\/v1\/parameter\/namespace-tag/, async (route) => {
+    await fulfillJson(route, DOC_NAMESPACE_TAGS);
+  });
+
   await page.route(/^.*\/v1\/parameter\/device(\?.*)?$/, async (route) => {
     const url = new URL(route.request().url());
     await fulfillJson(route, filterDevices(url));
@@ -746,6 +754,8 @@ function createDocWorkflow(fixture: DocWorkflowFixture): DocWorkflow {
 function getWorkflowListResponse(url: URL): {
   workflows: DocWorkflow[];
   next_page_token: string | null;
+  total_count: number;
+  page_count: number;
 } {
   const nextPageToken = url.searchParams.get("next_page_token");
   const page = nextPageToken ? Number(nextPageToken) : 0;
@@ -761,10 +771,18 @@ function getWorkflowListResponse(url: URL): {
   return {
     workflows: paginatedWorkflows,
     next_page_token: hasMore ? String(page + 1) : null,
+    total_count: filteredWorkflows.length,
+    page_count:
+      filteredWorkflows.length === 0
+        ? 0
+        : Math.ceil(filteredWorkflows.length / pageSize),
   };
 }
 
-function filterWorkflows(url: URL): DocWorkflow[] {
+function filterWorkflows(
+  url: URL,
+  workflows: DocWorkflow[] = DOC_WORKFLOWS
+): DocWorkflow[] {
   const searchAttributeFilters = [
     ["device_id", "DeviceID"],
     ["device_name", "DeviceName"],
@@ -774,13 +792,16 @@ function filterWorkflows(url: URL): DocWorkflow[] {
     ["user", "User"],
   ];
   const workflowType = url.searchParams.get("workflow_type");
+  const workflowId = url.searchParams.get("workflow_id");
   const status = url.searchParams.get("status");
   const pendingApproval =
     url.searchParams.get("pending_approval")?.toLowerCase() === "true";
+  const hideCompleted =
+    url.searchParams.get("hide_completed")?.toLowerCase() === "true";
   const startTimeFilter = Date.parse(url.searchParams.get("start_time") ?? "");
   const endTimeFilter = Date.parse(url.searchParams.get("end_time") ?? "");
 
-  return DOC_WORKFLOWS.filter((workflow) => {
+  return workflows.filter((workflow) => {
     const displayStatus = workflow.failed_stage
       ? "FAILED"
       : workflow.pending_approval
@@ -790,6 +811,12 @@ function filterWorkflows(url: URL): DocWorkflow[] {
     if (workflowType && workflow.workflow_type !== workflowType) {
       return false;
     }
+    if (workflowId && workflow.id !== workflowId) {
+      return false;
+    }
+    if (hideCompleted && workflow.status === "COMPLETED") {
+      return false;
+    }
 
     if (pendingApproval && !workflow.pending_approval) {
       return false;
@@ -797,22 +824,24 @@ function filterWorkflows(url: URL): DocWorkflow[] {
 
     if (
       status &&
-      displayStatus !== status &&
-      !(pendingApproval && status === "RUNNING" && workflow.pending_approval)
+      workflow.status !== status &&
+      displayStatus !== status
     ) {
       return false;
     }
 
-    if (!Number.isNaN(startTimeFilter) || !Number.isNaN(endTimeFilter)) {
+    if (!Number.isNaN(startTimeFilter)) {
       const workflowStartTime = Date.parse(workflow.start_time);
 
-      if (Number.isNaN(workflowStartTime)) {
+      if (Number.isNaN(workflowStartTime) || workflowStartTime < startTimeFilter) {
         return false;
       }
-      if (!Number.isNaN(startTimeFilter) && workflowStartTime < startTimeFilter) {
-        return false;
-      }
-      if (!Number.isNaN(endTimeFilter) && workflowStartTime > endTimeFilter) {
+    }
+
+    if (!Number.isNaN(endTimeFilter)) {
+      const workflowCloseTime = Date.parse(workflow.close_time ?? "");
+
+      if (Number.isNaN(workflowCloseTime) || workflowCloseTime > endTimeFilter) {
         return false;
       }
     }
@@ -823,9 +852,7 @@ function filterWorkflows(url: URL): DocWorkflow[] {
         return true;
       }
 
-      return getFirstSearchAttribute(workflow, attribute)
-        .toLowerCase()
-        .includes(value.toLowerCase());
+      return getFirstSearchAttribute(workflow, attribute) === value;
     });
   });
 }
@@ -833,6 +860,57 @@ function filterWorkflows(url: URL): DocWorkflow[] {
 function getFirstSearchAttribute(workflow: DocWorkflow, key: string): string {
   return String(workflow.search_attributes[key]?.[0] ?? "");
 }
+
+test.describe("workflow docs mock filtering", () => {
+  const baseFixture = {
+    deviceId: AIR_TAN_LEAF_01_ID,
+    deviceName: "tan-leaf-01",
+    devicePlatform: "Cumulus Linux",
+    deviceRole: "TAN-HLEAF",
+    pendingApproval: false,
+    site: AIR_SITE,
+    status: "COMPLETED",
+    user: "demo",
+    workflowType: "BackupWorkflow",
+  };
+
+  test("matches end-time-only filters by close time without requiring valid start time", () => {
+    const closedBeforeEnd = createDocWorkflow({
+      ...baseFixture,
+      id: "closed-before-end",
+      startTime: "not-a-date",
+      closeTime: "2026-06-08T15:51:00Z",
+    });
+    const unfinished = createDocWorkflow({
+      ...baseFixture,
+      id: "unfinished",
+      startTime: "not-a-date",
+      closeTime: null,
+    });
+    const closedAfterEnd = createDocWorkflow({
+      ...baseFixture,
+      id: "closed-after-end",
+      startTime: "not-a-date",
+      closeTime: "2026-06-08T15:53:00Z",
+    });
+
+    const endTimeOnlyUrl = new URL(
+      "https://docs.test/v1/workflow?end_time=2026-06-08T15:52:00Z"
+    );
+    expect(
+      filterWorkflows(endTimeOnlyUrl, [
+        closedBeforeEnd,
+        unfinished,
+        closedAfterEnd,
+      ]).map((workflow) => workflow.id)
+    ).toEqual(["closed-before-end"]);
+
+    const startAndEndTimeUrl = new URL(
+      "https://docs.test/v1/workflow?start_time=2026-06-08T15:00:00Z&end_time=2026-06-08T15:52:00Z"
+    );
+    expect(filterWorkflows(startAndEndTimeUrl, [closedBeforeEnd])).toEqual([]);
+  });
+});
 
 function filterDevices(url: URL): Device[] {
   const site = url.searchParams.get("site") || AIR_SITE;

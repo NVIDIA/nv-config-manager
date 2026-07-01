@@ -27,7 +27,7 @@ import { runWorkflowFormTests } from "./shared/workflowFormTests";
 // Run the standard workflow form tests
 runWorkflowFormTests({
   formPath: "/workflows/deployworkflow/form",
-  formTitle: "Deploy Workflow",
+  formTitle: "New Configuration Deploy Workflow",
   defaultPlatform: "Arista EOS", // Assuming deploy works with Arista devices
 });
 
@@ -47,7 +47,7 @@ test.describe("Deploy Config Form - Additional Tests", () => {
     await page.getByRole("button", { name: "Site" }).click();
     await page.getByRole("dialog").getByText(SITES_LIST.pdx01).click();
     // Click outside to close any dropdown that might be open
-    await page.getByRole("heading", { name: "Config Deploy Workflow" }).click();
+    await page.getByRole("heading", { name: "New Configuration Deploy Workflow" }).click();
 
     await page.getByRole("button", { name: "Device" }).click();
     await page
@@ -55,7 +55,7 @@ test.describe("Deploy Config Form - Additional Tests", () => {
       .getByText(DEVICES_LIST[SITES_LIST.pdx01][0].name)
       .click();
     // Click outside to close any dropdown that might be open
-    await page.getByRole("heading", { name: "Config Deploy Workflow" }).click();
+    await page.getByRole("heading", { name: "New Configuration Deploy Workflow" }).click();
 
     await page.getByRole("button", { name: "Submit" }).click();
 
@@ -98,14 +98,14 @@ test.describe("Deploy Config Form - Additional Tests", () => {
     await page.getByRole("button").getByText(siteName, { exact: true }).click();
     await page.getByRole("dialog").getByText(newSiteName).click();
     // Click outside to close any dropdown that might be open
-    await page.getByRole("heading", { name: "Config Deploy Workflow" }).click();
+    await page.getByRole("heading", { name: "New Configuration Deploy Workflow" }).click();
 
     // Select a new device from the new site
     const newDeviceName = DEVICES_LIST[newSiteName][0].name;
     await page.getByRole("button", { name: "Select a Device" }).click();
     await page.getByRole("dialog").getByText(newDeviceName).click();
     // Click outside to close any dropdown that might be open
-    await page.getByRole("heading", { name: "Config Deploy Workflow" }).click();
+    await page.getByRole("heading", { name: "New Configuration Deploy Workflow" }).click();
 
     // Verify the form is updated with the new values
     await expect(
@@ -193,7 +193,7 @@ test.describe("Deploy Config Form - Additional Tests", () => {
     await page.getByRole("button", { name: "Site" }).click();
     await page.getByRole("dialog").getByText(FORBIDDEN_SITE_ID).click();
     // Click outside to close any dropdown that might be open
-    await page.getByRole("heading", { name: "Config Deploy Workflow" }).click();
+    await page.getByRole("heading", { name: "New Configuration Deploy Workflow" }).click();
 
     await page.getByRole("button", { name: "Device" }).click();
     await page
@@ -201,7 +201,7 @@ test.describe("Deploy Config Form - Additional Tests", () => {
       .getByText(forbiddenDevice?.name || "")
       .click();
     // Click outside to close any dropdown that might be open
-    await page.getByRole("heading", { name: "Config Deploy Workflow" }).click();
+    await page.getByRole("heading", { name: "New Configuration Deploy Workflow" }).click();
 
     await page.getByRole("button", { name: "Submit" }).click();
 

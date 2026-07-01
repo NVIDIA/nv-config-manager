@@ -88,7 +88,7 @@ export const IBPKeyCreationWorkflowForm = () => {
     <div className="flex items-center justify-center p-6">
       <Card className="w-full max-w-3xl border-2 shadow-md">
         <CardHeader>
-          <CardTitle>InfiniBand PKey Creation Workflow</CardTitle>
+          <CardTitle>New InfiniBand PKey Creation Workflow</CardTitle>
         </CardHeader>
         <CardContent>
           <Form {...form}>

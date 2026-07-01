@@ -265,6 +265,7 @@ Configure gateway behavior, TLS, database backups, monitoring resources, and loa
 
 | Field | Description |
 | :---- | :---------- |
+| Create GatewayClass | Create the cluster-scoped `envoy-gateway` GatewayClass. Disable when a shared Envoy Gateway installation already owns it. |
 | Enable TLS | Use self-signed TLS certificates for public endpoints |
 | CNPG S3 Backup | CloudNativePG PostgreSQL backups to S3 |
 | Monitoring | PodMonitors and monitoring resources |

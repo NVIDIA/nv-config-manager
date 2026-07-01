@@ -50,6 +50,7 @@ class LoadPartialConfigurationActivityInput(BaseModel):
 
     device_data: NetworkDeviceData
     config_file: str
+    commit_id: str | None = None
 
 
 @activity.defn
@@ -59,16 +60,27 @@ async def load_partial_configuration(
     """Load the latest partial config for a device from Gitlab."""
     client = config_store_client(ConfigStoreType.INTENDED)
     async with client:
-        file = await client.load_file(
-            device_uuid=activity_input.device_data.id,
-            filename=activity_input.config_file,
-        )
+        if activity_input.commit_id is None:
+            file = await client.load_file(
+                device_uuid=activity_input.device_data.id,
+                filename=activity_input.config_file,
+            )
+            content = file.content
+            commit_id = file.commit
+        else:
+            file_data = await client.get_config_file(
+                device_uuid=activity_input.device_data.id,
+                filename=activity_input.config_file,
+                version=int(activity_input.commit_id),
+            )
+            content = str(file_data["content"])
+            commit_id = str(file_data["version"])
         url = client.file_url(
             device_uuid=activity_input.device_data.id,
             filename=activity_input.config_file,
-            version=file.commit,
+            version=commit_id,
         )
-    return file.content, file.commit, url
+    return content, commit_id, url
 
 
 class DiffActivityInput(BaseModel):

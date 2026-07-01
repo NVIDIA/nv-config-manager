@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import os
 from configparser import ConfigParser
 from dataclasses import dataclass
 from urllib.parse import urlparse
@@ -23,6 +24,13 @@ from urllib.parse import urlparse
 from nv_config_manager.common.config import load_config, parse_verify_param
 
 NAUTOBOT_AUTH_MODES = {"auto", "jwt", "token"}
+MCP_AUTH_CONFIG_ENV_VAR = "NV_CONFIG_MANAGER_MCP_AUTH_INI"
+DEFAULT_MCP_AUTH_CONFIG_PATH = "/etc/nv-config-manager/mcp-auth.ini"
+PROTECTED_RESOURCE_METADATA_PATH = "/.well-known/oauth-protected-resource"
+AUTHORIZATION_SERVER_METADATA_PATH = "/.well-known/oauth-authorization-server"
+OAUTH_AUTHORIZE_PATH = "/oauth/authorize"
+OAUTH_CALLBACK_PATH = "/oauth/callback"
+OAUTH_TOKEN_PATH = "/oauth/token"
 
 
 @dataclass(frozen=True)
@@ -67,6 +75,114 @@ class MCPSettings:
             ),
             max_response_bytes=_get_int(config, "mcp", "max_response_bytes", 100_000),
         )
+
+
+@dataclass(frozen=True)
+class MCPOAuthSettings:
+    """Public OAuth metadata advertised for remote MCP clients."""
+
+    enabled: bool
+    resource_url: str = ""
+    issuer_url: str = ""
+    client_id: str = ""
+    scopes: tuple[str, ...] = ()
+    authorization_endpoint: str = ""
+    token_endpoint: str = ""
+    jwks_uri: str = ""
+    forward_resource_parameter: bool = True
+
+    @classmethod
+    def from_config(cls, config: ConfigParser | None = None) -> MCPOAuthSettings:
+        """Resolve MCP OAuth discovery metadata from mcp-auth.ini."""
+        if config is None:
+            config = load_mcp_auth_config()
+        enabled = _get_bool(config, "mcp.oauth", "enabled", False)
+        if not enabled:
+            return cls(enabled=False)
+
+        settings = cls(
+            enabled=True,
+            resource_url=_normalized_resource_url(config),
+            issuer_url=_normalized_required_url(config, "issuer_url"),
+            client_id=_get_required(config, "mcp.oauth", "client_id").strip(),
+            scopes=_parse_scopes(_get_value(config, "mcp.oauth", "scopes", "")),
+            authorization_endpoint=_normalized_required_url(config, "authorization_endpoint"),
+            token_endpoint=_normalized_required_url(config, "token_endpoint"),
+            jwks_uri=_normalize_url(_get_value(config, "mcp.oauth", "jwks_uri", "")),
+            forward_resource_parameter=_get_bool(
+                config, "mcp.oauth", "forward_resource_parameter", True
+            ),
+        )
+        if not settings.client_id:
+            raise ValueError("Missing required MCP OAuth config value [mcp.oauth] client_id")
+        return settings
+
+    @property
+    def resource_metadata_url(self) -> str:
+        """Return the RFC 9728 protected resource metadata URL for this MCP resource."""
+        if not self.enabled or not self.resource_url:
+            return ""
+        parsed = urlparse(self.resource_url)
+        resource_path = parsed.path.rstrip("/")
+        return (
+            f"{parsed.scheme}://{parsed.netloc}/.well-known/oauth-protected-resource{resource_path}"
+        )
+
+    @property
+    def authorization_server_url(self) -> str:
+        """Return the MCP-origin authorization metadata bridge URL."""
+        if not self.enabled or not self.resource_url:
+            return ""
+        parsed = urlparse(self.resource_url)
+        return f"{parsed.scheme}://{parsed.netloc}"
+
+    @property
+    def authorization_proxy_url(self) -> str:
+        """Return the MCP-origin OAuth authorization compatibility endpoint."""
+        if not self.authorization_server_url:
+            return ""
+        return f"{self.authorization_server_url}{OAUTH_AUTHORIZE_PATH}"
+
+    @property
+    def token_proxy_url(self) -> str:
+        """Return the MCP-origin OAuth token compatibility endpoint."""
+        if not self.authorization_server_url:
+            return ""
+        return f"{self.authorization_server_url}{OAUTH_TOKEN_PATH}"
+
+    @property
+    def callback_proxy_url(self) -> str:
+        """Return the fixed upstream OAuth callback used by the compatibility proxy."""
+        if not self.authorization_server_url:
+            return ""
+        return f"{self.authorization_server_url}{OAUTH_CALLBACK_PATH}"
+
+    @property
+    def oauth_proxy_paths(self) -> frozenset[str]:
+        """Return unauthenticated OAuth proxy paths when compatibility mode is enabled."""
+        if not self.enabled or self.forward_resource_parameter:
+            return frozenset()
+        return frozenset({OAUTH_AUTHORIZE_PATH, OAUTH_CALLBACK_PATH, OAUTH_TOKEN_PATH})
+
+    @property
+    def well_known_paths(self) -> frozenset[str]:
+        """Return unauthenticated well-known metadata paths served by MCP."""
+        paths = {
+            PROTECTED_RESOURCE_METADATA_PATH,
+            AUTHORIZATION_SERVER_METADATA_PATH,
+        }
+        if self.enabled and self.resource_metadata_url:
+            metadata_path = urlparse(self.resource_metadata_url).path.rstrip("/") or "/"
+            paths.add(metadata_path)
+        return frozenset(paths)
+
+
+def load_mcp_auth_config() -> ConfigParser:
+    """Load public MCP OAuth metadata from a dedicated ConfigMap-backed INI."""
+    config = ConfigParser(interpolation=None, delimiters=("=",))
+    config_path = os.getenv(MCP_AUTH_CONFIG_ENV_VAR, DEFAULT_MCP_AUTH_CONFIG_PATH)
+    config.read(config_path)
+    return config
 
 
 def _get_value(config: ConfigParser, section: str, key: str, fallback: str) -> str:
@@ -138,3 +254,32 @@ def _looks_like_local_nautobot(nautobot_url: str) -> bool:
         or ".svc." in hostname
         or hostname.endswith(".svc.cluster.local")
     )
+
+
+def _normalize_url(value: str) -> str:
+    return value.strip().rstrip("/")
+
+
+def _normalized_required_url(config: ConfigParser, key: str) -> str:
+    value = _normalize_url(_get_required(config, "mcp.oauth", key))
+    if not value:
+        raise ValueError(f"Missing required MCP OAuth config value [mcp.oauth] {key}")
+    parsed = urlparse(value)
+    if not parsed.scheme or not parsed.netloc:
+        raise ValueError(f"Invalid MCP OAuth URL value [mcp.oauth] {key}: {value}")
+    return value
+
+
+def _normalized_resource_url(config: ConfigParser) -> str:
+    value = _normalized_required_url(config, "resource_url")
+    parsed = urlparse(value)
+    if parsed.scheme != "https" or parsed.query or parsed.fragment:
+        raise ValueError(
+            "Invalid MCP OAuth URL value [mcp.oauth] resource_url: "
+            "must use https and contain no query or fragment"
+        )
+    return value
+
+
+def _parse_scopes(value: str) -> tuple[str, ...]:
+    return tuple(scope for scope in value.replace(",", " ").split() if scope)

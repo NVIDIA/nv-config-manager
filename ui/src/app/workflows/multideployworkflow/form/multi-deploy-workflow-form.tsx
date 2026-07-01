@@ -174,7 +174,7 @@ export const MultiDeployWorkflowForm = () => {
     <div className="flex items-center justify-center p-6">
       <Card className="h-full border-2 shadow-md justify-center">
         <CardHeader>
-          <CardTitle>Multi-Deploy Workflow Form</CardTitle>
+          <CardTitle>New Multi-Configuration Deploy Workflow</CardTitle>
         </CardHeader>
         <CardContent>
           <Form {...form}>

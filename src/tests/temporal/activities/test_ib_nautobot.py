@@ -22,9 +22,13 @@ import pytest
 from aioresponses import aioresponses
 from temporalio.exceptions import ApplicationError
 
+from nv_config_manager.temporal.client.nautobot import NautobotException
 from nv_config_manager.temporal.ngc.activities.ib_nautobot import (
+    CleanupEmptyPartitionInput,
     CreatePartitionInNautobotInput,
     ResolveGuidsToInterfacesInput,
+    _is_auto_created_overlay_name,
+    cleanup_empty_pkey_partition,
     create_partition_in_nautobot,
     resolve_guids_to_interfaces,
 )
@@ -44,6 +48,7 @@ _NB_TENANTS = re.compile(rf"{re.escape(NB_API)}/tenancy/tenants/.*")
 _NB_STATUSES = re.compile(rf"{re.escape(NB_API)}/extras/statuses/.*")
 _NB_OVERLAYS = re.compile(rf"{re.escape(PLUGIN)}/overlays/.*")
 _NB_PKEYS = re.compile(rf"{re.escape(PLUGIN)}/pkeys/.*")
+_NB_ASSIGNMENTS = re.compile(rf"{re.escape(PLUGIN)}/overlay-assignments/.*")
 
 
 def _nb_config() -> ConfigParser:
@@ -248,6 +253,52 @@ class TestResolveGuidsToInterfaces:
             assert iface_ids == ["iface-1", "iface-2"]
 
     @pytest.mark.asyncio
+    async def test_per_guid_membership_applied(self, mock_nb_config):
+        with aioresponses() as m:
+            m.post(
+                _NB_GRAPHQL,
+                payload=_graphql_payload(
+                    [
+                        {
+                            "id": "iface-1",
+                            "name": "mlx5_0",
+                            "cf_ib_guid": "0002c903000e0b72",
+                            "device": {"name": "hca01"},
+                        },
+                        {
+                            "id": "iface-2",
+                            "name": "mlx5_1",
+                            "cf_ib_guid": "0002c903000e0b73",
+                            "device": {"name": "hca01"},
+                        },
+                    ]
+                ),
+            )
+
+            result = await resolve_guids_to_interfaces(
+                ResolveGuidsToInterfacesInput(
+                    guids=["0002c903000e0b72", "0002c903000e0b73"],
+                    guid_memberships=["limited", "full"],
+                )
+            )
+
+            by_guid = {r.guid: r.membership for r in result.resolved}
+            assert by_guid == {
+                "0002c903000e0b72": "limited",
+                "0002c903000e0b73": "full",
+            }
+
+    @pytest.mark.asyncio
+    async def test_misaligned_guid_memberships_raises(self, mock_nb_config):
+        with pytest.raises(ApplicationError, match="guid_memberships length"):
+            await resolve_guids_to_interfaces(
+                ResolveGuidsToInterfacesInput(
+                    guids=["0002c903000e0b72", "0002c903000e0b73"],
+                    guid_memberships=["limited"],
+                )
+            )
+
+    @pytest.mark.asyncio
     async def test_dedupes_input_guids(self, mock_nb_config):
         with aioresponses() as m:
             m.post(
@@ -336,6 +387,194 @@ class TestResolveGuidsToInterfaces:
             assert result.resolved[0].interface_id == "iface-1"
 
     @pytest.mark.asyncio
+    async def test_normalizes_0x_prefixed_input_guid(self, mock_nb_config):
+        """A user-entered ``0x``-prefixed GUID resolves against bare-hex storage."""
+        with aioresponses() as m:
+            m.post(
+                _NB_GRAPHQL,
+                payload=_graphql_payload(
+                    [
+                        {
+                            "id": "iface-1",
+                            "name": "HCA-7/1",
+                            "cf_ib_guid": "946dae0300598000",
+                            "device": {"name": "dgx-05"},
+                        }
+                    ]
+                ),
+            )
+
+            result = await resolve_guids_to_interfaces(
+                ResolveGuidsToInterfacesInput(guids=["0x946dae0300598000"])
+            )
+
+            assert len(result.resolved) == 1
+            assert result.resolved[0].interface_id == "iface-1"
+            assert result.resolved[0].guid == "946dae0300598000"
+
+            sent = next(iter(m.requests.values()))[0]
+            assert sent.kwargs["json"]["variables"]["guids"] == ["946dae0300598000"]
+
+    @pytest.mark.asyncio
+    async def test_prefixed_and_bare_guid_dedupe(self, mock_nb_config):
+        """``0x``-prefixed and bare forms of the same GUID collapse to one lookup."""
+        with aioresponses() as m:
+            m.post(
+                _NB_GRAPHQL,
+                payload=_graphql_payload(
+                    [
+                        {
+                            "id": "iface-1",
+                            "name": "HCA-7/1",
+                            "cf_ib_guid": "946dae0300598000",
+                            "device": {"name": "dgx-05"},
+                        }
+                    ]
+                ),
+            )
+
+            result = await resolve_guids_to_interfaces(
+                ResolveGuidsToInterfacesInput(
+                    guids=["0x946dae0300598000", "946dae0300598000"],
+                )
+            )
+
+            assert len(result.resolved) == 1
+            sent = next(iter(m.requests.values()))[0]
+            assert sent.kwargs["json"]["variables"]["guids"] == ["946dae0300598000"]
+
+    @pytest.mark.asyncio
     async def test_all_empty_guids_raises(self, mock_nb_config):
         with pytest.raises(ApplicationError, match="All provided GUIDs were empty"):
             await resolve_guids_to_interfaces(ResolveGuidsToInterfacesInput(guids=["", ""]))
+
+
+class TestIsAutoCreatedOverlayName:
+    """Heuristic that flags overlays the delete workflow may remove."""
+
+    def test_matches_auto_created_name(self):
+        assert _is_auto_created_overlay_name("ib-pkey-overlay-0x8001", "0x8001") is True
+
+    def test_rejects_operator_named_overlay(self):
+        assert _is_auto_created_overlay_name("my-vpc", "0x8001") is False
+
+    def test_rejects_mismatched_pkey(self):
+        assert _is_auto_created_overlay_name("ib-pkey-overlay-0x8001", "0x8002") is False
+
+
+class TestCleanupEmptyPkeyPartition:
+    """Post-removal reconciliation of orphaned Nautobot PKey/Overlay records."""
+
+    def _input(
+        self,
+        *,
+        overlay_name: str = "ib-pkey-overlay-0x8001",
+        ufm_partition_empty: bool = True,
+    ) -> CleanupEmptyPartitionInput:
+        return CleanupEmptyPartitionInput(
+            overlay_id=OVERLAY_UUID,
+            overlay_name=overlay_name,
+            pkey_id=PKEY_UUID,
+            pkey="0x8001",
+            ufm_partition_empty=ufm_partition_empty,
+        )
+
+    @pytest.mark.asyncio
+    async def test_non_empty_partition_keeps_records(self, mock_nb_config):
+        """Members remain on the overlay, so nothing is deleted."""
+        with aioresponses() as m:
+            m.get(_NB_ASSIGNMENTS, payload={"results": [{"id": "assign-1"}]})
+
+            result = await cleanup_empty_pkey_partition(self._input())
+
+            assert result.partition_empty is False
+            assert result.pkey_deleted is False
+            assert result.overlay_deleted is False
+
+    @pytest.mark.asyncio
+    async def test_nautobot_empty_but_ufm_not_empty_keeps_records(self, mock_nb_config):
+        """Nautobot has no assignments, but UFM still holds untracked members.
+
+        The partition is live on UFM, so deleting the Nautobot PKey/Overlay would
+        orphan it. Cleanup must leave both in place.
+        """
+        with aioresponses() as m:
+            m.get(_NB_ASSIGNMENTS, payload={"results": []})
+
+            result = await cleanup_empty_pkey_partition(self._input(ufm_partition_empty=False))
+
+            assert result.partition_empty is False
+            assert result.pkey_deleted is False
+            assert result.overlay_deleted is False
+
+    @pytest.mark.asyncio
+    async def test_empty_auto_created_overlay_deletes_pkey_and_overlay(self, mock_nb_config):
+        """Last member gone + auto-created overlay with no other PKeys: delete both."""
+        with aioresponses() as m:
+            m.get(_NB_ASSIGNMENTS, payload={"results": []})
+            m.delete(_NB_PKEYS, status=204)
+            m.get(_NB_PKEYS, payload={"results": []})
+            m.delete(_NB_OVERLAYS, status=204)
+
+            result = await cleanup_empty_pkey_partition(self._input())
+
+            assert result.partition_empty is True
+            assert result.pkey_deleted is True
+            assert result.overlay_deleted is True
+
+    @pytest.mark.asyncio
+    async def test_empty_operator_overlay_deletes_pkey_only(self, mock_nb_config):
+        """Operator-owned overlays are never deleted as a side effect."""
+        with aioresponses() as m:
+            m.get(_NB_ASSIGNMENTS, payload={"results": []})
+            m.delete(_NB_PKEYS, status=204)
+
+            result = await cleanup_empty_pkey_partition(self._input(overlay_name="my-vpc"))
+
+            assert result.partition_empty is True
+            assert result.pkey_deleted is True
+            assert result.overlay_deleted is False
+
+    @pytest.mark.asyncio
+    async def test_empty_auto_created_overlay_with_other_pkeys_kept(self, mock_nb_config):
+        """An auto-created overlay sharing other PKeys is kept after the PKey delete."""
+        with aioresponses() as m:
+            m.get(_NB_ASSIGNMENTS, payload={"results": []})
+            m.delete(_NB_PKEYS, status=204)
+            m.get(_NB_PKEYS, payload={"results": [{"id": "other-pkey"}]})
+
+            result = await cleanup_empty_pkey_partition(self._input())
+
+            assert result.partition_empty is True
+            assert result.pkey_deleted is True
+            assert result.overlay_deleted is False
+
+    @pytest.mark.asyncio
+    async def test_retry_tolerates_already_deleted_pkey_and_overlay(self, mock_nb_config):
+        """A retry after partial cleanup: PKey/overlay already gone (404) still finishes.
+
+        Mirrors the case where a prior attempt deleted the PKey but failed before
+        completing overlay cleanup. The retry must treat the 404s as already-cleaned
+        and still delete the auto-created overlay rather than aborting.
+        """
+        with aioresponses() as m:
+            m.get(_NB_ASSIGNMENTS, payload={"results": []})
+            m.delete(_NB_PKEYS, status=404)
+            m.get(_NB_PKEYS, payload={"results": []})
+            m.delete(_NB_OVERLAYS, status=404)
+
+            result = await cleanup_empty_pkey_partition(self._input())
+
+            assert result.partition_empty is True
+            assert result.pkey_deleted is True
+            assert result.overlay_deleted is True
+
+    @pytest.mark.asyncio
+    async def test_non_404_delete_error_still_raises(self, mock_nb_config):
+        """Non-404 delete failures are not swallowed; the activity surfaces them."""
+        with aioresponses() as m:
+            m.get(_NB_ASSIGNMENTS, payload={"results": []})
+            m.delete(_NB_PKEYS, status=500)
+
+            with pytest.raises(NautobotException):
+                await cleanup_empty_pkey_partition(self._input())

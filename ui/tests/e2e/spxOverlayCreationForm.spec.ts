@@ -27,14 +27,14 @@ const VPC_DATA = {
   rd_max: 65000,
 };
 
-test.describe("SpX Overlay Creation Workflow Form", () => {
+test.describe("New SpX Overlay Creation Workflow", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/workflows/spxoverlaycreationworkflow/form");
   });
 
   test("renders form with correct title", async ({ page }) => {
     const title = await page.getByRole("heading", {
-      name: "SpX Overlay Creation Workflow Form",
+      name: "New SpX Overlay Creation Workflow",
     });
     await expect(title).toBeVisible({ timeout: TEST_TIMEOUT });
   });
@@ -72,7 +72,7 @@ test.describe("SpX Overlay Creation Workflow Form", () => {
     await page.getByRole("dialog").getByText(SITES_LIST.pdx01).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "SpX Overlay Creation Workflow Form" })
+      .getByRole("heading", { name: "New SpX Overlay Creation Workflow" })
       .click();
 
     await page.getByLabel("Overlay ID").fill("test-overlay");
@@ -92,7 +92,7 @@ test.describe("SpX Overlay Creation Workflow Form", () => {
 });
 
 // Tests that handle their own navigation with URL parameters
-test.describe("SpX Overlay Creation Workflow Form - URL Parameters", () => {
+test.describe("New SpX Overlay Creation Workflow - URL Parameters", () => {
   test("handles URL parameters correctly and submits with those values", async ({
     page,
   }) => {
@@ -175,7 +175,7 @@ test.describe("SpX Overlay Creation Workflow Form - URL Parameters", () => {
     await page.getByRole("dialog").getByText(SITES_LIST.rno1).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "SpX Overlay Creation Workflow Form" })
+      .getByRole("heading", { name: "New SpX Overlay Creation Workflow" })
       .click();
 
     // Change the VPC ID
@@ -270,7 +270,7 @@ test.describe("SpX Overlay Creation Workflow Form - URL Parameters", () => {
 });
 
 // Tests that use beforeEach navigation
-test.describe("SpX Overlay Creation Workflow Form - Standard Tests", () => {
+test.describe("New SpX Overlay Creation Workflow - Standard Tests", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/workflows/spxoverlaycreationworkflow/form");
   });
@@ -281,7 +281,7 @@ test.describe("SpX Overlay Creation Workflow Form - Standard Tests", () => {
     await page.getByRole("dialog").getByText(SITES_LIST.pdx01).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "SpX Overlay Creation Workflow Form" })
+      .getByRole("heading", { name: "New SpX Overlay Creation Workflow" })
       .click();
 
     await page.getByLabel("Overlay ID").fill("test-overlay-submission");

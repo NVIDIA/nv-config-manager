@@ -31,10 +31,13 @@ from nv_config_manager.temporal.common.mixins.stage import (
 with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.common.mixins.archive import ArchiveMixin
     from nv_config_manager.temporal.ngc.activities.ib_nautobot import (
+        CleanupEmptyPartitionInput,
+        CleanupEmptyPartitionOutput,
         InterfaceRef,
         RemovePKeyAssignmentsInput,
         RemovePKeyAssignmentsOutput,
         ResolvedInterface,
+        cleanup_empty_pkey_partition,
         remove_pkey_assignments,
     )
     from nv_config_manager.temporal.ngc.activities.ib_pkey import (
@@ -88,6 +91,9 @@ class IBPKeyMemberDeleteOutput(BaseModel):
     verified: bool
     assignment_ids_removed: list[str]
     interface_ids_not_assigned: list[str]
+    partition_empty: bool
+    pkey_deleted: bool
+    overlay_deleted: bool
 
 
 @workflow.defn
@@ -133,6 +139,12 @@ class IBPKeyMemberDeleteWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
             requires_approval=False,
             depends_on=["verify_removed"],
         )
+        self.define_stage(
+            name="cleanup_partition",
+            description="Delete the Nautobot PKey/Overlay if the partition is now empty",
+            requires_approval=False,
+            depends_on=["remove_assignments"],
+        )
 
     # ------------------------------------------------------------------
     # Stage 0: Resolve site / overlay / canonical pkey from Nautobot
@@ -151,6 +163,7 @@ class IBPKeyMemberDeleteWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
         site: str
         pkey: str
         overlay_id: str
+        pkey_id: str
         ufm_device_id: str
         location_id: str
         overlay_name: str
@@ -167,6 +180,7 @@ class IBPKeyMemberDeleteWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
             site=resolved.location_name,
             pkey=resolved.pkey,
             overlay_id=resolved.overlay_id,
+            pkey_id=resolved.pkey_id,
             ufm_device_id=resolved.ufm_device_id,
             location_id=resolved.location_id,
             overlay_name=resolved.overlay_name,
@@ -254,6 +268,7 @@ class IBPKeyMemberDeleteWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
 
         pkey: str
         verified: bool
+        partition_empty: bool
 
     @stage_executor("verify_removed")
     async def verify_removed(
@@ -271,9 +286,16 @@ class IBPKeyMemberDeleteWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
             start_to_close_timeout=timedelta(minutes=2),
             retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
         )
+        if not result.partition_exists:
+            partition_empty = True
+        elif result.remaining_member_count is None:
+            partition_empty = False
+        else:
+            partition_empty = result.remaining_member_count == 0
         return self.VerifyRemovedStageOutput(
             pkey=result.pkey,
             verified=result.verified,
+            partition_empty=partition_empty,
             display=result.display,
         )
 
@@ -310,6 +332,53 @@ class IBPKeyMemberDeleteWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
         return self.RemoveAssignmentsStageOutput(
             assignment_ids_removed=result.assignment_ids_removed,
             interface_ids_not_assigned=result.interface_ids_not_assigned,
+            display=result.display,
+        )
+
+    # ------------------------------------------------------------------
+    # Stage 5: Reconcile Nautobot when the partition is now empty
+    # ------------------------------------------------------------------
+
+    class CleanupPartitionStageInput(StageInput):
+        """Cleanup Partition Stage Input."""
+
+        overlay_id: str
+        overlay_name: str
+        pkey_id: str
+        pkey: str
+        ufm_partition_empty: bool
+
+    class CleanupPartitionStageOutput(StageOutput):
+        """Cleanup Partition Stage Output."""
+
+        partition_empty: bool
+        pkey_deleted: bool
+        overlay_deleted: bool
+
+    @stage_executor("cleanup_partition")
+    async def cleanup_partition(
+        self, stage_input: CleanupPartitionStageInput
+    ) -> CleanupPartitionStageOutput:
+        """Delete the Nautobot PKey/Overlay when the partition has no members left.
+
+        Mirrors UFM, which auto-removes a PKey once its last member leaves.
+        """
+        result: CleanupEmptyPartitionOutput = await workflow.execute_activity(
+            cleanup_empty_pkey_partition,
+            CleanupEmptyPartitionInput(
+                overlay_id=stage_input.overlay_id,
+                overlay_name=stage_input.overlay_name,
+                pkey_id=stage_input.pkey_id,
+                pkey=stage_input.pkey,
+                ufm_partition_empty=stage_input.ufm_partition_empty,
+            ),
+            start_to_close_timeout=timedelta(minutes=2),
+            retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+        )
+        return self.CleanupPartitionStageOutput(
+            partition_empty=result.partition_empty,
+            pkey_deleted=result.pkey_deleted,
+            overlay_deleted=result.overlay_deleted,
             display=result.display,
         )
 
@@ -366,6 +435,16 @@ class IBPKeyMemberDeleteWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
             )
         )
 
+        cleanup_output = await self.cleanup_partition(
+            self.CleanupPartitionStageInput(
+                overlay_id=context.overlay_id,
+                overlay_name=context.overlay_name,
+                pkey_id=context.pkey_id,
+                pkey=context.pkey,
+                ufm_partition_empty=verify_output.partition_empty,
+            )
+        )
+
         await self.archive_results()
         return IBPKeyMemberDeleteOutput(
             pkey=verify_output.pkey,
@@ -375,4 +454,7 @@ class IBPKeyMemberDeleteWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
             verified=verify_output.verified,
             assignment_ids_removed=assignments_output.assignment_ids_removed,
             interface_ids_not_assigned=assignments_output.interface_ids_not_assigned,
+            partition_empty=cleanup_output.partition_empty,
+            pkey_deleted=cleanup_output.pkey_deleted,
+            overlay_deleted=cleanup_output.overlay_deleted,
         )

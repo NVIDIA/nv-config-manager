@@ -27,7 +27,7 @@ import { runWorkflowFormTests } from "./shared/workflowFormTests";
 // Run the standard workflow form tests
 runWorkflowFormTests({
   formPath: "/workflows/infinibandgetunhealthyportsworkflow/form",
-  formTitle: "IB Get Unhealthy Ports Workflow",
+  formTitle: "New InfiniBand Get Unhealthy Ports Workflow",
   deviceFilter: (devices) =>
     devices.find((d) => d.platform === "UFM") || devices[0],
   forbiddenFilter: (devices) =>
@@ -35,7 +35,7 @@ runWorkflowFormTests({
     devices[0],
 });
 
-// Add additional tests specific to the IB Get Unhealthy Ports Workflow
+// Add additional tests specific to the New InfiniBand Get Unhealthy Ports Workflow
 test.describe("IB Validation Form - Additional Tests", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/workflows/infinibandgetunhealthyportsworkflow/form");
@@ -47,7 +47,7 @@ test.describe("IB Validation Form - Additional Tests", () => {
     await page.getByRole("dialog").getByText(SITES_LIST.pdx01).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "IB Get Unhealthy Ports Workflow" })
+      .getByRole("heading", { name: "New InfiniBand Get Unhealthy Ports Workflow" })
       .click();
 
     // Open the device dropdown
@@ -73,7 +73,7 @@ test.describe("IB Validation Form - Additional Tests", () => {
 
     // Close the dropdown
     await page
-      .getByRole("heading", { name: "IB Get Unhealthy Ports Workflow" })
+      .getByRole("heading", { name: "New InfiniBand Get Unhealthy Ports Workflow" })
       .click();
   });
 
@@ -97,14 +97,14 @@ test.describe("IB Validation Form - Additional Tests", () => {
     await page.getByRole("dialog").getByText(site).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "IB Get Unhealthy Ports Workflow" })
+      .getByRole("heading", { name: "New InfiniBand Get Unhealthy Ports Workflow" })
       .click();
 
     await page.getByRole("button", { name: "Device" }).click();
     await page.getByRole("dialog").getByText(ufmDevice.name).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "IB Get Unhealthy Ports Workflow" })
+      .getByRole("heading", { name: "New InfiniBand Get Unhealthy Ports Workflow" })
       .click();
 
     await page.getByRole("button", { name: "Submit" }).click();
@@ -163,7 +163,7 @@ test.describe("IB Validation Form - Additional Tests", () => {
     await page.getByRole("dialog").getByText(newSite).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "IB Get Unhealthy Ports Workflow" })
+      .getByRole("heading", { name: "New InfiniBand Get Unhealthy Ports Workflow" })
       .click();
 
     // Select a new device from the new site
@@ -171,7 +171,7 @@ test.describe("IB Validation Form - Additional Tests", () => {
     await page.getByRole("dialog").getByText(newDevice.name).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "IB Get Unhealthy Ports Workflow" })
+      .getByRole("heading", { name: "New InfiniBand Get Unhealthy Ports Workflow" })
       .click();
 
     // Verify the form is updated with the new values
@@ -275,7 +275,7 @@ test.describe("IB Validation Form - Additional Tests", () => {
     await page.getByRole("dialog").getByText(SITES_LIST.pdx01).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "IB Get Unhealthy Ports Workflow" })
+      .getByRole("heading", { name: "New InfiniBand Get Unhealthy Ports Workflow" })
       .click();
 
     // Select device
@@ -286,7 +286,7 @@ test.describe("IB Validation Form - Additional Tests", () => {
     await page.getByRole("dialog").getByText(ufmDevices[0].name).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "IB Get Unhealthy Ports Workflow" })
+      .getByRole("heading", { name: "New InfiniBand Get Unhealthy Ports Workflow" })
       .click();
 
     // Verify device is selected
@@ -299,7 +299,7 @@ test.describe("IB Validation Form - Additional Tests", () => {
     await page.getByRole("dialog").getByText(SITES_LIST.rno1).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "IB Get Unhealthy Ports Workflow" })
+      .getByRole("heading", { name: "New InfiniBand Get Unhealthy Ports Workflow" })
       .click();
 
     // Verify device field has been cleared
@@ -321,14 +321,14 @@ test.describe("IB Validation Form - Additional Tests", () => {
     await page.getByRole("dialog").getByText(site).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "IB Get Unhealthy Ports Workflow" })
+      .getByRole("heading", { name: "New InfiniBand Get Unhealthy Ports Workflow" })
       .click();
 
     await page.getByRole("button", { name: "Device" }).click();
     await page.getByRole("dialog").getByText(ufmDevice.name).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "IB Get Unhealthy Ports Workflow" })
+      .getByRole("heading", { name: "New InfiniBand Get Unhealthy Ports Workflow" })
       .click();
 
     await page.getByRole("button", { name: "Submit" }).click();
@@ -360,7 +360,7 @@ test.describe("IB Validation Form - Additional Tests", () => {
     await page.getByRole("dialog").getByText(forbiddenDevice.name).click();
     // Click outside to close any dropdown that might be open
     await page
-      .getByRole("heading", { name: "IB Get Unhealthy Ports Workflow" })
+      .getByRole("heading", { name: "New InfiniBand Get Unhealthy Ports Workflow" })
       .click();
 
     await page.getByRole("button", { name: "Submit" }).click();

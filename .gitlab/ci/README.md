@@ -109,8 +109,16 @@ charts or updating downstream values.
 | `NVCM_CONTAINER_SCAN_POLICY_FILE` | URL-encoded scan policy file path |
 | `NVCM_CONTAINER_SCAN_POLICY_REF` | Ref for the scan policy file, usually `main` |
 | `SONAR_HOST_URL` | SonarQube URL |
-| `SONAR_TOKEN` | Token used for SonarQube analysis and report export |
-| `NVCM_SONAR_PROJECT_KEY` | SonarQube project key |
+| `SONAR_TOKEN` | Token authorized to analyze the SonarQube project and export its report |
+| `NVCM_SONAR_PROJECT_KEY` | SonarQube project key; configure as a protected CI/CD variable |
+
+SonarQube runs on every mirrored default-branch commit as an informational,
+post-merge report. Both Sonar jobs intentionally use `allow_failure: true` and
+do not gate upstream code. The default-branch Python test jobs run before every
+scan so all configured coverage reports are available; the scanner skips an
+analysis rather than replacing valid dashboard coverage with 0% if an expected
+artifact is missing. Generated Go API clients under `bindings/go/` are excluded
+from Sonar analysis.
 
 ## Downstream Deployments
 

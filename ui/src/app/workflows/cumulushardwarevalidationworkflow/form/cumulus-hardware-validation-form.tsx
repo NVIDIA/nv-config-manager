@@ -141,7 +141,7 @@ export const CumulusHardwareValidationWorkflowForm = () => {
     <div className="flex items-center justify-center p-6">
       <Card className="h-full border-2 shadow-md justify-center">
         <CardHeader>
-          <CardTitle>Cumulus Hardware Validation Workflow Form</CardTitle>
+          <CardTitle>New Cumulus Hardware Validation Workflow</CardTitle>
         </CardHeader>
         <CardContent>
           <Form {...form}>

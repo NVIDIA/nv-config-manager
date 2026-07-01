@@ -17,7 +17,7 @@
 import { expect } from "@playwright/test";
 import { test, TEST_TIMEOUT, WORKFLOW_DETAILS_TIMEOUT } from "./shared/utils";
 
-const FORM_TITLE = "Add PKey Members";
+const FORM_TITLE = "New InfiniBand PKey Member Add Workflow";
 const FORM_PATH = "/workflows/ibpkeymemberaddworkflow/form";
 const ENDPOINT = "/v1/workflow/ngc/ib_pkey_member_add";
 
@@ -59,6 +59,19 @@ test.describe("IB PKey Member Add Form", () => {
     ).toBeVisible({ timeout: TEST_TIMEOUT });
   });
 
+  test("requires a membership type per interface row", async ({ page }) => {
+    await page.getByLabel("UFM Host").fill("ufm-1.lab");
+    await page.getByLabel("PKey").fill("0x8001");
+    await page.getByPlaceholder("device (e.g. hca01)").fill("hca01");
+    await page.getByPlaceholder("interface (e.g. mlx5_0)").fill("mlx5_0");
+
+    await page.getByRole("button", { name: "Add Members" }).click();
+
+    await expect(page.getByText("Select a membership type")).toBeVisible({
+      timeout: TEST_TIMEOUT,
+    });
+  });
+
   test("submits with interfaces (happy path)", async ({ page }) => {
     const requestPromise = page.waitForRequest((r) =>
       r.url().includes(ENDPOINT),
@@ -69,6 +82,9 @@ test.describe("IB PKey Member Add Form", () => {
     await page.getByPlaceholder("device (e.g. hca01)").fill("hca01");
     await page.getByPlaceholder("interface (e.g. mlx5_0)").fill("mlx5_0");
 
+    await page.getByLabel("Membership for interface row 1").click();
+    await page.getByRole("option", { name: "full" }).click();
+
     await page.getByRole("button", { name: "Add Members" }).click();
 
     const request = await requestPromise;
@@ -76,8 +92,7 @@ test.describe("IB PKey Member Add Form", () => {
     expect(body).toEqual({
       host: "ufm-1.lab",
       pkey: "0x8001",
-      interfaces: [{ device: "hca01", interface: "mlx5_0" }],
-      membership_type: "full",
+      interfaces: [{ device: "hca01", interface: "mlx5_0", membership: "full" }],
     });
 
     await expect(
@@ -85,7 +100,7 @@ test.describe("IB PKey Member Add Form", () => {
     ).toBeVisible({ timeout: WORKFLOW_DETAILS_TIMEOUT });
   });
 
-  test("switches to GUIDs mode, disables interface inputs, and submits guids", async ({
+  test("switches to GUIDs mode, disables interface inputs, and submits per-GUID membership", async ({
     page,
   }) => {
     const requestPromise = page.waitForRequest((r) =>
@@ -97,13 +112,17 @@ test.describe("IB PKey Member Add Form", () => {
 
     await page.getByLabel("By GUIDs").click();
 
-    await expect(
-      page.getByPlaceholder("device (e.g. hca01)"),
-    ).toHaveCount(0);
+    await expect(page.getByPlaceholder("device (e.g. hca01)")).toHaveCount(0);
 
-    await page
-      .getByRole("textbox", { name: "GUIDs" })
-      .fill(`${GUID_A}\n${GUID_B}`);
+    await page.getByLabel("GUID 1").fill(GUID_A);
+    await page.getByLabel("Membership for GUID row 1").click();
+    await page.getByRole("option", { name: "limited" }).click();
+
+    await page.getByRole("button", { name: "Add Row" }).click();
+    await page.getByLabel("GUID 2").fill(GUID_B);
+    await page.getByLabel("Membership for GUID row 2").click();
+    await page.getByRole("option", { name: "full" }).click();
+
     await page.getByRole("button", { name: "Add Members" }).click();
 
     const request = await requestPromise;
@@ -112,15 +131,26 @@ test.describe("IB PKey Member Add Form", () => {
       host: "ufm-1.lab",
       pkey: "0x8001",
       guids: [GUID_A, GUID_B],
-      membership_type: "full",
+      guid_memberships: ["limited", "full"],
     });
+  });
+
+  test("first GUID row starts empty after switching modes", async ({
+    page,
+  }) => {
+    await page.getByLabel("By GUIDs").click();
+    const guid = page.getByLabel("GUID 1");
+    await expect(guid).toBeVisible({ timeout: TEST_TIMEOUT });
+    // Regression: the interfaces array used to bleed into this field and render
+    // as "[object Object]", hiding the placeholder.
+    await expect(guid).toHaveValue("");
   });
 
   test("rejects malformed guids inline", async ({ page }) => {
     await page.getByLabel("UFM Host").fill("ufm-1.lab");
     await page.getByLabel("PKey").fill("0x8001");
     await page.getByLabel("By GUIDs").click();
-    await page.getByRole("textbox", { name: "GUIDs" }).fill("0xnope");
+    await page.getByLabel("GUID 1").fill("0xnope");
     await page.getByRole("button", { name: "Add Members" }).click();
 
     await expect(page.getByText(/Invalid GUID/i)).toBeVisible({

@@ -25,9 +25,7 @@ import {
   ColumnFiltersState,
   flexRender,
   getCoreRowModel,
-  getFilteredRowModel,
   getPaginationRowModel,
-  getSortedRowModel,
   RowData,
   Table as TanstackTable,
   VisibilityState,
@@ -111,6 +109,7 @@ const setStoredWorkflowPageSize = (pageSize: number) => {
 };
 
 const workflowApiFilterParams: Record<string, string> = {
+  id: "workflow_id",
   search_attributes_DeviceID: "device_id",
   search_attributes_DeviceName: "device_name",
   search_attributes_DevicePlatform: "device_platform",
@@ -121,6 +120,9 @@ const workflowApiFilterParams: Record<string, string> = {
   workflow_type: "workflow_type",
 };
 
+const normalizeWorkflowStatusFilterValue = (value: string): string =>
+  value.trim().replaceAll("-", "_").replaceAll(" ", "_").toUpperCase();
+
 const getWorkflowApiFilterString = (columnFilters: ColumnFiltersState): string => {
   const params = new URLSearchParams();
 
@@ -130,11 +132,14 @@ const getWorkflowApiFilterString = (columnFilters: ColumnFiltersState): string =
     const apiParam = workflowApiFilterParams[columnId];
 
     if (apiParam && value) {
-      if (columnId == "status" && value == WORKFLOW_STATUS.pending_approval) {
+      const apiValue =
+        columnId == "status" ? normalizeWorkflowStatusFilterValue(value) : value;
+
+      if (columnId == "status" && apiValue == WORKFLOW_STATUS.pending_approval) {
         params.set("status", WORKFLOW_STATUS.running);
         params.set("pending_approval", "true");
       } else {
-        params.set(apiParam, value);
+        params.set(apiParam, apiValue);
       }
     }
   });
@@ -193,6 +198,46 @@ const getIsoFromDateTimeParts = (
   return date.toISOString();
 };
 
+const getWorkflowRouteFilterString = ({
+  columnFilters,
+  hideCompleted,
+  workflowEndClock,
+  workflowEndDate,
+  workflowStartClock,
+  workflowStartDate,
+}: {
+  columnFilters: ColumnFiltersState;
+  hideCompleted: boolean;
+  workflowEndClock: string;
+  workflowEndDate: string;
+  workflowStartClock: string;
+  workflowStartDate: string;
+}): string => {
+  const params = new URLSearchParams(getWorkflowApiFilterString(columnFilters));
+  const startTime = getIsoFromDateTimeParts(
+    workflowStartDate,
+    workflowStartClock,
+    "00:00"
+  );
+  const endTime = getIsoFromDateTimeParts(
+    workflowEndDate,
+    workflowEndClock,
+    "23:59"
+  );
+
+  if (startTime) {
+    params.set("start_time", startTime);
+  }
+  if (endTime) {
+    params.set("end_time", endTime);
+  }
+  if (hideCompleted) {
+    params.set("hidecompleted", "true");
+  }
+
+  return params.toString();
+};
+
 const getColumnFiltersFromSearchParams = (
   searchParams: { get: (name: string) => string | null } | null
 ): ColumnFiltersState => {
@@ -206,18 +251,22 @@ const getColumnFiltersFromSearchParams = (
   return Object.entries(workflowApiFilterParams).reduce<ColumnFiltersState>(
     (filters, [columnId, apiParam]) => {
       const value = searchParams.get(apiParam);
+      const filterValue =
+        columnId == "status" && value
+          ? normalizeWorkflowStatusFilterValue(value)
+          : value;
 
       if (
         columnId == "status" &&
         pendingApprovalFilter &&
-        (!value || value == WORKFLOW_STATUS.running)
+        (!filterValue || filterValue == WORKFLOW_STATUS.running)
       ) {
         filters.push({ id: columnId, value: WORKFLOW_STATUS.pending_approval });
         return filters;
       }
 
-      if (value) {
-        filters.push({ id: columnId, value });
+      if (filterValue) {
+        filters.push({ id: columnId, value: filterValue });
       }
       return filters;
     },
@@ -329,6 +378,8 @@ export function DataTable<TData, TValue>({ columns }: DataTableProps<TData, TVal
     () => searchParams?.toString() ?? "",
     [searchParams]
   );
+  const [appliedSearchParamString, setAppliedSearchParamString] =
+    React.useState(searchParamString);
 
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
     () => getColumnFiltersFromSearchParams(searchParams)
@@ -349,7 +400,9 @@ export function DataTable<TData, TValue>({ columns }: DataTableProps<TData, TVal
     defaultColumnVisibility
   );
   const [isHideCompletedChecked, setIsHideCompletedChecked] =
-    React.useState<boolean>(false);
+    React.useState<boolean>(
+      () => searchParams?.get("hidecompleted")?.toLowerCase() == "true"
+    );
 
   const { refreshPaused, setRefreshPaused } = useHeaderContext();
   const [pendingPageIndex, setPendingPageIndex] = React.useState<number | null>(
@@ -378,15 +431,38 @@ export function DataTable<TData, TValue>({ columns }: DataTableProps<TData, TVal
     if (endTime) {
       params.set("end_time", endTime);
     }
+    if (isHideCompletedChecked) {
+      params.set("hide_completed", "true");
+    }
 
     return params.toString();
   }, [
     columnFilters,
+    isHideCompletedChecked,
     workflowEndClock,
     workflowEndDate,
     workflowStartClock,
     workflowStartDate,
   ]);
+  const routeFilterString = React.useMemo(
+    () =>
+      getWorkflowRouteFilterString({
+        columnFilters,
+        hideCompleted: isHideCompletedChecked,
+        workflowEndClock,
+        workflowEndDate,
+        workflowStartClock,
+        workflowStartDate,
+      }),
+    [
+      columnFilters,
+      isHideCompletedChecked,
+      workflowEndClock,
+      workflowEndDate,
+      workflowStartClock,
+      workflowStartDate,
+    ]
+  );
 
   const getWorkflowPageKey = React.useCallback(
     (
@@ -443,12 +519,7 @@ export function DataTable<TData, TValue>({ columns }: DataTableProps<TData, TVal
     setIsHideCompletedChecked(queryParam == "true");
   }, [searchParams]);
 
-  const tableData = React.useMemo(() => {
-    if (!isHideCompletedChecked) {
-      return workflowData;
-    }
-    return workflowData.filter((workflow) => workflow.status != WORKFLOW_STATUS.completed);
-  }, [isHideCompletedChecked, workflowData]);
+  const tableData = workflowData;
 
   const resetWorkflowFetchState = React.useCallback(() => {
     setPendingPageIndex(null);
@@ -486,12 +557,11 @@ export function DataTable<TData, TValue>({ columns }: DataTableProps<TData, TVal
       pagination,
     },
     autoResetPageIndex: false,
+    enableSorting: false,
     onColumnVisibilityChange: setColumnVisibility,
     onPaginationChange: setPagination,
     onColumnFiltersChange: handleColumnFiltersChange,
     getCoreRowModel: getCoreRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    getSortedRowModel: getSortedRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
   });
 
@@ -509,6 +579,7 @@ export function DataTable<TData, TValue>({ columns }: DataTableProps<TData, TVal
     setWorkflowStartClock(nextStartTime.time);
     setWorkflowEndDate(nextEndTime.date);
     setWorkflowEndClock(nextEndTime.time);
+    setAppliedSearchParamString(searchParamString);
 
     setColumnFilters((currentFilters) => {
       if (areColumnFiltersEqual(currentFilters, nextFilters)) {
@@ -520,13 +591,34 @@ export function DataTable<TData, TValue>({ columns }: DataTableProps<TData, TVal
   }, [searchParamString]);
 
   React.useEffect(() => {
+    if (appliedSearchParamString != searchParamString) {
+      return;
+    }
+    if (searchParamString == routeFilterString) {
+      return;
+    }
+
+    router.replace(
+      routeFilterString ? `${pathname}?${routeFilterString}` : pathname,
+      { scroll: false }
+    );
+  }, [
+    appliedSearchParamString,
+    pathname,
+    routeFilterString,
+    router,
+    searchParamString,
+  ]);
+
+  React.useEffect(() => {
     if (!didMountFilters.current) {
       didMountFilters.current = true;
       return;
     }
 
     resetWorkflowFetchState();
-  }, [apiFilterString, resetWorkflowFetchState]);
+    void mutate();
+  }, [apiFilterString, mutate, resetWorkflowFetchState]);
 
   React.useEffect(() => {
     if (
@@ -578,6 +670,17 @@ export function DataTable<TData, TValue>({ columns }: DataTableProps<TData, TVal
   const hasLoadedNextPage =
     tableData.length > nextPageIndex * pagination.pageSize;
   const hasNextPage = hasMoreData || hasLoadedNextPage;
+  const totalWorkflowCount = lastWorkflowPage?.total_count ?? tableData.length;
+  const totalPageCount =
+    lastWorkflowPage?.page_count ??
+    (hasNextPage ? nextPageIndex + 1 : pagination.pageIndex + 1);
+  const pageLabel =
+    totalPageCount === 0
+      ? "Page 0 of 0"
+      : `Page ${table.getState().pagination.pageIndex + 1} of ${totalPageCount}`;
+  const workflowCountLabel = `${totalWorkflowCount.toLocaleString()} ${
+    totalWorkflowCount === 1 ? "workflow" : "workflows"
+  }`;
 
   const handleNextPage = () => {
     if (hasLoadedNextPage) {
@@ -784,10 +887,10 @@ export function DataTable<TData, TValue>({ columns }: DataTableProps<TData, TVal
 
           <div className="flex flex-grow flex-col items-center text-center">
             <div className="text-sm font-medium">
-              Page {table.getState().pagination.pageIndex + 1}
+              {pageLabel}
             </div>
             <div className="text-xs text-muted-foreground">
-              {hasNextPage ? "More pages available" : "End of results"}
+              {workflowCountLabel}
             </div>
           </div>
 

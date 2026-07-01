@@ -934,7 +934,7 @@ oidc:
   clientSecretName: "oidc-client-secret"
   # OIDC scopes to request
   # Default: ["openid", "email", "profile"]
-  # For Azure AD JWT access tokens, use: ["api://{client-id}/.default", "openid", "profile"]
+  # For Azure AD JWT access tokens, use: ["openid", "email", "profile", "api://{client-id}/access"]
   scopes: []
   # Token audiences for JWT validation
   # Default: uses clientId as audience
@@ -1909,6 +1909,36 @@ mcp:
       paths:
         - /healthcheck
         - /metrics
+        - /.well-known/oauth-protected-resource
+        - /.well-known/oauth-protected-resource/mcp
+        - /.well-known/oauth-authorization-server
+        - /oauth/authorize
+        - /oauth/callback
+        - /oauth/token
+  auth:
+    oauth:
+      # Defaults to oidc.enabled when unset. Set false to disable MCP OAuth
+      # discovery metadata even when OIDC is enabled.
+      # enabled: true
+      # Defaults to https://<svc-mcp-hostname>/mcp
+      resourceUrl: ""
+      # Forward RFC 8707 resource parameters to the upstream authorization server.
+      # Set false for Entra v2 applications whose immutable Application ID URI differs
+      # from resourceUrl; MCP will proxy OAuth requests, omit resource upstream, and
+      # use https://<svc-mcp-hostname>/oauth/callback as the fixed redirect URI.
+      forwardResourceParameter: true
+      # Defaults to oidc.issuerUrl.
+      issuerUrl: ""
+      # Defaults to oidc.cliClientId, then oidc.clientId.
+      clientId: ""
+      # Defaults to oidc.scopes, or openid email profile when oidc.scopes is empty.
+      scopes: []
+      # Defaults to oidc.authorizationEndpoint, or {issuerUrl}/protocol/openid-connect/auth.
+      authorizationEndpoint: ""
+      # Defaults to oidc.tokenEndpoint, or {issuerUrl}/protocol/openid-connect/token.
+      tokenEndpoint: ""
+      # Defaults to oidc.jwksUri when set. Optional for OAuth discovery clients.
+      jwksUri: ""
   api:
     replicas: 2
     resources:

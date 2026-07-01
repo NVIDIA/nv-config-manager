@@ -30,6 +30,7 @@ export const useDevicesHandlers = [
       // Process all filter parameters
       url.searchParams.forEach((value, key) => {
         if (key === "site") return; // Already handled above
+        if (key === "managed_only") return; // Membership flag, not a device field
 
         // Filter devices based on the parameter
         devices = devices.filter((device) => {

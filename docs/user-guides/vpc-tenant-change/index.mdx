@@ -32,7 +32,6 @@ Before running, confirm:
 | **Overlay ID** | The overlay to apply to the device. | Yes |
 | **Device** | The target device. | Yes |
 | **Port Names (comma-separated)** | Interface names on the device to bind to the overlay's VRF (comma-separated list). Already-assigned ports are skipped. | Yes |
-| **Namespace** | Tag used to identify the overlay namespace in Nautobot. | No |
 
 After submission, a status page shows the five stages. The workflow runs without human approval.
 
@@ -69,7 +68,7 @@ After the workflow reports success, confirm:
 - **`vrf_assigned`, `assigned_ports`, and `vrf`** in the result reflect the change you intended.
 - **`device_deployed`** is the device name when a deploy actually ran; `null` when the no-op short-circuit fired.
 - **Nautobot shows the VRF on the device and ports.**
-- **Nautobot overlays plugin** shows the Overlay with the device assignment recorded.
+- **Nautobot overlays plugin** shows the Overlay with assignments for the device and each named interface.
 
 ## Common issues
 

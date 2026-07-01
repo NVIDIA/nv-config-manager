@@ -50,6 +50,7 @@ from nv_config_manager_installer.schema import (
     ImagePullSecret,
     ImagesConfig,
     ImageSource,
+    InfrastructureConfig,
     JobPath,
     JobsConfig,
     K8sSecretGroup,
@@ -118,10 +119,15 @@ def _stub_kube_context_helpers():
     * ``pin_kubeconfig_to_current_context()`` — Deployer.run() calls this
       first thing to materialize a single-context kubeconfig under /tmp. We
       don't want tests touching the host filesystem or invoking kubectl.
+    * ``_gateway_class_helm_owner()`` — helm install checks whether an
+      existing GatewayClass belongs to another Helm release. Most deployer
+      tests are not exercising that cluster probe and should not require
+      kubectl to be installed.
 
-    Pin both: the context helper returns the same value the mock K8sClient
-    advertises; the pinning helper is a no-op (returns None, deployer just
-    logs a warning and proceeds).
+    Pin these boundaries: the context helper returns the same value the mock
+    K8sClient advertises; the pinning helper is a no-op (returns None,
+    deployer just logs a warning and proceeds); the GatewayClass helper
+    behaves as though the resource is absent.
     """
     with (
         patch(
@@ -130,6 +136,10 @@ def _stub_kube_context_helpers():
         ),
         patch(
             "nv_config_manager_installer.deployer.pin_kubeconfig_to_current_context",
+            return_value=None,
+        ),
+        patch(
+            "nv_config_manager_installer.deployer._gateway_class_helm_owner",
             return_value=None,
         ),
     ):
@@ -186,6 +196,58 @@ class TestDeployerInit:
         deployer = Deployer(config, DeployOptions())
         ids = [s.id for s in deployer.steps]
         assert len(ids) == len(set(ids))
+
+
+class TestGatewayClassReuse:
+    @patch(
+        "nv_config_manager_installer.deployer._gateway_class_helm_owner",
+        return_value=("kiwi-platform", "kiwi"),
+    )
+    def test_reuses_gateway_class_owned_by_another_release(self, mock_owner):
+        config = _make_config()
+        callback = RecordingCallback()
+        deployer = Deployer(config, DeployOptions(), callback)
+
+        assert deployer._should_reuse_existing_gateway_class() is True
+        assert any("gateway.createGatewayClass=false" in line for line in callback.logs)
+        mock_owner.assert_called_once_with()
+
+    @patch(
+        "nv_config_manager_installer.deployer._gateway_class_helm_owner",
+        return_value=("nv-config-manager", "nv-config-manager"),
+    )
+    def test_keeps_gateway_class_when_owned_by_current_release(self, mock_owner):
+        config = _make_config()
+        callback = RecordingCallback()
+        deployer = Deployer(config, DeployOptions(), callback)
+
+        assert deployer._should_reuse_existing_gateway_class() is False
+        assert callback.logs == []
+        mock_owner.assert_called_once_with()
+
+    @patch("nv_config_manager_installer.deployer._gateway_class_helm_owner", return_value=None)
+    def test_keeps_gateway_class_when_absent(self, mock_owner):
+        config = _make_config()
+        callback = RecordingCallback()
+        deployer = Deployer(config, DeployOptions(), callback)
+
+        assert deployer._should_reuse_existing_gateway_class() is False
+        assert callback.logs == []
+        mock_owner.assert_called_once_with()
+
+    @patch(
+        "nv_config_manager_installer.deployer._gateway_class_helm_owner",
+        return_value=("kiwi-platform", "kiwi"),
+    )
+    def test_keeps_gateway_class_when_creation_disabled_in_config(self, mock_owner):
+        config = _make_config()
+        config.infrastructure = InfrastructureConfig(create_gateway_class=False)
+        callback = RecordingCallback()
+        deployer = Deployer(config, DeployOptions(), callback)
+
+        assert deployer._should_reuse_existing_gateway_class() is False
+        assert callback.logs == []
+        mock_owner.assert_not_called()
 
 
 class TestStepSequencing:

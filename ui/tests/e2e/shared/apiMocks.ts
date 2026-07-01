@@ -1025,6 +1025,9 @@ export async function mockDevicesEndpoint(page: Page) {
     // Process all filter parameters
     url.searchParams.forEach((value, key) => {
       if (key === "site") return; // Already handled above
+      // Mock devices are all NVCM-managed; managed_only does not map to a
+      // device field, so skip it instead of filtering everything out.
+      if (key === "managed_only") return;
 
       // Filter devices based on the parameter
       devices = devices.filter((device) => {
@@ -1110,8 +1113,8 @@ export async function mockWorkflowTypesEndpoint(page: Page) {
     "InfinibandCableValidationWorkflow",
     "InfinibandMlnxOSUpgradeWorkflow",
     "ReprovisionWorkflow",
-    "SwitchOsUpgradeWorkflow",
-    "CumulusHardwareValidationWorkflow",
+    "SwitchOSUpgradeWorkflow",
+    "ValidateHardwareWorkflow",
     "DiagnosticsWorkflow",
     "IBPortGuidDiscoveryWorkflow",
   ];
@@ -1147,8 +1150,8 @@ export async function mockWorkflowMetadataEndpoint(page: Page) {
     "InfinibandCableValidationWorkflow",
     "InfinibandMlnxOSUpgradeWorkflow",
     "ReprovisionWorkflow",
-    "SwitchOsUpgradeWorkflow",
-    "CumulusHardwareValidationWorkflow",
+    "SwitchOSUpgradeWorkflow",
+    "ValidateHardwareWorkflow",
     "DiagnosticsWorkflow",
     "IBPortGuidDiscoveryWorkflow",
   ];
@@ -1171,8 +1174,8 @@ export async function mockWorkflowMetadataEndpoint(page: Page) {
     InfinibandCableValidationWorkflow: "InfiniBand Cable Validation",
     InfinibandMlnxOSUpgradeWorkflow: "InfiniBand MLNX-OS Upgrade",
     ReprovisionWorkflow: "Reprovision",
-    SwitchOsUpgradeWorkflow: "Switch OS Upgrade",
-    CumulusHardwareValidationWorkflow: "Cumulus Hardware Validation",
+    SwitchOSUpgradeWorkflow: "Switch OS Upgrade",
+    ValidateHardwareWorkflow: "Cumulus Hardware Validation",
     DiagnosticsWorkflow: "Device Diagnostics",
     IBPortGuidDiscoveryWorkflow: "InfiniBand Port GUID Discovery",
   };
@@ -1198,8 +1201,8 @@ export async function mockWorkflowMetadataEndpoint(page: Page) {
     InfinibandCableValidationWorkflow: "/ngc/infiniband_cable_validation",
     InfinibandMlnxOSUpgradeWorkflow: "/ngc/infiniband_mlnx_os_upgrade",
     ReprovisionWorkflow: "/ngc/reprovision",
-    SwitchOsUpgradeWorkflow: "/ngc/switch_os_upgrade",
-    CumulusHardwareValidationWorkflow: "/ngc/cumulus_hardware_validation",
+    SwitchOSUpgradeWorkflow: "/ngc/switch_os_upgrade",
+    ValidateHardwareWorkflow: "/ngc/cumulus_hardware_validation",
     DiagnosticsWorkflow: "/ngc/diagnostics",
     IBPortGuidDiscoveryWorkflow: "/ngc/ib_port_guid_discovery",
   };
@@ -1243,8 +1246,11 @@ export async function mockWorkflowsListEndpoint(page: Page) {
     }
 
     const workflowType = url.searchParams.get("workflow_type");
+    const workflowId = url.searchParams.get("workflow_id");
     const nextPageToken = url.searchParams.get("next_page_token");
     const limit = url.searchParams.get("limit");
+    const hideCompleted =
+      url.searchParams.get("hide_completed")?.toLowerCase() === "true";
 
     const pageSize = limit ? parseInt(limit) : 10;
     const page = nextPageToken ? parseInt(nextPageToken) : 0;
@@ -1266,6 +1272,12 @@ export async function mockWorkflowsListEndpoint(page: Page) {
       if (workflowType && workflow.workflow_type !== workflowType) {
         return false;
       }
+      if (workflowId && workflow.id !== workflowId) {
+        return false;
+      }
+      if (hideCompleted && workflow.status === "COMPLETED") {
+        return false;
+      }
 
       const status = url.searchParams.get("status");
       const pendingApproval =
@@ -1282,8 +1294,8 @@ export async function mockWorkflowsListEndpoint(page: Page) {
       }
       if (
         status &&
-        displayStatus !== status &&
-        !(pendingApproval && status === "RUNNING" && workflow.pending_approval)
+        workflow.status !== status &&
+        displayStatus !== status
       ) {
         return false;
       }
@@ -1292,6 +1304,7 @@ export async function mockWorkflowsListEndpoint(page: Page) {
       const endTimeFilter = Date.parse(url.searchParams.get("end_time") ?? "");
       if (!Number.isNaN(startTimeFilter) || !Number.isNaN(endTimeFilter)) {
         const workflowStartTime = Date.parse(workflow.start_time);
+        const workflowCloseTime = Date.parse(workflow.close_time ?? "");
 
         if (Number.isNaN(workflowStartTime)) {
           return false;
@@ -1299,7 +1312,10 @@ export async function mockWorkflowsListEndpoint(page: Page) {
         if (!Number.isNaN(startTimeFilter) && workflowStartTime < startTimeFilter) {
           return false;
         }
-        if (!Number.isNaN(endTimeFilter) && workflowStartTime > endTimeFilter) {
+        if (!Number.isNaN(endTimeFilter) && Number.isNaN(workflowCloseTime)) {
+          return false;
+        }
+        if (!Number.isNaN(endTimeFilter) && workflowCloseTime > endTimeFilter) {
           return false;
         }
       }
@@ -1314,15 +1330,23 @@ export async function mockWorkflowsListEndpoint(page: Page) {
           string,
           Array<string | number | boolean> | undefined
         >;
-        const attributeValue = String(searchAttributes[attribute]?.[0] ?? "").toLowerCase();
-        return attributeValue.includes(value.toLowerCase());
+        const attributeValue = String(searchAttributes[attribute]?.[0] ?? "");
+        return attributeValue === value;
       });
     });
-    const paginatedWorkflows = workflows.slice(
+    const responseWorkflows =
+      url.searchParams.get("status") === "RUNNING" &&
+      !url.searchParams.has("pending_approval") &&
+      workflows.length > 0
+        ? workflows.map((workflow, index) =>
+            index === 0 ? { ...workflow, pending_approval: true } : workflow
+          )
+        : workflows;
+    const paginatedWorkflows = responseWorkflows.slice(
       page * pageSize,
       (page + 1) * pageSize
     );
-    const hasMore = (page + 1) * pageSize < workflows.length;
+    const hasMore = (page + 1) * pageSize < responseWorkflows.length;
 
     await delay(100);
 
@@ -1331,6 +1355,11 @@ export async function mockWorkflowsListEndpoint(page: Page) {
       json: {
         workflows: paginatedWorkflows,
         next_page_token: hasMore ? (page + 1).toString() : null,
+        total_count: responseWorkflows.length,
+        page_count:
+          responseWorkflows.length === 0
+            ? 0
+            : Math.ceil(responseWorkflows.length / pageSize),
       },
     });
   });
@@ -1390,7 +1419,7 @@ export async function mockHealthCheckEndpoint(page: Page) {
 const CONFIG_STORE_DEVICES = [
   {
     uuid: "device-uuid-1",
-    name: "pdx01-spine-001",
+    name: "spine-001",
     site: "PDX01",
     latest_update: new Date().toISOString(),
     latest_author: "admin",
@@ -1399,7 +1428,7 @@ const CONFIG_STORE_DEVICES = [
   },
   {
     uuid: "device-uuid-2",
-    name: "pdx01-leaf-001",
+    name: "leaf-001",
     site: "PDX01",
     latest_update: new Date(Date.now() - 3600000).toISOString(),
     latest_author: "automation",
@@ -1408,7 +1437,7 @@ const CONFIG_STORE_DEVICES = [
   },
   {
     uuid: "device-uuid-3",
-    name: "rno1-core-001",
+    name: "core-001",
     site: "RNO1",
     latest_update: new Date(Date.now() - 86400000).toISOString(),
     latest_author: "admin",
@@ -1417,7 +1446,7 @@ const CONFIG_STORE_DEVICES = [
   },
   {
     uuid: "device-uuid-4",
-    name: "pdx01-decomm-001",
+    name: "decomm-001",
     site: "PDX01",
     latest_update: new Date(Date.now() - 604800000).toISOString(),
     latest_author: "admin",
@@ -1440,11 +1469,7 @@ export async function mockConfigStoreSearchEndpoint(page: Page) {
     
     if (query) {
       const lowerQuery = query.toLowerCase();
-      results = results.filter(d => 
-        d.name.toLowerCase().includes(lowerQuery) ||
-        d.site.toLowerCase().includes(lowerQuery) ||
-        d.uuid.toLowerCase().includes(lowerQuery)
-      );
+      results = results.filter(d => d.name.toLowerCase().includes(lowerQuery));
     }
 
     await delay(100);
@@ -1493,13 +1518,13 @@ export async function mockConfigStoreDeviceConfigsEndpoint(page: Page) {
         filename: "running-config.txt",
         file_type: "intended",
         version: 3,
-        content: "! Sample running config\nhostname pdx01-spine-001\n",
+        content: "! Sample running config\nhostname spine-001\n",
         content_hash: "abc123",
         author: "admin",
         commit_message: "Updated hostname",
         created_at: new Date().toISOString(),
         device: {
-          name: "pdx01-spine-001",
+          name: "spine-001",
           site: "PDX01",
           platform: "Cumulus Linux",
           role: "spine",
@@ -1548,13 +1573,13 @@ export async function mockConfigStoreConfigFileEndpoint(page: Page) {
       filename: "running-config.txt",
       file_type: "intended",
       version: 3,
-      content: "! Sample running config\nhostname pdx01-spine-001\ninterface eth0\n  ip address 10.0.0.1/24\n",
+      content: "! Sample running config\nhostname spine-001\ninterface eth0\n  ip address 10.0.0.1/24\n",
       content_hash: "abc123",
       author: "admin",
       commit_message: "Updated hostname",
       created_at: new Date().toISOString(),
       device: {
-        name: "pdx01-spine-001",
+        name: "spine-001",
         site: "PDX01",
         platform: "Cumulus Linux",
         role: "spine",

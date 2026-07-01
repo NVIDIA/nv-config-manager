@@ -25,7 +25,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form } from "@/components/ui/form";
 import { useToast } from "@/components/ui/use-toast";
-import { useEnvData } from "@/hooks";
+import { useEnvData, useNamespaceTags } from "@/hooks";
 import { WorkflowFormField } from "@/components/forms/formfield";
 import { startWorkflow } from "@/lib/utils";
 import { SpXOverlayDeletionWorkflowInput } from "@/types/data-table.types";
@@ -33,7 +33,7 @@ import { SpXOverlayDeletionWorkflowInput } from "@/types/data-table.types";
 const SpXOverlayDeletionFormSchema = z.object({
   site: z.string().trim().min(1, { message: "Site is required" }),
   overlay_id: z.string().trim().min(1, { message: "Overlay ID is required" }),
-  namespace: z.string().trim().min(1, { message: "Namespace is required" }),
+  namespace_tag: z.string().trim().min(1, { message: "Namespace Tag is required" }),
 });
 
 export const SpXOverlayDeletionWorkflowForm = () => {
@@ -42,8 +42,10 @@ export const SpXOverlayDeletionWorkflowForm = () => {
   const searchParams = useSearchParams();
   const querySite = (searchParams && searchParams.get("site")) || "";
   const queryOverlayId = (searchParams && searchParams.get("overlay_id")) || "";
-  const queryNamespace =
-    (searchParams && searchParams.get("namespace")) || "spectrumx";
+  const queryNamespaceTag =
+    (searchParams &&
+      (searchParams.get("namespace_tag") || searchParams.get("namespace"))) ||
+    "spectrumx";
   const {
     data: { siteData: sites },
     isLoading: { siteIsLoading },
@@ -54,9 +56,15 @@ export const SpXOverlayDeletionWorkflowForm = () => {
     defaultValues: {
       site: querySite,
       overlay_id: queryOverlayId,
-      namespace: queryNamespace,
+      namespace_tag: queryNamespaceTag,
     },
   });
+  const selectedSite = form.watch("site");
+  const {
+    namespaceTags,
+    hasLoaded: namespaceTagsHasLoaded,
+    isLoading: namespaceTagsIsLoading,
+  } = useNamespaceTags(selectedSite);
 
   useEffect(() => {
     if (!siteIsLoading && sites && querySite) {
@@ -72,12 +80,24 @@ export const SpXOverlayDeletionWorkflowForm = () => {
     }
   }, [sites, querySite, siteIsLoading, form]);
 
+  useEffect(() => {
+    if (!namespaceTagsHasLoaded || namespaceTagsIsLoading) return;
+
+    const namespaceTag = form.getValues("namespace_tag");
+    const namespaceTagExists = namespaceTags.some(
+      (tag) => tag.value === namespaceTag
+    );
+    if (namespaceTag && !namespaceTagExists) {
+      form.setValue("namespace_tag", "", { shouldValidate: true });
+    }
+  }, [namespaceTags, namespaceTagsHasLoaded, namespaceTagsIsLoading, form]);
+
   const onSubmit = async (data: z.infer<typeof SpXOverlayDeletionFormSchema>) => {
     setIsSubmitting(true);
     const submissionData: SpXOverlayDeletionWorkflowInput = {
       site: data.site,
       overlay_id: data.overlay_id,
-      namespace_tag: data.namespace,
+      namespace_tag: data.namespace_tag,
     };
     await startWorkflow(
       "/v1/workflow/ngc/spx_overlay_deletion",
@@ -96,7 +116,7 @@ export const SpXOverlayDeletionWorkflowForm = () => {
     <div className="flex items-center justify-center p-6">
       <Card className="h-full border-2 shadow-md justify-center">
         <CardHeader>
-          <CardTitle>SpX Overlay Deletion Workflow Form</CardTitle>
+          <CardTitle>New SpX Overlay Deletion Workflow</CardTitle>
         </CardHeader>
         <CardContent>
           <Form {...form}>
@@ -118,11 +138,14 @@ export const SpXOverlayDeletionWorkflowForm = () => {
                 isSubmitting={isSubmitting}
               />
               <WorkflowFormField
-                type="input"
+                type="select"
                 control={form.control}
-                name="namespace"
-                label="Namespace"
+                name="namespace_tag"
+                label="Namespace Tag"
+                options={namespaceTags}
+                isLoading={namespaceTagsIsLoading}
                 isSubmitting={isSubmitting}
+                searchable
               />
               <Button type="submit" disabled={isSubmitting}>
                 {isSubmitting ? "Submitting..." : "Submit"}

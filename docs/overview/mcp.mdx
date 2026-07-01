@@ -10,7 +10,7 @@ Use MCP when you want an assistant or other MCP-capable client to answer operati
 
 ## Quick Setup
 
-There are two supported ways to discover the MCP connection details.
+There are three supported ways to connect to the MCP server.
 
 ### Use the helper CLI
 
@@ -37,6 +37,129 @@ nvcm-mcp-cli token -H config-manager.example.com
 
 For local development environments that use a self-signed certificate, add `-k`.
 
+### Use client-native OAuth
+
+Remote MCP clients with native OAuth support can authenticate directly against the MCP endpoint when SSO is enabled. The MCP service exposes standard OAuth discovery metadata at the MCP host under `/.well-known/`.
+
+The OAuth client ID is required. Config Manager does not support OAuth Dynamic Client Registration, so the client must be configured with the public/native OIDC client ID from the Config Manager auth discovery endpoint.
+
+Get the client ID and MCP URL from `/auth/discovery`:
+
+```sh
+DISCOVERY_JSON=$(curl -fsS https://config-manager.example.com/auth/discovery)
+
+CLIENT_ID=$(printf '%s' "$DISCOVERY_JSON" | jq -r '.clientId')
+MCP_URL=$(printf '%s' "$DISCOVERY_JSON" | jq -r '.services.mcp')
+```
+
+The response includes the same fields directly:
+
+```json
+{
+  "authRequired": true,
+  "issuerUrl": "https://idp.example.com/realms/nv-config-manager",
+  "clientId": "nv-config-manager-cli",
+  "scopes": ["openid", "profile", "email"],
+  "services": {
+    "mcp": "https://svc-mcp.config-manager.example.com/mcp"
+  }
+}
+```
+
+For Codex, add the Streamable HTTP MCP server with the client ID, then log in:
+
+```sh
+codex mcp add nv-config-manager \
+  --url "$MCP_URL" \
+  --oauth-client-id "$CLIENT_ID"
+
+codex mcp login nv-config-manager
+```
+
+For Claude Code, add the HTTP MCP server with the same client ID:
+
+```sh
+claude mcp add --transport http \
+  --client-id "$CLIENT_ID" \
+  nv-config-manager "$MCP_URL"
+```
+
+If your identity provider requires a pre-registered localhost callback URI, also pass `--callback-port <port>` and register `http://localhost:<port>/callback` with the client.
+
+After adding the server, run `/mcp` in Claude Code and select Authenticate. Claude Code should discover the MCP OAuth metadata from the remote endpoint and print or open the browser login URL.
+
+For other MCP clients, configure:
+
+| Setting | Value |
+| :------ | :---- |
+| Transport | Streamable HTTP |
+| URL | `https://svc-mcp.<hostname>/mcp`, or the endpoint from `/auth/discovery` |
+| OAuth flow | Authorization Code with PKCE |
+| Client ID | Required; use `clientId` from `/auth/discovery` |
+
+Clients that expect OAuth Dynamic Client Registration and do not let you provide a client ID cannot complete the native OAuth flow. Use the `nvcm-mcp-cli` helper and bearer-token configuration for those clients.
+
+#### Provider examples
+
+<AccordionGroup>
+  <Accordion title="Keycloak">
+    Keep the default Helm setting:
+
+    ```yaml
+    mcp:
+      auth:
+        oauth:
+          forwardResourceParameter: true
+    ```
+
+    The MCP protected-resource metadata advertises the HTTPS MCP endpoint as `resource` and the
+    Keycloak realm as its authorization server. OAuth requests go directly to Keycloak, including
+    the RFC 8707 `resource` parameter supplied by the MCP client.
+
+    Create a public/native Keycloak client for MCP clients and allow its loopback redirect URIs.
+    DCR-oriented MCP CLIs can use a redirect URI with an ephemeral port and per-login path:
+
+    ```text
+    http://127.0.0.1:<port>/callback/<login-id>
+    ```
+
+    Configure an appropriate Keycloak redirect URI pattern, such as `http://127.0.0.1:*`, and
+    pass the preconfigured client ID when adding the server.
+  </Accordion>
+
+  <Accordion title="Microsoft Entra ID">
+    Microsoft Entra ID v2 can reject a token request when the RFC 8707 `resource` parameter
+    contains the HTTPS MCP resource while the requested API scopes use a different Application ID
+    URI, such as `api://<application-id>`. Use the MCP compatibility bridge for this configuration:
+
+    ```yaml
+    mcp:
+      auth:
+        oauth:
+          forwardResourceParameter: false
+    ```
+
+    The compatibility bridge preserves the RFC 9728 metadata contract: `resource` remains the
+    HTTPS MCP endpoint. It advertises OAuth endpoints on the MCP origin, removes `resource` before
+    forwarding authorization and token requests to Entra, and leaves the configured API scopes
+    unchanged.
+
+    DCR-oriented MCP CLIs can generate a different loopback callback path for each login. The
+    bridge presents one fixed HTTPS callback to Entra, then relays the authorization response to
+    the MCP CLI's loopback listener while preserving OAuth state and PKCE. Register this exact
+    redirect URI on the Entra public client:
+
+    ```text
+    https://svc-mcp.<hostname>/oauth/callback
+    ```
+
+    Add the server with the preconfigured Entra public-client ID and without `--oauth-resource`.
+    The callback relay accepts loopback callbacks using `127.0.0.1`, an explicit port, and a
+    `/callback/<login-id>` path. Other native MCP clients should use the direct provider pattern
+    unless their callback format is supported by the bridge.
+  </Accordion>
+</AccordionGroup>
+
 ### Use discovery directly
 
 You can also tell an MCP-capable assistant or client to discover the server details from:
@@ -47,9 +170,7 @@ https://config-manager.example.com/auth/discovery
 
 For example:
 
-```text
-Connect to the NVIDIA Config Manager MCP server. Discover the MCP endpoint and auth details from https://config-manager.example.com/auth/discovery. Do not start a local MCP server.
-```
+> Connect to the NVIDIA Config Manager MCP server. Discover the MCP endpoint and auth details from `https://config-manager.example.com/auth/discovery`. Do not start a local MCP server.
 
 The discovery response tells the client which remote MCP endpoint to use and whether bearer authentication is required. In SSO-enabled environments, the MCP tools act with the signed-in user's bearer token. They do not switch to broader service credentials for Config Manager APIs.
 
@@ -61,7 +182,8 @@ Use these settings when configuring a client manually:
 | :------ | :---- |
 | Transport | Streamable HTTP |
 | URL | Use `nvcm-mcp-cli endpoint -H <hostname>` or the endpoint from `/auth/discovery` |
-| Authentication | Use bearer authentication only when discovery or the helper says it is required |
+| Authentication | Use client-native OAuth with an explicit client ID, or use bearer authentication when discovery or the helper says it is required |
+| OAuth client ID | Required for client-native OAuth; use `clientId` from `/auth/discovery` |
 
 When bearer authentication is required, prefer an environment variable or the client's secret storage instead of writing tokens into static configuration files.
 
@@ -109,4 +231,8 @@ For the best results, connect both MCP servers: use the deployment MCP server fo
 - The bearer token represents the signed-in user.
 - MCP tools use the caller's access for Config Manager APIs.
 - External Nautobot deployments may use a configured read-only Nautobot token for MCP Nautobot queries.
+- OAuth discovery metadata does not register clients. Native OAuth MCP clients must use a preconfigured public/native OIDC client ID.
+- Native OAuth MCP clients should not use an OIDC client secret.
+- Protected-resource metadata always advertises the HTTPS MCP endpoint as its RFC 9728 `resource`.
+- Entra compatibility mode changes upstream request forwarding, not the resource advertised in metadata.
 - Token values should be treated as secrets and kept out of documentation, logs, and committed configuration.

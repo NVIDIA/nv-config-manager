@@ -43,7 +43,9 @@ GPU_DEVICE_NAMES = (
 )
 HCA_INTERFACE_NAMES = ("mlx5_0", "mlx5_1")
 SLEAF_NAME = "a09-u32-p01-sleaf-01"
-IB_GUID_PATTERN = re.compile(r"^0x[0-9a-f]{16}$")
+# cf_ib_guid is stored bare-hex (no 0x), matching what UFM discovery writes and
+# what resolve_guids_to_interfaces queries against. See test_ib_nautobot.py.
+IB_GUID_PATTERN = re.compile(r"^[0-9a-f]{16}$")
 
 GLOBAL_DEFAULTS = {
     "tenant": "SuperPod",
@@ -126,7 +128,7 @@ class TestHCAInterfaces:
                 cf = iface.get("custom_fields") or {}
                 guid = cf.get("ib_guid", "")
                 assert IB_GUID_PATTERN.match(guid), (
-                    f"{dev['name']}/{iface['name']} ib_guid {guid!r} must match ^0x[0-9a-f]{{16}}$"
+                    f"{dev['name']}/{iface['name']} ib_guid {guid!r} must match ^[0-9a-f]{{16}}$"
                 )
 
     def test_ib_guids_are_globally_unique(self, gpu_devices: list[dict]) -> None:

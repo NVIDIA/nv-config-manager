@@ -79,7 +79,7 @@ export const SitePasswordRotationWorkflowForm = () => {
 
   // Build filter parameters for device API
   const filterParams = React.useMemo(() => {
-    const params: string[][] = [];
+    const params: string[][] = [["managed_only", "true"]];
     if (location) params.push(["site", location]);
     if (roles?.length) {
       roles.forEach(role => params.push(["role", role]));
@@ -200,7 +200,7 @@ export const SitePasswordRotationWorkflowForm = () => {
     <div className="flex items-center justify-center p-6">
       <Card className="w-full max-w-4xl border-2 shadow-md">
         <CardHeader>
-          <CardTitle>Site Password Rotation Workflow</CardTitle>
+          <CardTitle>New Site Password Rotation Workflow</CardTitle>
         </CardHeader>
         <CardContent>
           <Form {...form}>

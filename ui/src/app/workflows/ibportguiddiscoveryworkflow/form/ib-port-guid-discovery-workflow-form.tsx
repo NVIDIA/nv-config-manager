@@ -66,10 +66,28 @@ export const IBPortGuidDiscoveryWorkflowForm = () => {
 
   const site = form.watch("site");
 
-  const filterParams = site ? [["site", site]] : [];
+  const switchFilterParams = site
+    ? [
+        ["site", site],
+        ["managed_only", "true"],
+      ]
+    : [];
   const { devices, isLoading: devicesLoading } = useDevices({
     site: site || "",
-    filterParams,
+    filterParams: switchFilterParams,
+  });
+
+  // UFM appliances are identified by role, not platform, so query by role=UFM
+  // instead of the managed-switch list.
+  const ufmFilterParams = site
+    ? [
+        ["site", site],
+        ["role", "UFM"],
+      ]
+    : [];
+  const { devices: ufmDevices, isLoading: ufmDevicesLoading } = useDevices({
+    site: site || "",
+    filterParams: ufmFilterParams,
   });
 
   // Clear device selections when site changes, since the device list is
@@ -110,7 +128,7 @@ export const IBPortGuidDiscoveryWorkflowForm = () => {
     <div className="flex items-center justify-center p-6">
       <Card className="w-full max-w-4xl border-2 shadow-md">
         <CardHeader>
-          <CardTitle>IB Port GUID Discovery</CardTitle>
+          <CardTitle>New InfiniBand Port GUID Discovery Workflow</CardTitle>
         </CardHeader>
         <CardContent>
           <Form {...form}>
@@ -129,9 +147,9 @@ export const IBPortGuidDiscoveryWorkflowForm = () => {
                 control={form.control}
                 name="ufm_device_id"
                 label="UFM Device"
-                options={devices}
+                options={ufmDevices}
                 searchable={true}
-                isLoading={devicesLoading}
+                isLoading={ufmDevicesLoading}
                 isSubmitting={isSubmitting}
               />
 

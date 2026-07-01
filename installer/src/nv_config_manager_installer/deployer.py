@@ -64,6 +64,9 @@ from nv_config_manager_installer.schema import (
 from nv_config_manager_installer.secrets import generate_secrets
 
 _PROJECT_ROOT_MARKERS = ("deploy", "Makefile", ".git")
+_DEFAULT_GATEWAY_CLASS_NAME = "envoy-gateway"
+_HELM_RELEASE_NAME_ANNOTATION = "meta.helm.sh/release-name"
+_HELM_RELEASE_NAMESPACE_ANNOTATION = "meta.helm.sh/release-namespace"
 
 
 def find_project_root(start: Path | None = None) -> Path:
@@ -269,6 +272,27 @@ def _run(
         capture_output=capture,
         text=True,
         timeout=timeout,
+    )
+
+
+def _gateway_class_helm_owner(name: str = _DEFAULT_GATEWAY_CLASS_NAME) -> tuple[str, str] | None:
+    """Return the Helm release owner for an existing GatewayClass, if one exists."""
+    result = _run(["kubectl", "get", "gatewayclass", name, "-o", "json"], check=False)
+    if result.returncode != 0:
+        return None
+    try:
+        data = json.loads(result.stdout or "{}")
+    except json.JSONDecodeError:
+        return ("", "")
+    metadata = data.get("metadata")
+    if not isinstance(metadata, dict):
+        return ("", "")
+    annotations = metadata.get("annotations") or {}
+    if not isinstance(annotations, dict):
+        return ("", "")
+    return (
+        str(annotations.get(_HELM_RELEASE_NAME_ANNOTATION, "")),
+        str(annotations.get(_HELM_RELEASE_NAMESPACE_ANNOTATION, "")),
     )
 
 
@@ -2551,6 +2575,9 @@ class Deployer:
         if size_values.exists():
             helm_args.extend(["-f", str(size_values)])
 
+        if self._should_reuse_existing_gateway_class():
+            helm_args.extend(["--set", "gateway.createGatewayClass=false"])
+
         # Local-dev metrics overlay (Prometheus + Alloy).
         # See deploy/helm/values-observability.yaml for the LOCAL-DEV-ONLY warning.
         if self.config.infrastructure.monitoring.observability_enabled:
@@ -2579,6 +2606,29 @@ class Deployer:
         else:
             _run_logged(helm_args, step, self.callback, timeout=1200)
         self._finish_step(step)
+
+    def _should_reuse_existing_gateway_class(self) -> bool:
+        """Return True when an existing GatewayClass is owned by another Helm release."""
+        if not self.config.infrastructure.create_gateway_class:
+            return False
+
+        owner = _gateway_class_helm_owner()
+        if owner is None:
+            return False
+
+        release_name, release_namespace = owner
+        expected = (self.config.cluster.release_name, self.config.cluster.namespace)
+        if owner == expected:
+            return False
+
+        self.callback.on_log(
+            "GatewayClass "
+            f"{_DEFAULT_GATEWAY_CLASS_NAME!r} already exists"
+            f" and is owned by Helm release {release_name or '<unowned>'!r}"
+            f" in namespace {release_namespace or '<unowned>'!r};"
+            " reusing it by setting gateway.createGatewayClass=false"
+        )
+        return True
 
     def _patch_gateway(self) -> None:
         lb = self.config.infrastructure.load_balancer

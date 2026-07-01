@@ -145,9 +145,9 @@ async def fetch_device_configs(
     device_id: str,
     file_type: str | None = "intended",
 ) -> dict[str, Any]:
-    """List bounded Config Store files for a device."""
+    """Return a bounded response containing a list of Config Store files."""
 
-    async def call() -> Any:
+    async def call() -> list[dict[str, object]]:
         async with config_store_client(settings, file_type or "intended") as client:
             return await client.list_device_configs(device_id, file_type=file_type)
 
