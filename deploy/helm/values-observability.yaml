@@ -212,8 +212,8 @@ alloy:
           forward_to = [prometheus.remote_write.local.receiver]
         }
 
-        // OTLP receiver for Temporal traces + runtime metrics. Apps point
-        // OTEL_EXPORTER_OTLP_ENDPOINT at alloy:4317 (see temporal.observability).
+        // OTLP receiver for app traces + Temporal runtime metrics. Services point
+        // OTEL_EXPORTER_OTLP_ENDPOINT at alloy:4317 (see observability.enabled).
         otelcol.receiver.otlp "default" {
           grpc {
             endpoint = "0.0.0.0:4317"
@@ -293,7 +293,7 @@ tempo:
 grafana:
   enabled: true
   fullnameOverride: grafana
-  
+
   # Local-dev only: fixed password so `make obs-grafana` (admin/admin) works.
   # A real deployment would use admin.existingSecret instead.
   adminUser: admin
@@ -322,12 +322,11 @@ grafana:
       memory: 256Mi
 
 # -----------------------------------------------------------------------------
-# Temporal OTel emission (local)
+# OTel trace emission (local) — all instrumented services
 # -----------------------------------------------------------------------------
 # Turn tracing on for the local stack. otlpEndpoint is left empty so the
 # otelAppEnv helper defaults to the in-cluster Alloy (alloy.<ns>.svc:4317),
 # which is enabled above. This is what makes traces actually flow:
-#   Temporal pods -> Alloy (OTLP receiver) -> Tempo -> Grafana.
-temporal:
-  observability:
-    enabled: true
+#   HTTP APIs + Temporal pods -> Alloy (OTLP receiver) -> Tempo -> Grafana.
+observability:
+  enabled: true

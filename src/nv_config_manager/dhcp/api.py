@@ -21,6 +21,7 @@ import uvicorn
 from aiohttp import ClientResponseError
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import Response
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from prometheus_client import CONTENT_TYPE_LATEST, Gauge, generate_latest
 from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_fastapi_instrumentator import metrics as instrumentator_metrics
@@ -28,12 +29,15 @@ from prometheus_fastapi_instrumentator import metrics as instrumentator_metrics
 from nv_config_manager.common.auth import install_identity_probe
 from nv_config_manager.common.config import load_config
 from nv_config_manager.common.log import configure_logging
+from nv_config_manager.common.telemetry import setup_tracing
 from nv_config_manager.dhcp.kea import KeaClient
 from nv_config_manager.dhcp.redis import RedisClient
 
 configure_logging(service="dhcp")
+setup_tracing("dhcp")
 
 app = FastAPI()
+FastAPIInstrumentor.instrument_app(app)
 
 CACHE_LAST_REFRESH = Gauge(
     "cache_last_refresh_timestamp_seconds",

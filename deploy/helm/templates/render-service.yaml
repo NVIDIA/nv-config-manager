@@ -75,6 +75,9 @@ spec:
         - name: PYTHONPATH
           value: "/opt/plugins:${PYTHONPATH:-}"
         {{- end }}
+        {{- if .Values.observability.enabled }}
+        {{- include "nv-config-manager.otelAppEnv" (dict "root" . "serviceName" "nv-config-manager-render") | nindent 8 }}
+        {{- end }}
         ports:
         - containerPort: 9000
           name: http
