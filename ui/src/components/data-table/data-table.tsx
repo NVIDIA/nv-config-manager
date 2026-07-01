@@ -697,7 +697,10 @@ export function DataTable<TData, TValue>({ columns }: DataTableProps<TData, TVal
 
     if (hasMoreData && pendingPageIndex === null) {
       setPendingPageIndex(nextPageIndex);
-      setSize((currentSize) => currentSize + 1).catch(logWorkflowFetchError);
+      setSize((currentSize) => currentSize + 1).catch((error: unknown) => {
+        logWorkflowFetchError(error);
+        setPendingPageIndex(null);
+      });
     }
   };
 

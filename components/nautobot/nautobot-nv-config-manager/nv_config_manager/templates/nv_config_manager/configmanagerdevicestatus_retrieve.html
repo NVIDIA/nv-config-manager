@@ -11,13 +11,21 @@
         <col style="width: 25%;">
         <col>
       </colgroup>
-      <tr>
-        <th scope="row">Device</th>
-        <td>
-          {{object.device|hyperlinked_object}}
-        </td>
-      </tr>
-      {% include "nv_config_manager/inc/managed_device_details.html" with object=object config_store_links=config_store_links %}
+      <thead class="sr-only">
+        <tr>
+          <th scope="col">Property</th>
+          <th scope="col">Value</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row">Device</th>
+          <td>
+            {{object.device|hyperlinked_object}}
+          </td>
+        </tr>
+        {% include "nv_config_manager/inc/managed_device_details.html" with object=object config_store_links=config_store_links %}
+      </tbody>
     </table>
   </div>
 {% endblock content_left_page %}

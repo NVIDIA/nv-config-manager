@@ -654,6 +654,28 @@ load_extra_images() {
     return 0
 }
 
+normalize_image_reference() {
+    local image_value="$1"
+    local first_segment="${image_value%%/*}"
+    first_segment="${first_segment%%:*}"
+
+    if [[ "$first_segment" != *.* &&
+        "$first_segment" != "docker.io" &&
+        "$first_segment" != "nvcr.io" &&
+        "$first_segment" != "ghcr.io" &&
+        "$first_segment" != "quay.io" &&
+        "$first_segment" != "gcr.io" &&
+        "$first_segment" != "registry.k8s.io" ]]; then
+        if [[ "$image_value" == */* ]]; then
+            image_value="docker.io/${image_value}"
+        else
+            image_value="docker.io/library/${image_value}"
+        fi
+    fi
+
+    printf '%s\n' "$image_value"
+}
+
 extract_images_from_manifests() {
     # Extract container images from downloaded YAML manifests (e.g., Envoy Gateway, etc.)
     local manifests_dir="$1"
@@ -693,16 +715,7 @@ extract_images_from_manifests() {
                 image_value="${image_value}:latest"
             fi
             
-            # Normalize image reference - add docker.io registry if no registry specified
-            local first_segment=$(echo "$image_value" | cut -d'/' -f1 | cut -d':' -f1)
-            if ! echo "$first_segment" | grep -q '\.' &&
-                [[ "$first_segment" != "docker.io" && "$first_segment" != "nvcr.io" && "$first_segment" != "ghcr.io" && "$first_segment" != "quay.io" && "$first_segment" != "gcr.io" && "$first_segment" != "registry.k8s.io" ]]; then
-                if echo "$image_value" | grep -q '/'; then
-                    image_value="docker.io/${image_value}"
-                else
-                    image_value="docker.io/library/${image_value}"
-                fi
-            fi
+            image_value=$(normalize_image_reference "$image_value")
             
             images+=("$image_value")
         done < <(grep -iE '^\s*image:' "$manifest_file" 2>/dev/null | sed 's/^[[:space:]]*//')
@@ -788,16 +801,7 @@ extract_images_from_chart() {
                 image_value="${image_value}:latest"
             fi
             
-            # Normalize image reference - add docker.io registry if no registry specified
-            local first_segment=$(echo "$image_value" | cut -d'/' -f1 | cut -d':' -f1)
-            if ! echo "$first_segment" | grep -q '\.' &&
-                [[ "$first_segment" != "docker.io" && "$first_segment" != "nvcr.io" && "$first_segment" != "ghcr.io" && "$first_segment" != "quay.io" && "$first_segment" != "gcr.io" && "$first_segment" != "registry.k8s.io" ]]; then
-                if echo "$image_value" | grep -q '/'; then
-                    image_value="docker.io/${image_value}"
-                else
-                    image_value="docker.io/library/${image_value}"
-                fi
-            fi
+            image_value=$(normalize_image_reference "$image_value")
             
             images+=("$image_value")
         done < <(echo "$templated_output" | grep -iE '^\s*image:' | sed 's/^[[:space:]]*//')
