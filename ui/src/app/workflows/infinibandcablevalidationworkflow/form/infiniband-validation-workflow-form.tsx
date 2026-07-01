@@ -26,7 +26,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form } from "@/components/ui/form";
 import { useToast } from "@/components/ui/use-toast";
 import { useEnvData, useDevices } from "@/hooks";
-import { startWorkflow } from "@/lib/utils";
+import { getErrorMessage, startWorkflow } from "@/lib/utils";
 import { WorkflowFormField } from "@/components/forms/formfield";
 import { InfinibandCableValidationWorkflowInput } from "@/types/data-table.types";
 import { DeviceOption } from "@/types/workflow-form.types";
@@ -160,7 +160,7 @@ export const InfinibandValidationWorkflowForm = () => {
       toast({
         variant: "destructive",
         title: "Workflow Failed",
-        description: error instanceof Error ? error.message : String(error),
+        description: getErrorMessage(error),
       });
     });
     setIsSubmitting(false);

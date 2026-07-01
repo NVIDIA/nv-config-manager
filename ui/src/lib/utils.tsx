@@ -179,6 +179,10 @@ export const startWorkflow = async (endpoint: string, params: object) => {
   });
 };
 
+export function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 /* Remove any trailing slashes in a url.
  * */
 export function sanitizeUrl(url: string): string {

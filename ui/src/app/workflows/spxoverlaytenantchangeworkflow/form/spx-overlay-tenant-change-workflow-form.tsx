@@ -27,7 +27,7 @@ import { Form } from "@/components/ui/form";
 import { useToast } from "@/components/ui/use-toast";
 import { useEnvData, useDevices } from "@/hooks";
 import { WorkflowFormField } from "@/components/forms/formfield";
-import { startWorkflow } from "@/lib/utils";
+import { getErrorMessage, startWorkflow } from "@/lib/utils";
 import { SpXOverlayTenantChangeWorkflowInput } from "@/types/data-table.types";
 
 const SpXOverlayTenantChangeFormSchema = z.object({
@@ -131,7 +131,7 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
       toast({
         variant: "destructive",
         title: "SpX Overlay Tenant Change Workflow Failed",
-        description: error instanceof Error ? error.message : String(error),
+        description: getErrorMessage(error),
       });
     });
     setIsSubmitting(false);
