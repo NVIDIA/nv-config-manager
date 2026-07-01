@@ -502,6 +502,23 @@ checksum/auth-ini: {{ include "nv-config-manager.authIniSections" . | sha256sum 
 {{- end -}}
 
 {{/*
+Opt out of AWS CloudWatch Application Signals / OTel auto-instrumentation on
+Temporal server pods. The Go Temporal server only supports OTLP over gRPC; EKS
+Application Signals injects http/protobuf env vars that prevent startup.
+Usage: {{ include "nv-config-manager.temporalServerOtelOptOutAnnotations" . | nindent 8 }}
+*/}}
+{{- define "nv-config-manager.temporalServerOtelOptOutAnnotations" -}}
+instrumentation.opentelemetry.io/inject-java: "false"
+instrumentation.opentelemetry.io/inject-python: "false"
+instrumentation.opentelemetry.io/inject-dotnet: "false"
+instrumentation.opentelemetry.io/inject-nodejs: "false"
+cloudwatch.aws.amazon.com/auto-annotate-java: "false"
+cloudwatch.aws.amazon.com/auto-annotate-python: "false"
+cloudwatch.aws.amazon.com/auto-annotate-dotnet: "false"
+cloudwatch.aws.amazon.com/auto-annotate-nodejs: "false"
+{{- end -}}
+
+{{/*
 Generate a JSON array of JWT provider configs for the Nautobot
 nv_config_manager_auth.jwt_authentication module.  Includes:
   - OIDC provider (user_provider: true) for browser users
