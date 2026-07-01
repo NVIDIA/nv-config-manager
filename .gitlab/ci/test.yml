@@ -39,7 +39,8 @@ test-mr-py:
   script:
     - uv run pytest -n auto --cov=src/nv_config_manager --cov-report=xml:coverage.xml --cov-report=term
     - cd components/nautobot
-    - uv run pytest tests/ -n auto --cov=nv_config_manager_auth --cov=nv_config_manager_jobs --cov-report=xml:coverage.xml --cov-report=term
+    - uv run pytest tests/ -n auto --cov=nv_config_manager_auth --cov=nv_config_manager_jobs --cov-report=term
+    - uv run coverage xml --include='nv_config_manager_auth/*,nv_config_manager_jobs/*' -o coverage.xml
   artifacts:
     when: always
     paths:
@@ -431,7 +432,8 @@ test-main-py:
   script:
     - uv run pytest -n auto --cov=src/nv_config_manager --cov-report=xml:coverage.xml --cov-report=term
     - cd components/nautobot
-    - uv run pytest tests/ -n auto --cov=nv_config_manager_auth --cov=nv_config_manager_jobs --cov-report=xml:coverage.xml --cov-report=term
+    - uv run pytest tests/ -n auto --cov=nv_config_manager_auth --cov=nv_config_manager_jobs --cov-report=term
+    - uv run coverage xml --include='nv_config_manager_auth/*,nv_config_manager_jobs/*' -o coverage.xml
   artifacts:
     when: always
     paths:
