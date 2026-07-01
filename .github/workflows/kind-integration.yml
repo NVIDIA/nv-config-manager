@@ -14,9 +14,6 @@ on:
         default: false
         type: boolean
 
-permissions:
-  contents: read
-
 concurrency:
   group: kind-integration-${{ github.ref }}
   cancel-in-progress: false
@@ -37,6 +34,8 @@ jobs:
     name: Kind Integration
     if: startsWith(github.ref, 'refs/heads/pull-request/')
     runs-on: linux-amd64-cpu32m
+    permissions:
+      contents: read
     timeout-minutes: 90
     env:
       KIND_CLUSTER_NAME: nv-config-manager-${{ github.run_id }}

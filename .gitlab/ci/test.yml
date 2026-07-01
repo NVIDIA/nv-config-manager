@@ -3,6 +3,12 @@
   - pyproject.toml
   - uv.lock
 
+.nautobot-coverage-script: &nautobot-coverage-script |
+  set -e
+  cd components/nautobot
+  uv run pytest tests/ -n auto --cov=nv_config_manager_auth --cov=nv_config_manager_jobs --cov-report=term
+  uv run coverage xml --include='nv_config_manager_auth/*,nv_config_manager_jobs/*' -o coverage.xml
+
 test-mr-py:
   stage: test
   tags:
@@ -38,8 +44,7 @@ test-mr-py:
     - uv sync --frozen
   script:
     - uv run pytest -n auto --cov=src/nv_config_manager --cov-report=xml:coverage.xml --cov-report=term
-    - cd components/nautobot
-    - uv run pytest tests/ -n auto --cov=nv_config_manager_auth --cov=nv_config_manager_jobs --cov-report=xml:coverage.xml --cov-report=term
+    - *nautobot-coverage-script
   artifacts:
     when: always
     paths:
@@ -303,7 +308,8 @@ integration-test:
       echo "Docker is ready"
 
       # Login to the configured image target to pull base images during docker builds
-      eval "$(bash .gitlab/ci/scripts/image_target_env.sh)"
+      image_target_exports="$(bash .gitlab/ci/scripts/image_target_env.sh)" || exit $?
+      eval "$image_target_exports"
       image_token="$(printenv "$NVCM_IMAGE_TOKEN_VAR" || true)"
       test -n "$image_token" || (echo "Image target ${NVCM_IMAGE_TARGET_NAME} references ${NVCM_IMAGE_TOKEN_VAR}, but it is empty or unset" && exit 1)
       printf '%s' "$image_token" | docker login -u "$NVCM_IMAGE_USERNAME" --password-stdin "$NVCM_IMAGE_REGISTRY"
@@ -430,8 +436,7 @@ test-main-py:
     - uv sync --frozen
   script:
     - uv run pytest -n auto --cov=src/nv_config_manager --cov-report=xml:coverage.xml --cov-report=term
-    - cd components/nautobot
-    - uv run pytest tests/ -n auto --cov=nv_config_manager_auth --cov=nv_config_manager_jobs --cov-report=xml:coverage.xml --cov-report=term
+    - *nautobot-coverage-script
   artifacts:
     when: always
     paths:
