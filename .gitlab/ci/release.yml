@@ -56,7 +56,8 @@ helm-publish-mr:
       set -e  # Exit on error
       
       # Update image repositories/tags to match MR-built images.
-      eval "$(bash .gitlab/ci/scripts/image_target_env.sh "${NVCM_VALUES_IMAGE_TARGET:-}")"
+      image_target_exports="$(bash .gitlab/ci/scripts/image_target_env.sh "${NVCM_VALUES_IMAGE_TARGET:-}")" || exit $?
+      eval "$image_target_exports"
       echo "📝 Updating image repositories to ${NVCM_IMAGE_REPOSITORY} and tags to ${CI_COMMIT_SHORT_SHA}..."
       bash .gitlab/ci/scripts/update_helm_image_values.sh deploy/helm/values.yaml "$NVCM_IMAGE_REPOSITORY" "$CI_COMMIT_SHORT_SHA"
       echo "✅ Image repositories and tags updated"
@@ -187,7 +188,8 @@ helm-publish-release:
       helm dependency build "${CHART_PATH}"
 
       # Package with semver version
-      eval "$(bash .gitlab/ci/scripts/image_target_env.sh "${NVCM_VALUES_IMAGE_TARGET:-}")"
+      image_target_exports="$(bash .gitlab/ci/scripts/image_target_env.sh "${NVCM_VALUES_IMAGE_TARGET:-}")" || exit $?
+      eval "$image_target_exports"
       echo "📝 Updating image repositories to ${NVCM_IMAGE_REPOSITORY} and tags to ${NEW_VERSION}..."
       bash .gitlab/ci/scripts/update_helm_image_values.sh deploy/helm/values.yaml "$NVCM_IMAGE_REPOSITORY" "$NEW_VERSION"
 
@@ -244,7 +246,9 @@ update-version:
   before_script:
     - apk add --no-cache bash git yq
     - until docker info > /dev/null 2>&1; do echo "Waiting for docker to start..."; sleep 5; done
-    - eval "$(bash .gitlab/ci/scripts/image_target_env.sh)"
+    - |
+      image_target_exports="$(bash .gitlab/ci/scripts/image_target_env.sh)" || exit $?
+      eval "$image_target_exports"
     - export IMAGE_REPOSITORY_BASE="$NVCM_IMAGE_REPOSITORY"
     - image_token="$(printenv "$NVCM_IMAGE_TOKEN_VAR" || true)"
     - test -n "$image_token" || (echo "Image target ${NVCM_IMAGE_TARGET_NAME} references ${NVCM_IMAGE_TOKEN_VAR}, but it is empty or unset" && exit 1)
@@ -442,7 +446,9 @@ promote-docker-images:
   before_script:
     - apk add --no-cache bash
     - until docker info > /dev/null 2>&1; do echo "Waiting for docker to start..."; sleep 5; done
-    - eval "$(bash .gitlab/ci/scripts/image_target_env.sh)"
+    - |
+      image_target_exports="$(bash .gitlab/ci/scripts/image_target_env.sh)" || exit $?
+      eval "$image_target_exports"
     - export IMAGE_REPOSITORY_BASE="$NVCM_IMAGE_REPOSITORY"
     - image_token="$(printenv "$NVCM_IMAGE_TOKEN_VAR" || true)"
     - test -n "$image_token" || (echo "Image target ${NVCM_IMAGE_TARGET_NAME} references ${NVCM_IMAGE_TOKEN_VAR}, but it is empty or unset" && exit 1)
@@ -503,7 +509,8 @@ promote-helm-chart:
       yq -i '.version = "'${PROMOTE_VERSION}'"' deploy/helm/Chart.yaml
       yq -i '.appVersion = "'${PROMOTE_VERSION}'"' deploy/helm/Chart.yaml
       # Update image repositories/tags to stable version
-      eval "$(bash .gitlab/ci/scripts/image_target_env.sh "${NVCM_VALUES_IMAGE_TARGET:-}")"
+      image_target_exports="$(bash .gitlab/ci/scripts/image_target_env.sh "${NVCM_VALUES_IMAGE_TARGET:-}")" || exit $?
+      eval "$image_target_exports"
       bash .gitlab/ci/scripts/update_helm_image_values.sh deploy/helm/values.yaml "$NVCM_IMAGE_REPOSITORY" "$PROMOTE_VERSION"
       
       CHART_PATH="deploy/helm"

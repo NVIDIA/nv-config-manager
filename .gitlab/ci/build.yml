@@ -47,7 +47,9 @@
     - docker info
     - docker version
     - uname -m
-    - eval "$(bash .gitlab/ci/scripts/image_target_env.sh)"
+    - |
+      image_target_exports="$(bash .gitlab/ci/scripts/image_target_env.sh)" || exit $?
+      eval "$image_target_exports"
     - image_token="$(printenv "$NVCM_IMAGE_TOKEN_VAR" || true)"
     - test -n "$image_token" || (echo "Image target ${NVCM_IMAGE_TARGET_NAME} references ${NVCM_IMAGE_TOKEN_VAR}, but it is empty or unset" && exit 1)
     - printf '%s' "$image_token" | docker login -u "$NVCM_IMAGE_USERNAME" --password-stdin "$NVCM_IMAGE_REGISTRY"
@@ -88,7 +90,9 @@
     - docker version
     - echo "Setting up QEMU for cross-arch builds..."
     - docker run --rm --privileged tonistiigi/binfmt --install all
-    - eval "$(bash .gitlab/ci/scripts/image_target_env.sh)"
+    - |
+      image_target_exports="$(bash .gitlab/ci/scripts/image_target_env.sh)" || exit $?
+      eval "$image_target_exports"
     - image_token="$(printenv "$NVCM_IMAGE_TOKEN_VAR" || true)"
     - test -n "$image_token" || (echo "Image target ${NVCM_IMAGE_TARGET_NAME} references ${NVCM_IMAGE_TOKEN_VAR}, but it is empty or unset" && exit 1)
     - printf '%s' "$image_token" | docker login -u "$NVCM_IMAGE_USERNAME" --password-stdin "$NVCM_IMAGE_REGISTRY"
@@ -181,7 +185,9 @@ docker-manifest-mr:
     DOCKER_DRIVER: overlay2
   before_script:
     - apk add -q make bash git
-    - eval "$(bash .gitlab/ci/scripts/image_target_env.sh)"
+    - |
+      image_target_exports="$(bash .gitlab/ci/scripts/image_target_env.sh)" || exit $?
+      eval "$image_target_exports"
     - image_token="$(printenv "$NVCM_IMAGE_TOKEN_VAR" || true)"
     - test -n "$image_token" || (echo "Image target ${NVCM_IMAGE_TARGET_NAME} references ${NVCM_IMAGE_TOKEN_VAR}, but it is empty or unset" && exit 1)
     - printf '%s' "$image_token" | docker login -u "$NVCM_IMAGE_USERNAME" --password-stdin "$NVCM_IMAGE_REGISTRY"
@@ -278,7 +284,9 @@ docker-manifest-main:
     DOCKER_DRIVER: overlay2
   before_script:
     - apk add -q make bash git
-    - eval "$(bash .gitlab/ci/scripts/image_target_env.sh)"
+    - |
+      image_target_exports="$(bash .gitlab/ci/scripts/image_target_env.sh)" || exit $?
+      eval "$image_target_exports"
     - image_token="$(printenv "$NVCM_IMAGE_TOKEN_VAR" || true)"
     - test -n "$image_token" || (echo "Image target ${NVCM_IMAGE_TARGET_NAME} references ${NVCM_IMAGE_TOKEN_VAR}, but it is empty or unset" && exit 1)
     - printf '%s' "$image_token" | docker login -u "$NVCM_IMAGE_USERNAME" --password-stdin "$NVCM_IMAGE_REGISTRY"

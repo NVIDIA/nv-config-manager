@@ -156,7 +156,8 @@ deploy-to-test:
       
       echo "   Pipeline: ${CI_PIPELINE_SOURCE}"
       echo "   Branch/MR: ${CI_COMMIT_REF_NAME}"
-      eval "$(bash "${CI_PROJECT_DIR}/.gitlab/ci/scripts/image_target_env.sh" "${NVCM_VALUES_IMAGE_TARGET:-}")"
+      image_target_exports="$(bash "${CI_PROJECT_DIR}/.gitlab/ci/scripts/image_target_env.sh" "${NVCM_VALUES_IMAGE_TARGET:-}")" || exit $?
+      eval "$image_target_exports"
       IMAGE_TARGET_TOKEN="$(printenv "$NVCM_IMAGE_TOKEN_VAR" || true)"
       if [ -z "$IMAGE_TARGET_TOKEN" ]; then
         echo "❌ Image target ${NVCM_IMAGE_TARGET_NAME} references ${NVCM_IMAGE_TOKEN_VAR}, but it is empty or unset"
@@ -429,7 +430,8 @@ deploy-to-test01:
       
       echo "   Pipeline: ${CI_PIPELINE_SOURCE}"
       echo "   Branch/MR: ${CI_COMMIT_REF_NAME}"
-      eval "$(bash "${CI_PROJECT_DIR}/.gitlab/ci/scripts/image_target_env.sh" "${NVCM_VALUES_IMAGE_TARGET:-}")"
+      image_target_exports="$(bash "${CI_PROJECT_DIR}/.gitlab/ci/scripts/image_target_env.sh" "${NVCM_VALUES_IMAGE_TARGET:-}")" || exit $?
+      eval "$image_target_exports"
       IMAGE_TARGET_TOKEN="$(printenv "$NVCM_IMAGE_TOKEN_VAR" || true)"
       if [ -z "$IMAGE_TARGET_TOKEN" ]; then
         echo "❌ Image target ${NVCM_IMAGE_TARGET_NAME} references ${NVCM_IMAGE_TOKEN_VAR}, but it is empty or unset"

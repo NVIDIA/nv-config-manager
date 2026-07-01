@@ -6,9 +6,6 @@ on:
       - main
       - "pull-request/*"
 
-permissions:
-  contents: read
-
 concurrency:
   group: public-ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -22,6 +19,8 @@ jobs:
   python-lint:
     name: Python Lint And Types
     runs-on: linux-amd64-cpu8
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - name: Setup proxy cache
@@ -53,6 +52,8 @@ jobs:
   nautobot-app-overlays:
     name: Nautobot Overlays Lint And Build
     runs-on: linux-amd64-cpu4
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -78,6 +79,8 @@ jobs:
   nautobot-nv-config-manager:
     name: Nautobot NV Config Manager Lint And Build
     runs-on: linux-amd64-cpu4
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -103,6 +106,8 @@ jobs:
   spdx:
     name: SPDX Headers
     runs-on: linux-amd64-cpu4
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - name: Setup proxy cache
@@ -131,6 +136,8 @@ jobs:
   python-tests:
     name: Python Tests
     runs-on: linux-amd64-cpu16
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - name: Setup proxy cache
@@ -159,6 +166,8 @@ jobs:
   installer-tests:
     name: Installer Tests
     runs-on: linux-amd64-cpu8
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - name: Setup proxy cache
@@ -183,6 +192,8 @@ jobs:
   network-template-tests:
     name: Network Template Tests
     runs-on: linux-amd64-cpu8
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - name: Setup proxy cache
@@ -204,6 +215,8 @@ jobs:
   go-lint:
     name: Go Module Check
     runs-on: linux-amd64-cpu4
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - name: Setup proxy cache
@@ -221,6 +234,8 @@ jobs:
   helm:
     name: Helm Lint And Template
     runs-on: linux-amd64-cpu4
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - name: Setup proxy cache
@@ -380,6 +395,8 @@ jobs:
   ui-lint:
     name: UI Lint
     runs-on: linux-amd64-cpu8
+    permissions:
+      contents: read
     container:
       image: mcr.microsoft.com/playwright:v1.56.1-noble
     env:
@@ -402,6 +419,8 @@ jobs:
   ui-e2e:
     name: UI Build And E2E
     runs-on: linux-amd64-cpu16
+    permissions:
+      contents: read
     container:
       image: mcr.microsoft.com/playwright:v1.56.1-noble
     env:

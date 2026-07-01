@@ -107,7 +107,8 @@ sonarqube-vulnerability-report:
       trap 'rm -f "$auth_config"' EXIT
       chmod 600 "$auth_config"
       printf 'user = "%s:"\n' "$SONAR_TOKEN" > "$auth_config"
-      curl --fail-with-body --silent --show-error --retry 3 --retry-delay 5 --retry-connrefused --config "$auth_config" "${SONAR_HOST_URL}/api/issues/gitlab_sast_export?projectKey=${NVCM_SONAR_PROJECT_KEY}&branch=${CI_COMMIT_BRANCH}&pullRequest=${CI_MERGE_REQUEST_IID}" -o gl-sast-sonar-report.json
+      sonar_host_url="${SONAR_HOST_URL%/}"
+      curl --fail-with-body --silent --show-error --retry 3 --retry-delay 5 --retry-connrefused --config "$auth_config" "${sonar_host_url}/api/issues/gitlab_sast_export?projectKey=${NVCM_SONAR_PROJECT_KEY}&branch=${CI_COMMIT_BRANCH}&pullRequest=${CI_MERGE_REQUEST_IID}" -o gl-sast-sonar-report.json
     - 'jq -e ''.version and (.vulnerabilities | type == "array")'' gl-sast-sonar-report.json >/dev/null'
   allow_failure: true
   rules:
