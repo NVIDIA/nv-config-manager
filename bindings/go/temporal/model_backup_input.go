@@ -22,12 +22,16 @@ var _ MappedNullable = &BackupInput{}
 // BackupInput Backup Workflow Input Definiton.
 type BackupInput struct {
 	// Identifier of the network device to back up.
-	DeviceId               string         `json:"device_id"`
+	DeviceId string `json:"device_id"`
+	// Config Store commit containing the intended configuration.
 	IntendedConfigCommitId NullableString `json:"intended_config_commit_id,omitempty"`
 	// Reason the backup workflow was started.
-	Trigger    TriggerEnum    `json:"trigger"`
-	User       NullableString `json:"user,omitempty"`
+	Trigger TriggerEnum `json:"trigger"`
+	// User that requested the backup.
+	User NullableString `json:"user,omitempty"`
+	// Domain of the user requesting the backup.
 	UserDomain NullableString `json:"user_domain,omitempty"`
+	// Identifier of the parent workflow, if any.
 	WorkflowId NullableString `json:"workflow_id,omitempty"`
 }
 

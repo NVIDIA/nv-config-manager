@@ -23,7 +23,8 @@ var _ MappedNullable = &BatchDeployInput{}
 type BatchDeployInput struct {
 	// Devices whose configurations will be deployed in this batch.
 	BatchDevices []DeviceDiffData `json:"batch_devices"`
-	BatchNumber  NullableInt32    `json:"batch_number,omitempty"`
+	// Sequence number of this batch within the parent workflow.
+	BatchNumber NullableInt32 `json:"batch_number,omitempty"`
 	// Whether to use commit-confirmed mode when the platform supports it.
 	CommitConfirm *bool `json:"commit_confirm,omitempty"`
 	// Shared configuration diff for the device batch.

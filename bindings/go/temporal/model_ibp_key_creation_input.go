@@ -24,13 +24,15 @@ type IBPKeyCreationInput struct {
 	// Hostname of the UFM server managing the InfiniBand fabric.
 	Host string `json:"host"`
 	// Whether IP over InfiniBand is enabled for the partition.
-	IpOverIb *bool          `json:"ip_over_ib,omitempty"`
-	Pkey     NullableString `json:"pkey,omitempty"`
+	IpOverIb *bool `json:"ip_over_ib,omitempty"`
+	// Partition key to create; automatically allocated when omitted.
+	Pkey NullableString `json:"pkey,omitempty"`
 	// Highest partition key eligible for automatic allocation.
 	PkeyMax *int32 `json:"pkey_max,omitempty"`
 	// Lowest partition key eligible for automatic allocation.
-	PkeyMin *int32         `json:"pkey_min,omitempty"`
-	Site    NullableString `json:"site,omitempty"`
+	PkeyMin *int32 `json:"pkey_min,omitempty"`
+	// Site used for UFM credential lookup; resolved from the host when omitted.
+	Site NullableString `json:"site,omitempty"`
 }
 
 type _IBPKeyCreationInput IBPKeyCreationInput

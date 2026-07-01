@@ -22,14 +22,20 @@ var _ MappedNullable = &DeviceMetadata{}
 
 // DeviceMetadata Device metadata from Nautobot.
 type DeviceMetadata struct {
+	// When metadata was last refreshed
 	LastUpdated NullableTime `json:"last_updated,omitempty"`
 	// Device name
-	Name        string         `json:"name"`
+	Name string `json:"name"`
+	// Link to device in Nautobot
 	NautobotUrl NullableString `json:"nautobot_url,omitempty"`
-	Platform    NullableString `json:"platform,omitempty"`
-	PrimaryIp4  NullableString `json:"primary_ip4,omitempty"`
-	Rack        NullableString `json:"rack,omitempty"`
-	Role        NullableString `json:"role,omitempty"`
+	// Platform/OS name
+	Platform NullableString `json:"platform,omitempty"`
+	// Primary IPv4 address
+	PrimaryIp4 NullableString `json:"primary_ip4,omitempty"`
+	// Rack name
+	Rack NullableString `json:"rack,omitempty"`
+	// Device role
+	Role NullableString `json:"role,omitempty"`
 	// Site name
 	Site string `json:"site"`
 }

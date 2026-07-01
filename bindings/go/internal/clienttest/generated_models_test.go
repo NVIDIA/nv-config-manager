@@ -24,26 +24,46 @@ import (
 )
 
 func TestGeneratedDeviceCableValidationInputDocumentsDevice(t *testing.T) {
-	filename := filepath.Join("..", "..", "temporal", "model_device_cable_validation_input.go")
-	file, err := parser.ParseFile(token.NewFileSet(), filename, nil, parser.ParseComments)
+	const expected = "Preloaded data for the target network device, if available."
+	comments := generatedStructFieldComments(t, "model_device_cable_validation_input.go")
+	if comments["Device"] != expected {
+		t.Fatalf("Device comment = %q, want %q", comments["Device"], expected)
+	}
+}
+
+func TestGeneratedBackupInputDocumentsOptionalMetadata(t *testing.T) {
+	expected := map[string]string{
+		"IntendedConfigCommitId": "Config Store commit containing the intended configuration.",
+		"User":                   "User that requested the backup.",
+		"UserDomain":             "Domain of the user requesting the backup.",
+		"WorkflowId":             "Identifier of the parent workflow, if any.",
+	}
+	comments := generatedStructFieldComments(t, "model_backup_input.go")
+	for field, expectedComment := range expected {
+		if comments[field] != expectedComment {
+			t.Errorf("%s comment = %q, want %q", field, comments[field], expectedComment)
+		}
+	}
+}
+
+func generatedStructFieldComments(t *testing.T, filename string) map[string]string {
+	t.Helper()
+	path := filepath.Join("..", "..", "temporal", filename)
+	file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ParseComments)
 	if err != nil {
 		t.Fatalf("parse generated model: %v", err)
 	}
 
-	var deviceComment string
+	comments := make(map[string]string)
 	ast.Inspect(file, func(node ast.Node) bool {
 		field, ok := node.(*ast.Field)
-		if !ok || len(field.Names) != 1 || field.Names[0].Name != "Device" || field.Doc == nil {
+		if !ok || len(field.Names) != 1 || field.Doc == nil {
 			return true
 		}
-		deviceComment = strings.TrimSpace(field.Doc.Text())
-		return false
+		comments[field.Names[0].Name] = strings.TrimSpace(field.Doc.Text())
+		return true
 	})
-
-	const expected = "Preloaded data for the target network device, if available."
-	if deviceComment != expected {
-		t.Fatalf("Device comment = %q, want %q", deviceComment, expected)
-	}
+	return comments
 }
 
 func TestGeneratedModelsRejectNullForRequiredFields(t *testing.T) {
