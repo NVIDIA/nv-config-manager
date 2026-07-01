@@ -37,6 +37,7 @@ import paramiko
 import pyeapi
 import pyeapi.eapilib
 import requests
+import urllib3
 from netmiko import ConnectHandler  # type: ignore[import-untyped]
 from netmiko.base_connection import BaseConnection  # type: ignore[import-untyped]
 from netmiko.exceptions import NetmikoAuthenticationException  # type: ignore[import-untyped]
@@ -58,6 +59,9 @@ from nv_config_manager.temporal.common.secrets import (
 
 logger = get_logger(__name__, category=LogCategory.TEMPORAL_ACTIVITY)
 logging.getLogger("paramiko").setLevel(logging.WARNING)
+
+# Suppress SSL warnings for network devices which typically use self-signed certificates
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Commit-confirm rollback: 5 minutes. Arista uses HH:MM:SS; Cumulus uses seconds.
 COMMIT_CONFIRM_ROLLBACK_SECONDS = 5 * 60
@@ -904,8 +908,13 @@ class AristaConnection(NetworkConnection):
         self._session_id: str | None = None
 
     def _connect(self) -> Node:
-        # Out of the box, Arista does not support the set of ciphers required by python3.10+.
+        # Until we get to a point where we can load and rotate
+        # https certs on Aristas, these are self-signed by default.
+        # Additionally, out of the box, Arista does not support
+        # the set of ciphers required by python3.10+
         ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
         ctx.set_ciphers("DEFAULT")
 
         def connect_with_password(password: str) -> Node:
@@ -1264,6 +1273,7 @@ class CumulusConnection(NetworkConnection):
         self._session = requests.Session()
         self._session.mount("https://", adapter=HTTPAdapter(max_retries=retry))
         self._session.headers = {"Content-Type": "application/json"}
+        self._session.verify = False
         self._base_url = f"https://{host}:{port}/nvue_v1/"
         self._authenticated = False
 
