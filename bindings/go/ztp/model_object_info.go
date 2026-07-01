@@ -21,13 +21,16 @@ var _ MappedNullable = &ObjectInfo{}
 
 // ObjectInfo Metadata for an object in the storage backend.
 type ObjectInfo struct {
+	// ETag hash
 	Etag NullableString `json:"etag,omitempty"`
 	// Object key/path
-	Key          string            `json:"key"`
-	LastModified LastModified      `json:"last_modified"`
-	Metadata     map[string]string `json:"metadata,omitempty"`
+	Key          string       `json:"key"`
+	LastModified LastModified `json:"last_modified"`
+	// Object metadata
+	Metadata map[string]string `json:"metadata,omitempty"`
 	// Object size in bytes
-	Size int32             `json:"size"`
+	Size int32 `json:"size"`
+	// Object tags
 	Tags map[string]string `json:"tags,omitempty"`
 }
 

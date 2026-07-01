@@ -126,13 +126,24 @@ class IBPKeyMemberUpdateInput(BaseModel):
     Site and Overlay are resolved server-side from ``host`` and ``pkey``.
     """
 
-    host: str
-    pkey: str
-    interfaces: list[InterfaceRef] = []
-    guids: list[str] = []
-    guid_memberships: list[str] = []
-    membership_type: str = "full"
-    ip_over_ib: bool = True
+    host: str = Field(description="Hostname of the UFM server managing the InfiniBand fabric.")
+    pkey: str = Field(description="Partition key whose membership will be replaced.")
+    interfaces: list[InterfaceRef] = Field(
+        default=[], description="Nautobot interfaces to resolve to InfiniBand port GUIDs."
+    )
+    guids: list[str] = Field(
+        default=[], description="InfiniBand port GUIDs that should belong to the partition."
+    )
+    guid_memberships: list[str] = Field(
+        default=[], description="Per-GUID membership types corresponding to the supplied GUIDs."
+    )
+    membership_type: str = Field(
+        default="full", description="Default partition membership type for updated members."
+    )
+    ip_over_ib: bool = Field(
+        default=True,
+        description="IP over InfiniBand setting used when the partition does not already exist.",
+    )
 
     @field_validator("pkey")
     @classmethod

@@ -21,6 +21,7 @@ var _ MappedNullable = &DiffResponse{}
 
 // DiffResponse Response with diff between two versions.
 type DiffResponse struct {
+	// Device metadata from Nautobot
 	Device NullableDeviceMetadata `json:"device,omitempty"`
 	// Device UUID
 	DeviceUuid string `json:"device_uuid"`

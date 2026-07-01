@@ -5,6 +5,7 @@
         "description": "Backup Workflow Input Definiton.",
         "properties": {
           "device_id": {
+            "description": "Identifier of the network device to back up.",
             "title": "Device Id",
             "type": "string"
           },
@@ -17,10 +18,12 @@
                 "type": "null"
               }
             ],
+            "description": "Config Store commit containing the intended configuration.",
             "title": "Intended Config Commit Id"
           },
           "trigger": {
-            "$ref": "#/components/schemas/TriggerEnum"
+            "$ref": "#/components/schemas/TriggerEnum",
+            "description": "Reason the backup workflow was started."
           },
           "user": {
             "anyOf": [
@@ -31,6 +34,7 @@
                 "type": "null"
               }
             ],
+            "description": "User that requested the backup.",
             "title": "User"
           },
           "user_domain": {
@@ -42,6 +46,7 @@
                 "type": "null"
               }
             ],
+            "description": "Domain of the user requesting the backup.",
             "title": "User Domain"
           },
           "workflow_id": {
@@ -53,16 +58,13 @@
                 "type": "null"
               }
             ],
+            "description": "Identifier of the parent workflow, if any.",
             "title": "Workflow Id"
           }
         },
         "required": [
           "device_id",
-          "trigger",
-          "user",
-          "user_domain",
-          "workflow_id",
-          "intended_config_commit_id"
+          "trigger"
         ],
         "title": "BackupInput",
         "type": "object"
@@ -71,6 +73,7 @@
         "description": "Input for batch deploy child workflow.",
         "properties": {
           "batch_devices": {
+            "description": "Devices whose configurations will be deployed in this batch.",
             "items": {
               "$ref": "#/components/schemas/DeviceDiffData"
             },
@@ -86,17 +89,21 @@
                 "type": "null"
               }
             ],
+            "description": "Sequence number of this batch within the parent workflow.",
             "title": "Batch Number"
           },
           "commit_confirm": {
             "default": true,
+            "description": "Whether to use commit-confirmed mode when the platform supports it.",
             "title": "Commit Confirm",
             "type": "boolean"
           },
           "diff_group": {
-            "$ref": "#/components/schemas/DiffGroup"
+            "$ref": "#/components/schemas/DiffGroup",
+            "description": "Shared configuration diff for the device batch."
           },
           "parent_workflow_id": {
+            "description": "Identifier of the parent multi-deploy workflow.",
             "title": "Parent Workflow Id",
             "type": "string"
           }
@@ -132,6 +139,7 @@
         "description": "Connected Host Workflow Input.",
         "properties": {
           "device_id": {
+            "description": "Identifier of the network device to analyze.",
             "title": "Device Id",
             "type": "string"
           }
@@ -147,10 +155,12 @@
         "properties": {
           "commit_confirm": {
             "default": true,
+            "description": "Whether to use commit-confirmed mode when the platform supports it.",
             "title": "Commit Confirm",
             "type": "boolean"
           },
           "device_id": {
+            "description": "Identifier of the network device to configure.",
             "title": "Device Id",
             "type": "string"
           }
@@ -197,19 +207,23 @@
           "device": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/NetworkDeviceData"
+                "$ref": "#/components/schemas/NetworkDeviceData",
+                "description": "Preloaded data for the target network device, if available."
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Preloaded data for the target network device, if available."
           },
           "device_id": {
+            "description": "Identifier of the network device to validate.",
             "title": "Device Id",
             "type": "string"
           },
           "ignore_no_neighbor": {
             "default": false,
+            "description": "Whether interfaces without discovered neighbors should be ignored.",
             "title": "Ignore No Neighbor",
             "type": "boolean"
           }
@@ -281,10 +295,12 @@
         "description": "Device Password Rotation Workflow Input Definition.",
         "properties": {
           "device_id": {
+            "description": "Identifier of the network device to update.",
             "title": "Device Id",
             "type": "string"
           },
           "selected_secret": {
+            "description": "Name of the managed secret containing the replacement password.",
             "title": "Selected Secret",
             "type": "string"
           }
@@ -299,6 +315,7 @@
       "DiagnosticsWorkflowInput": {
         "properties": {
           "commands": {
+            "description": "Diagnostic command catalog names to run on each device.",
             "items": {
               "type": "string"
             },
@@ -306,6 +323,7 @@
             "type": "array"
           },
           "device_ids": {
+            "description": "Nautobot identifiers of the devices to diagnose.",
             "items": {
               "type": "string"
             },
@@ -314,21 +332,25 @@
           },
           "include_tech_support": {
             "default": false,
+            "description": "Whether to collect a technical-support bundle from each device.",
             "title": "Include Tech Support",
             "type": "boolean"
           },
           "issue_key": {
             "default": "",
+            "description": "Issue key to update; empty enables ticketless mode.",
             "title": "Issue Key",
             "type": "string"
           },
           "ticketing_platform": {
             "default": "",
+            "description": "Ticketing platform to update; empty enables ticketless mode.",
             "title": "Ticketing Platform",
             "type": "string"
           },
           "user": {
             "default": "",
+            "description": "Engineer username or email, populated from request authentication when omitted.",
             "title": "User",
             "type": "string"
           }
@@ -384,6 +406,7 @@
         "description": "Hello World Input Definition.",
         "properties": {
           "name": {
+            "description": "Name to include in the workflow greeting.",
             "title": "Name",
             "type": "string"
           }
@@ -416,11 +439,13 @@
         "description": "InfiniBand PKey Creation Workflow Input.\n\nBy default, auto-assigns the next available PKey. Pass an explicit\n``pkey`` value only when a specific partition key is required.\n\n``site`` is optional. When omitted, the workflow resolves the device's\nSite-typed Nautobot location from ``host`` and uses that as the UFM\ncredential lookup key. Pass ``site`` explicitly to override the\nauto-resolved value (e.g. for API callers that want to skip the\nNautobot round-trip).",
         "properties": {
           "host": {
+            "description": "Hostname of the UFM server managing the InfiniBand fabric.",
             "title": "Host",
             "type": "string"
           },
           "ip_over_ib": {
             "default": true,
+            "description": "Whether IP over InfiniBand is enabled for the partition.",
             "title": "Ip Over Ib",
             "type": "boolean"
           },
@@ -433,15 +458,18 @@
                 "type": "null"
               }
             ],
+            "description": "Partition key to create; automatically allocated when omitted.",
             "title": "Pkey"
           },
           "pkey_max": {
             "default": 32766,
+            "description": "Highest partition key eligible for automatic allocation.",
             "title": "Pkey Max",
             "type": "integer"
           },
           "pkey_min": {
             "default": 1,
+            "description": "Lowest partition key eligible for automatic allocation.",
             "title": "Pkey Min",
             "type": "integer"
           },
@@ -454,6 +482,7 @@
                 "type": "null"
               }
             ],
+            "description": "Site used for UFM credential lookup; resolved from the host when omitted.",
             "title": "Site"
           }
         },
@@ -468,6 +497,7 @@
         "properties": {
           "guid_memberships": {
             "default": [],
+            "description": "Per-GUID membership types corresponding to the supplied GUIDs.",
             "items": {
               "type": "string"
             },
@@ -476,6 +506,7 @@
           },
           "guids": {
             "default": [],
+            "description": "InfiniBand port GUIDs to add directly to the partition.",
             "items": {
               "type": "string"
             },
@@ -483,11 +514,13 @@
             "type": "array"
           },
           "host": {
+            "description": "Hostname of the UFM server managing the InfiniBand fabric.",
             "title": "Host",
             "type": "string"
           },
           "interfaces": {
             "default": [],
+            "description": "Nautobot interfaces to resolve to InfiniBand port GUIDs.",
             "items": {
               "$ref": "#/components/schemas/InterfaceRef"
             },
@@ -496,15 +529,18 @@
           },
           "ip_over_ib": {
             "default": true,
+            "description": "Whether IP over InfiniBand is enabled for the partition.",
             "title": "Ip Over Ib",
             "type": "boolean"
           },
           "membership_type": {
             "default": "full",
+            "description": "Default partition membership type for added members.",
             "title": "Membership Type",
             "type": "string"
           },
           "pkey": {
+            "description": "Partition key whose membership will be expanded.",
             "title": "Pkey",
             "type": "string"
           }
@@ -521,6 +557,7 @@
         "properties": {
           "guids": {
             "default": [],
+            "description": "InfiniBand port GUIDs to remove directly from the partition.",
             "items": {
               "type": "string"
             },
@@ -528,11 +565,13 @@
             "type": "array"
           },
           "host": {
+            "description": "Hostname of the UFM server managing the InfiniBand fabric.",
             "title": "Host",
             "type": "string"
           },
           "interfaces": {
             "default": [],
+            "description": "Nautobot interfaces to resolve to InfiniBand port GUIDs.",
             "items": {
               "$ref": "#/components/schemas/InterfaceRef"
             },
@@ -540,6 +579,7 @@
             "type": "array"
           },
           "pkey": {
+            "description": "Partition key whose members will be removed.",
             "title": "Pkey",
             "type": "string"
           }
@@ -556,6 +596,7 @@
         "properties": {
           "guid_memberships": {
             "default": [],
+            "description": "Per-GUID membership types corresponding to the supplied GUIDs.",
             "items": {
               "type": "string"
             },
@@ -564,6 +605,7 @@
           },
           "guids": {
             "default": [],
+            "description": "InfiniBand port GUIDs that should belong to the partition.",
             "items": {
               "type": "string"
             },
@@ -571,11 +613,13 @@
             "type": "array"
           },
           "host": {
+            "description": "Hostname of the UFM server managing the InfiniBand fabric.",
             "title": "Host",
             "type": "string"
           },
           "interfaces": {
             "default": [],
+            "description": "Nautobot interfaces to resolve to InfiniBand port GUIDs.",
             "items": {
               "$ref": "#/components/schemas/InterfaceRef"
             },
@@ -584,15 +628,18 @@
           },
           "ip_over_ib": {
             "default": true,
+            "description": "IP over InfiniBand setting used when the partition does not already exist.",
             "title": "Ip Over Ib",
             "type": "boolean"
           },
           "membership_type": {
             "default": "full",
+            "description": "Default partition membership type for updated members.",
             "title": "Membership Type",
             "type": "string"
           },
           "pkey": {
+            "description": "Partition key whose membership will be replaced.",
             "title": "Pkey",
             "type": "string"
           }
@@ -609,10 +656,12 @@
         "properties": {
           "dry_run": {
             "default": true,
+            "description": "Whether to report changes without updating Nautobot.",
             "title": "Dry Run",
             "type": "boolean"
           },
           "switch_device_ids": {
+            "description": "Identifiers of the InfiniBand switches whose interfaces will be synchronized.",
             "items": {
               "type": "string"
             },
@@ -620,6 +669,7 @@
             "type": "array"
           },
           "ufm_device_id": {
+            "description": "Identifier of the UFM device used to discover port GUIDs.",
             "title": "Ufm Device Id",
             "type": "string"
           }
@@ -635,6 +685,7 @@
         "description": "IB Cable Validation Workflow Input Definition.",
         "properties": {
           "switch_device_ids": {
+            "description": "Identifiers of the InfiniBand switches to validate.",
             "items": {
               "type": "string"
             },
@@ -642,6 +693,7 @@
             "type": "array"
           },
           "ufm_device_id": {
+            "description": "Identifier of the UFM device used to inspect the InfiniBand fabric.",
             "title": "Ufm Device Id",
             "type": "string"
           }
@@ -657,6 +709,7 @@
         "description": "Unhealthy Ports Validation Workflow Input Definition.",
         "properties": {
           "device_id": {
+            "description": "Identifier of the UFM device to inspect.",
             "title": "Device Id",
             "type": "string"
           }
@@ -671,6 +724,7 @@
         "description": "Infiniband Mellanox OS Upgrade Workflow Input Definition.",
         "properties": {
           "device_id": {
+            "description": "Identifier of the InfiniBand switch to upgrade.",
             "title": "Device Id",
             "type": "string"
           }
@@ -735,6 +789,7 @@
         "properties": {
           "commit_confirm": {
             "default": true,
+            "description": "Whether to use commit-confirmed mode when the platform supports it.",
             "title": "Commit Confirm",
             "type": "boolean"
           },
@@ -747,14 +802,17 @@
                 "type": "null"
               }
             ],
+            "description": "Location used to filter the selected network devices.",
             "title": "Location"
           },
           "max_batch_size": {
             "default": 10,
+            "description": "Maximum number of devices included in each deployment batch.",
             "title": "Max Batch Size",
             "type": "integer"
           },
           "role": {
+            "description": "Device role used to select network devices for deployment.",
             "title": "Role",
             "type": "string"
           },
@@ -770,6 +828,7 @@
                 "type": "null"
               }
             ],
+            "description": "Device statuses used to filter the selected network devices.",
             "title": "Status"
           },
           "tenant": {
@@ -781,6 +840,7 @@
                 "type": "null"
               }
             ],
+            "description": "Tenant used to filter the selected network devices.",
             "title": "Tenant"
           }
         },
@@ -794,10 +854,12 @@
         "description": "NVLinkSwitch Firmware Upgrade Workflow Input Definition.",
         "properties": {
           "bundle_version": {
+            "description": "Target NVLink firmware bundle version.",
             "title": "Bundle Version",
             "type": "string"
           },
           "device_id": {
+            "description": "Identifier of the NVLink switch to upgrade.",
             "title": "Device Id",
             "type": "string"
           }
@@ -949,6 +1011,7 @@
                 "type": "null"
               }
             ],
+            "description": "Identifier of the network device to inspect.",
             "title": "Device Id"
           },
           "interface": {
@@ -960,6 +1023,7 @@
                 "type": "null"
               }
             ],
+            "description": "Name of the local interface.",
             "title": "Interface"
           },
           "remote_mac_address": {
@@ -971,6 +1035,7 @@
                 "type": "null"
               }
             ],
+            "description": "MAC address of the remote device to locate.",
             "title": "Remote Mac Address"
           }
         },
@@ -1040,6 +1105,7 @@
         "description": "Input for Redfish provisioning workflow.",
         "properties": {
           "bmc_switch_roles": {
+            "description": "Switch roles used to discover BMC-connected network interfaces.",
             "items": {
               "type": "string"
             },
@@ -1051,6 +1117,7 @@
               "Mellanox Technologies",
               "MLNX"
             ],
+            "description": "DPU manufacturer names eligible for Redfish provisioning.",
             "items": {
               "type": "string"
             },
@@ -1059,23 +1126,28 @@
           },
           "http_timeout_s": {
             "default": 5,
+            "description": "Timeout in seconds for Redfish HTTP requests.",
             "title": "Http Timeout S",
             "type": "integer"
           },
           "ip_range_end": {
+            "description": "Last BMC IP address to scan.",
             "title": "Ip Range End",
             "type": "string"
           },
           "ip_range_start": {
+            "description": "First BMC IP address to scan.",
             "title": "Ip Range Start",
             "type": "string"
           },
           "port": {
             "default": 443,
+            "description": "HTTPS port used to contact Redfish services.",
             "title": "Port",
             "type": "integer"
           },
           "site": {
+            "description": "Site containing the BMC network to provision.",
             "title": "Site",
             "type": "string"
           }
@@ -1093,6 +1165,7 @@
         "description": "Reprovision Workflow Input Definition.",
         "properties": {
           "device_id": {
+            "description": "Identifier of the network device to reprovision.",
             "title": "Device Id",
             "type": "string"
           }
@@ -1171,6 +1244,7 @@
         "properties": {
           "device_type_ids": {
             "default": [],
+            "description": "Device type identifiers used to filter network devices.",
             "items": {
               "type": "string"
             },
@@ -1179,6 +1253,7 @@
           },
           "raise_for_invalid": {
             "default": false,
+            "description": "Whether invalid cabling should fail the workflow.",
             "title": "Raise For Invalid",
             "type": "boolean"
           },
@@ -1196,6 +1271,7 @@
               "smn-leaf",
               "smn-aggleaf"
             ],
+            "description": "Device roles used to filter the selected network devices.",
             "items": {
               "type": "string"
             },
@@ -1203,6 +1279,7 @@
             "type": "array"
           },
           "site": {
+            "description": "Site containing the network devices to validate.",
             "title": "Site",
             "type": "string"
           },
@@ -1211,6 +1288,7 @@
               "active",
               "provisioning"
             ],
+            "description": "Device statuses used to filter the selected network devices.",
             "items": {
               "type": "string"
             },
@@ -1219,6 +1297,7 @@
           },
           "tenant": {
             "default": "nsv",
+            "description": "Tenant used to filter the selected network devices.",
             "title": "Tenant",
             "type": "string"
           }
@@ -1233,6 +1312,7 @@
         "description": "Site Password Rotation Workflow Input Definition.",
         "properties": {
           "location": {
+            "description": "Location containing the devices to update.",
             "title": "Location",
             "type": "string"
           },
@@ -1246,6 +1326,7 @@
               "SMN-Leaf",
               "SMN-Aggleaf"
             ],
+            "description": "Device roles used to filter the selected network devices.",
             "items": {
               "type": "string"
             },
@@ -1253,6 +1334,7 @@
             "type": "array"
           },
           "selected_secret": {
+            "description": "Name of the managed secret containing the replacement password.",
             "title": "Selected Secret",
             "type": "string"
           },
@@ -1261,6 +1343,7 @@
               "Active",
               "Provisioned"
             ],
+            "description": "Device statuses used to filter the selected network devices.",
             "items": {
               "type": "string"
             },
@@ -1269,6 +1352,7 @@
           },
           "tenant": {
             "default": "NGC",
+            "description": "Tenant used to filter the selected network devices.",
             "title": "Tenant",
             "type": "string"
           }
@@ -1292,10 +1376,12 @@
                 "$ref": "#/components/schemas/NetworkDeviceData"
               }
             ],
+            "description": "Identifier or preloaded data for the target network device.",
             "title": "Device"
           },
           "namespace_tag": {
             "default": "spectrumx",
+            "description": "Tag identifying the namespace used for allocation.",
             "title": "Namespace Tag",
             "type": "string"
           },
@@ -1305,6 +1391,7 @@
             "type": "string"
           },
           "port_names": {
+            "description": "Names of the device interfaces to assign to the overlay.",
             "items": {
               "type": "string"
             },
@@ -1312,6 +1399,7 @@
             "type": "array"
           },
           "site": {
+            "description": "Site containing the target network device.",
             "title": "Site",
             "type": "string"
           }
@@ -1330,6 +1418,7 @@
         "properties": {
           "namespace_tag": {
             "default": "spectrumx",
+            "description": "Tag identifying the namespace used for allocation.",
             "title": "Namespace Tag",
             "type": "string"
           },
@@ -1351,10 +1440,12 @@
             "type": "integer"
           },
           "site": {
+            "description": "Site where the SpX overlay will be created.",
             "title": "Site",
             "type": "string"
           },
           "tenant": {
+            "description": "Tenant that will own the SpX overlay.",
             "title": "Tenant",
             "type": "string"
           }
@@ -1372,6 +1463,7 @@
         "properties": {
           "namespace_tag": {
             "default": "spectrumx",
+            "description": "Tag identifying the namespace used for allocation.",
             "title": "Namespace Tag",
             "type": "string"
           },
@@ -1381,6 +1473,7 @@
             "type": "string"
           },
           "site": {
+            "description": "Site containing the SpX overlay to delete.",
             "title": "Site",
             "type": "string"
           }
@@ -1396,11 +1489,13 @@
         "description": "SpX Overlay Tenant Change Workflow Input Definition.",
         "properties": {
           "device_id": {
+            "description": "Identifier of the target network device.",
             "title": "Device ID",
             "type": "string"
           },
           "namespace_tag": {
             "default": "spectrumx",
+            "description": "Tag identifying the namespace used for allocation.",
             "title": "Namespace Tag",
             "type": "string"
           },
@@ -1410,6 +1505,7 @@
             "type": "string"
           },
           "port_names": {
+            "description": "Names of the device interfaces to assign to the overlay.",
             "items": {
               "type": "string"
             },
@@ -1417,6 +1513,7 @@
             "type": "array"
           },
           "site": {
+            "description": "Site containing the target network device.",
             "title": "Site",
             "type": "string"
           }
@@ -1583,6 +1680,7 @@
         "description": "Firmware Upgrade Workflow Input Definition.",
         "properties": {
           "device_id": {
+            "description": "Identifier of the network switch to upgrade.",
             "title": "Device Id",
             "type": "string"
           }
@@ -1679,6 +1777,7 @@
                 "$ref": "#/components/schemas/NetworkDeviceData"
               }
             ],
+            "description": "Identifier or preloaded data for the network device to configure.",
             "title": "Device"
           },
           "intended_config_commit_id": {
@@ -1730,6 +1829,7 @@
         "properties": {
           "device_type_ids": {
             "default": [],
+            "description": "Device type identifiers used to filter network devices.",
             "items": {
               "type": "string"
             },
@@ -1738,11 +1838,13 @@
           },
           "raise_for_invalid": {
             "default": false,
+            "description": "Whether invalid hardware should fail the workflow.",
             "title": "Raise For Invalid",
             "type": "boolean"
           },
           "roles": {
             "default": [],
+            "description": "Device roles used to filter the selected network devices.",
             "items": {
               "type": "string"
             },
@@ -1750,11 +1852,13 @@
             "type": "array"
           },
           "site": {
+            "description": "Site used to select network devices for validation.",
             "title": "Site",
             "type": "string"
           },
           "status": {
             "default": [],
+            "description": "Device statuses used to filter the selected network devices.",
             "items": {
               "type": "string"
             },
@@ -1762,6 +1866,7 @@
             "type": "array"
           },
           "tenant": {
+            "description": "Tenant used to filter the selected network devices.",
             "title": "Tenant",
             "type": "string"
           }

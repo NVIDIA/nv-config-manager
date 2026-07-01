@@ -21,12 +21,18 @@ var _ MappedNullable = &IBPKeyCreationInput{}
 
 // IBPKeyCreationInput InfiniBand PKey Creation Workflow Input.  By default, auto-assigns the next available PKey. Pass an explicit “pkey“ value only when a specific partition key is required.  “site“ is optional. When omitted, the workflow resolves the device's Site-typed Nautobot location from “host“ and uses that as the UFM credential lookup key. Pass “site“ explicitly to override the auto-resolved value (e.g. for API callers that want to skip the Nautobot round-trip).
 type IBPKeyCreationInput struct {
-	Host     string         `json:"host"`
-	IpOverIb *bool          `json:"ip_over_ib,omitempty"`
-	Pkey     NullableString `json:"pkey,omitempty"`
-	PkeyMax  *int32         `json:"pkey_max,omitempty"`
-	PkeyMin  *int32         `json:"pkey_min,omitempty"`
-	Site     NullableString `json:"site,omitempty"`
+	// Hostname of the UFM server managing the InfiniBand fabric.
+	Host string `json:"host"`
+	// Whether IP over InfiniBand is enabled for the partition.
+	IpOverIb *bool `json:"ip_over_ib,omitempty"`
+	// Partition key to create; automatically allocated when omitted.
+	Pkey NullableString `json:"pkey,omitempty"`
+	// Highest partition key eligible for automatic allocation.
+	PkeyMax *int32 `json:"pkey_max,omitempty"`
+	// Lowest partition key eligible for automatic allocation.
+	PkeyMin *int32 `json:"pkey_min,omitempty"`
+	// Site used for UFM credential lookup; resolved from the host when omitted.
+	Site NullableString `json:"site,omitempty"`
 }
 
 type _IBPKeyCreationInput IBPKeyCreationInput

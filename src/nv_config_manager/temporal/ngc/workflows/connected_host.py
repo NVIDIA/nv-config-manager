@@ -21,7 +21,7 @@ from datetime import timedelta
 from typing import Any
 
 from py_markdown_table.markdown_table import markdown_table
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 
@@ -99,7 +99,7 @@ def interface_sort_key(interface_name: str) -> tuple[str, list[int]]:
 class ConnectedHostWorkflowInput(BaseModel):
     """Connected Host Workflow Input."""
 
-    device_id: str
+    device_id: str = Field(description="Identifier of the network device to analyze.")
 
 
 @workflow.defn

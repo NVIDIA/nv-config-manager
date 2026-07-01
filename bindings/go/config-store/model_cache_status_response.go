@@ -21,12 +21,16 @@ var _ MappedNullable = &CacheStatusResponse{}
 
 // CacheStatusResponse Cache service status response.
 type CacheStatusResponse struct {
+	// Cache TTL in seconds
 	CacheTtl NullableInt32 `json:"cache_ttl,omitempty"`
 	// Whether cache service is enabled
-	Enabled           bool           `json:"enabled"`
-	Message           NullableString `json:"message,omitempty"`
-	NautobotConnected NullableBool   `json:"nautobot_connected,omitempty"`
-	RedisConnected    NullableBool   `json:"redis_connected,omitempty"`
+	Enabled bool `json:"enabled"`
+	// Status message if disabled
+	Message NullableString `json:"message,omitempty"`
+	// Whether Nautobot client is available
+	NautobotConnected NullableBool `json:"nautobot_connected,omitempty"`
+	// Whether Redis is connected
+	RedisConnected NullableBool `json:"redis_connected,omitempty"`
 }
 
 type _CacheStatusResponse CacheStatusResponse

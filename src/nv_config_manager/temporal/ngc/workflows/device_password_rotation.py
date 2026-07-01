@@ -16,7 +16,7 @@
 
 from datetime import timedelta
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 
@@ -70,8 +70,10 @@ DEFAULT_ACTIVITY_RETRY_POLICY = RetryPolicy(
 class DevicePasswordRotationInput(BaseModel):
     """Device Password Rotation Workflow Input Definition."""
 
-    device_id: str
-    selected_secret: str
+    device_id: str = Field(description="Identifier of the network device to update.")
+    selected_secret: str = Field(
+        description="Name of the managed secret containing the replacement password."
+    )
 
 
 @workflow.defn

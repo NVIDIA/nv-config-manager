@@ -21,22 +21,23 @@ var _ MappedNullable = &Stage{}
 
 // Stage Workflow Stage Model.
 type Stage struct {
-	ApprovalThreshold *int32          `json:"approval_threshold,omitempty"`
-	Approvers         []Review        `json:"approvers,omitempty"`
-	ChildWorkflows    []string        `json:"child_workflows,omitempty"`
-	DependsOn         []string        `json:"depends_on"`
-	Description       string          `json:"description"`
-	ExecutionTime     NullableFloat32 `json:"execution_time"`
-	Input             interface{}     `json:"input,omitempty"`
-	Name              string          `json:"name"`
-	Output            interface{}     `json:"output,omitempty"`
-	Rejecters         []Review        `json:"rejecters,omitempty"`
-	RequiresApproval  bool            `json:"requires_approval"`
-	RetryCount        *int32          `json:"retry_count,omitempty"`
-	Retryable         bool            `json:"retryable"`
-	State             StateEnum       `json:"state"`
-	StateHistory      []HistoryEntry  `json:"state_history,omitempty"`
-	Traceback         NullableString  `json:"traceback"`
+	ApprovalThreshold *int32   `json:"approval_threshold,omitempty"`
+	Approvers         []Review `json:"approvers,omitempty"`
+	ChildWorkflows    []string `json:"child_workflows,omitempty"`
+	DependsOn         []string `json:"depends_on"`
+	Description       string   `json:"description"`
+	// Calculate the time spent executing the stage.
+	ExecutionTime    NullableFloat32 `json:"execution_time"`
+	Input            interface{}     `json:"input,omitempty"`
+	Name             string          `json:"name"`
+	Output           interface{}     `json:"output,omitempty"`
+	Rejecters        []Review        `json:"rejecters,omitempty"`
+	RequiresApproval bool            `json:"requires_approval"`
+	RetryCount       *int32          `json:"retry_count,omitempty"`
+	Retryable        bool            `json:"retryable"`
+	State            StateEnum       `json:"state"`
+	StateHistory     []HistoryEntry  `json:"state_history,omitempty"`
+	Traceback        NullableString  `json:"traceback"`
 }
 
 type _Stage Stage

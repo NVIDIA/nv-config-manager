@@ -18,7 +18,7 @@ import asyncio
 from datetime import timedelta
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 
@@ -194,12 +194,20 @@ def analyze_flagged_results(
 class ValidateHardwareInput(BaseModel):
     """Validate Hardware Workflow Input."""
 
-    site: str
-    roles: list[str] = []
-    status: list[str] = []
-    tenant: str
-    device_type_ids: list[str] = []
-    raise_for_invalid: bool = False
+    site: str = Field(description="Site used to select network devices for validation.")
+    roles: list[str] = Field(
+        default=[], description="Device roles used to filter the selected network devices."
+    )
+    status: list[str] = Field(
+        default=[], description="Device statuses used to filter the selected network devices."
+    )
+    tenant: str = Field(description="Tenant used to filter the selected network devices.")
+    device_type_ids: list[str] = Field(
+        default=[], description="Device type identifiers used to filter network devices."
+    )
+    raise_for_invalid: bool = Field(
+        default=False, description="Whether invalid hardware should fail the workflow."
+    )
 
 
 @workflow.defn

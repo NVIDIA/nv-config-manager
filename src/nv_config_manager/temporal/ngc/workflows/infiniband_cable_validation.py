@@ -18,7 +18,7 @@ from datetime import timedelta
 from typing import Any
 
 from py_markdown_table.markdown_table import markdown_table
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 
@@ -59,8 +59,12 @@ DEFAULT_IB_SWITCH_ROLES = [
 class InfinibandCableValidationInput(BaseModel):
     """IB Cable Validation Workflow Input Definition."""
 
-    ufm_device_id: str
-    switch_device_ids: list[str]
+    ufm_device_id: str = Field(
+        description="Identifier of the UFM device used to inspect the InfiniBand fabric."
+    )
+    switch_device_ids: list[str] = Field(
+        description="Identifiers of the InfiniBand switches to validate."
+    )
 
 
 class InvalidCable(BaseModel):

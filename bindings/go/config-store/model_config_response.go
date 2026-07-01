@@ -31,8 +31,9 @@ type ConfigResponse struct {
 	// SHA256 hash of content
 	ContentHash string `json:"content_hash"`
 	// Timestamp when version was created
-	CreatedAt time.Time              `json:"created_at"`
-	Device    NullableDeviceMetadata `json:"device,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	// Device metadata from Nautobot
+	Device NullableDeviceMetadata `json:"device,omitempty"`
 	// Device UUID
 	DeviceUuid string `json:"device_uuid"`
 	// Config file type (intended or backup)

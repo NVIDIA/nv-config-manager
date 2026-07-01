@@ -21,12 +21,18 @@ var _ MappedNullable = &ValidateHardwareInput{}
 
 // ValidateHardwareInput Validate Hardware Workflow Input.
 type ValidateHardwareInput struct {
-	DeviceTypeIds   []string `json:"device_type_ids,omitempty"`
-	RaiseForInvalid *bool    `json:"raise_for_invalid,omitempty"`
-	Roles           []string `json:"roles,omitempty"`
-	Site            string   `json:"site"`
-	Status          []string `json:"status,omitempty"`
-	Tenant          string   `json:"tenant"`
+	// Device type identifiers used to filter network devices.
+	DeviceTypeIds []string `json:"device_type_ids,omitempty"`
+	// Whether invalid hardware should fail the workflow.
+	RaiseForInvalid *bool `json:"raise_for_invalid,omitempty"`
+	// Device roles used to filter the selected network devices.
+	Roles []string `json:"roles,omitempty"`
+	// Site used to select network devices for validation.
+	Site string `json:"site"`
+	// Device statuses used to filter the selected network devices.
+	Status []string `json:"status,omitempty"`
+	// Tenant used to filter the selected network devices.
+	Tenant string `json:"tenant"`
 }
 
 type _ValidateHardwareInput ValidateHardwareInput

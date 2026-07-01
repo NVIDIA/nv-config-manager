@@ -26,7 +26,8 @@ type CacheTestFoundResponse struct {
 	// Device UUID
 	DeviceUuid string `json:"device_uuid"`
 	// Whether device was found
-	Found    *bool          `json:"found,omitempty"`
+	Found *bool `json:"found,omitempty"`
+	// Platform name
 	Platform NullableString `json:"platform"`
 	// Site name
 	Site string `json:"site"`

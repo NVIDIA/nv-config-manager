@@ -21,10 +21,12 @@ var _ MappedNullable = &BulkRenderResponse{}
 
 // BulkRenderResponse Response from a bulk render operation (render-all or batch).
 type BulkRenderResponse struct {
-	FailedDevices  []FailedDevice `json:"failed_devices,omitempty"`
-	MaxConcurrency NullableInt32  `json:"max_concurrency,omitempty"`
-	Message        string         `json:"message"`
-	QueuedCount    int32          `json:"queued_count"`
+	// Devices that failed to queue
+	FailedDevices []FailedDevice `json:"failed_devices,omitempty"`
+	// Maximum concurrent renders (batch only)
+	MaxConcurrency NullableInt32 `json:"max_concurrency,omitempty"`
+	Message        string        `json:"message"`
+	QueuedCount    int32         `json:"queued_count"`
 	// Total number of devices targeted
 	TotalDevices *int32 `json:"total_devices,omitempty"`
 }

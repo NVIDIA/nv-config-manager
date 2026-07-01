@@ -17,7 +17,7 @@
 import asyncio
 from datetime import timedelta
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 from temporalio.exceptions import ChildWorkflowError
@@ -85,11 +85,22 @@ DEFAULT_ACTIVITY_RETRY_POLICY = RetryPolicy(
 class SitePasswordRotationInput(BaseModel):
     """Site Password Rotation Workflow Input Definition."""
 
-    location: str
-    selected_secret: str
-    roles: list[str] = DEFAULT_CONFIG_MANAGER_ROLES
-    status: list[str] = DEFAULT_CONFIG_MANAGER_STATUS
-    tenant: str = DEFAULT_CONFIG_MANAGER_TENANT
+    location: str = Field(description="Location containing the devices to update.")
+    selected_secret: str = Field(
+        description="Name of the managed secret containing the replacement password."
+    )
+    roles: list[str] = Field(
+        default=DEFAULT_CONFIG_MANAGER_ROLES,
+        description="Device roles used to filter the selected network devices.",
+    )
+    status: list[str] = Field(
+        default=DEFAULT_CONFIG_MANAGER_STATUS,
+        description="Device statuses used to filter the selected network devices.",
+    )
+    tenant: str = Field(
+        default=DEFAULT_CONFIG_MANAGER_TENANT,
+        description="Tenant used to filter the selected network devices.",
+    )
 
 
 class PasswordRotationResultData(BaseModel):
