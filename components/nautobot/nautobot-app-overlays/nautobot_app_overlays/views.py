@@ -73,6 +73,15 @@ class OverlayUIViewSet(NautobotUIViewSet):
             RequestConfig(request, paginate={"per_page": 25}).configure(vxlan_assignments_table)
             context["vxlan_assignments_table"] = vxlan_assignments_table
 
+        elif instance.isolation_type == IsolationTypeChoices.SPECTRUM_X_VRF:
+            vxlans = instance.vxlans.select_related("vrf", "status").prefetch_related(
+                "vrf__import_targets",
+                "vrf__export_targets",
+            )
+            vxlans_table = tables.SpectrumXVXLANInlineTable(vxlans, orderable=False)
+            RequestConfig(request, paginate={"per_page": 25}).configure(vxlans_table)
+            context["vxlans_table"] = vxlans_table
+
         elif instance.isolation_type == IsolationTypeChoices.IB_PKEY:
             pkeys = instance.pkeys.all().select_related("tenant")
             pkeys_table = tables.InfiniBandPKeyTable(pkeys, orderable=False)

@@ -23,8 +23,9 @@ from django.test import TestCase
 from django.urls import reverse
 from nautobot.dcim.models import Interface
 from nautobot.extras.models import CustomField, Status
+from nautobot.ipam.models import VRF, RouteTarget
 
-from nautobot_app_overlays import forms, models
+from nautobot_app_overlays import choices, forms, models
 from nautobot_app_overlays.tests.fixtures import (
     create_assignment_test_data,
     create_device_test_data,
@@ -93,6 +94,49 @@ class OverlayViewTestCase(TestCase):
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Overlay Assignments")
+
+    def test_spectrum_x_overlay_detail_shows_vrf_route_targets(self):
+        """Spectrum-X overlay detail lists linked L3 VXLAN VRF routing data."""
+        overlay = models.Overlay.objects.create(
+            name="Spectrum-X Overlay",
+            tenant=self.tenant,
+            location=self.location,
+            isolation_type=choices.IsolationTypeChoices.SPECTRUM_X_VRF,
+            status=self.overlay_status,
+        )
+        vrf = VRF.objects.create(
+            name="Spectrum-X VRF",
+            namespace=self.namespace,
+            rd="*:60001",
+            tenant=self.tenant,
+        )
+        import_rt = RouteTarget.objects.create(name="65000:60001", tenant=self.tenant)
+        export_rt = RouteTarget.objects.create(name="65001:60001", tenant=self.tenant)
+        vrf.import_targets.add(import_rt)
+        vrf.export_targets.add(export_rt)
+        vxlan = models.VXLAN.objects.create(
+            vnid=60001,
+            name="Spectrum-X L3 VXLAN",
+            vni_type=choices.VNITypeChoices.L3_VNI,
+            namespace=self.namespace,
+            overlay=overlay,
+            vrf=vrf,
+            tenant=self.tenant,
+            status=self.vxlan_status,
+        )
+
+        url = reverse(
+            "plugins:nautobot_app_overlays:overlay",
+            kwargs={"pk": overlay.pk},
+        )
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "L3 VXLANs and Route Targets")
+        self.assertContains(response, vxlan.name)
+        self.assertContains(response, vrf.rd)
+        self.assertContains(response, import_rt.name)
+        self.assertContains(response, export_rt.name)
 
     def test_overlay_add_view(self):
         """Test the Overlay add view."""
