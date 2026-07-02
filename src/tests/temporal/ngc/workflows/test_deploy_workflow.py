@@ -42,7 +42,6 @@ from nv_config_manager.temporal.ngc.activities.nautobot import (
     GetNetworkDeviceInput,
     GetNetworkDeviceOutput,
 )
-from nv_config_manager.temporal.ngc.activities.slack import SlackMessageInput
 from nv_config_manager.temporal.ngc.workflows.backup import BackupWorkflow
 from nv_config_manager.temporal.ngc.workflows.deploy import (
     INTENDED_CONFIG_COMMIT_ID_DESCRIPTION,
@@ -52,6 +51,7 @@ from nv_config_manager.temporal.ngc.workflows.deploy import (
     TenantDeployInput,
     TenantDeployWorkflow,
 )
+from tests.temporal.conftest import mock_send_slack_message
 
 
 @activity.defn(name="get_network_device")
@@ -235,11 +235,6 @@ async def mock_record_backup_config_manager_plugin(
 @activity.defn(name="get_ui_base_url")
 async def mock_get_ui_base_url() -> str:
     return "config-manager.example.com"
-
-
-@activity.defn(name="send_slack_message")
-async def mock_send_slack_message(_activity_input: SlackMessageInput) -> None:
-    return None
 
 
 @pytest.mark.asyncio
@@ -1135,10 +1130,7 @@ nv set vrf test-ryan-2 router bgp router-id 172.28.0.2
                 "depends_on": ["perform_configuration_diff"],
                 "description": "Run the backup workflow for the device..",
                 "execution_time": 0.0,
-                "input": {
-                    "commit_id": "11",
-                    "device_id": "mock_device_uuid",
-                },
+                "input": {"device_id": "mock_device_uuid"},
                 "name": "perform_backup",
                 "output": {"display": ANY},
                 "rejecters": [],
@@ -1576,7 +1568,7 @@ nv set interface swp2 ip vrf test-vrf
         assert load_stage is not None
         assert load_stage["output"]["commit_id"] == "7"
         assert load_stage["output"]["intended_config_commit_id"] == "11"
-        assert stages[-1]["input"]["commit_id"] == "11"
+        assert stages[-1]["input"] == {"device_id": "mock_device_uuid"}
 
         backup_workflow_id = stages[-1]["child_workflows"][0]
         backup_handle = client.get_workflow_handle(backup_workflow_id)

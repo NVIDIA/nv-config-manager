@@ -699,7 +699,6 @@ class TenantDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archi
         """Backup Stage Input."""
 
         device_id: str
-        commit_id: str
 
     class BackupStageOutput(StageOutput):
         """Backup Stage Output."""
@@ -781,7 +780,6 @@ class TenantDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archi
         await self.perform_backup(
             TenantDeployWorkflow.BackupStageInput(
                 device_id=load_config_output.device.id,
-                commit_id=load_config_output.intended_config_commit_id,
             )
         )
         await self.archive_results()
