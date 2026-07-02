@@ -88,7 +88,8 @@ class AddGuidsInput(BaseModel):
     """Parameters for adding port GUIDs to an existing PKey partition.
 
     ``memberships`` is index-aligned with ``guids`` (one "full"/"limited" per
-    GUID), the per-port form UFM accepts via the ``memberships`` array.
+    GUID). The activity merges these into the partition's current members and
+    issues a single PUT, since UFM's Add endpoint cannot set per-GUID membership.
     """
 
     host: str
@@ -111,7 +112,8 @@ class SetGuidsInput(BaseModel):
     """Parameters for atomically setting a PKey's exact GUID membership.
 
     ``memberships`` is index-aligned with ``guids`` (one "full"/"limited" per
-    GUID), the per-port form UFM accepts via the ``memberships`` array.
+    GUID), the per-port form UFM's Set endpoint (PUT) accepts via the
+    ``memberships`` array.
     """
 
     host: str
@@ -163,6 +165,36 @@ def _validate_memberships_aligned(pkey: str, guids: list[str], memberships: list
             f"guids length ({len(guids)})",
             non_retryable=True,
         )
+
+
+async def _get_pkey_state(client: UFMClient, pkey: str) -> tuple[bool, dict[str, str], bool | None]:
+    """Read a PKey's current members from UFM."""
+    try:
+        pkey_data = await client.request(
+            "GET",
+            f"/resources/pkeys/{pkey}",
+            params={"guids_data": "true"},
+        )
+    except UFMClientError as e:
+        if e.status_code != 404:
+            raise
+        return False, {}, None
+
+    if not isinstance(pkey_data, dict):
+        raise ApplicationError(
+            f"PKey {pkey} returned an unexpected response from UFM",
+            non_retryable=True,
+        )
+
+    members: dict[str, str] = {}
+    for entry in pkey_data.get("guids", []):
+        if isinstance(entry, dict):
+            members[str(entry.get("guid", "")).lower()] = str(entry.get("membership", "")).lower()
+        else:
+            members[str(entry).lower()] = ""
+
+    ip_over_ib = pkey_data.get("ip_over_ib")
+    return True, members, ip_over_ib if isinstance(ip_over_ib, bool) else None
 
 
 def _parse_pkey_int(pkey_str: str) -> int:
@@ -298,7 +330,13 @@ async def verify_pkey_created(input: VerifyPKeyInput) -> VerifyPKeyOutput:
 
 @activity.defn
 async def add_guids_to_pkey(input: AddGuidsInput) -> AddGuidsOutput:
-    """Add port GUIDs to an existing PKey partition on UFM."""
+    """Add port GUIDs to an existing PKey partition on UFM.
+
+    UFM's Add endpoint (POST) cannot assign per-GUID membership in one call and
+    silently defaults added members to "full". To assign membership reliably and
+    without leaving partial state, this reads the partition's current members, merges
+    in the requested GUIDs, and issues a single PUT that UFM applies atomically.
+    """
     if not input.guids:
         log.info("No GUIDs to add to PKey %s — skipping", input.pkey)
         return AddGuidsOutput(
@@ -309,25 +347,35 @@ async def add_guids_to_pkey(input: AddGuidsInput) -> AddGuidsOutput:
 
     _validate_memberships_aligned(input.pkey, input.guids, input.memberships)
 
-    payload: dict[str, Any] = {
-        "pkey": input.pkey,
-        "guids": input.guids,
-        "memberships": input.memberships,
-        "ip_over_ib": input.ip_over_ib,
-        "index0": input.index0,
-    }
-
-    log.info(
-        "Adding %d GUIDs to PKey %s on UFM at %s: %s (memberships=%s)",
-        len(input.guids),
-        input.pkey,
-        input.host,
-        input.guids,
-        input.memberships,
-    )
-
     async with UFMClient(host=input.host, site=input.site) as client:
-        await client.request("POST", "/resources/pkeys/", json=payload)
+        _, current_members, current_ip_over_ib = await _get_pkey_state(client, input.pkey)
+
+        merged = dict(current_members)
+        for guid, membership in zip(input.guids, input.memberships, strict=True):
+            merged[guid.lower()] = membership.lower()
+
+        payload: dict[str, Any] = {
+            "pkey": input.pkey,
+            "guids": list(merged.keys()),
+            "memberships": list(merged.values()),
+            "ip_over_ib": (
+                current_ip_over_ib if current_ip_over_ib is not None else input.ip_over_ib
+            ),
+            "index0": input.index0,
+        }
+
+        log.info(
+            "Adding %d GUID(s) to PKey %s on UFM at %s via merge-and-PUT "
+            "(%d existing member(s), %d total after merge): %s",
+            len(input.guids),
+            input.pkey,
+            input.host,
+            len(current_members),
+            len(merged),
+            input.guids,
+        )
+
+        await client.request("PUT", "/resources/pkeys/", json=payload)
 
     return AddGuidsOutput(
         pkey=input.pkey,
@@ -379,16 +427,10 @@ async def fetch_pkey_members(input: FetchPKeyMembersInput) -> FetchPKeyMembersOu
     """
     log.info("Fetching members for PKey %s on UFM at %s", input.pkey, input.host)
 
-    try:
-        async with UFMClient(host=input.host, site=input.site) as client:
-            pkey_data = await client.request(
-                "GET",
-                f"/resources/pkeys/{input.pkey}",
-                params={"guids_data": "true"},
-            )
-    except UFMClientError as e:
-        if e.status_code != 404:
-            raise
+    async with UFMClient(host=input.host, site=input.site) as client:
+        exists, members, ip_over_ib = await _get_pkey_state(client, input.pkey)
+
+    if not exists:
         log.info("PKey %s does not exist on UFM", input.pkey)
         return FetchPKeyMembersOutput(
             pkey=input.pkey,
@@ -399,24 +441,8 @@ async def fetch_pkey_members(input: FetchPKeyMembersInput) -> FetchPKeyMembersOu
             display=f"PKey {input.pkey} does not exist on UFM",
         )
 
-    if not isinstance(pkey_data, dict):
-        raise ApplicationError(
-            f"PKey {input.pkey} returned an unexpected response from UFM at {input.host}",
-            non_retryable=True,
-        )
-
-    raw_guids = pkey_data.get("guids", [])
-    guids: list[str] = []
-    memberships: list[str] = []
-    for entry in raw_guids:
-        if isinstance(entry, dict):
-            guids.append(str(entry.get("guid", "")).lower())
-            memberships.append(str(entry.get("membership", "")).lower())
-        else:
-            guids.append(str(entry).lower())
-            memberships.append("")
-
-    ip_over_ib = pkey_data.get("ip_over_ib")
+    guids = list(members.keys())
+    memberships = list(members.values())
     log.info("PKey %s has %d current member(s): %s", input.pkey, len(guids), guids)
 
     return FetchPKeyMembersOutput(
@@ -424,7 +450,7 @@ async def fetch_pkey_members(input: FetchPKeyMembersInput) -> FetchPKeyMembersOu
         exists=True,
         guids=guids,
         memberships=memberships,
-        ip_over_ib=ip_over_ib if isinstance(ip_over_ib, bool) else None,
+        ip_over_ib=ip_over_ib,
         display=f"PKey {input.pkey} has {len(guids)} current member(s)",
     )
 

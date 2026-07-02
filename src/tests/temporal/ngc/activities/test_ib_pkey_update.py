@@ -350,8 +350,7 @@ class TestSetPKeyMembers:
 
         assert captured["pkey"] == "0x0005"
         assert captured["guids"] == [GUID_1, GUID_2]
-        # Per-GUID memberships use UFM's plural `memberships` array, never the
-        # scalar `membership` (the two are mutually exclusive on UFM).
+        # UFM's Set endpoint (PUT) honors the index-aligned plural `memberships`.
         assert captured["memberships"] == ["full", "limited"]
         assert "membership" not in captured
 

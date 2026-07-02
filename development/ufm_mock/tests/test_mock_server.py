@@ -167,53 +167,61 @@ class TestAddMembers:
         )
         assert response.status_code == 404
 
-    def test_per_guid_memberships_array(self, client: TestClient) -> None:
-        """The plural `memberships` array assigns membership per GUID."""
+    def test_grouped_single_membership_posts_assign_per_guid(self, client: TestClient) -> None:
+        """Two single-membership POSTs assign per-GUID membership."""
         client.post(
             "/ufmRest/resources/pkeys/add",
             json={"pkey": "0x0001", "ip_over_ib": True},
         )
-        response = client.post(
+        client.post(
             "/ufmRest/resources/pkeys/",
-            json={
-                "pkey": "0x0001",
-                "guids": ["0xa", "0xb"],
-                "memberships": ["full", "limited"],
-            },
+            json={"pkey": "0x0001", "guids": ["0xa"], "membership": "full"},
         )
-        assert response.status_code == 200
+        client.post(
+            "/ufmRest/resources/pkeys/",
+            json={"pkey": "0x0001", "guids": ["0xb"], "membership": "limited"},
+        )
 
         state = client.get("/ufmRest/resources/pkeys/0x0001?guids_data=true").json()
         by_guid = {e["guid"]: e["membership"] for e in state["guids"]}
         assert by_guid == {"0xa": "full", "0xb": "limited"}
 
-    def test_membership_and_memberships_conflict_rejected(self, client: TestClient) -> None:
-        """Sending both scalar and array membership is rejected, mirroring UFM."""
+    def test_single_membership_applies_to_all(self, client: TestClient) -> None:
+        """A single `membership` string applies to every GUID."""
         client.post(
             "/ufmRest/resources/pkeys/add",
             json={"pkey": "0x0001", "ip_over_ib": True},
         )
         response = client.post(
             "/ufmRest/resources/pkeys/",
-            json={
-                "pkey": "0x0001",
-                "guids": ["0xa"],
-                "membership": "full",
-                "memberships": ["full"],
-            },
+            json={"pkey": "0x0001", "guids": ["0xa", "0xb"], "membership": "limited"},
         )
-        assert response.status_code == 400
+        assert response.status_code == 200
 
-    def test_memberships_length_mismatch_rejected(self, client: TestClient) -> None:
+        state = client.get("/ufmRest/resources/pkeys/0x0001?guids_data=true").json()
+        by_guid = {e["guid"]: e["membership"] for e in state["guids"]}
+        assert by_guid == {"0xa": "limited", "0xb": "limited"}
+
+    def test_plural_memberships_key_is_ignored(self, client: TestClient) -> None:
+        """POST ignores the plural `memberships` and members default to "full".
+
+        Pins the mock to real UFM 6.19.x: the Add endpoint honors only a single
+        `membership` string and silently drops a plural `memberships` array. Keeping
+        the mock faithful to this quirk means integration tests that touch POST can't
+        pass against a mock that is quietly more forgiving than production.
+        """
         client.post(
             "/ufmRest/resources/pkeys/add",
             json={"pkey": "0x0001", "ip_over_ib": True},
         )
         response = client.post(
             "/ufmRest/resources/pkeys/",
-            json={"pkey": "0x0001", "guids": ["0xa", "0xb"], "memberships": ["full"]},
+            json={"pkey": "0x0001", "guids": ["0xa"], "memberships": ["limited"]},
         )
-        assert response.status_code == 400
+        assert response.status_code == 200
+
+        state = client.get("/ufmRest/resources/pkeys/0x0001?guids_data=true").json()
+        assert {e["guid"]: e["membership"] for e in state["guids"]} == {"0xa": "full"}
 
 
 class TestRemoveMembers:
@@ -340,8 +348,8 @@ class TestSetMembers:
         assert by_guid["0xa"] == {"guid": "0xa", "membership": "full"}
         assert by_guid["0xb"]["membership"] == "full"
 
-    def test_put_per_guid_memberships_array(self, client: TestClient) -> None:
-        """PUT honors the per-GUID `memberships` array for an atomic set."""
+    def test_put_per_guid_memberships_list(self, client: TestClient) -> None:
+        """PUT honors the index-aligned plural `memberships` for an atomic set."""
         response = client.put(
             "/ufmRest/resources/pkeys/",
             json={
@@ -355,6 +363,14 @@ class TestSetMembers:
         state = client.get("/ufmRest/resources/pkeys/0x0001?guids_data=true").json()
         by_guid = {e["guid"]: e["membership"] for e in state["guids"]}
         assert by_guid == {"0xa": "limited", "0xb": "full"}
+
+    def test_put_memberships_length_mismatch_rejected(self, client: TestClient) -> None:
+        """A plural `memberships` whose length differs from `guids` is rejected."""
+        response = client.put(
+            "/ufmRest/resources/pkeys/",
+            json={"pkey": "0x0001", "guids": ["0xa", "0xb"], "memberships": ["full"]},
+        )
+        assert response.status_code == 400
 
 
 class TestDevHelpers:
