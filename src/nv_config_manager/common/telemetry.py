@@ -14,9 +14,11 @@
 # limitations under the License.
 """Backend-agnostic OpenTelemetry tracing bootstrap shared by every service."""
 
+import importlib
 import logging
 import os
 from collections.abc import Callable
+from typing import Any
 
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
@@ -25,6 +27,28 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 logger = logging.getLogger(__name__)
+
+
+def _optional_instrumentor(module_path: str, class_name: str) -> type[Any] | None:
+    """Return an instrumentor class, or None when its package is not installed."""
+    try:
+        module = importlib.import_module(module_path)
+    except ImportError:
+        return None
+    return getattr(module, class_name, None)
+
+
+# Optional outbound-client instrumentors resolved once at import. A trimmed
+# dependency set degrades gracefully: a missing package leaves its symbol None.
+AioHttpClientInstrumentor = _optional_instrumentor(
+    "opentelemetry.instrumentation.aiohttp_client", "AioHttpClientInstrumentor"
+)
+HTTPXClientInstrumentor = _optional_instrumentor(
+    "opentelemetry.instrumentation.httpx", "HTTPXClientInstrumentor"
+)
+RequestsInstrumentor = _optional_instrumentor(
+    "opentelemetry.instrumentation.requests", "RequestsInstrumentor"
+)
 
 _tracing_configured = False
 
@@ -66,9 +90,7 @@ def setup_tracing(service_name: str) -> bool:
 def _instrument_http_clients() -> None:
     """Patch outbound HTTP client libs so trace context crosses service hops.
 
-    Each instrumentor is imported lazily and independently: a trimmed dependency
-    set degrades gracefully, and a failure to patch one client never blocks
-    process startup.
+    A failure to patch any one client never blocks process startup.
     """
     for name, instrument in _http_client_instrumentors():
         try:
@@ -78,24 +100,10 @@ def _instrument_http_clients() -> None:
 
 
 def _http_client_instrumentors() -> list[tuple[str, Callable[[], None]]]:
-    """Collect available outbound-client instrumentors (aiohttp, httpx, requests)."""
-    instrumentors: list[tuple[str, Callable[[], None]]] = []
-    try:
-        from opentelemetry.instrumentation.aiohttp_client import AioHttpClientInstrumentor
-
-        instrumentors.append(("aiohttp", AioHttpClientInstrumentor().instrument))
-    except ImportError:
-        pass
-    try:
-        from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
-
-        instrumentors.append(("httpx", HTTPXClientInstrumentor().instrument))
-    except ImportError:
-        pass
-    try:
-        from opentelemetry.instrumentation.requests import RequestsInstrumentor
-
-        instrumentors.append(("requests", RequestsInstrumentor().instrument))
-    except ImportError:
-        pass
-    return instrumentors
+    """Collect installed outbound-client instrumentors (aiohttp, httpx, requests)."""
+    candidates = (
+        ("aiohttp", AioHttpClientInstrumentor),
+        ("httpx", HTTPXClientInstrumentor),
+        ("requests", RequestsInstrumentor),
+    )
+    return [(name, cls().instrument) for name, cls in candidates if cls is not None]
