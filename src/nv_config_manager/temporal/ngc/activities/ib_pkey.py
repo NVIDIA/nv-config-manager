@@ -187,11 +187,15 @@ async def _get_pkey_state(client: UFMClient, pkey: str) -> tuple[bool, dict[str,
         )
 
     members: dict[str, str] = {}
-    for entry in pkey_data.get("guids", []):
-        if isinstance(entry, dict):
-            members[str(entry.get("guid", "")).lower()] = str(entry.get("membership", "")).lower()
-        else:
-            members[str(entry).lower()] = ""
+    for entry in pkey_data.get("guids") or []:
+        guid = str(entry.get("guid", "")).lower() if isinstance(entry, dict) else ""
+        membership = str(entry.get("membership", "")).lower() if isinstance(entry, dict) else ""
+        if not guid or not membership:
+            raise ApplicationError(
+                f"PKey {pkey}: UFM returned a member with no guid or membership: {entry!r}",
+                non_retryable=True,
+            )
+        members[guid] = membership
 
     ip_over_ib = pkey_data.get("ip_over_ib")
     return True, members, ip_over_ib if isinstance(ip_over_ib, bool) else None
