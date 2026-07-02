@@ -124,6 +124,15 @@ class OverlayViewTestCase(TestCase):
             tenant=self.tenant,
             status=self.vxlan_status,
         )
+        l2_vxlan = models.VXLAN.objects.create(
+            vnid=60002,
+            name="Spectrum-X L2 VXLAN",
+            vni_type=choices.VNITypeChoices.L2_VNI,
+            namespace=self.namespace,
+            overlay=overlay,
+            tenant=self.tenant,
+            status=self.vxlan_status,
+        )
 
         url = reverse(
             "plugins:nautobot_app_overlays:overlay",
@@ -137,6 +146,7 @@ class OverlayViewTestCase(TestCase):
         self.assertContains(response, vrf.rd)
         self.assertContains(response, import_rt.name)
         self.assertContains(response, export_rt.name)
+        self.assertNotContains(response, l2_vxlan.name)
 
     def test_overlay_add_view(self):
         """Test the Overlay add view."""

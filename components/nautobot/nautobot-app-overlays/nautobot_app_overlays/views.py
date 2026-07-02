@@ -30,7 +30,7 @@ from nautobot.dcim.models import Device, Interface, Rack
 from nautobot.extras.models import Status
 
 from nautobot_app_overlays import filters, forms, models, tables
-from nautobot_app_overlays.choices import IsolationTypeChoices
+from nautobot_app_overlays.choices import IsolationTypeChoices, VNITypeChoices
 
 logger = logging.getLogger(__name__)
 
@@ -74,9 +74,13 @@ class OverlayUIViewSet(NautobotUIViewSet):
             context["vxlan_assignments_table"] = vxlan_assignments_table
 
         elif instance.isolation_type == IsolationTypeChoices.SPECTRUM_X_VRF:
-            vxlans = instance.vxlans.select_related("vrf", "status").prefetch_related(
-                "vrf__import_targets",
-                "vrf__export_targets",
+            vxlans = (
+                instance.vxlans.filter(vni_type=VNITypeChoices.L3_VNI)
+                .select_related("vrf", "status")
+                .prefetch_related(
+                    "vrf__import_targets",
+                    "vrf__export_targets",
+                )
             )
             vxlans_table = tables.SpectrumXVXLANInlineTable(vxlans, orderable=False)
             RequestConfig(request, paginate={"per_page": 25}).configure(vxlans_table)
