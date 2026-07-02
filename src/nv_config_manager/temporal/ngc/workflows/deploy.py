@@ -718,7 +718,6 @@ class TenantDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archi
             trigger=TriggerEnum.WORKFLOW,
             user="nv-config-manager-temporal",
             user_domain=None,
-            intended_config_commit_id=stage_input.commit_id,
             workflow_id=workflow.info().workflow_id,
         )
 
