@@ -1,7 +1,7 @@
 {% load helpers %}
 
 <tr>
-  <td>Intended Config Version</td>
+  <th scope="row">Intended Config Version</th>
   {% if config_store_links.intended_config_version %}
     <td>
       <a href="{{ config_store_links.intended_config_version }}"
@@ -15,13 +15,12 @@
     </td>
   {% endif %}
 </tr>
-</tr>
 <tr>
-  <td>Intended Config Updated By</td>
+  <th scope="row">Intended Config Updated By</th>
   <td>{{ object.intended_config.updated_by|placeholder }}</td>
 </tr>
 <tr>
-  <td>Intended Config History</td>
+  <th scope="row">Intended Config History</th>
   {% if config_store_links.intended_config_history %}
   <td>
     <a href="{{ config_store_links.intended_config_history }}"
@@ -36,7 +35,7 @@
   {% endif %}
 </tr>
 <tr>
-  <td>Last Config Backup</td>
+  <th scope="row">Last Config Backup</th>
   {% if config_store_links.last_config_backup %}
   <td>
     <a href="{{ config_store_links.last_config_backup }}"
@@ -51,7 +50,7 @@
   {% endif %}
 </tr>
 <tr>
-  <td>Backup History</td>
+  <th scope="row">Backup History</th>
   {% if config_store_links.backup_history %}
     <td>
       <a href="{{ config_store_links.backup_history }}"
@@ -66,7 +65,7 @@
   {% endif %}
 </tr>
 <tr>
-  <td>Render Enabled</td>
+  <th scope="row">Render Enabled</th>
   <td>
     {% if object.render_enabled %}
       <i class="mdi mdi-check-circle" style="color: green;"></i>
@@ -76,7 +75,7 @@
   </td>
 </tr>
 <tr>
-  <td>ZTP Enabled</td>
+  <th scope="row">ZTP Enabled</th>
   <td>
     {% if object.ztp_enabled %}
       <i class="mdi mdi-check-circle" style="color: green;"></i>
@@ -86,7 +85,7 @@
   </td>
 </tr>
 <tr>
-  <td>Deploy Enabled</td>
+  <th scope="row">Deploy Enabled</th>
   <td>
     {% if object.deploy_enabled %}
       <i class="mdi mdi-check-circle" style="color: green;"></i>
@@ -96,7 +95,7 @@
   </td>
 </tr>
 <tr>
-  <td>Backup Enabled</td>
+  <th scope="row">Backup Enabled</th>
   <td>
     {% if object.backup_enabled %}
       <i class="mdi mdi-check-circle" style="color: green;"></i>
@@ -106,7 +105,7 @@
   </td>
 </tr>
 <tr>
-  <td>Aggregate Managed</td>
+  <th scope="row">Aggregate Managed</th>
   <td>
     {% if object.is_aggregate_managed %}
       <i class="mdi mdi-check-circle" style="color: green;"></i>

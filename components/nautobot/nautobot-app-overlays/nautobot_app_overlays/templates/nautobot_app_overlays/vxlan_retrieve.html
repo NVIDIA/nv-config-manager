@@ -9,47 +9,47 @@
     </div>
     <table class="table table-hover panel-body attr-table">
         <tr>
-            <td>Name</td>
+            <th scope="row">Name</th>
             <td>{{ object.name }}</td>
         </tr>
         <tr>
-            <td>Status</td>
+            <th scope="row">Status</th>
             <td>{{ object.status|hyperlinked_object_with_color }}</td>
         </tr>
         <tr>
-            <td>VNI</td>
+            <th scope="row">VNI</th>
             <td>{{ object.vnid }}</td>
         </tr>
         <tr>
-            <td>VNI Type</td>
+            <th scope="row">VNI Type</th>
             <td>{{ object.get_vni_type_display }}</td>
         </tr>
         <tr>
-            <td>L3 VLAN ID</td>
+            <th scope="row">L3 VLAN ID</th>
             <td>{{ object.l3_vlan_id|placeholder }}</td>
         </tr>
         <tr>
-            <td>Namespace</td>
+            <th scope="row">Namespace</th>
             <td>{{ object.namespace|hyperlinked_object|placeholder }}</td>
         </tr>
         <tr>
-            <td>Overlay</td>
+            <th scope="row">Overlay</th>
             <td>{{ object.overlay|hyperlinked_object|placeholder }}</td>
         </tr>
         <tr>
-            <td>Tenant</td>
+            <th scope="row">Tenant</th>
             <td>{{ object.tenant|hyperlinked_object|placeholder }}</td>
         </tr>
         <tr>
-            <td>VLAN</td>
+            <th scope="row">VLAN</th>
             <td>{{ object.vlan|hyperlinked_object|placeholder }}</td>
         </tr>
         <tr>
-            <td>VRF</td>
+            <th scope="row">VRF</th>
             <td>{{ object.vrf|hyperlinked_object|placeholder }}</td>
         </tr>
         <tr>
-            <td>Import route targets (VNI)</td>
+            <th scope="row">Import route targets (VNI)</th>
             <td>
                 {% if object.import_targets.exists %}
                     {% for rt in object.import_targets.all %}
@@ -61,7 +61,7 @@
             </td>
         </tr>
         <tr>
-            <td>Export route targets (VNI)</td>
+            <th scope="row">Export route targets (VNI)</th>
             <td>
                 {% if object.export_targets.exists %}
                     {% for rt in object.export_targets.all %}
@@ -125,19 +125,19 @@
     </div>
     <table class="table table-hover panel-body attr-table">
         <tr>
-            <td>Overlay</td>
+            <th scope="row">Overlay</th>
             <td>{{ object.overlay|hyperlinked_object }}</td>
         </tr>
         <tr>
-            <td>Overlay Status</td>
+            <th scope="row">Overlay Status</th>
             <td>{{ object.overlay.status|hyperlinked_object_with_color }}</td>
         </tr>
         <tr>
-            <td>Location</td>
+            <th scope="row">Location</th>
             <td>{{ object.overlay.location|hyperlinked_object|placeholder }}</td>
         </tr>
         <tr>
-            <td>Isolation Type</td>
+            <th scope="row">Isolation Type</th>
             <td>{{ object.overlay.get_isolation_type_display|placeholder }}</td>
         </tr>
     </table>
