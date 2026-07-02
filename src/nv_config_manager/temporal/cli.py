@@ -80,7 +80,7 @@ class WorkflowInfo:
 
     def _extract_parameters(self) -> dict[str, dict[str, Any]]:
         """Extract parameter information from input model."""
-        parameters = {}
+        parameters: dict[str, dict[str, Any]] = {}
 
         try:
             # Try Pydantic v2 first
@@ -621,7 +621,7 @@ def create_workflow_command(workflow_name: str, workflow_info: WorkflowInfo) -> 
 
         # Preserve nulls for nullable workflow fields. A missing required-but-nullable
         # field is not equivalent to an explicit JSON null and produces a 422.
-        parameters = {}
+        parameters: dict[str, Any] = {}
         for key, value in kwargs.items():
             param_info = workflow_info.parameters.get(key, {})
             if value is None:
