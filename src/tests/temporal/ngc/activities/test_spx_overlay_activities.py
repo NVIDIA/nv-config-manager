@@ -48,6 +48,8 @@ VRF_ID = "eeee0000-0000-0000-0000-000000000001"
 VXLAN_ID = "ffff0000-0000-0000-0000-000000000001"
 ASSIGNMENT_ID = "99990000-0000-0000-0000-000000000001"
 NS_ID = "11110000-0000-0000-0000-000000000001"
+ROUTE_TARGET_ID = "12120000-0000-0000-0000-000000000001"
+SITE_ASN = "4266000000"
 
 
 def _r(url):
@@ -78,6 +80,11 @@ def _namespace_graphql_response(*rds, namespace_id=NS_ID, namespace_name="spectr
             ]
         }
     }
+
+
+def _site_asn_graphql_response(site_asn=SITE_ASN):
+    data = {"site_asn": site_asn} if site_asn is not None else {}
+    return {"data": {"config_contexts": [{"data": data, "weight": 1000}]}}
 
 
 # ---------------------------------------------------------------------------
@@ -410,8 +417,14 @@ async def test_provision_vrf_creates_overlay_vrf_assignment_and_vxlan():
     with aioresponses() as m:
         m.get(_r(f"{NAUTOBOT}/api/extras/statuses/"), payload=_lookup(STATUS_ID))
         m.get(_r(f"{NAUTOBOT}/api/tenancy/tenants/"), payload=_lookup(TENANT_ID))
+        m.post(f"{NAUTOBOT}/api/graphql/", payload=_site_asn_graphql_response())
         m.get(_r(f"{OVERLAYS_BASE}/overlays/"), payload={"results": []})
         m.post(f"{OVERLAYS_BASE}/overlays/", payload={"id": OVERLAY_ID})
+        m.get(_r(f"{NAUTOBOT}/api/ipam/route-targets/"), payload={"results": []})
+        m.post(
+            f"{NAUTOBOT}/api/ipam/route-targets/",
+            payload={"id": ROUTE_TARGET_ID},
+        )
         m.post(f"{NAUTOBOT}/api/ipam/vrfs/", payload={"id": VRF_ID})
         m.post(
             f"{OVERLAYS_BASE}/overlay-assignments/",
@@ -434,6 +447,12 @@ async def test_provision_vrf_creates_overlay_vrf_assignment_and_vxlan():
             "rd": "*:60004",
             "namespace": NS_ID,
             "tenant": TENANT_ID,
+            "import_targets": [ROUTE_TARGET_ID],
+            "export_targets": [ROUTE_TARGET_ID],
+        }
+        assert _request_json(m, "post", f"{NAUTOBOT}/api/ipam/route-targets/") == {
+            "name": f"{SITE_ASN}:60004",
+            "tenant": TENANT_ID,
         }
         assert _request_json(m, "post", f"{OVERLAYS_BASE}/overlay-assignments/") == {
             "overlay": OVERLAY_ID,
@@ -448,11 +467,16 @@ async def test_provision_vrf_reuses_existing_overlay():
     with aioresponses() as m:
         m.get(_r(f"{NAUTOBOT}/api/extras/statuses/"), payload=_lookup(STATUS_ID))
         m.get(_r(f"{NAUTOBOT}/api/tenancy/tenants/"), payload=_lookup(TENANT_ID))
+        m.post(f"{NAUTOBOT}/api/graphql/", payload=_site_asn_graphql_response())
         m.get(
             _r(f"{OVERLAYS_BASE}/overlays/"),
             payload={"results": [{"id": OVERLAY_ID, "tenant": {"id": TENANT_ID}}]},
         )
         # No create_overlay call — overlay already exists
+        m.get(
+            _r(f"{NAUTOBOT}/api/ipam/route-targets/"),
+            payload=_lookup(ROUTE_TARGET_ID),
+        )
         m.post(f"{NAUTOBOT}/api/ipam/vrfs/", payload={"id": VRF_ID})
         m.post(
             f"{OVERLAYS_BASE}/overlay-assignments/",
@@ -476,8 +500,14 @@ async def test_provision_vrf_rolls_back_on_vxlan_failure():
     with aioresponses() as m:
         m.get(_r(f"{NAUTOBOT}/api/extras/statuses/"), payload=_lookup(STATUS_ID))
         m.get(_r(f"{NAUTOBOT}/api/tenancy/tenants/"), payload=_lookup(TENANT_ID))
+        m.post(f"{NAUTOBOT}/api/graphql/", payload=_site_asn_graphql_response())
         m.get(_r(f"{OVERLAYS_BASE}/overlays/"), payload={"results": []})
         m.post(f"{OVERLAYS_BASE}/overlays/", payload={"id": OVERLAY_ID})
+        m.get(_r(f"{NAUTOBOT}/api/ipam/route-targets/"), payload={"results": []})
+        m.post(
+            f"{NAUTOBOT}/api/ipam/route-targets/",
+            payload={"id": ROUTE_TARGET_ID},
+        )
         m.post(f"{NAUTOBOT}/api/ipam/vrfs/", payload={"id": VRF_ID})
         m.post(
             f"{OVERLAYS_BASE}/overlay-assignments/",
@@ -485,12 +515,16 @@ async def test_provision_vrf_rolls_back_on_vxlan_failure():
         )
         # vxlan creation fails
         m.post(f"{OVERLAYS_BASE}/vxlans/", status=400, payload={"detail": "bad"})
-        # rollback: delete assignment and VRF (no VXLANs were created)
+        # rollback: delete assignment, VRF, and RT (no VXLANs were created)
         m.delete(
             f"{OVERLAYS_BASE}/overlay-assignments/{ASSIGNMENT_ID}/",
             status=204,
         )
         m.delete(f"{NAUTOBOT}/api/ipam/vrfs/{VRF_ID}/", status=204)
+        m.delete(
+            f"{NAUTOBOT}/api/ipam/route-targets/{ROUTE_TARGET_ID}/",
+            status=204,
+        )
 
         with pytest.raises(ApplicationError, match="Failed to provision VPC"):
             await provision_vrf(
@@ -528,6 +562,28 @@ async def test_provision_vrf_missing_tenant_raises():
         m.get(_r(f"{NAUTOBOT}/api/tenancy/tenants/"), payload={"results": []})
 
         with pytest.raises(ApplicationError, match="Tenant 'Public Demo' not found"):
+            await provision_vrf(
+                ProvisionVrfInput(
+                    namespaces=[NS_ID],
+                    route_distinguisher="*:60004",
+                    overlay_id="test-overlay-001",
+                    site=LOCATION_ID,
+                    tenant="Public Demo",
+                )
+            )
+
+
+@pytest.mark.asyncio
+async def test_provision_vrf_missing_site_asn_raises():
+    with aioresponses() as m:
+        m.get(_r(f"{NAUTOBOT}/api/extras/statuses/"), payload=_lookup(STATUS_ID))
+        m.get(_r(f"{NAUTOBOT}/api/tenancy/tenants/"), payload=_lookup(TENANT_ID))
+        m.post(
+            f"{NAUTOBOT}/api/graphql/",
+            payload=_site_asn_graphql_response(site_asn=None),
+        )
+
+        with pytest.raises(ApplicationError, match="No site_asn config context found"):
             await provision_vrf(
                 ProvisionVrfInput(
                     namespaces=[NS_ID],

@@ -45,6 +45,26 @@ SPECTRUMX_ISOLATION_TYPE = "spectrum_x_vrf"
 VXLAN_L3_VNI_TYPE = "l3"
 DEFAULT_STATUS_NAME = "Active"
 OVERLAY_ASSIGNMENTS_PATH = f"{OVERLAYS_PLUGIN_BASE}/overlay-assignments/"
+ROUTE_TARGETS_PATH = "ipam/route-targets/"
+
+
+async def _get_site_asn(client: NautobotClient, location_id: str) -> str:
+    """Return the site ASN from the location's active config contexts."""
+    query = """
+query ($location: [String]!) {
+  config_contexts(location: $location, is_active: true) {
+    data
+    weight
+  }
+}
+"""
+    result = await client.graphql_query(query, {"location": [location_id]})
+    contexts = result["data"]["config_contexts"]
+    for context in sorted(contexts, key=lambda item: item["weight"], reverse=True):
+        site_asn = (context.get("data") or {}).get("site_asn")
+        if site_asn is not None:
+            return str(site_asn)
+    raise ApplicationError(f"No site_asn config context found for location {location_id}")
 
 
 def _vni_from_rd(route_distinguisher: str) -> int:
@@ -432,6 +452,7 @@ async def provision_vrf(
     vrfs_created: list[Any] = []
     vxlans_created: list[Any] = []
     assignments_created: list[Any] = []
+    route_target_created: dict[str, Any] | None = None
     async with client:
         status_id = await client.lookup_id_by_name("extras/statuses/", DEFAULT_STATUS_NAME)
         if not status_id:
@@ -440,6 +461,9 @@ async def provision_vrf(
         tenant_id = await client.lookup_id_by_name("tenancy/tenants/", activity_input.tenant)
         if not tenant_id:
             raise ApplicationError(f"Tenant '{activity_input.tenant}' not found in Nautobot")
+
+        site_asn = await _get_site_asn(client, location_id)
+        route_target_name = f"{site_asn}:{vni}"
 
         overlay = await client.find_overlay(overlay_name, location_id)
         if overlay:
@@ -465,6 +489,13 @@ async def provision_vrf(
             logger.info("Created overlay %s (%s)", overlay_name, overlay_id)
 
         try:
+            route_target_id = await client.lookup_id_by_name(ROUTE_TARGETS_PATH, route_target_name)
+            if not route_target_id:
+                route_target_created = await client.post(
+                    ROUTE_TARGETS_PATH,
+                    data={"name": route_target_name, "tenant": tenant_id},
+                )
+                route_target_id = route_target_created["id"]
             for namespace in activity_input.namespaces:
                 vrf = await client.create_vrf(
                     data={
@@ -472,6 +503,8 @@ async def provision_vrf(
                         "rd": activity_input.route_distinguisher,
                         "namespace": namespace,
                         "tenant": tenant_id,
+                        "import_targets": [route_target_id],
+                        "export_targets": [route_target_id],
                     }
                 )
                 vrfs_created.append(vrf)
@@ -515,6 +548,14 @@ async def provision_vrf(
                     await client.delete_vrf(vrf["id"])
                 except Exception:
                     logger.exception("Failed to delete vrf %s during rollback", vrf["id"])
+            if route_target_created:
+                try:
+                    await client.delete(ROUTE_TARGETS_PATH + route_target_created["id"] + "/")
+                except Exception:
+                    logger.exception(
+                        "Failed to delete route target %s during rollback",
+                        route_target_created["id"],
+                    )
             raise ApplicationError("Failed to provision VPC") from error
 
 

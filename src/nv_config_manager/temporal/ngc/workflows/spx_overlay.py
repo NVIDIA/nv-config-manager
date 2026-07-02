@@ -129,9 +129,7 @@ class SpXOverlayCreationWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
 
     # Workflow metadata
     workflow_name = "SpX Overlay Creation"
-    workflow_description = (
-        "Create a SpX Overlay with route distinguisher assignment and VRF/VXLAN provisioning"
-    )
+    workflow_description = "Create a SpX Overlay with RD/RT assignment and VRF/VXLAN provisioning"
     workflow_input_class = SpXOverlayCreationInput
     workflow_api_endpoint = "/ngc/spx_overlay_creation"
     workflow_namespace = "ngc"
