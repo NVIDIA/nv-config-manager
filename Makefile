@@ -874,7 +874,7 @@ install-cert:
 	@CERT_TMP=$$(mktemp); \
 	trap "rm -f $$CERT_TMP" EXIT INT TERM; \
 	echo "Extracting gateway TLS certificate..."; \
-	if ! CERT_DATA=$$(kubectl get secret -n $(KIND_SEC_NAMESPACE) nv-config-manager-gateway-tls \
+	if ! CERT_DATA=$$($(KUBECTL_KIND) get secret -n $(KIND_SEC_NAMESPACE) nv-config-manager-gateway-tls \
 		-o jsonpath='{.data.tls\.crt}'); then \
 		echo "Error: gateway TLS secret was not found." >&2; exit 1; \
 	fi; \
@@ -893,7 +893,7 @@ install-cert:
 		sudo update-ca-trust; \
 	else \
 		echo "Unsupported OS: install the gateway cert manually into your trust store"; exit 1; \
-	fi; \
+	fi || exit 1; \
 	echo "Certificate installed."; \
 	echo ""; \
 	echo "Note: Node.js tools (e.g. Claude Code) ignore the system trust store because"; \
@@ -1034,6 +1034,8 @@ mock-devices-up: docker-build-mock-device
 	$(KUBECTL_KIND) apply -f development/mock_devices/manifests/dhcp-dev-service.yaml
 	@echo "🖥️  Deploying mock devices..."
 	$(KUBECTL_KIND) apply -f development/mock_devices/manifests/mock-devices.yaml
+	@echo "🔄 Restarting mock device pods to pick up new image..."
+	$(KUBECTL_KIND) rollout restart deployment -l app=mock-device -n $(NAMESPACE)
 	@echo "✅ Mock devices deployed. Use 'make mock-devices-status' to check."
 
 # Remove mock devices
@@ -1275,8 +1277,10 @@ mock-workflow-cable-validate:
 # Full sandbox: Kind cluster + topology + mock devices + wiring.
 # Uses local-superpod-sandbox.yaml (mock_devices: false) so Temporal workflows
 # connect to mock device API pods via real CumulusConnection classes.
-sandbox-up: INSTALL_CONFIG = deploy/configs/local-superpod-sandbox.yaml
-sandbox-up: kind-up-with-topology mock-devices-up mock-wire-devices
+sandbox-up:
+	$(MAKE) kind-up-with-topology INSTALL_CONFIG=deploy/configs/local-superpod-sandbox.yaml
+	$(MAKE) mock-devices-up
+	$(MAKE) mock-wire-devices
 	@echo ""
 	@echo "🎉 Full sandbox environment ready!"
 	@echo ""
