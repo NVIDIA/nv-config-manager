@@ -107,6 +107,7 @@ spec:
     targetPort: 9000
     protocol: TCP
     name: http
+    appProtocol: agentgateway.dev/mcp
   selector:
     app: {{ $mcpName }}
     component: api
