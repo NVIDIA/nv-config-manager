@@ -94,7 +94,7 @@ The site workflow runs three stages. None require manual approval.
 
 1. **`format_result` — Aggregate per-device results into the site report.**
 
-   Combines every child's interface findings into the consolidated Markdown report, with the list of `failed_devices` preserved verbatim at the top so operators know which switches were skipped versus which were validated and clean. The report renders inline on the stage page and is also offered as a downloadable Excel workbook for cases where the result set is too large to view in the UI. The workbook has two sheets: **Cable Issues** (every interface finding) and **Host Summary** (per-switch issue counts, sorted by missing cables) for triage.
+   Combines every child's interface findings into the consolidated Markdown report, with the list of `failed_devices` preserved verbatim at the top so operators know which switches were skipped versus which were validated and clean. The report renders inline on the stage page and is also offered as a downloadable Excel workbook for cases where the result set is too large to view in the UI. The workbook has two sheets: **Cable Issues** lists every interface finding, and **Host Summary** provides per-switch issue counts for triage.
 
 ### Device cable validation
 
