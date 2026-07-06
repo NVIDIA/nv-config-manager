@@ -15,7 +15,7 @@ import (
 	"fmt"
 )
 
-// Device1 struct for Device1
+// Device1 Identifier or preloaded data for the target network device.
 type Device1 struct {
 	NetworkDeviceData *NetworkDeviceData
 	String            *string

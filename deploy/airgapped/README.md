@@ -74,7 +74,7 @@ cluster:
 images:
   source: registry
   registry: registry.example.com/nv-config-manager
-  tag: "1.2.2-rc.23"
+  tag: "1.3.0"
   pull_secret:
     name: registry-credentials
     server: registry.example.com
@@ -83,22 +83,16 @@ images:
   overrides:
     nvConfigManager:
       repository: registry.example.com/nv-config-manager/nvidian/cfa/nv-config-manager
-      tag: "1.2.2-rc.23"
     nvConfigManagerUi:
       repository: registry.example.com/nv-config-manager/nvidian/cfa/nv-config-manager-ui
-      tag: "1.2.2-rc.23"
     kea:
       repository: registry.example.com/nv-config-manager/nvidian/cfa/nv-config-manager-kea
-      tag: "1.2.2-rc.23"
     keaAdmin:
       repository: registry.example.com/nv-config-manager/nvidian/cfa/nv-config-manager-kea-admin
-      tag: "1.2.2-rc.23"
     nautobot:
       repository: registry.example.com/nv-config-manager/nvidian/cfa/nv-config-manager-nautobot
-      tag: "1.2.2-rc.23"
     natsReady:
       repository: registry.example.com/nv-config-manager/nvidian/cfa/nv-config-manager-nats-ready
-      tag: "1.2.2-rc.23"
     httpEcho:
       repository: registry.example.com/nv-config-manager/hashicorp/http-echo
       tag: "1.0"

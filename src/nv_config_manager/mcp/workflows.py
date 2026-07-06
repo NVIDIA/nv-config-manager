@@ -40,8 +40,25 @@ class MCPWorkflow:
 
     @property
     def input_schema(self) -> dict[str, Any]:
-        """Return the Pydantic JSON schema for the workflow input model."""
-        return self.input_class.model_json_schema()
+        """Return the normalized JSON schema accepted by the MCP workflow tool."""
+        schema = self.input_class.model_json_schema()
+        required = schema.get("required", [])
+        for field_name, field_info in self.input_class.model_fields.items():
+            property_schema = schema.get("properties", {}).get(field_name)
+            if field_name == "trigger":
+                required = [name for name in required if name != field_name]
+                if isinstance(property_schema, dict):
+                    property_schema["default"] = "API"
+            elif allows_none(field_info.annotation):
+                required = [name for name in required if name != field_name]
+                if isinstance(property_schema, dict):
+                    property_schema["default"] = None
+
+        if required:
+            schema["required"] = required
+        else:
+            schema.pop("required", None)
+        return schema
 
 
 def discover_mcp_workflows() -> list[MCPWorkflow]:
@@ -87,7 +104,7 @@ def normalize_workflow_parameters(
     for field_name, field_info in fields.items():
         if field_name in normalized:
             continue
-        if _allows_none(field_info.annotation):
+        if allows_none(field_info.annotation):
             normalized[field_name] = None
 
     return normalized
@@ -98,7 +115,7 @@ def _tool_name_from_endpoint(endpoint: str) -> str:
     return f"run_{slug.replace('-', '_')}"
 
 
-def _allows_none(annotation: Any) -> bool:
+def allows_none(annotation: Any) -> bool:
     if annotation is None or annotation is type(None):
         return True
     return type(None) in get_args(annotation)

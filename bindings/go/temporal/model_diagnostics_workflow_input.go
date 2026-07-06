@@ -21,12 +21,18 @@ var _ MappedNullable = &DiagnosticsWorkflowInput{}
 
 // DiagnosticsWorkflowInput struct for DiagnosticsWorkflowInput
 type DiagnosticsWorkflowInput struct {
-	Commands           []string `json:"commands"`
-	DeviceIds          []string `json:"device_ids"`
-	IncludeTechSupport *bool    `json:"include_tech_support,omitempty"`
-	IssueKey           *string  `json:"issue_key,omitempty"`
-	TicketingPlatform  *string  `json:"ticketing_platform,omitempty"`
-	User               *string  `json:"user,omitempty"`
+	// Diagnostic command catalog names to run on each device.
+	Commands []string `json:"commands"`
+	// Nautobot identifiers of the devices to diagnose.
+	DeviceIds []string `json:"device_ids"`
+	// Whether to collect a technical-support bundle from each device.
+	IncludeTechSupport *bool `json:"include_tech_support,omitempty"`
+	// Issue key to update; empty enables ticketless mode.
+	IssueKey *string `json:"issue_key,omitempty"`
+	// Ticketing platform to update; empty enables ticketless mode.
+	TicketingPlatform *string `json:"ticketing_platform,omitempty"`
+	// Engineer username or email, populated from request authentication when omitted.
+	User *string `json:"user,omitempty"`
 }
 
 type _DiagnosticsWorkflowInput DiagnosticsWorkflowInput

@@ -21,9 +21,12 @@ var _ MappedNullable = &DeviceCableValidationInput{}
 
 // DeviceCableValidationInput Input for Device Cable Validation Workflow.
 type DeviceCableValidationInput struct {
-	Device           NullableNetworkDeviceData `json:"device,omitempty"`
-	DeviceId         string                    `json:"device_id"`
-	IgnoreNoNeighbor *bool                     `json:"ignore_no_neighbor,omitempty"`
+	// Preloaded data for the target network device, if available.
+	Device NullableNetworkDeviceData `json:"device,omitempty"`
+	// Identifier of the network device to validate.
+	DeviceId string `json:"device_id"`
+	// Whether interfaces without discovered neighbors should be ignored.
+	IgnoreNoNeighbor *bool `json:"ignore_no_neighbor,omitempty"`
 }
 
 type _DeviceCableValidationInput DeviceCableValidationInput

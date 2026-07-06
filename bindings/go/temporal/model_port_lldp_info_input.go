@@ -19,8 +19,11 @@ var _ MappedNullable = &PortLLDPInfoInput{}
 
 // PortLLDPInfoInput Input for Port LLDP Info Workflow.
 type PortLLDPInfoInput struct {
-	DeviceId         NullableString `json:"device_id,omitempty"`
-	Interface        NullableString `json:"interface,omitempty"`
+	// Identifier of the network device to inspect.
+	DeviceId NullableString `json:"device_id,omitempty"`
+	// Name of the local interface.
+	Interface NullableString `json:"interface,omitempty"`
+	// MAC address of the remote device to locate.
 	RemoteMacAddress NullableString `json:"remote_mac_address,omitempty"`
 }
 

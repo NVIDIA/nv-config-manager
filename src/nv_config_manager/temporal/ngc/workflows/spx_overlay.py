@@ -95,13 +95,15 @@ DEFAULT_ACTIVITY_RETRY_POLICY = RetryPolicy(
 class SpXOverlayCreationInput(BaseModel):
     """SpX Overlay Creation Workflow Input Definition."""
 
-    site: str
+    site: str = Field(description="Site where the SpX overlay will be created.")
     overlay_id: str = Field(
         title="Overlay ID",
         description="Unique identifier for the SpX overlay. Used as an idempotency key — re-running with the same ID returns existing VRFs without creating new ones.",
     )
-    tenant: str
-    namespace_tag: str = NAMESPACE_TAG
+    tenant: str = Field(description="Tenant that will own the SpX overlay.")
+    namespace_tag: str = Field(
+        default=NAMESPACE_TAG, description="Tag identifying the namespace used for allocation."
+    )
     rd_min: int = Field(
         default=RD_MIN,
         title="RD Min",
@@ -254,12 +256,14 @@ class SpXOverlayCreationWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
 class SpXOverlayDeletionInput(BaseModel):
     """SpX Overlay Deletion Workflow Input Definition."""
 
-    site: str
+    site: str = Field(description="Site containing the SpX overlay to delete.")
     overlay_id: str = Field(
         title="Overlay ID",
         description="Identifier of the SpX overlay to delete.",
     )
-    namespace_tag: str = NAMESPACE_TAG
+    namespace_tag: str = Field(
+        default=NAMESPACE_TAG, description="Tag identifying the namespace used for allocation."
+    )
 
 
 class SpXOverlayDeletionWorkflowOutput(BaseModel):
@@ -421,10 +425,16 @@ class SpXOverlayAssignmentInput(BaseModel):
         title="Overlay ID",
         description="Identifier of the SpX overlay whose VRF will be assigned to the device and ports.",
     )
-    device: str | NetworkDeviceData
-    port_names: list[str]
-    site: str
-    namespace_tag: str = NAMESPACE_TAG
+    device: str | NetworkDeviceData = Field(
+        description="Identifier or preloaded data for the target network device."
+    )
+    port_names: list[str] = Field(
+        description="Names of the device interfaces to assign to the overlay."
+    )
+    site: str = Field(description="Site containing the target network device.")
+    namespace_tag: str = Field(
+        default=NAMESPACE_TAG, description="Tag identifying the namespace used for allocation."
+    )
 
 
 class SpXOverlayAssignmentWorkflowOutput(BaseModel):
@@ -699,10 +709,16 @@ class SpXOverlayTenantChangeInput(BaseModel):
         title="Overlay ID",
         description="Identifier of the SpX overlay to assign and deploy tenant configuration for.",
     )
-    device_id: str = Field(title="Device ID")
-    port_names: list[str]
-    site: str
-    namespace_tag: str = NAMESPACE_TAG
+    device_id: str = Field(
+        title="Device ID", description="Identifier of the target network device."
+    )
+    port_names: list[str] = Field(
+        description="Names of the device interfaces to assign to the overlay."
+    )
+    site: str = Field(description="Site containing the target network device.")
+    namespace_tag: str = Field(
+        default=NAMESPACE_TAG, description="Tag identifying the namespace used for allocation."
+    )
 
 
 class SpXOverlayTenantChangeWorkflowOutput(BaseModel):

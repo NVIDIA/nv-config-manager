@@ -21,6 +21,7 @@ var _ MappedNullable = &ConfigVersionsResponse{}
 
 // ConfigVersionsResponse Response with list of versions.
 type ConfigVersionsResponse struct {
+	// Device metadata from Nautobot
 	Device NullableDeviceMetadata `json:"device,omitempty"`
 	// Device UUID
 	DeviceUuid string `json:"device_uuid"`

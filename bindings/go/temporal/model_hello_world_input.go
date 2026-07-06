@@ -21,6 +21,7 @@ var _ MappedNullable = &HelloWorldInput{}
 
 // HelloWorldInput Hello World Input Definition.
 type HelloWorldInput struct {
+	// Name to include in the workflow greeting.
 	Name string `json:"name"`
 }
 

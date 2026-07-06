@@ -1434,7 +1434,8 @@ create_manifest() {
     log_info "Creating manifest for $arch..."
 
     local chart_version=$(grep '^version:' "$CHART_DIR/Chart.yaml" | awk '{print $2}' | tr -d '"' | tr -d "'")
-    local app_version=$(grep '^appVersion:' "$CHART_DIR/Chart.yaml" | awk '{print $2}' | tr -d '"' | tr -d "'")
+    local app_version=$(grep '^appVersion:' "$CHART_DIR/Chart.yaml" | awk '{print $2}' | tr -d '"' | tr -d "'" || true)
+    app_version="${app_version:-$chart_version}"
 
     cat > "$BUILD_DIR/manifest-$arch.json" << EOF
 {

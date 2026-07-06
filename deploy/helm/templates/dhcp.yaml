@@ -50,7 +50,7 @@ spec:
       #   3. If exists: checks for upgrades and exits
       #   4. If not exists: runs kea-admin db-init to create schema
       - name: init-schema
-        image: "{{ .Values.global.images.keaAdmin.repository }}:{{ .Values.global.images.keaAdmin.tag }}"
+        image: "{{ .Values.global.images.keaAdmin.repository }}:{{ include "nv-config-manager.imageTag" (dict "root" . "image" .Values.global.images.keaAdmin) }}"
         imagePullPolicy: {{ .Values.global.images.keaAdmin.pullPolicy }}
         env:
         - name: INI_FILE
@@ -67,7 +67,7 @@ spec:
       containers:
       # Kea DHCP server container
       - name: kea
-        image: "{{ .Values.global.images.kea.repository }}:{{ .Values.global.images.kea.tag }}"
+        image: "{{ .Values.global.images.kea.repository }}:{{ include "nv-config-manager.imageTag" (dict "root" . "image" .Values.global.images.kea) }}"
         imagePullPolicy: {{ .Values.global.images.kea.pullPolicy }}
         env:
         - name: NV_CONFIG_MANAGER_INI
@@ -101,7 +101,7 @@ spec:
         {{- include "nv-config-manager.vaultAgent.configManagerIniFileMountEtcVault" . | nindent 8 }}
       # Healthcheck container for external NLB
       - name: healthcheck
-        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ .Values.global.images.nvConfigManager.tag }}"
+        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ include "nv-config-manager.imageTag" (dict "root" . "image" .Values.global.images.nvConfigManager) }}"
         imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
         {{- include "nv-config-manager.containerSecurityContext" . | nindent 8 }}
         command: ["nv-config-manager-dhcp-api"]
@@ -135,7 +135,7 @@ spec:
         {{- include "nv-config-manager.vaultAgent.configManagerSecretsDirEtcVault" . | nindent 8 }}
       # API container
       - name: api
-        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ .Values.global.images.nvConfigManager.tag }}"
+        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ include "nv-config-manager.imageTag" (dict "root" . "image" .Values.global.images.nvConfigManager) }}"
         imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
         {{- include "nv-config-manager.containerSecurityContext" . | nindent 8 }}
         command: ["nv-config-manager-dhcp-api"]
@@ -177,7 +177,7 @@ spec:
         {{- include "nv-config-manager.authVolumeMounts" . | nindent 8 }}
       # Config sync container
       - name: config-sync-v4
-        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ .Values.global.images.nvConfigManager.tag }}"
+        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ include "nv-config-manager.imageTag" (dict "root" . "image" .Values.global.images.nvConfigManager) }}"
         imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
         {{- include "nv-config-manager.containerSecurityContext" . | nindent 8 }}
         command: ["nv-config-manager-dhcp-confgen", "sync-kea-configuration", "--ip-version", "4", "--refresh-interval", "10"]
@@ -266,7 +266,7 @@ spec:
       {{- include "nv-config-manager.waitForNautobot" . | nindent 6 }}
       containers:
       - name: config-refresh-v4
-        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ .Values.global.images.nvConfigManager.tag }}"
+        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ include "nv-config-manager.imageTag" (dict "root" . "image" .Values.global.images.nvConfigManager) }}"
         imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
         {{- include "nv-config-manager.containerSecurityContext" . | nindent 8 }}
         command: ["nv-config-manager-dhcp-confgen", "refresh-kea-configuration", "--ip-version", "4", "--refresh-interval", "300"]

@@ -21,12 +21,15 @@ var _ MappedNullable = &SpXOverlayAssignmentInput{}
 
 // SpXOverlayAssignmentInput SpX Overlay Assignment Workflow Input Definition.
 type SpXOverlayAssignmentInput struct {
-	Device       Device1 `json:"device"`
+	Device Device1 `json:"device"`
+	// Tag identifying the namespace used for allocation.
 	NamespaceTag *string `json:"namespace_tag,omitempty"`
 	// Identifier of the SpX overlay whose VRF will be assigned to the device and ports.
-	OverlayId string   `json:"overlay_id"`
+	OverlayId string `json:"overlay_id"`
+	// Names of the device interfaces to assign to the overlay.
 	PortNames []string `json:"port_names"`
-	Site      string   `json:"site"`
+	// Site containing the target network device.
+	Site string `json:"site"`
 }
 
 type _SpXOverlayAssignmentInput SpXOverlayAssignmentInput

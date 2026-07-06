@@ -50,7 +50,7 @@ spec:
       {{- include "nv-config-manager.waitForRedis" . | nindent 6 }}
       containers:
       - name: api
-        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ .Values.global.images.nvConfigManager.tag }}"
+        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ include "nv-config-manager.imageTag" (dict "root" . "image" .Values.global.images.nvConfigManager) }}"
         imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
         {{- include "nv-config-manager.containerSecurityContext" . | nindent 8 }}
         command: ["nv-config-manager-config-store-api"]
@@ -172,7 +172,7 @@ spec:
           echo "Config-store postgres is ready"
       containers:
       - name: db-init
-        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ .Values.global.images.nvConfigManager.tag }}"
+        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ include "nv-config-manager.imageTag" (dict "root" . "image" .Values.global.images.nvConfigManager) }}"
         imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
         {{- include "nv-config-manager.containerSecurityContext" . | nindent 8 }}
         workingDir: /code/nv-config-manager
@@ -236,7 +236,7 @@ spec:
       {{- include "nv-config-manager.waitForNautobot" . | nindent 6 }}
       containers:
       - name: cache-refresh
-        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ .Values.global.images.nvConfigManager.tag }}"
+        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ include "nv-config-manager.imageTag" (dict "root" . "image" .Values.global.images.nvConfigManager) }}"
         imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
         {{- include "nv-config-manager.containerSecurityContext" . | nindent 8 }}
         command: ["nv-config-manager-config-store-cache-refresh"]

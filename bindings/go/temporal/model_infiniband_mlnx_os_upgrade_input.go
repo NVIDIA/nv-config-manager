@@ -21,6 +21,7 @@ var _ MappedNullable = &InfinibandMlnxOSUpgradeInput{}
 
 // InfinibandMlnxOSUpgradeInput Infiniband Mellanox OS Upgrade Workflow Input Definition.
 type InfinibandMlnxOSUpgradeInput struct {
+	// Identifier of the InfiniBand switch to upgrade.
 	DeviceId string `json:"device_id"`
 }
 

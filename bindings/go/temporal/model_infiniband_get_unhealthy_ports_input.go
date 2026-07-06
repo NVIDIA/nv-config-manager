@@ -21,6 +21,7 @@ var _ MappedNullable = &InfinibandGetUnhealthyPortsInput{}
 
 // InfinibandGetUnhealthyPortsInput Unhealthy Ports Validation Workflow Input Definition.
 type InfinibandGetUnhealthyPortsInput struct {
+	// Identifier of the UFM device to inspect.
 	DeviceId string `json:"device_id"`
 }
 

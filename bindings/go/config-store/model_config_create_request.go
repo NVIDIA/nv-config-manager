@@ -27,7 +27,8 @@ type ConfigCreateRequest struct {
 	// Commit message describing the change
 	CommitMessage string `json:"commit_message"`
 	// Configuration file content
-	Content   string       `json:"content"`
+	Content string `json:"content"`
+	// Optional timestamp for the version (defaults to current time)
 	CreatedAt NullableTime `json:"created_at,omitempty"`
 	// Config file type (intended or backup)
 	FileType *FileType `json:"file_type,omitempty"`

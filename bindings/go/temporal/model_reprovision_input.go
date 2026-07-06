@@ -21,6 +21,7 @@ var _ MappedNullable = &ReprovisionInput{}
 
 // ReprovisionInput Reprovision Workflow Input Definition.
 type ReprovisionInput struct {
+	// Identifier of the network device to reprovision.
 	DeviceId string `json:"device_id"`
 }
 

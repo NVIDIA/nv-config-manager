@@ -17,7 +17,7 @@
 import asyncio
 from datetime import timedelta
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 from temporalio.exceptions import ActivityError, ApplicationError
@@ -88,13 +88,22 @@ _PREFLIGHT_RETRY = RetryPolicy(maximum_attempts=1)  # fail fast before touching 
 
 
 class DiagnosticsWorkflowInput(BaseModel):
-    device_ids: list[str]  # Nautobot device UUIDs
-    commands: list[str]  # catalog command names e.g. ["show_version", "show_bgp_summary"]
-    ticketing_platform: str = ""  # e.g. "jira"; empty string = ticketless mode
-    issue_key: str = ""  # e.g. "GNI-1234"; empty string = ticketless mode
-    include_tech_support: bool = False
-    user: str = (
-        ""  # engineer username / email; auto-populated from request auth by dynamic_endpoints
+    device_ids: list[str] = Field(description="Nautobot identifiers of the devices to diagnose.")
+    commands: list[str] = Field(
+        description="Diagnostic command catalog names to run on each device."
+    )
+    ticketing_platform: str = Field(
+        default="", description="Ticketing platform to update; empty enables ticketless mode."
+    )
+    issue_key: str = Field(
+        default="", description="Issue key to update; empty enables ticketless mode."
+    )
+    include_tech_support: bool = Field(
+        default=False, description="Whether to collect a technical-support bundle from each device."
+    )
+    user: str = Field(
+        default="",
+        description="Engineer username or email, populated from request authentication when omitted.",
     )
 
 

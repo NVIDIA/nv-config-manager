@@ -40,13 +40,35 @@ services=(config-store dhcp render temporal ztp)
 for service in "${services[@]}"; do
     repo_id="nv-config-manager/bindings/go/${service}"
     package_name="${service//-/}"
+    generator_spec="$staging_root/${service}.openapi.json"
+
+    # OpenAPI Generator drops property descriptions while simplifying nullable
+    # OpenAPI 3.1 anyOf schemas. Copy the description to each non-null branch so
+    # generated Go struct fields retain the schema documentation.
+    jq '
+        walk(
+            if type == "object"
+                and (.description? | type == "string")
+                and (.anyOf? | type == "array")
+            then
+                .description as $description
+                | .anyOf |= map(
+                    if .type? != "null" and .description? == null
+                    then . + {description: $description}
+                    else .
+                    end
+                )
+            else .
+            end
+        )
+    ' "$repo_root/docs/api-specs/${service}.openapi.json" > "$generator_spec"
 
     docker run --rm \
         --user "$(id -u):$(id -g)" \
         --volume "$repo_root:/repo:ro" \
         --volume "$staging_root:/out" \
         "$GENERATOR_IMAGE" generate \
-        --input-spec "/repo/docs/api-specs/${service}.openapi.json" \
+        --input-spec "/out/${service}.openapi.json" \
         --generator-name go \
         --template-dir /out/templates \
         --output "/out/${service}" \

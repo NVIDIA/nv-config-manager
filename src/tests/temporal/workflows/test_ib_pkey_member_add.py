@@ -167,8 +167,9 @@ def _stub_full_run(m: aioresponses) -> None:
         },
     )
 
-    # Stage 2: add GUIDs to PKey
-    m.post(f"{UFM_BASE}/resources/pkeys/", payload={})
+    # Stage 2: add GUIDs to PKey (read current members, then PUT the merged set)
+    m.get(_pkey_verify_url("0x0005"), payload={"guids": []})
+    m.put(f"{UFM_BASE}/resources/pkeys/", payload={})
 
     # Stage 3: verify members (exact URL with query param)
     m.get(
@@ -233,12 +234,12 @@ async def test_full_workflow_happy_path(mock_all_configs, time_skipping_env):
 
 @pytest.mark.asyncio
 async def test_per_interface_membership_sent_to_ufm(mock_all_configs, time_skipping_env):
-    """A per-interface membership override flows into the UFM add memberships[]."""
+    """A per-interface membership override rides the single merged PUT to UFM."""
     task_queue = str(uuid.uuid4())
-    post_bodies: list[dict] = []
+    put_bodies: list[dict] = []
 
     def _record_add(url, **kwargs):
-        post_bodies.append(kwargs.get("json") or {})
+        put_bodies.append(kwargs.get("json") or {})
         return CallbackResult(status=200, payload={})
 
     async with time_skipping_env() as env:
@@ -274,7 +275,8 @@ async def test_per_interface_membership_sent_to_ufm(mock_all_configs, time_skipp
                         ]
                     },
                 )
-                m.post(f"{UFM_BASE}/resources/pkeys/", callback=_record_add)
+                m.get(_pkey_verify_url("0x0005"), payload={"guids": []})
+                m.put(f"{UFM_BASE}/resources/pkeys/", callback=_record_add)
                 m.get(
                     _pkey_verify_url("0x0005"),
                     payload={
@@ -313,19 +315,20 @@ async def test_per_interface_membership_sent_to_ufm(mock_all_configs, time_skipp
                 )
 
     assert result.verified is True
-    assert post_bodies[0].get("guids") == [GUID_1, GUID_2]
-    assert post_bodies[0].get("memberships") == ["full", "limited"]
-    assert "membership" not in post_bodies[0]
+    assert len(put_bodies) == 1
+    assert put_bodies[0].get("guids") == [GUID_1, GUID_2]
+    assert put_bodies[0].get("memberships") == ["full", "limited"]
+    assert "membership" not in put_bodies[0]
 
 
 @pytest.mark.asyncio
 async def test_per_guid_membership_sent_to_ufm(mock_all_configs, time_skipping_env):
-    """Per-GUID memberships from the guids input flow into the UFM add memberships[]."""
+    """Per-GUID memberships ride the single merged PUT, index-aligned with guids."""
     task_queue = str(uuid.uuid4())
-    post_bodies: list[dict] = []
+    put_bodies: list[dict] = []
 
     def _record_add(url, **kwargs):
-        post_bodies.append(kwargs.get("json") or {})
+        put_bodies.append(kwargs.get("json") or {})
         return CallbackResult(status=200, payload={})
 
     async with time_skipping_env() as env:
@@ -339,7 +342,8 @@ async def test_per_guid_membership_sent_to_ufm(mock_all_configs, time_skipping_e
                 stub_graphql_resolve_ib_context(m, pkey="0x0005", overlay_id=OVERLAY_UUID)
                 stub_graphql_resolve_guids(m, [(GUID_1, IFACE_UUID_1), (GUID_2, IFACE_UUID_2)])
 
-                m.post(f"{UFM_BASE}/resources/pkeys/", callback=_record_add)
+                m.get(_pkey_verify_url("0x0005"), payload={"guids": []})
+                m.put(f"{UFM_BASE}/resources/pkeys/", callback=_record_add)
                 m.get(
                     _pkey_verify_url("0x0005"),
                     payload={
@@ -376,9 +380,10 @@ async def test_per_guid_membership_sent_to_ufm(mock_all_configs, time_skipping_e
                 )
 
     assert result.verified is True
-    assert post_bodies[0].get("guids") == [GUID_1, GUID_2]
-    assert post_bodies[0].get("memberships") == ["limited", "full"]
-    assert "membership" not in post_bodies[0]
+    assert len(put_bodies) == 1
+    assert put_bodies[0].get("guids") == [GUID_1, GUID_2]
+    assert put_bodies[0].get("memberships") == ["limited", "full"]
+    assert "membership" not in put_bodies[0]
 
 
 @pytest.mark.asyncio
@@ -407,7 +412,8 @@ async def test_idempotent_existing_assignments(mock_all_configs, time_skipping_e
                         ]
                     },
                 )
-                m.post(f"{UFM_BASE}/resources/pkeys/", payload={})
+                m.get(_pkey_verify_url("0x0005"), payload={"guids": []})
+                m.put(f"{UFM_BASE}/resources/pkeys/", payload={})
                 m.get(
                     _pkey_verify_url("0x0005"),
                     payload={"guids": [{"guid": GUID_1, "membership": "full"}]},
@@ -541,7 +547,8 @@ async def test_guids_only_path(mock_all_configs, time_skipping_env):
                 stub_graphql_resolve_ib_context(m, pkey="0x0005", overlay_id=OVERLAY_UUID)
                 stub_graphql_resolve_guids(m, [(GUID_1, IFACE_UUID_1)])
 
-                m.post(f"{UFM_BASE}/resources/pkeys/", payload={})
+                m.get(_pkey_verify_url("0x0005"), payload={"guids": []})
+                m.put(f"{UFM_BASE}/resources/pkeys/", payload={})
 
                 m.get(
                     _pkey_verify_url("0x0005"),

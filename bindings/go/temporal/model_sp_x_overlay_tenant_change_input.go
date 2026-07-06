@@ -21,12 +21,16 @@ var _ MappedNullable = &SpXOverlayTenantChangeInput{}
 
 // SpXOverlayTenantChangeInput SpX Overlay Tenant Change Workflow Input Definition.
 type SpXOverlayTenantChangeInput struct {
-	DeviceId     string  `json:"device_id"`
+	// Identifier of the target network device.
+	DeviceId string `json:"device_id"`
+	// Tag identifying the namespace used for allocation.
 	NamespaceTag *string `json:"namespace_tag,omitempty"`
 	// Identifier of the SpX overlay to assign and deploy tenant configuration for.
-	OverlayId string   `json:"overlay_id"`
+	OverlayId string `json:"overlay_id"`
+	// Names of the device interfaces to assign to the overlay.
 	PortNames []string `json:"port_names"`
-	Site      string   `json:"site"`
+	// Site containing the target network device.
+	Site string `json:"site"`
 }
 
 type _SpXOverlayTenantChangeInput SpXOverlayTenantChangeInput

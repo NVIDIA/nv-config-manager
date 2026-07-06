@@ -44,6 +44,7 @@ from nv_config_manager.temporal.common.search_attributes import (
 )
 from nv_config_manager.temporal.converter import get_data_converter
 from nv_config_manager.temporal.ngc.activities.nats import PublishNatsInput
+from nv_config_manager.temporal.ngc.activities.slack import SlackMessageInput
 
 _SEARCH_ATTRIBUTES = {
     USER_SEARCH_ATTRIBUTE: IndexedValueType.INDEXED_VALUE_TYPE_KEYWORD,
@@ -81,6 +82,11 @@ async def _register_search_attributes(env: WorkflowEnvironment) -> None:
 @activity.defn(name="publish_nats")
 async def mock_publish_nats(activity_input: PublishNatsInput) -> None:
     """No-op mock for the publish_nats activity."""
+
+
+@activity.defn(name="send_slack_message")
+async def mock_send_slack_message(activity_input: SlackMessageInput) -> None:
+    """No-op mock for the send_slack_message activity."""
 
 
 # UNCOMMENT THIS WHEN TROUBLESHOOTING HUNG TESTS

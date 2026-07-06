@@ -21,10 +21,12 @@ var _ MappedNullable = &SpXOverlayDeletionInput{}
 
 // SpXOverlayDeletionInput SpX Overlay Deletion Workflow Input Definition.
 type SpXOverlayDeletionInput struct {
+	// Tag identifying the namespace used for allocation.
 	NamespaceTag *string `json:"namespace_tag,omitempty"`
 	// Identifier of the SpX overlay to delete.
 	OverlayId string `json:"overlay_id"`
-	Site      string `json:"site"`
+	// Site containing the SpX overlay to delete.
+	Site string `json:"site"`
 }
 
 type _SpXOverlayDeletionInput SpXOverlayDeletionInput

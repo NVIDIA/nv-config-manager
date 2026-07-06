@@ -21,9 +21,12 @@ var _ MappedNullable = &IBPortGuidDiscoveryInput{}
 
 // IBPortGuidDiscoveryInput Input for the IB Port GUID Discovery workflow.
 type IBPortGuidDiscoveryInput struct {
-	DryRun          *bool    `json:"dry_run,omitempty"`
+	// Whether to report changes without updating Nautobot.
+	DryRun *bool `json:"dry_run,omitempty"`
+	// Identifiers of the InfiniBand switches whose interfaces will be synchronized.
 	SwitchDeviceIds []string `json:"switch_device_ids"`
-	UfmDeviceId     string   `json:"ufm_device_id"`
+	// Identifier of the UFM device used to discover port GUIDs.
+	UfmDeviceId string `json:"ufm_device_id"`
 }
 
 type _IBPortGuidDiscoveryInput IBPortGuidDiscoveryInput

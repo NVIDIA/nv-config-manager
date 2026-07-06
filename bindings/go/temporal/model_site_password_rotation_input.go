@@ -21,11 +21,16 @@ var _ MappedNullable = &SitePasswordRotationInput{}
 
 // SitePasswordRotationInput Site Password Rotation Workflow Input Definition.
 type SitePasswordRotationInput struct {
-	Location       string   `json:"location"`
-	Roles          []string `json:"roles,omitempty"`
-	SelectedSecret string   `json:"selected_secret"`
-	Status         []string `json:"status,omitempty"`
-	Tenant         *string  `json:"tenant,omitempty"`
+	// Location containing the devices to update.
+	Location string `json:"location"`
+	// Device roles used to filter the selected network devices.
+	Roles []string `json:"roles,omitempty"`
+	// Name of the managed secret containing the replacement password.
+	SelectedSecret string `json:"selected_secret"`
+	// Device statuses used to filter the selected network devices.
+	Status []string `json:"status,omitempty"`
+	// Tenant used to filter the selected network devices.
+	Tenant *string `json:"tenant,omitempty"`
 }
 
 type _SitePasswordRotationInput SitePasswordRotationInput
