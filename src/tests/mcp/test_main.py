@@ -14,6 +14,8 @@
 # limitations under the License.
 from __future__ import annotations
 
+from urllib.parse import parse_qs, urlparse
+
 import pytest
 from fastapi import HTTPException
 from starlette.testclient import TestClient
@@ -138,6 +140,197 @@ def test_oauth_metadata_endpoints_bypass_service_auth(monkeypatch: pytest.Monkey
     }
 
 
+def test_oauth_compatibility_proxy_uses_local_issuer_and_strips_resource(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    token_request: dict[str, object] = {}
+    mcp_cli_callback = "http://127.0.0.1:8765/callback/mcp-cli-callback-id"
+
+    class StubResponse:
+        status = 200
+        headers = {
+            "Content-Type": "application/json",
+            "Cache-Control": "no-store",
+        }
+
+        async def __aenter__(self) -> StubResponse:
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+        async def read(self) -> bytes:
+            return b'{"access_token":"redacted","token_type":"Bearer"}'
+
+    class StubClientSession:
+        def __init__(self, *, timeout: object) -> None:
+            assert getattr(timeout, "total") == 30
+
+        async def __aenter__(self) -> StubClientSession:
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+        def post(
+            self,
+            url: str,
+            *,
+            data: str,
+            headers: dict[str, str],
+        ) -> StubResponse:
+            token_request.update(url=url, content=data, headers=headers)
+            return StubResponse()
+
+    monkeypatch.setattr(
+        "nv_config_manager.mcp.oauth_proxy.aiohttp.ClientSession", StubClientSession
+    )
+    oauth_settings = _oauth_settings(forward_resource_parameter=False)
+
+    with TestClient(
+        create_app(_settings(), oauth_settings),
+        base_url="https://svc-mcp.config-manager.local",
+    ) as client:
+        protected_response = client.get("/.well-known/oauth-protected-resource/mcp")
+        auth_server_response = client.get("/.well-known/oauth-authorization-server")
+        authorize_response = client.get(
+            "/oauth/authorize",
+            params={
+                "client_id": "nvcm-cli",
+                "scope": "openid api://nvcm-api/access",
+                "state": "state-value",
+                "redirect_uri": mcp_cli_callback,
+                "resource": "https://svc-mcp.config-manager.local/mcp",
+            },
+            follow_redirects=False,
+        )
+        upstream_state = parse_qs(urlparse(authorize_response.headers["location"]).query)["state"][
+            0
+        ]
+        callback_response = client.get(
+            "/oauth/callback",
+            params={
+                "code": "code-value",
+                "state": upstream_state,
+                "session_state": "session-value",
+            },
+            follow_redirects=False,
+        )
+        token_response = client.post(
+            "/oauth/token",
+            data={
+                "grant_type": "authorization_code",
+                "client_id": "nvcm-cli",
+                "code": "code-value",
+                "redirect_uri": mcp_cli_callback,
+                "resource": "https://svc-mcp.config-manager.local/mcp",
+            },
+        )
+        invalid_client_response = client.post(
+            "/oauth/token",
+            data={"grant_type": "authorization_code", "client_id": "other-client"},
+        )
+
+    assert protected_response.json()["resource"] == ("https://svc-mcp.config-manager.local/mcp")
+    assert protected_response.json()["authorization_servers"] == [
+        "https://svc-mcp.config-manager.local"
+    ]
+    assert auth_server_response.json()["issuer"] == "https://svc-mcp.config-manager.local"
+    assert auth_server_response.json()["authorization_endpoint"] == (
+        "https://svc-mcp.config-manager.local/oauth/authorize"
+    )
+    assert auth_server_response.json()["token_endpoint"] == (
+        "https://svc-mcp.config-manager.local/oauth/token"
+    )
+
+    redirect_query = parse_qs(urlparse(authorize_response.headers["location"]).query)
+    assert authorize_response.status_code == 302
+    assert "resource" not in redirect_query
+    assert redirect_query["scope"] == ["openid api://nvcm-api/access"]
+    assert redirect_query["redirect_uri"] == ["https://svc-mcp.config-manager.local/oauth/callback"]
+    assert redirect_query["state"] != ["state-value"]
+
+    callback_location = urlparse(callback_response.headers["location"])
+    assert callback_response.status_code == 302
+    assert f"{callback_location.scheme}://{callback_location.netloc}{callback_location.path}" == (
+        mcp_cli_callback
+    )
+    assert parse_qs(callback_location.query) == {
+        "code": ["code-value"],
+        "session_state": ["session-value"],
+        "state": ["state-value"],
+    }
+
+    assert token_response.status_code == 200
+    assert token_response.json()["access_token"] == "redacted"
+    assert token_request["url"] == "https://idp.example.test/realms/nvcm/token"
+    token_params = parse_qs(str(token_request["content"]))
+    assert "resource" not in token_params
+    assert token_params["code"] == ["code-value"]
+    assert token_params["redirect_uri"] == ["https://svc-mcp.config-manager.local/oauth/callback"]
+    assert invalid_client_response.status_code == 400
+    assert invalid_client_response.json() == {"error": "invalid_client"}
+
+
+@pytest.mark.parametrize(
+    "redirect_uri",
+    [
+        "http://127.0.0.1:8765/callback/id",
+        "http://127.0.0.1:8765/callback",
+        "http://localhost:8765/callback/id",
+        "http://localhost:8765/callback",
+        "http://[::1]:8765/callback/id",
+        "http://[::1]:8765/callback",
+    ],
+)
+def test_oauth_compatibility_proxy_accepts_rfc8252_loopback_redirects(
+    redirect_uri: str,
+) -> None:
+    with TestClient(
+        create_app(_settings(), _oauth_settings(forward_resource_parameter=False)),
+        base_url="https://svc-mcp.config-manager.local",
+        follow_redirects=False,
+    ) as client:
+        response = client.get(
+            "/oauth/authorize",
+            params={
+                "client_id": "nvcm-cli",
+                "state": "state-value",
+                "redirect_uri": redirect_uri,
+            },
+        )
+
+    assert response.status_code == 302
+
+
+@pytest.mark.parametrize(
+    "redirect_uri",
+    [
+        "https://127.0.0.1:8765/callback/id",
+        "http://127.0.0.1:8765/not-a-callback/id",
+        "http://127.0.0.1:8765/callback/id?next=https://example.test",
+    ],
+)
+def test_oauth_compatibility_proxy_rejects_non_dcr_mcp_cli_redirects(
+    redirect_uri: str,
+) -> None:
+    with TestClient(
+        create_app(_settings(), _oauth_settings(forward_resource_parameter=False)),
+        base_url="https://svc-mcp.config-manager.local",
+    ) as client:
+        response = client.get(
+            "/oauth/authorize",
+            params={
+                "client_id": "nvcm-cli",
+                "state": "state-value",
+                "redirect_uri": redirect_uri,
+            },
+        )
+
+    assert response.status_code == 400
+    assert response.json() == {"error": "invalid_request"}
+
+
 def test_configured_oauth_metadata_path_bypasses_service_auth(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -227,6 +420,7 @@ def _settings() -> MCPSettings:
 
 def _oauth_settings(
     resource_url: str = "https://svc-mcp.config-manager.local/mcp",
+    forward_resource_parameter: bool = True,
 ) -> MCPOAuthSettings:
     return MCPOAuthSettings(
         enabled=True,
@@ -237,4 +431,5 @@ def _oauth_settings(
         authorization_endpoint="https://idp.example.test/realms/nvcm/auth",
         token_endpoint="https://idp.example.test/realms/nvcm/token",
         jwks_uri="https://idp.example.test/realms/nvcm/certs",
+        forward_resource_parameter=forward_resource_parameter,
     )

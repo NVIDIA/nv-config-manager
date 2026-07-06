@@ -51,6 +51,7 @@ from nv_config_manager.temporal.ngc.workflows.deploy import (
     TenantDeployInput,
     TenantDeployWorkflow,
 )
+from tests.temporal.conftest import mock_send_slack_message
 
 
 @activity.defn(name="get_network_device")
@@ -955,6 +956,7 @@ async def test_execute_tenant_deploy_workflow(
             mock_persist_config_backup,
             mock_record_backup_config_manager_plugin,
             mock_get_ui_base_url,
+            mock_send_slack_message,
             publish_nats,
         ],
         activity_executor=ThreadPoolExecutor(5),
@@ -1128,10 +1130,7 @@ nv set vrf test-ryan-2 router bgp router-id 172.28.0.2
                 "depends_on": ["perform_configuration_diff"],
                 "description": "Run the backup workflow for the device..",
                 "execution_time": 0.0,
-                "input": {
-                    "commit_id": "11",
-                    "device_id": "mock_device_uuid",
-                },
+                "input": {"device_id": "mock_device_uuid"},
                 "name": "perform_backup",
                 "output": {"display": ANY},
                 "rejecters": [],
@@ -1212,14 +1211,16 @@ nv set vrf test-ryan-2 router bgp router-id 172.28.0.2
                 "execution_time": 0.0,
                 "input": {
                     "device_id": "mock_device_uuid",
-                    "intended_config_commit_id": "11",
+                    "intended_config_commit_id": None,
                 },
                 "name": "check_drift",
                 "output": {
-                    "commit_id": "11",
-                    "diff": "",
-                    "display": "No drift detected between running and intended configuration.",
-                    "has_drift": False,
+                    "commit_id": "mock_commit_id",
+                    "diff": mock_tenant_diff,
+                    "display": "Loaded intended configuration from "
+                    "[mock_device_uuid/startup.yaml](https://config-manager.example.com/device/mock_device_uuid/startup.yaml?file_type=intended&commit=mock_commit_id).\n"
+                    f"Configuration Drift Detected:\n```\n{mock_tenant_diff}\n```",
+                    "has_drift": True,
                 },
                 "rejecters": [],
                 "requires_approval": False,
@@ -1265,7 +1266,7 @@ nv set vrf test-ryan-2 router bgp router-id 172.28.0.2
                         "ztp_enabled": False,
                         "config_context": None,
                     },
-                    "intended_config_commit_id": "11",
+                    "intended_config_commit_id": None,
                     "running_config": "mock running config",
                     "trigger": "WORKFLOW",
                     "user": "nv-config-manager-temporal",
@@ -1299,7 +1300,7 @@ nv set vrf test-ryan-2 router bgp router-id 172.28.0.2
 
         expected_backup_input = {
             "device_id": "mock_device_uuid",
-            "intended_config_commit_id": "11",
+            "intended_config_commit_id": None,
             "trigger": "WORKFLOW",
             "user": "nv-config-manager-temporal",
             "user_domain": None,
@@ -1525,6 +1526,7 @@ async def test_execute_tenant_deploy_workflow_newer_commit_allowed(
             mock_persist_config_backup,
             mock_record_backup_config_manager_plugin,
             mock_get_ui_base_url,
+            mock_send_slack_message,
             publish_nats,
         ],
         activity_executor=ThreadPoolExecutor(5),
@@ -1566,12 +1568,12 @@ nv set interface swp2 ip vrf test-vrf
         assert load_stage is not None
         assert load_stage["output"]["commit_id"] == "7"
         assert load_stage["output"]["intended_config_commit_id"] == "11"
-        assert stages[-1]["input"]["commit_id"] == "11"
+        assert stages[-1]["input"] == {"device_id": "mock_device_uuid"}
 
         backup_workflow_id = stages[-1]["child_workflows"][0]
         backup_handle = client.get_workflow_handle(backup_workflow_id)
         backup_input = await backup_handle.query("input")
-        assert backup_input["intended_config_commit_id"] == "11"
+        assert backup_input["intended_config_commit_id"] is None
 
     # Reset state for other tests
     _newer_commit_mock_state["use_newer_commit"] = False

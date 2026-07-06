@@ -52,6 +52,21 @@ def test_healthcheck():
     assert rsp.json() == "OK"
 
 
+def test_openapi_operation_tags_are_unique():
+    """Verify routes do not duplicate tags inherited from their parent router."""
+    schema = app.openapi()
+
+    for path, path_item in schema["paths"].items():
+        for method, operation in path_item.items():
+            if method not in {"delete", "get", "head", "options", "patch", "post", "put", "trace"}:
+                continue
+
+            tags = operation.get("tags", [])
+            assert len(tags) == len(set(tags)), (
+                f"{method.upper()} {path} has duplicate tags: {tags}"
+            )
+
+
 def test_metrics():
     """Verify /metrics returns Prometheus metrics without auth."""
     client = TestClient(app)

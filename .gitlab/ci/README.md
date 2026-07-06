@@ -112,6 +112,14 @@ charts or updating downstream values.
 | `SONAR_TOKEN` | Token authorized to analyze the SonarQube project and export its report |
 | `NVCM_SONAR_PROJECT_KEY` | SonarQube project key; configure as a protected CI/CD variable |
 
+SonarQube runs on every mirrored default-branch commit as an informational,
+post-merge report. Both Sonar jobs intentionally use `allow_failure: true` and
+do not gate upstream code. The default-branch Python test jobs run before every
+scan so all configured coverage reports are available; the scanner skips an
+analysis rather than replacing valid dashboard coverage with 0% if an expected
+artifact is missing. Generated Go API clients under `bindings/go/` are excluded
+from Sonar analysis.
+
 ## Downstream Deployments
 
 | Variable | Purpose |

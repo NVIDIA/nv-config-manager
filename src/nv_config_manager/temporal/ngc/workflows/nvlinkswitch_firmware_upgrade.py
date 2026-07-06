@@ -16,7 +16,7 @@
 
 from datetime import timedelta
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 from temporalio.exceptions import ApplicationError
@@ -106,8 +106,8 @@ def _format_firmware_differences(differences: dict[str, dict[str, str]]) -> str:
 class NVLinkSwitchFirmwareUpgradeInput(BaseModel):
     """NVLinkSwitch Firmware Upgrade Workflow Input Definition."""
 
-    device_id: str
-    bundle_version: str
+    device_id: str = Field(description="Identifier of the NVLink switch to upgrade.")
+    bundle_version: str = Field(description="Target NVLink firmware bundle version.")
 
 
 @workflow.defn

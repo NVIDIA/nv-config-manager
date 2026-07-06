@@ -16,7 +16,7 @@
 
 from datetime import timedelta
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 
@@ -60,7 +60,7 @@ DEFAULT_ACTIVITY_RETRY_POLICY = RetryPolicy(
 class InfinibandMlnxOSUpgradeInput(BaseModel):
     """Infiniband Mellanox OS Upgrade Workflow Input Definition."""
 
-    device_id: str
+    device_id: str = Field(description="Identifier of the InfiniBand switch to upgrade.")
 
 
 @workflow.defn

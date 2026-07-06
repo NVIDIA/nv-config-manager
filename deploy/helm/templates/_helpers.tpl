@@ -18,11 +18,18 @@ Common labels
 {{- define "nv-config-manager.labels" -}}
 helm.sh/chart: {{ include "nv-config-manager.chart" . }}
 {{ include "nv-config-manager.selectorLabels" . }}
-{{- if .Chart.AppVersion }}
-app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
-{{- end }}
+app.kubernetes.io/version: {{ .Chart.AppVersion | default .Chart.Version | quote }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 app.kubernetes.io/part-of: nv-config-manager
+{{- end }}
+
+{{/*
+Resolve an NVIDIA Config Manager image tag. Release pipelines may set a
+per-image tag; checked-in values fall back to the chart version so the source
+tree has only one version to maintain.
+*/}}
+{{- define "nv-config-manager.imageTag" -}}
+{{- .image.tag | default .root.Chart.AppVersion | default .root.Chart.Version -}}
 {{- end }}
 
 {{/*
@@ -502,6 +509,23 @@ checksum/auth-ini: {{ include "nv-config-manager.authIniSections" . | sha256sum 
 {{- end -}}
 
 {{/*
+Opt out of AWS CloudWatch Application Signals / OTel auto-instrumentation on
+Temporal server pods. The Go Temporal server only supports OTLP over gRPC; EKS
+Application Signals injects http/protobuf env vars that prevent startup.
+Usage: {{ include "nv-config-manager.temporalServerOtelOptOutAnnotations" . | nindent 8 }}
+*/}}
+{{- define "nv-config-manager.temporalServerOtelOptOutAnnotations" -}}
+instrumentation.opentelemetry.io/inject-java: "false"
+instrumentation.opentelemetry.io/inject-python: "false"
+instrumentation.opentelemetry.io/inject-dotnet: "false"
+instrumentation.opentelemetry.io/inject-nodejs: "false"
+cloudwatch.aws.amazon.com/auto-annotate-java: "false"
+cloudwatch.aws.amazon.com/auto-annotate-python: "false"
+cloudwatch.aws.amazon.com/auto-annotate-dotnet: "false"
+cloudwatch.aws.amazon.com/auto-annotate-nodejs: "false"
+{{- end -}}
+
+{{/*
 Generate a JSON array of JWT provider configs for the Nautobot
 nv_config_manager_auth.jwt_authentication module.  Includes:
   - OIDC provider (user_provider: true) for browser users
@@ -947,6 +971,10 @@ mcp-auth.ini: |
   {{- if $enabled }}
   {{- $resourceUrl := get $oauth "resourceUrl" | default (printf "https://%s/mcp" (tpl (.Values.mcp.gateway.svcHostname | default "") .)) -}}
   {{- $resourceUrl = trimSuffix "/" (tpl $resourceUrl .) -}}
+  {{- $forwardResourceParameter := true -}}
+  {{- if hasKey $oauth "forwardResourceParameter" -}}
+  {{- $forwardResourceParameter = $oauth.forwardResourceParameter -}}
+  {{- end -}}
   {{- $issuerUrl := get $oauth "issuerUrl" | default .Values.oidc.issuerUrl -}}
   {{- $issuerUrl = required "mcp.auth.oauth.issuerUrl or oidc.issuerUrl is required when MCP OAuth metadata is enabled" $issuerUrl -}}
   {{- $issuerUrl = trimSuffix "/" (tpl $issuerUrl .) -}}
@@ -978,6 +1006,7 @@ mcp-auth.ini: |
   scopes = {{ if kindIs "string" $scopes }}{{ $scopes }}{{ else }}{{ join " " $scopes }}{{ end }}
   authorization_endpoint = {{ $authorizationEndpoint }}
   token_endpoint = {{ $tokenEndpoint }}
+  forward_resource_parameter = {{ $forwardResourceParameter }}
   {{- if $jwksUri }}
   jwks_uri = {{ $jwksUri }}
   {{- end }}

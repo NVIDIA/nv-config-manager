@@ -76,6 +76,14 @@
         "title": "WhoamiResponse",
         "type": "object"
       }
+    },
+    "securitySchemes": {
+      "BearerAuth": {
+        "bearerFormat": "JWT",
+        "description": "Bearer JWT used by CLI and machine clients on svc-* endpoints. Authentication is required by default, but deployments may disable it with [auth] required = false. Browser OIDC sessions, mTLS, SPIFFE identities, and trusted gateway identity headers may also satisfy authentication outside this generated client flow.",
+        "scheme": "bearer",
+        "type": "http"
+      }
     }
   },
   "info": {
@@ -126,6 +134,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Flush Cache"
       }
     },
@@ -167,6 +180,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Get Config"
       }
     },
@@ -187,6 +205,7 @@
             "description": "Successful Response"
           }
         },
+        "security": [],
         "summary": "Healthcheck"
       }
     },
@@ -206,6 +225,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Current User Info"
       }
     }

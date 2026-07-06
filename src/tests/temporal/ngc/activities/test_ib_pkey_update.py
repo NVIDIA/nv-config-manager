@@ -226,19 +226,46 @@ class TestFetchPKeyMembers:
         assert result.ip_over_ib is False
 
     @pytest.mark.asyncio
-    async def test_handles_plain_string_guids(self, mock_ufm_config):
-        """UFM may return guids as plain strings rather than dicts."""
+    async def test_plain_string_guids_rejected(self, mock_ufm_config):
+        """A guids_data read must carry a membership per member; bare strings are malformed."""
         with aioresponses() as m:
             m.get(
                 _pkey_members_url("0x0005"),
                 payload={"guids": [GUID_1, GUID_2]},
             )
 
+            with pytest.raises(ApplicationError, match="no guid or membership"):
+                await fetch_pkey_members(
+                    FetchPKeyMembersInput(host="ufm.example.com", pkey="0x0005")
+                )
+
+    @pytest.mark.asyncio
+    async def test_member_without_membership_rejected(self, mock_ufm_config):
+        """A member entry lacking a membership fails loudly rather than defaulting a type."""
+        with aioresponses() as m:
+            m.get(
+                _pkey_members_url("0x0005"),
+                payload={"guids": [{"guid": GUID_1}]},
+            )
+
+            with pytest.raises(ApplicationError, match="no guid or membership"):
+                await fetch_pkey_members(
+                    FetchPKeyMembersInput(host="ufm.example.com", pkey="0x0005")
+                )
+
+    @pytest.mark.asyncio
+    async def test_null_guids_treated_as_empty(self, mock_ufm_config):
+        """A null `guids` value is treated as an empty member list, not a crash."""
+        with aioresponses() as m:
+            m.get(_pkey_members_url("0x0005"), payload={"guids": None})
+
             result = await fetch_pkey_members(
                 FetchPKeyMembersInput(host="ufm.example.com", pkey="0x0005")
             )
 
-        assert len(result.guids) == 2
+        assert result.exists is True
+        assert result.guids == []
+        assert result.memberships == []
 
 
 # ---------------------------------------------------------------------------
@@ -350,8 +377,7 @@ class TestSetPKeyMembers:
 
         assert captured["pkey"] == "0x0005"
         assert captured["guids"] == [GUID_1, GUID_2]
-        # Per-GUID memberships use UFM's plural `memberships` array, never the
-        # scalar `membership` (the two are mutually exclusive on UFM).
+        # UFM's Set endpoint (PUT) honors the index-aligned plural `memberships`.
         assert captured["memberships"] == ["full", "limited"]
         assert "membership" not in captured
 

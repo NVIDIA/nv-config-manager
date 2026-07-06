@@ -497,7 +497,8 @@ prepare:airgapped-release-info:
       
       # Get chart version from Chart.yaml
       CHART_VERSION=$(grep '^version:' deploy/helm/Chart.yaml | awk '{print $2}' | tr -d '"' | tr -d "'")
-      APP_VERSION=$(grep '^appVersion:' deploy/helm/Chart.yaml | awk '{print $2}' | tr -d '"' | tr -d "'")
+      APP_VERSION=$(grep '^appVersion:' deploy/helm/Chart.yaml | awk '{print $2}' | tr -d '"' | tr -d "'" || true)
+      APP_VERSION="${APP_VERSION:-$CHART_VERSION}"
       
       # Create release info
       cat > release.env << EOF

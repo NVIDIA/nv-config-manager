@@ -71,8 +71,10 @@ def _load_fixture(name: str) -> list[dict[str, Any]]:
 class PKeyAddRequest(BaseModel):
     """Body of POST /resources/pkeys/add (create) and POST/PUT /resources/pkeys/.
 
-    ``membership`` (one value for all GUIDs) and ``memberships`` (one per GUID,
-    index-aligned) are mutually exclusive, mirroring UFM.
+    Mirrors UFM 6.19.x semantics: ``membership`` is a single string applied to every
+    GUID; the plural ``memberships`` is an index-aligned per-GUID list. The two
+    endpoints treat the plural array differently (see
+    ``_memberships_add``/``_memberships_set``).
     """
 
     pkey: str
@@ -83,14 +85,14 @@ class PKeyAddRequest(BaseModel):
     memberships: list[str] | None = None
 
 
-def _memberships_for(req: PKeyAddRequest) -> list[str]:
-    """Resolve a per-GUID membership list, enforcing UFM's mutual-exclusion rule."""
+def _memberships_add(req: PKeyAddRequest) -> list[str]:
+    """POST/Add: UFM ignores the plural ``memberships``; the single ``membership`` applies to all."""
+    return [req.membership] * len(req.guids)
+
+
+def _memberships_set(req: PKeyAddRequest) -> list[str]:
+    """PUT/Set: UFM honors the index-aligned ``memberships`` list, else the single ``membership``."""
     if req.memberships is not None:
-        if "membership" in req.model_fields_set:
-            raise HTTPException(
-                status_code=400,
-                detail="Only one of Memberships or Membership is allowed",
-            )
         if len(req.memberships) != len(req.guids):
             raise HTTPException(
                 status_code=400,
@@ -268,14 +270,14 @@ def create_app(store: _Store | None = None) -> FastAPI:
     @app.post("/ufmRest/resources/pkeys/")
     @app.post("/ufmRest/resources/pkeys")
     def add_members(payload: Annotated[PKeyAddRequest, Body()]) -> dict[str, Any]:
-        memberships = _memberships_for(payload)
+        memberships = _memberships_add(payload)
         added = store.add_members(payload.pkey, payload.guids, memberships)
         return {"pkey": payload.pkey, "added": added}
 
     @app.put("/ufmRest/resources/pkeys/")
     @app.put("/ufmRest/resources/pkeys")
     def set_members(payload: Annotated[PKeyAddRequest, Body()]) -> dict[str, Any]:
-        memberships = _memberships_for(payload)
+        memberships = _memberships_set(payload)
         count = store.set_members(
             payload.pkey,
             payload.guids,

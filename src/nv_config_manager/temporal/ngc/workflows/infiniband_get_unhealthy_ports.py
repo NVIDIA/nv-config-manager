@@ -18,7 +18,7 @@ import base64
 from datetime import timedelta
 
 from py_markdown_table.markdown_table import markdown_table
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 
@@ -50,7 +50,7 @@ DEFAULT_ACTIVITY_RETRY_POLICY = RetryPolicy(
 class InfinibandGetUnhealthyPortsInput(BaseModel):
     """Unhealthy Ports Validation Workflow Input Definition."""
 
-    device_id: str
+    device_id: str = Field(description="Identifier of the UFM device to inspect.")
 
 
 @workflow.defn

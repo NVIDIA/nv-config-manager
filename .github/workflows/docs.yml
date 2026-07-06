@@ -13,9 +13,6 @@ on:
       - "Makefile"
       - ".github/workflows/docs.yml"
 
-permissions:
-  contents: read
-
 concurrency:
   group: docs-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -28,6 +25,8 @@ jobs:
   lint:
     name: Lint Docs
     runs-on: linux-amd64-cpu4
+    permissions:
+      contents: read
     steps:
       - uses: &actions_checkout actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -138,6 +137,8 @@ jobs:
     needs: lint
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: linux-amd64-cpu4
+    permissions:
+      contents: read
     steps:
       - uses: *actions_checkout
         with:

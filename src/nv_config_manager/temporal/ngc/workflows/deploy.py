@@ -89,8 +89,11 @@ INTENDED_CONFIG_COMMIT_ID_DESCRIPTION = (
 class DeployInput(BaseModel):
     """Config Deployment Workflow Input Definiton."""
 
-    device_id: str
-    commit_confirm: bool = True
+    device_id: str = Field(description="Identifier of the network device to configure.")
+    commit_confirm: bool = Field(
+        default=True,
+        description="Whether to use commit-confirmed mode when the platform supports it.",
+    )
 
 
 @workflow.defn
@@ -405,7 +408,9 @@ class TenantDeployInput(BaseModel):
         }
     )
 
-    device: str | NetworkDeviceData
+    device: str | NetworkDeviceData = Field(
+        description="Identifier or preloaded data for the network device to configure."
+    )
     tenant_config_commit_id: str | None = Field(
         default=None,
         pattern=r"^\d+$",
@@ -694,7 +699,6 @@ class TenantDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archi
         """Backup Stage Input."""
 
         device_id: str
-        commit_id: str
 
     class BackupStageOutput(StageOutput):
         """Backup Stage Output."""
@@ -713,7 +717,6 @@ class TenantDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archi
             trigger=TriggerEnum.WORKFLOW,
             user="nv-config-manager-temporal",
             user_domain=None,
-            intended_config_commit_id=stage_input.commit_id,
             workflow_id=workflow.info().workflow_id,
         )
 
@@ -777,7 +780,6 @@ class TenantDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archi
         await self.perform_backup(
             TenantDeployWorkflow.BackupStageInput(
                 device_id=load_config_output.device.id,
-                commit_id=load_config_output.intended_config_commit_id,
             )
         )
         await self.archive_results()

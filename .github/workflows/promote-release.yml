@@ -12,9 +12,6 @@ on:
         required: false
         type: string
 
-permissions:
-  contents: read
-
 concurrency:
   group: release-tagging-${{ github.repository }}
   cancel-in-progress: false
@@ -23,8 +20,12 @@ jobs:
   validate:
     name: Validate Promotion
     runs-on: linux-amd64-cpu4
+    permissions:
+      contents: read
     outputs:
       commit: ${{ steps.resolve.outputs.commit }}
+      go_source_tag: ${{ steps.resolve.outputs.go_source_tag }}
+      go_target_tag: ${{ steps.resolve.outputs.go_target_tag }}
       source_rc_tag: ${{ steps.resolve.outputs.source_rc_tag }}
       target_tag: ${{ steps.resolve.outputs.target_tag }}
     steps:
@@ -83,18 +84,37 @@ jobs:
             exit 1
           fi
 
+          go_source_tag="bindings/go/v${SOURCE_RC_TAG}"
+          go_target_tag="bindings/go/v${target_tag}"
+          if ! git rev-parse --verify "refs/tags/${go_source_tag}" >/dev/null 2>&1; then
+            echo "Go module RC tag ${go_source_tag} does not exist."
+            exit 1
+          fi
+          if [ "$(git rev-parse "${go_source_tag}^{commit}")" != "$commit" ]; then
+            echo "Go module RC tag ${go_source_tag} does not match ${SOURCE_RC_TAG}."
+            exit 1
+          fi
+          if git rev-parse --verify "refs/tags/${go_target_tag}" >/dev/null 2>&1; then
+            echo "Tag ${go_target_tag} already exists."
+            exit 1
+          fi
+
           if ! git merge-base --is-ancestor "$commit" "origin/${DEFAULT_BRANCH}"; then
             echo "Source RC commit ${commit} is not reachable from origin/${DEFAULT_BRANCH}."
             exit 1
           fi
 
           echo "commit=${commit}" >> "$GITHUB_OUTPUT"
+          echo "go_source_tag=${go_source_tag}" >> "$GITHUB_OUTPUT"
+          echo "go_target_tag=${go_target_tag}" >> "$GITHUB_OUTPUT"
           echo "source_rc_tag=${SOURCE_RC_TAG}" >> "$GITHUB_OUTPUT"
           echo "target_tag=${target_tag}" >> "$GITHUB_OUTPUT"
 
       - name: Summary
         env:
           COMMIT: ${{ steps.resolve.outputs.commit }}
+          GO_SOURCE_TAG: ${{ steps.resolve.outputs.go_source_tag }}
+          GO_TARGET_TAG: ${{ steps.resolve.outputs.go_target_tag }}
           SOURCE_RC_TAG: ${{ steps.resolve.outputs.source_rc_tag }}
           TARGET_TAG: ${{ steps.resolve.outputs.target_tag }}
         run: |
@@ -103,6 +123,8 @@ jobs:
             echo ""
             echo "- Source RC: \`${SOURCE_RC_TAG}\`"
             echo "- Stable tag: \`${TARGET_TAG}\`"
+            echo "- Go source RC: \`${GO_SOURCE_TAG}\`"
+            echo "- Go stable tag: \`${GO_TARGET_TAG}\`"
             echo "- Commit: \`${COMMIT}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -121,6 +143,7 @@ jobs:
       - name: Create and push stable tag
         env:
           COMMIT: ${{ needs.validate.outputs.commit }}
+          GO_TARGET_TAG: ${{ needs.validate.outputs.go_target_tag }}
           SOURCE_RC_TAG: ${{ needs.validate.outputs.source_rc_tag }}
           TARGET_TAG: ${{ needs.validate.outputs.target_tag }}
           TAG_PUSH_TOKEN: ${{ secrets.RELEASE_TAG_TOKEN || github.token }}
@@ -132,12 +155,17 @@ jobs:
             echo "Tag ${TARGET_TAG} already exists."
             exit 1
           fi
+          if git rev-parse --verify "refs/tags/${GO_TARGET_TAG}" >/dev/null 2>&1; then
+            echo "Tag ${GO_TARGET_TAG} already exists."
+            exit 1
+          fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -a "$TARGET_TAG" "$COMMIT" -m "Promote ${SOURCE_RC_TAG} to ${TARGET_TAG}"
+          git tag -a "$GO_TARGET_TAG" "$COMMIT" -m "Promote Go bindings to ${TARGET_TAG}"
 
           git remote set-url origin "https://x-access-token:${TAG_PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          git push origin "refs/tags/${TARGET_TAG}"
+          git push --atomic origin "refs/tags/${TARGET_TAG}" "refs/tags/${GO_TARGET_TAG}"
 
-          echo "Promoted ${SOURCE_RC_TAG} to ${TARGET_TAG} at ${COMMIT}."
+          echo "Promoted ${SOURCE_RC_TAG} to ${TARGET_TAG} and created ${GO_TARGET_TAG} at ${COMMIT}."
