@@ -79,10 +79,12 @@ NV_CONFIG_MANAGER_JWT_COOKIE: {{ .Values.oidc.cookieName | default "NVConfigMana
 # Reconciled against the JWT groups claim on every login.
 NV_CONFIG_MANAGER_SUPERUSER_GROUPS: {{ join "," . | quote }}
 {{- end }}
-{{- if .Values.nautobot.rbac.groupMapping }}
+{{- if hasKey .Values.nautobot.rbac "groupMapping" }}
 # Path to the group-mapping YAML consumed by nv_config_manager_auth.rbac on every JWT
 # login.  Rendered by the chart into the nautobot group-mapping ConfigMap and
-# mounted at the path below.
+# mounted at the path below.  Keyed on presence of ``nautobot.rbac.groupMapping``
+# (even ``[]``) so that omitting it entirely leaves the feature unconfigured;
+# an explicit empty list is the deliberate revoke-everyone idiom.
 NV_CONFIG_MANAGER_GROUP_MAPPING_PATH: "/app/config/group-mapping.yaml"
 {{- if .Values.nautobot.rbac.autoCreateGroups }}
 # Opt-in: nv_config_manager_auth.rbac will create Django Groups referenced in the

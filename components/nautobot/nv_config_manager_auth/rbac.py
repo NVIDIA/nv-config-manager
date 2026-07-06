@@ -185,6 +185,7 @@ class GroupMappingParseError(GroupMappingError):
 
 
 def _mapping_path() -> str:
+    """Return the configured group-mapping YAML path (env override or default)."""
     return os.getenv("NV_CONFIG_MANAGER_GROUP_MAPPING_PATH", DEFAULT_MAPPING_PATH)
 
 
@@ -199,11 +200,15 @@ def mapping_is_configured(path: str | None = None) -> bool:
       grants; the caller sees an empty load and exercises the
       revocation/demotion path.
     * Otherwise, file existence at ``DEFAULT_MAPPING_PATH`` (or *path*
-      when supplied for tests).  The Helm chart mounts the ConfigMap at
-      ``/app/config/group-mapping.yaml`` whenever ``nautobot.rbac.groupMapping``
-      is set -- including ``groupMapping: []`` (the explicit
-      revoke-everyone idiom) -- so file existence is a reliable proxy
-      for "operator wrote a value".
+      when supplied for tests).  The Helm chart renders and mounts the
+      group-mapping ConfigMap at ``/app/config/group-mapping.yaml`` only
+      when the ``nautobot.rbac.groupMapping`` key is *present* (``hasKey``)
+      -- including an explicit ``groupMapping: []`` (the revoke-everyone
+      idiom).  Omitting the key entirely leaves the file unmounted, so
+      file existence is a reliable proxy for "operator wrote a value".
+      This is why the default in ``values.yaml`` leaves the key commented
+      out: an absent key means unconfigured, and previously-granted
+      privileges are left untouched.
 
     This is intentionally a *configuration* signal, not a *content*
     signal.  Callers must distinguish three states the truthiness of

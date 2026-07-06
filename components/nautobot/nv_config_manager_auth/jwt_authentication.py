@@ -122,6 +122,12 @@ def _derive_jwks_uri(issuer: str) -> str:
 
 
 def _load_jwt_providers() -> list[JwtProviderConfig]:
+    """Parse ``NV_CONFIG_MANAGER_JWT_PROVIDERS`` JSON into provider configs.
+
+    Returns an empty list when the env var is unset or not valid JSON;
+    entries without an ``issuer`` are skipped and the JWKS URI is derived
+    from the issuer when not supplied.
+    """
     raw = os.getenv("NV_CONFIG_MANAGER_JWT_PROVIDERS", "")
     if not raw:
         return []
@@ -159,6 +165,12 @@ _jwks_lock = threading.Lock()
 
 
 def _get_jwks_client(jwks_uri: str) -> pyjwt.PyJWKClient:
+    """Return a cached :class:`PyJWKClient` for *jwks_uri*, creating one if needed.
+
+    Clients are memoised per URI behind a lock (double-checked) so JWKS key
+    sets are fetched once and shared across threads rather than re-fetched
+    on every request.
+    """
     client = _jwks_clients.get(jwks_uri)
     if client is not None:
         return client
@@ -172,10 +184,12 @@ def _get_jwks_client(jwks_uri: str) -> pyjwt.PyJWKClient:
 
 
 def _get_spiffe_jwks_uri() -> str:
+    """Return the SPIFFE JWKS URI (``SPIFFE_JWKS_URI``), or "" when SPIFFE is off."""
     return os.getenv("SPIFFE_JWKS_URI", "")
 
 
 def _get_spiffe_audiences() -> list[str]:
+    """Return the accepted SPIFFE audiences parsed from ``SPIFFE_AUDIENCES``."""
     raw = os.getenv("SPIFFE_AUDIENCES", "")
     return [a.strip() for a in raw.split(",") if a.strip()]
 
@@ -215,6 +229,7 @@ def _spiffe_id_to_workload_name(spiffe_id: str) -> str:
 
 
 def _strip_email_domain(email: str) -> str:
+    """Return the local part of an email/UPN (text before ``@``), unchanged if none."""
     if "@" in email:
         return email.split("@", 1)[0]
     return email
@@ -307,6 +322,11 @@ def _sync_superuser_status(
 
 
 def _get_or_create_service_user() -> Any:
+    """Return the shared Nautobot service user, creating it on first use.
+
+    Used for non-human providers (SPIFFE / service JWTs) where requests map
+    to a single shared identity rather than an individual Django user.
+    """
     service_username = os.getenv("NV_CONFIG_MANAGER_SERVICE_USER", "nv-config-manager-service")
     user, created = User.objects.get_or_create(
         username=service_username,
@@ -485,6 +505,11 @@ _providers_lock = threading.Lock()
 
 
 def _get_providers() -> list[JwtProviderConfig]:
+    """Return the process-wide JWT provider list, loading it once and caching it.
+
+    The list is parsed from the environment on first call behind a lock
+    (double-checked) so configuration is read a single time per process.
+    """
     global _providers
     if _providers is not None:
         return _providers
@@ -529,6 +554,12 @@ class NVConfigManagerJWTAuthentication(BaseAuthentication):
     keyword = "Bearer"
 
     def authenticate(self, request: Request) -> tuple[Any, str] | None:
+        """Authenticate *request*, trying SPIFFE then each configured JWT provider.
+
+        Returns a ``(user, auth)`` tuple on success, or ``None`` to fall
+        through to the next authenticator when no token is present or no
+        provider accepts the token.
+        """
         token = _extract_token(request)
         if token is None:
             return None
@@ -550,4 +581,5 @@ class NVConfigManagerJWTAuthentication(BaseAuthentication):
         return None
 
     def authenticate_header(self, request: Request) -> str:
+        """Return the ``WWW-Authenticate`` challenge keyword (``Bearer``)."""
         return self.keyword

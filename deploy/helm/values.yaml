@@ -2606,7 +2606,27 @@ nautobot:
     #             status__name: "Active"
     #     - name: "nv-config-manager-admins"
     #       is_superuser: true
-    groupMapping: []
+    #
+    # Three states, keyed on whether ``groupMapping`` is *present* at all --
+    # NOT on whether it is truthy.  Presence of the key is what mounts the
+    # ConfigMap (and therefore what ``nv_config_manager_auth.rbac`` treats as
+    # "configured"), so the default below is to leave the key OUT entirely:
+    #
+    #   * key omitted (the default)  -> UNCONFIGURED.  No ConfigMap is
+    #     rendered or mounted, group sync never runs, and existing Django
+    #     ``is_superuser`` / group memberships are left untouched.  This
+    #     mirrors ``superuserGroups: []`` meaning "feature off".
+    #   * ``groupMapping: []``       -> CONFIGURED-BUT-EMPTY.  The ConfigMap
+    #     is mounted with an empty ``groups`` list, so every login runs the
+    #     revoke-everyone path: users are removed from all mapping-managed
+    #     Django Groups and the managed ``<group>_<action>`` ObjectPermissions
+    #     are pruned.  Set this deliberately to tear down a previous mapping.
+    #   * ``groupMapping: [ ... ]``  -> CONFIGURED.  Memberships and
+    #     permissions are reconciled against the entries on every login.
+    #
+    # Leave this commented out to keep group-mapping RBAC disabled; uncomment
+    # it (or override it in your own values file) to opt in.
+    # groupMapping: []
 
     # ------------------------------------------------------------------
     # When ``true``, nv_config_manager_auth.rbac creates any Django Group referenced
