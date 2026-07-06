@@ -781,11 +781,14 @@ class AirSimulationManager:
                 *self._SETUP_LOG_PATHS,
             )
         )
-        result = subprocess.run(
-            [*ssh_base, grep_cmd],
-            capture_output=True,
-            timeout=10,
-        )
+        try:
+            result = subprocess.run(
+                [*ssh_base, grep_cmd],
+                capture_output=True,
+                timeout=10,
+            )
+        except subprocess.TimeoutExpired:
+            return False
         return result.returncode == 0
 
     def _ssh_run_and_tail(
