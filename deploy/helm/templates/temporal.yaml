@@ -291,6 +291,9 @@ spec:
         {{- if include "nv-config-manager.spiffe.enabled" . }}
         {{- include "nv-config-manager.spiffe.annotations" (dict "root" . "app" $temporalName) | nindent 8 }}
         {{- end }}
+        {{- if .Values.temporal.observability.enabled }}
+        {{- include "nv-config-manager.temporalServerOtelOptOutAnnotations" . | nindent 8 }}
+        {{- end }}
     spec:
       serviceAccountName: {{ include "nv-config-manager.serviceAccountName" . }}
       {{- if .Values.global.imagePullSecrets }}
@@ -459,6 +462,9 @@ spec:
         {{- if include "nv-config-manager.spiffe.enabled" . }}
         {{- include "nv-config-manager.spiffe.annotations" (dict "root" . "app" $temporalName) | nindent 8 }}
         {{- end }}
+        {{- if .Values.temporal.observability.enabled }}
+        {{- include "nv-config-manager.temporalServerOtelOptOutAnnotations" . | nindent 8 }}
+        {{- end }}
     spec:
       serviceAccountName: {{ include "nv-config-manager.serviceAccountName" . }}
       {{- if .Values.global.imagePullSecrets }}
@@ -576,6 +582,9 @@ spec:
         {{- if include "nv-config-manager.spiffe.enabled" . }}
         {{- include "nv-config-manager.spiffe.annotations" (dict "root" . "app" $temporalName) | nindent 8 }}
         {{- end }}
+        {{- if .Values.temporal.observability.enabled }}
+        {{- include "nv-config-manager.temporalServerOtelOptOutAnnotations" . | nindent 8 }}
+        {{- end }}
     spec:
       serviceAccountName: {{ include "nv-config-manager.serviceAccountName" . }}
       {{- if .Values.global.imagePullSecrets }}
@@ -656,6 +665,9 @@ spec:
         {{- end }}
         {{- if include "nv-config-manager.spiffe.enabled" . }}
         {{- include "nv-config-manager.spiffe.annotations" (dict "root" . "app" $temporalName) | nindent 8 }}
+        {{- end }}
+        {{- if .Values.temporal.observability.enabled }}
+        {{- include "nv-config-manager.temporalServerOtelOptOutAnnotations" . | nindent 8 }}
         {{- end }}
     spec:
       serviceAccountName: {{ include "nv-config-manager.serviceAccountName" . }}
