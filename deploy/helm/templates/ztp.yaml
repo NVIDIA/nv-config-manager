@@ -274,7 +274,7 @@ metadata:
     service.beta.kubernetes.io/aws-load-balancer-healthcheck-protocol: http
     service.beta.kubernetes.io/aws-load-balancer-healthcheck-port: "8000"
     service.beta.kubernetes.io/aws-load-balancer-healthcheck-path: /healthcheck
-    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: {{ dig "cross_zone_load_balancing_enabled" true .Values.networkZtp.ingress.nlb | quote }}
     {{- end }}
     {{- /* Cilium annotations */ -}}
     {{- if and .Values.networkZtp.ingress.cilium .Values.networkZtp.ingress.cilium.staticIP }}
