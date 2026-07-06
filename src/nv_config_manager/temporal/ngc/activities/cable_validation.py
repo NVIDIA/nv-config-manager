@@ -76,6 +76,21 @@ HOST_SUMMARY_SHEET_NAME = "Host Summary"
 
 EXCEL_MIME_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
+# Leading characters that spreadsheet apps (Excel, Sheets) treat as the start of a
+# formula. A cell beginning with one of these is a formula-injection vector, so the
+# value is prefixed with a single quote to force literal-text interpretation.
+_FORMULA_TRIGGERS: frozenset[str] = frozenset({"=", "+", "-", "@", "\t", "\r"})
+
+
+def _escape_formula(value: Any) -> Any:
+    """Neutralize spreadsheet formula injection for string cell values.
+
+    Non-string values pass through unchanged.
+    """
+    if isinstance(value, str) and value and value[0] in _FORMULA_TRIGGERS:
+        return f"'{value}"
+    return value
+
 
 def _rack_position_str(rack: str | None, position: int | None) -> str | None:
     """Return rack position string (e.g. 'rack1:u42') or None if rack/position missing."""
@@ -139,9 +154,11 @@ class CableValidationRow(BaseModel):
         }
 
     def to_csv_dict(self) -> dict[str, Any]:
-        """Return dict of columns to include in CSV export (excludes CSV_EXCLUDE_COLUMNS)."""
+        """Return columns for CSV/Excel export, formula-escaped (excludes CSV_EXCLUDE_COLUMNS)."""
         return {
-            k: v for k, v in self.model_dump(by_alias=True).items() if k not in CSV_EXCLUDE_COLUMNS
+            k: _escape_formula(v)
+            for k, v in self.model_dump(by_alias=True).items()
+            if k not in CSV_EXCLUDE_COLUMNS
         }
 
     @classmethod
@@ -840,8 +857,10 @@ def _format_results_markdown(
     markdown = f"{export_link}\n"
 
     if len(results) > max_display_results:
+        export_name = "Excel" if export == "xlsx" else "CSV"
         markdown += (
-            f"Too many results to display ({len(results)} errors), please export to CSV to view.\n"
+            f"Too many results to display ({len(results)} errors), "
+            f"please export to {export_name} to view.\n"
         )
     else:
         markdown += str(

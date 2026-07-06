@@ -34,7 +34,9 @@ from nv_config_manager.temporal.ngc.activities.cable_validation import (
     InvalidCable,
     _build_host_summary,
     _classify_issue,
+    _escape_formula,
     _format_results_markdown,
+    _generate_csv_link,
     _generate_xlsx_link,
     decorate_result,
 )
@@ -801,3 +803,86 @@ class TestFormatResultsMarkdownExport:
         )
 
         assert "[Export to CSV](data:text/csv" in markdown
+
+    def test_too_many_results_names_excel_for_xlsx_export(self):
+        rows = [_row(f"host{i}", "Link is down.", "rack1:u1") for i in range(3)]
+
+        markdown = _format_results_markdown(
+            rows,
+            csv_exclude_columns=CSV_EXCLUDE_COLUMNS,
+            markdown_exclude_columns=MARKDOWN_EXCLUDE_COLUMNS,
+            max_display_results=1,
+            export="xlsx",
+        )
+
+        assert "please export to Excel to view." in markdown
+        assert "export to CSV to view" not in markdown
+
+    def test_too_many_results_names_csv_for_csv_export(self):
+        rows = [_row(f"host{i}", "Link is down.", "rack1:u1") for i in range(3)]
+
+        markdown = _format_results_markdown(
+            rows,
+            csv_exclude_columns=CSV_EXCLUDE_COLUMNS,
+            markdown_exclude_columns=MARKDOWN_EXCLUDE_COLUMNS,
+            max_display_results=1,
+        )
+
+        assert "please export to CSV to view." in markdown
+
+
+def _decode_csv(link: str) -> pd.DataFrame:
+    """Decode an '[Export to CSV](data:...base64,...)' link into a DataFrame."""
+    assert link.startswith("[Export to CSV](data:")
+    b64 = link.split("base64,", 1)[1].rstrip(")")
+    raw = base64.b64decode(b64).decode("utf-8")
+    # keep_default_na=False so escaped text is compared as-is, not coerced to NaN.
+    return pd.read_csv(io.StringIO(raw), dtype=str, keep_default_na=False)
+
+
+class TestEscapeFormula:
+    """Formula-injection escaping for spreadsheet exports."""
+
+    @pytest.mark.parametrize("trigger", ["=", "+", "-", "@", "\t", "\r"])
+    def test_leading_trigger_is_prefixed_with_quote(self, trigger: str):
+        payload = f"{trigger}SUM(A1)"
+
+        assert _escape_formula(payload) == f"'{payload}"
+
+    def test_benign_string_is_unchanged(self):
+        assert _escape_formula("hostA") == "hostA"
+        assert _escape_formula("rack1:u1") == "rack1:u1"
+
+    def test_trigger_not_leading_is_unchanged(self):
+        assert _escape_formula("host=A") == "host=A"
+
+    def test_empty_string_is_unchanged(self):
+        assert _escape_formula("") == ""
+
+    def test_non_string_passes_through(self):
+        assert _escape_formula(None) is None
+        assert _escape_formula(42) == 42
+
+
+class TestExportsEscapeFormulas:
+    """Both the CSV and Excel exports must neutralize formula-like cell values."""
+
+    def test_to_csv_dict_escapes_leading_formula_char(self):
+        row = _row("=cmd|'/c calc'!A1", "Link is down.", "rack1:u1")
+
+        assert row.to_csv_dict()["Start Device"] == "'=cmd|'/c calc'!A1"
+
+    def test_xlsx_cell_is_not_interpreted_as_formula(self):
+        rows = [_row("=1+2", "Link is down.", "rack1:u1")]
+
+        sheets = _decode_workbook(_generate_xlsx_link(rows))
+        detail = sheets["Cable Issues"]
+
+        assert detail.iloc[0]["Start Device"] == "'=1+2"
+
+    def test_csv_cell_is_escaped(self):
+        rows = [_row("@evil", "Link is down.", "rack1:u1")]
+
+        detail = _decode_csv(_generate_csv_link(rows))
+
+        assert detail.iloc[0]["Start Device"] == "'@evil"
