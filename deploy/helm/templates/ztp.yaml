@@ -47,7 +47,7 @@ spec:
       # ACCEPT_REQUEST_HEADERS=true allows SSO/mTLS header-based authorization
       # Mounts os-images read-write so uploads can write files and update manifest.json
       - name: http-api
-        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ .Values.global.images.nvConfigManager.tag }}"
+        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ include "nv-config-manager.imageTag" (dict "root" . "image" .Values.global.images.nvConfigManager) }}"
         imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
         {{- include "nv-config-manager.containerSecurityContext" . | nindent 8 }}
         command: ["nv-config-manager-ztp-api"]
@@ -96,7 +96,7 @@ spec:
       # No ACCEPT_REQUEST_HEADERS - uses client IP validation against Nautobot device addresses
       {{- if or .Values.networkZtp.ingress.nlb .Values.networkZtp.ingress.cilium .Values.networkZtp.ingress.metallb }}
       - name: http-lb
-        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ .Values.global.images.nvConfigManager.tag }}"
+        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ include "nv-config-manager.imageTag" (dict "root" . "image" .Values.global.images.nvConfigManager) }}"
         imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
         {{- include "nv-config-manager.containerSecurityContext" . | nindent 8 }}
         command: ["nv-config-manager-ztp-api"]
@@ -140,7 +140,7 @@ spec:
 
       # SFTP server container
       - name: sftp
-        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ .Values.global.images.nvConfigManager.tag }}"
+        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ include "nv-config-manager.imageTag" (dict "root" . "image" .Values.global.images.nvConfigManager) }}"
         imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
         {{- include "nv-config-manager.containerSecurityContext" . | nindent 8 }}
         command: ["nv-config-manager-ztp-sftp", "--host", "0.0.0.0", "--port", "2222", "--level", "INFO"]

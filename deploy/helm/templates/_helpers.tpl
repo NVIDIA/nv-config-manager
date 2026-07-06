@@ -18,11 +18,18 @@ Common labels
 {{- define "nv-config-manager.labels" -}}
 helm.sh/chart: {{ include "nv-config-manager.chart" . }}
 {{ include "nv-config-manager.selectorLabels" . }}
-{{- if .Chart.AppVersion }}
-app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
-{{- end }}
+app.kubernetes.io/version: {{ .Chart.AppVersion | default .Chart.Version | quote }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 app.kubernetes.io/part-of: nv-config-manager
+{{- end }}
+
+{{/*
+Resolve an NVIDIA Config Manager image tag. Release pipelines may set a
+per-image tag; checked-in values fall back to the chart version so the source
+tree has only one version to maintain.
+*/}}
+{{- define "nv-config-manager.imageTag" -}}
+{{- .image.tag | default .root.Chart.AppVersion | default .root.Chart.Version -}}
 {{- end }}
 
 {{/*

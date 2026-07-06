@@ -306,7 +306,8 @@ class BackupWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, ArchiveMixi
             ),
         )
 
-        # If no drift update it to match the latest commit ID
+        # No full-config drift means the device matches the latest intended
+        # content, even when this backup follows a partial tenant deployment.
         if not drift_output.has_drift and not workflow_input.intended_config_commit_id:
             workflow_input.intended_config_commit_id = drift_output.commit_id
 

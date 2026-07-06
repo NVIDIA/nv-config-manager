@@ -25,7 +25,7 @@ OIDCAuth class from nv_config_manager.common.oidc.
 import json
 import re
 import sys
-from typing import Any, NoReturn, get_type_hints
+from typing import Any, NoReturn, get_args, get_type_hints
 
 import click
 import requests
@@ -80,24 +80,26 @@ class WorkflowInfo:
 
     def _extract_parameters(self) -> dict[str, dict[str, Any]]:
         """Extract parameter information from input model."""
-        parameters = {}
+        parameters: dict[str, dict[str, Any]] = {}
 
         try:
             # Try Pydantic v2 first
             if hasattr(self.input_class, "model_fields"):
                 fields = self.input_class.model_fields
                 for field_name, field_info in fields.items():
+                    required = (
+                        field_info.is_required() if hasattr(field_info, "is_required") else True
+                    )
                     param_info = {
                         "type": field_info.annotation if hasattr(field_info, "annotation") else str,
-                        "required": field_info.is_required()
-                        if hasattr(field_info, "is_required")
-                        else True,
+                        "required": required,
                         "default": field_info.default
-                        if hasattr(field_info, "default") and field_info.default is not ...
+                        if not required and hasattr(field_info, "default")
                         else None,
                         "description": field_info.description
                         if hasattr(field_info, "description")
                         else None,
+                        "nullable": _allows_none(field_info.annotation),
                     }
                     parameters[field_name] = param_info
             # Fallback to type hints
@@ -111,6 +113,7 @@ class WorkflowInfo:
                         "required": True,  # Default assumption
                         "default": None,
                         "description": None,
+                        "nullable": _allows_none(field_type),
                     }
                     parameters[field_name] = param_info
         except Exception:
@@ -125,6 +128,7 @@ class WorkflowInfo:
                         "required": True,
                         "default": None,
                         "description": None,
+                        "nullable": _allows_none(field_type),
                     }
                     parameters[field_name] = param_info
             except Exception as ex:
@@ -134,6 +138,13 @@ class WorkflowInfo:
                 )
 
         return parameters
+
+
+def _allows_none(annotation: Any) -> bool:
+    """Return whether a workflow input annotation accepts ``None``."""
+    if annotation is None or annotation is type(None):
+        return True
+    return type(None) in get_args(annotation)
 
 
 def _debug_dump_jwt(access_token: str, context: str = "") -> None:
@@ -608,24 +619,27 @@ def create_workflow_command(workflow_name: str, workflow_info: WorkflowInfo) -> 
                 except Exception as e:
                     raise click.ClickException(f"Failed to convert device name to ID: {e}") from e
 
-        # Filter out None values and convert types as needed
-        parameters = {}
+        # Preserve nulls for nullable workflow fields. A missing required-but-nullable
+        # field is not equivalent to an explicit JSON null and produces a 422.
+        parameters: dict[str, Any] = {}
         for key, value in kwargs.items():
-            if value is not None:
-                # Handle list parameters (comma-separated strings)
-                param_info = workflow_info.parameters.get(key, {})
-                param_type = param_info.get("type", str)
+            param_info = workflow_info.parameters.get(key, {})
+            if value is None:
+                if param_info.get("nullable", False):
+                    parameters[key] = None
+                continue
 
-                if hasattr(param_type, "__origin__") and param_type.__origin__ is list:
-                    # Convert comma-separated string to list
-                    if isinstance(value, str):
-                        parameters[key] = [
-                            item.strip() for item in value.split(",") if item.strip()
-                        ]
-                    else:
-                        parameters[key] = value
+            # Handle list parameters (comma-separated strings)
+            param_type = param_info.get("type", str)
+
+            if hasattr(param_type, "__origin__") and param_type.__origin__ is list:
+                # Convert comma-separated string to list
+                if isinstance(value, str):
+                    parameters[key] = [item.strip() for item in value.split(",") if item.strip()]
                 else:
                     parameters[key] = value
+            else:
+                parameters[key] = value
 
         # Create client and invoke workflow
         client = WorkflowClient(
