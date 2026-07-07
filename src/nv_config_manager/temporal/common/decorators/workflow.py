@@ -14,21 +14,51 @@
 # limitations under the License.
 """Decorators for workflow methods."""
 
-from collections.abc import Callable
+import asyncio
+import contextlib
+from collections.abc import Callable, Coroutine
+from datetime import timedelta
 from functools import wraps
 from typing import Any, TypeVar, cast
 
 from temporalio import workflow
+from temporalio.common import RetryPolicy
 from temporalio.exceptions import ApplicationError, TemporalError
 
+from nv_config_manager.temporal.common.lock import (
+    WorkflowLockSpec,
+    build_workflow_lock_key,
+)
+
+with workflow.unsafe.imports_passed_through():
+    from nv_config_manager.temporal.common.activities.lock import (
+        AcquireWorkflowLockInput,
+        ReleaseWorkflowLockInput,
+        RenewWorkflowLockInput,
+        acquire_workflow_lock,
+        release_workflow_lock,
+        renew_workflow_lock,
+    )
+
 F = TypeVar("F", bound=Callable[..., Any])
+
+# Give lock activities headroom over their blocking window for scheduling overhead.
+_LOCK_ACTIVITY_BUFFER_S = 30
+_RENEW_ACTIVITY_TIMEOUT_S = 30
+_RELEASE_ACTIVITY_TIMEOUT_S = 30
+
+# Waiters keep retrying (with backoff) until the holder releases the lock.
+_WAIT_RETRY_POLICY = RetryPolicy()
+_FAIL_FAST_RETRY_POLICY = RetryPolicy(maximum_attempts=1)
+_RENEW_RETRY_POLICY = RetryPolicy(maximum_attempts=3)
+_RELEASE_RETRY_POLICY = RetryPolicy(maximum_attempts=3)
 
 
 class WorkflowRuntimeFailure(ApplicationError):
     """Failures raised during workflow execution."""
 
 
-def run_nv_config_manager_workflow[F: Callable[..., Any]](func: F) -> F:
+def run_nv_config_manager_workflow(func: F) -> F:
     """Decorator for the workflow run method.
 
     Override of the temporalio.workflow.run decorator to raise
@@ -39,8 +69,11 @@ def run_nv_config_manager_workflow[F: Callable[..., Any]](func: F) -> F:
     @workflow.run
     @wraps(func)
     async def _run(*args: object) -> Any:
+        spec = _resolve_lock_spec(args[0]) if args else None
         try:
-            return await func(*args)
+            if spec is None:
+                return await func(*args)
+            return await _run_with_lock(func, args, spec)
         except Exception as error:
             non_retryable = False
             if isinstance(error, ApplicationError):
@@ -54,3 +87,95 @@ def run_nv_config_manager_workflow[F: Callable[..., Any]](func: F) -> F:
             ) from error
 
     return cast(F, _run)
+
+
+def _resolve_lock_spec(instance: object) -> WorkflowLockSpec | None:
+    """Read the lock spec off a workflow instance, if it declares one."""
+    getter = getattr(instance, "get_workflow_lock", None)
+    return getter() if callable(getter) else None
+
+
+def _workflow_name(instance: object) -> str:
+    """Human/registered workflow name used to scope a per-workflow lock key."""
+    return getattr(type(instance), "workflow_name", None) or type(instance).__name__
+
+
+async def _run_with_lock(
+    func: Callable[..., Any], args: tuple[object, ...], spec: WorkflowLockSpec
+) -> Any:
+    """Hold a per-resource lock for the whole run, renewing it until completion."""
+    key = build_workflow_lock_key(
+        spec,
+        workflow_name=_workflow_name(args[0]),
+        namespace=getattr(type(args[0]), "workflow_namespace", None),
+        workflow_input=args[1],
+    )
+    token = workflow.info().workflow_id
+
+    await _acquire_lock(key, token, spec)
+
+    body_task = asyncio.ensure_future(func(*args))
+    renew_task = asyncio.ensure_future(_renew_loop(key, token, spec))
+    try:
+        await workflow.wait([body_task, renew_task], return_when=asyncio.FIRST_COMPLETED)
+        if body_task.done():
+            return body_task.result()
+        renew_task.result()
+        raise WorkflowRuntimeFailure("Workflow lock renewal ended unexpectedly")
+    finally:
+        await _cancel(renew_task)
+        await _cancel(body_task)
+        await _release_lock(key, token)
+
+
+async def _cancel(task: asyncio.Future[Any]) -> None:
+    """Cancel a task and absorb its resulting cancellation/errors."""
+    if not task.done():
+        task.cancel()
+    with contextlib.suppress(asyncio.CancelledError, Exception):
+        await task
+
+
+async def _acquire_lock(key: str, token: str, spec: WorkflowLockSpec) -> None:
+    """Block until the per-resource lock is held (or fail fast on conflict)."""
+    fail_on_conflict = spec.on_conflict == "fail"
+    await workflow.execute_activity(
+        acquire_workflow_lock,
+        AcquireWorkflowLockInput(
+            key=key,
+            token=token,
+            ttl_seconds=spec.ttl_seconds,
+            wait_timeout_seconds=spec.wait_timeout_seconds,
+            fail_on_conflict=fail_on_conflict,
+        ),
+        start_to_close_timeout=timedelta(
+            seconds=spec.wait_timeout_seconds + _LOCK_ACTIVITY_BUFFER_S
+        ),
+        retry_policy=_FAIL_FAST_RETRY_POLICY if fail_on_conflict else _WAIT_RETRY_POLICY,
+    )
+
+
+async def _renew_loop(key: str, token: str, spec: WorkflowLockSpec) -> None:
+    """Periodically extend the lock TTL for the life of the run."""
+    while True:
+        await asyncio.sleep(spec.renew_interval_seconds)
+        await workflow.execute_activity(
+            renew_workflow_lock,
+            RenewWorkflowLockInput(key=key, token=token, ttl_seconds=spec.ttl_seconds),
+            start_to_close_timeout=timedelta(seconds=_RENEW_ACTIVITY_TIMEOUT_S),
+            retry_policy=_RENEW_RETRY_POLICY,
+        )
+
+
+async def _release_lock(key: str, token: str) -> None:
+    """Release the lock; never mask the run's own outcome if release fails."""
+    release: Coroutine[Any, Any, Any] = workflow.execute_activity(
+        release_workflow_lock,
+        ReleaseWorkflowLockInput(key=key, token=token),
+        start_to_close_timeout=timedelta(seconds=_RELEASE_ACTIVITY_TIMEOUT_S),
+        retry_policy=_RELEASE_RETRY_POLICY,
+    )
+    try:
+        await release
+    except Exception:  # pylint: disable=broad-exception-caught
+        workflow.logger.warning("Failed to release workflow lock %s; TTL will expire it", key)

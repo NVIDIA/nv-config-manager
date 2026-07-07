@@ -12,10 +12,23 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Device Locks."""
+"""Common activities shared across workflow families."""
 
-from __future__ import annotations
+from nv_config_manager.temporal.common.activities.lock import (
+    acquire_workflow_lock,
+    release_workflow_lock,
+    renew_workflow_lock,
+)
 
-from nv_config_manager.common.lock import _FakeLock, _get_lock_redis_client, create_lock
+REGISTERED_COMMON_ACTIVITIES = [
+    acquire_workflow_lock,
+    renew_workflow_lock,
+    release_workflow_lock,
+]
 
-__all__ = ["_FakeLock", "_get_lock_redis_client", "create_lock"]
+__all__ = [
+    "REGISTERED_COMMON_ACTIVITIES",
+    "acquire_workflow_lock",
+    "release_workflow_lock",
+    "renew_workflow_lock",
+]

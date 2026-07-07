@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from temporalio import workflow
 
 from nv_config_manager.temporal.common.decorators.workflow import run_nv_config_manager_workflow
+from nv_config_manager.temporal.common.lock import WorkflowLockSpec
 from nv_config_manager.temporal.common.mixins.metadata import WorkflowMetadataMixin
 from nv_config_manager.temporal.common.mixins.stage import (
     StageInput,
@@ -124,6 +125,7 @@ class IBPKeyMemberAddWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin):
     workflow_input_class = IBPKeyMemberAddInput
     workflow_api_endpoint = "/ngc/ib_pkey_member_add"
     workflow_namespace = "ngc"
+    workflow_lock = WorkflowLockSpec(key_fields=["host", "pkey"])
 
     def __init__(self) -> None:
         """Initialize workflow with five stages."""

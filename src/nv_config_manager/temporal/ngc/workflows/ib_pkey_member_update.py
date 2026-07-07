@@ -21,6 +21,7 @@ from temporalio import workflow
 from temporalio.exceptions import ApplicationError
 
 from nv_config_manager.temporal.common.decorators.workflow import run_nv_config_manager_workflow
+from nv_config_manager.temporal.common.lock import WorkflowLockSpec
 from nv_config_manager.temporal.common.mixins.metadata import WorkflowMetadataMixin
 from nv_config_manager.temporal.common.mixins.stage import (
     StageInput,
@@ -191,6 +192,7 @@ class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
     workflow_input_class = IBPKeyMemberUpdateInput
     workflow_api_endpoint = "/ngc/ib_pkey_member_update"
     workflow_namespace = "ngc"
+    workflow_lock = WorkflowLockSpec(key_fields=["host", "pkey"])
 
     def __init__(self) -> None:
         """Initialize workflow with seven stages."""
