@@ -108,6 +108,14 @@ test("rejects a commenter without write access", async () => {
   assert.match(result.comments[0].body, /ERROR/);
 });
 
+test("rejects starting Kind integration for a non-open PR", async () => {
+  const result = await runFixture({ pullState: "closed" });
+
+  assert.equal(result.dispatches.length, 0);
+  assert.match(result.failures[0], /only be started for an open PR/);
+  assert.match(result.comments[0].body, /ERROR/);
+});
+
 test("requires the copy-pr-bot trusted branch", async () => {
   const result = await runFixture({ missingTrustedBranch: true });
 
