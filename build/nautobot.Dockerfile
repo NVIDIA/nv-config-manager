@@ -85,10 +85,10 @@ WORKDIR /opt/nautobot
 COPY --from=builder /opt/nautobot/.venv /opt/nautobot/.venv
 COPY --from=builder /opt/nautobot/nautobot_config.py /opt/nautobot/nautobot_config.py
 COPY --from=builder /opt/nautobot/nv_config_manager_auth /opt/nautobot/nv_config_manager_auth
-COPY --from=builder --chown=1000:1000 /opt/nautobot/static /opt/nautobot/static
+COPY --from=builder --chown=root:root --chmod=0755 /opt/nautobot/static /opt/nautobot/static
 COPY --from=builder --chown=1000:1000 /opt/nautobot/media /opt/nautobot/media
 COPY --from=builder --chown=1000:1000 /opt/nautobot/git /opt/nautobot/git
-COPY --from=builder --chown=1000:1000 /opt/nautobot/jobs /opt/nautobot/jobs
+COPY --from=builder --chown=root:root --chmod=0755 /opt/nautobot/jobs /opt/nautobot/jobs
 COPY --from=builder --chown=1000:1000 /opt/nautobot/.cache /opt/nautobot/.cache
 
 # Copy required shared libraries for native extensions (psycopg2, ldap, xml, etc.)
