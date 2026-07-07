@@ -4,7 +4,9 @@ auto_sync_ready: true
 trustees_override:
   - dmathur0
   - jojung1
+  - kiwueke2
   - polarweasel
+  - ross-bryan
   - ryanheffernan
   - spidercensus
   - susanhooks
@@ -12,7 +14,9 @@ trustees_override:
 vetters_override:
   - dmathur0
   - jojung1
+  - kiwueke2
   - polarweasel
+  - ross-bryan
   - ryanheffernan
   - spidercensus
   - susanhooks
