@@ -29,7 +29,7 @@ import {
 import { useToast } from "@/components/ui/use-toast";
 import { CumulusHardwareValidationWorkflowInput } from "@/types/data-table.types";
 import { useEnvData } from "@/hooks";
-import { startWorkflow } from "@/lib/utils";
+import { getErrorMessage, startWorkflow } from "@/lib/utils";
 import { WorkflowFormField } from "@/components/forms/formfield";
 
 const CumulusValidationFormSchema = z.object({
@@ -127,7 +127,7 @@ export const CumulusHardwareValidationWorkflowForm = () => {
         toast({
           variant: "destructive",
           title: "Workflow Failed",
-        description: error,
+        description: getErrorMessage(error),
       });
     });
     setIsSubmitting(false);
