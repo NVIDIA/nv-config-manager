@@ -49,8 +49,8 @@ To inspect the current disruption budget:
 ```bash
 kubectl get pdb -n <namespace>
 # NAME                                              MIN AVAILABLE   MAX UNAVAILABLE   ALLOWED DISRUPTIONS
-# <release>-temporal-worker-pdb                     N/A             1                 2
-# <release>-temporal-nv-config-manager-worker-pdb   N/A             1                 2
+# <release>-temporal-worker-pdb                     N/A             1                 1
+# <release>-temporal-nv-config-manager-worker-pdb   N/A             1                 1
 ```
 
 `ALLOWED DISRUPTIONS` should be `replicas - maxUnavailable`. If it shows `0`, all replicas are already disrupted or not Ready — investigate before draining further nodes.

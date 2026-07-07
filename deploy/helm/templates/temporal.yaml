@@ -771,7 +771,7 @@ spec:
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: {{ $temporalName }}-worker-pdb
+  name: {{ printf "%s-worker-pdb" $temporalName | trunc 63 | trimSuffix "-" }}
   namespace: {{ .Values.global.namespace }}
   labels:
     app: {{ $temporalName }}
@@ -788,7 +788,7 @@ spec:
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: {{ include "nv-config-manager.temporalWorkerName" . }}-pdb
+  name: {{ printf "%s-pdb" (include "nv-config-manager.temporalWorkerName" .) | trunc 63 | trimSuffix "-" }}
   namespace: {{ .Values.global.namespace }}
   labels:
     app: {{ $temporalName }}
