@@ -15,7 +15,7 @@ function createFixture(options = {}) {
     repo: { owner: "NVIDIA", repo: "nv-config-manager" },
     payload: {
       workflow_run: {
-        conclusion: options.conclusion ?? "success",
+        conclusion: Object.hasOwn(options, "conclusion") ? options.conclusion : "success",
         event: options.event ?? "workflow_dispatch",
         head_branch: options.headBranch ?? "pull-request/72",
         head_sha: SHA,
@@ -62,8 +62,21 @@ test("reports an unsuccessful Kind conclusion", async () => {
   assert.ok(result.comments[0].body.includes(RUN_URL));
 });
 
+test("uses unknown when a completed Kind run has no conclusion", async () => {
+  const result = await runFixture({ conclusion: null });
+
+  assert.match(result.comments[0].body, /\*\*unknown\*\*/);
+  assert.ok(result.comments[0].body.includes(RUN_URL));
+});
+
 test("ignores Kind runs that are not for a trusted PR branch", async () => {
   const result = await runFixture({ headBranch: "main" });
+
+  assert.deepEqual(result.comments, []);
+});
+
+test("ignores Kind runs that have not completed", async () => {
+  const result = await runFixture({ status: "in_progress" });
 
   assert.deepEqual(result.comments, []);
 });

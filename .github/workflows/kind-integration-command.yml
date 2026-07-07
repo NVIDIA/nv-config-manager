@@ -6,6 +6,7 @@ on:
   workflow_run:
     workflows: [Kind Integration]
     types: [completed]
+    branches: [pull-request/*]
 
 jobs:
   dispatch:
