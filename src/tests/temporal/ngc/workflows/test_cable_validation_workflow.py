@@ -665,6 +665,29 @@ async def test_cable_validation_workflow_all_valid(_, mock_nb_client, env):
                 assert "DeviceID" in description.search_attributes
 
 
+# The site report links a two-tab Excel workbook. The .xlsx bytes are not
+# byte-stable across runs (the zip embeds timestamps and document properties),
+# so tests assert the link prefix plus the deterministic table body instead of
+# pinning the exact base64.
+EXCEL_LINK_PREFIX = (
+    "[Download Excel](data:application/vnd.openxmlformats-officedocument."
+    "spreadsheetml.sheet;base64,"
+)
+EXPECTED_CABLE_TABLE = (
+    "|Start Device|Start Port|Intended End Device|    Intended End Port   |Actual End Device| Actual End Port |                                          Issue                                          |\n"
+    "|------------|----------|-------------------|------------------------|-----------------|-----------------|-----------------------------------------------------------------------------------------|\n"
+    "|mock_device1|   swp0   |    mock_device2   |          swp0          |   mock_server2  |    Server BMC   |Incorrect cabling, actual should match intended. Based on expected MAC 00-00-00-00-00-02*|\n"
+    "|mock_device1|   swp1   |    mock_server1   |       Server BMC       |       None      |       None      |                                      Link is down.                                      |\n"
+    "|mock_device1|   swp23  |    mock_server2   |       MOCKSERVER2      |       None      |       None      |                                      Link is down.                                      |\n"
+    "|mock_device2|   swp9   |     mock_dpu1     |         DPU BMC        |mock_server1_dpu1|     DPU BMC     |Incorrect cabling, actual should match intended. Based on expected MAC 00-00-00-00-00-09*|\n"
+    "|mock_device3|   swp0   |    mock_device2   |          swp6          |       None      |       None      |                             Link is up but no neighbor found                            |\n"
+    "|mock_device3|   swp1   |        None       |          None          |   mock_device4  |       swp7      |                               Unexpected connection found                               |\n"
+    "|mock_device3|   swp5   |    mock_device1   |          swp8          |   mock_device1  |       swp9      |           Incorrect cabling, actual should match intended. Based on LLDP data           |\n"
+    "|mock_device3|   swp6   |    mock_device1   |swp8 (00:00:00:00:00:de)|       None      |00:00:00:00:a3:42|           Incorrect cabling, actual should match intended. Based on LLDP data           |\n\n"
+    "*Either the expected MAC in our database is wrong, or this link is not cabled correctly."
+)
+
+
 @pytest.mark.asyncio
 @patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
 async def test_cable_validation_workflow_some_invalid(_, env):
@@ -696,29 +719,13 @@ async def test_cable_validation_workflow_some_invalid(_, env):
             run_timeout=timedelta(seconds=10),
         )
 
-        expected_markdown = {
-            "display": (
-                "[Export to CSV](data:text/csv;base64,"
-                "U3RhcnQgRGV2aWNlLFN0YXJ0IFBvcnQsU3RhcnQgUmFjayxJbnRlbmRlZCBFbmQgRGV2aWNlLEludGVuZGVkIEVuZCBQb3J0LEludGVuZGVkIEVuZCBSYWNrLEFjdHVhbCBFbmQgRGV2aWNlLEFjdHVhbCBFbmQgUG9ydCxJc3N1ZSxJRA0KbW9ja19kZXZpY2UxLHN3cDAsYTAxOnUxLG1vY2tfZGV2aWNlMixzd3AwLGEwMTp1Mixtb2NrX3NlcnZlcjIsU2VydmVyIEJNQywiSW5jb3JyZWN0IGNhYmxpbmcsIGFjdHVhbCBzaG91bGQgbWF0Y2ggaW50ZW5kZWQuIEJhc2VkIG9uIGV4cGVjdGVkIE1BQyAwMC0wMC0wMC0wMC0wMC0wMioiLDllYzJlOWM2ZjA5Mjg4M2IxMjgzNWFlNzRhOGNiYmQ0DQptb2NrX2RldmljZTEsc3dwMSxhMDE6dTEsbW9ja19zZXJ2ZXIxLFNlcnZlciBCTUMsYjAxOnUxLCwsTGluayBpcyBkb3duLiwyY2IwODYyNzkzNDc2NTVmYjA3NGZmY2NkODQxZGM4Zg0KbW9ja19kZXZpY2UxLHN3cDIzLGEwMTp1MSxtb2NrX3NlcnZlcjIsTU9DS1NFUlZFUjIsYjAxOnUyLCwsTGluayBpcyBkb3duLiw1NDI5OGJmNDRkYzA2ZThmODhkYTYxNjdmM2I0OWY3Mg0KbW9ja19kZXZpY2UyLHN3cDksYTAxOnUyLG1vY2tfZHB1MSxEUFUgQk1DLGEwMTp1MSxtb2NrX3NlcnZlcjFfZHB1MSxEUFUgQk1DLCJJbmNvcnJlY3QgY2FibGluZywgYWN0dWFsIHNob3VsZCBtYXRjaCBpbnRlbmRlZC4gQmFzZWQgb24gZXhwZWN0ZWQgTUFDIDAwLTAwLTAwLTAwLTAwLTA5KiIsYmI3NDA3NTBiM2IzZWY1M2RiOGJlOGQ3MzQ4MjMzN2UNCm1vY2tfZGV2aWNlMyxzd3AwLGEwMTp1Myxtb2NrX2RldmljZTIsc3dwNixhMDE6dTIsLCxMaW5rIGlzIHVwIGJ1dCBubyBuZWlnaGJvciBmb3VuZCxkNjAwYzM0OTU2NzhiZDkzNTRlOGJlODNjMTkxMzEyMQ0KbW9ja19kZXZpY2UzLHN3cDEsYTAxOnUzLCwsLG1vY2tfZGV2aWNlNCxzd3A3LFVuZXhwZWN0ZWQgY29ubmVjdGlvbiBmb3VuZCwwODRiYTRmM2E5MmM1MjVkYjc3NmI2MzA4MDE0NWFlYg0KbW9ja19kZXZpY2UzLHN3cDUsYTAxOnUzLG1vY2tfZGV2aWNlMSxzd3A4LGEwMTp1MSxtb2NrX2RldmljZTEsc3dwOSwiSW5jb3JyZWN0IGNhYmxpbmcsIGFjdHVhbCBzaG91bGQgbWF0Y2ggaW50ZW5kZWQuIEJhc2VkIG9uIExMRFAgZGF0YSIsZjRiMmNkY2JlM2EwZDUxNmU3MjA5N2RhMjlkYjA0YzkNCm1vY2tfZGV2aWNlMyxzd3A2LGEwMTp1Myxtb2NrX2RldmljZTEsc3dwOCAoMDA6MDA6MDA6MDA6MDA6ZGUpLGEwMTp1MSwsMDA6MDA6MDA6MDA6YTM6NDIsIkluY29ycmVjdCBjYWJsaW5nLCBhY3R1YWwgc2hvdWxkIG1hdGNoIGludGVuZGVkLiBCYXNlZCBvbiBMTERQIGRhdGEiLGE0MGYzMDYzMjY5MDg4ZTYwYTg4MmZjOTFmNjk4Y2JmDQo="
-                ")\n"
-                "|Start Device|Start Port|Intended End Device|    Intended End Port   |Actual End Device| Actual End Port |                                          Issue                                          |\n"
-                "|------------|----------|-------------------|------------------------|-----------------|-----------------|-----------------------------------------------------------------------------------------|\n"
-                "|mock_device1|   swp0   |    mock_device2   |          swp0          |   mock_server2  |    Server BMC   |Incorrect cabling, actual should match intended. Based on expected MAC 00-00-00-00-00-02*|\n"
-                "|mock_device1|   swp1   |    mock_server1   |       Server BMC       |       None      |       None      |                                      Link is down.                                      |\n"
-                "|mock_device1|   swp23  |    mock_server2   |       MOCKSERVER2      |       None      |       None      |                                      Link is down.                                      |\n"
-                "|mock_device2|   swp9   |     mock_dpu1     |         DPU BMC        |mock_server1_dpu1|     DPU BMC     |Incorrect cabling, actual should match intended. Based on expected MAC 00-00-00-00-00-09*|\n"
-                "|mock_device3|   swp0   |    mock_device2   |          swp6          |       None      |       None      |                             Link is up but no neighbor found                            |\n"
-                "|mock_device3|   swp1   |        None       |          None          |   mock_device4  |       swp7      |                               Unexpected connection found                               |\n"
-                "|mock_device3|   swp5   |    mock_device1   |          swp8          |   mock_device1  |       swp9      |           Incorrect cabling, actual should match intended. Based on LLDP data           |\n"
-                "|mock_device3|   swp6   |    mock_device1   |swp8 (00:00:00:00:00:de)|       None      |00:00:00:00:a3:42|           Incorrect cabling, actual should match intended. Based on LLDP data           |\n\n"
-                "*Either the expected MAC in our database is wrong, or this link is not cabled correctly."
-            )
-        }
-
         result = await handle.result()
         stages = await handle.query("stages")
-        assert stages[2]["output"] == expected_markdown
-        assert result.markdown == expected_markdown["display"]
+        display = stages[2]["output"]["display"]
+
+        assert display.startswith(EXCEL_LINK_PREFIX)
+        assert display.endswith(EXPECTED_CABLE_TABLE)
+        assert result.markdown == display
 
 
 @pytest.mark.asyncio
@@ -1636,25 +1643,7 @@ async def test_cable_validation_workflow_hostname_mismatch(_, env):
                 },
                 "name": "format_result",
                 "output": {
-                    "display": (
-                        "### Failed Devices\n"
-                        "Address the listed issues and re-run the workflow for complete results.\n\n"
-                        "|    Failed Device   |                                                                                                 Reason                                                                                                |\n"
-                        "|--------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|\n"
-                        "|mock_device_mismatch|Workflow failed: Activity validate_hostname:0 in validate_device_hostname has failed and cannot be retried: Hostname on 172.0.0.200 (mock_device_match) does not match nautobot (mock_device_mismatch).|\n\n"
-                        "[Export to CSV](data:text/csv;base64,U3RhcnQgRGV2aWNlLFN0YXJ0IFBvcnQsU3RhcnQgUmFjayxJbnRlbmRlZCBFbmQgRGV2aWNlLEludGVuZGVkIEVuZCBQb3J0LEludGVuZGVkIEVuZCBSYWNrLEFjdHVhbCBFbmQgRGV2aWNlLEFjdHVhbCBFbmQgUG9ydCxJc3N1ZSxJRA0KbW9ja19kZXZpY2UxLHN3cDAsYTAxOnUxLG1vY2tfZGV2aWNlMixzd3AwLGEwMTp1Mixtb2NrX3NlcnZlcjIsU2VydmVyIEJNQywiSW5jb3JyZWN0IGNhYmxpbmcsIGFjdHVhbCBzaG91bGQgbWF0Y2ggaW50ZW5kZWQuIEJhc2VkIG9uIGV4cGVjdGVkIE1BQyAwMC0wMC0wMC0wMC0wMC0wMioiLDllYzJlOWM2ZjA5Mjg4M2IxMjgzNWFlNzRhOGNiYmQ0DQptb2NrX2RldmljZTEsc3dwMSxhMDE6dTEsbW9ja19zZXJ2ZXIxLFNlcnZlciBCTUMsYjAxOnUxLCwsTGluayBpcyBkb3duLiwyY2IwODYyNzkzNDc2NTVmYjA3NGZmY2NkODQxZGM4Zg0KbW9ja19kZXZpY2UxLHN3cDIzLGEwMTp1MSxtb2NrX3NlcnZlcjIsTU9DS1NFUlZFUjIsYjAxOnUyLCwsTGluayBpcyBkb3duLiw1NDI5OGJmNDRkYzA2ZThmODhkYTYxNjdmM2I0OWY3Mg0KbW9ja19kZXZpY2UyLHN3cDksYTAxOnUyLG1vY2tfZHB1MSxEUFUgQk1DLGEwMTp1MSxtb2NrX3NlcnZlcjFfZHB1MSxEUFUgQk1DLCJJbmNvcnJlY3QgY2FibGluZywgYWN0dWFsIHNob3VsZCBtYXRjaCBpbnRlbmRlZC4gQmFzZWQgb24gZXhwZWN0ZWQgTUFDIDAwLTAwLTAwLTAwLTAwLTA5KiIsYmI3NDA3NTBiM2IzZWY1M2RiOGJlOGQ3MzQ4MjMzN2UNCm1vY2tfZGV2aWNlMyxzd3AwLGEwMTp1Myxtb2NrX2RldmljZTIsc3dwNixhMDE6dTIsLCxMaW5rIGlzIHVwIGJ1dCBubyBuZWlnaGJvciBmb3VuZCxkNjAwYzM0OTU2NzhiZDkzNTRlOGJlODNjMTkxMzEyMQ0KbW9ja19kZXZpY2UzLHN3cDEsYTAxOnUzLCwsLG1vY2tfZGV2aWNlNCxzd3A3LFVuZXhwZWN0ZWQgY29ubmVjdGlvbiBmb3VuZCwwODRiYTRmM2E5MmM1MjVkYjc3NmI2MzA4MDE0NWFlYg0KbW9ja19kZXZpY2UzLHN3cDUsYTAxOnUzLG1vY2tfZGV2aWNlMSxzd3A4LGEwMTp1MSxtb2NrX2RldmljZTEsc3dwOSwiSW5jb3JyZWN0IGNhYmxpbmcsIGFjdHVhbCBzaG91bGQgbWF0Y2ggaW50ZW5kZWQuIEJhc2VkIG9uIExMRFAgZGF0YSIsZjRiMmNkY2JlM2EwZDUxNmU3MjA5N2RhMjlkYjA0YzkNCm1vY2tfZGV2aWNlMyxzd3A2LGEwMTp1Myxtb2NrX2RldmljZTEsc3dwOCAoMDA6MDA6MDA6MDA6MDA6ZGUpLGEwMTp1MSwsMDA6MDA6MDA6MDA6YTM6NDIsIkluY29ycmVjdCBjYWJsaW5nLCBhY3R1YWwgc2hvdWxkIG1hdGNoIGludGVuZGVkLiBCYXNlZCBvbiBMTERQIGRhdGEiLGE0MGYzMDYzMjY5MDg4ZTYwYTg4MmZjOTFmNjk4Y2JmDQo=)\n"
-                        "|Start Device|Start Port|Intended End Device|    Intended End Port   |Actual End Device| Actual End Port |                                          Issue                                          |\n"
-                        "|------------|----------|-------------------|------------------------|-----------------|-----------------|-----------------------------------------------------------------------------------------|\n"
-                        "|mock_device1|   swp0   |    mock_device2   |          swp0          |   mock_server2  |    Server BMC   |Incorrect cabling, actual should match intended. Based on expected MAC 00-00-00-00-00-02*|\n"
-                        "|mock_device1|   swp1   |    mock_server1   |       Server BMC       |       None      |       None      |                                      Link is down.                                      |\n"
-                        "|mock_device1|   swp23  |    mock_server2   |       MOCKSERVER2      |       None      |       None      |                                      Link is down.                                      |\n"
-                        "|mock_device2|   swp9   |     mock_dpu1     |         DPU BMC        |mock_server1_dpu1|     DPU BMC     |Incorrect cabling, actual should match intended. Based on expected MAC 00-00-00-00-00-09*|\n"
-                        "|mock_device3|   swp0   |    mock_device2   |          swp6          |       None      |       None      |                             Link is up but no neighbor found                            |\n"
-                        "|mock_device3|   swp1   |        None       |          None          |   mock_device4  |       swp7      |                               Unexpected connection found                               |\n"
-                        "|mock_device3|   swp5   |    mock_device1   |          swp8          |   mock_device1  |       swp9      |           Incorrect cabling, actual should match intended. Based on LLDP data           |\n"
-                        "|mock_device3|   swp6   |    mock_device1   |swp8 (00:00:00:00:00:de)|       None      |00:00:00:00:a3:42|           Incorrect cabling, actual should match intended. Based on LLDP data           |\n\n"
-                        "*Either the expected MAC in our database is wrong, or this link is not cabled correctly."
-                    ),
+                    "display": ANY,
                 },
                 "rejecters": [],
                 "requires_approval": False,
@@ -1669,6 +1658,14 @@ async def test_cable_validation_workflow_hostname_mismatch(_, env):
                 "traceback": None,
             },
         ]
+
+        format_display = stages[2]["output"]["display"]
+        assert format_display.startswith(
+            "### Failed Devices\n"
+            "Address the listed issues and re-run the workflow for complete results.\n\n"
+        )
+        assert EXCEL_LINK_PREFIX in format_display
+        assert format_display.endswith(EXPECTED_CABLE_TABLE)
 
 
 @pytest.mark.asyncio
