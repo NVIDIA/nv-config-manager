@@ -23,6 +23,7 @@ import yaml
 from django.utils.text import slugify
 from nautobot_design_builder.context import Context, context_file
 
+from ..device_validation import require_cumulus_primary_ip4_interface
 from .maps import COLOR_NAME_MAP
 
 
@@ -108,7 +109,7 @@ class BaseContext(Context):
                             continue
                         self._ensure_mock_device_serial(device, json_file)
                         self._require_cumulus_eth0_mac(device, json_file)
-                        self._require_cumulus_primary_ip4_interface(device, json_file)
+                        require_cumulus_primary_ip4_interface(device, json_file)
                         self.json["devices"].append(device)
                         self.json["overlay_payloads"].append(
                             {
@@ -156,46 +157,6 @@ class BaseContext(Context):
             f"Mock Cumulus device {device_name} in {source} must define "
             "interfaces[].name=eth0 mac_address for DHCP/ZTP reservations"
         )
-
-    @staticmethod
-    def _require_cumulus_primary_ip4_interface(device: dict[str, Any], source: Path) -> None:
-        """Require an explicit, valid primary IPv4 interface for Cumulus devices."""
-        platform_name = (device.get("platform") or {}).get("name", "")
-        if "Cumulus" not in platform_name:
-            return
-
-        device_name = device.get("name") or source.name
-        primary_interface_name = device.get("primary_ip4_interface")
-        if not primary_interface_name:
-            raise ValueError(
-                f"Mock Cumulus device {device_name} in {source} must define primary_ip4_interface"
-            )
-
-        primary_interface = next(
-            (
-                interface
-                for interface in device.get("interfaces", [])
-                if interface.get("name") == primary_interface_name
-            ),
-            None,
-        )
-        if primary_interface is None:
-            raise ValueError(
-                f"Mock Cumulus device {device_name} in {source} declares "
-                f"primary_ip4_interface={primary_interface_name!r}, but that interface "
-                "does not exist"
-            )
-
-        has_ipv4_address = any(
-            address.get("ip_version") == 4 and address.get("address")
-            for address in primary_interface.get("ip_addresses", [])
-        )
-        if not has_ipv4_address:
-            raise ValueError(
-                f"Mock Cumulus device {device_name} in {source} declares "
-                f"primary_ip4_interface={primary_interface_name!r}, but that interface "
-                "does not have an IPv4 address"
-            )
 
     def _prune_dangling_connected_interfaces(self) -> None:
         """Remove interfaces connected to devices that are not in this mock sample."""

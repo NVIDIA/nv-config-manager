@@ -23,6 +23,8 @@ from typing import Any
 import yaml
 from jinja2 import Environment, FileSystemLoader
 
+from ..device_validation import require_cumulus_primary_ip4_interface
+
 MOCK_TOPOLOGY_ROOT = Path(__file__).resolve().parents[1]
 PROJECT_ROOT = MOCK_TOPOLOGY_ROOT.parents[1]
 MOCK_TOPOLOGY_CONTEXT = MOCK_TOPOLOGY_ROOT / "context"
@@ -190,24 +192,8 @@ def test_air_superpod_spx_namespace_prerequisites_are_rendered_after_locations()
 
 
 def test_cumulus_primary_ipv4_interfaces_are_explicit_and_valid() -> None:
-    invalid_primary_interfaces = []
-
     for path in sorted(MOCK_TOPOLOGY_CONTEXT.glob("*/devices/*.json")):
-        device = _load_device(path)
-        platform_name = (device.get("platform") or {}).get("name", "")
-        if "Cumulus" not in platform_name:
-            continue
-
-        primary_interface_name = device.get("primary_ip4_interface")
-        primary_interface = _interface_by_name(device, primary_interface_name or "")
-        has_ipv4_address = any(
-            address.get("ip_version") == 4 and address.get("address")
-            for address in primary_interface.get("ip_addresses", [])
-        )
-        if not primary_interface_name or not has_ipv4_address:
-            invalid_primary_interfaces.append(f"{path.name}:{primary_interface_name}")
-
-    assert invalid_primary_interfaces == []
+        require_cumulus_primary_ip4_interface(_load_device(path), path)
 
 
 def test_primary_ipv4_template_requires_explicit_interface() -> None:
