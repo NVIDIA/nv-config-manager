@@ -84,10 +84,12 @@ async def redis_lock_backend(monkeypatch) -> AsyncIterator[None]:
 async def _critical_section(key: str, token: str, events: list[tuple[str, str, float]]) -> None:
     """Hold the lock across a short sleep, recording enter/exit timestamps."""
     assert await acquire_lock(key, token, timeout=TTL_S, blocking_timeout=10)
-    events.append(("enter", token, time.monotonic()))
-    await asyncio.sleep(HOLD_S)
-    events.append(("exit", token, time.monotonic()))
-    await release_lock(key, token)
+    try:
+        events.append(("enter", token, time.monotonic()))
+        await asyncio.sleep(HOLD_S)
+        events.append(("exit", token, time.monotonic()))
+    finally:
+        await release_lock(key, token)
 
 
 def _kinds_in_time_order(events: list[tuple[str, str, float]]) -> list[str]:
