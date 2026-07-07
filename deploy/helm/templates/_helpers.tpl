@@ -1324,17 +1324,18 @@ OTel app-container env shared by every Temporal pod (worker, api, scheduler,
 archive). Call sites guard the include with
 `if .Values.temporal.observability.enabled`.
 
-Requires temporal.observability.otlpEndpoint to be set — the endpoint of any
-existing OTLP collector (managed cluster collector, Alloy, or other). For the
-local dev stack this is set in values-observability.yaml. Fails fast when unset
-so pods never silently drop telemetry.
+temporal.observability.otlpEndpoint is optional. When unset the endpoint
+defaults to the in-cluster Alloy receiver in the release namespace:
+  http://alloy.<namespace>.svc.cluster.local:4317
+Set it explicitly to target a different collector (e.g. the managed cluster
+OTLP collector on ngcops-eks).
 
   Context: (dict "root" $ "serviceName" "<service.name>").
 */}}
 {{- define "nv-config-manager.temporal.otelAppEnv" -}}
 {{- $endpoint := .root.Values.temporal.observability.otlpEndpoint -}}
 {{- if not $endpoint -}}
-{{- fail "temporal.observability.enabled=true requires temporal.observability.otlpEndpoint to be set (see values-observability.yaml for the local dev example)" -}}
+{{- $endpoint = printf "http://alloy.%s.svc.cluster.local:4317" .root.Values.global.namespace -}}
 {{- end -}}
 - name: OTEL_EXPORTER_OTLP_ENDPOINT
   value: {{ $endpoint | quote }}

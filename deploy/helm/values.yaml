@@ -1799,8 +1799,9 @@ temporal:
   # local dev example using Alloy; for managed clusters use the cluster collector).
   observability:
     enabled: false
-    # OTLP gRPC endpoint of an existing collector. Must be set when enabled=true
-    # or rendering fails. See values-observability.yaml for the local dev example.
+    # OTLP gRPC endpoint of an existing collector. Optional — defaults to the
+    # in-cluster Alloy at http://alloy.<namespace>.svc.cluster.local:4317.
+    # Override to target a different collector (e.g. managed cluster collector).
     otlpEndpoint: ""
 
   # Redfish / BMC workflows

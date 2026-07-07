@@ -332,4 +332,5 @@ grafana:
 temporal:
   observability:
     enabled: true
-    otlpEndpoint: "http://alloy.nv-config-manager.svc.cluster.local:4317"
+    # otlpEndpoint defaults to http://alloy.<namespace>.svc.cluster.local:4317 (the in-cluster Alloy).
+    # Override here to target a different collector, e.g. the managed cluster OTLP collector on ngcops-eks.
