@@ -35,15 +35,14 @@ variables:
   NVCM_CI_IMAGE_GO: "golang:1.25-alpine"
   NVCM_CI_IMAGE_NODE: "node:24-alpine"
   NVCM_CI_IMAGE_PLAYWRIGHT: "mcr.microsoft.com/playwright:v1.56.1-noble"
+  NVCM_CI_IMAGE_PULSE_SCANNER: "nvcr.io/0898940053369630/general/pulse-container-scanner-cli:stable"
   NVCM_CI_IMAGE_PYTHON_311_BOOKWORM: "python:3.11-bookworm"
   NVCM_CI_IMAGE_PYTHON_313: "python:3.13"
   NVCM_CI_IMAGE_SONAR: "sonarsource/sonar-scanner-cli:11"
   NVCM_CI_IMAGE_UBUNTU: "ubuntu:24.04"
-  NVCM_CONTAINER_SCAN_POLICY_REF: "main"
   APT_MIRROR: "$NVCM_APT_MIRROR"
   APT_MIRROR_DEBIAN: "$NVCM_APT_MIRROR_DEBIAN"
   APT_MIRROR_GPG_KEY_URL: "$NVCM_APT_MIRROR_GPG_KEY_URL"
-  PULSE_REGISTRY_NGC_PASSWORD: $NGC_REGISTRY_TOKEN
 
 # Always-run job to ensure pipeline has at least one job
 # Prevents GitLab UI confusion when all other jobs are skipped
