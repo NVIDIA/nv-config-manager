@@ -47,32 +47,14 @@
       changes: *artifact-paths
       when: on_success
     - when: never
-
-.pulse-scan-image:
-  stage: security
-  tags: *pulse-scan-tags
-  needs: *pulse-scan-needs
-  image: $NVCM_CI_IMAGE_DOCKER
-  services:
-    - name: $NVCM_CI_IMAGE_DOCKER_DIND
-      alias: docker
-      command: ["--tls=false"]
-  rules: *pulse-scan-rules
-  variables:
-    DOCKER_HOST: tcp://docker:2375/
-    DOCKER_TLS_CERTDIR: ""
-    DOCKER_DRIVER: overlay2
-    PULSE_CONTAINER_SCANNER_PLATFORM: linux/amd64
-  before_script:
-    - apk add -q bash curl jq coreutils
+  before_script: &pulse-scan-before-script
     - |
-      set -eu
+      set -euo pipefail
 
-      : "${NVCM_CI_IMAGE_PULSE_SCANNER:?Set NVCM_CI_IMAGE_PULSE_SCANNER}"
+      : "${PULSE_IMAGE_NAME:?Set PULSE_IMAGE_NAME}"
       : "${PULSE_NSPECT_ID:?Set PULSE_NSPECT_ID}"
       : "${SSA_CLIENT_ID:?Set SSA_CLIENT_ID}"
       : "${SSA_CLIENT_SECRET:?Set SSA_CLIENT_SECRET}"
-      : "${PULSE_IMAGE_NAME:?Set PULSE_IMAGE_NAME}"
 
       image_target_exports="$(bash .gitlab/ci/scripts/image_target_env.sh)" || exit $?
       eval "$image_target_exports"
@@ -83,151 +65,55 @@
         exit 1
       fi
 
-      export PULSE_CONTAINER_IMAGE="${PULSE_CONTAINER_IMAGE:-${NVCM_IMAGE_REPOSITORY}/${PULSE_IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}}"
+      : "${NVCM_CONTAINER_SCAN_POLICY_PROJECT:?Set NVCM_CONTAINER_SCAN_POLICY_PROJECT}"
+      : "${NVCM_CONTAINER_SCAN_POLICY_FILE:?Set NVCM_CONTAINER_SCAN_POLICY_FILE}"
+      : "${NV_CONFIG_MANAGER_CONTAINER_SCAN_POLICY_TOKEN:?Set NV_CONFIG_MANAGER_CONTAINER_SCAN_POLICY_TOKEN}"
 
-      mkdir -p "$CI_PROJECT_DIR/.pulse-scanner-docker" "$CI_PROJECT_DIR/.pulse-target-docker"
-      scanner_registry="${NVCM_CI_IMAGE_PULSE_SCANNER%%/*}"
-      printf '%s' "$image_token" | docker --config "$CI_PROJECT_DIR/.pulse-scanner-docker" login "$scanner_registry" -u '$oauthtoken' --password-stdin
-      printf '%s' "$image_token" | docker --config "$CI_PROJECT_DIR/.pulse-target-docker" login "$NVCM_IMAGE_REGISTRY" -u "$NVCM_IMAGE_USERNAME" --password-stdin
-    - |
-      set -eu
+      mkdir -p "$CI_PROJECT_DIR/.pulse-policy"
+      policy_path="$CI_PROJECT_DIR/.pulse-policy/policy.json"
+      curl --silent --show-error --fail --location \
+        --header "PRIVATE-TOKEN: ${NV_CONFIG_MANAGER_CONTAINER_SCAN_POLICY_TOKEN}" \
+        "${CI_API_V4_URL}/projects/${NVCM_CONTAINER_SCAN_POLICY_PROJECT}/repository/files/${NVCM_CONTAINER_SCAN_POLICY_FILE}/raw?ref=${NVCM_CONTAINER_SCAN_POLICY_REF:-main}" \
+        --output "$policy_path"
+      jq -e . "$policy_path" >/dev/null
+      # The internal scanner image uses CONTAINER_SCAN_POLICY_REF for the policy path.
+      export CONTAINER_SCAN_POLICY_REF="$policy_path"
 
-      token_response="$(curl --silent --show-error --fail --location --request POST \
-        "https://x9thwm-cootr2q1jdv5p7b8iw4fs4ob3x6nqqsoznyk.ssa.nvidia.com/token" \
-        --user "${SSA_CLIENT_ID}:${SSA_CLIENT_SECRET}" \
-        --header "Content-Type: application/x-www-form-urlencoded" \
-        --data-urlencode "grant_type=client_credentials" \
-        --data-urlencode "scope=nspect.verify scan.anchore")"
-      export SSA_TOKEN="$(printf '%s' "$token_response" | jq -r '.access_token // empty')"
-      if [ -z "$SSA_TOKEN" ]; then
-        echo "ERROR: Failed to obtain SSA_TOKEN."
-        exit 1
-      fi
-    - |
-      set -eu
+      export CONTAINER_IMAGE="${NVCM_IMAGE_REPOSITORY}/${PULSE_IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}"
+      export PULSE_REGISTRY_NGC_PASSWORD="$image_token"
 
-      export PULSE_POLICY_PATH=""
-      if [ -n "${CONTAINER_SCAN_POLICY:-}" ]; then
-        if [ ! -f "$CONTAINER_SCAN_POLICY" ]; then
-          echo "ERROR: CONTAINER_SCAN_POLICY is set to '${CONTAINER_SCAN_POLICY}', but that file does not exist."
-          exit 1
-        fi
-        mkdir -p "$CI_PROJECT_DIR/.pulse-policy"
-        cp "$CONTAINER_SCAN_POLICY" "$CI_PROJECT_DIR/.pulse-policy/policy.json"
-        export PULSE_POLICY_PATH=/workspace/.pulse-policy/policy.json
-      fi
-  script:
-    - |
-      set -eu
+include:
+  - component: $CI_SERVER_FQDN/security/devops-tools/ci-cd-components/pulse-container-scanner/scan-images@3.0.5
+    inputs:
+      nspect_id: "$PULSE_NSPECT_ID"
+      use_default_policy: true
+      container_scan_policy: ""
+      before_script: *pulse-scan-before-script
+      job_prefix: pulse-scan-images
+      stage: security
+      tags: *pulse-scan-tags
+      needs: *pulse-scan-needs
+      rules: *pulse-scan-rules
+      vault_auth_role: ""
+      sbom_output_format: json
+      scan_matrix:
+        # The component requires CONTAINER_IMAGE in the matrix, but the selected
+        # repository comes from NVCM_IMAGE_TARGETS at runtime.
+        - CONTAINER_IMAGE: computed-by-before-script
+          PULSE_IMAGE_NAME:
+            - nv-config-manager
+            - nv-config-manager-kea
+            - nv-config-manager-kea-admin
+            - nv-config-manager-ui
+            - nv-config-manager-nautobot
+            - nv-config-manager-nats-ready
+          PULSE_CONTAINER_SCANNER_PLATFORM:
+            - linux/amd64
+            - linux/arm64
 
-      if [ -n "${PULSE_POLICY_PATH:-}" ]; then
-        docker --config "$CI_PROJECT_DIR/.pulse-scanner-docker" run --rm \
-          -e SSA_TOKEN \
-          -e NSPECT_ID="$PULSE_NSPECT_ID" \
-          -e CONTAINER_IMAGE="$PULSE_CONTAINER_IMAGE" \
-          -e PULSE_CONTAINER_SCANNER_PLATFORM \
-          -v "$CI_PROJECT_DIR/.pulse-target-docker:/root/.docker:ro" \
-          -v "$CI_PROJECT_DIR:/workspace" \
-          -w /workspace \
-          "$NVCM_CI_IMAGE_PULSE_SCANNER" \
-          pulse-cli -n "$PULSE_NSPECT_ID" scan-image \
-          -i "$PULSE_CONTAINER_IMAGE" \
-          --platform "$PULSE_CONTAINER_SCANNER_PLATFORM" \
-          -p "$PULSE_POLICY_PATH" \
-          --sbom json \
-          -o \
-          --output-dir=.
-      else
-        docker --config "$CI_PROJECT_DIR/.pulse-scanner-docker" run --rm \
-          -e SSA_TOKEN \
-          -e NSPECT_ID="$PULSE_NSPECT_ID" \
-          -e CONTAINER_IMAGE="$PULSE_CONTAINER_IMAGE" \
-          -e PULSE_CONTAINER_SCANNER_PLATFORM \
-          -v "$CI_PROJECT_DIR/.pulse-target-docker:/root/.docker:ro" \
-          -v "$CI_PROJECT_DIR:/workspace" \
-          -w /workspace \
-          "$NVCM_CI_IMAGE_PULSE_SCANNER" \
-          pulse-cli -n "$PULSE_NSPECT_ID" scan-image \
-          -i "$PULSE_CONTAINER_IMAGE" \
-          --platform "$PULSE_CONTAINER_SCANNER_PLATFORM" \
-          --sbom json \
-          -o \
-          --output-dir=.
-      fi
-  artifacts:
-    when: always
-    expire_in: 1 week
-    paths:
-      - pulse-cli.log
-      - licenses.json
-      - sbom.json
-      - cyclonedx_sbom.json
-      - vulns.json
-      - global_policy_evaluation.json
-      - policy_evaluation.json
-
-pulse-scan-nv-config-manager:
-  extends: .pulse-scan-image
+# The component's template-usage jobs only post pipeline metadata. Avoid a
+# repository checkout so they can still run after a merged source branch has
+# been deleted while its pipeline is queued.
+.track_template_usage:
   variables:
-    PULSE_IMAGE_NAME: nv-config-manager
-
-pulse-scan-kea:
-  extends: .pulse-scan-image
-  variables:
-    PULSE_IMAGE_NAME: nv-config-manager-kea
-
-pulse-scan-kea-admin:
-  extends: .pulse-scan-image
-  variables:
-    PULSE_IMAGE_NAME: nv-config-manager-kea-admin
-
-pulse-scan-ui:
-  extends: .pulse-scan-image
-  variables:
-    PULSE_IMAGE_NAME: nv-config-manager-ui
-
-pulse-scan-nautobot:
-  extends: .pulse-scan-image
-  variables:
-    PULSE_IMAGE_NAME: nv-config-manager-nautobot
-
-pulse-scan-nats-ready:
-  extends: .pulse-scan-image
-  variables:
-    PULSE_IMAGE_NAME: nv-config-manager-nats-ready
-
-pulse-scan-nv-config-manager-arm64:
-  extends: .pulse-scan-image
-  variables:
-    PULSE_IMAGE_NAME: nv-config-manager
-    PULSE_CONTAINER_SCANNER_PLATFORM: linux/arm64
-
-pulse-scan-kea-arm64:
-  extends: .pulse-scan-image
-  variables:
-    PULSE_IMAGE_NAME: nv-config-manager-kea
-    PULSE_CONTAINER_SCANNER_PLATFORM: linux/arm64
-
-pulse-scan-kea-admin-arm64:
-  extends: .pulse-scan-image
-  variables:
-    PULSE_IMAGE_NAME: nv-config-manager-kea-admin
-    PULSE_CONTAINER_SCANNER_PLATFORM: linux/arm64
-
-pulse-scan-ui-arm64:
-  extends: .pulse-scan-image
-  variables:
-    PULSE_IMAGE_NAME: nv-config-manager-ui
-    PULSE_CONTAINER_SCANNER_PLATFORM: linux/arm64
-
-pulse-scan-nautobot-arm64:
-  extends: .pulse-scan-image
-  variables:
-    PULSE_IMAGE_NAME: nv-config-manager-nautobot
-    PULSE_CONTAINER_SCANNER_PLATFORM: linux/arm64
-
-pulse-scan-nats-ready-arm64:
-  extends: .pulse-scan-image
-  variables:
-    PULSE_IMAGE_NAME: nv-config-manager-nats-ready
-    PULSE_CONTAINER_SCANNER_PLATFORM: linux/arm64
+    GIT_STRATEGY: empty

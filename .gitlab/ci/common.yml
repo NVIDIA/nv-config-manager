@@ -35,7 +35,6 @@ variables:
   NVCM_CI_IMAGE_GO: "golang:1.25-alpine"
   NVCM_CI_IMAGE_NODE: "node:24-alpine"
   NVCM_CI_IMAGE_PLAYWRIGHT: "mcr.microsoft.com/playwright:v1.56.1-noble"
-  NVCM_CI_IMAGE_PULSE_SCANNER: "nvcr.io/0898940053369630/general/pulse-container-scanner-cli:stable"
   NVCM_CI_IMAGE_PYTHON_311_BOOKWORM: "python:3.11-bookworm"
   NVCM_CI_IMAGE_PYTHON_313: "python:3.13"
   NVCM_CI_IMAGE_SONAR: "sonarsource/sonar-scanner-cli:11"

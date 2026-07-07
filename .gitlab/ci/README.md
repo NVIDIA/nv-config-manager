@@ -81,7 +81,6 @@ charts or updating downstream values.
 | `NVCM_CI_IMAGE_GO` | Go CI image |
 | `NVCM_CI_IMAGE_NODE` | Node.js CI image |
 | `NVCM_CI_IMAGE_PLAYWRIGHT` | Playwright CI image |
-| `NVCM_CI_IMAGE_PULSE_SCANNER` | Pulse scanner image |
 | `NVCM_CI_IMAGE_PYTHON_311_BOOKWORM` | Python 3.11 Debian CI image |
 | `NVCM_CI_IMAGE_PYTHON_313` | Python 3.13 CI image |
 | `NVCM_CI_IMAGE_SONAR` | Sonar scanner image |
@@ -103,7 +102,10 @@ charts or updating downstream values.
 | `PULSE_NSPECT_ID` | Pulse project or engagement identifier |
 | `SSA_CLIENT_ID` | Service account client ID used by Pulse scanner authentication |
 | `SSA_CLIENT_SECRET` | Service account client secret used by Pulse scanner authentication |
-| `CONTAINER_SCAN_POLICY` | Optional path to an Anchore policy JSON file, typically provided as a GitLab file variable |
+| `NV_CONFIG_MANAGER_CONTAINER_SCAN_POLICY_TOKEN` | Token that can read the internal container scan policy file |
+| `NVCM_CONTAINER_SCAN_POLICY_PROJECT` | URL-encoded GitLab project path for the internal scan policy project |
+| `NVCM_CONTAINER_SCAN_POLICY_FILE` | URL-encoded internal scan policy file path |
+| `NVCM_CONTAINER_SCAN_POLICY_REF` | Ref for the internal scan policy file, defaults to `main` |
 | `SONAR_HOST_URL` | SonarQube URL |
 | `SONAR_TOKEN` | Token authorized to analyze the SonarQube project and export its report |
 | `NVCM_SONAR_PROJECT_KEY` | SonarQube project key; configure as a protected CI/CD variable |
@@ -116,11 +118,11 @@ analysis rather than replacing valid dashboard coverage with 0% if an expected
 artifact is missing. Generated Go API clients under `bindings/go/` are excluded
 from Sonar analysis.
 
-Pulse scan jobs run the configured scanner image directly with Docker. Each job
-scans one published image from the selected `NVCM_IMAGE_TARGETS` repository for
-either `linux/amd64` or `linux/arm64`, mints a fresh SSA token at scan time,
-and passes `CONTAINER_SCAN_POLICY` to the scanner when a custom policy file is
-configured.
+Pulse scan jobs use the versioned Pulse `scan-images` CI/CD component. The
+component scans each published image from the selected `NVCM_IMAGE_TARGETS`
+repository for both `linux/amd64` and `linux/arm64`, mints a fresh SSA token at
+scan time, and applies the configured internal policy file fetched from
+`NVCM_CONTAINER_SCAN_POLICY_PROJECT`.
 
 ## Downstream Deployments
 
