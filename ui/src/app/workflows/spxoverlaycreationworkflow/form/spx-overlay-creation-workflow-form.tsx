@@ -27,7 +27,7 @@ import { Form } from "@/components/ui/form";
 import { useToast } from "@/components/ui/use-toast";
 import { useEnvData, useNamespaceTags } from "@/hooks";
 import { WorkflowFormField } from "@/components/forms/formfield";
-import { startWorkflow } from "@/lib/utils";
+import { getErrorMessage, startWorkflow } from "@/lib/utils";
 import { SpXOverlayCreationWorkflowInput } from "@/types/data-table.types";
 
 const SpXOverlayCreationFormSchema = z
@@ -125,7 +125,7 @@ export const SpXOverlayCreationWorkflowForm = () => {
       toast({
         variant: "destructive",
         title: "Workflow Failed",
-        description: error,
+        description: getErrorMessage(error),
       });
     });
     setIsSubmitting(false);
