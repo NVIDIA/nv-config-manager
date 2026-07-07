@@ -111,6 +111,14 @@ include:
             - linux/amd64
             - linux/arm64
 
+# Parallel scans can race while registering a newly changed policy. The first
+# upload wins and the remaining jobs can safely reuse it on retry.
+pulse-scan-images:
+  retry:
+    max: 1
+    when:
+      - script_failure
+
 # The component's template-usage jobs only post pipeline metadata. Avoid a
 # repository checkout so they can still run after a merged source branch has
 # been deleted while its pipeline is queued.
