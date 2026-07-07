@@ -666,6 +666,7 @@ gateway:
   #   sg: "sg-xxxxxxxxx,sg-yyyyyyyyy"  # Security groups
   #   subnets: "subnet-xxxxxxxx,subnet-yyyyyyyy"  # Specific subnets
   #   ips: "10.x.x.x,10.y.y.y"  # Optional: static IPs
+  #   cross_zone_load_balancing_enabled: true  # Set false to disable cross-zone load balancing
   #   dns_name: "*.config-manager.example.com"  # Optional: external-dns hostname
 
   # Base hostname for the gateway - services prepend their subdomain to this
@@ -1302,6 +1303,7 @@ networkZtp:
     #   sg: "sg-xxxxxxxxx,sg-yyyyyyyyy"
     #   subnets: "subnet-xxxxxxxx,subnet-yyyyyyyy"
     #   ips: "10.x.x.x,10.y.y.y"
+    #   cross_zone_load_balancing_enabled: true  # Set false to disable cross-zone load balancing
     #   dns_name: "ztp-ext.config-manager.example.com"
 
     # -------------------------------------------------------------------------
@@ -1474,6 +1476,7 @@ networkDhcp:
     #   sg: "sg-xxxxxxxxx,sg-yyyyyyyyy"
     #   subnets: "subnet-xxxxxxxx,subnet-yyyyyyyy"
     #   ips: "10.x.x.x,10.y.y.y"
+    #   cross_zone_load_balancing_enabled: true  # Set false to disable cross-zone load balancing
     #   dns_name: "dhcp-ext.config-manager.example.com"
 
     # -------------------------------------------------------------------------
