@@ -4,6 +4,7 @@
 module.exports = async ({ github, context, core }) => {
   const { owner, repo } = context.repo;
   const pullNumber = context.payload.issue.number;
+  const commentId = context.payload.comment.id;
   const username = context.payload.comment.user.login;
 
   const reply = (body) =>
@@ -17,6 +18,13 @@ module.exports = async ({ github, context, core }) => {
     await reply("ERROR: " + message);
     core.setFailed(message);
   };
+  const acknowledge = () =>
+    github.rest.reactions.createForIssueComment({
+      owner,
+      repo,
+      comment_id: commentId,
+      content: "+1",
+    });
 
   let permission = "none";
   try {
@@ -93,6 +101,7 @@ module.exports = async ({ github, context, core }) => {
     (run) => run.head_sha.toLowerCase() === currentSha && run.status !== "completed",
   );
   if (activeRun) {
+    await acknowledge();
     await reply("INFO: Kind integration is already running: " + activeRun.html_url);
     return;
   }
@@ -109,6 +118,7 @@ module.exports = async ({ github, context, core }) => {
     },
   });
 
+  await acknowledge();
   await reply(
     "Queued Kind integration for " +
       currentSha +

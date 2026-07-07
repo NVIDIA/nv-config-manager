@@ -13,11 +13,12 @@ function createFixture(options = {}) {
   const comments = [];
   const dispatches = [];
   const failures = [];
+  const reactions = [];
   const context = {
     repo: { owner: "NVIDIA", repo: "nv-config-manager" },
     payload: {
       issue: { number: 123 },
-      comment: { user: { login: "reviewer" } },
+      comment: { id: 456, user: { login: "reviewer" } },
     },
   };
 
@@ -25,6 +26,9 @@ function createFixture(options = {}) {
     rest: {
       issues: {
         createComment: async (args) => comments.push(args),
+      },
+      reactions: {
+        createForIssueComment: async (args) => reactions.push(args),
       },
       repos: {
         getCollaboratorPermissionLevel: async () => ({
@@ -72,6 +76,7 @@ function createFixture(options = {}) {
     dispatches,
     failures,
     github,
+    reactions,
   };
 }
 
@@ -86,6 +91,14 @@ test("dispatches Kind integration for the trusted current PR commit", async () =
 
   assert.deepEqual(result.failures, []);
   assert.equal(result.dispatches.length, 1);
+  assert.deepEqual(result.reactions, [
+    {
+      owner: "NVIDIA",
+      repo: "nv-config-manager",
+      comment_id: 456,
+      content: "+1",
+    },
+  ]);
   assert.deepEqual(result.dispatches[0], {
     owner: "NVIDIA",
     repo: "nv-config-manager",
@@ -104,6 +117,7 @@ test("rejects a commenter without write access", async () => {
   const result = await runFixture({ permission: "read" });
 
   assert.equal(result.dispatches.length, 0);
+  assert.equal(result.reactions.length, 0);
   assert.match(result.failures[0], /needs write access/);
   assert.match(result.comments[0].body, /ERROR/);
 });
@@ -112,6 +126,7 @@ test("rejects starting Kind integration for a non-open PR", async () => {
   const result = await runFixture({ pullState: "closed" });
 
   assert.equal(result.dispatches.length, 0);
+  assert.equal(result.reactions.length, 0);
   assert.match(result.failures[0], /only be started for an open PR/);
   assert.match(result.comments[0].body, /ERROR/);
 });
@@ -120,6 +135,7 @@ test("requires the copy-pr-bot trusted branch", async () => {
   const result = await runFixture({ missingTrustedBranch: true });
 
   assert.equal(result.dispatches.length, 0);
+  assert.equal(result.reactions.length, 0);
   assert.match(result.failures[0], /does not exist/);
   assert.match(result.comments[0].body, /\/ok to test/);
 });
@@ -128,6 +144,7 @@ test("rejects a trusted branch that does not match the current PR head", async (
   const result = await runFixture({ trustedSha: STALE_SHA });
 
   assert.equal(result.dispatches.length, 0);
+  assert.equal(result.reactions.length, 0);
   assert.match(result.failures[0], /is stale/);
   assert.match(result.comments[0].body, /\/ok to test/);
 });
@@ -145,5 +162,6 @@ test("does not duplicate an active Kind integration run", async () => {
 
   assert.deepEqual(result.failures, []);
   assert.equal(result.dispatches.length, 0);
+  assert.equal(result.reactions.length, 1);
   assert.match(result.comments[0].body, /already running/);
 });
