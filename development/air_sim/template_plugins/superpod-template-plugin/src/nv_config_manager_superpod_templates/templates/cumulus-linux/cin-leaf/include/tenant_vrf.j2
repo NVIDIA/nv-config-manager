@@ -23,6 +23,6 @@
             path-selection:
               multipath:
                 aspath-ignore: enabled
-            rd: {{ device_data|router_id }}:{{ vrf.vni }}
-            router-id: {{ device_data|router_id }}
+            rd: {{ router_id }}:{{ vrf.vni }}
+            router-id: {{ router_id }}
 {% endfor %}

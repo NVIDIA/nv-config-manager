@@ -6,7 +6,7 @@
       vni:
 {% for vrf in attached_vrfs %}
         '{{ vrf.vni }}':
-          rd: {{ device_data|router_id }}:{{ vrf.vni }}
+          rd: {{ router_id }}:{{ vrf.vni }}
 {% if vrf.export_targets or vrf.import_targets %}
           route-target:
 {% if vrf.export_targets %}
