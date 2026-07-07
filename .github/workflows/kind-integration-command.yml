@@ -3,10 +3,9 @@ name: Kind Integration Command
 on:
   issue_comment:
     types: [created]
-
-concurrency:
-  group: kind-integration-command-${{ github.event.issue.number }}
-  cancel-in-progress: false
+  workflow_run:
+    workflows: [Kind Integration]
+    types: [completed]
 
 jobs:
   dispatch:
@@ -16,6 +15,9 @@ jobs:
       contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association) &&
       github.event.comment.body == '/kind test'
     runs-on: linux-amd64-cpu4
+    concurrency:
+      group: kind-integration-command-${{ github.event.issue.number }}
+      cancel-in-progress: false
     permissions:
       actions: write
       contents: read
@@ -34,3 +36,26 @@ jobs:
           script: |
             const dispatch = require("./.github/scripts/kind-integration-command.js");
             await dispatch({ github, context, core });
+
+  report-result:
+    name: Report Kind Integration Result
+    if: >-
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.event == 'workflow_dispatch' &&
+      startsWith(github.event.workflow_run.head_branch, 'pull-request/')
+    runs-on: linux-amd64-cpu4
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      # workflow_run is privileged, so load only the trusted default-branch helper.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - name: Comment with result
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const report = require("./.github/scripts/kind-integration-result.js");
+            await report({ github, context });
