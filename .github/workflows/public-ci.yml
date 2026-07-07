@@ -406,6 +406,8 @@ jobs:
         working-directory: ui
     steps:
       - uses: actions/checkout@v4
+      - name: Test GitHub automation helpers
+        run: node --test ../.github/scripts/*.test.js
       - name: Setup proxy cache
         uses: *setup_proxy_cache
       - name: Cache npm
