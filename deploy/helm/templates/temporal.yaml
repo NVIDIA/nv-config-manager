@@ -285,6 +285,7 @@ spec:
       labels:
         app: {{ $temporalName }}
         component: worker
+        app.kubernetes.io/component: nv-config-manager-worker
         {{- include "nv-config-manager.spiffe.podLabels" . | nindent 8 }}
         {{- include "nv-config-manager.customPodLabels" . | nindent 8 }}
       annotations:
@@ -798,5 +799,5 @@ spec:
   selector:
     matchLabels:
       app: {{ $temporalName }}
-      component: worker
+      app.kubernetes.io/component: nv-config-manager-worker
 {{- end }}

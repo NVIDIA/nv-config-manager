@@ -1727,18 +1727,18 @@ temporal:
       mountPath: /etc/nv-config-manager/secrets/config-secrets
       # Full path to the config-secrets.ini file
       path: /etc/nv-config-manager/secrets/config-secrets/config-secrets.ini
-  affinity:
-    podAntiAffinity:
-      preferredDuringSchedulingIgnoredDuringExecution:
-      - weight: 100
-        podAffinityTerm:
-          labelSelector:
-            matchExpressions:
-            - key: component
-              operator: In
-              values:
-              - worker
-          topologyKey: kubernetes.io/hostname
+    affinity:
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+              - key: app.kubernetes.io/component
+                operator: In
+                values:
+                - nv-config-manager-worker
+            topologyKey: kubernetes.io/hostname
   # topologySpreadConstraints:  # Uncomment for production pod distribution
   # - maxSkew: 1
   # topologyKey: kubernetes.io/hostname

@@ -62,8 +62,15 @@ Both worker Deployments use `preferredDuringSchedulingIgnoredDuringExecution` po
 To verify replicas are spread across nodes:
 
 ```bash
+# Temporal server worker
 kubectl get pods -n <namespace> \
   -l app.kubernetes.io/component=temporal-worker \
+  -o wide
+# NODE column should show distinct hostnames across all 3 replicas
+
+# nv-config-manager workflow executor
+kubectl get pods -n <namespace> \
+  -l app.kubernetes.io/component=nv-config-manager-worker \
   -o wide
 # NODE column should show distinct hostnames across all 3 replicas
 ```
