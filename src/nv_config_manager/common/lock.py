@@ -153,11 +153,7 @@ async def acquire_lock(
 
 
 async def renew_lock(name: str, token: str, timeout: int) -> bool:
-    """Extend the TTL of a lock this ``token`` holds back out to ``timeout``.
-
-    Re-grabs the lock if it had expired and is now free. Returns False when the
-    lock is held by a different token.
-    """
+    """Extend the TTL of a lock this ``token`` holds back out to ``timeout``."""
     lock = _redis_lock(name, timeout)
     if lock is None:
         return True
@@ -167,7 +163,7 @@ async def renew_lock(name: str, token: str, timeout: int) -> bool:
         await lock.reacquire()
         return True
     except LockNotOwnedError:
-        return bool(await lock.acquire(token=_token_bytes(token), blocking=False))
+        return False
 
 
 async def release_lock(name: str, token: str) -> bool:

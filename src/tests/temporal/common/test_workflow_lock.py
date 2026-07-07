@@ -64,6 +64,10 @@ class TestWorkflowLockSpec:
         with pytest.raises(ValidationError, match="renew_interval_seconds must be less"):
             WorkflowLockSpec(key_fields=["pkey"], ttl_seconds=30, renew_interval_seconds=30)
 
+    def test_wait_timeout_must_be_positive(self):
+        with pytest.raises(ValidationError, match="wait_timeout_seconds must be positive"):
+            WorkflowLockSpec(key_fields=["pkey"], wait_timeout_seconds=0)
+
 
 class TestBuildWorkflowLockKey:
     def test_includes_namespace_and_fields(self):

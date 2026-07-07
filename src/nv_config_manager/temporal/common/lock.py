@@ -60,6 +60,8 @@ class WorkflowLockSpec(BaseModel):
             raise ValueError("renew_interval_seconds must be less than ttl_seconds")
         if self.ttl_seconds <= 0 or self.renew_interval_seconds <= 0:
             raise ValueError("ttl_seconds and renew_interval_seconds must be positive")
+        if self.wait_timeout_seconds <= 0:
+            raise ValueError("wait_timeout_seconds must be positive")
         return self
 
 

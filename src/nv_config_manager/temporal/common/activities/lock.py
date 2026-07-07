@@ -86,5 +86,5 @@ async def renew_workflow_lock(input: RenewWorkflowLockInput) -> None:
 @activity.defn
 async def release_workflow_lock(input: ReleaseWorkflowLockInput) -> None:
     """Release the lock. Best effort: an already-lost lock is not an error."""
-    await release_lock(input.key, input.token)
-    log.info("Released workflow lock %s", input.key)
+    if await release_lock(input.key, input.token):
+        log.info("Released workflow lock %s", input.key)

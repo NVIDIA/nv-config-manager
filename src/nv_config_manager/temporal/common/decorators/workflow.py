@@ -21,6 +21,7 @@ from datetime import timedelta
 from functools import wraps
 from typing import Any, TypeVar, cast
 
+from pydantic import BaseModel
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 from temporalio.exceptions import ApplicationError, TemporalError
@@ -58,7 +59,7 @@ class WorkflowRuntimeFailure(ApplicationError):
     """Failures raised during workflow execution."""
 
 
-def run_nv_config_manager_workflow(func: F) -> F:
+def run_nv_config_manager_workflow[F: Callable[..., Any]](func: F) -> F:
     """Decorator for the workflow run method.
 
     Override of the temporalio.workflow.run decorator to raise
@@ -108,7 +109,7 @@ async def _run_with_lock(
         spec,
         workflow_name=_workflow_name(args[0]),
         namespace=getattr(type(args[0]), "workflow_namespace", None),
-        workflow_input=args[1],
+        workflow_input=cast(BaseModel, args[1]),
     )
     token = workflow.info().workflow_id
 
@@ -157,12 +158,15 @@ async def _acquire_lock(key: str, token: str, spec: WorkflowLockSpec) -> None:
 
 async def _renew_loop(key: str, token: str, spec: WorkflowLockSpec) -> None:
     """Periodically extend the lock TTL for the life of the run."""
+    renew_deadline_seconds = spec.ttl_seconds - spec.renew_interval_seconds
+    attempt_timeout_seconds = min(_RENEW_ACTIVITY_TIMEOUT_S, renew_deadline_seconds)
     while True:
         await asyncio.sleep(spec.renew_interval_seconds)
         await workflow.execute_activity(
             renew_workflow_lock,
             RenewWorkflowLockInput(key=key, token=token, ttl_seconds=spec.ttl_seconds),
-            start_to_close_timeout=timedelta(seconds=_RENEW_ACTIVITY_TIMEOUT_S),
+            start_to_close_timeout=timedelta(seconds=attempt_timeout_seconds),
+            schedule_to_close_timeout=timedelta(seconds=renew_deadline_seconds),
             retry_policy=_RENEW_RETRY_POLICY,
         )
 
