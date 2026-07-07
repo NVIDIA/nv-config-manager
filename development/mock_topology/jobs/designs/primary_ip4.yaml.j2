@@ -3,23 +3,24 @@
 # Assign primary IP4 address to each device from JSON data.
 # This must be done in a separate file because the device and address must already exist.
 
-# Uses a device's preferred interface when provided, then falls back to lo and eth0.
+# Uses the explicitly configured primary IPv4 interface.
 
 {% if json.devices is defined and json.devices | length > 0 %}
 devices:
   {% for device in json.devices %}
   {% set primary_ip = namespace(found=false, address='') %}
-  {% set preferred_interfaces = [device.primary_ip4_interface, 'lo', 'eth0'] if device.primary_ip4_interface is defined else ['lo', 'eth0'] %}
-  {% for preferred_interface in preferred_interfaces %}
-  {% if not primary_ip.found %}
+  {% if device.primary_ip4_interface is defined %}
   {% for interface in device.interfaces | default([]) %}
-  {% if interface.name == preferred_interface and interface.ip_addresses | default([]) %}
+  {% if interface.name == device.primary_ip4_interface %}
+  {% for ip_address in interface.ip_addresses | default([]) %}
+  {% if not primary_ip.found and ip_address.ip_version == 4 %}
   {% set primary_ip.found = true %}
-  {% set primary_ip.address = interface.ip_addresses[0].address %}
+  {% set primary_ip.address = ip_address.address %}
   {% endif %}
   {% endfor %}
   {% endif %}
   {% endfor %}
+  {% endif %}
   {% if primary_ip.found %}
   - "!create_or_update:name": {{ device.name }}
     "!create_or_update:location": "!ref:location"

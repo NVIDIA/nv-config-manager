@@ -189,28 +189,46 @@ def test_air_superpod_spx_namespace_prerequisites_are_rendered_after_locations()
     )
 
 
-def test_preferred_primary_ipv4_interfaces_exist_and_have_addresses() -> None:
-    invalid_preferences = []
+def test_cumulus_primary_ipv4_interfaces_are_explicit_and_valid() -> None:
+    invalid_primary_interfaces = []
 
     for path in sorted(MOCK_TOPOLOGY_CONTEXT.glob("*/devices/*.json")):
         device = _load_device(path)
-        preferred_interface = device.get("primary_ip4_interface")
-        if not preferred_interface:
+        platform_name = (device.get("platform") or {}).get("name", "")
+        if "Cumulus" not in platform_name:
             continue
 
-        interface = _interface_by_name(device, preferred_interface)
-        if not interface.get("ip_addresses"):
-            invalid_preferences.append(f"{path.name}:{preferred_interface}")
+        primary_interface_name = device.get("primary_ip4_interface")
+        primary_interface = _interface_by_name(device, primary_interface_name or "")
+        has_ipv4_address = any(
+            address.get("ip_version") == 4 and address.get("address")
+            for address in primary_interface.get("ip_addresses", [])
+        )
+        if not primary_interface_name or not has_ipv4_address:
+            invalid_primary_interfaces.append(f"{path.name}:{primary_interface_name}")
 
-    assert invalid_preferences == []
+    assert invalid_primary_interfaces == []
 
 
-def test_primary_ipv4_template_honors_air_management_interface_preference() -> None:
+def test_primary_ipv4_template_requires_explicit_interface() -> None:
     device = _load_device(
         MOCK_TOPOLOGY_CONTEXT / "air_superpod" / "devices" / "su01-cin-leaf-r01.json"
     )
+    device_without_primary_interface = {
+        "name": "implicit-primary-is-not-allowed",
+        "interfaces": [
+            {
+                "name": "lo",
+                "ip_addresses": [
+                    {"address": "192.0.2.1/32", "ip_version": 4},
+                ],
+            }
+        ],
+    }
     environment = Environment(loader=FileSystemLoader(str(MOCK_TOPOLOGY_DESIGNS)))
-    rendered = environment.get_template("primary_ip4.yaml.j2").render(json={"devices": [device]})
+    rendered = environment.get_template("primary_ip4.yaml.j2").render(
+        json={"devices": [device, device_without_primary_interface]}
+    )
 
     assert yaml.safe_load(rendered) == {
         "devices": [
