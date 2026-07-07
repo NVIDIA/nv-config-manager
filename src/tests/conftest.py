@@ -15,8 +15,32 @@
 """Top-level pytest configuration and shared fixtures."""
 
 import configparser
+from collections.abc import Generator
+from typing import Any
+from unittest.mock import Mock, patch
 
 import pytest
+from aiohttp import ClientResponse
+
+from nv_config_manager.common.config import load_config
+
+_CLIENT_RESPONSE_INIT = ClientResponse.__init__
+
+
+def _client_response_init_with_stream_writer(
+    self: ClientResponse, *args: Any, **kwargs: Any
+) -> None:
+    """Bridge aioresponses to the aiohttp 3.14 ClientResponse signature."""
+    kwargs.setdefault("stream_writer", Mock(output_size=0))
+    _CLIENT_RESPONSE_INIT(self, *args, **kwargs)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def aiohttp_mock_response_compatibility() -> Generator[None]:
+    """Supply the argument omitted by the latest aioresponses release."""
+    with patch.object(ClientResponse, "__init__", _client_response_init_with_stream_writer):
+        yield
+
 
 # Default INI content that covers all common sections
 # All hostnames are generic - no vendor-specific references
@@ -144,8 +168,6 @@ def mock_ini_config(mocker):
     This fixture runs automatically for all tests, providing a consistent
     INI configuration across the test suite.
     """
-    from nv_config_manager.common.config import load_config
-
     # Reset to default INI for each test
     _current_ini["content"] = DEFAULT_INI
 
@@ -181,7 +203,6 @@ def custom_ini():
 
     Note: This also clears the load_config() cache to ensure the new config is used.
     """
-    from nv_config_manager.common.config import load_config
 
     def _set_ini(ini_content: str):
         # Update the shared INI content
