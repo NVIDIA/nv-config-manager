@@ -36,7 +36,7 @@ from temporalio.client import (
     WorkflowQueryFailedError,
 )
 from temporalio.common import SearchAttributes
-from temporalio.contrib.opentelemetry import OpenTelemetryConfig, TracingInterceptor
+from temporalio.contrib.opentelemetry import TracingInterceptor
 from temporalio.service import RPCError, RPCStatusCode
 
 from nv_config_manager.common.config import load_config
@@ -466,7 +466,7 @@ async def get_client() -> Client:
         temporal_server,
         namespace="default",
         data_converter=get_data_converter(),
-        interceptors=[TracingInterceptor(config=OpenTelemetryConfig(always_create_workflow_spans=True))],
+        interceptors=[TracingInterceptor(always_create_workflow_spans=True)],
         runtime=get_runtime(),
     )
 
