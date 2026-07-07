@@ -550,6 +550,7 @@ async def test_membership_only_change_sent_to_ufm(mock_all_configs, time_skippin
     assert result.members_removed == 0
     assert result.members_unchanged == 1
     # The membership-only change must still produce one UFM PUT with the new membership.
+    # UFM's Set endpoint (PUT) honors the index-aligned plural `memberships`.
     assert len(put_bodies) == 1
     assert put_bodies[0].get("guids") == [GUID_1]
     assert put_bodies[0].get("memberships") == ["limited"]

@@ -27,7 +27,7 @@ import { Form } from "@/components/ui/form";
 import { useToast } from "@/components/ui/use-toast";
 import { useEnvData, useNamespaceTags } from "@/hooks";
 import { WorkflowFormField } from "@/components/forms/formfield";
-import { startWorkflow } from "@/lib/utils";
+import { getErrorMessage, startWorkflow } from "@/lib/utils";
 import { SpXOverlayDeletionWorkflowInput } from "@/types/data-table.types";
 
 const SpXOverlayDeletionFormSchema = z.object({
@@ -106,7 +106,7 @@ export const SpXOverlayDeletionWorkflowForm = () => {
       toast({
         variant: "destructive",
         title: "SpX Overlay Deletion Workflow Failed",
-        description: error,
+        description: getErrorMessage(error),
       });
     });
     setIsSubmitting(false);

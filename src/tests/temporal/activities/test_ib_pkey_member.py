@@ -110,7 +110,8 @@ class TestAddGuidsToPKey:
     @pytest.mark.asyncio
     async def test_adds_guids_successfully(self, mock_ufm_config):
         with aioresponses() as m:
-            m.post(f"{UFM_BASE}/resources/pkeys/", payload={})
+            m.get(_pkey_url("0x0005"), payload={"guids": []})
+            m.put(f"{UFM_BASE}/resources/pkeys/", payload={})
 
             result = await add_guids_to_pkey(
                 AddGuidsInput(
@@ -125,8 +126,12 @@ class TestAddGuidsToPKey:
         assert result.guids_added == [GUID_1, GUID_2]
 
     @pytest.mark.asyncio
-    async def test_per_guid_memberships_in_payload(self, mock_ufm_config):
-        """The POST payload carries index-aligned memberships."""
+    async def test_mixed_memberships_sent_in_single_put(self, mock_ufm_config):
+        """A mixed add resolves to one PUT whose plural `memberships` is index-aligned.
+
+        The add reads current members and issues a single atomic PUT, which UFM honors
+        per-GUID via the plural `memberships` array -- no partial multi-call state.
+        """
         captured: dict = {}
 
         def _capture(url, **kwargs):
@@ -134,7 +139,8 @@ class TestAddGuidsToPKey:
             return CallbackResult(status=200, payload={})
 
         with aioresponses() as m:
-            m.post(f"{UFM_BASE}/resources/pkeys/", callback=_capture)
+            m.get(_pkey_url("0x0005"), payload={"guids": []})
+            m.put(f"{UFM_BASE}/resources/pkeys/", callback=_capture)
 
             result = await add_guids_to_pkey(
                 AddGuidsInput(
@@ -149,6 +155,117 @@ class TestAddGuidsToPKey:
         assert captured["guids"] == [GUID_1, GUID_2]
         assert captured["memberships"] == ["full", "limited"]
         assert "membership" not in captured
+
+    @pytest.mark.asyncio
+    async def test_merges_with_existing_members(self, mock_ufm_config):
+        """New GUIDs merge onto the partition's current members instead of replacing them."""
+        captured: dict = {}
+
+        def _capture(url, **kwargs):
+            captured.update(kwargs.get("json") or {})
+            return CallbackResult(status=200, payload={})
+
+        with aioresponses() as m:
+            m.get(
+                _pkey_url("0x0005"),
+                payload={"guids": [{"guid": GUID_1, "membership": "full"}]},
+            )
+            m.put(f"{UFM_BASE}/resources/pkeys/", callback=_capture)
+
+            await add_guids_to_pkey(
+                AddGuidsInput(
+                    host="ufm.example.com",
+                    pkey="0x0005",
+                    guids=[GUID_2],
+                    memberships=["limited"],
+                )
+            )
+
+        by_guid = dict(zip(captured["guids"], captured["memberships"], strict=True))
+        assert by_guid == {GUID_1: "full", GUID_2: "limited"}
+
+    @pytest.mark.asyncio
+    async def test_requested_membership_wins_over_existing(self, mock_ufm_config):
+        """Re-adding an existing GUID with a new membership updates it in the merged PUT."""
+        captured: dict = {}
+
+        def _capture(url, **kwargs):
+            captured.update(kwargs.get("json") or {})
+            return CallbackResult(status=200, payload={})
+
+        with aioresponses() as m:
+            m.get(
+                _pkey_url("0x0005"),
+                payload={"guids": [{"guid": GUID_1, "membership": "full"}]},
+            )
+            m.put(f"{UFM_BASE}/resources/pkeys/", callback=_capture)
+
+            await add_guids_to_pkey(
+                AddGuidsInput(
+                    host="ufm.example.com",
+                    pkey="0x0005",
+                    guids=[GUID_1],
+                    memberships=["limited"],
+                )
+            )
+
+        by_guid = dict(zip(captured["guids"], captured["memberships"], strict=True))
+        assert by_guid == {GUID_1: "limited"}
+
+    @pytest.mark.asyncio
+    async def test_single_limited_member_sent_via_plural_memberships(self, mock_ufm_config):
+        """A lone limited member goes out under the plural `memberships` UFM's PUT honors.
+
+        UFM defaults members to "full" when the type is sent under a key it ignores;
+        asserting the plural `memberships` on the PUT guards that regression.
+        """
+        captured: dict = {}
+
+        def _capture(url, **kwargs):
+            captured.update(kwargs.get("json") or {})
+            return CallbackResult(status=200, payload={})
+
+        with aioresponses() as m:
+            m.get(_pkey_url("0x0005"), payload={"guids": []})
+            m.put(f"{UFM_BASE}/resources/pkeys/", callback=_capture)
+
+            await add_guids_to_pkey(
+                AddGuidsInput(
+                    host="ufm.example.com",
+                    pkey="0x0005",
+                    guids=[GUID_1],
+                    memberships=["limited"],
+                )
+            )
+
+        assert captured["guids"] == [GUID_1]
+        assert captured["memberships"] == ["limited"]
+        assert "membership" not in captured
+
+    @pytest.mark.asyncio
+    async def test_preserves_existing_ip_over_ib(self, mock_ufm_config):
+        """The merged PUT reuses the partition's existing ip_over_ib, not the input default."""
+        captured: dict = {}
+
+        def _capture(url, **kwargs):
+            captured.update(kwargs.get("json") or {})
+            return CallbackResult(status=200, payload={})
+
+        with aioresponses() as m:
+            m.get(_pkey_url("0x0005"), payload={"guids": [], "ip_over_ib": False})
+            m.put(f"{UFM_BASE}/resources/pkeys/", callback=_capture)
+
+            await add_guids_to_pkey(
+                AddGuidsInput(
+                    host="ufm.example.com",
+                    pkey="0x0005",
+                    guids=[GUID_1],
+                    memberships=["full"],
+                    ip_over_ib=True,
+                )
+            )
+
+        assert captured["ip_over_ib"] is False
 
     @pytest.mark.asyncio
     async def test_misaligned_memberships_rejected_without_http(self, mock_ufm_config):
@@ -168,7 +285,8 @@ class TestAddGuidsToPKey:
     @pytest.mark.asyncio
     async def test_ufm_error_raises(self, mock_ufm_config):
         with aioresponses() as m:
-            m.post(f"{UFM_BASE}/resources/pkeys/", status=400, payload={"error": "bad"})
+            m.get(_pkey_url("0x0005"), payload={"guids": []})
+            m.put(f"{UFM_BASE}/resources/pkeys/", status=400, payload={"error": "bad"})
 
             with pytest.raises(UFMClientError):
                 await add_guids_to_pkey(
