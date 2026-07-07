@@ -14,7 +14,7 @@ jobs:
     if: >-
       github.event.issue.pull_request &&
       contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association) &&
-      startsWith(github.event.comment.body, '/kind test')
+      github.event.comment.body == '/kind test'
     runs-on: linux-amd64-cpu4
     permissions:
       actions: write
@@ -22,138 +22,15 @@ jobs:
       issues: write
       pull-requests: read
     steps:
+      # issue_comment workflows run from the default branch. Keep the checkout
+      # explicit so this privileged dispatcher never loads PR-controlled code.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
       - name: Authorize and dispatch
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
-            const { owner, repo } = context.repo;
-            const pullNumber = context.payload.issue.number;
-            const username = context.payload.comment.user.login;
-            const command = context.payload.comment.body.trim();
-            const match = command.match(/^\/kind test ([0-9a-f]{40})$/i);
-
-            const reply = async (body) => {
-              await github.rest.issues.createComment({
-                owner,
-                repo,
-                issue_number: pullNumber,
-                body,
-              });
-            };
-
-            if (!match) {
-              await reply("ERROR: Usage: /kind test <40-character-sha>");
-              core.setFailed("Invalid /kind test command");
-              return;
-            }
-
-            const requestedSha = match[1].toLowerCase();
-            let permission = "none";
-            try {
-              const { data: collaborator } =
-                await github.rest.repos.getCollaboratorPermissionLevel({
-                  owner,
-                  repo,
-                  username,
-                });
-              permission = collaborator.permission;
-            } catch (error) {
-              if (error.status !== 404) {
-                throw error;
-              }
-            }
-            if (!["admin", "write"].includes(permission)) {
-              await reply(
-                "ERROR: @" + username + " needs write access to start Kind integration tests.",
-              );
-              core.setFailed("Commenter does not have write access");
-              return;
-            }
-
-            const { data: pull } = await github.rest.pulls.get({
-              owner,
-              repo,
-              pull_number: pullNumber,
-            });
-            if (pull.state !== "open") {
-              await reply("ERROR: Kind integration tests can only be started for an open PR.");
-              core.setFailed("Pull request is not open");
-              return;
-            }
-            if (pull.head.sha.toLowerCase() !== requestedSha) {
-              await reply(
-                "ERROR: Requested SHA " + requestedSha +
-                  " is not the current PR head " + pull.head.sha + ".",
-              );
-              core.setFailed("Requested SHA is not the current PR head");
-              return;
-            }
-
-            const trustedBranch = "pull-request/" + pullNumber;
-            let trustedRef;
-            try {
-              ({ data: trustedRef } = await github.rest.git.getRef({
-                owner,
-                repo,
-                ref: "heads/" + trustedBranch,
-              }));
-            } catch (error) {
-              if (error.status !== 404) {
-                throw error;
-              }
-              await reply(
-                "ERROR: Trusted branch " + trustedBranch +
-                  " does not exist. Run /ok to test " + requestedSha + " first.",
-              );
-              core.setFailed("Trusted PR branch does not exist");
-              return;
-            }
-
-            if (trustedRef.object.sha.toLowerCase() !== requestedSha) {
-              await reply(
-                "ERROR: Trusted branch " + trustedBranch +
-                  " does not point to " + requestedSha +
-                  ". Run /ok to test " + requestedSha + " first.",
-              );
-              core.setFailed("Trusted PR branch does not match requested SHA");
-              return;
-            }
-
-            const { data: runs } = await github.rest.actions.listWorkflowRuns({
-              owner,
-              repo,
-              workflow_id: "kind-integration.yml",
-              branch: trustedBranch,
-              event: "workflow_dispatch",
-              per_page: 20,
-            });
-            const activeRun = runs.workflow_runs.find(
-              (run) =>
-                run.head_sha.toLowerCase() === requestedSha &&
-                run.status !== "completed",
-            );
-            if (activeRun) {
-              await reply(
-                "INFO: Kind integration is already running for " + requestedSha +
-                  ": " + activeRun.html_url,
-              );
-              return;
-            }
-
-            await github.rest.actions.createWorkflowDispatch({
-              owner,
-              repo,
-              workflow_id: "kind-integration.yml",
-              ref: trustedBranch,
-              inputs: {
-                test_path: "src/tests/integration/",
-                observability: "false",
-                approved_sha: requestedSha,
-              },
-            });
-
-            await reply(
-              "Queued Kind integration for " + requestedSha + ": " +
-                "https://github.com/" + owner + "/" + repo +
-                "/actions/workflows/kind-integration.yml",
-            );
+            const dispatch = require("./.github/scripts/kind-integration-command.js");
+            await dispatch({ github, context, core });
