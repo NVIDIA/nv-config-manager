@@ -1,0 +1,28 @@
+{% for vrf in attached_vrfs %}
+      {{ vrf.name }}:
+        evpn:
+          state: enabled
+          vni:
+            '{{ vrf.vni }}': {}
+        router:
+          bgp:
+            address-family:
+              ipv4-unicast:
+                state: enabled
+                redistribute:
+                  connected:
+                    state: enabled
+                    route-map: CIN-HOSTS
+                route-export:
+                  to-evpn:
+                    state: enabled
+              l2vpn-evpn:
+                state: enabled
+            autonomous-system: {{ device_data|asn|asplain }}
+            state: enabled
+            path-selection:
+              multipath:
+                aspath-ignore: enabled
+            rd: {{ router_id }}:{{ vrf.vni }}
+            router-id: {{ router_id }}
+{% endfor %}

@@ -23,6 +23,7 @@ import yaml
 from django.utils.text import slugify
 from nautobot_design_builder.context import Context, context_file
 
+from ..device_validation import require_cumulus_primary_ip4_interface
 from .maps import COLOR_NAME_MAP
 
 
@@ -108,6 +109,7 @@ class BaseContext(Context):
                             continue
                         self._ensure_mock_device_serial(device, json_file)
                         self._require_cumulus_eth0_mac(device, json_file)
+                        require_cumulus_primary_ip4_interface(device, json_file)
                         self.json["devices"].append(device)
                         self.json["overlay_payloads"].append(
                             {
@@ -776,15 +778,17 @@ class BaseContext(Context):
         """Load config contexts from locations.yaml in the context directory."""
         locations_file = Path(__file__).parent / self.context_dir / "locations.yaml"
         self.json["config_contexts"] = []
+        self.json["spx_namespaces"] = []
 
         if locations_file.exists():
             try:
                 with open(locations_file) as f:
-                    data = yaml.safe_load(f)
+                    data = yaml.safe_load(f) or {}
                     self.json["config_contexts"] = [
                         self._render_config_context_metadata(config_context)
                         for config_context in data.get("config_contexts", [])
                     ]
+                    self.json["spx_namespaces"] = data.get("spx_namespaces", [])
             except (OSError, yaml.YAMLError) as e:
                 print(f"Warning: Could not load config contexts from {locations_file}: {e}")
 
