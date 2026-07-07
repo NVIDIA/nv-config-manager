@@ -175,11 +175,142 @@
               }
             }
           }
+        },
+        {
+          "name": "swp3s0",
+          "type": "400gbase-x-osfp",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "ip_addresses": [],
+          "role": {
+            "name": "Downlink"
+          }
+        },
+        {
+          "name": "swp3s1",
+          "type": "400gbase-x-osfp",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "ip_addresses": [],
+          "role": {
+            "name": "Downlink"
+          }
+        },
+        {
+          "name": "swp4s0",
+          "type": "400gbase-x-osfp",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "ip_addresses": [],
+          "role": {
+            "name": "Downlink"
+          }
+        },
+        {
+          "name": "swp4s1",
+          "type": "400gbase-x-osfp",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "ip_addresses": [],
+          "role": {
+            "name": "Downlink"
+          }
+        },
+        {
+          "name": "swp5s0",
+          "type": "400gbase-x-osfp",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "ip_addresses": [],
+          "role": {
+            "name": "Downlink"
+          }
+        },
+        {
+          "name": "swp5s1",
+          "type": "400gbase-x-osfp",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "ip_addresses": [],
+          "role": {
+            "name": "Downlink"
+          }
+        },
+        {
+          "name": "swp6s0",
+          "type": "400gbase-x-osfp",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "ip_addresses": [],
+          "role": {
+            "name": "Downlink"
+          }
+        },
+        {
+          "name": "swp6s1",
+          "type": "400gbase-x-osfp",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "ip_addresses": [],
+          "role": {
+            "name": "Downlink"
+          }
+        },
+        {
+          "name": "swp7s0",
+          "type": "400gbase-x-osfp",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "ip_addresses": [],
+          "role": {
+            "name": "Downlink"
+          }
+        },
+        {
+          "name": "swp7s1",
+          "type": "400gbase-x-osfp",
+          "status": {
+            "name": "Active"
+          },
+          "enabled": true,
+          "mgmt_only": false,
+          "ip_addresses": [],
+          "role": {
+            "name": "Downlink"
+          }
         }
       ],
       "platform": {
         "name": "Cumulus Linux"
-      }
+      },
+      "primary_ip4_interface": "eth0"
     }
   }
 }
