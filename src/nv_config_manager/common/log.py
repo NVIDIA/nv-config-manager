@@ -196,9 +196,9 @@ class EscapingLoggerAdapter(logging.LoggerAdapter):
     def log(self, level: int, msg: object, *args: object, **kwargs: Any) -> None:
         """Delegate an enabled log call after sanitizing its arguments."""
         if self.isEnabledFor(level):
-            msg, kwargs = self.process(msg, kwargs)
+            msg, processed_kwargs = self.process(msg, kwargs)
             escaped_args = tuple(_escape_log_argument(arg) for arg in args)
-            self.logger.log(level, msg, *escaped_args, **kwargs)
+            self.logger.log(level, msg, *escaped_args, **processed_kwargs)
 
 
 def configure_logging(service: str | None = None) -> None:
