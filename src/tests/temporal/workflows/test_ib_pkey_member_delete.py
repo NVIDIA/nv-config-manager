@@ -23,6 +23,7 @@ import pytest
 from aioresponses import aioresponses
 from temporalio.worker import Worker
 
+from nv_config_manager.temporal.common.activities import REGISTERED_COMMON_ACTIVITIES
 from nv_config_manager.temporal.common.secrets import clear_secrets_cache
 from nv_config_manager.temporal.ngc.activities.ib_nautobot import (
     cleanup_empty_pkey_partition,
@@ -118,6 +119,7 @@ _ALL_ACTIVITIES = [
     remove_pkey_assignments,
     cleanup_empty_pkey_partition,
     publish_nats,
+    *REGISTERED_COMMON_ACTIVITIES,
 ]
 
 
