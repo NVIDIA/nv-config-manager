@@ -27,7 +27,7 @@ interface BodyProps {
   children: React.ReactNode;
 }
 
-export default function Body({ children }: BodyProps) {
+export default function Body({ children }: Readonly<BodyProps>) {
     const [refreshPaused, setRefreshPaused] = useState(false);
     return (
       <body
