@@ -27,6 +27,7 @@ from temporalio.common import RetryPolicy
 from temporalio.exceptions import ApplicationError, TemporalError
 
 from nv_config_manager.temporal.common.lock import (
+    LOCK_RENEW_BUFFER_SECONDS,
     WorkflowLockSpec,
     build_workflow_lock_key,
 )
@@ -164,7 +165,9 @@ async def _acquire_lock(key: str, token: str, spec: WorkflowLockSpec) -> None:
 
 async def _renew_loop(key: str, token: str, spec: WorkflowLockSpec) -> None:
     """Periodically extend the lock TTL for the life of the run."""
-    renew_deadline_seconds = spec.ttl_seconds - spec.renew_interval_seconds
+    renew_deadline_seconds = (
+        spec.ttl_seconds - spec.renew_interval_seconds - LOCK_RENEW_BUFFER_SECONDS
+    )
     attempt_timeout_seconds = min(_RENEW_ACTIVITY_TIMEOUT_S, renew_deadline_seconds)
     while True:
         await asyncio.sleep(spec.renew_interval_seconds)

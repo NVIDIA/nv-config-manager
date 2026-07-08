@@ -30,6 +30,7 @@ from nv_config_manager.temporal.common.mixins.stage import (
     StateEnum,
     stage_executor,
 )
+from nv_config_manager.temporal.ngc.workflows._ib_pkey_lock import UFMHostLockMixin
 
 with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.common.mixins.archive import ArchiveMixin
@@ -184,7 +185,7 @@ class IBPKeyMemberUpdateOutput(BaseModel):
 
 
 @workflow.defn
-class IBPKeyMemberUpdateWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin):
+class IBPKeyMemberUpdateWorkflow(UFMHostLockMixin, WorkflowMetadataMixin, StageMixin, ArchiveMixin):
     """Declarative reconciliation of IB PKey membership."""
 
     workflow_name = "InfiniBand PKey Member Update"

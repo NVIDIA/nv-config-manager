@@ -30,6 +30,7 @@ from nv_config_manager.temporal.ngc.activities.ib_nautobot import (
     ResolveIBSiteForHostInput,
     _normalize_pkey,
     _select_pkey_match,
+    canonicalize_ufm_host,
     resolve_ib_context,
     resolve_ib_context_for_add,
     resolve_ib_site_for_host,
@@ -735,3 +736,42 @@ class TestResolveIBContextForAdd:
                 await resolve_ib_context_for_add(
                     ResolveIBContextInput(host=DEVICE_NAME, pkey="0x0100")
                 )
+
+
+# ---------------------------------------------------------------------------
+# canonicalize_ufm_host -- API-boundary host canonicalization
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+class TestCanonicalizeUFMHost:
+    """Name or IP collapses to one canonical identifier for the lock key."""
+
+    async def test_name_resolves_to_primary_ip(self, mock_nb_config: Any) -> None:
+        with aioresponses() as m:
+            m.post(NB_GRAPHQL, payload={"data": {"devices": [_device_payload()]}})
+            assert await canonicalize_ufm_host(DEVICE_NAME) == DEVICE_IP
+
+    async def test_ip_resolves_to_primary_ip(self, mock_nb_config: Any) -> None:
+        payload = {
+            "data": {
+                "ip_addresses": [
+                    {"address": "10.0.0.1/32", "interfaces": [{"device": _device_payload()}]}
+                ]
+            }
+        }
+        with aioresponses() as m:
+            m.post(NB_GRAPHQL, payload=payload)
+            assert await canonicalize_ufm_host(DEVICE_IP) == DEVICE_IP
+
+    async def test_falls_back_to_name_without_primary_ip(self, mock_nb_config: Any) -> None:
+        device = {"id": DEVICE_ID, "name": DEVICE_NAME, "primary_ip4": None, "location": {}}
+        with aioresponses() as m:
+            m.post(NB_GRAPHQL, payload={"data": {"devices": [device]}})
+            assert await canonicalize_ufm_host(DEVICE_NAME) == DEVICE_NAME
+
+    async def test_device_not_found_raises(self, mock_nb_config: Any) -> None:
+        with aioresponses() as m:
+            m.post(NB_GRAPHQL, payload={"data": {"devices": []}})
+            with pytest.raises(ApplicationError, match="not found in Nautobot"):
+                await canonicalize_ufm_host(DEVICE_NAME)

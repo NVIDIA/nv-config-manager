@@ -35,6 +35,8 @@ if TYPE_CHECKING:
 
 _LOCK_KEY_PREFIX = "wf-lock"
 
+LOCK_RENEW_BUFFER_SECONDS = 15
+
 
 class WorkflowLockSpec(BaseModel):
     """Declares that a workflow serializes on a resource derived from its input.
@@ -56,12 +58,16 @@ class WorkflowLockSpec(BaseModel):
     @model_validator(mode="after")
     def _validate_intervals(self) -> WorkflowLockSpec:
         """Renewal must outpace expiry, or the lock lapses between renewals."""
-        if self.renew_interval_seconds >= self.ttl_seconds:
-            raise ValueError("renew_interval_seconds must be less than ttl_seconds")
         if self.ttl_seconds <= 0 or self.renew_interval_seconds <= 0:
             raise ValueError("ttl_seconds and renew_interval_seconds must be positive")
         if self.wait_timeout_seconds <= 0:
             raise ValueError("wait_timeout_seconds must be positive")
+        if self.renew_interval_seconds >= self.ttl_seconds:
+            raise ValueError("renew_interval_seconds must be less than ttl_seconds")
+        if self.renew_interval_seconds + LOCK_RENEW_BUFFER_SECONDS >= self.ttl_seconds:
+            raise ValueError(
+                "renew_interval_seconds must leave the renewal buffer before ttl_seconds"
+            )
         return self
 
 

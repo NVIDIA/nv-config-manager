@@ -14,8 +14,11 @@
 # limitations under the License.
 """Tests for the shared Redis-backed distributed lock."""
 
+from types import SimpleNamespace
+
 import pytest
 from redis.asyncio.lock import Lock as AsyncRedisLock
+from redis.exceptions import LockNotOwnedError
 
 from nv_config_manager.common import lock as lock_module
 from nv_config_manager.common.lock import (
@@ -96,3 +99,69 @@ class TestTokenHelpersLocalNoop:
     @pytest.mark.asyncio
     async def test_release_returns_true(self):
         assert await release_lock("k", "token") is True
+
+
+class _FakeRedisLock:
+    """Minimal async Lock stand-in that models single-owner reentrancy."""
+
+    def __init__(self, owner: bytes | None = None) -> None:
+        self.local = SimpleNamespace(token=None)
+        self._owner = owner
+        self.blocking_waits: list[float | None] = []
+
+    async def acquire(
+        self,
+        token: bytes | None = None,
+        blocking: bool = True,
+        blocking_timeout: float | None = None,
+    ) -> bool:
+        if blocking:
+            self.blocking_waits.append(blocking_timeout)
+        if self._owner is None:
+            self._owner = token
+            return True
+        return False
+
+    async def reacquire(self) -> bool:
+        if self._owner is not None and self._owner == self.local.token:
+            return True
+        raise LockNotOwnedError("lock is not owned by this token")
+
+
+class TestAcquireLockReentrancy:
+    """acquire_lock is idempotent for a token and honors the blocking flag."""
+
+    @pytest.fixture
+    def use_fake(self, monkeypatch):
+        def _install(owner: bytes | None) -> _FakeRedisLock:
+            fake = _FakeRedisLock(owner=owner)
+            monkeypatch.setattr(lock_module, "_redis_lock", lambda name, timeout: fake)
+            return fake
+
+        return _install
+
+    @pytest.mark.asyncio
+    async def test_free_lock_is_acquired_without_blocking(self, use_fake):
+        fake = use_fake(owner=None)
+        assert await acquire_lock("k", "t", timeout=30, blocking_timeout=5) is True
+        assert fake.blocking_waits == []
+
+    @pytest.mark.asyncio
+    async def test_own_lock_is_refreshed_without_blocking(self, use_fake):
+        """A retried acquire whose result was lost refreshes its own lock."""
+        fake = use_fake(owner=b"t")
+        assert await acquire_lock("k", "t", timeout=30, blocking_timeout=5) is True
+        # Never waited out blocking_timeout on a lock we already hold.
+        assert fake.blocking_waits == []
+
+    @pytest.mark.asyncio
+    async def test_conflict_fails_fast_when_non_blocking(self, use_fake):
+        fake = use_fake(owner=b"other")
+        assert await acquire_lock("k", "t", timeout=30, blocking=False) is False
+        assert fake.blocking_waits == []
+
+    @pytest.mark.asyncio
+    async def test_conflict_waits_when_blocking(self, use_fake):
+        fake = use_fake(owner=b"other")
+        assert await acquire_lock("k", "t", timeout=30, blocking_timeout=3) is False
+        assert fake.blocking_waits == [3]

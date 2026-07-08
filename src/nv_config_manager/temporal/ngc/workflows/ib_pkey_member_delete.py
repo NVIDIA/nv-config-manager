@@ -28,6 +28,7 @@ from nv_config_manager.temporal.common.mixins.stage import (
     StageOutput,
     stage_executor,
 )
+from nv_config_manager.temporal.ngc.workflows._ib_pkey_lock import UFMHostLockMixin
 
 with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.common.mixins.archive import ArchiveMixin
@@ -102,7 +103,7 @@ class IBPKeyMemberDeleteOutput(BaseModel):
 
 
 @workflow.defn
-class IBPKeyMemberDeleteWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin):
+class IBPKeyMemberDeleteWorkflow(UFMHostLockMixin, WorkflowMetadataMixin, StageMixin, ArchiveMixin):
     """Remove device interface GUIDs from an existing IB PKey partition."""
 
     workflow_name = "InfiniBand PKey Member Delete"

@@ -92,6 +92,11 @@ class WorkflowMetadataMixin:
         return cls.workflow_lock
 
     @classmethod
+    async def canonicalize_input(cls, body: BaseModel) -> BaseModel:
+        """Normalize workflow input at the API boundary before the run starts."""
+        return body
+
+    @classmethod
     def has_complete_metadata(cls) -> bool:
         """Check if the workflow has complete metadata defined."""
         return (

@@ -68,6 +68,11 @@ class TestWorkflowLockSpec:
         with pytest.raises(ValidationError, match="wait_timeout_seconds must be positive"):
             WorkflowLockSpec(key_fields=["pkey"], wait_timeout_seconds=0)
 
+    def test_renew_interval_must_leave_buffer(self):
+        """Renewal must finish before the TTL lapses, not merely precede it."""
+        with pytest.raises(ValidationError, match="renewal buffer"):
+            WorkflowLockSpec(key_fields=["pkey"], ttl_seconds=60, renew_interval_seconds=50)
+
 
 class TestBuildWorkflowLockKey:
     def test_includes_namespace_and_fields(self):
@@ -170,6 +175,35 @@ class TestLockActivities:
                 )
             )
         assert exc.value.non_retryable is True
+
+    @pytest.mark.asyncio
+    async def test_acquire_blocks_while_waiting(self, mocker):
+        acquire = mocker.patch(
+            "nv_config_manager.temporal.common.activities.lock.acquire_lock",
+            new=mocker.AsyncMock(return_value=True),
+        )
+        await acquire_workflow_lock(
+            AcquireWorkflowLockInput(key="k", token="t", ttl_seconds=60, wait_timeout_seconds=5)
+        )
+        assert acquire.await_args.kwargs["blocking"] is True
+
+    @pytest.mark.asyncio
+    async def test_acquire_does_not_block_when_failing(self, mocker):
+        """on_conflict='fail' must not wait out wait_timeout_seconds."""
+        acquire = mocker.patch(
+            "nv_config_manager.temporal.common.activities.lock.acquire_lock",
+            new=mocker.AsyncMock(return_value=True),
+        )
+        await acquire_workflow_lock(
+            AcquireWorkflowLockInput(
+                key="k",
+                token="t",
+                ttl_seconds=60,
+                wait_timeout_seconds=5,
+                fail_on_conflict=True,
+            )
+        )
+        assert acquire.await_args.kwargs["blocking"] is False
 
     @pytest.mark.asyncio
     async def test_renew_raises_when_lock_lost(self, mocker):

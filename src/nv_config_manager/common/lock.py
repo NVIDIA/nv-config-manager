@@ -35,8 +35,6 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-log = logging.getLogger(__name__)
-
 
 class _FakeLock:
     """No-op lock for local single-process runs where no shared Redis exists."""
@@ -136,20 +134,40 @@ async def acquire_lock(
     token: str,
     timeout: int,
     blocking_timeout: float | None = None,
+    blocking: bool = True,
 ) -> bool:
     """Acquire a distributed lock on ``name`` for ``token``.
 
-    Returns True once held, or False if it could not be acquired within
-    ``blocking_timeout``.
+    Returns True once held, or False if it could not be acquired immediately
+    when ``blocking`` is False, otherwise within ``blocking_timeout``.
+
     """
     lock = _redis_lock(name, timeout)
     if lock is None:
         return True
+
+    token_bytes = _token_bytes(token)
+
+    if await lock.acquire(token=token_bytes, blocking=False):
+        return True
+    if await _refresh_if_owned(lock, token_bytes):
+        return True
+
+    if not blocking:
+        return False
     return bool(
-        await lock.acquire(
-            token=_token_bytes(token), blocking=True, blocking_timeout=blocking_timeout
-        )
+        await lock.acquire(token=token_bytes, blocking=True, blocking_timeout=blocking_timeout)
     )
+
+
+async def _refresh_if_owned(lock: AsyncRedisLock, token_bytes: bytes) -> bool:
+    """Extend ``lock``'s TTL when ``token_bytes`` already holds it, else False."""
+    lock.local.token = token_bytes
+    try:
+        await lock.reacquire()
+    except LockNotOwnedError:
+        return False
+    return True
 
 
 async def renew_lock(name: str, token: str, timeout: int) -> bool:

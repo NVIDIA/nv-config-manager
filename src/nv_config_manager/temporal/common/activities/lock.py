@@ -60,6 +60,7 @@ async def acquire_workflow_lock(input: AcquireWorkflowLockInput) -> None:
         input.token,
         timeout=input.ttl_seconds,
         blocking_timeout=input.wait_timeout_seconds,
+        blocking=not input.fail_on_conflict,
     )
     if acquired:
         log.info("Acquired workflow lock %s", input.key)

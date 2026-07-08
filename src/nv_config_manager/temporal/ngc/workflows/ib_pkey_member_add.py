@@ -28,6 +28,7 @@ from nv_config_manager.temporal.common.mixins.stage import (
     StageOutput,
     stage_executor,
 )
+from nv_config_manager.temporal.ngc.workflows._ib_pkey_lock import UFMHostLockMixin
 
 with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.common.mixins.archive import ArchiveMixin
@@ -117,7 +118,7 @@ class IBPKeyMemberAddOutput(BaseModel):
 
 
 @workflow.defn
-class IBPKeyMemberAddWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin):
+class IBPKeyMemberAddWorkflow(UFMHostLockMixin, WorkflowMetadataMixin, StageMixin, ArchiveMixin):
     """Add device interface GUIDs to an existing IB PKey partition."""
 
     workflow_name = "InfiniBand PKey Member Add"
