@@ -23,7 +23,7 @@ jobs:
       actions: write
       contents: read
       issues: write
-      pull-requests: read
+      pull-requests: write
     steps:
       # issue_comment workflows run from the default branch. Keep the checkout
       # explicit so this privileged dispatcher never loads PR-controlled code.
@@ -48,6 +48,7 @@ jobs:
     permissions:
       contents: read
       issues: write
+      pull-requests: write
     steps:
       # workflow_run is privileged, so load only the trusted default-branch helper.
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
