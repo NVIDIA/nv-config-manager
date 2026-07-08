@@ -32,6 +32,11 @@ logger = get_logger(__name__, category=LogCategory.ZTP_API)
 router = APIRouter(prefix="/device", tags=["device"], responses={404: {"description": "Not found"}})
 
 
+def _escape_log_newlines(value: str) -> str:
+    """Escape characters that could forge additional log entries."""
+    return value.replace("\r", r"\r").replace("\n", r"\n")
+
+
 async def _authorize_request(request: Request, device_uuid: str) -> None:
     # This endpoint has sensitive content, check if coming from the
     # device associated with this configuration
@@ -62,8 +67,10 @@ async def _authorize_request(request: Request, device_uuid: str) -> None:
 
     if client_ip not in allowed_addresses:
         logger.warning(
-            "Unauthorized ZTP request rejected because the client address is not associated "
-            "with the requested device."
+            "Unauthorized ZTP request for device %s from %s (allowed: %s)",
+            _escape_log_newlines(device_uuid),
+            _escape_log_newlines(client_ip),
+            [_escape_log_newlines(address) for address in allowed_addresses],
         )
         raise HTTPException(
             status_code=403,
@@ -198,7 +205,12 @@ async def validate_serial(device_uuid: str, body: ValidateSerialBody, request: R
         async with nb_client:
             expected_serial = await nb_client.get_device_serial(device_uuid)
         if not _compare_serials(expected_serial, body.serial):
-            logger.error("Serial number mismatch for requested device.")
+            logger.error(
+                "Serial number mismatch observed on device %s, expected: %s, observed: %s.",
+                _escape_log_newlines(device_uuid),
+                _escape_log_newlines(expected_serial),
+                _escape_log_newlines(body.serial),
+            )
             raise HTTPException(
                 status_code=400,
                 detail="Serial number does not match device in Nautobot.",
