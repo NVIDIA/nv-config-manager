@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -25,7 +25,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form } from "@/components/ui/form";
 import { useToast } from "@/components/ui/use-toast";
-import { useEnvData, useNamespaceTags, useOverlays } from "@/hooks";
+import {
+  SPX_OVERLAY_ISOLATION_TYPE,
+  useEnvData,
+  useNamespaceTags,
+  useOverlays,
+  useSyncSelectFromQuery,
+} from "@/hooks";
 import { WorkflowFormField } from "@/components/forms/formfield";
 import { getErrorMessage, startWorkflow } from "@/lib/utils";
 import { SpXOverlayDeletionWorkflowInput } from "@/types/data-table.types";
@@ -60,6 +66,7 @@ export const SpXOverlayDeletionWorkflowForm = () => {
     },
   });
   const selectedSite = form.watch("site");
+  const previousSite = useRef(selectedSite);
   const {
     namespaceTags,
     hasLoaded: namespaceTagsHasLoaded,
@@ -71,7 +78,7 @@ export const SpXOverlayDeletionWorkflowForm = () => {
     isLoading: spxOverlaysAreLoading,
   } = useOverlays({
     enabled: Boolean(selectedSite),
-    isolationType: "spectrum_x_vrf",
+    isolationType: SPX_OVERLAY_ISOLATION_TYPE,
     location: selectedSite,
   });
 
@@ -90,26 +97,20 @@ export const SpXOverlayDeletionWorkflowForm = () => {
   }, [sites, querySite, siteIsLoading, form]);
 
   useEffect(() => {
-    form.setValue("overlay_id", "");
+    if (previousSite.current !== selectedSite) {
+      form.setValue("overlay_id", "");
+      previousSite.current = selectedSite;
+    }
   }, [selectedSite, form]);
 
-  useEffect(() => {
-    if (!spxOverlaysHaveLoaded || spxOverlaysAreLoading || !queryOverlayId) return;
-
-    const overlayExists = spxOverlays.some(
-      (overlay) => overlay.value === queryOverlayId
-    );
-    const overlayValue = overlayExists ? queryOverlayId : "";
-    if (form.getValues("overlay_id") !== overlayValue) {
-      form.setValue("overlay_id", overlayValue);
-    }
-  }, [
-    spxOverlays,
-    spxOverlaysHaveLoaded,
-    spxOverlaysAreLoading,
-    queryOverlayId,
+  useSyncSelectFromQuery({
+    fieldName: "overlay_id",
     form,
-  ]);
+    hasLoaded: spxOverlaysHaveLoaded,
+    isLoading: spxOverlaysAreLoading,
+    options: spxOverlays,
+    queryValue: queryOverlayId,
+  });
 
   useEffect(() => {
     if (!namespaceTagsHasLoaded || namespaceTagsIsLoading) return;

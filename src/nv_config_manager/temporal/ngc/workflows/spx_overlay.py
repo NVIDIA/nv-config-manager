@@ -842,6 +842,7 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
                     site=stage_input.site,
                     namespace_tag=stage_input.namespace_tag,
                 ),
+                id=f"{workflow.info().workflow_id}-assign-spx-overlay",
                 run_timeout=timedelta(minutes=10),
             )
             self.append_child_workflow("assign_spx_overlay", assignment_handle.id)
@@ -1023,13 +1024,16 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
                 intended_config_commit_id=stage_input.intended_config_commit_id,
             )
 
-        deploy_handle = await workflow.start_child_workflow(
-            TenantDeployWorkflow.run,
-            tenant_deploy_input,
-            run_timeout=timedelta(minutes=10),
-        )
-        self.append_child_workflow("deploy", deploy_handle.id)
-        await deploy_handle
+        try:
+            deploy_handle = await workflow.start_child_workflow(
+                TenantDeployWorkflow.run,
+                tenant_deploy_input,
+                run_timeout=timedelta(minutes=10),
+            )
+            self.append_child_workflow("deploy", deploy_handle.id)
+            await deploy_handle
+        except Exception as exc:
+            raise ApplicationError(str(exc)) from exc
 
         return self.DeployStageOutput(
             device_id=stage_input.device.id,

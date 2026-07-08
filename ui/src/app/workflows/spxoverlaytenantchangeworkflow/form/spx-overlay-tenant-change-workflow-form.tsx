@@ -25,7 +25,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form } from "@/components/ui/form";
 import { useToast } from "@/components/ui/use-toast";
-import { useEnvData, useDevices, useOverlays } from "@/hooks";
+import {
+  SPX_OVERLAY_ISOLATION_TYPE,
+  useEnvData,
+  useDevices,
+  useOverlays,
+  useSyncSelectFromQuery,
+} from "@/hooks";
 import { WorkflowFormField } from "@/components/forms/formfield";
 import { getErrorMessage, startWorkflow } from "@/lib/utils";
 import { SpXOverlayTenantChangeWorkflowInput } from "@/types/data-table.types";
@@ -80,7 +86,7 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
     isLoading: spxOverlaysAreLoading,
   } = useOverlays({
     enabled: Boolean(site),
-    isolationType: "spectrum_x_vrf",
+    isolationType: SPX_OVERLAY_ISOLATION_TYPE,
     location: site,
   });
 
@@ -121,23 +127,14 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
     }
   }, [site, form]);
 
-  useEffect(() => {
-    if (!spxOverlaysHaveLoaded || spxOverlaysAreLoading || !queryOverlayId) return;
-
-    const overlayExists = spxOverlays.some(
-      (overlay) => overlay.value === queryOverlayId
-    );
-    const overlayValue = overlayExists ? queryOverlayId : "";
-    if (form.getValues("overlay_id") !== overlayValue) {
-      form.setValue("overlay_id", overlayValue);
-    }
-  }, [
-    spxOverlays,
-    spxOverlaysHaveLoaded,
-    spxOverlaysAreLoading,
-    queryOverlayId,
+  useSyncSelectFromQuery({
+    fieldName: "overlay_id",
     form,
-  ]);
+    hasLoaded: spxOverlaysHaveLoaded,
+    isLoading: spxOverlaysAreLoading,
+    options: spxOverlays,
+    queryValue: queryOverlayId,
+  });
 
   const onSubmit = async (data: SpXOverlayTenantChangeFormData): Promise<void> => {
     setIsSubmitting(true);

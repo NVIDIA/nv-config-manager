@@ -34,6 +34,8 @@ interface UseOverlaysReturn {
   isLoading: boolean;
 }
 
+export const SPX_OVERLAY_ISOLATION_TYPE = "spectrum_x_vrf";
+
 const useOverlays = ({
   enabled = true,
   isolationType,

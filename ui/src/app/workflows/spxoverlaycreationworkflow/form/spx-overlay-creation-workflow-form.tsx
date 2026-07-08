@@ -25,7 +25,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form } from "@/components/ui/form";
 import { useToast } from "@/components/ui/use-toast";
-import { useEnvData, useNamespaceTags, useTenants } from "@/hooks";
+import {
+  useEnvData,
+  useNamespaceTags,
+  useSyncSelectFromQuery,
+  useTenants,
+} from "@/hooks";
 import { WorkflowFormField } from "@/components/forms/formfield";
 import { getErrorMessage, startWorkflow } from "@/lib/utils";
 import { SpXOverlayCreationWorkflowInput } from "@/types/data-table.types";
@@ -101,15 +106,14 @@ export const SpXOverlayCreationWorkflowForm = () => {
     }
   }, [sites, querySite, siteIsLoading, form]);
 
-  useEffect(() => {
-    if (!tenantsHaveLoaded || tenantsAreLoading || !queryTenant) return;
-
-    const tenantExists = tenants.some((tenant) => tenant.value === queryTenant);
-    const tenantValue = tenantExists ? queryTenant : "";
-    if (form.getValues("tenant") !== tenantValue) {
-      form.setValue("tenant", tenantValue);
-    }
-  }, [tenants, tenantsHaveLoaded, tenantsAreLoading, queryTenant, form]);
+  useSyncSelectFromQuery({
+    fieldName: "tenant",
+    form,
+    hasLoaded: tenantsHaveLoaded,
+    isLoading: tenantsAreLoading,
+    options: tenants,
+    queryValue: queryTenant,
+  });
 
   useEffect(() => {
     if (!namespaceTagsHasLoaded || namespaceTagsIsLoading) return;
@@ -179,6 +183,7 @@ export const SpXOverlayCreationWorkflowForm = () => {
                 options={tenants}
                 isLoading={tenantsAreLoading}
                 isSubmitting={isSubmitting}
+                searchable
               />
               <WorkflowFormField
                 type="select"

@@ -20,9 +20,12 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from temporalio.exceptions import ApplicationError
 
+from nv_config_manager.common.log import LogCategory, get_logger
 from nv_config_manager.temporal.client.nautobot import OVERLAYS_PLUGIN_BASE, NautobotClient
 from nv_config_manager.temporal.common.mixins.device import NetworkDeviceData, Platform
 from nv_config_manager.temporal.ngc.activities.diagnostics import get_available_commands
+
+logger = get_logger(__name__, category=LogCategory.TEMPORAL_API)
 
 
 class Device(BaseModel):
@@ -342,6 +345,7 @@ async def get_overlays(
                 params=params,
             )
     except Exception as exc:
+        logger.exception("Failed to query Nautobot overlays", exc_info=exc)
         raise HTTPException(
             status_code=500,
             detail="Failed to query Nautobot overlays.",

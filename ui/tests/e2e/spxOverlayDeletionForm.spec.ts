@@ -134,9 +134,7 @@ test.describe("New SpX Overlay Deletion Workflow - URL Parameters", () => {
       .click();
 
     // Change the overlay ID
-    await page
-      .getByRole("button", { name: VPC_DATA.overlay_id, exact: true })
-      .click();
+    await page.getByRole("button", { name: "Overlay ID" }).click();
     await page
       .getByRole("dialog")
       .getByText(SPX_OVERLAY_LIST.modified)
