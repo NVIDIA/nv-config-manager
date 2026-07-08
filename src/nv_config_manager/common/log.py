@@ -68,6 +68,7 @@ _LOG_LINE_BREAK_ESCAPES = str.maketrans(
         "\x1c": r"\x1c",
         "\x1d": r"\x1d",
         "\x1e": r"\x1e",
+        "\x1b": r"\x1b",
         "\x85": r"\x85",
         "\u2028": r"\u2028",
         "\u2029": r"\u2029",

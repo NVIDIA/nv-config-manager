@@ -42,5 +42,9 @@ def test_escape_log_newlines_stringifies_objects() -> None:
     assert escape_log_newlines(ValueError("before\nafter")) == r"before\nafter"
 
 
+def test_escape_log_newlines_escapes_terminal_escape_character() -> None:
+    assert escape_log_newlines("before\x1b[31mafter") == r"before\x1b[31mafter"
+
+
 def test_escape_log_newlines_preserves_text_without_separators() -> None:
     assert escape_log_newlines("unchanged") == "unchanged"
