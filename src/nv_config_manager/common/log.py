@@ -59,6 +59,20 @@ class LogCategory:
 _logging_configured = False
 _custom_labels: dict[str, str] = {}
 
+_LOG_LINE_BREAK_ESCAPES = str.maketrans(
+    {
+        "\n": r"\n",
+        "\r": r"\r",
+        "\v": r"\v",
+        "\f": r"\f",
+        "\x1c": r"\x1c",
+        "\x1d": r"\x1d",
+        "\x1e": r"\x1e",
+        "\x85": r"\x85",
+        "\u2028": r"\u2028",
+        "\u2029": r"\u2029",
+    }
+)
 _VALID_LABEL_KEY = re.compile(r"^\w+(\_\w+)?$")
 _MAX_LABEL_VALUE_LEN = 63
 _RESERVED_FIELDS = frozenset(
@@ -157,7 +171,7 @@ def _build_formatter() -> logging.Formatter:
 
 def escape_log_newlines(value: object) -> str:
     """Escape characters that could forge additional log entries."""
-    return str(value).replace("\r", r"\r").replace("\n", r"\n")
+    return str(value).translate(_LOG_LINE_BREAK_ESCAPES)
 
 
 def configure_logging(service: str | None = None) -> None:
