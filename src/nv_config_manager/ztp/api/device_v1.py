@@ -62,10 +62,8 @@ async def _authorize_request(request: Request, device_uuid: str) -> None:
 
     if client_ip not in allowed_addresses:
         logger.warning(
-            "Unauthorized ZTP request for device %s from %s (allowed: %s)",
-            device_uuid,
-            client_ip,
-            allowed_addresses,
+            "Unauthorized ZTP request rejected because the client address is not associated "
+            "with the requested device."
         )
         raise HTTPException(
             status_code=403,
@@ -200,12 +198,7 @@ async def validate_serial(device_uuid: str, body: ValidateSerialBody, request: R
         async with nb_client:
             expected_serial = await nb_client.get_device_serial(device_uuid)
         if not _compare_serials(expected_serial, body.serial):
-            logger.error(
-                "Serial number mismatch observed on device %s, expected: %s, observed: %s.",
-                device_uuid,
-                expected_serial,
-                body.serial,
-            )
+            logger.error("Serial number mismatch for requested device.")
             raise HTTPException(
                 status_code=400,
                 detail="Serial number does not match device in Nautobot.",
