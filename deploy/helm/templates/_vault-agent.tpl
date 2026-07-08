@@ -323,7 +323,7 @@ nv-config-manager.ini body (consul-template): must stay in sync with vault-secre
           database_host = {{ tpl (required "externalServices.postgres.configStore.host is required" $root.Values.externalServices.postgres.configStore.host) $root }}
           database_port = {{ $root.Values.externalServices.postgres.port }}
           database = {{ $root.Values.externalServices.postgres.configStore.database }}
-          database_user = {{ include "nv-config-manager.vaultAgent.ctKv2Key" (dict "var" "postgres" "key" (include "nv-config-manager.vault.keyName" (dict "root" $root "secret" "postgres" "key" "configStoreUser"))) }}
+          database_user = {{ include "nv-config-manager.postgres.iniUserVaultAgent" (dict "root" $root "store" "configStore" "var" "postgres" "userKey" "configStoreUser") }}
           database_password = {{ include "nv-config-manager.vaultAgent.ctKv2Key" (dict "var" "postgres" "key" (include "nv-config-manager.vault.keyName" (dict "root" $root "secret" "postgres" "key" "configStorePassword"))) }}
 
           # -----------------------------------------------------------------
@@ -464,7 +464,7 @@ nv-config-manager.ini body (consul-template): must stay in sync with vault-secre
           host = {{ tpl $root.Values.externalServices.postgres.dhcp.host $root }}
           port = {{ $root.Values.externalServices.postgres.port }}
           database = {{ $root.Values.externalServices.postgres.dhcp.database }}
-          user = {{ include "nv-config-manager.vaultAgent.ctKv2Key" (dict "var" "leasedb" "key" (include "nv-config-manager.vault.keyName" (dict "root" $root "secret" "postgres" "key" "dhcpUser"))) }}
+          user = {{ include "nv-config-manager.postgres.iniUserVaultAgent" (dict "root" $root "store" "dhcp" "var" "leasedb" "userKey" "dhcpUser") }}
           password = {{ include "nv-config-manager.vaultAgent.ctKv2Key" (dict "var" "leasedb" "key" (include "nv-config-manager.vault.keyName" (dict "root" $root "secret" "postgres" "key" "dhcpPassword"))) }}
           {{- end }}
 

@@ -811,6 +811,165 @@ Usage: {{ include "nv-config-manager.vault.keyName" (dict "root" . "secret" "nau
 
 {{/*
 =============================================================================
+PostgreSQL State Store Credential Helpers
+=============================================================================
+Each Postgres-backed state store (temporal, temporalVisibility, configStore,
+dhcp, nautobot) has:
+  - a CNPG cluster definition under .Values.cnpg.<store> (owner, clusterName,
+    enabled) whose bootstrap.initdb.owner defines the DB role name, and
+  - Vault credential keys under secrets.vault.paths.postgres
+    (<store>User / <store>Password).
+
+When CNPG manages the cluster, the app credential Secret's `username` must equal
+`bootstrap.initdb.owner`, so it is rendered from cnpg.<store>.owner rather than
+Vault. Passwords always come from Vault. When the store points at external
+Postgres (RDS), the username stays Vault-sourced (a real external credential).
+
+These helpers are the single source of truth for that branch so the ESO
+ExternalSecrets, the unified INI, and the Vault Agent template cannot drift.
+*/}}
+
+{{/*
+Return "true" when a Postgres store's cluster is managed by CNPG, mirroring the
+exact creation conditions in cnpg-clusters.yaml. Empty string otherwise so it
+can be used directly in `if`.
+Usage: {{ if eq (include "nv-config-manager.postgres.cnpgManaged" (dict "root" . "store" "temporal")) "true" }}
+*/}}
+{{- define "nv-config-manager.postgres.cnpgManaged" -}}
+{{- $root := .root -}}
+{{- $store := .store -}}
+{{- $cnpg := $root.Values.cnpg | default dict -}}
+{{- if $cnpg.enabled -}}
+{{- $cluster := index $cnpg $store | default dict -}}
+{{- if eq $store "nautobot" -}}
+{{- /* Nautobot is not in clusterList; it also boots when local Nautobot is on. */ -}}
+{{- if or $cluster.enabled (and $root.Values.nautobot.enabled $root.Values.externalServices.nautobot.local) -}}
+true
+{{- end -}}
+{{- else -}}
+{{- if $cluster.enabled -}}
+true
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Return the CNPG owner (DB role) for a Postgres store. Fails when the store is
+CNPG-managed but cnpg.<store>.owner is empty, since that would drift the app
+credential username from bootstrap.initdb.owner.
+Usage: {{ include "nv-config-manager.postgres.owner" (dict "root" . "store" "temporal") }}
+*/}}
+{{- define "nv-config-manager.postgres.owner" -}}
+{{- $root := .root -}}
+{{- $store := .store -}}
+{{- $cluster := index ($root.Values.cnpg | default dict) $store | default dict -}}
+{{- $owner := $cluster.owner -}}
+{{- if not $owner -}}
+{{- fail (printf "cnpg.%s.owner is required when the %s cluster is CNPG-managed (cnpg.enabled and cnpg.%s.enabled); it must match bootstrap.initdb.owner" $store $store $store) -}}
+{{- end -}}
+{{- $owner -}}
+{{- end -}}
+
+{{/*
+Render an ExternalSecret that provisions the username+password for a Postgres
+state store's app Secret. When CNPG-managed, `username` is the chart owner
+(rendered into a target template) and only `password` is fetched from Vault.
+Otherwise both `username` and `password` come from Vault remoteRefs (external
+Postgres/RDS credentials).
+Usage:
+  {{ include "nv-config-manager.postgres.esoCredential" (dict "root" . "name" "cnpg-temporal-credentials" "targetName" "cluster-temporal-app" "store" "temporal" "userKey" "temporalUser" "passKey" "temporalPassword") }}
+*/}}
+{{- define "nv-config-manager.postgres.esoCredential" -}}
+{{- $root := .root -}}
+{{- $store := .store -}}
+{{- $managed := eq (include "nv-config-manager.postgres.cnpgManaged" (dict "root" $root "store" $store)) "true" -}}
+{{- $secretPath := include "nv-config-manager.vault.secretPath" (dict "root" $root "secret" "postgres") -}}
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: {{ .name }}
+  namespace: {{ $root.Values.global.namespace }}
+spec:
+  secretStoreRef:
+    name: {{ include "nv-config-manager.vaultSecretStoreName" $root }}
+    kind: SecretStore
+  target:
+    name: {{ .targetName }}
+    creationPolicy: Owner
+    {{- if $managed }}
+    # CNPG-managed: username must equal bootstrap.initdb.owner, so it is rendered
+    # from cnpg.{{ $store }}.owner; only the password is sourced from Vault.
+    template:
+      engineVersion: v2
+      type: Opaque
+      data:
+        username: {{ include "nv-config-manager.postgres.owner" (dict "root" $root "store" $store) | quote }}
+        password: {{ printf "{{ .password }}" | quote }}
+    {{- end }}
+  data:
+    {{- if not $managed }}
+    - secretKey: username
+      remoteRef:
+        key: "{{ $secretPath }}"
+        property: {{ include "nv-config-manager.vault.keyName" (dict "root" $root "secret" "postgres" "key" .userKey) }}
+    {{- end }}
+    - secretKey: password
+      remoteRef:
+        key: "{{ $secretPath }}"
+        property: {{ include "nv-config-manager.vault.keyName" (dict "root" $root "secret" "postgres" "key" .passKey) }}
+  refreshInterval: 300s
+{{- end -}}
+
+{{/*
+Render the value expression for a Postgres store's connection username inside the
+unified INI (ESO template context, i.e. using the fetched `postgres_data` JSON).
+CNPG-managed stores render the literal chart owner; external stores render the
+Vault-sourced user via ESO's go-template `index (fromJson .postgres_data) "..."`.
+Usage: database_user = {{ include "nv-config-manager.postgres.iniUserEso" (dict "root" . "store" "configStore" "userKey" "configStoreUser") }}
+*/}}
+{{- define "nv-config-manager.postgres.iniUserEso" -}}
+{{- $root := .root -}}
+{{- $store := .store -}}
+{{- if eq (include "nv-config-manager.postgres.cnpgManaged" (dict "root" $root "store" $store)) "true" -}}
+{{- include "nv-config-manager.postgres.owner" (dict "root" $root "store" $store) -}}
+{{- else -}}
+{{- printf "{{ index (fromJson .postgres_data) %q }}" (include "nv-config-manager.vault.keyName" (dict "root" $root "secret" "postgres" "key" .userKey)) -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Same as iniUserEso but for the DHCP lease DB, which reads the `leasedb_data`
+JSON variable in the ESO unified INI.
+Usage: user = {{ include "nv-config-manager.postgres.iniLeaseDbUserEso" (dict "root" . "userKey" "dhcpUser") }}
+*/}}
+{{- define "nv-config-manager.postgres.iniLeaseDbUserEso" -}}
+{{- $root := .root -}}
+{{- if eq (include "nv-config-manager.postgres.cnpgManaged" (dict "root" $root "store" "dhcp")) "true" -}}
+{{- include "nv-config-manager.postgres.owner" (dict "root" $root "store" "dhcp") -}}
+{{- else -}}
+{{- printf "{{ index (fromJson .leasedb_data) %q }}" (include "nv-config-manager.vault.keyName" (dict "root" $root "secret" "postgres" "key" .userKey)) -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Render the value expression for a Postgres store's connection username inside the
+Vault Agent consul-template INI. CNPG-managed stores render the literal chart
+owner; external stores render the consul-template KV lookup via ctKv2Key.
+Usage: database_user = {{ include "nv-config-manager.postgres.iniUserVaultAgent" (dict "root" . "store" "configStore" "var" "postgres" "userKey" "configStoreUser") }}
+*/}}
+{{- define "nv-config-manager.postgres.iniUserVaultAgent" -}}
+{{- $root := .root -}}
+{{- $store := .store -}}
+{{- if eq (include "nv-config-manager.postgres.cnpgManaged" (dict "root" $root "store" $store)) "true" -}}
+{{- include "nv-config-manager.postgres.owner" (dict "root" $root "store" $store) -}}
+{{- else -}}
+{{- include "nv-config-manager.vaultAgent.ctKv2Key" (dict "var" .var "key" (include "nv-config-manager.vault.keyName" (dict "root" $root "secret" "postgres" "key" .userKey))) -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+=============================================================================
 Template Plugins Init Container Helper
 =============================================================================
 Installs template plugins from a PVC or plugin source images into a target
