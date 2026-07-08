@@ -1228,13 +1228,13 @@ class TestSpiffeGroupPrefixes:
     def test_layered_prefixes_add_both_roles(self, rsa_keypair, make_jwt):
         """Per-service narrow prefix layers on top of a coarser one.
 
-        A SPIFFE ID under ``…/nv-config-manager/render`` must pick up BOTH the
-        broad ``nv-config-manager`` role (from the ``…/nv-config-manager``
-        prefix, matched via path-segment boundary) and the narrow
-        ``nv-config-manager-render`` role (from the exact
-        ``…/nv-config-manager/render`` prefix). This is what enables
-        progressive scoping: keep coarse roles working while introducing
-        tighter per-service roles to gate sensitive endpoints.
+        A SPIFFE ID *below* ``…/nv-config-manager/render`` must pick up BOTH
+        the broad ``nv-config-manager`` role and the narrow
+        ``nv-config-manager-render`` role -- both matched via the
+        ``prefix + "/"`` path-segment boundary (a descendant SVID, not an
+        exact prefix match). This is what enables progressive scoping: keep
+        coarse roles working while introducing tighter per-service roles to
+        gate sensitive endpoints.
         """
         cp = _make_config(
             **{
@@ -1250,10 +1250,14 @@ class TestSpiffeGroupPrefixes:
         )
         auth_mod._auth_config = load_auth_config(cp)
 
+        # SVID sits a segment below the narrow prefix so that BOTH mapped
+        # prefixes are hit via the descendant (``prefix + "/"``) branch, not an
+        # exact match -- proving layered roles still accumulate for sub-workload
+        # identities.
         token, mock_jwk = self._mock_spiffe_request(
             rsa_keypair,
             make_jwt,
-            sub="spiffe://cluster.local/ns/nv-config-manager/render",
+            sub="spiffe://cluster.local/ns/nv-config-manager/render/sa/api",
             aud="spiffe://cluster.local",
         )
 
