@@ -17,6 +17,8 @@
 export { default as useEnvData } from "./useEnvData";
 export { default as useDevices } from "./useDevices";
 export { default as useNamespaceTags } from "./useNamespaceTags";
+export { default as useOverlays } from "./useOverlays";
+export { default as useTenants } from "./useTenants";
 export { default as useCommandCatalog } from "./useCommandCatalog";
 export { default as useCommandCatalogGrouped } from "./useCommandCatalogGrouped";
 export type { CommandGroup } from "./useCommandCatalogGrouped";

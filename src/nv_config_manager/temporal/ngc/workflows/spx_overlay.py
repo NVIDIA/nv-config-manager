@@ -833,7 +833,7 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
     ) -> AssignSpXOverlayStageOutput:
         """Assign SpX Overlay to device and ports."""
         try:
-            result = await workflow.execute_child_workflow(
+            assignment_handle = await workflow.start_child_workflow(
                 SpXOverlayAssignmentWorkflow.run,
                 SpXOverlayAssignmentInput(
                     overlay_id=stage_input.overlay_id,
@@ -844,10 +844,10 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
                 ),
                 run_timeout=timedelta(minutes=10),
             )
+            self.append_child_workflow("assign_spx_overlay", assignment_handle.id)
+            result = await assignment_handle
         except Exception as exc:
             raise ApplicationError(str(exc)) from exc
-
-        self.append_child_workflow("assign_spx_overlay", workflow.info().workflow_id)
 
         # The overlay name is the user-supplied overlay_id; VRF and VXLAN share SpXTenant{vni}.
         overlay_name = stage_input.overlay_id
@@ -1023,13 +1023,13 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
                 intended_config_commit_id=stage_input.intended_config_commit_id,
             )
 
-        await workflow.execute_child_workflow(
+        deploy_handle = await workflow.start_child_workflow(
             TenantDeployWorkflow.run,
             tenant_deploy_input,
             run_timeout=timedelta(minutes=10),
         )
-
-        self.append_child_workflow("deploy", workflow.info().workflow_id)
+        self.append_child_workflow("deploy", deploy_handle.id)
+        await deploy_handle
 
         return self.DeployStageOutput(
             device_id=stage_input.device.id,

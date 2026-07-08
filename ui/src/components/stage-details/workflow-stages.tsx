@@ -63,6 +63,7 @@ import { ErrorTracebackViewer } from "@/components/error-traceback";
 import Markdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Layers } from "lucide-react";
+import Link from "next/link";
 import "@/styles/markdown.css";
 
 function getWorkflowStatusBadgeState(
@@ -429,6 +430,23 @@ export const WorkflowClientComponent: React.FC<
                     <span className="font-bold">Description:</span>
                     <span className="ml-2">{stage.description}</span>
                   </>
+                  {stage.child_workflows && stage.child_workflows.length > 0 && (
+                    <div className="mt-4">
+                      <span className="font-bold">Child Workflows:</span>
+                      <ul className="mt-1 list-disc space-y-1 pl-6">
+                        {stage.child_workflows.map((childWorkflowId) => (
+                          <li key={childWorkflowId}>
+                            <Link
+                              className="text-primary underline underline-offset-4 hover:text-primary/80"
+                              href={`/workflows/${encodeURIComponent(childWorkflowId)}`}
+                            >
+                              {childWorkflowId}
+                            </Link>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                   <Accordion type="multiple" defaultValue={["item-2"]}>
                     <AccordionItem value="item-1">
                       <AccordionTrigger>State History</AccordionTrigger>

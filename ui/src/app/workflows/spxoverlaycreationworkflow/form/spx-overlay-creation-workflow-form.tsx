@@ -25,7 +25,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form } from "@/components/ui/form";
 import { useToast } from "@/components/ui/use-toast";
-import { useEnvData, useNamespaceTags } from "@/hooks";
+import { useEnvData, useNamespaceTags, useTenants } from "@/hooks";
 import { WorkflowFormField } from "@/components/forms/formfield";
 import { getErrorMessage, startWorkflow } from "@/lib/utils";
 import { SpXOverlayCreationWorkflowInput } from "@/types/data-table.types";
@@ -63,6 +63,11 @@ export const SpXOverlayCreationWorkflowForm = () => {
     data: { siteData: sites },
     isLoading: { siteIsLoading },
   } = useEnvData();
+  const {
+    tenants,
+    hasLoaded: tenantsHaveLoaded,
+    isLoading: tenantsAreLoading,
+  } = useTenants();
 
   const form = useForm<z.infer<typeof SpXOverlayCreationFormSchema>>({
     resolver: zodResolver(SpXOverlayCreationFormSchema),
@@ -95,6 +100,16 @@ export const SpXOverlayCreationWorkflowForm = () => {
       }
     }
   }, [sites, querySite, siteIsLoading, form]);
+
+  useEffect(() => {
+    if (!tenantsHaveLoaded || tenantsAreLoading || !queryTenant) return;
+
+    const tenantExists = tenants.some((tenant) => tenant.value === queryTenant);
+    const tenantValue = tenantExists ? queryTenant : "";
+    if (form.getValues("tenant") !== tenantValue) {
+      form.setValue("tenant", tenantValue);
+    }
+  }, [tenants, tenantsHaveLoaded, tenantsAreLoading, queryTenant, form]);
 
   useEffect(() => {
     if (!namespaceTagsHasLoaded || namespaceTagsIsLoading) return;
@@ -157,10 +172,12 @@ export const SpXOverlayCreationWorkflowForm = () => {
                 isSubmitting={isSubmitting}
               />
               <WorkflowFormField
-                type="input"
+                type="select"
                 control={form.control}
                 name="tenant"
                 label="Tenant"
+                options={tenants}
+                isLoading={tenantsAreLoading}
                 isSubmitting={isSubmitting}
               />
               <WorkflowFormField

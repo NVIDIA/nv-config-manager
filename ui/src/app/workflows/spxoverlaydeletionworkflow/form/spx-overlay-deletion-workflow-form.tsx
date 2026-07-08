@@ -25,7 +25,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form } from "@/components/ui/form";
 import { useToast } from "@/components/ui/use-toast";
-import { useEnvData, useNamespaceTags } from "@/hooks";
+import { useEnvData, useNamespaceTags, useOverlays } from "@/hooks";
 import { WorkflowFormField } from "@/components/forms/formfield";
 import { getErrorMessage, startWorkflow } from "@/lib/utils";
 import { SpXOverlayDeletionWorkflowInput } from "@/types/data-table.types";
@@ -65,6 +65,15 @@ export const SpXOverlayDeletionWorkflowForm = () => {
     hasLoaded: namespaceTagsHasLoaded,
     isLoading: namespaceTagsIsLoading,
   } = useNamespaceTags(selectedSite);
+  const {
+    overlays: spxOverlays,
+    hasLoaded: spxOverlaysHaveLoaded,
+    isLoading: spxOverlaysAreLoading,
+  } = useOverlays({
+    enabled: Boolean(selectedSite),
+    isolationType: "spectrum_x_vrf",
+    location: selectedSite,
+  });
 
   useEffect(() => {
     if (!siteIsLoading && sites && querySite) {
@@ -79,6 +88,28 @@ export const SpXOverlayDeletionWorkflowForm = () => {
       }
     }
   }, [sites, querySite, siteIsLoading, form]);
+
+  useEffect(() => {
+    form.setValue("overlay_id", "");
+  }, [selectedSite, form]);
+
+  useEffect(() => {
+    if (!spxOverlaysHaveLoaded || spxOverlaysAreLoading || !queryOverlayId) return;
+
+    const overlayExists = spxOverlays.some(
+      (overlay) => overlay.value === queryOverlayId
+    );
+    const overlayValue = overlayExists ? queryOverlayId : "";
+    if (form.getValues("overlay_id") !== overlayValue) {
+      form.setValue("overlay_id", overlayValue);
+    }
+  }, [
+    spxOverlays,
+    spxOverlaysHaveLoaded,
+    spxOverlaysAreLoading,
+    queryOverlayId,
+    form,
+  ]);
 
   useEffect(() => {
     if (!namespaceTagsHasLoaded || namespaceTagsIsLoading) return;
@@ -131,11 +162,14 @@ export const SpXOverlayDeletionWorkflowForm = () => {
                 isSubmitting={isSubmitting}
               />
               <WorkflowFormField
-                type="input"
+                type="select"
                 control={form.control}
                 name="overlay_id"
                 label="Overlay ID"
+                options={spxOverlays}
+                isLoading={spxOverlaysAreLoading}
                 isSubmitting={isSubmitting}
+                disabled={!selectedSite}
               />
               <WorkflowFormField
                 type="select"

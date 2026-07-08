@@ -25,6 +25,7 @@ import {
   STATUS_LIST_API_RESPONSE,
   TENANT_LIST_API_RESPONSE,
   NAMESPACE_TAGS_LIST_API_RESPONSE,
+  SPX_OVERLAY_LIST_API_RESPONSE,
   DEVICE_TYPES_LIST_API_RESPONSE,
   FORBIDDEN_WORKFLOW_ID,
   FORBIDDEN_SITE_ID,
@@ -92,6 +93,7 @@ export async function setupApiMocks(page: Page) {
   await mockStatusEndpoint(page);
   await mockTenantsEndpoint(page);
   await mockNamespaceTagsEndpoint(page);
+  await mockOverlaysEndpoint(page);
   await mockDeviceTypesEndpoint(page);
   await mockDevicesEndpoint(page);
   await mockPasswordUsersEndpoint(page);
@@ -120,6 +122,15 @@ export async function mockWhoamiEndpoint(page: Page) {
         user: 'joliao@nvidia.com',
         roles: ['all', 'nvcm-network'],
       },
+    });
+  });
+}
+
+export async function mockOverlaysEndpoint(page: Page) {
+  await page.route(/.*\/v1\/parameter\/overlay/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      json: SPX_OVERLAY_LIST_API_RESPONSE,
     });
   });
 }
@@ -346,7 +357,7 @@ export async function mockSpxOverlayCreationEndpoint(page: Page) {
       return;
     }
 
-    await delay(100);
+    await delay(500);
 
     await route.fulfill({
       status: 201,

@@ -987,6 +987,25 @@
         "title": "NetworkDeviceData",
         "type": "object"
       },
+      "Overlay": {
+        "description": "Overlay data for dropdown population.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "Overlay",
+        "type": "object"
+      },
       "Platform": {
         "description": "Network device platform types.",
         "enum": [
@@ -3023,6 +3042,85 @@
           }
         ],
         "summary": "Get Namespace Tags",
+        "tags": [
+          "parameters"
+        ]
+      }
+    },
+    "/v1/parameter/overlay": {
+      "get": {
+        "description": "Return overlays, optionally filtered by location and isolation type.",
+        "operationId": "get_overlays_v1_parameter_overlay_get",
+        "parameters": [
+          {
+            "description": "Limit to overlays at this location",
+            "in": "query",
+            "name": "location",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Limit to overlays at this location",
+              "title": "Location"
+            }
+          },
+          {
+            "description": "Limit to overlays with this isolation type",
+            "in": "query",
+            "name": "isolation_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Limit to overlays with this isolation type",
+              "title": "Isolation Type"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Overlay"
+                  },
+                  "title": "Response Get Overlays V1 Parameter Overlay Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Overlays",
         "tags": [
           "parameters"
         ]

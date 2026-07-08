@@ -497,6 +497,13 @@ async def test_spx_overlay_tenant_change_uses_current_versions_after_render_race
         assert stages["deploy"]["state"] == "COMPLETE"
         assert stages["deploy"]["input"]["tenant_config_commit_id"] == "7"
         assert stages["deploy"]["input"]["intended_config_commit_id"] == "11"
+        assignment_children = stages["assign_spx_overlay"]["child_workflows"]
+        deploy_children = stages["deploy"]["child_workflows"]
+        assert len(assignment_children) == 1
+        assert len(deploy_children) == 1
+        assert handle.id not in assignment_children
+        assert handle.id not in deploy_children
+        assert assignment_children != deploy_children
 
 
 @pytest.mark.asyncio

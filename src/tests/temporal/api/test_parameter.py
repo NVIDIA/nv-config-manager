@@ -96,6 +96,16 @@ NAMESPACE_TAGS = {
     }
 }
 
+SPX_OVERLAYS = {
+    "count": 2,
+    "next": None,
+    "previous": None,
+    "results": [
+        {"id": "overlay-uuid-2", "name": "overlay-b"},
+        {"id": "overlay-uuid-1", "name": "overlay-a"},
+    ],
+}
+
 
 def test_site_v2():
     with aioresponses() as m:
@@ -344,6 +354,23 @@ def test_namespace_tag_malformed_response():
         rsp = client.get("/v1/parameter/namespace-tag")
         assert rsp.status_code == 500
         assert rsp.json() == {"detail": "Malformed Nautobot namespace tag response."}
+
+
+def test_overlays_with_filters():
+    """Test the generic overlay parameter endpoint with filters."""
+    with aioresponses() as m:
+        m.get(
+            "https://nautobot.example.com/api/plugins/overlays/overlays/"
+            "?location=SITEA&isolation_type=spectrum_x_vrf&limit=250&offset=0",
+            payload=SPX_OVERLAYS,
+        )
+
+        client = TestClient(app)
+        rsp = client.get("/v1/parameter/overlay?location=SITEA&isolation_type=spectrum_x_vrf")
+        assert rsp.json() == [
+            {"id": "overlay-uuid-1", "name": "overlay-a"},
+            {"id": "overlay-uuid-2", "name": "overlay-b"},
+        ]
 
 
 def test_status_with_content_type():

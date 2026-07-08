@@ -193,6 +193,7 @@ export type WorkflowStage = {
   retry_count: number;
   traceback: string | null;
   execution_time: number | null; // readonly
+  child_workflows?: string[];
 };
 
 export type Workflow = {

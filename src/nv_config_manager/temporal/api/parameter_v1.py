@@ -20,7 +20,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from temporalio.exceptions import ApplicationError
 
-from nv_config_manager.temporal.client.nautobot import NautobotClient
+from nv_config_manager.temporal.client.nautobot import OVERLAYS_PLUGIN_BASE, NautobotClient
 from nv_config_manager.temporal.common.mixins.device import NetworkDeviceData, Platform
 from nv_config_manager.temporal.ngc.activities.diagnostics import get_available_commands
 
@@ -107,6 +107,13 @@ class Role(BaseModel):
 
 class Tag(BaseModel):
     """Tag data for dropdown population."""
+
+    id: str
+    name: str
+
+
+class Overlay(BaseModel):
+    """Overlay data for dropdown population."""
 
     id: str
     name: str
@@ -311,6 +318,46 @@ async def get_namespace_tags(
             if isinstance(tag_name, str) and tag_name:
                 tag_names.add(tag_name)
     return [Tag(id=name, name=name) for name in sorted(tag_names)]
+
+
+@router.get("/overlay")
+async def get_overlays(
+    location: Annotated[str | None, Query(description="Limit to overlays at this location")] = None,
+    isolation_type: Annotated[
+        str | None, Query(description="Limit to overlays with this isolation type")
+    ] = None,
+) -> list[Overlay]:
+    """Return overlays, optionally filtered by location and isolation type."""
+    params: dict[str, str] = {}
+    if location:
+        params["location"] = location
+    if isolation_type:
+        params["isolation_type"] = isolation_type
+
+    client = NautobotClient()
+    try:
+        async with client:
+            overlays = await client.get_all(
+                f"{OVERLAYS_PLUGIN_BASE}/overlays/",
+                params=params,
+            )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to query Nautobot overlays.",
+        ) from exc
+
+    result: list[Overlay] = []
+    for overlay in overlays:
+        overlay_id = overlay.get("id")
+        name = overlay.get("name")
+        if not isinstance(overlay_id, str) or not isinstance(name, str):
+            raise HTTPException(
+                status_code=500,
+                detail="Malformed Nautobot overlay response.",
+            )
+        result.append(Overlay(id=overlay_id, name=name))
+    return sorted(result, key=lambda overlay: overlay.name)
 
 
 class Status(BaseModel):
