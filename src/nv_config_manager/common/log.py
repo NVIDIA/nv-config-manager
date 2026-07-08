@@ -155,6 +155,11 @@ def _build_formatter() -> logging.Formatter:
 # =============================================================================
 
 
+def escape_log_newlines(value: object) -> str:
+    """Escape characters that could forge additional log entries."""
+    return str(value).replace("\r", r"\r").replace("\n", r"\n")
+
+
 def configure_logging(service: str | None = None) -> None:
     """Configure the root logger for the entire process.
 

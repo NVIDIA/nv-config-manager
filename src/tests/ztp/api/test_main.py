@@ -521,18 +521,25 @@ def test_v1_files_get(client):
     mock_s3_instance.__aexit__ = AsyncMock(return_value=None)
     mock_s3_instance.connect = AsyncMock(return_value=mock_s3_instance)
     mock_s3_instance.close = AsyncMock(return_value=None)
-    mock_s3_instance.get_object = AsyncMock(return_value=("testfname", mock_streaming_body))
+    mock_s3_instance.get_object = AsyncMock(
+        return_value=("testfname\r\nFORGED", mock_streaming_body)
+    )
     mock_s3_class.return_value = mock_s3_instance
 
-    with patch(
-        "nv_config_manager.ztp.api.files_v1.get_storage_client", return_value=mock_s3_instance
+    with (
+        patch(
+            "nv_config_manager.ztp.api.files_v1.get_storage_client",
+            return_value=mock_s3_instance,
+        ),
+        patch("nv_config_manager.ztp.api.streaming.logger") as mock_logger,
     ):
         rsp = client.get("/v1/files/arista_eos/4.29.3M/image.bin", headers=SSO_HEADERS)
-        assert rsp.status_code == 200
-        assert rsp.content == mock_content
-        assert rsp.headers["content-disposition"] == (
-            "attachment; filename=\"testfname\"; filename*=UTF-8''testfname"
-        )
+    assert rsp.status_code == 200
+    assert rsp.content == mock_content
+    assert rsp.headers["content-disposition"] == (
+        "attachment; filename=\"testfnameFORGED\"; filename*=UTF-8''testfname%0D%0AFORGED"
+    )
+    mock_logger.info.assert_called_once_with("Streaming file: %s", r"testfname\r\nFORGED")
 
     # Object not found
     mock_s3_instance.get_object = AsyncMock(side_effect=S3NotFoundException())
