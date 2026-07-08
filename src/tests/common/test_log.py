@@ -73,6 +73,16 @@ def test_logger_adapter_escapes_format_arguments(caplog: pytest.LogCaptureFixtur
     assert caplog.messages[-1] == r"value=before\nafter count=2 error=bad\x1b[31mvalue"
 
 
+def test_logger_adapter_escapes_preformatted_message(caplog: pytest.LogCaptureFixture) -> None:
+    logger = get_logger("test.log-escaping")
+    unsafe_value = "before\nafter"
+
+    with caplog.at_level(logging.INFO, logger="test.log-escaping"):
+        logger.info(f"value={unsafe_value}")
+
+    assert caplog.messages[-1] == r"value=before\nafter"
+
+
 def test_logger_adapter_recursively_escapes_collection_arguments(
     caplog: pytest.LogCaptureFixture,
 ) -> None:

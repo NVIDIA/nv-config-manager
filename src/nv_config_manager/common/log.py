@@ -192,14 +192,15 @@ def _escape_log_argument(value: object) -> object:
 
 
 class EscapingLoggerAdapter(logging.LoggerAdapter):
-    """Logger adapter that escapes unsafe characters in formatting arguments."""
+    """Logger adapter that escapes unsafe characters in messages and arguments."""
 
     def log(self, level: int, msg: object, *args: object, **kwargs: Any) -> None:
-        """Delegate an enabled log call after sanitizing its arguments."""
+        """Delegate an enabled log call after sanitizing its message and arguments."""
         if self.isEnabledFor(level):
             msg, processed_kwargs = self.process(msg, kwargs)
+            escaped_msg = escape_log_newlines(msg)
             escaped_args = tuple(_escape_log_argument(arg) for arg in args)
-            self.logger.log(level, msg, *escaped_args, **processed_kwargs)
+            self.logger.log(level, escaped_msg, *escaped_args, **processed_kwargs)
 
 
 def configure_logging(service: str | None = None) -> None:
