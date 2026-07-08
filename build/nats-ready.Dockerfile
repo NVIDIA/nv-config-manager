@@ -39,7 +39,9 @@ ENV CGO_ENABLED=0
 
 # Note: Build context is components/nats-ready/
 WORKDIR /build
-COPY . .
+COPY go.mod go.sum ./
+COPY cmd/nats-ready/ ./cmd/nats-ready/
+COPY internal/nats-ready/ ./internal/nats-ready/
 
 # Build static binary
 RUN go build -ldflags="-s -w" -o bin/nats-ready ./cmd/nats-ready
