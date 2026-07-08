@@ -89,6 +89,11 @@ def test_logger_adapter_recursively_escapes_collection_arguments(
     logger = get_logger("test.log-escaping")
 
     with caplog.at_level(logging.INFO, logger="test.log-escaping"):
-        logger.info("nested=%s", {"items": [UnsafeLogValue(), ("bad\rvalue",)]})
+        logger.info(
+            "nested=%s",
+            {"bad\n\x1bkey": [UnsafeLogValue(), ("bad\rvalue",)]},
+        )
 
-    assert caplog.messages[-1] == r"nested={'items': ['before\\nafter', ('bad\\rvalue',)]}"
+    assert caplog.messages[-1] == (
+        r"nested={'bad\\n\\x1bkey': ['before\\nafter', ('bad\\rvalue',)]}"
+    )

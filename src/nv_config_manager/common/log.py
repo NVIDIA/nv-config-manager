@@ -185,7 +185,9 @@ def _escape_log_argument(value: object) -> object:
     if isinstance(value, tuple):
         return tuple(_escape_log_argument(item) for item in value)
     if isinstance(value, dict):
-        return {key: _escape_log_argument(item) for key, item in value.items()}
+        return {
+            _escape_log_argument(key): _escape_log_argument(item) for key, item in value.items()
+        }
     if isinstance(value, Number):
         return value
     return escape_log_newlines(value)

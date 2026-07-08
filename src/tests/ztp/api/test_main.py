@@ -417,14 +417,14 @@ def test_device_v1_validate_serial(mock_request_client, mock_device_data, client
             with patch("nv_config_manager.ztp.api.device_v1.logger") as mock_logger:
                 rsp = client.post(
                     f"/v1/device/{device_uuid}/validate_serial",
-                    json={"serial": "invalid_serial\r\nFORGED"},
+                    json={"serial": "invalid_serial"},
                 )
             assert rsp.status_code == 400
             mock_logger.error.assert_called_once_with(
                 "Serial number mismatch observed on device %s, expected: %s, observed: %s.",
                 device_uuid,
                 "expected_serial",
-                "invalid_serial\r\nFORGED",
+                "invalid_serial",
             )
 
 

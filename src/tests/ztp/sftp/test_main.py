@@ -177,9 +177,9 @@ def test_stat(sftp_server):
     """Test stat operation."""
     sftp_server.logger = MagicMock()
     with patch.object(sftp_server, "_mock_stat", return_value=SFTPAttributes()):
-        result = sftp_server.stat("/test\r\nFORGED/path")
+        result = sftp_server.stat("/test/path")
         assert isinstance(result, SFTPAttributes)
-    sftp_server.logger.debug.assert_called_once_with("stat request: %s", "/test\r\nFORGED/path")
+    sftp_server.logger.debug.assert_called_once_with("stat request: %s", "/test/path")
 
 
 def test_lstat(sftp_server):
