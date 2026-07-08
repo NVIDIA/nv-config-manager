@@ -24,6 +24,7 @@ import pytest
 from aioresponses import CallbackResult, aioresponses
 from temporalio.worker import Worker
 
+from nv_config_manager.temporal.common.activities import REGISTERED_COMMON_ACTIVITIES
 from nv_config_manager.temporal.common.secrets import clear_secrets_cache
 from nv_config_manager.temporal.ngc.activities.ib_nautobot import (
     ResolvedInterface,
@@ -135,6 +136,7 @@ _ALL_ACTIVITIES = [
     set_pkey_members,
     verify_pkey_members,
     publish_nats,
+    *REGISTERED_COMMON_ACTIVITIES,
 ]
 
 
