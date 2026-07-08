@@ -128,7 +128,7 @@ class ZTPSFTPHandle(SFTPHandle):
             "Reading %d bytes at offset %d from %s",
             length,
             offset,
-            getattr(self, "filename", "unknown"),
+            self.filename or "unknown",
         )
         try:
             if self.readfile is None:

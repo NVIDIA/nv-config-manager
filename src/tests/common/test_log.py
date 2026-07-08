@@ -21,6 +21,13 @@ import pytest
 from nv_config_manager.common.log import escape_log_newlines, get_logger
 
 
+class UnsafeLogValue:
+    """Value whose string representation contains unsafe log characters."""
+
+    def __str__(self) -> str:
+        return "before\nafter"
+
+
 @pytest.mark.parametrize(
     ("separator", "escaped"),
     [
@@ -64,3 +71,14 @@ def test_logger_adapter_escapes_format_arguments(caplog: pytest.LogCaptureFixtur
         )
 
     assert caplog.messages[-1] == r"value=before\nafter count=2 error=bad\x1b[31mvalue"
+
+
+def test_logger_adapter_recursively_escapes_collection_arguments(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    logger = get_logger("test.log-escaping")
+
+    with caplog.at_level(logging.INFO, logger="test.log-escaping"):
+        logger.info("nested=%s", {"items": [UnsafeLogValue(), ("bad\rvalue",)]})
+
+    assert caplog.messages[-1] == r"nested={'items': ['before\\nafter', ('bad\\rvalue',)]}"

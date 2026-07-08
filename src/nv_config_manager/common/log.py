@@ -20,6 +20,7 @@ import json
 import logging
 import os
 import re
+from numbers import Number
 from typing import Any
 
 from pythonjsonlogger import jsonlogger
@@ -176,10 +177,8 @@ def escape_log_newlines(value: object) -> str:
 
 
 def _escape_log_argument(value: object) -> object:
-    """Escape unsafe characters while preserving log formatting types."""
-    if isinstance(value, str):
-        return escape_log_newlines(value)
-    if isinstance(value, BaseException):
+    """Escape unsafe characters while preserving numeric formatting types."""
+    if isinstance(value, (str, BaseException)):
         return escape_log_newlines(value)
     if isinstance(value, list):
         return [_escape_log_argument(item) for item in value]
@@ -187,7 +186,9 @@ def _escape_log_argument(value: object) -> object:
         return tuple(_escape_log_argument(item) for item in value)
     if isinstance(value, dict):
         return {key: _escape_log_argument(item) for key, item in value.items()}
-    return value
+    if isinstance(value, Number):
+        return value
+    return escape_log_newlines(value)
 
 
 class EscapingLoggerAdapter(logging.LoggerAdapter):
