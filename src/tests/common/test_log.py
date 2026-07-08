@@ -36,3 +36,11 @@ from nv_config_manager.common.log import escape_log_newlines
 )
 def test_escape_log_newlines_escapes_line_separators(separator: str, escaped: str) -> None:
     assert escape_log_newlines(f"before{separator}after") == f"before{escaped}after"
+
+
+def test_escape_log_newlines_stringifies_objects() -> None:
+    assert escape_log_newlines(ValueError("before\nafter")) == r"before\nafter"
+
+
+def test_escape_log_newlines_preserves_text_without_separators() -> None:
+    assert escape_log_newlines("unchanged") == "unchanged"
