@@ -41,8 +41,8 @@ type StreamConfig struct {
 	Config jetstream.StreamConfig `json:"config"`
 }
 
-// NatsRunnable defines the interface for running NATS readiness checks.
-type NatsRunnable interface {
+// Runner defines the interface for running NATS readiness checks.
+type Runner interface {
 	Run() error
 }
 
@@ -78,7 +78,7 @@ func applyStreamOverrides(streamConfig *StreamConfig, nameEnv string, subjectsEn
 	}
 }
 
-func NewNatsRunnable(config *NatsReadyConfig) (NatsRunnable, error) {
+func NewNatsRunnable(config *NatsReadyConfig) (Runner, error) {
 	config.nautobotNATSConfigBytes = nautobotConfigJSON
 	config.nvConfigManagerNATSConfigBytes = nvConfigManagerStreamConfigJSON
 	logger := log.With().
