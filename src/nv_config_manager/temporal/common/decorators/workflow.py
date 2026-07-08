@@ -55,6 +55,12 @@ _RENEW_RETRY_POLICY = RetryPolicy(maximum_attempts=3)
 _RELEASE_RETRY_POLICY = RetryPolicy(maximum_attempts=3)
 
 
+# Gate the workflow-level lock behind a Temporal patch so executions started
+# before the lock existed replay deterministically
+# See https://docs.temporal.io/patching.
+_WORKFLOW_LOCK_PATCH_ID = "nvcm-workflow-lock-v1"
+
+
 class WorkflowRuntimeFailure(ApplicationError):
     """Failures raised during workflow execution."""
 
@@ -72,7 +78,7 @@ def run_nv_config_manager_workflow[F: Callable[..., Any]](func: F) -> F:
     async def _run(*args: object) -> Any:
         spec = _resolve_lock_spec(args[0]) if args else None
         try:
-            if spec is None:
+            if spec is None or not workflow.patched(_WORKFLOW_LOCK_PATCH_ID):
                 return await func(*args)
             return await _run_with_lock(func, args, spec)
         except Exception as error:
