@@ -23,6 +23,8 @@ jobs:
       contents: read
     steps:
       - uses: &actions_checkout actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
       - name: Setup proxy cache
         uses: &setup_proxy_cache nv-gha-runners/setup-proxy-cache@14229018fe157c83e03c008f27d183d8e99bc67c
       - uses: &actions_setup_python actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
@@ -58,6 +60,7 @@ jobs:
       - uses: *actions_checkout
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Setup proxy cache
         uses: *setup_proxy_cache
       - uses: *actions_setup_python
@@ -85,6 +88,7 @@ jobs:
       - uses: *actions_checkout
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Setup proxy cache
         uses: *setup_proxy_cache
       - uses: *actions_setup_python
@@ -110,6 +114,8 @@ jobs:
       contents: read
     steps:
       - uses: *actions_checkout
+        with:
+          persist-credentials: false
       - name: Setup proxy cache
         uses: *setup_proxy_cache
       - name: Check source headers
@@ -140,6 +146,8 @@ jobs:
       contents: read
     steps:
       - uses: *actions_checkout
+        with:
+          persist-credentials: false
       - name: Setup proxy cache
         uses: *setup_proxy_cache
       - uses: *actions_setup_python
@@ -170,6 +178,8 @@ jobs:
       contents: read
     steps:
       - uses: *actions_checkout
+        with:
+          persist-credentials: false
       - name: Setup proxy cache
         uses: *setup_proxy_cache
       - uses: *actions_setup_python
@@ -196,6 +206,8 @@ jobs:
       contents: read
     steps:
       - uses: *actions_checkout
+        with:
+          persist-credentials: false
       - name: Setup proxy cache
         uses: *setup_proxy_cache
       - uses: *actions_setup_python
@@ -219,6 +231,8 @@ jobs:
       contents: read
     steps:
       - uses: *actions_checkout
+        with:
+          persist-credentials: false
       - name: Setup proxy cache
         uses: *setup_proxy_cache
       - uses: &actions_setup_go actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
@@ -238,6 +252,8 @@ jobs:
       contents: read
     steps:
       - uses: *actions_checkout
+        with:
+          persist-credentials: false
       - name: Setup proxy cache
         uses: *setup_proxy_cache
       - name: Install Helm
@@ -283,6 +299,8 @@ jobs:
       pull-requests: read
     steps:
       - uses: *actions_checkout
+        with:
+          persist-credentials: false
       - name: Setup proxy cache
         uses: *setup_proxy_cache
       - uses: *actions_setup_python
@@ -420,6 +438,8 @@ jobs:
         working-directory: ui
     steps:
       - uses: *actions_checkout
+        with:
+          persist-credentials: false
       - name: Setup proxy cache
         uses: *setup_proxy_cache
       - name: Cache npm
@@ -444,6 +464,8 @@ jobs:
         working-directory: ui
     steps:
       - uses: *actions_checkout
+        with:
+          persist-credentials: false
       - name: Setup proxy cache
         uses: *setup_proxy_cache
       - name: Cache npm

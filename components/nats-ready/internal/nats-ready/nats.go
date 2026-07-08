@@ -78,7 +78,7 @@ func applyStreamOverrides(streamConfig *StreamConfig, nameEnv string, subjectsEn
 	}
 }
 
-func NewNatsRunnable(config *NatsReadyConfig) (Runner, error) {
+func NewRunner(config *NatsReadyConfig) (Runner, error) {
 	config.nautobotNATSConfigBytes = nautobotConfigJSON
 	config.nvConfigManagerNATSConfigBytes = nvConfigManagerStreamConfigJSON
 	logger := log.With().

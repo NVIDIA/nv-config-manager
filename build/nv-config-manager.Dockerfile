@@ -41,7 +41,7 @@ RUN set -eux; \
 WORKDIR /code/nv-config-manager
 ARG TEMPLATE_ENGINE_VERSION=""
 
-# Copy all project files
+# Copy only the project files and directories required by the image
 COPY pyproject.toml uv.lock README.md /code/nv-config-manager/
 COPY src/nv_config_manager/ /code/nv-config-manager/src/nv_config_manager/
 COPY src/tests/ /code/nv-config-manager/src/tests/
