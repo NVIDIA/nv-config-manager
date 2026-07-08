@@ -18,7 +18,7 @@ package natsready
 
 import (
 	"context"
-	_ "embed"
+	_ "embed" // Required to enable the //go:embed directives below.
 	"encoding/json"
 	"fmt"
 	"os"
