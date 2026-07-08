@@ -24,15 +24,25 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import click
 
 from nv_config_manager_installer import __version__
 from nv_config_manager_installer.air_sim.cli import air_sim
-
-if TYPE_CHECKING:
-    from nv_config_manager_installer.schema import NVConfigManagerInstallConfig
+from nv_config_manager_installer.deployer import (
+    DeployCallback,
+    Deployer,
+    DeploymentMode,
+    DeployOptions,
+    DeployStep,
+)
+from nv_config_manager_installer.helm_values import generate_helm_values
+from nv_config_manager_installer.schema import (
+    ImageSource,
+    NVConfigManagerInstallConfig,
+)
+from nv_config_manager_installer.secrets import generate_secrets
+from nv_config_manager_installer.tui.app import NVConfigManagerInstallerApp
 
 
 @click.group()
@@ -55,9 +65,6 @@ main.add_command(air_sim)
 )
 def init(config_path: Path) -> None:
     """Launch the interactive TUI wizard."""
-    from nv_config_manager_installer.schema import NVConfigManagerInstallConfig
-    from nv_config_manager_installer.tui.app import NVConfigManagerInstallerApp
-
     config = NVConfigManagerInstallConfig()
     if config_path.exists():
         click.echo(f"Loading existing config: {config_path}")
@@ -74,8 +81,6 @@ def init(config_path: Path) -> None:
 )
 def validate(config_path: Path) -> None:
     """Validate a nv-config-manager-install.yaml config file."""
-    from nv_config_manager_installer.schema import NVConfigManagerInstallConfig
-
     try:
         config = NVConfigManagerInstallConfig.from_yaml(config_path)
     except Exception as exc:
@@ -142,10 +147,6 @@ def generate_values(
     chart_dir: Path | None,
 ) -> None:
     """Generate Helm values from config."""
-    from nv_config_manager_installer.helm_values import generate_helm_values
-    from nv_config_manager_installer.schema import NVConfigManagerInstallConfig
-    from nv_config_manager_installer.secrets import generate_secrets
-
     config = NVConfigManagerInstallConfig.from_yaml(config_path)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -195,6 +196,13 @@ def generate_values(
     help="Stream pod readiness summaries while Helm waits when --helm-debug is set.",
 )
 @click.option("--recreate-secrets", is_flag=True, help="Recreate existing K8s secrets.")
+@click.option(
+    "--vault-token-file",
+    "openbao_token_file",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="File containing the Vault provisioning token (ESO deployments).",
+)
 @click.option("--dry-run", is_flag=True, help="Generate values only, skip helm install.")
 def deploy(
     config_path: Path,
@@ -211,17 +219,10 @@ def deploy(
     helm_debug: bool,
     watch_pods: bool,
     recreate_secrets: bool,
+    openbao_token_file: Path | None,
     dry_run: bool,
 ) -> None:
     """Deploy NVIDIA Config Manager from a config file (headless, for CI/CD)."""
-    from nv_config_manager_installer.deployer import (
-        DeployCallback,
-        Deployer,
-        DeployOptions,
-        DeployStep,
-    )
-    from nv_config_manager_installer.schema import ImageSource, NVConfigManagerInstallConfig
-
     config = NVConfigManagerInstallConfig.from_yaml(config_path)
 
     if image_source:
@@ -241,35 +242,95 @@ def deploy(
         helm_debug=helm_debug,
         watch_pods=watch_pods,
         recreate_secrets=recreate_secrets,
+        openbao_token_file=openbao_token_file,
         dry_run=dry_run,
     )
 
-    class _CliCallback(DeployCallback):
-        def on_step_update(self, step: DeployStep) -> None:
-            icon = {
-                "pending": "[ ]",
-                "running": "[>]",
-                "success": "[*]",
-                "failed": "[!]",
-                "skipped": "[-]",
-            }
-            click.echo(f"{icon.get(step.status, '[ ]')}  {step.label}")
+    _run_deployer(config, options, operation="Deployment")
 
-        def on_log(self, message: str) -> None:
-            click.echo(f"  {message}")
 
-        def on_complete(self, success: bool, endpoints: list[str]) -> None:
-            if success:
-                click.echo("\nDeployment completed successfully!")
-                for ep in endpoints:
-                    click.echo(f"  {ep}")
-            else:
-                click.echo("\nDeployment failed.", err=True)
+@main.command("argocd")
+@click.argument(
+    "config_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+)
+@click.option(
+    "--output-dir",
+    "-o",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=Path("."),
+    help="Directory for the generated Argo CD values file.",
+)
+@click.option("--chart-dir", default="deploy/helm", help="Path to the Helm chart directory.")
+@click.option(
+    "--vault-token-file",
+    "openbao_token_file",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="File containing the Vault provisioning token (ESO deployments).",
+)
+def argocd(
+    config_path: Path,
+    output_dir: Path,
+    chart_dir: str,
+    openbao_token_file: Path | None,
+) -> None:
+    """Prepare installer-owned resources before Argo CD deploys NVCM.
 
-    deployer = Deployer(config, options, _CliCallback())
-    success = deployer.run()
-    if not success:
-        sys.exit(1)
+    This creates the namespace and content PVCs, populates Nautobot jobs,
+    template plugins, and file-backed OS images, and generates a values file.
+    It does not create an ApplicationSet, copy files to Git, or sync Argo CD.
+    """
+    config = NVConfigManagerInstallConfig.from_yaml(config_path)
+    options = DeployOptions(
+        mode=DeploymentMode.ARGOCD,
+        chart_dir=chart_dir,
+        values_output=(output_dir / "values-generated.yaml").resolve(),
+        openbao_token_file=openbao_token_file,
+    )
+    _run_deployer(config, options, operation="Argo CD preparation")
+    click.echo("\nNext: copy values-generated.yaml into the Argo CD repository, add the")
+    click.echo("NVCM Application/ApplicationSet, and sync it using the site's normal process.")
+
+
+class _CliCallback(DeployCallback):
+    """Render deployer progress for headless CLI commands."""
+
+    def __init__(self, operation: str) -> None:
+        self.operation = operation
+
+    def on_step_update(self, step: DeployStep) -> None:
+        icon = {
+            "pending": "[ ]",
+            "running": "[>]",
+            "success": "[*]",
+            "failed": "[!]",
+            "skipped": "[-]",
+        }
+        click.echo(f"{icon.get(step.status, '[ ]')}  {step.label}")
+
+    def on_log(self, message: str) -> None:
+        click.echo(f"  {message}")
+
+    def on_complete(self, success: bool, endpoints: list[str]) -> None:
+        if success:
+            click.echo(f"\n{self.operation} completed successfully!")
+            for endpoint in endpoints:
+                click.echo(f"  {endpoint}")
+        else:
+            click.echo(f"\n{self.operation} failed.", err=True)
+
+
+def _run_deployer(
+    config: NVConfigManagerInstallConfig,
+    options: DeployOptions,
+    *,
+    operation: str,
+) -> None:
+    """Run a deployment pipeline and map failure to a Click exit status."""
+    deployer = Deployer(config, options, _CliCallback(operation))
+    if not deployer.run():
+        raise click.exceptions.Exit(1)
 
 
 if __name__ == "__main__":

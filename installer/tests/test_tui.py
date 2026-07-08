@@ -16,20 +16,28 @@
 
 from __future__ import annotations
 
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
+from textual.widgets import Input, Select
 
-from nv_config_manager_installer.deployer import DeployOptions
+from nv_config_manager_installer.deployer import DeploymentMode, DeployOptions
 from nv_config_manager_installer.schema import (
     ClusterConfig,
     ImageSource,
     NVConfigManagerInstallConfig,
+    SecretsConfig,
+    SecretsMethod,
     SiteConfig,
+    VaultAuth,
+    VaultAuthMethod,
+    VaultConfig,
+    ZTPOSImage,
 )
 from nv_config_manager_installer.tui.app import NVConfigManagerInstallerApp
 from nv_config_manager_installer.tui.screens.cluster import ClusterScreen
 from nv_config_manager_installer.tui.screens.deploy import DeployScreen
+from nv_config_manager_installer.tui.widgets import LabeledSwitch
 
 
 @pytest.mark.asyncio
@@ -123,3 +131,112 @@ async def test_deployment_start_selects_local_image_source(
 
     assert deployed_config.images.source == ImageSource.LOCAL
     assert deployed_options is options
+
+
+@pytest.mark.asyncio
+async def test_deploy_screen_offers_argocd_mode():
+    app = NVConfigManagerInstallerApp(config=NVConfigManagerInstallConfig())
+    async with app.run_test():
+        app.switch_section("deploy")
+        deploy_screen = app._screens["deploy"]
+        mode_switch = deploy_screen.query_one("#opt-argocd-managed", LabeledSwitch)
+
+        mode_switch.value = True
+        await app.workers.wait_for_complete()
+
+        assert mode_switch.value is True
+        options = deploy_screen._collect_deploy_options()
+        assert options.mode == DeploymentMode.ARGOCD
+        assert options.values_output.name == "values-generated.yaml"
+        assert options.openbao_token_file is None
+
+
+@pytest.mark.asyncio
+async def test_ztp_screen_preserves_unknown_platform_from_config():
+    config = NVConfigManagerInstallConfig()
+    config.infrastructure.ztp_storage.os_images = [
+        ZTPOSImage(platform="sonic", version="e2e-v1", path="/tmp/sonic.bin")
+    ]
+    app = NVConfigManagerInstallerApp(config=config)
+
+    async with app.run_test():
+        app.switch_section("ztp")
+        platform = app._screens["ztp"].query_one("#ztp-img-0-platform", Select)
+
+        assert platform.value == "sonic"
+        app.collect_config()
+        assert app.config.infrastructure.ztp_storage.os_images[0].platform == "sonic"
+
+
+@pytest.mark.asyncio
+async def test_app_secrets_eso_defaults_site_path_and_collects_manual_value():
+    config = NVConfigManagerInstallConfig(
+        secrets=SecretsConfig(
+            method=SecretsMethod.ESO,
+            vault=VaultConfig(
+                server="https://openbao.example.com",
+                secrets_path="nv-config-manager",
+                auth=VaultAuth(method=VaultAuthMethod.TOKEN, token_secret_name=""),
+            ),
+        ),
+        sites=[SiteConfig(name="dc01")],
+    )
+    app = NVConfigManagerInstallerApp(config=config)
+
+    async with app.run_test():
+        app.switch_section("secrets")
+        secrets_screen = app._screens["secrets"]
+
+        assert secrets_screen.get_status(config) == "[*]"
+        assert secrets_screen.query_one("#k8s-secrets-section").display is False
+        secrets_screen.query_one("#vp-key-redis-password", Input).value = "redis_password"
+        secrets_screen.query_one("#vp-value-redis-password", Input).value = "manual-password"
+        app.collect_config()
+
+        assert app.config.sites[0].vault_path == ""
+        assert app.config.secrets.vault.paths.redis.keys["password"] == "redis_password"
+        assert app.config.secrets.k8s.redis.values["password"] == "manual-password"
+
+
+@pytest.mark.asyncio
+@patch("nv_config_manager_installer.tui.screens.vault.OpenBaoClient")
+@patch("nv_config_manager_installer.tui.screens.vault.K8sClient")
+async def test_app_secrets_marks_existing_vault_values_without_copying_them(
+    mock_k8s_cls,
+    mock_vault_cls,
+):
+    mock_k8s_cls.return_value.read_secret_data.return_value = {"token": "vault-token"}
+    mock_vault_cls.return_value.read_secret.return_value = ({"password": "vault-secret"}, 1)
+    config = NVConfigManagerInstallConfig(
+        secrets=SecretsConfig(
+            method=SecretsMethod.ESO,
+            vault=VaultConfig(
+                server="https://vault.example.com",
+                secrets_path="nv-config-manager",
+                auth=VaultAuth(
+                    method=VaultAuthMethod.TOKEN,
+                    token_secret_name="vault-token",
+                ),
+            ),
+        ),
+    )
+    app = NVConfigManagerInstallerApp(config=config)
+
+    async def run_inline(function):
+        return function()
+
+    with patch("nv_config_manager_installer.tui.screens.vault.asyncio.to_thread", new=run_inline):
+        async with app.run_test():
+            app.switch_section("secrets")
+            await app.workers.wait_for_complete()
+            secrets_screen = app._screens["secrets"]
+            value_input = secrets_screen.query_one("#vp-value-redis-password", Input)
+
+            assert value_input.password is True
+            assert value_input.value
+            assert value_input.value != "vault-secret"
+            assert "Present in Vault" in str(
+                secrets_screen.query_one("#vp-status-redis-password").render()
+            )
+            app.collect_config()
+            assert "password" not in app.config.secrets.k8s.redis.values

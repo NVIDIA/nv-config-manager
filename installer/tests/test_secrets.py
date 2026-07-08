@@ -30,6 +30,7 @@ from nv_config_manager_installer.schema import (
     RedfishVendorCreds,
     SecretsConfig,
     SecretsMethod,
+    SSOConfig,
     VaultAuth,
     VaultAuthMethod,
     VaultConfig,
@@ -38,7 +39,11 @@ from nv_config_manager_installer.schema import (
     ZTPStorageConfig,
     ZTPStorageType,
 )
-from nv_config_manager_installer.secrets import build_eso_vault_config, generate_secrets
+from nv_config_manager_installer.secrets import (
+    build_eso_vault_config,
+    build_openbao_secret_data,
+    generate_secrets,
+)
 
 
 class TestGenerateSecrets:
@@ -306,6 +311,8 @@ class TestESOVaultConfig:
             "network",
             "nautobotApp",
             "oidc",
+            "redfish",
+            "bmc",
         ):
             assert group in paths, f"{group} missing from paths"
             assert "path" in paths[group]
@@ -404,6 +411,43 @@ class TestESOVaultConfig:
         oidc_keys = result["secrets"]["vault"]["paths"]["oidc"]["keys"]
 
         assert set(oidc_keys) == {"clientSecret", "cookieSecret"}
+
+
+class TestOpenBaoSecretData:
+    def test_builds_core_and_configured_integration_values(self):
+        config = NVConfigManagerInstallConfig(
+            secrets=SecretsConfig(
+                method=SecretsMethod.ESO,
+                k8s=KubernetesSecretsConfig(
+                    network=K8sSecretGroup(
+                        values={"user": "automation", "password": "device-password"}
+                    ),
+                ),
+            ),
+            sso=SSOConfig(enabled=True, client_secret="oidc-secret"),
+            redfish=RedfishConfig(
+                enabled=True,
+                vendors={
+                    "lenovo": RedfishVendorCreds(
+                        default_user="USERID",
+                        default_password="lenovo-password",
+                    )
+                },
+            ),
+        )
+
+        groups = build_openbao_secret_data(config)
+
+        assert groups["network"] == {
+            "user": "automation",
+            "password": "device-password",
+        }
+        assert groups["oidc"]["clientSecret"] == "oidc-secret"
+        assert groups["redfish"]["lenovoDefaultUser"] == "USERID"
+        assert groups["redfish"]["lenovoDefaultPassword"] == "lenovo-password"
+        assert "credsJson" in groups["bmc"]
+        assert len(groups["nautobot"]["token"]) == 40
+        assert groups["postgres"]["temporalUser"] == "temporal"
 
 
 class TestRedfishSecrets:

@@ -133,3 +133,20 @@ class TestDeployCommand:
         assert "--helm-debug" in result.output
         assert "--watch-pods" in result.output
         assert "--no-watch-pods" in result.output
+        assert "--vault-token-file" in result.output
+
+
+class TestArgoCDCommand:
+    def test_argocd_missing_config(self):
+        runner = CliRunner()
+        result = runner.invoke(main, ["argocd", "/nonexistent/config.yaml"])
+        assert result.exit_code != 0
+
+    def test_argocd_help(self):
+        runner = CliRunner()
+        result = runner.invoke(main, ["argocd", "--help"])
+        assert result.exit_code == 0
+        assert "Prepare installer-owned resources" in result.output
+        assert "--output-dir" in result.output
+        assert "--chart-dir" in result.output
+        assert "--vault-token-file" in result.output

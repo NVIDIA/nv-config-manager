@@ -22,6 +22,7 @@ For source=vault, the value comes from ESO at runtime and is not stored here.
 
 from __future__ import annotations
 
+import json
 import secrets
 import string
 from typing import Any
@@ -198,6 +199,114 @@ def generate_secrets(config: NVConfigManagerInstallConfig) -> dict[str, str]:
     return state
 
 
+def build_openbao_secret_data(
+    config: NVConfigManagerInstallConfig,
+) -> dict[str, dict[str, str]]:
+    """Build logical OpenBao values for every installer-supported ESO path.
+
+    The returned keys are schema path-group names and logical Helm key names.
+    The OpenBao writer translates logical names through each group's configured
+    ``keys`` mapping before writing KV v2 data.
+    """
+
+    def value(group: str, key: str) -> str:
+        return _k8s_val(config, group, key)
+
+    nats_password = value("nautobot", "natsPassword") or _generate_nats_config_password()
+    nautobot_token = (
+        value("nautobot", "token")
+        or value("nautobot_app", "superuserApiToken")
+        or _generate_token(40)
+    )
+    groups: dict[str, dict[str, str]] = {
+        "nautobot": {
+            "token": nautobot_token,
+            "readOnlyToken": value("nautobot", "readOnlyToken") or _generate_token(40),
+            "natsPassword": _validate_nats_config_password(nats_password),
+            "natsSysPassword": value("nautobot", "natsSysPassword")
+            or _generate_nats_config_password(),
+            "natsNautobotPassword": value("nautobot", "natsNautobotPassword")
+            or _generate_nats_config_password(),
+        },
+        "redis": {
+            "password": value("redis", "password") or _generate_url_safe_password(),
+        },
+        "postgres": {},
+        "network": {
+            "user": value("network", "user") or config.secrets.config_manager_service_username,
+            "password": value("network", "password") or _generate_url_safe_password(),
+        },
+        "nautobot_app": {
+            "adminPassword": value("nautobot_app", "adminPassword") or _generate_password(),
+            "djangoSecretKey": value("nautobot_app", "djangoSecretKey") or _generate_password(50),
+            "superuserApiToken": nautobot_token,
+        },
+    }
+    for database, user_key, password_key in _DB_GROUPS:
+        groups["postgres"][user_key] = value("postgres", user_key) or database
+        groups["postgres"][password_key] = value("postgres", password_key) or (
+            _generate_url_safe_password()
+        )
+
+    if config.sso.enabled:
+        groups["oidc"] = {
+            "clientSecret": config.sso.client_secret,
+            "cookieSecret": _generate_url_safe_password(),
+        }
+
+    optional = (
+        ("slack", {"token": value("slack", "token")}),
+        (
+            "jira",
+            {
+                "baseUrl": value("jira", "baseUrl"),
+                "apiToken": value("jira", "apiToken"),
+            },
+        ),
+        (
+            "cnpg_backup",
+            {
+                "accessKeyId": value("cnpg_backup", "accessKeyId"),
+                "accessSecretKey": value("cnpg_backup", "accessSecretKey"),
+            },
+        ),
+    )
+    for group, data in optional:
+        if getattr(config.secrets.vault.paths, group).enabled:
+            groups[group] = data
+
+    if config.redfish.enabled:
+        redfish: dict[str, str] = {}
+        for vendor in ("lenovo", "bluefield"):
+            creds = config.redfish.vendors.get(vendor)
+            default_user = creds.default_user if creds else ""
+            default_password = creds.default_password if creds else ""
+            manager_password = creds.config_manager_password if creds else ""
+            redfish[f"{vendor}DefaultUser"] = default_user or (
+                "USERID" if vendor == "lenovo" else "admin"
+            )
+            redfish[f"{vendor}DefaultPassword"] = default_password or _generate_password()
+            redfish[f"{vendor}ConfigManagerPassword"] = manager_password or _generate_password()
+        groups["redfish"] = redfish
+        default_creds = config.redfish.vendors.get("default")
+        groups["bmc"] = {
+            "credsJson": json.dumps(
+                {
+                    "default": {
+                        "username": (default_creds.default_user if default_creds else "admin"),
+                        "password": (
+                            default_creds.default_password
+                            if default_creds and default_creds.default_password
+                            else _generate_password()
+                        ),
+                    }
+                }
+            )
+        }
+
+    return groups
+
+
 # ---------------------------------------------------------------------------
 # ESO config generation
 # ---------------------------------------------------------------------------
@@ -213,6 +322,8 @@ _VAULT_PATH_GROUPS: list[tuple[str, str, str]] = [
     ("network", "network", "network"),
     ("nautobot_app", "nautobotApp", "nautobot-app"),
     ("oidc", "oidc", "oidc"),
+    ("redfish", "redfish", "redfish"),
+    ("bmc", "bmc", "bmc"),
     ("slack", "slack", "slack"),
     ("jira", "jira", "jira"),
     ("cnpg_backup", "cnpgBackup", "cnpg-backup"),
