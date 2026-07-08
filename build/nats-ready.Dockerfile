@@ -50,4 +50,5 @@ RUN go build -ldflags="-s -w" -o bin/nats-ready ./cmd/nats-ready
 FROM nvcr.io/nvidia/distroless/go:v4.0.8
 
 COPY --from=builder /build/bin/nats-ready /nats-ready
+USER nvs
 ENTRYPOINT ["/nats-ready"]

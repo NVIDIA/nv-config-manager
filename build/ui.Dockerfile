@@ -66,6 +66,8 @@ COPY --from=builder --chown=1000:1000 /app/public ./public
 COPY --from=builder --chown=1000:1000 /app/.next/standalone ./
 COPY --from=builder --chown=1000:1000 /app/.next/static ./.next/static
 
+USER nvs
+
 EXPOSE 3000
 
 ENV PORT=3000

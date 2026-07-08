@@ -144,6 +144,8 @@ COPY --from=builder /lib/*-linux-gnu/libzstd.so* /usr/lib/
 # Set PATH to include the venv executables
 ENV PATH="/opt/nautobot/.venv/bin:$PATH"
 
+USER nvs
+
 # Expose Nautobot port
 EXPOSE 8080
 

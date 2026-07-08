@@ -140,5 +140,7 @@ ENV PATH="/code/nv-config-manager/.venv/bin:$PATH"
 # built from Dockerfile.kea-admin using the official ISC kea-admin tool.
 # =============================================================================
 
+USER nvs
+
 # Default: start nothing (override CMD to run a service)
 CMD ["python", "-c", "print('NVIDIA Config Manager - Specify a service entrypoint')"]

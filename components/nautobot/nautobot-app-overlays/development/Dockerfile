@@ -32,3 +32,5 @@ COPY development/nautobot_config.py ${NAUTOBOT_ROOT}/nautobot_config.py
 # Copy the entrypoint script for installing local plugins
 COPY development/entrypoint.sh /opt/entrypoint.sh
 RUN chmod +x /opt/entrypoint.sh
+
+USER nautobot
