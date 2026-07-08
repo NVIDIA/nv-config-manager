@@ -41,8 +41,10 @@ ARG NAUTOBOT_NV_CONFIG_MANAGER_VERSION=""
 # Copy configuration and dependencies
 # Note: Build context is components/nautobot/
 COPY pyproject.toml uv.lock /opt/nautobot/
-COPY nautobot-app-overlays /opt/nautobot/nautobot-app-overlays
-COPY nautobot-nv-config-manager /opt/nautobot/nautobot-nv-config-manager
+COPY nautobot-app-overlays/pyproject.toml nautobot-app-overlays/README.md /opt/nautobot/nautobot-app-overlays/
+COPY nautobot-app-overlays/nautobot_app_overlays/ /opt/nautobot/nautobot-app-overlays/nautobot_app_overlays/
+COPY nautobot-nv-config-manager/pyproject.toml nautobot-nv-config-manager/README.md /opt/nautobot/nautobot-nv-config-manager/
+COPY nautobot-nv-config-manager/nv_config_manager/ /opt/nautobot/nautobot-nv-config-manager/nv_config_manager/
 COPY nautobot_config.py /opt/nautobot/nautobot_config.py
 COPY nv_config_manager_jobs /opt/nautobot/jobs/nv_config_manager_jobs
 COPY nv_config_manager_auth /opt/nautobot/nv_config_manager_auth

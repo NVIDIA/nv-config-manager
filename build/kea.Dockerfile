@@ -45,7 +45,12 @@ RUN bash /tmp/setup.stork.deb.sh && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy supervisor and kea configuration
-COPY build/kea/ /
+COPY build/kea/etc/kea/kea-ctrl-agent.conf /etc/kea/kea-ctrl-agent.conf
+COPY build/kea/etc/kea/kea-dhcp4.conf /etc/kea/kea-dhcp4.conf
+COPY build/kea/etc/supervisor/supervisord.conf /etc/supervisor/supervisord.conf
+COPY build/kea/etc/supervisor/conf.d/kea-ctrl-agent.conf /etc/supervisor/conf.d/kea-ctrl-agent.conf
+COPY build/kea/etc/supervisor/conf.d/kea-dhcp4.conf /etc/supervisor/conf.d/kea-dhcp4.conf
+COPY build/kea/etc/supervisor/conf.d/stork-agent.conf /etc/supervisor/conf.d/stork-agent.conf
 
 # Ensure kea and supervisor directories exist with correct permissions
 # Update hooks library path for architecture (Ubuntu uses arch-specific paths like

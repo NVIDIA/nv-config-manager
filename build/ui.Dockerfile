@@ -42,7 +42,9 @@ RUN npm ci
 # =============================================================================
 FROM deps AS builder
 WORKDIR /app
-COPY . .
+COPY next-env.d.ts next.config.mjs postcss.config.mjs tailwind.config.ts tsconfig.json ./
+COPY public/ ./public/
+COPY src/ ./src/
 
 # Next.js telemetry disabled
 ENV NEXT_TELEMETRY_DISABLED=1
