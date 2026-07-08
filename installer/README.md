@@ -45,6 +45,9 @@ uv run nvcm-installer validate nv-config-manager-install.yaml
 
 # Generate Helm values without deploying
 uv run nvcm-installer generate-values nv-config-manager-install.yaml -o ./generated
+
+# Prepare installer-owned resources and values before adding the NVCM Argo CD app
+uv run nvcm-installer argocd nv-config-manager-install.yaml -o ./generated
 ```
 
 ---
@@ -144,12 +147,53 @@ nvcm-installer deploy nv-config-manager-install.yaml \
 | `--install-cnpg-operator` | `false` | Install CloudNativePG operator |
 | `--helm-timeout` | `15m` | Helm install/upgrade timeout |
 | `--recreate-secrets` | `false` | Force-recreate Kubernetes secrets |
+| `--vault-token-file` | unset | File containing a provisioning token when ESO/Vault is selected |
 | `--dry-run` | `false` | Generate values but skip Helm install |
 
 Prerequisite operator versions are read from `deploy/operator-versions.env`.
 When `cluster.airgapped` is true, or the chart directory sits inside an
 airgapped bundle with sibling `charts/` and `manifests/` directories, the
 installer uses the local bundled artifacts.
+
+### `nvcm-installer argocd`
+
+Prepare a site before the NVCM Argo CD application is added or synced.
+
+```bash
+# 1. Argo CD and infrastructure applications such as Keycloak, ESO,
+#    Vault, and cert-manager are installed first.
+
+# 2. Create/populate installer-owned resources and generate values.
+nvcm-installer argocd nv-config-manager-install.yaml --output-dir ./generated
+
+# 3. Copy values-generated.yaml into the Argo CD repository, add the NVCM
+#    Application/ApplicationSet, and sync it using the site's normal process.
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--output-dir`, `-o` | `.` | Directory for `values-generated.yaml` |
+| `--chart-dir` | `deploy/helm` | Helm chart used for size-profile generation |
+| `--vault-token-file` | unset | File containing a Vault provisioning token |
+
+The command creates the namespace, creates and populates the Nautobot jobs,
+template plugin, and file-backed OS image PVCs, populates secrets, and writes
+`values-generated.yaml`. It does not install operators, run Helm, create an
+ApplicationSet, copy files to Git, or sync Argo CD.
+
+When ESO is selected, the installer creates the configured KV v2 mounts when
+missing and fills absent keys in the application, Git-token, and per-site
+Vault paths. Existing values are preserved, so rerunning preparation does not
+rotate credentials. The provisioning token is resolved in this order:
+
+1. `--vault-token-file`
+2. `VAULT_TOKEN`
+3. The Kubernetes Secret named by token authentication, using its `token` key
+
+The token must be allowed to inspect/create the configured mounts and read/write
+their KV v2 paths. External credentials such as OIDC, Slack, Jira, and Git
+tokens must be supplied in the installer configuration or already exist at the
+configured Vault path; the installer will not invent integration credentials.
 
 ---
 
@@ -286,7 +330,7 @@ When **ESO** is selected, additional Vault fields appear:
 
 | Field | Description |
 |-------|-------------|
-| Vault Server | Vault/OpenBao URL |
+| Vault Server | Vault URL |
 | Vault Namespace | Enterprise Vault namespace |
 | Secrets Path | Vault secrets engine path |
 | Config Secrets Path | Separate path for config secrets (optional) |
@@ -296,9 +340,20 @@ When **ESO** is selected, additional Vault fields appear:
 | Token Secret Name | K8s secret name for token auth |
 
 **Vault Paths** — Each secret group maps to a Vault path. Toggle groups on/off and
-customize paths to match your Vault layout. Click "Keys" to override individual
-key name mappings. Supported groups: Nautobot, Redis, PostgreSQL, Network/Device Creds,
-Nautobot App, OIDC, Redfish, BMC, Slack, Jira, CNPG Backup.
+customize paths to match your Vault layout. Application-secret rows show the logical
+field, editable Vault key, and initial value in columns. Supported groups: Nautobot,
+Redis, PostgreSQL, Network/Device Creds, Nautobot App, OIDC, Redfish, BMC, Slack, Jira,
+CNPG Backup.
+
+With `kubernetes`, values are edited in grouped Secret Values cards. With `eso`, values
+are edited beside their Vault key mappings. Enter a password or token to use it as
+the initial value. Empty generated credentials are created during installation, while
+external integration credentials must be supplied explicitly. Vault population only
+fills missing keys and never replaces an existing value.
+
+Per-site Vault paths are optional. When omitted, the installer uses
+`<environment>/site/<site>/config_secrets` under the configured config-secrets
+mount.
 
 **Git Tokens** — Add/remove Git repository tokens for Nautobot Git sync:
 
@@ -564,6 +619,8 @@ Full deployment orchestration with live monitoring.
 
 | Option | Description |
 |--------|-------------|
+| Prepare for Argo CD | Create/populate installer-owned prerequisites and generate the values file before NVCM sync |
+| Vault Token File | Provisioning token file used to create KV v2 mounts and fill ESO paths |
 | Build Images | Build Docker images locally (content-addressed tags) |
 | Load Kind | Load built images into a Kind cluster |
 | Kind Cluster | Kind cluster name (default: `nv-config-manager`) |
@@ -744,22 +801,30 @@ execute in order. Steps are automatically skipped when not applicable.
 | 4 | **Install CRDs** | Gateway API CRDs, Envoy Gateway, cert-manager, CNPG operator (skip if not requested) |
 | 5 | **Create Namespace** | Ensure the Kubernetes namespace exists |
 | 6 | **Create Secrets** | Apply K8s secrets for database, Redis, Nautobot, NATS, devices, Git, registry, OIDC (skip if using ESO) |
-| 7 | **Setup Jobs PVC** | Create PVC and load custom Nautobot jobs (skip if none configured) |
-| 8 | **Setup Templates PVC** | Create PVC and load template plugins (skip if none configured) |
-| 9 | **Setup ZTP Images PVC** | Create PVC, upload OS images with proper directory structure and `manifest.json` (skip if storage type is S3 or no images configured) |
-| 10 | **Generate Values** | Produce the combined Helm override YAML from config, secrets, and the selected size profile |
-| 11 | **Helm Install** | `helm upgrade --install` with generated values |
-| 12 | **Patch Gateway** | HostPort patch on Envoy Gateway for NodePort access (skip if LB is configured) |
-| 13 | **Restart Nautobot** | Rolling restart of Nautobot workloads on re-run when jobs changed |
-| 14 | **Restart Render** | Rolling restart of render service on re-run when templates changed |
-| 15 | **Run Jobs** | Execute post-deploy Nautobot jobs via API (skip if none configured) |
-| 16 | **Refresh Caches** | Restart config-store-cache and dhcp-refresh pods |
-| 17 | **Run Tests** | Run integration tests from a ZTP pod with streamed output (skip if not requested or SSO enabled) |
-| 18 | **Endpoints** | Display service URLs for all enabled services |
+| 7 | **Populate Vault** | Ensure configured KV v2 mounts exist and fill missing ESO secret values (skip unless ESO is selected) |
+| 8 | **Setup Jobs PVC** | Create PVC and load custom Nautobot jobs (skip if none configured) |
+| 9 | **Setup Templates PVC** | Create PVC and load template plugins (skip if none configured) |
+| 10 | **Setup ZTP Images PVC** | Create PVC, upload OS images with proper directory structure and `manifest.json` (skip if storage type is S3 or no images configured) |
+| 11 | **Generate Values** | Produce the combined Helm override YAML from config, secrets, and the selected size profile |
+| 12 | **Helm Install** | `helm upgrade --install` with generated values |
+| 13 | **Patch Gateway** | HostPort patch on Envoy Gateway for NodePort access (skip if LB is configured) |
+| 14 | **Restart Nautobot** | Rolling restart of Nautobot workloads on re-run when jobs changed |
+| 15 | **Restart Render** | Rolling restart of render service on re-run when templates changed |
+| 16 | **Restart ZTP** | Rolling restart of the ZTP service on re-run when file-backed OS images changed |
+| 17 | **Run Jobs** | Execute post-deploy Nautobot jobs via API (skip if none configured) |
+| 18 | **Refresh Caches** | Restart config-store-cache and dhcp-refresh pods |
+| 19 | **Run Tests** | Run integration tests from a ZTP pod with streamed output (skip if not requested or SSO enabled) |
+| 20 | **Endpoints** | Display service URLs for all enabled services |
 
 **Re-run intelligence:** The deployer detects existing deployments and content
-checksums. On re-runs, it only restarts services when associated PVC content (jobs or
-templates) has actually changed, rather than blindly restarting everything.
+checksums. On re-runs, it only restarts services when associated PVC content (jobs,
+templates, or file-backed ZTP images) has actually changed, rather than blindly
+restarting everything.
+
+For Argo CD preparation, steps 1, 5–11, and the applicable change-aware restart
+steps 14–16 run. If Argo CD has not created the workloads yet, the restart steps
+finish without error. Operator installation, Helm, post-deploy jobs, tests, and
+endpoint discovery remain deferred to the Argo CD-managed deployment lifecycle.
 
 **INI checksum annotations:** The `nv-config-manager.ini` config secret includes a content
 checksum in pod annotations, triggering automatic rolling restarts when INI

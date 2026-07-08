@@ -151,6 +151,8 @@ class VaultPathsConfig(BaseModel):
             token="token",
             readOnlyToken="read_only_token",
             natsPassword="nats_password",
+            natsSysPassword="nats_sys_password",
+            natsNautobotPassword="nats_nautobot_password",
         )
     )
     redis: VaultPathConfig = Field(default_factory=lambda: _path(password="password"))
@@ -181,6 +183,17 @@ class VaultPathsConfig(BaseModel):
     oidc: VaultPathConfig = Field(
         default_factory=lambda: _path(clientSecret="client_secret", cookieSecret="cookie_secret")
     )
+    redfish: VaultPathConfig = Field(
+        default_factory=lambda: _path(
+            lenovoDefaultUser="lenovo_default_user",
+            lenovoDefaultPassword="lenovo_default_password",
+            lenovoConfigManagerPassword="lenovo_config_manager_password",
+            bluefieldDefaultUser="bluefield_default_user",
+            bluefieldDefaultPassword="bluefield_default_password",
+            bluefieldConfigManagerPassword="bluefield_config_manager_password",
+        )
+    )
+    bmc: VaultPathConfig = Field(default_factory=lambda: _path(credsJson="bmc-creds.json"))
     slack: VaultPathConfig = Field(default_factory=lambda: _path(enabled=False, token="token"))
     jira: VaultPathConfig = Field(
         default_factory=lambda: _path(enabled=False, baseUrl="base_url", apiToken="api_token")
@@ -218,7 +231,7 @@ class VaultConfig(BaseModel):
 
 
 class K8sSecretGroup(BaseModel):
-    """Manual value overrides for one secret group in kubernetes-secrets mode.
+    """Manual value overrides for a Kubernetes Secret or OpenBao path group.
 
     Each key in ``values`` matches the corresponding vault property name so the
     same key names are meaningful in both ESO and kubernetes modes.
@@ -230,7 +243,7 @@ class K8sSecretGroup(BaseModel):
 
 
 class KubernetesSecretsConfig(BaseModel):
-    """Optional manual overrides for kubernetes-mode secrets.
+    """Optional values shared by Kubernetes-secret and OpenBao population modes.
 
     Required groups default to enabled; optional integrations default to disabled.
     Any value left empty (or the group left at defaults) will be auto-generated
