@@ -175,6 +175,32 @@ def escape_log_newlines(value: object) -> str:
     return str(value).translate(_LOG_LINE_BREAK_ESCAPES)
 
 
+def _escape_log_argument(value: object) -> object:
+    """Escape unsafe characters while preserving log formatting types."""
+    if isinstance(value, str):
+        return escape_log_newlines(value)
+    if isinstance(value, BaseException):
+        return escape_log_newlines(value)
+    if isinstance(value, list):
+        return [_escape_log_argument(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_escape_log_argument(item) for item in value)
+    if isinstance(value, dict):
+        return {key: _escape_log_argument(item) for key, item in value.items()}
+    return value
+
+
+class EscapingLoggerAdapter(logging.LoggerAdapter):
+    """Logger adapter that escapes unsafe characters in formatting arguments."""
+
+    def log(self, level: int, msg: object, *args: object, **kwargs: Any) -> None:
+        """Delegate an enabled log call after sanitizing its arguments."""
+        if self.isEnabledFor(level):
+            msg, kwargs = self.process(msg, kwargs)
+            escaped_args = tuple(_escape_log_argument(arg) for arg in args)
+            self.logger.log(level, msg, *escaped_args, **kwargs)
+
+
 def configure_logging(service: str | None = None) -> None:
     """Configure the root logger for the entire process.
 
@@ -221,7 +247,7 @@ def get_logger(
     name: str,
     json_format: bool = True,
     category: str = "",
-) -> logging.LoggerAdapter:
+) -> EscapingLoggerAdapter:
     """Get a configured logger with optional category label.
 
     If ``configure_logging()`` has already been called (recommended), this
@@ -250,4 +276,4 @@ def get_logger(
         logger.addHandler(handler)
         logger.setLevel(_get_log_level())
 
-    return logging.LoggerAdapter(logger, extra={"category": category})
+    return EscapingLoggerAdapter(logger, extra={"category": category})

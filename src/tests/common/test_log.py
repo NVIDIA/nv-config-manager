@@ -14,9 +14,11 @@
 # limitations under the License.
 """Tests for nv_config_manager.common.log."""
 
+import logging
+
 import pytest
 
-from nv_config_manager.common.log import escape_log_newlines
+from nv_config_manager.common.log import escape_log_newlines, get_logger
 
 
 @pytest.mark.parametrize(
@@ -48,3 +50,17 @@ def test_escape_log_newlines_escapes_terminal_escape_character() -> None:
 
 def test_escape_log_newlines_preserves_text_without_separators() -> None:
     assert escape_log_newlines("unchanged") == "unchanged"
+
+
+def test_logger_adapter_escapes_format_arguments(caplog: pytest.LogCaptureFixture) -> None:
+    logger = get_logger("test.log-escaping")
+
+    with caplog.at_level(logging.INFO, logger="test.log-escaping"):
+        logger.info(
+            "value=%s count=%d error=%s",
+            "before\nafter",
+            2,
+            ValueError("bad\x1b[31mvalue"),
+        )
+
+    assert caplog.messages[-1] == r"value=before\nafter count=2 error=bad\x1b[31mvalue"

@@ -48,9 +48,9 @@ from paramiko.transport import Transport
 
 from nv_config_manager.common.config import get_storage_client
 from nv_config_manager.common.log import (
+    EscapingLoggerAdapter,
     LogCategory,
     configure_logging,
-    escape_log_newlines,
     get_logger,
 )
 from nv_config_manager.ztp.nautobot import NautobotClient
@@ -72,7 +72,7 @@ def get_logger_for_addr(addr: tuple[str, int]) -> logging.Logger | logging.Logge
     if is_localhost(addr):
         healthcheck_logger = logging.getLogger(f"{__name__}.localhost")
         healthcheck_logger.setLevel(logging.WARNING)
-        return healthcheck_logger
+        return EscapingLoggerAdapter(healthcheck_logger, extra={"category": LogCategory.ZTP})
     return logger
 
 
@@ -113,15 +113,13 @@ class ZTPSFTPHandle(SFTPHandle):
 
     def close(self) -> int:  # type: ignore[override, ty:invalid-method-override]
         """Close the file handle and release resources."""
-        self.logger.debug(
-            "Closing file handle for: %s", escape_log_newlines(self.filename or "unknown")
-        )
+        self.logger.debug("Closing file handle for: %s", self.filename or "unknown")
         try:
             if self.readfile:
                 self.readfile.close()
 
         except Exception as e:
-            self.logger.error("Error closing file handle: %s", escape_log_newlines(e))
+            self.logger.error("Error closing file handle: %s", e)
         return int(SFTP_OK)
 
     def read(self, offset: int, length: int) -> bytes | int:
@@ -130,7 +128,7 @@ class ZTPSFTPHandle(SFTPHandle):
             "Reading %d bytes at offset %d from %s",
             length,
             offset,
-            escape_log_newlines(getattr(self, "filename", "unknown")),
+            getattr(self, "filename", "unknown"),
         )
         try:
             if self.readfile is None:
@@ -142,7 +140,7 @@ class ZTPSFTPHandle(SFTPHandle):
             self.logger.debug("Read %d bytes successfully", len(data))
             return data
         except OSError as e:
-            self.logger.error("Error reading from file: %s", escape_log_newlines(e))
+            self.logger.error("Error reading from file: %s", e)
             return SFTPServer.convert_errno(e.errno or errno.EIO)
 
 
@@ -163,16 +161,14 @@ class ZTPSFTPServer(SFTPServerInterface):
     def _load_path(self, path: str) -> io.BytesIO:
         """Load file content from the given path."""
         if path in self._path_cache:
-            self.logger.debug("Cache hit for path: %s", escape_log_newlines(path))
+            self.logger.debug("Cache hit for path: %s", path)
             cached = self._path_cache[path]
             if isinstance(cached, io.BytesIO):
                 return cached
             # Convert StringIO to BytesIO if needed
             return io.BytesIO(cached.getvalue().encode("utf-8"))
 
-        self.logger.info(
-            "Request for path: %s from %s", escape_log_newlines(path), self._client_addr
-        )
+        self.logger.info("Request for path: %s from %s", path, self._client_addr)
         path_parts = path.split("/")
         if path_parts[1] == "device":
             content = self._load_ztp_file(path_parts[2], path_parts[3])
@@ -191,8 +187,8 @@ class ZTPSFTPServer(SFTPServerInterface):
         """Load a ZTP configuration file from the config store or return a cached version."""
         self.logger.info(
             "Loading file for Device: %s, Config: %s from %s",
-            escape_log_newlines(device_id),
-            escape_log_newlines(config_file),
+            device_id,
+            config_file,
             self._client_addr,
         )
 
@@ -228,9 +224,9 @@ class ZTPSFTPServer(SFTPServerInterface):
         """Load a ZTP configuration file from S3."""
         self.logger.info(
             "Loading file from S3: %s/%s/%s for %s",
-            escape_log_newlines(platform),
-            escape_log_newlines(version),
-            escape_log_newlines(filename),
+            platform,
+            version,
+            filename,
             self._client_addr,
         )
         storage_client = get_storage_client()
@@ -279,12 +275,12 @@ class ZTPSFTPServer(SFTPServerInterface):
         # For non-S3 paths, fall back to loading the full file
         try:
             file = self._load_path(path)
-            self.logger.debug("Successfully loaded file for stat: %s", escape_log_newlines(path))
+            self.logger.debug("Successfully loaded file for stat: %s", path)
         except Exception as exc:
             self.logger.error(
                 "Error loading file %s for stat: %s",
-                escape_log_newlines(path),
-                escape_log_newlines(exc),
+                path,
+                exc,
             )
             if isinstance(exc, FileNotFoundError):
                 return SFTP_NO_SUCH_FILE
@@ -311,7 +307,7 @@ class ZTPSFTPServer(SFTPServerInterface):
         attr.st_mtime = current_time  # Modification time
         self.logger.debug(
             "Created attributes for file %s: size=%d",
-            escape_log_newlines(path),
+            path,
             attr.st_size,
         )
         return attr
@@ -320,9 +316,9 @@ class ZTPSFTPServer(SFTPServerInterface):
         """Get file attributes for an S3 file using head_object (no download)."""
         self.logger.info(
             "Getting metadata for S3 file: %s/%s/%s",
-            escape_log_newlines(platform),
-            escape_log_newlines(version),
-            escape_log_newlines(filename),
+            platform,
+            version,
+            filename,
         )
         storage_client = get_storage_client()
         try:
@@ -352,45 +348,45 @@ class ZTPSFTPServer(SFTPServerInterface):
 
             self.logger.debug(
                 "Created attributes for S3 file %s/%s/%s: size=%d",
-                escape_log_newlines(platform),
-                escape_log_newlines(version),
-                escape_log_newlines(filename),
+                platform,
+                version,
+                filename,
                 attr.st_size,
             )
             return attr
         except ObjectStorageNotFoundException:
             self.logger.error(
                 "S3 file not found: %s/%s/%s",
-                escape_log_newlines(platform),
-                escape_log_newlines(version),
-                escape_log_newlines(filename),
+                platform,
+                version,
+                filename,
             )
             return SFTP_NO_SUCH_FILE
         except Exception as exc:
-            self.logger.error("Error getting S3 metadata: %s", escape_log_newlines(exc))
+            self.logger.error("Error getting S3 metadata: %s", exc)
             return SFTP_FAILURE
 
     def stat(self, path: str) -> SFTPAttributes | int:
         """Return file attributes for the given path."""
-        self.logger.debug("stat request: %s", escape_log_newlines(path))
+        self.logger.debug("stat request: %s", path)
         return self._mock_stat(path)
 
     def lstat(self, path: str) -> SFTPAttributes | int:
         """Return file attributes for the given path without following symbolic links."""
-        self.logger.debug("lstat request: %s", escape_log_newlines(path))
+        self.logger.debug("lstat request: %s", path)
         return self._mock_stat(path)
 
     def open(self, path: str, flags: int, attr: SFTPAttributes | None) -> ZTPSFTPHandle | int:
         """Open a file handle for the given path with the specified flags."""
-        self.logger.debug("open request: %s, flags: %s", escape_log_newlines(path), flags)
+        self.logger.debug("open request: %s, flags: %s", path, flags)
         try:
             file = self._load_path(path)
-            self.logger.debug("Successfully loaded file for path: %s", escape_log_newlines(path))
+            self.logger.debug("Successfully loaded file for path: %s", path)
         except Exception as exc:
             self.logger.error(
                 "Error loading file %s: %s",
-                escape_log_newlines(path),
-                escape_log_newlines(exc),
+                path,
+                exc,
             )
             if isinstance(exc, FileNotFoundError):
                 return SFTP_NO_SUCH_FILE
@@ -403,12 +399,10 @@ class ZTPSFTPServer(SFTPServerInterface):
             fobj.set_logger(self.logger)  # Set the logger after creation
             fobj.filename = path.split("/")[-1]
             fobj.readfile = file
-            self.logger.debug(
-                "Created SFTP handle for file: %s", escape_log_newlines(fobj.filename)
-            )
+            self.logger.debug("Created SFTP handle for file: %s", fobj.filename)
             return fobj
         except Exception as exc:
-            self.logger.error("Error creating SFTP handle: %s", escape_log_newlines(exc))
+            self.logger.error("Error creating SFTP handle: %s", exc)
             return SFTP_FAILURE
 
 

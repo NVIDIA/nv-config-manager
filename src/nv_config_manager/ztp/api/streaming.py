@@ -22,7 +22,7 @@ from urllib.parse import quote
 
 from fastapi.responses import StreamingResponse
 
-from nv_config_manager.common.log import LogCategory, escape_log_newlines, get_logger
+from nv_config_manager.common.log import LogCategory, get_logger
 from nv_config_manager.ztp.storage import ObjectStorageClient
 
 logger = get_logger(__name__, category=LogCategory.ZTP)
@@ -53,7 +53,7 @@ async def create_object_storage_streaming_response(
 
     try:
         filename, file_handle = await get_method(*args, **kwargs)
-        logger.info("Streaming file: %s", escape_log_newlines(filename))
+        logger.info("Streaming file: %s", filename)
     except Exception:
         # Close client and let the exception bubble up to the endpoint
         # The endpoint will handle specific exceptions (like ObjectStorageNotFoundException)
@@ -81,7 +81,7 @@ async def create_object_storage_streaming_response(
 
             logger.debug("All chunks yielded successfully")
         except Exception as e:
-            logger.error("Error during streaming: %s", escape_log_newlines(e), exc_info=True)
+            logger.error("Error during streaming: %s", e, exc_info=True)
             raise
         finally:
             logger.debug("Stream generator cleanup: closing file handle and storage client")

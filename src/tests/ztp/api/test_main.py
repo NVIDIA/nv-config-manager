@@ -424,7 +424,7 @@ def test_device_v1_validate_serial(mock_request_client, mock_device_data, client
                 "Serial number mismatch observed on device %s, expected: %s, observed: %s.",
                 device_uuid,
                 "expected_serial",
-                r"invalid_serial\r\nFORGED",
+                "invalid_serial\r\nFORGED",
             )
 
 
@@ -539,7 +539,7 @@ def test_v1_files_get(client):
     assert rsp.headers["content-disposition"] == (
         "attachment; filename=\"testfnameFORGED\"; filename*=UTF-8''testfname%0D%0AFORGED"
     )
-    mock_logger.info.assert_called_once_with("Streaming file: %s", r"testfname\r\nFORGED")
+    mock_logger.info.assert_called_once_with("Streaming file: %s", "testfname\r\nFORGED")
 
     # Object not found
     mock_s3_instance.get_object = AsyncMock(side_effect=S3NotFoundException())

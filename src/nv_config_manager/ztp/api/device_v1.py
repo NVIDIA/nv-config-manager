@@ -21,7 +21,7 @@ from pydantic import BaseModel
 from nv_config_manager.common.auth import auth_required, require_sso_or_device
 from nv_config_manager.common.client import ConfigStoreException, ConfigStoreFileNotFound
 from nv_config_manager.common.config import get_storage_client, temporal_client
-from nv_config_manager.common.log import LogCategory, escape_log_newlines, get_logger
+from nv_config_manager.common.log import LogCategory, get_logger
 from nv_config_manager.ztp.api.schemas import ChecksumResponse
 from nv_config_manager.ztp.api.streaming import create_object_storage_streaming_response
 from nv_config_manager.ztp.nautobot import NautobotClient, NotFoundError
@@ -63,9 +63,9 @@ async def _authorize_request(request: Request, device_uuid: str) -> None:
     if client_ip not in allowed_addresses:
         logger.warning(
             "Unauthorized ZTP request for device %s from %s (allowed: %s)",
-            escape_log_newlines(device_uuid),
-            escape_log_newlines(client_ip),
-            [escape_log_newlines(address) for address in allowed_addresses],
+            device_uuid,
+            client_ip,
+            allowed_addresses,
         )
         raise HTTPException(
             status_code=403,
@@ -202,9 +202,9 @@ async def validate_serial(device_uuid: str, body: ValidateSerialBody, request: R
         if not _compare_serials(expected_serial, body.serial):
             logger.error(
                 "Serial number mismatch observed on device %s, expected: %s, observed: %s.",
-                escape_log_newlines(device_uuid),
-                escape_log_newlines(expected_serial),
-                escape_log_newlines(body.serial),
+                device_uuid,
+                expected_serial,
+                body.serial,
             )
             raise HTTPException(
                 status_code=400,
