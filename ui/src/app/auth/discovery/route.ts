@@ -61,7 +61,7 @@ const parseScopes = (value?: string): string[] => {
   }
 
   return value
-    .replace(/,/g, " ")
+    .replaceAll(",", " ")
     .split(/\s+/)
     .map((item) => item.trim())
     .filter((item) => item.length > 0);
