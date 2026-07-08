@@ -29,6 +29,9 @@ function createFixture(options = {}) {
       issues: {
         createComment: async (args) => comments.push(args),
       },
+      pulls: {
+        get: async () => ({ data: { head: { sha: options.pullHeadSha ?? SHA } } }),
+      },
     },
   };
 
@@ -83,6 +86,15 @@ test("ignores Kind runs that have not completed", async () => {
 
 test("ignores Kind runs that were not manually dispatched", async () => {
   const result = await runFixture({ event: "push" });
+
+  assert.deepEqual(result.comments, []);
+});
+
+test("ignores canceled Kind runs for stale PR commits", async () => {
+  const result = await runFixture({
+    conclusion: "cancelled",
+    pullHeadSha: "b".repeat(40),
+  });
 
   assert.deepEqual(result.comments, []);
 });
