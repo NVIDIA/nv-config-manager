@@ -262,7 +262,7 @@ class ConfigStoreClient(_WhoamiViaRetryClientMixin):
         self,
         device_uuid: str,
         file_type: str | None | object = _FILE_TYPE_UNSET,
-    ) -> dict[str, object]:
+    ) -> list[dict[str, object]]:
         """List latest configuration files for a device."""
         try:
             async with self._new_session() as session:
@@ -271,7 +271,7 @@ class ConfigStoreClient(_WhoamiViaRetryClientMixin):
                     params=self._file_type_params(file_type),
                 ) as rsp:
                     rsp.raise_for_status()
-                    data: dict[str, object] = await rsp.json()
+                    data: list[dict[str, object]] = await rsp.json()
                     return data
         except aiohttp.ClientResponseError as exc:
             raise ConfigStoreException(

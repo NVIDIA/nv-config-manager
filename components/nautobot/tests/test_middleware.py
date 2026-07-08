@@ -96,9 +96,7 @@ class TestJWTCookieMiddleware:
         request.COOKIES = {"NVConfigManagerAccessToken": "valid-jwt"}
 
         with (
-            patch(
-                "nv_config_manager_auth.jwt_authentication._get_providers", return_value=[provider]
-            ),
+            patch("nv_config_manager_auth.jwt_authentication._get_providers", return_value=[provider]),
             patch(
                 "nv_config_manager_auth.jwt_authentication._try_jwt_provider",
                 return_value=(mock_user, "oidc:jdoe"),
@@ -171,9 +169,7 @@ class TestJWTCookieMiddleware:
         request.COOKIES = {"NVConfigManagerAccessToken": "bad-jwt"}
 
         with (
-            patch(
-                "nv_config_manager_auth.jwt_authentication._get_providers", return_value=[provider]
-            ),
+            patch("nv_config_manager_auth.jwt_authentication._get_providers", return_value=[provider]),
             patch("nv_config_manager_auth.jwt_authentication._try_jwt_provider", return_value=None),
             patch("nv_config_manager_auth.middleware.login") as mock_login,
         ):

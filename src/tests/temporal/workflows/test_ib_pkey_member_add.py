@@ -24,7 +24,7 @@ from configparser import ConfigParser
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from aioresponses import aioresponses
+from aioresponses import CallbackResult, aioresponses
 from temporalio.worker import Worker
 
 from nv_config_manager.temporal.common.secrets import clear_secrets_cache
@@ -167,8 +167,9 @@ def _stub_full_run(m: aioresponses) -> None:
         },
     )
 
-    # Stage 2: add GUIDs to PKey
-    m.post(f"{UFM_BASE}/resources/pkeys/", payload={})
+    # Stage 2: add GUIDs to PKey (read current members, then PUT the merged set)
+    m.get(_pkey_verify_url("0x0005"), payload={"guids": []})
+    m.put(f"{UFM_BASE}/resources/pkeys/", payload={})
 
     # Stage 3: verify members (exact URL with query param)
     m.get(
@@ -232,6 +233,160 @@ async def test_full_workflow_happy_path(mock_all_configs, time_skipping_env):
 
 
 @pytest.mark.asyncio
+async def test_per_interface_membership_sent_to_ufm(mock_all_configs, time_skipping_env):
+    """A per-interface membership override rides the single merged PUT to UFM."""
+    task_queue = str(uuid.uuid4())
+    put_bodies: list[dict] = []
+
+    def _record_add(url, **kwargs):
+        put_bodies.append(kwargs.get("json") or {})
+        return CallbackResult(status=200, payload={})
+
+    async with time_skipping_env() as env:
+        async with Worker(
+            env.client,
+            task_queue=task_queue,
+            workflows=[IBPKeyMemberAddWorkflow],
+            activities=_ALL_ACTIVITIES,
+        ):
+            with aioresponses() as m:
+                stub_graphql_resolve_ib_context(m, pkey="0x0005", overlay_id=OVERLAY_UUID)
+                m.get(
+                    _NB_INTERFACES,
+                    payload={
+                        "results": [
+                            {
+                                "id": IFACE_UUID_1,
+                                "name": "mlx5_0",
+                                "custom_fields": {"ib_guid": GUID_1},
+                            }
+                        ]
+                    },
+                )
+                m.get(
+                    _NB_INTERFACES,
+                    payload={
+                        "results": [
+                            {
+                                "id": IFACE_UUID_2,
+                                "name": "mlx5_1",
+                                "custom_fields": {"ib_guid": GUID_2},
+                            }
+                        ]
+                    },
+                )
+                m.get(_pkey_verify_url("0x0005"), payload={"guids": []})
+                m.put(f"{UFM_BASE}/resources/pkeys/", callback=_record_add)
+                m.get(
+                    _pkey_verify_url("0x0005"),
+                    payload={
+                        "guids": [
+                            {"guid": GUID_1, "membership": "full"},
+                            {"guid": GUID_2, "membership": "limited"},
+                        ]
+                    },
+                )
+                m.get(_NB_STATUSES, payload={"results": [{"id": STATUS_UUID, "name": "Active"}]})
+                m.get(
+                    _NB_CONTENT_TYPES,
+                    payload={
+                        "results": [
+                            {"id": IFACE_CT_UUID, "app_label": "dcim", "model": "interface"}
+                        ]
+                    },
+                )
+                m.get(_NB_ASSIGNMENTS, payload={"results": []})
+                m.post(f"{PLUGIN}/overlay-assignments/", payload={"id": ASSIGNMENT_UUID_1})
+                m.get(_NB_ASSIGNMENTS, payload={"results": []})
+                m.post(f"{PLUGIN}/overlay-assignments/", payload={"id": ASSIGNMENT_UUID_2})
+
+                result = await env.client.execute_workflow(
+                    IBPKeyMemberAddWorkflow.run,
+                    IBPKeyMemberAddInput(
+                        host="ufm.example.com",
+                        pkey="0x0005",
+                        interfaces=[
+                            InterfaceRef(device="hca01", interface="mlx5_0"),
+                            InterfaceRef(device="hca01", interface="mlx5_1", membership="limited"),
+                        ],
+                    ),
+                    id=str(uuid.uuid4()),
+                    task_queue=task_queue,
+                )
+
+    assert result.verified is True
+    assert len(put_bodies) == 1
+    assert put_bodies[0].get("guids") == [GUID_1, GUID_2]
+    assert put_bodies[0].get("memberships") == ["full", "limited"]
+    assert "membership" not in put_bodies[0]
+
+
+@pytest.mark.asyncio
+async def test_per_guid_membership_sent_to_ufm(mock_all_configs, time_skipping_env):
+    """Per-GUID memberships ride the single merged PUT, index-aligned with guids."""
+    task_queue = str(uuid.uuid4())
+    put_bodies: list[dict] = []
+
+    def _record_add(url, **kwargs):
+        put_bodies.append(kwargs.get("json") or {})
+        return CallbackResult(status=200, payload={})
+
+    async with time_skipping_env() as env:
+        async with Worker(
+            env.client,
+            task_queue=task_queue,
+            workflows=[IBPKeyMemberAddWorkflow],
+            activities=_ALL_ACTIVITIES,
+        ):
+            with aioresponses() as m:
+                stub_graphql_resolve_ib_context(m, pkey="0x0005", overlay_id=OVERLAY_UUID)
+                stub_graphql_resolve_guids(m, [(GUID_1, IFACE_UUID_1), (GUID_2, IFACE_UUID_2)])
+
+                m.get(_pkey_verify_url("0x0005"), payload={"guids": []})
+                m.put(f"{UFM_BASE}/resources/pkeys/", callback=_record_add)
+                m.get(
+                    _pkey_verify_url("0x0005"),
+                    payload={
+                        "guids": [
+                            {"guid": GUID_1, "membership": "limited"},
+                            {"guid": GUID_2, "membership": "full"},
+                        ]
+                    },
+                )
+                m.get(_NB_STATUSES, payload={"results": [{"id": STATUS_UUID, "name": "Active"}]})
+                m.get(
+                    _NB_CONTENT_TYPES,
+                    payload={
+                        "results": [
+                            {"id": IFACE_CT_UUID, "app_label": "dcim", "model": "interface"}
+                        ]
+                    },
+                )
+                m.get(_NB_ASSIGNMENTS, payload={"results": []})
+                m.post(f"{PLUGIN}/overlay-assignments/", payload={"id": ASSIGNMENT_UUID_1})
+                m.get(_NB_ASSIGNMENTS, payload={"results": []})
+                m.post(f"{PLUGIN}/overlay-assignments/", payload={"id": ASSIGNMENT_UUID_2})
+
+                result = await env.client.execute_workflow(
+                    IBPKeyMemberAddWorkflow.run,
+                    IBPKeyMemberAddInput(
+                        host="ufm.example.com",
+                        pkey="0x0005",
+                        guids=[GUID_1, GUID_2],
+                        guid_memberships=["limited", "full"],
+                    ),
+                    id=str(uuid.uuid4()),
+                    task_queue=task_queue,
+                )
+
+    assert result.verified is True
+    assert len(put_bodies) == 1
+    assert put_bodies[0].get("guids") == [GUID_1, GUID_2]
+    assert put_bodies[0].get("memberships") == ["limited", "full"]
+    assert "membership" not in put_bodies[0]
+
+
+@pytest.mark.asyncio
 async def test_idempotent_existing_assignments(mock_all_configs, time_skipping_env):
     """Existing OverlayAssignments are reused without creating duplicates."""
     task_queue = str(uuid.uuid4())
@@ -257,7 +412,8 @@ async def test_idempotent_existing_assignments(mock_all_configs, time_skipping_e
                         ]
                     },
                 )
-                m.post(f"{UFM_BASE}/resources/pkeys/", payload={})
+                m.get(_pkey_verify_url("0x0005"), payload={"guids": []})
+                m.put(f"{UFM_BASE}/resources/pkeys/", payload={})
                 m.get(
                     _pkey_verify_url("0x0005"),
                     payload={"guids": [{"guid": GUID_1, "membership": "full"}]},
@@ -391,7 +547,8 @@ async def test_guids_only_path(mock_all_configs, time_skipping_env):
                 stub_graphql_resolve_ib_context(m, pkey="0x0005", overlay_id=OVERLAY_UUID)
                 stub_graphql_resolve_guids(m, [(GUID_1, IFACE_UUID_1)])
 
-                m.post(f"{UFM_BASE}/resources/pkeys/", payload={})
+                m.get(_pkey_verify_url("0x0005"), payload={"guids": []})
+                m.put(f"{UFM_BASE}/resources/pkeys/", payload={})
 
                 m.get(
                     _pkey_verify_url("0x0005"),

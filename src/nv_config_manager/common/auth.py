@@ -44,7 +44,7 @@ INI sections::
     audiences = spiffe://trust-domain
 
     ; Map SPIFFE ID prefixes to group names.  Matching callers get the
-    ; mapped group (plus spiffe:<workload_name> for tracking).
+    ; mapped group.
     [auth.spiffe.groups]
     spiffe://trust-domain/ns/nv-config-manager = nv-config-manager
     spiffe://trust-domain/ns/dgxc = dgxc
@@ -128,6 +128,14 @@ DEFAULT_UNAUTHENTICATED_PATHS = frozenset(
     }
 )
 
+OPENAPI_BEARER_SCHEME_NAME = "BearerAuth"
+OPENAPI_BEARER_DESCRIPTION = (
+    "Bearer JWT used by CLI and machine clients on svc-* endpoints. Authentication is "
+    "required by default, but deployments may disable it with [auth] required = false. "
+    "Browser OIDC sessions, mTLS, SPIFFE identities, and trusted gateway identity headers "
+    "may also satisfy authentication outside this generated client flow."
+)
+
 
 # ── Configuration dataclasses ────────────────────────────────────────────
 
@@ -149,9 +157,20 @@ class JwtProviderConfig:
 class SpiffeConfig:
     """Configuration for SPIFFE JWT-SVID validation via PyJWT + JWKS.
 
-    ``group_prefixes`` maps SPIFFE ID prefixes to group names.
-    When a caller's SPIFFE ID matches a prefix, the mapped group is added
-    to its identity (in addition to ``spiffe:<workload_name>``).
+    ``group_prefixes`` maps SPIFFE ID *path-segment* prefixes to group names.
+    When a caller's SPIFFE ID matches a prefix the mapped group is added to
+    its identity.
+
+    Match semantics: the prefix matches a SPIFFE ID iff either
+    (a) the SPIFFE ID equals the prefix exactly, or
+    (b) the SPIFFE ID starts with the prefix followed by ``/``.
+
+    This is the standard hierarchical-path matching used elsewhere in SPIFFE
+    tooling. It deliberately does **not** match across path-segment boundaries
+    so that a sibling identity such as
+    ``spiffe://td/ns/nv-config-manager-admin`` is not accidentally granted the
+    role mapped to the ``spiffe://td/ns/nv-config-manager`` prefix. Use a
+    longer/exact prefix to scope a role to a single identity.
 
     Configured via ``[auth.spiffe.groups]``::
 
@@ -537,8 +556,16 @@ def identity_from_spiffe(request: Request) -> SSOIdentity | None:
 
         groups: set[str] = {"all"}
 
+        # Match prefixes on path-segment boundaries: either the SPIFFE ID is
+        # exactly the prefix, or the prefix is followed by '/'. A naive
+        # ``startswith`` would also match sibling identities — e.g. the
+        # configured prefix ``spiffe://td/ns/nv-config-manager`` would
+        # otherwise match ``spiffe://td/ns/nv-config-manager-admin`` and
+        # silently grant it the ``nv-config-manager`` role. SPIFFE IDs are
+        # hierarchical paths, so the boundary must be a ``/`` (or
+        # end-of-string).
         for prefix, group in cfg.spiffe.group_prefixes:
-            if spiffe_id.startswith(prefix):
+            if spiffe_id == prefix or spiffe_id.startswith(prefix + "/"):
                 groups.add(group)
 
         return SSOIdentity(
@@ -704,6 +731,47 @@ def _is_cors_preflight(request: Request) -> bool:
     )
 
 
+def _install_openapi_auth_schema(
+    app: FastAPI,
+    *,
+    unauthenticated_paths: frozenset[str],
+    deferred_auth_prefixes: tuple[str, ...],
+) -> None:
+    """Describe middleware-enforced authentication in the generated OpenAPI schema."""
+    original_openapi = app.openapi
+
+    def openapi_with_auth() -> dict[str, Any]:
+        schema = original_openapi()
+        components = schema.setdefault("components", {})
+        security_schemes = components.setdefault("securitySchemes", {})
+        security_schemes[OPENAPI_BEARER_SCHEME_NAME] = {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT",
+            "description": OPENAPI_BEARER_DESCRIPTION,
+        }
+        schema.pop("security", None)
+
+        for path, path_item in schema.get("paths", {}).items():
+            normalized_path = _normalize_request_path(path)
+            if normalized_path in unauthenticated_paths:
+                operation_security: list[dict[str, list[str]]] = []
+            elif any(
+                _path_matches_prefix(normalized_path, prefix) for prefix in deferred_auth_prefixes
+            ):
+                operation_security = [{OPENAPI_BEARER_SCHEME_NAME: []}, {}]
+            else:
+                operation_security = [{OPENAPI_BEARER_SCHEME_NAME: []}]
+
+            for method, operation in path_item.items():
+                if method in {"delete", "get", "head", "options", "patch", "post", "put", "trace"}:
+                    operation["security"] = operation_security
+
+        return schema
+
+    app.openapi: Callable[[], dict[str, Any]] = openapi_with_auth  # type: ignore[misc,method-assign]
+
+
 # ── FastAPI dependencies ──────────────────────────────────────────────────
 
 
@@ -863,6 +931,13 @@ def install_identity_probe(
     any other middleware so call order is not important.
     """
     unauthenticated_path_set = frozenset(_normalize_request_path(p) for p in unauthenticated_paths)
+
+    if enforce_auth:
+        _install_openapi_auth_schema(
+            app,
+            unauthenticated_paths=unauthenticated_path_set,
+            deferred_auth_prefixes=deferred_auth_prefixes,
+        )
 
     if require_auth:
 

@@ -15,6 +15,11 @@
 from __future__ import annotations
 
 from nv_config_manager.mcp.workflows import discover_mcp_workflows, normalize_workflow_parameters
+from nv_config_manager.temporal.common.mixins.metadata import WorkflowMetadataMixin
+from nv_config_manager.temporal.hello_world.workflows import (
+    REGISTERED_WORKFLOWS as HELLO_WORLD_WORKFLOWS,
+)
+from nv_config_manager.temporal.ngc.workflows import REGISTERED_WORKFLOWS as NGC_WORKFLOWS
 
 
 def test_only_safe_diagnostic_workflows_are_mcp_enabled() -> None:
@@ -38,6 +43,23 @@ def test_only_safe_diagnostic_workflows_are_mcp_enabled() -> None:
     assert "run_vpc_creation" not in tool_names
 
 
+def test_registered_workflow_models_describe_every_input_field() -> None:
+    missing_descriptions: dict[str, list[str]] = {}
+    for workflow in NGC_WORKFLOWS + HELLO_WORLD_WORKFLOWS:
+        if not issubclass(workflow, WorkflowMetadataMixin):
+            continue
+        input_class = workflow.get_workflow_input_class()
+        if input_class is None:
+            continue
+        missing_descriptions[workflow.__name__] = [
+            field_name
+            for field_name, field_info in input_class.model_fields.items()
+            if not field_info.description
+        ]
+
+    assert not {tool: fields for tool, fields in missing_descriptions.items() if fields}
+
+
 def test_workflow_parameter_normalization_fills_existing_nullable_bookkeeping() -> None:
     workflow = next(item for item in discover_mcp_workflows() if item.tool_name == "run_backup")
 
@@ -49,3 +71,15 @@ def test_workflow_parameter_normalization_fills_existing_nullable_bookkeeping() 
     assert normalized["user_domain"] is None
     assert normalized["workflow_id"] is None
     assert normalized["intended_config_commit_id"] is None
+
+
+def test_workflow_input_schema_matches_normalized_mcp_parameters() -> None:
+    workflow = next(item for item in discover_mcp_workflows() if item.tool_name == "run_backup")
+
+    schema = workflow.input_schema
+
+    assert schema["required"] == ["device_id"]
+    assert schema["properties"]["trigger"]["default"] == "API"
+    assert schema["properties"]["trigger"]["description"]
+    assert schema["properties"]["user"]["default"] is None
+    assert schema["properties"]["device_id"]["description"]

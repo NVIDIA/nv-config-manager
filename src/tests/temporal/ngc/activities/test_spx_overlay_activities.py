@@ -26,12 +26,14 @@ from nv_config_manager.temporal.ngc.activities.nautobot import (
     DeleteOverlayInput,
     GetAvailableRouteDistinguishersInput,
     ProvisionVrfInput,
+    ReconcileSpXOverlayAssignmentsInput,
     VrfDeletionActivityInput,
     _vni_from_rd,
     delete_overlay,
     delete_vrf,
     get_available_route_distinguishers,
     provision_vrf,
+    reconcile_spx_overlay_assignments,
 )
 
 NAUTOBOT = "https://nautobot.example.com"
@@ -44,6 +46,7 @@ TENANT_ID = "cccc0000-0000-0000-0000-000000000001"
 OVERLAY_ID = "dddd0000-0000-0000-0000-000000000001"
 VRF_ID = "eeee0000-0000-0000-0000-000000000001"
 VXLAN_ID = "ffff0000-0000-0000-0000-000000000001"
+ASSIGNMENT_ID = "99990000-0000-0000-0000-000000000001"
 NS_ID = "11110000-0000-0000-0000-000000000001"
 
 
@@ -75,6 +78,236 @@ def _namespace_graphql_response(*rds, namespace_id=NS_ID, namespace_name="spectr
             ]
         }
     }
+
+
+# ---------------------------------------------------------------------------
+# reconcile_spx_overlay_assignments
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_reconcile_spx_overlay_assignments_moves_port_between_overlays():
+    device_id = "22220000-0000-0000-0000-000000000001"
+    interface_id = "33330000-0000-0000-0000-000000000001"
+    existing_interface_id = "33330000-0000-0000-0000-000000000002"
+    old_overlay_id = "44440000-0000-0000-0000-000000000001"
+    ib_overlay_id = "55550000-0000-0000-0000-000000000001"
+    old_assignment_id = "66660000-0000-0000-0000-000000000001"
+
+    with aioresponses() as m:
+        m.get(
+            _r(f"{OVERLAYS_BASE}/overlays/"),
+            payload={
+                "results": [
+                    {
+                        "id": OVERLAY_ID,
+                        "name": "Panda",
+                        "isolation_type": "spectrum_x_vrf",
+                    }
+                ]
+            },
+        )
+        m.get(
+            _r(f"{OVERLAYS_BASE}/overlay-assignments/"),
+            payload={
+                "results": [
+                    {
+                        "id": "device-assignment",
+                        "overlay": {
+                            "id": OVERLAY_ID,
+                            "isolation_type": "spectrum_x_vrf",
+                        },
+                    }
+                ]
+            },
+        )
+        m.get(
+            _r(f"{OVERLAYS_BASE}/overlay-assignments/"),
+            payload={
+                "results": [
+                    {
+                        "id": "ib-assignment",
+                        "overlay": {
+                            "id": ib_overlay_id,
+                            "isolation_type": "ib_pkey",
+                        },
+                    },
+                ],
+                "next": (
+                    f"{OVERLAYS_BASE}/overlay-assignments/"
+                    f"?assigned_object_id={interface_id}&depth=1&limit=50&offset=50"
+                ),
+            },
+        )
+        m.get(
+            _r(f"{OVERLAYS_BASE}/overlay-assignments/"),
+            payload={
+                "results": [
+                    {
+                        "id": old_assignment_id,
+                        "overlay": {
+                            "id": old_overlay_id,
+                            "isolation_type": "spectrum_x_vrf",
+                        },
+                    }
+                ],
+                "next": None,
+            },
+        )
+        m.delete(
+            f"{OVERLAYS_BASE}/overlay-assignments/{old_assignment_id}/",
+            status=204,
+        )
+        m.get(
+            _r(f"{NAUTOBOT}/api/extras/statuses/"),
+            payload={"results": [{"id": STATUS_ID}]},
+        )
+        m.post(
+            f"{OVERLAYS_BASE}/overlay-assignments/",
+            payload={"id": "new-interface-assignment"},
+        )
+        m.get(
+            _r(f"{OVERLAYS_BASE}/overlay-assignments/"),
+            payload={
+                "results": [
+                    {
+                        "id": "existing-interface-assignment",
+                        "overlay": {
+                            "id": OVERLAY_ID,
+                            "isolation_type": "spectrum_x_vrf",
+                        },
+                    }
+                ]
+            },
+        )
+
+        result = await reconcile_spx_overlay_assignments(
+            ReconcileSpXOverlayAssignmentsInput(
+                overlay_id="Panda",
+                site=LOCATION_ID,
+                device_id=device_id,
+                interface_ids=[interface_id, existing_interface_id],
+            )
+        )
+
+    assert result.created == 1
+    assert result.removed == 1
+    assert _request_json(m, "post", f"{OVERLAYS_BASE}/overlay-assignments/") == {
+        "overlay": OVERLAY_ID,
+        "assigned_object_type": "dcim.interface",
+        "assigned_object_id": interface_id,
+        "status": STATUS_ID,
+    }
+    assignment_mutations = [
+        request_method.lower()
+        for (request_method, request_url) in m.requests
+        if str(request_url).startswith(f"{OVERLAYS_BASE}/overlay-assignments/")
+        and request_method.lower() in {"post", "delete"}
+    ]
+    assert assignment_mutations == ["post", "delete"]
+
+
+@pytest.mark.asyncio
+async def test_reconcile_spx_overlay_assignments_rejects_non_spx_overlay():
+    with aioresponses() as m:
+        m.get(
+            _r(f"{OVERLAYS_BASE}/overlays/"),
+            payload={
+                "results": [
+                    {
+                        "id": OVERLAY_ID,
+                        "name": "Panda",
+                        "isolation_type": "ib_pkey",
+                    }
+                ]
+            },
+        )
+
+        with pytest.raises(ApplicationError, match="is not a spectrum_x_vrf overlay"):
+            await reconcile_spx_overlay_assignments(
+                ReconcileSpXOverlayAssignmentsInput(
+                    overlay_id="Panda",
+                    site=LOCATION_ID,
+                    device_id="22220000-0000-0000-0000-000000000001",
+                    interface_ids=["33330000-0000-0000-0000-000000000001"],
+                )
+            )
+
+    assert all("overlay-assignments" not in str(request_url) for _, request_url in m.requests)
+
+
+@pytest.mark.asyncio
+async def test_reconcile_spx_overlay_assignments_keeps_old_assignment_if_create_fails():
+    device_id = "22220000-0000-0000-0000-000000000001"
+    interface_id = "33330000-0000-0000-0000-000000000001"
+    old_assignment_id = "66660000-0000-0000-0000-000000000001"
+
+    with aioresponses() as m:
+        m.get(
+            _r(f"{OVERLAYS_BASE}/overlays/"),
+            payload={
+                "results": [
+                    {
+                        "id": OVERLAY_ID,
+                        "name": "Panda",
+                        "isolation_type": "spectrum_x_vrf",
+                    }
+                ]
+            },
+        )
+        m.get(
+            _r(f"{OVERLAYS_BASE}/overlay-assignments/"),
+            payload={
+                "results": [
+                    {
+                        "id": "device-assignment",
+                        "overlay": {
+                            "id": OVERLAY_ID,
+                            "isolation_type": "spectrum_x_vrf",
+                        },
+                    }
+                ]
+            },
+        )
+        m.get(
+            _r(f"{OVERLAYS_BASE}/overlay-assignments/"),
+            payload={
+                "results": [
+                    {
+                        "id": old_assignment_id,
+                        "overlay": {
+                            "id": "44440000-0000-0000-0000-000000000001",
+                            "isolation_type": "spectrum_x_vrf",
+                        },
+                    }
+                ]
+            },
+        )
+        m.get(
+            _r(f"{NAUTOBOT}/api/extras/statuses/"),
+            payload={"results": [{"id": STATUS_ID}]},
+        )
+        m.post(
+            f"{OVERLAYS_BASE}/overlay-assignments/",
+            status=400,
+            payload={"detail": "replacement rejected"},
+        )
+        m.delete(
+            f"{OVERLAYS_BASE}/overlay-assignments/{old_assignment_id}/",
+            status=204,
+        )
+
+        with pytest.raises(NautobotException, match="replacement rejected"):
+            await reconcile_spx_overlay_assignments(
+                ReconcileSpXOverlayAssignmentsInput(
+                    overlay_id="Panda",
+                    site=LOCATION_ID,
+                    device_id=device_id,
+                    interface_ids=[interface_id],
+                )
+            )
+
+    assert all(request_method.lower() != "delete" for request_method, _ in m.requests)
 
 
 # ---------------------------------------------------------------------------
@@ -173,13 +406,17 @@ async def test_get_available_route_distinguishers_raises_when_range_full():
 
 
 @pytest.mark.asyncio
-async def test_provision_vrf_creates_overlay_vrf_vxlan():
+async def test_provision_vrf_creates_overlay_vrf_assignment_and_vxlan():
     with aioresponses() as m:
         m.get(_r(f"{NAUTOBOT}/api/extras/statuses/"), payload=_lookup(STATUS_ID))
         m.get(_r(f"{NAUTOBOT}/api/tenancy/tenants/"), payload=_lookup(TENANT_ID))
         m.get(_r(f"{OVERLAYS_BASE}/overlays/"), payload={"results": []})
         m.post(f"{OVERLAYS_BASE}/overlays/", payload={"id": OVERLAY_ID})
         m.post(f"{NAUTOBOT}/api/ipam/vrfs/", payload={"id": VRF_ID})
+        m.post(
+            f"{OVERLAYS_BASE}/overlay-assignments/",
+            payload={"id": ASSIGNMENT_ID},
+        )
         m.post(f"{OVERLAYS_BASE}/vxlans/", payload={"id": VXLAN_ID})
 
         await provision_vrf(
@@ -198,6 +435,12 @@ async def test_provision_vrf_creates_overlay_vrf_vxlan():
             "namespace": NS_ID,
             "tenant": TENANT_ID,
         }
+        assert _request_json(m, "post", f"{OVERLAYS_BASE}/overlay-assignments/") == {
+            "overlay": OVERLAY_ID,
+            "assigned_object_type": "ipam.vrf",
+            "assigned_object_id": VRF_ID,
+            "status": STATUS_ID,
+        }
 
 
 @pytest.mark.asyncio
@@ -211,6 +454,10 @@ async def test_provision_vrf_reuses_existing_overlay():
         )
         # No create_overlay call — overlay already exists
         m.post(f"{NAUTOBOT}/api/ipam/vrfs/", payload={"id": VRF_ID})
+        m.post(
+            f"{OVERLAYS_BASE}/overlay-assignments/",
+            payload={"id": ASSIGNMENT_ID},
+        )
         m.post(f"{OVERLAYS_BASE}/vxlans/", payload={"id": VXLAN_ID})
 
         await provision_vrf(
@@ -232,9 +479,17 @@ async def test_provision_vrf_rolls_back_on_vxlan_failure():
         m.get(_r(f"{OVERLAYS_BASE}/overlays/"), payload={"results": []})
         m.post(f"{OVERLAYS_BASE}/overlays/", payload={"id": OVERLAY_ID})
         m.post(f"{NAUTOBOT}/api/ipam/vrfs/", payload={"id": VRF_ID})
+        m.post(
+            f"{OVERLAYS_BASE}/overlay-assignments/",
+            payload={"id": ASSIGNMENT_ID},
+        )
         # vxlan creation fails
         m.post(f"{OVERLAYS_BASE}/vxlans/", status=400, payload={"detail": "bad"})
-        # rollback: delete vrf (no vxlans were created)
+        # rollback: delete assignment and VRF (no VXLANs were created)
+        m.delete(
+            f"{OVERLAYS_BASE}/overlay-assignments/{ASSIGNMENT_ID}/",
+            status=204,
+        )
         m.delete(f"{NAUTOBOT}/api/ipam/vrfs/{VRF_ID}/", status=204)
 
         with pytest.raises(ApplicationError, match="Failed to provision VPC"):
@@ -290,13 +545,21 @@ async def test_provision_vrf_missing_tenant_raises():
 
 
 @pytest.mark.asyncio
-async def test_delete_vrf_deletes_vxlan_then_vrf():
+async def test_delete_vrf_deletes_vxlan_assignment_then_vrf():
     with aioresponses() as m:
         m.get(
             _r(f"{OVERLAYS_BASE}/vxlans/"),
             payload={"results": [{"id": VXLAN_ID, "vrf": {"id": VRF_ID}}]},
         )
         m.delete(f"{OVERLAYS_BASE}/vxlans/{VXLAN_ID}/", status=204)
+        m.get(
+            _r(f"{OVERLAYS_BASE}/overlay-assignments/"),
+            payload={"results": [{"id": ASSIGNMENT_ID}]},
+        )
+        m.delete(
+            f"{OVERLAYS_BASE}/overlay-assignments/{ASSIGNMENT_ID}/",
+            status=204,
+        )
         m.delete(f"{NAUTOBOT}/api/ipam/vrfs/{VRF_ID}/", status=204)
 
         await delete_vrf(VrfDeletionActivityInput(vrf_id=VRF_ID, vnid=60004))
@@ -310,6 +573,10 @@ async def test_delete_vrf_skips_vxlan_bound_to_different_vrf():
             payload={"results": [{"id": VXLAN_ID, "vrf": {"id": "other-vrf-id"}}]},
         )
         # No VXLAN delete — vrf_id doesn't match
+        m.get(
+            _r(f"{OVERLAYS_BASE}/overlay-assignments/"),
+            payload={"results": []},
+        )
         m.delete(f"{NAUTOBOT}/api/ipam/vrfs/{VRF_ID}/", status=204)
 
         await delete_vrf(VrfDeletionActivityInput(vrf_id=VRF_ID, vnid=60004))
@@ -326,10 +593,6 @@ async def test_delete_overlay_deletes_when_no_members():
         m.get(
             _r(f"{OVERLAYS_BASE}/overlays/"),
             payload={"results": [{"id": OVERLAY_ID, "name": "test-overlay-001"}]},
-        )
-        m.get(
-            _r(f"{OVERLAYS_BASE}/overlays/{OVERLAY_ID}/"),
-            payload={"id": OVERLAY_ID, "member_count": 0},
         )
         m.get(_r(f"{OVERLAYS_BASE}/vxlans/"), payload={"results": []})
         m.delete(f"{OVERLAYS_BASE}/overlays/{OVERLAY_ID}/", status=204)
@@ -349,10 +612,6 @@ async def test_delete_overlay_skips_when_vxlans_remain():
             _r(f"{OVERLAYS_BASE}/overlays/"),
             payload={"results": [{"id": OVERLAY_ID, "name": "test-overlay-001"}]},
         )
-        m.get(
-            _r(f"{OVERLAYS_BASE}/overlays/{OVERLAY_ID}/"),
-            payload={"id": OVERLAY_ID, "member_count": 0},
-        )
         m.get(_r(f"{OVERLAYS_BASE}/vxlans/"), payload={"results": [{"id": VXLAN_ID}]})
 
         result = await delete_overlay(
@@ -363,23 +622,20 @@ async def test_delete_overlay_skips_when_vxlans_remain():
 
 
 @pytest.mark.asyncio
-async def test_delete_overlay_skips_when_assignments_remain():
+async def test_delete_overlay_cascades_assignments_when_no_vxlans_remain():
     with aioresponses() as m:
         m.get(
             _r(f"{OVERLAYS_BASE}/overlays/"),
             payload={"results": [{"id": OVERLAY_ID, "name": "test-overlay-001"}]},
         )
-        m.get(
-            _r(f"{OVERLAYS_BASE}/overlays/{OVERLAY_ID}/"),
-            payload={"id": OVERLAY_ID, "member_count": 2},
-        )
         m.get(_r(f"{OVERLAYS_BASE}/vxlans/"), payload={"results": []})
+        m.delete(f"{OVERLAYS_BASE}/overlays/{OVERLAY_ID}/", status=204)
 
         result = await delete_overlay(
             DeleteOverlayInput(overlay_id="test-overlay-001", site=LOCATION_ID)
         )
 
-    assert result.deleted is False
+    assert result.deleted is True
 
 
 @pytest.mark.asyncio
@@ -446,3 +702,47 @@ async def test_find_overlay_raises_on_multiple_results():
         async with client:
             with pytest.raises(NautobotException, match="Ambiguous overlay"):
                 await client.find_overlay("test-overlay-001", LOCATION_ID)
+
+
+# ---------------------------------------------------------------------------
+# NautobotClient pagination (get_all)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_vxlans_by_overlay_follows_pagination():
+    """All VXLAN pages are collected, not just the first."""
+    with aioresponses() as m:
+        m.get(
+            _r(f"{OVERLAYS_BASE}/vxlans/"),
+            payload={"next": f"{OVERLAYS_BASE}/vxlans/?offset=1", "results": [{"id": "v1"}]},
+        )
+        m.get(
+            _r(f"{OVERLAYS_BASE}/vxlans/"),
+            payload={"next": None, "results": [{"id": "v2"}]},
+        )
+
+        client = NautobotClient()
+        async with client:
+            result = await client.get_vxlans_by_overlay(OVERLAY_ID)
+
+    assert [v["id"] for v in result] == ["v1", "v2"]
+
+
+@pytest.mark.asyncio
+async def test_lookup_id_by_name_detects_ambiguity_across_pages():
+    """Ambiguity is detected from the server count even when results are paginated."""
+    with aioresponses() as m:
+        m.get(
+            _r(f"{NAUTOBOT}/api/dcim/locations/"),
+            payload={
+                "count": 2,
+                "next": f"{NAUTOBOT}/api/dcim/locations/?offset=1",
+                "results": [{"id": "id-1"}],
+            },
+        )
+
+        client = NautobotClient()
+        async with client:
+            with pytest.raises(NautobotException, match="Ambiguous name"):
+                await client.lookup_id_by_name("dcim/locations/", "SPO01")

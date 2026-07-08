@@ -6,12 +6,14 @@ trim() {
   value="${value#"${value%%[![:space:]]*}"}"
   value="${value%"${value##*[![:space:]]}"}"
   printf '%s' "$value"
+  return 0
 }
 
 shell_export() {
   local name="$1"
   local value="$2"
   printf 'export %s=%q\n' "$name" "$value"
+  return 0
 }
 
 parse_options() {
@@ -20,7 +22,7 @@ parse_options() {
   local -n username_ref="$3"
 
   if [[ -z "$options" ]]; then
-    return
+    return 0
   fi
 
   local raw_option option key value
@@ -39,6 +41,7 @@ parse_options() {
         ;;
     esac
   done
+  return 0
 }
 
 select_target() {
@@ -61,7 +64,7 @@ select_target() {
     NVCM_SELECTED_IMAGE_TOKEN_VAR="${NVCM_IMAGE_TOKEN_VAR:-NGC_REGISTRY_TOKEN}"
     NVCM_SELECTED_IMAGE_REGISTRY="${NVCM_IMAGE_REGISTRY:-${NVCM_SELECTED_IMAGE_REPOSITORY%%/*}}"
     NVCM_SELECTED_IMAGE_USERNAME="${NVCM_IMAGE_USERNAME:-\$oauthtoken}"
-    return
+    return 0
   fi
 
   local raw_line line name repository token_var options registry username
@@ -93,7 +96,7 @@ select_target() {
     NVCM_SELECTED_IMAGE_TOKEN_VAR="$token_var"
     NVCM_SELECTED_IMAGE_REGISTRY="${registry:-${NVCM_SELECTED_IMAGE_REPOSITORY%%/*}}"
     NVCM_SELECTED_IMAGE_USERNAME="${username:-\$oauthtoken}"
-    return
+    return 0
   done <<< "$records"
 
   if [[ -n "$requested_name" ]]; then
@@ -101,7 +104,7 @@ select_target() {
   else
     echo "NVCM_IMAGE_TARGETS does not contain any usable records." >&2
   fi
-  exit 1
+  return 1
 }
 
 target_name="${1:-${NVCM_IMAGE_TARGET:-}}"

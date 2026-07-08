@@ -36,10 +36,10 @@ RUN set -eux; \
     groupadd -r kea 2>/dev/null || true && \
     useradd -r -g kea kea 2>/dev/null || true
 
-# Install Stork agent (pinned to 2.4.0 for Go dependency CVE fixes)
+# Install Stork agent (pinned to 2.4.x for Go dependency CVE fixes)
 COPY build/setup.stork.deb.sh /tmp/setup.stork.deb.sh
 RUN bash /tmp/setup.stork.deb.sh && \
-    apt-get install -y --no-install-recommends isc-stork-agent=2.4.0* && \
+    apt-get install -y --no-install-recommends isc-stork-agent=2.4.1* && \
     rm /tmp/setup.stork.deb.sh && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*

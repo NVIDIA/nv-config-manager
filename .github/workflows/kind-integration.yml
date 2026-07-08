@@ -13,9 +13,11 @@ on:
         required: false
         default: false
         type: boolean
-
-permissions:
-  contents: read
+      approved_sha:
+        description: Exact PR commit set by /kind test; leave blank for manual runs
+        required: false
+        default: ""
+        type: string
 
 concurrency:
   group: kind-integration-${{ github.ref }}
@@ -37,6 +39,8 @@ jobs:
     name: Kind Integration
     if: startsWith(github.ref, 'refs/heads/pull-request/')
     runs-on: linux-amd64-cpu32m
+    permissions:
+      contents: read
     timeout-minutes: 90
     env:
       KIND_CLUSTER_NAME: nv-config-manager-${{ github.run_id }}
@@ -48,6 +52,17 @@ jobs:
         timeout-minutes: 5
         with:
           persist-credentials: false
+      - name: Verify approved commit
+        if: inputs.approved_sha != ''
+        env:
+          APPROVED_SHA: ${{ inputs.approved_sha }}
+        run: |
+          set -euo pipefail
+          actual_sha="$(git rev-parse HEAD)"
+          if [ "${actual_sha}" != "${APPROVED_SHA}" ]; then
+            echo "Expected approved commit ${APPROVED_SHA}, checked out ${actual_sha}"
+            exit 1
+          fi
       - name: Setup proxy cache
         timeout-minutes: 5
         uses: nv-gha-runners/setup-proxy-cache@14229018fe157c83e03c008f27d183d8e99bc67c

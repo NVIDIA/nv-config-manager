@@ -1246,6 +1246,7 @@ export async function mockWorkflowsListEndpoint(page: Page) {
     }
 
     const workflowType = url.searchParams.get("workflow_type");
+    const workflowId = url.searchParams.get("workflow_id");
     const nextPageToken = url.searchParams.get("next_page_token");
     const limit = url.searchParams.get("limit");
     const hideCompleted =
@@ -1271,6 +1272,9 @@ export async function mockWorkflowsListEndpoint(page: Page) {
       if (workflowType && workflow.workflow_type !== workflowType) {
         return false;
       }
+      if (workflowId && workflow.id !== workflowId) {
+        return false;
+      }
       if (hideCompleted && workflow.status === "COMPLETED") {
         return false;
       }
@@ -1290,8 +1294,8 @@ export async function mockWorkflowsListEndpoint(page: Page) {
       }
       if (
         status &&
-        displayStatus !== status &&
-        !(pendingApproval && status === "RUNNING" && workflow.pending_approval)
+        workflow.status !== status &&
+        displayStatus !== status
       ) {
         return false;
       }
@@ -1326,15 +1330,23 @@ export async function mockWorkflowsListEndpoint(page: Page) {
           string,
           Array<string | number | boolean> | undefined
         >;
-        const attributeValue = String(searchAttributes[attribute]?.[0] ?? "").toLowerCase();
-        return attributeValue.includes(value.toLowerCase());
+        const attributeValue = String(searchAttributes[attribute]?.[0] ?? "");
+        return attributeValue === value;
       });
     });
-    const paginatedWorkflows = workflows.slice(
+    const responseWorkflows =
+      url.searchParams.get("status") === "RUNNING" &&
+      !url.searchParams.has("pending_approval") &&
+      workflows.length > 0
+        ? workflows.map((workflow, index) =>
+            index === 0 ? { ...workflow, pending_approval: true } : workflow
+          )
+        : workflows;
+    const paginatedWorkflows = responseWorkflows.slice(
       page * pageSize,
       (page + 1) * pageSize
     );
-    const hasMore = (page + 1) * pageSize < workflows.length;
+    const hasMore = (page + 1) * pageSize < responseWorkflows.length;
 
     await delay(100);
 
@@ -1343,9 +1355,11 @@ export async function mockWorkflowsListEndpoint(page: Page) {
       json: {
         workflows: paginatedWorkflows,
         next_page_token: hasMore ? (page + 1).toString() : null,
-        total_count: workflows.length,
+        total_count: responseWorkflows.length,
         page_count:
-          workflows.length === 0 ? 0 : Math.ceil(workflows.length / pageSize),
+          responseWorkflows.length === 0
+            ? 0
+            : Math.ceil(responseWorkflows.length / pageSize),
       },
     });
   });

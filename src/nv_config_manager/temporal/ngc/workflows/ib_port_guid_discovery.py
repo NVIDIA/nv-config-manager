@@ -22,7 +22,7 @@ compute-side interfaces rather than relying on UFM node descriptions
 
 from datetime import timedelta
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 
@@ -59,9 +59,15 @@ DEFAULT_ACTIVITY_RETRY_POLICY = RetryPolicy(
 class IBPortGuidDiscoveryInput(BaseModel):
     """Input for the IB Port GUID Discovery workflow."""
 
-    ufm_device_id: str
-    switch_device_ids: list[str]
-    dry_run: bool = True
+    ufm_device_id: str = Field(
+        description="Identifier of the UFM device used to discover port GUIDs."
+    )
+    switch_device_ids: list[str] = Field(
+        description="Identifiers of the InfiniBand switches whose interfaces will be synchronized."
+    )
+    dry_run: bool = Field(
+        default=True, description="Whether to report changes without updating Nautobot."
+    )
 
 
 class IBPortGuidDiscoveryResult(BaseModel):

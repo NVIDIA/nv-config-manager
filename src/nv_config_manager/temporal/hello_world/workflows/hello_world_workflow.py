@@ -16,7 +16,7 @@
 
 from datetime import timedelta
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 
@@ -47,7 +47,7 @@ DEFAULT_ACTIVITY_RETRY_POLICY = RetryPolicy(maximum_attempts=1)
 class HelloWorldInput(BaseModel):
     """Hello World Input Definition."""
 
-    name: str
+    name: str = Field(description="Name to include in the workflow greeting.")
 
 
 @workflow.defn

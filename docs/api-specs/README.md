@@ -13,13 +13,24 @@ This directory contains generated OpenAPI JSON for the FastAPI services in NVIDI
 Regenerate specs from the repository root:
 
 ```bash
-uv run python scripts/generate_openapi.py
+make openapi
 ```
 
 Check that committed specs are current:
 
 ```bash
-uv run python scripts/generate_openapi.py --check
+make openapi-check
 ```
+
+Regenerate the specifications and all committed Go clients together:
+
+```bash
+make api-generate
+```
+
+The specifications describe bearer JWT authentication as the default for CLI and machine clients.
+Explicit health, readiness, metrics, and Temporal codec routes are public. ZTP device routes also
+support device-IP authorization, and deployments can disable authentication enforcement with
+`[auth] required = false`.
 
 API path and method changes should be intentional and reviewed separately from documentation text changes.

@@ -107,10 +107,29 @@ def test_mcp_oauth_settings_parse_metadata_config() -> None:
         == "https://svc-mcp.example.test/.well-known/oauth-protected-resource/mcp"
     )
     assert settings.authorization_server_url == "https://svc-mcp.example.test"
+    assert settings.forward_resource_parameter is True
+    assert settings.oauth_proxy_paths == frozenset()
     assert settings.well_known_paths == {
         "/.well-known/oauth-protected-resource",
         "/.well-known/oauth-protected-resource/mcp",
         "/.well-known/oauth-authorization-server",
+    }
+
+
+def test_mcp_oauth_settings_supports_resource_parameter_compatibility_proxy() -> None:
+    config = _oauth_config()
+    config["mcp.oauth"]["forward_resource_parameter"] = "false"
+
+    settings = MCPOAuthSettings.from_config(config)
+
+    assert settings.forward_resource_parameter is False
+    assert settings.authorization_proxy_url == "https://svc-mcp.example.test/oauth/authorize"
+    assert settings.callback_proxy_url == "https://svc-mcp.example.test/oauth/callback"
+    assert settings.token_proxy_url == "https://svc-mcp.example.test/oauth/token"
+    assert settings.oauth_proxy_paths == {
+        "/oauth/authorize",
+        "/oauth/callback",
+        "/oauth/token",
     }
 
 
@@ -131,9 +150,18 @@ def test_mcp_oauth_well_known_paths_follow_resource_url_path() -> None:
     }
 
 
-def test_mcp_oauth_settings_requires_valid_urls_when_enabled() -> None:
+@pytest.mark.parametrize(
+    "resource_url",
+    [
+        "svc-mcp.example.test/mcp",
+        "http://svc-mcp.example.test/mcp",
+        "https://svc-mcp.example.test/mcp?tenant=test",
+        "https://svc-mcp.example.test/mcp#fragment",
+    ],
+)
+def test_mcp_oauth_settings_requires_rfc_9728_resource_url(resource_url: str) -> None:
     config = _oauth_config()
-    config["mcp.oauth"]["resource_url"] = "svc-mcp.example.test/mcp"
+    config["mcp.oauth"]["resource_url"] = resource_url
 
     with pytest.raises(ValueError, match="resource_url"):
         MCPOAuthSettings.from_config(config)
