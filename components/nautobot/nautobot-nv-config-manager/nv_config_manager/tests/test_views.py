@@ -22,6 +22,7 @@ from urllib.parse import parse_qs, urlparse
 from bs4 import BeautifulSoup
 from django.contrib.contenttypes.models import ContentType
 from django.db.models import Model, Q
+from django.test import override_settings
 from django.urls import reverse
 from django.utils import timezone
 from nautobot.apps.testing import (
@@ -48,6 +49,10 @@ from nv_config_manager.models import (
 )
 from nv_config_manager.tests.fixtures import mock_data as data
 from nv_config_manager.tests.fixtures.create_obj_fixtures import create_nested_locations
+
+with_temporal_url = override_settings(
+    PLUGINS_CONFIG={"nv_config_manager": {"temporal_url": "https://temporal.example.com"}}
+)
 
 
 def extract_links(html_content, link_texts):
@@ -202,6 +207,7 @@ class ConfigManagerDeviceStatusTestCase(
         self.assertEqual(site, self.site.name)
         self.assertEqual(device_id, str(self.managed_device_overdue.id))
 
+    @with_temporal_url
     def test_see_diff_column_present(self):
         """The managed devices list exposes a per-row See Diff workflow link."""
         obj_perm = ObjectPermission(name="Test permission", actions=["view"])
@@ -403,6 +409,7 @@ class TestConfigManagerDeviceStatusDetailView(
             deployed_commit_id=data.TEST_UPDATED_COMMIT_ID,
         )
 
+    @with_temporal_url
     def test_workflow_urls(self):
         """Test the urls are correct."""
         obj_perm = ObjectPermission(name="Test permission", actions=["view"])
@@ -802,6 +809,7 @@ class ConfigManagerWorkflowsTabTestCase(ConfigManagerViewTestMixin, ViewTestCase
             deployed_commit_id=data.TEST_INTENDED_COMMIT_ID,
         )
 
+    @with_temporal_url
     def test_workflow_urls(self):
         """Test the urls are correct."""
         obj_perm = ObjectPermission(name="Test permission", actions=["view"])

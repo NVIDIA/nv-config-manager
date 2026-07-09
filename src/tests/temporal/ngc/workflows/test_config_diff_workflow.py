@@ -33,6 +33,7 @@ from nv_config_manager.temporal.ngc.activities.nautobot import (
 from nv_config_manager.temporal.ngc.workflows.config_diff import (
     ConfigDiffInput,
     ConfigDiffWorkflow,
+    ConfigDiffWorkflowOutput,
 )
 
 
@@ -109,7 +110,7 @@ async def test_execute_workflow_reports_diff(
         )
 
         result = await handle.result()
-        assert result == "mock_diff"
+        assert result == ConfigDiffWorkflowOutput(diff="mock_diff", has_diff=True)
 
         stages = await handle.query("stages")
         # Read-only: only load + diff stages exist -- no apply, no backup.
@@ -139,7 +140,7 @@ async def test_execute_workflow_no_diff(
     mock_cumulus_connection: Any,
     env: Any,
 ) -> None:
-    """An empty diff reports no drift and returns an empty string."""
+    """An empty diff reports no drift via has_diff=False and an empty diff string."""
     task_queue_name = str(uuid.uuid4())
     async with _worker(env.client, task_queue_name):
         mock_cumulus_connection.return_value.perform_candidate_diff.return_value = ""
@@ -153,7 +154,7 @@ async def test_execute_workflow_no_diff(
         )
 
         result = await handle.result()
-        assert result == ""
+        assert result == ConfigDiffWorkflowOutput(diff="", has_diff=False)
 
         stages = await handle.query("stages")
         diff_stage = next(s for s in stages if s["name"] == "perform_configuration_diff")

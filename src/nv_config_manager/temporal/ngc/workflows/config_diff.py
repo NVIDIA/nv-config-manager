@@ -53,6 +53,13 @@ class ConfigDiffInput(BaseModel):
     device_id: str = Field(description="Identifier of the network device to compare.")
 
 
+class ConfigDiffWorkflowOutput(BaseModel):
+    """Config Diff Workflow output."""
+
+    diff: str
+    has_diff: bool
+
+
 @workflow.defn
 class ConfigDiffWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, ArchiveMixin):
     """Read-only diff of intended configuration against the live device."""
@@ -161,7 +168,7 @@ class ConfigDiffWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archive
     @run_nv_config_manager_workflow
     async def run(  # type: ignore[override, ty:invalid-method-override]
         self, workflow_input: ConfigDiffInput
-    ) -> str:
+    ) -> ConfigDiffWorkflowOutput:
         """Execute the read-only diff workflow."""
         self.set_input(workflow_input)
         load_config_output = await self.load_intended_configuration(
@@ -174,4 +181,4 @@ class ConfigDiffWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archive
             )
         )
         await self.archive_results()
-        return diff_output.diff
+        return ConfigDiffWorkflowOutput(diff=diff_output.diff, has_diff=diff_output.has_diff)

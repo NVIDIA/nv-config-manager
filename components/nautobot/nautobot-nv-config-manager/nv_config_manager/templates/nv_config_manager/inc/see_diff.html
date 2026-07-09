@@ -1,5 +1,3 @@
-{% load helpers %}
-
 {% if temporal_url %}
   <a href="{{ temporal_url }}/workflows/configdiffworkflow/form?site={{ site|urlencode }}&device-id={{ device_id }}{% if tenant %}&tenant={{ tenant|urlencode }}{% endif %}{% if status %}&status={{ status|urlencode }}{% endif %}"
      target="_blank" class="btn btn-primary btn-xs">
