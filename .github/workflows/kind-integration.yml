@@ -48,7 +48,7 @@ jobs:
       NV_CONFIG_MANAGER_HOSTNAME: config-manager.local
       TEST_PATH: ${{ inputs.test_path }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         timeout-minutes: 5
         with:
           persist-credentials: false
@@ -231,3 +231,47 @@ jobs:
           path: |
             integration-test-logs/
             integration-test-results.xml
+
+  report-result:
+    name: Report Kind Integration Result
+    needs: integration
+    if: always() && startsWith(github.ref, 'refs/heads/pull-request/')
+    runs-on: linux-amd64-cpu4
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      # The slash-command dispatcher uses GITHUB_TOKEN, so a follow-on
+      # workflow_run event is not reliable. Report from the dispatched workflow
+      # instead, using the same approved pull-request/* SHA that Kind tested.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        timeout-minutes: 5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Update PR with result
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        timeout-minutes: 5
+        env:
+          KIND_RESULT_CONCLUSION: ${{ needs.integration.result }}
+          KIND_RESULT_EVENT: ${{ github.event_name }}
+          KIND_RESULT_HEAD_BRANCH: ${{ github.ref_name }}
+          KIND_RESULT_HEAD_SHA: ${{ github.sha }}
+          KIND_RESULT_HTML_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          script: |
+            const report = require("./.github/scripts/kind-integration-result.js");
+            await report({
+              github,
+              context,
+              core,
+              run: {
+                conclusion: process.env.KIND_RESULT_CONCLUSION,
+                event: process.env.KIND_RESULT_EVENT,
+                head_branch: process.env.KIND_RESULT_HEAD_BRANCH,
+                head_sha: process.env.KIND_RESULT_HEAD_SHA,
+                html_url: process.env.KIND_RESULT_HTML_URL,
+                status: "completed",
+              },
+            });
