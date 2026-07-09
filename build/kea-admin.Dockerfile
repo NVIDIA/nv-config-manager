@@ -41,4 +41,7 @@ RUN set -eux; \
 COPY build/kea-admin/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
+# Database initialization only requires config-file reads and network access.
+USER 1000:1000
+
 ENTRYPOINT ["/entrypoint.sh"]
