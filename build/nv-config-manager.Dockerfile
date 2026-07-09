@@ -41,10 +41,12 @@ RUN set -eux; \
 WORKDIR /code/nv-config-manager
 ARG TEMPLATE_ENGINE_VERSION=""
 
-# Copy all project files
+# Copy only the project files and directories required by the image
 COPY pyproject.toml uv.lock README.md /code/nv-config-manager/
-COPY src/ /code/nv-config-manager/src/
-COPY components/network-templates/ /code/nv-config-manager/components/network-templates/
+COPY src/nv_config_manager/ /code/nv-config-manager/src/nv_config_manager/
+COPY src/tests/ /code/nv-config-manager/src/tests/
+COPY components/network-templates/pyproject.toml components/network-templates/README.md /code/nv-config-manager/components/network-templates/
+COPY components/network-templates/src/ /code/nv-config-manager/components/network-templates/src/
 COPY db/migrations/ /code/nv-config-manager/db/migrations/
 COPY db/alembic.ini /code/nv-config-manager/db/
 
@@ -139,6 +141,8 @@ ENV PATH="/code/nv-config-manager/.venv/bin:$PATH"
 # Note: DHCP/Kea database schema is managed by a separate kea-admin image
 # built from Dockerfile.kea-admin using the official ISC kea-admin tool.
 # =============================================================================
+
+USER nvs
 
 # Default: start nothing (override CMD to run a service)
 CMD ["python", "-c", "print('NVIDIA Config Manager - Specify a service entrypoint')"]

@@ -22,13 +22,15 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: &actions_checkout actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
       - name: Setup proxy cache
         uses: &setup_proxy_cache nv-gha-runners/setup-proxy-cache@14229018fe157c83e03c008f27d183d8e99bc67c
-      - uses: actions/setup-python@v5
+      - uses: &actions_setup_python actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      - uses: astral-sh/setup-uv@v5
+      - uses: &setup_uv astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
           enable-cache: true
       - run: uv sync --frozen
@@ -55,15 +57,16 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: *actions_checkout
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Setup proxy cache
         uses: *setup_proxy_cache
-      - uses: actions/setup-python@v5
+      - uses: *actions_setup_python
         with:
           python-version: ${{ env.NAUTOBOT_PYTHON_VERSION }}
-      - uses: astral-sh/setup-uv@v5
+      - uses: *setup_uv
         with:
           enable-cache: true
       - name: Lint and build app package
@@ -82,15 +85,16 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: *actions_checkout
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Setup proxy cache
         uses: *setup_proxy_cache
-      - uses: actions/setup-python@v5
+      - uses: *actions_setup_python
         with:
           python-version: ${{ env.NAUTOBOT_PYTHON_VERSION }}
-      - uses: astral-sh/setup-uv@v5
+      - uses: *setup_uv
         with:
           enable-cache: true
       - name: Lint and build app package
@@ -109,7 +113,9 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: *actions_checkout
+        with:
+          persist-credentials: false
       - name: Setup proxy cache
         uses: *setup_proxy_cache
       - name: Check source headers
@@ -139,13 +145,15 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: *actions_checkout
+        with:
+          persist-credentials: false
       - name: Setup proxy cache
         uses: *setup_proxy_cache
-      - uses: actions/setup-python@v5
+      - uses: *actions_setup_python
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      - uses: astral-sh/setup-uv@v5
+      - uses: *setup_uv
         with:
           enable-cache: true
       - run: uv sync --frozen
@@ -155,7 +163,7 @@ jobs:
         run: |
           uv sync --frozen
           uv run pytest tests/ -n auto --cov=nv_config_manager_auth --cov=nv_config_manager_jobs --cov-report=xml:coverage.xml --cov-report=term
-      - uses: actions/upload-artifact@v4
+      - uses: &upload_artifact actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: python-test-artifacts
@@ -169,13 +177,15 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: *actions_checkout
+        with:
+          persist-credentials: false
       - name: Setup proxy cache
         uses: *setup_proxy_cache
-      - uses: actions/setup-python@v5
+      - uses: *actions_setup_python
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      - uses: astral-sh/setup-uv@v5
+      - uses: *setup_uv
         with:
           enable-cache: true
       - name: Test installer
@@ -183,7 +193,7 @@ jobs:
         run: |
           uv sync --frozen
           uv run pytest tests/ -v --cov=src/nv_config_manager_installer --cov-report=xml:coverage.xml --cov-report=term
-      - uses: actions/upload-artifact@v4
+      - uses: *upload_artifact
         if: always()
         with:
           name: installer-test-artifacts
@@ -195,18 +205,20 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: *actions_checkout
+        with:
+          persist-credentials: false
       - name: Setup proxy cache
         uses: *setup_proxy_cache
-      - uses: actions/setup-python@v5
+      - uses: *actions_setup_python
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      - uses: astral-sh/setup-uv@v5
+      - uses: *setup_uv
         with:
           enable-cache: true
       - run: uv sync --frozen
       - run: uv run pytest components/network-templates/tests -v --cov=nv_config_manager_templates --cov-report=xml:components/network-templates/coverage.xml --cov-report=term
-      - uses: actions/upload-artifact@v4
+      - uses: *upload_artifact
         if: always()
         with:
           name: network-template-test-artifacts
@@ -218,10 +230,12 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: *actions_checkout
+        with:
+          persist-credentials: false
       - name: Setup proxy cache
         uses: *setup_proxy_cache
-      - uses: actions/setup-go@v5
+      - uses: &actions_setup_go actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: components/nats-ready/go.mod
           cache-dependency-path: components/nats-ready/go.sum
@@ -237,7 +251,9 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: *actions_checkout
+        with:
+          persist-credentials: false
       - name: Setup proxy cache
         uses: *setup_proxy_cache
       - name: Install Helm
@@ -282,16 +298,18 @@ jobs:
       issues: write
       pull-requests: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: *actions_checkout
+        with:
+          persist-credentials: false
       - name: Setup proxy cache
         uses: *setup_proxy_cache
-      - uses: actions/setup-python@v5
+      - uses: *actions_setup_python
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      - uses: astral-sh/setup-uv@v5
+      - uses: *setup_uv
         with:
           enable-cache: true
-      - uses: actions/setup-go@v5
+      - uses: *actions_setup_go
         with:
           go-version-file: bindings/go/go.mod
           cache: false
@@ -419,7 +437,9 @@ jobs:
       run:
         working-directory: ui
     steps:
-      - uses: actions/checkout@v4
+      - uses: *actions_checkout
+        with:
+          persist-credentials: false
       - name: Setup proxy cache
         uses: *setup_proxy_cache
       - name: Cache npm
@@ -443,7 +463,9 @@ jobs:
       run:
         working-directory: ui
     steps:
-      - uses: actions/checkout@v4
+      - uses: *actions_checkout
+        with:
+          persist-credentials: false
       - name: Setup proxy cache
         uses: *setup_proxy_cache
       - name: Cache npm
@@ -461,7 +483,7 @@ jobs:
       - run: npm ci --prefer-offline
       - run: npm run build
       - run: npm run test:e2e:ci
-      - uses: actions/upload-artifact@v4
+      - uses: *upload_artifact
         if: always()
         with:
           name: ui-e2e-artifacts
