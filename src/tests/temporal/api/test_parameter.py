@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from unittest.mock import patch
+
 from aioresponses import aioresponses
 from fastapi.testclient import TestClient
 
@@ -94,6 +96,16 @@ NAMESPACE_TAGS = {
             {"tags": []},
         ]
     }
+}
+
+SPX_OVERLAYS = {
+    "count": 2,
+    "next": None,
+    "previous": None,
+    "results": [
+        {"id": "overlay-uuid-2", "name": "overlay-b"},
+        {"id": "overlay-uuid-1", "name": "overlay-a"},
+    ],
 }
 
 
@@ -344,6 +356,43 @@ def test_namespace_tag_malformed_response():
         rsp = client.get("/v1/parameter/namespace-tag")
         assert rsp.status_code == 500
         assert rsp.json() == {"detail": "Malformed Nautobot namespace tag response."}
+
+
+def test_overlays_with_filters():
+    """Test the generic overlay parameter endpoint with filters."""
+    with aioresponses() as m:
+        m.get(
+            "https://nautobot.example.com/api/plugins/overlays/overlays/"
+            "?location=SITEA&isolation_type=spectrum_x_vrf&limit=250&offset=0",
+            payload=SPX_OVERLAYS,
+        )
+
+        client = TestClient(app)
+        rsp = client.get("/v1/parameter/overlay?location=SITEA&isolation_type=spectrum_x_vrf")
+        assert rsp.json() == [
+            {"id": "overlay-uuid-1", "name": "overlay-a"},
+            {"id": "overlay-uuid-2", "name": "overlay-b"},
+        ]
+
+
+def test_overlay_query_failure_is_logged():
+    """Log the underlying Nautobot failure while preserving the generic API response."""
+    with (
+        aioresponses() as m,
+        patch("nv_config_manager.temporal.api.parameter_v1.logger.exception") as log_exception,
+    ):
+        m.get(
+            "https://nautobot.example.com/api/plugins/overlays/overlays/?limit=250&offset=0",
+            status=500,
+        )
+
+        client = TestClient(app)
+        rsp = client.get("/v1/parameter/overlay")
+
+    assert rsp.status_code == 500
+    assert rsp.json() == {"detail": "Failed to query Nautobot overlays."}
+    log_exception.assert_called_once()
+    assert isinstance(log_exception.call_args.kwargs["exc_info"], Exception)
 
 
 def test_status_with_content_type():

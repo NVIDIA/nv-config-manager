@@ -701,6 +701,10 @@ async function setupDocsMocks(page: Page): Promise<void> {
     await fulfillJson(route, DOC_NAMESPACE_TAGS);
   });
 
+  await page.route(/.*\/v1\/parameter\/overlay/, async (route) => {
+    await fulfillJson(route, [{ id: "spx-overlay-demo", name: DEMO_VPC_ID }]);
+  });
+
   await page.route(/^.*\/v1\/parameter\/device(\?.*)?$/, async (route) => {
     const url = new URL(route.request().url());
     await fulfillJson(route, filterDevices(url));
