@@ -39,6 +39,10 @@ export type DeployWorkflowInput = {
   commit_confirm?: boolean;
 };
 
+export type ConfigDiffWorkflowInput = {
+  device_id: string;
+};
+
 export type TenantDeployWorkflowInput = {
   device: string;
 };

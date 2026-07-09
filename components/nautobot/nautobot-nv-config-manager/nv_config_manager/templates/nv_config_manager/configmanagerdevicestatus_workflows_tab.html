@@ -54,6 +54,20 @@
           </td>
         </tr>
         <tr>
+          <th scope="row">See Diff</th>
+          <td>
+            <a
+              href="{{ temporal_url }}/workflows/configdiffworkflow/form?site={{ site|urlencode }}&device-id={{ device_id }}{% if tenant %}&tenant={{ tenant|urlencode }}{% endif %}{% if status %}&status={{ status|urlencode }}{% endif %}"
+              target="_blank"
+            >
+              <i
+                class="mdi mdi-file-compare"
+                title="Compare intended configuration against the live device"
+              ></i>
+            </a>
+          </td>
+        </tr>
+        <tr>
           <th scope="row">Device Cable Validation</th>
           <td>
             <a
@@ -133,6 +147,20 @@
               <i
                 class="mdi mdi-play-circle-outline"
                 title="View Running Config Deploy Workflow"
+              ></i>
+            </a>
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">See Diff</th>
+          <td>
+            <a
+              href="{{ temporal_url }}/workflows?devicename={{ managed_device }}&hidecompleted=true#configdiffworkflow"
+              target="_blank"
+            >
+              <i
+                class="mdi mdi-play-circle-outline"
+                title="View Running Configuration Diff Workflow"
               ></i>
             </a>
           </td>

@@ -49,6 +49,12 @@ export const siteConfig = {
       enabled: true,
     },
     {
+      title: "Configuration Diff",
+      workflowName: "ConfigDiffWorkflow",
+      slug: "configdiffworkflow",
+      enabled: true,
+    },
+    {
       title: "Tenant Deploy",
       workflowName: "TenantDeployWorkflow",
       slug: "tenantdeployworkflow",

@@ -1,0 +1,12 @@
+{% load helpers %}
+
+{% if temporal_url %}
+  <a href="{{ temporal_url }}/workflows/configdiffworkflow/form?site={{ site|urlencode }}&device-id={{ device_id }}{% if tenant %}&tenant={{ tenant|urlencode }}{% endif %}{% if status %}&status={{ status|urlencode }}{% endif %}"
+     target="_blank" class="btn btn-primary btn-xs">
+    <i class="mdi mdi-file-compare" title="Compare intended configuration against the live device"></i> See Diff
+  </a>
+{% else %}
+  <div>
+    —
+  </div>
+{% endif %}
