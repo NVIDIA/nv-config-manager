@@ -606,7 +606,10 @@ class TestGenerateHelmValues:
 
     def test_kgateway_managed_values(self):
         config = _make_config(
-            infrastructure=InfrastructureConfig(gateway=GatewayType.KGATEWAY),
+            infrastructure=InfrastructureConfig(
+                gateway=GatewayType.KGATEWAY,
+                load_balancer=LoadBalancerConfig(provider=LBProvider.NONE),
+            ),
         )
         values = _gen(config)
 
@@ -614,6 +617,11 @@ class TestGenerateHelmValues:
         assert values["gateway"]["className"] == "kgateway"
         assert values["gateway"]["create"] is True
         assert values["gateway"]["createGatewayClass"] is False
+        assert values["gateway"]["nodePort"] == {
+            "enabled": True,
+            "http": 30080,
+            "https": 30443,
+        }
         assert values["networkPolicy"]["gatewayNamespace"] == "kgateway-system"
 
     def test_kgateway_shared_values(self):

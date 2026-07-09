@@ -608,8 +608,8 @@ gateway:
     enabled: false
     https: 443
     containerPort: 10443
-  # NodePort configuration for Envoy Gateway
-  # Uses NodePort service type instead of LoadBalancer
+  # NodePort configuration for local Kind deployments.
+  # Uses a fixed NodePort Service instead of LoadBalancer.
   nodePort:
     enabled: false
     # NodePort for HTTP (must be in range 30000-32767)

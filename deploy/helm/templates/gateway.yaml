@@ -9,8 +9,10 @@ metadata:
     {{- include "nv-config-manager.labels" . | nindent 4 }}
   {{- $envoyImage := dig "envoyProxy" "image" "" .Values.gateway }}
   {{- $isEnvoyGateway := eq (.Values.gateway.type | default "envoyGateway") "envoyGateway" }}
+  {{- $isKgateway := eq (.Values.gateway.type | default "envoyGateway") "kgateway" }}
   {{- $useOwnProxy := and $isEnvoyGateway (or .Values.gateway.hostNetwork.enabled .Values.gateway.hostPorts.enabled (dig "nodePort" "enabled" false .Values.gateway) .Values.gateway.nlb (dig "envoyProxy" "enabled" false .Values.gateway) $envoyImage) }}
   {{- $proxyName := .Values.gateway.envoyProxy.name | default (printf "%s-proxy" .Values.gateway.name) }}
+  {{- $kgatewayParametersName := printf "%s-parameters" .Values.gateway.name }}
   {{- if $useOwnProxy }}
   annotations:
     gateway.envoyproxy.io/envoy-proxy: {{ $proxyName }}
@@ -23,6 +25,12 @@ spec:
       group: gateway.envoyproxy.io
       kind: EnvoyProxy
       name: {{ $proxyName }}
+  {{- else if and $isKgateway (dig "nodePort" "enabled" false .Values.gateway) }}
+  infrastructure:
+    parametersRef:
+      group: gateway.kgateway.dev
+      kind: GatewayParameters
+      name: {{ $kgatewayParametersName }}
   {{- end }}
   listeners:
   {{- range .Values.gateway.listeners }}
