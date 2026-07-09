@@ -3731,7 +3731,7 @@
     },
     "/v1/workflow/ngc/config_diff": {
       "post": {
-        "description": "Compare the intended configuration against the live device configuration without applying",
+        "description": "Compare the intended configuration against the live device without applying any changes",
         "operationId": "configdiffworkflow_endpoint_v1_workflow_ngc_config_diff_post",
         "requestBody": {
           "content": {

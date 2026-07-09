@@ -185,12 +185,13 @@ export const DeviceWorkflowForm = ({
   if (tenantsError) console.error(`Failed to query tenants: ${tenantsError}`);
   if (statusesError) console.error(`Failed to query statuses: ${statusesError}`);
 
-  const submitWrapper = (data: DeviceWorkflowFormSchema) => {
+  const submitWrapper = async (data: DeviceWorkflowFormSchema) => {
     setIsSubmitting(true);
     try {
-      onSubmit(data);
+      await onSubmit(data);
     } catch (error) {
       console.error(error);
+    } finally {
       setIsSubmitting(false);
     }
   };
@@ -265,6 +266,13 @@ export const DeviceWorkflowForm = ({
       form.setValue("device", ""); // Clear device field when site changes
     }
   }, [site, form]);
+
+  React.useEffect(() => {
+    setIsManualTenantChange(false);
+  }, [queryTenants]);
+  React.useEffect(() => {
+    setIsManualStatusChange(false);
+  }, [queryStatuses]);
 
   // Pre-select the Tenant filter from the URL, keeping only values that exist
   // in the loaded options so a stale link cannot hide the target device.

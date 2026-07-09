@@ -59,7 +59,7 @@ class ConfigDiffWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archive
 
     workflow_name = "Configuration Diff"
     workflow_description = (
-        "Compare the intended configuration against the live device configuration without applying"
+        "Compare the intended configuration against the live device without applying any changes"
     )
     workflow_input_class = ConfigDiffInput
     workflow_api_endpoint = "/ngc/config_diff"
