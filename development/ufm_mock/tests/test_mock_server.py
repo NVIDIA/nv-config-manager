@@ -65,20 +65,6 @@ class TestCreatePKey:
         assert response.status_code == 200
         assert response.json() == {"pkey": "0x0042", "status": "created"}
 
-    def test_index0_round_trips(self, client: TestClient) -> None:
-        client.post(
-            "/ufmRest/resources/pkeys/add",
-            json={"pkey": "0x0001", "ip_over_ib": True, "index0": False},
-        )
-        client.post(
-            "/ufmRest/resources/pkeys/add",
-            json={"pkey": "0x0002", "ip_over_ib": True},  # default index0=True
-        )
-
-        body = client.get("/ufmRest/resources/pkeys").json()
-        assert body["0x0001"]["index0"] is False
-        assert body["0x0002"]["index0"] is True
-
     def test_409_on_duplicate(self, client: TestClient) -> None:
         client.post(
             "/ufmRest/resources/pkeys/add",
@@ -320,16 +306,15 @@ class TestSetMembers:
         """PUT overwrites partition flags too, not just members, when it exists."""
         client.put(
             "/ufmRest/resources/pkeys/",
-            json={"pkey": "0x0001", "guids": ["0xa"], "ip_over_ib": True, "index0": True},
+            json={"pkey": "0x0001", "guids": ["0xa"], "ip_over_ib": True},
         )
         client.put(
             "/ufmRest/resources/pkeys/",
-            json={"pkey": "0x0001", "guids": ["0xa"], "ip_over_ib": False, "index0": False},
+            json={"pkey": "0x0001", "guids": ["0xa"], "ip_over_ib": False},
         )
 
         body = client.get("/ufmRest/resources/pkeys/0x0001?guids_data=true").json()
         assert body["ip_over_ib"] is False
-        assert body["index0"] is False
 
     def test_unchanged_member_preserved(self, client: TestClient) -> None:
         """Re-setting a superset leaves the existing member's record intact."""
