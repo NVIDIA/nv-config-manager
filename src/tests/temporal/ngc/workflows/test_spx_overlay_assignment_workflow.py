@@ -525,7 +525,6 @@ async def test_spx_overlay_tenant_change_uses_current_versions_after_render_race
         deploy_children = stages["deploy"]["child_workflows"]
         assert len(assignment_children) == 1
         assert len(deploy_children) == 1
-        assert assignment_children == [f"{handle.id}-assign-spx-overlay"]
         assert handle.id not in assignment_children
         assert handle.id not in deploy_children
         assert assignment_children != deploy_children

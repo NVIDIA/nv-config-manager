@@ -842,7 +842,6 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
                     site=stage_input.site,
                     namespace_tag=stage_input.namespace_tag,
                 ),
-                id=f"{workflow.info().workflow_id}-assign-spx-overlay",
                 run_timeout=timedelta(minutes=10),
             )
             self.append_child_workflow("assign_spx_overlay", assignment_handle.id)
