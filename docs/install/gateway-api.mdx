@@ -117,10 +117,10 @@ Envoy-native `SecurityPolicy` OIDC configuration have been removed. Helm rejects
 an override containing `ingress.*` with a migration message. Before upgrading:
 
 1. Replace `ingress.type` with `gateway.type`.
-2. Choose `gateway.create: true` for a dedicated Gateway or configure the shared
+1. Choose `gateway.create: true` for a dedicated Gateway or configure the shared
    Gateway parent fields above.
-3. Remove the old `oidc.oauth2Proxy` values. Ensure the Secret named by
+1. Remove the old `oidc.oauth2Proxy` values. Ensure the Secret named by
    `oidc.clientSecretName` contains both `client-secret` and a raw 32-byte
    `cookie-secret`; the installer creates both for Kubernetes-secret deployments.
-4. Register only the base-hostname callback URL shown above.
-5. Confirm that the Gateway data-plane namespace is allowed by `networkPolicy`.
+1. Register only the base-hostname callback URL shown above.
+1. Confirm that the Gateway data-plane namespace is allowed by `networkPolicy`.
