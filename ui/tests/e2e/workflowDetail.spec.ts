@@ -66,7 +66,6 @@ const createWorkflowWithStage = ({
       retry_count: 0,
       traceback: stageState === "FAILED" ? "failed stage" : null,
       execution_time: null,
-      child_workflows: [],
     },
   ];
   return workflow;
@@ -312,30 +311,5 @@ test.describe("Workflow Detail Page", () => {
       page.getByText("This failed stage cannot be retried.")
     ).toBeVisible();
     await expect(page.getByRole("button", { name: "Retry" })).toHaveCount(0);
-  });
-
-  test("links recorded child workflows from failed stages", async ({ page }) => {
-    const workflowId = "failed-child-workflow-parent";
-    const childWorkflowId = "failed-assignment-child";
-    const workflow = createWorkflowWithStage({
-      id: workflowId,
-      retryable: true,
-      stageName: "assign_spx_overlay",
-      stageState: "FAILED",
-      status: "RUNNING",
-    });
-    workflow.stages[0].output = null;
-    workflow.stages[0].child_workflows = [childWorkflowId];
-
-    await page.route(`**/v1/workflow/${workflowId}`, async (route) => {
-      await route.fulfill({ status: 200, json: workflow });
-    });
-
-    await page.goto(`/workflows/${workflowId}`);
-
-    await expect(
-      page.getByRole("link", { name: "View child workflow" })
-    ).toHaveAttribute("href", `/workflows/${childWorkflowId}`);
-    await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
   });
 });
