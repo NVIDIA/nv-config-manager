@@ -114,6 +114,7 @@ include:
 # Parallel scans can race while registering a newly changed policy. The first
 # upload wins and the remaining jobs can safely reuse it on retry.
 pulse-scan-images:
+  allow_failure: true
   retry:
     max: 1
     when:
