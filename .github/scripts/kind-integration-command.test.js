@@ -189,6 +189,29 @@ test("still reports queued run when acknowledgement reaction fails", async () =>
   assert.match(result.comments[0].body, /Queued Kind integration/);
 });
 
+test("still reports already-running run when acknowledgement reaction fails", async () => {
+  const reactionError = new Error("Resource not accessible by integration");
+  reactionError.status = 403;
+
+  const result = await runFixture({
+    reactionError,
+    workflowRuns: [
+      {
+        head_sha: CURRENT_SHA,
+        status: "in_progress",
+        html_url: "https://github.com/NVIDIA/nv-config-manager/actions/runs/1",
+      },
+    ],
+  });
+
+  assert.deepEqual(result.failures, []);
+  assert.equal(result.dispatches.length, 0);
+  assert.equal(result.reactions.length, 0);
+  assert.match(result.warnings[0], /acknowledgement reaction failed/);
+  assert.match(result.comments[0].body, /already running/);
+  assert.match(result.comments[0].body, /actions\/runs\/1/);
+});
+
 test("warns to console when acknowledgement reaction fails without core.warning", async () => {
   const originalWarn = console.warn;
   const consoleWarnings = [];
@@ -208,6 +231,38 @@ test("warns to console when acknowledgement reaction fails without core.warning"
     assert.deepEqual(result.warnings, []);
     assert.match(consoleWarnings[0], /acknowledgement reaction failed/);
     assert.match(result.comments[0].body, /Queued Kind integration/);
+  } finally {
+    console.warn = originalWarn;
+  }
+});
+
+test("already-running acknowledgement failure falls back to console without core.warning", async () => {
+  const originalWarn = console.warn;
+  const consoleWarnings = [];
+  const reactionError = new Error("Resource not accessible by integration");
+  reactionError.status = 403;
+
+  console.warn = (message) => consoleWarnings.push(message);
+  try {
+    const result = await runFixture({
+      omitCoreWarning: true,
+      reactionError,
+      workflowRuns: [
+        {
+          head_sha: CURRENT_SHA,
+          status: "in_progress",
+          html_url: "https://github.com/NVIDIA/nv-config-manager/actions/runs/1",
+        },
+      ],
+    });
+
+    assert.deepEqual(result.failures, []);
+    assert.equal(result.dispatches.length, 0);
+    assert.equal(result.reactions.length, 0);
+    assert.deepEqual(result.warnings, []);
+    assert.match(consoleWarnings[0], /acknowledgement reaction failed/);
+    assert.match(result.comments[0].body, /already running/);
+    assert.match(result.comments[0].body, /actions\/runs\/1/);
   } finally {
     console.warn = originalWarn;
   }

@@ -169,7 +169,31 @@ No validation section.
 
 ## Kind Integration
 
+<!-- kind-integration-result:start -->
 Kind integration completed with **success** for [\`aaaaaaaaaaaa\`](${RUN_URL}).
+<!-- kind-integration-result:end -->
+`,
+  );
+});
+
+test("fallback append includes replaceable Kind result markers", async () => {
+  const firstResult = await runFixture({ pullBody: "## Description\n\nNo validation section.\n" });
+  const secondResult = await runFixture({
+    conclusion: "failure",
+    pullBody: firstResult.updates[0].body,
+  });
+
+  assert.equal(
+    secondResult.updates[0].body,
+    `## Description
+
+No validation section.
+
+## Kind Integration
+
+<!-- kind-integration-result:start -->
+Kind integration completed with **failure** for [\`aaaaaaaaaaaa\`](${RUN_URL}).
+<!-- kind-integration-result:end -->
 `,
   );
 });

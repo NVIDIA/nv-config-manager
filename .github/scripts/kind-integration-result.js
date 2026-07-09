@@ -25,7 +25,7 @@ function updatePullRequestBody(body, resultLine) {
     return currentBody.replace(legacyPattern, `$1${resultBlock}$3`);
   }
 
-  return `${currentBody.trimEnd()}\n\n## Kind Integration\n\n${resultLine}\n`;
+  return `${currentBody.trimEnd()}\n\n## Kind Integration\n\n${resultBlock}\n`;
 }
 
 module.exports = async ({ github, context, run: explicitRun }) => {
