@@ -95,6 +95,7 @@ include:
       needs: *pulse-scan-needs
       rules: *pulse-scan-rules
       vault_auth_role: ""
+      vault_track_usage_tags: *pulse-scan-tags
       sbom_output_format: json
       scan_matrix:
         # The component requires CONTAINER_IMAGE in the matrix, but the selected
