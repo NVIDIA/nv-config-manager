@@ -175,10 +175,26 @@ jobs:
               registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.15.0
               registry.k8s.io/kubectl:v1.31.0
             "
+            # Load via a single-platform archive rather than `kind load
+            # docker-image`. The runner's Docker uses the containerd image store,
+            # which keeps the full multi-arch index for each pulled image; both
+            # `kind load docker-image` and a plain `docker save` then fail with
+            # "content digest ... not found" because the sibling-platform blobs
+            # were never fetched. `docker save --platform=linux/amd64` exports
+            # only the platform we actually run, which `kind load image-archive`
+            # imports cleanly. Best-effort: if any step fails we warn and fall
+            # back to the in-cluster pull rather than failing the whole job.
             for img in ${SECURITY_PRELOAD_IMAGES}; do
               echo "Preloading ${img}"
-              docker pull "${img}"
-              kind load docker-image "${img}" --name "${KIND_CLUSTER_NAME}"
+              archive="$(mktemp --suffix=.tar)"
+              if docker pull --platform=linux/amd64 "${img}" \
+                && docker save --platform=linux/amd64 "${img}" -o "${archive}" \
+                && kind load image-archive "${archive}" --name "${KIND_CLUSTER_NAME}"; then
+                echo "  preloaded ${img}"
+              else
+                echo "::warning::preload failed for ${img}; relying on in-cluster pull"
+              fi
+              rm -f "${archive}"
             done
 
             make kind-up-sec \
