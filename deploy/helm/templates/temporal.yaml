@@ -355,19 +355,43 @@ spec:
             sleep $RETRY_DELAY
           done
 
-          # Create search attributes (idempotent — ignore "already exists" errors)
+          create_search_attribute() {
+            local name="$1"
+            local type="$2"
+            local output
+
+            for i in $(seq 1 "$MAX_RETRIES"); do
+              if output=$(temporal operator search-attribute create --address "$TEMPORAL_ADDR" --name "$name" --type "$type" 2>&1); then
+                echo "$output"
+                return 0
+              fi
+              if echo "$output" | grep -qi "already exist"; then
+                echo "Search attribute $name already exists."
+                return 0
+              fi
+              echo "$output"
+              if [ "$i" -eq "$MAX_RETRIES" ]; then
+                echo "Failed to create search attribute $name after $MAX_RETRIES attempts."
+                return 1
+              fi
+              echo "Attempt $i/$MAX_RETRIES: search attribute $name creation failed, retrying in ${RETRY_DELAY}s..."
+              sleep "$RETRY_DELAY"
+            done
+          }
+
+          # Create search attributes, retrying while Temporal's internal services start.
           echo "Creating search attributes..."
-          temporal operator search-attribute create --address "$TEMPORAL_ADDR" --name User --type Keyword || true
-          temporal operator search-attribute create --address "$TEMPORAL_ADDR" --name DeviceID --type Keyword || true
-          temporal operator search-attribute create --address "$TEMPORAL_ADDR" --name DeviceRole --type Keyword || true
-          temporal operator search-attribute create --address "$TEMPORAL_ADDR" --name DeviceName --type Text || true
-          temporal operator search-attribute create --address "$TEMPORAL_ADDR" --name DevicePlatform --type Keyword || true
-          temporal operator search-attribute create --address "$TEMPORAL_ADDR" --name Site --type Text || true
-          temporal operator search-attribute create --address "$TEMPORAL_ADDR" --name ReadRoles --type KeywordList || true
-          temporal operator search-attribute create --address "$TEMPORAL_ADDR" --name ExecuteRoles --type KeywordList || true
-          temporal operator search-attribute create --address "$TEMPORAL_ADDR" --name PendingApproval --type Bool || true
-          temporal operator search-attribute create --address "$TEMPORAL_ADDR" --name FailedStage --type Bool || true
-          temporal operator search-attribute create --address "$TEMPORAL_ADDR" --name IssueKey --type Keyword || true
+          create_search_attribute User Keyword
+          create_search_attribute DeviceID Keyword
+          create_search_attribute DeviceRole Keyword
+          create_search_attribute DeviceName Text
+          create_search_attribute DevicePlatform Keyword
+          create_search_attribute Site Text
+          create_search_attribute ReadRoles KeywordList
+          create_search_attribute ExecuteRoles KeywordList
+          create_search_attribute PendingApproval Bool
+          create_search_attribute FailedStage Bool
+          create_search_attribute IssueKey Keyword
 
           echo "Temporal setup complete!"
         resources:
