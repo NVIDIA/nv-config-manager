@@ -150,9 +150,13 @@ See ``components/nautobot/nv_config_manager_auth/rbac.py`` for the consumer.
 group-mapping.yaml: |
   # IdP-group → Nautobot Django Group + ObjectPermission mapping consumed
   # by nv_config_manager_auth.rbac on every JWT login.  See nautobot.rbac.groupMapping
-  # in values.yaml for the schema.  When the ``groups`` list is empty the
-  # feature is a no-op and NV_CONFIG_MANAGER_SUPERUSER_GROUPS continues to govern
-  # is_superuser on its own.
+  # in values.yaml for the schema.  Because this ConfigMap only exists when the
+  # ``groupMapping`` key is present, an empty ``groups: []`` list is NOT a no-op:
+  # it is the explicit revoke-everyone idiom.  Every login then runs the
+  # revoke/demote path -- users are removed from all mapping-managed Django
+  # Groups and the managed ``<group>_<action>`` ObjectPermissions are pruned.
+  # To disable the feature entirely (leave existing privileges untouched), omit
+  # the ``groupMapping`` key so this ConfigMap is never rendered or mounted.
   groups:
   {{- range .Values.nautobot.rbac.groupMapping }}
     - name: {{ required "nautobot.rbac.groupMapping[].name is required" .name | quote }}

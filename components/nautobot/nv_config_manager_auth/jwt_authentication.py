@@ -396,14 +396,27 @@ def _get_or_create_user_from_claims(
             )
 
     extra_super = rbac.is_superuser_per_mapping(user_groups, mapping) if mapping else False
-    _sync_superuser_status(
-        user,
-        user_groups,
-        extra_superuser_match=extra_super,
-        extra_superuser_enabled=mapping_configured,
-    )
-    if mapping_configured:
-        rbac.sync_groups_and_permissions(user, user_groups, mapping=mapping)
+
+    # Nautobot's change-logging signals attribute every create/update/delete to
+    # the user in the active change context.  During ``authenticate()`` no user
+    # is attached to the request yet, so ObjectPermission deletes (the revoke /
+    # prune paths) reach ``_handle_deleted_object`` with a ``None`` user and
+    # raise ``AttributeError: 'NoneType' object has no attribute 'pk'`` -- which,
+    # because the sync is ``@transaction.atomic``, rolls the whole reconciliation
+    # back.  Bind the reconciliation to an explicit web request context for the
+    # authenticating user so deletes succeed and the audit trail is attributed
+    # correctly.
+    from nautobot.extras.context_managers import web_request_context  # noqa: PLC0415 -- defer until first login
+
+    with web_request_context(user, context_detail="nv-config-manager-auth: RBAC sync"):
+        _sync_superuser_status(
+            user,
+            user_groups,
+            extra_superuser_match=extra_super,
+            extra_superuser_enabled=mapping_configured,
+        )
+        if mapping_configured:
+            rbac.sync_groups_and_permissions(user, user_groups, mapping=mapping)
 
     return user
 

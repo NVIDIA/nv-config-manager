@@ -22,6 +22,7 @@ from __future__ import annotations
 import re
 import sys
 import unicodedata
+from contextlib import contextmanager
 from types import ModuleType
 from unittest.mock import MagicMock
 
@@ -175,6 +176,17 @@ def _django_stubs(monkeypatch):
     mock_tenant = MagicMock()
     mock_tenant.DoesNotExist = type("DoesNotExist", (Exception,), {})
     stubs["nautobot.tenancy.models"].Tenant = mock_tenant
+
+    # nautobot.extras.context_managers.web_request_context: the real one binds a
+    # change-logging user around DB writes; in tests it's a no-op passthrough.
+    @contextmanager
+    def _web_request_context(*_args, **_kwargs):
+        yield
+
+    stubs["nautobot.extras.context_managers"] = _stub_module(
+        "nautobot.extras.context_managers",
+        {"web_request_context": _web_request_context},
+    )
 
     yield
 

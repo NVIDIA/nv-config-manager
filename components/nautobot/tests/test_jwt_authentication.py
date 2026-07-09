@@ -16,7 +16,9 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
+import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -794,6 +796,59 @@ class TestGetOrCreateUserFromClaimsMappingStates:
         kwargs = sync_super_mock.call_args.kwargs
         assert kwargs["extra_superuser_enabled"] is True
         assert kwargs["extra_superuser_match"] is True  # "admins" matched is_superuser
+
+    def test_sync_runs_inside_web_request_context_bound_to_user(self, monkeypatch, mock_user, rbac):
+        """Regression: the revoke/prune paths call ``ObjectPermission.delete()``,
+        which fires Nautobot's change-logging signal and needs an acting user.
+
+        The sync runs during ``authenticate()`` before a user is bound to the
+        request, so it must be wrapped in ``web_request_context(user)`` -- else
+        deletes crash with ``AttributeError: 'NoneType' object has no attribute
+        'pk'`` and (being ``@transaction.atomic``) roll the whole sync back.
+        This asserts the reconciliation happens *inside* that context, bound to
+        the authenticating user.
+        """
+        monkeypatch.delenv("NV_CONFIG_MANAGER_SUPERUSER_GROUPS", raising=False)
+        mod = _import_module()
+
+        events: list[tuple[str, object]] = []
+
+        @contextlib.contextmanager
+        def tracking_ctx(user, **_kwargs):
+            events.append(("enter", user))
+            try:
+                yield
+            finally:
+                events.append(("exit", user))
+
+        monkeypatch.setattr(
+            sys.modules["nautobot.extras.context_managers"],
+            "web_request_context",
+            tracking_ctx,
+        )
+        monkeypatch.setattr(rbac, "mapping_is_configured", MagicMock(return_value=True))
+        monkeypatch.setattr(rbac, "load_group_mapping", MagicMock(return_value={}))
+        monkeypatch.setattr(
+            rbac,
+            "sync_groups_and_permissions",
+            MagicMock(side_effect=lambda *a, **k: events.append(("sync", None))),
+        )
+        monkeypatch.setattr(
+            mod,
+            "_sync_superuser_status",
+            MagicMock(side_effect=lambda *a, **k: events.append(("superuser", None))),
+        )
+
+        mod.User.objects.get_or_create.return_value = (mock_user, False)
+        mod._get_or_create_user_from_claims(self._claims(), self._make_provider(mod))
+
+        # Context opened with the authenticating user, both sync passes ran
+        # inside it, and it closed cleanly.
+        assert events[0] == ("enter", mock_user)
+        assert events[-1] == ("exit", mock_user)
+        assert ("sync", None) in events
+        assert ("superuser", None) in events
+        assert events.index(("sync", None)) < events.index(("exit", mock_user))
 
 
 # ---------------------------------------------------------------------------
