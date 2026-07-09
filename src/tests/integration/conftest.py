@@ -298,11 +298,17 @@ def nautobot_port_forward(
 
 
 @pytest.fixture(scope="session")
-def oidc_auth(sso_enabled: bool, base_hostname: str) -> OIDCAuth | None:
+def oidc_auth(
+    sso_enabled: bool,
+    base_hostname: str,
+    tmp_path_factory: pytest.TempPathFactory,
+) -> OIDCAuth | None:
     """Create a session-scoped OIDCAuth instance when --sso is enabled.
 
     Auto-discovers OIDC config from the gateway and performs browser-based
-    authentication once for the entire test session. The cached token is
+    authentication once for the entire test session. Set
+    ``NVCM_OIDC_ACCESS_TOKEN`` to provide a valid token for a headless run;
+    it is stored only in pytest's temporary directory. The cached token is
     reused across all tests.
 
     Returns None when --sso is not enabled.
@@ -313,8 +319,15 @@ def oidc_auth(sso_enabled: bool, base_hostname: str) -> OIDCAuth | None:
     gateway_url = f"https://workflow.{base_hostname}/v1/workflow"
     print(f"\n[SSO] Auto-discovering OIDC config from {gateway_url}...")
 
+    headless_token = os.environ.get("NVCM_OIDC_ACCESS_TOKEN")
+    token_file = tmp_path_factory.mktemp("oidc") / "token.json" if headless_token else None
+
     try:
-        auth = OIDCAuth.discover_from_gateway(gateway_url, verify=False)
+        auth = OIDCAuth.discover_from_gateway(
+            gateway_url,
+            verify=False,
+            token_file=token_file,
+        )
     except RuntimeError as e:
         pytest.fail(f"OIDC auto-discovery failed: {e}")
 
@@ -326,6 +339,11 @@ def oidc_auth(sso_enabled: bool, base_hostname: str) -> OIDCAuth | None:
 
     print(f"[SSO] Discovered issuer: {auth.issuer_url}")
     print(f"[SSO] Discovered client ID: {auth.client_id}")
+
+    if headless_token:
+        auth.save_token({"access_token": headless_token, "expires_in": 3600})
+        print("[SSO] Using NVCM_OIDC_ACCESS_TOKEN for headless authentication")
+        return auth
 
     # Clear any stale cached token so we always do a fresh browser-based flow.
     # Cached tokens from previous runs (or a different environment) can cause
