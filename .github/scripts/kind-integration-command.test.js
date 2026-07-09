@@ -14,6 +14,7 @@ function createFixture(options = {}) {
   const dispatches = [];
   const failures = [];
   const reactions = [];
+  const warnings = [];
   const context = {
     repo: { owner: "NVIDIA", repo: "nv-config-manager" },
     payload: {
@@ -28,7 +29,12 @@ function createFixture(options = {}) {
         createComment: async (args) => comments.push(args),
       },
       reactions: {
-        createForIssueComment: async (args) => reactions.push(args),
+        createForIssueComment: async (args) => {
+          if (options.reactionError) {
+            throw options.reactionError;
+          }
+          reactions.push(args);
+        },
       },
       repos: {
         getCollaboratorPermissionLevel: async () => ({
@@ -68,6 +74,9 @@ function createFixture(options = {}) {
   const core = {
     setFailed: (message) => failures.push(message),
   };
+  if (!options.omitCoreWarning) {
+    core.warning = (message) => warnings.push(message);
+  }
 
   return {
     comments,
@@ -77,6 +86,7 @@ function createFixture(options = {}) {
     failures,
     github,
     reactions,
+    warnings,
   };
 }
 
@@ -164,4 +174,41 @@ test("does not duplicate an active Kind integration run", async () => {
   assert.equal(result.dispatches.length, 0);
   assert.equal(result.reactions.length, 1);
   assert.match(result.comments[0].body, /already running/);
+});
+
+test("still reports queued run when acknowledgement reaction fails", async () => {
+  const reactionError = new Error("Resource not accessible by integration");
+  reactionError.status = 403;
+
+  const result = await runFixture({ reactionError });
+
+  assert.deepEqual(result.failures, []);
+  assert.equal(result.dispatches.length, 1);
+  assert.equal(result.reactions.length, 0);
+  assert.match(result.warnings[0], /acknowledgement reaction failed/);
+  assert.match(result.comments[0].body, /Queued Kind integration/);
+});
+
+test("warns to console when acknowledgement reaction fails without core.warning", async () => {
+  const originalWarn = console.warn;
+  const consoleWarnings = [];
+  const reactionError = new Error("Resource not accessible by integration");
+  reactionError.status = 403;
+
+  console.warn = (message) => consoleWarnings.push(message);
+  try {
+    const result = await runFixture({
+      omitCoreWarning: true,
+      reactionError,
+    });
+
+    assert.deepEqual(result.failures, []);
+    assert.equal(result.dispatches.length, 1);
+    assert.equal(result.reactions.length, 0);
+    assert.deepEqual(result.warnings, []);
+    assert.match(consoleWarnings[0], /acknowledgement reaction failed/);
+    assert.match(result.comments[0].body, /Queued Kind integration/);
+  } finally {
+    console.warn = originalWarn;
+  }
 });

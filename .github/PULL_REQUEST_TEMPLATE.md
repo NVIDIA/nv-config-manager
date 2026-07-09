@@ -21,10 +21,12 @@ As a fallback, run Actions -> Kind Integration -> Run workflow against the copy-
 `pull-request/<PR_NUMBER>` branch. Use the default `test_path` for the full suite, or narrow it
 only while debugging.
 
-The completed workflow posts its conclusion and exact run URL as a PR comment.
+The completed workflow updates this PR description with its conclusion and exact run URL.
 
-Passing Kind Integration run:
-<!-- Paste the workflow run URL here. -->
+Passing Kind Integration run, if not automatically reported:
+<!-- kind-integration-result:start -->
+<!-- Paste the workflow run URL here only if the Kind result was not automatically updated. -->
+<!-- kind-integration-result:end -->
 
 ## Checklist
 
