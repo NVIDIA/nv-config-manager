@@ -141,9 +141,8 @@ global:
 # =============================================================================
 # Local Development - Mock SSO Authentication
 # =============================================================================
-# For local development without running a real SSO provider, you can mock
-# the authentication headers that services expect via ingress-nginx which
-# injects headers via configuration-snippet annotation.
+# For local development without running a real SSO provider, applications can
+# accept the configured mock identity headers.
 #
 # When enabled, all requests will include the configured mock user/groups
 # as if they had gone through SSO authentication.
@@ -258,8 +257,7 @@ secrets:
     #                                         branch; the first branch is an explicit cnpg.nautobot.enabled
     #                                         without requiring nautobot.local.)
     #   <cnpg.backup.credentialsSecret or "cnpg-backup-credentials"> → ACCESS_KEY_ID, ACCESS_SECRET_KEY
-    #   <oidc.clientSecretName or "oidc-client-secret"> → hmac-secret (always);
-    #         client-secret if ingress.type=envoyGateway; cookie-secret if ingress.type=ingressNginx
+    #   <oidc.clientSecretName or "oidc-client-secret"> → client-secret, cookie-secret
     #   <prometheus TLS secretName or "keda-prometheus-certs"> → keys from
     #         secrets.vault.paths.kedaPrometheusCerts.keys (default ca.crt, tls.crt, tls.key)
     #
@@ -395,8 +393,6 @@ secrets:
         path: "" # Required when using SSO: e.g., "my-org/nv-config-manager/dev/oidc"
         keys:
           clientSecret: "client_secret"
-          # cookieSecret is only used for oauth2-proxy (deprecated ingress-nginx mode)
-          # Envoy Gateway mode uses JWT validation and doesn't need this
           cookieSecret: "cookie_secret"
       # CNPG backup S3 credentials (optional - only when cnpg backup is enabled)
       # Creates the cnpg-backup-credentials secret via ESO instead of manually
@@ -580,49 +576,25 @@ externalServices:
     enabled: false
     baseUrl: ""
 # =============================================================================
-# Ingress Configuration
+# Gateway API Configuration
 # =============================================================================
-# Controls how external traffic reaches the platform. Supports two modes:
-#
-# envoyGateway (recommended):
-#   - Uses Gateway API with Envoy Gateway controller
-#   - TLS termination via Gateway listener
-#   - Modern, feature-rich, actively developed
-#
-# ingressNginx:
-#   - Uses traditional Ingress resources with ingress-nginx
-#   - TLS termination via Ingress tls configuration
-#   - Use when Envoy Gateway is not available in your cluster
-#
-# In BOTH modes, JWT authentication is handled by the Envoy sidecar:
-#   - Validates external JWTs (Azure AD, OIDC)
-#   - Extracts claims to X-Auth-Request-* headers
-#   - Optionally handles SPIFFE for service-to-service calls
-#
-# This provides a consistent auth pattern regardless of ingress controller.
-# =============================================================================
-ingress:
-  # Ingress controller type: envoyGateway or ingressNginx
-  type: envoyGateway
-  # ---------------------------------------------------------------------------
-  # ingress-nginx specific configuration (when type=ingressNginx)
-  # ---------------------------------------------------------------------------
-  nginx:
-    # Ingress class name
-    className: nginx
-    # Annotations to add to all Ingress resources
-    annotations: {}
-    #   nginx.ingress.kubernetes.io/proxy-body-size: "50m"
-    #   nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
-# =============================================================================
-# Gateway Configuration (used when ingress.type=envoyGateway)
-# =============================================================================
+# HTTPRoutes are portable across Envoy Gateway and kgateway. The chart can
+# create a dedicated Gateway or attach routes to an existing shared Gateway.
 gateway:
   enabled: true
+  # Gateway API implementation used for controller-specific resources.
+  type: envoyGateway
+  # Set false to attach HTTPRoutes to an existing/shared Gateway. In shared
+  # mode the chart does not create a Gateway, GatewayClass, certificate, or
+  # controller-specific Gateway policy.
+  create: true
   name: nv-config-manager-gateway
+  # Namespace of the parent Gateway. Defaults to global.namespace.
+  namespace: ""
+  # Optional shared-Gateway listener name (HTTPRoute parentRef.sectionName).
+  sectionName: ""
   className: envoy-gateway
-  # Set to false when using an existing Envoy Gateway installation
-  # (e.g., shared infrastructure, pre-installed by platform team)
+  # Set false when the selected controller already supplies this GatewayClass.
   createGatewayClass: true
   # Host network mode (for local Kind clusters without LoadBalancer)
   # When enabled, Envoy proxy uses host network and binds directly to ports 80/443
@@ -714,10 +686,10 @@ gateway:
       kind: ClusterIssuer
       name: letsencrypt-prod
   # ---------------------------------------------------------------------------
-  # JWT Authentication (used by both envoyGateway and ingress-nginx modes)
+  # JWT Authentication
   # ---------------------------------------------------------------------------
   # The sidecar validates JWTs from multiple providers:
-  #   - SSO: ID tokens from oauth2-proxy (Azure AD, OIDC)
+  #   - SSO: ID/access tokens from the configured OIDC provider
   #   - API: Direct JWT from external services
   #   - SPIFFE: JWT-SVIDs from local or federated SPIFFE providers
   #
@@ -888,46 +860,13 @@ gateway:
       endpoint: ""
       samplingRate: 0.1
 # =============================================================================
-# OAuth2 Proxy (SSO) Configuration
-# =============================================================================
-# Handles browser-based OIDC login flow. Works with both Envoy Gateway (ExtAuth)
-# and ingress-nginx (auth-url annotation).
-#
-# Browser flow:
-#   1. User accesses https://nautobot.config-manager.example.com/
-#   2. Gateway/ingress calls oauth2-proxy /oauth2/auth
-#   3. No cookie? → Redirect to OIDC provider login
-#   4. User authenticates → Redirect back with cookie + JWT in headers
-#   5. Subsequent requests pass through with Authorization: Bearer <token>
+# OIDC Configuration
 # =============================================================================
 oidc:
   # Enable SSO/OIDC authentication for browser access
-  # Implementation depends on ingress.type:
-  #   - envoyGateway: Uses Envoy's native OIDC filter (per-route policies)
-  #   - ingressNginx: Uses oauth2-proxy deployment
   enabled: false
-  # -------------------------------------------------------------------------
-  # Per-Route OIDC (Envoy Gateway)
-  # -------------------------------------------------------------------------
-  # Each HTTPRoute gets its own SecurityPolicy with OIDC configured to use
-  # the route's hostname as the callback URL.
-  #
-  # Session cookies are shared across all subdomains via:
-  #   - cookieNames: NVConfigManagerAccessToken, NVConfigManagerIdToken (consistent across routes)
-  #   - cookieDomain: <baseHostname> (allows subdomain sharing)
-  #
-  # IdP Configuration - register each redirect URI:
-  #   - https://<baseHostname>/oauth2/callback
-  #   - https://render.<baseHostname>/oauth2/callback
-  #   - https://ztp.<baseHostname>/oauth2/callback
-  #   - https://dhcp.<baseHostname>/oauth2/callback
-  #   - https://workflow.<baseHostname>/oauth2/callback
-  #   - https://temporal.<baseHostname>/oauth2/callback
-  #   - https://config-store.<baseHostname>/oauth2/callback
-  #   - https://nautobot.<baseHostname>/oauth2/callback
-  #
-  # For Keycloak: Can use * (wildcard) for Valid Redirect URIs
-  # -------------------------------------------------------------------------
+  # Register one redirect URI with the identity provider:
+  # https://<gateway.baseHostname>/oauth2/callback
 
   # OIDC issuer URL (e.g., Azure AD, Okta, Keycloak, etc.)
   # For Azure AD v2.0: https://login.microsoftonline.com/{tenant-id}/v2.0
@@ -943,8 +882,23 @@ oidc:
   # pre-1.3.0 UI images that do not serve /auth/discovery or /auth/logout.
   authUtility:
     enabled: false
-  # Name of K8s secret containing client-secret key
-  # Secret must have key 'client-secret'
+  # Gateway-independent reverse proxy for browser OIDC sessions. Protected
+  # HTTPRoutes target this service regardless of the Gateway API controller.
+  proxy:
+    replicas: 2
+    cookieName: _nvcm_oidc_proxy
+    image:
+      repository: quay.io/oauth2-proxy/oauth2-proxy
+      tag: v7.15.2
+      pullPolicy: IfNotPresent
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
+  # Name of K8s secret containing client-secret and cookie-secret keys.
   clientSecretName: "oidc-client-secret"
   # OIDC scopes to request
   # Default: ["openid", "email", "profile"]
@@ -955,15 +909,8 @@ oidc:
   # audiences:
   #   - "api://my-app-id"
 
-  # Disable token encryption in cookies (default: false)
-  # When true, JWTs are stored as plain text in cookies, allowing downstream
-  # JWT validation to extract claims. Required for auth bypass routes to work
-  # with JWT claim extraction.
-  # WARNING: Only enable in secure environments (HTTPS, secure cookie flags)
-  disableTokenEncryption: true
-  # OIDC cookie names used by Envoy Gateway and downstream JWT extraction.
+  # Optional raw JWT cookie accepted directly by application middleware.
   cookieName: "NVConfigManagerAccessToken"
-  idTokenCookieName: "NVConfigManagerIdToken"
   # JWKS URI for token validation (auto-derived from issuerUrl if not set)
   # For Keycloak: https://<host>/realms/<realm>/protocol/openid-connect/certs
   # For Azure AD: https://login.microsoftonline.com/<tenant>/discovery/v2.0/keys
@@ -973,9 +920,8 @@ oidc:
   # (usually auto-discovered from issuer)
   # authorizationEndpoint: ""
   # tokenEndpoint: ""
-  # Optional: Provider logout endpoint used by Envoy Gateway to clear the
-  # upstream OIDC session on oidc.logoutPath. Auto-derived by the installer
-  # for Keycloak and Azure AD.
+  # Optional provider logout endpoint, auto-derived by the installer for
+  # Keycloak and Azure AD.
   # endSessionEndpoint: ""
 
   # Optional: Internal issuer URL for token exchange (if external URL isn't reachable from cluster)
@@ -987,50 +933,8 @@ oidc:
   # allowedGroups:
   #   - "group-uuid-1"
 
-  # -------------------------------------------------------------------------
-  # Claim-to-Header Mapping (OIDC provider in Envoy Gateway SecurityPolicy)
-  # -------------------------------------------------------------------------
-  # Extract claims from validated JWTs and set as request headers.
-  # These are applied by the Envoy Gateway SecurityPolicy for the OIDC provider.
-  # -------------------------------------------------------------------------
-  claimToHeaders:
-    - claim: email
-      header: X-Auth-Request-Email
-    - claim: preferred_username
-      header: X-Auth-Request-User
-    - claim: roles
-      header: X-Auth-Request-Groups
   # Optional: callback port (if using non-standard HTTPS port)
   # callbackPort: ""
-
-  # -------------------------------------------------------------------------
-  # oauth2-proxy settings (only used for ingress-nginx mode)
-  # -------------------------------------------------------------------------
-  oauth2Proxy:
-    # Replicas
-    replicas: 1
-    # Container image
-    image:
-      repository: quay.io/oauth2-proxy/oauth2-proxy
-      tag: v7.6.0
-      pullPolicy: IfNotPresent
-    # Cookie secret for session encryption (must be exactly 32 bytes for AES-256)
-    # Generate with: openssl rand -base64 24 (produces exactly 32 characters)
-    # If empty, the installer can generate one
-    cookieSecret: ""
-    # TLS configuration
-    tls:
-      enabled: true
-      # secretName defaults to the gateway-tls certificate if not specified
-      secretName: ""
-    # Resources
-    resources:
-      requests:
-        cpu: 50m
-        memory: 64Mi
-      limits:
-        cpu: 200m
-        memory: 128Mi
 # =============================================================================
 # UI: Unified NVIDIA Config Manager UI
 # =============================================================================
@@ -1346,7 +1250,7 @@ networkZtp:
     # Browser/User Ingress (SSO access for troubleshooting)
     # -------------------------------------------------------------------------
     # This is handled by the gateway.hostname or ingress.nginx settings
-    # and uses SSO authentication via oauth2-proxy
+    # and uses SSO authentication through the gateway-independent proxy
     browser:
       # Hostname for user/SSO access (uses gateway.baseHostname by default)
       hostname: ""
@@ -1356,22 +1260,11 @@ networkZtp:
         authSignInURL: ""
         allowedGroups: []
         # Ingress-specific annotations (merged with global nginx annotations)
-    annotations:
-      # Allow large file uploads (up to 5GB for ZTP images)
-      nginx.ingress.kubernetes.io/proxy-body-size: "5g"
-      # Increase timeouts for large uploads
-      nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
-      nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
   # ---------------------------------------------------------------------------
   # Upload configuration (OS images can be up to 5GB)
   # ---------------------------------------------------------------------------
-  # Note on body size limits:
-  #   - ingress-nginx: requires explicit proxy-body-size (set above as "5g")
-  #   - Envoy Gateway: NO body size limit needed — Envoy streams request
-  #     bodies through without buffering, so there is no equivalent of
-  #     nginx's client_max_body_size. Do NOT add requestBuffer.limit to the
-  #     BackendTrafficPolicy — that would force Envoy to buffer the entire
-  #     body in memory before forwarding.
+  # Gateway API data planes stream request bodies without buffering. Do not
+  # add a request-buffer limit that would hold an entire image in memory.
   upload:
     # Maximum time for an upload request (applies to Gateway + sidecar).
     # Must accommodate 5GB files on slower connections.

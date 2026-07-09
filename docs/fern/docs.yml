@@ -52,6 +52,8 @@ navigation:
       path: ../getting-started/index.mdx
     - page: Getting Started with Config Manager
       path: ../install/index.mdx
+    - page: Gateway API and OIDC
+      path: ../install/gateway-api.mdx
     - page: TUI Wizard Reference
       path: ../install/tui-wizard-reference.mdx
     - page: Configuration Samples

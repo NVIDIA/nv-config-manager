@@ -1,4 +1,4 @@
-{{- if and .Values.gateway.enabled (eq (.Values.ingress.type | default "envoyGateway") "envoyGateway") }}
+{{- if and .Values.gateway.enabled .Values.gateway.create }}
 {{- $tlsCertName := include "nv-config-manager.componentName" (dict "root" . "component" "gateway-tls") }}
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
@@ -8,7 +8,8 @@ metadata:
   labels:
     {{- include "nv-config-manager.labels" . | nindent 4 }}
   {{- $envoyImage := dig "envoyProxy" "image" "" .Values.gateway }}
-  {{- $useOwnProxy := or .Values.gateway.hostNetwork.enabled .Values.gateway.hostPorts.enabled (dig "nodePort" "enabled" false .Values.gateway) .Values.gateway.nlb (dig "envoyProxy" "enabled" false .Values.gateway) $envoyImage }}
+  {{- $isEnvoyGateway := eq (.Values.gateway.type | default "envoyGateway") "envoyGateway" }}
+  {{- $useOwnProxy := and $isEnvoyGateway (or .Values.gateway.hostNetwork.enabled .Values.gateway.hostPorts.enabled (dig "nodePort" "enabled" false .Values.gateway) .Values.gateway.nlb (dig "envoyProxy" "enabled" false .Values.gateway) $envoyImage) }}
   {{- $proxyName := .Values.gateway.envoyProxy.name | default (printf "%s-proxy" .Values.gateway.name) }}
   {{- if $useOwnProxy }}
   annotations:

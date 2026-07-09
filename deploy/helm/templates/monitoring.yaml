@@ -10,9 +10,8 @@
 # =============================================================================
 # Probe Resources (Blackbox Exporter)
 # =============================================================================
-# These probes work with both Envoy Gateway (ingress.type=envoyGateway) and
-# nginx Ingress (ingress.type=ingressNginx). They use the same hostnames
-# configured in each service's gateway.hostname setting.
+# These probes work with any supported Gateway API controller and use the
+# hostnames configured in each service's gateway.hostname setting.
 #
 # The scheme (http/https) is determined by:
 #   1. monitoring.probes.scheme if explicitly set
@@ -35,9 +34,8 @@
 {{- $nautobotName := include "nv-config-manager.componentName" (dict "root" . "component" "nautobot") }}
 {{- $uiName := include "nv-config-manager.componentName" (dict "root" . "component" "ui") }}
 
-{{- /* Determine ingress type and scheme for probes */}}
-{{- $ingressType := .Values.ingress.type | default "envoyGateway" }}
-{{- $hasIngress := or (eq $ingressType "envoyGateway") (eq $ingressType "ingressNginx") }}
+{{- /* Determine gateway availability and scheme for probes */}}
+{{- $hasIngress := .Values.gateway.enabled }}
 {{- $probeScheme := .Values.monitoring.probes.scheme | default (ternary "https" "http" .Values.gateway.certificates.enabled) }}
 
 {{- /*

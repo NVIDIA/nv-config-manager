@@ -54,6 +54,7 @@ from nv_config_manager_installer.k8s import (
 )
 from nv_config_manager_installer.operator_versions import load_operator_versions
 from nv_config_manager_installer.schema import (
+    GatewayType,
     ImageSource,
     LBProvider,
     NVConfigManagerInstallConfig,
@@ -1969,7 +1970,12 @@ class Deployer:
 
         if self.config.sso.enabled and self.config.sso.client_secret:
             self._apply_secret(
-                step, "oidc-client-secret", {"client-secret": self.config.sso.client_secret}
+                step,
+                "oidc-client-secret",
+                {
+                    "client-secret": self.config.sso.client_secret,
+                    "cookie-secret": s["oidc_cookie_secret"],
+                },
             )
 
         self._finish_step(step)
@@ -2635,7 +2641,11 @@ class Deployer:
 
     def _should_reuse_existing_gateway_class(self) -> bool:
         """Return True when an existing GatewayClass is owned by another Helm release."""
-        if not self.config.infrastructure.create_gateway_class:
+        if (
+            self.config.infrastructure.gateway != GatewayType.ENVOY_GATEWAY
+            or not self.config.infrastructure.create_gateway
+            or not self.config.infrastructure.create_gateway_class
+        ):
             return False
 
         owner = _gateway_class_helm_owner()

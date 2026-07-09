@@ -40,7 +40,6 @@
 #
 #   OR use wildcard: *
 #
-# Reference: https://gateway.envoyproxy.io/docs/tasks/security/oidc/
 # =============================================================================
 oidc:
   enabled: true
@@ -49,6 +48,7 @@ oidc:
   # Use the external gateway URL for browser redirects
   # Note: Requires /etc/hosts entry for keycloak.config-manager.demo
   issuerUrl: "https://keycloak.config-manager.demo/realms/nv-config-manager"
+  endSessionEndpoint: "https://keycloak.config-manager.demo/realms/nv-config-manager/protocol/openid-connect/logout"
   
   # NVIDIA Config Manager client (created by setup-vm-prereqs.sh)
   clientId: "nv-config-manager"
@@ -59,8 +59,9 @@ oidc:
     # Keep disabled unless the UI image tag includes /auth/discovery and /auth/logout.
     enabled: false
   
-  # Name of K8s secret containing client-secret key
-  # Create with: kubectl create secret generic oidc-client-secret --from-literal=client-secret=nv-config-manager-client-secret -n nv-config-manager
+  # Name of the K8s secret containing client-secret and a raw 32-byte
+  # cookie-secret used by the gateway-independent proxy.
+  # Create with: kubectl create secret generic oidc-client-secret --from-literal=client-secret=nv-config-manager-client-secret --from-literal=cookie-secret="$(openssl rand -base64 24)" -n nv-config-manager
   clientSecretName: "oidc-client-secret"
   
   # OIDC scopes - KeyCloak standard scopes
@@ -73,23 +74,6 @@ oidc:
   # JWT claim containing user groups/roles
   groupsClaim: "realm_roles"
   
-  # oauth2-proxy settings (for ingress-nginx mode)
-  oauth2Proxy:
-    replicas: 1
-    image:
-      repository: quay.io/oauth2-proxy/oauth2-proxy
-      tag: v7.6.0
-      pullPolicy: IfNotPresent
-    # Cookie secret for session encryption (32 bytes, base64)
-    # Generate with: openssl rand -base64 32
-    cookieSecret: "airgapped-demo-cookie-secret-32b="
-    resources:
-      requests:
-        cpu: 50m
-        memory: 64Mi
-      limits:
-        cpu: 200m
-        memory: 128Mi
 
 # =============================================================================
 # Gateway Configuration - JWT Auth with KeyCloak
@@ -127,7 +111,7 @@ gateway:
         # Subject (user unique ID)
         - claim: sub
           header: X-Auth-Request-User
-        # Duplicate for compatibility with oauth2-proxy headers
+        # Compatibility aliases for applications that consume forwarded headers
         - claim: email
           header: X-Forwarded-Email
         - claim: preferred_username

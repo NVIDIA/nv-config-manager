@@ -57,6 +57,7 @@ overrides can switch every Deployment to Recreate in one place.
 {{- if .root.Values.global.deploymentStrategy -}}
 {{- $strategy = .root.Values.global.deploymentStrategy -}}
 {{- end -}}
+
 {{- if $strategy }}
 {{- $type := $strategy.type | default "RollingUpdate" -}}
 strategy:
@@ -69,6 +70,15 @@ strategy:
 {{- end }}
 {{- end }}
 {{- end }}
+
+{{/* HTTPRoute parent reference for chart-managed or shared Gateways. */}}
+{{- define "nv-config-manager.gatewayParentRef" -}}
+- name: {{ .Values.gateway.name }}
+  namespace: {{ .Values.gateway.namespace | default .Values.global.namespace }}
+  {{- with .Values.gateway.sectionName }}
+  sectionName: {{ . }}
+  {{- end }}
+{{- end -}}
 
 {{/*
 Generate the base hostname for the gateway

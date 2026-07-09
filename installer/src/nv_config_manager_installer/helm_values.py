@@ -106,6 +106,8 @@ def _derive_oidc_endpoints(provider: SSOProvider, issuer_url: str) -> dict[str, 
 
     if provider == SSOProvider.KEYCLOAK:
         return {
+            "authorizationEndpoint": f"{issuer}/protocol/openid-connect/auth",
+            "tokenEndpoint": f"{issuer}/protocol/openid-connect/token",
             "endSessionEndpoint": f"{issuer}/protocol/openid-connect/logout",
             "jwksUri": f"{issuer}/protocol/openid-connect/certs",
         }
@@ -173,10 +175,10 @@ _GLOBAL_IMAGE_DEFAULTS: dict[str, tuple[str, str]] = {
 
 _NESTED_IMAGE_DEFAULTS: dict[str, tuple[tuple[str, ...], str, str]] = {
     "spiffeHelper": (("spiffe", "helper", "image"), "ghcr.io/spiffe/spiffe-helper", "0.8.0"),
-    "oauth2Proxy": (
-        ("oidc", "oauth2Proxy", "image"),
+    "oidcProxy": (
+        ("oidc", "proxy", "image"),
         "quay.io/oauth2-proxy/oauth2-proxy",
-        "v7.6.0",
+        "v7.15.2",
     ),
     "prometheusServer": (
         ("prometheus", "server", "image"),
@@ -455,10 +457,20 @@ def _build_secrets(config: NVConfigManagerInstallConfig) -> dict[str, Any]:
 def _build_gateway(config: NVConfigManagerInstallConfig) -> dict[str, Any]:
     """Build the ``gateway`` section of Helm values."""
     lb = config.infrastructure.load_balancer
+    gateway_type = config.infrastructure.gateway.value
+    default_class_name = "kgateway" if gateway_type == "kgateway" else "envoy-gateway"
     gateway: dict[str, Any] = {
         "enabled": True,
+        "type": gateway_type,
+        "create": config.infrastructure.create_gateway,
+        "name": config.infrastructure.gateway_name,
+        "namespace": config.infrastructure.gateway_namespace,
+        "sectionName": config.infrastructure.gateway_listener,
+        "className": config.infrastructure.gateway_class_name or default_class_name,
         "baseHostname": config.cluster.hostname,
-        "createGatewayClass": config.infrastructure.create_gateway_class,
+        "createGatewayClass": (
+            config.infrastructure.create_gateway_class and gateway_type == "envoyGateway"
+        ),
         "certificates": {"enabled": config.infrastructure.tls},
     }
     if config.infrastructure.tls:
@@ -888,7 +900,14 @@ def build_values(
 
     values["gateway"] = _build_gateway(config)
     values["spiffe"] = _build_spiffe(config)
-    values["networkPolicy"] = {"enabled": True}
+    values["networkPolicy"] = {
+        "enabled": True,
+        "gatewayNamespace": (
+            "kgateway-system"
+            if config.infrastructure.gateway.value == "kgateway"
+            else "envoy-gateway-system"
+        ),
+    }
 
     _build_oidc(config, values)
     values["externalServices"] = _build_external_services(config)

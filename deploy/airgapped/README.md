@@ -126,9 +126,9 @@ images:
     spiffeHelper:
       repository: registry.example.com/nv-config-manager/spiffe/spiffe-helper
       tag: "0.8.0"
-    oauth2Proxy:
+    oidcProxy:
       repository: registry.example.com/nv-config-manager/oauth2-proxy/oauth2-proxy
-      tag: "v7.6.0"
+      tag: "v7.15.2"
     templatePluginInstaller:
       repository: registry.example.com/nv-config-manager/library/python
       tag: "3.13-alpine"

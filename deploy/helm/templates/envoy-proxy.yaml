@@ -1,4 +1,4 @@
-{{- if eq (.Values.ingress.type | default "envoyGateway") "envoyGateway" }}
+{{- if and .Values.gateway.enabled .Values.gateway.create (eq (.Values.gateway.type | default "envoyGateway") "envoyGateway") }}
 {{- $envoyImage := dig "envoyProxy" "image" "" .Values.gateway }}
 {{- $envoyResources := dig "envoyProxy" "resources" nil .Values.gateway }}
 {{- $createOwnProxy := or .Values.gateway.hostNetwork.enabled .Values.gateway.hostPorts.enabled (dig "nodePort" "enabled" false .Values.gateway) .Values.gateway.nlb (dig "envoyProxy" "enabled" false .Values.gateway) $envoyImage $envoyResources }}

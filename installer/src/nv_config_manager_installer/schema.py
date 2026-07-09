@@ -74,6 +74,7 @@ class SPIFFEAuthMode(StrEnum):
 
 class GatewayType(StrEnum):
     ENVOY_GATEWAY = "envoyGateway"
+    KGATEWAY = "kgateway"
 
 
 class LBProvider(StrEnum):
@@ -591,6 +592,11 @@ class InfrastructureConfig(BaseModel):
     """Infrastructure and gateway settings."""
 
     gateway: GatewayType = GatewayType.ENVOY_GATEWAY
+    create_gateway: bool = True
+    gateway_name: str = "nv-config-manager-gateway"
+    gateway_namespace: str = ""
+    gateway_listener: str = ""
+    gateway_class_name: str = ""
     create_gateway_class: bool = True
     tls: bool = True
     cnpg_s3_backup: CNPGBackupConfig = Field(default_factory=CNPGBackupConfig)
@@ -657,7 +663,7 @@ IMAGE_OVERRIDE_KEYS: list[tuple[str, str]] = [
     ("temporalUi", "docker.io/temporalio/ui"),
     ("nautobotNginx", "docker.io/nginxinc/nginx-unprivileged"),
     ("spiffeHelper", "ghcr.io/spiffe/spiffe-helper"),
-    ("oauth2Proxy", "quay.io/oauth2-proxy/oauth2-proxy"),
+    ("oidcProxy", "quay.io/oauth2-proxy/oauth2-proxy"),
     ("templatePluginInstaller", "docker.io/library/python"),
     ("envoyGateway", "docker.io/envoyproxy/gateway"),
     ("envoyRatelimit", "docker.io/envoyproxy/ratelimit"),

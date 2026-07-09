@@ -22,7 +22,7 @@ test.describe("Workflows Page", () => {
     const response = await request.get("/auth/logout", { maxRedirects: 0 });
 
     expect(response.status()).toBe(302);
-    expect(response.headers().location).toBe("/oauth2/logout");
+    expect(response.headers().location).toBe("/oauth2/sign_out");
   });
 
   test("logout expires cookies sent by the site", async ({ request }) => {

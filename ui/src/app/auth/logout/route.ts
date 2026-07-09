@@ -23,6 +23,23 @@ const DEFAULT_AUTH_COOKIE_NAMES = [
 
 const COOKIE_NAME_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 
+const providerLogoutRedirect = (): string => {
+  const endpoint = process.env.OIDC_END_SESSION_ENDPOINT;
+  if (!endpoint) {
+    return "/oauth2/sign_out";
+  }
+
+  try {
+    const url = new URL(endpoint);
+    if (url.protocol !== "https:" && url.protocol !== "http:") {
+      return "/oauth2/sign_out";
+    }
+    return `/oauth2/sign_out?rd=${encodeURIComponent(url.toString())}`;
+  } catch {
+    return "/oauth2/sign_out";
+  }
+};
+
 const expiredCookie = (name: string, domain?: string): string => {
   const domainPart = domain ? ` Domain=${domain};` : "";
   return [
@@ -72,7 +89,7 @@ export async function GET(request: NextRequest) {
   const response = new NextResponse(null, {
     status: 302,
     headers: {
-      Location: "/oauth2/logout",
+      Location: providerLogoutRedirect(),
     },
   });
   const hostname = request.nextUrl.hostname;

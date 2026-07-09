@@ -1,0 +1,106 @@
+---
+title: Gateway API and OIDC
+description: Configure Envoy Gateway, kgateway, or an existing shared Gateway.
+---
+
+NVIDIA Config Manager uses portable Kubernetes `HTTPRoute` resources and supports
+Envoy Gateway and kgateway. Browser authentication is performed by the chart's
+OIDC proxy, not by the Gateway controller. The chart configures the maintained,
+distroless oauth2-proxy binary as the reverse-proxy engine. It validates the
+shared session, supplies trusted identity headers and an ID-token Authorization
+header, and forwards each hostname to its internal service. API clients continue
+to use the `svc-*` hostnames with a Bearer token.
+
+Every route strips inbound identity headers before forwarding, including routes
+that intentionally bypass browser authentication for native API tokens. When
+`oidc.endSessionEndpoint` is configured, logout clears the shared proxy session
+and continues to the identity provider's logout endpoint.
+
+Only one identity-provider callback is required:
+
+```text
+https://<gateway.baseHostname>/oauth2/callback
+```
+
+## Managed Envoy Gateway
+
+The defaults create a Gateway and an Envoy GatewayClass:
+
+```yaml
+gateway:
+  type: envoyGateway
+  create: true
+  className: envoy-gateway
+  createGatewayClass: true
+```
+
+If the Envoy installation already owns its GatewayClass, set
+`createGatewayClass: false`.
+
+## Managed kgateway
+
+Install kgateway and its Gateway API CRDs before installing Config Manager. The
+kgateway Helm installation normally owns the `kgateway` GatewayClass, so reuse it:
+
+```yaml
+gateway:
+  type: kgateway
+  create: true
+  className: kgateway
+  createGatewayClass: false
+
+networkPolicy:
+  gatewayNamespace: kgateway-system
+```
+
+This mode creates the Config Manager Gateway, certificate, and controller-neutral
+HTTPRoutes. It also creates kgateway `TrafficPolicy` resources that preserve the
+configured default request timeout and the longer ZTP upload timeout. It does not
+render any `gateway.envoyproxy.io` resources.
+
+## Existing shared kgateway
+
+For a platform-owned Gateway, disable Gateway creation and identify its namespace
+and HTTPS listener:
+
+```yaml
+gateway:
+  type: kgateway
+  create: false
+  name: shared-gateway
+  namespace: kgateway-system
+  sectionName: https
+  className: kgateway
+  createGatewayClass: false
+  certificates:
+    enabled: false
+
+networkPolicy:
+  gatewayNamespace: kgateway-system
+```
+
+The platform-owned listener must allow `HTTPRoute` attachments from the Config
+Manager namespace. The platform team also owns the listener certificate and DNS.
+No OIDC policy or other gateway-level authentication configuration is required.
+
+Verify that routes were accepted:
+
+```bash
+kubectl get httproute -n <config-manager-namespace>
+kubectl describe httproute -n <config-manager-namespace> <route-name>
+```
+
+## Migration
+
+The former `ingress.*` values, ingress-nginx manifests, `oidc.oauth2Proxy`, and
+Envoy-native `SecurityPolicy` OIDC configuration have been removed. Helm rejects
+an override containing `ingress.*` with a migration message. Before upgrading:
+
+1. Replace `ingress.type` with `gateway.type`.
+2. Choose `gateway.create: true` for a dedicated Gateway or configure the shared
+   Gateway parent fields above.
+3. Remove the old `oidc.oauth2Proxy` values. Ensure the Secret named by
+   `oidc.clientSecretName` contains both `client-secret` and a raw 32-byte
+   `cookie-secret`; the installer creates both for Kubernetes-secret deployments.
+4. Register only the base-hostname callback URL shown above.
+5. Confirm that the Gateway data-plane namespace is allowed by `networkPolicy`.

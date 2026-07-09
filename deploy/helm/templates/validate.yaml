@@ -1,0 +1,10 @@
+{{- $gatewayType := .Values.gateway.type | default "envoyGateway" -}}
+{{- if hasKey .Values "ingress" -}}
+  {{- fail "ingress.* is no longer supported; configure gateway.type (envoyGateway or kgateway) and gateway.create instead" -}}
+{{- end -}}
+{{- if not (has $gatewayType (list "envoyGateway" "kgateway")) -}}
+  {{- fail (printf "gateway.type must be one of envoyGateway or kgateway, got %q" $gatewayType) -}}
+{{- end -}}
+{{- if and .Values.gateway.create (ne (.Values.gateway.namespace | default .Values.global.namespace) .Values.global.namespace) -}}
+  {{- fail "gateway.namespace may differ from global.namespace only when gateway.create=false (shared gateway mode)" -}}
+{{- end -}}

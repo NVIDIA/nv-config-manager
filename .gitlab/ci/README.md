@@ -122,7 +122,8 @@ Pulse scan jobs use the versioned Pulse `scan-images` CI/CD component. The
 component scans each published image from the selected `NVCM_IMAGE_TARGETS`
 repository for both `linux/amd64` and `linux/arm64`, mints a fresh SSA token at
 scan time, and applies the configured internal policy file fetched from
-`NVCM_CONTAINER_SCAN_POLICY_PROJECT`.
+`NVCM_CONTAINER_SCAN_POLICY_PROJECT`. The matrix also scans the exact pinned
+upstream oauth2-proxy image shipped by the Helm chart on both architectures.
 
 ## Downstream Deployments
 

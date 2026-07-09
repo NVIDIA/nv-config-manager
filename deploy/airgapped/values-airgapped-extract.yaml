@@ -23,18 +23,13 @@ ui:
   enabled: true
 
 # =============================================================================
-# Enable OIDC to capture oauth2-proxy image
+# Enable the OIDC proxy deployment so its image is captured
 # =============================================================================
 oidc:
   enabled: true
   hostname: sso.bootstrap.local
   issuerUrl: "https://login.example.com"
   clientId: "dummy-client-id"
-  oauth2Proxy:
-    image:
-      repository: quay.io/oauth2-proxy/oauth2-proxy
-      tag: v7.6.0
-      pullPolicy: IfNotPresent
 
 # =============================================================================
 # Enable SPIFFE to capture envoy and spiffe-helper images
@@ -50,9 +45,6 @@ spiffe:
 
 networkPolicy:
   enabled: false
-
-ingress:
-  type: envoyGateway
 
 externalServices:
   nautobot:

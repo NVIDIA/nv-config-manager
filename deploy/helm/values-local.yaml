@@ -2,7 +2,7 @@
 # Deploy with: helm install nv-config-manager ./chart -f chart/values-local.yaml -n nv-config-manager --create-namespace
 #
 # Prerequisites:
-#   - ingress-nginx or gateway controller installed
+#   - A supported Gateway API controller installed
 #   - Add to /etc/hosts: 127.0.0.1 config-manager.local api.config-manager.local
 #
 # Access:
@@ -24,7 +24,7 @@ global:
 # Mock SSO Authentication for Local Development
 # =============================================================================
 # Injects X-Auth-Request-* headers as if the user went through SSO.
-# Works with both ingress-nginx (configuration-snippet) and Envoy sidecar.
+# Consumed by application authentication middleware in local development.
 # =============================================================================
 localDev:
   mockAuth:
@@ -112,20 +112,11 @@ nats:
   enabled: true
   replicas: 1
 
-# Ingress configuration for local dev
-ingress:
-  enabled: true
-  className: nginx  # or "gateway" for gateway controller
-  annotations:
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
-  hosts:
-    ui: config-manager.local
-    api: api.config-manager.local
-
-# Gateway configuration (alternative to ingress-nginx)
+# Gateway configuration for local development
 gateway:
-  enabled: false
-  className: envoy-gateway  # or your gateway class
+  enabled: true
+  type: envoyGateway
+  className: envoy-gateway
   hosts:
     ui: config-manager.local
     api: api.config-manager.local

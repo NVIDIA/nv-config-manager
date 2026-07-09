@@ -1,4 +1,4 @@
-{{- if and .Values.gateway.enabled (eq (.Values.ingress.type | default "envoyGateway") "envoyGateway") }}
+{{- if and .Values.gateway.enabled .Values.gateway.create (eq (.Values.gateway.type | default "envoyGateway") "envoyGateway") }}
 {{- $policyName := include "nv-config-manager.componentName" (dict "root" . "component" "gateway-client-traffic") }}
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
@@ -16,8 +16,7 @@ spec:
   headers:
     earlyRequestHeaders:
       remove:
-        # Strip spoofable identity headers before auth/routing. SecurityPolicy
-        # may add trusted X-Auth-Request-* headers later from verified JWT/OIDC claims.
+        # Strip spoofable identity headers before routing to the OIDC proxy.
         - ssl-client-cert
         - X-Auth-Request-Email
         - X-Auth-Request-User

@@ -978,7 +978,7 @@ def install_identity_probe(
         """Populate ``request.state.user`` / ``request.state.roles``.
 
         Uses the consolidated :func:`extract_identity` so mTLS, SPIFFE
-        JWT-SVIDs, OIDC JWTs, and oauth2-proxy / Envoy gateway headers are
+        JWT-SVIDs, OIDC JWTs, and trusted OIDC proxy identity headers are
         all recognised uniformly.
         """
         identity = extract_identity(request, include_request_headers=accept_request_headers())
