@@ -849,7 +849,10 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
             self.set_stage_output(
                 "assign_spx_overlay",
                 StageOutput(
-                    display=f"[View assignment workflow](/workflows/{assignment_handle.id})"
+                    display=(
+                        f"Assigning via workflow "
+                        f"[{assignment_handle.id}](/workflows/{assignment_handle.id})"
+                    )
                 ),
             )
         except Exception as exc:
@@ -867,8 +870,9 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
                 vxlan_name=None,
                 error=error,
                 display=(
-                    "**Assignment workflow failed.**\n\n"
-                    f"[View assignment workflow](/workflows/{assignment_handle.id})"
+                    "**Assignment failed, check workflow "
+                    f"[{assignment_handle.id}](/workflows/{assignment_handle.id}) "
+                    "for details.**"
                 ),
             )
 
@@ -883,7 +887,8 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
             f"- **L3 VXLAN:** {vxlan_name}\n"
             f"- **VRF:** {result.vrf.vrf_name} ({vrf_status})\n"
             f"- **Ports assigned ({len(result.assigned_ports)}):** {assigned_ports}\n\n"
-            f"[View assignment workflow](/workflows/{assignment_handle.id})"
+            f"Assigning via workflow [{assignment_handle.id}]"
+            f"(/workflows/{assignment_handle.id})"
         )
         return self.AssignSpXOverlayStageOutput(
             assigned_ports=result.assigned_ports,
@@ -1058,7 +1063,12 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
             self.append_child_workflow("deploy", deploy_handle.id)
             self.set_stage_output(
                 "deploy",
-                StageOutput(display=f"[View deployment workflow](/workflows/{deploy_handle.id})"),
+                StageOutput(
+                    display=(
+                        f"Deploying configuration via workflow "
+                        f"[{deploy_handle.id}](/workflows/{deploy_handle.id})"
+                    )
+                ),
             )
         except Exception as exc:
             raise ApplicationError(str(exc)) from exc
@@ -1071,16 +1081,17 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
                 device_id=stage_input.device.id,
                 error=error,
                 display=(
-                    "**Deployment workflow failed.**\n\n"
-                    f"[View deployment workflow](/workflows/{deploy_handle.id})"
+                    "**Configuration deployment failed, check workflow "
+                    f"[{deploy_handle.id}](/workflows/{deploy_handle.id}) "
+                    "for details.**"
                 ),
             )
 
         return self.DeployStageOutput(
             device_id=stage_input.device.id,
             display=(
-                f"Deployed tenant configuration to device {stage_input.device.id}.\n\n"
-                f"[View deployment workflow](/workflows/{deploy_handle.id})"
+                f"Configuration deployed via workflow "
+                f"[{deploy_handle.id}](/workflows/{deploy_handle.id})"
             ),
         )
 

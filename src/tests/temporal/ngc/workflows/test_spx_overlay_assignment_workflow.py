@@ -338,8 +338,8 @@ async def test_spx_deploy_stage_surfaces_link_when_child_fails():
     assert stage.child_workflows == ["failed-deployment-child"]
     assert output.error == "tenant deploy activity failed"
     assert output.display == (
-        "**Deployment workflow failed.**\n\n"
-        "[View deployment workflow](/workflows/failed-deployment-child)"
+        "**Configuration deployment failed, check workflow "
+        "[failed-deployment-child](/workflows/failed-deployment-child) for details.**"
     )
 
 
@@ -388,8 +388,8 @@ async def test_spx_assignment_stage_publishes_child_link_before_failure():
     assert stage.child_workflows == ["failed-assignment-child"]
     assert output.error == "Interfaces not found"
     assert output.display == (
-        "**Assignment workflow failed.**\n\n"
-        "[View assignment workflow](/workflows/failed-assignment-child)"
+        "**Assignment failed, check workflow "
+        "[failed-assignment-child](/workflows/failed-assignment-child) for details.**"
     )
 
 
@@ -450,8 +450,8 @@ async def test_spx_tenant_change_surfaces_failed_assignment_child_link(env):
         assert assignment_stage["state"] == "COMPLETE"
         assert assignment_stage["output"]["error"] == "Interfaces not found"
         assert assignment_stage["output"]["display"] == (
-            "**Assignment workflow failed.**\n\n"
-            f"[View assignment workflow](/workflows/{assignment_child})"
+            "**Assignment failed, check workflow "
+            f"[{assignment_child}](/workflows/{assignment_child}) for details.**"
         )
         assert stages["determine_deployment_action"]["state"] == "UNREACHABLE"
         assert stages["render_tenant_config"]["state"] == "UNREACHABLE"
@@ -628,7 +628,7 @@ async def test_spx_overlay_tenant_change_is_noop_when_already_assigned(
             "- **L3 VXLAN:** SpXTenant60004\n"
             "- **VRF:** SpXTenant60004 (already assigned)\n"
             "- **Ports assigned (0):** None\n\n"
-            f"[View assignment workflow](/workflows/{assignment_child})"
+            f"Assigning via workflow [{assignment_child}](/workflows/{assignment_child})"
         )
         assert stages["render_tenant_config"]["state"] == "UNREACHABLE"
         assert stages["wait_for_render"]["state"] == "UNREACHABLE"
@@ -711,11 +711,12 @@ async def test_spx_overlay_tenant_change_uses_current_versions_after_render_race
             "- **L3 VXLAN:** SpXTenant60004\n"
             "- **VRF:** SpXTenant60004 (already assigned)\n"
             "- **Ports assigned (1):** swp3\n\n"
-            f"[View assignment workflow](/workflows/{assignment_children[0]})"
+            f"Assigning via workflow [{assignment_children[0]}]"
+            f"(/workflows/{assignment_children[0]})"
         )
-        assert (
-            f"[View deployment workflow](/workflows/{deploy_children[0]})"
-            in stages["deploy"]["output"]["display"]
+        assert stages["deploy"]["output"]["display"] == (
+            f"Configuration deployed via workflow [{deploy_children[0]}]"
+            f"(/workflows/{deploy_children[0]})"
         )
 
 
