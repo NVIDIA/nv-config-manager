@@ -899,7 +899,7 @@ oidc:
     cookieName: _nvcm_oidc_proxy
     image:
       repository: quay.io/oauth2-proxy/oauth2-proxy
-      tag: v7.15.2
+      tag: v7.15.3
       pullPolicy: IfNotPresent
     resources:
       requests:

@@ -630,7 +630,7 @@ class TestGenerateHelmValues:
                 gateway=GatewayType.KGATEWAY,
                 create_gateway=False,
                 gateway_name="shared-gateway",
-                gateway_namespace="kgateway-system",
+                gateway_namespace="shared-gateway-system",
                 gateway_listener="https",
             ),
         )
@@ -640,10 +640,11 @@ class TestGenerateHelmValues:
         assert gateway["type"] == "kgateway"
         assert gateway["create"] is False
         assert gateway["name"] == "shared-gateway"
-        assert gateway["namespace"] == "kgateway-system"
+        assert gateway["namespace"] == "shared-gateway-system"
         assert gateway["sectionName"] == "https"
         assert gateway["className"] == "kgateway"
         assert gateway["createGatewayClass"] is False
+        assert values["networkPolicy"]["gatewayNamespace"] == "shared-gateway-system"
 
     def test_custom_jobs_in_values(self):
         config = _make_config(

@@ -61,7 +61,7 @@ oidc:
   
   # Name of the K8s secret containing client-secret and a raw 32-byte
   # cookie-secret used by the gateway-independent proxy.
-  # Create with: kubectl create secret generic oidc-client-secret --from-literal=client-secret=nv-config-manager-client-secret --from-literal=cookie-secret="$(openssl rand -base64 24)" -n nv-config-manager
+  # Create with: kubectl create secret generic oidc-client-secret --from-literal=client-secret=nv-config-manager-client-secret --from-literal=cookie-secret="$(openssl rand -base64 32)" -n nv-config-manager
   clientSecretName: "oidc-client-secret"
   
   # OIDC scopes - KeyCloak standard scopes

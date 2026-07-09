@@ -178,7 +178,7 @@ _NESTED_IMAGE_DEFAULTS: dict[str, tuple[tuple[str, ...], str, str]] = {
     "oidcProxy": (
         ("oidc", "proxy", "image"),
         "quay.io/oauth2-proxy/oauth2-proxy",
-        "v7.15.2",
+        "v7.15.3",
     ),
     "prometheusServer": (
         ("prometheus", "server", "image"),
@@ -903,7 +903,7 @@ def build_values(
     values["networkPolicy"] = {
         "enabled": True,
         "gatewayNamespace": (
-            "kgateway-system"
+            config.infrastructure.gateway_namespace or "kgateway-system"
             if config.infrastructure.gateway.value == "kgateway"
             else "envoy-gateway-system"
         ),

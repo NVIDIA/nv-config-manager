@@ -23,8 +23,8 @@
 #   use installer config cluster.size: small
 # =============================================================================
 
-# One pod still runs a proxy container for every protected hostname. Keeping a
-# single replica prevents the local security stack from exhausting Kind CPU.
+# One pod runs a proxy container for every protected hostname. Keeping a single
+# replica prevents the local security stack from exhausting Kind CPU.
 oidc:
   proxy:
     replicas: 1

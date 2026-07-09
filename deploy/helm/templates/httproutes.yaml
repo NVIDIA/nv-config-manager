@@ -140,8 +140,35 @@ spec:
 {{- $nautobotName := include "nv-config-manager.componentName" (dict "root" . "component" "nautobot") }}
 {{- $configStoreName := include "nv-config-manager.componentName" (dict "root" . "component" "config-store") }}
 {{- $mcpName := include "nv-config-manager.componentName" (dict "root" . "component" "mcp") }}
+{{- $oidcProxyName := include "nv-config-manager.componentName" (dict "root" . "component" "oidc-proxy") }}
 
 {{- if .Values.gateway.enabled }}
+
+# Shared OIDC callback route. A dedicated proxy serves this endpoint so OIDC
+# remains functional even when the UI component is disabled.
+{{- if .Values.oidc.enabled }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ printf "%s-callback" $oidcProxyName | trunc 63 | trimSuffix "-" }}
+  namespace: {{ .Values.global.namespace }}
+  {{- include "nv-config-manager.httpRoutePolicyLabels" (dict "root" .) | nindent 2 }}
+spec:
+  parentRefs:
+  {{- include "nv-config-manager.gatewayParentRef" . | nindent 2 }}
+  hostnames:
+  - {{ .Values.gateway.baseHostname | quote }}
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /oauth2
+    {{- include "nv-config-manager.stripIdentityHeaders" . | nindent 4 }}
+    backendRefs:
+    - name: {{ $oidcProxyName }}
+      port: 9109
+{{- end }}
 
 # Render Service svc-* HTTPRoute (JWT-only)
 {{- if .Values.renderService.enabled }}

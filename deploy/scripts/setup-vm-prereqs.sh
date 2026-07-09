@@ -1517,7 +1517,7 @@ if [[ "$INSTALL_OPENBAO" == "true" ]]; then
     if [[ -n "$EXISTING_COOKIE_SECRET" ]]; then
         OIDC_COOKIE_SECRET="$EXISTING_COOKIE_SECRET"
     else
-        OIDC_COOKIE_SECRET=$(openssl rand -base64 24)
+        OIDC_COOKIE_SECRET=$(openssl rand -base64 32)
     fi
     
     write_bao_secret "demo/oidc" \

@@ -15,7 +15,7 @@
 #
 # The scheme (http/https) is determined by:
 #   1. monitoring.probes.scheme if explicitly set
-#   2. Otherwise, auto-detected from gateway.certificates.enabled
+#   2. Otherwise, auto-detected from an HTTPS Gateway listener
 # =============================================================================
 {{- if and .Values.monitoring .Values.monitoring.enabled }}
 
@@ -36,7 +36,15 @@
 
 {{- /* Determine gateway availability and scheme for probes */}}
 {{- $hasIngress := .Values.gateway.enabled }}
-{{- $probeScheme := .Values.monitoring.probes.scheme | default (ternary "https" "http" .Values.gateway.certificates.enabled) }}
+{{- $probeScheme := .Values.monitoring.probes.scheme | default "" }}
+{{- if not $probeScheme }}
+{{- $probeScheme = "http" }}
+{{- range .Values.gateway.listeners | default list }}
+{{- if eq .protocol "HTTPS" }}
+{{- $probeScheme = "https" }}
+{{- end }}
+{{- end }}
+{{- end }}
 
 {{- /*
   Optional static `jobName` prefix prepended to every Probe resource's

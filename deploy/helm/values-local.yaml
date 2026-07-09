@@ -3,7 +3,7 @@
 #
 # Prerequisites:
 #   - A supported Gateway API controller installed
-#   - Add to /etc/hosts: 127.0.0.1 config-manager.local api.config-manager.local
+#   - Add to /etc/hosts: 127.0.0.1 config-manager.local
 #
 # Access:
 #   - UI:               https://config-manager.local
@@ -117,9 +117,6 @@ gateway:
   enabled: true
   type: envoyGateway
   className: envoy-gateway
-  hosts:
-    ui: config-manager.local
-    api: api.config-manager.local
   # Disable JWT auth for local dev (mock auth handles identity)
   auth:
     jwt:

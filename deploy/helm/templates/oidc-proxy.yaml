@@ -9,6 +9,8 @@
 {{- $configStoreName := include "nv-config-manager.componentName" (dict "root" . "component" "config-store") }}
 {{- $mcpName := include "nv-config-manager.componentName" (dict "root" . "component" "mcp") }}
 {{- $proxies := list }}
+{{- /* A dedicated callback proxy keeps OIDC usable when the UI is disabled. */}}
+{{- $proxies = append $proxies (dict "name" "callback" "port" 9109 "upstream" "static://200") }}
 {{- if .Values.ui.enabled }}
   {{- $proxies = append $proxies (dict "name" "ui" "port" 9100 "upstream" (printf "http://%s:3000" $uiName)) }}
 {{- end }}

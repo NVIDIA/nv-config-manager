@@ -1,5 +1,5 @@
 .PHONY: help install dev test lint format clean docker-build docker-push ui-install ui-dev ui-build \
-        local-up local-down local-destroy local-status local-logs deploy kind-up kind-up-sec kind-up-sec-kgateway kind-down topology install-cert workflow-perf-seed \
+        local-up local-down local-destroy local-status local-logs deploy kind-up kind-up-sec kind-up-sec-kgateway kind-up-secure kind-down topology install-cert workflow-perf-seed \
         openapi openapi-check go-bindings api-generate docs-assets docs-assets-check docs-format docs-lint docs-lint-fern docs-live docs-preview docs-publish docs-publish-in-ci docs-screenshots docs-air-sim-screenshots docs-ui-screenshots \
         obs-grafana obs-prometheus obs-loki obs-alloy obs-port-forward obs-port-forward-stop
 
@@ -18,6 +18,7 @@ KIND_SEC_SPIFFE_TRUST_DOMAIN ?= $(KIND_SEC_HOSTNAME)
 KIND_SEC_OIDC_CLIENT_SECRET ?= nvcm-local-client-secret
 KIND_SEC_KEYCLOAK_ADMIN_PASSWORD ?= admin
 KIND_SEC_RENDERED_CONFIG ?= /tmp/nvcm-local-sec-$(KIND_CLUSTER_NAME).yaml
+KIND_SEC_GATEWAY_CONTROLLER ?= envoyGateway
 WORKFLOW_PERF_COUNT ?= 100
 WORKFLOW_PERF_RUNNING_COUNT ?= 150
 WORKFLOW_PERF_FAILED_COUNT ?= 1
@@ -784,53 +785,22 @@ kind-up:
 		$(HELM_DEBUG_FLAG) --helm-timeout $(HELM_TIMEOUT)
 
 # Deploy with Kind plus local Keycloak SSO, SPIRE SPIFFE, and workflow RBAC.
-kind-up-sec:
-	@echo "🚀 Deploying NVIDIA Config Manager with local security stack to Kind (config: $(KIND_SEC_INSTALL_CONFIG))..."
-	@if ! kind get clusters 2>/dev/null | grep -q "^$(KIND_CLUSTER_NAME)$$"; then \
-		echo "Creating Kind cluster: $(KIND_CLUSTER_NAME)"; \
-		kind create cluster --name $(KIND_CLUSTER_NAME) --config deploy/kind-config.yaml --wait 5m; \
-	fi
-	kind export kubeconfig --name $(KIND_CLUSTER_NAME)
-	./scripts/install-security-dependencies \
-		--cluster-name $(KIND_CLUSTER_NAME) \
-		--app-namespace $(KIND_SEC_NAMESPACE) \
-		--base-hostname $(KIND_SEC_HOSTNAME) \
-		--keycloak-hostname $(KIND_SEC_KEYCLOAK_HOSTNAME) \
-		--spiffe-trust-domain $(KIND_SEC_SPIFFE_TRUST_DOMAIN) \
-		--keycloak-admin-password $(KIND_SEC_KEYCLOAK_ADMIN_PASSWORD) \
-		--oidc-client-secret $(KIND_SEC_OIDC_CLIENT_SECRET)
-	uv run python scripts/render-local-security-config \
-		--input $(KIND_SEC_INSTALL_CONFIG) \
-		--output $(abspath $(KIND_SEC_RENDERED_CONFIG)) \
-		--namespace $(KIND_SEC_NAMESPACE) \
-		--release-name $(RELEASE_NAME) \
-		--hostname $(KIND_SEC_HOSTNAME) \
-		--keycloak-hostname $(KIND_SEC_KEYCLOAK_HOSTNAME) \
-		--spiffe-trust-domain $(KIND_SEC_SPIFFE_TRUST_DOMAIN) \
-		--oidc-client-secret $(KIND_SEC_OIDC_CLIENT_SECRET)
-	cd installer && uv run nv-config-manager-installer deploy $(abspath $(KIND_SEC_RENDERED_CONFIG)) \
-		--image-source local \
-		--build-images \
-		--load-kind \
-		--kind-cluster $(KIND_CLUSTER_NAME) \
-		--install-envoy-gateway \
-		--install-cnpg-operator \
-		--install-cert-manager \
-		$(HELM_DEBUG_FLAG) --helm-timeout $(HELM_TIMEOUT)
-	./scripts/create-local-security-nautobot-users \
-		--namespace $(KIND_SEC_NAMESPACE) \
-		--release-name $(RELEASE_NAME)
+kind-up-sec: KIND_SEC_GATEWAY_CONTROLLER = envoyGateway
+kind-up-sec: kind-up-secure
 
 # Same secured local deployment, using kgateway instead of Envoy Gateway.
-kind-up-sec-kgateway:
-	@echo "🚀 Deploying NVIDIA Config Manager with local security stack and kgateway to Kind (config: $(KIND_SEC_INSTALL_CONFIG))..."
+kind-up-sec-kgateway: KIND_SEC_GATEWAY_CONTROLLER = kgateway
+kind-up-sec-kgateway: kind-up-secure
+
+kind-up-secure:
+	@echo "🚀 Deploying NVIDIA Config Manager with local security stack and $(KIND_SEC_GATEWAY_CONTROLLER) to Kind (config: $(KIND_SEC_INSTALL_CONFIG))..."
 	@if ! kind get clusters 2>/dev/null | grep -q "^$(KIND_CLUSTER_NAME)$$"; then \
 		echo "Creating Kind cluster: $(KIND_CLUSTER_NAME)"; \
 		kind create cluster --name $(KIND_CLUSTER_NAME) --config deploy/kind-config.yaml --wait 5m; \
 	fi
 	kind export kubeconfig --name $(KIND_CLUSTER_NAME)
 	./scripts/install-security-dependencies \
-		--gateway-controller kgateway \
+		--gateway-controller $(KIND_SEC_GATEWAY_CONTROLLER) \
 		--cluster-name $(KIND_CLUSTER_NAME) \
 		--app-namespace $(KIND_SEC_NAMESPACE) \
 		--base-hostname $(KIND_SEC_HOSTNAME) \
@@ -839,7 +809,7 @@ kind-up-sec-kgateway:
 		--keycloak-admin-password $(KIND_SEC_KEYCLOAK_ADMIN_PASSWORD) \
 		--oidc-client-secret $(KIND_SEC_OIDC_CLIENT_SECRET)
 	uv run python scripts/render-local-security-config \
-		--gateway kgateway \
+		--gateway $(KIND_SEC_GATEWAY_CONTROLLER) \
 		--input $(KIND_SEC_INSTALL_CONFIG) \
 		--output $(abspath $(KIND_SEC_RENDERED_CONFIG)) \
 		--namespace $(KIND_SEC_NAMESPACE) \
@@ -853,7 +823,7 @@ kind-up-sec-kgateway:
 		--build-images \
 		--load-kind \
 		--kind-cluster $(KIND_CLUSTER_NAME) \
-		--install-cnpg-operator \
+		$(if $(filter envoyGateway,$(KIND_SEC_GATEWAY_CONTROLLER)),--install-envoy-gateway) --install-cnpg-operator \
 		--install-cert-manager \
 		$(HELM_DEBUG_FLAG) --helm-timeout $(HELM_TIMEOUT)
 	./scripts/create-local-security-nautobot-users \
