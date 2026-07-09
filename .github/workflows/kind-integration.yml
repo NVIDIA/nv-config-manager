@@ -18,6 +18,11 @@ on:
         required: false
         default: ""
         type: string
+      security:
+        description: Deploy the local security stack (Keycloak + SPIRE) via kind-up-sec and run group-mapping RBAC tests
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: kind-integration-${{ github.ref }}
@@ -45,6 +50,7 @@ jobs:
     env:
       KIND_CLUSTER_NAME: nv-config-manager-${{ github.run_id }}
       NV_CONFIG_MANAGER_NAMESPACE: nv-config-manager
+      NV_CONFIG_MANAGER_RELEASE: nv-config-manager
       NV_CONFIG_MANAGER_HOSTNAME: config-manager.local
       TEST_PATH: ${{ inputs.test_path }}
     steps:
@@ -127,9 +133,72 @@ jobs:
         env:
           BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
           OBSERVABILITY: ${{ inputs.observability }}
+          SECURITY: ${{ inputs.security }}
         run: |
           sudo sysctl -w fs.inotify.max_user_instances=512
           sudo sysctl -w fs.inotify.max_user_watches=524288
+
+          # Opt-in security: deploy the local Keycloak + SPIRE stack via
+          # `make kind-up-sec` instead of the plain `make kind-up`, then move the
+          # chart into the group-mapping CONFIGURED state so the --rbac tests have
+          # a mapping mounted and the seeded nvcm-* Keycloak users to log in as.
+          # This is a separate deploy path from observability (which piggybacks on
+          # `make kind-up`), so the two toggles are mutually exclusive; security
+          # wins if both are set.
+          #
+          # We create the cluster up front and preload the security stack's
+          # runtime images (Keycloak, SPIRE, and their helpers). The security
+          # dependencies are helm-installed straight into the cluster, so without
+          # a preload the kind nodes pull them anonymously from quay.io / ghcr.io
+          # / registry.k8s.io mid-deploy -- exactly the uncached pulls that blow
+          # the helm --wait timeout (same rationale as the observability preload
+          # below). Keep these in sync with SPIRE_VERSION / KEYCLOAK_* in
+          # deploy/operator-versions.env; re-derive the SPIRE set with:
+          #   helm template spire spiffe/spire --version <SPIRE_VERSION> | grep image:
+          if [ "${SECURITY}" = "true" ]; then
+            echo "Security stack enabled for this run"
+
+            kind create cluster --name "${KIND_CLUSTER_NAME}" \
+              --config deploy/kind-config.yaml --wait 5m
+
+            SECURITY_PRELOAD_IMAGES="
+              quay.io/keycloak/keycloak:26.0
+              curlimages/curl:8.15.0
+              ghcr.io/spiffe/spire-server:1.15.1
+              ghcr.io/spiffe/spire-agent:1.15.1
+              ghcr.io/spiffe/spiffe-csi-driver:0.2.7
+              ghcr.io/spiffe/spiffe-helper:0.11.0
+              ghcr.io/spiffe/oidc-discovery-provider:1.15.1
+              ghcr.io/spiffe/spire-controller-manager:0.6.6
+              docker.io/smallstep/step-cli:0.30.2
+              busybox:1.37.0-uclibc
+              registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.15.0
+              registry.k8s.io/kubectl:v1.31.0
+            "
+            for img in ${SECURITY_PRELOAD_IMAGES}; do
+              echo "Preloading ${img}"
+              docker pull "${img}"
+              kind load docker-image "${img}" --name "${KIND_CLUSTER_NAME}"
+            done
+
+            make kind-up-sec \
+              KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME}" \
+              HELM_TIMEOUT=20m
+
+            # Move from the default UNCONFIGURED state into CONFIGURED so the
+            # group-mapping ConfigMap is rendered/mounted and the seeded users
+            # get real grants on login (mirrors scripts/rbac-local-test verify.sh
+            # state-c). The --rbac tests skip themselves without this.
+            helm upgrade "${NV_CONFIG_MANAGER_RELEASE}" deploy/helm \
+              -n "${NV_CONFIG_MANAGER_NAMESPACE}" \
+              --reuse-values \
+              -f scripts/rbac-local-test/values-configured.yaml
+            kubectl -n "${NV_CONFIG_MANAGER_NAMESPACE}" rollout status \
+              "deploy/${NV_CONFIG_MANAGER_RELEASE}-nautobot" --timeout=15m
+
+            kubectl get pods -n "${NV_CONFIG_MANAGER_NAMESPACE}" -o wide
+            exit 0
+          fi
 
           # Opt-in observability: flip the two monitoring switches on the base
           # config in place (the runner checkout is throwaway, so we keep a
@@ -173,13 +242,23 @@ jobs:
           # skip themselves unless this is "true". Mirrors the JIRA_ISSUE_KEY
           # gate on the diagnostics tests.
           OBSERVABILITY: ${{ inputs.observability }}
+          SECURITY: ${{ inputs.security }}
         run: |
+          # --rbac opts into the group-mapping RBAC suite (test_rbac_group_mapping.py),
+          # which needs the CONFIGURED security deploy above; otherwise those tests
+          # skip themselves.
+          RBAC_FLAG=""
+          if [ "${SECURITY}" = "true" ]; then
+            RBAC_FLAG="--rbac"
+          fi
+
           for attempt in 1 2 3; do
             echo "Attempt ${attempt} of 3"
             results_file="integration-test-results-${attempt}.xml"
             set +e
             timeout --kill-after=1m 15m uv run pytest "${TEST_PATH}" -v \
               --ci \
+              ${RBAC_FLAG} \
               --nv-config-manager-namespace "${NV_CONFIG_MANAGER_NAMESPACE}" \
               --tb=short \
               --junitxml="${results_file}"

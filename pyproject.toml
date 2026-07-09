@@ -210,6 +210,7 @@ addopts = "--ignore=src/tests/integration"
 markers = [
     "integration: marks tests as integration tests (require running NVIDIA Config Manager cluster)",
     "spiffe: marks tests that require a live SPIFFE/Workload-Identity setup (opt-in via --spiffe)",
+    "rbac: marks tests that require live group-mapping RBAC (opt-in via --rbac)",
 ]
 
 [tool.coverage.report]
