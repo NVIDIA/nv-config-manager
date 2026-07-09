@@ -46,6 +46,21 @@ interface ParsedError {
 const getFrameKey = (frame: ParsedError["frames"][number]) =>
   [frame.file, frame.line, frame.function, frame.code].filter(Boolean).join(":")
 
+const getKeyedFrames = (frames: ParsedError["frames"]) => {
+  const seenFrameCounts = new Map<string, number>()
+
+  return frames.map((frame) => {
+    const frameKey = getFrameKey(frame)
+    const occurrence = seenFrameCounts.get(frameKey) ?? 0
+    seenFrameCounts.set(frameKey, occurrence + 1)
+
+    return {
+      frame,
+      key: `${frameKey}|occurrence:${occurrence}`,
+    }
+  })
+}
+
 const getErrorKey = (error: ParsedError) =>
   [error.type, error.message].filter(Boolean).join(":")
 
@@ -158,8 +173,8 @@ export function ErrorTracebackViewer({ error, className }: ErrorTracebackViewerP
 
       {error.frames.length > 0 && (
         <div className="mt-2 pl-4 border-l border-l-slate-200 dark:border-l-slate-700">
-          {error.frames.map((frame) => (
-            <div key={getFrameKey(frame)} className="mb-3">
+          {getKeyedFrames(error.frames).map(({ frame, key }) => (
+            <div key={key} className="mb-3">
               <div className="text-xs text-slate-500 dark:text-slate-400 font-mono">
                 File <span className="text-slate-700 dark:text-slate-300">{frame.file}</span>, line{" "}
                 <span className="text-slate-700 dark:text-slate-300">{frame.line}</span>, in{" "}
