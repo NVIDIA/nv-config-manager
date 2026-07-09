@@ -499,6 +499,15 @@ async def test_spx_overlay_tenant_change_is_noop_when_already_assigned(
         assert _mock_state["reconcile_calls"] == 1
 
         stages = {stage["name"]: stage for stage in await handle.query("stages")}
+        assignment_stage = stages["assign_spx_overlay"]
+        assignment_child = assignment_stage["child_workflows"][0]
+        assert assignment_stage["output"]["display"] == (
+            "- **Overlay:** mock_overlay_id\n"
+            "- **L3 VXLAN:** SpXTenant60004\n"
+            "- **VRF:** SpXTenant60004 (already assigned)\n"
+            "- **Ports assigned (0):** None\n\n"
+            f"[View assignment workflow](/workflows/{assignment_child})"
+        )
         assert stages["render_tenant_config"]["state"] == "UNREACHABLE"
         assert stages["wait_for_render"]["state"] == "UNREACHABLE"
         assert stages["deploy"]["state"] == "UNREACHABLE"
@@ -575,9 +584,12 @@ async def test_spx_overlay_tenant_change_uses_current_versions_after_render_race
         assert handle.id not in assignment_children
         assert handle.id not in deploy_children
         assert assignment_children != deploy_children
-        assert (
+        assert stages["assign_spx_overlay"]["output"]["display"] == (
+            "- **Overlay:** mock_overlay_id\n"
+            "- **L3 VXLAN:** SpXTenant60004\n"
+            "- **VRF:** SpXTenant60004 (already assigned)\n"
+            "- **Ports assigned (1):** swp3\n\n"
             f"[View assignment workflow](/workflows/{assignment_children[0]})"
-            in stages["assign_spx_overlay"]["output"]["display"]
         )
         assert (
             f"[View deployment workflow](/workflows/{deploy_children[0]})"

@@ -859,12 +859,13 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
         overlay_name = stage_input.overlay_id
         vxlan_name = result.vrf.vrf_name
 
-        vrf_line = f"VRF: {result.vrf.vrf_name}" if result.vrf_assigned else "VRF already assigned"
+        vrf_status = "assigned" if result.vrf_assigned else "already assigned"
+        assigned_ports = ", ".join(result.assigned_ports) or "None"
         display = (
-            f"Overlay: {overlay_name}\n"
-            f"L3 VXLAN: {vxlan_name}\n"
-            f"{vrf_line}\n"
-            f"Ports assigned ({len(result.assigned_ports)}): {', '.join(result.assigned_ports)}\n"
+            f"- **Overlay:** {overlay_name}\n"
+            f"- **L3 VXLAN:** {vxlan_name}\n"
+            f"- **VRF:** {result.vrf.vrf_name} ({vrf_status})\n"
+            f"- **Ports assigned ({len(result.assigned_ports)}):** {assigned_ports}\n\n"
             f"[View assignment workflow](/workflows/{assignment_handle.id})"
         )
         return self.AssignSpXOverlayStageOutput(
@@ -1048,7 +1049,7 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
         return self.DeployStageOutput(
             device_id=stage_input.device.id,
             display=(
-                f"Deployed tenant configuration to device {stage_input.device.id}\n"
+                f"Deployed tenant configuration to device {stage_input.device.id}.\n\n"
                 f"[View deployment workflow](/workflows/{deploy_handle.id})"
             ),
         )
