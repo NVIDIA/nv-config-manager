@@ -147,19 +147,24 @@ function customUrlTransform(url: string) {
 }
 
 const StageOutput = ({ stage }: { stage: WorkflowStage }) => {
-  if (stage.state === "FAILED") {
-    return (
-      <ErrorTracebackViewer error={{ traceback: stage.traceback || "" }} />
-    );
-  }
-
   const stageOutput = stage?.output as { display?: string } | null | undefined;
-  const output = stageOutput?.display;
-  if (!output) {
-    return <div>No output to display</div>;
-  }
-
-  return (
+  const childWorkflows = stage.child_workflows ?? [];
+  const failedChildOutput =
+    stage.state === "FAILED" &&
+    !stageOutput?.display &&
+    childWorkflows.length > 0
+      ? childWorkflows
+          .map((childWorkflowId, index) => {
+            const label =
+              childWorkflows.length === 1
+                ? "View child workflow"
+                : `View child workflow ${index + 1}`;
+            return `[${label}](/workflows/${encodeURIComponent(childWorkflowId)})`;
+          })
+          .join("\n\n")
+      : undefined;
+  const output = stageOutput?.display || failedChildOutput;
+  const renderedOutput = output ? (
     <Markdown
       className="stageMarkdown"
       remarkPlugins={[remarkGfm]}
@@ -167,7 +172,22 @@ const StageOutput = ({ stage }: { stage: WorkflowStage }) => {
     >
       {output}
     </Markdown>
-  );
+  ) : null;
+
+  if (stage.state === "FAILED") {
+    return (
+      <div className="space-y-4">
+        {renderedOutput}
+        <ErrorTracebackViewer error={{ traceback: stage.traceback || "" }} />
+      </div>
+    );
+  }
+
+  if (!renderedOutput) {
+    return <div>No output to display</div>;
+  }
+
+  return renderedOutput;
 };
 
 export const WorkflowClientComponent: React.FC<

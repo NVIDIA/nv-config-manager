@@ -16,6 +16,7 @@
 
 import asyncio
 import uuid
+from collections.abc import Generator
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from typing import Any, cast
@@ -278,6 +279,52 @@ async def test_spx_deploy_stage_normalizes_child_workflow_errors():
             workflow_instance,
             stage_input,
         )
+
+
+@pytest.mark.asyncio
+async def test_spx_assignment_stage_publishes_child_link_before_failure():
+    """Keep the child workflow navigable when one of its activities fails."""
+    device_output = await mock_get_network_device(GetNetworkDeviceInput(device_id="device-1"))
+    with patch(
+        "nv_config_manager.temporal.common.mixins.stage.workflow.time",
+        return_value=float(0),
+    ):
+        workflow_instance = SpXOverlayTenantChangeWorkflow()
+    stage_input = workflow_instance.AssignSpXOverlayStageInput(
+        overlay_id="mock_overlay_id",
+        device=device_output.device,
+        port_names=["swp5s0"],
+        site="mock_site",
+        namespace_tag="spectrumx",
+    )
+
+    class FailingChildHandle:
+        id = "failed-assignment-child"
+
+        def __await__(self) -> Generator[Any]:
+            async def fail() -> None:
+                raise RuntimeError("Interfaces not found")
+
+            return fail().__await__()
+
+    with (
+        patch(
+            "nv_config_manager.temporal.ngc.workflows.spx_overlay.workflow.start_child_workflow",
+            new=AsyncMock(return_value=FailingChildHandle()),
+        ),
+        pytest.raises(ApplicationError, match="Interfaces not found"),
+    ):
+        await SpXOverlayTenantChangeWorkflow.assign_spx_overlay_stage.__wrapped__(
+            workflow_instance,
+            stage_input,
+        )
+
+    stage = workflow_instance.get_stage_by_name("assign_spx_overlay")
+    assert stage.child_workflows == ["failed-assignment-child"]
+    assert stage.output is not None
+    assert stage.output.display == (
+        "[View assignment workflow](/workflows/failed-assignment-child)"
+    )
 
 
 @workflow.defn(name="TenantDeployWorkflow", sandboxed=False)
