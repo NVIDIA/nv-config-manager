@@ -76,6 +76,17 @@ class TestCreatePKey:
         )
         assert response.status_code == 409
 
+    def test_deprecated_index0_accepted_but_ignored(self, client: TestClient) -> None:
+        """The deprecated index0 field is accepted for back-compat but not stored/returned."""
+        response = client.post(
+            "/ufmRest/resources/pkeys/add",
+            json={"pkey": "0x0043", "ip_over_ib": True, "index0": False},
+        )
+        assert response.status_code == 200
+
+        body = client.get("/ufmRest/resources/pkeys").json()
+        assert "index0" not in body["0x0043"]
+
 
 class TestGetPKey:
     def test_404_for_unknown(self, client: TestClient) -> None:

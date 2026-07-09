@@ -58,6 +58,9 @@ class CreatePKeyInput(BaseModel):
     site: str | None = None
     pkey: str
     ip_over_ib: bool = True
+    # Deprecated: UFM auto-generates the management PKey (index0) on init; retained
+    # for back-compat but no longer sent to UFM.
+    index0: bool | None = None
 
 
 class CreatePKeyOutput(StageOutput):
@@ -97,6 +100,9 @@ class AddGuidsInput(BaseModel):
     guids: list[str]
     memberships: list[str]
     ip_over_ib: bool = True
+    # Deprecated: UFM auto-generates the management PKey (index0) on init; retained
+    # for back-compat but no longer sent to UFM.
+    index0: bool | None = None
 
 
 class AddGuidsOutput(StageOutput):
@@ -120,6 +126,9 @@ class SetGuidsInput(BaseModel):
     guids: list[str]
     memberships: list[str]
     ip_over_ib: bool = True
+    # Deprecated: UFM auto-generates the management PKey (index0) on init; retained
+    # for back-compat but no longer sent to UFM.
+    index0: bool | None = None
 
 
 class SetGuidsOutput(StageOutput):

@@ -79,6 +79,8 @@ class PKeyAddRequest(BaseModel):
 
     pkey: str
     ip_over_ib: bool = True
+    # Deprecated: UFM auto-generates index0 on init; accepted for back-compat but ignored.
+    index0: bool | None = None
     guids: list[str] = Field(default_factory=list)
     membership: str = "full"
     memberships: list[str] | None = None
