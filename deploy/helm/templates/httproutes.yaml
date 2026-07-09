@@ -36,6 +36,13 @@ filters:
     - X-Forwarded-Access-Token
 {{- end }}
 
+{{/* Labels HTTPRoutes for controller-specific timeout policies. */}}
+{{- define "nv-config-manager.httpRoutePolicyLabels" -}}
+labels:
+  {{- include "nv-config-manager.labels" .root | nindent 2 }}
+  nv-config-manager.nvidia.com/timeout-profile: {{ .timeoutProfile | default "default" | quote }}
+{{- end }}
+
 # Creates an HTTPRoute for the svc-* hostname (JWT-only, no OIDC).
 # These routes allow CLI/machine clients to authenticate with just a JWT
 # bearer token without being redirected to the OIDC login flow.
@@ -50,6 +57,7 @@ kind: HTTPRoute
 metadata:
   name: {{ $.routeName }}-svc
   namespace: {{ $.root.Values.global.namespace }}
+  {{- include "nv-config-manager.httpRoutePolicyLabels" (dict "root" $.root "timeoutProfile" ($.timeoutProfile | default "default")) | nindent 2 }}
   annotations:
     # JWT-only service route - OIDC disabled, CLI/machine access
     nv-config-manager.nvidia.com/svc-route: "true"
@@ -95,6 +103,7 @@ kind: HTTPRoute
 metadata:
   name: {{ $.routeName }}-auth-bypass
   namespace: {{ $.root.Values.global.namespace }}
+  {{- include "nv-config-manager.httpRoutePolicyLabels" (dict "root" $.root "timeoutProfile" ($.timeoutProfile | default "default")) | nindent 2 }}
   annotations:
     # Auth bypass route - application-native authentication, no browser redirect
     nv-config-manager.nvidia.com/auth-bypass: "true"
@@ -164,6 +173,7 @@ kind: HTTPRoute
 metadata:
   name: {{ $renderName }}
   namespace: {{ .Values.global.namespace }}
+  {{- include "nv-config-manager.httpRoutePolicyLabels" (dict "root" .) | nindent 2 }}
 spec:
   parentRefs:
   {{- include "nv-config-manager.gatewayParentRef" . | nindent 2 }}
@@ -186,6 +196,7 @@ spec:
     "svcHostname" (tpl (.Values.networkZtp.gateway.svcHostname | default "") .)
     "backendName" (printf "%s-api" $ztpName)
     "backendPort" 9000
+    "timeoutProfile" "upload"
 ) }}
 {{- end }}
 
@@ -200,6 +211,7 @@ spec:
     "hostname" (tpl .Values.networkZtp.gateway.hostname .)
     "backendName" (printf "%s-api" $ztpName)
     "backendPort" 9000
+    "timeoutProfile" "upload"
 ) }}
 {{- end }}
 ---
@@ -208,6 +220,7 @@ kind: HTTPRoute
 metadata:
   name: {{ $ztpName }}
   namespace: {{ .Values.global.namespace }}
+  {{- include "nv-config-manager.httpRoutePolicyLabels" (dict "root" . "timeoutProfile" "upload") | nindent 2 }}
 spec:
   parentRefs:
   {{- include "nv-config-manager.gatewayParentRef" . | nindent 2 }}
@@ -252,6 +265,7 @@ kind: HTTPRoute
 metadata:
   name: {{ $dhcpName }}
   namespace: {{ .Values.global.namespace }}
+  {{- include "nv-config-manager.httpRoutePolicyLabels" (dict "root" .) | nindent 2 }}
 spec:
   parentRefs:
   {{- include "nv-config-manager.gatewayParentRef" . | nindent 2 }}
@@ -296,6 +310,7 @@ kind: HTTPRoute
 metadata:
   name: {{ $temporalName }}-api
   namespace: {{ .Values.global.namespace }}
+  {{- include "nv-config-manager.httpRoutePolicyLabels" (dict "root" .) | nindent 2 }}
 spec:
   parentRefs:
   {{- include "nv-config-manager.gatewayParentRef" . | nindent 2 }}
@@ -315,6 +330,7 @@ kind: HTTPRoute
 metadata:
   name: {{ $temporalName }}-web
   namespace: {{ .Values.global.namespace }}
+  {{- include "nv-config-manager.httpRoutePolicyLabels" (dict "root" .) | nindent 2 }}
 spec:
   parentRefs:
   {{- include "nv-config-manager.gatewayParentRef" . | nindent 2 }}
@@ -338,6 +354,7 @@ kind: HTTPRoute
 metadata:
   name: {{ $uiName }}-auth-utility
   namespace: {{ .Values.global.namespace }}
+  {{- include "nv-config-manager.httpRoutePolicyLabels" (dict "root" .) | nindent 2 }}
   annotations:
     # Allows unauthenticated access to public auth utility endpoints.
     nv-config-manager.nvidia.com/no-auth: "true"
@@ -365,6 +382,7 @@ kind: HTTPRoute
 metadata:
   name: {{ $uiName }}
   namespace: {{ .Values.global.namespace }}
+  {{- include "nv-config-manager.httpRoutePolicyLabels" (dict "root" .) | nindent 2 }}
 spec:
   parentRefs:
   {{- include "nv-config-manager.gatewayParentRef" . | nindent 2 }}
@@ -422,6 +440,7 @@ kind: HTTPRoute
 metadata:
   name: {{ $nautobotName }}
   namespace: {{ .Values.global.namespace }}
+  {{- include "nv-config-manager.httpRoutePolicyLabels" (dict "root" .) | nindent 2 }}
 spec:
   parentRefs:
   {{- include "nv-config-manager.gatewayParentRef" . | nindent 2 }}
@@ -466,6 +485,7 @@ kind: HTTPRoute
 metadata:
   name: {{ $configStoreName }}-api
   namespace: {{ .Values.global.namespace }}
+  {{- include "nv-config-manager.httpRoutePolicyLabels" (dict "root" .) | nindent 2 }}
 spec:
   parentRefs:
   {{- include "nv-config-manager.gatewayParentRef" . | nindent 2 }}
@@ -510,6 +530,7 @@ kind: HTTPRoute
 metadata:
   name: {{ $mcpName }}
   namespace: {{ .Values.global.namespace }}
+  {{- include "nv-config-manager.httpRoutePolicyLabels" (dict "root" .) | nindent 2 }}
 spec:
   parentRefs:
   {{- include "nv-config-manager.gatewayParentRef" . | nindent 2 }}

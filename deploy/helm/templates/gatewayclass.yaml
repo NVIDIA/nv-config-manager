@@ -1,12 +1,9 @@
-{{/*
-GatewayClass for a chart-managed Gateway. kgateway normally installs its own
-class, so set gateway.createGatewayClass=false to reuse it.
-*/}}
+{{/* GatewayClass ownership belongs to Envoy Gateway when chart-managed. */}}
 {{- $createGatewayClass := true }}
 {{- if hasKey .Values.gateway "createGatewayClass" }}
   {{- $createGatewayClass = .Values.gateway.createGatewayClass }}
 {{- end }}
-{{- if and .Values.gateway.enabled .Values.gateway.create $createGatewayClass }}
+{{- if and .Values.gateway.enabled .Values.gateway.create $createGatewayClass (eq (.Values.gateway.type | default "envoyGateway") "envoyGateway") }}
 apiVersion: gateway.networking.k8s.io/v1
 kind: GatewayClass
 metadata:
@@ -14,11 +11,6 @@ metadata:
   labels:
     {{- include "nv-config-manager.labels" . | nindent 4 }}
 spec:
-  {{- if eq (.Values.gateway.type | default "envoyGateway") "kgateway" }}
-  controllerName: kgateway.dev/kgateway
-  description: "kgateway for NVIDIA Config Manager"
-  {{- else }}
   controllerName: gateway.envoyproxy.io/gatewayclass-controller
   description: "Envoy Gateway for NVIDIA Config Manager"
-  {{- end }}
 {{- end }}

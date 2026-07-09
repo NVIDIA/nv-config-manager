@@ -765,7 +765,9 @@ gateway:
         - claim: sub
           header: X-Auth-Request-Subject
   # Rate limiting
-  # Requires the EnvoyGateway config to have rate limit service (gRPC + Redis) enabled at the system level.
+  # Envoy Gateway requires a controller-level rate limit service (gRPC + Redis).
+  # kgateway requires an operator-managed GatewayExtension that references its
+  # gRPC rate limit service. The service owns the quota configuration.
   rateLimit:
     enabled: false
     global:
@@ -775,12 +777,20 @@ gateway:
         enabled: true
         requests: 100
         unit: Minute
+    kgateway:
+      extensionRef:
+        # Name of an operator-managed gateway.kgateway.dev/GatewayExtension.
+        # Required only when rateLimit.enabled=true with gateway.type=kgateway.
+        name: ""
+        # Leave blank when the extension is in the Gateway namespace.
+        namespace: ""
   # Timeout configuration (applies globally to all HTTPRoutes)
   timeout:
     # Request timeout - max time to wait for complete response from backend
     requestTimeout: 300s
     # Connection idle timeout - how long to keep idle connections open
     connectionIdleTimeout: 60s
+    # Envoy Gateway only. kgateway has no equivalent; it must remain 0s there.
     # Max connection duration - max lifetime of a connection (0s = unlimited)
     maxConnectionDuration: 0s
     # TCP connect timeout - time to establish connection to backend

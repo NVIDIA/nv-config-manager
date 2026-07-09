@@ -1,127 +1,94 @@
 {{- if and .Values.gateway.enabled (eq (.Values.gateway.type | default "envoyGateway") "kgateway") }}
-{{- $routes := list }}
-{{- $renderName := include "nv-config-manager.componentName" (dict "root" . "component" "render") }}
-{{- $dhcpName := include "nv-config-manager.componentName" (dict "root" . "component" "dhcp") }}
-{{- $temporalName := include "nv-config-manager.componentName" (dict "root" . "component" "temporal") }}
-{{- $uiName := include "nv-config-manager.componentName" (dict "root" . "component" "ui") }}
-{{- $nautobotName := include "nv-config-manager.componentName" (dict "root" . "component" "nautobot") }}
-{{- $configStoreName := include "nv-config-manager.componentName" (dict "root" . "component" "config-store") }}
-{{- $mcpName := include "nv-config-manager.componentName" (dict "root" . "component" "mcp") }}
-
-{{- if .Values.renderService.enabled }}
-  {{- $routes = append $routes $renderName }}
-  {{- if and .Values.oidc.enabled (.Values.renderService.gateway.svcHostname | default "") }}
-    {{- $routes = append $routes (printf "%s-svc" $renderName) }}
-  {{- end }}
-  {{- if and .Values.oidc.enabled .Values.gateway.authBypass.enabled (.Values.renderService.gateway.authBypass.enabled | default false) (gt (len (.Values.renderService.gateway.authBypass.paths | default list)) 0) }}
-    {{- $routes = append $routes (printf "%s-auth-bypass" $renderName) }}
-  {{- end }}
-{{- end }}
-{{- if .Values.networkDhcp.enabled }}
-  {{- $routes = append $routes $dhcpName }}
-  {{- if and .Values.oidc.enabled (.Values.networkDhcp.gateway.svcHostname | default "") }}
-    {{- $routes = append $routes (printf "%s-svc" $dhcpName) }}
-  {{- end }}
-  {{- if and .Values.oidc.enabled .Values.gateway.authBypass.enabled (.Values.networkDhcp.gateway.authBypass.enabled | default false) (gt (len (.Values.networkDhcp.gateway.authBypass.paths | default list)) 0) }}
-    {{- $routes = append $routes (printf "%s-auth-bypass" $dhcpName) }}
-  {{- end }}
-{{- end }}
-{{- if .Values.temporal.enabled }}
-  {{- $routes = append $routes (printf "%s-api" $temporalName) }}
-  {{- $routes = append $routes (printf "%s-web" $temporalName) }}
-  {{- if and .Values.oidc.enabled (.Values.temporal.gateway.api.svcHostname | default "") }}
-    {{- $routes = append $routes (printf "%s-api-svc" $temporalName) }}
-  {{- end }}
-  {{- if and .Values.oidc.enabled .Values.gateway.authBypass.enabled (.Values.temporal.gateway.api.authBypass.enabled | default false) (gt (len (.Values.temporal.gateway.api.authBypass.paths | default list)) 0) }}
-    {{- $routes = append $routes (printf "%s-api-auth-bypass" $temporalName) }}
-  {{- end }}
-{{- end }}
-{{- if .Values.ui.enabled }}
-  {{- $routes = append $routes $uiName }}
-  {{- if and .Values.oidc.enabled .Values.oidc.authUtility.enabled }}
-    {{- $routes = append $routes (printf "%s-auth-utility" $uiName) }}
-  {{- end }}
-{{- end }}
-{{- if and .Values.nautobot.enabled .Values.externalServices.nautobot.local }}
-  {{- $routes = append $routes $nautobotName }}
-  {{- if and .Values.oidc.enabled (.Values.nautobot.gateway.svcHostname | default "") }}
-    {{- $routes = append $routes (printf "%s-svc" $nautobotName) }}
-  {{- end }}
-  {{- if and .Values.oidc.enabled .Values.gateway.authBypass.enabled (.Values.nautobot.gateway.authBypass.enabled | default false) (gt (len (.Values.nautobot.gateway.authBypass.paths | default list)) 0) }}
-    {{- $routes = append $routes (printf "%s-auth-bypass" $nautobotName) }}
-  {{- end }}
-{{- end }}
-{{- if .Values.configStore.enabled }}
-  {{- $routes = append $routes (printf "%s-api" $configStoreName) }}
-  {{- if and .Values.oidc.enabled (.Values.configStore.gateway.api.svcHostname | default "") }}
-    {{- $routes = append $routes (printf "%s-api-svc" $configStoreName) }}
-  {{- end }}
-  {{- if and .Values.oidc.enabled .Values.gateway.authBypass.enabled (.Values.configStore.gateway.api.authBypass.enabled | default false) (gt (len (.Values.configStore.gateway.api.authBypass.paths | default list)) 0) }}
-    {{- $routes = append $routes (printf "%s-api-auth-bypass" $configStoreName) }}
-  {{- end }}
-{{- end }}
-{{- if .Values.mcp.enabled }}
-  {{- $routes = append $routes $mcpName }}
-  {{- if and .Values.oidc.enabled (.Values.mcp.gateway.svcHostname | default "") }}
-    {{- $routes = append $routes (printf "%s-svc" $mcpName) }}
-  {{- end }}
-  {{- if and .Values.oidc.enabled .Values.gateway.authBypass.enabled (.Values.mcp.gateway.authBypass.enabled | default false) (gt (len (.Values.mcp.gateway.authBypass.paths | default list)) 0) }}
-    {{- $routes = append $routes (printf "%s-auth-bypass" $mcpName) }}
-  {{- end }}
-{{- end }}
-
-{{- if gt (len $routes) 0 }}
-{{- range $chunkIndex, $routeChunk := chunk 16 $routes }}
-{{- if gt $chunkIndex 0 }}
----
-{{- end }}
+{{/*
+Route labels avoid duplicating every HTTPRoute name here and, unlike a
+Gateway-level timeout policy, preserve kgateway's HTTPRoute timeout semantics.
+*/}}
 apiVersion: gateway.kgateway.dev/v1alpha1
 kind: TrafficPolicy
 metadata:
-  name: {{ include "nv-config-manager.componentName" (dict "root" $ "component" (printf "default-timeouts-%d" $chunkIndex)) }}
-  namespace: {{ $.Values.global.namespace }}
-  labels:
-    {{- include "nv-config-manager.labels" $ | nindent 4 }}
-spec:
-  targetRefs:
-  {{- range $route := $routeChunk }}
-  - group: gateway.networking.k8s.io
-    kind: HTTPRoute
-    name: {{ $route }}
-  {{- end }}
-  timeouts:
-    request: {{ $.Values.gateway.timeout.requestTimeout | default "300s" }}
-    streamIdle: {{ $.Values.gateway.timeout.connectionIdleTimeout | default "60s" }}
-{{- end }}
-{{- end }}
-
-{{- if .Values.networkZtp.enabled }}
-{{- $ztpName := include "nv-config-manager.componentName" (dict "root" . "component" "ztp") }}
----
-apiVersion: gateway.kgateway.dev/v1alpha1
-kind: TrafficPolicy
-metadata:
-  name: {{ $ztpName }}-upload-timeouts
+  name: {{ include "nv-config-manager.componentName" (dict "root" . "component" "default-timeouts") }}
   namespace: {{ .Values.global.namespace }}
   labels:
     {{- include "nv-config-manager.labels" . | nindent 4 }}
 spec:
-  targetRefs:
+  targetSelectors:
   - group: gateway.networking.k8s.io
     kind: HTTPRoute
-    name: {{ $ztpName }}
-  {{- if and .Values.oidc.enabled (.Values.networkZtp.gateway.svcHostname | default "") }}
+    matchLabels:
+      nv-config-manager.nvidia.com/timeout-profile: default
+  timeouts:
+    request: {{ .Values.gateway.timeout.requestTimeout | default "300s" }}
+    streamIdle: {{ .Values.gateway.timeout.connectionIdleTimeout | default "60s" }}
+
+{{- if .Values.networkZtp.enabled }}
+---
+apiVersion: gateway.kgateway.dev/v1alpha1
+kind: TrafficPolicy
+metadata:
+  name: {{ include "nv-config-manager.componentName" (dict "root" . "component" "ztp-upload-timeouts") }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+spec:
+  targetSelectors:
   - group: gateway.networking.k8s.io
     kind: HTTPRoute
-    name: {{ $ztpName }}-svc
-  {{- end }}
-  {{- if and .Values.oidc.enabled .Values.gateway.authBypass.enabled (.Values.networkZtp.gateway.authBypass.enabled | default false) (gt (len (.Values.networkZtp.gateway.authBypass.paths | default list)) 0) }}
-  - group: gateway.networking.k8s.io
-    kind: HTTPRoute
-    name: {{ $ztpName }}-auth-bypass
-  {{- end }}
+    matchLabels:
+      nv-config-manager.nvidia.com/timeout-profile: upload
   timeouts:
     request: {{ .Values.networkZtp.upload.timeout | default "3600s" }}
     streamIdle: {{ .Values.networkZtp.upload.idleTimeout | default "300s" }}
+{{- end }}
+
+---
+apiVersion: gateway.kgateway.dev/v1alpha1
+kind: BackendConfigPolicy
+metadata:
+  name: {{ include "nv-config-manager.componentName" (dict "root" . "component" "backend-connect-timeout") }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+spec:
+  # This applies to every chart-managed Service backend without a hand-kept
+  # list of HTTPRoutes or Services.
+  targetSelectors:
+  - group: ""
+    kind: Service
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name | quote }}
+  connectTimeout: {{ .Values.gateway.timeout.connectTimeout | default "10s" }}
+
+{{- if and .Values.gateway.create .Values.gateway.rateLimit.enabled }}
+---
+apiVersion: gateway.kgateway.dev/v1alpha1
+kind: TrafficPolicy
+metadata:
+  name: {{ include "nv-config-manager.componentName" (dict "root" . "component" "global-rate-limit") }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+spec:
+  # Rate limits apply at the Gateway, avoiding per-route duplication.
+  targetRefs:
+  - group: gateway.networking.k8s.io
+    kind: Gateway
+    name: {{ .Values.gateway.name }}
+  rateLimit:
+    global:
+      extensionRef:
+        name: {{ required "gateway.rateLimit.kgateway.extensionRef.name is required when global rate limiting is enabled for kgateway" (dig "rateLimit" "kgateway" "extensionRef" "name" "" .Values.gateway) | quote }}
+        {{- with dig "rateLimit" "kgateway" "extensionRef" "namespace" "" .Values.gateway }}
+        namespace: {{ . | quote }}
+        {{- end }}
+      descriptors:
+      - entries:
+        {{- if .Values.gateway.rateLimit.global.perClient.enabled }}
+        - type: RemoteAddress
+        {{- else }}
+        - type: Generic
+          generic:
+            key: nv-config-manager
+            value: global
+        {{- end }}
 {{- end }}
 {{- end }}

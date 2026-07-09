@@ -8,3 +8,12 @@
 {{- if and .Values.gateway.create (ne (.Values.gateway.namespace | default .Values.global.namespace) .Values.global.namespace) -}}
   {{- fail "gateway.namespace may differ from global.namespace only when gateway.create=false (shared gateway mode)" -}}
 {{- end -}}
+{{- if and (eq $gatewayType "kgateway") .Values.gateway.create (.Values.gateway.createGatewayClass | default false) -}}
+  {{- fail "kgateway owns its GatewayClass; set gateway.createGatewayClass=false" -}}
+{{- end -}}
+{{- if and (eq $gatewayType "kgateway") (ne (.Values.gateway.timeout.maxConnectionDuration | default "0s") "0s") -}}
+  {{- fail "gateway.timeout.maxConnectionDuration is not supported by kgateway; set it to 0s" -}}
+{{- end -}}
+{{- if and (eq $gatewayType "kgateway") .Values.gateway.create .Values.gateway.rateLimit.enabled (not (dig "rateLimit" "kgateway" "extensionRef" "name" "" .Values.gateway)) -}}
+  {{- fail "gateway.rateLimit.kgateway.extensionRef.name is required when global rate limiting is enabled for kgateway" -}}
+{{- end -}}

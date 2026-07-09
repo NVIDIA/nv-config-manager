@@ -55,8 +55,28 @@ networkPolicy:
 
 This mode creates the Config Manager Gateway, certificate, and controller-neutral
 HTTPRoutes. It also creates kgateway `TrafficPolicy` resources that preserve the
-configured default request timeout and the longer ZTP upload timeout. It does not
-render any `gateway.envoyproxy.io` resources.
+configured default request timeout and the longer ZTP upload timeout, and a
+`BackendConfigPolicy` that preserves the upstream connection timeout. It does
+not render any `gateway.envoyproxy.io` resources.
+
+`gateway.timeout.maxConnectionDuration` has no kgateway equivalent and must
+remain `0s`. To enable global rate limiting with kgateway, the platform team
+must supply a `gateway.kgateway.dev/GatewayExtension` for its gRPC rate-limit
+service, then reference it from the chart:
+
+```yaml
+gateway:
+  rateLimit:
+    enabled: true
+    kgateway:
+      extensionRef:
+        name: platform-rate-limit
+        namespace: kgateway-system # omit when it is in the app namespace
+```
+
+The referenced rate-limit service owns the actual quotas. When `perClient` is
+enabled, the chart sends the client address as the descriptor; otherwise it
+sends the fixed `nv-config-manager=global` descriptor.
 
 ## Existing shared kgateway
 
