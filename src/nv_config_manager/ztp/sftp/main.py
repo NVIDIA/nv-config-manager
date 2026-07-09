@@ -47,7 +47,12 @@ from paramiko.sftp import (
 from paramiko.transport import Transport
 
 from nv_config_manager.common.config import get_storage_client
-from nv_config_manager.common.log import LogCategory, configure_logging, get_logger
+from nv_config_manager.common.log import (
+    EscapingLoggerAdapter,
+    LogCategory,
+    configure_logging,
+    get_logger,
+)
 from nv_config_manager.ztp.nautobot import NautobotClient
 from nv_config_manager.ztp.storage import ObjectStorageNotFoundException
 
@@ -67,7 +72,7 @@ def get_logger_for_addr(addr: tuple[str, int]) -> logging.Logger | logging.Logge
     if is_localhost(addr):
         healthcheck_logger = logging.getLogger(f"{__name__}.localhost")
         healthcheck_logger.setLevel(logging.WARNING)
-        return healthcheck_logger
+        return EscapingLoggerAdapter(healthcheck_logger, extra={"category": LogCategory.ZTP})
     return logger
 
 
@@ -123,7 +128,7 @@ class ZTPSFTPHandle(SFTPHandle):
             "Reading %d bytes at offset %d from %s",
             length,
             offset,
-            getattr(self, "filename", "unknown"),
+            self.filename or "unknown",
         )
         try:
             if self.readfile is None:
@@ -272,7 +277,11 @@ class ZTPSFTPServer(SFTPServerInterface):
             file = self._load_path(path)
             self.logger.debug("Successfully loaded file for stat: %s", path)
         except Exception as exc:
-            self.logger.error("Error loading file %s for stat: %s", path, exc)
+            self.logger.error(
+                "Error loading file %s for stat: %s",
+                path,
+                exc,
+            )
             if isinstance(exc, FileNotFoundError):
                 return SFTP_NO_SUCH_FILE
             if isinstance(exc, PermissionError):
@@ -296,12 +305,21 @@ class ZTPSFTPServer(SFTPServerInterface):
         current_time = int(time.time())
         attr.st_atime = current_time  # Access time
         attr.st_mtime = current_time  # Modification time
-        self.logger.debug("Created attributes for file %s: size=%d", path, attr.st_size)
+        self.logger.debug(
+            "Created attributes for file %s: size=%d",
+            path,
+            attr.st_size,
+        )
         return attr
 
     def _stat_s3_file(self, platform: str, version: str, filename: str) -> SFTPAttributes | int:
         """Get file attributes for an S3 file using head_object (no download)."""
-        self.logger.info("Getting metadata for S3 file: %s/%s/%s", platform, version, filename)
+        self.logger.info(
+            "Getting metadata for S3 file: %s/%s/%s",
+            platform,
+            version,
+            filename,
+        )
         storage_client = get_storage_client()
         try:
 
@@ -337,7 +355,12 @@ class ZTPSFTPServer(SFTPServerInterface):
             )
             return attr
         except ObjectStorageNotFoundException:
-            self.logger.error("S3 file not found: %s/%s/%s", platform, version, filename)
+            self.logger.error(
+                "S3 file not found: %s/%s/%s",
+                platform,
+                version,
+                filename,
+            )
             return SFTP_NO_SUCH_FILE
         except Exception as exc:
             self.logger.error("Error getting S3 metadata: %s", exc)
@@ -360,7 +383,11 @@ class ZTPSFTPServer(SFTPServerInterface):
             file = self._load_path(path)
             self.logger.debug("Successfully loaded file for path: %s", path)
         except Exception as exc:
-            self.logger.error("Error loading file %s: %s", path, exc)
+            self.logger.error(
+                "Error loading file %s: %s",
+                path,
+                exc,
+            )
             if isinstance(exc, FileNotFoundError):
                 return SFTP_NO_SUCH_FILE
             if isinstance(exc, PermissionError):

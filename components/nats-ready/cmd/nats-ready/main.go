@@ -41,7 +41,7 @@ func main() {
 
 	logger.Info().Str("address", *address).Msg("NATS server address")
 
-	natsReady, err := natsready.NewNatsRunnable(&natsready.NatsReadyConfig{
+	natsReady, err := natsready.NewRunner(&natsready.NatsReadyConfig{
 		Address: *address,
 	})
 	if err != nil {

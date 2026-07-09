@@ -25,7 +25,16 @@ type AuthDiscovery = {
   services: Record<string, string>;
 };
 
-const normalizeUrl = (value?: string): string => (value || "").replace(/\/+$/, "");
+const normalizeUrl = (value?: string): string => {
+  const url = value || "";
+  let end = url.length;
+
+  while (end > 0 && url[end - 1] === "/") {
+    end -= 1;
+  }
+
+  return url.slice(0, end);
+};
 
 const appendPath = (baseUrl: string, path: string): string => {
   const normalizedBase = normalizeUrl(baseUrl);
@@ -52,7 +61,7 @@ const parseScopes = (value?: string): string[] => {
   }
 
   return value
-    .replace(/,/g, " ")
+    .replaceAll(",", " ")
     .split(/\s+/)
     .map((item) => item.trim())
     .filter((item) => item.length > 0);

@@ -106,8 +106,9 @@ The following items were reviewed during the security audit and accepted:
    (switches, BMCs) use self-signed certificates. Bootstrapping valid
    certificates is a future ZTP roadmap item.
 
-2. **Kea/kea-admin containers run as root.** DHCP requires binding UDP
-   port 67. The kea-admin container is an ephemeral database migration job.
+2. **The Kea DHCP container runs as root.** DHCP requires binding UDP port 67.
+   The kea-admin migration container runs as UID/GID 1000 and is not part of
+   this exception.
 
 3. **Privileged image-loader DaemonSet.** Required for airgapped deployments
    to import images into node containerd. Runs in a dedicated namespace

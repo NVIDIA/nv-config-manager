@@ -10,13 +10,23 @@ module.exports = async ({ github, context }) => {
   }
 
   const { owner, repo } = context.repo;
+  const pullNumber = Number(branchMatch[1]);
+  const { data: pull } = await github.rest.pulls.get({
+    owner,
+    repo,
+    pull_number: pullNumber,
+  });
+  if (pull.head.sha.toLowerCase() !== run.head_sha.toLowerCase()) {
+    return;
+  }
+
   const conclusion = run.conclusion ?? "unknown";
   const shortSha = run.head_sha.slice(0, 12);
 
   await github.rest.issues.createComment({
     owner,
     repo,
-    issue_number: Number(branchMatch[1]),
+    issue_number: pullNumber,
     body: `Kind integration completed with **${conclusion}** for \`${shortSha}\`: ${run.html_url}`,
   });
 };
