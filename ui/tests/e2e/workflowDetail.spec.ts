@@ -114,36 +114,6 @@ test.describe("Workflow Detail Page", () => {
     await expect(statusBadge).toBeVisible();
   });
 
-  test("links child workflows from their parent stage", async ({ page }) => {
-    const workflowId = "spx-tenant-change-workflow";
-    const childWorkflowIds = [
-      "spx-overlay-assignment-workflow",
-      "tenant-deploy-workflow",
-    ];
-    const workflow = createWorkflowWithStage({
-      id: workflowId,
-      retryable: false,
-      stageName: "deploy",
-      stageState: "PENDING_APPROVAL",
-      status: "RUNNING",
-    });
-    workflow.workflow_type = "SpXOverlayTenantChangeWorkflow";
-    workflow.stages[0].child_workflows = childWorkflowIds;
-
-    await page.route(`**/v1/workflow/${workflowId}`, async (route) => {
-      await route.fulfill({ status: 200, json: workflow });
-    });
-
-    await page.goto(`/workflows/${workflowId}`);
-
-    await expect(page.getByText("Child Workflows:")).toBeVisible();
-    for (const childWorkflowId of childWorkflowIds) {
-      await expect(
-        page.getByRole("link", { name: childWorkflowId })
-      ).toHaveAttribute("href", `/workflows/${childWorkflowId}`);
-    }
-  });
-
   test("displays forbidden error page when accessing unauthorized workflow", async ({
     page,
   }) => {

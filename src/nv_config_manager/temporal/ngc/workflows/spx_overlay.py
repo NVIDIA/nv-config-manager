@@ -858,7 +858,8 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
             f"Overlay: {overlay_name}\n"
             f"L3 VXLAN: {vxlan_name}\n"
             f"{vrf_line}\n"
-            f"Ports assigned ({len(result.assigned_ports)}): {', '.join(result.assigned_ports)}"
+            f"Ports assigned ({len(result.assigned_ports)}): {', '.join(result.assigned_ports)}\n"
+            f"[View assignment workflow](/workflows/{assignment_handle.id})"
         )
         return self.AssignSpXOverlayStageOutput(
             assigned_ports=result.assigned_ports,
@@ -1036,7 +1037,10 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
 
         return self.DeployStageOutput(
             device_id=stage_input.device.id,
-            display=f"Deployed tenant configuration to device {stage_input.device.id}",
+            display=(
+                f"Deployed tenant configuration to device {stage_input.device.id}\n"
+                f"[View deployment workflow](/workflows/{deploy_handle.id})"
+            ),
         )
 
     @run_nv_config_manager_workflow

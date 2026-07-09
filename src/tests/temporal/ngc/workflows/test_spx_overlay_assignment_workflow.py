@@ -528,6 +528,14 @@ async def test_spx_overlay_tenant_change_uses_current_versions_after_render_race
         assert handle.id not in assignment_children
         assert handle.id not in deploy_children
         assert assignment_children != deploy_children
+        assert (
+            f"[View assignment workflow](/workflows/{assignment_children[0]})"
+            in stages["assign_spx_overlay"]["output"]["display"]
+        )
+        assert (
+            f"[View deployment workflow](/workflows/{deploy_children[0]})"
+            in stages["deploy"]["output"]["display"]
+        )
 
 
 @pytest.mark.asyncio
