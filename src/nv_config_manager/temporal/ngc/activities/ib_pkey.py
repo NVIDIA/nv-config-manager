@@ -58,7 +58,9 @@ class CreatePKeyInput(BaseModel):
     site: str | None = None
     pkey: str
     ip_over_ib: bool = True
-    index0: bool = False
+    # Deprecated: UFM auto-generates the management PKey (index0) on init; retained
+    # for back-compat but no longer sent to UFM.
+    index0: bool | None = None
 
 
 class CreatePKeyOutput(StageOutput):
@@ -98,7 +100,9 @@ class AddGuidsInput(BaseModel):
     guids: list[str]
     memberships: list[str]
     ip_over_ib: bool = True
-    index0: bool = False
+    # Deprecated: UFM auto-generates the management PKey (index0) on init; retained
+    # for back-compat but no longer sent to UFM.
+    index0: bool | None = None
 
 
 class AddGuidsOutput(StageOutput):
@@ -122,7 +126,9 @@ class SetGuidsInput(BaseModel):
     guids: list[str]
     memberships: list[str]
     ip_over_ib: bool = True
-    index0: bool = False
+    # Deprecated: UFM auto-generates the management PKey (index0) on init; retained
+    # for back-compat but no longer sent to UFM.
+    index0: bool | None = None
 
 
 class SetGuidsOutput(StageOutput):
@@ -287,7 +293,6 @@ async def create_pkey_on_ufm(input: CreatePKeyInput) -> CreatePKeyOutput:
     payload: dict[str, Any] = {
         "pkey": input.pkey,
         "ip_over_ib": input.ip_over_ib,
-        "index0": input.index0,
     }
 
     log.info("Creating PKey %s on UFM at %s", input.pkey, input.host)
@@ -365,7 +370,6 @@ async def add_guids_to_pkey(input: AddGuidsInput) -> AddGuidsOutput:
             "ip_over_ib": (
                 current_ip_over_ib if current_ip_over_ib is not None else input.ip_over_ib
             ),
-            "index0": input.index0,
         }
 
         log.info(
@@ -511,7 +515,6 @@ async def set_pkey_members(input: SetGuidsInput) -> SetGuidsOutput:
         "guids": input.guids,
         "memberships": input.memberships,
         "ip_over_ib": input.ip_over_ib,
-        "index0": input.index0,
     }
 
     log.info(
