@@ -53,12 +53,11 @@ const useOverlays = ({
   }
 
   const queryString = params.toString();
-  const url =
-    apiURL && enabled
-      ? sanitizeUrl(
-          `${apiURL}/v1/parameter/overlay${queryString ? `?${queryString}` : ""}`
-        )
-      : null;
+  let url: string | null = null;
+  if (apiURL && enabled) {
+    const querySuffix = queryString ? `?${queryString}` : "";
+    url = sanitizeUrl(`${apiURL}/v1/parameter/overlay${querySuffix}`);
+  }
   const { data, error, isLoading } = useSWR(url, fetcher);
   const overlays = useMemo(
     () => (data && !error ? mapRoles(data, "name", "name") : []),

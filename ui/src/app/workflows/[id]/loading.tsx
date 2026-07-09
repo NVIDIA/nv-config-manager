@@ -41,11 +41,13 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 
 const SkeletonDataTable = () => {
+  const rows = ["row-1", "row-2", "row-3", "row-4", "row-5"];
+
   return (
     <Table>
       <TableBody>
-        {[1, 2, 3, 4, 5].map((_, rowIndex) => (
-          <TableRow key={rowIndex}>
+        {rows.map((row) => (
+          <TableRow key={row}>
             <TableCell>
               <Skeleton className="h-5 w-40 mx-auto" />
             </TableCell>
@@ -92,8 +94,8 @@ const WorkflowLoadingPage = () => {
                     <AccordionContent>
                       <Table>
                         <TableBody>
-                          {[...Array(3)].map((_, index) => (
-                            <TableRow key={index}>
+                          {["metadata", "inputs", "outputs"].map((row) => (
+                            <TableRow key={row}>
                               <TableCell>
                                 <Skeleton className="h-5 w-20" />
                               </TableCell>

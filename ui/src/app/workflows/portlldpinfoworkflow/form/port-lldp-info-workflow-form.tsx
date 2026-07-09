@@ -97,11 +97,10 @@ export const PortLLDPInfoWorkflowForm = () => {
   const [hasMacAddress, setHasMacAddress] = useState<boolean>(false);
   const { toast } = useToast();
   const searchParams = useSearchParams();
-  const querySite = (searchParams && searchParams.get("site")) || "";
-  const queryDevice = (searchParams && searchParams.get("device-id")) || "";
-  const queryInterface = (searchParams && searchParams.get("interface")) || "";
-  const queryMacAddress =
-    (searchParams && searchParams.get("remote_mac_address")) || "";
+  const querySite = searchParams?.get("site") || "";
+  const queryDevice = searchParams?.get("device-id") || "";
+  const queryInterface = searchParams?.get("interface") || "";
+  const queryMacAddress = searchParams?.get("remote_mac_address") || "";
   const {
     data: { siteData: sites },
     isLoading: { siteIsLoading },
