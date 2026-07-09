@@ -26,6 +26,7 @@ Passing Kind Integration run, if not automatically reported:
 
 function createFixture(options = {}) {
   const updates = [];
+  const warnings = [];
   const context = {
     repo: { owner: "NVIDIA", repo: "nv-config-manager" },
     payload: {},
@@ -43,18 +44,33 @@ function createFixture(options = {}) {
   const github = {
     rest: {
       pulls: {
-        get: async () => ({
-          data: {
-            body: Object.hasOwn(options, "pullBody") ? options.pullBody : TEMPLATE_BODY,
-            head: { sha: options.pullHeadSha ?? SHA },
-          },
-        }),
-        update: async (args) => updates.push(args),
+        get: async () => {
+          if (options.pullGetError) {
+            throw options.pullGetError;
+          }
+
+          return {
+            data: {
+              body: Object.hasOwn(options, "pullBody") ? options.pullBody : TEMPLATE_BODY,
+              head: { sha: options.pullHeadSha ?? SHA },
+            },
+          };
+        },
+        update: async (args) => {
+          if (options.pullUpdateError) {
+            throw options.pullUpdateError;
+          }
+
+          updates.push(args);
+        },
       },
     },
   };
+  const core = {
+    warning: (message) => warnings.push(message),
+  };
 
-  return { context, github, updates };
+  return { context, github, core, updates, warnings };
 }
 
 async function runFixture(options) {
@@ -156,6 +172,22 @@ test("uses unknown when a completed Kind run has no conclusion", async () => {
 
   assert.match(result.updates[0].body, /\*\*unknown\*\*/);
   assert.ok(result.updates[0].body.includes(RUN_URL));
+});
+
+test("warns instead of failing when fetching the PR fails", async () => {
+  const result = await runFixture({ pullGetError: new Error("Not Found") });
+
+  assert.deepEqual(result.updates, []);
+  assert.match(result.warnings[0], /Failed to update PR #72/);
+  assert.match(result.warnings[0], /Not Found/);
+});
+
+test("warns instead of failing when updating the PR body fails", async () => {
+  const result = await runFixture({ pullUpdateError: new Error("Bad credentials") });
+
+  assert.deepEqual(result.updates, []);
+  assert.match(result.warnings[0], /Failed to update PR #72/);
+  assert.match(result.warnings[0], /Bad credentials/);
 });
 
 test("falls back to appending when the PR body lacks the Kind result slot", async () => {

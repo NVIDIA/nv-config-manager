@@ -28,7 +28,20 @@ function updatePullRequestBody(body, resultLine) {
   return `${currentBody.trimEnd()}\n\n## Kind Integration\n\n${resultBlock}\n`;
 }
 
-module.exports = async ({ github, context, run: explicitRun }) => {
+function warn(core, message) {
+  if (typeof core?.warning === "function") {
+    core.warning(message);
+    return;
+  }
+
+  console.warn(message);
+}
+
+function getErrorMessage(error) {
+  return error?.message || String(error);
+}
+
+module.exports = async ({ github, context, core, run: explicitRun }) => {
   const run = explicitRun ?? context.payload.workflow_run;
   if (!run) {
     return;
@@ -42,23 +55,30 @@ module.exports = async ({ github, context, run: explicitRun }) => {
 
   const { owner, repo } = context.repo;
   const pullNumber = Number(branchMatch[1]);
-  const { data: pull } = await github.rest.pulls.get({
-    owner,
-    repo,
-    pull_number: pullNumber,
-  });
-  if (pull.head.sha.toLowerCase() !== run.head_sha.toLowerCase()) {
-    return;
+  try {
+    const { data: pull } = await github.rest.pulls.get({
+      owner,
+      repo,
+      pull_number: pullNumber,
+    });
+    if (pull.head.sha.toLowerCase() !== run.head_sha.toLowerCase()) {
+      return;
+    }
+
+    const conclusion = run.conclusion ?? "unknown";
+    const shortSha = run.head_sha.slice(0, 12);
+    const resultLine = `Kind integration completed with **${conclusion}** for [\`${shortSha}\`](${run.html_url}).`;
+
+    await github.rest.pulls.update({
+      owner,
+      repo,
+      pull_number: pullNumber,
+      body: updatePullRequestBody(pull.body, resultLine),
+    });
+  } catch (error) {
+    warn(
+      core,
+      `Failed to update PR #${pullNumber} with Kind integration result: ${getErrorMessage(error)}`,
+    );
   }
-
-  const conclusion = run.conclusion ?? "unknown";
-  const shortSha = run.head_sha.slice(0, 12);
-  const resultLine = `Kind integration completed with **${conclusion}** for [\`${shortSha}\`](${run.html_url}).`;
-
-  await github.rest.pulls.update({
-    owner,
-    repo,
-    pull_number: pullNumber,
-    body: updatePullRequestBody(pull.body, resultLine),
-  });
 };

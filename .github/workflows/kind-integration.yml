@@ -265,6 +265,7 @@ jobs:
             await report({
               github,
               context,
+              core,
               run: {
                 conclusion: process.env.KIND_RESULT_CONCLUSION,
                 event: process.env.KIND_RESULT_EVENT,
