@@ -141,8 +141,8 @@ export const DeviceWorkflowForm = ({
   } = useEnvData();
 
   const searchParams = useSearchParams();
-  const querySite = searchParams && searchParams.get("site");
-  const queryDeviceId = searchParams && searchParams.get("device-id");
+  const querySite = searchParams?.get("site");
+  const queryDeviceId = searchParams?.get("device-id");
 
   const form = useForm<DeviceWorkflowFormSchema>({
     resolver: zodResolver(deviceWorkflowFormSchema),
