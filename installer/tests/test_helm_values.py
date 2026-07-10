@@ -604,6 +604,19 @@ class TestGenerateHelmValues:
         values = _gen(config)
         assert values["gateway"]["createGatewayClass"] is False
 
+    def test_envoy_shared_gateway_uses_custom_data_plane_namespace(self):
+        config = _make_config(
+            infrastructure=InfrastructureConfig(
+                create_gateway=False,
+                gateway_name="shared-gateway",
+                gateway_namespace="custom-envoy",
+            ),
+        )
+        values = _gen(config)
+
+        assert values["gateway"]["namespace"] == "custom-envoy"
+        assert values["networkPolicy"]["gatewayNamespace"] == "custom-envoy"
+
     def test_kgateway_managed_values(self):
         config = _make_config(
             infrastructure=InfrastructureConfig(
@@ -623,6 +636,20 @@ class TestGenerateHelmValues:
             "https": 30443,
         }
         assert values["networkPolicy"]["gatewayNamespace"] == "kgateway-system"
+
+    def test_kgateway_omits_gateway_nlb_but_keeps_device_nlbs(self):
+        lb = LoadBalancerConfig(provider=LBProvider.NLB)
+        lb.nlb_ztp.name = "network-ztp"
+        config = _make_config(
+            infrastructure=InfrastructureConfig(
+                gateway=GatewayType.KGATEWAY,
+                load_balancer=lb,
+            ),
+        )
+        values = _gen(config)
+
+        assert "nlb" not in values["gateway"]
+        assert values["networkZtp"]["ingress"]["nlb"]["name"] == "network-ztp"
 
     def test_kgateway_shared_values(self):
         config = _make_config(

@@ -651,8 +651,9 @@ gateway:
   # ---------------------------------------------------------------------------
   # AWS Network Load Balancer Configuration (for EKS environments)
   # ---------------------------------------------------------------------------
-  # Configure AWS-specific NLB settings.
-  # Only applies when using LoadBalancer service type.
+  # Configure AWS-specific NLB settings for Envoy Gateway.
+  # Only applies when using LoadBalancer service type; kgateway does not
+  # currently support this configuration.
   # ---------------------------------------------------------------------------
   # nlb:
   #   type: external  # or internal
@@ -881,9 +882,6 @@ gateway:
 oidc:
   # Enable SSO/OIDC authentication for browser access
   enabled: false
-  # Optional existing OIDC callback hostname. Defaults to gateway.baseHostname.
-  # Register https://<hostname>/oauth2/callback with the identity provider.
-  hostname: ""
 
   # OIDC issuer URL (e.g., Azure AD, Okta, Keycloak, etc.)
   # For Azure AD v2.0: https://login.microsoftonline.com/{tenant-id}/v2.0

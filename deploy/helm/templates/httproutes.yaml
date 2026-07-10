@@ -141,7 +141,6 @@ spec:
 {{- $configStoreName := include "nv-config-manager.componentName" (dict "root" . "component" "config-store") }}
 {{- $mcpName := include "nv-config-manager.componentName" (dict "root" . "component" "mcp") }}
 {{- $oidcProxyName := include "nv-config-manager.componentName" (dict "root" . "component" "oidc-proxy") }}
-{{- $oidcCallbackHostname := .Values.oidc.hostname | default .Values.gateway.baseHostname }}
 
 {{- if .Values.gateway.enabled }}
 
@@ -159,7 +158,7 @@ spec:
   parentRefs:
   {{- include "nv-config-manager.gatewayParentRef" . | nindent 2 }}
   hostnames:
-  - {{ $oidcCallbackHostname | quote }}
+  - {{ .Values.gateway.baseHostname | quote }}
   rules:
   - matches:
     - path:
@@ -352,7 +351,7 @@ spec:
     {{- include "nv-config-manager.stripIdentityHeaders" . | nindent 4 }}
     {{- include "nv-config-manager.browserBackendRefs" (dict "root" . "backendName" (printf "%s-api" $temporalName) "backendPort" 9000 "proxyPort" 9104) | nindent 4 }}
 ---
-# Temporal Web UI HTTPRoute (temporal.<base>) - OIDC-only, direct to app port
+# Temporal Web UI HTTPRoute (temporal.<base>) - OIDC-only, via browser proxy
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -446,10 +445,10 @@ spec:
 #   - Native API tokens (Authorization: Token <token>)
 #   - Remote user auth (trusts X-Auth-Request-User header from gateway)
 #
-# This route bypasses the browser proxy only when an Authorization header is
-# present, allowing native API tokens without exposing browser API calls. SSO
-# browser requests have no client Authorization header and stay on the main
-# route so the proxy can supply trusted remote-user headers.
+# This route bypasses the browser proxy only when an Authorization header
+# matches ^(Bearer|Token) .+$, allowing native API tokens without exposing
+# browser API calls. SSO browser requests have no client Authorization header
+# and stay on the main route so the proxy can supply trusted remote-user headers.
 # -----------------------------------------------------------------------------
 {{- include "nv-config-manager.authBypassHTTPRoute" (dict
     "root" .

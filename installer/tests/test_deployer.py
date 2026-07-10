@@ -46,6 +46,7 @@ from nv_config_manager_installer.k8s import LOADER_POD_IMAGE
 from nv_config_manager_installer.schema import (
     ClusterConfig,
     ContentConfig,
+    GatewayType,
     GitTokenEntry,
     ImagePullSecret,
     ImagesConfig,
@@ -349,6 +350,18 @@ class TestStepSequencing:
 
 
 class TestInstallCrds:
+    def test_kgateway_rejects_envoy_gateway_install(self):
+        config = _make_config()
+        config.infrastructure.gateway = GatewayType.KGATEWAY
+        deployer = Deployer(
+            config,
+            DeployOptions(install_envoy_gateway=True),
+            RecordingCallback(),
+        )
+
+        with pytest.raises(RuntimeError, match="install kgateway"):
+            deployer._install_crds()
+
     def test_cert_manager_online_install_uses_matching_pin(self, tmp_path, monkeypatch):
         (tmp_path / "helm").mkdir()
         (tmp_path / "operator-versions.env").write_text(_OPERATOR_VERSIONS)
@@ -504,6 +517,20 @@ class TestInstallCrds:
             ["helm", "show", "crds", str(charts_dir / "gateway-helm-v1.6.5.tgz")]
         ]
         assert not any("github.com/cert-manager" in cmd for cmd in rendered_commands)
+
+
+class TestGatewayPatching:
+    def test_kgateway_skips_envoy_host_port_patch(self):
+        config = _make_config()
+        config.infrastructure.gateway = GatewayType.KGATEWAY
+        callback = RecordingCallback()
+        deployer = Deployer(config, DeployOptions(), callback)
+
+        deployer._patch_gateway()
+
+        statuses = dict(callback.step_updates)
+        assert statuses["patch-gateway"] == StepStatus.SKIPPED
+        assert "GatewayParameters" in deployer._get_step("patch-gateway").output[0]
 
 
 class TestDeployOptions:

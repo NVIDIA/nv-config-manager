@@ -113,9 +113,11 @@ nats:
   replicas: 1
 
 # Gateway configuration for local development
+ingress:
+  type: envoyGateway
+
 gateway:
   enabled: true
-  type: envoyGateway
   className: envoy-gateway
   baseHostname: config-manager.local
   # Disable JWT auth for local dev (mock auth handles identity)

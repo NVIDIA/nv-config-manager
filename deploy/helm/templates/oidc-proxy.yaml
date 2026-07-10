@@ -8,8 +8,10 @@
 {{- $nautobotName := include "nv-config-manager.componentName" (dict "root" . "component" "nautobot") }}
 {{- $configStoreName := include "nv-config-manager.componentName" (dict "root" . "component" "config-store") }}
 {{- $mcpName := include "nv-config-manager.componentName" (dict "root" . "component" "mcp") }}
-{{- $oidcCallbackHostname := .Values.oidc.hostname | default .Values.gateway.baseHostname }}
 {{- $internalIssuerUrl := .Values.oidc.internalIssuerUrl | default "" }}
+{{- $redisHost := include "nv-config-manager.redisHost" . }}
+{{- $redisPort := .Values.externalServices.redis.port | default 6379 }}
+{{- $redisScheme := .Values.externalServices.redis.ssl | ternary "rediss" "redis" }}
 {{- $proxies := list }}
 {{- /* A dedicated callback proxy keeps OIDC usable when the UI is disabled. */}}
 {{- $proxies = append $proxies (dict "name" "callback" "port" 9109 "upstream" "static://200") }}
@@ -53,7 +55,7 @@ data:
     oidc_issuer_url = {{ $.Values.oidc.issuerUrl | quote }}
     client_id = {{ $.Values.oidc.clientId | quote }}
     client_secret_file = "/etc/oidc-secret/client-secret"
-    redirect_url = {{ printf "https://%s%s/oauth2/callback" $oidcCallbackHostname (ternary (printf ":%v" $.Values.oidc.callbackPort) "" (not (empty $.Values.oidc.callbackPort))) | quote }}
+    redirect_url = {{ printf "https://%s%s/oauth2/callback" $.Values.gateway.baseHostname (ternary (printf ":%v" $.Values.oidc.callbackPort) "" (not (empty $.Values.oidc.callbackPort))) | quote }}
     http_address = {{ printf "0.0.0.0:%v" $proxy.port | quote }}
     upstreams = [{{ $proxy.upstream | quote }}]
     email_domains = ["*"]
@@ -66,8 +68,12 @@ data:
     cookie_samesite = "lax"
     cookie_refresh = "1h"
     cookie_expire = "8h"
+    session_store_type = "redis"
+    redis_connection_url = {{ printf "%s://%s:%v/%v" $redisScheme $redisHost $redisPort ($.Values.externalServices.redis.db | default 0) | quote }}
     reverse_proxy = true
     skip_provider_button = true
+    # Let browser CORS preflight requests reach the API without an auth redirect.
+    skip_auth_preflight = true
     pass_authorization_header = true
     pass_access_token = true
     set_authorization_header = true
@@ -116,7 +122,7 @@ spec:
         app.kubernetes.io/component: oidc-proxy
         {{- include "nv-config-manager.customPodLabels" . | nindent 8 }}
       annotations:
-        checksum/config: {{ dict "proxies" $proxies "oidc" .Values.oidc "baseHostname" .Values.gateway.baseHostname | toJson | sha256sum }}
+        checksum/config: {{ dict "proxies" $proxies "oidc" .Values.oidc "redis" .Values.externalServices.redis "baseHostname" .Values.gateway.baseHostname | toJson | sha256sum }}
     spec:
       serviceAccountName: {{ include "nv-config-manager.serviceAccountName" . }}
       {{- include "nv-config-manager.podSecurityContext" . | nindent 6 }}
@@ -139,6 +145,13 @@ spec:
             secretKeyRef:
               name: {{ $.Values.oidc.clientSecretName | default "oidc-client-secret" }}
               key: cookie-secret
+        {{- if $.Values.externalServices.redis.passwordAuth }}
+        - name: OAUTH2_PROXY_REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: redis-password
+              key: password
+        {{- end }}
         ports:
         - name: {{ $proxy.name }}
           containerPort: {{ $proxy.port }}

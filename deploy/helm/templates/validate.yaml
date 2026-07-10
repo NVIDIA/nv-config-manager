@@ -8,6 +8,9 @@
 {{- if not (has $gatewayType (list "envoyGateway" "kgateway")) -}}
   {{- fail (printf "ingress.type must be one of envoyGateway or kgateway, got %q" $gatewayType) -}}
 {{- end -}}
+{{- if and (eq $gatewayType "kgateway") .Values.gateway.nlb -}}
+  {{- fail "gateway.nlb is supported only with Envoy Gateway; kgateway NLB service configuration is not implemented" -}}
+{{- end -}}
 {{- if and .Values.gateway.create (ne (.Values.gateway.namespace | default .Values.global.namespace) .Values.global.namespace) -}}
   {{- fail "gateway.namespace may differ from global.namespace only when gateway.create=false (shared gateway mode)" -}}
 {{- end -}}

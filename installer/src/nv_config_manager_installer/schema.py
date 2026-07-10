@@ -604,6 +604,28 @@ class InfrastructureConfig(BaseModel):
     load_balancer: LoadBalancerConfig = Field(default_factory=LoadBalancerConfig)
     ztp_storage: ZTPStorageConfig = Field(default_factory=ZTPStorageConfig)
 
+    @model_validator(mode="after")
+    def validate_kgateway_nlb(self) -> InfrastructureConfig:
+        """Reject Gateway NLB settings that kgateway cannot render."""
+        nlb = self.load_balancer.nlb_gateway
+        nlb_gateway_configured = any(
+            (
+                nlb.type != "external",
+                nlb.target_type != "ip",
+                nlb.name,
+                nlb.sg,
+                nlb.subnets,
+                nlb.ips,
+                nlb.dns_name,
+            )
+        )
+        if self.gateway == GatewayType.KGATEWAY and nlb_gateway_configured:
+            raise ValueError(
+                "Gateway AWS NLB configuration is supported only with Envoy Gateway; "
+                "kgateway service parameters do not yet support it"
+            )
+        return self
+
 
 class ImageOverride(BaseModel):
     """Per-image repository and/or tag override."""

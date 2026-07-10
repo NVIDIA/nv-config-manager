@@ -16,11 +16,11 @@ that intentionally bypass browser authentication for native API tokens. When
 `oidc.endSessionEndpoint` is configured, logout clears the shared proxy session
 and continues to the identity provider's logout endpoint.
 
-Only one identity-provider callback is required. It uses `oidc.hostname` when
-set and otherwise uses `gateway.baseHostname`:
+Only one identity-provider callback is required. It always uses
+`gateway.baseHostname`:
 
 ```text
-https://<oidc.hostname-or-gateway.baseHostname>/oauth2/callback
+https://<gateway.baseHostname>/oauth2/callback
 ```
 
 ## Managed Envoy Gateway
@@ -130,9 +130,9 @@ Before bumping the chart revision in an Argo CD ApplicationSet:
 1. Preserve `gateway`, `networkZtp.ingress`, and `networkDhcp.ingress` values.
    The latter two configure device-facing LoadBalancer Services and are
    independent of browser Gateway API routing.
-1. Retain `oidc.hostname` when it is already registered with the identity
-   provider. The proxy uses it for the single callback route. If it is unset,
-   register `https://<gateway.baseHostname>/oauth2/callback` instead.
+1. Register `https://<gateway.baseHostname>/oauth2/callback` with the identity
+   provider. `oidc.hostname` is no longer used and can be removed from
+   overlays.
 1. Ensure the Secret named by `oidc.clientSecretName` contains `client-secret`
    and `cookie-secret`. For External Secrets Operator deployments, the Vault
    path must contain both mapped properties; `cookie-secret` decodes to exactly

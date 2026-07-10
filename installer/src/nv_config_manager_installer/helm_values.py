@@ -476,7 +476,7 @@ def _build_gateway(config: NVConfigManagerInstallConfig) -> dict[str, Any]:
         gateway["certificates"]["selfSigned"] = True
     if lb.provider == LBProvider.NONE:
         gateway["nodePort"] = {"enabled": True, "http": 30080, "https": 30443}
-    if lb.provider == LBProvider.NLB:
+    if lb.provider == LBProvider.NLB and gateway_type == "envoyGateway":
         gateway["nlb"] = _build_nlb_service_values(lb.nlb_gateway)
 
     gateway["auth"] = {"jwt": _build_jwt_section(config)}
@@ -901,8 +901,9 @@ def build_values(
     values["spiffe"] = _build_spiffe(config)
     values["networkPolicy"] = {
         "enabled": True,
-        "gatewayNamespace": (
-            config.infrastructure.gateway_namespace or "kgateway-system"
+        "gatewayNamespace": config.infrastructure.gateway_namespace
+        or (
+            "kgateway-system"
             if config.infrastructure.gateway.value == "kgateway"
             else "envoy-gateway-system"
         ),
