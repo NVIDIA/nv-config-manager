@@ -63,6 +63,8 @@ test.describe("Home Page (Splash Page)", () => {
     ).toBeVisible();
     await expect(dashboard.getByText("2", { exact: true }).first()).toBeVisible();
     await expect(dashboard.getByText("leaf-01")).toBeVisible();
+    await expect(dashboard.getByText("Config age", { exact: true })).toBeVisible();
+    await expect(dashboard.getByText("4m", { exact: true })).toBeVisible();
 
     await dashboard.getByRole("tab", { name: "Reservations" }).click();
     await expect(dashboard.getByText("spine-01")).toBeVisible();
@@ -87,6 +89,35 @@ test.describe("Home Page (Splash Page)", () => {
 
     await expect(page.getByText("Lease cleared", { exact: true })).toBeVisible();
     await expect(dashboard.getByText("10.0.0.10")).toHaveCount(0);
+  });
+
+  test("keeps lease data available when config age metrics fail", async ({
+    page,
+  }) => {
+    await page.route("**/metrics", async (route) => {
+      await route.fulfill({ status: 503, json: { detail: "unavailable" } });
+    });
+    await page.reload();
+
+    const dashboard = page.getByTestId("dhcp-dashboard");
+    await expect(dashboard.getByText("leaf-01")).toBeVisible({
+      timeout: TEST_TIMEOUT,
+    });
+    await expect(dashboard.getByText("Config age", { exact: true })).toBeVisible();
+    await expect(dashboard.getByText("Unknown", { exact: true })).toBeVisible();
+  });
+
+  test("filters displayed DHCP data across tabs", async ({ page }) => {
+    const dashboard = page.getByTestId("dhcp-dashboard");
+    const search = dashboard.getByRole("searchbox", {
+      name: "Filter displayed DHCP data",
+    });
+    await search.fill("spine-01");
+
+    await expect(dashboard.getByText("No active leases match “spine-01”.")).toBeVisible();
+    await dashboard.getByRole("tab", { name: "Reservations" }).click();
+    await expect(dashboard.getByText("spine-01")).toBeVisible();
+    await expect(dashboard.getByText("spine-02")).toHaveCount(0);
   });
 
   test("displays External Services section with Nautobot link", async ({

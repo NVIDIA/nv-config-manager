@@ -24,6 +24,8 @@ const SCREENSHOT_DIR = path.resolve(
   __dirname,
   "../../../docs/assets/images/dhcp",
 );
+const CONFIG_REFRESH_METRIC =
+  "nv_config_manager_dhcp_cache_last_refresh_timestamp_seconds";
 
 test.use({
   colorScheme: "light",
@@ -33,6 +35,7 @@ test.use({
 });
 
 test.beforeEach(async ({ page }) => {
+  const configRefreshTimestamp = Math.floor(Date.now() / 1000) - 240;
   await page.addInitScript(() => {
     window.BYPASS_MSW = true;
   });
@@ -56,6 +59,13 @@ test.beforeEach(async ({ page }) => {
     await route.fulfill({
       status: 200,
       json: { user: "demo", roles: ["all", "nvcm-network"] },
+    });
+  });
+  await page.route("**/metrics", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "text/plain; version=0.0.4",
+      body: `${CONFIG_REFRESH_METRIC}{ip_version="4"} ${configRefreshTimestamp}\n`,
     });
   });
   await page.route("**/lease-dashboard*", async (route) => {
@@ -124,6 +134,10 @@ test("captures the DHCP lease dashboard", async ({ page }) => {
     dashboard.getByRole("heading", { name: "DHCP lease activity" }),
   ).toBeVisible();
   await expect(dashboard.getByText("SPINE1-GP1-CIN3-PDX01")).toBeVisible();
+  await expect(dashboard.getByText("4m", { exact: true })).toBeVisible();
+  await expect(
+    dashboard.getByRole("searchbox", { name: "Filter displayed DHCP data" }),
+  ).toBeVisible();
   await page.evaluate(() => document.fonts.ready);
   await dashboard.screenshot({
     path: path.join(SCREENSHOT_DIR, "lease-dashboard.png"),

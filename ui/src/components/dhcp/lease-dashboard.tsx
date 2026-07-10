@@ -20,14 +20,20 @@ import { useState } from "react";
 import {
   Activity,
   CalendarClock,
+  Clock3,
   Database,
   Network,
   RefreshCw,
+  Search,
   ShieldCheck,
   Trash2,
 } from "lucide-react";
 
-import { clearDhcpLease, useDhcpDashboard } from "@/hooks/useDhcpDashboard";
+import {
+  clearDhcpLease,
+  useDhcpConfigRefreshTimestamp,
+  useDhcpDashboard,
+} from "@/hooks/useDhcpDashboard";
 import type { DhcpLease } from "@/types/dhcp.types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -47,6 +53,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -101,6 +108,24 @@ function formatExpiry(expiresAt?: string | null): string {
   }).format(new Date(expiresAt));
 }
 
+/** Format a Prometheus refresh timestamp as a compact age. */
+function formatConfigAge(timestamp?: number | null): string {
+  if (timestamp == null) return "Unknown";
+  const ageSeconds = Math.max(0, Math.floor(Date.now() / 1000 - timestamp));
+  if (ageSeconds < 60) return `${ageSeconds}s`;
+  if (ageSeconds < 3600) return `${Math.floor(ageSeconds / 60)}m`;
+  if (ageSeconds < 86400) return `${Math.floor(ageSeconds / 3600)}h`;
+  return `${Math.floor(ageSeconds / 86400)}d`;
+}
+
+/** Return whether any display value contains the normalized search query. */
+function matchesSearch(
+  values: Array<string | number | null | undefined>,
+  query: string,
+): boolean {
+  return values.some((value) => String(value ?? "").toLowerCase().includes(query));
+}
+
 /** Render a utilization bar using warning colors near pool capacity. */
 function PoolBar({ utilization }: Readonly<{ utilization: number }>) {
   const color =
@@ -122,9 +147,19 @@ function PoolBar({ utilization }: Readonly<{ utilization: number }>) {
 /** Render live DHCP lease, reservation, and pool activity. */
 export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
   const { data, error, isLoading, isValidating, mutate } = useDhcpDashboard(dhcpUrl);
+  const {
+    data: configRefreshTimestamp,
+    isValidating: isConfigAgeValidating,
+    mutate: mutateConfigRefreshTimestamp,
+  } = useDhcpConfigRefreshTimestamp(dhcpUrl);
   const { toast } = useToast();
   const [leaseToClear, setLeaseToClear] = useState<DhcpLease | null>(null);
   const [isClearing, setIsClearing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const refresh = () => {
+    void Promise.all([mutate(), mutateConfigRefreshTimestamp()]);
+  };
 
   const clearLease = async () => {
     if (!leaseToClear) return;
@@ -156,8 +191,8 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
           <Skeleton className="h-7 w-48" />
           <Skeleton className="h-4 w-72" />
         </CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {[0, 1, 2, 3].map((item) => (
+        <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          {[0, 1, 2, 3, 4].map((item) => (
             <Skeleton key={item} className="h-28" />
           ))}
         </CardContent>
@@ -177,7 +212,7 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
               {error instanceof Error ? error.message : "Lease data is unavailable."}
             </CardDescription>
           </div>
-          <Button variant="outline" size="sm" onClick={() => mutate()}>
+          <Button variant="outline" size="sm" onClick={refresh}>
             <RefreshCw className="mr-2 h-4 w-4" /> Retry
           </Button>
         </CardHeader>
@@ -188,6 +223,43 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
   const utilization = data.pool_address_count
     ? (data.assigned_address_count / data.pool_address_count) * 100
     : 0;
+  const normalizedSearch = searchQuery.trim().toLowerCase();
+  const filteredLeases = normalizedSearch
+    ? data.leases.filter((lease) =>
+        matchesSearch(
+          [
+            lease.ip_address,
+            lease.hostname,
+            lease.hw_address,
+            lease.client_id,
+            lease.subnet_id,
+          ],
+          normalizedSearch,
+        ),
+      )
+    : data.leases;
+  const filteredReservations = normalizedSearch
+    ? data.reservations.filter((reservation) =>
+        matchesSearch(
+          [
+            reservation.ip_address,
+            reservation.hostname,
+            reservation.identifier_type,
+            reservation.identifier,
+            reservation.subnet_id,
+          ],
+          normalizedSearch,
+        ),
+      )
+    : data.reservations;
+  const filteredPools = normalizedSearch
+    ? data.pools.filter((pool) =>
+        matchesSearch(
+          [pool.subnet_id, pool.subnet, pool.pool],
+          normalizedSearch,
+        ),
+      )
+    : data.pools;
 
   return (
     <Card className="overflow-hidden" data-testid="dhcp-dashboard">
@@ -205,14 +277,16 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
             aria-label="Refresh DHCP lease data"
             variant="outline"
             size="sm"
-            onClick={() => mutate()}
-            disabled={isValidating}
+            onClick={refresh}
+            disabled={isValidating || isConfigAgeValidating}
           >
-            <RefreshCw className={`mr-2 h-4 w-4 ${isValidating ? "animate-spin" : ""}`} />
+            <RefreshCw
+              className={`mr-2 h-4 w-4 ${isValidating || isConfigAgeValidating ? "animate-spin" : ""}`}
+            />
             Refresh
           </Button>
         </div>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <Metric
             icon={<Activity className="h-4 w-4" />}
             label="Active leases"
@@ -237,9 +311,33 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
             value={`${utilization.toFixed(1)}%`}
             detail={`${data.pools.length} configured pool${data.pools.length === 1 ? "" : "s"}`}
           />
+          <Metric
+            icon={<Clock3 className="h-4 w-4" />}
+            label="Config age"
+            value={formatConfigAge(configRefreshTimestamp)}
+            detail={
+              configRefreshTimestamp == null
+                ? "Refresh metric unavailable"
+                : "Since last successful refresh"
+            }
+          />
         </div>
       </CardHeader>
       <CardContent className="p-6">
+        <div className="relative mb-4 max-w-xl">
+          <Search
+            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+            aria-hidden="true"
+          />
+          <Input
+            type="search"
+            aria-label="Filter displayed DHCP data"
+            placeholder="Filter by IP, hostname, identifier, or subnet"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            className="pl-9"
+          />
+        </div>
         <Tabs defaultValue="leases">
           <TabsList className="grid w-full grid-cols-3 sm:w-auto">
             <TabsTrigger value="leases">Active leases</TabsTrigger>
@@ -248,8 +346,14 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
           </TabsList>
 
           <TabsContent value="leases" className="mt-4">
-            {data.leases.length === 0 ? (
-              <EmptyState message="No active IPv4 leases." />
+            {filteredLeases.length === 0 ? (
+              <EmptyState
+                message={
+                  normalizedSearch
+                    ? `No active leases match “${searchQuery.trim()}”.`
+                    : "No active IPv4 leases."
+                }
+              />
             ) : (
               <Table>
                 <TableHeader>
@@ -263,7 +367,7 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data.leases.map((lease) => (
+                  {filteredLeases.map((lease) => (
                     <TableRow key={lease.ip_address}>
                       <TableCell className="font-mono font-medium">{lease.ip_address}</TableCell>
                       <TableCell>{lease.hostname || "Unknown device"}</TableCell>
@@ -291,8 +395,14 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
           </TabsContent>
 
           <TabsContent value="reservations" className="mt-4">
-            {data.reservations.length === 0 ? (
-              <EmptyState message="No IPv4 reservations are configured." />
+            {filteredReservations.length === 0 ? (
+              <EmptyState
+                message={
+                  normalizedSearch
+                    ? `No reservations match “${searchQuery.trim()}”.`
+                    : "No IPv4 reservations are configured."
+                }
+              />
             ) : (
               <Table>
                 <TableHeader>
@@ -305,7 +415,7 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data.reservations.map((reservation, index) => (
+                  {filteredReservations.map((reservation, index) => (
                     <TableRow key={`${reservation.ip_address || "reservation"}-${index}`}>
                       <TableCell className="font-mono font-medium">{reservation.ip_address || "—"}</TableCell>
                       <TableCell>{reservation.hostname || "—"}</TableCell>
@@ -320,8 +430,14 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
           </TabsContent>
 
           <TabsContent value="pools" className="mt-4">
-            {data.pools.length === 0 ? (
-              <EmptyState message="No IPv4 pools are configured." />
+            {filteredPools.length === 0 ? (
+              <EmptyState
+                message={
+                  normalizedSearch
+                    ? `No pools match “${searchQuery.trim()}”.`
+                    : "No IPv4 pools are configured."
+                }
+              />
             ) : (
               <Table>
                 <TableHeader>
@@ -334,7 +450,7 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data.pools.map((pool) => (
+                  {filteredPools.map((pool) => (
                     <TableRow key={`${pool.subnet_id}-${pool.pool}`}>
                       <TableCell>
                         <div className="font-medium">{pool.subnet}</div>

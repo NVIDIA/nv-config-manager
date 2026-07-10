@@ -20,6 +20,9 @@ import useSWR from "swr";
 import { sanitizeUrl } from "@/lib/utils";
 import type { DhcpLeaseDashboard } from "@/types/dhcp.types";
 
+const CONFIG_REFRESH_METRIC =
+  "nv_config_manager_dhcp_cache_last_refresh_timestamp_seconds";
+
 /** Fetch and validate the dashboard response from the DHCP API. */
 async function dhcpFetcher(url: string): Promise<DhcpLeaseDashboard> {
   const response = await fetch(url, {
@@ -33,12 +36,43 @@ async function dhcpFetcher(url: string): Promise<DhcpLeaseDashboard> {
   return response.json();
 }
 
+/** Read the latest IPv4 configuration refresh timestamp from Prometheus text. */
+async function configRefreshFetcher(url: string): Promise<number | null> {
+  const response = await fetch(url, {
+    credentials: "include",
+    mode: "cors",
+  });
+  if (!response.ok) {
+    throw new Error("DHCP configuration age is unavailable");
+  }
+
+  const metrics = await response.text();
+  const sample = metrics.split("\n").find(
+    (line) =>
+      line.startsWith(`${CONFIG_REFRESH_METRIC}{`) &&
+      line.includes('ip_version="4"'),
+  );
+  if (!sample) return null;
+
+  const value = Number(sample.trim().split(/\s+/)[1]);
+  return Number.isFinite(value) ? value : null;
+}
+
 /** Subscribe to refreshed DHCP dashboard data for the splash page. */
 export function useDhcpDashboard(dhcpUrl: string) {
   const url = dhcpUrl
     ? sanitizeUrl(`${dhcpUrl}/lease-dashboard?limit=100`)
     : null;
   return useSWR<DhcpLeaseDashboard>(url, dhcpFetcher, {
+    refreshInterval: 30000,
+    revalidateOnFocus: true,
+  });
+}
+
+/** Subscribe to the last successful IPv4 configuration refresh timestamp. */
+export function useDhcpConfigRefreshTimestamp(dhcpUrl: string) {
+  const url = dhcpUrl ? sanitizeUrl(`${dhcpUrl}/metrics`) : null;
+  return useSWR<number | null>(url, configRefreshFetcher, {
     refreshInterval: 30000,
     revalidateOnFocus: true,
   });
