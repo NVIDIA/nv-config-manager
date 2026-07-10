@@ -17,11 +17,13 @@
 from __future__ import annotations
 
 from configparser import ConfigParser
-from typing import Any
+from typing import Any, Literal
 
 import aiohttp
 
 from nv_config_manager.common.config import load_config
+
+LeaseCommand = Literal["lease4-get", "lease4-del"]
 
 
 class KeaException(Exception):
@@ -151,6 +153,24 @@ class KeaClient:
                 result: list[dict[str, Any]] = await rsp.json()
                 return result
 
+        except TimeoutError as exc:
+            raise TimeoutError(
+                "KEA Request timed out, are you running within a KEA Docker Container?"
+            ) from exc
+
+    async def lease_command(self, command: LeaseCommand, ip_address: str) -> list[dict[str, Any]]:
+        """Run an IPv4 lease lookup or deletion command."""
+        data = {
+            "command": command,
+            "service": ["dhcp4"],
+            "arguments": {"ip-address": ip_address},
+        }
+        session = await self._get_session()
+        try:
+            async with session.post(self.url, json=data) as rsp:
+                rsp.raise_for_status()
+                result: list[dict[str, Any]] = await rsp.json()
+                return result
         except TimeoutError as exc:
             raise TimeoutError(
                 "KEA Request timed out, are you running within a KEA Docker Container?"

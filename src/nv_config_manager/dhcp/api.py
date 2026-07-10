@@ -15,7 +15,8 @@
 """Simple HealthCheck API for DHCP Server."""
 
 import argparse
-from typing import Any
+from ipaddress import IPv4Address
+from typing import Any, Literal
 
 import uvicorn
 from aiohttp import ClientResponseError
@@ -24,11 +25,12 @@ from fastapi.responses import Response
 from prometheus_client import CONTENT_TYPE_LATEST, Gauge, generate_latest
 from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_fastapi_instrumentator import metrics as instrumentator_metrics
+from pydantic import BaseModel, ConfigDict, Field
 
 from nv_config_manager.common.auth import install_identity_probe
 from nv_config_manager.common.config import load_config
 from nv_config_manager.common.log import configure_logging
-from nv_config_manager.dhcp.kea import KeaClient
+from nv_config_manager.dhcp.kea import KeaClient, LeaseCommand
 from nv_config_manager.dhcp.redis import RedisClient
 
 configure_logging(service="dhcp")
@@ -51,6 +53,24 @@ instrumentator.add(
     )
 )
 instrumentator.instrument(app)
+
+
+class LeaseArguments(BaseModel):
+    """Arguments accepted by the supported KEA lease commands."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ip_address: IPv4Address = Field(alias="ip-address")
+
+
+class LeaseRequest(BaseModel):
+    """Restricted KEA command envelope for IPv4 lease operations."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    command: LeaseCommand
+    service: list[Literal["dhcp4"]] = Field(min_length=1, max_length=1)
+    arguments: LeaseArguments
 
 
 def main() -> None:
@@ -90,6 +110,23 @@ async def get_config(request: Request, ip_version: int = 4) -> Any:
         raw_config = await client.get_config(ip_version)
         sanitize_config(raw_config)
         return raw_config
+    except TimeoutError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except ClientResponseError as exc:
+        raise HTTPException(status_code=500, detail=str(exc.message)) from exc
+    finally:
+        await client.close()
+
+
+@app.post("/lease")
+async def proxy_lease_command(request: Request, lease_request: LeaseRequest) -> Any:
+    """Proxy a supported IPv4 lease command to KEA."""
+    client = KeaClient.from_config()
+    try:
+        return await client.lease_command(
+            lease_request.command,
+            str(lease_request.arguments.ip_address),
+        )
     except TimeoutError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     except ClientResponseError as exc:
