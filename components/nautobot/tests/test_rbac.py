@@ -877,7 +877,7 @@ def test_revoke_removed_mapping_groups_revokes_and_prunes(rbac):
     """User in a Django group not in the mapping, group has managed perms
     matching ``<group>_<action>`` -- the user is removed and the managed
     perms are detached + deleted."""
-    retired = _mock_group("gni-cfa", ["gni-cfa_view", "gni-cfa_change"])
+    retired = _mock_group("retired-net", ["retired-net_view", "retired-net_change"])
     user = _mock_user_with_groups(retired)
 
     rbac._revoke_removed_mapping_groups(user, current_managed_names={"ipam-rw"})
@@ -905,7 +905,7 @@ def test_revoke_removed_mapping_groups_leaves_manual_groups_alone(rbac):
 def test_revoke_removed_mapping_groups_keeps_perm_when_other_groups_reference_it(rbac):
     """If the managed perm is still attached to another group after detaching
     us, it must be left in the database (not deleted)."""
-    retired = _mock_group("gni-cfa", ["gni-cfa_view"])
+    retired = _mock_group("retired-net", ["retired-net_view"])
     shared_perm = retired.object_permissions.all()[0]
     shared_perm.groups.exists.return_value = True  # someone else still references it
     user = _mock_user_with_groups(retired)
@@ -920,9 +920,9 @@ def test_revoke_removed_mapping_groups_keeps_unrelated_perms(rbac):
     """Only perms whose name starts with ``<group>_`` are pruned; manually-
     added perms on the same group survive."""
     retired = MagicMock()
-    retired.name = "gni-cfa"
+    retired.name = "retired-net"
     managed = MagicMock()
-    managed.name = "gni-cfa_view"
+    managed.name = "retired-net_view"
     managed.groups.exists.return_value = False
     manual = MagicMock()
     manual.name = "totally-custom"
@@ -953,9 +953,9 @@ def test_revoke_removed_mapping_groups_ignores_bare_group_name_perm(rbac):
     """A perm literally named ``"<group_name>_"`` (action half empty) is not a
     valid managed marker -- defensive guard against weirdly-named perms."""
     retired = MagicMock()
-    retired.name = "gni-cfa"
+    retired.name = "retired-net"
     odd = MagicMock()
-    odd.name = "gni-cfa_"  # no action suffix
+    odd.name = "retired-net_"  # no action suffix
     retired.object_permissions.all.return_value = [odd]
     user = _mock_user_with_groups(retired)
 
