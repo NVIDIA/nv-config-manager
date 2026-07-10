@@ -119,6 +119,38 @@ uv run nv-config-manager-dhcp-confgen generate-kea-configuration \
 
 The generator runs on a 5-minute interval in the Kubernetes deployment, automatically refreshing the running Kea servers with updated configuration.
 
+## Manage IPv4 Leases
+
+The authenticated DHCP API exposes `POST /lease` for looking up and deleting IPv4 leases. The request uses the Kea command envelope, but only the `lease4-get` and `lease4-del` commands are accepted.
+
+Look up the device holding a lease:
+
+```bash
+curl --fail-with-body --request POST "${DHCP_API_URL}/lease" \
+  --header "Authorization: Bearer ${TOKEN}" \
+  --header "Content-Type: application/json" \
+  --data '{
+    "command": "lease4-get",
+    "service": ["dhcp4"],
+    "arguments": {"ip-address": "7.245.196.5"}
+  }'
+```
+
+Delete a lease so the address can be reassigned:
+
+```bash
+curl --fail-with-body --request POST "${DHCP_API_URL}/lease" \
+  --header "Authorization: Bearer ${TOKEN}" \
+  --header "Content-Type: application/json" \
+  --data '{
+    "command": "lease4-del",
+    "service": ["dhcp4"],
+    "arguments": {"ip-address": "7.245.196.5"}
+  }'
+```
+
+The API returns Kea's response unchanged. A successful command has `result: 0`; other result codes and their accompanying text come directly from Kea.
+
 ## Related Documentation
 
 - [DHCP Modeling in Nautobot](nautobot-modeling.mdx) - Detailed guide on tagging and config contexts

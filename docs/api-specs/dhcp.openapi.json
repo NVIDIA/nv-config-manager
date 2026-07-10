@@ -14,6 +14,56 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "LeaseArguments": {
+        "additionalProperties": false,
+        "description": "Arguments accepted by the supported KEA lease commands.",
+        "properties": {
+          "ip-address": {
+            "format": "ipv4",
+            "title": "Ip-Address",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ip-address"
+        ],
+        "title": "LeaseArguments",
+        "type": "object"
+      },
+      "LeaseRequest": {
+        "additionalProperties": false,
+        "description": "Restricted KEA command envelope for IPv4 lease operations.",
+        "properties": {
+          "arguments": {
+            "$ref": "#/components/schemas/LeaseArguments"
+          },
+          "command": {
+            "enum": [
+              "lease4-get",
+              "lease4-del"
+            ],
+            "title": "Command",
+            "type": "string"
+          },
+          "service": {
+            "items": {
+              "const": "dhcp4",
+              "type": "string"
+            },
+            "maxItems": 1,
+            "minItems": 1,
+            "title": "Service",
+            "type": "array"
+          }
+        },
+        "required": [
+          "command",
+          "service",
+          "arguments"
+        ],
+        "title": "LeaseRequest",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -207,6 +257,50 @@
         },
         "security": [],
         "summary": "Healthcheck"
+      }
+    },
+    "/lease": {
+      "post": {
+        "description": "Proxy a supported IPv4 lease command to KEA.",
+        "operationId": "proxy_lease_command_lease_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LeaseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Proxy Lease Command Lease Post"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Proxy Lease Command"
       }
     },
     "/whoami": {
