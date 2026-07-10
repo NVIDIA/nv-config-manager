@@ -43,6 +43,18 @@ from nv_config_manager_installer.schema import (
 )
 from nv_config_manager_installer.secrets import build_eso_vault_config
 
+_ZTP_S3_CREDENTIALS_SECRET_NAME = "ztp-s3-credentials"
+
+
+def _has_ztp_s3_k8s_credentials(config: NVConfigManagerInstallConfig) -> bool:
+    """Return true when installer-managed Kubernetes S3 credentials are configured."""
+    if config.secrets.method != SecretsMethod.KUBERNETES:
+        return False
+    ztp_s3 = config.secrets.k8s.ztp_s3
+    if not ztp_s3.enabled:
+        return False
+    return bool(ztp_s3.values.get("accessKeyId") and ztp_s3.values.get("secretAccessKey"))
+
 
 def _provider_defaults(provider: SSOProvider, client_id: str) -> dict[str, list[str]]:
     """Return provider-specific default scopes and audiences.
@@ -372,6 +384,8 @@ def _build_global(
         "createServiceAccount": True,
         "serviceAccountName": "vault-access-sa",
     }
+    if c.service_account_eks_role:
+        section["serviceAccountEksRole"] = c.service_account_eks_role
 
     if c.environment == "local":
         section["deploymentStrategy"] = {"type": "Recreate"}
@@ -681,6 +695,45 @@ def _build_ztp_storage(config: NVConfigManagerInstallConfig) -> dict[str, Any]:
         if zs.pvc_size:
             file_cfg["size"] = zs.pvc_size
         storage["file"] = file_cfg
+    else:
+        s3_cfg: dict[str, Any] = {}
+        if zs.s3_bucket:
+            s3_cfg["bucketName"] = zs.s3_bucket
+        if zs.s3_ceph.enabled:
+            ceph_cfg: dict[str, Any] = {"enabled": True}
+            if zs.s3_ceph.user_secret_name:
+                ceph_cfg["userSecretName"] = zs.s3_ceph.user_secret_name
+
+            user = zs.s3_ceph.object_store_user
+            user_cfg: dict[str, Any] = {}
+            if user.name != "ztp-user":
+                user_cfg["name"] = user.name
+            if user.store != "ceph-objectstore":
+                user_cfg["store"] = user.store
+            if user.cluster_namespace != "rook-ceph":
+                user_cfg["clusterNamespace"] = user.cluster_namespace
+            if user_cfg:
+                ceph_cfg["objectStoreUser"] = user_cfg
+
+            obc = zs.s3_ceph.object_bucket_claim
+            obc_cfg: dict[str, Any] = {}
+            if obc.storage_class_name:
+                obc_cfg["storageClassName"] = obc.storage_class_name
+            if obc.bucket_max_size and obc.bucket_max_size != "50G":
+                obc_cfg["bucketMaxSize"] = obc.bucket_max_size
+            if obc_cfg:
+                ceph_cfg["objectBucketClaim"] = obc_cfg
+
+            s3_cfg["ceph"] = ceph_cfg
+        else:
+            if zs.s3_endpoint:
+                s3_cfg["endpoint"] = zs.s3_endpoint
+            if zs.s3_region:
+                s3_cfg["region"] = zs.s3_region
+            if _has_ztp_s3_k8s_credentials(config):
+                s3_cfg["credentialsSecret"] = _ZTP_S3_CREDENTIALS_SECRET_NAME
+        if s3_cfg:
+            storage["s3"] = s3_cfg
     return storage
 
 

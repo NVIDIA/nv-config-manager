@@ -51,6 +51,8 @@ global:
   # ServiceAccount creation - set to false if SA is provided by platform team
   createServiceAccount: true
   serviceAccountName: vault-access-sa
+  # AWS IAM role ARN to annotate on this ServiceAccount for EKS IRSA.
+  # Leave empty unless workloads use AWS services such as S3 without static credentials.
   serviceAccountEksRole: ""
   # Image pull secrets for all services
   imagePullSecrets:
@@ -222,6 +224,12 @@ secrets:
     #   bmc-creds                         → bmc-creds.json (file body; ESO pulls bmc_data then templates)
     #   <release>-network-secrets         → config-secrets.ini (single key; helper networkSecretsName)
     #   <release>-ini                     → nv-config-manager.ini (single key; helper iniSecretName)
+    #   networkZtp.storage.s3.credentialsSecret
+    #                                      → main nv-config-manager.ini [ztp] S3 settings
+    #
+    # With method=eso or method=vault-agent, ZTP S3 credentials from
+    # secrets.vault.paths.ztpS3 are rendered into the main nv-config-manager.ini
+    # for distroless-compatible startup.
     #
     # --- method=eso OR vault-agent+esoForOperators (operator / secretKeyRef secrets) ---
     #
@@ -397,6 +405,15 @@ secrets:
         keys:
           accessKeyId: "s3_backup_access_key_id"
           accessSecretKey: "s3_backup_access_secret_key"
+      # ZTP S3 credentials (optional - only when networkZtp.storage.type=s3 and not using Ceph)
+      # With secrets.method=eso or vault-agent this is rendered into nv-config-manager.ini.
+      ztpS3:
+        path: "" # e.g., "my-org/nv-config-manager/dev/ztp-s3"
+        keys:
+          # Optional: set when the Vault secret includes a custom S3 endpoint.
+          endpoint: ""
+          accessKeyId: "access_key_id"
+          secretAccessKey: "secret_access_key"
       # KEDA Prometheus mTLS certificates (optional - only when autoscaling with TLS)
       # Contains ca.crt, tls.crt, tls.key for authenticated Prometheus access
       kedaPrometheusCerts:
@@ -1415,20 +1432,60 @@ networkZtp:
   #   - Best for on-premises deployments with local high-speed storage
   #   - Requires PVC to be created and populated by the installer OS image workflow
   #
-  # Environment variables set by this configuration:
-  #   STORAGE_TYPE: "s3" or "file"
-  #   FILE_STORE_PATH: Path where images are mounted (when type=file)
+  # INI settings rendered by this configuration:
+  #   storage_type: "s3" or "file"
+  #   file_store_path: Path where images are mounted (when type=file)
+  #   s3_bucket: Bucket used by S3 storage (when type=s3)
   # ---------------------------------------------------------------------------
   storage:
     # Storage type: s3 or file
     type: s3
+    # S3/Ceph configuration (when type=s3)
+    s3:
+      # Bucket used by ZTP S3 storage. When Ceph is enabled, this is also the
+      # ObjectBucketClaim metadata name, spec.bucketName, and bucket policy target.
+      bucketName: ngc-network-firmware-images
+      # Optional custom endpoint. Leave empty to use the default AWS S3 client resolution.
+      # Ignored when ceph.enabled=true; the generated Rook Endpoint secret key is authoritative.
+      endpoint: ""
+      # AWS region for standard S3/IRSA. When unset, the AWS SDK uses its default region chain.
+      # Ignored when ceph.enabled=true.
+      region: ""
+      # Optional existing Kubernetes Secret containing custom S3 credentials.
+      # When set, secrets.method must be kubernetes so the secret-assembler can
+      # render these keys into the main nv-config-manager.ini. Otherwise
+      # method=eso and method=vault-agent read secrets.vault.paths.ztpS3 into
+      # the main nv-config-manager.ini.
+      # Ignored when ceph.enabled=true; the generated Rook user Secret is authoritative.
+      credentialsSecret: ""
+      # Optional endpoint key in credentialsSecret.
+      endpointSecretKey: CUSTOM_S3_ENDPOINT
+      endpointSecretOptional: true
+      accessKeySecretKey: CUSTOM_S3_ACCESS_KEY
+      secretKeySecretKey: CUSTOM_S3_SECRET_KEY
+      ceph:
+        # Enable Rook Ceph object storage integration for ZTP S3 storage.
+        enabled: false
+        # Optional override. Defaults to rook-ceph-object-user-<store>-<user>.
+        userSecretName: ""
+        endpointSecretKey: Endpoint
+        accessKeySecretKey: AccessKey
+        secretKeySecretKey: SecretKey
+        objectStoreUser:
+          name: ztp-user
+          store: ceph-objectstore
+          displayName: ztp-user
+          clusterNamespace: rook-ceph
+        objectBucketClaim:
+          storageClassName: ceph-object-store
+          bucketMaxSize: 50G
     # File storage configuration (when type=file)
     file:
       # Name of the PVC containing OS images
       # Created automatically by the installer when file storage is used
       pvcName: ztp-os-images
       # Path where the PVC is mounted in the container
-      # This becomes the FILE_STORE_PATH environment variable
+      # This becomes the [ztp].file_store_path INI setting
       mountPath: /mnt/images
       # Storage class for installer-created PVCs
       storageClass: ""

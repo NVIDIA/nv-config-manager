@@ -33,6 +33,7 @@ from nv_config_manager_installer.schema import (
     VaultAuthMethod,
     VaultPathConfig,
     VaultPathsConfig,
+    ZTPStorageType,
 )
 
 
@@ -137,6 +138,15 @@ def _generate_optional_k8s_secrets(
     if k8s.cnpg_backup.enabled:
         state["cnpg_access_key_id"] = _v("cnpg_backup", "accessKeyId") or ""
         state["cnpg_access_secret_key"] = _v("cnpg_backup", "accessSecretKey") or ""
+    ztp_storage = config.infrastructure.ztp_storage
+    if (
+        ztp_storage.type == ZTPStorageType.S3
+        and not ztp_storage.s3_ceph.enabled
+        and k8s.ztp_s3.enabled
+    ):
+        state["ztp_s3_endpoint"] = _v("ztp_s3", "endpoint") or ""
+        state["ztp_s3_access_key_id"] = _v("ztp_s3", "accessKeyId") or ""
+        state["ztp_s3_secret_access_key"] = _v("ztp_s3", "secretAccessKey") or ""
 
 
 def generate_secrets(config: NVConfigManagerInstallConfig) -> dict[str, str]:
@@ -204,6 +214,7 @@ _VAULT_PATH_GROUPS: list[tuple[str, str, str]] = [
     ("slack", "slack", "slack"),
     ("jira", "jira", "jira"),
     ("cnpg_backup", "cnpgBackup", "cnpg-backup"),
+    ("ztp_s3", "ztpS3", "ztp-s3"),
 ]
 
 
