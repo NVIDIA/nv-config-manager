@@ -87,7 +87,7 @@ query ($is_aggregate_managed: Boolean) {
             temporal_server,
             namespace="default",
             data_converter=get_data_converter(),
-            interceptors=[TracingInterceptor()],
+            interceptors=[TracingInterceptor(always_create_workflow_spans=True)],
             runtime=get_runtime(),
         )
 
