@@ -18,13 +18,25 @@ module.exports = async ({ github, context, core }) => {
     await reply("ERROR: " + message);
     core.setFailed(message);
   };
-  const acknowledge = () =>
-    github.rest.reactions.createForIssueComment({
-      owner,
-      repo,
-      comment_id: commentId,
-      content: "+1",
-    });
+  const acknowledge = async () => {
+    try {
+      await github.rest.reactions.createForIssueComment({
+        owner,
+        repo,
+        comment_id: commentId,
+        content: "+1",
+      });
+    } catch (error) {
+      const message =
+        "Kind integration was accepted, but the acknowledgement reaction failed: " +
+        (error.message || String(error));
+      if (core.warning) {
+        core.warning(message);
+      } else {
+        console.warn(message);
+      }
+    }
+  };
 
   let permission = "none";
   try {

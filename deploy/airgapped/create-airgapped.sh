@@ -678,6 +678,7 @@ normalize_image_reference() {
     fi
 
     printf '%s\n' "$image_value"
+    return 0
 }
 
 extract_images_from_manifests() {

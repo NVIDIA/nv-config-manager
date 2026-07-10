@@ -29,7 +29,7 @@ Before running, confirm:
 | Field | Description | Required |
 | :---- | :---------- | :------- |
 | **Site** | The site the overlay and device belong to. | Yes |
-| **Overlay ID** | The overlay to apply to the device. | Yes |
+| **Overlay ID** | The overlay to apply to the device. The form lists Spectrum-X overlays at the selected site. | Yes |
 | **Device** | The target device. | Yes |
 | **Port Names (comma-separated)** | Interface names on the device to bind to the overlay's VRF (comma-separated list). Already-assigned ports are skipped. | Yes |
 
@@ -45,7 +45,7 @@ The workflow runs five stages in order. None require manual approval.
 
 1. **`assign_spx_overlay` — Run SpX Overlay Assignment as a child workflow.**
 
-   Invokes [SpX Overlay Assignment](../vpc-assignment/index.mdx) with the same inputs to bind the VRF to the device and its ports. The stage display shows the Overlay name, L3 VXLAN name, VRF, and assigned ports. If the assignment is a complete no-op (`vrf_assigned=false` and no `assigned_ports` changed), the workflow short-circuits — `render_tenant_config`, `wait_for_render`, and `deploy` are marked UNREACHABLE and the workflow exits successfully with `device_deployed=null`.
+   Invokes [SpX Overlay Assignment](../vpc-assignment/index.mdx) with the same inputs to bind the VRF to the device and its ports. The stage display links to the child workflow as soon as it starts. If the child fails, the stage retains the link and the tenant-change workflow stops before rendering or deployment. On success, the display also shows the Overlay name, L3 VXLAN name, VRF, and assigned ports. If the assignment is a complete no-op (`vrf_assigned=false` and no `assigned_ports` changed), the workflow short-circuits — `render_tenant_config`, `wait_for_render`, and `deploy` are marked UNREACHABLE and the workflow exits successfully with `device_deployed=null`.
 
 1. **`render_tenant_config` — Trigger a tenant-scoped re-render for the device.**
 
@@ -57,7 +57,7 @@ The workflow runs five stages in order. None require manual approval.
 
 1. **`deploy` — Apply the rendered configuration via Tenant Deploy.**
 
-   Invokes [Tenant Deploy](../tenant-deploy/index.mdx) as a child workflow against the device. Tenant Deploy performs its own diff validation (allowed `nv set` patterns only) before applying.
+   Invokes [Tenant Deploy](../tenant-deploy/index.mdx) as a child workflow against the device. The stage display links to the child while it is running and retains the link whether the child succeeds or fails. Tenant Deploy performs its own diff validation (allowed `nv set` patterns only) before applying.
 
 ## Verifying outcomes
 

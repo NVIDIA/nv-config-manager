@@ -20,6 +20,7 @@ import json
 import logging
 import os
 import re
+from numbers import Number
 from typing import Any
 
 from opentelemetry import trace
@@ -60,6 +61,21 @@ class LogCategory:
 _logging_configured = False
 _custom_labels: dict[str, str] = {}
 
+_LOG_LINE_BREAK_ESCAPES = str.maketrans(
+    {
+        "\n": r"\n",
+        "\r": r"\r",
+        "\v": r"\v",
+        "\f": r"\f",
+        "\x1c": r"\x1c",
+        "\x1d": r"\x1d",
+        "\x1e": r"\x1e",
+        "\x1b": r"\x1b",
+        "\x85": r"\x85",
+        "\u2028": r"\u2028",
+        "\u2029": r"\u2029",
+    }
+)
 _VALID_LABEL_KEY = re.compile(r"^\w+(\_\w+)?$")
 _MAX_LABEL_VALUE_LEN = 63
 _RESERVED_FIELDS = frozenset(
@@ -173,6 +189,40 @@ def _build_formatter() -> logging.Formatter:
 # =============================================================================
 
 
+def escape_log_newlines(value: object) -> str:
+    """Escape characters that could forge additional log entries."""
+    return str(value).translate(_LOG_LINE_BREAK_ESCAPES)
+
+
+def _escape_log_argument(value: object) -> object:
+    """Escape unsafe characters while preserving numeric formatting types."""
+    if isinstance(value, (str, BaseException)):
+        return escape_log_newlines(value)
+    if isinstance(value, list):
+        return [_escape_log_argument(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_escape_log_argument(item) for item in value)
+    if isinstance(value, dict):
+        return {
+            _escape_log_argument(key): _escape_log_argument(item) for key, item in value.items()
+        }
+    if isinstance(value, Number):
+        return value
+    return escape_log_newlines(value)
+
+
+class EscapingLoggerAdapter(logging.LoggerAdapter):
+    """Logger adapter that escapes unsafe characters in messages and arguments."""
+
+    def log(self, level: int, msg: object, *args: object, **kwargs: Any) -> None:
+        """Delegate an enabled log call after sanitizing its message and arguments."""
+        if self.isEnabledFor(level):
+            msg, processed_kwargs = self.process(msg, kwargs)
+            escaped_msg = escape_log_newlines(msg)
+            escaped_args = tuple(_escape_log_argument(arg) for arg in args)
+            self.logger.log(level, escaped_msg, *escaped_args, **processed_kwargs)
+
+
 def configure_logging(service: str | None = None) -> None:
     """Configure the root logger for the entire process.
 
@@ -221,7 +271,7 @@ def get_logger(
     name: str,
     json_format: bool = True,
     category: str = "",
-) -> logging.LoggerAdapter:
+) -> EscapingLoggerAdapter:
     """Get a configured logger with optional category label.
 
     If ``configure_logging()`` has already been called (recommended), this
@@ -250,4 +300,4 @@ def get_logger(
         logger.addHandler(handler)
         logger.setLevel(_get_log_level())
 
-    return logging.LoggerAdapter(logger, extra={"category": category})
+    return EscapingLoggerAdapter(logger, extra={"category": category})
