@@ -18,7 +18,7 @@ import time
 from unittest.mock import AsyncMock, patch
 
 import jwt as pyjwt
-from aiohttp import ClientResponseError, RequestInfo
+from aiohttp import ClientConnectionError, ClientResponseError, RequestInfo
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
 from multidict import CIMultiDict
@@ -510,3 +510,23 @@ def test_proxy_lease_timeout():
 
     assert rsp.status_code == 500
     assert rsp.json() == {"detail": "KEA Request timed out"}
+
+
+def test_proxy_lease_connection_error():
+    """Verify other KEA transport errors are surfaced by the DHCP API."""
+    client = TestClient(app)
+
+    with patch(
+        "nv_config_manager.dhcp.api.KeaClient.lease_command",
+        new_callable=AsyncMock,
+        side_effect=ClientConnectionError("KEA connection failed"),
+    ):
+        with patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED):
+            rsp = client.post(
+                "/lease",
+                json=LEASE_GET_REQUEST,
+                headers={"X-Auth-Request-Email": "test@example.com"},
+            )
+
+    assert rsp.status_code == 500
+    assert rsp.json() == {"detail": "KEA connection failed"}

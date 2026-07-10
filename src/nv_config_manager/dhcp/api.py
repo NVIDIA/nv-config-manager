@@ -19,7 +19,7 @@ from ipaddress import IPv4Address
 from typing import Any, Literal
 
 import uvicorn
-from aiohttp import ClientResponseError
+from aiohttp import ClientError, ClientResponseError
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import Response
 from prometheus_client import CONTENT_TYPE_LATEST, Gauge, generate_latest
@@ -131,6 +131,8 @@ async def proxy_lease_command(request: Request, lease_request: LeaseRequest) -> 
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     except ClientResponseError as exc:
         raise HTTPException(status_code=500, detail=str(exc.message)) from exc
+    except ClientError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
     finally:
         await client.close()
 
