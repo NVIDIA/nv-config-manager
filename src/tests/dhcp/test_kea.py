@@ -50,3 +50,41 @@ async def test_lease_command_raises_for_kea_http_error() -> None:
                 await client.lease_command("lease4-get", "7.245.196.5")
 
     assert exc_info.value.status == 503
+
+
+async def test_get_lease_page_forwards_bounded_request() -> None:
+    """Verify lease inventory uses KEA pagination rather than get-all."""
+    response = [{"result": 0, "arguments": {"leases": []}}]
+
+    with aioresponses() as mocked:
+        mocked.post("http://kea.example.com:8000/", payload=response)
+        async with KeaClient(host="kea.example.com", port=8000) as client:
+            result = await client.get_lease_page(limit=75)
+
+        request = mocked.requests[("POST", URL("http://kea.example.com:8000/"))][0]
+
+    assert result == response
+    assert request.kwargs["json"] == {
+        "command": "lease4-get-page",
+        "service": ["dhcp4"],
+        "arguments": {"from": "start", "limit": 75},
+    }
+
+
+async def test_get_statistics_forwards_service_version() -> None:
+    """Verify dashboard statistics target the requested KEA service."""
+    response = [{"result": 0, "arguments": {"assigned-addresses": [[2, "timestamp"]]}}]
+
+    with aioresponses() as mocked:
+        mocked.post("http://kea.example.com:8000/", payload=response)
+        async with KeaClient(host="kea.example.com", port=8000) as client:
+            result = await client.get_statistics(version=4)
+
+        request = mocked.requests[("POST", URL("http://kea.example.com:8000/"))][0]
+
+    assert result == response
+    assert request.kwargs["json"] == {
+        "command": "statistic-get-all",
+        "service": ["dhcp4"],
+        "arguments": {},
+    }

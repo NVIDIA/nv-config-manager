@@ -63,6 +63,7 @@ export async function setupApiMocks(page: Page) {
   // Runtime config endpoint (must be first!)
   await mockRuntimeConfigEndpoint(page);
   await mockWhoamiEndpoint(page);
+  await mockDhcpEndpoints(page);
 
   // Workflow submission endpoints
   await mockSiteCableValidationEndpoint(page);
@@ -112,6 +113,82 @@ export async function setupApiMocks(page: Page) {
 
   // Health check
   await mockHealthCheckEndpoint(page);
+}
+
+export async function mockDhcpEndpoints(page: Page) {
+  let clearedLease: string | null = null;
+  const leases = [
+    {
+      ip_address: "10.0.0.10",
+      hostname: "leaf-01",
+      hw_address: "02:00:00:00:00:10",
+      subnet_id: 7,
+      state: 0,
+      cltt: 1783700000,
+      valid_lft: 7200,
+      expires_at: "2026-07-10T18:00:00Z",
+    },
+    {
+      ip_address: "10.0.0.11",
+      hostname: "leaf-02",
+      client_id: "01:02:03:04:05",
+      subnet_id: 7,
+      state: 0,
+      cltt: 1783700300,
+      valid_lft: 7200,
+      expires_at: "2026-07-10T18:05:00Z",
+    },
+  ];
+
+  await page.route("**/lease-dashboard*", async (route) => {
+    const activeLeases = leases.filter((lease) => lease.ip_address !== clearedLease);
+    await route.fulfill({
+      status: 200,
+      json: {
+        active_lease_count: activeLeases.length,
+        reservation_count: 2,
+        assigned_address_count: activeLeases.length,
+        pool_address_count: 10,
+        leases_truncated: false,
+        reservations_truncated: false,
+        leases: activeLeases,
+        reservations: [
+          {
+            ip_address: "10.0.0.2",
+            hostname: "spine-01",
+            identifier_type: "hw-address",
+            identifier: "02:00:00:00:00:01",
+          },
+          {
+            ip_address: "10.0.0.3",
+            hostname: "spine-02",
+            identifier_type: "client-id",
+            identifier: "01:02:03:04",
+            subnet_id: 7,
+          },
+        ],
+        pools: [
+          {
+            subnet_id: 7,
+            subnet: "10.0.0.0/24",
+            pool: "10.0.0.10-10.0.0.19",
+            assigned: activeLeases.length,
+            total: 10,
+            utilization: activeLeases.length * 10,
+          },
+        ],
+      },
+    });
+  });
+
+  await page.route("**/lease", async (route) => {
+    const body = JSON.parse((await route.request().postData()) || "{}");
+    clearedLease = body.arguments?.["ip-address"] || null;
+    await route.fulfill({
+      status: 200,
+      json: [{ result: 0, text: "IPv4 lease deleted." }],
+    });
+  });
 }
 
 export async function mockWhoamiEndpoint(page: Page) {

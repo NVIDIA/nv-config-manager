@@ -51,6 +51,44 @@ test.describe("Home Page (Splash Page)", () => {
     await expect(configsHeading).toBeVisible({ timeout: TEST_TIMEOUT });
   });
 
+  test("displays DHCP lease activity, reservations, and pool usage", async ({
+    page,
+  }) => {
+    const dashboard = page.getByTestId("dhcp-dashboard");
+    await expect(
+      dashboard.getByRole("heading", { name: "DHCP lease activity" })
+    ).toBeVisible({ timeout: TEST_TIMEOUT });
+    await expect(
+      dashboard.getByText("Active leases", { exact: true }).first()
+    ).toBeVisible();
+    await expect(dashboard.getByText("2", { exact: true }).first()).toBeVisible();
+    await expect(dashboard.getByText("leaf-01")).toBeVisible();
+
+    await dashboard.getByRole("tab", { name: "Reservations" }).click();
+    await expect(dashboard.getByText("spine-01")).toBeVisible();
+
+    await dashboard.getByRole("tab", { name: "Pool usage" }).click();
+    await expect(dashboard.getByText("10.0.0.10-10.0.0.19")).toBeVisible();
+    await expect(
+      dashboard.getByText("20.0%", { exact: true }).last()
+    ).toBeVisible();
+  });
+
+  test("clears a DHCP lease after confirmation", async ({ page }) => {
+    const dashboard = page.getByTestId("dhcp-dashboard");
+    await expect(dashboard.getByText("10.0.0.10")).toBeVisible({
+      timeout: TEST_TIMEOUT,
+    });
+
+    await dashboard.getByRole("button", { name: "Clear lease 10.0.0.10" }).click();
+    const dialog = page.getByRole("dialog", { name: "Clear DHCP lease?" });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("button", { name: "Clear lease" }).click();
+
+    await expect(page.getByText("Lease cleared", { exact: true })).toBeVisible();
+    await expect(dashboard.getByText("10.0.0.10")).toHaveCount(0);
+  });
+
   test("displays External Services section with Nautobot link", async ({
     page,
   }) => {
@@ -116,4 +154,3 @@ test.describe("Home Page (Splash Page)", () => {
     await expect(page).toHaveURL(/\/configs$/);
   });
 });
-

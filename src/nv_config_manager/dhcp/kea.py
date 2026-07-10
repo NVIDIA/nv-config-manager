@@ -175,3 +175,39 @@ class KeaClient:
             raise TimeoutError(
                 "KEA Request timed out, are you running within a KEA Docker Container?"
             ) from exc
+
+    async def get_lease_page(self, limit: int = 100) -> list[dict[str, Any]]:
+        """Return the first page of IPv4 leases from KEA."""
+        data = {
+            "command": "lease4-get-page",
+            "service": ["dhcp4"],
+            "arguments": {"from": "start", "limit": limit},
+        }
+        session = await self._get_session()
+        try:
+            async with session.post(self.url, json=data) as rsp:
+                rsp.raise_for_status()
+                result: list[dict[str, Any]] = await rsp.json()
+                return result
+        except TimeoutError as exc:
+            raise TimeoutError(
+                "KEA Request timed out, are you running within a KEA Docker Container?"
+            ) from exc
+
+    async def get_statistics(self, version: int = 4) -> list[dict[str, Any]]:
+        """Return all statistics recorded by the KEA DHCP service."""
+        data = {
+            "command": "statistic-get-all",
+            "service": [f"dhcp{version}"],
+            "arguments": {},
+        }
+        session = await self._get_session()
+        try:
+            async with session.post(self.url, json=data) as rsp:
+                rsp.raise_for_status()
+                result: list[dict[str, Any]] = await rsp.json()
+                return result
+        except TimeoutError as exc:
+            raise TimeoutError(
+                "KEA Request timed out, are you running within a KEA Docker Container?"
+            ) from exc

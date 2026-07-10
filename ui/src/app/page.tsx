@@ -17,6 +17,7 @@
  */
 
 import { useRuntimeConfig } from "@/config/runtime";
+import { LeaseDashboard } from "@/components/dhcp";
 import {
   Card,
   CardContent,
@@ -236,6 +237,8 @@ export default function HomePage() {
             Network automation and configuration management platform
           </p>
         </div>
+
+        <LeaseDashboard dhcpUrl={config.dhcpUrl} />
 
         <ServiceSection title="User Interfaces" services={internalServices} />
         <ServiceSection title="External Services" services={externalServices} />

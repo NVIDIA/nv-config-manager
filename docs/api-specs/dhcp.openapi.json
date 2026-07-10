@@ -30,6 +30,144 @@
         "title": "LeaseArguments",
         "type": "object"
       },
+      "LeaseDashboardResponse": {
+        "description": "Lease, reservation, and pool data used by the splash-page dashboard.",
+        "properties": {
+          "active_lease_count": {
+            "title": "Active Lease Count",
+            "type": "integer"
+          },
+          "assigned_address_count": {
+            "title": "Assigned Address Count",
+            "type": "integer"
+          },
+          "leases": {
+            "items": {
+              "$ref": "#/components/schemas/LeaseRecord"
+            },
+            "title": "Leases",
+            "type": "array"
+          },
+          "leases_truncated": {
+            "title": "Leases Truncated",
+            "type": "boolean"
+          },
+          "pool_address_count": {
+            "title": "Pool Address Count",
+            "type": "integer"
+          },
+          "pools": {
+            "items": {
+              "$ref": "#/components/schemas/PoolUsage"
+            },
+            "title": "Pools",
+            "type": "array"
+          },
+          "reservation_count": {
+            "title": "Reservation Count",
+            "type": "integer"
+          },
+          "reservations": {
+            "items": {
+              "$ref": "#/components/schemas/ReservationRecord"
+            },
+            "title": "Reservations",
+            "type": "array"
+          },
+          "reservations_truncated": {
+            "title": "Reservations Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "active_lease_count",
+          "reservation_count",
+          "assigned_address_count",
+          "pool_address_count",
+          "leases_truncated",
+          "reservations_truncated",
+          "leases",
+          "reservations",
+          "pools"
+        ],
+        "title": "LeaseDashboardResponse",
+        "type": "object"
+      },
+      "LeaseRecord": {
+        "description": "Active IPv4 lease returned by KEA.",
+        "properties": {
+          "client_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Id"
+          },
+          "cltt": {
+            "title": "Cltt",
+            "type": "integer"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "hostname": {
+            "default": "",
+            "title": "Hostname",
+            "type": "string"
+          },
+          "hw_address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hw Address"
+          },
+          "ip_address": {
+            "format": "ipv4",
+            "title": "Ip Address",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "integer"
+          },
+          "subnet_id": {
+            "title": "Subnet Id",
+            "type": "integer"
+          },
+          "valid_lft": {
+            "title": "Valid Lft",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ip_address",
+          "subnet_id",
+          "state",
+          "cltt",
+          "valid_lft",
+          "expires_at"
+        ],
+        "title": "LeaseRecord",
+        "type": "object"
+      },
       "LeaseRequest": {
         "additionalProperties": false,
         "description": "Restricted KEA command envelope for IPv4 lease operations.",
@@ -62,6 +200,102 @@
           "arguments"
         ],
         "title": "LeaseRequest",
+        "type": "object"
+      },
+      "PoolUsage": {
+        "description": "Current allocation statistics for a configured IPv4 pool.",
+        "properties": {
+          "assigned": {
+            "title": "Assigned",
+            "type": "integer"
+          },
+          "pool": {
+            "title": "Pool",
+            "type": "string"
+          },
+          "subnet": {
+            "title": "Subnet",
+            "type": "string"
+          },
+          "subnet_id": {
+            "title": "Subnet Id",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "utilization": {
+            "title": "Utilization",
+            "type": "number"
+          }
+        },
+        "required": [
+          "subnet_id",
+          "subnet",
+          "pool",
+          "assigned",
+          "total",
+          "utilization"
+        ],
+        "title": "PoolUsage",
+        "type": "object"
+      },
+      "ReservationRecord": {
+        "description": "Configured IPv4 reservation.",
+        "properties": {
+          "hostname": {
+            "default": "",
+            "title": "Hostname",
+            "type": "string"
+          },
+          "identifier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Identifier"
+          },
+          "identifier_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Identifier Type"
+          },
+          "ip_address": {
+            "anyOf": [
+              {
+                "format": "ipv4",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ip Address"
+          },
+          "subnet_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subnet Id"
+          }
+        },
+        "title": "ReservationRecord",
         "type": "object"
       },
       "ValidationError": {
@@ -301,6 +535,54 @@
           }
         ],
         "summary": "Proxy Lease Command"
+      }
+    },
+    "/lease-dashboard": {
+      "get": {
+        "description": "Return bounded lease, reservation, and pool data for operators.",
+        "operationId": "get_lease_dashboard_lease_dashboard_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeaseDashboardResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Lease Dashboard"
       }
     },
     "/whoami": {

@@ -15,12 +15,13 @@
 """Simple HealthCheck API for DHCP Server."""
 
 import argparse
+import asyncio
 from ipaddress import IPv4Address
 from typing import Any, Literal
 
 import uvicorn
 from aiohttp import ClientError, ClientResponseError
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import Response
 from prometheus_client import CONTENT_TYPE_LATEST, Gauge, generate_latest
 from prometheus_fastapi_instrumentator import Instrumentator
@@ -30,7 +31,11 @@ from pydantic import BaseModel, ConfigDict, Field
 from nv_config_manager.common.auth import install_identity_probe
 from nv_config_manager.common.config import load_config
 from nv_config_manager.common.log import configure_logging
-from nv_config_manager.dhcp.kea import KeaClient, LeaseCommand
+from nv_config_manager.dhcp.kea import KeaClient, KeaException, LeaseCommand
+from nv_config_manager.dhcp.lease_dashboard import (
+    LeaseDashboardResponse,
+    build_lease_dashboard,
+)
 from nv_config_manager.dhcp.redis import RedisClient
 
 configure_logging(service="dhcp")
@@ -132,6 +137,32 @@ async def proxy_lease_command(request: Request, lease_request: LeaseRequest) -> 
     except ClientResponseError as exc:
         raise HTTPException(status_code=500, detail=str(exc.message)) from exc
     except ClientError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    finally:
+        await client.close()
+
+
+@app.get("/lease-dashboard", response_model=LeaseDashboardResponse)
+async def get_lease_dashboard(
+    request: Request,
+    limit: int = Query(default=100, ge=1, le=500),
+) -> LeaseDashboardResponse:
+    """Return bounded lease, reservation, and pool data for operators."""
+    client = KeaClient.from_config()
+    try:
+        config, leases, statistics = await asyncio.gather(
+            client.get_config(4),
+            client.get_lease_page(limit),
+            client.get_statistics(4),
+        )
+        return build_lease_dashboard(config, leases, statistics, limit=limit)
+    except TimeoutError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except ClientResponseError as exc:
+        raise HTTPException(status_code=500, detail=str(exc.message)) from exc
+    except ClientError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except KeaException as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     finally:
         await client.close()

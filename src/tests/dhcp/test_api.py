@@ -98,6 +98,41 @@ LEASE_GET_RESPONSE = [
     }
 ]
 
+LEASE_DASHBOARD_CONFIG = [
+    {
+        "result": 0,
+        "arguments": {
+            "Dhcp4": {
+                "reservations": [
+                    {
+                        "hostname": "reserved-switch",
+                        "hw-address": "02:00:00:00:00:01",
+                        "ip-address": "10.0.0.2",
+                    }
+                ],
+                "subnet4": [
+                    {
+                        "id": 7,
+                        "subnet": "10.0.0.0/24",
+                        "pools": [{"pool": "10.0.0.10-10.0.0.19"}],
+                    }
+                ],
+            }
+        },
+    }
+]
+
+LEASE_DASHBOARD_STATISTICS = [
+    {
+        "result": 0,
+        "arguments": {
+            "assigned-addresses": [[1, "2026-07-10 00:00:00"]],
+            "subnet[7].pool[0].assigned-addresses": [[1, "2026-07-10 00:00:00"]],
+            "subnet[7].pool[0].total-addresses": [[10, "2026-07-10 00:00:00"]],
+        },
+    }
+]
+
 
 def make_jwt_token(claims: dict) -> tuple[str, rsa.RSAPublicKey]:
     """Create a signed JWT and return it with the public key for JWKS mocking."""
@@ -530,3 +565,109 @@ def test_proxy_lease_connection_error():
 
     assert rsp.status_code == 500
     assert rsp.json() == {"detail": "KEA connection failed"}
+
+
+def test_get_lease_dashboard():
+    """Verify GET /lease-dashboard combines bounded KEA operator data."""
+    client = TestClient(app)
+    lease_page = [
+        {
+            "result": 0,
+            "arguments": {
+                "leases": [
+                    {
+                        "cltt": int(time.time()) - 60,
+                        "hostname": "active-switch",
+                        "hw-address": "02:00:00:00:00:10",
+                        "ip-address": "10.0.0.10",
+                        "state": 0,
+                        "subnet-id": 7,
+                        "valid-lft": 3600,
+                    }
+                ]
+            },
+        }
+    ]
+
+    with (
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_config",
+            new_callable=AsyncMock,
+            return_value=LEASE_DASHBOARD_CONFIG,
+        ) as mock_get_config,
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_lease_page",
+            new_callable=AsyncMock,
+            return_value=lease_page,
+        ) as mock_get_lease_page,
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_statistics",
+            new_callable=AsyncMock,
+            return_value=LEASE_DASHBOARD_STATISTICS,
+        ) as mock_get_statistics,
+        patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED),
+    ):
+        rsp = client.get("/lease-dashboard?limit=25")
+        assert rsp.status_code == 403
+
+        rsp = client.get(
+            "/lease-dashboard?limit=25",
+            headers={"X-Auth-Request-Email": "test@example.com"},
+        )
+
+    assert rsp.status_code == 200
+    payload = rsp.json()
+    assert payload["active_lease_count"] == 1
+    assert payload["reservation_count"] == 1
+    assert payload["assigned_address_count"] == 1
+    assert payload["pool_address_count"] == 10
+    assert payload["leases"][0]["ip_address"] == "10.0.0.10"
+    assert payload["reservations"][0]["hostname"] == "reserved-switch"
+    assert payload["pools"][0]["utilization"] == 10.0
+    mock_get_config.assert_awaited_once_with(4)
+    mock_get_lease_page.assert_awaited_once_with(25)
+    mock_get_statistics.assert_awaited_once_with(4)
+
+
+def test_get_lease_dashboard_validates_limit():
+    """Keep the splash-page lease response bounded."""
+    client = TestClient(app)
+
+    with patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED):
+        rsp = client.get(
+            "/lease-dashboard?limit=501",
+            headers={"X-Auth-Request-Email": "test@example.com"},
+        )
+
+    assert rsp.status_code == 422
+
+
+def test_get_lease_dashboard_kea_error():
+    """Surface logical KEA failures as DHCP API errors."""
+    client = TestClient(app)
+
+    with (
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_config",
+            new_callable=AsyncMock,
+            return_value=[{"result": 1, "text": "configuration unavailable"}],
+        ),
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_lease_page",
+            new_callable=AsyncMock,
+            return_value=[{"result": 3, "text": "no leases"}],
+        ),
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_statistics",
+            new_callable=AsyncMock,
+            return_value=LEASE_DASHBOARD_STATISTICS,
+        ),
+        patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED),
+    ):
+        rsp = client.get(
+            "/lease-dashboard",
+            headers={"X-Auth-Request-Email": "test@example.com"},
+        )
+
+    assert rsp.status_code == 500
+    assert rsp.json() == {"detail": "KEA config-get failed: configuration unavailable"}

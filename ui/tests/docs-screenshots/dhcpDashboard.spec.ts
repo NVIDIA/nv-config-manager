@@ -1,0 +1,129 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import fs from "node:fs/promises";
+import path from "node:path";
+
+import { expect, test } from "@playwright/test";
+
+const SCREENSHOT_DIR = path.resolve(
+  __dirname,
+  "../../../docs/assets/images/dhcp",
+);
+
+test.use({
+  colorScheme: "light",
+  viewport: { width: 1440, height: 1000 },
+});
+
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    window.BYPASS_MSW = true;
+  });
+  await page.route("**/api/config", async (route) => {
+    await route.fulfill({
+      status: 200,
+      json: {
+        configStoreApiUrl: "http://localhost:9001",
+        dhcpUrl: "http://127.0.0.1:3000",
+        nautobotUrl: "https://nautobot.nvcm.air",
+        renderServiceUrl: "http://localhost:9002",
+        workflowApiUrl: "http://localhost:9000",
+        ztpUrl: "http://localhost:9003",
+      },
+    });
+  });
+  await page.route("**/healthcheck", async (route) => {
+    await route.fulfill({ status: 200, json: { status: "ok" } });
+  });
+  await page.route("**/whoami", async (route) => {
+    await route.fulfill({
+      status: 200,
+      json: { user: "demo", roles: ["all", "nvcm-network"] },
+    });
+  });
+  await page.route("**/lease-dashboard*", async (route) => {
+    await route.fulfill({
+      status: 200,
+      json: {
+        active_lease_count: 42,
+        reservation_count: 18,
+        assigned_address_count: 42,
+        pool_address_count: 256,
+        leases_truncated: true,
+        reservations_truncated: false,
+        leases: [
+          {
+            ip_address: "10.217.162.42",
+            hostname: "SPINE1-GP1-CIN3-PDX01",
+            hw_address: "02:05:91:48:df:cf",
+            subnet_id: 104,
+            state: 0,
+            cltt: 1783700000,
+            valid_lft: 7200,
+            expires_at: "2026-07-10T18:00:00Z",
+          },
+          {
+            ip_address: "10.217.162.51",
+            hostname: "LEAF1-GP1-CIN2-PDX01",
+            client_id: "00:4d:54:32:34:31:35:58",
+            subnet_id: 104,
+            state: 0,
+            cltt: 1783700300,
+            valid_lft: 7200,
+            expires_at: "2026-07-10T18:05:00Z",
+          },
+          {
+            ip_address: "10.217.162.52",
+            hostname: "LEAF2-GP1-CIN1-PDX01",
+            hw_address: "02:05:91:48:df:d0",
+            subnet_id: 104,
+            state: 0,
+            cltt: 1783700600,
+            valid_lft: 7200,
+            expires_at: "2026-07-10T18:10:00Z",
+          },
+        ],
+        reservations: [],
+        pools: [
+          {
+            subnet_id: 104,
+            subnet: "10.217.162.0/24",
+            pool: "10.217.162.10-10.217.162.199",
+            assigned: 42,
+            total: 190,
+            utilization: 22.1,
+          },
+        ],
+      },
+    });
+  });
+});
+
+test("captures the DHCP lease dashboard", async ({ page }) => {
+  await fs.mkdir(SCREENSHOT_DIR, { recursive: true });
+  await page.goto("/");
+  const dashboard = page.getByTestId("dhcp-dashboard");
+  await expect(
+    dashboard.getByRole("heading", { name: "DHCP lease activity" }),
+  ).toBeVisible();
+  await expect(dashboard.getByText("SPINE1-GP1-CIN3-PDX01")).toBeVisible();
+  await page.evaluate(() => document.fonts.ready);
+  await dashboard.screenshot({
+    path: path.join(SCREENSHOT_DIR, "lease-dashboard.png"),
+  });
+});

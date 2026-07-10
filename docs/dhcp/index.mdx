@@ -121,7 +121,11 @@ The generator runs on a 5-minute interval in the Kubernetes deployment, automati
 
 ## Manage IPv4 Leases
 
-The authenticated DHCP API exposes `POST /lease` for looking up and deleting IPv4 leases. The request uses the Kea command envelope, but only the `lease4-get` and `lease4-del` commands are accepted.
+The Config Manager splash page summarizes active leases, reservations, and pool utilization. Select the **Active leases**, **Reservations**, or **Pool usage** tab to inspect each view. You can also clear an active lease after confirming the action.
+
+![DHCP lease activity dashboard](../assets/images/dhcp/lease-dashboard.png)
+
+The authenticated DHCP API exposes `GET /lease-dashboard` for the bounded dashboard data and `POST /lease` for looking up and deleting individual IPv4 leases. The command request uses the Kea envelope, but only the `lease4-get` and `lease4-del` commands are accepted.
 
 Look up the device holding a lease:
 
