@@ -1,4 +1,5 @@
-{{- if and .Values.gateway.enabled .Values.gateway.create (eq (.Values.gateway.type | default "envoyGateway") "envoyGateway") }}
+{{- if and .Values.gateway.enabled (eq (.Values.gateway.type | default "envoyGateway") "envoyGateway") }}
+{{- if .Values.gateway.create }}
 {{- $policyName := include "nv-config-manager.componentName" (dict "root" . "component" "global-traffic-policy") }}
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: BackendTrafficPolicy
@@ -37,6 +38,7 @@ spec:
           requests: {{ .Values.gateway.rateLimit.global.requests }}
           unit: {{ .Values.gateway.rateLimit.global.unit }}
   {{- end }}
+{{- end }}
 {{- /* -----------------------------------------------------------------------
   ZTP upload policy — overrides the global timeout for the ZTP HTTPRoutes.
   OS image uploads can be up to 5GB and need significantly longer timeouts

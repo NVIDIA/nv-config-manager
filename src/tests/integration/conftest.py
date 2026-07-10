@@ -186,6 +186,12 @@ def sso_enabled(request: pytest.FixtureRequest) -> bool:
 
 
 @pytest.fixture(scope="session")
+def headless_oidc_token() -> str | None:
+    """Return a caller-supplied OIDC token for non-interactive SSO tests."""
+    return os.environ.get("NVCM_OIDC_ACCESS_TOKEN")
+
+
+@pytest.fixture(scope="session")
 def use_port_forward(request: pytest.FixtureRequest) -> bool:
     """True when --use-port-forward is passed."""
     return bool(request.config.getoption("--use-port-forward"))
@@ -301,15 +307,15 @@ def nautobot_port_forward(
 def oidc_auth(
     sso_enabled: bool,
     base_hostname: str,
-    tmp_path_factory: pytest.TempPathFactory,
+    headless_oidc_token: str | None,
 ) -> OIDCAuth | None:
     """Create a session-scoped OIDCAuth instance when --sso is enabled.
 
     Auto-discovers OIDC config from the gateway and performs browser-based
     authentication once for the entire test session. Set
     ``NVCM_OIDC_ACCESS_TOKEN`` to provide a valid token for a headless run;
-    it is stored only in pytest's temporary directory. The cached token is
-    reused across all tests.
+    it is used directly without writing a token cache. The interactive token
+    cache is reused across browser-based test runs.
 
     Returns None when --sso is not enabled.
     """
@@ -319,14 +325,10 @@ def oidc_auth(
     gateway_url = f"https://workflow.{base_hostname}/v1/workflow"
     print(f"\n[SSO] Auto-discovering OIDC config from {gateway_url}...")
 
-    headless_token = os.environ.get("NVCM_OIDC_ACCESS_TOKEN")
-    token_file = tmp_path_factory.mktemp("oidc") / "token.json" if headless_token else None
-
     try:
         auth = OIDCAuth.discover_from_gateway(
             gateway_url,
             verify=False,
-            token_file=token_file,
         )
     except RuntimeError as e:
         pytest.fail(f"OIDC auto-discovery failed: {e}")
@@ -340,8 +342,7 @@ def oidc_auth(
     print(f"[SSO] Discovered issuer: {auth.issuer_url}")
     print(f"[SSO] Discovered client ID: {auth.client_id}")
 
-    if headless_token:
-        auth.save_token({"access_token": headless_token, "expires_in": 3600})
+    if headless_oidc_token:
         print("[SSO] Using NVCM_OIDC_ACCESS_TOKEN for headless authentication")
         return auth
 
@@ -696,10 +697,13 @@ def sftp_host_port(sftp_port_forward: tuple[str, int] | None) -> tuple[str, int]
 # =============================================================================
 
 
-def _make_sso_session(oidc_auth: OIDCAuth) -> requests.Session:
+def _make_sso_session(
+    oidc_auth: OIDCAuth,
+    headless_oidc_token: str | None = None,
+) -> requests.Session:
     """Create a requests session with JWT Bearer auth from OIDCAuth."""
     session = requests.Session()
-    token = oidc_auth.get_access_token()  # uses cached token
+    token = headless_oidc_token or oidc_auth.get_access_token()
     session.headers.update(
         {
             "Authorization": f"Bearer {token}",
@@ -752,10 +756,11 @@ def render_client(
     render_api_url: str,
     sso_enabled: bool,
     oidc_auth: OIDCAuth | None,
+    headless_oidc_token: str | None,
 ) -> requests.Session:
     """Create a configured requests session for Render API."""
     if sso_enabled and oidc_auth:
-        return _make_sso_session(oidc_auth)
+        return _make_sso_session(oidc_auth, headless_oidc_token)
     session = requests.Session()
     session.headers.update({"Content-Type": "application/json"})
     session.verify = False
@@ -767,10 +772,11 @@ def ztp_client(
     ztp_api_url: str,
     sso_enabled: bool,
     oidc_auth: OIDCAuth | None,
+    headless_oidc_token: str | None,
 ) -> requests.Session:
     """Create a configured requests session for ZTP API."""
     if sso_enabled and oidc_auth:
-        return _make_sso_session(oidc_auth)
+        return _make_sso_session(oidc_auth, headless_oidc_token)
     return _make_mock_sso_session()
 
 
@@ -779,10 +785,11 @@ def dhcp_client(
     dhcp_api_url: str,
     sso_enabled: bool,
     oidc_auth: OIDCAuth | None,
+    headless_oidc_token: str | None,
 ) -> requests.Session:
     """Create a configured requests session for DHCP API."""
     if sso_enabled and oidc_auth:
-        return _make_sso_session(oidc_auth)
+        return _make_sso_session(oidc_auth, headless_oidc_token)
     return _make_mock_sso_session()
 
 
@@ -791,6 +798,7 @@ def temporal_client(
     temporal_api_url: str,
     sso_enabled: bool,
     oidc_auth: OIDCAuth | None,
+    headless_oidc_token: str | None,
     temporal_api_port_forward: str,
 ) -> requests.Session:
     """Create a configured requests session for Temporal Workflow API.
@@ -800,7 +808,7 @@ def temporal_client(
     keep-alive connections, causing 'RemoteDisconnected' errors on reuse.
     """
     if sso_enabled and oidc_auth:
-        return _make_sso_session(oidc_auth)
+        return _make_sso_session(oidc_auth, headless_oidc_token)
     return _make_mock_sso_session(close_connections=bool(temporal_api_port_forward))
 
 

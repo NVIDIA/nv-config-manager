@@ -76,7 +76,7 @@ spec:
   rateLimit:
     global:
       extensionRef:
-        name: {{ required "gateway.rateLimit.kgateway.extensionRef.name is required when global rate limiting is enabled for kgateway" (dig "rateLimit" "kgateway" "extensionRef" "name" "" .Values.gateway) | quote }}
+        name: {{ dig "rateLimit" "kgateway" "extensionRef" "name" "" .Values.gateway | quote }}
         {{- with dig "rateLimit" "kgateway" "extensionRef" "namespace" "" .Values.gateway }}
         namespace: {{ . | quote }}
         {{- end }}

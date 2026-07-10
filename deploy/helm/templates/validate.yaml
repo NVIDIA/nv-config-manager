@@ -17,3 +17,20 @@
 {{- if and (eq $gatewayType "kgateway") .Values.gateway.create .Values.gateway.rateLimit.enabled (not (dig "rateLimit" "kgateway" "extensionRef" "name" "" .Values.gateway)) -}}
   {{- fail "gateway.rateLimit.kgateway.extensionRef.name is required when global rate limiting is enabled for kgateway" -}}
 {{- end -}}
+{{- if and .Values.gateway.enabled (eq $gatewayType "kgateway") .Values.gateway.create (dig "nodePort" "enabled" false .Values.gateway) -}}
+  {{- $httpListeners := 0 -}}
+  {{- $httpsListeners := 0 -}}
+  {{- range .Values.gateway.listeners -}}
+    {{- if eq .protocol "HTTP" -}}
+      {{- $httpListeners = add $httpListeners 1 -}}
+    {{- else if eq .protocol "HTTPS" -}}
+      {{- $httpsListeners = add $httpsListeners 1 -}}
+    {{- end -}}
+  {{- end -}}
+  {{- if gt $httpListeners 1 -}}
+    {{- fail "gateway.nodePort supports at most one HTTP listener for kgateway" -}}
+  {{- end -}}
+  {{- if gt $httpsListeners 1 -}}
+    {{- fail "gateway.nodePort supports at most one HTTPS listener for kgateway" -}}
+  {{- end -}}
+{{- end -}}

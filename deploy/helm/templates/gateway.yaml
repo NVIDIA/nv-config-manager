@@ -6,11 +6,12 @@ metadata:
   name: {{ .Values.gateway.name }}
   namespace: {{ .Values.global.namespace }}
   labels:
-    {{- include "nv-config-manager.labels" . | nindent 4 }}
+  {{- include "nv-config-manager.labels" . | nindent 4 }}
   {{- $envoyImage := dig "envoyProxy" "image" "" .Values.gateway }}
+  {{- $envoyResources := dig "envoyProxy" "resources" nil .Values.gateway }}
   {{- $isEnvoyGateway := eq (.Values.gateway.type | default "envoyGateway") "envoyGateway" }}
   {{- $isKgateway := eq (.Values.gateway.type | default "envoyGateway") "kgateway" }}
-  {{- $useOwnProxy := and $isEnvoyGateway (or .Values.gateway.hostNetwork.enabled .Values.gateway.hostPorts.enabled (dig "nodePort" "enabled" false .Values.gateway) .Values.gateway.nlb (dig "envoyProxy" "enabled" false .Values.gateway) $envoyImage) }}
+  {{- $useOwnProxy := and $isEnvoyGateway (or .Values.gateway.hostNetwork.enabled .Values.gateway.hostPorts.enabled (dig "nodePort" "enabled" false .Values.gateway) .Values.gateway.nlb (dig "envoyProxy" "enabled" false .Values.gateway) $envoyImage $envoyResources) }}
   {{- $proxyName := .Values.gateway.envoyProxy.name | default (printf "%s-proxy" .Values.gateway.name) }}
   {{- $kgatewayParametersName := printf "%s-parameters" .Values.gateway.name }}
   {{- if $useOwnProxy }}

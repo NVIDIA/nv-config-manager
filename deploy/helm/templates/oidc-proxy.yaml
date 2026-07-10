@@ -36,7 +36,6 @@
 {{- if .Values.mcp.enabled }}
   {{- $proxies = append $proxies (dict "name" "mcp" "port" 9108 "upstream" (printf "http://%s:9000" $mcpName)) }}
 {{- end }}
-{{- if gt (len $proxies) 0 }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -190,8 +189,7 @@ spec:
   - name: {{ $proxy.name }}
     port: {{ $proxy.port }}
     targetPort: {{ $proxy.name }}
-  {{- end }}
+{{- end }}
   selector:
     app: {{ $proxyName }}
-{{- end }}
 {{- end }}

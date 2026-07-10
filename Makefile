@@ -19,6 +19,10 @@ KIND_SEC_OIDC_CLIENT_SECRET ?= nvcm-local-client-secret
 KIND_SEC_KEYCLOAK_ADMIN_PASSWORD ?= admin
 KIND_SEC_RENDERED_CONFIG ?= /tmp/nvcm-local-sec-$(KIND_CLUSTER_NAME).yaml
 KIND_SEC_GATEWAY_CONTROLLER ?= envoyGateway
+KIND_SEC_GATEWAY_CONTROLLERS := envoyGateway kgateway
+ifneq ($(filter $(KIND_SEC_GATEWAY_CONTROLLER),$(KIND_SEC_GATEWAY_CONTROLLERS)),$(KIND_SEC_GATEWAY_CONTROLLER))
+$(error KIND_SEC_GATEWAY_CONTROLLER must be one of $(KIND_SEC_GATEWAY_CONTROLLERS), got "$(KIND_SEC_GATEWAY_CONTROLLER)")
+endif
 WORKFLOW_PERF_COUNT ?= 100
 WORKFLOW_PERF_RUNNING_COUNT ?= 150
 WORKFLOW_PERF_FAILED_COUNT ?= 1
@@ -785,12 +789,12 @@ kind-up:
 		$(HELM_DEBUG_FLAG) --helm-timeout $(HELM_TIMEOUT)
 
 # Deploy with Kind plus local Keycloak SSO, SPIRE SPIFFE, and workflow RBAC.
-kind-up-sec: KIND_SEC_GATEWAY_CONTROLLER = envoyGateway
-kind-up-sec: kind-up-secure
+kind-up-sec:
+	$(MAKE) kind-up-secure KIND_SEC_GATEWAY_CONTROLLER=envoyGateway
 
 # Same secured local deployment, using kgateway instead of Envoy Gateway.
-kind-up-sec-kgateway: KIND_SEC_GATEWAY_CONTROLLER = kgateway
-kind-up-sec-kgateway: kind-up-secure
+kind-up-sec-kgateway:
+	$(MAKE) kind-up-secure KIND_SEC_GATEWAY_CONTROLLER=kgateway
 
 kind-up-secure:
 	@echo "🚀 Deploying NVIDIA Config Manager with local security stack and $(KIND_SEC_GATEWAY_CONTROLLER) to Kind (config: $(KIND_SEC_INSTALL_CONFIG))..."
