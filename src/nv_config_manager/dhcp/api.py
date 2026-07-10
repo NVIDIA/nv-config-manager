@@ -78,6 +78,25 @@ class LeaseRequest(BaseModel):
     arguments: LeaseArguments
 
 
+async def _fetch_lease_dashboard_sources(
+    client: KeaClient,
+    limit: int,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Fetch dashboard sources and drain every task before returning or raising."""
+    config_task = asyncio.create_task(client.get_config(4))
+    leases_task = asyncio.create_task(client.get_lease_page(limit))
+    statistics_task = asyncio.create_task(client.get_statistics(4))
+    tasks = (config_task, leases_task, statistics_task)
+    try:
+        return await asyncio.gather(*tasks)
+    except BaseException:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        raise
+
+
 def main() -> None:
     """CLI entrypoint for DHCP API."""
 
@@ -150,11 +169,7 @@ async def get_lease_dashboard(
     """Return bounded lease, reservation, and pool data for operators."""
     client = KeaClient.from_config()
     try:
-        config, leases, statistics = await asyncio.gather(
-            client.get_config(4),
-            client.get_lease_page(limit),
-            client.get_statistics(4),
-        )
+        config, leases, statistics = await _fetch_lease_dashboard_sources(client, limit)
         return build_lease_dashboard(config, leases, statistics, limit=limit)
     except TimeoutError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc

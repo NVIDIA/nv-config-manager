@@ -27,6 +27,8 @@ const SCREENSHOT_DIR = path.resolve(
 
 test.use({
   colorScheme: "light",
+  locale: "en-US",
+  timezoneId: "America/Los_Angeles",
   viewport: { width: 1440, height: 1000 },
 });
 

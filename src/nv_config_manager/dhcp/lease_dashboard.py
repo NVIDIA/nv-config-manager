@@ -75,6 +75,7 @@ class LeaseDashboardResponse(BaseModel):
 def _response_arguments(
     payload: list[dict[str, Any]], command: str, *, allow_empty: bool = False
 ) -> dict[str, Any]:
+    """Validate a logical KEA response and return its arguments."""
     if not payload or not isinstance(payload[0], dict):
         raise KeaException(f"KEA returned an invalid {command} response")
 
@@ -93,6 +94,7 @@ def _response_arguments(
 
 
 def _stat_value(statistics: dict[str, Any], name: str) -> int | None:
+    """Return the latest integer value for a KEA statistic."""
     samples = statistics.get(name)
     if not isinstance(samples, list) or not samples:
         return None
@@ -106,6 +108,7 @@ def _stat_value(statistics: dict[str, Any], name: str) -> int | None:
 
 
 def _pool_capacity(pool: str) -> int:
+    """Return the IPv4 capacity represented by a range or network."""
     try:
         if "-" in pool:
             start_text, end_text = (part.strip() for part in pool.split("-", maxsplit=1))
@@ -122,6 +125,7 @@ def _pool_capacity(pool: str) -> int:
 
 
 def _expires_at(cltt: int, valid_lft: int) -> datetime | None:
+    """Convert a KEA lease lifetime into an absolute expiry time."""
     if valid_lft >= 0xFFFFFFFF:
         return None
     try:
@@ -131,6 +135,7 @@ def _expires_at(cltt: int, valid_lft: int) -> datetime | None:
 
 
 def _lease_records(raw_leases: Any) -> list[LeaseRecord]:
+    """Normalize and sort active, unexpired IPv4 leases."""
     if not isinstance(raw_leases, list):
         return []
 
@@ -164,6 +169,7 @@ def _lease_records(raw_leases: Any) -> list[LeaseRecord]:
 
 
 def _reservation_records(dhcp4: dict[str, Any]) -> list[ReservationRecord]:
+    """Flatten global and subnet reservations into dashboard records."""
     raw_reservations: list[tuple[dict[str, Any], int | None]] = []
     for reservation in dhcp4.get("reservations", []):
         if isinstance(reservation, dict):
@@ -212,6 +218,7 @@ def _reservation_records(dhcp4: dict[str, Any]) -> list[ReservationRecord]:
 
 
 def _pool_usage(dhcp4: dict[str, Any], statistics: dict[str, Any]) -> list[PoolUsage]:
+    """Combine configured pools with their current KEA statistics."""
     pools: list[PoolUsage] = []
     for subnet in dhcp4.get("subnet4", []):
         if not isinstance(subnet, dict) or "id" not in subnet:

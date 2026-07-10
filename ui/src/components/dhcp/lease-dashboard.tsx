@@ -90,7 +90,7 @@ function EmptyState({ message }: Readonly<{ message: string }>) {
   );
 }
 
-function formatExpiry(expiresAt?: string): string {
+function formatExpiry(expiresAt?: string | null): string {
   if (!expiresAt) return "Never";
   return new Intl.DateTimeFormat(undefined, {
     dateStyle: "medium",

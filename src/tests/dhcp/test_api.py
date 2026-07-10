@@ -12,12 +12,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import asyncio
 import json
 import os
 import time
 from unittest.mock import AsyncMock, patch
 
 import jwt as pyjwt
+import pytest
 from aiohttp import ClientConnectionError, ClientResponseError, RequestInfo
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
@@ -25,7 +27,8 @@ from multidict import CIMultiDict
 from yarl import URL
 
 from nv_config_manager.common.auth import AuthConfig, JwtProviderConfig
-from nv_config_manager.dhcp.api import app
+from nv_config_manager.dhcp.api import _fetch_lease_dashboard_sources, app
+from nv_config_manager.dhcp.kea import KeaClient
 
 _HEADERS_TRUSTED = AuthConfig(accept_request_headers=True)
 _AUTH_DISABLED = AuthConfig(required=False)
@@ -671,3 +674,48 @@ def test_get_lease_dashboard_kea_error():
 
     assert rsp.status_code == 500
     assert rsp.json() == {"detail": "KEA config-get failed: configuration unavailable"}
+
+
+async def test_dashboard_source_failure_cancels_and_drains_siblings() -> None:
+    """Cancel and await sibling KEA requests before propagating a failure."""
+    lease_started = asyncio.Event()
+    statistics_started = asyncio.Event()
+    cancelled: set[str] = set()
+
+    async def fail_config(version: int) -> list[dict]:
+        """Fail after both sibling requests have started."""
+        assert version == 4
+        await lease_started.wait()
+        await statistics_started.wait()
+        raise ClientConnectionError("KEA connection failed")
+
+    async def block_lease(limit: int) -> list[dict]:
+        """Record cancellation of the in-flight lease request."""
+        assert limit == 25
+        lease_started.set()
+        try:
+            await asyncio.Future()
+        except asyncio.CancelledError:
+            cancelled.add("leases")
+            raise
+
+    async def block_statistics(version: int) -> list[dict]:
+        """Record cancellation of the in-flight statistics request."""
+        assert version == 4
+        statistics_started.set()
+        try:
+            await asyncio.Future()
+        except asyncio.CancelledError:
+            cancelled.add("statistics")
+            raise
+
+    client = KeaClient(host="kea.example.com", port=8000)
+    with (
+        patch.object(client, "get_config", new=AsyncMock(side_effect=fail_config)),
+        patch.object(client, "get_lease_page", new=AsyncMock(side_effect=block_lease)),
+        patch.object(client, "get_statistics", new=AsyncMock(side_effect=block_statistics)),
+        pytest.raises(ClientConnectionError, match="KEA connection failed"),
+    ):
+        await _fetch_lease_dashboard_sources(client, limit=25)
+
+    assert cancelled == {"leases", "statistics"}

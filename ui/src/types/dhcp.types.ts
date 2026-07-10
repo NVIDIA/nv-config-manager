@@ -18,21 +18,21 @@
 export interface DhcpLease {
   ip_address: string;
   hostname: string;
-  hw_address?: string;
-  client_id?: string;
+  hw_address?: string | null;
+  client_id?: string | null;
   subnet_id: number;
   state: number;
   cltt: number;
   valid_lft: number;
-  expires_at?: string;
+  expires_at?: string | null;
 }
 
 export interface DhcpReservation {
-  ip_address?: string;
+  ip_address?: string | null;
   hostname: string;
-  identifier_type?: string;
-  identifier?: string;
-  subnet_id?: number;
+  identifier_type?: string | null;
+  identifier?: string | null;
+  subnet_id?: number | null;
 }
 
 export interface DhcpPoolUsage {
