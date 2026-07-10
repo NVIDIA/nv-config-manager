@@ -54,7 +54,7 @@ RUN npm run build
 # =============================================================================
 # Runtime stage - NVIDIA distroless Node.js
 # =============================================================================
-FROM nvcr.io/nvidia/distroless/node:24-v4.0.9 AS runner
+FROM artifactory.pdx.nvidia.com/sw-distroless-docker-local/distroless/node:24-v4.0.10 AS runner
 
 WORKDIR /app
 
