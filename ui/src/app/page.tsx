@@ -124,6 +124,7 @@ function ServiceSection({ title, services }: Readonly<ServiceSectionProps>) {
   );
 }
 
+/** Render the Config Manager splash page and service health overview. */
 export default function HomePage() {
   const { config, isLoading } = useRuntimeConfig();
 

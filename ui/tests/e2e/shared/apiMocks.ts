@@ -115,6 +115,7 @@ export async function setupApiMocks(page: Page) {
   await mockHealthCheckEndpoint(page);
 }
 
+/** Mock DHCP dashboard and lease deletion behavior for browser tests. */
 export async function mockDhcpEndpoints(page: Page) {
   let clearedLease: string | null = null;
   const leases = [

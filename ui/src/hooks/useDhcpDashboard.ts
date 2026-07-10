@@ -20,6 +20,7 @@ import useSWR from "swr";
 import { sanitizeUrl } from "@/lib/utils";
 import type { DhcpLeaseDashboard } from "@/types/dhcp.types";
 
+/** Fetch and validate the dashboard response from the DHCP API. */
 async function dhcpFetcher(url: string): Promise<DhcpLeaseDashboard> {
   const response = await fetch(url, {
     credentials: "include",
@@ -32,6 +33,7 @@ async function dhcpFetcher(url: string): Promise<DhcpLeaseDashboard> {
   return response.json();
 }
 
+/** Subscribe to refreshed DHCP dashboard data for the splash page. */
 export function useDhcpDashboard(dhcpUrl: string) {
   const url = dhcpUrl
     ? sanitizeUrl(`${dhcpUrl}/lease-dashboard?limit=100`)
@@ -42,6 +44,7 @@ export function useDhcpDashboard(dhcpUrl: string) {
   });
 }
 
+/** Delete an active IPv4 lease through the restricted DHCP proxy. */
 export async function clearDhcpLease(
   dhcpUrl: string,
   ipAddress: string,

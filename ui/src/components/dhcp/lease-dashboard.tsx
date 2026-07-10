@@ -69,6 +69,7 @@ interface MetricProps {
   readonly detail: string;
 }
 
+/** Render one summary metric in the DHCP dashboard header. */
 function Metric({ icon, label, value, detail }: MetricProps) {
   return (
     <div className="rounded-lg border bg-background/60 p-4">
@@ -82,6 +83,7 @@ function Metric({ icon, label, value, detail }: MetricProps) {
   );
 }
 
+/** Render a consistent empty state for a dashboard tab. */
 function EmptyState({ message }: Readonly<{ message: string }>) {
   return (
     <div className="flex min-h-32 items-center justify-center rounded-md border border-dashed p-6 text-sm text-muted-foreground">
@@ -90,6 +92,7 @@ function EmptyState({ message }: Readonly<{ message: string }>) {
   );
 }
 
+/** Format a nullable lease expiry for the operator's locale. */
 function formatExpiry(expiresAt?: string | null): string {
   if (!expiresAt) return "Never";
   return new Intl.DateTimeFormat(undefined, {
@@ -98,6 +101,7 @@ function formatExpiry(expiresAt?: string | null): string {
   }).format(new Date(expiresAt));
 }
 
+/** Render a utilization bar using warning colors near pool capacity. */
 function PoolBar({ utilization }: Readonly<{ utilization: number }>) {
   const color =
     utilization >= 90
@@ -115,6 +119,7 @@ function PoolBar({ utilization }: Readonly<{ utilization: number }>) {
   );
 }
 
+/** Render live DHCP lease, reservation, and pool activity. */
 export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
   const { data, error, isLoading, isValidating, mutate } = useDhcpDashboard(dhcpUrl);
   const { toast } = useToast();
