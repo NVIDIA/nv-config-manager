@@ -35,6 +35,7 @@ class KeaClient:
 
     @staticmethod
     def from_config(config: ConfigParser | None = None, attached: bool = False) -> KeaClient:
+        """Create a KEA client from the configured server and port."""
         if config is None:
             config = load_config()
         if attached:
