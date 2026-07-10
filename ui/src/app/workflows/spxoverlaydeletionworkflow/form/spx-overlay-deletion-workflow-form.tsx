@@ -46,11 +46,11 @@ export const SpXOverlayDeletionWorkflowForm = () => {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const { toast } = useToast();
   const searchParams = useSearchParams();
-  const querySite = (searchParams && searchParams.get("site")) || "";
-  const queryOverlayId = (searchParams && searchParams.get("overlay_id")) || "";
+  const querySite = searchParams?.get("site") || "";
+  const queryOverlayId = searchParams?.get("overlay_id") || "";
   const queryNamespaceTag =
-    (searchParams &&
-      (searchParams.get("namespace_tag") || searchParams.get("namespace"))) ||
+    searchParams?.get("namespace_tag") ||
+    searchParams?.get("namespace") ||
     "spectrumx";
   const {
     data: { siteData: sites },

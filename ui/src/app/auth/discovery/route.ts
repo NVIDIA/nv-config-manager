@@ -25,15 +25,14 @@ type AuthDiscovery = {
   services: Record<string, string>;
 };
 
-const normalizeUrl = (value?: string): string => {
-  const url = value || "";
-  let end = url.length;
+const normalizeUrl = (value = ""): string => {
+  let end = value.length;
 
-  while (end > 0 && url[end - 1] === "/") {
+  while (end > 0 && value[end - 1] === "/") {
     end -= 1;
   }
 
-  return url.slice(0, end);
+  return value.slice(0, end);
 };
 
 const appendPath = (baseUrl: string, path: string): string => {

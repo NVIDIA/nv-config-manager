@@ -54,11 +54,11 @@ export const SitePasswordRotationWorkflowForm = () => {
   const searchParams = useSearchParams();
   
   // Get query parameters
-  const queryLocation = searchParams && searchParams.get("location");
-  const querySecret = searchParams && searchParams.get("selected_secret");
-  const queryRoles = React.useMemo(() => searchParams ? searchParams.getAll("role") : [], [searchParams]);
-  const queryStatuses = React.useMemo(() => searchParams ? searchParams.getAll("status") : [], [searchParams]);
-  const queryTenant = searchParams && searchParams.get("tenant");
+  const queryLocation = searchParams?.get("location");
+  const querySecret = searchParams?.get("selected_secret");
+  const queryRoles = React.useMemo(() => searchParams?.getAll("role") ?? [], [searchParams]);
+  const queryStatuses = React.useMemo(() => searchParams?.getAll("status") ?? [], [searchParams]);
+  const queryTenant = searchParams?.get("tenant");
 
   const form = useForm<z.infer<typeof SitePasswordRotationWorkflowFormSchema>>({
     resolver: zodResolver(SitePasswordRotationWorkflowFormSchema),
@@ -272,11 +272,11 @@ export const SitePasswordRotationWorkflowForm = () => {
                 control={form.control}
                 name="selected_secret"
                 label={
-                  !location 
+                  !location
                     ? "Secret to Rotate (select location first)"
-                    : devicesLoading 
+                    : devicesLoading
                     ? "Secret to Rotate (loading devices...)"
-                    : !firstDeviceId 
+                    : !firstDeviceId
                     ? "Secret to Rotate (no matching devices)"
                     : secretOptions.length === 0
                     ? "Secret to Rotate (loading secrets...)"

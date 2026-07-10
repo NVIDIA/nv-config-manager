@@ -58,8 +58,8 @@ function DiffViewer({
 
   return (
     <div className={`border rounded-lg overflow-hidden ${currentTheme === "dark" ? "diff-dark" : "diff-light"}`}>
-      {files.map((file, idx) => (
-        <div key={idx}>
+      {files.map((file) => (
+        <div key={`${file.oldPath ?? ""}-${file.newPath ?? ""}-${file.type}`}>
           <Diff
             viewType="split"
             diffType={file.type}
@@ -329,4 +329,3 @@ export default function ConfigHistoryPage({
     </div>
   );
 }
-
