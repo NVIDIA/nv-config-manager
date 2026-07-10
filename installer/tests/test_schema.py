@@ -74,6 +74,7 @@ class TestNVConfigManagerInstallConfig:
                 hostname="test.example.com",
                 airgapped=True,
                 size=DeploySize.MEDIUM,
+                service_account_eks_role="arn:aws:iam::123456789012:role/nv-config-manager-s3",
             ),
             secrets=SecretsConfig(config_manager_service_username="myuser"),
             network_secrets=[
@@ -103,6 +104,10 @@ class TestNVConfigManagerInstallConfig:
             assert loaded.cluster.hostname == "test.example.com"
             assert loaded.cluster.airgapped is True
             assert loaded.cluster.size == DeploySize.MEDIUM
+            assert (
+                loaded.cluster.service_account_eks_role
+                == "arn:aws:iam::123456789012:role/nv-config-manager-s3"
+            )
             assert loaded.secrets.config_manager_service_username == "myuser"
             assert len(loaded.network_secrets) == 1
             assert loaded.network_secrets[0].secret_key == "bgp_password"
@@ -449,6 +454,7 @@ class TestGitTokenConfig:
         assert zs.storage_class == ""
         assert zs.s3_bucket == ""
         assert zs.s3_endpoint == ""
+        assert zs.s3_region == ""
         assert zs.s3_ceph.enabled is False
         assert zs.os_images == []
 
@@ -521,6 +527,7 @@ class TestGitTokenConfig:
                     type=ZTPStorageType.S3,
                     s3_bucket="firmware-images",
                     s3_endpoint="https://minio.example",
+                    s3_region="us-west-2",
                 )
             )
         )
@@ -530,6 +537,7 @@ class TestGitTokenConfig:
         assert zs.type == ZTPStorageType.S3
         assert zs.s3_bucket == "firmware-images"
         assert zs.s3_endpoint == "https://minio.example"
+        assert zs.s3_region == "us-west-2"
 
     def test_ztp_ceph_storage_yaml_keeps_bucket_and_prunes_endpoint(self, tmp_path):
         path = tmp_path / "config.yaml"

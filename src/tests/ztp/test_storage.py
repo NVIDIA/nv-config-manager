@@ -97,6 +97,7 @@ def test_get_storage_client_s3_from_ini(monkeypatch, tmp_path):
                 "storage_type = s3",
                 "s3_bucket = ini-bucket",
                 "s3_endpoint = https://s3.example.test",
+                "s3_region = us-west-2",
                 "s3_access_key = ini-access-key",
                 "s3_secret_key = ini-secret-key",
             ]
@@ -113,6 +114,7 @@ def test_get_storage_client_s3_from_ini(monkeypatch, tmp_path):
     assert isinstance(client, S3Client)
     assert client.bucket == "ini-bucket"
     assert client.custom_endpoint == "https://s3.example.test"
+    assert client.region == "us-west-2"
     assert client.custom_access_key == "ini-access-key"
     assert client.custom_secret_key == "ini-secret-key"
 

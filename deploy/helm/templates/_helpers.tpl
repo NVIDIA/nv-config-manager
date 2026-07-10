@@ -1253,6 +1253,9 @@ s3_bucket = {{ $s3.bucketName | default "ngc-network-firmware-images" }}
 {{ if and (not ($ceph.enabled | default false)) $s3.endpoint -}}
 s3_endpoint = {{ $s3.endpoint }}
 {{ end -}}
+{{ if and (not ($ceph.enabled | default false)) $s3.region -}}
+s3_region = {{ $s3.region }}
+{{ end -}}
 {{ end -}}
 {{- end -}}
 

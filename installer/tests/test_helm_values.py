@@ -120,6 +120,33 @@ class TestGenerateHelmValues:
         assert ext["postgres"]["configStore"]["host"] == "cluster-config-store-rw"
         assert values["mcp"]["enabled"] is True
 
+    def test_s3_irsa_role_and_region(self):
+        """S3 IRSA emits an annotated ServiceAccount without a credentials Secret."""
+        config = _make_config(
+            cluster=ClusterConfig(
+                hostname="test.example.com",
+                environment="prod",
+                service_account_eks_role="arn:aws:iam::123456789012:role/nv-config-manager-s3",
+            ),
+            infrastructure=InfrastructureConfig(
+                ztp_storage=ZTPStorageConfig(
+                    type=ZTPStorageType.S3,
+                    s3_bucket="firmware-images",
+                    s3_region="us-west-2",
+                )
+            ),
+        )
+
+        values = _gen(config)
+
+        assert values["global"]["serviceAccountEksRole"] == (
+            "arn:aws:iam::123456789012:role/nv-config-manager-s3"
+        )
+        assert values["networkZtp"]["storage"]["s3"] == {
+            "bucketName": "firmware-images",
+            "region": "us-west-2",
+        }
+
     def test_local_environment_uses_recreate_deployment_strategy(self):
         values = _gen(
             _make_config(cluster=ClusterConfig(hostname="local.test", environment="local"))

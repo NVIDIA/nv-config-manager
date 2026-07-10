@@ -59,6 +59,7 @@ class S3Client(ObjectStorageClient):
         *,
         bucket: str | None = None,
         custom_endpoint: str | None = None,
+        region: str | None = None,
         custom_access_key: str | None = None,
         custom_secret_key: str | None = None,
     ) -> None:
@@ -77,6 +78,7 @@ class S3Client(ObjectStorageClient):
 
         self._validate_optional_override("bucket", bucket)
         self._validate_optional_override("custom_endpoint", custom_endpoint)
+        self._validate_optional_override("region", region)
         self._validate_optional_override("custom_access_key", custom_access_key)
         self._validate_optional_override("custom_secret_key", custom_secret_key)
 
@@ -88,6 +90,13 @@ class S3Client(ObjectStorageClient):
         self.config = config
         self.custom_endpoint = (
             custom_endpoint if custom_endpoint is not None else os.environ.get("CUSTOM_S3_ENDPOINT")
+        )
+        self.region = (
+            region
+            if region is not None
+            else os.environ.get("CUSTOM_S3_REGION")
+            or os.environ.get("AWS_REGION")
+            or os.environ.get("AWS_DEFAULT_REGION")
         )
         self.custom_access_key = (
             custom_access_key
@@ -119,6 +128,8 @@ class S3Client(ObjectStorageClient):
     async def connect(self) -> Self:
         """Connect to S3 and initialize the client session."""
         client_kwargs: dict[str, Any] = {}
+        if self.region is not None:
+            client_kwargs["region_name"] = self.region
         if self.custom_access_key is not None:
             client_kwargs["aws_access_key_id"] = self.custom_access_key
         if self.custom_secret_key is not None:

@@ -105,6 +105,7 @@ class ClusterConfig(BaseModel):
     environment: str = "local"
     namespace: str = "nv-config-manager"
     release_name: str = "nv-config-manager"
+    service_account_eks_role: str = ""
     airgapped: bool = False
     mock_devices: bool = False
     size: DeploySize = DeploySize.SMALL
@@ -541,6 +542,7 @@ class ZTPStorageConfig(BaseModel):
     node_selector: dict[str, str] = Field(default_factory=dict)
     s3_bucket: str = ""
     s3_endpoint: str = ""
+    s3_region: str = ""
     s3_ceph: ZTPS3CephConfig = Field(default_factory=ZTPS3CephConfig)
     os_images: list[ZTPOSImage] = Field(default_factory=list)
 
@@ -968,13 +970,17 @@ def _prune_ztp_storage(ztp_storage: dict[str, Any]) -> None:
             ztp_storage.pop("s3_bucket", None)
         if s3_ceph.get("enabled"):
             ztp_storage.pop("s3_endpoint", None)
+            ztp_storage.pop("s3_region", None)
         else:
             ztp_storage.pop("s3_ceph", None)
             if not ztp_storage.get("s3_endpoint"):
                 ztp_storage.pop("s3_endpoint", None)
+            if not ztp_storage.get("s3_region"):
+                ztp_storage.pop("s3_region", None)
     else:
         ztp_storage.pop("s3_bucket", None)
         ztp_storage.pop("s3_endpoint", None)
+        ztp_storage.pop("s3_region", None)
         ztp_storage.pop("s3_ceph", None)
 
 

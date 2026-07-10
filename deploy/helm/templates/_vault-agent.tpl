@@ -596,12 +596,12 @@ Using template { source = ... } avoids HCL <<-EOT heredocs, which break if gener
 {{- printf "{{- $ztpS3 := secret %q -}}\n" (printf "%s/data/%s" $m $p) -}}
 {{- $endpointKey := include "nv-config-manager.vault.configuredKeyName" (dict "root" $root "secret" "ztpS3" "key" "endpoint") -}}
 {{- if and (not $s3.endpoint) $endpointKey -}}
-s3_endpoint = {{ include "nv-config-manager.vaultAgent.ctKv2Key" (dict "var" "ztpS3" "key" $endpointKey) }}
+{{- printf "s3_endpoint = %s\n" (include "nv-config-manager.vaultAgent.ctKv2Key" (dict "var" "ztpS3" "key" $endpointKey)) -}}
 {{- end -}}
 {{- $accessKey := include "nv-config-manager.vault.keyName" (dict "root" $root "secret" "ztpS3" "key" "accessKeyId") -}}
 {{- $secretKey := include "nv-config-manager.vault.keyName" (dict "root" $root "secret" "ztpS3" "key" "secretAccessKey") -}}
-s3_access_key = {{ include "nv-config-manager.vaultAgent.ctKv2Key" (dict "var" "ztpS3" "key" $accessKey) }}
-s3_secret_key = {{ include "nv-config-manager.vaultAgent.ctKv2Key" (dict "var" "ztpS3" "key" $secretKey) }}
+{{- printf "s3_access_key = %s\n" (include "nv-config-manager.vaultAgent.ctKv2Key" (dict "var" "ztpS3" "key" $accessKey)) -}}
+{{- printf "s3_secret_key = %s\n" (include "nv-config-manager.vaultAgent.ctKv2Key" (dict "var" "ztpS3" "key" $secretKey)) -}}
 {{- end -}}
 {{- end -}}
 

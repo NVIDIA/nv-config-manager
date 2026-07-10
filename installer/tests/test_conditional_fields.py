@@ -196,6 +196,7 @@ async def test_ztp_ceph_keeps_bucket_input_visible():
     ztp_storage.type = ZTPStorageType.S3
     ztp_storage.s3_bucket = "firmware-images"
     ztp_storage.s3_endpoint = "https://ignored.example"
+    ztp_storage.s3_region = "us-west-2"
     ztp_storage.s3_ceph.enabled = True
 
     app = NVConfigManagerInstallerApp(config=config)
@@ -205,8 +206,10 @@ async def test_ztp_ceph_keeps_bucket_input_visible():
         ztp_screen = app._screens["ztp"]
         assert ztp_screen.query_one("#ztp-s3-bucket-fields").display is True
         assert ztp_screen.query_one("#ztp-s3-endpoint-fields").display is False
+        assert ztp_screen.query_one("#ztp-s3-region-fields").display is False
         assert ztp_screen.query_one("#ztp-s3-bucket", Input).value == "firmware-images"
         app.collect_config()
 
     assert config.infrastructure.ztp_storage.s3_bucket == "firmware-images"
     assert config.infrastructure.ztp_storage.s3_endpoint == ""
+    assert config.infrastructure.ztp_storage.s3_region == ""

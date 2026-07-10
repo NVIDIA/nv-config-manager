@@ -672,6 +672,7 @@ def get_storage_client() -> ObjectStorageClient:
     return S3Client(
         bucket=_nonblank_config_value(ztp_config.get("s3_bucket")),
         custom_endpoint=_nonblank_config_value(ztp_config.get("s3_endpoint")),
+        region=_nonblank_config_value(ztp_config.get("s3_region")),
         custom_access_key=_nonblank_config_value(ztp_config.get("s3_access_key")),
         custom_secret_key=_nonblank_config_value(ztp_config.get("s3_secret_key")),
     )

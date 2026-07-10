@@ -84,6 +84,13 @@ class ZTPScreen(Container):
                     placeholder="https://s3.example.com",
                     id="ztp-s3-endpoint",
                 )
+            with Container(id="ztp-s3-region-fields"):
+                yield Label("AWS S3 Region (IRSA, optional)", classes="field-label")
+                yield Input(
+                    value=zs.s3_region,
+                    placeholder="us-west-2",
+                    id="ztp-s3-region",
+                )
             with Container(id="ztp-s3-ceph-fields"):
                 yield Label("Ceph ObjectBucketClaim Storage Class", classes="field-label")
                 yield Input(
@@ -186,6 +193,7 @@ class ZTPScreen(Container):
         self.query_one("#ztp-s3-fields").display = not is_file
         self.query_one("#ztp-s3-bucket-fields").display = not is_file
         self.query_one("#ztp-s3-endpoint-fields").display = not is_file and not ceph_enabled
+        self.query_one("#ztp-s3-region-fields").display = not is_file and not ceph_enabled
         self.query_one("#ztp-s3-ceph-fields").display = not is_file and ceph_enabled
         self.query_one("#ztp-file-only-fields").display = is_file
 
@@ -249,8 +257,10 @@ class ZTPScreen(Container):
         zs.s3_bucket = self.query_one("#ztp-s3-bucket", Input).value
         if zs.s3_ceph.enabled:
             zs.s3_endpoint = ""
+            zs.s3_region = ""
         else:
             zs.s3_endpoint = self.query_one("#ztp-s3-endpoint", Input).value
+            zs.s3_region = self.query_one("#ztp-s3-region", Input).value
         zs.s3_ceph.object_bucket_claim.storage_class_name = self.query_one(
             "#ztp-s3-ceph-storage-class", Input
         ).value
@@ -276,6 +286,7 @@ class ZTPScreen(Container):
             self.query_one(_W_ZTP_FILE, RadioButton).value = zs.type == ZTPStorageType.FILE
             self.query_one("#ztp-s3-bucket", Input).value = zs.s3_bucket
             self.query_one("#ztp-s3-endpoint", Input).value = zs.s3_endpoint
+            self.query_one("#ztp-s3-region", Input).value = zs.s3_region
             self.query_one("#ztp-s3-ceph-enabled", Checkbox).value = zs.s3_ceph.enabled
             self.query_one(
                 "#ztp-s3-ceph-storage-class", Input

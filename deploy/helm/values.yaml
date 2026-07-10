@@ -51,6 +51,8 @@ global:
   # ServiceAccount creation - set to false if SA is provided by platform team
   createServiceAccount: true
   serviceAccountName: vault-access-sa
+  # AWS IAM role ARN to annotate on this ServiceAccount for EKS IRSA.
+  # Leave empty unless workloads use AWS services such as S3 without static credentials.
   serviceAccountEksRole: ""
   # Image pull secrets for all services
   imagePullSecrets:
@@ -1446,6 +1448,9 @@ networkZtp:
       # Optional custom endpoint. Leave empty to use the default AWS S3 client resolution.
       # Ignored when ceph.enabled=true; the generated Rook Endpoint secret key is authoritative.
       endpoint: ""
+      # AWS region for standard S3/IRSA. When unset, the AWS SDK uses its default region chain.
+      # Ignored when ceph.enabled=true.
+      region: ""
       # Optional existing Kubernetes Secret containing custom S3 credentials.
       # When set, secrets.method must be kubernetes so the secret-assembler can
       # render these keys into the main nv-config-manager.ini. Otherwise

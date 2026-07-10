@@ -384,6 +384,8 @@ def _build_global(
         "createServiceAccount": True,
         "serviceAccountName": "vault-access-sa",
     }
+    if c.service_account_eks_role:
+        section["serviceAccountEksRole"] = c.service_account_eks_role
 
     if c.environment == "local":
         section["deploymentStrategy"] = {"type": "Recreate"}
@@ -726,6 +728,8 @@ def _build_ztp_storage(config: NVConfigManagerInstallConfig) -> dict[str, Any]:
         else:
             if zs.s3_endpoint:
                 s3_cfg["endpoint"] = zs.s3_endpoint
+            if zs.s3_region:
+                s3_cfg["region"] = zs.s3_region
             if _has_ztp_s3_k8s_credentials(config):
                 s3_cfg["credentialsSecret"] = _ZTP_S3_CREDENTIALS_SECRET_NAME
         if s3_cfg:
