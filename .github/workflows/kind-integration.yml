@@ -224,12 +224,18 @@ jobs:
           # which needs the CONFIGURED security deploy above; otherwise those tests
           # skip themselves.
           #
-          # The security deploy (kind-up-sec) provisions SSO/SPIFFE/RBAC only -- it
-          # does NOT load the mock topology / render / DHCP fixtures the rest of the
-          # integration suite depends on, so running the full suite here produces
-          # spurious failures (and test_render hangs into the timeout). Scope a
-          # security run to the RBAC suite unless the caller pinned an explicit
-          # test_path.
+          # Why scope down, instead of running the whole suite? The security deploy
+          # (kind-up-sec) turns SSO + SPIFFE enforcement ON. The rest of the
+          # integration suite calls protected service endpoints WITHOUT a bearer
+          # token, so under this deploy they 401 (and test_render hangs into the
+          # timeout). Only the RBAC suite is written to mint a token (headless
+          # password grant against the local Keycloak) and authenticate. Note the
+          # mock topology IS loaded here -- kind-up-sec deploys
+          # deploy/configs/local-sec.yaml, which installs development/mock_topology
+          # and runs MockTopologyDesign -- so missing fixtures are NOT the reason.
+          # Making the full suite auth-aware (so it can run under the security
+          # deploy) is tracked as follow-up. Until then, scope a security run to the
+          # RBAC suite unless the caller pinned an explicit test_path.
           RBAC_FLAG=""
           TEST_TARGET="${TEST_PATH}"
           if [ "${SECURITY}" = "true" ]; then
