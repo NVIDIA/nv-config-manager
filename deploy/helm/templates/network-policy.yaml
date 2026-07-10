@@ -67,7 +67,7 @@ spec:
 # LoadBalancer can reach the Gateway without exposing application pods.
 # =============================================================================
 */}}
-{{- if and .Values.networkPolicy.enabled .Values.gateway.enabled .Values.gateway.create (eq (.Values.gateway.type | default "envoyGateway") "kgateway") (gt (len (.Values.gateway.listeners | default list)) 0) }}
+{{- if and .Values.networkPolicy.enabled .Values.gateway.enabled .Values.gateway.create (eq (include "nv-config-manager.gatewayControllerType" .) "kgateway") (gt (len (.Values.gateway.listeners | default list)) 0) }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

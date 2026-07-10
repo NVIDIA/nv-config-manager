@@ -1,4 +1,4 @@
-{{- if and .Values.gateway.enabled (eq (.Values.gateway.type | default "envoyGateway") "kgateway") }}
+{{- if and .Values.gateway.enabled (eq (include "nv-config-manager.gatewayControllerType" .) "kgateway") }}
 {{/*
 Route labels avoid duplicating every HTTPRoute name here and, unlike a
 Gateway-level timeout policy, preserve kgateway's HTTPRoute timeout semantics.

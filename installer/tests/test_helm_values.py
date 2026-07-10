@@ -613,7 +613,7 @@ class TestGenerateHelmValues:
         )
         values = _gen(config)
 
-        assert values["gateway"]["type"] == "kgateway"
+        assert values["ingress"]["type"] == "kgateway"
         assert values["gateway"]["className"] == "kgateway"
         assert values["gateway"]["create"] is True
         assert values["gateway"]["createGatewayClass"] is False
@@ -637,7 +637,7 @@ class TestGenerateHelmValues:
         values = _gen(config)
 
         gateway = values["gateway"]
-        assert gateway["type"] == "kgateway"
+        assert values["ingress"]["type"] == "kgateway"
         assert gateway["create"] is False
         assert gateway["name"] == "shared-gateway"
         assert gateway["namespace"] == "shared-gateway-system"

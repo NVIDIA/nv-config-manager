@@ -81,6 +81,25 @@ strategy:
 {{- end -}}
 
 {{/*
+Resolve the Gateway API controller selected by the chart.
+
+`ingress.type` predates the Gateway API migration and remains the canonical
+controller selector so existing values files do not need a no-op rename.
+`gateway.type` is accepted as a transition alias for configurations generated
+by early Gateway API releases. Setting both to different values is ambiguous.
+*/}}
+{{- define "nv-config-manager.gatewayControllerType" -}}
+{{- $ingress := .Values.ingress | default dict -}}
+{{- $gateway := .Values.gateway | default dict -}}
+{{- $ingressType := get $ingress "type" | default "" -}}
+{{- $gatewayType := get $gateway "type" | default "" -}}
+{{- if and $ingressType $gatewayType (ne $ingressType $gatewayType) -}}
+{{- fail (printf "ingress.type (%q) and gateway.type (%q) must match when both are set" $ingressType $gatewayType) -}}
+{{- end -}}
+{{- coalesce $ingressType $gatewayType "envoyGateway" -}}
+{{- end -}}
+
+{{/*
 Generate the base hostname for the gateway
 */}}
 {{- define "nv-config-manager.hostname" -}}

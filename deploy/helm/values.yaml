@@ -576,14 +576,20 @@ externalServices:
     enabled: false
     baseUrl: ""
 # =============================================================================
+# Gateway API Controller
+# =============================================================================
+# `ingress.type` remains the controller selector for compatibility with
+# existing values files. It selects a Gateway API implementation. Supported
+# values are envoyGateway and kgateway; leave empty to use envoyGateway.
+ingress:
+  type: ""
+# =============================================================================
 # Gateway API Configuration
 # =============================================================================
 # HTTPRoutes are portable across Envoy Gateway and kgateway. The chart can
 # create a dedicated Gateway or attach routes to an existing shared Gateway.
 gateway:
   enabled: true
-  # Gateway API implementation used for controller-specific resources.
-  type: envoyGateway
   # Set false to attach HTTPRoutes to an existing/shared Gateway. In shared
   # mode the chart does not create a Gateway, GatewayClass, certificate, or
   # controller-specific Gateway policy.
@@ -780,7 +786,7 @@ gateway:
     kgateway:
       extensionRef:
         # Name of an operator-managed gateway.kgateway.dev/GatewayExtension.
-        # Required only when rateLimit.enabled=true with gateway.type=kgateway.
+        # Required only when rateLimit.enabled=true with ingress.type=kgateway.
         name: ""
         # Leave blank when the extension is in the Gateway namespace.
         namespace: ""
@@ -875,8 +881,9 @@ gateway:
 oidc:
   # Enable SSO/OIDC authentication for browser access
   enabled: false
-  # Register one redirect URI with the identity provider:
-  # https://<gateway.baseHostname>/oauth2/callback
+  # Optional existing OIDC callback hostname. Defaults to gateway.baseHostname.
+  # Register https://<hostname>/oauth2/callback with the identity provider.
+  hostname: ""
 
   # OIDC issuer URL (e.g., Azure AD, Okta, Keycloak, etc.)
   # For Azure AD v2.0: https://login.microsoftonline.com/{tenant-id}/v2.0

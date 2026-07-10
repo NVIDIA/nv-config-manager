@@ -455,13 +455,12 @@ def _build_secrets(config: NVConfigManagerInstallConfig) -> dict[str, Any]:
 
 
 def _build_gateway(config: NVConfigManagerInstallConfig) -> dict[str, Any]:
-    """Build the ``gateway`` section of Helm values."""
+    """Build the Gateway API controller and ``gateway`` Helm values sections."""
     lb = config.infrastructure.load_balancer
     gateway_type = config.infrastructure.gateway.value
     default_class_name = "kgateway" if gateway_type == "kgateway" else "envoy-gateway"
     gateway: dict[str, Any] = {
         "enabled": True,
-        "type": gateway_type,
         "create": config.infrastructure.create_gateway,
         "name": config.infrastructure.gateway_name,
         "namespace": config.infrastructure.gateway_namespace,
@@ -482,7 +481,7 @@ def _build_gateway(config: NVConfigManagerInstallConfig) -> dict[str, Any]:
 
     gateway["auth"] = {"jwt": _build_jwt_section(config)}
     gateway["rateLimit"] = {"enabled": False}
-    return gateway
+    return {"ingress": {"type": gateway_type}, "gateway": gateway}
 
 
 def _build_jwt_section(config: NVConfigManagerInstallConfig) -> dict[str, Any]:
@@ -898,7 +897,7 @@ def build_values(
         paths_section = vault_section.setdefault("paths", {})
         paths_section["gitTokens"] = git_tokens_list
 
-    values["gateway"] = _build_gateway(config)
+    values.update(_build_gateway(config))
     values["spiffe"] = _build_spiffe(config)
     values["networkPolicy"] = {
         "enabled": True,

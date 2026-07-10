@@ -3,7 +3,7 @@
 {{- if hasKey .Values.gateway "createGatewayClass" }}
   {{- $createGatewayClass = .Values.gateway.createGatewayClass }}
 {{- end }}
-{{- if and .Values.gateway.enabled .Values.gateway.create $createGatewayClass (eq (.Values.gateway.type | default "envoyGateway") "envoyGateway") }}
+{{- if and .Values.gateway.enabled .Values.gateway.create $createGatewayClass (eq (include "nv-config-manager.gatewayControllerType" .) "envoyGateway") }}
 apiVersion: gateway.networking.k8s.io/v1
 kind: GatewayClass
 metadata:

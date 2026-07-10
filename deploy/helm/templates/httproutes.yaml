@@ -141,6 +141,7 @@ spec:
 {{- $configStoreName := include "nv-config-manager.componentName" (dict "root" . "component" "config-store") }}
 {{- $mcpName := include "nv-config-manager.componentName" (dict "root" . "component" "mcp") }}
 {{- $oidcProxyName := include "nv-config-manager.componentName" (dict "root" . "component" "oidc-proxy") }}
+{{- $oidcCallbackHostname := .Values.oidc.hostname | default .Values.gateway.baseHostname }}
 
 {{- if .Values.gateway.enabled }}
 
@@ -158,7 +159,7 @@ spec:
   parentRefs:
   {{- include "nv-config-manager.gatewayParentRef" . | nindent 2 }}
   hostnames:
-  - {{ .Values.gateway.baseHostname | quote }}
+  - {{ $oidcCallbackHostname | quote }}
   rules:
   - matches:
     - path:

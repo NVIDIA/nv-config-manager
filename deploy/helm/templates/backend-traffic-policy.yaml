@@ -1,4 +1,4 @@
-{{- if and .Values.gateway.enabled (eq (.Values.gateway.type | default "envoyGateway") "envoyGateway") }}
+{{- if and .Values.gateway.enabled (eq (include "nv-config-manager.gatewayControllerType" .) "envoyGateway") }}
 {{- if .Values.gateway.create }}
 {{- $policyName := include "nv-config-manager.componentName" (dict "root" . "component" "global-traffic-policy") }}
 apiVersion: gateway.envoyproxy.io/v1alpha1

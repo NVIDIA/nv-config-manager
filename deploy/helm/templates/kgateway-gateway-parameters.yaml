@@ -1,4 +1,4 @@
-{{- if and .Values.gateway.enabled .Values.gateway.create (eq (.Values.gateway.type | default "envoyGateway") "kgateway") (dig "nodePort" "enabled" false .Values.gateway) }}
+{{- if and .Values.gateway.enabled .Values.gateway.create (eq (include "nv-config-manager.gatewayControllerType" .) "kgateway") (dig "nodePort" "enabled" false .Values.gateway) }}
 apiVersion: gateway.kgateway.dev/v1alpha1
 kind: GatewayParameters
 metadata:

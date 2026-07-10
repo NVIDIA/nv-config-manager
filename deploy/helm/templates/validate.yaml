@@ -1,9 +1,12 @@
-{{- $gatewayType := .Values.gateway.type | default "envoyGateway" -}}
-{{- if hasKey .Values "ingress" -}}
-  {{- fail "ingress.* is no longer supported; configure gateway.type (envoyGateway or kgateway) and gateway.create instead" -}}
+{{- $gatewayType := include "nv-config-manager.gatewayControllerType" . -}}
+{{- $ingress := .Values.ingress | default dict -}}
+{{- range $key, $_ := $ingress -}}
+  {{- if ne $key "type" -}}
+    {{- fail (printf "ingress.%s is no longer supported; retain only ingress.type (envoyGateway or kgateway) and configure Gateway API settings under gateway.*" $key) -}}
+  {{- end -}}
 {{- end -}}
 {{- if not (has $gatewayType (list "envoyGateway" "kgateway")) -}}
-  {{- fail (printf "gateway.type must be one of envoyGateway or kgateway, got %q" $gatewayType) -}}
+  {{- fail (printf "ingress.type must be one of envoyGateway or kgateway, got %q" $gatewayType) -}}
 {{- end -}}
 {{- if and .Values.gateway.create (ne (.Values.gateway.namespace | default .Values.global.namespace) .Values.global.namespace) -}}
   {{- fail "gateway.namespace may differ from global.namespace only when gateway.create=false (shared gateway mode)" -}}

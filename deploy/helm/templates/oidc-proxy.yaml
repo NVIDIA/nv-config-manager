@@ -8,6 +8,8 @@
 {{- $nautobotName := include "nv-config-manager.componentName" (dict "root" . "component" "nautobot") }}
 {{- $configStoreName := include "nv-config-manager.componentName" (dict "root" . "component" "config-store") }}
 {{- $mcpName := include "nv-config-manager.componentName" (dict "root" . "component" "mcp") }}
+{{- $oidcCallbackHostname := .Values.oidc.hostname | default .Values.gateway.baseHostname }}
+{{- $internalIssuerUrl := .Values.oidc.internalIssuerUrl | default "" }}
 {{- $proxies := list }}
 {{- /* A dedicated callback proxy keeps OIDC usable when the UI is disabled. */}}
 {{- $proxies = append $proxies (dict "name" "callback" "port" 9109 "upstream" "static://200") }}
@@ -51,7 +53,7 @@ data:
     oidc_issuer_url = {{ $.Values.oidc.issuerUrl | quote }}
     client_id = {{ $.Values.oidc.clientId | quote }}
     client_secret_file = "/etc/oidc-secret/client-secret"
-    redirect_url = {{ printf "https://%s%s/oauth2/callback" $.Values.gateway.baseHostname (ternary (printf ":%v" $.Values.oidc.callbackPort) "" (not (empty $.Values.oidc.callbackPort))) | quote }}
+    redirect_url = {{ printf "https://%s%s/oauth2/callback" $oidcCallbackHostname (ternary (printf ":%v" $.Values.oidc.callbackPort) "" (not (empty $.Values.oidc.callbackPort))) | quote }}
     http_address = {{ printf "0.0.0.0:%v" $proxy.port | quote }}
     upstreams = [{{ $proxy.upstream | quote }}]
     email_domains = ["*"]
@@ -72,23 +74,23 @@ data:
     set_xauthrequest = true
     oidc_groups_claim = {{ $.Values.oidc.groupsClaim | default "groups" | quote }}
     silence_ping_logging = true
-    {{- with $.Values.oidc.internalIssuerUrl }}
+    {{- with $internalIssuerUrl }}
     # Keep the public issuer for token validation, but use explicit in-cluster
     # endpoints when the public hostname is not reachable from workloads.
     skip_oidc_discovery = true
     {{- end }}
-    {{- if $.Values.oidc.internalIssuerUrl }}
+    {{- if $internalIssuerUrl }}
     login_url = {{ required "oidc.authorizationEndpoint is required when oidc.internalIssuerUrl disables discovery" $.Values.oidc.authorizationEndpoint | quote }}
     {{- else }}
     {{- with $.Values.oidc.authorizationEndpoint }}
     login_url = {{ . | quote }}
     {{- end }}
     {{- end }}
-    {{- if or $.Values.oidc.tokenEndpoint $.Values.oidc.internalIssuerUrl }}
-    redeem_url = {{ (ternary (printf "%s/protocol/openid-connect/token" (trimSuffix "/" $.Values.oidc.internalIssuerUrl)) $.Values.oidc.tokenEndpoint (not (empty $.Values.oidc.internalIssuerUrl))) | quote }}
+    {{- if or $.Values.oidc.tokenEndpoint $internalIssuerUrl }}
+    redeem_url = {{ (ternary (printf "%s/protocol/openid-connect/token" (trimSuffix "/" $internalIssuerUrl)) $.Values.oidc.tokenEndpoint (not (empty $internalIssuerUrl))) | quote }}
     {{- end }}
-    {{- if or $.Values.oidc.jwksUri $.Values.oidc.internalIssuerUrl }}
-    oidc_jwks_url = {{ ($.Values.oidc.jwksUri | default (printf "%s/protocol/openid-connect/certs" (trimSuffix "/" $.Values.oidc.internalIssuerUrl))) | quote }}
+    {{- if or $.Values.oidc.jwksUri $internalIssuerUrl }}
+    oidc_jwks_url = {{ ($.Values.oidc.jwksUri | default (printf "%s/protocol/openid-connect/certs" (trimSuffix "/" $internalIssuerUrl))) | quote }}
     {{- end }}
   {{- end }}
 ---
