@@ -146,56 +146,16 @@ jobs:
           # `make kind-up`), so the two toggles are mutually exclusive; security
           # wins if both are set.
           #
-          # We create the cluster up front and preload the security stack's
-          # runtime images (Keycloak, SPIRE, and their helpers). The security
-          # dependencies are helm-installed straight into the cluster, so without
-          # a preload the kind nodes pull them anonymously from quay.io / ghcr.io
-          # / registry.k8s.io mid-deploy -- exactly the uncached pulls that blow
-          # the helm --wait timeout (same rationale as the observability preload
-          # below). Keep these in sync with SPIRE_VERSION / KEYCLOAK_* in
-          # deploy/operator-versions.env; re-derive the SPIRE set with:
-          #   helm template spire spiffe/spire --version <SPIRE_VERSION> | grep image:
+          # `make kind-up-sec` creates the cluster and installs the security
+          # dependencies (cert-manager, Envoy Gateway, SPIRE, Keycloak) itself,
+          # pulling their images in-cluster through the runner's registry proxy
+          # cache. We deliberately do NOT pre-`kind load` those images: the
+          # runner's Docker uses the containerd image store, which keeps a
+          # multi-arch index that `kind load` can't import ("content digest not
+          # found"), and the in-cluster pulls complete within the helm timeout
+          # anyway.
           if [ "${SECURITY}" = "true" ]; then
             echo "Security stack enabled for this run"
-
-            kind create cluster --name "${KIND_CLUSTER_NAME}" \
-              --config deploy/kind-config.yaml --wait 5m
-
-            SECURITY_PRELOAD_IMAGES="
-              quay.io/keycloak/keycloak:26.0
-              curlimages/curl:8.15.0
-              ghcr.io/spiffe/spire-server:1.15.1
-              ghcr.io/spiffe/spire-agent:1.15.1
-              ghcr.io/spiffe/spiffe-csi-driver:0.2.7
-              ghcr.io/spiffe/spiffe-helper:0.11.0
-              ghcr.io/spiffe/oidc-discovery-provider:1.15.1
-              ghcr.io/spiffe/spire-controller-manager:0.6.6
-              docker.io/smallstep/step-cli:0.30.2
-              busybox:1.37.0-uclibc
-              registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.15.0
-              registry.k8s.io/kubectl:v1.31.0
-            "
-            # Load via a single-platform archive rather than `kind load
-            # docker-image`. The runner's Docker uses the containerd image store,
-            # which keeps the full multi-arch index for each pulled image; both
-            # `kind load docker-image` and a plain `docker save` then fail with
-            # "content digest ... not found" because the sibling-platform blobs
-            # were never fetched. `docker save --platform=linux/amd64` exports
-            # only the platform we actually run, which `kind load image-archive`
-            # imports cleanly. Best-effort: if any step fails we warn and fall
-            # back to the in-cluster pull rather than failing the whole job.
-            for img in ${SECURITY_PRELOAD_IMAGES}; do
-              echo "Preloading ${img}"
-              archive="$(mktemp --suffix=.tar)"
-              if docker pull --platform=linux/amd64 "${img}" \
-                && docker save --platform=linux/amd64 "${img}" -o "${archive}" \
-                && kind load image-archive "${archive}" --name "${KIND_CLUSTER_NAME}"; then
-                echo "  preloaded ${img}"
-              else
-                echo "::warning::preload failed for ${img}; relying on in-cluster pull"
-              fi
-              rm -f "${archive}"
-            done
 
             make kind-up-sec \
               KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME}" \
@@ -263,16 +223,29 @@ jobs:
           # --rbac opts into the group-mapping RBAC suite (test_rbac_group_mapping.py),
           # which needs the CONFIGURED security deploy above; otherwise those tests
           # skip themselves.
+          #
+          # The security deploy (kind-up-sec) provisions SSO/SPIFFE/RBAC only -- it
+          # does NOT load the mock topology / render / DHCP fixtures the rest of the
+          # integration suite depends on, so running the full suite here produces
+          # spurious failures (and test_render hangs into the timeout). Scope a
+          # security run to the RBAC suite unless the caller pinned an explicit
+          # test_path.
           RBAC_FLAG=""
+          TEST_TARGET="${TEST_PATH}"
           if [ "${SECURITY}" = "true" ]; then
             RBAC_FLAG="--rbac"
+            case "${TEST_PATH}" in
+              src/tests/integration | src/tests/integration/)
+                TEST_TARGET="src/tests/integration/test_rbac_group_mapping.py"
+                ;;
+            esac
           fi
 
           for attempt in 1 2 3; do
             echo "Attempt ${attempt} of 3"
             results_file="integration-test-results-${attempt}.xml"
             set +e
-            timeout --kill-after=1m 15m uv run pytest "${TEST_PATH}" -v \
+            timeout --kill-after=1m 15m uv run pytest "${TEST_TARGET}" -v \
               --ci \
               ${RBAC_FLAG} \
               --nv-config-manager-namespace "${NV_CONFIG_MANAGER_NAMESPACE}" \
