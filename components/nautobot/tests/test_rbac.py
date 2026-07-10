@@ -65,64 +65,27 @@ def test_load_group_mapping_groups_key(rbac, tmp_path):
     assert out["admins"]["is_superuser"] is True
 
 
-def test_load_group_mapping_azure_app_roles_key_is_accepted_for_cerebro_compat(rbac, tmp_path):
-    path = tmp_path / "m.yaml"
-    path.write_text(
-        textwrap.dedent(
-            """\
-            azure_app_roles:
-              - name: "all-ro"
-                nautobot_permissions:
-                  view:
-                    content_types: ["all"]
-            """
-        )
-    )
-    out = rbac.load_group_mapping(str(path))
-    assert "all-ro" in out
-
-
-def test_load_group_mapping_groups_wins_over_azure_app_roles_when_both_present(rbac, tmp_path):
-    path = tmp_path / "m.yaml"
-    path.write_text(
-        textwrap.dedent(
-            """\
-            groups:
-              - name: native
-            azure_app_roles:
-              - name: cerebro
-            """
-        )
-    )
-    out = rbac.load_group_mapping(str(path))
-    assert set(out) == {"native"}
-
-
 @pytest.mark.parametrize(
     "body,fragment",
     [
         ("- not_a_mapping", "top-level must be a mapping"),
-        # Top-level falsy non-``None`` values used to be coerced to ``{}`` by
-        # ``yaml.safe_load(fh) or {}`` and bypassed the top-level validator,
-        # silently disabling RBAC.  Each must now raise.  (Empty file -- which
-        # ``safe_load`` returns as ``None`` -- is still a legitimate "no
-        # mappings" idiom and is covered by
+        # Top-level falsy non-``None`` values must raise rather than being
+        # coerced to ``{}`` (which would bypass the top-level validator and
+        # silently disable RBAC).  (Empty file -- which ``safe_load`` returns as
+        # ``None`` -- is still a legitimate "no mappings" idiom and is covered by
         # ``test_load_group_mapping_empty_file_returns_empty``.)
         ("false\n", "top-level must be a mapping"),
         ("0\n", "top-level must be a mapping"),
         ("[]\n", "top-level must be a mapping"),
         ("''\n", "top-level must be a mapping"),
         ("groups: not_a_list", "'groups' must be a list"),
-        # The key-present-but-falsy cases: previously the ``or [] `` chain
-        # in the loader swallowed these and silently disabled RBAC.  They
-        # MUST raise so an operator typo is loud, not silent.
+        # The key-present-but-falsy cases MUST raise so an operator typo is loud,
+        # not silent: a ``groups or []`` idiom would swallow these and disable
+        # RBAC.
         ("groups: {}", "'groups' must be a list"),
         ("groups: ''", "'groups' must be a list"),
         ("groups: false", "'groups' must be a list"),
         ("groups: 0", "'groups' must be a list"),
-        # Same checks for the cerebro-compat key when ``groups`` is absent.
-        ("azure_app_roles: {}", "'azure_app_roles' must be a list"),
-        ("azure_app_roles: ''", "'azure_app_roles' must be a list"),
         ("groups:\n  - 'a string'", "must be a mapping"),
         ("groups:\n  - {}", "must have a non-empty string 'name'"),
         ("groups:\n  - name: 42", "must have a non-empty string 'name'"),
@@ -151,14 +114,11 @@ def test_load_group_mapping_validation_errors(rbac, tmp_path, body, fragment):
     [
         # Key absent entirely.
         "other_key: foo\n",
-        # Explicit empty list (nv-config-manager-native).
+        # Explicit empty list.
         "groups: []\n",
         # Explicit YAML null (idiomatic "key present, no value").
         "groups: null\n",
         "groups:\n",  # bare key with no value also parses to null
-        # Same for the cerebro-compat key.
-        "azure_app_roles: []\n",
-        "azure_app_roles: null\n",
     ],
 )
 def test_load_group_mapping_unconfigured_returns_empty(rbac, tmp_path, body):
@@ -171,24 +131,6 @@ def test_load_group_mapping_unconfigured_returns_empty(rbac, tmp_path, body):
     """
     path = tmp_path / "m.yaml"
     path.write_text(body)
-    assert rbac.load_group_mapping(str(path)) == {}
-
-
-def test_load_group_mapping_explicit_empty_native_groups_does_not_fall_back_to_azure_compat(rbac, tmp_path):
-    """If the operator explicitly writes ``groups: []`` while
-    ``azure_app_roles`` is also set, the explicit nv-config-manager-native empty wins
-    (no surprise inheritance from the cerebro-compat key).
-    """
-    path = tmp_path / "m.yaml"
-    path.write_text(
-        textwrap.dedent(
-            """\
-            groups: []
-            azure_app_roles:
-              - name: leftover-from-cerebro
-            """
-        )
-    )
     assert rbac.load_group_mapping(str(path)) == {}
 
 
@@ -217,9 +159,9 @@ def test_load_group_mapping_yaml_parse_error_wrapped(rbac, tmp_path):
 
 def test_load_group_mapping_invalid_utf8_wrapped_as_read_error(rbac, tmp_path):
     """Non-UTF8 bytes must surface as ``GroupMappingReadError`` so the
-    caller's fail-closed path runs.  Previously the bare ``open(...)``
-    raised ``UnicodeDecodeError`` past ``except GroupMappingError`` in
-    ``_get_or_create_user_from_claims`` and crashed the login.
+    caller's fail-closed path runs.  A bare ``open(...)`` would let
+    ``UnicodeDecodeError`` propagate past ``except GroupMappingError`` in
+    ``_get_or_create_user_from_claims`` and crash the login.
     """
     path = tmp_path / "m.yaml"
     # 0xff is invalid as a leading byte in UTF-8.
@@ -448,9 +390,9 @@ def test_resolve_content_types_rejects_multi_dot_and_empty_halves(
 ):
     """Tightened parser: only ``app.model`` or ``app.*`` are accepted.
 
-    The previous implementation split on the first ``.`` and accepted any
-    ``model`` ending in ``.*`` -- so a typo like ``"ipam.prefix.*"`` silently
-    widened access to the entire ``ipam`` app.  These shapes now log a
+    A naive parser that split on the first ``.`` and accepted any ``model``
+    ending in ``.*`` would let a typo like ``"ipam.prefix.*"`` silently widen
+    access to the entire ``ipam`` app.  These shapes now log a
     warning and contribute zero content types, never reaching the DB filter.
     """
     filter_calls_before = patched_content_type_manager.filter.call_count
@@ -465,8 +407,8 @@ def test_resolve_content_types_rejects_multi_dot_and_empty_halves(
 
 
 def test_resolve_content_types_does_not_widen_on_prefix_wildcard_typo(rbac, patched_content_type_manager):
-    """Regression: ``"ipam.prefix.*"`` previously returned all of ipam.
-    Now it returns nothing and the valid entries are still resolved."""
+    """Guard: ``"ipam.prefix.*"`` must resolve to nothing (not all of ipam),
+    while the valid entries are still resolved."""
     out = rbac._resolve_content_types(["dcim.device", "ipam.prefix.*", "ipam.ipaddress"])
     resolved = {(c.app_label, c.model) for c in out}
     assert resolved == {("dcim", "device"), ("ipam", "ipaddress")}
@@ -756,9 +698,9 @@ def test_apply_group_permission_config_uses_update_or_create_for_upsert_safety(
 ):
     """Concurrent logins for the same group must not race the create path.
 
-    The previous implementation snapshotted ``group.object_permissions.all()``
-    and then branched on "is this name in the snapshot?" -- two concurrent
-    logins could both miss the snapshot and both INSERT, one winning, the
+    A naive implementation that snapshotted ``group.object_permissions.all()``
+    and then branched on "is this name in the snapshot?" would let two concurrent
+    logins both miss the snapshot and both INSERT, one winning, the
     other tripping ``IntegrityError`` and rolling back the whole sync
     transaction.  Even a follow-up ``get_or_create`` fallback left the path
     half-cooked because the snapshot could also hand back a row another

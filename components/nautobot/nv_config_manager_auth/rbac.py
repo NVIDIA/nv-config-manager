@@ -42,9 +42,7 @@ Django Groups defined outside the mapping (e.g. manually-created admin groups
 the operator wants to keep static) are never touched -- we only read/write
 group memberships and ObjectPermissions for the names listed in the mapping.
 
-Mapping file format -- the keyset is intentionally provider-agnostic; both
-``groups:`` (preferred) and ``azure_app_roles:`` (cerebro-compatible) are
-accepted::
+Mapping file format -- entries live under a top-level ``groups:`` key::
 
     groups:
       - name: "ipam-rw"               # name from the JWT roles claim
@@ -127,9 +125,9 @@ ALL_CONTENT_TYPES = "all"
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
 
 # Django/Nautobot internal models that should NOT be touched by an "all"
-# expansion.  Cerebro maintains a similar list -- granting view/change on
-# session storage, social-auth scratch tables, celery beat schedules etc. is
-# always wrong.  Keep this conservative; opt-in by explicit name if needed.
+# expansion.  Granting view/change on session storage, social-auth scratch
+# tables, celery beat schedules etc. is always wrong.  Keep this conservative;
+# opt-in by explicit name if needed.
 _EXCLUDED_FROM_ALL: frozenset[str] = frozenset(
     {
         "sessions.session",
@@ -247,12 +245,12 @@ def load_group_mapping(path: str | None = None) -> dict[str, dict[str, Any]]:
     path = path or _mapping_path()
 
     # Funnel every filesystem failure mode into ``GroupMappingError`` so the
-    # caller's documented fail-closed path always runs.  The previous
-    # ``if not os.path.isfile(path): return {}`` + bare ``open()`` pattern
-    # left a TOCTOU window (file deleted between check and open) and never
-    # caught ``PermissionError`` / ``IsADirectoryError`` / ``UnicodeDecodeError``;
-    # any of those would surface as a raw ``OSError`` past
-    # ``except GroupMappingError`` in the caller and crash the login.
+    # caller's documented fail-closed path always runs.  An ``isfile()`` check
+    # plus a bare ``open()`` would leave a TOCTOU window (file deleted between
+    # check and open) and would not catch ``PermissionError`` /
+    # ``IsADirectoryError`` / ``UnicodeDecodeError``; any of those would surface
+    # as a raw ``OSError`` past ``except GroupMappingError`` in the caller and
+    # crash the login.  Catch and translate them here instead.
     try:
         with open(path, encoding="utf-8") as fh:
             data = yaml.safe_load(fh)
@@ -268,33 +266,28 @@ def load_group_mapping(path: str | None = None) -> dict[str, dict[str, Any]]:
     except yaml.YAMLError as exc:
         raise GroupMappingParseError(f"Failed to parse {path}: {exc}") from exc
 
-    # Distinguish "empty file" (``None`` -- legit, treat as no mappings)
-    # from "non-mapping top-level" (``false`` / ``0`` / ``[]`` / ``""`` --
-    # operator error, must surface).  The previous ``yaml.safe_load(fh) or {}``
-    # collapsed every falsy value into ``{}`` and bypassed the validator
-    # below, silently disabling RBAC.
+    # Distinguish "empty file" (``None`` -- legit, treat as no mappings) from
+    # "non-mapping top-level" (``false`` / ``0`` / ``[]`` / ``""`` -- operator
+    # error, must surface).  Coercing every falsy value into ``{}`` would bypass
+    # the validator below and silently disable RBAC, so handle them explicitly.
     if data is None:
         return {}
     if not isinstance(data, dict):
         raise GroupMappingParseError(f"{path}: top-level must be a mapping, got {type(data).__name__}")
 
-    # Accept "groups" (native) or "azure_app_roles" (cerebro-compat).  We
-    # must distinguish "key absent" (feature unconfigured -- legitimate
-    # no-op) from "key present with wrong shape" (operator error -- raise).
-    # The previous ``data.get("groups") or data.get("azure_app_roles") or []``
-    # collapsed both into the empty list, so ``groups: {}``, ``groups: ""``,
-    # ``groups: false``, etc. silently disabled RBAC instead of surfacing
-    # the misconfiguration.
+    # Entries live under ``groups:``.  Distinguish "key absent" (feature
+    # unconfigured -- legitimate no-op) from "key present with wrong shape"
+    # (operator error -- raise).  A ``data.get("groups") or []`` idiom would
+    # collapse ``groups: {}``, ``groups: ""``, ``groups: false`` into the empty
+    # list and silently disable RBAC instead of surfacing the misconfiguration.
     if "groups" in data:
         source_key, entries = "groups", data["groups"]
-    elif "azure_app_roles" in data:
-        source_key, entries = "azure_app_roles", data["azure_app_roles"]
     else:
         source_key, entries = None, []
 
-    # Explicit ``groups: null`` (or ``azure_app_roles: null``) is the YAML
-    # idiom for "key present, no value" -- treat it identically to an
-    # empty list / absent key.  Empty list (``groups: []``) is also fine.
+    # Explicit ``groups: null`` is the YAML idiom for "key present, no value" --
+    # treat it identically to an empty list / absent key.  Empty list
+    # (``groups: []``) is also fine.
     if entries is None:
         entries = []
 
@@ -406,9 +399,9 @@ def sync_groups_and_permissions(
     NOT short-circuit on an empty mapping.  When the operator opts into
     the feature and then writes ``groupMapping: []`` (or the YAML fails
     to parse), pass 1 + pass 2 become no-ops and pass 3 prunes everything
-    this module previously granted.  Conflating "empty mapping" with
-    "feature disabled" is how previously-granted memberships /
-    ObjectPermissions used to persist after the operator removed them.
+    this module manages.  Conflating "empty mapping" with "feature
+    disabled" would let managed memberships / ObjectPermissions linger
+    after the operator removed them -- the fail-open behavior this avoids.
 
     Three passes run in order:
 
