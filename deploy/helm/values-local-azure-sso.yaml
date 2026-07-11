@@ -163,6 +163,12 @@ nautobot:
           run:
             content_types: ["extras.job"]
           change:
-            content_types: ["ipam.*"]
+            # A ``status__name`` constraint is applied as a queryset filter at
+            # permission-check time, so it must only target models that actually
+            # have a ``status`` field.  ``ipam.*`` would include status-less
+            # models (Namespace, RIR, VLANGroup, RouteTarget) and Nautobot would
+            # raise FieldError when checking them -- list the status-bearing
+            # IPAM models explicitly instead.
+            content_types: ["ipam.ipaddress", "ipam.prefix", "ipam.vlan"]
             constraints:
               status__name: "Active"

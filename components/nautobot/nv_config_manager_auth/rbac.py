@@ -87,9 +87,21 @@ the user is removed from the Django Group and the group's managed
 references them) deleted outright.  The Django Group row itself stays put
 so operators retain final say over the group catalog.
 
-Manual Django Groups (no ``<group>_<action>`` perms attached) are not
-touched -- operators can layer manual groups on top without worrying
-about a YAML edit silently revoking them.
+This holds even for *membership-only* entries (an entry with no
+``nautobot_permissions``, used to map an IdP role onto a group whose
+ObjectPermissions the operator curates by hand): such a group would carry
+no ``<group>_<action>`` row, so on first sync we attach an inert marker
+permission (``<group>_nvcm-managed-membership``, no actions/object-types --
+it grants nothing) that records the membership as module-managed.  The
+revocation pass keys off that marker, so removing the entry revokes the
+membership just like a permission-bearing entry.
+
+The ``<group>_*`` ObjectPermission namespace is therefore **reserved** for
+this module.  Purely-manual Django Groups (never named in the mapping, with
+no ``<group>_*`` perms attached) are never touched -- operators can layer
+them on top freely.  Operators must not, however, hand-create
+ObjectPermissions named ``<group>_<something>`` on a *mapped* group: those
+names are treated as module-owned and may be overwritten or pruned.
 
 Known limitation for the ``is_superuser: true`` revocation pass:
 ``is_superuser: true`` entries strip their group's managed perms (see
@@ -124,11 +136,46 @@ DEFAULT_MAPPING_PATH = "/app/config/group-mapping.yaml"
 ALL_CONTENT_TYPES = "all"
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
 
-# Django/Nautobot internal models that should NOT be touched by an "all"
+# Reserved provenance marker for *membership-only* mapping entries (entries with
+# no ``nautobot_permissions`` -- the operator maps an IdP role onto a group whose
+# ObjectPermissions they curate by hand).  Such a group would otherwise carry no
+# ``<group>_<action>`` row, so the revocation pass could not tell the membership
+# was module-managed and would leave the user in the group after the entry was
+# removed.  We attach an inert ObjectPermission (no actions, no object types --
+# it grants nothing) named ``<group>_<this suffix>`` purely as that marker.  The
+# hyphenated suffix cannot collide with a real Nautobot action name.
+_MEMBERSHIP_MARKER_SUFFIX = "nvcm-managed-membership"
+
+
+def _membership_marker_name(group_name: str) -> str:
+    """Return the reserved inert-marker ObjectPermission name for *group_name*."""
+    return f"{group_name}_{_MEMBERSHIP_MARKER_SUFFIX}"
+
+# Identity / access-control models that must NEVER be swept in by an ``"all"``
+# expansion: granting write here is privilege escalation, not data access.
+# ``users.token`` lets a holder mint API tokens for any account;
+# ``users.objectpermission`` + ``auth.permission`` let them widen their own
+# grants; ``users.user`` / ``auth.group`` let them flip ``is_superuser`` or
+# rewrite group membership.  Nautobot's own ObjectPermission admin form filters
+# these out of the assignable object-type list for the same reason -- an ``all``
+# mapping must not be a backdoor around that policy.  A caller can still grant
+# access to one of these deliberately by naming it explicitly (``app.model``).
+_PRIVILEGE_MODELS: frozenset[str] = frozenset(
+    {
+        "auth.group",
+        "auth.permission",
+        "contenttypes.contenttype",
+        "users.user",
+        "users.token",
+        "users.objectpermission",
+    }
+)
+
+# Django/Nautobot internal plumbing that should NOT be touched by an "all"
 # expansion.  Granting view/change on session storage, social-auth scratch
 # tables, celery beat schedules etc. is always wrong.  Keep this conservative;
 # opt-in by explicit name if needed.
-_EXCLUDED_FROM_ALL: frozenset[str] = frozenset(
+_EXCLUDED_FROM_ALL: frozenset[str] = _PRIVILEGE_MODELS | frozenset(
     {
         "sessions.session",
         "social_django.association",
@@ -336,8 +383,12 @@ def _resolve_content_types(spec: list[str]) -> list[ContentType]:
 
     Accepted entries (exactly one dot, both halves non-empty):
         * ``"all"``                  -- every model (minus :data:`_EXCLUDED_FROM_ALL`)
-        * ``"<app_label>.*"``        -- every model in that app
-        * ``"<app_label>.<model>"``  -- a single model
+        * ``"<app_label>.*"``        -- every model in that app (minus
+          :data:`_PRIVILEGE_MODELS`, so ``users.*`` / ``auth.*`` can't sweep in
+          token/permission/user models)
+        * ``"<app_label>.<model>"``  -- a single model (the deliberate escape
+          hatch: an identity/privilege model can only be granted by naming it
+          exactly, never via a wildcard)
 
     Anything else is malformed and logged + skipped, including:
         * ``"ipam.prefix.*"``  -- multi-dot; would otherwise be parsed as
@@ -369,7 +420,11 @@ def _resolve_content_types(spec: list[str]) -> list[ContentType]:
             log.warning("rbac: ignoring malformed content_type %r (expected 'app.model' or 'app.*')", entry)
             continue
         if model == "*":
-            out.extend(ContentType.objects.filter(app_label=app_label))
+            out.extend(
+                ct
+                for ct in ContentType.objects.filter(app_label=app_label)
+                if f"{ct.app_label}.{ct.model}" not in _PRIVILEGE_MODELS
+            )
             continue
         try:
             out.append(ContentType.objects.get(app_label=app_label, model=model))
@@ -436,12 +491,17 @@ def _revoke_removed_mapping_groups(user: Any, current_managed_names: set[str]) -
 
     For every Django Group the user belongs to that is **not** in the current
     mapping, we inspect its attached ``ObjectPermission`` rows: if at least
-    one follows our ``<group_name>_<action>`` naming pattern, the group was
-    previously managed by this module.  We then:
+    one carries our reserved ``<group_name>_`` prefix -- either a
+    ``<group_name>_<action>`` perm or the inert
+    ``<group_name>_nvcm-managed-membership`` marker left by a membership-only
+    entry -- the group was managed by this module.  We then:
 
     * remove the user's membership;
-    * detach every ``<group_name>_<action>`` permission from the group, and
+    * detach every ``<group_name>_`` permission from the group, and
       delete the permission row outright when no other group still holds it.
+
+    A group with only manual, non-``<group_name>_`` perms (or none) is treated
+    as purely operator-curated and left alone.
 
     The Django Group row itself is left in place -- the operator may have
     other intentions for it (manually-managed users, scheduled deletion,
@@ -565,6 +625,12 @@ def _apply_group_permission_config(group: Group, perms_config: dict[str, dict[st
 
     Permissions are named ``"<group>_<action>"`` so they round-trip
     predictably and we can prune any that no longer appear in the config.
+    The ``<group>_*`` name prefix is **reserved** for this module -- operators
+    must not hand-create ObjectPermissions with that prefix on a mapped group,
+    as they will be treated as module-owned (overwritten / pruned).  An entry
+    with no ``perms_config`` (membership-only) gets a single inert
+    ``<group>_nvcm-managed-membership`` marker instead so its membership is
+    still revocable.
 
     The snapshot below is used **only** to drive the prune pass at the
     bottom (it tells us which managed ``<group>_<action>`` rows were
@@ -580,6 +646,23 @@ def _apply_group_permission_config(group: Group, perms_config: dict[str, dict[st
     existing_perms = {perm.name: perm for perm in group.object_permissions.all()}
 
     kept_perm_names: set[str] = set()
+
+    # Membership-only entry (no per-action config): drop an inert provenance
+    # marker so a later entry removal can be detected + revoked
+    # (:func:`_revoke_removed_mapping_groups`).  When the entry *does* carry
+    # actions, the ``<group>_<action>`` rows are the marker and a stale
+    # membership marker (from a prior membership-only state) is pruned below.
+    if not perms_config:
+        marker_name = _membership_marker_name(group.name)
+        kept_perm_names.add(marker_name)
+        marker, _created = ObjectPermission.objects.update_or_create(
+            name=marker_name,
+            defaults={"actions": [], "constraints": {}},
+        )
+        marker.object_types.set([])
+        if group not in marker.groups.all():
+            marker.groups.add(group)
+
     for action, action_config in perms_config.items():
         if not isinstance(action_config, dict):
             log.warning(

@@ -309,8 +309,15 @@ def patched_content_type_manager(rbac, monkeypatch):
         _ct("ipam", "ipaddress"),
         _ct("ipam", "prefix"),
         _ct("dcim", "device"),
-        _ct("sessions", "session"),  # excluded from "all"
-        _ct("admin", "logentry"),  # excluded from "all"
+        _ct("sessions", "session"),  # excluded from "all" (internal plumbing)
+        _ct("admin", "logentry"),  # excluded from "all" (internal plumbing)
+        # Identity / privilege models: excluded from "all" AND "app.*" wildcards
+        # (privilege escalation), grantable only by exact name.
+        _ct("users", "user"),
+        _ct("users", "token"),
+        _ct("users", "objectpermission"),
+        _ct("auth", "group"),
+        _ct("auth", "permission"),
     ]
 
     objects = MagicMock()
@@ -344,6 +351,31 @@ def test_resolve_content_types_all_excludes_internal_models(rbac, patched_conten
     # the internal models are filtered out
     assert "sessions.session" not in labels
     assert "admin.logentry" not in labels
+
+
+def test_resolve_content_types_all_excludes_privilege_models(rbac, patched_content_type_manager):
+    """``"all"`` must never sweep in identity/access-control models -- granting
+    write there is privilege escalation (mint tokens, widen own perms, flip
+    is_superuser)."""
+    resolved = rbac._resolve_content_types(["all"])
+    labels = {f"{ct.app_label}.{ct.model}" for ct in resolved}
+    for privileged in ("users.user", "users.token", "users.objectpermission", "auth.group", "auth.permission"):
+        assert privileged not in labels
+
+
+def test_resolve_content_types_app_wildcard_excludes_privilege_models(rbac, patched_content_type_manager):
+    """``users.*`` / ``auth.*`` wildcards must also drop the privilege models --
+    only an exact ``app.model`` spec is the deliberate opt-in."""
+    users = {f"{ct.app_label}.{ct.model}" for ct in rbac._resolve_content_types(["users.*"])}
+    assert users == set()  # every users.* model in the fixture is privileged
+    auth = {f"{ct.app_label}.{ct.model}" for ct in rbac._resolve_content_types(["auth.*"])}
+    assert auth == set()
+
+
+def test_resolve_content_types_exact_privilege_model_is_the_escape_hatch(rbac, patched_content_type_manager):
+    """An identity model can still be granted deliberately by exact name."""
+    resolved = rbac._resolve_content_types(["users.token"])
+    assert [(c.app_label, c.model) for c in resolved] == [("users", "token")]
 
 
 def test_resolve_content_types_app_wildcard(rbac, patched_content_type_manager):
@@ -824,6 +856,58 @@ def test_apply_group_permission_config_prunes_stale_managed_perms(rbac, monkeypa
     manual.delete.assert_not_called()
 
 
+def test_apply_group_permission_config_membership_only_creates_inert_marker(rbac, monkeypatch):
+    """A membership-only entry (no per-action config) gets an inert provenance
+    marker so its membership can later be revoked -- the marker grants nothing
+    (no actions, no object types)."""
+    group = MagicMock()
+    group.name = "net-ops"
+    group.object_permissions.all.return_value = []
+
+    marker = MagicMock()
+    marker.name = rbac._membership_marker_name("net-ops")
+    marker.groups.all.return_value = []
+    update_or_create = MagicMock(return_value=(marker, True))
+    monkeypatch.setattr(rbac.ObjectPermission, "objects", MagicMock(update_or_create=update_or_create))
+
+    rbac._apply_group_permission_config(group, {})
+
+    update_or_create.assert_called_once()
+    kwargs = update_or_create.call_args.kwargs
+    assert kwargs["name"] == "net-ops_nvcm-managed-membership"
+    assert kwargs["defaults"]["actions"] == []  # grants nothing
+    marker.object_types.set.assert_called_once_with([])  # no object types
+    marker.groups.add.assert_called_once_with(group)
+
+
+def test_apply_group_permission_config_membership_marker_pruned_when_actions_added(
+    rbac, monkeypatch, patched_content_type_manager
+):
+    """Transitioning membership-only -> permission-bearing prunes the stale
+    marker (the real ``<group>_<action>`` rows become the provenance)."""
+    group = MagicMock()
+    group.name = "net-ops"
+    stale_marker = MagicMock()
+    stale_marker.name = rbac._membership_marker_name("net-ops")
+    stale_marker.groups.exists.return_value = False
+    group.object_permissions.all.return_value = [stale_marker]
+
+    created = MagicMock()
+    created.name = "net-ops_view"
+    created.object_types.all.return_value = []
+    created.groups.all.return_value = []
+    monkeypatch.setattr(
+        rbac.ObjectPermission,
+        "objects",
+        MagicMock(update_or_create=MagicMock(return_value=(created, True))),
+    )
+
+    rbac._apply_group_permission_config(group, {"view": {"content_types": ["all"]}})
+
+    stale_marker.groups.remove.assert_called_once_with(group)
+    stale_marker.delete.assert_called_once()
+
+
 def test_apply_group_permission_config_warns_on_bad_action_shape(
     rbac, monkeypatch, patched_content_type_manager, caplog
 ):
@@ -878,6 +962,22 @@ def test_revoke_removed_mapping_groups_revokes_and_prunes(rbac):
     matching ``<group>_<action>`` -- the user is removed and the managed
     perms are detached + deleted."""
     retired = _mock_group("retired-net", ["retired-net_view", "retired-net_change"])
+    user = _mock_user_with_groups(retired)
+
+    rbac._revoke_removed_mapping_groups(user, current_managed_names={"ipam-rw"})
+
+    user.groups.remove.assert_called_once_with(retired)
+    for perm in retired.object_permissions.all():
+        perm.groups.remove.assert_called_once_with(retired)
+        perm.delete.assert_called_once()
+
+
+def test_revoke_removed_mapping_groups_revokes_membership_only_via_marker(rbac):
+    """A membership-only entry leaves only the inert marker on the group; that
+    marker must still be enough for pass 3 to revoke the membership when the
+    entry is removed from the mapping."""
+    marker_name = rbac._membership_marker_name("net-ops")
+    retired = _mock_group("net-ops", [marker_name])
     user = _mock_user_with_groups(retired)
 
     rbac._revoke_removed_mapping_groups(user, current_managed_names={"ipam-rw"})
