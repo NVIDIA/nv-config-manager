@@ -477,6 +477,37 @@ def test_proxy_lease_delete():
     mock_lease_command.assert_awaited_once_with("lease4-del", "7.245.196.5")
 
 
+def test_proxy_lease_delete_enforces_allowed_groups():
+    """Reject lease deletion when the caller is outside DHCP's allowed groups."""
+    client = TestClient(app)
+    request = {
+        "command": "lease4-del",
+        "service": ["dhcp4"],
+        "arguments": {"ip-address": "7.245.196.5"},
+    }
+    auth_config = AuthConfig(
+        accept_request_headers=True,
+        allowed_groups=("dhcp-admins",),
+    )
+
+    with patch(
+        "nv_config_manager.dhcp.api.KeaClient.lease_command",
+        new_callable=AsyncMock,
+    ) as mock_lease_command:
+        with patch("nv_config_manager.common.auth._auth_config", auth_config):
+            rsp = client.post(
+                "/lease",
+                json=request,
+                headers={
+                    "X-Auth-Request-Email": "test@example.com",
+                    "X-Auth-Request-Groups": "dhcp-viewers",
+                },
+            )
+
+    assert rsp.status_code == 403
+    mock_lease_command.assert_not_awaited()
+
+
 def test_proxy_lease_rejects_unsupported_requests():
     """Verify the lease proxy cannot be used for arbitrary KEA commands."""
     client = TestClient(app)
