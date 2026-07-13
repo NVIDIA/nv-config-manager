@@ -103,13 +103,33 @@ spec:
         args:
         - |
           set -e
+          PORT={{ $.Values.externalServices.postgres.port }}
+
+          # Idempotently provision a Temporal schema database.
+          # A fresh CNPG database has no schema_version table, so update-schema
+          # fails and we fall back to setup-schema + update-schema. A database
+          # restored from a backup/migration already has schema_version (and the
+          # seeded namespace_metadata row), so update-schema succeeds and applies
+          # only pending upgrades. We must NOT run setup-schema in that case:
+          # setup-schema -v 0.0 rewrites schema_version back to 0.0, causing
+          # update-schema to replay the v1.0 migration and fail on the
+          # namespace_metadata seed insert (duplicate key).
+          run_schema() {
+            ep="$1"; user="$2"; pass="$3"; db="$4"; dir="$5"
+            if temporal-sql-tool --ep "$ep" --user "$user" --password "$pass" --port "$PORT" --db "$db" --plugin postgres12 update-schema -d "$dir"; then
+              echo "Schema for '$db' already initialized; applied any pending updates."
+              return 0
+            fi
+            echo "Schema for '$db' not initialized; performing initial setup..."
+            temporal-sql-tool --ep "$ep" --user "$user" --password "$pass" --port "$PORT" --db "$db" --plugin postgres12 setup-schema -v 0.0
+            temporal-sql-tool --ep "$ep" --user "$user" --password "$pass" --port "$PORT" --db "$db" --plugin postgres12 update-schema -d "$dir"
+          }
+
           echo "Setting up temporal database schema..."
-          temporal-sql-tool --ep "${TEMPORAL_DB_HOST}" --user "${TEMPORAL_DB_USER}" --password "${TEMPORAL_DB_PASS}" --port {{ $.Values.externalServices.postgres.port }} --db {{ $.Values.externalServices.postgres.temporal.database }} --plugin postgres12 setup-schema -v 0.0 || echo "Schema may already exist"
-          temporal-sql-tool --ep "${TEMPORAL_DB_HOST}" --user "${TEMPORAL_DB_USER}" --password "${TEMPORAL_DB_PASS}" --port {{ $.Values.externalServices.postgres.port }} --db {{ $.Values.externalServices.postgres.temporal.database }} --plugin postgres12 update-schema -d /etc/temporal/schema/postgresql/v12/temporal/versioned
+          run_schema "${TEMPORAL_DB_HOST}" "${TEMPORAL_DB_USER}" "${TEMPORAL_DB_PASS}" {{ $.Values.externalServices.postgres.temporal.database }} /etc/temporal/schema/postgresql/v12/temporal/versioned
           
           echo "Setting up temporal visibility database schema..."
-          temporal-sql-tool --ep "${VISIBILITY_DB_HOST}" --user "${VISIBILITY_DB_USER}" --password "${VISIBILITY_DB_PASS}" --port {{ $.Values.externalServices.postgres.port }} --db {{ $.Values.externalServices.postgres.temporal.visibilityDatabase }} --plugin postgres12 setup-schema -v 0.0 || echo "Visibility schema may already exist"
-          temporal-sql-tool --ep "${VISIBILITY_DB_HOST}" --user "${VISIBILITY_DB_USER}" --password "${VISIBILITY_DB_PASS}" --port {{ $.Values.externalServices.postgres.port }} --db {{ $.Values.externalServices.postgres.temporal.visibilityDatabase }} --plugin postgres12 update-schema -d /etc/temporal/schema/postgresql/v12/visibility/versioned
+          run_schema "${VISIBILITY_DB_HOST}" "${VISIBILITY_DB_USER}" "${VISIBILITY_DB_PASS}" {{ $.Values.externalServices.postgres.temporal.visibilityDatabase }} /etc/temporal/schema/postgresql/v12/visibility/versioned
           
           echo "Schema setup complete!"
         env:
