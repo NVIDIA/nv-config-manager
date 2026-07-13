@@ -26,7 +26,7 @@ Before running, confirm:
 | Field | Description | Required |
 | :---- | :---------- | :------- |
 | **Site** | The site the overlay belongs to. | Yes |
-| **Overlay ID** | Identifier of the overlay to delete. | Yes |
+| **Overlay ID** | Identifier of the overlay to delete. The form lists Spectrum-X overlays at the selected site. | Yes |
 | **Namespace Tag** | Nautobot namespace tag used to identify the overlay namespace. | Yes |
 
 After submission, a status page shows the single `delete_spx_overlay` stage. The result distinguishes `deleted_vrfs` from `in_use_vrfs` — the latter are VRFs the workflow refused to delete because they still had bound interfaces.

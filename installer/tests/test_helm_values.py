@@ -35,6 +35,8 @@ from nv_config_manager_installer.schema import (
     JobPath,
     JobsConfig,
     JWTProvider,
+    K8sSecretGroup,
+    KubernetesSecretsConfig,
     LBProvider,
     LoadBalancerConfig,
     MonitoringConfig,
@@ -54,6 +56,9 @@ from nv_config_manager_installer.schema import (
     VaultPathConfig,
     VaultPathsConfig,
     WorkflowRBACOverride,
+    ZTPS3CephConfig,
+    ZTPS3CephObjectBucketClaimConfig,
+    ZTPS3CephObjectStoreUserConfig,
     ZTPStorageConfig,
     ZTPStorageType,
     get_known_workflows,
@@ -114,6 +119,33 @@ class TestGenerateHelmValues:
         assert ext["postgres"]["temporal"]["host"] == "cluster-temporal-rw"
         assert ext["postgres"]["configStore"]["host"] == "cluster-config-store-rw"
         assert values["mcp"]["enabled"] is True
+
+    def test_s3_irsa_role_and_region(self):
+        """S3 IRSA emits an annotated ServiceAccount without a credentials Secret."""
+        config = _make_config(
+            cluster=ClusterConfig(
+                hostname="test.example.com",
+                environment="prod",
+                service_account_eks_role="arn:aws:iam::123456789012:role/nv-config-manager-s3",
+            ),
+            infrastructure=InfrastructureConfig(
+                ztp_storage=ZTPStorageConfig(
+                    type=ZTPStorageType.S3,
+                    s3_bucket="firmware-images",
+                    s3_region="us-west-2",
+                )
+            ),
+        )
+
+        values = _gen(config)
+
+        assert values["global"]["serviceAccountEksRole"] == (
+            "arn:aws:iam::123456789012:role/nv-config-manager-s3"
+        )
+        assert values["networkZtp"]["storage"]["s3"] == {
+            "bucketName": "firmware-images",
+            "region": "us-west-2",
+        }
 
     def test_local_environment_uses_recreate_deployment_strategy(self):
         values = _gen(
@@ -325,6 +357,28 @@ class TestGenerateHelmValues:
         nb = values["secrets"]["vault"]["paths"]["nautobot"]
         assert nb["path"] == "custom/nb"
         assert nb["keys"]["token"] == "token"
+
+    def test_eso_ztp_s3_path(self):
+        config = _make_config(
+            secrets=SecretsConfig(
+                method=SecretsMethod.ESO,
+                vault=VaultConfig(
+                    server="https://vault.test",
+                    secrets_path="nv-config-manager",
+                    paths=VaultPathsConfig(
+                        ztp_s3=VaultPathConfig(enabled=True, path="custom/ztp-s3"),
+                    ),
+                ),
+            ),
+        )
+        values = _gen(config)
+        ztp_s3 = values["secrets"]["vault"]["paths"]["ztpS3"]
+        assert ztp_s3["path"] == "custom/ztp-s3"
+        assert ztp_s3["keys"] == {
+            "endpoint": "",
+            "accessKeyId": "access_key_id",
+            "secretAccessKey": "secret_access_key",
+        }
 
     def test_local_images(self):
         values = _gen(_make_config(), local_images=True)
@@ -918,6 +972,75 @@ class TestZTPStorage:
         storage = values["networkZtp"]["storage"]
         assert storage["type"] == "s3"
         assert "file" not in storage
+
+    def test_s3_storage_generic_overrides(self):
+        """Generic S3 config maps to chart S3 INI settings."""
+        config = _make_config(
+            infrastructure=InfrastructureConfig(
+                ztp_storage=ZTPStorageConfig(
+                    type=ZTPStorageType.S3,
+                    s3_bucket="firmware-images",
+                    s3_endpoint="https://minio.example",
+                )
+            )
+        )
+        values = _gen(config)
+        storage = values["networkZtp"]["storage"]
+        assert storage["type"] == "s3"
+        assert storage["s3"] == {
+            "bucketName": "firmware-images",
+            "endpoint": "https://minio.example",
+        }
+
+    def test_s3_storage_app_secret_credentials(self):
+        """Installer-managed S3 app secrets use a fixed chart Secret name."""
+        config = _make_config(
+            secrets=SecretsConfig(
+                method=SecretsMethod.KUBERNETES,
+                k8s=KubernetesSecretsConfig(
+                    ztp_s3=K8sSecretGroup(
+                        enabled=True,
+                        values={"accessKeyId": "access", "secretAccessKey": "secret"},
+                    )
+                ),
+            ),
+            infrastructure=InfrastructureConfig(
+                ztp_storage=ZTPStorageConfig(type=ZTPStorageType.S3)
+            ),
+        )
+        values = _gen(config)
+        storage = values["networkZtp"]["storage"]
+        assert storage["s3"] == {"credentialsSecret": "ztp-s3-credentials"}
+
+    def test_s3_storage_ceph(self):
+        """Ceph-backed S3 config emits only Ceph chart settings."""
+        config = _make_config(
+            infrastructure=InfrastructureConfig(
+                ztp_storage=ZTPStorageConfig(
+                    type=ZTPStorageType.S3,
+                    s3_bucket="firmware-images",
+                    s3_endpoint="https://ignored.example",
+                    s3_ceph=ZTPS3CephConfig(
+                        enabled=True,
+                        object_store_user=ZTPS3CephObjectStoreUserConfig(name="custom-user"),
+                        object_bucket_claim=ZTPS3CephObjectBucketClaimConfig(
+                            storage_class_name="ceph-object-store"
+                        ),
+                    ),
+                )
+            )
+        )
+        values = _gen(config)
+        storage = values["networkZtp"]["storage"]
+        assert storage["type"] == "s3"
+        assert storage["s3"] == {
+            "bucketName": "firmware-images",
+            "ceph": {
+                "enabled": True,
+                "objectStoreUser": {"name": "custom-user"},
+                "objectBucketClaim": {"storageClassName": "ceph-object-store"},
+            },
+        }
 
 
 class TestWorkflowRBAC:

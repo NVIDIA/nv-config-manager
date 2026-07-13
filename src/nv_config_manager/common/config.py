@@ -645,23 +645,37 @@ def pynautobot_client() -> Any:
 # =============================================================================
 
 
-def get_storage_client() -> ObjectStorageClient:
-    """Return the appropriate storage client based on environment.
+def _nonblank_config_value(value: str | None) -> str | None:
+    return value if value and value.strip() else None
 
-    Uses STORAGE_TYPE environment variable:
+
+def get_storage_client() -> ObjectStorageClient:
+    """Return the appropriate storage client based on ZTP configuration.
+
+    Uses [ztp] config values with environment variable fallback:
     - "file": Returns FileStoreClient
     - "s3" or unset: Returns S3Client (default)
 
     Returns:
         ObjectStorageClient implementation
     """
-    storage_type = os.environ.get("STORAGE_TYPE", "s3").lower()
+    config = load_config()
+    ztp_config = config["ztp"] if config.has_section("ztp") else {}
+    storage_type = ztp_config.get("storage_type") or os.environ.get("STORAGE_TYPE", "s3")
+    storage_type = storage_type.lower()
 
     if storage_type == "file":
-        if not os.environ.get("FILE_STORE_PATH"):
-            raise ValueError("STORAGE_TYPE is 'file' but FILE_STORE_PATH is not set.")
-        return FileStoreClient()
-    return S3Client()
+        file_store_path = ztp_config.get("file_store_path") or os.environ.get("FILE_STORE_PATH")
+        if not file_store_path:
+            raise ValueError("storage_type is 'file' but file_store_path is not set.")
+        return FileStoreClient(base_path=file_store_path)
+    return S3Client(
+        bucket=_nonblank_config_value(ztp_config.get("s3_bucket")),
+        custom_endpoint=_nonblank_config_value(ztp_config.get("s3_endpoint")),
+        region=_nonblank_config_value(ztp_config.get("s3_region")),
+        custom_access_key=_nonblank_config_value(ztp_config.get("s3_access_key")),
+        custom_secret_key=_nonblank_config_value(ztp_config.get("s3_secret_key")),
+    )
 
 
 # =============================================================================

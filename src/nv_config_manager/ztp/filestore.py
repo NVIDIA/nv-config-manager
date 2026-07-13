@@ -62,9 +62,9 @@ class FileStoreClient(ObjectStorageClient):
     instead of relying on file suffixes.
     """
 
-    def __init__(self) -> None:
-        """Initialize the file storage client with the base path from environment."""
-        base_path_str = os.environ.get("FILE_STORE_PATH")
+    def __init__(self, base_path: str | None = None) -> None:
+        """Initialize the file storage client with the configured base path."""
+        base_path_str = base_path or os.environ.get("FILE_STORE_PATH")
         if not base_path_str:
             raise FileStoreException(
                 "FILE_STORE_PATH environment variable must be set to use FileStoreClient"

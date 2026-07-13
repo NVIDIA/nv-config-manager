@@ -2112,6 +2112,32 @@ class Deployer:
                 {"ACCESS_KEY_ID": access_key_id, "ACCESS_SECRET_KEY": access_secret_key},
             )
 
+        ztp_storage = self.config.infrastructure.ztp_storage
+        if (
+            ztp_storage.type == ZTPStorageType.S3
+            and not ztp_storage.s3_ceph.enabled
+            and k8s.ztp_s3.enabled
+        ):
+            access_key_id = s.get("ztp_s3_access_key_id", "")
+            secret_access_key = s.get("ztp_s3_secret_access_key", "")
+            if access_key_id or secret_access_key:
+                if not all([access_key_id, secret_access_key]):
+                    raise ValueError(
+                        "ZTP S3 credentials require both accessKeyId and secretAccessKey"
+                    )
+                data = {
+                    "CUSTOM_S3_ACCESS_KEY": access_key_id,
+                    "CUSTOM_S3_SECRET_KEY": secret_access_key,
+                }
+                if endpoint := s.get("ztp_s3_endpoint", ""):
+                    data["CUSTOM_S3_ENDPOINT"] = endpoint
+                self._apply_secret(step, "ztp-s3-credentials", data)
+            elif s.get("ztp_s3_endpoint", ""):
+                raise ValueError(
+                    "ZTP S3 endpoint without credentials should be configured as "
+                    "infrastructure.ztp_storage.s3_endpoint"
+                )
+
     def _create_git_token_secrets(self, step: DeployStep) -> None:
         """Create K8s secrets for configured git tokens."""
         for gt in self.config.git_tokens:

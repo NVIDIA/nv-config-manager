@@ -15,13 +15,13 @@
  * limitations under the License.
  */
 import { expect } from "@playwright/test";
-import { FORBIDDEN_SITE_ID, SITES_LIST } from "@/mocks/data";
+import { FORBIDDEN_SITE_ID, SITES_LIST, TENANT_LIST } from "@/mocks/data";
 import { test, TEST_TIMEOUT } from "./shared/utils";
 
 // Sample VPC data for testing
 const VPC_DATA = {
   overlay_id: "test-overlay-1",
-  tenant: "test-tenant",
+  tenant: TENANT_LIST.ngc,
   namespace_tag: "spectrumx",
   rd_min: 60000,
   rd_max: 65000,
@@ -76,7 +76,8 @@ test.describe("New SpX Overlay Creation Workflow", () => {
       .click();
 
     await page.getByLabel("Overlay ID").fill("test-overlay");
-    await page.getByLabel("Tenant").fill("test-tenant");
+    await page.getByRole("button", { name: "Tenant" }).click();
+    await page.getByRole("dialog").getByText(TENANT_LIST.ngc).click();
 
     // Set RD Min greater than RD Max
     await page.getByLabel("RD Min").fill("65000");
@@ -112,7 +113,9 @@ test.describe("New SpX Overlay Creation Workflow - URL Parameters", () => {
       page.getByRole("button", { name: SITES_LIST.pdx01, exact: true })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
     await expect(page.getByLabel("Overlay ID")).toHaveValue(VPC_DATA.overlay_id);
-    await expect(page.getByLabel("Tenant")).toHaveValue(VPC_DATA.tenant);
+    await expect(
+      page.getByRole("button", { name: VPC_DATA.tenant, exact: true })
+    ).toBeVisible({ timeout: TEST_TIMEOUT });
     await expect(
       page.getByRole("button", { name: VPC_DATA.namespace_tag, exact: true })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
@@ -182,7 +185,10 @@ test.describe("New SpX Overlay Creation Workflow - URL Parameters", () => {
     await page.getByLabel("Overlay ID").fill("modified-vpc");
 
     // Change the tenant
-    await page.getByLabel("Tenant").fill("modified-tenant");
+    await page
+      .getByRole("button", { name: VPC_DATA.tenant, exact: true })
+      .click();
+    await page.getByRole("dialog").getByText(TENANT_LIST.nsv).click();
 
     // Change the namespace tag
     await page.getByRole("button", { name: VPC_DATA.namespace_tag }).click();
@@ -208,7 +214,7 @@ test.describe("New SpX Overlay Creation Workflow - URL Parameters", () => {
     expect(requestData).toEqual({
       site: SITES_LIST.rno1,
       overlay_id: "modified-vpc",
-      tenant: "modified-tenant",
+      tenant: TENANT_LIST.nsv,
       namespace_tag: "tenant-a",
       rd_min: 61000,
       rd_max: 64000,
@@ -238,7 +244,9 @@ test.describe("New SpX Overlay Creation Workflow - URL Parameters", () => {
     await expect(
       page.getByRole("button", { name: SITES_LIST.pdx01, exact: true })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
-    await expect(page.getByLabel("Tenant")).toHaveValue(VPC_DATA.tenant);
+    await expect(
+      page.getByRole("button", { name: VPC_DATA.tenant, exact: true })
+    ).toBeVisible({ timeout: TEST_TIMEOUT });
 
     // Set up a listener for the request (after page is loaded)
     const requestPromise = page.waitForRequest((request) => {
@@ -285,7 +293,8 @@ test.describe("New SpX Overlay Creation Workflow - Standard Tests", () => {
       .click();
 
     await page.getByLabel("Overlay ID").fill("test-overlay-submission");
-    await page.getByLabel("Tenant").fill("test-tenant");
+    await page.getByRole("button", { name: "Tenant" }).click();
+    await page.getByRole("dialog").getByText(TENANT_LIST.ngc).click();
     await page.getByLabel("RD Min").fill("62000");
     await page.getByLabel("RD Max").fill("63000");
 
@@ -296,7 +305,9 @@ test.describe("New SpX Overlay Creation Workflow - Standard Tests", () => {
       page.getByRole("button", { name: SITES_LIST.pdx01, exact: true })
     ).toBeDisabled();
     await expect(page.getByLabel("Overlay ID")).toBeDisabled();
-    await expect(page.getByLabel("Tenant")).toBeDisabled();
+    await expect(
+      page.getByRole("button", { name: TENANT_LIST.ngc, exact: true })
+    ).toBeDisabled();
     await expect(
       page.getByRole("button", { name: VPC_DATA.namespace_tag, exact: true })
     ).toBeDisabled();
@@ -329,7 +340,9 @@ test.describe("New SpX Overlay Creation Workflow - Standard Tests", () => {
       timeout: TEST_TIMEOUT,
     });
     await expect(page.getByLabel("Overlay ID")).toHaveValue("");
-    await expect(page.getByLabel("Tenant")).toHaveValue("");
+    await expect(page.getByRole("button", { name: "Tenant" })).toBeVisible({
+      timeout: TEST_TIMEOUT,
+    });
   });
 
   test("displays forbidden error notification when submitting with forbidden values", async ({
@@ -340,7 +353,8 @@ test.describe("New SpX Overlay Creation Workflow - Standard Tests", () => {
     await page.getByRole("dialog").getByText(FORBIDDEN_SITE_ID).click();
 
     await page.getByLabel("Overlay ID").fill("test-overlay");
-    await page.getByLabel("Tenant").fill("test-tenant");
+    await page.getByRole("button", { name: "Tenant" }).click();
+    await page.getByRole("dialog").getByText(TENANT_LIST.ngc).click();
     await page.getByLabel("RD Min").fill("60000");
     await page.getByLabel("RD Max").fill("65000");
 

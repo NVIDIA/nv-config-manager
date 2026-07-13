@@ -49,10 +49,10 @@ export const CumulusHardwareValidationWorkflowForm = () => {
   const { data: siteCableData } = useEnvData();
   const { toast } = useToast();
   const searchParams = useSearchParams();
-  const querySite = searchParams && searchParams.get("site");
-  const queryRoles = React.useMemo(() => searchParams ? searchParams.getAll("role") : [], [searchParams]);
-  const queryStatuses = React.useMemo(() => searchParams ? searchParams.getAll("status") : [], [searchParams]);
-  const queryTenant = searchParams && searchParams.get("tenant");
+  const querySite = searchParams?.get("site");
+  const queryRoles = React.useMemo(() => searchParams?.getAll("role") ?? [], [searchParams]);
+  const queryStatuses = React.useMemo(() => searchParams?.getAll("status") ?? [], [searchParams]);
+  const queryTenant = searchParams?.get("tenant");
 
   const form = useForm<z.infer<typeof CumulusValidationFormSchema>>({
     resolver: zodResolver(CumulusValidationFormSchema),

@@ -33,7 +33,7 @@ import { getErrorMessage, startWorkflow } from "@/lib/utils";
 import { WorkflowFormField } from "@/components/forms/formfield";
 
 export const SiteCableValidationWorkflowForm = () => {
-  
+
   const SiteCableValidationFormSchema = z.object({
     site: z.string().trim().min(1, { message: "Site is required" }),
     roles: z.union([z.string(), z.array(z.string())])
@@ -50,10 +50,10 @@ export const SiteCableValidationWorkflowForm = () => {
   const { data: siteCableData } = useEnvData();
   const { toast } = useToast();
   const searchParams = useSearchParams();
-  const querySite = searchParams && searchParams.get("site");
-  const queryRoles = React.useMemo(() => searchParams ? searchParams.getAll("role") : [], [searchParams]);
-  const queryStatuses = React.useMemo(() => searchParams ? searchParams.getAll("status") : [], [searchParams]);
-  const queryTenant = searchParams && searchParams.get("tenant");
+  const querySite = searchParams?.get("site");
+  const queryRoles = React.useMemo(() => searchParams?.getAll("role") ?? [], [searchParams]);
+  const queryStatuses = React.useMemo(() => searchParams?.getAll("status") ?? [], [searchParams]);
+  const queryTenant = searchParams?.get("tenant");
 
   const form = useForm<z.infer<typeof SiteCableValidationFormSchema>>({
     resolver: zodResolver(SiteCableValidationFormSchema),

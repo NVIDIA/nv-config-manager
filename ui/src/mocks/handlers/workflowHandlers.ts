@@ -265,8 +265,8 @@ export const workflowFetchingHandlers = [
     const nextPageToken = url.searchParams.get("next_page_token");
     const limit = url.searchParams.get("limit");
 
-    const pageSize = limit ? parseInt(limit) : 10;
-    const page = nextPageToken ? parseInt(nextPageToken) : 0;
+    const pageSize = limit ? Number.parseInt(limit, 10) : 10;
+    const page = nextPageToken ? Number.parseInt(nextPageToken, 10) : 0;
 
     const workflows = filterWorkflows(
       workflowType

@@ -20,6 +20,7 @@ import pytest
 
 from nv_config_manager_installer import secrets as secrets_module
 from nv_config_manager_installer.schema import (
+    InfrastructureConfig,
     K8sSecretGroup,
     KubernetesSecretsConfig,
     NetworkSecretEntry,
@@ -34,6 +35,8 @@ from nv_config_manager_installer.schema import (
     VaultConfig,
     VaultPathConfig,
     VaultPathsConfig,
+    ZTPStorageConfig,
+    ZTPStorageType,
 )
 from nv_config_manager_installer.secrets import build_eso_vault_config, generate_secrets
 
@@ -117,6 +120,43 @@ class TestGenerateSecrets:
         state = generate_secrets(config)
 
         assert state["nautobot_admin_password"] == "admin"
+
+    def test_kubernetes_ztp_s3_credentials_pass_through(self):
+        config = NVConfigManagerInstallConfig(
+            secrets=SecretsConfig(
+                method=SecretsMethod.KUBERNETES,
+                k8s=KubernetesSecretsConfig(
+                    ztp_s3=K8sSecretGroup(
+                        enabled=True,
+                        values={
+                            "endpoint": "https://minio.example",
+                            "accessKeyId": "access",
+                            "secretAccessKey": "secret",
+                        },
+                    )
+                ),
+            ),
+            infrastructure=InfrastructureConfig(
+                ztp_storage=ZTPStorageConfig(type=ZTPStorageType.S3)
+            ),
+        )
+        state = generate_secrets(config)
+
+        assert state["ztp_s3_endpoint"] == "https://minio.example"
+        assert state["ztp_s3_access_key_id"] == "access"
+        assert state["ztp_s3_secret_access_key"] == "secret"
+
+    def test_kubernetes_ztp_s3_credentials_optional(self):
+        config = NVConfigManagerInstallConfig(
+            secrets=SecretsConfig(method=SecretsMethod.KUBERNETES),
+            infrastructure=InfrastructureConfig(
+                ztp_storage=ZTPStorageConfig(type=ZTPStorageType.S3)
+            ),
+        )
+        state = generate_secrets(config)
+
+        assert "ztp_s3_access_key_id" not in state
+        assert "ztp_s3_secret_access_key" not in state
 
     def test_infra_secrets_omitted_for_eso(self):
         config = NVConfigManagerInstallConfig(secrets=SecretsConfig(method=SecretsMethod.ESO))
@@ -272,7 +312,7 @@ class TestESOVaultConfig:
             assert "keys" in paths[group]
 
         # Optional groups disabled by default
-        for group in ("slack", "jira", "cnpgBackup"):
+        for group in ("slack", "jira", "cnpgBackup", "ztpS3"):
             assert group not in paths, f"{group} should be disabled by default"
 
     def test_custom_path_preserves_default_keys(self):

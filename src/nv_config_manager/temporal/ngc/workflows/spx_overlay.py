@@ -20,7 +20,7 @@ from datetime import timedelta
 from pydantic import BaseModel, Field
 from temporalio import workflow
 from temporalio.common import RetryPolicy
-from temporalio.exceptions import ApplicationError
+from temporalio.exceptions import ApplicationError, ChildWorkflowError
 
 from nv_config_manager.temporal.common.decorators.workflow import run_nv_config_manager_workflow
 from nv_config_manager.temporal.common.mixins.metadata import WorkflowMetadataMixin
@@ -823,9 +823,10 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
 
         assigned_ports: list[str]
         vrf_assigned: bool
-        vrf: DeviceVrfInfo
+        vrf: DeviceVrfInfo | None
         overlay_name: str
-        vxlan_name: str
+        vxlan_name: str | None
+        error: str | None = None
 
     @stage_executor("assign_spx_overlay")
     async def assign_spx_overlay_stage(
@@ -833,7 +834,7 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
     ) -> AssignSpXOverlayStageOutput:
         """Assign SpX Overlay to device and ports."""
         try:
-            result = await workflow.execute_child_workflow(
+            assignment_handle = await workflow.start_child_workflow(
                 SpXOverlayAssignmentWorkflow.run,
                 SpXOverlayAssignmentInput(
                     overlay_id=stage_input.overlay_id,
@@ -844,21 +845,50 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
                 ),
                 run_timeout=timedelta(minutes=10),
             )
+            self.append_child_workflow("assign_spx_overlay", assignment_handle.id)
+            self.set_stage_output(
+                "assign_spx_overlay",
+                StageOutput(
+                    display=(
+                        f"Assigning via workflow "
+                        f"[{assignment_handle.id}](/workflows/{assignment_handle.id})"
+                    )
+                ),
+            )
         except Exception as exc:
             raise ApplicationError(str(exc)) from exc
 
-        self.append_child_workflow("assign_spx_overlay", workflow.info().workflow_id)
+        try:
+            result = await assignment_handle
+        except ChildWorkflowError as exc:
+            error = str(exc.cause or exc)
+            return self.AssignSpXOverlayStageOutput(
+                assigned_ports=[],
+                vrf_assigned=False,
+                vrf=None,
+                overlay_name=stage_input.overlay_id,
+                vxlan_name=None,
+                error=error,
+                display=(
+                    "**Assignment failed, check workflow "
+                    f"[{assignment_handle.id}](/workflows/{assignment_handle.id}) "
+                    "for details.**"
+                ),
+            )
 
         # The overlay name is the user-supplied overlay_id; VRF and VXLAN share SpXTenant{vni}.
         overlay_name = stage_input.overlay_id
         vxlan_name = result.vrf.vrf_name
 
-        vrf_line = f"VRF: {result.vrf.vrf_name}" if result.vrf_assigned else "VRF already assigned"
+        vrf_status = "assigned" if result.vrf_assigned else "already assigned"
+        assigned_ports = ", ".join(result.assigned_ports) or "None"
         display = (
-            f"Overlay: {overlay_name}\n"
-            f"L3 VXLAN: {vxlan_name}\n"
-            f"{vrf_line}\n"
-            f"Ports assigned ({len(result.assigned_ports)}): {', '.join(result.assigned_ports)}"
+            f"- **Overlay:** {overlay_name}\n"
+            f"- **L3 VXLAN:** {vxlan_name}\n"
+            f"- **VRF:** {result.vrf.vrf_name} ({vrf_status})\n"
+            f"- **Ports assigned ({len(result.assigned_ports)}):** {assigned_ports}\n\n"
+            f"Assigning via workflow [{assignment_handle.id}]"
+            f"(/workflows/{assignment_handle.id})"
         )
         return self.AssignSpXOverlayStageOutput(
             assigned_ports=result.assigned_ports,
@@ -999,6 +1029,7 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
         """Deploy Stage Output."""
 
         device_id: str
+        error: str | None = None
 
     @stage_executor("deploy")
     async def deploy_stage(self, stage_input: DeployStageInput) -> DeployStageOutput:
@@ -1023,17 +1054,45 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
                 intended_config_commit_id=stage_input.intended_config_commit_id,
             )
 
-        await workflow.execute_child_workflow(
-            TenantDeployWorkflow.run,
-            tenant_deploy_input,
-            run_timeout=timedelta(minutes=10),
-        )
+        try:
+            deploy_handle = await workflow.start_child_workflow(
+                TenantDeployWorkflow.run,
+                tenant_deploy_input,
+                run_timeout=timedelta(minutes=10),
+            )
+            self.append_child_workflow("deploy", deploy_handle.id)
+            self.set_stage_output(
+                "deploy",
+                StageOutput(
+                    display=(
+                        f"Deploying configuration via workflow "
+                        f"[{deploy_handle.id}](/workflows/{deploy_handle.id})"
+                    )
+                ),
+            )
+        except Exception as exc:
+            raise ApplicationError(str(exc)) from exc
 
-        self.append_child_workflow("deploy", workflow.info().workflow_id)
+        try:
+            await deploy_handle
+        except ChildWorkflowError as exc:
+            error = str(exc.cause or exc)
+            return self.DeployStageOutput(
+                device_id=stage_input.device.id,
+                error=error,
+                display=(
+                    "**Configuration deployment failed, check workflow "
+                    f"[{deploy_handle.id}](/workflows/{deploy_handle.id}) "
+                    "for details.**"
+                ),
+            )
 
         return self.DeployStageOutput(
             device_id=stage_input.device.id,
-            display=f"Deployed tenant configuration to device {stage_input.device.id}",
+            display=(
+                f"Configuration deployed via workflow "
+                f"[{deploy_handle.id}](/workflows/{deploy_handle.id})"
+            ),
         )
 
     @run_nv_config_manager_workflow
@@ -1056,6 +1115,22 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
                 namespace_tag=workflow_input.namespace_tag,
             )
         )
+        if assign_output.error:
+            for stage_name in (
+                "determine_deployment_action",
+                "render_tenant_config",
+                "wait_for_render",
+                "deploy",
+            ):
+                self.set_stage_state(
+                    stage_name,
+                    StateEnum.UNREACHABLE,
+                    cascade_unreachable=False,
+                )
+            raise ApplicationError(
+                f"SpX Overlay Assignment child workflow failed: {assign_output.error}",
+                non_retryable=True,
+            )
 
         deployment_action_output = await self.determine_deployment_action_stage(
             self.DetermineDeploymentActionStageInput(
@@ -1085,6 +1160,11 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
                     device=device_output.device,
                 )
             )
+            if deploy_output.error:
+                raise ApplicationError(
+                    f"Tenant Deploy child workflow failed: {deploy_output.error}",
+                    non_retryable=True,
+                )
             device_deployed = deploy_output.device_id
             assigned_ports = assign_output.assigned_ports
             vrf_assigned = assign_output.vrf_assigned
@@ -1110,6 +1190,11 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
                     intended_config_commit_id=render_output.intended_config_commit_id,
                 )
             )
+            if deploy_output.error:
+                raise ApplicationError(
+                    f"Tenant Deploy child workflow failed: {deploy_output.error}",
+                    non_retryable=True,
+                )
             device_deployed = deploy_output.device_id
             assigned_ports = assign_output.assigned_ports
             vrf_assigned = assign_output.vrf_assigned

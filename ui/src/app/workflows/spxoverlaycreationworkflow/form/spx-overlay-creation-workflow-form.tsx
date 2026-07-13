@@ -25,7 +25,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form } from "@/components/ui/form";
 import { useToast } from "@/components/ui/use-toast";
-import { useEnvData, useNamespaceTags } from "@/hooks";
+import {
+  useEnvData,
+  useNamespaceTags,
+  useSyncSelectFromQuery,
+  useTenants,
+} from "@/hooks";
 import { WorkflowFormField } from "@/components/forms/formfield";
 import { getErrorMessage, startWorkflow } from "@/lib/utils";
 import { SpXOverlayCreationWorkflowInput } from "@/types/data-table.types";
@@ -48,21 +53,24 @@ export const SpXOverlayCreationWorkflowForm = () => {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const { toast } = useToast();
   const searchParams = useSearchParams();
-  const querySite = (searchParams && searchParams.get("site")) || "";
-  const queryOverlayId = (searchParams && searchParams.get("overlay_id")) || "";
-  const queryTenant = (searchParams && searchParams.get("tenant")) || "";
+  const querySite = searchParams?.get("site") || "";
+  const queryOverlayId = searchParams?.get("overlay_id") || "";
+  const queryTenant = searchParams?.get("tenant") || "";
   const queryNamespaceTag =
-    (searchParams &&
-      (searchParams.get("namespace_tag") || searchParams.get("namespace"))) ||
+    searchParams?.get("namespace_tag") ||
+    searchParams?.get("namespace") ||
     "spectrumx";
-  const queryRDMin =
-    (searchParams && Number(searchParams.get("rd_min"))) || 60000;
-  const queryRDMax =
-    (searchParams && Number(searchParams.get("rd_max"))) || 65000;
+  const queryRDMin = Number(searchParams?.get("rd_min")) || 60000;
+  const queryRDMax = Number(searchParams?.get("rd_max")) || 65000;
   const {
     data: { siteData: sites },
     isLoading: { siteIsLoading },
   } = useEnvData();
+  const {
+    tenants,
+    hasLoaded: tenantsHaveLoaded,
+    isLoading: tenantsAreLoading,
+  } = useTenants();
 
   const form = useForm<z.infer<typeof SpXOverlayCreationFormSchema>>({
     resolver: zodResolver(SpXOverlayCreationFormSchema),
@@ -95,6 +103,15 @@ export const SpXOverlayCreationWorkflowForm = () => {
       }
     }
   }, [sites, querySite, siteIsLoading, form]);
+
+  useSyncSelectFromQuery({
+    fieldName: "tenant",
+    form,
+    hasLoaded: tenantsHaveLoaded,
+    isLoading: tenantsAreLoading,
+    options: tenants,
+    queryValue: queryTenant,
+  });
 
   useEffect(() => {
     if (!namespaceTagsHasLoaded || namespaceTagsIsLoading) return;
@@ -157,11 +174,14 @@ export const SpXOverlayCreationWorkflowForm = () => {
                 isSubmitting={isSubmitting}
               />
               <WorkflowFormField
-                type="input"
+                type="select"
                 control={form.control}
                 name="tenant"
                 label="Tenant"
+                options={tenants}
+                isLoading={tenantsAreLoading}
                 isSubmitting={isSubmitting}
+                searchable
               />
               <WorkflowFormField
                 type="select"

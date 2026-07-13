@@ -72,6 +72,13 @@ class ClusterScreen(Container):
         yield Label("Namespace", classes="field-label")
         yield Input(value=c.namespace, placeholder="nv-config-manager", id="cluster-namespace")
 
+        yield Label("AWS IAM Role ARN (S3 IRSA, optional)", classes="field-label")
+        yield Input(
+            value=c.service_account_eks_role,
+            placeholder="arn:aws:iam::123456789012:role/nv-config-manager-s3",
+            id="cluster-service-account-eks-role",
+        )
+
         yield Label("Release Name", classes="field-label")
         yield Input(
             value=c.release_name, placeholder="nv-config-manager", id="cluster-release-name"
@@ -151,6 +158,9 @@ class ClusterScreen(Container):
         config.cluster.hostname = self.query_one("#cluster-hostname", Input).value
         config.cluster.environment = self.query_one("#cluster-environment", Input).value
         config.cluster.namespace = self.query_one("#cluster-namespace", Input).value
+        config.cluster.service_account_eks_role = self.query_one(
+            "#cluster-service-account-eks-role", Input
+        ).value
         config.cluster.release_name = self.query_one("#cluster-release-name", Input).value
         config.cluster.airgapped = self.query_one("#cluster-airgapped", LabeledSwitch).value
         config.secrets.config_manager_service_username = self.query_one(
@@ -179,6 +189,9 @@ class ClusterScreen(Container):
         self.query_one("#cluster-hostname", Input).value = c.hostname
         self.query_one("#cluster-environment", Input).value = c.environment
         self.query_one("#cluster-namespace", Input).value = c.namespace
+        self.query_one(
+            "#cluster-service-account-eks-role", Input
+        ).value = c.service_account_eks_role
         self.query_one("#cluster-release-name", Input).value = c.release_name
         self.query_one("#cluster-airgapped", LabeledSwitch).value = c.airgapped
         self.query_one(

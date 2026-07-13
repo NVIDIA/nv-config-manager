@@ -50,24 +50,25 @@ const WorkflowsListSkeleton = () => {
 
 const SkeletonDataTable = () => {
   const columns = ["Column 1", "Column 2", "Column 3", "Column 4", "Column 5"];
+  const rows = ["Row 1", "Row 2", "Row 3", "Row 4", "Row 5"];
 
   return (
     <div className="rounded-md border">
       <Table>
       <TableHeader>
         <TableRow>
-          {columns.map((_, index) => (
-            <TableHead key={index}>
+          {columns.map((column) => (
+            <TableHead key={column}>
               <Skeleton className="h-5 w-24" />
             </TableHead>
           ))}
         </TableRow>
       </TableHeader>
       <TableBody>
-        {[1, 2, 3, 4, 5].map((_, rowIndex) => (
-          <TableRow key={rowIndex}>
-            {columns.map((_, colIndex) => (
-              <TableCell key={colIndex}>
+        {rows.map((row) => (
+          <TableRow key={row}>
+            {columns.map((column) => (
+              <TableCell key={`${row}-${column}`}>
                 <Skeleton className="h-5 w-24" />
               </TableCell>
             ))}

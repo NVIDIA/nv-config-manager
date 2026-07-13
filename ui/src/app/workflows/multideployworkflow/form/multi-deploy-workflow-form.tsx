@@ -64,11 +64,11 @@ export const MultiDeployWorkflowForm = () => {
   const { toast } = useToast();
   const searchParams = useSearchParams();
 
-  const queryRole = searchParams && searchParams.get("role");
-  const queryBatchSize = searchParams && searchParams.get("max_batch_size");
-  const queryLocation = searchParams && searchParams.get("location");
-  const queryStatuses = React.useMemo(() => searchParams ? searchParams.getAll("status") : [], [searchParams]);
-  const queryTenant = searchParams && searchParams.get("tenant");
+  const queryRole = searchParams?.get("role");
+  const queryBatchSize = searchParams?.get("max_batch_size");
+  const queryLocation = searchParams?.get("location");
+  const queryStatuses = React.useMemo(() => searchParams?.getAll("status") ?? [], [searchParams]);
+  const queryTenant = searchParams?.get("tenant");
 
   const form = useForm<MultiDeployFormData>({
     resolver: zodResolver(multiDeployFormSchema),
@@ -123,8 +123,8 @@ export const MultiDeployWorkflowForm = () => {
       validateAndSetValue(queryTenant, envData.tenantsData, "tenant");
 
       if (queryBatchSize) {
-        const batchSize = parseInt(queryBatchSize);
-        if (!isNaN(batchSize) && batchSize >= 1 && batchSize <= 100) {
+        const batchSize = Number.parseInt(queryBatchSize, 10);
+        if (!Number.isNaN(batchSize) && batchSize >= 1 && batchSize <= 100) {
           form.setValue("max_batch_size", batchSize);
         } else {
           form.setValue("max_batch_size", 10);

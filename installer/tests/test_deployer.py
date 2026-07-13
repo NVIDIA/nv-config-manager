@@ -64,6 +64,8 @@ from nv_config_manager_installer.schema import (
     ServicesConfig,
     SiteConfig,
     TemplatePath,
+    ZTPStorageConfig,
+    ZTPStorageType,
 )
 
 _OPERATOR_VERSIONS = """\
@@ -1402,6 +1404,54 @@ class TestK8sClientIntegration:
             if call.args[0] == "nautobot-token"
         )
         assert nautobot_token_call.args[2]["read-only-token"] == "ro-token"
+
+    @patch("nv_config_manager_installer.deployer._run_logged")
+    @patch("nv_config_manager_installer.deployer._run")
+    @patch("nv_config_manager_installer.deployer.K8sClient")
+    @patch("nv_config_manager_installer.deployer.shutil.which", return_value="/usr/bin/kubectl")
+    def test_create_secrets_includes_ztp_s3_credentials(
+        self,
+        mock_which,
+        mock_k8s_class,
+        mock_run,
+        mock_run_logged,
+    ):
+        mock_k8s = _mock_k8s()
+        mock_k8s_class.return_value = mock_k8s
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        mock_run_logged.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+        config = _make_config()
+        config.infrastructure = InfrastructureConfig(
+            ztp_storage=ZTPStorageConfig(type=ZTPStorageType.S3)
+        )
+        config.secrets = SecretsConfig(
+            method=SecretsMethod.KUBERNETES,
+            k8s=KubernetesSecretsConfig(
+                ztp_s3=K8sSecretGroup(
+                    enabled=True,
+                    values={
+                        "endpoint": "https://minio.example",
+                        "accessKeyId": "access",
+                        "secretAccessKey": "secret",
+                    },
+                )
+            ),
+        )
+        cb = RecordingCallback()
+        deployer = Deployer(config, DeployOptions(dry_run=True), cb)
+        deployer.run()
+
+        ztp_s3_call = next(
+            call
+            for call in mock_k8s.apply_secret.call_args_list
+            if call.args[0] == "ztp-s3-credentials"
+        )
+        assert ztp_s3_call.args[2] == {
+            "CUSTOM_S3_ENDPOINT": "https://minio.example",
+            "CUSTOM_S3_ACCESS_KEY": "access",
+            "CUSTOM_S3_SECRET_KEY": "secret",
+        }
 
     def test_api_token_retrieval(self):
         config = _make_config()
