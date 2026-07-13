@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Local verification harness for PR #24 (nautobot rbac group mapping).
 #
-# Prereqs: a `make kind-up-sec` deploy is up. Requires: kubectl, curl, jq. Run
-# from the repo root.
+# Prereqs: a `make kind-up-sec` deploy is up. Requires: kubectl, helm, curl, jq.
+# Run from the repo root.
 #
 # SAFETY: every kubectl/helm call is pinned to an explicit --context (default
 # `kind-nv-config-manager`), NOT the ambient current-context. This matters
@@ -48,7 +48,7 @@ ok()   { printf '\033[1;32m  ✓ %s\033[0m\n' "$*"; }
 warn() { printf '\033[1;33m  ! %s\033[0m\n' "$*"; }
 
 require() { command -v "$1" >/dev/null 2>&1 || { echo "missing required command: $1" >&2; exit 1; }; }
-require kubectl; require curl; require jq
+require kubectl; require helm; require curl; require jq
 
 # Isolate from the shared kubeconfig. Tools like Teleport/tsh continually
 # rewrite ~/.kube/config (flipping current-context to prod, and even briefly

@@ -234,10 +234,18 @@ def test_revoke_prunes_stale_managed_group_without_crash(
         assert remaining == [], f"stale ObjectPermission not pruned (rollback?): {remaining}"
     finally:
         cleanup_body = (
+            "from django.contrib.auth import get_user_model\n"
             "from django.contrib.auth.models import Group\n"
+            "from nautobot.extras.context_managers import web_request_context\n"
             "from nautobot.users.models import ObjectPermission\n"
-            f"ObjectPermission.objects.filter(name={stale_perm!r}).delete()\n"
-            f"Group.objects.filter(name={stale_group!r}).delete()\n"
+            # Delete inside a web_request_context bound to a real user: the
+            # ObjectPermission.delete() here trips the same change-logging signal
+            # the test exercises, so a context-less teardown could crash and mask
+            # the real assertion failure.
+            f"user = get_user_model().objects.get(username={USER_NETWORK!r})\n"
+            "with web_request_context(user, context_detail='nv-config-manager-auth: RBAC integration cleanup'):\n"
+            f"    ObjectPermission.objects.filter(name={stale_perm!r}).delete()\n"
+            f"    Group.objects.filter(name={stale_group!r}).delete()\n"
             "_emit({'cleaned': True})\n"
         )
         _nbshell_json(rbac_nbshell, cleanup_body)
