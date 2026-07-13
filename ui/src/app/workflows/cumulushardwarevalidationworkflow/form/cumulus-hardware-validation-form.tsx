@@ -19,7 +19,7 @@
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
+import { useForm, type UseFormReturn } from "react-hook-form";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -43,6 +43,37 @@ const CumulusValidationFormSchema = z.object({
   tenant: z.string().trim().min(1, { message: "Tenant is required" }),
 });
 
+type CumulusValidationFormData = z.infer<typeof CumulusValidationFormSchema>;
+type QueryOption = { key: string; value: string };
+type SingleValueField = "site" | "tenant";
+type MultiValueField = "roles" | "status";
+
+/** Maps a single query parameter key to its form option value or clears it. */
+const setSingleQueryValue = (
+  form: UseFormReturn<CumulusValidationFormData>,
+  queryValue: string | null,
+  options: QueryOption[],
+  fieldName: SingleValueField
+) => {
+  const fieldValue =
+    options.find((option) => option.key === queryValue)?.value ?? "";
+  form.setValue(fieldName, fieldValue);
+};
+
+/** Keeps valid multi-value query keys and clears values without an option. */
+const setMultiQueryValue = (
+  form: UseFormReturn<CumulusValidationFormData>,
+  queryValues: string[],
+  options: QueryOption[],
+  fieldName: MultiValueField
+) => {
+  const fieldValue = queryValues.filter((queryValue) =>
+    options.some((option) => option.key === queryValue)
+  );
+  form.setValue(fieldName, fieldValue);
+};
+
+/** Renders the form for starting a Cumulus hardware validation workflow. */
 export const CumulusHardwareValidationWorkflowForm = () => {
   const [isSubmitting, setIsSubmitting] = React.useState<boolean>(false);
   const [isManualChange, setIsManualChange] = React.useState<boolean>(false);
@@ -54,7 +85,7 @@ export const CumulusHardwareValidationWorkflowForm = () => {
   const queryStatuses = React.useMemo(() => searchParams?.getAll("status") ?? [], [searchParams]);
   const queryTenant = searchParams?.get("tenant");
 
-  const form = useForm<z.infer<typeof CumulusValidationFormSchema>>({
+  const form = useForm<CumulusValidationFormData>({
     resolver: zodResolver(CumulusValidationFormSchema),
   });
 
@@ -64,38 +95,20 @@ export const CumulusHardwareValidationWorkflowForm = () => {
   //const params = new URLSearchParams(filterParams).toString();
   React.useEffect(() => {
     if (!isManualChange) {
-      const validateAndSetValue = (
-        queryValue: string | string[] | null,
-        data: { key: string; value: string }[],
-        fieldName: keyof z.infer<typeof CumulusValidationFormSchema>
-      ) => {
-        if (
-          !queryValue ||
-          (Array.isArray(queryValue) && queryValue.length === 0)
-        ) {
-          form.setValue(fieldName, ""); // Clear if no query value
-          return;
-        }
-
-        if (Array.isArray(queryValue)) {
-          // For fields like roles, status, and device_type_ids
-          const validValues = queryValue.filter((value) =>
-            data.some((option) => option.key === value)
-          );
-          form.setValue(fieldName, validValues.length > 0 ? validValues : "");
-        } else {
-          // For single-value fields like site and tenant
-          const isValid = data.some((option) => option.key === queryValue);
-          const validValue =
-            data.find((option) => option.key === queryValue)?.value || "";
-          form.setValue(fieldName, isValid ? validValue : "");
-        }
-      };
-
-      validateAndSetValue(querySite, siteCableData.siteData, "site");
-      validateAndSetValue(queryRoles, siteCableData.rolesData, "roles");
-      validateAndSetValue(queryStatuses, siteCableData.statusData, "status");
-      validateAndSetValue(queryTenant, siteCableData.tenantsData, "tenant");
+      setSingleQueryValue(form, querySite, siteCableData.siteData, "site");
+      setMultiQueryValue(form, queryRoles, siteCableData.rolesData, "roles");
+      setMultiQueryValue(
+        form,
+        queryStatuses,
+        siteCableData.statusData,
+        "status"
+      );
+      setSingleQueryValue(
+        form,
+        queryTenant,
+        siteCableData.tenantsData,
+        "tenant"
+      );
     }
   }, [
     querySite,
@@ -107,7 +120,8 @@ export const CumulusHardwareValidationWorkflowForm = () => {
     isManualChange,
   ]);
 
-  const onSubmit = async(data: z.infer<typeof CumulusValidationFormSchema>) => {
+  /** Starts the workflow with the validated form data. */
+  const onSubmit = async (data: CumulusValidationFormData) => {
       setIsSubmitting(true);
       const workflowParams: CumulusHardwareValidationWorkflowInput = {
         site: data.site,
@@ -133,6 +147,7 @@ export const CumulusHardwareValidationWorkflowForm = () => {
     setIsSubmitting(false);
   };
 
+  /** Prevents later query synchronization from replacing a manual selection. */
   const handleChange = () => {
     setIsManualChange(true);
   };
