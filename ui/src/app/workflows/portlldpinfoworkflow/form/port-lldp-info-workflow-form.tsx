@@ -101,10 +101,12 @@ type BooleanSetter = Dispatch<SetStateAction<boolean>>;
 
 const DEVICE_FIELDS: DeviceFieldName[] = ["site", "device", "interface"];
 
+/** Clears all device-identifying fields when MAC-address mode is selected. */
 const clearDeviceFields = (form: UseFormReturn<PortLLDPFormData>) => {
   DEVICE_FIELDS.forEach((fieldName) => form.setValue(fieldName, ""));
 };
 
+/** Activates MAC-address mode and clears incompatible device information. */
 const setMacAddressMode = (
   value: string,
   form: UseFormReturn<PortLLDPFormData>,
@@ -119,6 +121,7 @@ const setMacAddressMode = (
   }
 };
 
+/** Reports whether any device field will remain populated after a change. */
 const hasDeviceFieldsAfterChange = (
   fieldName: string,
   value: string,
@@ -128,6 +131,7 @@ const hasDeviceFieldsAfterChange = (
     Boolean(deviceField === fieldName ? value : form.getValues(deviceField))
   );
 
+/** Activates device-information mode and clears an incompatible MAC address. */
 const setDeviceInfoMode = (
   fieldName: string,
   value: string,
@@ -171,10 +175,6 @@ export const PortLLDPInfoWorkflowForm = () => {
   });
 
   const watchSite = form.watch("site") as string;
-  const watchDevice = form.watch("device") as string;
-  const watchInterface = form.watch("interface") as string;
-  const watchMacAddress = form.watch("remote_mac_address") as string;
-
   const filterParams: string[][] = [
     ["site", watchSite],
     ["managed_only", "true"],
@@ -248,34 +248,6 @@ export const PortLLDPInfoWorkflowForm = () => {
       setHasDeviceInfo(true);
     }
   }, [queryMacAddress, querySite, queryDevice, queryInterface, form]);
-
-  useEffect(() => {
-    if (!isManualChange) return;
-
-    const hasDeviceFields = Boolean(watchSite || watchDevice || watchInterface);
-    const hasMacField = Boolean(watchMacAddress);
-
-    if (hasMacField) {
-      form.setValue("site", "");
-      form.setValue("device", "");
-      form.setValue("interface", "");
-      setHasDeviceInfo(false);
-      setHasMacAddress(true);
-    }
-
-    if (hasDeviceFields) {
-      form.setValue("remote_mac_address", "");
-      setHasMacAddress(false);
-      setHasDeviceInfo(true);
-    }
-  }, [
-    watchSite,
-    watchDevice,
-    watchInterface,
-    watchMacAddress,
-    isManualChange,
-    form,
-  ]);
 
   const handleChange = (fieldName: string, value: string) => {
     setIsManualChange(true);

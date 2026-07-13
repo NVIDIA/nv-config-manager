@@ -19,7 +19,7 @@
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm, type UseFormReturn } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -35,6 +35,10 @@ import { useToast } from "@/components/ui/use-toast";
 import { Checkbox } from "@/components/ui/checkbox";
 import { WorkflowFormField } from "@/components/forms/formfield";
 import { useEnvData } from "@/hooks";
+import {
+  setMultiQueryValue,
+  setSingleQueryValue,
+} from "@/lib/query-form-helpers";
 import { startWorkflow } from "@/lib/utils";
 import { MultiDeployWorkflowInput } from "@/types/data-table.types";
 
@@ -56,39 +60,6 @@ const multiDeployFormSchema = z.object({
 });
 
 type MultiDeployFormData = z.infer<typeof multiDeployFormSchema>;
-type QueryOption = { key: string; value: string };
-type MultiDeploySingleValueField = "role" | "location" | "tenant";
-
-const setSingleQueryValue = (
-  form: UseFormReturn<MultiDeployFormData>,
-  queryValue: string | null,
-  data: QueryOption[],
-  fieldName: MultiDeploySingleValueField
-) => {
-  if (!queryValue) {
-    form.setValue(fieldName, "");
-    return;
-  }
-
-  const matchedOption = data.find((option) => option.key === queryValue);
-  form.setValue(fieldName, matchedOption?.value ?? "");
-};
-
-const setStatusQueryValue = (
-  form: UseFormReturn<MultiDeployFormData>,
-  queryValues: string[],
-  data: QueryOption[]
-) => {
-  if (queryValues.length === 0) {
-    form.setValue("status", []);
-    return;
-  }
-
-  const validValues = queryValues.filter((value) =>
-    data.some((option) => option.key === value)
-  );
-  form.setValue("status", validValues);
-};
 
 export const MultiDeployWorkflowForm = () => {
   const [isSubmitting, setIsSubmitting] = React.useState<boolean>(false);
@@ -119,7 +90,7 @@ export const MultiDeployWorkflowForm = () => {
     if (!isManualChange) {
       setSingleQueryValue(form, queryRole, envData.rolesData, "role");
       setSingleQueryValue(form, queryLocation, envData.siteData, "location");
-      setStatusQueryValue(form, queryStatuses, envData.statusData);
+      setMultiQueryValue(form, queryStatuses, envData.statusData, "status");
       setSingleQueryValue(form, queryTenant, envData.tenantsData, "tenant");
 
       if (queryBatchSize) {

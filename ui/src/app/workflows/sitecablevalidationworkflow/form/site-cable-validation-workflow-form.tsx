@@ -19,7 +19,7 @@
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm, type UseFormReturn } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,6 +29,10 @@ import {
 import { useToast } from "@/components/ui/use-toast";
 import { SiteCableValidationWorkflowInput } from "@/types/data-table.types";
 import { useEnvData } from "@/hooks";
+import {
+  setMultiQueryValue,
+  setSingleQueryValue,
+} from "@/lib/query-form-helpers";
 import { getErrorMessage, startWorkflow } from "@/lib/utils";
 import { WorkflowFormField } from "@/components/forms/formfield";
 
@@ -44,35 +48,8 @@ const SiteCableValidationFormSchema = z.object({
 });
 
 type SiteCableValidationFormData = z.infer<typeof SiteCableValidationFormSchema>;
-type QueryOption = { key: string; value: string };
 
-const validateAndSetValue = (
-  form: UseFormReturn<SiteCableValidationFormData>,
-  queryValue: string | string[] | null,
-  data: QueryOption[],
-  fieldName: keyof SiteCableValidationFormData
-) => {
-  if (
-    !queryValue ||
-    (Array.isArray(queryValue) && queryValue.length === 0)
-  ) {
-    form.setValue(fieldName, "");
-    return;
-  }
-
-  if (Array.isArray(queryValue)) {
-    const validValues = queryValue.filter((value) =>
-      data.some((option) => option.key === value)
-    );
-    form.setValue(fieldName, validValues.length > 0 ? validValues : "");
-    return;
-  }
-
-  const validValue =
-    data.find((option) => option.key === queryValue)?.value || "";
-  form.setValue(fieldName, validValue);
-};
-
+/** Renders the form for starting a site cable validation workflow. */
 export const SiteCableValidationWorkflowForm = () => {
   const [isSubmitting, setIsSubmitting] = React.useState<boolean>(false);
   const [isManualChange, setIsManualChange] = React.useState<boolean>(false);
@@ -93,15 +70,15 @@ export const SiteCableValidationWorkflowForm = () => {
   //const params = new URLSearchParams(filterParams).toString();
   React.useEffect(() => {
     if (!isManualChange) {
-      validateAndSetValue(form, querySite, siteCableData.siteData, "site");
-      validateAndSetValue(form, queryRoles, siteCableData.rolesData, "roles");
-      validateAndSetValue(
+      setSingleQueryValue(form, querySite, siteCableData.siteData, "site");
+      setMultiQueryValue(form, queryRoles, siteCableData.rolesData, "roles");
+      setMultiQueryValue(
         form,
         queryStatuses,
         siteCableData.statusData,
         "status"
       );
-      validateAndSetValue(
+      setSingleQueryValue(
         form,
         queryTenant,
         siteCableData.tenantsData,

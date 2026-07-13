@@ -19,7 +19,7 @@
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm, type UseFormReturn } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,6 +29,10 @@ import {
 import { useToast } from "@/components/ui/use-toast";
 import { CumulusHardwareValidationWorkflowInput } from "@/types/data-table.types";
 import { useEnvData } from "@/hooks";
+import {
+  setMultiQueryValue,
+  setSingleQueryValue,
+} from "@/lib/query-form-helpers";
 import { getErrorMessage, startWorkflow } from "@/lib/utils";
 import { WorkflowFormField } from "@/components/forms/formfield";
 
@@ -44,34 +48,6 @@ const CumulusValidationFormSchema = z.object({
 });
 
 type CumulusValidationFormData = z.infer<typeof CumulusValidationFormSchema>;
-type QueryOption = { key: string; value: string };
-
-const validateAndSetValue = (
-  form: UseFormReturn<CumulusValidationFormData>,
-  queryValue: string | string[] | null,
-  data: QueryOption[],
-  fieldName: keyof CumulusValidationFormData
-) => {
-  if (
-    !queryValue ||
-    (Array.isArray(queryValue) && queryValue.length === 0)
-  ) {
-    form.setValue(fieldName, "");
-    return;
-  }
-
-  if (Array.isArray(queryValue)) {
-    const validValues = queryValue.filter((value) =>
-      data.some((option) => option.key === value)
-    );
-    form.setValue(fieldName, validValues.length > 0 ? validValues : "");
-    return;
-  }
-
-  const validValue =
-    data.find((option) => option.key === queryValue)?.value || "";
-  form.setValue(fieldName, validValue);
-};
 
 export const CumulusHardwareValidationWorkflowForm = () => {
   const [isSubmitting, setIsSubmitting] = React.useState<boolean>(false);
@@ -84,7 +60,7 @@ export const CumulusHardwareValidationWorkflowForm = () => {
   const queryStatuses = React.useMemo(() => searchParams?.getAll("status") ?? [], [searchParams]);
   const queryTenant = searchParams?.get("tenant");
 
-  const form = useForm<z.infer<typeof CumulusValidationFormSchema>>({
+  const form = useForm<CumulusValidationFormData>({
     resolver: zodResolver(CumulusValidationFormSchema),
   });
 
@@ -94,15 +70,15 @@ export const CumulusHardwareValidationWorkflowForm = () => {
   //const params = new URLSearchParams(filterParams).toString();
   React.useEffect(() => {
     if (!isManualChange) {
-      validateAndSetValue(form, querySite, siteCableData.siteData, "site");
-      validateAndSetValue(form, queryRoles, siteCableData.rolesData, "roles");
-      validateAndSetValue(
+      setSingleQueryValue(form, querySite, siteCableData.siteData, "site");
+      setMultiQueryValue(form, queryRoles, siteCableData.rolesData, "roles");
+      setMultiQueryValue(
         form,
         queryStatuses,
         siteCableData.statusData,
         "status"
       );
-      validateAndSetValue(
+      setSingleQueryValue(
         form,
         queryTenant,
         siteCableData.tenantsData,
@@ -119,7 +95,7 @@ export const CumulusHardwareValidationWorkflowForm = () => {
     isManualChange,
   ]);
 
-  const onSubmit = async(data: z.infer<typeof CumulusValidationFormSchema>) => {
+  const onSubmit = async (data: CumulusValidationFormData) => {
       setIsSubmitting(true);
       const workflowParams: CumulusHardwareValidationWorkflowInput = {
         site: data.site,
