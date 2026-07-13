@@ -22,9 +22,10 @@ from nv_config_manager.common.auth import auth_required, require_sso_or_device
 from nv_config_manager.common.client import ConfigStoreException, ConfigStoreFileNotFound
 from nv_config_manager.common.config import get_storage_client, temporal_client
 from nv_config_manager.common.log import LogCategory, get_logger
+from nv_config_manager.ztp.api.clients import get_nautobot_client
 from nv_config_manager.ztp.api.schemas import ChecksumResponse
 from nv_config_manager.ztp.api.streaming import create_object_storage_streaming_response
-from nv_config_manager.ztp.nautobot import NautobotClient, NotFoundError
+from nv_config_manager.ztp.nautobot import NotFoundError
 from nv_config_manager.ztp.storage import ObjectStorageNotFoundException
 
 logger = get_logger(__name__, category=LogCategory.ZTP_API)
@@ -46,9 +47,7 @@ async def _authorize_request(request: Request, device_uuid: str) -> None:
         return
 
     try:
-        nb_client = NautobotClient()
-        async with nb_client:
-            device_data = await nb_client.get_device_data(device_uuid)
+        device_data = await get_nautobot_client().get_device_data(device_uuid)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -89,9 +88,7 @@ async def load_configuration(
     """Load the specified configuration file for the given nautobot device UUID."""
     await _authorize_request(request, device_uuid)
     try:
-        nb_client = NautobotClient()
-        async with nb_client:
-            device_data = await nb_client.get_device_data(device_uuid)
+        device_data = await get_nautobot_client().get_device_data(device_uuid)
         content = await device_data.load_file(configlet)
         return PlainTextResponse(content)
     except (NotFoundError, ConfigStoreFileNotFound) as exc:
@@ -110,9 +107,7 @@ async def load_firmware(device_uuid: str, request: Request) -> StreamingResponse
     """Load the firmware for the given device."""
     await _authorize_request(request, device_uuid)
     try:
-        nb_client = NautobotClient()
-        async with nb_client:
-            device_data = await nb_client.get_device_data(device_uuid)
+        device_data = await get_nautobot_client().get_device_data(device_uuid)
         if device_data.platform is None or device_data.version is None:
             raise HTTPException(status_code=404, detail="Device firware data not found")
     except NotFoundError as exc:
@@ -135,9 +130,7 @@ async def load_firmware_checksum(device_uuid: str, request: Request) -> Checksum
     """Load the firmware checksum for the given device."""
     await _authorize_request(request, device_uuid)
     try:
-        nb_client = NautobotClient()
-        async with nb_client:
-            device_data = await nb_client.get_device_data(device_uuid)
+        device_data = await get_nautobot_client().get_device_data(device_uuid)
         if device_data.platform is None or device_data.version is None:
             raise HTTPException(status_code=404, detail="Device firware data not found")
     except NotFoundError as exc:
@@ -158,9 +151,7 @@ async def load_firmware_checksum(device_uuid: str, request: Request) -> Checksum
 async def mark_provisioned(device_uuid: str, request: Request) -> str:
     """Mark the ZTP process complete for the given device."""
     await _authorize_request(request, device_uuid)
-    nb_client = NautobotClient()
-    async with nb_client:
-        await nb_client.set_status_provisioned(device_uuid)
+    await get_nautobot_client().set_status_provisioned(device_uuid)
     # Trigger a backup workflow
     try:
         client = temporal_client()
@@ -195,10 +186,8 @@ def _compare_serials(expected: str, observed: str) -> bool:
 async def validate_serial(device_uuid: str, body: ValidateSerialBody, request: Request) -> str:
     """Validate the device serial number matches nautobot."""
     await _authorize_request(request, device_uuid)
-    nb_client = NautobotClient()
     try:
-        async with nb_client:
-            expected_serial = await nb_client.get_device_serial(device_uuid)
+        expected_serial = await get_nautobot_client().get_device_serial(device_uuid)
         if not _compare_serials(expected_serial, body.serial):
             logger.error(
                 "Serial number mismatch observed on device %s, expected: %s, observed: %s.",

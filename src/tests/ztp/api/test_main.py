@@ -26,6 +26,7 @@ from nv_config_manager.common.client import (
     ConfigStoreFileNotFound,
 )
 from nv_config_manager.ztp.api.main import app
+from nv_config_manager.ztp.nautobot import NautobotUnavailableError
 from nv_config_manager.ztp.s3 import (
     S3ExistsException,
     S3NotFoundException,
@@ -98,6 +99,22 @@ def test_device_v1_bootscript(
     ):
         rsp = client.get(f"/v1/device/{uuid4()}/boot-script")
         assert rsp.status_code == 404
+
+
+@patch("nv_config_manager.ztp.api.device_v1.Request.client")
+def test_device_v1_returns_503_when_nautobot_unavailable(mock_request_client, client):
+    """Backpressure / circuit-breaker surfaces to devices as a retryable 503."""
+    mock_request_client.host = "testclient"
+    with patch(
+        "nv_config_manager.ztp.nautobot.NautobotClient.get_device_data",
+        new_callable=AsyncMock,
+        side_effect=NautobotUnavailableError(
+            "Nautobot concurrency limit reached; try again shortly."
+        ),
+    ):
+        rsp = client.get(f"/v1/device/{uuid4()}/boot-script")
+        assert rsp.status_code == 503
+        assert rsp.headers["retry-after"] == "5"
 
 
 @patch("nv_config_manager.ztp.api.device_v1.Request.client")

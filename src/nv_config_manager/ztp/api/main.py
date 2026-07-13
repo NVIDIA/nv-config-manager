@@ -17,15 +17,20 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import PlainTextResponse
 from prometheus_fastapi_instrumentator import Instrumentator, metrics
 
 from nv_config_manager.common.auth import install_identity_probe
 from nv_config_manager.common.log import configure_logging
 from nv_config_manager.ztp.api import device_v1, files_v1, firmware_v1
+from nv_config_manager.ztp.api.clients import close_nautobot_client, get_nautobot_client
 from nv_config_manager.ztp.api.metrics import device_http_requests
+from nv_config_manager.ztp.nautobot import NautobotUnavailableError
 
 configure_logging(service="ztp")
 
@@ -51,7 +56,34 @@ def main() -> None:
     )
 
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    """Create the shared Nautobot client on startup, close it on shutdown."""
+    get_nautobot_client()
+    try:
+        yield
+    finally:
+        await close_nautobot_client()
+
+
+app = FastAPI(lifespan=lifespan)
+
+
+@app.exception_handler(NautobotUnavailableError)
+async def _nautobot_unavailable_handler(
+    _request: Request, exc: NautobotUnavailableError
+) -> PlainTextResponse:
+    """Surface Nautobot backpressure/circuit-breaker as a retryable 503.
+
+    Devices (and ONIE) retry on transient failures, so shedding load here is
+    far better than letting requests pile up on a struggling Nautobot.
+    """
+    return PlainTextResponse(
+        str(exc) or "Nautobot temporarily unavailable.",
+        status_code=503,
+        headers={"Retry-After": "5"},
+    )
+
 
 # Include routers
 app.include_router(device_v1.router, prefix="/v1")

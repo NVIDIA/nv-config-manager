@@ -19,8 +19,22 @@ import os
 
 import pytest
 
+from nv_config_manager.ztp.api import clients
+
 # Get the directory containing this conftest.py
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+@pytest.fixture(autouse=True)
+def _reset_shared_nautobot_client():
+    """Drop the process-wide ZTP Nautobot client between tests.
+
+    The shared client carries a cache, circuit-breaker, and concurrency limiter;
+    resetting keeps those from leaking state across test cases.
+    """
+    clients.reset_nautobot_client()
+    yield
+    clients.reset_nautobot_client()
 
 
 @pytest.fixture
