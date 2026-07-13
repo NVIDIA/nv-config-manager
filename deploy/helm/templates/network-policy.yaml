@@ -59,6 +59,42 @@ spec:
 
 {{/*
 # =============================================================================
+# Network Policy - kgateway External Listener Access
+# =============================================================================
+# kgateway creates its data-plane proxy in the application namespace. The
+# namespace-isolation policy above therefore applies to it. Permit external
+# traffic only to that proxy's Gateway listener ports so a NodePort or
+# LoadBalancer can reach the Gateway without exposing application pods.
+# =============================================================================
+*/}}
+{{- if and .Values.networkPolicy.enabled .Values.gateway.enabled .Values.gateway.create (eq (include "nv-config-manager.gatewayControllerType" .) "kgateway") (gt (len (.Values.gateway.listeners | default list)) 0) }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kgateway-external-listener-access
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      gateway.networking.k8s.io/gateway-name: {{ .Values.gateway.name | quote }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        {{- range .Values.gateway.listeners }}
+        - protocol: TCP
+          port: {{ .port }}
+        {{- end }}
+{{- end }}
+
+{{/*
+# =============================================================================
 # Network Policy - DHCP LoadBalancer Access (ipBlock-based)
 # =============================================================================
 # When using MetalLB or Cilium with externalTrafficPolicy: Local, the source IP

@@ -180,7 +180,11 @@ def generate_values(
 @click.option("--build-images", is_flag=True, help="Build local Docker images before deploying.")
 @click.option("--load-kind", is_flag=True, help="Load images into a Kind cluster.")
 @click.option("--kind-cluster", default="nv-config-manager", help="Kind cluster name.")
-@click.option("--install-envoy-gateway", is_flag=True, help="Install Envoy Gateway CRDs/operator.")
+@click.option(
+    "--install-envoy-gateway",
+    is_flag=True,
+    help="Install Envoy Gateway CRDs/operator (requires gateway=envoyGateway).",
+)
 @click.option("--install-cert-manager", is_flag=True, help="Install cert-manager.")
 @click.option("--install-cnpg-operator", is_flag=True, help="Install CNPG operator.")
 @click.option("--helm-timeout", default="15m", help="Helm install/upgrade timeout.")

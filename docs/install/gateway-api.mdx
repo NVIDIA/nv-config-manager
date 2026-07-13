@@ -1,0 +1,150 @@
+---
+title: Gateway API and OIDC
+description: Configure Envoy Gateway, kgateway, or an existing shared Gateway.
+---
+
+NVIDIA Config Manager uses portable Kubernetes `HTTPRoute` resources and supports
+Envoy Gateway and kgateway. Browser authentication is performed by the chart's
+OIDC proxy, not by the Gateway controller. The chart configures the maintained,
+distroless oauth2-proxy binary as the reverse-proxy engine. It validates the
+shared session, supplies trusted identity headers and an ID-token Authorization
+header, and forwards each hostname to its internal service. API clients continue
+to use the `svc-*` hostnames with a Bearer token.
+
+Every route strips inbound identity headers before forwarding, including routes
+that intentionally bypass browser authentication for native API tokens. When
+`oidc.endSessionEndpoint` is configured, logout clears the shared proxy session
+and continues to the identity provider's logout endpoint. Logging out of a
+hosted application returns to that same hostname after the identity-provider
+logout completes; configure its URL as an allowed post-logout redirect URI at
+the identity provider.
+
+Only one identity-provider callback is required. It always uses
+`gateway.baseHostname`:
+
+```text
+https://<gateway.baseHostname>/oauth2/callback
+```
+
+## Managed Envoy Gateway
+
+The defaults create a Gateway and an Envoy GatewayClass:
+
+```yaml
+ingress:
+  type: envoyGateway
+
+gateway:
+  create: true
+  className: envoy-gateway
+  createGatewayClass: true
+```
+
+If the Envoy installation already owns its GatewayClass, set
+`createGatewayClass: false`.
+
+## Managed kgateway
+
+Install kgateway and its Gateway API CRDs before installing Config Manager. The
+kgateway Helm installation normally owns the `kgateway` GatewayClass, so reuse it:
+
+```yaml
+ingress:
+  type: kgateway
+
+gateway:
+  create: true
+  className: kgateway
+  createGatewayClass: false
+
+networkPolicy:
+  gatewayNamespace: kgateway-system
+```
+
+This mode creates the Config Manager Gateway, certificate, and controller-neutral
+HTTPRoutes. It also creates kgateway `TrafficPolicy` resources that preserve the
+configured default request timeout and the longer ZTP upload timeout, and a
+`BackendConfigPolicy` that preserves the upstream connection timeout. It does
+not render any `gateway.envoyproxy.io` resources.
+
+`gateway.timeout.maxConnectionDuration` has no kgateway equivalent and must
+remain `0s`. To enable global rate limiting with kgateway, the platform team
+must supply a `gateway.kgateway.dev/GatewayExtension` for its gRPC rate-limit
+service, then reference it from the chart:
+
+```yaml
+gateway:
+  rateLimit:
+    enabled: true
+    kgateway:
+      extensionRef:
+        name: platform-rate-limit
+        namespace: kgateway-system # omit when it is in the app namespace
+```
+
+The referenced rate-limit service owns the actual quotas. When `perClient` is
+enabled, the chart sends the client address as the descriptor; otherwise it
+sends the fixed `nv-config-manager=global` descriptor.
+
+## Existing shared kgateway
+
+For a platform-owned Gateway, disable Gateway creation and identify its namespace
+and HTTPS listener:
+
+```yaml
+ingress:
+  type: kgateway
+
+gateway:
+  create: false
+  name: shared-gateway
+  namespace: kgateway-system
+  sectionName: https
+  className: kgateway
+  createGatewayClass: false
+  certificates:
+    enabled: false
+
+networkPolicy:
+  gatewayNamespace: kgateway-system
+```
+
+The platform-owned listener must allow `HTTPRoute` attachments from the Config
+Manager namespace. The platform team also owns the listener certificate and DNS.
+No OIDC policy or other gateway-level authentication configuration is required.
+
+Verify that routes were accepted:
+
+```bash
+kubectl get httproute -n <config-manager-namespace>
+kubectl describe httproute -n <config-manager-namespace> <route-name>
+```
+
+## Upgrading an Argo CD deployment
+
+This guidance applies when upgrading to Config Manager 1.3.1 or later. That
+release replaces controller-specific OIDC policy with the chart's shared,
+controller-neutral OIDC proxy. It does not require a controller migration:
+retain `ingress.type: envoyGateway` for existing Envoy Gateway installations,
+or set `ingress.type: kgateway` only when the cluster uses kgateway.
+
+Before bumping the chart revision in an Argo CD ApplicationSet:
+
+1. Preserve `gateway`, `networkZtp.ingress`, and `networkDhcp.ingress` values.
+   The latter two configure device-facing LoadBalancer Services and are
+   independent of browser Gateway API routing.
+1. Register `https://<gateway.baseHostname>/oauth2/callback` with the identity
+   provider. `oidc.hostname` is no longer used and can be removed from
+   overlays.
+1. Ensure the Secret named by `oidc.clientSecretName` contains `client-secret`
+   and `cookie-secret`. For External Secrets Operator deployments, the Vault
+   path must contain both mapped properties; `cookie-secret` decodes to exactly
+   32 bytes. Existing client-secret-only paths must be populated before the
+   chart revision is updated.
+1. Mirror or permit pulling the pinned `oidc.proxy.image`, then set its
+   repository and tag in the environment overlay when the cluster cannot pull
+   from the default registry.
+1. Confirm that `networkPolicy.gatewayNamespace` admits the Gateway
+   data-plane namespace, render the exact shared and site-specific values
+   layers, and verify the Gateway is `Programmed`, HTTPRoutes are `Accepted`,
+   and the OIDC proxy Deployment is ready after synchronization.

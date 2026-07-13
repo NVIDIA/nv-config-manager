@@ -31,7 +31,6 @@ class OperatorVersions:
     envoy_gateway_version: str
     cert_manager_version: str
     cnpg_operator_version: str
-    ingress_nginx_version: str
     prometheus_crd_version: str
     prometheus_operator_version: str
 
@@ -40,7 +39,6 @@ class OperatorVersions:
         "ENVOY_GATEWAY_VERSION": "envoy_gateway_version",
         "CERT_MANAGER_VERSION": "cert_manager_version",
         "CNPG_OPERATOR_VERSION": "cnpg_operator_version",
-        "INGRESS_NGINX_VERSION": "ingress_nginx_version",
         "PROMETHEUS_CRD_VERSION": "prometheus_crd_version",
         "PROMETHEUS_OPERATOR_VERSION": "prometheus_operator_version",
     }

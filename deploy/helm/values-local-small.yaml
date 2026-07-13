@@ -23,6 +23,12 @@
 #   use installer config cluster.size: small
 # =============================================================================
 
+# One pod runs a proxy container for every protected hostname. Keeping a single
+# replica prevents the local security stack from exhausting Kind CPU.
+oidc:
+  proxy:
+    replicas: 1
+
 # -----------------------------------------------------------------------------
 # Nautobot - Primary memory consumer
 # Reduced from production 8Gi/16Gi to 2Gi/4Gi
