@@ -120,6 +120,23 @@ test.describe("Home Page (Splash Page)", () => {
     await expect(dashboard.getByText("spine-02")).toHaveCount(0);
   });
 
+  test("matches MAC addresses without separators or in dotted format", async ({
+    page,
+  }) => {
+    const dashboard = page.getByTestId("dhcp-dashboard");
+    const search = dashboard.getByRole("searchbox", {
+      name: "Filter displayed DHCP data",
+    });
+
+    await search.fill("020000000010");
+    await expect(dashboard.getByText("leaf-01")).toBeVisible();
+    await expect(dashboard.getByText("leaf-02")).toHaveCount(0);
+
+    await search.fill("0200.0000.0010");
+    await expect(dashboard.getByText("leaf-01")).toBeVisible();
+    await expect(dashboard.getByText("leaf-02")).toHaveCount(0);
+  });
+
   test("displays External Services section with Nautobot link", async ({
     page,
   }) => {

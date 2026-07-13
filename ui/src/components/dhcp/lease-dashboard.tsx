@@ -118,12 +118,26 @@ function formatConfigAge(timestamp?: number | null): string {
   return `${Math.floor(ageSeconds / 86400)}d`;
 }
 
-/** Return whether any display value contains the normalized search query. */
+/** Normalize a complete 48-bit MAC address across common separator styles. */
+function normalizeMacAddress(value: string): string | null {
+  const compactValue = value.replaceAll(/[:.-]/g, "").toLowerCase();
+  return /^[0-9a-f]{12}$/.test(compactValue) ? compactValue : null;
+}
+
+/** Return whether any display value contains the query or the same MAC address. */
 function matchesSearch(
   values: Array<string | number | null | undefined>,
   query: string,
 ): boolean {
-  return values.some((value) => String(value ?? "").toLowerCase().includes(query));
+  const normalizedMacQuery = normalizeMacAddress(query);
+  return values.some((value) => {
+    const normalizedValue = String(value ?? "").toLowerCase();
+    return (
+      normalizedValue.includes(query) ||
+      (normalizedMacQuery !== null &&
+        normalizeMacAddress(normalizedValue) === normalizedMacQuery)
+    );
+  });
 }
 
 /** Render a utilization bar using warning colors near pool capacity. */
