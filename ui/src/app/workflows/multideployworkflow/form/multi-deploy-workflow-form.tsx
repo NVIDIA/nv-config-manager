@@ -70,8 +70,8 @@ const setSingleQueryValue = (
     return;
   }
 
-  const isValid = data.some((option) => option.key === queryValue);
-  form.setValue(fieldName, isValid ? queryValue : "");
+  const matchedOption = data.find((option) => option.key === queryValue);
+  form.setValue(fieldName, matchedOption?.value ?? "");
 };
 
 const setStatusQueryValue = (
