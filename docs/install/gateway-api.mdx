@@ -14,7 +14,10 @@ to use the `svc-*` hostnames with a Bearer token.
 Every route strips inbound identity headers before forwarding, including routes
 that intentionally bypass browser authentication for native API tokens. When
 `oidc.endSessionEndpoint` is configured, logout clears the shared proxy session
-and continues to the identity provider's logout endpoint.
+and continues to the identity provider's logout endpoint. Logging out of a
+hosted application returns to that same hostname after the identity-provider
+logout completes; configure its URL as an allowed post-logout redirect URI at
+the identity provider.
 
 Only one identity-provider callback is required. It always uses
 `gateway.baseHostname`:

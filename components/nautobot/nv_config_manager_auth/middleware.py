@@ -86,7 +86,7 @@ class JWTCookieMiddleware:
 
 
 class LogoutRedirectMiddleware:
-    """Redirect Nautobot's hard-coded logout response to gateway OIDC logout."""
+    """Redirect Nautobot logout through the gateway OIDC logout endpoint."""
 
     def __init__(self, get_response: Any) -> None:
         self.get_response = get_response
@@ -96,4 +96,9 @@ class LogoutRedirectMiddleware:
         response = self.get_response(request)
         if self._redirect_url and request.path_info == "/logout/" and response.status_code in {301, 302, 303, 307, 308}:
             response["Location"] = self._redirect_url
+            # Nautobot's logout view queues a flash message before this middleware
+            # hands off to SSO. The user is immediately authenticated again after
+            # the identity-provider flow, so showing "You have logged out" on the
+            # restored Nautobot page is misleading.
+            response.delete_cookie("messages")
         return response

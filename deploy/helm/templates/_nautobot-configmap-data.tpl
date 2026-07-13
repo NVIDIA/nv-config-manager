@@ -27,7 +27,7 @@ NAUTOBOT_CSRF_TRUSTED_ORIGINS: "https://{{ tpl .Values.nautobot.gateway.hostname
 NAUTOBOT_DEBUG: "{{ .Values.nautobot.server.debug }}"
 NAUTOBOT_LOG_LEVEL: "{{ .Values.nautobot.server.logLevel }}"
 {{- if and .Values.oidc.enabled .Values.oidc.authUtility.enabled }}
-NAUTOBOT_LOGOUT_REDIRECT_URL: "https://{{ .Values.gateway.baseHostname }}/auth/logout"
+NAUTOBOT_LOGOUT_REDIRECT_URL: {{ printf "https://%s/auth/logout?rd=%s" .Values.gateway.baseHostname (printf "https://%s/" (tpl .Values.nautobot.gateway.hostname .) | urlquery) | quote }}
 {{- end }}
 NAUTOBOT_DB_ENGINE: "django.db.backends.postgresql"
 NAUTOBOT_DB_HOST: "{{ tpl .Values.nautobot.server.db.host . }}"

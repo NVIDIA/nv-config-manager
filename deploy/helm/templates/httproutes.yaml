@@ -15,11 +15,8 @@
 # =============================================================================
 # Service (svc-*) HTTPRoute Helper Template
 # =============================================================================
-{{- define "nv-config-manager.stripIdentityHeaders" }}
-filters:
-- type: RequestHeaderModifier
-  requestHeaderModifier:
-    remove:
+{{- define "nv-config-manager.identityHeaderRemovals" }}
+remove:
     - ssl-client-cert
     - X-Auth-Request-Email
     - X-Auth-Request-User
@@ -34,6 +31,29 @@ filters:
     - X-Forwarded-Groups
     - X-Forwarded-Preferred-Username
     - X-Forwarded-Access-Token
+{{- end }}
+
+{{- define "nv-config-manager.stripIdentityHeaders" }}
+filters:
+- type: RequestHeaderModifier
+  requestHeaderModifier:
+{{ include "nv-config-manager.identityHeaderRemovals" . | nindent 4 }}
+{{- end }}
+
+{{/*
+Protected browser routes must provide oauth2-proxy with an absolute, trusted
+return target. Gateway API cannot express the requested path dynamically, so
+the route supplies its canonical hostname. oauth2-proxy preserves this target
+through its base-hostname callback rather than falling back to the splash page.
+*/}}
+{{- define "nv-config-manager.protectedIdentityHeaders" }}
+filters:
+- type: RequestHeaderModifier
+  requestHeaderModifier:
+{{ include "nv-config-manager.identityHeaderRemovals" . | nindent 4 }}
+    set:
+    - name: X-Auth-Request-Redirect
+      value: {{ printf "https://%s/" .redirectHostname | quote }}
 {{- end }}
 
 {{/* Labels HTTPRoutes for controller-specific timeout policies. */}}
@@ -211,7 +231,7 @@ spec:
     - path:
         type: PathPrefix
         value: /
-    {{- include "nv-config-manager.stripIdentityHeaders" . | nindent 4 }}
+    {{- include "nv-config-manager.protectedIdentityHeaders" (dict "redirectHostname" (tpl .Values.renderService.gateway.hostname .)) | nindent 4 }}
     {{- include "nv-config-manager.browserBackendRefs" (dict "root" . "backendName" (printf "%s-api" $renderName) "backendPort" 9000 "proxyPort" 9101) | nindent 4 }}
 {{- end }}
 
@@ -258,7 +278,7 @@ spec:
     - path:
         type: PathPrefix
         value: /
-    {{- include "nv-config-manager.stripIdentityHeaders" . | nindent 4 }}
+    {{- include "nv-config-manager.protectedIdentityHeaders" (dict "redirectHostname" (tpl .Values.networkZtp.gateway.hostname .)) | nindent 4 }}
     {{- include "nv-config-manager.browserBackendRefs" (dict "root" . "backendName" (printf "%s-api" $ztpName) "backendPort" 9000 "proxyPort" 9102) | nindent 4 }}
 {{- end }}
 
@@ -303,7 +323,7 @@ spec:
     - path:
         type: PathPrefix
         value: /
-    {{- include "nv-config-manager.stripIdentityHeaders" . | nindent 4 }}
+    {{- include "nv-config-manager.protectedIdentityHeaders" (dict "redirectHostname" (tpl .Values.networkDhcp.gateway.hostname .)) | nindent 4 }}
     {{- include "nv-config-manager.browserBackendRefs" (dict "root" . "backendName" (printf "%s-internal" $dhcpName) "backendPort" 9000 "proxyPort" 9103) | nindent 4 }}
 {{- end }}
 
@@ -348,7 +368,7 @@ spec:
     - path:
         type: PathPrefix
         value: /
-    {{- include "nv-config-manager.stripIdentityHeaders" . | nindent 4 }}
+    {{- include "nv-config-manager.protectedIdentityHeaders" (dict "redirectHostname" (tpl .Values.temporal.gateway.api.hostname .)) | nindent 4 }}
     {{- include "nv-config-manager.browserBackendRefs" (dict "root" . "backendName" (printf "%s-api" $temporalName) "backendPort" 9000 "proxyPort" 9104) | nindent 4 }}
 ---
 # Temporal Web UI HTTPRoute (temporal.<base>) - OIDC-only, via browser proxy
@@ -368,7 +388,7 @@ spec:
     - path:
         type: PathPrefix
         value: /
-    {{- include "nv-config-manager.stripIdentityHeaders" . | nindent 4 }}
+    {{- include "nv-config-manager.protectedIdentityHeaders" (dict "redirectHostname" (tpl .Values.temporal.gateway.devUi.hostname .)) | nindent 4 }}
     {{- include "nv-config-manager.browserBackendRefs" (dict "root" . "backendName" (printf "%s-web-service" $temporalName) "backendPort" 8080 "proxyPort" 9105) | nindent 4 }}
 {{- end }}
 
@@ -420,7 +440,7 @@ spec:
     - path:
         type: PathPrefix
         value: /
-    {{- include "nv-config-manager.stripIdentityHeaders" . | nindent 4 }}
+    {{- include "nv-config-manager.protectedIdentityHeaders" (dict "redirectHostname" .Values.gateway.baseHostname) | nindent 4 }}
     {{- include "nv-config-manager.browserBackendRefs" (dict "root" . "backendName" $uiName "backendPort" 3000 "proxyPort" 9100) | nindent 4 }}
 {{- end }}
 
@@ -478,7 +498,7 @@ spec:
     - path:
         type: PathPrefix
         value: /
-    {{- include "nv-config-manager.stripIdentityHeaders" . | nindent 4 }}
+    {{- include "nv-config-manager.protectedIdentityHeaders" (dict "redirectHostname" (tpl .Values.nautobot.gateway.hostname .)) | nindent 4 }}
     {{- include "nv-config-manager.browserBackendRefs" (dict "root" . "backendName" $nautobotName "backendPort" 80 "proxyPort" 9106) | nindent 4 }}
 {{- end }}
 
@@ -523,7 +543,7 @@ spec:
     - path:
         type: PathPrefix
         value: /
-    {{- include "nv-config-manager.stripIdentityHeaders" . | nindent 4 }}
+    {{- include "nv-config-manager.protectedIdentityHeaders" (dict "redirectHostname" (tpl .Values.configStore.gateway.api.hostname .)) | nindent 4 }}
     {{- include "nv-config-manager.browserBackendRefs" (dict "root" . "backendName" (printf "%s-api" $configStoreName) "backendPort" 9000 "proxyPort" 9107) | nindent 4 }}
 {{- end }}
 
@@ -568,7 +588,7 @@ spec:
     - path:
         type: PathPrefix
         value: /
-    {{- include "nv-config-manager.stripIdentityHeaders" . | nindent 4 }}
+    {{- include "nv-config-manager.protectedIdentityHeaders" (dict "redirectHostname" (tpl .Values.mcp.gateway.hostname .)) | nindent 4 }}
     {{- include "nv-config-manager.browserBackendRefs" (dict "root" . "backendName" $mcpName "backendPort" 9000 "proxyPort" 9108) | nindent 4 }}
 {{- end }}
 

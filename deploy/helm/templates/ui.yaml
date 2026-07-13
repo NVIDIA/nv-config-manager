@@ -52,8 +52,14 @@ spec:
         - name: APP_VERSION
           value: "{{ include "nv-config-manager.imageTag" (dict "root" . "image" .Values.global.images.nvConfigManagerUi) }}"
         {{- if .Values.oidc.enabled }}
+        - name: OIDC_GATEWAY_URL
+          value: "https://{{ .Values.gateway.baseHostname }}"
         - name: OIDC_END_SESSION_ENDPOINT
           value: {{ .Values.oidc.endSessionEndpoint | default "" | quote }}
+        - name: OIDC_CLIENT_ID
+          value: {{ .Values.oidc.clientId | default "" | quote }}
+        - name: OIDC_PROXY_COOKIE_NAME
+          value: {{ .Values.oidc.proxy.cookieName | default "_nvcm_oidc_proxy" | quote }}
         {{- end }}
         {{- if .Values.oidc.authUtility.enabled }}
         # Public auth discovery metadata for native clients
@@ -61,8 +67,6 @@ spec:
           value: {{ .Values.oidc.enabled | quote }}
         - name: OIDC_ISSUER_URL
           value: {{ .Values.oidc.issuerUrl | default "" | quote }}
-        - name: OIDC_CLIENT_ID
-          value: {{ .Values.oidc.clientId | default "" | quote }}
         - name: OIDC_CLI_CLIENT_ID
           value: {{ (.Values.oidc.cliClientId | default .Values.oidc.clientId | default "") | quote }}
         - name: OIDC_SCOPES

@@ -20,23 +20,75 @@ const DEFAULT_AUTH_COOKIE_NAMES = [
   "NVConfigManagerAccessToken",
   "NVConfigManagerIdToken",
 ];
+const DEFAULT_PROXY_COOKIE_NAME = "_nvcm_oidc_proxy";
 
 const COOKIE_NAME_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 
-const providerLogoutRedirect = (): string => {
+const gatewayUrl = (request: NextRequest): URL => {
+  const configuredUrl = process.env.OIDC_GATEWAY_URL;
+  if (configuredUrl) {
+    try {
+      const url = new URL(configuredUrl);
+      if (url.protocol === "https:" || url.protocol === "http:") {
+        return url;
+      }
+    } catch {
+      // Fall back to the request URL when the deployment setting is malformed.
+    }
+  }
+  return request.nextUrl;
+};
+
+const logoutReturnUrl = (request: NextRequest): string => {
+  const returnUrl = request.nextUrl.searchParams.get("rd");
+  const publicGatewayUrl = gatewayUrl(request);
+  const fallback = new URL("/", publicGatewayUrl.origin).toString();
+
+  if (!returnUrl) {
+    return fallback;
+  }
+
+  try {
+    const url = new URL(returnUrl);
+    const baseHostname = publicGatewayUrl.hostname;
+    const isBaseHostOrSubdomain =
+      url.hostname === baseHostname ||
+      url.hostname.endsWith(`.${baseHostname}`);
+
+    if (url.protocol !== publicGatewayUrl.protocol || !isBaseHostOrSubdomain) {
+      return fallback;
+    }
+    return url.toString();
+  } catch {
+    return fallback;
+  }
+};
+
+const providerLogoutRedirect = (returnUrl: string): string => {
   const endpoint = process.env.OIDC_END_SESSION_ENDPOINT;
   if (!endpoint) {
-    return "/oauth2/sign_out";
+    return `/oauth2/sign_out?rd=${encodeURIComponent(returnUrl)}`;
   }
 
   try {
     const url = new URL(endpoint);
     if (url.protocol !== "https:" && url.protocol !== "http:") {
-      return "/oauth2/sign_out";
+      return `/oauth2/sign_out?rd=${encodeURIComponent(returnUrl)}`;
     }
-    return `/oauth2/sign_out?rd=${encodeURIComponent(url.toString())}`;
+    url.searchParams.set("post_logout_redirect_uri", returnUrl);
+    if (process.env.OIDC_CLIENT_ID) {
+      url.searchParams.set("client_id", process.env.OIDC_CLIENT_ID);
+    }
+    // oauth2-proxy replaces this placeholder from its server-side session before
+    // redirecting, allowing providers such as Keycloak to end the right session
+    // without an interactive logout confirmation.
+    url.searchParams.set("id_token_hint", "{id_token}");
+    const providerLogoutUrl = url
+      .toString()
+      .replace("%7Bid_token%7D", "{id_token}");
+    return `/oauth2/sign_out?rd=${encodeURIComponent(providerLogoutUrl)}`;
   } catch {
-    return "/oauth2/sign_out";
+    return `/oauth2/sign_out?rd=${encodeURIComponent(returnUrl)}`;
   }
 };
 
@@ -74,10 +126,17 @@ const cookieDomains = (hostname: string): string[] => {
 };
 
 const cookieNamesToClear = (request: NextRequest): string[] => {
-  const names = new Set(DEFAULT_AUTH_COOKIE_NAMES);
+  const proxyCookieName =
+    process.env.OIDC_PROXY_COOKIE_NAME || DEFAULT_PROXY_COOKIE_NAME;
+  const names = new Set(
+    DEFAULT_AUTH_COOKIE_NAMES.filter((name) => name !== proxyCookieName)
+  );
 
   request.cookies.getAll().forEach((cookie) => {
-    if (COOKIE_NAME_PATTERN.test(cookie.name)) {
+    if (
+      cookie.name !== proxyCookieName &&
+      COOKIE_NAME_PATTERN.test(cookie.name)
+    ) {
       names.add(cookie.name);
     }
   });
@@ -86,13 +145,14 @@ const cookieNamesToClear = (request: NextRequest): string[] => {
 };
 
 export async function GET(request: NextRequest) {
+  const returnUrl = logoutReturnUrl(request);
   const response = new NextResponse(null, {
     status: 302,
     headers: {
-      Location: providerLogoutRedirect(),
+      Location: providerLogoutRedirect(returnUrl),
     },
   });
-  const hostname = request.nextUrl.hostname;
+  const hostname = gatewayUrl(request).hostname;
   const domains = cookieDomains(hostname);
 
   cookieNamesToClear(request).forEach((name) => {

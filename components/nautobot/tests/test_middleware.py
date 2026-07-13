@@ -28,6 +28,13 @@ def _import_module():
 class _RedirectResponse(dict):
     status_code = 302
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.deleted_cookies = []
+
+    def delete_cookie(self, name):
+        self.deleted_cookies.append(name)
+
 
 class TestJWTCookieMiddleware:
     def test_init_reads_cookie_env(self, monkeypatch):
@@ -222,7 +229,7 @@ class TestLogoutRedirectMiddleware:
     def test_rewrites_logout_redirect(self, monkeypatch):
         monkeypatch.setenv(
             "NAUTOBOT_LOGOUT_REDIRECT_URL",
-            "https://config-manager.local/auth/logout",
+            "https://config-manager.local/auth/logout?rd=https%3A%2F%2Fnautobot.config-manager.local%2F",
         )
         mod = _import_module()
 
@@ -234,7 +241,10 @@ class TestLogoutRedirectMiddleware:
         mw = mod.LogoutRedirectMiddleware(get_response=get_response)
         result = mw(request)
 
-        assert result["Location"] == "https://config-manager.local/auth/logout"
+        assert result["Location"] == (
+            "https://config-manager.local/auth/logout?rd=https%3A%2F%2Fnautobot.config-manager.local%2F"
+        )
+        assert result.deleted_cookies == ["messages"]
 
     def test_leaves_other_paths_unchanged(self, monkeypatch):
         monkeypatch.setenv(
@@ -252,6 +262,7 @@ class TestLogoutRedirectMiddleware:
         result = mw(request)
 
         assert result["Location"] == "/"
+        assert result.deleted_cookies == []
 
     def test_leaves_logout_unchanged_without_redirect_env(self, monkeypatch):
         monkeypatch.delenv("NAUTOBOT_LOGOUT_REDIRECT_URL", raising=False)
@@ -266,6 +277,7 @@ class TestLogoutRedirectMiddleware:
         result = mw(request)
 
         assert result["Location"] == "/"
+        assert result.deleted_cookies == []
 
     def test_leaves_non_redirect_logout_response_unchanged(self, monkeypatch):
         monkeypatch.setenv(
@@ -284,3 +296,4 @@ class TestLogoutRedirectMiddleware:
         result = mw(request)
 
         assert result["Location"] == "/"
+        assert result.deleted_cookies == []
