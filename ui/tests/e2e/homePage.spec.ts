@@ -58,10 +58,15 @@ test.describe("Home Page (Splash Page)", () => {
     await expect(
       dashboard.getByRole("heading", { name: "DHCP lease activity" })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
+    const activeLeasesMetric = dashboard.getByRole("group", {
+      name: "Active leases",
+    });
     await expect(
-      dashboard.getByText("Active leases", { exact: true }).first()
+      activeLeasesMetric.getByText("Active leases", { exact: true })
     ).toBeVisible();
-    await expect(dashboard.getByText("2", { exact: true }).first()).toBeVisible();
+    await expect(
+      activeLeasesMetric.getByText("2", { exact: true })
+    ).toBeVisible();
     await expect(dashboard.getByText("leaf-01")).toBeVisible();
     await expect(dashboard.getByText("Config age", { exact: true })).toBeVisible();
     await expect(dashboard.getByText("4m", { exact: true })).toBeVisible();
@@ -135,6 +140,15 @@ test.describe("Home Page (Splash Page)", () => {
     await search.fill("0200.0000.0010");
     await expect(dashboard.getByText("leaf-01")).toBeVisible();
     await expect(dashboard.getByText("leaf-02")).toHaveCount(0);
+
+    await dashboard.getByRole("tab", { name: "Reservations" }).click();
+    await search.fill("020000000001");
+    await expect(dashboard.getByText("spine-01")).toBeVisible();
+    await expect(dashboard.getByText("spine-02")).toHaveCount(0);
+
+    await search.fill("0200.0000.0001");
+    await expect(dashboard.getByText("spine-01")).toBeVisible();
+    await expect(dashboard.getByText("spine-02")).toHaveCount(0);
   });
 
   test("displays External Services section with Nautobot link", async ({

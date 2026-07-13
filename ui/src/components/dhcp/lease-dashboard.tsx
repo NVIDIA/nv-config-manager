@@ -79,7 +79,11 @@ interface MetricProps {
 /** Render one summary metric in the DHCP dashboard header. */
 function Metric({ icon, label, value, detail }: MetricProps) {
   return (
-    <div className="rounded-lg border bg-background/60 p-4">
+    <div
+      role="group"
+      aria-label={label}
+      className="rounded-lg border bg-background/60 p-4"
+    >
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm font-medium text-muted-foreground">{label}</p>
         <div className="rounded-md bg-primary/10 p-2 text-primary">{icon}</div>
