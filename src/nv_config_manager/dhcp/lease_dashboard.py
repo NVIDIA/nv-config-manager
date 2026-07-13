@@ -270,6 +270,9 @@ def build_lease_dashboard(
     assigned_count = _stat_value(statistics, "assigned-addresses")
     if assigned_count is None:
         assigned_count = sum(pool.assigned for pool in pools)
+    # KEA's global assigned count can include leases filtered from the active,
+    # unexpired rows above. Keep the global KPI and flag that row-count mismatch
+    # through leases_truncated rather than presenting the smaller list as complete.
     active_lease_count = max(assigned_count, len(leases))
     pool_address_count = sum(pool.total for pool in pools)
 
