@@ -206,6 +206,7 @@ const getSecretLabel = (
   location: string,
   devicesLoading: boolean,
   firstDeviceId: string | null,
+  secretsLoading: boolean,
   secretCount: number
 ) => {
   if (!location) {
@@ -217,8 +218,11 @@ const getSecretLabel = (
   if (!firstDeviceId) {
     return "Secret to Rotate (no matching devices)";
   }
-  if (secretCount === 0) {
+  if (secretsLoading) {
     return "Secret to Rotate (loading secrets...)";
+  }
+  if (secretCount === 0) {
+    return "Secret to Rotate (no secrets found)";
   }
   return "Secret to Rotate";
 };
@@ -314,10 +318,8 @@ export const SitePasswordRotationWorkflowForm = () => {
     devicesLoading
   );
 
-  const { data: passwordUsers } = useSWR<PasswordUser[]>(
-    passwordUsersUrl,
-    fetcher
-  );
+  const { data: passwordUsers, isLoading: secretsLoading } =
+    useSWR<PasswordUser[]>(passwordUsersUrl, fetcher);
 
   const secretOptions = React.useMemo(() => {
     return mapSecretOptions(passwordUsers);
@@ -326,6 +328,7 @@ export const SitePasswordRotationWorkflowForm = () => {
     location,
     devicesLoading,
     firstDeviceId,
+    secretsLoading,
     secretOptions.length
   );
 
