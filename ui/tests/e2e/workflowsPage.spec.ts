@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 import { expect } from "@playwright/test";
+import { providerLogoutRedirect } from "../../src/lib/auth/logout";
 import { test } from "./shared/utils";
 
 const gatewayUrl = new URL(
@@ -24,8 +25,35 @@ const gatewayHome = new URL("/", gatewayUrl).toString();
 const applicationUrl = new URL(gatewayUrl);
 applicationUrl.hostname = `nautobot.${gatewayUrl.hostname}`;
 const applicationHome = new URL("/", applicationUrl).toString();
+const providerEndSessionUrl = "https://idp.example.com/oidc/logout";
+const providerReturnUrl = "https://nautobot.config-manager.example.com/";
+
+const providerLogoutUrl = (clientId?: string): URL => {
+  const redirect = providerLogoutRedirect(
+    providerReturnUrl,
+    providerEndSessionUrl,
+    clientId
+  );
+  return new URL(new URL(redirect, gatewayUrl).searchParams.get("rd")!);
+};
 
 test.describe("Workflows Page", () => {
+  test("logout builds a provider end-session redirect", () => {
+    const url = providerLogoutUrl("nv-config-manager");
+
+    expect(url.origin).toBe("https://idp.example.com");
+    expect(url.pathname).toBe("/oidc/logout");
+    expect(url.searchParams.get("post_logout_redirect_uri")).toBe(
+      providerReturnUrl
+    );
+    expect(url.searchParams.get("client_id")).toBe("nv-config-manager");
+    expect(url.searchParams.get("id_token_hint")).toBe("{id_token}");
+  });
+
+  test("logout omits the optional provider client ID", () => {
+    expect(providerLogoutUrl().searchParams.has("client_id")).toBe(false);
+  });
+
   test("logout returns to the base hostname by default", async ({ request }) => {
     const response = await request.get("/auth/logout", { maxRedirects: 0 });
 

@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 import { NextRequest, NextResponse } from "next/server";
+import { providerLogoutRedirect } from "@/lib/auth/logout";
 
 const DEFAULT_AUTH_COOKIE_NAMES = [
   "NVConfigManagerAccessToken",
@@ -61,34 +62,6 @@ const logoutReturnUrl = (request: NextRequest): string => {
     return url.toString();
   } catch {
     return fallback;
-  }
-};
-
-const providerLogoutRedirect = (returnUrl: string): string => {
-  const endpoint = process.env.OIDC_END_SESSION_ENDPOINT;
-  if (!endpoint) {
-    return `/oauth2/sign_out?rd=${encodeURIComponent(returnUrl)}`;
-  }
-
-  try {
-    const url = new URL(endpoint);
-    if (url.protocol !== "https:" && url.protocol !== "http:") {
-      return `/oauth2/sign_out?rd=${encodeURIComponent(returnUrl)}`;
-    }
-    url.searchParams.set("post_logout_redirect_uri", returnUrl);
-    if (process.env.OIDC_CLIENT_ID) {
-      url.searchParams.set("client_id", process.env.OIDC_CLIENT_ID);
-    }
-    // oauth2-proxy replaces this placeholder from its server-side session before
-    // redirecting, allowing providers such as Keycloak to end the right session
-    // without an interactive logout confirmation.
-    url.searchParams.set("id_token_hint", "{id_token}");
-    const providerLogoutUrl = url
-      .toString()
-      .replace("%7Bid_token%7D", "{id_token}");
-    return `/oauth2/sign_out?rd=${encodeURIComponent(providerLogoutUrl)}`;
-  } catch {
-    return `/oauth2/sign_out?rd=${encodeURIComponent(returnUrl)}`;
   }
 };
 

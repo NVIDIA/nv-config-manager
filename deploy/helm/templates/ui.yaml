@@ -150,7 +150,7 @@ spec:
       volumes:
       - name: nextjs-cache
         emptyDir: {}
-      {{- /* UI is OIDC-only: no auth sidecar - Envoy Gateway handles auth at the edge */}}
+      {{- /* UI is OIDC-only: no auth sidecar - the shared oauth2-proxy handles browser auth */}}
       {{- /* API endpoints (render, temporal-api, etc.) retain sidecars for JWT; UIs do not */}}
 ---
 # NVIDIA Config Manager UI Service
