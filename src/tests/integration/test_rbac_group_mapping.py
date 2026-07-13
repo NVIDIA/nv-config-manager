@@ -98,6 +98,31 @@ def _managed_perms(nbshell: Callable[[str], str], group_name: str) -> list[str]:
     return _nbshell_json(nbshell, body)["perms"]
 
 
+def _perm_grants(nbshell: Callable[[str], str], group_name: str) -> dict[str, dict]:
+    """Return ``{name: {actions, object_types}}`` for *group_name*'s managed perms.
+
+    Asserting on names alone would let an empty-``actions`` or empty/mis-scoped
+    ``object_types`` ObjectPermission pass the suite, so callers verify the
+    concrete grant contents (which actions, over which content types).
+    """
+    body = (
+        "from nautobot.users.models import ObjectPermission\n"
+        f"qs = ObjectPermission.objects.filter(name__startswith={group_name + '_'!r})"
+        ".prefetch_related('object_types')\n"
+        "out = {\n"
+        "    p.name: {\n"
+        "        'actions': sorted(p.actions),\n"
+        "        'object_types': sorted(\n"
+        "            f'{ct.app_label}.{ct.model}' for ct in p.object_types.all()\n"
+        "        ),\n"
+        "    }\n"
+        "    for p in qs\n"
+        "}\n"
+        "_emit({'grants': out})\n"
+    )
+    return _nbshell_json(nbshell, body)["grants"]
+
+
 @pytest.fixture(scope="session")
 def rbac_require_configured(
     rbac_enabled: bool,
@@ -141,10 +166,13 @@ def test_login_grants_managed_group_and_permissions(
 ) -> None:
     """A mapped user's login creates the managed Group + ObjectPermissions.
 
-    ``nvcm-network`` carries the ``nvcm-network`` role, which maps to view/change
-    permissions. After login the user must belong to the ``nvcm-network`` Django
-    Group and the ``nvcm-network_view`` / ``nvcm-network_change`` ObjectPermissions
-    must exist (auto-created because ``autoCreateGroups: true``).
+    ``nvcm-network`` carries the ``nvcm-network`` role, which the configured
+    mapping grants ``view: all`` and ``change: dcim.* + ipam.*``. After login the
+    user must belong to the ``nvcm-network`` Django Group and the
+    ``nvcm-network_view`` / ``nvcm-network_change`` ObjectPermissions must exist
+    (auto-created because ``autoCreateGroups: true``) with the correct actions
+    AND non-empty, correctly scoped content types -- a name-only check would let
+    an empty/mis-scoped grant through.
     """
     status = rbac_api_login(USER_NETWORK)
     assert status == 200, f"expected authorized 200 for {USER_NETWORK}, got {status}"
@@ -155,9 +183,25 @@ def test_login_grants_managed_group_and_permissions(
         f"{USER_NETWORK} not added to managed group; groups={state['groups']}"
     )
 
-    perms = _managed_perms(rbac_nbshell, USER_NETWORK)
-    assert f"{USER_NETWORK}_view" in perms, f"missing view perm; got {perms}"
-    assert f"{USER_NETWORK}_change" in perms, f"missing change perm; got {perms}"
+    grants = _perm_grants(rbac_nbshell, USER_NETWORK)
+
+    view = grants.get(f"{USER_NETWORK}_view")
+    assert view is not None, f"missing view perm; got {sorted(grants)}"
+    assert view["actions"] == ["view"], f"view perm has wrong actions: {view['actions']}"
+    # Mapped to ``view: all`` -> must resolve to a non-empty content-type scope.
+    assert view["object_types"], f"view perm ('all') resolved to an empty scope: {view}"
+
+    change = grants.get(f"{USER_NETWORK}_change")
+    assert change is not None, f"missing change perm; got {sorted(grants)}"
+    assert change["actions"] == ["change"], f"change perm has wrong actions: {change['actions']}"
+    # Mapped to ``change: dcim.* + ipam.*`` -> both app scopes must be present.
+    change_ots = change["object_types"]
+    assert any(o.startswith("dcim.") for o in change_ots), (
+        f"change perm missing dcim.* scope: {change_ots}"
+    )
+    assert any(o.startswith("ipam.") for o in change_ots), (
+        f"change perm missing ipam.* scope: {change_ots}"
+    )
 
 
 def test_login_sets_superuser_from_mapping(
