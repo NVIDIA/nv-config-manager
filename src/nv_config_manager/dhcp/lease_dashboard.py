@@ -234,7 +234,7 @@ def _pool_usage(dhcp4: dict[str, Any], statistics: dict[str, Any]) -> list[PoolU
             total = _stat_value(statistics, f"{prefix}.total-addresses")
             if total is None:
                 total = _pool_capacity(pool_name)
-            utilization = round((assigned / total * 100) if total else 0.0, 1)
+            utilization = round(min(assigned / total * 100, 100.0) if total else 0.0, 1)
             pools.append(
                 PoolUsage(
                     subnet_id=subnet_id,

@@ -142,6 +142,20 @@ def test_build_lease_dashboard_accepts_empty_page() -> None:
     assert dashboard.active_lease_count == 3
 
 
+def test_build_lease_dashboard_caps_pool_utilization() -> None:
+    """Keep reservation-backed KEA pool statistics within percentage bounds."""
+    config, leases, statistics = dashboard_payloads()
+    statistics[0]["arguments"]["subnet[7].pool[0].assigned-addresses"] = [
+        [12, "2026-07-10 00:00:00"]
+    ]
+
+    dashboard = build_lease_dashboard(config, leases, statistics, limit=100)
+
+    assert dashboard.pools[0].assigned == 12
+    assert dashboard.pools[0].total == 10
+    assert dashboard.pools[0].utilization == 100.0
+
+
 def test_build_lease_dashboard_rejects_kea_error() -> None:
     """Surface logical KEA command failures to the API route."""
     _, leases, statistics = dashboard_payloads()
