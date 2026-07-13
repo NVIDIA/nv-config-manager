@@ -151,6 +151,7 @@ def _membership_marker_name(group_name: str) -> str:
     """Return the reserved inert-marker ObjectPermission name for *group_name*."""
     return f"{group_name}_{_MEMBERSHIP_MARKER_SUFFIX}"
 
+
 # Identity / access-control models that must NEVER be swept in by an ``"all"``
 # expansion: granting write here is privilege escalation, not data access.
 # ``users.token`` lets a holder mint API tokens for any account;
