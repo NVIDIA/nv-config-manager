@@ -158,7 +158,7 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
   const [searchQuery, setSearchQuery] = useState("");
 
   const refresh = () => {
-    void Promise.all([mutate(), mutateConfigRefreshTimestamp()]);
+    void Promise.allSettled([mutate(), mutateConfigRefreshTimestamp()]);
   };
 
   const clearLease = async () => {
