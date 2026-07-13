@@ -19,7 +19,7 @@
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
+import { useForm, type UseFormReturn } from "react-hook-form";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -35,10 +35,6 @@ import { useToast } from "@/components/ui/use-toast";
 import { Checkbox } from "@/components/ui/checkbox";
 import { WorkflowFormField } from "@/components/forms/formfield";
 import { useEnvData } from "@/hooks";
-import {
-  setMultiQueryValue,
-  setSingleQueryValue,
-} from "@/lib/query-form-helpers";
 import { startWorkflow } from "@/lib/utils";
 import { MultiDeployWorkflowInput } from "@/types/data-table.types";
 
@@ -60,6 +56,33 @@ const multiDeployFormSchema = z.object({
 });
 
 type MultiDeployFormData = z.infer<typeof multiDeployFormSchema>;
+type QueryOption = { key: string; value: string };
+type SingleValueField = "role" | "location" | "tenant";
+
+/** Maps a single query parameter key to its form option value or clears it. */
+const setSingleQueryValue = (
+  form: UseFormReturn<MultiDeployFormData>,
+  queryValue: string | null,
+  options: QueryOption[],
+  fieldName: SingleValueField
+) => {
+  const fieldValue =
+    options.find((option) => option.key === queryValue)?.value ?? "";
+  form.setValue(fieldName, fieldValue);
+};
+
+/** Keeps valid status query keys and clears values without an option. */
+const setMultiQueryValue = (
+  form: UseFormReturn<MultiDeployFormData>,
+  queryValues: string[],
+  options: QueryOption[],
+  fieldName: "status"
+) => {
+  const fieldValue = queryValues.filter((queryValue) =>
+    options.some((option) => option.key === queryValue)
+  );
+  form.setValue(fieldName, fieldValue);
+};
 
 /** Renders the form for starting a multi-configuration deploy workflow. */
 export const MultiDeployWorkflowForm = () => {
