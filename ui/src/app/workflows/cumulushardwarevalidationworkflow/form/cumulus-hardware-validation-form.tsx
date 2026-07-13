@@ -49,6 +49,7 @@ const CumulusValidationFormSchema = z.object({
 
 type CumulusValidationFormData = z.infer<typeof CumulusValidationFormSchema>;
 
+/** Renders the form for starting a Cumulus hardware validation workflow. */
 export const CumulusHardwareValidationWorkflowForm = () => {
   const [isSubmitting, setIsSubmitting] = React.useState<boolean>(false);
   const [isManualChange, setIsManualChange] = React.useState<boolean>(false);
@@ -95,6 +96,7 @@ export const CumulusHardwareValidationWorkflowForm = () => {
     isManualChange,
   ]);
 
+  /** Starts the workflow with the validated form data. */
   const onSubmit = async (data: CumulusValidationFormData) => {
       setIsSubmitting(true);
       const workflowParams: CumulusHardwareValidationWorkflowInput = {
@@ -121,6 +123,7 @@ export const CumulusHardwareValidationWorkflowForm = () => {
     setIsSubmitting(false);
   };
 
+  /** Prevents later query synchronization from replacing a manual selection. */
   const handleChange = () => {
     setIsManualChange(true);
   };

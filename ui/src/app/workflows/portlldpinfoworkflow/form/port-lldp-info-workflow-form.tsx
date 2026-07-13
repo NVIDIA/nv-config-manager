@@ -149,6 +149,7 @@ const setDeviceInfoMode = (
   setHasDeviceInfo(hasDeviceFieldsAfterChange(fieldName, value, form));
 };
 
+/** Renders the mutually exclusive device-info and MAC-address workflow form. */
 export const PortLLDPInfoWorkflowForm = () => {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [isManualChange, setIsManualChange] = useState<boolean>(false);
@@ -249,6 +250,7 @@ export const PortLLDPInfoWorkflowForm = () => {
     }
   }, [queryMacAddress, querySite, queryDevice, queryInterface, form]);
 
+  /** Selects the input mode associated with the field the user changed. */
   const handleChange = (fieldName: string, value: string) => {
     setIsManualChange(true);
 
@@ -266,6 +268,7 @@ export const PortLLDPInfoWorkflowForm = () => {
     );
   };
 
+  /** Starts the workflow with only the active input mode's data. */
   const onSubmit = async (data: PortLLDPFormData) => {
     setIsSubmitting(true);
 

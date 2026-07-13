@@ -95,7 +95,8 @@ export const SiteCableValidationWorkflowForm = () => {
     isManualChange,
   ]);
 
-  const onSubmit = async(data: SiteCableValidationFormData) => {
+  /** Starts the workflow with the validated form data. */
+  const onSubmit = async (data: SiteCableValidationFormData) => {
       setIsSubmitting(true);
       const workflowParams: SiteCableValidationWorkflowInput = {
         site: data.site,
@@ -121,6 +122,7 @@ export const SiteCableValidationWorkflowForm = () => {
     setIsSubmitting(false);
   };
 
+  /** Prevents later query synchronization from replacing a manual selection. */
   const handleChange = () => {
     setIsManualChange(true);
   };

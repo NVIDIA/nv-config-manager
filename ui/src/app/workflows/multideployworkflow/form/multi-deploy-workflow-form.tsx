@@ -61,6 +61,7 @@ const multiDeployFormSchema = z.object({
 
 type MultiDeployFormData = z.infer<typeof multiDeployFormSchema>;
 
+/** Renders the form for starting a multi-configuration deploy workflow. */
 export const MultiDeployWorkflowForm = () => {
   const [isSubmitting, setIsSubmitting] = React.useState<boolean>(false);
   const [isManualChange, setIsManualChange] = React.useState<boolean>(false);
@@ -113,10 +114,12 @@ export const MultiDeployWorkflowForm = () => {
     isManualChange,
   ]);
 
+  /** Prevents later query synchronization from replacing a manual selection. */
   const handleChange = () => {
     setIsManualChange(true);
   };
 
+  /** Starts the workflow with the validated form data. */
   const onSubmit = async (data: MultiDeployFormData) => {
     setIsSubmitting(true);
     const endpoint = "/v1/workflow/ngc/multi_deploy";
