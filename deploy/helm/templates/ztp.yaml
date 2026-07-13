@@ -80,14 +80,32 @@ spec:
         {{- end }}
         {{- include "nv-config-manager.authVolumeMounts" . | nindent 8 }}
         {{- end }}
+        # startupProbe gives the app time to come up without the (lenient) liveness
+        # probe racing it. Liveness only asserts the process is alive: /healthcheck
+        # has no dependencies, so it must NOT restart the pod just because Nautobot
+        # (or any downstream) is slow — that turns a dependency slowdown into a
+        # crashloop. Generous timeout/period/failureThreshold ride out transient
+        # event-loop stalls under load; traffic shedding is handled in-app (503s).
+        startupProbe:
+          httpGet:
+            path: /healthcheck
+            port: 9000
+          periodSeconds: 5
+          failureThreshold: 30
         livenessProbe:
           httpGet:
             path: /healthcheck
             port: 9000
+          timeoutSeconds: 5
+          periodSeconds: 15
+          failureThreshold: 6
         readinessProbe:
           httpGet:
             path: /healthcheck
             port: 9000
+          timeoutSeconds: 3
+          periodSeconds: 10
+          failureThreshold: 3
 
       # HTTP API container for device access via LoadBalancer (IP-based authorization)
       # No ACCEPT_REQUEST_HEADERS - uses client IP validation against Nautobot device addresses
@@ -118,14 +136,28 @@ spec:
           readOnly: true
         {{- end }}
         {{- end }}
+        # See http-api container above: lenient liveness so a slow Nautobot can't
+        # crashloop the device-facing listener; startupProbe covers slow starts.
+        startupProbe:
+          httpGet:
+            path: /healthcheck
+            port: 8000
+          periodSeconds: 5
+          failureThreshold: 30
         livenessProbe:
           httpGet:
             path: /healthcheck
             port: 8000
+          timeoutSeconds: 5
+          periodSeconds: 15
+          failureThreshold: 6
         readinessProbe:
           httpGet:
             path: /healthcheck
             port: 8000
+          timeoutSeconds: 3
+          periodSeconds: 10
+          failureThreshold: 3
       {{- end }}
 
       # SFTP server container
