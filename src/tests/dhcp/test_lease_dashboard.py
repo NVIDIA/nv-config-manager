@@ -41,7 +41,7 @@ def dashboard_payloads() -> tuple[list[dict], list[dict], list[dict]]:
                             "id": 7,
                             "subnet": "10.0.0.0/24",
                             "pools": [
-                                {"pool": "10.0.0.10-10.0.0.19"},
+                                {"id": 42, "pool": "10.0.0.10-10.0.0.19"},
                                 {"pool": "10.0.1.0/30"},
                             ],
                             "reservations": [

@@ -229,8 +229,7 @@ def _pool_usage(dhcp4: dict[str, Any], statistics: dict[str, Any]) -> list[PoolU
             if not isinstance(pool_config, dict) or not pool_config.get("pool"):
                 continue
             pool_name = str(pool_config["pool"])
-            pool_id = int(pool_config.get("id", pool_index))
-            prefix = f"subnet[{subnet_id}].pool[{pool_id}]"
+            prefix = f"subnet[{subnet_id}].pool[{pool_index}]"
             assigned = _stat_value(statistics, f"{prefix}.assigned-addresses") or 0
             total = _stat_value(statistics, f"{prefix}.total-addresses")
             if total is None:
