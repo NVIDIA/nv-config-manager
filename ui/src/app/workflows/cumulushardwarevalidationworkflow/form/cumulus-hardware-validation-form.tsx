@@ -19,7 +19,7 @@
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
+import { useForm, type UseFormReturn } from "react-hook-form";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -43,6 +43,36 @@ const CumulusValidationFormSchema = z.object({
   tenant: z.string().trim().min(1, { message: "Tenant is required" }),
 });
 
+type CumulusValidationFormData = z.infer<typeof CumulusValidationFormSchema>;
+type QueryOption = { key: string; value: string };
+
+const validateAndSetValue = (
+  form: UseFormReturn<CumulusValidationFormData>,
+  queryValue: string | string[] | null,
+  data: QueryOption[],
+  fieldName: keyof CumulusValidationFormData
+) => {
+  if (
+    !queryValue ||
+    (Array.isArray(queryValue) && queryValue.length === 0)
+  ) {
+    form.setValue(fieldName, "");
+    return;
+  }
+
+  if (Array.isArray(queryValue)) {
+    const validValues = queryValue.filter((value) =>
+      data.some((option) => option.key === value)
+    );
+    form.setValue(fieldName, validValues.length > 0 ? validValues : "");
+    return;
+  }
+
+  const validValue =
+    data.find((option) => option.key === queryValue)?.value || "";
+  form.setValue(fieldName, validValue);
+};
+
 export const CumulusHardwareValidationWorkflowForm = () => {
   const [isSubmitting, setIsSubmitting] = React.useState<boolean>(false);
   const [isManualChange, setIsManualChange] = React.useState<boolean>(false);
@@ -64,38 +94,20 @@ export const CumulusHardwareValidationWorkflowForm = () => {
   //const params = new URLSearchParams(filterParams).toString();
   React.useEffect(() => {
     if (!isManualChange) {
-      const validateAndSetValue = (
-        queryValue: string | string[] | null,
-        data: { key: string; value: string }[],
-        fieldName: keyof z.infer<typeof CumulusValidationFormSchema>
-      ) => {
-        if (
-          !queryValue ||
-          (Array.isArray(queryValue) && queryValue.length === 0)
-        ) {
-          form.setValue(fieldName, ""); // Clear if no query value
-          return;
-        }
-
-        if (Array.isArray(queryValue)) {
-          // For fields like roles, status, and device_type_ids
-          const validValues = queryValue.filter((value) =>
-            data.some((option) => option.key === value)
-          );
-          form.setValue(fieldName, validValues.length > 0 ? validValues : "");
-        } else {
-          // For single-value fields like site and tenant
-          const isValid = data.some((option) => option.key === queryValue);
-          const validValue =
-            data.find((option) => option.key === queryValue)?.value || "";
-          form.setValue(fieldName, isValid ? validValue : "");
-        }
-      };
-
-      validateAndSetValue(querySite, siteCableData.siteData, "site");
-      validateAndSetValue(queryRoles, siteCableData.rolesData, "roles");
-      validateAndSetValue(queryStatuses, siteCableData.statusData, "status");
-      validateAndSetValue(queryTenant, siteCableData.tenantsData, "tenant");
+      validateAndSetValue(form, querySite, siteCableData.siteData, "site");
+      validateAndSetValue(form, queryRoles, siteCableData.rolesData, "roles");
+      validateAndSetValue(
+        form,
+        queryStatuses,
+        siteCableData.statusData,
+        "status"
+      );
+      validateAndSetValue(
+        form,
+        queryTenant,
+        siteCableData.tenantsData,
+        "tenant"
+      );
     }
   }, [
     querySite,
