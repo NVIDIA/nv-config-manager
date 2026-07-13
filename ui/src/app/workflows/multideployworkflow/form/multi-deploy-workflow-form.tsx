@@ -19,7 +19,7 @@
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
+import { useForm, type UseFormReturn } from "react-hook-form";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -56,6 +56,39 @@ const multiDeployFormSchema = z.object({
 });
 
 type MultiDeployFormData = z.infer<typeof multiDeployFormSchema>;
+type QueryOption = { key: string; value: string };
+type MultiDeploySingleValueField = "role" | "location" | "tenant";
+
+const setSingleQueryValue = (
+  form: UseFormReturn<MultiDeployFormData>,
+  queryValue: string | null,
+  data: QueryOption[],
+  fieldName: MultiDeploySingleValueField
+) => {
+  if (!queryValue) {
+    form.setValue(fieldName, "");
+    return;
+  }
+
+  const isValid = data.some((option) => option.key === queryValue);
+  form.setValue(fieldName, isValid ? queryValue : "");
+};
+
+const setStatusQueryValue = (
+  form: UseFormReturn<MultiDeployFormData>,
+  queryValues: string[],
+  data: QueryOption[]
+) => {
+  if (queryValues.length === 0) {
+    form.setValue("status", []);
+    return;
+  }
+
+  const validValues = queryValues.filter((value) =>
+    data.some((option) => option.key === value)
+  );
+  form.setValue("status", validValues);
+};
 
 export const MultiDeployWorkflowForm = () => {
   const [isSubmitting, setIsSubmitting] = React.useState<boolean>(false);
@@ -84,43 +117,10 @@ export const MultiDeployWorkflowForm = () => {
 
   React.useEffect(() => {
     if (!isManualChange) {
-      const validateAndSetValue = (
-        queryValue: string | string[] | null,
-        data: { key: string; value: string }[],
-        fieldName: "role" | "location" | "status" | "tenant"
-      ) => {
-        if (
-          !queryValue ||
-          (Array.isArray(queryValue) && queryValue.length === 0)
-        ) {
-          if (fieldName === "status") {
-            form.setValue(fieldName, []);
-          } else {
-            form.setValue(fieldName, "");
-          }
-          return;
-        }
-
-        if (Array.isArray(queryValue)) {
-          // For multi-select fields like status
-          const validValues = queryValue.filter((value) =>
-            data.some((option) => option.key === value)
-          );
-          form.setValue(
-            fieldName as "status",
-            validValues.length > 0 ? validValues : []
-          );
-        } else {
-          // For single-value fields - store the key, not the display value
-          const isValid = data.some((option) => option.key === queryValue);
-          form.setValue(fieldName as "role" | "location" | "tenant", isValid ? queryValue : "");
-        }
-      };
-
-      validateAndSetValue(queryRole, envData.rolesData, "role");
-      validateAndSetValue(queryLocation, envData.siteData, "location");
-      validateAndSetValue(queryStatuses, envData.statusData, "status");
-      validateAndSetValue(queryTenant, envData.tenantsData, "tenant");
+      setSingleQueryValue(form, queryRole, envData.rolesData, "role");
+      setSingleQueryValue(form, queryLocation, envData.siteData, "location");
+      setStatusQueryValue(form, queryStatuses, envData.statusData);
+      setSingleQueryValue(form, queryTenant, envData.tenantsData, "tenant");
 
       if (queryBatchSize) {
         const batchSize = Number.parseInt(queryBatchSize, 10);
