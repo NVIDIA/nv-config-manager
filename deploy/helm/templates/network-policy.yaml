@@ -34,6 +34,13 @@ spec:
     # Allow all traffic from within the same namespace
     - from:
         - podSelector: {}
+    {{- if .Values.monitoring.enabled and .Values.monitoring.prometheus.namespace }}
+    # Allow traffic from Prometheus operator namespace (for scraping)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.monitoring.prometheus.namespace }}
+    {{- end }}
     {{- if .Values.networkPolicy.allowFromGatewayNamespace }}
     # Allow traffic from Envoy Gateway system namespace (data plane proxies)
     - from:
