@@ -124,6 +124,57 @@ mcp:
   enabled: false
 
 # =============================================================================
+# RBAC - group-mapping (nv_config_manager_auth.rbac)
+# =============================================================================
+# Maps the JWT ``roles`` claim (KeyCloak realm roles, surfaced above via
+# ``oidc.groupsClaim: realm_roles``) onto Nautobot Django Groups +
+# ObjectPermissions. Reconciled on every login by the JWT authenticator.
+#
+# The role names below are the realm roles seeded for local testing by
+# ``setup-vm-prereqs.sh --install-security-stack`` /
+# ``scripts/create-local-security-nautobot-users`` (nvcm-readonly, nvcm-network,
+# nvcm-admin), so this overlay is runnable end-to-end against the local KeyCloak
+# stack -- no external IdP required.
+nautobot:
+  rbac:
+    # ``superuserGroups`` is the simple-case shortcut: any user whose ``roles``
+    # claim contains a name in this list becomes is_superuser=is_staff=True, and
+    # users without one are demoted on their next login. Left empty here so we
+    # exercise *only* the fine-grained group-mapping path below.
+    superuserGroups: []
+
+    # Auto-create the referenced Django Groups on first login. Default ``false``
+    # keeps the operator-managed lifecycle (the Group must already exist before
+    # the module attaches permissions/memberships). Enabled here for a
+    # from-scratch local kind cluster.
+    autoCreateGroups: true
+
+    groupMapping:
+      # Fine-grained, non-superuser example: read-only across the board, plus
+      # job execution and status-scoped IPAM writes.
+      - name: nvcm-network
+        nautobot_permissions:
+          view:
+            content_types: ["all"]
+          run:
+            content_types: ["extras.job"]
+          change:
+            # A ``status__name`` constraint is applied as a queryset filter at
+            # permission-check time, so it must only target models that actually
+            # have a ``status`` field. ``ipam.*`` would include status-less
+            # models (Namespace, RIR, VLANGroup, RouteTarget) and Nautobot would
+            # raise FieldError when checking them -- list the status-bearing
+            # IPAM models explicitly instead.
+            content_types: ["ipam.ipaddress", "ipam.prefix", "ipam.vlan"]
+            constraints:
+              status__name: "Active"
+
+      # Superuser example via the richer mapping (equivalent to listing
+      # ``nvcm-admin`` in ``superuserGroups`` above).
+      - name: nvcm-admin
+        is_superuser: true
+
+# =============================================================================
 # Note: Browser Access Setup
 # =============================================================================
 # The setup-vm-prereqs.sh --install-security-stack automatically:
