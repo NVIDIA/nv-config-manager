@@ -34,7 +34,7 @@ spec:
     # Allow all traffic from within the same namespace
     - from:
         - podSelector: {}
-    {{- if .Values.monitoring.enabled and .Values.monitoring.prometheus.namespace }}
+    {{- if and .Values.monitoring.enabled .Values.monitoring.prometheus.namespace }}
     # Allow traffic from Prometheus operator namespace (for scraping)
     - from:
         - namespaceSelector:
