@@ -133,10 +133,12 @@ test.describe("DHCP Dashboard Page", () => {
       name: "Active leases",
     });
     await expect(
-      activeLeasesMetric.getByText("1+", { exact: true })
+      activeLeasesMetric.getByText("2", { exact: true })
     ).toBeVisible();
     await expect(
-      activeLeasesMetric.getByText("Active leases loaded", { exact: true })
+      activeLeasesMetric.getByText("Current active allocations", {
+        exact: true,
+      })
     ).toBeVisible();
     releaseNextPage();
     await expect(dashboard.getByText("leaf-02")).toBeVisible();
@@ -144,7 +146,9 @@ test.describe("DHCP Dashboard Page", () => {
       activeLeasesMetric.getByText("2", { exact: true })
     ).toBeVisible();
     await expect(
-      activeLeasesMetric.getByText("All active leases loaded", { exact: true })
+      activeLeasesMetric.getByText("Current active allocations", {
+        exact: true,
+      })
     ).toBeVisible();
     await expect(
       dashboard.getByText("Loaded 2 active leases · All active leases loaded", {

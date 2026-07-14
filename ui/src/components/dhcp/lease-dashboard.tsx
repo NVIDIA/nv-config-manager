@@ -379,7 +379,7 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
   }
 
   const utilization = data.pool_address_count
-    ? (data.assigned_address_count / data.pool_address_count) * 100
+    ? Math.min((data.assigned_address_count / data.pool_address_count) * 100, 100)
     : 0;
   const leaseResourceLabel = activeLeaseSearchQuery
     ? "matching active leases"
@@ -387,10 +387,6 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
   const leaseCompleteLabel = activeLeaseSearchQuery
     ? "All matches loaded"
     : "All active leases loaded";
-  const leaseMetricDetail = hasMoreLeases
-    ? `${leaseResourceLabel[0].toUpperCase()}${leaseResourceLabel.slice(1)} loaded`
-    : `All ${leaseResourceLabel} loaded`;
-
   return (
     <Card className="overflow-hidden" data-testid="dhcp-dashboard">
       <CardHeader className="border-b bg-card/70">
@@ -420,8 +416,8 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
           <Metric
             icon={<Activity className="h-4 w-4" />}
             label="Active leases"
-            value={`${leases.length.toLocaleString()}${hasMoreLeases ? "+" : ""}`}
-            detail={leaseMetricDetail}
+            value={data.active_lease_count.toLocaleString()}
+            detail="Current active allocations"
           />
           <Metric
             icon={<ShieldCheck className="h-4 w-4" />}
