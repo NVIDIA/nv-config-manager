@@ -16,18 +16,20 @@ import asyncio
 import json
 import os
 import time
+from configparser import ConfigParser
 from unittest.mock import AsyncMock, call, patch
 
 import jwt as pyjwt
 import pytest
 from aiohttp import ClientConnectionError, ClientResponseError, RequestInfo
 from cryptography.hazmat.primitives.asymmetric import rsa
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from multidict import CIMultiDict
 from yarl import URL
 
 from nv_config_manager.common.auth import AuthConfig, JwtProviderConfig
-from nv_config_manager.dhcp.api import _fetch_lease_dashboard_sources, app
+from nv_config_manager.dhcp.api import _fetch_lease_dashboard_sources, _install_cors, app
 from nv_config_manager.dhcp.kea import KeaClient
 
 _HEADERS_TRUSTED = AuthConfig(accept_request_headers=True)
@@ -183,6 +185,38 @@ def make_auth_config_with_jwt_provider() -> AuthConfig:
             ),
         )
     )
+
+
+def test_cors_allows_configured_ui_origin() -> None:
+    """Verify browser preflight and GET responses allow the configured UI origin."""
+    config = ConfigParser()
+    config.read_dict({"dhcp": {"cors_origins": "https://nvcm.example.com"}})
+    cors_app = FastAPI()
+
+    @cors_app.get("/leases")
+    async def leases() -> dict[str, list[object]]:
+        return {"leases": []}
+
+    with patch("nv_config_manager.dhcp.api.load_config", return_value=config):
+        _install_cors(cors_app)
+
+    client = TestClient(cors_app)
+    origin = "https://nvcm.example.com"
+    preflight = client.options(
+        "/leases",
+        headers={
+            "Origin": origin,
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    response = client.get("/leases", headers={"Origin": origin})
+
+    assert preflight.status_code == 200
+    assert preflight.headers["access-control-allow-origin"] == origin
+    assert preflight.headers["access-control-allow-credentials"] == "true"
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == origin
+    assert response.headers["access-control-allow-credentials"] == "true"
 
 
 def test_healthcheck_success():

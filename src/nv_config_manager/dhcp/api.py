@@ -26,6 +26,7 @@ from typing import Any
 import uvicorn
 from aiohttp import ClientError, ClientResponseError
 from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from prometheus_client import CONTENT_TYPE_LATEST, Gauge, generate_latest
 from prometheus_fastapi_instrumentator import Instrumentator
@@ -53,7 +54,31 @@ configure_logging(service="dhcp")
 
 _MAX_KEA_LEASE_PAGES_PER_REQUEST = 10
 
+
+def _install_cors(application: FastAPI) -> None:
+    """Allow configured UI origins to call the DHCP API with credentials."""
+    config = load_config()
+    if not config.has_section("dhcp"):
+        return
+
+    origins = [
+        origin.strip()
+        for origin in config.get("dhcp", "cors_origins", fallback="").split(",")
+        if origin.strip()
+    ]
+    if origins:
+        application.add_middleware(
+            CORSMiddleware,  # type: ignore[arg-type]
+            allow_origins=origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+            expose_headers=["*"],
+        )
+
+
 app = FastAPI()
+_install_cors(app)
 
 CACHE_LAST_REFRESH = Gauge(
     "cache_last_refresh_timestamp_seconds",
