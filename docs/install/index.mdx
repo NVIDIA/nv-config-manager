@@ -281,6 +281,9 @@ For common failure modes and recovery steps, see [Troubleshooting](troubleshooti
 
 After deployment, verify that all pods are running and that Gateway or LoadBalancer resources are ready. You can also get the Nautobot admin password to log in to the Nautobot UI.
 
+For Envoy Gateway, managed kgateway, and shared kgateway configuration, see
+[Gateway API and OIDC](gateway-api.mdx).
+
 The commands below use the default `nv-config-manager` namespace; replace it if your `nv-config-manager-install.yaml` uses a different namespace.
 
 ```bash
@@ -290,7 +293,7 @@ kubectl get pods -n nv-config-manager
 # Check load balancer services have external IPs.
 kubectl get svc -n nv-config-manager | grep LoadBalancer
 
-# Check Gateway status when using Envoy Gateway.
+# Check Gateway status when using a chart-managed Gateway.
 kubectl get gateway -n nv-config-manager
 
 # Get the Nautobot admin password.

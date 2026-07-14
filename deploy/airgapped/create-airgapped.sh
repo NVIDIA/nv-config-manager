@@ -186,7 +186,6 @@ load_operator_versions() {
         ENVOY_GATEWAY_VERSION \
         CERT_MANAGER_VERSION \
         CNPG_OPERATOR_VERSION \
-        INGRESS_NGINX_VERSION \
         PROMETHEUS_CRD_VERSION \
         PROMETHEUS_OPERATOR_VERSION; do
         if [[ -z "${!name:-}" ]]; then
@@ -422,7 +421,6 @@ load_external_charts() {
     # Operator charts are generated from deploy/operator-versions.env.
     echo "oci://ghcr.io/cloudnative-pg/charts/cloudnative-pg:${CNPG_OPERATOR_VERSION}"
     echo "oci://quay.io/jetstack/charts/cert-manager:${CERT_MANAGER_VERSION}"
-    echo "helm://https://kubernetes.github.io/ingress-nginx|ingress-nginx:${INGRESS_NGINX_VERSION}"
     echo "helm://https://prometheus-community.github.io/helm-charts|prometheus-operator-crds:28.0.1"
     if [[ "$INCLUDE_AGPL_OBSERVABILITY" == true ]]; then
         echo "helm://https://prometheus-community.github.io/helm-charts|kube-prometheus-stack:${PROMETHEUS_OPERATOR_VERSION}"

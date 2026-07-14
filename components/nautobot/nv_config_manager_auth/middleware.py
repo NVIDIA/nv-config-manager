@@ -12,10 +12,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Django middleware for JWT cookie authentication.
+"""Django middleware for JWT browser authentication.
 
-Authenticates Nautobot web UI sessions using the JWT cookie set by the
-Envoy Gateway OIDC flow.  This is the Django-side counterpart to
+Authenticates Nautobot web UI sessions using either the legacy JWT cookie or
+the OIDC ID token injected by oauth2-proxy.  This is the Django-side counterpart to
 :class:`~nv_config_manager_auth.jwt_authentication.NVConfigManagerJWTAuthentication` (which
 handles DRF API requests).
 
@@ -34,16 +34,19 @@ from typing import Any
 from django.contrib.auth import login
 from django.http import HttpRequest, HttpResponse
 
+from nv_config_manager_auth.jwt_authentication import _get_providers, _try_jwt_provider
+
 log = logging.getLogger(__name__)
 
 
 class JWTCookieMiddleware:
-    """Authenticate Django sessions from the gateway's JWT cookie.
+    """Authenticate Django sessions from a gateway-provided JWT.
 
     Processing order:
 
     1. Skip if user is already authenticated (session or prior middleware).
-    2. Read the JWT from the configured cookie (``NV_CONFIG_MANAGER_JWT_COOKIE``).
+    2. Read the JWT from the configured cookie, falling back to the bearer token
+       injected by oauth2-proxy.
     3. Validate against each configured ``user_provider`` JWT provider.
     4. On success, log the user into Django's session framework.
 
@@ -62,13 +65,14 @@ class JWTCookieMiddleware:
 
     def _try_jwt_login(self, request: HttpRequest) -> None:
         token = request.COOKIES.get(self._cookie_name)
+        source = "cookie"
+        if not token:
+            scheme, _, bearer_token = request.META.get("HTTP_AUTHORIZATION", "").partition(" ")
+            if scheme.lower() == "bearer" and bearer_token.strip():
+                token = bearer_token.strip()
+                source = "bearer token"
         if not token:
             return
-
-        from nv_config_manager_auth.jwt_authentication import (
-            _get_providers,
-            _try_jwt_provider,
-        )
 
         for provider in _get_providers():
             if not provider.user_provider:
@@ -77,12 +81,12 @@ class JWTCookieMiddleware:
             if result is not None:
                 user, _info = result
                 login(request, user, backend="nautobot.core.authentication.ObjectPermissionBackend")
-                log.debug("JWT cookie login: %s via %s", user.username, provider.name)
+                log.debug("JWT %s login: %s via %s", source, user.username, provider.name)
                 return
 
 
 class LogoutRedirectMiddleware:
-    """Redirect Nautobot's hard-coded logout response to gateway OIDC logout."""
+    """Redirect Nautobot logout through the gateway OIDC logout endpoint."""
 
     def __init__(self, get_response: Any) -> None:
         self.get_response = get_response
@@ -92,4 +96,9 @@ class LogoutRedirectMiddleware:
         response = self.get_response(request)
         if self._redirect_url and request.path_info == "/logout/" and response.status_code in {301, 302, 303, 307, 308}:
             response["Location"] = self._redirect_url
+            # Nautobot's logout view queues a flash message before this middleware
+            # hands off to SSO. The user is immediately authenticated again after
+            # the identity-provider flow, so showing "You have logged out" on the
+            # restored Nautobot page is misleading.
+            response.delete_cookie("messages")
         return response

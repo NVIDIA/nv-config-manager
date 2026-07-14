@@ -1,0 +1,42 @@
+{{- $gatewayType := include "nv-config-manager.gatewayControllerType" . -}}
+{{- $ingress := .Values.ingress | default dict -}}
+{{- range $key, $_ := $ingress -}}
+  {{- if ne $key "type" -}}
+    {{- fail (printf "ingress.%s is no longer supported; retain only ingress.type (envoyGateway or kgateway) and configure Gateway API settings under gateway.*" $key) -}}
+  {{- end -}}
+{{- end -}}
+{{- if not (has $gatewayType (list "envoyGateway" "kgateway")) -}}
+  {{- fail (printf "ingress.type must be one of envoyGateway or kgateway, got %q" $gatewayType) -}}
+{{- end -}}
+{{- if and (eq $gatewayType "kgateway") .Values.gateway.nlb -}}
+  {{- fail "gateway.nlb is supported only with Envoy Gateway; kgateway NLB service configuration is not implemented" -}}
+{{- end -}}
+{{- if and .Values.gateway.create (ne (.Values.gateway.namespace | default .Values.global.namespace) .Values.global.namespace) -}}
+  {{- fail "gateway.namespace may differ from global.namespace only when gateway.create=false (shared gateway mode)" -}}
+{{- end -}}
+{{- if and (eq $gatewayType "kgateway") .Values.gateway.create (.Values.gateway.createGatewayClass | default false) -}}
+  {{- fail "kgateway owns its GatewayClass; set gateway.createGatewayClass=false" -}}
+{{- end -}}
+{{- if and (eq $gatewayType "kgateway") (ne (.Values.gateway.timeout.maxConnectionDuration | default "0s") "0s") -}}
+  {{- fail "gateway.timeout.maxConnectionDuration is not supported by kgateway; set it to 0s" -}}
+{{- end -}}
+{{- if and (eq $gatewayType "kgateway") .Values.gateway.create .Values.gateway.rateLimit.enabled (not (dig "rateLimit" "kgateway" "extensionRef" "name" "" .Values.gateway)) -}}
+  {{- fail "gateway.rateLimit.kgateway.extensionRef.name is required when global rate limiting is enabled for kgateway" -}}
+{{- end -}}
+{{- if and .Values.gateway.enabled (eq $gatewayType "kgateway") .Values.gateway.create (dig "nodePort" "enabled" false .Values.gateway) -}}
+  {{- $httpListeners := 0 -}}
+  {{- $httpsListeners := 0 -}}
+  {{- range .Values.gateway.listeners -}}
+    {{- if eq .protocol "HTTP" -}}
+      {{- $httpListeners = add $httpListeners 1 -}}
+    {{- else if eq .protocol "HTTPS" -}}
+      {{- $httpsListeners = add $httpsListeners 1 -}}
+    {{- end -}}
+  {{- end -}}
+  {{- if gt $httpListeners 1 -}}
+    {{- fail "gateway.nodePort supports at most one HTTP listener for kgateway" -}}
+  {{- end -}}
+  {{- if gt $httpsListeners 1 -}}
+    {{- fail "gateway.nodePort supports at most one HTTPS listener for kgateway" -}}
+  {{- end -}}
+{{- end -}}

@@ -850,7 +850,6 @@ fi
 # Generate Shared Secrets (used by multiple components)
 # -----------------------------------------------------------------------------
 # Generate OIDC client secret that will be used by KeyCloak and stored in OpenBao
-# cookie_secret is used for HMAC signing of OAuth state (Envoy Gateway and oauth2-proxy)
 if [[ "$INSTALL_KEYCLOAK" == "true" || "$INSTALL_OPENBAO" == "true" ]]; then
     echo "ℹ Setting up shared OIDC secret..."
     
@@ -1509,19 +1508,16 @@ if [[ "$INSTALL_OPENBAO" == "true" ]]; then
     
     # OIDC/SSO credentials (for KeyCloak integration)
     # Use the secrets generated earlier (or generate if not set)
-    # cookie_secret is used for HMAC signing of OAuth state (both oauth2-proxy and Envoy Gateway)
     if [[ -z "$OIDC_CLIENT_SECRET" ]]; then
         OIDC_CLIENT_SECRET=$(openssl rand -base64 32 | tr -d '/+=' | head -c 32)
     fi
-    
-    # Check if cookie_secret already exists in OpenBao, generate if not
+
+    # oauth2-proxy accepts a raw 32-byte cookie encryption secret.
     EXISTING_COOKIE_SECRET=$(kubectl -n openbao exec openbao-0 -- env BAO_TOKEN=root bao kv get -field=cookie_secret "nv-config-manager/demo/oidc" 2>/dev/null || true)
     if [[ -n "$EXISTING_COOKIE_SECRET" ]]; then
         OIDC_COOKIE_SECRET="$EXISTING_COOKIE_SECRET"
-        echo "  Using existing cookie_secret from OpenBao"
     else
-        OIDC_COOKIE_SECRET=$(openssl rand -base64 32 | tr -d '/+=' | head -c 32)
-        echo "  Generated new cookie_secret"
+        OIDC_COOKIE_SECRET=$(openssl rand -base64 32)
     fi
     
     write_bao_secret "demo/oidc" \

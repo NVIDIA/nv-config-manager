@@ -369,10 +369,7 @@ def test_ticketless_with_tech_support(
     local_download_url = f"{temporal_api_url}{parsed.path}"
     print(f"  Fetching download URL: {local_download_url}")
 
-    from tests.integration.conftest import _make_mock_sso_session
-
-    dl_session = _make_mock_sso_session()
-    dl_resp = dl_session.get(local_download_url, timeout=30, stream=True)
+    dl_resp = temporal_client.get(local_download_url, timeout=30, stream=True)
     assert dl_resp.status_code == 200, (
         f"Download endpoint returned {dl_resp.status_code}: {dl_resp.text[:200]}"
     )
