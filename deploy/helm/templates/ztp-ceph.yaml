@@ -1,0 +1,54 @@
+{{- $s3 := .Values.networkZtp.storage.s3 | default dict -}}
+{{- $ceph := $s3.ceph | default dict -}}
+{{- if and .Values.networkZtp.enabled (eq .Values.networkZtp.storage.type "s3") ($ceph.enabled | default false) }}
+{{- $user := $ceph.objectStoreUser | default dict -}}
+{{- $obc := $ceph.objectBucketClaim | default dict -}}
+{{- $userName := $user.name | default "ztp-user" -}}
+{{- $bucketName := $s3.bucketName | default "ngc-network-firmware-images" -}}
+---
+apiVersion: ceph.rook.io/v1
+kind: CephObjectStoreUser
+metadata:
+  name: {{ $userName }}
+  namespace: {{ .Values.global.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  store: {{ $user.store | default "ceph-objectstore" }}
+  displayName: {{ $user.displayName | default $userName }}
+  clusterNamespace: {{ $user.clusterNamespace | default "rook-ceph" }}
+---
+apiVersion: objectbucket.io/v1alpha1
+kind: ObjectBucketClaim
+metadata:
+  name: {{ $bucketName }}
+  namespace: {{ .Values.global.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  bucketName: {{ $bucketName }}
+  storageClassName: {{ $obc.storageClassName | default "ceph-object-store" }}
+  additionalConfig:
+    bucketMaxSize: {{ $obc.bucketMaxSize | default "50G" }}
+    bucketPolicy: |
+        {
+            "Id": "{{ $bucketName }}-bucket-policy",
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Sid": "all-access",
+                    "Effect": "Allow",
+                    "Action": "s3:*",
+                    "Resource": [
+                        "arn:aws:s3:::{{ $bucketName }}",
+                        "arn:aws:s3:::{{ $bucketName }}/*"
+                    ],
+                    "Principal": {
+                        "AWS": [
+                            "arn:aws:iam:::user/{{ $userName }}"
+                        ]
+                    }
+                }
+            ]
+        }
+{{- end }}

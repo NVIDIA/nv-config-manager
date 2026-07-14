@@ -82,7 +82,9 @@ kubectl wait --for=condition=Ready pod -n "$NAMESPACE" -l "$pod_selector" --time
 
 pod="$(
     kubectl get pod -n "$NAMESPACE" -l "$pod_selector" \
-        -o jsonpath='{.items[0].metadata.name}'
+        --field-selector=status.phase=Running \
+        --sort-by=.metadata.creationTimestamp \
+        -o jsonpath='{.items[-1].metadata.name}'
 )"
 
 if [[ -z "$pod" ]]; then

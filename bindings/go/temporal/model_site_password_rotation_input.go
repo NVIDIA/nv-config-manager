@@ -30,7 +30,7 @@ type SitePasswordRotationInput struct {
 	// Device statuses used to filter the selected network devices.
 	Status []string `json:"status,omitempty"`
 	// Tenant used to filter the selected network devices.
-	Tenant *string `json:"tenant,omitempty"`
+	Tenant NullableString `json:"tenant,omitempty"`
 }
 
 type _SitePasswordRotationInput SitePasswordRotationInput
@@ -43,8 +43,6 @@ func NewSitePasswordRotationInput(location string, selectedSecret string) *SiteP
 	this := SitePasswordRotationInput{}
 	this.Location = location
 	this.SelectedSecret = selectedSecret
-	var tenant string = "NGC"
-	this.Tenant = &tenant
 	return &this
 }
 
@@ -53,8 +51,6 @@ func NewSitePasswordRotationInput(location string, selectedSecret string) *SiteP
 // but it doesn't guarantee that properties required by API are set
 func NewSitePasswordRotationInputWithDefaults() *SitePasswordRotationInput {
 	this := SitePasswordRotationInput{}
-	var tenant string = "NGC"
-	this.Tenant = &tenant
 	return &this
 }
 
@@ -172,37 +168,49 @@ func (o *SitePasswordRotationInput) SetStatus(v []string) {
 	o.Status = v
 }
 
-// GetTenant returns the Tenant field value if set, zero value otherwise.
+// GetTenant returns the Tenant field value if set, zero value otherwise (both if not set or set to explicit null).
 func (o *SitePasswordRotationInput) GetTenant() string {
-	if o == nil || IsNil(o.Tenant) {
+	if o == nil || IsNil(o.Tenant.Get()) {
 		var ret string
 		return ret
 	}
-	return *o.Tenant
+	return *o.Tenant.Get()
 }
 
 // GetTenantOk returns a tuple with the Tenant field value if set, nil otherwise
 // and a boolean to check if the value has been set.
 
+// NOTE: If the value is an explicit nil, `nil, true` will be returned
+
 func (o *SitePasswordRotationInput) GetTenantOk() (*string, bool) {
-	if o == nil || IsNil(o.Tenant) {
+	if o == nil {
 		return nil, false
 	}
-	return o.Tenant, true
+	return o.Tenant.Get(), o.Tenant.IsSet()
 }
 
 // HasTenant returns a boolean if a field has been set.
 func (o *SitePasswordRotationInput) HasTenant() bool {
-	if o != nil && !IsNil(o.Tenant) {
+	if o != nil && o.Tenant.IsSet() {
 		return true
 	}
 
 	return false
 }
 
-// SetTenant gets a reference to the given string and assigns it to the Tenant field.
+// SetTenant gets a reference to the given NullableString and assigns it to the Tenant field.
 func (o *SitePasswordRotationInput) SetTenant(v string) {
-	o.Tenant = &v
+	o.Tenant.Set(&v)
+}
+
+// SetTenantNil sets the value for Tenant to be an explicit nil
+func (o *SitePasswordRotationInput) SetTenantNil() {
+	o.Tenant.Set(nil)
+}
+
+// UnsetTenant ensures that no value is present for Tenant, not even an explicit nil
+func (o *SitePasswordRotationInput) UnsetTenant() {
+	o.Tenant.Unset()
 }
 
 func (o SitePasswordRotationInput) MarshalJSON() ([]byte, error) {
@@ -223,8 +231,8 @@ func (o SitePasswordRotationInput) ToMap() (map[string]interface{}, error) {
 	if !IsNil(o.Status) {
 		toSerialize["status"] = o.Status
 	}
-	if !IsNil(o.Tenant) {
-		toSerialize["tenant"] = o.Tenant
+	if o.Tenant.IsSet() {
+		toSerialize["tenant"] = o.Tenant.Get()
 	}
 	return toSerialize, nil
 }

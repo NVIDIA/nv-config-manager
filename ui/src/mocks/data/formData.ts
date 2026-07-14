@@ -59,6 +59,7 @@ export const ROLES_LIST_API_RESPONSE = [
 
 export const STATUS_LIST = {
   active: "Active",
+  provisioned: "Provisioned",
   provisioning: "Provisioning",
   planned: "Planned",
   staged: "Staged",
@@ -67,6 +68,10 @@ export const STATUS_LIST_API_RESPONSE = [
   {
     id: "Active",
     name: "Active",
+  },
+  {
+    id: "Provisioned",
+    name: "Provisioned",
   },
   {
     id: "Provisioning",

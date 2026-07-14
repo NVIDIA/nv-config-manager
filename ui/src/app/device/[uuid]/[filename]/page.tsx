@@ -37,7 +37,7 @@ export default function ConfigFilePage({
   const searchParams = useSearchParams();
   const fileType = (searchParams?.get("file_type") as "intended" | "backup") || "intended";
   const versionParam = searchParams?.get("version");
-  const version = versionParam ? parseInt(versionParam, 10) : undefined;
+  const version = versionParam ? Number.parseInt(versionParam, 10) : undefined;
   const decodedFilename = decodeURIComponent(filename);
   const { data: config, error, isLoading } = useConfigFile(uuid, decodedFilename, fileType, version);
   const { data: versions } = useConfigVersions(uuid, decodedFilename, fileType);
@@ -203,4 +203,3 @@ export default function ConfigFilePage({
     </div>
   );
 }
-

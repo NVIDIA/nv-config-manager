@@ -57,7 +57,11 @@ spec:
         app: {{ $temporalName }}
         component: {{ $service }}
         app.kubernetes.io/name: nv-config-manager
+        {{- if eq $service "worker" }}
+        app.kubernetes.io/component: temporal-worker
+        {{- else }}
         app.kubernetes.io/component: temporal
+        {{- end }}
         {{- include "nv-config-manager.spiffe.podLabels" $ | nindent 8 }}
         {{- include "nv-config-manager.customPodLabels" $ | nindent 8 }}
       annotations:
@@ -281,6 +285,7 @@ spec:
       labels:
         app: {{ $temporalName }}
         component: worker
+        app.kubernetes.io/component: nv-config-manager-worker
         {{- include "nv-config-manager.spiffe.podLabels" . | nindent 8 }}
         {{- include "nv-config-manager.customPodLabels" . | nindent 8 }}
       annotations:
@@ -401,7 +406,7 @@ spec:
             memory: 64Mi
       containers:
       - name: worker
-        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ include "nv-config-manager.imageTag" (dict "root" . "image" .Values.global.images.nvConfigManager) }}"
+        image: "{{ include "nv-config-manager.image" (dict "root" . "image" .Values.global.images.nvConfigManager) }}"
         imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
         command: ["nv-config-manager-temporal-worker"]
         args: []
@@ -499,7 +504,7 @@ spec:
       {{- end }}
       containers:
       - name: api
-        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ include "nv-config-manager.imageTag" (dict "root" . "image" .Values.global.images.nvConfigManager) }}"
+        image: "{{ include "nv-config-manager.image" (dict "root" . "image" .Values.global.images.nvConfigManager) }}"
         imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
         command: ["nv-config-manager-temporal-api"]
         args: []
@@ -625,7 +630,7 @@ spec:
       {{- include "nv-config-manager.waitForTemporalNamespace" . | nindent 6 }}
       containers:
       - name: scheduler
-        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ include "nv-config-manager.imageTag" (dict "root" . "image" .Values.global.images.nvConfigManager) }}"
+        image: "{{ include "nv-config-manager.image" (dict "root" . "image" .Values.global.images.nvConfigManager) }}"
         imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
         command: ["nv-config-manager-temporal-scheduler"]
         env:
@@ -703,7 +708,7 @@ spec:
       {{- end }}
       containers:
       - name: archive
-        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ include "nv-config-manager.imageTag" (dict "root" . "image" .Values.global.images.nvConfigManager) }}"
+        image: "{{ include "nv-config-manager.image" (dict "root" . "image" .Values.global.images.nvConfigManager) }}"
         imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
         command: ["nv-config-manager-temporal-archive"]
         args: ["-v"]
@@ -809,4 +814,38 @@ spec:
     name: http
   selector:
     app: {{ $temporalName }}-web
+---
+# PodDisruptionBudget for Temporal server worker service
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ printf "%s-worker-pdb" $temporalName | trunc 63 | trimSuffix "-" }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ $temporalName }}
+    app.kubernetes.io/name: nv-config-manager
+    app.kubernetes.io/component: temporal-worker
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: {{ $temporalName }}
+      app.kubernetes.io/component: temporal-worker
+---
+# PodDisruptionBudget for nv-config-manager Temporal worker (workflow executor)
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ printf "%s-pdb" (include "nv-config-manager.temporalWorkerName" .) | trunc 63 | trimSuffix "-" }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ $temporalName }}
+    app.kubernetes.io/name: nv-config-manager
+    app.kubernetes.io/component: nv-config-manager-worker
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: {{ $temporalName }}
+      app.kubernetes.io/component: nv-config-manager-worker
 {{- end }}

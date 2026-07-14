@@ -32,7 +32,7 @@ type ValidateHardwareInput struct {
 	// Device statuses used to filter the selected network devices.
 	Status []string `json:"status,omitempty"`
 	// Tenant used to filter the selected network devices.
-	Tenant string `json:"tenant"`
+	Tenant NullableString `json:"tenant,omitempty"`
 }
 
 type _ValidateHardwareInput ValidateHardwareInput
@@ -41,12 +41,11 @@ type _ValidateHardwareInput ValidateHardwareInput
 // This constructor will assign default values to properties that have it defined,
 // and makes sure properties required by API are set, but the set of arguments
 // will change when the set of required properties is changed
-func NewValidateHardwareInput(site string, tenant string) *ValidateHardwareInput {
+func NewValidateHardwareInput(site string) *ValidateHardwareInput {
 	this := ValidateHardwareInput{}
 	var raiseForInvalid bool = false
 	this.RaiseForInvalid = &raiseForInvalid
 	this.Site = site
-	this.Tenant = tenant
 	return &this
 }
 
@@ -216,28 +215,49 @@ func (o *ValidateHardwareInput) SetStatus(v []string) {
 	o.Status = v
 }
 
-// GetTenant returns the Tenant field value
+// GetTenant returns the Tenant field value if set, zero value otherwise (both if not set or set to explicit null).
 func (o *ValidateHardwareInput) GetTenant() string {
-	if o == nil {
+	if o == nil || IsNil(o.Tenant.Get()) {
 		var ret string
 		return ret
 	}
-
-	return o.Tenant
+	return *o.Tenant.Get()
 }
 
-// GetTenantOk returns a tuple with the Tenant field value
+// GetTenantOk returns a tuple with the Tenant field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
+// NOTE: If the value is an explicit nil, `nil, true` will be returned
+
 func (o *ValidateHardwareInput) GetTenantOk() (*string, bool) {
 	if o == nil {
 		return nil, false
 	}
-	return &o.Tenant, true
+	return o.Tenant.Get(), o.Tenant.IsSet()
 }
 
-// SetTenant sets field value
+// HasTenant returns a boolean if a field has been set.
+func (o *ValidateHardwareInput) HasTenant() bool {
+	if o != nil && o.Tenant.IsSet() {
+		return true
+	}
+
+	return false
+}
+
+// SetTenant gets a reference to the given NullableString and assigns it to the Tenant field.
 func (o *ValidateHardwareInput) SetTenant(v string) {
-	o.Tenant = v
+	o.Tenant.Set(&v)
+}
+
+// SetTenantNil sets the value for Tenant to be an explicit nil
+func (o *ValidateHardwareInput) SetTenantNil() {
+	o.Tenant.Set(nil)
+}
+
+// UnsetTenant ensures that no value is present for Tenant, not even an explicit nil
+func (o *ValidateHardwareInput) UnsetTenant() {
+	o.Tenant.Unset()
 }
 
 func (o ValidateHardwareInput) MarshalJSON() ([]byte, error) {
@@ -263,7 +283,9 @@ func (o ValidateHardwareInput) ToMap() (map[string]interface{}, error) {
 	if !IsNil(o.Status) {
 		toSerialize["status"] = o.Status
 	}
-	toSerialize["tenant"] = o.Tenant
+	if o.Tenant.IsSet() {
+		toSerialize["tenant"] = o.Tenant.Get()
+	}
 	return toSerialize, nil
 }
 
@@ -272,8 +294,7 @@ func (o *ValidateHardwareInput) UnmarshalJSON(data []byte) (err error) {
 	// by unmarshalling the object into a generic map with string keys and checking
 	// that every required field exists as a key in the generic map.
 	requiredProperties := map[string]bool{
-		"site":   false,
-		"tenant": false,
+		"site": false,
 	}
 
 	allProperties := make(map[string]interface{})

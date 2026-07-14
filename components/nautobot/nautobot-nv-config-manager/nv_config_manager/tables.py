@@ -77,6 +77,25 @@ class PendingDeployColumn(tables.Column):
         return (queryset, True)
 
 
+class SeeDiffColumn(tables.Column):
+    """Per-row link to the read-only Configuration Diff workflow."""
+
+    def render(self, record):  # pylint: disable=arguments-renamed
+        """Render the See Diff button."""
+        site = record.device.location.name if record and record.device.location else ""
+        html_content = render_to_string(
+            "nv_config_manager/inc/see_diff.html",
+            {
+                "temporal_url": settings.PLUGINS_CONFIG["nv_config_manager"].get("temporal_url"),
+                "site": site,
+                "device_id": record.device.pk,
+                "tenant": getattr(record.device.tenant, "name", "") if record else "",
+                "status": getattr(record.device.status, "name", "") if record else "",
+            },
+        )
+        return format_html(html_content)
+
+
 class DeviceRoleColumn(tables.Column):
     """Custom Device Role Column."""
 
@@ -228,6 +247,7 @@ class ConfigManagerDeviceStatusTable(BaseTable):
     tenant = TenantColumn(verbose_name="Tenant", empty_values=())
     location = LocationColumn(verbose_name="Location", empty_values=())
     rack = RackColumn(verbose_name="Rack", empty_values=())
+    see_diff = SeeDiffColumn(verbose_name="Live Diff", empty_values=(), orderable=False)
 
     def render_intended_config(self, record):
         """Render date for intended config and link out to config store."""
@@ -273,6 +293,7 @@ class ConfigManagerDeviceStatusTable(BaseTable):
             "platform",
             "tenant",
             "location",
+            "see_diff",
         ]
         default_columns = [
             "pk",
@@ -286,4 +307,5 @@ class ConfigManagerDeviceStatusTable(BaseTable):
             "platform",
             "tenant",
             "location",
+            "see_diff",
         ]

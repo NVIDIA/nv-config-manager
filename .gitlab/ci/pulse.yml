@@ -79,7 +79,11 @@
       # The internal scanner image uses CONTAINER_SCAN_POLICY_REF for the policy path.
       export CONTAINER_SCAN_POLICY_REF="$policy_path"
 
-      export CONTAINER_IMAGE="${NVCM_IMAGE_REPOSITORY}/${PULSE_IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}"
+      if [ -n "${PULSE_EXTERNAL_IMAGE:-}" ]; then
+        export CONTAINER_IMAGE="$PULSE_EXTERNAL_IMAGE"
+      else
+        export CONTAINER_IMAGE="${NVCM_IMAGE_REPOSITORY}/${PULSE_IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}"
+      fi
       export PULSE_REGISTRY_NGC_PASSWORD="$image_token"
 
 include:
@@ -108,6 +112,16 @@ include:
             - nv-config-manager-ui
             - nv-config-manager-nautobot
             - nv-config-manager-nats-ready
+          PULSE_CONTAINER_SCANNER_PLATFORM:
+            - linux/amd64
+            - linux/arm64
+        # oauth2-proxy is shipped directly as a pinned upstream distroless
+        # image, so scan that exact artifact in addition to NVCM-built images.
+        - CONTAINER_IMAGE: computed-by-before-script
+          PULSE_IMAGE_NAME:
+            - oauth2-proxy
+          PULSE_EXTERNAL_IMAGE:
+            - quay.io/oauth2-proxy/oauth2-proxy:v7.15.3
           PULSE_CONTAINER_SCANNER_PLATFORM:
             - linux/amd64
             - linux/arm64

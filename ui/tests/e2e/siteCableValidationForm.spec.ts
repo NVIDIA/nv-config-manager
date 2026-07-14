@@ -14,7 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { expect } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import {
   SITES_LIST,
   ROLES_LIST,
@@ -23,6 +23,17 @@ import {
   FORBIDDEN_SITE_ID,
 } from "@/mocks/data";
 import { test, TEST_TIMEOUT } from "./shared/utils";
+
+const statusSelectButton = (page: Page) =>
+  page.getByText("Device Status", { exact: true }).locator("..").getByRole("button");
+
+const openSelectDialog = (page: Page) =>
+  page.locator('[role="dialog"][data-state="open"]');
+
+const openStatusSelect = async (page: Page) => {
+  await statusSelectButton(page).press("Enter");
+  await expect(openSelectDialog(page)).toBeVisible({ timeout: TEST_TIMEOUT });
+};
 
 test.describe("Site Cable Validation Form", () => {
   test.beforeEach(async ({ page }) => {
@@ -43,15 +54,13 @@ test.describe("Site Cable Validation Form", () => {
     await expect(page.getByText("Site is required")).toBeVisible({
       timeout: TEST_TIMEOUT,
     });
-    await expect(page.getByText("Roles is required")).toBeVisible({
+    await expect(page.getByText("Roles is required")).not.toBeVisible({
       timeout: TEST_TIMEOUT,
     });
-    await expect(page.getByText("Device Status is required")).toBeVisible({
-      timeout: TEST_TIMEOUT,
-    });
-    await expect(page.getByText("Tenant is required")).toBeVisible({
-      timeout: TEST_TIMEOUT,
-    });
+    await expect(page.getByText("Device Status is required")).not.toBeVisible();
+    await expect(page.getByText("Tenant is required")).not.toBeVisible();
+    await expect(page.getByRole("button", { name: STATUS_LIST.active })).toBeVisible();
+    await expect(page.getByRole("button", { name: STATUS_LIST.provisioned })).toBeVisible();
   });
 
   test("handles URL parameters correctly and submits with those values", async ({
@@ -197,8 +206,7 @@ test.describe("Site Cable Validation Form", () => {
     ).toBeVisible({ timeout: TEST_TIMEOUT });
 
     // Test multiple selections for Device Status
-    await page.getByRole("button", { name: "Device Status" }).click();
-    await page.getByRole("dialog").getByText(STATUS_LIST.active).click();
+    await openStatusSelect(page);
     await page.getByRole("dialog").getByText(STATUS_LIST.planned).click();
     await page.getByRole("dialog").getByText(STATUS_LIST.staged).click();
     // Click outside to close any dropdown that might be open
@@ -208,6 +216,9 @@ test.describe("Site Cable Validation Form", () => {
 
     await expect(
       page.getByRole("button", { name: STATUS_LIST.active })
+    ).toBeVisible({ timeout: TEST_TIMEOUT });
+    await expect(
+      page.getByRole("button", { name: STATUS_LIST.provisioned })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
     await expect(
       page.getByRole("button", { name: STATUS_LIST.planned })
@@ -238,8 +249,7 @@ test.describe("Site Cable Validation Form", () => {
       .getByRole("heading", { name: "New Site Cable Validation Workflow" })
       .click();
 
-    await page.getByRole("button", { name: "Device Status" }).click();
-    await page.getByRole("dialog").getByText(STATUS_LIST.active).click();
+    await openStatusSelect(page);
     await page.getByRole("dialog").getByText(STATUS_LIST.planned).click();
     // Click outside to close any dropdown that might be open
     await page
@@ -262,7 +272,11 @@ test.describe("Site Cable Validation Form", () => {
     expect(requestData).toEqual({
       site: SITES_LIST.pdx01,
       roles: [ROLES_LIST.leaf, ROLES_LIST.spine],
-      status: [STATUS_LIST.active, STATUS_LIST.planned],
+      status: [
+        STATUS_LIST.active,
+        STATUS_LIST.provisioned,
+        STATUS_LIST.planned,
+      ],
       tenant: TENANT_LIST.nsv,
       device_type_ids: [],
       raise_for_invalid: false,
@@ -275,6 +289,20 @@ test.describe("Site Cable Validation Form", () => {
   });
 
   test(`disables form during submission`, async ({ page }) => {
+    let markSubmissionStarted: () => void;
+    const submissionStarted = new Promise<void>((resolve) => {
+      markSubmissionStarted = resolve;
+    });
+    let releaseSubmission: () => void;
+    const submissionReleased = new Promise<void>((resolve) => {
+      releaseSubmission = resolve;
+    });
+    await page.route("**/v1/workflow/ngc/site_cable_validation", async (route) => {
+      markSubmissionStarted();
+      await submissionReleased;
+      await route.fallback();
+    });
+
     await page.getByRole("button", { name: "Site" }).click();
     await page.getByRole("dialog").getByText(SITES_LIST.pdx01).click();
     // Click outside to close any dropdown that might be open
@@ -290,8 +318,7 @@ test.describe("Site Cable Validation Form", () => {
       .getByRole("heading", { name: "New Site Cable Validation Workflow" })
       .click();
 
-    await page.getByRole("button", { name: "Device Status" }).click();
-    await page.getByRole("dialog").getByText(STATUS_LIST.active).click();
+    await openStatusSelect(page);
     await page.getByRole("dialog").getByText(STATUS_LIST.planned).click();
     // Click outside to close any dropdown that might be open
     await page
@@ -306,6 +333,7 @@ test.describe("Site Cable Validation Form", () => {
       .click();
 
     await page.getByRole("button", { name: "Submit" }).click();
+    await submissionStarted;
 
     await expect(
       page.getByRole("button", { name: SITES_LIST.pdx01, exact: true })
@@ -320,6 +348,9 @@ test.describe("Site Cable Validation Form", () => {
       page.getByRole("button", { name: STATUS_LIST.active })
     ).toBeDisabled();
     await expect(
+      page.getByRole("button", { name: STATUS_LIST.provisioned })
+    ).toBeDisabled();
+    await expect(
       page.getByRole("button", { name: STATUS_LIST.planned })
     ).toBeDisabled();
     await expect(
@@ -328,6 +359,11 @@ test.describe("Site Cable Validation Form", () => {
     await expect(
       page.getByRole("button", { name: "Submitting..." })
     ).toBeDisabled();
+
+    releaseSubmission();
+    await expect(
+      page.getByRole("heading", { name: "Workflow Details" })
+    ).toBeVisible({ timeout: TEST_TIMEOUT });
   });
 
   test("displays forbidden error notification when submitting with forbidden values", async ({
@@ -340,12 +376,6 @@ test.describe("Site Cable Validation Form", () => {
     // Fill other required fields
     await page.locator("form").getByRole("button", { name: "Roles" }).click();
     await page.getByRole("dialog").getByText(ROLES_LIST.leaf).click();
-    await page
-      .getByRole("heading", { name: "New Site Cable Validation Workflow" })
-      .click();
-
-    await page.getByRole("button", { name: "Device Status" }).click();
-    await page.getByRole("dialog").getByText(STATUS_LIST.active).click();
     await page
       .getByRole("heading", { name: "New Site Cable Validation Workflow" })
       .click();
