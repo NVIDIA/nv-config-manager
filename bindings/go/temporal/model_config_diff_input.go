@@ -21,6 +21,8 @@ var _ MappedNullable = &ConfigDiffInput{}
 
 // ConfigDiffInput Config Diff Workflow input.
 type ConfigDiffInput struct {
+	// Preloaded network device data, if available.
+	Device NullableNetworkDeviceData `json:"device,omitempty"`
 	// Identifier of the network device to compare.
 	DeviceId string `json:"device_id"`
 }
@@ -43,6 +45,51 @@ func NewConfigDiffInput(deviceId string) *ConfigDiffInput {
 func NewConfigDiffInputWithDefaults() *ConfigDiffInput {
 	this := ConfigDiffInput{}
 	return &this
+}
+
+// GetDevice returns the Device field value if set, zero value otherwise (both if not set or set to explicit null).
+func (o *ConfigDiffInput) GetDevice() NetworkDeviceData {
+	if o == nil || IsNil(o.Device.Get()) {
+		var ret NetworkDeviceData
+		return ret
+	}
+	return *o.Device.Get()
+}
+
+// GetDeviceOk returns a tuple with the Device field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+
+// NOTE: If the value is an explicit nil, `nil, true` will be returned
+
+func (o *ConfigDiffInput) GetDeviceOk() (*NetworkDeviceData, bool) {
+	if o == nil {
+		return nil, false
+	}
+	return o.Device.Get(), o.Device.IsSet()
+}
+
+// HasDevice returns a boolean if a field has been set.
+func (o *ConfigDiffInput) HasDevice() bool {
+	if o != nil && o.Device.IsSet() {
+		return true
+	}
+
+	return false
+}
+
+// SetDevice gets a reference to the given NullableNetworkDeviceData and assigns it to the Device field.
+func (o *ConfigDiffInput) SetDevice(v NetworkDeviceData) {
+	o.Device.Set(&v)
+}
+
+// SetDeviceNil sets the value for Device to be an explicit nil
+func (o *ConfigDiffInput) SetDeviceNil() {
+	o.Device.Set(nil)
+}
+
+// UnsetDevice ensures that no value is present for Device, not even an explicit nil
+func (o *ConfigDiffInput) UnsetDevice() {
+	o.Device.Unset()
 }
 
 // GetDeviceId returns the DeviceId field value
@@ -79,6 +126,9 @@ func (o ConfigDiffInput) MarshalJSON() ([]byte, error) {
 
 func (o ConfigDiffInput) ToMap() (map[string]interface{}, error) {
 	toSerialize := map[string]interface{}{}
+	if o.Device.IsSet() {
+		toSerialize["device"] = o.Device.Get()
+	}
 	toSerialize["device_id"] = o.DeviceId
 	return toSerialize, nil
 }

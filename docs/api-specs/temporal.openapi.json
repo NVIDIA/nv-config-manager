@@ -138,6 +138,17 @@
       "ConfigDiffInput": {
         "description": "Config Diff Workflow input.",
         "properties": {
+          "device": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NetworkDeviceData"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Preloaded network device data, if available."
+          },
           "device_id": {
             "description": "Identifier of the network device to compare.",
             "title": "Device Id",

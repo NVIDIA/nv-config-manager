@@ -27,7 +27,7 @@ with workflow.unsafe.imports_passed_through():
         run_nv_config_manager_workflow,
     )
     from nv_config_manager.temporal.common.mixins.archive import ArchiveMixin
-    from nv_config_manager.temporal.common.mixins.device import DeviceMixin
+    from nv_config_manager.temporal.common.mixins.device import DeviceMixin, NetworkDeviceData
     from nv_config_manager.temporal.common.mixins.stage import (
         StageInput,
         StageMixin,
@@ -45,12 +45,17 @@ with workflow.unsafe.imports_passed_through():
     )
 
 DEFAULT_ACTIVITY_RETRY_POLICY = RetryPolicy(maximum_attempts=3)
+CONFIG_DIFF_DEVICE_DESCRIPTION = "Preloaded network device data, if available."
 
 
 class ConfigDiffInput(BaseModel):
     """Config Diff Workflow input."""
 
     device_id: str = Field(description="Identifier of the network device to compare.")
+    device: NetworkDeviceData | None = Field(
+        default=None,
+        description=CONFIG_DIFF_DEVICE_DESCRIPTION,
+    )
 
 
 class ConfigDiffWorkflowOutput(BaseModel):
@@ -76,10 +81,16 @@ class ConfigDiffWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archive
         """Initialize workflow."""
         StageMixin.__init__(self)
         self.define_stage(
+            name="get_device_data",
+            description="Get the device data if not provided already.",
+            requires_approval=False,
+            depends_on=[],
+        )
+        self.define_stage(
             name="load_intended_configuration",
             description="Load the latest intended configuration from the Config Store.",
             requires_approval=False,
-            depends_on=[],
+            depends_on=["get_device_data"],
         )
         self.define_stage(
             name="perform_configuration_diff",
@@ -88,10 +99,40 @@ class ConfigDiffWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archive
             depends_on=["load_intended_configuration"],
         )
 
+    class NetworkDeviceDataStageInput(StageInput):
+        """Get Device Data Stage Input."""
+
+        device_id: str
+        device: NetworkDeviceData | None
+
+    class NetworkDeviceDataStageOutput(StageOutput):
+        """Get Device Data Stage Output."""
+
+        device: NetworkDeviceData
+
+    @stage_executor("get_device_data")
+    async def get_device_data(
+        self, stage_input: NetworkDeviceDataStageInput
+    ) -> NetworkDeviceDataStageOutput:
+        """Resolve the device data, reusing preloaded input when a caller provides it."""
+        if stage_input.device:
+            device = stage_input.device
+        else:
+            result = await workflow.execute_activity(
+                get_network_device,
+                GetNetworkDeviceInput(device_id=stage_input.device_id),
+                start_to_close_timeout=timedelta(minutes=1),
+                retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+            )
+            device = result.device
+        return ConfigDiffWorkflow.NetworkDeviceDataStageOutput(
+            device=device, display=self.markdown_table(device)
+        )
+
     class LoadConfigStageInput(StageInput):
         """Load Intended Config Stage Input."""
 
-        device_id: str
+        device: NetworkDeviceData
 
     class LoadConfigStageOutput(StageOutput):
         """Load Intended Config Stage Output."""
@@ -103,28 +144,20 @@ class ConfigDiffWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archive
         self, stage_input: LoadConfigStageInput
     ) -> LoadConfigStageOutput:
         """Load the intended configuration content."""
-        result = await workflow.execute_activity(
-            get_network_device,
-            GetNetworkDeviceInput(device_id=stage_input.device_id),
-            start_to_close_timeout=timedelta(minutes=1),
-            retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
-        )
-        DeviceMixin.attach_device_search_attributes(result.device)
-
         content, _commit_id, url = await workflow.execute_activity(
             load_intended_configuration,
-            result.device,
+            stage_input.device,
             start_to_close_timeout=timedelta(minutes=1),
             retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
         )
-        config_path = result.device.intended_config_path
+        config_path = stage_input.device.intended_config_path
         markdown = f"Loaded intended configuration from [{config_path}]({url})."
         return ConfigDiffWorkflow.LoadConfigStageOutput(intended_config=content, display=markdown)
 
     class PerformDiffStageInput(StageInput):
         """Diff Stage Input."""
 
-        device_id: str
+        device: NetworkDeviceData
         intended_config: str
 
     class PerformDiffStageOutput(StageOutput):
@@ -138,17 +171,11 @@ class ConfigDiffWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archive
         self, stage_input: PerformDiffStageInput
     ) -> PerformDiffStageOutput:
         """Compute the diff against the live device without applying it."""
-        # Reload the device so this stage stays retryable if Nautobot data changes.
-        result = await workflow.execute_activity(
-            get_network_device,
-            GetNetworkDeviceInput(device_id=stage_input.device_id),
-            start_to_close_timeout=timedelta(minutes=1),
-            retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
-        )
-
         diff = await workflow.execute_activity(
             perform_candidate_diff,
-            DiffActivityInput(device_data=result.device, configuration=stage_input.intended_config),
+            DiffActivityInput(
+                device_data=stage_input.device, configuration=stage_input.intended_config
+            ),
             start_to_close_timeout=timedelta(minutes=1),
             retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
         )
@@ -171,12 +198,21 @@ class ConfigDiffWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archive
     ) -> ConfigDiffWorkflowOutput:
         """Execute the read-only diff workflow."""
         self.set_input(workflow_input)
+        device_data = (
+            await self.get_device_data(
+                ConfigDiffWorkflow.NetworkDeviceDataStageInput(
+                    device_id=workflow_input.device_id, device=workflow_input.device
+                )
+            )
+        ).device
+        DeviceMixin.attach_device_search_attributes(device_data)
+
         load_config_output = await self.load_intended_configuration(
-            ConfigDiffWorkflow.LoadConfigStageInput(device_id=workflow_input.device_id)
+            ConfigDiffWorkflow.LoadConfigStageInput(device=device_data)
         )
         diff_output = await self.perform_configuration_diff(
             ConfigDiffWorkflow.PerformDiffStageInput(
-                device_id=workflow_input.device_id,
+                device=device_data,
                 intended_config=load_config_output.intended_config,
             )
         )
