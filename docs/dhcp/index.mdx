@@ -121,7 +121,7 @@ The generator runs on a 5-minute interval in the Kubernetes deployment, automati
 
 ## Manage Leases
 
-The Config Manager splash page summarizes active leases, reservations, pool utilization, and the age of the last successful configuration refresh reported by the DHCP API's `/metrics` endpoint. Active leases are loaded in bounded pages so the dashboard remains responsive with thousands of leases. Use the filter to search the full lease inventory by IP address, hostname, MAC address, client ID, or subnet prefix, and use **Load more leases** to retrieve the next page. Select the **Active leases**, **Reservations**, or **Pool usage** tab to inspect each view. You can also clear an active lease after confirming the action.
+The dedicated DHCP dashboard summarizes active leases, reservations, pool utilization, and the age of the last successful configuration refresh reported by the DHCP API's `/metrics` endpoint. Active leases are displayed 100 at a time so the dashboard remains responsive with thousands of leases. Use the filter to search the full lease inventory by IP address, hostname, MAC address, client ID, or subnet prefix, and use **Previous** and **Next** to move between pages. Select the **Active leases**, **Reservations**, or **Pool usage** tab to inspect each view. You can also clear an active lease after confirming the action.
 
 ![DHCP lease activity dashboard](../assets/images/dhcp/lease-dashboard.png)
 
@@ -135,7 +135,7 @@ curl --fail-with-body --get "${DHCP_API_URL}/leases" \
   --data-urlencode "limit=100"
 ```
 
-The response contains a `leases` array and an opaque `next_cursor`. When `next_cursor` is not null, pass it unchanged in the next request together with the same filters. This also applies to the optional `search` parameter: each request scans a bounded chunk of the lease inventory, and following `next_cursor` continues the same search through the next chunk. The dashboard handles this with **Load more leases**.
+The response contains a `leases` array and an opaque `next_cursor`. When `next_cursor` is not null, pass it unchanged in the next request together with the same filters. This also applies to the optional `search` parameter: each request scans a bounded chunk of the lease inventory, and following `next_cursor` continues the same search through the next chunk. The dashboard keeps a cursor history and uses **Previous** and **Next** controls while displaying one bounded page at a time.
 
 Look up the device holding a lease:
 

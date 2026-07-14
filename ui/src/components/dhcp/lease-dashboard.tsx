@@ -20,6 +20,8 @@ import { useEffect, useState } from "react";
 import {
   Activity,
   CalendarClock,
+  ChevronLeft,
+  ChevronRight,
   Clock3,
   Database,
   Network,
@@ -31,6 +33,7 @@ import {
 
 import {
   clearDhcpLease,
+  DHCP_LEASE_PAGE_SIZE,
   useDhcpConfigRefreshTimestamp,
   useDhcpDashboard,
   useDhcpLeases,
@@ -177,17 +180,20 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
   const [activeTab, setActiveTab] = useState("leases");
   const [searchQuery, setSearchQuery] = useState("");
   const [leaseSearchQuery, setLeaseSearchQuery] = useState("");
+  const [leasePageIndex, setLeasePageIndex] = useState(0);
+  const [leasePageCursors, setLeasePageCursors] = useState<Array<string | null>>([
+    null,
+  ]);
   const activeLeaseSearchQuery = activeTab === "leases" ? leaseSearchQuery : "";
+  const leaseCursor = leasePageCursors[leasePageIndex] ?? null;
   const {
     error: leaseError,
-    hasMore: hasMoreLeases,
     isLoading: areLeasesLoading,
     isValidating: areLeasesValidating,
     leases,
     mutate: mutateLeases,
-    setSize: setLeasePageCount,
-    size: leasePageCount,
-  } = useDhcpLeases(dhcpUrl, activeLeaseSearchQuery);
+    nextCursor: nextLeaseCursor,
+  } = useDhcpLeases(dhcpUrl, activeLeaseSearchQuery, leaseCursor);
 
   useEffect(() => {
     const timeout = window.setTimeout(
@@ -197,9 +203,34 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
     return () => window.clearTimeout(timeout);
   }, [searchQuery]);
 
-  useEffect(() => {
-    void setLeasePageCount(1);
-  }, [activeLeaseSearchQuery, setLeasePageCount]);
+  const resetLeasePagination = () => {
+    setLeasePageIndex(0);
+    setLeasePageCursors([null]);
+  };
+
+  const updateSearchQuery = (value: string) => {
+    setSearchQuery(value);
+    resetLeasePagination();
+  };
+
+  const updateActiveTab = (value: string) => {
+    setActiveTab(value);
+    resetLeasePagination();
+  };
+
+  const showNextLeasePage = () => {
+    if (!nextLeaseCursor) return;
+    setLeasePageCursors((current) => {
+      const cursors = current.slice(0, leasePageIndex + 1);
+      cursors[leasePageIndex + 1] = nextLeaseCursor;
+      return cursors;
+    });
+    setLeasePageIndex((current) => current + 1);
+  };
+
+  const showPreviousLeasePage = () => {
+    setLeasePageIndex((current) => Math.max(0, current - 1));
+  };
 
   const refresh = () => {
     void Promise.allSettled([
@@ -330,10 +361,8 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
             value={data.active_lease_count.toLocaleString()}
             detail={
               activeLeaseSearchQuery
-                ? `${leases.length.toLocaleString()} matching lease${leases.length === 1 ? "" : "s"} loaded`
-                : leases.length < data.active_lease_count
-                  ? `${leases.length.toLocaleString()} of ${data.active_lease_count.toLocaleString()} loaded`
-                  : "Current assignments"
+                ? `${leases.length.toLocaleString()} match${leases.length === 1 ? "" : "es"} on page ${leasePageIndex + 1}`
+                : `${leases.length.toLocaleString()} shown on page ${leasePageIndex + 1}`
             }
           />
           <Metric
@@ -377,11 +406,11 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
             aria-label="Filter displayed DHCP data"
             placeholder="Filter by IP, hostname, MAC address, client ID, or subnet"
             value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
+            onChange={(event) => updateSearchQuery(event.target.value)}
             className="pl-9"
           />
         </div>
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <Tabs value={activeTab} onValueChange={updateActiveTab}>
           <TabsList className="grid w-full grid-cols-3 sm:w-auto">
             <TabsTrigger value="leases">Active leases</TabsTrigger>
             <TabsTrigger value="reservations">Reservations</TabsTrigger>
@@ -437,19 +466,32 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
                 </TableBody>
               </Table>
             )}
-            {hasMoreLeases && (
-              <div className="mt-4 flex justify-center">
+            {(leases.length > 0 || leasePageIndex > 0) && (
+              <nav
+                aria-label="Lease pages"
+                className="mt-4 flex items-center justify-between gap-4 border-t pt-4"
+              >
                 <Button
                   variant="outline"
-                  onClick={() => void setLeasePageCount(leasePageCount + 1)}
-                  disabled={areLeasesValidating}
+                  onClick={showPreviousLeasePage}
+                  disabled={leasePageIndex === 0 || areLeasesValidating}
                 >
-                  {areLeasesValidating && (
-                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                  )}
-                  Load more leases
+                  <ChevronLeft className="mr-2 h-4 w-4" /> Previous
                 </Button>
-              </div>
+                <div className="text-center text-sm">
+                  <p className="font-medium">Page {leasePageIndex + 1}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Up to {DHCP_LEASE_PAGE_SIZE} leases per page
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={showNextLeasePage}
+                  disabled={!nextLeaseCursor || areLeasesValidating}
+                >
+                  Next <ChevronRight className="ml-2 h-4 w-4" />
+                </Button>
+              </nav>
             )}
           </TabsContent>
 

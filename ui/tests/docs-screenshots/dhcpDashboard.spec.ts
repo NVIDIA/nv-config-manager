@@ -133,7 +133,7 @@ test.beforeEach(async ({ page }) => {
 
 test("captures the DHCP lease dashboard", async ({ page }) => {
   await fs.mkdir(SCREENSHOT_DIR, { recursive: true });
-  await page.goto("/");
+  await page.goto("/dhcp");
   const dashboard = page.getByTestId("dhcp-dashboard");
   await expect(
     dashboard.getByRole("heading", { name: "DHCP lease activity" }),

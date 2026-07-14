@@ -17,7 +17,6 @@
  */
 
 import { useRuntimeConfig } from "@/config/runtime";
-import { LeaseDashboard } from "@/components/dhcp";
 import {
   Card,
   CardContent,
@@ -36,6 +35,7 @@ import {
   Server,
   Globe,
   BarChart3,
+  Network,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -155,6 +155,13 @@ export default function HomePage() {
       icon: <FileText className="h-6 w-6" />,
       type: "internal",
     },
+    {
+      name: "DHCP Dashboard",
+      description: "Inspect active leases, reservations, and pool usage",
+      url: "/dhcp",
+      icon: <Network className="h-6 w-6" />,
+      type: "internal",
+    },
     // External Services
     {
       name: "Nautobot",
@@ -238,8 +245,6 @@ export default function HomePage() {
             Network automation and configuration management platform
           </p>
         </div>
-
-        <LeaseDashboard dhcpUrl={config.dhcpUrl} />
 
         <ServiceSection title="User Interfaces" services={internalServices} />
         <ServiceSection title="External Services" services={externalServices} />

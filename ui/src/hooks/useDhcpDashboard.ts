@@ -16,7 +16,6 @@
  */
 
 import useSWR from "swr";
-import useSWRInfinite from "swr/infinite";
 
 import { sanitizeUrl } from "@/lib/utils";
 import type { DhcpLeaseDashboard, DhcpLeasePage } from "@/types/dhcp.types";
@@ -24,6 +23,7 @@ import type { DhcpLeaseDashboard, DhcpLeasePage } from "@/types/dhcp.types";
 const CONFIG_REFRESH_METRIC =
   "nv_config_manager_dhcp_cache_last_refresh_timestamp_seconds";
 const REQUEST_TIMEOUT_MS = 30000;
+export const DHCP_LEASE_PAGE_SIZE = 100;
 
 /** Fetch and validate the dashboard response from the DHCP API. */
 async function dhcpFetcher<T>(url: string): Promise<T> {
@@ -67,7 +67,7 @@ async function configRefreshFetcher(url: string): Promise<number | null> {
   return Number.isFinite(value) ? value : null;
 }
 
-/** Subscribe to refreshed DHCP dashboard data for the splash page. */
+/** Subscribe to refreshed DHCP dashboard summary data. */
 export function useDhcpDashboard(dhcpUrl: string) {
   const url = dhcpUrl
     ? sanitizeUrl(`${dhcpUrl}/lease-dashboard?ip_version=4`)
@@ -78,34 +78,25 @@ export function useDhcpDashboard(dhcpUrl: string) {
   });
 }
 
-/** Subscribe to cursor-paginated active leases across the full DHCP inventory. */
-export function useDhcpLeases(dhcpUrl: string, search: string) {
-  const getKey = (
-    pageIndex: number,
-    previousPageData: DhcpLeasePage | null,
-  ): string | null => {
-    if (!dhcpUrl || (pageIndex > 0 && !previousPageData?.next_cursor)) {
-      return null;
-    }
-
-    const query = new URLSearchParams({ limit: "100" });
-    if (search) query.set("search", search);
-    if (previousPageData?.next_cursor) {
-      query.set("cursor", previousPageData.next_cursor);
-    }
-    return sanitizeUrl(`${dhcpUrl}/leases?${query}`);
-  };
-  const response = useSWRInfinite<DhcpLeasePage>(getKey, dhcpFetcher, {
+/** Subscribe to one cursor-paginated lease page. */
+export function useDhcpLeases(
+  dhcpUrl: string,
+  search: string,
+  cursor: string | null,
+) {
+  const query = new URLSearchParams({ limit: String(DHCP_LEASE_PAGE_SIZE) });
+  if (search) query.set("search", search);
+  if (cursor) query.set("cursor", cursor);
+  const url = dhcpUrl ? sanitizeUrl(`${dhcpUrl}/leases?${query}`) : null;
+  const response = useSWR<DhcpLeasePage>(url, dhcpFetcher, {
     refreshInterval: 30000,
     revalidateOnFocus: true,
   });
-  const leases = response.data?.flatMap((page) => page.leases) ?? [];
-  const nextCursor = response.data?.at(-1)?.next_cursor;
 
   return {
     ...response,
-    hasMore: Boolean(nextCursor),
-    leases,
+    leases: response.data?.leases ?? [],
+    nextCursor: response.data?.next_cursor ?? null,
   };
 }
 
