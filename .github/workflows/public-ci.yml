@@ -289,6 +289,47 @@ jobs:
               if (sc == 0 || sc != ok) exit 1
             }
           ' /tmp/nvcm-probes.yaml
+      - name: Image digest pin render
+        run: |
+          # global.images.<name>.digest must pin built-service images by digest
+          # (repository@sha256:...) and win over the tag; an unset digest must
+          # fall back to repository:tag. Render-time check only (no cluster) so
+          # it stays out of the slow kind-integration path.
+          set -euo pipefail
+          names="nvConfigManager nvConfigManagerUi kea keaAdmin nautobot natsReady"
+          d_nvConfigManager=sha256:1111111111111111111111111111111111111111111111111111111111111111
+          d_nvConfigManagerUi=sha256:2222222222222222222222222222222222222222222222222222222222222222
+          d_kea=sha256:3333333333333333333333333333333333333333333333333333333333333333
+          d_keaAdmin=sha256:4444444444444444444444444444444444444444444444444444444444444444
+          d_nautobot=sha256:5555555555555555555555555555555555555555555555555555555555555555
+          d_natsReady=sha256:6666666666666666666666666666666666666666666666666666666666666666
+
+          # Default render (no digests set) must not pin any image by digest.
+          helm template test deploy/helm/ --values deploy/helm/values-ci.yaml >/tmp/nvcm-nodigest.yaml
+          if grep -Eq 'image:[[:space:]]*"?[^"[:space:]]+@sha256:' /tmp/nvcm-nodigest.yaml; then
+            echo "ERROR: an image rendered with a digest even though none was set"
+            exit 1
+          fi
+
+          # With a digest per built image, each must render as repository@<digest>.
+          set_args=""
+          for n in $names; do
+            eval "digest=\$d_$n"
+            set_args="$set_args --set-string global.images.$n.digest=$digest"
+          done
+          # shellcheck disable=SC2086
+          helm template test deploy/helm/ --values deploy/helm/values-ci.yaml $set_args >/tmp/nvcm-digest.yaml
+
+          fail=0
+          for n in $names; do
+            eval "digest=\$d_$n"
+            if ! grep -qF "@$digest" /tmp/nvcm-digest.yaml; then
+              echo "ERROR: $n not pinned by its digest ($digest) in the render"
+              fail=1
+            fi
+          done
+          [ "$fail" -eq 0 ] || exit 1
+          echo "All 6 built-service images pinned by digest; unset digests fall back to tag"
 
   openapi:
     name: OpenAPI And Go Bindings Check
