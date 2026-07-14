@@ -539,11 +539,11 @@ def build_reservation_list(
 def build_pool_list(
     config_payload: list[dict[str, Any]],
     statistics_payload: list[dict[str, Any]],
-    active_leases: list[LeaseRecord],
+    active_leases: list[LeaseRecord] | None,
     *,
     ip_version: IpVersion,
 ) -> list[PoolUsage]:
-    """Build pool usage from configuration, statistics, and active in-pool leases."""
+    """Build pool usage from active leases or KEA statistics when the scan is bounded."""
     dhcp_config = _dhcp_config(config_payload, ip_version)
     statistics = _response_arguments(statistics_payload, "statistic-get-all")
     return _pool_usage(dhcp_config, statistics, ip_version, active_leases)

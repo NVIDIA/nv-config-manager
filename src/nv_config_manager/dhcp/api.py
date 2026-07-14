@@ -60,6 +60,7 @@ from nv_config_manager.dhcp.redis import RedisClient
 configure_logging(service="dhcp")
 
 _MAX_KEA_LEASE_PAGES_PER_REQUEST = 10
+_MAX_POOL_LEASE_PAGES = 20
 _POOL_LEASE_PAGE_SIZE = 500
 _COLLECTION_SNAPSHOT_TTL_SECONDS = 30
 _COLLECTION_SNAPSHOTS: dict[tuple[str, IpVersion], tuple[float, list[Any]]] = {}
@@ -338,11 +339,12 @@ async def _collect_active_leases(
     initial_lease_payload: list[dict[str, Any]],
     *,
     ip_version: IpVersion,
-) -> list[LeaseRecord]:
-    """Collect every active lease needed to calculate truthful pool usage."""
+) -> list[LeaseRecord] | None:
+    """Collect active leases for pool usage, falling back after a bounded scan."""
     leases_by_address: dict[str, LeaseRecord] = {}
     lease_payload = initial_lease_payload
     from_address = "start"
+    scanned_pages = 1
     seen_addresses: set[str] = set()
 
     while True:
@@ -354,6 +356,8 @@ async def _collect_active_leases(
             return sorted(leases_by_address.values(), key=lambda lease: int(lease.ip_address))
         if last_address == from_address or last_address in seen_addresses:
             raise KeaException("KEA lease pagination did not advance")
+        if scanned_pages >= _MAX_POOL_LEASE_PAGES:
+            return None
 
         seen_addresses.add(last_address)
         from_address = last_address
@@ -362,6 +366,7 @@ async def _collect_active_leases(
             version=ip_version,
             from_address=from_address,
         )
+        scanned_pages += 1
 
 
 def main() -> None:

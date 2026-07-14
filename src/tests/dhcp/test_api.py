@@ -1027,6 +1027,51 @@ def test_list_pools_counts_active_leases_across_kea_pages():
     ]
 
 
+def test_list_pools_falls_back_to_statistics_after_bounded_lease_scan():
+    """Use KEA pool statistics instead of scanning an unbounded lease table."""
+    active_leases = [
+        active_lease(
+            f"10.0.{index // 254}.{index % 254 + 1}",
+            f"switch-{index:04d}",
+        )
+        for index in range(1000)
+    ]
+
+    with (
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_config",
+            new_callable=AsyncMock,
+            return_value=LEASE_DASHBOARD_CONFIG,
+        ),
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_statistics",
+            new_callable=AsyncMock,
+            return_value=LEASE_DASHBOARD_STATISTICS,
+        ),
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_lease_page",
+            new_callable=AsyncMock,
+            side_effect=[
+                lease_page(*active_leases[:500]),
+                lease_page(*active_leases[500:]),
+            ],
+        ) as mock_get_lease_page,
+        patch("nv_config_manager.dhcp.api._MAX_POOL_LEASE_PAGES", 2),
+        patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED),
+    ):
+        rsp = TestClient(app).get(
+            "/pools?limit=1",
+            headers={"X-Auth-Request-Email": "test@example.com"},
+        )
+
+    assert rsp.status_code == 200
+    assert rsp.json()["pools"][0]["assigned"] == 1
+    assert mock_get_lease_page.await_args_list == [
+        call(500, version=4, from_address="start"),
+        call(500, version=4, from_address="10.0.1.246"),
+    ]
+
+
 def test_config_collections_bound_thousand_record_pages():
     """Keep reservation and pool responses bounded with thousands of records."""
     client = TestClient(app)

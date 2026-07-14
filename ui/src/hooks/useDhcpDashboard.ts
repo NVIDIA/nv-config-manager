@@ -125,6 +125,7 @@ function useDhcpCollectionPages<T extends DhcpCursorPage>(
     },
     dhcpFetcher,
     {
+      keepPreviousData: true,
       refreshInterval: 30000,
       revalidateOnFocus: true,
     }
