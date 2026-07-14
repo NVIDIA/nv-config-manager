@@ -785,8 +785,8 @@ async def test_cable_validation_workflow_hostname_mismatch(_, env):
                         "smn-leaf",
                     ],
                     "site": "SITEA",
-                    "status": ["active", "provisioning"],
-                    "tenant": "nsv",
+                    "status": ["Active", "Provisioned"],
+                    "tenant": None,
                 },
                 "name": "get_devices_to_validate",
                 "output": {
