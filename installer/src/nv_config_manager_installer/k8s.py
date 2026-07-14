@@ -442,6 +442,21 @@ class K8sClient:
         except ApiException:
             return ""
 
+    def pvc_exists(self, name: str, namespace: str) -> bool:
+        """Return whether a PersistentVolumeClaim exists.
+
+        Unlike :meth:`get_pvc_annotation`, this deliberately preserves API
+        errors other than ``404`` so callers do not mistake an authorization or
+        connectivity issue for an absent PVC.
+        """
+        try:
+            self.v1.read_namespaced_persistent_volume_claim(name, namespace)
+            return True
+        except ApiException as exc:
+            if exc.status == 404:
+                return False
+            raise
+
     def annotate_pvc(self, name: str, namespace: str, annotation: str, value: str) -> None:
         body = {"metadata": {"annotations": {annotation: value}}}
         self.v1.patch_namespaced_persistent_volume_claim(name, namespace, body)

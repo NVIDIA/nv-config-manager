@@ -21,7 +21,7 @@ from unittest.mock import Mock, patch
 import pytest
 from textual.widgets import Input, Select
 
-from nv_config_manager_installer.deployer import DeploymentMode, DeployOptions
+from nv_config_manager_installer.deployer import DeployOptions
 from nv_config_manager_installer.schema import (
     ClusterConfig,
     ImageSource,
@@ -37,7 +37,6 @@ from nv_config_manager_installer.schema import (
 from nv_config_manager_installer.tui.app import NVConfigManagerInstallerApp
 from nv_config_manager_installer.tui.screens.cluster import ClusterScreen
 from nv_config_manager_installer.tui.screens.deploy import DeployScreen
-from nv_config_manager_installer.tui.widgets import LabeledSwitch
 
 
 @pytest.mark.asyncio
@@ -134,38 +133,21 @@ async def test_deployment_start_selects_local_image_source(
 
 
 @pytest.mark.asyncio
-async def test_deploy_screen_offers_argocd_mode():
-    app = NVConfigManagerInstallerApp(config=NVConfigManagerInstallConfig())
-    async with app.run_test():
-        app.switch_section("deploy")
-        deploy_screen = app._screens["deploy"]
-        mode_switch = deploy_screen.query_one("#opt-argocd-managed", LabeledSwitch)
-
-        mode_switch.value = True
-        await app.workers.wait_for_complete()
-
-        assert mode_switch.value is True
-        options = deploy_screen._collect_deploy_options()
-        assert options.mode == DeploymentMode.ARGOCD
-        assert options.values_output.name == "values-generated.yaml"
-        assert options.openbao_token_file is None
-
-
-@pytest.mark.asyncio
-async def test_ztp_screen_preserves_unknown_platform_from_config():
+async def test_ztp_screen_clears_unsupported_platform_from_config():
     config = NVConfigManagerInstallConfig()
     config.infrastructure.ztp_storage.os_images = [
         ZTPOSImage(platform="sonic", version="e2e-v1", path="/tmp/sonic.bin")
     ]
     app = NVConfigManagerInstallerApp(config=config)
 
-    async with app.run_test():
+    async with app.run_test() as pilot:
+        await pilot.pause()
         app.switch_section("ztp")
         platform = app._screens["ztp"].query_one("#ztp-img-0-platform", Select)
 
-        assert platform.value == "sonic"
+        assert not isinstance(platform.value, str)
         app.collect_config()
-        assert app.config.infrastructure.ztp_storage.os_images[0].platform == "sonic"
+        assert app.config.infrastructure.ztp_storage.os_images[0].platform == ""
 
 
 @pytest.mark.asyncio

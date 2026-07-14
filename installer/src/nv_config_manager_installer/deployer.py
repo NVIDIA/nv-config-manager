@@ -52,6 +52,7 @@ from nv_config_manager_installer.k8s import (
     kubectl_current_context,
     pin_kubeconfig_to_current_context,
 )
+from nv_config_manager_installer.openbao import OpenBaoClient, OpenBaoPopulator
 from nv_config_manager_installer.operator_versions import load_operator_versions
 from nv_config_manager_installer.schema import (
     GatewayType,
@@ -166,6 +167,7 @@ class DeployOptions:
     recreate_secrets: bool = False
     run_tests: bool = False
     dry_run: bool = False
+    vault_token_file: Path | None = None
 
 
 @dataclass
@@ -1052,6 +1054,7 @@ class Deployer:
             DeployStep("install-crds", "Install CRDs / operators"),
             DeployStep("create-namespace", "Create namespace"),
             DeployStep("create-secrets", "Create Kubernetes secrets"),
+            DeployStep("populate-vault", "Populate Vault secrets"),
             DeployStep("setup-jobs-pvc", "Setup custom jobs PVC"),
             DeployStep("setup-templates-pvc", "Setup template plugins PVC"),
             DeployStep("setup-ztp-pvc", "Setup ZTP images PVC"),
@@ -1133,6 +1136,7 @@ class Deployer:
             self._install_crds()
             self._create_namespace()
             self._create_secrets()
+            self._populate_vault()
             self._setup_jobs_pvc()
             self._setup_templates_pvc()
             self._setup_ztp_pvc()
@@ -1238,11 +1242,28 @@ class Deployer:
             raise RuntimeError("kind is required for --load-kind")
 
         self._validate_required_config(step)
+        if self.config.secrets.method == SecretsMethod.ESO:
+            self._validate_vault_config(step)
 
         if sys.platform == "linux":
             self._check_inotify_limits(step)
 
         self._finish_step(step)
+
+    def _validate_vault_config(self, step: DeployStep) -> None:
+        """Validate the Vault connection required for ESO population."""
+        vault = self.config.secrets.vault
+        missing = [
+            name
+            for name, value in (
+                ("secrets.vault.server", vault.server),
+                ("secrets.vault.secrets_path", vault.secrets_path),
+            )
+            if not value.strip()
+        ]
+        if missing:
+            raise RuntimeError("Vault population requires ESO configuration: " + ", ".join(missing))
+        step.output.append(f"Vault server: {vault.server}")
 
     def _validate_required_config(self, step: Any) -> None:
         """Fail fast on config that would crash mid-deploy with a confusing error.
@@ -1991,6 +2012,70 @@ class Deployer:
                 },
             )
 
+        self._finish_step(step)
+
+    def _resolve_vault_token(self) -> str:
+        """Resolve a Vault provisioning token without storing it in the config."""
+        if self.options.vault_token_file is not None:
+            try:
+                token = self.options.vault_token_file.expanduser().read_text().strip()
+            except OSError as exc:
+                raise RuntimeError(
+                    f"Cannot read Vault token file '{self.options.vault_token_file}': {exc}"
+                ) from exc
+            if token:
+                return token
+
+        token = (
+            os.environ.get("VAULT_TOKEN", "").strip() or os.environ.get("OPENBAO_TOKEN", "").strip()
+        )
+        if token:
+            return token
+
+        vault = self.config.secrets.vault
+        if vault.auth.method.value == "token" and vault.auth.token_secret_name:
+            assert self._k8s is not None
+            data = self._k8s.read_secret_data(
+                vault.auth.token_secret_name,
+                self.config.cluster.namespace,
+            )
+            if token := data.get("token", "").strip():
+                return token
+
+        raise RuntimeError(
+            "Vault population requires a provisioning token. Pass --vault-token-file, "
+            "set VAULT_TOKEN, or configure token auth with a Kubernetes Secret containing a "
+            "'token' key."
+        )
+
+    def _populate_vault(self) -> None:
+        """Create configured KV v2 mounts and populate missing ESO secret values."""
+        if self.config.secrets.method != SecretsMethod.ESO:
+            self._skip_step("populate-vault", "ESO is not selected")
+            return
+
+        assert self._k8s is not None
+        step = self._start_step("populate-vault")
+        vault = self.config.secrets.vault
+        client = OpenBaoClient(
+            vault.server,
+            self._resolve_vault_token(),
+            namespace=vault.namespace,
+        )
+        result = OpenBaoPopulator(self.config, client).populate()
+        for mount in result.mounts_created:
+            message = f"Created Vault KV v2 mount: {mount}"
+            step.output.append(message)
+            self.callback.on_log(message)
+        if result.paths_updated:
+            message = (
+                f"Populated {result.keys_added} missing key(s) across "
+                f"{len(result.paths_updated)} Vault path(s)"
+            )
+        else:
+            message = "Vault secrets already contain all configured values"
+        step.output.append(message)
+        self.callback.on_log(message)
         self._finish_step(step)
 
     def _create_core_secrets(self, step: DeployStep, s: dict[str, str]) -> None:

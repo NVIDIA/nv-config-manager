@@ -45,7 +45,6 @@ from textual.widgets import (
 from nv_config_manager_installer.deployer import (
     DeployCallback,
     Deployer,
-    DeploymentMode,
     DeployOptions,
     DeployStep,
     StepStatus,
@@ -582,10 +581,6 @@ class DeployScreen(Container):
         yield Label("─" * 40, classes="section-divider")
 
         with Container(id="deploy-options"):
-            yield LabeledSwitch(
-                "Prepare for Argo CD (create/populate PVCs and generate values)",
-                id="opt-argocd-managed",
-            )
             with Horizontal(classes="compact-field-row"):
                 yield LabeledSwitch("Build images", id="opt-build-images", value=True)
                 yield LabeledSwitch("Load to Kind", id="opt-load-kind", value=True)
@@ -600,13 +595,6 @@ class DeployScreen(Container):
                 with Vertical(classes="compact-field"):
                     yield Label("Helm timeout", classes="field-label-compact")
                     yield Input(value="15m", id="opt-helm-timeout")
-                with Vertical(classes="compact-field"):
-                    yield Label("Generated values path", classes="field-label-compact")
-                    yield Input(
-                        value="values-generated.yaml",
-                        id="opt-values-output",
-                        disabled=True,
-                    )
                 with Vertical(classes="compact-field"):
                     yield Label("Vault token file (ESO)", classes="field-label-compact")
                     yield Input(placeholder="/path/to/token", id="opt-openbao-token-file")
@@ -632,16 +620,15 @@ class DeployScreen(Container):
             DeployStep("install-crds", "Install CRDs / operators"),
             DeployStep("create-namespace", "Create namespace"),
             DeployStep("create-secrets", "Create Kubernetes secrets"),
-            DeployStep("populate-openbao", "Populate Vault secrets"),
+            DeployStep("populate-vault", "Populate Vault secrets"),
             DeployStep("setup-jobs-pvc", "Setup custom jobs PVC"),
             DeployStep("setup-templates-pvc", "Setup template plugins PVC"),
             DeployStep("setup-ztp-pvc", "Setup ZTP images PVC"),
             DeployStep("generate-values", "Generate Helm values"),
             DeployStep("helm-install", "Helm install / upgrade"),
-            DeployStep("patch-gateway", "Patch Envoy Gateway"),
+            DeployStep("patch-gateway", "Configure local Gateway access"),
             DeployStep("restart-nautobot", "Restart Nautobot"),
             DeployStep("restart-render", "Restart Render Service"),
-            DeployStep("restart-ztp", "Restart ZTP Service"),
             DeployStep("run-jobs", "Run post-deploy jobs"),
             DeployStep("refresh-cache", "Refresh caches"),
             DeployStep("run-tests", "Run integration tests"),
@@ -683,56 +670,19 @@ class DeployScreen(Container):
             test_switch.disabled = False
             test_switch.tooltip = ""
 
-    def on_labeled_switch_changed(self, event: LabeledSwitch.Changed) -> None:
-        """Switch the dashboard between deployment and Argo CD preparation."""
-        if event.labeled_switch.id != "opt-argocd-managed":
-            return
-        argocd_managed = event.value
-        for widget_id in (
-            "#opt-build-images",
-            "#opt-load-kind",
-            "#opt-envoy-gw",
-            "#opt-cert-mgr",
-            "#opt-cnpg",
-            "#opt-run-tests",
-        ):
-            self.query_one(widget_id, LabeledSwitch).disabled = argocd_managed
-        self.query_one("#opt-values-output", Input).disabled = not argocd_managed
-        button = self.query_one("#start-deploy", Button)
-        button.label = "Prepare for Argo CD" if argocd_managed else "Start Deployment"
-        button.tooltip = (
-            "Creates installer-owned prerequisites and values before the NVCM Argo CD sync"
-            if argocd_managed
-            else ""
-        )
-
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "start-deploy" and not self._deploy_running:
             opts = self.query_one(_W_DEPLOY_OPTIONS)
             if not opts.display:
                 opts.display = True
-                event.button.label = (
-                    "Prepare for Argo CD"
-                    if self.query_one("#opt-argocd-managed", LabeledSwitch).value
-                    else "Start Deployment"
-                )
+                event.button.label = "Start Deployment"
                 event.button.variant = "success"
                 return
             self._start_deploy()
 
     def _collect_deploy_options(self) -> DeployOptions:
-        mode = (
-            DeploymentMode.ARGOCD
-            if self.query_one("#opt-argocd-managed", LabeledSwitch).value
-            else DeploymentMode.INSTALLER
-        )
-        values_output = None
-        if mode == DeploymentMode.ARGOCD:
-            values_output = (
-                Path(self.query_one("#opt-values-output", Input).value).expanduser().resolve()
-            )
         token_file_value = self.query_one("#opt-openbao-token-file", Input).value.strip()
-        openbao_token_file = Path(token_file_value).expanduser() if token_file_value else None
+        vault_token_file = Path(token_file_value).expanduser() if token_file_value else None
         return DeployOptions(
             chart_dir="deploy/helm",
             build_images=self.query_one("#opt-build-images", LabeledSwitch).value,
@@ -744,9 +694,7 @@ class DeployScreen(Container):
             helm_timeout=self.query_one("#opt-helm-timeout", Input).value,
             recreate_secrets=self.query_one("#opt-recreate-secrets", LabeledSwitch).value,
             run_tests=self.query_one("#opt-run-tests", LabeledSwitch).value,
-            mode=mode,
-            values_output=values_output,
-            openbao_token_file=openbao_token_file,
+            vault_token_file=vault_token_file,
         )
 
     def _sync_image_source_from_options(self, options: DeployOptions) -> None:
@@ -767,11 +715,7 @@ class DeployScreen(Container):
         self._deploy_running = True
         btn = self.query_one("#start-deploy", Button)
         btn.disabled = True
-        btn.label = (
-            "Preparing for Argo CD..."
-            if self.query_one("#opt-argocd-managed", LabeledSwitch).value
-            else "Deploying..."
-        )
+        btn.label = "Deploying..."
         self.query_one(_W_DEPLOY_OPTIONS).display = False
 
         log_viewer = self.query_one("#log-viewer-panel", LogViewerWidget)
@@ -816,21 +760,14 @@ class DeployScreen(Container):
         btn = self.query_one("#start-deploy", Button)
         btn.disabled = False
 
-        argocd_managed = self.query_one("#opt-argocd-managed", LabeledSwitch).value
         if event.success:
-            btn.label = "Preparation Complete" if argocd_managed else "Deployment Complete"
+            btn.label = "Deployment Complete"
             btn.variant = "success"
-            message = (
-                "Argo CD preparation completed successfully!"
-                if argocd_managed
-                else "Deployment completed successfully!"
-            )
-            self.app.notify(message)
+            self.app.notify("Deployment completed successfully!")
         else:
-            btn.label = "Retry Preparation" if argocd_managed else "Retry Deployment"
+            btn.label = "Retry Deployment"
             btn.variant = "error"
-            operation = "Argo CD preparation" if argocd_managed else "Deployment"
-            self.app.notify(f"{operation} failed. Check logs for details.", severity="error")
+            self.app.notify("Deployment failed. Check logs for details.", severity="error")
 
     def sync_from_config(self, config: NVConfigManagerInstallConfig) -> None:
         self._config = config

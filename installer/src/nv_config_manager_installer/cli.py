@@ -23,6 +23,7 @@ Commands:
 from __future__ import annotations
 
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 import click
@@ -32,11 +33,18 @@ from nv_config_manager_installer.air_sim.cli import air_sim
 from nv_config_manager_installer.deployer import (
     DeployCallback,
     Deployer,
-    DeploymentMode,
     DeployOptions,
     DeployStep,
 )
 from nv_config_manager_installer.helm_values import generate_helm_values
+from nv_config_manager_installer.k8s import K8sClient
+from nv_config_manager_installer.pvc_updater import (
+    JOBS_PVC_NAME,
+    TEMPLATES_PVC_NAME,
+    ZTP_PVC_NAME,
+    PVCUpdater,
+    ZTPImageSource,
+)
 from nv_config_manager_installer.schema import (
     ImageSource,
     NVConfigManagerInstallConfig,
@@ -198,7 +206,6 @@ def generate_values(
 @click.option("--recreate-secrets", is_flag=True, help="Recreate existing K8s secrets.")
 @click.option(
     "--vault-token-file",
-    "openbao_token_file",
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
     default=None,
     help="File containing the Vault provisioning token (ESO deployments).",
@@ -219,7 +226,7 @@ def deploy(
     helm_debug: bool,
     watch_pods: bool,
     recreate_secrets: bool,
-    openbao_token_file: Path | None,
+    vault_token_file: Path | None,
     dry_run: bool,
 ) -> None:
     """Deploy NVIDIA Config Manager from a config file (headless, for CI/CD)."""
@@ -242,55 +249,150 @@ def deploy(
         helm_debug=helm_debug,
         watch_pods=watch_pods,
         recreate_secrets=recreate_secrets,
-        openbao_token_file=openbao_token_file,
+        vault_token_file=vault_token_file,
         dry_run=dry_run,
     )
 
     _run_deployer(config, options, operation="Deployment")
 
 
-@main.command("argocd")
-@click.argument(
-    "config_path",
-    type=click.Path(exists=True, dir_okay=False, path_type=Path),
-)
-@click.option(
-    "--output-dir",
-    "-o",
-    type=click.Path(file_okay=False, path_type=Path),
-    default=Path("."),
-    help="Directory for the generated Argo CD values file.",
-)
-@click.option("--chart-dir", default="deploy/helm", help="Path to the Helm chart directory.")
-@click.option(
-    "--vault-token-file",
-    "openbao_token_file",
-    type=click.Path(exists=True, dir_okay=False, path_type=Path),
-    default=None,
-    help="File containing the Vault provisioning token (ESO deployments).",
-)
-def argocd(
-    config_path: Path,
-    output_dir: Path,
-    chart_dir: str,
-    openbao_token_file: Path | None,
-) -> None:
-    """Prepare installer-owned resources before Argo CD deploys NVCM.
+@main.group("pvc-updater")
+def pvc_updater_command() -> None:
+    """Populate GitOps-managed NVCM content PVCs and restart consumers."""
 
-    This creates the namespace and content PVCs, populates Nautobot jobs,
-    template plugins, and file-backed OS images, and generates a values file.
-    It does not create an ApplicationSet, copy files to Git, or sync Argo CD.
-    """
-    config = NVConfigManagerInstallConfig.from_yaml(config_path)
-    options = DeployOptions(
-        mode=DeploymentMode.ARGOCD,
-        chart_dir=chart_dir,
-        values_output=(output_dir / "values-generated.yaml").resolve(),
-        openbao_token_file=openbao_token_file,
+
+def _run_pvc_updater(
+    *,
+    namespace: str,
+    release_name: str,
+    rollout_timeout: int,
+    update: Callable[[PVCUpdater], bool],
+) -> None:
+    """Run one PVC content update with a connected Kubernetes client."""
+    k8s = K8sClient()
+    if not k8s.check_connectivity():
+        raise click.ClickException("Unable to connect to the current Kubernetes cluster")
+    updater = PVCUpdater(
+        k8s,
+        namespace,
+        release_name,
+        rollout_timeout=rollout_timeout,
+        on_log=click.echo,
     )
-    _run_deployer(config, options, operation="Argo CD preparation")
-    click.echo("\nNext: copy values-generated.yaml into the Argo CD repository, add the")
-    click.echo("NVCM Application/ApplicationSet, and sync it using the site's normal process.")
+    try:
+        changed = update(updater)
+    except Exception as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(
+        "PVC content updated and consumers restarted." if changed else "PVC content unchanged."
+    )
+
+
+def _pvc_common_options(command: Callable[..., None]) -> Callable[..., None]:
+    """Apply the options shared by the PVC updater subcommands."""
+    command = click.option(
+        "--namespace",
+        required=True,
+        help="Namespace containing the NVCM release and its PVCs.",
+    )(command)
+    command = click.option(
+        "--release-name",
+        required=True,
+        help="Helm release name of NVCM (recorded for operator visibility).",
+    )(command)
+    return click.option(
+        "--rollout-timeout",
+        type=click.IntRange(min=1),
+        default=600,
+        show_default=True,
+        help="Seconds to wait for each restarted Deployment rollout.",
+    )(command)
+
+
+@pvc_updater_command.command("jobs")
+@click.option(
+    "--source",
+    "sources",
+    type=click.Path(exists=True, path_type=Path),
+    multiple=True,
+    required=True,
+    help="Custom-job directory or tar archive. May be supplied more than once.",
+)
+@click.option("--pvc-name", default=JOBS_PVC_NAME, show_default=True)
+@_pvc_common_options
+def pvc_updater_jobs(
+    sources: tuple[Path, ...],
+    pvc_name: str,
+    namespace: str,
+    release_name: str,
+    rollout_timeout: int,
+) -> None:
+    """Update custom Nautobot jobs."""
+    _run_pvc_updater(
+        namespace=namespace,
+        release_name=release_name,
+        rollout_timeout=rollout_timeout,
+        update=lambda updater: updater.update_jobs(sources, pvc_name=pvc_name),
+    )
+
+
+@pvc_updater_command.command("templates")
+@click.option(
+    "--source",
+    "sources",
+    type=click.Path(exists=True, path_type=Path),
+    multiple=True,
+    required=True,
+    help="Template-plugin directory or tar archive. May be supplied more than once.",
+)
+@click.option("--pvc-name", default=TEMPLATES_PVC_NAME, show_default=True)
+@_pvc_common_options
+def pvc_updater_templates(
+    sources: tuple[Path, ...],
+    pvc_name: str,
+    namespace: str,
+    release_name: str,
+    rollout_timeout: int,
+) -> None:
+    """Update Render Service template plugins."""
+    _run_pvc_updater(
+        namespace=namespace,
+        release_name=release_name,
+        rollout_timeout=rollout_timeout,
+        update=lambda updater: updater.update_templates(sources, pvc_name=pvc_name),
+    )
+
+
+@pvc_updater_command.command("ztp")
+@click.option(
+    "--image",
+    "images",
+    type=click.Tuple((str, str, click.Path(exists=True, dir_okay=False, path_type=Path))),
+    multiple=True,
+    required=True,
+    metavar="PLATFORM VERSION PATH",
+    help="OS image metadata and local file. May be supplied more than once.",
+)
+@click.option("--pvc-name", default=ZTP_PVC_NAME, show_default=True)
+@_pvc_common_options
+def pvc_updater_ztp(
+    images: tuple[tuple[str, str, Path], ...],
+    pvc_name: str,
+    namespace: str,
+    release_name: str,
+    rollout_timeout: int,
+) -> None:
+    """Update ZTP OS images and manifest.json."""
+    sources = [
+        ZTPImageSource(platform=platform, version=version, path=path)
+        for platform, version, path in images
+    ]
+    _run_pvc_updater(
+        namespace=namespace,
+        release_name=release_name,
+        rollout_timeout=rollout_timeout,
+        update=lambda updater: updater.update_ztp(sources, pvc_name=pvc_name),
+    )
 
 
 class _CliCallback(DeployCallback):
