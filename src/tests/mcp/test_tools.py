@@ -29,6 +29,7 @@ from nv_config_manager.mcp.workflows import MCPWorkflow
 class FakeServer:
     def __init__(self) -> None:
         self.tools: dict[str, Callable[..., Any]] = {}
+        self.tool_descriptions: dict[str, str | None] = {}
 
     def tool(
         self,
@@ -36,7 +37,9 @@ class FakeServer:
         description: str | None = None,
     ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         def decorator(function: Callable[..., Any]) -> Callable[..., Any]:
-            self.tools[name or function.__name__] = function
+            tool_name = name or function.__name__
+            self.tools[tool_name] = function
+            self.tool_descriptions[tool_name] = description
             return function
 
         return decorator
@@ -88,6 +91,7 @@ async def test_workflow_starter_promotes_config_manager_ui_href(
         description="Run a backup.",
         endpoint="/ngc/backup",
         input_class=WorkflowInput,
+        tool_prompt="Resolve the device first.",
     )
 
     tools._register_workflow_starter(server, settings, workflow)
@@ -97,6 +101,8 @@ async def test_workflow_starter_promotes_config_manager_ui_href(
     assert result["workflow_ui_href"] == (
         "https://config-manager.example.test/workflows/workflow-123"
     )
+    assert server.tool_descriptions["run_backup"] == ("Run a backup.\n\nResolve the device first.")
+    assert "Resolve the device first." in (server.tools["run_backup"].__doc__ or "")
     assert "workflow_ui_href" in (server.tools["run_backup"].__doc__ or "")
 
 

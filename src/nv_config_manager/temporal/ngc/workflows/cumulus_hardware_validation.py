@@ -14,6 +14,7 @@
 # limitations under the License.
 """Hardware Validation Workflow Definition."""
 
+import ast
 import asyncio
 from datetime import timedelta
 from typing import Any
@@ -21,6 +22,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 from temporalio import workflow
 from temporalio.common import RetryPolicy
+from temporalio.exceptions import ActivityError
 
 from nv_config_manager.temporal.common.decorators.workflow import run_nv_config_manager_workflow
 from nv_config_manager.temporal.common.mixins.metadata import WorkflowMetadataMixin
@@ -28,6 +30,7 @@ from nv_config_manager.temporal.common.mixins.stage import (
     StageInput,
     StageMixin,
     StageOutput,
+    StateEnum,
     stage_executor,
 )
 from nv_config_manager.temporal.common.search_attributes import SITE_SEARCH_ATTRIBUTE
@@ -55,6 +58,74 @@ with workflow.unsafe.imports_passed_through():
 
 DEFAULT_ACTIVITY_RETRY_POLICY = RetryPolicy(maximum_attempts=5)
 DEVICE_QUERY_START_TO_CLOSE_TIMEOUT = timedelta(seconds=30)
+DEFAULT_HARDWARE_VALIDATION_STATUS = ["Active", "Provisioned"]
+
+
+def format_filter_summary(
+    site: str,
+    roles: list[str],
+    status: list[str],
+    tenant: str | None,
+    device_type_ids: list[str],
+) -> str:
+    """Return a concise hardware validation filter summary."""
+    role_summary = roles if roles else "any"
+    tenant_summary = tenant or "any"
+    device_type_summary = device_type_ids if device_type_ids else "any"
+    return (
+        f"site={site}, roles={role_summary}, status={status}, "
+        f"tenant={tenant_summary}, device_type_ids={device_type_summary}"
+    )
+
+
+def is_device_filter_error(error_message: str) -> bool:
+    """Return whether an activity failure came from an invalid device filter."""
+    return (
+        "GraphQL error:" in error_message
+        or "GraphQL errors:" in error_message
+        or "Must apply at least one filter" in error_message
+    )
+
+
+def format_device_filter_error(error_message: str) -> str:
+    """Format a GraphQL filter validation error for workflow display."""
+    for prefix in ("GraphQL error:", "GraphQL errors:"):
+        if error_message.startswith(prefix):
+            error_message = error_message.removeprefix(prefix).strip()
+            break
+    return _format_error_value(_parse_error_literal(error_message))
+
+
+def _parse_error_literal(value: str) -> Any:
+    stripped = value.strip()
+    if not stripped.startswith(("{", "[")):
+        return stripped
+    try:
+        return ast.literal_eval(stripped)
+    except (SyntaxError, ValueError):
+        return stripped
+
+
+def _format_error_value(value: Any) -> str:
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped.startswith(("{", "[")):
+            parsed = _parse_error_literal(stripped)
+            if not isinstance(parsed, str) or parsed != stripped:
+                return _format_error_value(parsed)
+        return value
+    if isinstance(value, list):
+        return "; ".join(_format_error_value(item) for item in value)
+    if isinstance(value, dict):
+        parts = []
+        for key, item in value.items():
+            formatted_item = _format_error_value(item)
+            if key == "message":
+                parts.append(formatted_item)
+            else:
+                parts.append(f"{key}: {formatted_item}")
+        return "; ".join(parts)
+    return str(value)
 
 
 def analyze_error_results(
@@ -199,9 +270,13 @@ class ValidateHardwareInput(BaseModel):
         default=[], description="Device roles used to filter the selected network devices."
     )
     status: list[str] = Field(
-        default=[], description="Device statuses used to filter the selected network devices."
+        default=DEFAULT_HARDWARE_VALIDATION_STATUS,
+        description="Device statuses used to filter the selected network devices.",
     )
-    tenant: str = Field(description="Tenant used to filter the selected network devices.")
+    tenant: str | None = Field(
+        default=None,
+        description="Tenant used to filter the selected network devices.",
+    )
     device_type_ids: list[str] = Field(
         default=[], description="Device type identifiers used to filter network devices."
     )
@@ -295,13 +370,14 @@ class ValidateHardwareWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, A
         site: str
         roles: list[str]
         status: list[str]
-        tenant: str
+        tenant: str | None
         device_type_ids: list[str]
 
     class GetDevicesToValidateStageOutput(StageOutput):
         """Get Devices to Validate Stage Output."""
 
         devices: list[NetworkDeviceData]
+        invalid_filter: bool = False
 
     class GetDeviceStageInput(StageInput):
         """Get Device Stage Input."""
@@ -346,18 +422,40 @@ class ValidateHardwareWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, A
         self, stage_input: GetDevicesToValidateStageInput
     ) -> GetDevicesToValidateStageOutput:
         """Query devices based on filtering criteria."""
-        result = await workflow.execute_activity(
-            get_network_devices,
-            GetNetworkDevicesInput(
-                site=stage_input.site,
-                roles=stage_input.roles,
-                status=stage_input.status,
-                tenant=stage_input.tenant,
-                device_type_ids=stage_input.device_type_ids,
-            ),
-            start_to_close_timeout=DEVICE_QUERY_START_TO_CLOSE_TIMEOUT,
-            retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+        filter_summary = format_filter_summary(
+            stage_input.site,
+            stage_input.roles,
+            stage_input.status,
+            stage_input.tenant,
+            stage_input.device_type_ids,
         )
+        try:
+            result = await workflow.execute_activity(
+                get_network_devices,
+                GetNetworkDevicesInput(
+                    site=stage_input.site,
+                    roles=stage_input.roles,
+                    status=stage_input.status,
+                    tenant=stage_input.tenant,
+                    device_type_ids=stage_input.device_type_ids,
+                    managed_only=True,
+                ),
+                start_to_close_timeout=DEVICE_QUERY_START_TO_CLOSE_TIMEOUT,
+                retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+            )
+        except ActivityError as exc:
+            reason = str(exc.cause) if exc.cause else str(exc)
+            if not is_device_filter_error(reason):
+                raise
+            display = (
+                f"Invalid hardware validation device filter ({filter_summary}): "
+                f"{format_device_filter_error(reason)}"
+            )
+            return self.GetDevicesToValidateStageOutput(
+                devices=[],
+                invalid_filter=True,
+                display=display,
+            )
 
         # Filter devices to only include Cumulus Linux devices
         cumulus_devices = [
@@ -365,10 +463,20 @@ class ValidateHardwareWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, A
             for device in result.devices
             if device.platform and "cumulus" in device.platform.lower()
         ]
+        if not result.devices:
+            display = f"No devices matched the specified filters ({filter_summary})."
+        elif not cumulus_devices:
+            display = (
+                "No Cumulus Linux devices matched the specified filters "
+                f"({filter_summary}). Nautobot returned {len(result.devices)} "
+                "device(s), but hardware validation only runs against Cumulus Linux devices."
+            )
+        else:
+            display = f"Found {len(cumulus_devices)} Cumulus Linux devices."
 
         return self.GetDevicesToValidateStageOutput(
             devices=cumulus_devices,
-            display=f"Found {len(cumulus_devices)} Cumulus Linux devices.",
+            display=display,
         )
 
     @stage_executor("get_device_info")
@@ -849,6 +957,27 @@ class ValidateHardwareWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, A
                 device_type_ids=workflow_input.device_type_ids,
             )
         )
+
+        if not devices_to_validate_output.devices:
+            for stage_name in [
+                "get_device_info",
+                "get_platform",
+                "get_environment_fan",
+                "get_environment_led",
+                "get_environment_psu",
+                "get_environment_voltage",
+                "get_inventory",
+                "generate_consolidated_report",
+            ]:
+                self.set_stage_state(stage_name, StateEnum.UNREACHABLE)
+
+            await self.archive_results()
+            return HardwareValidationResult(
+                success=False,
+                devices_validated=0,
+                total_entries=0,
+                message=devices_to_validate_output.display,
+            )
 
         device_output = await self.get_device_info(
             self.GetDeviceStageInput(devices=devices_to_validate_output.devices)
