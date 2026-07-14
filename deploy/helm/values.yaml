@@ -1646,20 +1646,18 @@ temporal:
           memory: 512Mi
         limits:
           memory: 1Gi
-          # nodeSelector:  # Uncomment for production node placement
-        # nv-config-manager.nvidia.com/node-type: control-plane
-  # affinity:  # Uncomment for production pod distribution
-  # podAntiAffinity:
-  # preferredDuringSchedulingIgnoredDuringExecution:
-  # - weight: 100
-  # podAffinityTerm:
-  # labelSelector:
-  # matchExpressions:
-  # - key: app.kubernetes.io/component
-  # operator: In
-  # values:
-  # - temporal-worker
-  # topologyKey: kubernetes.io/hostname
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app.kubernetes.io/component
+                  operator: In
+                  values:
+                  - temporal-worker
+              topologyKey: kubernetes.io/hostname
 
   # NVIDIA Config Manager Temporal API (scales independently of configManagerWorker)
   api:
@@ -1694,18 +1692,18 @@ temporal:
       mountPath: /etc/nv-config-manager/secrets/config-secrets
       # Full path to the config-secrets.ini file
       path: /etc/nv-config-manager/secrets/config-secrets/config-secrets.ini
-  # affinity:  # Uncomment for production pod distribution
-  # podAntiAffinity:
-  # preferredDuringSchedulingIgnoredDuringExecution:
-  # - weight: 100
-  # podAffinityTerm:
-  # labelSelector:
-  # matchExpressions:
-  # - key: app.kubernetes.io/component
-  # operator: In
-  # values:
-  # - nv-config-manager-worker
-  # topologyKey: kubernetes.io/hostname
+    affinity:
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+              - key: app.kubernetes.io/component
+                operator: In
+                values:
+                - nv-config-manager-worker
+            topologyKey: kubernetes.io/hostname
   # topologySpreadConstraints:  # Uncomment for production pod distribution
   # - maxSkew: 1
   # topologyKey: kubernetes.io/hostname

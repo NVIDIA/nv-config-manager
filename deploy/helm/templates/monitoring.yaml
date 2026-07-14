@@ -619,7 +619,7 @@ spec:
     matchLabels:
       app: {{ $temporalName }}
       component: worker
-      app.kubernetes.io/component: temporal
+      app.kubernetes.io/component: temporal-worker
   podMetricsEndpoints:
     - port: metrics
       path: /metrics
