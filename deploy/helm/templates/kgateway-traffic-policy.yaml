@@ -1,0 +1,94 @@
+{{- if and .Values.gateway.enabled (eq (include "nv-config-manager.gatewayControllerType" .) "kgateway") }}
+{{/*
+Route labels avoid duplicating every HTTPRoute name here and, unlike a
+Gateway-level timeout policy, preserve kgateway's HTTPRoute timeout semantics.
+*/}}
+apiVersion: gateway.kgateway.dev/v1alpha1
+kind: TrafficPolicy
+metadata:
+  name: {{ include "nv-config-manager.componentName" (dict "root" . "component" "default-timeouts") }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+spec:
+  targetSelectors:
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    matchLabels:
+      nv-config-manager.nvidia.com/timeout-profile: default
+  timeouts:
+    request: {{ .Values.gateway.timeout.requestTimeout | default "300s" }}
+    streamIdle: {{ .Values.gateway.timeout.connectionIdleTimeout | default "60s" }}
+
+{{- if .Values.networkZtp.enabled }}
+---
+apiVersion: gateway.kgateway.dev/v1alpha1
+kind: TrafficPolicy
+metadata:
+  name: {{ include "nv-config-manager.componentName" (dict "root" . "component" "ztp-upload-timeouts") }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+spec:
+  targetSelectors:
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    matchLabels:
+      nv-config-manager.nvidia.com/timeout-profile: upload
+  timeouts:
+    request: {{ .Values.networkZtp.upload.timeout | default "3600s" }}
+    streamIdle: {{ .Values.networkZtp.upload.idleTimeout | default "300s" }}
+{{- end }}
+
+---
+apiVersion: gateway.kgateway.dev/v1alpha1
+kind: BackendConfigPolicy
+metadata:
+  name: {{ include "nv-config-manager.componentName" (dict "root" . "component" "backend-connect-timeout") }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+spec:
+  # This applies to every chart-managed Service backend without a hand-kept
+  # list of HTTPRoutes or Services.
+  targetSelectors:
+  - group: ""
+    kind: Service
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name | quote }}
+  connectTimeout: {{ .Values.gateway.timeout.connectTimeout | default "10s" }}
+
+{{- if and .Values.gateway.create .Values.gateway.rateLimit.enabled }}
+---
+apiVersion: gateway.kgateway.dev/v1alpha1
+kind: TrafficPolicy
+metadata:
+  name: {{ include "nv-config-manager.componentName" (dict "root" . "component" "global-rate-limit") }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+spec:
+  # Rate limits apply at the Gateway, avoiding per-route duplication.
+  targetRefs:
+  - group: gateway.networking.k8s.io
+    kind: Gateway
+    name: {{ .Values.gateway.name }}
+  rateLimit:
+    global:
+      extensionRef:
+        name: {{ dig "rateLimit" "kgateway" "extensionRef" "name" "" .Values.gateway | quote }}
+        {{- with dig "rateLimit" "kgateway" "extensionRef" "namespace" "" .Values.gateway }}
+        namespace: {{ . | quote }}
+        {{- end }}
+      descriptors:
+      - entries:
+        {{- if .Values.gateway.rateLimit.global.perClient.enabled }}
+        - type: RemoteAddress
+        {{- else }}
+        - type: Generic
+          generic:
+            key: nv-config-manager
+            value: global
+        {{- end }}
+{{- end }}
+{{- end }}

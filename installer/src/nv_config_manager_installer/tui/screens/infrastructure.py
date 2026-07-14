@@ -20,7 +20,11 @@ from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, Vertical
 from textual.widgets import Button, Input, Label, RadioButton, RadioSet
 
-from nv_config_manager_installer.schema import LBProvider, NVConfigManagerInstallConfig
+from nv_config_manager_installer.schema import (
+    GatewayType,
+    LBProvider,
+    NVConfigManagerInstallConfig,
+)
 from nv_config_manager_installer.tui.widgets import LabeledSwitch
 
 _W_CNPG_BACKUP = "#cnpg-backup-enabled"
@@ -76,6 +80,32 @@ class InfraScreen(Container):
         infra = self._config.infrastructure
         yield Label("Infrastructure", classes="section-title")
         yield Label("─" * 40, classes="section-divider")
+
+        yield Label("Gateway API Controller", classes="field-label")
+        with RadioSet(id="gateway-type"):
+            yield RadioButton(
+                "Envoy Gateway",
+                value=infra.gateway == GatewayType.ENVOY_GATEWAY,
+                id="gateway-envoy",
+            )
+            yield RadioButton(
+                "kgateway",
+                value=infra.gateway == GatewayType.KGATEWAY,
+                id="gateway-kgateway",
+            )
+        yield LabeledSwitch(
+            "Create dedicated Gateway",
+            value=infra.create_gateway,
+            id="infra-create-gateway",
+        )
+        yield Label("Gateway name", classes="field-label")
+        yield Input(value=infra.gateway_name, id="infra-gateway-name")
+        yield Label("Gateway namespace (blank uses application namespace)", classes="field-label")
+        yield Input(value=infra.gateway_namespace, id="infra-gateway-namespace")
+        yield Label("Shared Gateway listener (optional)", classes="field-label")
+        yield Input(value=infra.gateway_listener, id="infra-gateway-listener")
+        yield Label("GatewayClass name (blank uses controller default)", classes="field-label")
+        yield Input(value=infra.gateway_class_name, id="infra-gateway-class-name")
 
         yield LabeledSwitch(
             "Create GatewayClass",
@@ -247,6 +277,16 @@ class InfraScreen(Container):
 
     def write_to_config(self, config: NVConfigManagerInstallConfig) -> None:
         infra = config.infrastructure
+        infra.gateway = (
+            GatewayType.KGATEWAY
+            if self.query_one("#gateway-kgateway", RadioButton).value
+            else GatewayType.ENVOY_GATEWAY
+        )
+        infra.create_gateway = self.query_one("#infra-create-gateway", LabeledSwitch).value
+        infra.gateway_name = self.query_one("#infra-gateway-name", Input).value
+        infra.gateway_namespace = self.query_one("#infra-gateway-namespace", Input).value
+        infra.gateway_listener = self.query_one("#infra-gateway-listener", Input).value
+        infra.gateway_class_name = self.query_one("#infra-gateway-class-name", Input).value
         infra.create_gateway_class = self.query_one(
             "#infra-create-gateway-class", LabeledSwitch
         ).value
@@ -285,6 +325,17 @@ class InfraScreen(Container):
 
     def sync_from_config(self, config: NVConfigManagerInstallConfig) -> None:
         infra = config.infrastructure
+        self.query_one("#gateway-envoy", RadioButton).value = (
+            infra.gateway == GatewayType.ENVOY_GATEWAY
+        )
+        self.query_one("#gateway-kgateway", RadioButton).value = (
+            infra.gateway == GatewayType.KGATEWAY
+        )
+        self.query_one("#infra-create-gateway", LabeledSwitch).value = infra.create_gateway
+        self.query_one("#infra-gateway-name", Input).value = infra.gateway_name
+        self.query_one("#infra-gateway-namespace", Input).value = infra.gateway_namespace
+        self.query_one("#infra-gateway-listener", Input).value = infra.gateway_listener
+        self.query_one("#infra-gateway-class-name", Input).value = infra.gateway_class_name
         self.query_one(
             "#infra-create-gateway-class", LabeledSwitch
         ).value = infra.create_gateway_class

@@ -54,6 +54,7 @@ from nv_config_manager_installer.k8s import (
 )
 from nv_config_manager_installer.operator_versions import load_operator_versions
 from nv_config_manager_installer.schema import (
+    GatewayType,
     ImageSource,
     LBProvider,
     NVConfigManagerInstallConfig,
@@ -1056,7 +1057,7 @@ class Deployer:
             DeployStep("setup-ztp-pvc", "Setup ZTP images PVC"),
             DeployStep("generate-values", "Generate Helm values"),
             DeployStep("helm-install", "Helm install / upgrade"),
-            DeployStep("patch-gateway", "Patch Envoy Gateway"),
+            DeployStep("patch-gateway", "Configure local Gateway access"),
             DeployStep("restart-nautobot", "Restart Nautobot"),
             DeployStep("restart-render", "Restart Render Service"),
             DeployStep("run-jobs", "Run post-deploy jobs"),
@@ -1085,6 +1086,17 @@ class Deployer:
         if reason:
             step.output.append(reason)
         self.callback.on_step_update(step)
+
+    def _validate_gateway_options(self) -> None:
+        """Reject installer actions that apply only to Envoy Gateway."""
+        if (
+            self.options.install_envoy_gateway
+            and self.config.infrastructure.gateway != GatewayType.ENVOY_GATEWAY
+        ):
+            raise RuntimeError(
+                "--install-envoy-gateway can be used only with gateway=envoyGateway; "
+                "install kgateway and its Gateway API CRDs before deploying Config Manager"
+            )
 
     def run(self) -> bool:
         """Execute the full deployment pipeline. Returns True on success."""
@@ -1164,6 +1176,7 @@ class Deployer:
 
     def _check_prerequisites(self) -> None:
         step = self._start_step("prereqs")
+        self._validate_gateway_options()
         for tool in ["kubectl", "helm"]:
             if not shutil.which(tool):
                 raise RuntimeError(f"Required tool not found: {tool}")
@@ -1579,6 +1592,7 @@ class Deployer:
 
     def _install_crds(self) -> None:
         opts = self.options
+        self._validate_gateway_options()
         observability_on = self.config.infrastructure.monitoring.observability_enabled
         if not any(
             [
@@ -1969,7 +1983,12 @@ class Deployer:
 
         if self.config.sso.enabled and self.config.sso.client_secret:
             self._apply_secret(
-                step, "oidc-client-secret", {"client-secret": self.config.sso.client_secret}
+                step,
+                "oidc-client-secret",
+                {
+                    "client-secret": self.config.sso.client_secret,
+                    "cookie-secret": s["oidc_cookie_secret"],
+                },
             )
 
         self._finish_step(step)
@@ -2635,7 +2654,11 @@ class Deployer:
 
     def _should_reuse_existing_gateway_class(self) -> bool:
         """Return True when an existing GatewayClass is owned by another Helm release."""
-        if not self.config.infrastructure.create_gateway_class:
+        if (
+            self.config.infrastructure.gateway != GatewayType.ENVOY_GATEWAY
+            or not self.config.infrastructure.create_gateway
+            or not self.config.infrastructure.create_gateway_class
+        ):
             return False
 
         owner = _gateway_class_helm_owner()
@@ -2657,6 +2680,13 @@ class Deployer:
         return True
 
     def _patch_gateway(self) -> None:
+        if self.config.infrastructure.gateway != GatewayType.ENVOY_GATEWAY:
+            self._skip_step(
+                "patch-gateway",
+                "kgateway configures local NodePorts through GatewayParameters",
+            )
+            return
+
         lb = self.config.infrastructure.load_balancer
         if lb.provider != LBProvider.NONE:
             self._skip_step("patch-gateway", "LoadBalancer provider configured, no patching needed")

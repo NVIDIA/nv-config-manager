@@ -23,6 +23,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--keycloak-hostname", required=True)
     parser.add_argument("--spiffe-trust-domain", required=True)
     parser.add_argument("--oidc-client-secret", required=True)
+    parser.add_argument(
+        "--gateway",
+        choices=("envoyGateway", "kgateway"),
+        default="envoyGateway",
+    )
     return parser.parse_args()
 
 
@@ -53,6 +58,10 @@ def main() -> int:
     spiffe["group_prefixes"] = [
         f"spiffe://{args.spiffe_trust_domain}/ns/{args.namespace}=nv-config-manager"
     ]
+
+    infrastructure = require_mapping(config.setdefault("infrastructure", {}), "infrastructure")
+    infrastructure["gateway"] = args.gateway
+    infrastructure["create_gateway_class"] = args.gateway == "envoyGateway"
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(yaml.safe_dump(config, sort_keys=False))

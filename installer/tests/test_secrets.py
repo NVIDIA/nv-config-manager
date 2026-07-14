@@ -393,7 +393,7 @@ class TestESOVaultConfig:
 
         assert "redfish" not in paths
 
-    def test_oidc_includes_cookie_secret(self):
+    def test_oidc_includes_client_and_cookie_secrets(self):
         config = NVConfigManagerInstallConfig(
             secrets=SecretsConfig(
                 method=SecretsMethod.ESO,
@@ -403,8 +403,7 @@ class TestESOVaultConfig:
         result = build_eso_vault_config(config)
         oidc_keys = result["secrets"]["vault"]["paths"]["oidc"]["keys"]
 
-        assert "clientSecret" in oidc_keys
-        assert "cookieSecret" in oidc_keys
+        assert set(oidc_keys) == {"clientSecret", "cookieSecret"}
 
 
 class TestRedfishSecrets:

@@ -1,5 +1,5 @@
 .PHONY: help install dev test lint format clean docker-build docker-push ui-install ui-dev ui-build \
-        local-up local-down local-destroy local-status local-logs deploy kind-up kind-up-sec kind-down topology install-cert workflow-perf-seed \
+        local-up local-down local-destroy local-status local-logs deploy kind-up kind-up-sec kind-up-sec-kgateway kind-up-secure kind-down topology install-cert workflow-perf-seed \
         openapi openapi-check go-bindings api-generate docs-assets docs-assets-check docs-format docs-lint docs-lint-fern docs-live docs-preview docs-publish docs-publish-in-ci docs-screenshots docs-air-sim-screenshots docs-ui-screenshots \
         obs-grafana obs-prometheus obs-loki obs-alloy obs-port-forward obs-port-forward-stop
 
@@ -18,6 +18,11 @@ KIND_SEC_SPIFFE_TRUST_DOMAIN ?= $(KIND_SEC_HOSTNAME)
 KIND_SEC_OIDC_CLIENT_SECRET ?= nvcm-local-client-secret
 KIND_SEC_KEYCLOAK_ADMIN_PASSWORD ?= admin
 KIND_SEC_RENDERED_CONFIG ?= /tmp/nvcm-local-sec-$(KIND_CLUSTER_NAME).yaml
+KIND_SEC_GATEWAY_CONTROLLER ?= envoyGateway
+KIND_SEC_GATEWAY_CONTROLLERS := envoyGateway kgateway
+ifneq ($(filter $(KIND_SEC_GATEWAY_CONTROLLER),$(KIND_SEC_GATEWAY_CONTROLLERS)),$(KIND_SEC_GATEWAY_CONTROLLER))
+$(error KIND_SEC_GATEWAY_CONTROLLER must be one of $(KIND_SEC_GATEWAY_CONTROLLERS), got "$(KIND_SEC_GATEWAY_CONTROLLER)")
+endif
 WORKFLOW_PERF_COUNT ?= 100
 WORKFLOW_PERF_RUNNING_COUNT ?= 150
 WORKFLOW_PERF_FAILED_COUNT ?= 1
@@ -61,6 +66,7 @@ help:
 	@echo "Kind Cluster Management:"
 	@echo "  make kind-up                      - Create Kind cluster and deploy NVIDIA Config Manager (small sizing, 24GB)"
 	@echo "  make kind-up-sec                  - Create Kind cluster with local Keycloak, SPIRE, and workflow RBAC"
+	@echo "  make kind-up-sec-kgateway         - Same secured Kind deployment using kgateway"
 	@echo "  make kind-up DEPLOY_SIZE=medium   - Deploy with medium sizing (64GB VM)"
 	@echo "  make kind-down                    - Delete Kind cluster"
 	@echo "  make topology                     - Populate Nautobot with mock topology data"
@@ -784,13 +790,21 @@ kind-up:
 
 # Deploy with Kind plus local Keycloak SSO, SPIRE SPIFFE, and workflow RBAC.
 kind-up-sec:
-	@echo "🚀 Deploying NVIDIA Config Manager with local security stack to Kind (config: $(KIND_SEC_INSTALL_CONFIG))..."
+	$(MAKE) kind-up-secure KIND_SEC_GATEWAY_CONTROLLER=envoyGateway
+
+# Same secured local deployment, using kgateway instead of Envoy Gateway.
+kind-up-sec-kgateway:
+	$(MAKE) kind-up-secure KIND_SEC_GATEWAY_CONTROLLER=kgateway
+
+kind-up-secure:
+	@echo "🚀 Deploying NVIDIA Config Manager with local security stack and $(KIND_SEC_GATEWAY_CONTROLLER) to Kind (config: $(KIND_SEC_INSTALL_CONFIG))..."
 	@if ! kind get clusters 2>/dev/null | grep -q "^$(KIND_CLUSTER_NAME)$$"; then \
 		echo "Creating Kind cluster: $(KIND_CLUSTER_NAME)"; \
 		kind create cluster --name $(KIND_CLUSTER_NAME) --config deploy/kind-config.yaml --wait 5m; \
 	fi
 	kind export kubeconfig --name $(KIND_CLUSTER_NAME)
 	./scripts/install-security-dependencies \
+		--gateway-controller $(KIND_SEC_GATEWAY_CONTROLLER) \
 		--cluster-name $(KIND_CLUSTER_NAME) \
 		--app-namespace $(KIND_SEC_NAMESPACE) \
 		--base-hostname $(KIND_SEC_HOSTNAME) \
@@ -799,6 +813,7 @@ kind-up-sec:
 		--keycloak-admin-password $(KIND_SEC_KEYCLOAK_ADMIN_PASSWORD) \
 		--oidc-client-secret $(KIND_SEC_OIDC_CLIENT_SECRET)
 	uv run python scripts/render-local-security-config \
+		--gateway $(KIND_SEC_GATEWAY_CONTROLLER) \
 		--input $(KIND_SEC_INSTALL_CONFIG) \
 		--output $(abspath $(KIND_SEC_RENDERED_CONFIG)) \
 		--namespace $(KIND_SEC_NAMESPACE) \
@@ -812,8 +827,7 @@ kind-up-sec:
 		--build-images \
 		--load-kind \
 		--kind-cluster $(KIND_CLUSTER_NAME) \
-		--install-envoy-gateway \
-		--install-cnpg-operator \
+		$(if $(filter envoyGateway,$(KIND_SEC_GATEWAY_CONTROLLER)),--install-envoy-gateway) --install-cnpg-operator \
 		--install-cert-manager \
 		$(HELM_DEBUG_FLAG) --helm-timeout $(HELM_TIMEOUT)
 	./scripts/create-local-security-nautobot-users \

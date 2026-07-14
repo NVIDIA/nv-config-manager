@@ -15,21 +15,83 @@
  * limitations under the License.
  */
 import { expect } from "@playwright/test";
+import { providerLogoutRedirect } from "../../src/lib/auth/logout";
 import { test } from "./shared/utils";
 
+const gatewayUrl = new URL(
+  process.env.OIDC_GATEWAY_URL || "http://localhost:3000"
+);
+const gatewayHome = new URL("/", gatewayUrl).toString();
+const applicationUrl = new URL(gatewayUrl);
+applicationUrl.hostname = `nautobot.${gatewayUrl.hostname}`;
+const applicationHome = new URL("/", applicationUrl).toString();
+const providerEndSessionUrl = "https://idp.example.com/oidc/logout";
+const providerReturnUrl = "https://nautobot.config-manager.example.com/";
+
+const providerLogoutUrl = (clientId?: string): URL => {
+  const redirect = providerLogoutRedirect(
+    providerReturnUrl,
+    providerEndSessionUrl,
+    clientId
+  );
+  return new URL(new URL(redirect, gatewayUrl).searchParams.get("rd")!);
+};
+
 test.describe("Workflows Page", () => {
-  test("logout uses a relative provider logout redirect", async ({ request }) => {
+  test("logout builds a provider end-session redirect", () => {
+    const url = providerLogoutUrl("nv-config-manager");
+
+    expect(url.origin).toBe("https://idp.example.com");
+    expect(url.pathname).toBe("/oidc/logout");
+    expect(url.searchParams.get("post_logout_redirect_uri")).toBe(
+      providerReturnUrl
+    );
+    expect(url.searchParams.get("client_id")).toBe("nv-config-manager");
+    expect(url.searchParams.get("id_token_hint")).toBe("{id_token}");
+  });
+
+  test("logout omits the optional provider client ID", () => {
+    expect(providerLogoutUrl().searchParams.has("client_id")).toBe(false);
+  });
+
+  test("logout returns to the base hostname by default", async ({ request }) => {
     const response = await request.get("/auth/logout", { maxRedirects: 0 });
 
     expect(response.status()).toBe(302);
-    expect(response.headers().location).toBe("/oauth2/logout");
+    expect(response.headers().location).toBe(
+      `/oauth2/sign_out?rd=${encodeURIComponent(gatewayHome)}`
+    );
+  });
+
+  test("logout accepts a return URL on a gateway subdomain", async ({ request }) => {
+    const response = await request.get(
+      `/auth/logout?rd=${encodeURIComponent(applicationHome)}`,
+      { maxRedirects: 0 }
+    );
+
+    expect(response.status()).toBe(302);
+    expect(response.headers().location).toBe(
+      `/oauth2/sign_out?rd=${encodeURIComponent(applicationHome)}`
+    );
+  });
+
+  test("logout rejects a return URL outside the gateway domain", async ({ request }) => {
+    const response = await request.get(
+      "/auth/logout?rd=https%3A%2F%2Fexample.com%2F",
+      { maxRedirects: 0 }
+    );
+
+    expect(response.status()).toBe(302);
+    expect(response.headers().location).toBe(
+      `/oauth2/sign_out?rd=${encodeURIComponent(gatewayHome)}`
+    );
   });
 
   test("logout expires cookies sent by the site", async ({ request }) => {
     const response = await request.get("/auth/logout", {
       headers: {
         Cookie:
-          "NVConfigManagerAccessToken=access; azureSession=session; appPreference=compact",
+          "NVConfigManagerAccessToken=access; _nvcm_oidc_proxy=session; azureSession=session; appPreference=compact",
       },
       maxRedirects: 0,
     });
@@ -51,6 +113,11 @@ test.describe("Workflows Page", () => {
     expect(
       setCookieHeaders.some((header) => header.startsWith("azureSession=;"))
     ).toBe(true);
+    expect(
+      setCookieHeaders.some((header) =>
+        header.startsWith("_nvcm_oidc_proxy=;")
+      )
+    ).toBe(false);
     expect(
       setCookieHeaders.some((header) => header.startsWith("appPreference=;"))
     ).toBe(true);
