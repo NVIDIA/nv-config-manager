@@ -91,6 +91,7 @@ export function useDhcpLeases(
   const response = useSWR<DhcpLeasePage>(url, dhcpFetcher, {
     refreshInterval: 30000,
     revalidateOnFocus: true,
+    keepPreviousData: true,
   });
 
   return {
