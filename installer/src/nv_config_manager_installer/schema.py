@@ -74,6 +74,7 @@ class SPIFFEAuthMode(StrEnum):
 
 class GatewayType(StrEnum):
     ENVOY_GATEWAY = "envoyGateway"
+    KGATEWAY = "kgateway"
 
 
 class LBProvider(StrEnum):
@@ -591,12 +592,39 @@ class InfrastructureConfig(BaseModel):
     """Infrastructure and gateway settings."""
 
     gateway: GatewayType = GatewayType.ENVOY_GATEWAY
+    create_gateway: bool = True
+    gateway_name: str = "nv-config-manager-gateway"
+    gateway_namespace: str = ""
+    gateway_listener: str = ""
+    gateway_class_name: str = ""
     create_gateway_class: bool = True
     tls: bool = True
     cnpg_s3_backup: CNPGBackupConfig = Field(default_factory=CNPGBackupConfig)
     monitoring: MonitoringConfig = Field(default_factory=MonitoringConfig)
     load_balancer: LoadBalancerConfig = Field(default_factory=LoadBalancerConfig)
     ztp_storage: ZTPStorageConfig = Field(default_factory=ZTPStorageConfig)
+
+    @model_validator(mode="after")
+    def validate_kgateway_nlb(self) -> InfrastructureConfig:
+        """Reject Gateway NLB settings that kgateway cannot render."""
+        nlb = self.load_balancer.nlb_gateway
+        nlb_gateway_configured = any(
+            (
+                nlb.type != "external",
+                nlb.target_type != "ip",
+                nlb.name,
+                nlb.sg,
+                nlb.subnets,
+                nlb.ips,
+                nlb.dns_name,
+            )
+        )
+        if self.gateway == GatewayType.KGATEWAY and nlb_gateway_configured:
+            raise ValueError(
+                "Gateway AWS NLB configuration is supported only with Envoy Gateway; "
+                "kgateway service parameters do not yet support it"
+            )
+        return self
 
 
 class ImageOverride(BaseModel):
@@ -657,7 +685,7 @@ IMAGE_OVERRIDE_KEYS: list[tuple[str, str]] = [
     ("temporalUi", "docker.io/temporalio/ui"),
     ("nautobotNginx", "docker.io/nginxinc/nginx-unprivileged"),
     ("spiffeHelper", "ghcr.io/spiffe/spiffe-helper"),
-    ("oauth2Proxy", "quay.io/oauth2-proxy/oauth2-proxy"),
+    ("oidcProxy", "quay.io/oauth2-proxy/oauth2-proxy"),
     ("templatePluginInstaller", "docker.io/library/python"),
     ("envoyGateway", "docker.io/envoyproxy/gateway"),
     ("envoyRatelimit", "docker.io/envoyproxy/ratelimit"),

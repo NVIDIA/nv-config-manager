@@ -1303,19 +1303,7 @@
             "type": "boolean"
           },
           "roles": {
-            "default": [
-              "tan-bbr",
-              "cin-core",
-              "cin-spine",
-              "cin-leaf",
-              "tan-core",
-              "tan-spine",
-              "tan-leaf",
-              "smn-core",
-              "smn-spine",
-              "smn-leaf",
-              "smn-aggleaf"
-            ],
+            "default": [],
             "description": "Device roles used to filter the selected network devices.",
             "items": {
               "type": "string"
@@ -1330,8 +1318,8 @@
           },
           "status": {
             "default": [
-              "active",
-              "provisioning"
+              "Active",
+              "Provisioned"
             ],
             "description": "Device statuses used to filter the selected network devices.",
             "items": {
@@ -1341,10 +1329,16 @@
             "type": "array"
           },
           "tenant": {
-            "default": "nsv",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "description": "Tenant used to filter the selected network devices.",
-            "title": "Tenant",
-            "type": "string"
+            "title": "Tenant"
           }
         },
         "required": [
@@ -1358,19 +1352,12 @@
         "properties": {
           "location": {
             "description": "Location containing the devices to update.",
+            "minLength": 1,
             "title": "Location",
             "type": "string"
           },
           "roles": {
-            "default": [
-              "TAN-Core",
-              "TAN-Spine",
-              "TAN-Leaf",
-              "SMN-Core",
-              "SMN-Spine",
-              "SMN-Leaf",
-              "SMN-Aggleaf"
-            ],
+            "default": [],
             "description": "Device roles used to filter the selected network devices.",
             "items": {
               "type": "string"
@@ -1396,10 +1383,16 @@
             "type": "array"
           },
           "tenant": {
-            "default": "NGC",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "description": "Tenant used to filter the selected network devices.",
-            "title": "Tenant",
-            "type": "string"
+            "title": "Tenant"
           }
         },
         "required": [
@@ -1902,7 +1895,10 @@
             "type": "string"
           },
           "status": {
-            "default": [],
+            "default": [
+              "Active",
+              "Provisioned"
+            ],
             "description": "Device statuses used to filter the selected network devices.",
             "items": {
               "type": "string"
@@ -1911,14 +1907,20 @@
             "type": "array"
           },
           "tenant": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "description": "Tenant used to filter the selected network devices.",
-            "title": "Tenant",
-            "type": "string"
+            "title": "Tenant"
           }
         },
         "required": [
-          "site",
-          "tenant"
+          "site"
         ],
         "title": "ValidateHardwareInput",
         "type": "object"

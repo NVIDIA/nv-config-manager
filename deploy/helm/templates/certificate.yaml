@@ -1,4 +1,4 @@
-{{- if .Values.gateway.certificates.enabled }}
+{{- if and .Values.gateway.enabled .Values.gateway.create .Values.gateway.certificates.enabled }}
 {{- $selfsignedIssuerName := include "nv-config-manager.componentName" (dict "root" . "component" "selfsigned-issuer") }}
 {{- $tlsCertName := include "nv-config-manager.componentName" (dict "root" . "component" "gateway-tls") }}
 # =============================================================================
@@ -57,4 +57,3 @@ spec:
   duration: 2160h  # 90 days
   renewBefore: 720h  # 30 days
 {{- end }}
-

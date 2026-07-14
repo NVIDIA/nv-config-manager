@@ -330,12 +330,12 @@ def _register_workflow_starter(
     run_workflow.__name__ = workflow.tool_name
     cast(Any, run_workflow).__signature__ = _workflow_tool_signature(workflow)
     run_workflow.__doc__ = (
-        f"{workflow.description}\n\n"
+        f"{workflow.tool_description}\n\n"
         "Pass the workflow input fields shown in this tool's input schema. "
         "Use `workflow_ui_href` as the end-user Config Manager workflow link. "
         "The response includes the workflow input schema for reference."
     )
-    server.tool(name=workflow.tool_name, description=workflow.description)(run_workflow)
+    server.tool(name=workflow.tool_name, description=workflow.tool_description)(run_workflow)
 
 
 def _workflow_tool_signature(workflow: MCPWorkflow) -> inspect.Signature:

@@ -45,7 +45,7 @@ The primary trust boundary is the cluster network.
   SPIFFE fall back to NetworkPolicy namespace isolation and gateway-mediated
   auth.
 - **Gateway mediates external access.** All user-facing traffic enters
-  through Envoy Gateway (or ingress-nginx) with OIDC/JWT authentication.
+  through a supported Gateway API controller and the OIDC/JWT authentication proxy.
   Internal APIs delegate authentication to the gateway and SPIFFE layers
   for flexibility across deployment environments.
 - **Secrets are injected, never hardcoded.** All secrets (database passwords,

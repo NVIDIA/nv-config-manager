@@ -49,7 +49,11 @@ from nv_config_manager_installer.deployer import (
     StepStatus,
 )
 from nv_config_manager_installer.k8s import kubectl_current_context
-from nv_config_manager_installer.schema import ImageSource, NVConfigManagerInstallConfig
+from nv_config_manager_installer.schema import (
+    GatewayType,
+    ImageSource,
+    NVConfigManagerInstallConfig,
+)
 from nv_config_manager_installer.tui.widgets import LabeledSwitch
 
 _W_POD_LOG_SEL = "#pod-log-selectors"
@@ -626,6 +630,7 @@ class DeployScreen(Container):
 
     def on_mount(self) -> None:
         self._sync_image_defaults()
+        self._sync_gateway_options()
         self._sync_test_toggle()
 
     def _sync_image_defaults(self) -> None:
@@ -633,6 +638,19 @@ class DeployScreen(Container):
         is_local = self._config.images.source == ImageSource.LOCAL
         self.query_one("#opt-build-images", LabeledSwitch).value = is_local
         self.query_one("#opt-load-kind", LabeledSwitch).value = is_local
+
+    def _sync_gateway_options(self) -> None:
+        """Disable Envoy-only installation controls when kgateway is selected."""
+        envoy_switch = self.query_one("#opt-envoy-gw", LabeledSwitch)
+        is_kgateway = self._config.infrastructure.gateway == GatewayType.KGATEWAY
+        if is_kgateway:
+            envoy_switch.value = False
+        envoy_switch.disabled = is_kgateway
+        envoy_switch.tooltip = (
+            "Install kgateway and its Gateway API CRDs before deploying Config Manager"
+            if is_kgateway
+            else ""
+        )
 
     def _sync_test_toggle(self) -> None:
         """Disable integration tests when SSO is enabled (OIDC requires browser auth)."""
@@ -676,6 +694,7 @@ class DeployScreen(Container):
         if isinstance(app, NVConfigManagerInstallerApp):
             app.collect_config()
             self._config = app.config
+            self._sync_gateway_options()
 
         self._deploy_running = True
         btn = self.query_one("#start-deploy", Button)
@@ -736,6 +755,7 @@ class DeployScreen(Container):
     def sync_from_config(self, config: NVConfigManagerInstallConfig) -> None:
         self._config = config
         self._sync_image_defaults()
+        self._sync_gateway_options()
 
     def get_status(self, config: NVConfigManagerInstallConfig) -> str:
         if self._deploy_running:

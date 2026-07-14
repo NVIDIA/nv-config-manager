@@ -15,13 +15,55 @@
  * limitations under the License.
  */
 import { NextRequest, NextResponse } from "next/server";
+import { providerLogoutRedirect } from "@/lib/auth/logout";
 
 const DEFAULT_AUTH_COOKIE_NAMES = [
   "NVConfigManagerAccessToken",
   "NVConfigManagerIdToken",
 ];
+const DEFAULT_PROXY_COOKIE_NAME = "_nvcm_oidc_proxy";
 
 const COOKIE_NAME_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+
+const gatewayUrl = (request: NextRequest): URL => {
+  const configuredUrl = process.env.OIDC_GATEWAY_URL;
+  if (configuredUrl) {
+    try {
+      const url = new URL(configuredUrl);
+      if (url.protocol === "https:" || url.protocol === "http:") {
+        return url;
+      }
+    } catch {
+      // Fall back to the request URL when the deployment setting is malformed.
+    }
+  }
+  return request.nextUrl;
+};
+
+const logoutReturnUrl = (request: NextRequest): string => {
+  const returnUrl = request.nextUrl.searchParams.get("rd");
+  const publicGatewayUrl = gatewayUrl(request);
+  const fallback = new URL("/", publicGatewayUrl.origin).toString();
+
+  if (!returnUrl) {
+    return fallback;
+  }
+
+  try {
+    const url = new URL(returnUrl);
+    const baseHostname = publicGatewayUrl.hostname;
+    const isBaseHostOrSubdomain =
+      url.hostname === baseHostname ||
+      url.hostname.endsWith(`.${baseHostname}`);
+
+    if (url.protocol !== publicGatewayUrl.protocol || !isBaseHostOrSubdomain) {
+      return fallback;
+    }
+    return url.toString();
+  } catch {
+    return fallback;
+  }
+};
 
 const expiredCookie = (name: string, domain?: string): string => {
   const domainPart = domain ? ` Domain=${domain};` : "";
@@ -57,10 +99,17 @@ const cookieDomains = (hostname: string): string[] => {
 };
 
 const cookieNamesToClear = (request: NextRequest): string[] => {
-  const names = new Set(DEFAULT_AUTH_COOKIE_NAMES);
+  const proxyCookieName =
+    process.env.OIDC_PROXY_COOKIE_NAME || DEFAULT_PROXY_COOKIE_NAME;
+  const names = new Set(
+    DEFAULT_AUTH_COOKIE_NAMES.filter((name) => name !== proxyCookieName)
+  );
 
   request.cookies.getAll().forEach((cookie) => {
-    if (COOKIE_NAME_PATTERN.test(cookie.name)) {
+    if (
+      cookie.name !== proxyCookieName &&
+      COOKIE_NAME_PATTERN.test(cookie.name)
+    ) {
       names.add(cookie.name);
     }
   });
@@ -69,13 +118,14 @@ const cookieNamesToClear = (request: NextRequest): string[] => {
 };
 
 export async function GET(request: NextRequest) {
+  const returnUrl = logoutReturnUrl(request);
   const response = new NextResponse(null, {
     status: 302,
     headers: {
-      Location: "/oauth2/logout",
+      Location: providerLogoutRedirect(returnUrl),
     },
   });
-  const hostname = request.nextUrl.hostname;
+  const hostname = gatewayUrl(request).hostname;
   const domains = cookieDomains(hostname);
 
   cookieNamesToClear(request).forEach((name) => {

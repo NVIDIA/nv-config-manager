@@ -141,15 +141,14 @@ secrets:
           djangoSecretKey: "django_secret_key"
           superuserApiToken: "superuser_api_token"
       
-      # OIDC/SSO credentials (for Envoy Gateway OIDC or oauth2-proxy)
+      # OIDC/SSO credentials for the gateway-independent proxy
       # The client secret must match what's configured in your identity provider
       # (Keycloak, Azure AD, etc.)
       oidc:
         path: "prod/oidc"
         keys:
           clientSecret: "client_secret"
-          # cookieSecret only needed for oauth2-proxy (ingress-nginx mode)
-          # cookieSecret: "cookie_secret"
+          cookieSecret: "cookie_secret"
       
       # KEDA Prometheus mTLS certificates (optional - only when using KEDA autoscaling
       # with a secured Prometheus). Contains ca.crt, tls.crt, tls.key for mTLS auth.

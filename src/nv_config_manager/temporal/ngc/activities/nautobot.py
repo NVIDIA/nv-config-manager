@@ -115,6 +115,7 @@ class GetNetworkDevicesInput(BaseModel):
     deploy_enabled: bool | None = None
     backup_enabled: bool | None = None
     ztp_enabled: bool | None = None
+    managed_only: bool | None = None
     platforms: list[Platform] | None = None
 
 
@@ -143,6 +144,7 @@ async def get_network_devices(
             deploy_enabled=activity_input.deploy_enabled,
             backup_enabled=activity_input.backup_enabled,
             ztp_enabled=activity_input.ztp_enabled,
+            managed_only=activity_input.managed_only,
             platform=activity_input.platforms,
         )
     return GetNetworkDevicesOutput(devices=devices)
