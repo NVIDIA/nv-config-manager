@@ -1326,6 +1326,7 @@
         "properties": {
           "location": {
             "description": "Location containing the devices to update.",
+            "minLength": 1,
             "title": "Location",
             "type": "string"
           },

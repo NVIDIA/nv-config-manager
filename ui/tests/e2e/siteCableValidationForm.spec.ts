@@ -27,6 +27,14 @@ import { test, TEST_TIMEOUT } from "./shared/utils";
 const statusSelectButton = (page: Page) =>
   page.getByText("Device Status", { exact: true }).locator("..").getByRole("button");
 
+const openSelectDialog = (page: Page) =>
+  page.locator('[role="dialog"][data-state="open"]');
+
+const openStatusSelect = async (page: Page) => {
+  await statusSelectButton(page).press("Enter");
+  await expect(openSelectDialog(page)).toBeVisible({ timeout: TEST_TIMEOUT });
+};
+
 test.describe("Site Cable Validation Form", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/workflows/sitecablevalidationworkflow/form");
@@ -198,7 +206,7 @@ test.describe("Site Cable Validation Form", () => {
     ).toBeVisible({ timeout: TEST_TIMEOUT });
 
     // Test multiple selections for Device Status
-    await statusSelectButton(page).click();
+    await openStatusSelect(page);
     await page.getByRole("dialog").getByText(STATUS_LIST.planned).click();
     await page.getByRole("dialog").getByText(STATUS_LIST.staged).click();
     // Click outside to close any dropdown that might be open
@@ -241,7 +249,7 @@ test.describe("Site Cable Validation Form", () => {
       .getByRole("heading", { name: "New Site Cable Validation Workflow" })
       .click();
 
-    await statusSelectButton(page).click();
+    await openStatusSelect(page);
     await page.getByRole("dialog").getByText(STATUS_LIST.planned).click();
     // Click outside to close any dropdown that might be open
     await page
@@ -281,6 +289,20 @@ test.describe("Site Cable Validation Form", () => {
   });
 
   test(`disables form during submission`, async ({ page }) => {
+    let markSubmissionStarted: () => void;
+    const submissionStarted = new Promise<void>((resolve) => {
+      markSubmissionStarted = resolve;
+    });
+    let releaseSubmission: () => void;
+    const submissionReleased = new Promise<void>((resolve) => {
+      releaseSubmission = resolve;
+    });
+    await page.route("**/v1/workflow/ngc/site_cable_validation", async (route) => {
+      markSubmissionStarted();
+      await submissionReleased;
+      await route.fallback();
+    });
+
     await page.getByRole("button", { name: "Site" }).click();
     await page.getByRole("dialog").getByText(SITES_LIST.pdx01).click();
     // Click outside to close any dropdown that might be open
@@ -296,7 +318,7 @@ test.describe("Site Cable Validation Form", () => {
       .getByRole("heading", { name: "New Site Cable Validation Workflow" })
       .click();
 
-    await statusSelectButton(page).click();
+    await openStatusSelect(page);
     await page.getByRole("dialog").getByText(STATUS_LIST.planned).click();
     // Click outside to close any dropdown that might be open
     await page
@@ -311,6 +333,7 @@ test.describe("Site Cable Validation Form", () => {
       .click();
 
     await page.getByRole("button", { name: "Submit" }).click();
+    await submissionStarted;
 
     await expect(
       page.getByRole("button", { name: SITES_LIST.pdx01, exact: true })
@@ -336,6 +359,11 @@ test.describe("Site Cable Validation Form", () => {
     await expect(
       page.getByRole("button", { name: "Submitting..." })
     ).toBeDisabled();
+
+    releaseSubmission();
+    await expect(
+      page.getByRole("heading", { name: "Workflow Details" })
+    ).toBeVisible({ timeout: TEST_TIMEOUT });
   });
 
   test("displays forbidden error notification when submitting with forbidden values", async ({

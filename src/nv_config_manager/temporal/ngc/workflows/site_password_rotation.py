@@ -76,7 +76,10 @@ DEFAULT_ACTIVITY_RETRY_POLICY = RetryPolicy(
 class SitePasswordRotationInput(BaseModel):
     """Site Password Rotation Workflow Input Definition."""
 
-    location: str = Field(description="Location containing the devices to update.")
+    location: str = Field(
+        min_length=1,
+        description="Location containing the devices to update.",
+    )
     selected_secret: str = Field(
         description="Name of the managed secret containing the replacement password."
     )
