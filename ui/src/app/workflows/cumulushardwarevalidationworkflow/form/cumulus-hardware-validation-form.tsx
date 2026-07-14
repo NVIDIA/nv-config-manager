@@ -30,17 +30,20 @@ import { useToast } from "@/components/ui/use-toast";
 import { CumulusHardwareValidationWorkflowInput } from "@/types/data-table.types";
 import { useEnvData } from "@/hooks";
 import { getErrorMessage, startWorkflow } from "@/lib/utils";
+import { DEFAULT_SITE_WORKFLOW_STATUSES } from "@/lib/workflow-defaults";
 import { WorkflowFormField } from "@/components/forms/formfield";
 
 const CumulusValidationFormSchema = z.object({
   site: z.string().trim().min(1, { message: "Site is required" }),
   roles: z.union([z.string(), z.array(z.string())])
-    .transform((val: string | string[]) => (Array.isArray(val) ? val : []))
-    .pipe(z.array(z.string()).min(1, { message: "Roles is required" })),
+    .optional()
+    .transform((val: string | string[] | undefined) => (Array.isArray(val) ? val : []))
+    .pipe(z.array(z.string())),
   status: z.union([z.string(), z.array(z.string())])
-    .transform((val: string | string[]) => (Array.isArray(val) ? val : []))
+    .optional()
+    .transform((val: string | string[] | undefined) => (Array.isArray(val) ? val : []))
     .pipe(z.array(z.string()).min(1, { message: "Device Status is required" })),
-  tenant: z.string().trim().min(1, { message: "Tenant is required" }),
+  tenant: z.string().trim().optional().default(""),
 });
 
 type CumulusValidationFormData = z.infer<typeof CumulusValidationFormSchema>;
@@ -65,12 +68,13 @@ const setMultiQueryValue = (
   form: UseFormReturn<CumulusValidationFormData>,
   queryValues: string[],
   options: QueryOption[],
-  fieldName: MultiValueField
+  fieldName: MultiValueField,
+  emptyValue: string[] = []
 ) => {
   const fieldValue = queryValues.filter((queryValue) =>
     options.some((option) => option.key === queryValue)
   );
-  form.setValue(fieldName, fieldValue);
+  form.setValue(fieldName, fieldValue.length > 0 ? fieldValue : emptyValue);
 };
 
 /** Renders the form for starting a Cumulus hardware validation workflow. */
@@ -87,6 +91,12 @@ export const CumulusHardwareValidationWorkflowForm = () => {
 
   const form = useForm<CumulusValidationFormData>({
     resolver: zodResolver(CumulusValidationFormSchema),
+    defaultValues: {
+      site: querySite || "",
+      roles: queryRoles,
+      status: queryStatuses.length > 0 ? queryStatuses : [...DEFAULT_SITE_WORKFLOW_STATUSES],
+      tenant: queryTenant || "",
+    },
   });
 
 
@@ -101,7 +111,8 @@ export const CumulusHardwareValidationWorkflowForm = () => {
         form,
         queryStatuses,
         siteCableData.statusData,
-        "status"
+        "status",
+        [...DEFAULT_SITE_WORKFLOW_STATUSES]
       );
       setSingleQueryValue(
         form,
@@ -127,7 +138,7 @@ export const CumulusHardwareValidationWorkflowForm = () => {
         site: data.site,
         roles: data.roles,
         status: data.status,
-        tenant: data.tenant,
+        tenant: data.tenant || undefined,
         // Hardcode these values, not relevant to end users
         // only for advanced scenarios
         device_type_ids: [],

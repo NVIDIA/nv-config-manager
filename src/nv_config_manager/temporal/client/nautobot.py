@@ -89,7 +89,7 @@ class NautobotClient(BaseNautobotClient):
         try:
             return await super().graphql_query(query, variables, timeout)
         except NautobotException as e:
-            raise ApplicationError(str(e)) from e
+            raise ApplicationError(str(e), non_retryable=True) from e
 
     async def get_device(self, fields: str, device_id: str) -> Any:
         """Query device by device UUID."""
@@ -229,9 +229,10 @@ class NautobotClient(BaseNautobotClient):
         mac_address: str | list[str] | None,
         device_ids: str | list[str] | None,
         platform: Platform | list[Platform] | None,
-    ) -> dict[str, list[str]]:
+        managed_only: bool | None,
+    ) -> dict[str, list[str] | bool]:
         """Build variables dictionary for device filtering."""
-        variables: dict[str, list[str]] = {}
+        variables: dict[str, list[str] | bool] = {}
 
         if site:
             variables["site"] = self._normalize_to_list(site)
@@ -253,6 +254,8 @@ class NautobotClient(BaseNautobotClient):
                 if isinstance(platform, list | tuple)
                 else [platform.nautobot_name]
             )
+        if managed_only is not None:
+            variables["managed_only"] = managed_only
 
         if not variables:
             raise NautobotException("Must apply at least one filter.")
@@ -290,10 +293,19 @@ class NautobotClient(BaseNautobotClient):
         mac_address: str | list[str] | None = None,
         device_ids: str | list[str] | None = None,
         platform: Platform | list[Platform] | None = None,
+        managed_only: bool | None = None,
     ) -> list[dict[str, Any]]:
         """Return a filtered list of devices."""
         variables = self._build_device_filter_variables(
-            site, status, role, tenant, device_type_id, mac_address, device_ids, platform
+            site,
+            status,
+            role,
+            tenant,
+            device_type_id,
+            mac_address,
+            device_ids,
+            platform,
+            managed_only,
         )
 
         query = (
@@ -306,7 +318,8 @@ class NautobotClient(BaseNautobotClient):
               $device_type_id: [String],
               $mac_address: [String],
               $device_ids: [String],
-              $platform: [String]
+              $platform: [String],
+              $managed_only: Boolean
             ) {
               devices(
                 location: $site,
@@ -316,7 +329,8 @@ class NautobotClient(BaseNautobotClient):
                 device_type: $device_type_id,
                 mac_address: $mac_address,
                 id: $device_ids,
-                platform: $platform
+                platform: $platform,
+                nv_config_manager_device_status: $managed_only
               ) {
         """
             f"{fields}"
