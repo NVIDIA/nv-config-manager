@@ -23,6 +23,19 @@ import pytest
 _FakeCT = namedtuple("_FakeCT", ["app_label", "model"])
 
 
+def _op_objects(**kw) -> MagicMock:
+    """Build an ``ObjectPermission.objects`` mock with no name collision.
+
+    The ownership guard (``_object_permission_owned_by_other``) queries
+    ``ObjectPermission.objects.filter(name=...).first()`` before upserting.
+    Returning ``None`` means "no pre-existing row", so the code proceeds to
+    create/upsert exactly as it did before the guard existed.  Tests that want
+    to simulate a foreign collision build the mock inline instead.
+    """
+    kw.setdefault("filter", MagicMock(return_value=MagicMock(first=MagicMock(return_value=None))))
+    return MagicMock(**kw)
+
+
 @pytest.fixture()
 def rbac():
     """Import the module *after* the autouse conftest stubs are installed."""
@@ -581,7 +594,7 @@ def test_sync_group_permissions_applies_perms_to_existing_group(rbac, monkeypatc
     monkeypatch.setattr(
         rbac.ObjectPermission,
         "objects",
-        MagicMock(update_or_create=MagicMock(side_effect=_make_perm)),
+        _op_objects(update_or_create=MagicMock(side_effect=_make_perm)),
     )
 
     rbac._sync_group_permissions({"ipam-rw"}, mapping)
@@ -661,7 +674,7 @@ def test_sync_group_permissions_auto_creates_when_enabled(rbac, monkeypatch, pat
     monkeypatch.setattr(
         rbac.ObjectPermission,
         "objects",
-        MagicMock(update_or_create=MagicMock(return_value=(new_perm, True))),
+        _op_objects(update_or_create=MagicMock(return_value=(new_perm, True))),
     )
 
     with caplog.at_level("INFO", logger="nv_config_manager_auth.rbac"):
@@ -693,7 +706,7 @@ def test_sync_group_permissions_auto_create_existing_group_no_log(
     monkeypatch.setattr(
         rbac.ObjectPermission,
         "objects",
-        MagicMock(
+        _op_objects(
             update_or_create=MagicMock(
                 return_value=(MagicMock(actions=["view"], constraints={}), True),
             )
@@ -706,8 +719,10 @@ def test_sync_group_permissions_auto_create_existing_group_no_log(
     assert not any("auto-created" in r.message for r in caplog.records)
 
 
-def test_sync_group_permissions_skips_perms_block_for_superuser_group(rbac, monkeypatch):
-    """``is_superuser: true`` entries don't need per-action permissions."""
+def test_sync_group_permissions_superuser_group_keeps_membership_marker(rbac, monkeypatch):
+    """``is_superuser: true`` entries need no per-action permissions, but must
+    still receive the inert membership marker so that removing the entry later
+    is detectable and the Django Group membership gets revoked."""
     mapping = {"admins": {"name": "admins", "is_superuser": True}}
     group = MagicMock()
     group.name = "admins"
@@ -718,11 +733,21 @@ def test_sync_group_permissions_skips_perms_block_for_superuser_group(rbac, monk
         MagicMock(get=MagicMock(return_value=group)),
     )
 
-    create_mock = MagicMock()
-    monkeypatch.setattr(rbac.ObjectPermission, "objects", MagicMock(create=create_mock))
+    marker = MagicMock()
+    marker.name = rbac._membership_marker_name("admins")
+    marker.groups.all.return_value = []
+    update_or_create = MagicMock(return_value=(marker, True))
+    monkeypatch.setattr(rbac.ObjectPermission, "objects", _op_objects(update_or_create=update_or_create))
 
     rbac._sync_group_permissions({"admins"}, mapping)
-    create_mock.assert_not_called()
+
+    # Exactly one upsert -- the marker -- and no per-action permissions.
+    update_or_create.assert_called_once()
+    kwargs = update_or_create.call_args.kwargs
+    assert kwargs["name"] == "admins_nvcm-managed-membership"
+    assert kwargs["defaults"]["actions"] == []  # grants nothing
+    marker.object_types.set.assert_called_once_with([])
+    marker.groups.add.assert_called_once_with(group)
 
 
 def test_apply_group_permission_config_uses_update_or_create_for_upsert_safety(
@@ -764,7 +789,7 @@ def test_apply_group_permission_config_uses_update_or_create_for_upsert_safety(
     monkeypatch.setattr(
         rbac.ObjectPermission,
         "objects",
-        MagicMock(
+        _op_objects(
             update_or_create=update_or_create,
             get_or_create=get_or_create_mock,
             create=create_mock,
@@ -813,7 +838,7 @@ def test_apply_group_permission_config_ignores_stale_snapshot_phantom(rbac, monk
     monkeypatch.setattr(
         rbac.ObjectPermission,
         "objects",
-        MagicMock(update_or_create=MagicMock(return_value=(fresh, True))),
+        _op_objects(update_or_create=MagicMock(return_value=(fresh, True))),
     )
 
     rbac._apply_group_permission_config(group, {"view": {"content_types": ["all"]}})
@@ -845,7 +870,7 @@ def test_apply_group_permission_config_prunes_stale_managed_perms(rbac, monkeypa
     monkeypatch.setattr(
         rbac.ObjectPermission,
         "objects",
-        MagicMock(update_or_create=MagicMock(return_value=(keep, False))),
+        _op_objects(update_or_create=MagicMock(return_value=(keep, False))),
     )
 
     rbac._apply_group_permission_config(group, {"view": {"content_types": ["all"]}})
@@ -868,7 +893,7 @@ def test_apply_group_permission_config_membership_only_creates_inert_marker(rbac
     marker.name = rbac._membership_marker_name("net-ops")
     marker.groups.all.return_value = []
     update_or_create = MagicMock(return_value=(marker, True))
-    monkeypatch.setattr(rbac.ObjectPermission, "objects", MagicMock(update_or_create=update_or_create))
+    monkeypatch.setattr(rbac.ObjectPermission, "objects", _op_objects(update_or_create=update_or_create))
 
     rbac._apply_group_permission_config(group, {})
 
@@ -899,7 +924,7 @@ def test_apply_group_permission_config_membership_marker_pruned_when_actions_add
     monkeypatch.setattr(
         rbac.ObjectPermission,
         "objects",
-        MagicMock(update_or_create=MagicMock(return_value=(created, True))),
+        _op_objects(update_or_create=MagicMock(return_value=(created, True))),
     )
 
     rbac._apply_group_permission_config(group, {"view": {"content_types": ["all"]}})
@@ -922,6 +947,119 @@ def test_apply_group_permission_config_warns_on_bad_action_shape(
 
     assert any("must be a mapping" in r.message for r in caplog.records)
     rbac.ObjectPermission.objects.create.assert_not_called()
+
+
+def test_apply_group_permission_config_skips_permission_on_malformed_constraints(rbac, monkeypatch, caplog):
+    """Fail closed: ``constraints`` that are not a mapping must NOT fall through
+    to an unconstrained grant -- the action is skipped, no perm is upserted."""
+    group = MagicMock()
+    group.name = "ipam-rw"
+    group.object_permissions.all.return_value = []
+    update_or_create = MagicMock()
+    monkeypatch.setattr(rbac.ObjectPermission, "objects", _op_objects(update_or_create=update_or_create))
+
+    with caplog.at_level("WARNING", logger="nv_config_manager_auth.rbac"):
+        rbac._apply_group_permission_config(
+            group,
+            {"change": {"content_types": ["ipam.prefix"], "constraints": "status=Active"}},
+        )
+
+    update_or_create.assert_not_called()
+    assert any("constraints must be a mapping" in r.message and "unconstrained" in r.message for r in caplog.records)
+
+
+def test_apply_group_permission_config_skips_foreign_permission_collision(rbac, monkeypatch, caplog):
+    """A generated ``<group>_<action>`` name already owned by another group/user
+    must not be overwritten -- log and skip instead of hijacking access."""
+    group = MagicMock()
+    group.name = "ipam-rw"
+    group.object_permissions.all.return_value = []
+
+    foreign = MagicMock()
+    foreign.name = "ipam-rw_view"
+    foreign.groups.exclude.return_value.exists.return_value = True  # owned elsewhere
+
+    update_or_create = MagicMock()
+    monkeypatch.setattr(
+        rbac.ObjectPermission,
+        "objects",
+        MagicMock(
+            update_or_create=update_or_create,
+            filter=MagicMock(return_value=MagicMock(first=MagicMock(return_value=foreign))),
+        ),
+    )
+
+    with caplog.at_level("WARNING", logger="nv_config_manager_auth.rbac"):
+        rbac._apply_group_permission_config(group, {"view": {"content_types": ["all"]}})
+
+    update_or_create.assert_not_called()
+    assert any("bound to another group or user" in r.message for r in caplog.records)
+
+
+def test_apply_group_permission_config_skips_foreign_membership_marker_collision(rbac, monkeypatch, caplog):
+    """The same ownership guard protects the membership marker name."""
+    group = MagicMock()
+    group.name = "net-ops"
+    group.object_permissions.all.return_value = []
+
+    foreign = MagicMock()
+    foreign.name = rbac._membership_marker_name("net-ops")
+    foreign.groups.exclude.return_value.exists.return_value = True
+
+    update_or_create = MagicMock()
+    monkeypatch.setattr(
+        rbac.ObjectPermission,
+        "objects",
+        MagicMock(
+            update_or_create=update_or_create,
+            filter=MagicMock(return_value=MagicMock(first=MagicMock(return_value=foreign))),
+        ),
+    )
+
+    with caplog.at_level("WARNING", logger="nv_config_manager_auth.rbac"):
+        rbac._apply_group_permission_config(group, {})
+
+    update_or_create.assert_not_called()
+    assert any("membership marker" in r.message and "another group/user" in r.message for r in caplog.records)
+
+
+def _owned_by_other_objects(first_return):
+    return MagicMock(filter=MagicMock(return_value=MagicMock(first=MagicMock(return_value=first_return))))
+
+
+def test_object_permission_owned_by_other_no_row_is_not_foreign(rbac, monkeypatch):
+    group = MagicMock()
+    monkeypatch.setattr(rbac.ObjectPermission, "objects", _owned_by_other_objects(None))
+    assert rbac._object_permission_owned_by_other("g_view", group) is False
+
+
+def test_object_permission_owned_by_other_same_group_only_is_not_foreign(rbac, monkeypatch):
+    group = MagicMock()
+    group.pk = 7
+    perm = MagicMock()
+    perm.groups.exclude.return_value.exists.return_value = False  # no OTHER group
+    perm.users.exists.return_value = False
+    monkeypatch.setattr(rbac.ObjectPermission, "objects", _owned_by_other_objects(perm))
+    assert rbac._object_permission_owned_by_other("g_view", group) is False
+
+
+def test_object_permission_owned_by_other_another_group_is_foreign(rbac, monkeypatch):
+    group = MagicMock()
+    group.pk = 7
+    perm = MagicMock()
+    perm.groups.exclude.return_value.exists.return_value = True
+    monkeypatch.setattr(rbac.ObjectPermission, "objects", _owned_by_other_objects(perm))
+    assert rbac._object_permission_owned_by_other("g_view", group) is True
+
+
+def test_object_permission_owned_by_other_user_bound_is_foreign(rbac, monkeypatch):
+    group = MagicMock()
+    group.pk = 7
+    perm = MagicMock()
+    perm.groups.exclude.return_value.exists.return_value = False
+    perm.users.exists.return_value = True
+    monkeypatch.setattr(rbac.ObjectPermission, "objects", _owned_by_other_objects(perm))
+    assert rbac._object_permission_owned_by_other("g_view", group) is True
 
 
 # ── _revoke_removed_mapping_groups ─────────────────────────────────────────

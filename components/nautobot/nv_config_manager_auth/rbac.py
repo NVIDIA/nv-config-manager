@@ -103,18 +103,16 @@ them on top freely.  Operators must not, however, hand-create
 ObjectPermissions named ``<group>_<something>`` on a *mapped* group: those
 names are treated as module-owned and may be overwritten or pruned.
 
-Known limitation for the ``is_superuser: true`` revocation pass:
-``is_superuser: true`` entries strip their group's managed perms (see
-:func:`_prune_group_object_permissions`), so removing an entry leaves
-no ``<group>_<action>`` marker on the Django Group for
-:func:`_revoke_removed_mapping_groups` to find.  ``is_superuser``
-revocation goes through :func:`_sync_superuser_status` instead, gated
-on :func:`mapping_is_configured`: as long as the operator has opted
-into mapping-based RBAC, ``_sync_superuser_status`` runs on every JWT
-login and demotes users who no longer match either source.  Membership
-in the Django Group itself still lingers until the operator removes it
-via the admin UI -- the permissions side, which is what governs
-access, is fully revoked.
+Superuser entries (``is_superuser: true``) are handled the same way.
+They carry no ``<group>_<action>`` perms -- the global superuser flag
+makes per-action perms redundant -- so on sync they receive the same
+inert ``<group>_nvcm-managed-membership`` marker as a membership-only
+entry (via :func:`_apply_group_permission_config` with an empty config).
+Removing such an entry therefore revokes **both** the superuser flag
+(through :func:`_sync_superuser_status`, gated on
+:func:`mapping_is_configured`, which runs on every JWT login and demotes
+users who no longer match either source) **and** the Django Group
+membership (through the marker in :func:`_revoke_removed_mapping_groups`).
 """
 
 from __future__ import annotations
@@ -150,6 +148,30 @@ _MEMBERSHIP_MARKER_SUFFIX = "nvcm-managed-membership"
 def _membership_marker_name(group_name: str) -> str:
     """Return the reserved inert-marker ObjectPermission name for *group_name*."""
     return f"{group_name}_{_MEMBERSHIP_MARKER_SUFFIX}"
+
+
+def _object_permission_owned_by_other(name: str, group: Group) -> bool:
+    """True if an ObjectPermission *name* exists but belongs to a foreign principal.
+
+    ``ObjectPermission.name`` is globally unique in Nautobot, and we upsert by
+    name.  The ``<group>_*`` namespace is reserved for this module, but that is
+    only a convention -- nothing stops an operator (or another feature) from
+    already owning a row with the name we are about to generate.  Blindly
+    ``update_or_create``-ing it would silently overwrite that row's
+    actions/constraints/object-types and hijack unrelated access.
+
+    We treat a row as *foreign* (and therefore off-limits) when it exists and is
+    bound to any Django Group other than *group*, or to any user directly.  A row
+    that does not exist, or exists but is bound only to *group* (or to nothing
+    yet), is ours to manage.  Callers log and skip foreign collisions instead of
+    overwriting them.
+    """
+    existing = ObjectPermission.objects.filter(name=name).first()
+    if existing is None:
+        return False
+    if existing.groups.exclude(pk=group.pk).exists():
+        return True
+    return existing.users.exists()
 
 
 # Identity / access-control models that must NEVER be swept in by an ``"all"``
@@ -509,11 +531,12 @@ def _revoke_removed_mapping_groups(user: Any, current_managed_names: set[str]) -
     audit trail).  The next sync will continue to skip it as long as it has
     no managed perms attached.
 
-    Heuristic limitation: an ``is_superuser: true`` mapping entry strips its
-    Group's managed perms (see :func:`_prune_group_object_permissions`), so
-    removing such an entry leaves no marker for this pass to detect.  In
-    that case rely on :func:`mapping_is_configured` driving
-    ``_sync_superuser_status`` (see the module docstring).
+    ``is_superuser: true`` groups are covered too: they also receive the inert
+    ``<group_name>_nvcm-managed-membership`` marker on sync (see
+    :func:`_sync_group_permissions`), so this pass detects and revokes their
+    membership just like any other managed group.  The superuser flag itself is
+    revoked separately by :func:`_sync_superuser_status` (see the module
+    docstring).
     """
     for group in list(user.groups.exclude(name__in=current_managed_names)):
         managed_prefix = f"{group.name}_"
@@ -573,9 +596,14 @@ def _sync_group_permissions(user_groups: set[str], mapping: dict[str, dict[str, 
                 continue
 
         # ``is_superuser`` groups don't get per-action ObjectPermissions --
-        # the user's global superuser flag obviates them.
+        # the user's global superuser flag obviates them.  Reconcile with an
+        # empty config: this prunes any stale ``<group>_<action>`` rows AND
+        # leaves the inert ``<group>_nvcm-managed-membership`` marker, so that
+        # removing this entry later is detectable and the Django Group
+        # membership is revoked (:func:`_revoke_removed_mapping_groups`),
+        # rather than lingering with whatever manual perms the group holds.
         if config.get("is_superuser"):
-            _prune_group_object_permissions(group)
+            _apply_group_permission_config(group, {})
             continue
 
         _apply_group_permission_config(group, config.get("nautobot_permissions") or {})
@@ -629,9 +657,18 @@ def _apply_group_permission_config(group: Group, perms_config: dict[str, dict[st
     The ``<group>_*`` name prefix is **reserved** for this module -- operators
     must not hand-create ObjectPermissions with that prefix on a mapped group,
     as they will be treated as module-owned (overwritten / pruned).  An entry
-    with no ``perms_config`` (membership-only) gets a single inert
-    ``<group>_nvcm-managed-membership`` marker instead so its membership is
-    still revocable.
+    with no ``perms_config`` (membership-only, and also ``is_superuser`` groups)
+    gets a single inert ``<group>_nvcm-managed-membership`` marker instead so
+    its membership is still revocable.
+
+    That reservation is only a convention, so before creating/overwriting any
+    row we check :func:`_object_permission_owned_by_other`: if a row with the
+    generated name already exists and is bound to a different group or a user,
+    we log and skip it rather than hijack access we do not own.
+
+    Malformed input fails **closed**: an action whose ``constraints`` are not a
+    mapping is skipped (never granted unconstrained), and a malformed action
+    config is skipped as well.
 
     The snapshot below is used **only** to drive the prune pass at the
     bottom (it tells us which managed ``<group>_<action>`` rows were
@@ -655,14 +692,23 @@ def _apply_group_permission_config(group: Group, perms_config: dict[str, dict[st
     # membership marker (from a prior membership-only state) is pruned below.
     if not perms_config:
         marker_name = _membership_marker_name(group.name)
-        kept_perm_names.add(marker_name)
-        marker, _created = ObjectPermission.objects.update_or_create(
-            name=marker_name,
-            defaults={"actions": [], "constraints": {}},
-        )
-        marker.object_types.set([])
-        if group not in marker.groups.all():
-            marker.groups.add(group)
+        if _object_permission_owned_by_other(marker_name, group):
+            log.warning(
+                "rbac: membership marker %r already exists and is owned by another "
+                "group/user; skipping -- membership for group %r will not be tracked "
+                "(resolve the ObjectPermission name collision)",
+                marker_name,
+                group.name,
+            )
+        else:
+            kept_perm_names.add(marker_name)
+            marker, _created = ObjectPermission.objects.update_or_create(
+                name=marker_name,
+                defaults={"actions": [], "constraints": {}},
+            )
+            marker.object_types.set([])
+            if group not in marker.groups.all():
+                marker.groups.add(group)
 
     for action, action_config in perms_config.items():
         if not isinstance(action_config, dict):
@@ -674,18 +720,34 @@ def _apply_group_permission_config(group: Group, perms_config: dict[str, dict[st
             )
             continue
         perm_name = f"{group.name}_{action}"
+        # Keep the name off the prune list in every branch below (create, skip,
+        # or collision) so we never delete a row we deliberately left untouched.
         kept_perm_names.add(perm_name)
 
-        content_types = _resolve_content_types(action_config.get("content_types") or [])
+        if _object_permission_owned_by_other(perm_name, group):
+            log.warning(
+                "rbac: ObjectPermission %r already exists and is bound to another "
+                "group or user; skipping so a name collision cannot overwrite a "
+                "permission this module does not own (the <group>_* namespace is "
+                "reserved for nv-config-manager)",
+                perm_name,
+            )
+            continue
+
         constraints = action_config.get("constraints") or {}
         if not isinstance(constraints, dict):
+            # Fail closed: a malformed constraint must never fall through to an
+            # unconstrained grant.  Skip this action, preserving any prior
+            # (last-good) row rather than broadening access.
             log.warning(
-                "rbac: group %r action %r constraints must be a mapping; coercing to {}",
+                "rbac: group %r action %r constraints must be a mapping; skipping "
+                "this permission instead of granting it unconstrained",
                 group.name,
                 action,
             )
-            constraints = {}
+            continue
 
+        content_types = _resolve_content_types(action_config.get("content_types") or [])
         perm, _created = ObjectPermission.objects.update_or_create(
             name=perm_name,
             defaults={"actions": [action], "constraints": constraints},
@@ -717,15 +779,3 @@ def _apply_group_permission_config(group: Group, perms_config: dict[str, dict[st
             log.info("rbac: removed stale ObjectPermission %r", name)
         else:
             log.info("rbac: detached ObjectPermission %r from group %s", name, group.name)
-
-
-def _prune_group_object_permissions(group: Group) -> None:
-    """Remove all nv-config-manager-managed ObjectPermissions attached to *group*."""
-    managed_prefix = f"{group.name}_"
-    for perm in list(group.object_permissions.all()):
-        if not perm.name.startswith(managed_prefix):
-            continue
-        perm.groups.remove(group)
-        if not perm.groups.exists():
-            perm.delete()
-            log.info("rbac: removed stale ObjectPermission %r (superuser group)", perm.name)
