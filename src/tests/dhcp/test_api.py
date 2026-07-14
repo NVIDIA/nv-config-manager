@@ -16,7 +16,9 @@ import asyncio
 import json
 import os
 import time
+from collections.abc import Iterator
 from configparser import ConfigParser
+from copy import deepcopy
 from unittest.mock import AsyncMock, call, patch
 
 import jwt as pyjwt
@@ -29,11 +31,24 @@ from multidict import CIMultiDict
 from yarl import URL
 
 from nv_config_manager.common.auth import AuthConfig, JwtProviderConfig
-from nv_config_manager.dhcp.api import _fetch_lease_dashboard_sources, _install_cors, app
+from nv_config_manager.dhcp.api import (
+    _COLLECTION_SNAPSHOTS,
+    _fetch_lease_dashboard_sources,
+    _install_cors,
+    app,
+)
 from nv_config_manager.dhcp.kea import KeaClient
 
 _HEADERS_TRUSTED = AuthConfig(accept_request_headers=True)
 _AUTH_DISABLED = AuthConfig(required=False)
+
+
+@pytest.fixture(autouse=True)
+def clear_collection_snapshots() -> Iterator[None]:
+    """Keep short-lived collection snapshots isolated between API tests."""
+    _COLLECTION_SNAPSHOTS.clear()
+    yield
+    _COLLECTION_SNAPSHOTS.clear()
 
 
 def make_client_response_error(message: str) -> ClientResponseError:
@@ -193,9 +208,9 @@ def test_cors_allows_configured_ui_origin() -> None:
     config.read_dict({"dhcp": {"cors_origins": "https://nvcm.example.com"}})
     cors_app = FastAPI()
 
-    @cors_app.get("/leases")
-    async def leases() -> dict[str, list[object]]:
-        return {"leases": []}
+    @cors_app.get("/resource")
+    async def resource() -> dict[str, list[object]]:
+        return {"items": []}
 
     with patch("nv_config_manager.dhcp.api.load_config", return_value=config):
         _install_cors(cors_app)
@@ -203,13 +218,13 @@ def test_cors_allows_configured_ui_origin() -> None:
     client = TestClient(cors_app)
     origin = "https://nvcm.example.com"
     preflight = client.options(
-        "/leases",
+        "/resource",
         headers={
             "Origin": origin,
             "Access-Control-Request-Method": "GET",
         },
     )
-    response = client.get("/leases", headers={"Origin": origin})
+    response = client.get("/resource", headers={"Origin": origin})
 
     assert preflight.status_code == 200
     assert preflight.headers["access-control-allow-origin"] == origin
@@ -511,11 +526,11 @@ def test_get_lease():
         ) as mock_get_config,
         patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED),
     ):
-        rsp = client.get("/lease?ip_address=10.0.0.10&ip_version=4")
+        rsp = client.get("/lease/10.0.0.10?ip_version=4")
         assert rsp.status_code == 403
 
         rsp = client.get(
-            "/lease?ip_address=10.0.0.10",
+            "/lease/10.0.0.10",
             headers={"X-Auth-Request-Email": "test@example.com"},
         )
 
@@ -528,20 +543,75 @@ def test_get_lease():
     mock_get_config.assert_awaited_once_with(4)
 
 
+def test_get_lease_infers_ipv6_from_path_address():
+    """Select DHCPv6 when the item route contains an IPv6 address."""
+    client = TestClient(app)
+    config = [
+        {
+            "result": 0,
+            "arguments": {
+                "Dhcp6": {
+                    "subnet6": [{"id": 9, "subnet": "2001:db8::/64"}],
+                }
+            },
+        }
+    ]
+    lease = [
+        {
+            "result": 0,
+            "arguments": {
+                "leases": [
+                    {
+                        "cltt": int(time.time()) - 60,
+                        "duid": "00:01:00:01:11:22:33:44",
+                        "ip-address": "2001:db8::10",
+                        "state": 0,
+                        "subnet-id": 9,
+                        "valid-lft": 3600,
+                    }
+                ]
+            },
+        }
+    ]
+
+    with (
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_lease",
+            new_callable=AsyncMock,
+            return_value=lease,
+        ) as mock_get_lease,
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_config",
+            new_callable=AsyncMock,
+            return_value=config,
+        ) as mock_get_config,
+        patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED),
+    ):
+        rsp = client.get(
+            "/lease/2001:db8::10",
+            headers={"X-Auth-Request-Email": "test@example.com"},
+        )
+
+    assert rsp.status_code == 200
+    assert rsp.json()["ip_address"] == "2001:db8::10"
+    mock_get_lease.assert_awaited_once_with("2001:db8::10", version=6)
+    mock_get_config.assert_awaited_once_with(6)
+
+
 def test_lease_openapi_documents_not_found() -> None:
     """Advertise the domain-level missing lease response for both operations."""
-    lease_operations = app.openapi()["paths"]["/lease"]
+    lease_operations = app.openapi()["paths"]["/lease/{ip_address}"]
 
     for method in ("get", "delete"):
         assert lease_operations[method]["responses"]["404"] == {"description": "Lease not found"}
 
 
-def test_lease_openapi_defaults_to_ipv4() -> None:
-    """Advertise IPv4 as the optional default for every lease operation."""
+def test_lease_openapi_version_parameters() -> None:
+    """Advertise collection defaults while item routes infer address version."""
     operations = (
         app.openapi()["paths"]["/lease"]["get"],
-        app.openapi()["paths"]["/lease"]["delete"],
-        app.openapi()["paths"]["/leases"]["get"],
+        app.openapi()["paths"]["/pools"]["get"],
+        app.openapi()["paths"]["/reservations"]["get"],
         app.openapi()["paths"]["/lease-dashboard"]["get"],
     )
 
@@ -551,6 +621,14 @@ def test_lease_openapi_defaults_to_ipv4() -> None:
         )
         assert parameter["required"] is False
         assert parameter["schema"]["default"] == 4
+
+    for method in ("get", "delete"):
+        operation = app.openapi()["paths"]["/lease/{ip_address}"][method]
+        parameter = next(
+            parameter for parameter in operation["parameters"] if parameter["name"] == "ip_version"
+        )
+        assert parameter["required"] is False
+        assert "default" not in parameter["schema"]
 
 
 def test_get_lease_not_found():
@@ -571,7 +649,7 @@ def test_get_lease_not_found():
         patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED),
     ):
         rsp = client.get(
-            "/lease?ip_address=10.0.0.99&ip_version=4",
+            "/lease/10.0.0.99?ip_version=4",
             headers={"X-Auth-Request-Email": "test@example.com"},
         )
 
@@ -598,7 +676,7 @@ def test_list_leases():
         patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED),
     ):
         rsp = client.get(
-            "/leases?limit=25",
+            "/lease?limit=25",
             headers={"X-Auth-Request-Email": "test@example.com"},
         )
 
@@ -637,12 +715,12 @@ def test_list_leases_follows_opaque_cursor():
         patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED),
     ):
         first_rsp = client.get(
-            "/leases?limit=2",
+            "/lease?limit=2",
             headers={"X-Auth-Request-Email": "test@example.com"},
         )
         cursor = first_rsp.json()["next_cursor"]
         second_rsp = client.get(
-            "/leases",
+            "/lease",
             params={"cursor": cursor, "limit": 2},
             headers={"X-Auth-Request-Email": "test@example.com"},
         )
@@ -693,7 +771,7 @@ def test_list_leases_bounds_search_across_backend_pages():
         patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED),
     ):
         rsp = client.get(
-            "/leases?limit=100&search=target",
+            "/lease?limit=100&search=target",
             headers={"X-Auth-Request-Email": "test@example.com"},
         )
 
@@ -725,13 +803,281 @@ def test_list_leases_rejects_invalid_cursor():
         patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED),
     ):
         rsp = client.get(
-            "/leases?cursor=not-a-cursor",
+            "/lease?cursor=not-a-cursor",
             headers={"X-Auth-Request-Email": "test@example.com"},
         )
 
     assert rsp.status_code == 422
     assert rsp.json() == {"detail": "Invalid lease cursor"}
     mock_get_lease_page.assert_not_awaited()
+
+
+def test_list_reservations_paginates_and_filters_with_exact_total():
+    """Return bounded reservation pages with exact filtered totals."""
+    client = TestClient(app)
+    config = deepcopy(LEASE_DASHBOARD_CONFIG)
+    dhcp_config = config[0]["arguments"]["Dhcp4"]
+    dhcp_config["reservations"].append(
+        {
+            "hostname": "reserved-switch-02",
+            "hw-address": "02:00:00:00:00:02",
+            "ip-address": "10.0.0.3",
+        }
+    )
+    dhcp_config["subnet4"][0]["reservations"] = [
+        {
+            "client-id": "01:02:03:04",
+            "hostname": "reserved-switch-03",
+            "ip-address": "10.0.0.4",
+        }
+    ]
+
+    with (
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_config",
+            new_callable=AsyncMock,
+            return_value=config,
+        ) as mock_get_config,
+        patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED),
+    ):
+        first_rsp = client.get(
+            "/reservations?limit=2",
+            headers={"X-Auth-Request-Email": "test@example.com"},
+        )
+        cursor = first_rsp.json()["next_cursor"]
+        second_rsp = client.get(
+            "/reservations",
+            params={"cursor": cursor, "limit": 2},
+            headers={"X-Auth-Request-Email": "test@example.com"},
+        )
+        search_rsp = client.get(
+            "/reservations?limit=2&search=0200.0000.0002",
+            headers={"X-Auth-Request-Email": "test@example.com"},
+        )
+
+    assert first_rsp.status_code == 200
+    assert first_rsp.json()["total_count"] == 3
+    assert [item["hostname"] for item in first_rsp.json()["reservations"]] == [
+        "reserved-switch",
+        "reserved-switch-02",
+    ]
+    assert cursor is not None
+    assert second_rsp.status_code == 200
+    assert second_rsp.json()["total_count"] == 3
+    assert [item["hostname"] for item in second_rsp.json()["reservations"]] == [
+        "reserved-switch-03"
+    ]
+    assert second_rsp.json()["next_cursor"] is None
+    assert search_rsp.status_code == 200
+    assert search_rsp.json()["total_count"] == 1
+    assert search_rsp.json()["reservations"][0]["hostname"] == "reserved-switch-02"
+    mock_get_config.assert_awaited_once_with(4)
+
+
+def test_list_reservations_rejects_mismatched_cursor_version():
+    """Reject reservation cursors created for another address family."""
+    client = TestClient(app)
+    config = deepcopy(LEASE_DASHBOARD_CONFIG)
+    config[0]["arguments"]["Dhcp4"]["reservations"].append(
+        {
+            "hostname": "reserved-switch-02",
+            "ip-address": "10.0.0.3",
+        }
+    )
+    with (
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_config",
+            new_callable=AsyncMock,
+            return_value=config,
+        ) as mock_get_config,
+        patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED),
+    ):
+        first_rsp = client.get(
+            "/reservations?limit=1",
+            headers={"X-Auth-Request-Email": "test@example.com"},
+        )
+        rsp = client.get(
+            "/reservations",
+            params={"cursor": first_rsp.json()["next_cursor"], "ip_version": 6},
+            headers={"X-Auth-Request-Email": "test@example.com"},
+        )
+
+    assert rsp.status_code == 422
+    assert rsp.json()["detail"] == "Reservation cursor does not match ip_version=6"
+    mock_get_config.assert_awaited_once_with(4)
+
+
+def test_list_pools_paginates_and_filters_with_exact_total():
+    """Return bounded pool pages with exact filtered totals."""
+    client = TestClient(app)
+    config = deepcopy(LEASE_DASHBOARD_CONFIG)
+    config[0]["arguments"]["Dhcp4"]["subnet4"][0]["pools"].append({"pool": "10.0.1.0/30"})
+    statistics = deepcopy(LEASE_DASHBOARD_STATISTICS)
+    statistics[0]["arguments"].update(
+        {
+            "subnet[7].pool[1].assigned-addresses": [[2, "2026-07-10 00:00:00"]],
+            "subnet[7].pool[1].total-addresses": [[4, "2026-07-10 00:00:00"]],
+        }
+    )
+
+    with (
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_config",
+            new_callable=AsyncMock,
+            return_value=config,
+        ) as mock_get_config,
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_statistics",
+            new_callable=AsyncMock,
+            return_value=statistics,
+        ) as mock_get_statistics,
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_lease_page",
+            new_callable=AsyncMock,
+            return_value=lease_page(
+                active_lease("10.0.0.10", "pool-0-client"),
+                active_lease("10.0.1.1", "pool-1-client-1"),
+                active_lease("10.0.1.2", "pool-1-client-2"),
+            ),
+        ) as mock_get_lease_page,
+        patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED),
+    ):
+        first_rsp = client.get(
+            "/pools?limit=1",
+            headers={"X-Auth-Request-Email": "test@example.com"},
+        )
+        second_rsp = client.get(
+            "/pools",
+            params={"cursor": first_rsp.json()["next_cursor"], "limit": 1},
+            headers={"X-Auth-Request-Email": "test@example.com"},
+        )
+        search_rsp = client.get(
+            "/pools?limit=1&search=10.0.1.0/30",
+            headers={"X-Auth-Request-Email": "test@example.com"},
+        )
+
+    assert first_rsp.status_code == 200
+    assert first_rsp.json()["total_count"] == 2
+    assert first_rsp.json()["pools"][0]["pool"] == "10.0.0.10-10.0.0.19"
+    assert second_rsp.status_code == 200
+    assert second_rsp.json()["total_count"] == 2
+    assert second_rsp.json()["pools"][0]["pool"] == "10.0.1.0/30"
+    assert second_rsp.json()["next_cursor"] is None
+    assert search_rsp.status_code == 200
+    assert search_rsp.json()["total_count"] == 1
+    assert search_rsp.json()["pools"][0]["utilization"] == 50.0
+    mock_get_config.assert_awaited_once_with(4)
+    mock_get_statistics.assert_awaited_once_with(4)
+    mock_get_lease_page.assert_awaited_once_with(500, version=4, from_address="start")
+
+
+def test_list_pools_counts_active_leases_across_kea_pages():
+    """Count in-pool assignments across every KEA lease page."""
+    client = TestClient(app)
+    config = deepcopy(LEASE_DASHBOARD_CONFIG)
+    subnet = config[0]["arguments"]["Dhcp4"]["subnet4"][0]
+    subnet["subnet"] = "10.0.0.0/22"
+    subnet["pools"] = [{"pool": "10.0.0.0/22"}]
+    statistics = deepcopy(LEASE_DASHBOARD_STATISTICS)
+    statistics[0]["arguments"]["subnet[7].pool[0].total-addresses"] = [
+        [1024, "2026-07-10 00:00:00"]
+    ]
+    active_leases = [
+        active_lease(
+            f"10.0.{index // 254}.{index % 254 + 1}",
+            f"switch-{index:04d}",
+        )
+        for index in range(1002)
+    ]
+
+    with (
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_config",
+            new_callable=AsyncMock,
+            return_value=config,
+        ),
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_statistics",
+            new_callable=AsyncMock,
+            return_value=statistics,
+        ),
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_lease_page",
+            new_callable=AsyncMock,
+            side_effect=[
+                lease_page(*active_leases[:500]),
+                lease_page(*active_leases[500:1000]),
+                lease_page(*active_leases[1000:]),
+            ],
+        ) as mock_get_lease_page,
+        patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED),
+    ):
+        rsp = client.get(
+            "/pools?limit=1",
+            headers={"X-Auth-Request-Email": "test@example.com"},
+        )
+
+    assert rsp.status_code == 200
+    assert rsp.json()["pools"][0]["assigned"] == 1002
+    assert rsp.json()["pools"][0]["utilization"] == 97.9
+    assert mock_get_lease_page.await_args_list == [
+        call(500, version=4, from_address="start"),
+        call(500, version=4, from_address="10.0.1.246"),
+        call(500, version=4, from_address="10.0.3.238"),
+    ]
+
+
+def test_config_collections_bound_thousand_record_pages():
+    """Keep reservation and pool responses bounded with thousands of records."""
+    client = TestClient(app)
+    config = deepcopy(LEASE_DASHBOARD_CONFIG)
+    dhcp_config = config[0]["arguments"]["Dhcp4"]
+    dhcp_config["reservations"] = [
+        {
+            "hostname": f"reserved-switch-{index:04d}",
+            "hw-address": f"02:00:{index // 256:02x}:{index % 256:02x}:00:01",
+        }
+        for index in range(1000)
+    ]
+    dhcp_config["subnet4"][0]["pools"] = [
+        {"pool": f"10.{index // 256}.{index % 256}.1"} for index in range(1000)
+    ]
+
+    with (
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_config",
+            new_callable=AsyncMock,
+            return_value=config,
+        ),
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_statistics",
+            new_callable=AsyncMock,
+            return_value=LEASE_DASHBOARD_STATISTICS,
+        ),
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_lease_page",
+            new_callable=AsyncMock,
+            return_value=lease_page(),
+        ),
+        patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED),
+    ):
+        reservation_rsp = client.get(
+            "/reservations?limit=100",
+            headers={"X-Auth-Request-Email": "test@example.com"},
+        )
+        pool_rsp = client.get(
+            "/pools?limit=100",
+            headers={"X-Auth-Request-Email": "test@example.com"},
+        )
+
+    assert reservation_rsp.status_code == 200
+    assert reservation_rsp.json()["total_count"] == 1000
+    assert len(reservation_rsp.json()["reservations"]) == 100
+    assert reservation_rsp.json()["next_cursor"] is not None
+    assert pool_rsp.status_code == 200
+    assert pool_rsp.json()["total_count"] == 1000
+    assert len(pool_rsp.json()["pools"]) == 100
+    assert pool_rsp.json()["next_cursor"] is not None
 
 
 def test_delete_lease():
@@ -745,7 +1091,7 @@ def test_delete_lease():
     ) as mock_delete_lease:
         with patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED):
             rsp = client.delete(
-                "/lease?ip_address=10.0.0.10",
+                "/lease/10.0.0.10",
                 headers={"X-Auth-Request-Email": "test@example.com"},
             )
 
@@ -768,7 +1114,7 @@ def test_delete_lease_enforces_allowed_groups():
     ) as mock_delete_lease:
         with patch("nv_config_manager.common.auth._auth_config", auth_config):
             rsp = client.delete(
-                "/lease?ip_address=10.0.0.10&ip_version=4",
+                "/lease/10.0.0.10?ip_version=4",
                 headers={
                     "X-Auth-Request-Email": "test@example.com",
                     "X-Auth-Request-Groups": "dhcp-viewers",
@@ -790,7 +1136,7 @@ def test_delete_lease_not_found():
     ):
         with patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED):
             rsp = client.delete(
-                "/lease?ip_address=10.0.0.99&ip_version=4",
+                "/lease/10.0.0.99?ip_version=4",
                 headers={"X-Auth-Request-Email": "test@example.com"},
             )
 
@@ -807,7 +1153,7 @@ def test_lease_address_must_match_ip_version():
     ) as mock_get_lease:
         with patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED):
             rsp = client.get(
-                "/lease?ip_address=2001:db8::1&ip_version=4",
+                "/lease/2001:db8::1?ip_version=4",
                 headers={"X-Auth-Request-Email": "test@example.com"},
             )
 
@@ -837,7 +1183,7 @@ def test_get_lease_http_error():
     ):
         with patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED):
             rsp = client.get(
-                "/lease?ip_address=10.0.0.10&ip_version=4",
+                "/lease/10.0.0.10?ip_version=4",
                 headers={"X-Auth-Request-Email": "test@example.com"},
             )
 
@@ -864,7 +1210,7 @@ def test_get_lease_timeout():
     ):
         with patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED):
             rsp = client.get(
-                "/lease?ip_address=10.0.0.10&ip_version=4",
+                "/lease/10.0.0.10?ip_version=4",
                 headers={"X-Auth-Request-Email": "test@example.com"},
             )
 
@@ -883,7 +1229,7 @@ def test_delete_lease_connection_error():
     ):
         with patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED):
             rsp = client.delete(
-                "/lease?ip_address=10.0.0.10&ip_version=4",
+                "/lease/10.0.0.10?ip_version=4",
                 headers={"X-Auth-Request-Email": "test@example.com"},
             )
 
@@ -921,14 +1267,11 @@ def test_get_lease_dashboard():
     assert payload["active_lease_count"] == 1
     assert payload["reservation_count"] == 1
     assert payload["assigned_address_count"] == 1
+    assert payload["pool_count"] == 1
     assert payload["pool_address_count"] == 10
     assert "leases" not in payload
-    assert "leases_truncated" not in payload
-    assert "reservations_truncated" not in payload
-    assert payload["reservations"][0]["hostname"] == "reserved-switch"
-    assert payload["reservations"][0]["subnet"] is None
-    assert payload["pools"][0]["utilization"] == 10.0
-    assert "subnet_id" not in payload["pools"][0]
+    assert "reservations" not in payload
+    assert "pools" not in payload
     mock_get_config.assert_awaited_once_with(4)
     mock_get_statistics.assert_awaited_once_with(4)
 

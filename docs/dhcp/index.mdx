@@ -121,34 +121,48 @@ The generator runs on a 5-minute interval in the Kubernetes deployment, automati
 
 ## Manage Leases
 
-The dedicated DHCP dashboard summarizes active leases, reservations, pool utilization, and the age of the last successful configuration refresh reported by the DHCP API's `/metrics` endpoint. Active leases are displayed 100 at a time so the dashboard remains responsive with thousands of leases. Use the filter to search the full lease inventory by IP address, hostname, MAC address, client ID, or subnet prefix, and use **Previous** and **Next** to move between pages. Select the **Active leases**, **Reservations**, or **Pool usage** tab to inspect each view. You can also clear an active lease after confirming the action.
+The dedicated DHCP dashboard summarizes active leases, reservations, pool utilization, and the age of the last successful configuration refresh reported by the DHCP API's `/metrics` endpoint. Leases, reservations, and pools load 100 at a time as you scroll so the dashboard remains responsive with thousands of records. Use the filter to search the selected collection by its displayed fields. Lease results show the number loaded, with a plus sign while more results are available; reservation and pool results show exact filtered totals. Pool assignment and utilization count only active lease addresses inside the displayed dynamic pool, excluding out-of-pool reservations. Select the **Active leases**, **Reservations**, or **Pool usage** tab to inspect each view. You can also clear an active lease after confirming the action.
 
 ![DHCP lease activity dashboard](../assets/images/dhcp/lease-dashboard.png)
 
-The optional `ip_version` parameter defaults to `4`; pass `ip_version=6` to select IPv6.
+Collection requests default `ip_version` to `4`; pass `ip_version=6` to select IPv6. Lease item requests infer the version from the address and also accept an optional matching `ip_version`.
 
 List leases with a bounded collection request:
 
 ```bash
-curl --fail-with-body --get "${DHCP_API_URL}/leases" \
+curl --fail-with-body --get "${DHCP_API_URL}/lease" \
   --header "Authorization: Bearer ${TOKEN}" \
   --data-urlencode "limit=100"
 ```
 
-The response contains a `leases` array and an opaque `next_cursor`. When `next_cursor` is not null, pass it unchanged in the next request together with the same filters. This also applies to the optional `search` parameter: each request scans a bounded chunk of the lease inventory, and following `next_cursor` continues the same search through the next chunk. The dashboard keeps a cursor history and uses **Previous** and **Next** controls while displaying one bounded page at a time.
+The response contains a `leases` array and an opaque `next_cursor`. When `next_cursor` is not null, pass it unchanged in the next request together with the same filters. This also applies to the optional `search` parameter: each request scans a bounded chunk of the lease inventory, and following `next_cursor` continues the same search through the next chunk. The dashboard follows these cursors automatically as you scroll.
+
+Reservations and pool usage use the same bounded query parameters:
+
+```bash
+curl --fail-with-body --get "${DHCP_API_URL}/reservations" \
+  --header "Authorization: Bearer ${TOKEN}" \
+  --data-urlencode "limit=100" \
+  --data-urlencode "search=leaf"
+
+curl --fail-with-body --get "${DHCP_API_URL}/pools" \
+  --header "Authorization: Bearer ${TOKEN}" \
+  --data-urlencode "limit=100"
+```
+
+These responses contain `reservations` or `pools`, an exact `total_count` for the current filter, and an opaque `next_cursor`. Pass the cursor unchanged with the same `ip_version`, `limit`, and `search` values to continue.
 
 Look up the device holding a lease:
 
 ```bash
-curl --fail-with-body --get "${DHCP_API_URL}/lease" \
-  --header "Authorization: Bearer ${TOKEN}" \
-  --data-urlencode "ip_address=7.245.196.5"
+curl --fail-with-body --get "${DHCP_API_URL}/lease/7.245.196.5" \
+  --header "Authorization: Bearer ${TOKEN}"
 ```
 
 Delete a lease so the address can be reassigned:
 
 ```bash
-curl --fail-with-body --request DELETE "${DHCP_API_URL}/lease?ip_address=7.245.196.5" \
+curl --fail-with-body --request DELETE "${DHCP_API_URL}/lease/7.245.196.5" \
   --header "Authorization: Bearer ${TOKEN}"
 ```
 

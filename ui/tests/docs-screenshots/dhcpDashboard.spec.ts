@@ -22,7 +22,7 @@ import { expect, test } from "@playwright/test";
 
 const SCREENSHOT_DIR = path.resolve(
   __dirname,
-  "../../../docs/assets/images/dhcp",
+  "../../../docs/assets/images/dhcp"
 );
 const CONFIG_REFRESH_METRIC =
   "nv_config_manager_dhcp_cache_last_refresh_timestamp_seconds";
@@ -72,24 +72,15 @@ test.beforeEach(async ({ page }) => {
     await route.fulfill({
       status: 200,
       json: {
-        active_lease_count: 42,
+        active_lease_count: 3,
         reservation_count: 18,
-        assigned_address_count: 42,
+        assigned_address_count: 3,
+        pool_count: 1,
         pool_address_count: 256,
-        reservations: [],
-        pools: [
-          {
-            subnet: "10.217.162.0/24",
-            pool: "10.217.162.10-10.217.162.199",
-            assigned: 42,
-            total: 190,
-            utilization: 22.1,
-          },
-        ],
       },
     });
   });
-  await page.route("**/leases?*", async (route) => {
+  await page.route("**/lease?*", async (route) => {
     await route.fulfill({
       status: 200,
       json: {
@@ -136,12 +127,12 @@ test("captures the DHCP lease dashboard", async ({ page }) => {
   await page.goto("/dhcp");
   const dashboard = page.getByTestId("dhcp-dashboard");
   await expect(
-    dashboard.getByRole("heading", { name: "DHCP lease activity" }),
+    dashboard.getByRole("heading", { name: "DHCP lease activity" })
   ).toBeVisible();
   await expect(dashboard.getByText("SPINE1-GP1-CIN3-PDX01")).toBeVisible();
   await expect(dashboard.getByText("4m", { exact: true })).toBeVisible();
   await expect(
-    dashboard.getByRole("searchbox", { name: "Filter displayed DHCP data" }),
+    dashboard.getByRole("searchbox", { name: "Filter displayed DHCP data" })
   ).toBeVisible();
   await page.evaluate(() => document.fonts.ready);
   await dashboard.screenshot({

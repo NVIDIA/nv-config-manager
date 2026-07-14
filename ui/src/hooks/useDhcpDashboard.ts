@@ -16,14 +16,20 @@
  */
 
 import useSWR from "swr";
+import useSWRInfinite from "swr/infinite";
 
 import { sanitizeUrl } from "@/lib/utils";
-import type { DhcpLeaseDashboard, DhcpLeasePage } from "@/types/dhcp.types";
+import type {
+  DhcpLeaseDashboard,
+  DhcpLeasePage,
+  DhcpPoolPage,
+  DhcpReservationPage,
+} from "@/types/dhcp.types";
 
 const CONFIG_REFRESH_METRIC =
   "nv_config_manager_dhcp_cache_last_refresh_timestamp_seconds";
 const REQUEST_TIMEOUT_MS = 30000;
-export const DHCP_LEASE_PAGE_SIZE = 100;
+const DHCP_COLLECTION_PAGE_SIZE = 100;
 
 /** Fetch and validate the dashboard response from the DHCP API. */
 async function dhcpFetcher<T>(url: string): Promise<T> {
@@ -37,7 +43,9 @@ async function dhcpFetcher<T>(url: string): Promise<T> {
     });
     if (!response.ok) {
       const body = await response.json().catch(() => null);
-      throw new Error(body?.detail || body?.error || "DHCP lease data is unavailable");
+      throw new Error(
+        body?.detail || body?.error || "DHCP lease data is unavailable"
+      );
     }
     return response.json();
   } finally {
@@ -56,11 +64,13 @@ async function configRefreshFetcher(url: string): Promise<number | null> {
   }
 
   const metrics = await response.text();
-  const sample = metrics.split("\n").find(
-    (line) =>
-      line.startsWith(`${CONFIG_REFRESH_METRIC}{`) &&
-      line.includes('ip_version="4"'),
-  );
+  const sample = metrics
+    .split("\n")
+    .find(
+      (line) =>
+        line.startsWith(`${CONFIG_REFRESH_METRIC}{`) &&
+        line.includes('ip_version="4"')
+    );
   if (!sample) return null;
 
   const value = Number(sample.trim().split(/\s+/)[1]);
@@ -78,26 +88,124 @@ export function useDhcpDashboard(dhcpUrl: string) {
   });
 }
 
-/** Subscribe to one cursor-paginated lease page. */
-export function useDhcpLeases(
+interface DhcpCursorPage {
+  next_cursor?: string | null;
+}
+
+/** Preserve API order while removing rows repeated across changing cursor pages. */
+function uniqueBy<T>(items: T[], key: (item: T) => string): T[] {
+  const uniqueItems = new Map<string, T>();
+  for (const item of items) {
+    const itemKey = key(item);
+    if (!uniqueItems.has(itemKey)) uniqueItems.set(itemKey, item);
+  }
+  return [...uniqueItems.values()];
+}
+
+/** Subscribe to cursor-paginated DHCP collection pages as an infinite list. */
+function useDhcpCollectionPages<T extends DhcpCursorPage>(
   dhcpUrl: string,
+  path: string,
   search: string,
-  cursor: string | null,
+  enabled = true
 ) {
-  const query = new URLSearchParams({ limit: String(DHCP_LEASE_PAGE_SIZE) });
-  if (search) query.set("search", search);
-  if (cursor) query.set("cursor", cursor);
-  const url = dhcpUrl ? sanitizeUrl(`${dhcpUrl}/leases?${query}`) : null;
-  const response = useSWR<DhcpLeasePage>(url, dhcpFetcher, {
-    refreshInterval: 30000,
-    revalidateOnFocus: true,
-    keepPreviousData: true,
-  });
+  return useSWRInfinite<T>(
+    (pageIndex, previousPageData) => {
+      if (!dhcpUrl || !enabled) return null;
+      if (pageIndex > 0 && !previousPageData?.next_cursor) return null;
+
+      const query = new URLSearchParams({
+        limit: String(DHCP_COLLECTION_PAGE_SIZE),
+      });
+      if (search) query.set("search", search);
+      if (previousPageData?.next_cursor) {
+        query.set("cursor", previousPageData.next_cursor);
+      }
+      return sanitizeUrl(`${dhcpUrl}/${path}?${query}`);
+    },
+    dhcpFetcher,
+    {
+      refreshInterval: 30000,
+      revalidateOnFocus: true,
+    }
+  );
+}
+
+/** Subscribe to the loaded cursor-paginated lease pages. */
+export function useDhcpLeases(dhcpUrl: string, search: string) {
+  const response = useDhcpCollectionPages<DhcpLeasePage>(
+    dhcpUrl,
+    "lease",
+    search
+  );
+  const pages = response.data ?? [];
+  const lastPage = pages.at(-1);
 
   return {
     ...response,
-    leases: response.data?.leases ?? [],
-    nextCursor: response.data?.next_cursor ?? null,
+    hasMore: lastPage?.next_cursor != null,
+    leases: uniqueBy(
+      pages.flatMap((page) => page.leases),
+      (lease) => lease.ip_address
+    ),
+    loadMore: () => response.setSize((size) => size + 1),
+  };
+}
+
+/** Subscribe to the loaded cursor-paginated reservation pages. */
+export function useDhcpReservations(
+  dhcpUrl: string,
+  search: string,
+  enabled: boolean
+) {
+  const response = useDhcpCollectionPages<DhcpReservationPage>(
+    dhcpUrl,
+    "reservations",
+    search,
+    enabled
+  );
+  const pages = response.data ?? [];
+  const lastPage = pages.at(-1);
+
+  return {
+    ...response,
+    hasMore: lastPage?.next_cursor != null,
+    loadMore: () => response.setSize((size) => size + 1),
+    reservations: uniqueBy(
+      pages.flatMap((page) => page.reservations),
+      (reservation) =>
+        `${reservation.ip_address ?? ""}:${reservation.hostname ?? ""}:${
+          reservation.identifier_type ?? ""
+        }:${reservation.identifier ?? ""}:${reservation.subnet ?? ""}`
+    ),
+    totalCount: lastPage?.total_count ?? 0,
+  };
+}
+
+/** Subscribe to the loaded cursor-paginated pool-usage pages. */
+export function useDhcpPools(
+  dhcpUrl: string,
+  search: string,
+  enabled: boolean
+) {
+  const response = useDhcpCollectionPages<DhcpPoolPage>(
+    dhcpUrl,
+    "pools",
+    search,
+    enabled
+  );
+  const pages = response.data ?? [];
+  const lastPage = pages.at(-1);
+
+  return {
+    ...response,
+    hasMore: lastPage?.next_cursor != null,
+    loadMore: () => response.setSize((size) => size + 1),
+    pools: uniqueBy(
+      pages.flatMap((page) => page.pools),
+      (pool) => `${pool.subnet}:${pool.pool}`
+    ),
+    totalCount: lastPage?.total_count ?? 0,
   };
 }
 
@@ -113,21 +221,20 @@ export function useDhcpConfigRefreshTimestamp(dhcpUrl: string) {
 /** Delete an active lease through the DHCP API. */
 export async function clearDhcpLease(
   dhcpUrl: string,
-  ipAddress: string,
+  ipAddress: string
 ): Promise<void> {
-  const query = new URLSearchParams({
-    ip_address: ipAddress,
-    ip_version: "4",
-  });
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    const response = await fetch(sanitizeUrl(`${dhcpUrl}/lease?${query}`), {
-      credentials: "include",
-      method: "DELETE",
-      mode: "cors",
-      signal: controller.signal,
-    });
+    const response = await fetch(
+      sanitizeUrl(`${dhcpUrl}/lease/${encodeURIComponent(ipAddress)}`),
+      {
+        credentials: "include",
+        method: "DELETE",
+        mode: "cors",
+        signal: controller.signal,
+      }
+    );
     if (!response.ok) {
       const body = await response.json().catch(() => null);
       throw new Error(body?.detail || body?.error || "Failed to clear lease");

@@ -16,76 +16,67 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 )
 
 // DefaultAPIService DefaultAPI service
 type DefaultAPIService service
 
-type ApiDeleteLeaseLeaseDeleteRequest struct {
+type ApiDeleteLeaseLeaseIpAddressDeleteRequest struct {
 	ctx        context.Context
 	ApiService *DefaultAPIService
-	ipAddress  *string
+	ipAddress  string
 	ipVersion  *IpVersion
 }
 
-func (r ApiDeleteLeaseLeaseDeleteRequest) IpAddress(ipAddress string) ApiDeleteLeaseLeaseDeleteRequest {
-	r.ipAddress = &ipAddress
-	return r
-}
-
-func (r ApiDeleteLeaseLeaseDeleteRequest) IpVersion(ipVersion IpVersion) ApiDeleteLeaseLeaseDeleteRequest {
+func (r ApiDeleteLeaseLeaseIpAddressDeleteRequest) IpVersion(ipVersion IpVersion) ApiDeleteLeaseLeaseIpAddressDeleteRequest {
 	r.ipVersion = &ipVersion
 	return r
 }
 
-func (r ApiDeleteLeaseLeaseDeleteRequest) Execute() (*http.Response, error) {
-	return r.ApiService.DeleteLeaseLeaseDeleteExecute(r)
+func (r ApiDeleteLeaseLeaseIpAddressDeleteRequest) Execute() (*http.Response, error) {
+	return r.ApiService.DeleteLeaseLeaseIpAddressDeleteExecute(r)
 }
 
 /*
-DeleteLeaseLeaseDelete Delete Lease
+DeleteLeaseLeaseIpAddressDelete Delete Lease
 
 Delete one lease from the selected DHCP service.
 
 	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
-	@return ApiDeleteLeaseLeaseDeleteRequest
+	@param ipAddress
+	@return ApiDeleteLeaseLeaseIpAddressDeleteRequest
 */
-func (a *DefaultAPIService) DeleteLeaseLeaseDelete(ctx context.Context) ApiDeleteLeaseLeaseDeleteRequest {
-	return ApiDeleteLeaseLeaseDeleteRequest{
+func (a *DefaultAPIService) DeleteLeaseLeaseIpAddressDelete(ctx context.Context, ipAddress string) ApiDeleteLeaseLeaseIpAddressDeleteRequest {
+	return ApiDeleteLeaseLeaseIpAddressDeleteRequest{
 		ApiService: a,
 		ctx:        ctx,
+		ipAddress:  ipAddress,
 	}
 }
 
 // Execute executes the request
-func (a *DefaultAPIService) DeleteLeaseLeaseDeleteExecute(r ApiDeleteLeaseLeaseDeleteRequest) (*http.Response, error) {
+func (a *DefaultAPIService) DeleteLeaseLeaseIpAddressDeleteExecute(r ApiDeleteLeaseLeaseIpAddressDeleteRequest) (*http.Response, error) {
 	var (
 		localVarHTTPMethod = http.MethodDelete
 		localVarPostBody   interface{}
 		formFiles          []formFile
 	)
 
-	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "DefaultAPIService.DeleteLeaseLeaseDelete")
+	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "DefaultAPIService.DeleteLeaseLeaseIpAddressDelete")
 	if err != nil {
 		return nil, &GenericOpenAPIError{error: err.Error()}
 	}
 
-	localVarPath := localBasePath + "/lease"
+	localVarPath := localBasePath + "/lease/{ip_address}"
+	localVarPath = strings.Replace(localVarPath, "{"+"ip_address"+"}", url.PathEscape(parameterValueToString(r.ipAddress, "ipAddress")), -1)
 
 	localVarHeaderParams := make(map[string]string)
 	localVarQueryParams := url.Values{}
 	localVarFormParams := url.Values{}
-	if r.ipAddress == nil {
-		return nil, reportError("ipAddress is required and must be specified")
-	}
 
-	parameterAddToHeaderOrQuery(localVarQueryParams, "ip_address", r.ipAddress, "form", "")
 	if r.ipVersion != nil {
 		parameterAddToHeaderOrQuery(localVarQueryParams, "ip_version", r.ipVersion, "form", "")
-	} else {
-		var defaultValue IpVersion = 4
-		parameterAddToHeaderOrQuery(localVarQueryParams, "ip_version", defaultValue, "form", "")
-		r.ipVersion = &defaultValue
 	}
 	// to determine the Content-Type header
 	localVarHTTPContentTypes := []string{}
@@ -406,7 +397,7 @@ func (r ApiGetLeaseDashboardLeaseDashboardGetRequest) Execute() (*LeaseDashboard
 /*
 GetLeaseDashboardLeaseDashboardGet Get Lease Dashboard
 
-Return lease counts, reservations, and pool data for operators.
+Return lease, reservation, and pool counts for operators.
 
 	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
 	@return ApiGetLeaseDashboardLeaseDashboardGetRequest
@@ -511,46 +502,43 @@ func (a *DefaultAPIService) GetLeaseDashboardLeaseDashboardGetExecute(r ApiGetLe
 	return localVarReturnValue, localVarHTTPResponse, nil
 }
 
-type ApiGetLeaseLeaseGetRequest struct {
+type ApiGetLeaseLeaseIpAddressGetRequest struct {
 	ctx        context.Context
 	ApiService *DefaultAPIService
-	ipAddress  *string
+	ipAddress  string
 	ipVersion  *IpVersion
 }
 
-func (r ApiGetLeaseLeaseGetRequest) IpAddress(ipAddress string) ApiGetLeaseLeaseGetRequest {
-	r.ipAddress = &ipAddress
-	return r
-}
-
-func (r ApiGetLeaseLeaseGetRequest) IpVersion(ipVersion IpVersion) ApiGetLeaseLeaseGetRequest {
+func (r ApiGetLeaseLeaseIpAddressGetRequest) IpVersion(ipVersion IpVersion) ApiGetLeaseLeaseIpAddressGetRequest {
 	r.ipVersion = &ipVersion
 	return r
 }
 
-func (r ApiGetLeaseLeaseGetRequest) Execute() (*LeaseRecord, *http.Response, error) {
-	return r.ApiService.GetLeaseLeaseGetExecute(r)
+func (r ApiGetLeaseLeaseIpAddressGetRequest) Execute() (*LeaseRecord, *http.Response, error) {
+	return r.ApiService.GetLeaseLeaseIpAddressGetExecute(r)
 }
 
 /*
-GetLeaseLeaseGet Get Lease
+GetLeaseLeaseIpAddressGet Get Lease
 
 Return one normalized lease from the selected DHCP service.
 
 	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
-	@return ApiGetLeaseLeaseGetRequest
+	@param ipAddress
+	@return ApiGetLeaseLeaseIpAddressGetRequest
 */
-func (a *DefaultAPIService) GetLeaseLeaseGet(ctx context.Context) ApiGetLeaseLeaseGetRequest {
-	return ApiGetLeaseLeaseGetRequest{
+func (a *DefaultAPIService) GetLeaseLeaseIpAddressGet(ctx context.Context, ipAddress string) ApiGetLeaseLeaseIpAddressGetRequest {
+	return ApiGetLeaseLeaseIpAddressGetRequest{
 		ApiService: a,
 		ctx:        ctx,
+		ipAddress:  ipAddress,
 	}
 }
 
 // Execute executes the request
 //
 //	@return LeaseRecord
-func (a *DefaultAPIService) GetLeaseLeaseGetExecute(r ApiGetLeaseLeaseGetRequest) (*LeaseRecord, *http.Response, error) {
+func (a *DefaultAPIService) GetLeaseLeaseIpAddressGetExecute(r ApiGetLeaseLeaseIpAddressGetRequest) (*LeaseRecord, *http.Response, error) {
 	var (
 		localVarHTTPMethod  = http.MethodGet
 		localVarPostBody    interface{}
@@ -558,27 +546,20 @@ func (a *DefaultAPIService) GetLeaseLeaseGetExecute(r ApiGetLeaseLeaseGetRequest
 		localVarReturnValue *LeaseRecord
 	)
 
-	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "DefaultAPIService.GetLeaseLeaseGet")
+	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "DefaultAPIService.GetLeaseLeaseIpAddressGet")
 	if err != nil {
 		return localVarReturnValue, nil, &GenericOpenAPIError{error: err.Error()}
 	}
 
-	localVarPath := localBasePath + "/lease"
+	localVarPath := localBasePath + "/lease/{ip_address}"
+	localVarPath = strings.Replace(localVarPath, "{"+"ip_address"+"}", url.PathEscape(parameterValueToString(r.ipAddress, "ipAddress")), -1)
 
 	localVarHeaderParams := make(map[string]string)
 	localVarQueryParams := url.Values{}
 	localVarFormParams := url.Values{}
-	if r.ipAddress == nil {
-		return localVarReturnValue, nil, reportError("ipAddress is required and must be specified")
-	}
 
-	parameterAddToHeaderOrQuery(localVarQueryParams, "ip_address", r.ipAddress, "form", "")
 	if r.ipVersion != nil {
 		parameterAddToHeaderOrQuery(localVarQueryParams, "ip_version", r.ipVersion, "form", "")
-	} else {
-		var defaultValue IpVersion = 4
-		parameterAddToHeaderOrQuery(localVarQueryParams, "ip_version", defaultValue, "form", "")
-		r.ipVersion = &defaultValue
 	}
 	// to determine the Content-Type header
 	localVarHTTPContentTypes := []string{}
@@ -744,7 +725,7 @@ func (a *DefaultAPIService) HealthcheckHealthcheckGetExecute(r ApiHealthcheckHea
 	return localVarReturnValue, localVarHTTPResponse, nil
 }
 
-type ApiListLeasesLeasesGetRequest struct {
+type ApiListLeasesLeaseGetRequest struct {
 	ctx        context.Context
 	ApiService *DefaultAPIService
 	ipVersion  *IpVersion
@@ -753,40 +734,40 @@ type ApiListLeasesLeasesGetRequest struct {
 	search     *string
 }
 
-func (r ApiListLeasesLeasesGetRequest) IpVersion(ipVersion IpVersion) ApiListLeasesLeasesGetRequest {
+func (r ApiListLeasesLeaseGetRequest) IpVersion(ipVersion IpVersion) ApiListLeasesLeaseGetRequest {
 	r.ipVersion = &ipVersion
 	return r
 }
 
-func (r ApiListLeasesLeasesGetRequest) Limit(limit int32) ApiListLeasesLeasesGetRequest {
+func (r ApiListLeasesLeaseGetRequest) Limit(limit int32) ApiListLeasesLeaseGetRequest {
 	r.limit = &limit
 	return r
 }
 
-func (r ApiListLeasesLeasesGetRequest) Cursor(cursor string) ApiListLeasesLeasesGetRequest {
+func (r ApiListLeasesLeaseGetRequest) Cursor(cursor string) ApiListLeasesLeaseGetRequest {
 	r.cursor = &cursor
 	return r
 }
 
-func (r ApiListLeasesLeasesGetRequest) Search(search string) ApiListLeasesLeasesGetRequest {
+func (r ApiListLeasesLeaseGetRequest) Search(search string) ApiListLeasesLeaseGetRequest {
 	r.search = &search
 	return r
 }
 
-func (r ApiListLeasesLeasesGetRequest) Execute() (*LeasePageResponse, *http.Response, error) {
-	return r.ApiService.ListLeasesLeasesGetExecute(r)
+func (r ApiListLeasesLeaseGetRequest) Execute() (*LeasePageResponse, *http.Response, error) {
+	return r.ApiService.ListLeasesLeaseGetExecute(r)
 }
 
 /*
-ListLeasesLeasesGet List Leases
+ListLeasesLeaseGet List Leases
 
 Return a cursor-paginated, optionally filtered page of normalized leases.
 
 	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
-	@return ApiListLeasesLeasesGetRequest
+	@return ApiListLeasesLeaseGetRequest
 */
-func (a *DefaultAPIService) ListLeasesLeasesGet(ctx context.Context) ApiListLeasesLeasesGetRequest {
-	return ApiListLeasesLeasesGetRequest{
+func (a *DefaultAPIService) ListLeasesLeaseGet(ctx context.Context) ApiListLeasesLeaseGetRequest {
+	return ApiListLeasesLeaseGetRequest{
 		ApiService: a,
 		ctx:        ctx,
 	}
@@ -795,7 +776,7 @@ func (a *DefaultAPIService) ListLeasesLeasesGet(ctx context.Context) ApiListLeas
 // Execute executes the request
 //
 //	@return LeasePageResponse
-func (a *DefaultAPIService) ListLeasesLeasesGetExecute(r ApiListLeasesLeasesGetRequest) (*LeasePageResponse, *http.Response, error) {
+func (a *DefaultAPIService) ListLeasesLeaseGetExecute(r ApiListLeasesLeaseGetRequest) (*LeasePageResponse, *http.Response, error) {
 	var (
 		localVarHTTPMethod  = http.MethodGet
 		localVarPostBody    interface{}
@@ -803,12 +784,320 @@ func (a *DefaultAPIService) ListLeasesLeasesGetExecute(r ApiListLeasesLeasesGetR
 		localVarReturnValue *LeasePageResponse
 	)
 
-	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "DefaultAPIService.ListLeasesLeasesGet")
+	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "DefaultAPIService.ListLeasesLeaseGet")
 	if err != nil {
 		return localVarReturnValue, nil, &GenericOpenAPIError{error: err.Error()}
 	}
 
-	localVarPath := localBasePath + "/leases"
+	localVarPath := localBasePath + "/lease"
+
+	localVarHeaderParams := make(map[string]string)
+	localVarQueryParams := url.Values{}
+	localVarFormParams := url.Values{}
+
+	if r.ipVersion != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "ip_version", r.ipVersion, "form", "")
+	} else {
+		var defaultValue IpVersion = 4
+		parameterAddToHeaderOrQuery(localVarQueryParams, "ip_version", defaultValue, "form", "")
+		r.ipVersion = &defaultValue
+	}
+	if r.limit != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "limit", r.limit, "form", "")
+	} else {
+		var defaultValue int32 = 100
+		parameterAddToHeaderOrQuery(localVarQueryParams, "limit", defaultValue, "form", "")
+		r.limit = &defaultValue
+	}
+	if r.cursor != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "cursor", r.cursor, "form", "")
+	}
+	if r.search != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "search", r.search, "form", "")
+	}
+	// to determine the Content-Type header
+	localVarHTTPContentTypes := []string{}
+
+	// set Content-Type header
+	localVarHTTPContentType := selectHeaderContentType(localVarHTTPContentTypes)
+	if localVarHTTPContentType != "" {
+		localVarHeaderParams["Content-Type"] = localVarHTTPContentType
+	}
+
+	// to determine the Accept header
+	localVarHTTPHeaderAccepts := []string{"application/json"}
+
+	// set Accept header
+	localVarHTTPHeaderAccept := selectHeaderAccept(localVarHTTPHeaderAccepts)
+	if localVarHTTPHeaderAccept != "" {
+		localVarHeaderParams["Accept"] = localVarHTTPHeaderAccept
+	}
+	req, err := a.client.prepareRequest(r.ctx, localVarPath, localVarHTTPMethod, localVarPostBody, localVarHeaderParams, localVarQueryParams, localVarFormParams, formFiles)
+	if err != nil {
+		return localVarReturnValue, nil, err
+	}
+
+	localVarHTTPResponse, err := a.client.callAPI(req)
+	if err != nil || localVarHTTPResponse == nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	localVarBody, err := io.ReadAll(localVarHTTPResponse.Body)
+	localVarHTTPResponse.Body.Close()
+	localVarHTTPResponse.Body = io.NopCloser(bytes.NewBuffer(localVarBody))
+	if err != nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	if localVarHTTPResponse.StatusCode >= 300 {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: localVarHTTPResponse.Status,
+		}
+		if localVarHTTPResponse.StatusCode == 422 {
+			var v HTTPValidationError
+			err = a.client.decode(&v, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
+			if err != nil {
+				newErr.error = err.Error()
+				return localVarReturnValue, localVarHTTPResponse, newErr
+			}
+			newErr.error = formatErrorMessage(localVarHTTPResponse.Status, &v)
+			newErr.model = v
+		}
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	err = a.client.decode(&localVarReturnValue, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
+	if err != nil {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: err.Error(),
+		}
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	return localVarReturnValue, localVarHTTPResponse, nil
+}
+
+type ApiListPoolsPoolsGetRequest struct {
+	ctx        context.Context
+	ApiService *DefaultAPIService
+	ipVersion  *IpVersion
+	limit      *int32
+	cursor     *string
+	search     *string
+}
+
+func (r ApiListPoolsPoolsGetRequest) IpVersion(ipVersion IpVersion) ApiListPoolsPoolsGetRequest {
+	r.ipVersion = &ipVersion
+	return r
+}
+
+func (r ApiListPoolsPoolsGetRequest) Limit(limit int32) ApiListPoolsPoolsGetRequest {
+	r.limit = &limit
+	return r
+}
+
+func (r ApiListPoolsPoolsGetRequest) Cursor(cursor string) ApiListPoolsPoolsGetRequest {
+	r.cursor = &cursor
+	return r
+}
+
+func (r ApiListPoolsPoolsGetRequest) Search(search string) ApiListPoolsPoolsGetRequest {
+	r.search = &search
+	return r
+}
+
+func (r ApiListPoolsPoolsGetRequest) Execute() (*PoolPageResponse, *http.Response, error) {
+	return r.ApiService.ListPoolsPoolsGetExecute(r)
+}
+
+/*
+ListPoolsPoolsGet List Pools
+
+Return a cursor-paginated, optionally filtered pool-usage page.
+
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@return ApiListPoolsPoolsGetRequest
+*/
+func (a *DefaultAPIService) ListPoolsPoolsGet(ctx context.Context) ApiListPoolsPoolsGetRequest {
+	return ApiListPoolsPoolsGetRequest{
+		ApiService: a,
+		ctx:        ctx,
+	}
+}
+
+// Execute executes the request
+//
+//	@return PoolPageResponse
+func (a *DefaultAPIService) ListPoolsPoolsGetExecute(r ApiListPoolsPoolsGetRequest) (*PoolPageResponse, *http.Response, error) {
+	var (
+		localVarHTTPMethod  = http.MethodGet
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *PoolPageResponse
+	)
+
+	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "DefaultAPIService.ListPoolsPoolsGet")
+	if err != nil {
+		return localVarReturnValue, nil, &GenericOpenAPIError{error: err.Error()}
+	}
+
+	localVarPath := localBasePath + "/pools"
+
+	localVarHeaderParams := make(map[string]string)
+	localVarQueryParams := url.Values{}
+	localVarFormParams := url.Values{}
+
+	if r.ipVersion != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "ip_version", r.ipVersion, "form", "")
+	} else {
+		var defaultValue IpVersion = 4
+		parameterAddToHeaderOrQuery(localVarQueryParams, "ip_version", defaultValue, "form", "")
+		r.ipVersion = &defaultValue
+	}
+	if r.limit != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "limit", r.limit, "form", "")
+	} else {
+		var defaultValue int32 = 100
+		parameterAddToHeaderOrQuery(localVarQueryParams, "limit", defaultValue, "form", "")
+		r.limit = &defaultValue
+	}
+	if r.cursor != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "cursor", r.cursor, "form", "")
+	}
+	if r.search != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "search", r.search, "form", "")
+	}
+	// to determine the Content-Type header
+	localVarHTTPContentTypes := []string{}
+
+	// set Content-Type header
+	localVarHTTPContentType := selectHeaderContentType(localVarHTTPContentTypes)
+	if localVarHTTPContentType != "" {
+		localVarHeaderParams["Content-Type"] = localVarHTTPContentType
+	}
+
+	// to determine the Accept header
+	localVarHTTPHeaderAccepts := []string{"application/json"}
+
+	// set Accept header
+	localVarHTTPHeaderAccept := selectHeaderAccept(localVarHTTPHeaderAccepts)
+	if localVarHTTPHeaderAccept != "" {
+		localVarHeaderParams["Accept"] = localVarHTTPHeaderAccept
+	}
+	req, err := a.client.prepareRequest(r.ctx, localVarPath, localVarHTTPMethod, localVarPostBody, localVarHeaderParams, localVarQueryParams, localVarFormParams, formFiles)
+	if err != nil {
+		return localVarReturnValue, nil, err
+	}
+
+	localVarHTTPResponse, err := a.client.callAPI(req)
+	if err != nil || localVarHTTPResponse == nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	localVarBody, err := io.ReadAll(localVarHTTPResponse.Body)
+	localVarHTTPResponse.Body.Close()
+	localVarHTTPResponse.Body = io.NopCloser(bytes.NewBuffer(localVarBody))
+	if err != nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	if localVarHTTPResponse.StatusCode >= 300 {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: localVarHTTPResponse.Status,
+		}
+		if localVarHTTPResponse.StatusCode == 422 {
+			var v HTTPValidationError
+			err = a.client.decode(&v, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
+			if err != nil {
+				newErr.error = err.Error()
+				return localVarReturnValue, localVarHTTPResponse, newErr
+			}
+			newErr.error = formatErrorMessage(localVarHTTPResponse.Status, &v)
+			newErr.model = v
+		}
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	err = a.client.decode(&localVarReturnValue, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
+	if err != nil {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: err.Error(),
+		}
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	return localVarReturnValue, localVarHTTPResponse, nil
+}
+
+type ApiListReservationsReservationsGetRequest struct {
+	ctx        context.Context
+	ApiService *DefaultAPIService
+	ipVersion  *IpVersion
+	limit      *int32
+	cursor     *string
+	search     *string
+}
+
+func (r ApiListReservationsReservationsGetRequest) IpVersion(ipVersion IpVersion) ApiListReservationsReservationsGetRequest {
+	r.ipVersion = &ipVersion
+	return r
+}
+
+func (r ApiListReservationsReservationsGetRequest) Limit(limit int32) ApiListReservationsReservationsGetRequest {
+	r.limit = &limit
+	return r
+}
+
+func (r ApiListReservationsReservationsGetRequest) Cursor(cursor string) ApiListReservationsReservationsGetRequest {
+	r.cursor = &cursor
+	return r
+}
+
+func (r ApiListReservationsReservationsGetRequest) Search(search string) ApiListReservationsReservationsGetRequest {
+	r.search = &search
+	return r
+}
+
+func (r ApiListReservationsReservationsGetRequest) Execute() (*ReservationPageResponse, *http.Response, error) {
+	return r.ApiService.ListReservationsReservationsGetExecute(r)
+}
+
+/*
+ListReservationsReservationsGet List Reservations
+
+Return a cursor-paginated, optionally filtered reservation page.
+
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@return ApiListReservationsReservationsGetRequest
+*/
+func (a *DefaultAPIService) ListReservationsReservationsGet(ctx context.Context) ApiListReservationsReservationsGetRequest {
+	return ApiListReservationsReservationsGetRequest{
+		ApiService: a,
+		ctx:        ctx,
+	}
+}
+
+// Execute executes the request
+//
+//	@return ReservationPageResponse
+func (a *DefaultAPIService) ListReservationsReservationsGetExecute(r ApiListReservationsReservationsGetRequest) (*ReservationPageResponse, *http.Response, error) {
+	var (
+		localVarHTTPMethod  = http.MethodGet
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *ReservationPageResponse
+	)
+
+	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "DefaultAPIService.ListReservationsReservationsGet")
+	if err != nil {
+		return localVarReturnValue, nil, &GenericOpenAPIError{error: err.Error()}
+	}
+
+	localVarPath := localBasePath + "/reservations"
 
 	localVarHeaderParams := make(map[string]string)
 	localVarQueryParams := url.Values{}

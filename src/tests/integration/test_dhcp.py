@@ -22,6 +22,8 @@ import ipaddress
 import json
 import subprocess
 import time
+from copy import deepcopy
+from itertools import islice
 from typing import Any, cast
 
 import pytest
@@ -34,6 +36,7 @@ pytestmark = pytest.mark.integration
 DHCP_DATA_WAIT_TIMEOUT = 300  # 5 minutes
 DHCP_POLL_INTERVAL = 10  # seconds
 DHCP_SCALE_LEASE_COUNT = 201
+DHCP_SCALE_CONFIG_RECORD_COUNT = 201
 DHCP_SCALE_PAGE_SIZE = 100
 
 _KEA_BATCH_SCRIPT = """
@@ -162,7 +165,7 @@ def _fetch_lease_pages(
         if cursor is not None:
             params["cursor"] = cursor
         response = dhcp_client.get(
-            f"{dhcp_api_url}/leases",
+            f"{dhcp_api_url}/lease",
             params=params,
             timeout=30,
         )
@@ -177,6 +180,122 @@ def _fetch_lease_pages(
         seen_cursors.add(cursor)
 
     pytest.fail("DHCP lease pagination did not finish within 100 pages")
+
+
+def _fetch_exact_collection_pages(
+    dhcp_api_url: str,
+    dhcp_client: requests.Session,
+    resource: str,
+    response_field: str,
+    page_size: int,
+) -> tuple[list[list[dict[str, Any]]], int]:
+    """Fetch a complete exact-total collection and reject unstable cursors."""
+    pages: list[list[dict[str, Any]]] = []
+    seen_cursors: set[str] = set()
+    cursor: str | None = None
+    total_count: int | None = None
+
+    for _ in range(100):
+        params: dict[str, str | int] = {"limit": page_size}
+        if cursor is not None:
+            params["cursor"] = cursor
+        response = dhcp_client.get(
+            f"{dhcp_api_url}/{resource}",
+            params=params,
+            timeout=30,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        page_total = int(payload["total_count"])
+        if total_count is None:
+            total_count = page_total
+        elif page_total != total_count:
+            pytest.fail(
+                f"DHCP {resource} total changed during pagination: {total_count} != {page_total}"
+            )
+        pages.append(payload[response_field])
+        cursor = payload["next_cursor"]
+        if cursor is None:
+            assert total_count is not None
+            return pages, total_count
+        if cursor in seen_cursors:
+            pytest.fail(f"DHCP {resource} pagination repeated cursor {cursor!r}")
+        seen_cursors.add(cursor)
+
+    pytest.fail(f"DHCP {resource} pagination did not finish within 100 pages")
+
+
+def _set_kea_dhcp4_config(
+    namespace: str,
+    pod: str,
+    dhcp4: dict[str, Any],
+) -> None:
+    """Apply an ephemeral DHCPv4 configuration through Kea's control agent."""
+    responses = _run_kea_commands(
+        namespace,
+        pod,
+        [
+            {
+                "command": "config-set",
+                "service": ["dhcp4"],
+                "arguments": {"Dhcp4": dhcp4},
+            }
+        ],
+    )
+    if len(responses) != 1 or len(responses[0]) != 1 or responses[0][0].get("result") != 0:
+        pytest.fail(f"Failed to apply Kea scale configuration: {responses}")
+
+
+def _scaled_dhcp4_config(
+    dhcp4: dict[str, Any],
+    count: int,
+) -> tuple[dict[str, Any], str]:
+    """Append a non-overlapping synthetic subnet with scale pools and reservations."""
+    configured_networks = [
+        ipaddress.ip_network(subnet["subnet"])
+        for subnet in dhcp4.get("subnet4", [])
+        if subnet.get("subnet")
+    ]
+    candidate_networks = (
+        ipaddress.ip_network("198.18.0.0/16"),
+        ipaddress.ip_network("198.19.0.0/16"),
+        ipaddress.ip_network("10.255.0.0/16"),
+        ipaddress.ip_network("172.31.0.0/16"),
+    )
+    scale_network = next(
+        (
+            candidate
+            for candidate in candidate_networks
+            if all(not candidate.overlaps(configured) for configured in configured_networks)
+        ),
+        None,
+    )
+    if scale_network is None:
+        pytest.fail("No non-overlapping IPv4 subnet is available for DHCP scale setup")
+
+    addresses = [str(address) for address in islice(scale_network.hosts(), count)]
+    if len(addresses) != count:
+        pytest.fail(f"DHCP scale subnet has only {len(addresses)} usable addresses")
+
+    subnet_ids = [
+        int(subnet["id"]) for subnet in dhcp4.get("subnet4", []) if subnet.get("id") is not None
+    ]
+    scale_subnet = {
+        "id": max(subnet_ids, default=0) + 1,
+        "subnet": str(scale_network),
+        "pools": [{"pool": f"{address}/32"} for address in addresses],
+        "reservations": [
+            {
+                "hostname": f"nvcm-scale-reservation-{index:03d}",
+                "hw-address": f"02:fc:00:00:{index // 256:02x}:{index % 256:02x}",
+                "ip-address": address,
+            }
+            for index, address in enumerate(addresses)
+        ],
+    }
+    scaled_config = deepcopy(dhcp4)
+    scaled_config.setdefault("subnet4", []).append(scale_subnet)
+    return scaled_config, str(scale_network)
 
 
 def _reservation_addresses(dhcp4: dict[str, Any]) -> set[str]:
@@ -563,7 +682,7 @@ class TestDHCPAPI:
             assert target_lease is not None, "No seeded lease landed beyond the first API page"
 
             search_response = dhcp_client.get(
-                f"{dhcp_api_url}/leases",
+                f"{dhcp_api_url}/lease",
                 params={"limit": DHCP_SCALE_PAGE_SIZE, "search": target_lease["hostname"]},
                 timeout=30,
             )
@@ -598,6 +717,114 @@ class TestDHCPAPI:
                 assert not delete_failures, (
                     f"Failed to clean up Kea scale leases: {delete_failures[:3]}"
                 )
+
+    @pytest.mark.ci_only
+    @pytest.mark.timeout(240)
+    def test_reservation_and_pool_pagination_and_search_at_scale(
+        self,
+        dhcp_api_url: str,
+        dhcp_client: requests.Session,
+        config_manager_namespace: str,
+    ) -> None:
+        """Traverse multi-page reservation and pool collections with exact totals."""
+        print("\n=== Verifying DHCP reservation and pool pagination at scale ===")
+
+        config = self._wait_for_dhcp_data(dhcp_api_url, dhcp_client)
+        dhcp4 = self._extract_dhcp4_config(config)
+        if dhcp4 is None:
+            pytest.fail("No Dhcp4 configuration found")
+
+        original_dhcp4 = deepcopy(dhcp4)
+        scaled_dhcp4, scale_subnet = _scaled_dhcp4_config(
+            dhcp4,
+            DHCP_SCALE_CONFIG_RECORD_COUNT,
+        )
+        scale_config = scaled_dhcp4["subnet4"][-1]
+        seeded_reservation_names = {
+            reservation["hostname"] for reservation in scale_config["reservations"]
+        }
+        seeded_pools = {pool["pool"] for pool in scale_config["pools"]}
+        dhcp_pod = _get_dhcp_pod(config_manager_namespace)
+
+        try:
+            _set_kea_dhcp4_config(config_manager_namespace, dhcp_pod, scaled_dhcp4)
+
+            reservation_pages, reservation_total = _fetch_exact_collection_pages(
+                dhcp_api_url,
+                dhcp_client,
+                "reservations",
+                "reservations",
+                DHCP_SCALE_PAGE_SIZE,
+            )
+            reservations = [record for page in reservation_pages for record in page]
+            assert len(reservation_pages) >= 3
+            assert len(reservations) == reservation_total
+            assert seeded_reservation_names <= {
+                reservation["hostname"] for reservation in reservations
+            }
+            target_reservation = next(
+                (
+                    reservation
+                    for page in reservation_pages[1:]
+                    for reservation in page
+                    if reservation["hostname"] in seeded_reservation_names
+                ),
+                None,
+            )
+            assert target_reservation is not None, (
+                "No seeded reservation landed beyond the first API page"
+            )
+            reservation_search = dhcp_client.get(
+                f"{dhcp_api_url}/reservations",
+                params={
+                    "limit": DHCP_SCALE_PAGE_SIZE,
+                    "search": target_reservation["hostname"],
+                },
+                timeout=30,
+            )
+            reservation_search.raise_for_status()
+            reservation_search_payload = reservation_search.json()
+            assert reservation_search_payload["total_count"] == 1
+            assert [
+                reservation["hostname"]
+                for reservation in reservation_search_payload["reservations"]
+            ] == [target_reservation["hostname"]]
+
+            pool_pages, pool_total = _fetch_exact_collection_pages(
+                dhcp_api_url,
+                dhcp_client,
+                "pools",
+                "pools",
+                DHCP_SCALE_PAGE_SIZE,
+            )
+            pools = [record for page in pool_pages for record in page]
+            assert len(pool_pages) >= 3
+            assert len(pools) == pool_total
+            assert seeded_pools <= {pool["pool"] for pool in pools}
+            assert len({(pool["subnet"], pool["pool"]) for pool in pools}) == len(pools), (
+                "Pool pages overlap"
+            )
+            target_pool = next(
+                (pool for page in pool_pages[1:] for pool in page if pool["pool"] in seeded_pools),
+                None,
+            )
+            assert target_pool is not None, "No seeded pool landed beyond the first API page"
+            pool_search = dhcp_client.get(
+                f"{dhcp_api_url}/pools",
+                params={"limit": DHCP_SCALE_PAGE_SIZE, "search": target_pool["pool"]},
+                timeout=30,
+            )
+            pool_search.raise_for_status()
+            pool_search_payload = pool_search.json()
+            assert pool_search_payload["total_count"] == 1
+            assert [pool["pool"] for pool in pool_search_payload["pools"]] == [target_pool["pool"]]
+            print(
+                f"✅ Found {DHCP_SCALE_CONFIG_RECORD_COUNT} synthetic reservations and "
+                f"pools in {scale_subnet} across {len(reservation_pages)} and "
+                f"{len(pool_pages)} pages"
+            )
+        finally:
+            _set_kea_dhcp4_config(config_manager_namespace, dhcp_pod, original_dhcp4)
 
     # GraphQL query to get all ZTP-enabled devices with their interfaces and serial
     ZTP_DEVICES_QUERY = """

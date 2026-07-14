@@ -16,12 +16,10 @@
  * limitations under the License.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Activity,
   CalendarClock,
-  ChevronLeft,
-  ChevronRight,
   Clock3,
   Database,
   Network,
@@ -33,10 +31,11 @@ import {
 
 import {
   clearDhcpLease,
-  DHCP_LEASE_PAGE_SIZE,
   useDhcpConfigRefreshTimestamp,
   useDhcpDashboard,
   useDhcpLeases,
+  useDhcpPools,
+  useDhcpReservations,
 } from "@/hooks/useDhcpDashboard";
 import type { DhcpLease } from "@/types/dhcp.types";
 import { Badge } from "@/components/ui/badge";
@@ -80,6 +79,16 @@ interface MetricProps {
   readonly detail: string;
 }
 
+interface InfiniteScrollStatusProps {
+  readonly completeLabel?: string;
+  readonly hasMore: boolean;
+  readonly isValidating: boolean;
+  readonly itemCount: number;
+  readonly onLoadMore: () => void;
+  readonly resourceLabel: string;
+  readonly totalCount?: number;
+}
+
 /** Render one summary metric in the DHCP dashboard header. */
 function Metric({ icon, label, value, detail }: MetricProps) {
   return (
@@ -107,6 +116,17 @@ function EmptyState({ message }: Readonly<{ message: string }>) {
   );
 }
 
+/** Render a compact loading state for a lazily fetched dashboard tab. */
+function CollectionLoading() {
+  return (
+    <div className="space-y-3 rounded-md border p-4">
+      {[0, 1, 2].map((item) => (
+        <Skeleton key={item} className="h-10 w-full" />
+      ))}
+    </div>
+  );
+}
+
 /** Format a nullable lease expiry for the operator's locale. */
 function formatExpiry(expiresAt?: string | null): string {
   if (!expiresAt) return "Never";
@@ -126,26 +146,80 @@ function formatConfigAge(timestamp?: number | null): string {
   return `${Math.floor(ageSeconds / 86400)}d`;
 }
 
-/** Normalize a complete 48-bit MAC address across common separator styles. */
-function normalizeMacAddress(value: string): string | null {
-  const compactValue = value.replaceAll(/[:.-]/g, "").toLowerCase();
-  return /^[0-9a-f]{12}$/.test(compactValue) ? compactValue : null;
-}
+/** Load the next cursor page when the shared collection footer enters view. */
+function InfiniteScrollStatus({
+  completeLabel,
+  hasMore,
+  isValidating,
+  itemCount,
+  onLoadMore,
+  resourceLabel,
+  totalCount,
+}: InfiniteScrollStatusProps) {
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const loadRequestedRef = useRef(false);
 
-/** Return whether any display value contains the query or the same MAC address. */
-function matchesSearch(
-  values: Array<string | number | null | undefined>,
-  query: string,
-): boolean {
-  const normalizedMacQuery = normalizeMacAddress(query);
-  return values.some((value) => {
-    const normalizedValue = String(value ?? "").toLowerCase();
-    return (
-      normalizedValue.includes(query) ||
-      (normalizedMacQuery !== null &&
-        normalizeMacAddress(normalizedValue) === normalizedMacQuery)
+  useEffect(() => {
+    if (!isValidating) loadRequestedRef.current = false;
+  }, [isValidating, itemCount]);
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (
+      !sentinel ||
+      !hasMore ||
+      isValidating ||
+      typeof IntersectionObserver === "undefined"
+    ) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting || loadRequestedRef.current) return;
+        loadRequestedRef.current = true;
+        onLoadMore();
+      },
+      { rootMargin: "200px" },
     );
-  });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMore, isValidating, onLoadMore]);
+
+  if (itemCount === 0) return null;
+
+  const summary =
+    totalCount === undefined
+      ? `Loaded ${itemCount.toLocaleString()} ${resourceLabel}${hasMore ? "" : ` · ${completeLabel ?? `All ${resourceLabel} loaded`}`}`
+      : `Loaded ${itemCount.toLocaleString()} of ${totalCount.toLocaleString()} ${resourceLabel}`;
+
+  return (
+    <div
+      ref={sentinelRef}
+      role="status"
+      aria-live="polite"
+      className="mt-4 border-t pt-4 text-center text-sm"
+    >
+      <p className="text-xs text-muted-foreground">{summary}</p>
+      {hasMore && (
+        <Button
+          className="mt-2"
+          variant="ghost"
+          size="sm"
+          aria-label={`Load more ${resourceLabel}`}
+          onClick={() => {
+            if (loadRequestedRef.current) return;
+            loadRequestedRef.current = true;
+            onLoadMore();
+          }}
+          disabled={isValidating}
+        >
+          {isValidating && <RefreshCw className="mr-2 h-4 w-4 animate-spin" />}
+          {isValidating ? "Loading more" : "Load more"}
+        </Button>
+      )}
+    </div>
+  );
 }
 
 /** Render a utilization bar using warning colors near pool capacity. */
@@ -179,64 +253,66 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
   const [isClearing, setIsClearing] = useState(false);
   const [activeTab, setActiveTab] = useState("leases");
   const [searchQuery, setSearchQuery] = useState("");
-  const [leaseSearchQuery, setLeaseSearchQuery] = useState("");
-  const [leasePageIndex, setLeasePageIndex] = useState(0);
-  const [leasePageCursors, setLeasePageCursors] = useState<Array<string | null>>([
-    null,
-  ]);
-  const activeLeaseSearchQuery = activeTab === "leases" ? leaseSearchQuery : "";
-  const leaseCursor = leasePageCursors[leasePageIndex] ?? null;
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
+  const activeLeaseSearchQuery = activeTab === "leases" ? debouncedSearchQuery : "";
+  const activeReservationSearchQuery =
+    activeTab === "reservations" ? debouncedSearchQuery : "";
+  const activePoolSearchQuery = activeTab === "pools" ? debouncedSearchQuery : "";
   const {
     error: leaseError,
     isLoading: areLeasesLoading,
     isValidating: areLeasesValidating,
+    hasMore: hasMoreLeases,
     leases,
+    loadMore: loadMoreLeases,
     mutate: mutateLeases,
-    nextCursor: nextLeaseCursor,
-  } = useDhcpLeases(dhcpUrl, activeLeaseSearchQuery, leaseCursor);
+  } = useDhcpLeases(dhcpUrl, activeLeaseSearchQuery);
+  const {
+    error: reservationError,
+    hasMore: hasMoreReservations,
+    isLoading: areReservationsLoading,
+    isValidating: areReservationsValidating,
+    loadMore: loadMoreReservations,
+    mutate: mutateReservations,
+    reservations,
+    totalCount: reservationTotalCount,
+  } = useDhcpReservations(
+    dhcpUrl,
+    activeReservationSearchQuery,
+    activeTab === "reservations",
+  );
+  const {
+    error: poolError,
+    hasMore: hasMorePools,
+    isLoading: arePoolsLoading,
+    isValidating: arePoolsValidating,
+    loadMore: loadMorePools,
+    mutate: mutatePools,
+    pools,
+    totalCount: poolTotalCount,
+  } = useDhcpPools(
+    dhcpUrl,
+    activePoolSearchQuery,
+    activeTab === "pools",
+  );
+  const areCollectionsValidating =
+    areLeasesValidating || areReservationsValidating || arePoolsValidating;
 
   useEffect(() => {
     const timeout = window.setTimeout(
-      () => setLeaseSearchQuery(searchQuery.trim()),
+      () => setDebouncedSearchQuery(searchQuery.trim()),
       300,
     );
     return () => window.clearTimeout(timeout);
   }, [searchQuery]);
-
-  const resetLeasePagination = () => {
-    setLeasePageIndex(0);
-    setLeasePageCursors([null]);
-  };
-
-  const updateSearchQuery = (value: string) => {
-    setSearchQuery(value);
-    resetLeasePagination();
-  };
-
-  const updateActiveTab = (value: string) => {
-    setActiveTab(value);
-    resetLeasePagination();
-  };
-
-  const showNextLeasePage = () => {
-    if (!nextLeaseCursor) return;
-    setLeasePageCursors((current) => {
-      const cursors = current.slice(0, leasePageIndex + 1);
-      cursors[leasePageIndex + 1] = nextLeaseCursor;
-      return cursors;
-    });
-    setLeasePageIndex((current) => current + 1);
-  };
-
-  const showPreviousLeasePage = () => {
-    setLeasePageIndex((current) => Math.max(0, current - 1));
-  };
 
   const refresh = () => {
     void Promise.allSettled([
       mutate(),
       mutateConfigRefreshTimestamp(),
       mutateLeases(),
+      mutateReservations(),
+      mutatePools(),
     ]);
   };
 
@@ -305,29 +381,15 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
   const utilization = data.pool_address_count
     ? (data.assigned_address_count / data.pool_address_count) * 100
     : 0;
-  const normalizedSearch = searchQuery.trim().toLowerCase();
-  const filteredReservations = normalizedSearch
-    ? data.reservations.filter((reservation) =>
-        matchesSearch(
-          [
-            reservation.ip_address,
-            reservation.hostname,
-            reservation.identifier_type,
-            reservation.identifier,
-            reservation.subnet,
-          ],
-          normalizedSearch,
-        ),
-      )
-    : data.reservations;
-  const filteredPools = normalizedSearch
-    ? data.pools.filter((pool) =>
-        matchesSearch(
-          [pool.subnet, pool.pool],
-          normalizedSearch,
-        ),
-      )
-    : data.pools;
+  const leaseResourceLabel = activeLeaseSearchQuery
+    ? "matching active leases"
+    : "active leases";
+  const leaseCompleteLabel = activeLeaseSearchQuery
+    ? "All matches loaded"
+    : "All active leases loaded";
+  const leaseMetricDetail = hasMoreLeases
+    ? `${leaseResourceLabel[0].toUpperCase()}${leaseResourceLabel.slice(1)} loaded`
+    : `All ${leaseResourceLabel} loaded`;
 
   return (
     <Card className="overflow-hidden" data-testid="dhcp-dashboard">
@@ -346,10 +408,10 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
             variant="outline"
             size="sm"
             onClick={refresh}
-            disabled={isValidating || isConfigAgeValidating || areLeasesValidating}
+            disabled={isValidating || isConfigAgeValidating || areCollectionsValidating}
           >
             <RefreshCw
-              className={`mr-2 h-4 w-4 ${isValidating || isConfigAgeValidating || areLeasesValidating ? "animate-spin" : ""}`}
+              className={`mr-2 h-4 w-4 ${isValidating || isConfigAgeValidating || areCollectionsValidating ? "animate-spin" : ""}`}
             />
             Refresh
           </Button>
@@ -358,12 +420,8 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
           <Metric
             icon={<Activity className="h-4 w-4" />}
             label="Active leases"
-            value={data.active_lease_count.toLocaleString()}
-            detail={
-              activeLeaseSearchQuery
-                ? `${leases.length.toLocaleString()} match${leases.length === 1 ? "" : "es"} on page ${leasePageIndex + 1}`
-                : `${leases.length.toLocaleString()} shown on page ${leasePageIndex + 1}`
-            }
+            value={`${leases.length.toLocaleString()}${hasMoreLeases ? "+" : ""}`}
+            detail={leaseMetricDetail}
           />
           <Metric
             icon={<ShieldCheck className="h-4 w-4" />}
@@ -381,7 +439,7 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
             icon={<CalendarClock className="h-4 w-4" />}
             label="Pool utilization"
             value={`${utilization.toFixed(1)}%`}
-            detail={`${data.pools.length} configured pool${data.pools.length === 1 ? "" : "s"}`}
+            detail={`${data.pool_count.toLocaleString()} configured pool${data.pool_count === 1 ? "" : "s"}`}
           />
           <Metric
             icon={<Clock3 className="h-4 w-4" />}
@@ -406,11 +464,11 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
             aria-label="Filter displayed DHCP data"
             placeholder="Filter by IP, hostname, MAC address, client ID, or subnet"
             value={searchQuery}
-            onChange={(event) => updateSearchQuery(event.target.value)}
+            onChange={(event) => setSearchQuery(event.target.value)}
             className="pl-9"
           />
         </div>
-        <Tabs value={activeTab} onValueChange={updateActiveTab}>
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="grid w-full grid-cols-3 sm:w-auto">
             <TabsTrigger value="leases">Active leases</TabsTrigger>
             <TabsTrigger value="reservations">Reservations</TabsTrigger>
@@ -421,7 +479,7 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
             {leases.length === 0 ? (
               <EmptyState
                 message={
-                  normalizedSearch
+                  activeLeaseSearchQuery
                     ? `No active leases match “${searchQuery.trim()}”.`
                     : "No active leases."
                 }
@@ -466,40 +524,25 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
                 </TableBody>
               </Table>
             )}
-            {(leases.length > 0 || leasePageIndex > 0) && (
-              <nav
-                aria-label="Lease pages"
-                className="mt-4 flex items-center justify-between gap-4 border-t pt-4"
-              >
-                <Button
-                  variant="outline"
-                  onClick={showPreviousLeasePage}
-                  disabled={leasePageIndex === 0 || areLeasesValidating}
-                >
-                  <ChevronLeft className="mr-2 h-4 w-4" /> Previous
-                </Button>
-                <div className="text-center text-sm">
-                  <p className="font-medium">Page {leasePageIndex + 1}</p>
-                  <p className="text-xs text-muted-foreground">
-                    Up to {DHCP_LEASE_PAGE_SIZE} leases per page
-                  </p>
-                </div>
-                <Button
-                  variant="outline"
-                  onClick={showNextLeasePage}
-                  disabled={!nextLeaseCursor || areLeasesValidating}
-                >
-                  Next <ChevronRight className="ml-2 h-4 w-4" />
-                </Button>
-              </nav>
-            )}
+            <InfiniteScrollStatus
+              completeLabel={leaseCompleteLabel}
+              hasMore={hasMoreLeases}
+              isValidating={areLeasesValidating}
+              itemCount={leases.length}
+              onLoadMore={() => void loadMoreLeases()}
+              resourceLabel={leaseResourceLabel}
+            />
           </TabsContent>
 
           <TabsContent value="reservations" className="mt-4">
-            {filteredReservations.length === 0 ? (
+            {areReservationsLoading ? (
+              <CollectionLoading />
+            ) : reservationError ? (
+              <EmptyState message="Reservation data is unavailable." />
+            ) : reservations.length === 0 ? (
               <EmptyState
                 message={
-                  normalizedSearch
+                  activeReservationSearchQuery
                     ? `No reservations match “${searchQuery.trim()}”.`
                     : "No reservations are configured."
                 }
@@ -516,7 +559,7 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredReservations.map((reservation, index) => (
+                  {reservations.map((reservation, index) => (
                     <TableRow key={`${reservation.ip_address || "reservation"}-${index}`}>
                       <TableCell className="font-mono font-medium">{reservation.ip_address || "—"}</TableCell>
                       <TableCell>{reservation.hostname || "—"}</TableCell>
@@ -528,13 +571,29 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
                 </TableBody>
               </Table>
             )}
+            <InfiniteScrollStatus
+              hasMore={hasMoreReservations}
+              isValidating={areReservationsValidating}
+              itemCount={reservations.length}
+              onLoadMore={() => void loadMoreReservations()}
+              resourceLabel={
+                activeReservationSearchQuery
+                  ? "matching reservations"
+                  : "reservations"
+              }
+              totalCount={reservationTotalCount}
+            />
           </TabsContent>
 
           <TabsContent value="pools" className="mt-4">
-            {filteredPools.length === 0 ? (
+            {arePoolsLoading ? (
+              <CollectionLoading />
+            ) : poolError ? (
+              <EmptyState message="Pool usage data is unavailable." />
+            ) : pools.length === 0 ? (
               <EmptyState
                 message={
-                  normalizedSearch
+                  activePoolSearchQuery
                     ? `No pools match “${searchQuery.trim()}”.`
                     : "No address pools are configured."
                 }
@@ -551,7 +610,7 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredPools.map((pool) => (
+                  {pools.map((pool) => (
                     <TableRow key={`${pool.subnet}-${pool.pool}`}>
                       <TableCell className="font-medium">{pool.subnet}</TableCell>
                       <TableCell className="font-mono text-xs">{pool.pool}</TableCell>
@@ -568,6 +627,16 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
                 </TableBody>
               </Table>
             )}
+            <InfiniteScrollStatus
+              hasMore={hasMorePools}
+              isValidating={arePoolsValidating}
+              itemCount={pools.length}
+              onLoadMore={() => void loadMorePools()}
+              resourceLabel={
+                activePoolSearchQuery ? "matching pools" : "pools"
+              }
+              totalCount={poolTotalCount}
+            />
           </TabsContent>
         </Tabs>
       </CardContent>

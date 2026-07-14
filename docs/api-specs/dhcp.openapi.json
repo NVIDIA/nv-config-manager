@@ -24,7 +24,7 @@
         "type": "integer"
       },
       "LeaseDashboardResponse": {
-        "description": "Reservation and pool summary used by the splash-page dashboard.",
+        "description": "Lease, reservation, and pool summary used by the dashboard.",
         "properties": {
           "active_lease_count": {
             "title": "Active Lease Count",
@@ -38,32 +38,21 @@
             "title": "Pool Address Count",
             "type": "integer"
           },
-          "pools": {
-            "items": {
-              "$ref": "#/components/schemas/PoolUsage"
-            },
-            "title": "Pools",
-            "type": "array"
+          "pool_count": {
+            "title": "Pool Count",
+            "type": "integer"
           },
           "reservation_count": {
             "title": "Reservation Count",
             "type": "integer"
-          },
-          "reservations": {
-            "items": {
-              "$ref": "#/components/schemas/ReservationRecord"
-            },
-            "title": "Reservations",
-            "type": "array"
           }
         },
         "required": [
           "active_lease_count",
           "reservation_count",
           "assigned_address_count",
-          "pool_address_count",
-          "reservations",
-          "pools"
+          "pool_count",
+          "pool_address_count"
         ],
         "title": "LeaseDashboardResponse",
         "type": "object"
@@ -188,6 +177,39 @@
         "title": "LeaseRecord",
         "type": "object"
       },
+      "PoolPageResponse": {
+        "description": "Bounded page of configured pool usage.",
+        "properties": {
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "pools": {
+            "items": {
+              "$ref": "#/components/schemas/PoolUsage"
+            },
+            "title": "Pools",
+            "type": "array"
+          },
+          "total_count": {
+            "title": "Total Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "pools",
+          "total_count"
+        ],
+        "title": "PoolPageResponse",
+        "type": "object"
+      },
       "PoolUsage": {
         "description": "Current allocation statistics for a configured address pool.",
         "properties": {
@@ -220,6 +242,39 @@
           "utilization"
         ],
         "title": "PoolUsage",
+        "type": "object"
+      },
+      "ReservationPageResponse": {
+        "description": "Bounded page of normalized reservations.",
+        "properties": {
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "reservations": {
+            "items": {
+              "$ref": "#/components/schemas/ReservationRecord"
+            },
+            "title": "Reservations",
+            "type": "array"
+          },
+          "total_count": {
+            "title": "Total Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "reservations",
+          "total_count"
+        ],
+        "title": "ReservationPageResponse",
         "type": "object"
       },
       "ReservationRecord": {
@@ -475,161 +530,9 @@
       }
     },
     "/lease": {
-      "delete": {
-        "description": "Delete one lease from the selected DHCP service.",
-        "operationId": "delete_lease_lease_delete",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "ip_address",
-            "required": true,
-            "schema": {
-              "format": "ipvanyaddress",
-              "title": "Ip Address",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "ip_version",
-            "required": false,
-            "schema": {
-              "$ref": "#/components/schemas/IpVersion",
-              "default": 4
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Successful Response"
-          },
-          "404": {
-            "description": "Lease not found"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "summary": "Delete Lease"
-      },
-      "get": {
-        "description": "Return one normalized lease from the selected DHCP service.",
-        "operationId": "get_lease_lease_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "ip_address",
-            "required": true,
-            "schema": {
-              "format": "ipvanyaddress",
-              "title": "Ip Address",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "ip_version",
-            "required": false,
-            "schema": {
-              "$ref": "#/components/schemas/IpVersion",
-              "default": 4
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LeaseRecord"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "404": {
-            "description": "Lease not found"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "summary": "Get Lease"
-      }
-    },
-    "/lease-dashboard": {
-      "get": {
-        "description": "Return lease counts, reservations, and pool data for operators.",
-        "operationId": "get_lease_dashboard_lease_dashboard_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "ip_version",
-            "required": false,
-            "schema": {
-              "$ref": "#/components/schemas/IpVersion",
-              "default": 4
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LeaseDashboardResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "summary": "Get Lease Dashboard"
-      }
-    },
-    "/leases": {
       "get": {
         "description": "Return a cursor-paginated, optionally filtered page of normalized leases.",
-        "operationId": "list_leases_leases_get",
+        "operationId": "list_leases_lease_get",
         "parameters": [
           {
             "in": "query",
@@ -716,6 +619,356 @@
           }
         ],
         "summary": "List Leases"
+      }
+    },
+    "/lease-dashboard": {
+      "get": {
+        "description": "Return lease, reservation, and pool counts for operators.",
+        "operationId": "get_lease_dashboard_lease_dashboard_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ip_version",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/IpVersion",
+              "default": 4
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeaseDashboardResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Lease Dashboard"
+      }
+    },
+    "/lease/{ip_address}": {
+      "delete": {
+        "description": "Delete one lease from the selected DHCP service.",
+        "operationId": "delete_lease_lease__ip_address__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ip_address",
+            "required": true,
+            "schema": {
+              "format": "ipvanyaddress",
+              "title": "Ip Address",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ip_version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/IpVersion"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ip Version"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Lease not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Delete Lease"
+      },
+      "get": {
+        "description": "Return one normalized lease from the selected DHCP service.",
+        "operationId": "get_lease_lease__ip_address__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ip_address",
+            "required": true,
+            "schema": {
+              "format": "ipvanyaddress",
+              "title": "Ip Address",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ip_version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/IpVersion"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ip Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeaseRecord"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Lease not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Lease"
+      }
+    },
+    "/pools": {
+      "get": {
+        "description": "Return a cursor-paginated, optionally filtered pool-usage page.",
+        "operationId": "list_pools_pools_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ip_version",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/IpVersion",
+              "default": 4
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 256,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolPageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List Pools"
+      }
+    },
+    "/reservations": {
+      "get": {
+        "description": "Return a cursor-paginated, optionally filtered reservation page.",
+        "operationId": "list_reservations_reservations_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ip_version",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/IpVersion",
+              "default": 4
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 256,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReservationPageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List Reservations"
       }
     },
     "/whoami": {

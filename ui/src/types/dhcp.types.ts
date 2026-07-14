@@ -44,6 +44,13 @@ export interface DhcpReservation {
   subnet?: string | null;
 }
 
+/** Cursor-paginated reservations returned by the DHCP API. */
+export interface DhcpReservationPage {
+  reservations: DhcpReservation[];
+  total_count: number;
+  next_cursor?: string | null;
+}
+
 /** Allocation statistics for a configured address pool. */
 export interface DhcpPoolUsage {
   subnet: string;
@@ -53,12 +60,18 @@ export interface DhcpPoolUsage {
   utilization: number;
 }
 
+/** Cursor-paginated pool usage returned by the DHCP API. */
+export interface DhcpPoolPage {
+  pools: DhcpPoolUsage[];
+  total_count: number;
+  next_cursor?: string | null;
+}
+
 /** Aggregated operator data returned by the DHCP dashboard endpoint. */
 export interface DhcpLeaseDashboard {
   active_lease_count: number;
   reservation_count: number;
   assigned_address_count: number;
+  pool_count: number;
   pool_address_count: number;
-  reservations: DhcpReservation[];
-  pools: DhcpPoolUsage[];
 }

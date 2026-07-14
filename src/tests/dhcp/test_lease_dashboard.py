@@ -23,7 +23,11 @@ from nv_config_manager.dhcp.lease_dashboard import (
     LeaseRecord,
     build_lease_dashboard,
     build_lease_list,
+    build_pool_list,
+    build_reservation_list,
     filter_lease_records,
+    filter_pool_records,
+    filter_reservation_records,
 )
 
 
@@ -112,19 +116,28 @@ def dashboard_payloads() -> tuple[list[dict], list[dict], list[dict]]:
 
 def test_build_lease_dashboard() -> None:
     """Build a dashboard summary from configuration and statistics."""
-    config, _, statistics = dashboard_payloads()
+    config, leases, statistics = dashboard_payloads()
 
     dashboard = build_lease_dashboard(config, statistics)
 
     assert dashboard.active_lease_count == 3
     assert dashboard.assigned_address_count == 3
     assert dashboard.reservation_count == 2
+    assert dashboard.pool_count == 2
     assert dashboard.pool_address_count == 14
-    assert len(dashboard.reservations) == 2
-    assert dashboard.reservations[0].identifier_type == "hw-address"
-    assert dashboard.reservations[0].subnet is None
-    assert [(pool.assigned, pool.total, pool.utilization) for pool in dashboard.pools] == [
-        (3, 10, 30.0),
+    reservations = build_reservation_list(config, ip_version=IpVersion.V4)
+    assert len(reservations) == 2
+    assert reservations[0].identifier_type == "hw-address"
+    assert reservations[0].subnet is None
+    active_leases = build_lease_list(config, leases, ip_version=IpVersion.V4)
+    pools = build_pool_list(
+        config,
+        statistics,
+        active_leases,
+        ip_version=IpVersion.V4,
+    )
+    assert [(pool.assigned, pool.total, pool.utilization) for pool in pools] == [
+        (1, 10, 10.0),
         (0, 4, 0.0),
     ]
 
@@ -165,18 +178,56 @@ def test_filter_lease_records_normalizes_mac_addresses(search: str) -> None:
     assert filter_lease_records([lease], search) == [lease]
 
 
-def test_build_lease_dashboard_caps_pool_utilization() -> None:
-    """Keep reservation-backed KEA pool statistics within percentage bounds."""
-    config, _, statistics = dashboard_payloads()
+@pytest.mark.parametrize("search", ["020000000001", "0200.0000.0001"])
+def test_filter_reservation_records_normalizes_mac_addresses(search: str) -> None:
+    """Match reservation identifiers independently of common MAC separators."""
+    config, _, _ = dashboard_payloads()
+    reservations = build_reservation_list(config, ip_version=IpVersion.V4)
+
+    assert filter_reservation_records(reservations, search) == [reservations[0]]
+
+
+def test_filter_pool_records_matches_subnet_and_range() -> None:
+    """Match configured pools by their subnet or range."""
+    config, leases, statistics = dashboard_payloads()
+    active_leases = build_lease_list(config, leases, ip_version=IpVersion.V4)
+    pools = build_pool_list(
+        config,
+        statistics,
+        active_leases,
+        ip_version=IpVersion.V4,
+    )
+
+    assert filter_pool_records(pools, "10.0.1.0/30") == [pools[1]]
+
+
+def test_build_pool_list_excludes_out_of_pool_reservation_leases() -> None:
+    """Exclude active reservation leases that are outside the dynamic pool."""
+    config, leases, statistics = dashboard_payloads()
     statistics[0]["arguments"]["subnet[7].pool[0].assigned-addresses"] = [
         [12, "2026-07-10 00:00:00"]
     ]
+    leases[0]["arguments"]["leases"].append(
+        {
+            "cltt": int(time.time()) - 60,
+            "hostname": "reserved-switch",
+            "ip-address": "10.0.0.2",
+            "state": 0,
+            "subnet-id": 7,
+            "valid-lft": 3600,
+        }
+    )
 
-    dashboard = build_lease_dashboard(config, statistics)
-
-    assert dashboard.pools[0].assigned == 12
-    assert dashboard.pools[0].total == 10
-    assert dashboard.pools[0].utilization == 100.0
+    active_leases = build_lease_list(config, leases, ip_version=IpVersion.V4)
+    pools = build_pool_list(
+        config,
+        statistics,
+        active_leases,
+        ip_version=IpVersion.V4,
+    )
+    assert pools[0].assigned == 1
+    assert pools[0].total == 10
+    assert pools[0].utilization == 10.0
 
 
 def test_build_ipv6_lease_dashboard() -> None:
@@ -236,14 +287,22 @@ def test_build_ipv6_lease_dashboard() -> None:
 
     dashboard = build_lease_dashboard(config, statistics, ip_version=IpVersion.V6)
     lease_records = build_lease_list(config, leases, ip_version=IpVersion.V6)
+    reservations = build_reservation_list(config, ip_version=IpVersion.V6)
+    pools = build_pool_list(
+        config,
+        statistics,
+        lease_records,
+        ip_version=IpVersion.V6,
+    )
 
     assert str(lease_records[0].ip_address) == "2001:db8:1::10"
     assert lease_records[0].duid == "00:01:00:01:11:22:33:44"
     assert lease_records[0].subnet == "2001:db8:1::/64"
-    assert str(dashboard.reservations[0].ip_address) == "2001:db8:1::2"
-    assert dashboard.reservations[0].identifier_type == "duid"
-    assert dashboard.pools[0].total == 16
-    assert dashboard.pools[0].utilization == 6.2
+    assert dashboard.reservation_count == 1
+    assert str(reservations[0].ip_address) == "2001:db8:1::2"
+    assert reservations[0].identifier_type == "duid"
+    assert pools[0].total == 16
+    assert pools[0].utilization == 6.2
 
 
 def test_build_lease_dashboard_rejects_kea_error() -> None:

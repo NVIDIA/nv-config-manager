@@ -19,14 +19,13 @@ import (
 // checks if the LeaseDashboardResponse type satisfies the MappedNullable interface at compile time
 var _ MappedNullable = &LeaseDashboardResponse{}
 
-// LeaseDashboardResponse Reservation and pool summary used by the splash-page dashboard.
+// LeaseDashboardResponse Lease, reservation, and pool summary used by the dashboard.
 type LeaseDashboardResponse struct {
-	ActiveLeaseCount     int32               `json:"active_lease_count"`
-	AssignedAddressCount int32               `json:"assigned_address_count"`
-	PoolAddressCount     int32               `json:"pool_address_count"`
-	Pools                []PoolUsage         `json:"pools"`
-	ReservationCount     int32               `json:"reservation_count"`
-	Reservations         []ReservationRecord `json:"reservations"`
+	ActiveLeaseCount     int32 `json:"active_lease_count"`
+	AssignedAddressCount int32 `json:"assigned_address_count"`
+	PoolAddressCount     int32 `json:"pool_address_count"`
+	PoolCount            int32 `json:"pool_count"`
+	ReservationCount     int32 `json:"reservation_count"`
 }
 
 type _LeaseDashboardResponse LeaseDashboardResponse
@@ -35,14 +34,13 @@ type _LeaseDashboardResponse LeaseDashboardResponse
 // This constructor will assign default values to properties that have it defined,
 // and makes sure properties required by API are set, but the set of arguments
 // will change when the set of required properties is changed
-func NewLeaseDashboardResponse(activeLeaseCount int32, assignedAddressCount int32, poolAddressCount int32, pools []PoolUsage, reservationCount int32, reservations []ReservationRecord) *LeaseDashboardResponse {
+func NewLeaseDashboardResponse(activeLeaseCount int32, assignedAddressCount int32, poolAddressCount int32, poolCount int32, reservationCount int32) *LeaseDashboardResponse {
 	this := LeaseDashboardResponse{}
 	this.ActiveLeaseCount = activeLeaseCount
 	this.AssignedAddressCount = assignedAddressCount
 	this.PoolAddressCount = poolAddressCount
-	this.Pools = pools
+	this.PoolCount = poolCount
 	this.ReservationCount = reservationCount
-	this.Reservations = reservations
 	return &this
 }
 
@@ -126,28 +124,28 @@ func (o *LeaseDashboardResponse) SetPoolAddressCount(v int32) {
 	o.PoolAddressCount = v
 }
 
-// GetPools returns the Pools field value
-func (o *LeaseDashboardResponse) GetPools() []PoolUsage {
+// GetPoolCount returns the PoolCount field value
+func (o *LeaseDashboardResponse) GetPoolCount() int32 {
 	if o == nil {
-		var ret []PoolUsage
+		var ret int32
 		return ret
 	}
 
-	return o.Pools
+	return o.PoolCount
 }
 
-// GetPoolsOk returns a tuple with the Pools field value
+// GetPoolCountOk returns a tuple with the PoolCount field value
 // and a boolean to check if the value has been set.
-func (o *LeaseDashboardResponse) GetPoolsOk() ([]PoolUsage, bool) {
+func (o *LeaseDashboardResponse) GetPoolCountOk() (*int32, bool) {
 	if o == nil {
 		return nil, false
 	}
-	return o.Pools, true
+	return &o.PoolCount, true
 }
 
-// SetPools sets field value
-func (o *LeaseDashboardResponse) SetPools(v []PoolUsage) {
-	o.Pools = v
+// SetPoolCount sets field value
+func (o *LeaseDashboardResponse) SetPoolCount(v int32) {
+	o.PoolCount = v
 }
 
 // GetReservationCount returns the ReservationCount field value
@@ -174,30 +172,6 @@ func (o *LeaseDashboardResponse) SetReservationCount(v int32) {
 	o.ReservationCount = v
 }
 
-// GetReservations returns the Reservations field value
-func (o *LeaseDashboardResponse) GetReservations() []ReservationRecord {
-	if o == nil {
-		var ret []ReservationRecord
-		return ret
-	}
-
-	return o.Reservations
-}
-
-// GetReservationsOk returns a tuple with the Reservations field value
-// and a boolean to check if the value has been set.
-func (o *LeaseDashboardResponse) GetReservationsOk() ([]ReservationRecord, bool) {
-	if o == nil {
-		return nil, false
-	}
-	return o.Reservations, true
-}
-
-// SetReservations sets field value
-func (o *LeaseDashboardResponse) SetReservations(v []ReservationRecord) {
-	o.Reservations = v
-}
-
 func (o LeaseDashboardResponse) MarshalJSON() ([]byte, error) {
 	toSerialize, err := o.ToMap()
 	if err != nil {
@@ -211,9 +185,8 @@ func (o LeaseDashboardResponse) ToMap() (map[string]interface{}, error) {
 	toSerialize["active_lease_count"] = o.ActiveLeaseCount
 	toSerialize["assigned_address_count"] = o.AssignedAddressCount
 	toSerialize["pool_address_count"] = o.PoolAddressCount
-	toSerialize["pools"] = o.Pools
+	toSerialize["pool_count"] = o.PoolCount
 	toSerialize["reservation_count"] = o.ReservationCount
-	toSerialize["reservations"] = o.Reservations
 	return toSerialize, nil
 }
 
@@ -225,9 +198,8 @@ func (o *LeaseDashboardResponse) UnmarshalJSON(data []byte) (err error) {
 		"active_lease_count":     false,
 		"assigned_address_count": false,
 		"pool_address_count":     false,
-		"pools":                  false,
+		"pool_count":             false,
 		"reservation_count":      false,
-		"reservations":           false,
 	}
 
 	allProperties := make(map[string]interface{})

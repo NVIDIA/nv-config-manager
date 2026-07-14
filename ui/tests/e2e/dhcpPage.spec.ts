@@ -51,13 +51,23 @@ test.describe("DHCP Dashboard Page", () => {
       dashboard.getByText("Config age", { exact: true })
     ).toBeVisible();
     await expect(dashboard.getByText("4m", { exact: true })).toBeVisible();
-    await expect(dashboard.getByText("Page 1", { exact: true })).toBeVisible();
+    await expect(
+      dashboard.getByText("Loaded 2 active leases · All active leases loaded", {
+        exact: true,
+      })
+    ).toBeVisible();
 
     await dashboard.getByRole("tab", { name: "Reservations" }).click();
     await expect(dashboard.getByText("spine-01")).toBeVisible();
+    await expect(
+      dashboard.getByText("Loaded 2 of 2 reservations", { exact: true })
+    ).toBeVisible();
 
     await dashboard.getByRole("tab", { name: "Pool usage" }).click();
     await expect(dashboard.getByText("10.0.0.10-10.0.0.19")).toBeVisible();
+    await expect(
+      dashboard.getByText("Loaded 1 of 1 pools", { exact: true })
+    ).toBeVisible();
     await expect(
       dashboard.getByText("20.0%", { exact: true }).last()
     ).toBeVisible();
@@ -82,14 +92,20 @@ test.describe("DHCP Dashboard Page", () => {
     await expect(dashboard.getByText("10.0.0.10")).toHaveCount(0);
   });
 
-  test("shows one fixed-size lease page with previous and next controls", async ({
+  test("loads additional lease pages on scroll and resets cursors for search", async ({
     page,
   }) => {
-    await page.unroute("**/leases?*");
-    await page.route("**/leases?*", async (route) => {
+    let releaseNextPage!: () => void;
+    const nextPageGate = new Promise<void>((resolve) => {
+      releaseNextPage = resolve;
+    });
+    await page.unroute("**/lease?*");
+    await page.route("**/lease?*", async (route) => {
       const params = new URL(route.request().url()).searchParams;
       const cursor = params.get("cursor");
+      const search = params.get("search");
       expect(params.get("limit")).toBe("100");
+      if (cursor) await nextPageGate;
       await route.fulfill({
         status: 200,
         json: {
@@ -105,41 +121,40 @@ test.describe("DHCP Dashboard Page", () => {
               expires_at: "2026-07-10T18:00:00Z",
             },
           ],
-          next_cursor: cursor ? null : "next-page",
+          next_cursor: search || cursor ? null : "next-page",
         },
       });
     });
     await page.reload();
 
     const dashboard = page.getByTestId("dhcp-dashboard");
-    const pagination = dashboard.getByRole("navigation", {
-      name: "Lease pages",
+    await expect(dashboard.getByText("leaf-01")).toBeVisible();
+    const activeLeasesMetric = dashboard.getByRole("group", {
+      name: "Active leases",
     });
-    await expect(dashboard.getByText("leaf-01")).toBeVisible();
-    await expect(dashboard.getByText("leaf-02")).toHaveCount(0);
     await expect(
-      pagination.getByRole("button", { name: "Previous" })
-    ).toBeDisabled();
-
-    await pagination.getByRole("button", { name: "Next" }).click();
-    await expect(dashboard.getByText("leaf-02")).toBeVisible();
-    await expect(dashboard.getByText("leaf-01")).toHaveCount(0);
-    await expect(pagination.getByText("Page 2", { exact: true })).toBeVisible();
+      activeLeasesMetric.getByText("1+", { exact: true })
+    ).toBeVisible();
     await expect(
-      pagination.getByRole("button", { name: "Next" })
-    ).toBeDisabled();
-
-    await pagination.getByRole("button", { name: "Previous" }).click();
-    await expect(dashboard.getByText("leaf-01")).toBeVisible();
-    await expect(dashboard.getByText("leaf-02")).toHaveCount(0);
-    await expect(pagination.getByText("Page 1", { exact: true })).toBeVisible();
-
-    await pagination.getByRole("button", { name: "Next" }).click();
+      activeLeasesMetric.getByText("Active leases loaded", { exact: true })
+    ).toBeVisible();
+    releaseNextPage();
     await expect(dashboard.getByText("leaf-02")).toBeVisible();
+    await expect(
+      activeLeasesMetric.getByText("2", { exact: true })
+    ).toBeVisible();
+    await expect(
+      activeLeasesMetric.getByText("All active leases loaded", { exact: true })
+    ).toBeVisible();
+    await expect(
+      dashboard.getByText("Loaded 2 active leases · All active leases loaded", {
+        exact: true,
+      })
+    ).toBeVisible();
     const searchRequestPromise = page.waitForRequest((request) => {
       const url = new URL(request.url());
       return (
-        url.pathname === "/leases" && url.searchParams.get("search") === "leaf"
+        url.pathname === "/lease" && url.searchParams.get("search") === "leaf"
       );
     });
     await dashboard
@@ -147,8 +162,78 @@ test.describe("DHCP Dashboard Page", () => {
       .fill("leaf");
     const searchRequest = await searchRequestPromise;
     expect(new URL(searchRequest.url()).searchParams.get("cursor")).toBeNull();
-    await expect(pagination.getByText("Page 1", { exact: true })).toBeVisible();
     await expect(dashboard.getByText("leaf-01")).toBeVisible();
+    await expect(
+      dashboard.getByText(
+        "Loaded 1 matching active leases · All matches loaded",
+        {
+          exact: true,
+        }
+      )
+    ).toBeVisible();
+  });
+
+  test("infinitely loads reservations and pools with exact totals", async ({
+    page,
+  }) => {
+    await page.unroute("**/reservations?*");
+    await page.route("**/reservations?*", async (route) => {
+      const params = new URL(route.request().url()).searchParams;
+      const cursor = params.get("cursor");
+      expect(params.get("limit")).toBe("100");
+      await route.fulfill({
+        status: 200,
+        json: {
+          reservations: [
+            {
+              ip_address: cursor ? "10.0.0.3" : "10.0.0.2",
+              hostname: cursor ? "spine-02" : "spine-01",
+              identifier_type: "hw-address",
+              identifier: cursor ? "02:00:00:00:00:02" : "02:00:00:00:00:01",
+            },
+          ],
+          total_count: 2,
+          next_cursor: cursor ? null : "next-reservation-page",
+        },
+      });
+    });
+    await page.unroute("**/pools?*");
+    await page.route("**/pools?*", async (route) => {
+      const params = new URL(route.request().url()).searchParams;
+      const cursor = params.get("cursor");
+      expect(params.get("limit")).toBe("100");
+      await route.fulfill({
+        status: 200,
+        json: {
+          pools: [
+            {
+              subnet: cursor ? "10.0.1.0/24" : "10.0.0.0/24",
+              pool: cursor ? "10.0.1.10-10.0.1.19" : "10.0.0.10-10.0.0.19",
+              assigned: 2,
+              total: 10,
+              utilization: 20,
+            },
+          ],
+          total_count: 2,
+          next_cursor: cursor ? null : "next-pool-page",
+        },
+      });
+    });
+
+    const dashboard = page.getByTestId("dhcp-dashboard");
+    await dashboard.getByRole("tab", { name: "Reservations" }).click();
+    await expect(dashboard.getByText("spine-01")).toBeVisible();
+    await expect(dashboard.getByText("spine-02")).toBeVisible();
+    await expect(
+      dashboard.getByText("Loaded 2 of 2 reservations", { exact: true })
+    ).toBeVisible();
+
+    await dashboard.getByRole("tab", { name: "Pool usage" }).click();
+    await expect(dashboard.getByText("10.0.0.10-10.0.0.19")).toBeVisible();
+    await expect(dashboard.getByText("10.0.1.10-10.0.1.19")).toBeVisible();
+    await expect(
+      dashboard.getByText("Loaded 2 of 2 pools", { exact: true })
+    ).toBeVisible();
   });
 
   test("keeps lease data available when config age metrics fail", async ({

@@ -144,8 +144,23 @@ export async function mockDhcpEndpoints(page: Page) {
       expires_at: "2026-07-10T18:05:00Z",
     },
   ];
+  const reservations = [
+    {
+      ip_address: "10.0.0.2",
+      hostname: "spine-01",
+      identifier_type: "hw-address",
+      identifier: "02:00:00:00:00:01",
+    },
+    {
+      ip_address: "10.0.0.3",
+      hostname: "spine-02",
+      identifier_type: "client-id",
+      identifier: "01:02:03:04",
+      subnet: "10.0.0.0/24",
+    },
+  ];
 
-  await page.route("**/leases?*", async (route) => {
+  await page.route("**/lease?*", async (route) => {
     const params = new URL(route.request().url()).searchParams;
     const search = (params.get("search") || "").toLowerCase();
     const compactSearch = search.replaceAll(/[:.-]/g, "");
@@ -177,39 +192,85 @@ export async function mockDhcpEndpoints(page: Page) {
     });
   });
 
-  await page.route("**/lease-dashboard*", async (route) => {
+  await page.route("**/reservations?*", async (route) => {
+    const search = new URL(route.request().url()).searchParams
+      .get("search")
+      ?.toLowerCase();
+    const compactSearch = search?.replaceAll(/[:.-]/g, "");
+    const normalizedMacSearch =
+      compactSearch && /^[0-9a-f]{12}$/.test(compactSearch)
+        ? compactSearch
+        : null;
+    const filteredReservations = search
+      ? reservations.filter((reservation) =>
+          [
+            reservation.ip_address,
+            reservation.hostname,
+            reservation.identifier_type,
+            reservation.identifier,
+            "subnet" in reservation ? reservation.subnet : null,
+          ].some((value) => {
+            const normalizedValue = String(value || "").toLowerCase();
+            return (
+              normalizedValue.includes(search) ||
+              (normalizedMacSearch !== null &&
+                normalizedValue.replaceAll(/[:.-]/g, "") ===
+                  normalizedMacSearch)
+            );
+          })
+        )
+      : reservations;
+    await route.fulfill({
+      status: 200,
+      json: {
+        reservations: filteredReservations,
+        total_count: filteredReservations.length,
+        next_cursor: null,
+      },
+    });
+  });
+
+  await page.route("**/pools?*", async (route) => {
+    const search = new URL(route.request().url()).searchParams
+      .get("search")
+      ?.toLowerCase();
     const activeLeases = leases.filter((lease) => lease.ip_address !== clearedLease);
+    const pools = [
+      {
+        subnet: "10.0.0.0/24",
+        pool: "10.0.0.10-10.0.0.19",
+        assigned: activeLeases.length,
+        total: 10,
+        utilization: activeLeases.length * 10,
+      },
+    ];
+    const filteredPools = search
+      ? pools.filter(
+          (pool) => pool.subnet.includes(search) || pool.pool.includes(search)
+        )
+      : pools;
+    await route.fulfill({
+      status: 200,
+      json: {
+        pools: filteredPools,
+        total_count: filteredPools.length,
+        next_cursor: null,
+      },
+    });
+  });
+
+  await page.route("**/lease-dashboard*", async (route) => {
+    const activeLeases = leases.filter(
+      (lease) => lease.ip_address !== clearedLease
+    );
     await route.fulfill({
       status: 200,
       json: {
         active_lease_count: activeLeases.length,
         reservation_count: 2,
         assigned_address_count: activeLeases.length,
+        pool_count: 1,
         pool_address_count: 10,
-        reservations: [
-          {
-            ip_address: "10.0.0.2",
-            hostname: "spine-01",
-            identifier_type: "hw-address",
-            identifier: "02:00:00:00:00:01",
-          },
-          {
-            ip_address: "10.0.0.3",
-            hostname: "spine-02",
-            identifier_type: "client-id",
-            identifier: "01:02:03:04",
-            subnet: "10.0.0.0/24",
-          },
-        ],
-        pools: [
-          {
-            subnet: "10.0.0.0/24",
-            pool: "10.0.0.10-10.0.0.19",
-            assigned: activeLeases.length,
-            total: 10,
-            utilization: activeLeases.length * 10,
-          },
-        ],
       },
     });
   });
@@ -222,14 +283,15 @@ export async function mockDhcpEndpoints(page: Page) {
     });
   });
 
-  await page.route("**/lease?*", async (route) => {
+  await page.route("**/lease/*", async (route) => {
     const request = route.request();
-    const params = new URL(request.url()).searchParams;
-    if (request.method() !== "DELETE" || params.get("ip_version") !== "4") {
+    if (request.method() !== "DELETE") {
       await route.fulfill({ status: 400, json: { detail: "Invalid lease request" } });
       return;
     }
-    clearedLease = params.get("ip_address");
+    clearedLease = decodeURIComponent(
+      new URL(request.url()).pathname.split("/").at(-1) || ""
+    );
     await route.fulfill({ status: 204 });
   });
 }
