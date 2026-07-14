@@ -150,7 +150,9 @@ def _pool_bounds(pool: str) -> tuple[int, int, int] | None:
             start_text, end_text = (part.strip() for part in pool.split("-", maxsplit=1))
             start = ip_address(start_text)
             end = ip_address(end_text)
-            if start.version != end.version or start > end:
+            if start.version != end.version:
+                return None
+            if int(start) > int(end):
                 return None
             return start.version, int(start), int(end)
 

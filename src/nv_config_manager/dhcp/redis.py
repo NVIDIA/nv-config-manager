@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import AsyncIterator
 from typing import Any
 
 from nv_config_manager.common.client import RedisClient as BaseRedisClient
@@ -33,6 +34,7 @@ from nv_config_manager.common.client import RedisClient as BaseRedisClient
 #   v2: Ubuntu base image migration (different hooks library paths)
 #   v3: Migrate from pickle to JSON serialization (security hardening)
 KEA_CONFIG_VERSION = 3
+COLLECTION_INVALIDATION_CHANNEL = "nv-config-manager:dhcp:collection-snapshot-invalidate"
 
 
 class RedisClient(BaseRedisClient):
@@ -66,6 +68,7 @@ class RedisClient(BaseRedisClient):
         pipe = self._redis.pipeline()
         pipe.set(self.config_key(ip_version), value)
         pipe.set(self.refresh_timestamp_key(ip_version), str(time.time()))
+        pipe.publish(COLLECTION_INVALIDATION_CHANNEL, str(ip_version))
         await pipe.execute()
 
     async def load_kea_config(self, ip_version: int) -> dict[str, Any] | None:
@@ -81,8 +84,31 @@ class RedisClient(BaseRedisClient):
 
     async def flush_kea_config(self, ip_version: int) -> bool:
         """Delete the cached KEA DHCP Server Configuration and its timestamp."""
-        deleted: int = await self._redis.delete(
+        pipe = self._redis.pipeline()
+        pipe.delete(
             self.config_key(ip_version),
             self.refresh_timestamp_key(ip_version),
         )
-        return deleted > 0
+        pipe.publish(COLLECTION_INVALIDATION_CHANNEL, str(ip_version))
+        deleted, _ = await pipe.execute()
+        return bool(deleted)
+
+    async def publish_collection_invalidation(self, ip_version: int) -> None:
+        """Tell every DHCP API process to clear its local collection snapshots."""
+        await self._redis.publish(COLLECTION_INVALIDATION_CHANNEL, str(ip_version))
+
+    async def listen_collection_invalidations(self) -> AsyncIterator[int]:
+        """Yield address families from the shared collection invalidation channel."""
+        pubsub = self._redis.pubsub()
+        await pubsub.subscribe(COLLECTION_INVALIDATION_CHANNEL)
+        try:
+            async for message in pubsub.listen():
+                if message.get("type") != "message":
+                    continue
+                try:
+                    yield int(message["data"])
+                except (KeyError, TypeError, ValueError):
+                    continue
+        finally:
+            await pubsub.unsubscribe(COLLECTION_INVALIDATION_CHANNEL)
+            await pubsub.close()

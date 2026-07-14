@@ -21,6 +21,7 @@ import pytest
 from nv_config_manager.dhcp.kea import IpVersion, KeaException
 from nv_config_manager.dhcp.lease_dashboard import (
     LeaseRecord,
+    _pool_capacity,
     build_lease_dashboard,
     build_lease_list,
     build_pool_list,
@@ -199,6 +200,11 @@ def test_filter_pool_records_matches_subnet_and_range() -> None:
     )
 
     assert filter_pool_records(pools, "10.0.1.0/30") == [pools[1]]
+
+
+def test_pool_capacity_rejects_mixed_address_families() -> None:
+    """Reject ranges whose endpoints use different IP versions."""
+    assert _pool_capacity("10.0.0.10-2001:db8::1") == 0
 
 
 def test_build_pool_list_excludes_out_of_pool_reservation_leases() -> None:
