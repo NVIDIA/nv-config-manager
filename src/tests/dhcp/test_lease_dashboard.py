@@ -128,6 +128,7 @@ def test_build_lease_dashboard() -> None:
         (0, 4, 0.0),
     ]
 
+
 def test_build_lease_list_logs_malformed_lease(caplog: pytest.LogCaptureFixture) -> None:
     """Log malformed KEA rows at debug level while keeping the response safe."""
     config, leases, _ = dashboard_payloads()
