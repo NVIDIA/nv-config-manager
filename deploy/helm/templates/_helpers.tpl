@@ -33,6 +33,21 @@ tree has only one version to maintain.
 {{- end }}
 
 {{/*
+Resolve a full NVIDIA Config Manager image reference. A digest pin
+(sha256:<hex>, set by deploy automation) takes precedence over any tag and
+renders repository@digest; otherwise fall back to repository:tag with the
+imageTag chart-version fallback. Takes the same dict as imageTag:
+(dict "root" . "image" .Values.global.images.<name>)
+*/}}
+{{- define "nv-config-manager.image" -}}
+{{- if .image.digest -}}
+{{- .image.repository }}@{{ .image.digest -}}
+{{- else -}}
+{{- .image.repository }}:{{ include "nv-config-manager.imageTag" . -}}
+{{- end -}}
+{{- end }}
+
+{{/*
 Selector labels
 */}}
 {{- define "nv-config-manager.selectorLabels" -}}

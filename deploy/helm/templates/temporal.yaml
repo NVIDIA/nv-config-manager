@@ -403,7 +403,7 @@ spec:
             memory: 64Mi
       containers:
       - name: worker
-        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ include "nv-config-manager.imageTag" (dict "root" . "image" .Values.global.images.nvConfigManager) }}"
+        image: "{{ include "nv-config-manager.image" (dict "root" . "image" .Values.global.images.nvConfigManager) }}"
         imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
         command: ["nv-config-manager-temporal-worker"]
         args: []
@@ -495,7 +495,7 @@ spec:
       {{- end }}
       containers:
       - name: api
-        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ include "nv-config-manager.imageTag" (dict "root" . "image" .Values.global.images.nvConfigManager) }}"
+        image: "{{ include "nv-config-manager.image" (dict "root" . "image" .Values.global.images.nvConfigManager) }}"
         imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
         command: ["nv-config-manager-temporal-api"]
         args: []
@@ -615,7 +615,7 @@ spec:
       {{- include "nv-config-manager.waitForTemporalNamespace" . | nindent 6 }}
       containers:
       - name: scheduler
-        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ include "nv-config-manager.imageTag" (dict "root" . "image" .Values.global.images.nvConfigManager) }}"
+        image: "{{ include "nv-config-manager.image" (dict "root" . "image" .Values.global.images.nvConfigManager) }}"
         imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
         command: ["nv-config-manager-temporal-scheduler"]
         env:
@@ -687,7 +687,7 @@ spec:
       {{- end }}
       containers:
       - name: archive
-        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ include "nv-config-manager.imageTag" (dict "root" . "image" .Values.global.images.nvConfigManager) }}"
+        image: "{{ include "nv-config-manager.image" (dict "root" . "image" .Values.global.images.nvConfigManager) }}"
         imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
         command: ["nv-config-manager-temporal-archive"]
         args: ["-v"]
