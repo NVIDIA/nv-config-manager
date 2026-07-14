@@ -442,7 +442,7 @@ def test_get_lease():
         assert rsp.status_code == 403
 
         rsp = client.get(
-            "/lease?ip_address=10.0.0.10&ip_version=4",
+            "/lease?ip_address=10.0.0.10",
             headers={"X-Auth-Request-Email": "test@example.com"},
         )
 
@@ -461,6 +461,23 @@ def test_lease_openapi_documents_not_found() -> None:
 
     for method in ("get", "delete"):
         assert lease_operations[method]["responses"]["404"] == {"description": "Lease not found"}
+
+
+def test_lease_openapi_defaults_to_ipv4() -> None:
+    """Advertise IPv4 as the optional default for every lease operation."""
+    operations = (
+        app.openapi()["paths"]["/lease"]["get"],
+        app.openapi()["paths"]["/lease"]["delete"],
+        app.openapi()["paths"]["/leases"]["get"],
+        app.openapi()["paths"]["/lease-dashboard"]["get"],
+    )
+
+    for operation in operations:
+        parameter = next(
+            parameter for parameter in operation["parameters"] if parameter["name"] == "ip_version"
+        )
+        assert parameter["required"] is False
+        assert parameter["schema"]["default"] == 4
 
 
 def test_get_lease_not_found():
@@ -508,7 +525,7 @@ def test_list_leases():
         patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED),
     ):
         rsp = client.get(
-            "/leases?ip_version=4&limit=25",
+            "/leases?limit=25",
             headers={"X-Auth-Request-Email": "test@example.com"},
         )
 
@@ -529,7 +546,7 @@ def test_delete_lease():
     ) as mock_delete_lease:
         with patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED):
             rsp = client.delete(
-                "/lease?ip_address=10.0.0.10&ip_version=4",
+                "/lease?ip_address=10.0.0.10",
                 headers={"X-Auth-Request-Email": "test@example.com"},
             )
 
@@ -719,7 +736,7 @@ def test_get_lease_dashboard():
         assert rsp.status_code == 403
 
         rsp = client.get(
-            "/lease-dashboard?limit=25&ip_version=4",
+            "/lease-dashboard?limit=25",
             headers={"X-Auth-Request-Email": "test@example.com"},
         )
 

@@ -125,14 +125,13 @@ The Config Manager splash page summarizes active leases, reservations, pool util
 
 ![DHCP lease activity dashboard](../assets/images/dhcp/lease-dashboard.png)
 
-The authenticated DHCP API exposes domain-oriented lease resources without leaking the underlying DHCP server's command format. Pass `ip_version=4` or `ip_version=6` to select the address family.
+The authenticated DHCP API exposes domain-oriented lease resources without leaking the underlying DHCP server's command format. The optional `ip_version` parameter defaults to `4`; pass `ip_version=6` to select IPv6.
 
 List leases with a bounded collection request:
 
 ```bash
 curl --fail-with-body --get "${DHCP_API_URL}/leases" \
   --header "Authorization: Bearer ${TOKEN}" \
-  --data-urlencode "ip_version=4" \
   --data-urlencode "limit=100"
 ```
 
@@ -141,14 +140,13 @@ Look up the device holding a lease:
 ```bash
 curl --fail-with-body --get "${DHCP_API_URL}/lease" \
   --header "Authorization: Bearer ${TOKEN}" \
-  --data-urlencode "ip_address=7.245.196.5" \
-  --data-urlencode "ip_version=4"
+  --data-urlencode "ip_address=7.245.196.5"
 ```
 
 Delete a lease so the address can be reassigned:
 
 ```bash
-curl --fail-with-body --request DELETE "${DHCP_API_URL}/lease?ip_address=7.245.196.5&ip_version=4" \
+curl --fail-with-body --request DELETE "${DHCP_API_URL}/lease?ip_address=7.245.196.5" \
   --header "Authorization: Bearer ${TOKEN}"
 ```
 
