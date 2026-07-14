@@ -762,6 +762,8 @@ type ApiListLeasesLeasesGetRequest struct {
 	ApiService *DefaultAPIService
 	ipVersion  *IpVersion
 	limit      *int32
+	cursor     *string
+	search     *string
 }
 
 func (r ApiListLeasesLeasesGetRequest) IpVersion(ipVersion IpVersion) ApiListLeasesLeasesGetRequest {
@@ -774,14 +776,24 @@ func (r ApiListLeasesLeasesGetRequest) Limit(limit int32) ApiListLeasesLeasesGet
 	return r
 }
 
-func (r ApiListLeasesLeasesGetRequest) Execute() ([]LeaseRecord, *http.Response, error) {
+func (r ApiListLeasesLeasesGetRequest) Cursor(cursor string) ApiListLeasesLeasesGetRequest {
+	r.cursor = &cursor
+	return r
+}
+
+func (r ApiListLeasesLeasesGetRequest) Search(search string) ApiListLeasesLeasesGetRequest {
+	r.search = &search
+	return r
+}
+
+func (r ApiListLeasesLeasesGetRequest) Execute() (*LeasePageResponse, *http.Response, error) {
 	return r.ApiService.ListLeasesLeasesGetExecute(r)
 }
 
 /*
 ListLeasesLeasesGet List Leases
 
-Return a bounded list of normalized leases.
+Return a cursor-paginated, optionally filtered page of normalized leases.
 
 	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
 	@return ApiListLeasesLeasesGetRequest
@@ -795,13 +807,13 @@ func (a *DefaultAPIService) ListLeasesLeasesGet(ctx context.Context) ApiListLeas
 
 // Execute executes the request
 //
-//	@return []LeaseRecord
-func (a *DefaultAPIService) ListLeasesLeasesGetExecute(r ApiListLeasesLeasesGetRequest) ([]LeaseRecord, *http.Response, error) {
+//	@return LeasePageResponse
+func (a *DefaultAPIService) ListLeasesLeasesGetExecute(r ApiListLeasesLeasesGetRequest) (*LeasePageResponse, *http.Response, error) {
 	var (
 		localVarHTTPMethod  = http.MethodGet
 		localVarPostBody    interface{}
 		formFiles           []formFile
-		localVarReturnValue []LeaseRecord
+		localVarReturnValue *LeasePageResponse
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "DefaultAPIService.ListLeasesLeasesGet")
@@ -828,6 +840,12 @@ func (a *DefaultAPIService) ListLeasesLeasesGetExecute(r ApiListLeasesLeasesGetR
 		var defaultValue int32 = 100
 		parameterAddToHeaderOrQuery(localVarQueryParams, "limit", defaultValue, "form", "")
 		r.limit = &defaultValue
+	}
+	if r.cursor != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "cursor", r.cursor, "form", "")
+	}
+	if r.search != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "search", r.search, "form", "")
 	}
 	// to determine the Content-Type header
 	localVarHTTPContentTypes := []string{}

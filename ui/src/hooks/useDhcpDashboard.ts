@@ -16,25 +16,33 @@
  */
 
 import useSWR from "swr";
+import useSWRInfinite from "swr/infinite";
 
 import { sanitizeUrl } from "@/lib/utils";
-import type { DhcpLeaseDashboard } from "@/types/dhcp.types";
+import type { DhcpLeaseDashboard, DhcpLeasePage } from "@/types/dhcp.types";
 
 const CONFIG_REFRESH_METRIC =
   "nv_config_manager_dhcp_cache_last_refresh_timestamp_seconds";
 const REQUEST_TIMEOUT_MS = 30000;
 
 /** Fetch and validate the dashboard response from the DHCP API. */
-async function dhcpFetcher(url: string): Promise<DhcpLeaseDashboard> {
-  const response = await fetch(url, {
-    credentials: "include",
-    mode: "cors",
-  });
-  if (!response.ok) {
-    const body = await response.json().catch(() => null);
-    throw new Error(body?.detail || body?.error || "DHCP lease data is unavailable");
+async function dhcpFetcher<T>(url: string): Promise<T> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, {
+      credentials: "include",
+      mode: "cors",
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      throw new Error(body?.detail || body?.error || "DHCP lease data is unavailable");
+    }
+    return response.json();
+  } finally {
+    clearTimeout(timeout);
   }
-  return response.json();
 }
 
 /** Read the latest configuration refresh timestamp from Prometheus text. */
@@ -68,6 +76,37 @@ export function useDhcpDashboard(dhcpUrl: string) {
     refreshInterval: 30000,
     revalidateOnFocus: true,
   });
+}
+
+/** Subscribe to cursor-paginated active leases across the full DHCP inventory. */
+export function useDhcpLeases(dhcpUrl: string, search: string) {
+  const getKey = (
+    pageIndex: number,
+    previousPageData: DhcpLeasePage | null,
+  ): string | null => {
+    if (!dhcpUrl || (pageIndex > 0 && !previousPageData?.next_cursor)) {
+      return null;
+    }
+
+    const query = new URLSearchParams({ limit: "100" });
+    if (search) query.set("search", search);
+    if (previousPageData?.next_cursor) {
+      query.set("cursor", previousPageData.next_cursor);
+    }
+    return sanitizeUrl(`${dhcpUrl}/leases?${query}`);
+  };
+  const response = useSWRInfinite<DhcpLeasePage>(getKey, dhcpFetcher, {
+    refreshInterval: 30000,
+    revalidateOnFocus: true,
+  });
+  const leases = response.data?.flatMap((page) => page.leases) ?? [];
+  const nextCursor = response.data?.at(-1)?.next_cursor;
+
+  return {
+    ...response,
+    hasMore: Boolean(nextCursor),
+    leases,
+  };
 }
 
 /** Subscribe to the last successful configuration refresh timestamp. */

@@ -211,12 +211,13 @@ class KeaClient:
         self,
         limit: int = 100,
         version: IpVersion = IpVersion.V4,
+        from_address: str = "start",
     ) -> list[dict[str, Any]]:
-        """Return the first page of leases from the selected KEA service."""
+        """Return a page of leases from the selected KEA service."""
         data = {
             "command": f"lease{version}-get-page",
             "service": [f"dhcp{version}"],
-            "arguments": {"from": "start", "limit": limit},
+            "arguments": {"from": from_address, "limit": limit},
         }
         session = await self._get_session()
         try:

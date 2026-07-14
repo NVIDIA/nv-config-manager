@@ -145,6 +145,38 @@ export async function mockDhcpEndpoints(page: Page) {
     },
   ];
 
+  await page.route("**/leases?*", async (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    const search = (params.get("search") || "").toLowerCase();
+    const compactSearch = search.replaceAll(/[:.-]/g, "");
+    const normalizedMacSearch = /^[0-9a-f]{12}$/.test(compactSearch)
+      ? compactSearch
+      : null;
+    const activeLeases = leases.filter((lease) => lease.ip_address !== clearedLease);
+    const filteredLeases = search
+      ? activeLeases.filter((lease) =>
+          [
+            lease.ip_address,
+            lease.hostname,
+            "hw_address" in lease ? lease.hw_address : null,
+            "client_id" in lease ? lease.client_id : null,
+            lease.subnet,
+          ].some((value) => {
+            const normalizedValue = String(value || "").toLowerCase();
+            return (
+              normalizedValue.includes(search) ||
+              (normalizedMacSearch !== null &&
+                normalizedValue.replaceAll(/[:.-]/g, "") === normalizedMacSearch)
+            );
+          }),
+        )
+      : activeLeases;
+    await route.fulfill({
+      status: 200,
+      json: { leases: filteredLeases, next_cursor: null },
+    });
+  });
+
   await page.route("**/lease-dashboard*", async (route) => {
     const activeLeases = leases.filter((lease) => lease.ip_address !== clearedLease);
     await route.fulfill({

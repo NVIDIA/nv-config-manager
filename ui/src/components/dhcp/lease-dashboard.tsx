@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Activity,
   CalendarClock,
@@ -33,6 +33,7 @@ import {
   clearDhcpLease,
   useDhcpConfigRefreshTimestamp,
   useDhcpDashboard,
+  useDhcpLeases,
 } from "@/hooks/useDhcpDashboard";
 import type { DhcpLease } from "@/types/dhcp.types";
 import { Badge } from "@/components/ui/badge";
@@ -173,10 +174,39 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
   const { toast } = useToast();
   const [leaseToClear, setLeaseToClear] = useState<DhcpLease | null>(null);
   const [isClearing, setIsClearing] = useState(false);
+  const [activeTab, setActiveTab] = useState("leases");
   const [searchQuery, setSearchQuery] = useState("");
+  const [leaseSearchQuery, setLeaseSearchQuery] = useState("");
+  const activeLeaseSearchQuery = activeTab === "leases" ? leaseSearchQuery : "";
+  const {
+    error: leaseError,
+    hasMore: hasMoreLeases,
+    isLoading: areLeasesLoading,
+    isValidating: areLeasesValidating,
+    leases,
+    mutate: mutateLeases,
+    setSize: setLeasePageCount,
+    size: leasePageCount,
+  } = useDhcpLeases(dhcpUrl, activeLeaseSearchQuery);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(
+      () => setLeaseSearchQuery(searchQuery.trim()),
+      300,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    void setLeasePageCount(1);
+  }, [activeLeaseSearchQuery, setLeasePageCount]);
 
   const refresh = () => {
-    void Promise.allSettled([mutate(), mutateConfigRefreshTimestamp()]);
+    void Promise.allSettled([
+      mutate(),
+      mutateConfigRefreshTimestamp(),
+      mutateLeases(),
+    ]);
   };
 
   const clearLease = async () => {
@@ -189,7 +219,7 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
         description: `${leaseToClear.ip_address} is available for reassignment.`,
       });
       setLeaseToClear(null);
-      await mutate();
+      await Promise.all([mutate(), mutateLeases()]);
     } catch (clearError) {
       toast({
         title: "Unable to clear lease",
@@ -202,7 +232,7 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
     }
   };
 
-  if (isLoading) {
+  if (isLoading || areLeasesLoading) {
     return (
       <Card data-testid="dhcp-dashboard-loading">
         <CardHeader>
@@ -218,7 +248,8 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
     );
   }
 
-  if (error || !data) {
+  if (error || leaseError || !data) {
+    const dashboardError = error || leaseError;
     return (
       <Card className="border-dashed" data-testid="dhcp-dashboard-error">
         <CardHeader className="flex-row items-start justify-between space-y-0">
@@ -227,7 +258,9 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
               <Network className="h-5 w-5" /> DHCP leases
             </CardTitle>
             <CardDescription>
-              {error instanceof Error ? error.message : "Lease data is unavailable."}
+              {dashboardError instanceof Error
+                ? dashboardError.message
+                : "Lease data is unavailable."}
             </CardDescription>
           </div>
           <Button variant="outline" size="sm" onClick={refresh}>
@@ -242,21 +275,6 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
     ? (data.assigned_address_count / data.pool_address_count) * 100
     : 0;
   const normalizedSearch = searchQuery.trim().toLowerCase();
-  const filteredLeases = normalizedSearch
-    ? data.leases.filter((lease) =>
-        matchesSearch(
-          [
-            lease.ip_address,
-            lease.hostname,
-            lease.hw_address,
-            lease.client_id,
-            lease.duid,
-            lease.subnet,
-          ],
-          normalizedSearch,
-        ),
-      )
-    : data.leases;
   const filteredReservations = normalizedSearch
     ? data.reservations.filter((reservation) =>
         matchesSearch(
@@ -297,10 +315,10 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
             variant="outline"
             size="sm"
             onClick={refresh}
-            disabled={isValidating || isConfigAgeValidating}
+            disabled={isValidating || isConfigAgeValidating || areLeasesValidating}
           >
             <RefreshCw
-              className={`mr-2 h-4 w-4 ${isValidating || isConfigAgeValidating ? "animate-spin" : ""}`}
+              className={`mr-2 h-4 w-4 ${isValidating || isConfigAgeValidating || areLeasesValidating ? "animate-spin" : ""}`}
             />
             Refresh
           </Button>
@@ -310,7 +328,13 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
             icon={<Activity className="h-4 w-4" />}
             label="Active leases"
             value={data.active_lease_count.toLocaleString()}
-            detail={data.leases_truncated ? `Showing first ${data.leases.length}` : "Current assignments"}
+            detail={
+              activeLeaseSearchQuery
+                ? `${leases.length.toLocaleString()} matching lease${leases.length === 1 ? "" : "s"} loaded`
+                : leases.length < data.active_lease_count
+                  ? `${leases.length.toLocaleString()} of ${data.active_lease_count.toLocaleString()} loaded`
+                  : "Current assignments"
+            }
           />
           <Metric
             icon={<ShieldCheck className="h-4 w-4" />}
@@ -357,7 +381,7 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
             className="pl-9"
           />
         </div>
-        <Tabs defaultValue="leases">
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="grid w-full grid-cols-3 sm:w-auto">
             <TabsTrigger value="leases">Active leases</TabsTrigger>
             <TabsTrigger value="reservations">Reservations</TabsTrigger>
@@ -365,7 +389,7 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
           </TabsList>
 
           <TabsContent value="leases" className="mt-4">
-            {filteredLeases.length === 0 ? (
+            {leases.length === 0 ? (
               <EmptyState
                 message={
                   normalizedSearch
@@ -386,7 +410,7 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredLeases.map((lease) => (
+                  {leases.map((lease) => (
                     <TableRow key={lease.ip_address}>
                       <TableCell className="font-mono font-medium">{lease.ip_address}</TableCell>
                       <TableCell>{lease.hostname || "Unknown device"}</TableCell>
@@ -412,6 +436,20 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
                   ))}
                 </TableBody>
               </Table>
+            )}
+            {hasMoreLeases && (
+              <div className="mt-4 flex justify-center">
+                <Button
+                  variant="outline"
+                  onClick={() => void setLeasePageCount(leasePageCount + 1)}
+                  disabled={areLeasesValidating}
+                >
+                  {areLeasesValidating && (
+                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                  )}
+                  Load more leases
+                </Button>
+              </div>
             )}
           </TabsContent>
 

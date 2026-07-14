@@ -77,6 +77,13 @@ class LeaseDashboardResponse(BaseModel):
     pools: list[PoolUsage]
 
 
+class LeasePageResponse(BaseModel):
+    """Bounded page of normalized leases."""
+
+    leases: list[LeaseRecord]
+    next_cursor: str | None = None
+
+
 def _response_arguments(
     payload: list[dict[str, Any]], command: str, *, allow_empty: bool = False
 ) -> dict[str, Any]:
@@ -186,6 +193,70 @@ def _lease_records(raw_leases: Any, subnet_prefixes: dict[int, str]) -> list[Lea
             LOG.debug("Skipping malformed KEA lease row %r: %s", raw_lease, exc)
             continue
     return sorted(leases, key=lambda lease: int(lease.ip_address))
+
+
+def filter_lease_records(leases: list[LeaseRecord], search: str | None) -> list[LeaseRecord]:
+    """Filter normalized leases using the dashboard's user-facing search fields."""
+    query = (search or "").strip().lower()
+    if not query:
+        return leases
+
+    compact_query = query.translate(str.maketrans("", "", ":.-"))
+    mac_query = (
+        compact_query
+        if len(compact_query) == 12
+        and all(character in "0123456789abcdef" for character in compact_query)
+        else None
+    )
+
+    def matches(lease: LeaseRecord) -> bool:
+        values = (
+            lease.ip_address,
+            lease.hostname,
+            lease.hw_address,
+            lease.client_id,
+            lease.duid,
+            lease.subnet,
+        )
+        for value in values:
+            normalized = str(value or "").lower()
+            if query in normalized:
+                return True
+            compact_value = normalized.translate(str.maketrans("", "", ":.-"))
+            if mac_query is not None and compact_value == mac_query:
+                return True
+        return False
+
+    return [lease for lease in leases if matches(lease)]
+
+
+def lease_page_details(
+    lease_payload: list[dict[str, Any]],
+    *,
+    ip_version: IpVersion,
+) -> tuple[int, str | None]:
+    """Return a KEA page's row count and address cursor."""
+    arguments = _response_arguments(
+        lease_payload,
+        f"lease{ip_version}-get-page",
+        allow_empty=True,
+    )
+    raw_leases = arguments.get("leases", [])
+    if not isinstance(raw_leases, list):
+        raise KeaException(f"KEA returned invalid lease{ip_version}-get-page leases")
+    if not raw_leases:
+        return 0, None
+
+    last_lease = raw_leases[-1]
+    if not isinstance(last_lease, dict):
+        raise KeaException(f"KEA returned an invalid lease{ip_version}-get-page cursor")
+    try:
+        last_address = ip_address(last_lease["ip-address"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise KeaException(f"KEA returned an invalid lease{ip_version}-get-page cursor") from exc
+    if last_address.version != ip_version:
+        raise KeaException(f"KEA returned a mismatched lease{ip_version}-get-page cursor")
+    return len(raw_leases), str(last_address)
 
 
 def _reservation_ip(reservation: dict[str, Any]) -> IPvAnyAddress | None:

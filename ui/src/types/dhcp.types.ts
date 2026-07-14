@@ -29,6 +29,12 @@ export interface DhcpLease {
   expires_at?: string | null;
 }
 
+/** Cursor-paginated active leases returned by the DHCP API. */
+export interface DhcpLeasePage {
+  leases: DhcpLease[];
+  next_cursor?: string | null;
+}
+
 /** Static reservation returned by the DHCP dashboard endpoint. */
 export interface DhcpReservation {
   ip_address?: string | null;

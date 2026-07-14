@@ -16,8 +16,11 @@
 
 import argparse
 import asyncio
+import base64
+import binascii
 from collections.abc import AsyncIterator, Coroutine
 from contextlib import asynccontextmanager
+from ipaddress import ip_address
 from typing import Any
 
 import uvicorn
@@ -35,11 +38,14 @@ from nv_config_manager.common.log import configure_logging
 from nv_config_manager.dhcp.kea import IpVersion, KeaClient, KeaException
 from nv_config_manager.dhcp.lease_dashboard import (
     LeaseDashboardResponse,
+    LeasePageResponse,
     LeaseRecord,
     build_lease,
     build_lease_dashboard,
     build_lease_list,
+    filter_lease_records,
     lease_deleted,
+    lease_page_details,
 )
 from nv_config_manager.dhcp.redis import RedisClient
 
@@ -121,6 +127,80 @@ def _validate_address_version(ip_address: IPvAnyAddress, ip_version: IpVersion) 
         )
 
 
+def _encode_lease_cursor(from_address: str) -> str:
+    """Encode the DHCP server's paging address as an opaque API cursor."""
+    return base64.urlsafe_b64encode(from_address.encode()).decode().rstrip("=")
+
+
+def _decode_lease_cursor(cursor: str | None, ip_version: IpVersion) -> str:
+    """Decode and validate an opaque lease cursor for the selected address family."""
+    if cursor is None:
+        return "start"
+    try:
+        padding = "=" * (-len(cursor) % 4)
+        decoded = base64.b64decode(
+            f"{cursor}{padding}",
+            altchars=b"-_",
+            validate=True,
+        ).decode()
+        address = ip_address(decoded)
+    except (binascii.Error, UnicodeDecodeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail="Invalid lease cursor") from exc
+    if address.version != ip_version:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Lease cursor does not match ip_version={ip_version}",
+        )
+    return str(address)
+
+
+async def _collect_lease_page(
+    client: KeaClient,
+    config_payload: list[dict[str, Any]],
+    initial_lease_payload: list[dict[str, Any]],
+    *,
+    from_address: str,
+    ip_version: IpVersion,
+    limit: int,
+    search: str | None,
+) -> LeasePageResponse:
+    """Collect a filtered page while advancing through bounded KEA pages."""
+    leases: list[LeaseRecord] = []
+    lease_payload = initial_lease_payload
+    seen_addresses: set[str] = set()
+
+    while True:
+        page_leases = filter_lease_records(
+            build_lease_list(config_payload, lease_payload, ip_version=ip_version),
+            search,
+        )
+        raw_count, last_address = lease_page_details(lease_payload, ip_version=ip_version)
+
+        if leases and len(leases) + len(page_leases) > limit:
+            return LeasePageResponse(
+                leases=leases,
+                next_cursor=_encode_lease_cursor(from_address),
+            )
+        leases.extend(page_leases)
+
+        if raw_count < limit or last_address is None:
+            return LeasePageResponse(leases=leases)
+        if last_address == from_address or last_address in seen_addresses:
+            raise KeaException("KEA lease pagination did not advance")
+
+        next_cursor = _encode_lease_cursor(last_address)
+        if len(leases) >= limit:
+            return LeasePageResponse(leases=leases, next_cursor=next_cursor)
+
+        seen_addresses.add(last_address)
+        from_address = last_address
+        lease_payload = await client.get_lease_page(
+            limit,
+            version=ip_version,
+            from_address=from_address,
+        )
+
+
 def main() -> None:
     """CLI entrypoint for DHCP API."""
 
@@ -193,22 +273,33 @@ async def get_lease(
         return lease
 
 
-@app.get("/leases", response_model=list[LeaseRecord])
+@app.get("/leases", response_model=LeasePageResponse)
 async def list_leases(
     request: Request,
     ip_version: IpVersion = IpVersion.V4,
     limit: int = Query(default=100, ge=1, le=500),
-) -> list[LeaseRecord]:
-    """Return a bounded list of normalized leases."""
+    cursor: str | None = Query(default=None, min_length=1, max_length=128),
+    search: str | None = Query(default=None, max_length=256),
+) -> LeasePageResponse:
+    """Return a cursor-paginated, optionally filtered page of normalized leases."""
+    from_address = _decode_lease_cursor(cursor, ip_version)
     async with _kea_lease_client() as client:
         lease_payload, config_payload = await _gather_kea_requests(
-            client.get_lease_page(limit, version=ip_version),
+            client.get_lease_page(
+                limit,
+                version=ip_version,
+                from_address=from_address,
+            ),
             client.get_config(ip_version),
         )
-        return build_lease_list(
+        return await _collect_lease_page(
+            client,
             config_payload,
             lease_payload,
+            from_address=from_address,
             ip_version=ip_version,
+            limit=limit,
+            search=search,
         )
 
 

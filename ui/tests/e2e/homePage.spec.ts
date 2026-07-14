@@ -102,6 +102,38 @@ test.describe("Home Page (Splash Page)", () => {
     await expect(dashboard.getByText("10.0.0.10")).toHaveCount(0);
   });
 
+  test("loads additional active lease pages", async ({ page }) => {
+    await page.unroute("**/leases?*");
+    await page.route("**/leases?*", async (route) => {
+      const cursor = new URL(route.request().url()).searchParams.get("cursor");
+      await route.fulfill({
+        status: 200,
+        json: {
+          leases: [
+            {
+              ip_address: cursor ? "10.0.0.11" : "10.0.0.10",
+              hostname: cursor ? "leaf-02" : "leaf-01",
+              hw_address: cursor ? "02:00:00:00:00:11" : "02:00:00:00:00:10",
+              subnet: "10.0.0.0/24",
+              state: 0,
+              cltt: 1783700000,
+              valid_lft: 7200,
+              expires_at: "2026-07-10T18:00:00Z",
+            },
+          ],
+          next_cursor: cursor ? null : "next-page",
+        },
+      });
+    });
+    await page.reload();
+
+    const dashboard = page.getByTestId("dhcp-dashboard");
+    await expect(dashboard.getByText("leaf-01")).toBeVisible();
+    await expect(dashboard.getByText("leaf-02")).toHaveCount(0);
+    await dashboard.getByRole("button", { name: "Load more leases" }).click();
+    await expect(dashboard.getByText("leaf-02")).toBeVisible();
+  });
+
   test("keeps lease data available when config age metrics fail", async ({
     page,
   }) => {

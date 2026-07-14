@@ -16,7 +16,7 @@ import asyncio
 import json
 import os
 import time
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, call, patch
 
 import jwt as pyjwt
 import pytest
@@ -95,6 +95,30 @@ LEASE_GET_RESPONSE = [
         "text": "IPv4 lease found.",
     }
 ]
+
+
+def lease_page(*leases: dict[str, object]) -> list[dict[str, object]]:
+    """Wrap raw leases in a successful KEA page response."""
+    return [
+        {
+            "arguments": {"count": len(leases), "leases": list(leases)},
+            "result": 0,
+        }
+    ]
+
+
+def active_lease(ip: str, hostname: str) -> dict[str, object]:
+    """Return one active lease row for API pagination tests."""
+    return {
+        "cltt": int(time.time()) - 60,
+        "hostname": hostname,
+        "hw-address": f"02:00:00:00:00:{int(ip.rsplit('.', maxsplit=1)[1]):02x}",
+        "ip-address": ip,
+        "state": 0,
+        "subnet-id": 7,
+        "valid-lft": 3600,
+    }
+
 
 LEASE_DASHBOARD_CONFIG = [
     {
@@ -530,9 +554,137 @@ def test_list_leases():
         )
 
     assert rsp.status_code == 200
-    assert len(rsp.json()) == 1
-    assert rsp.json()[0]["subnet"] == "10.0.0.0/24"
-    mock_get_lease_page.assert_awaited_once_with(25, version=4)
+    payload = rsp.json()
+    assert len(payload["leases"]) == 1
+    assert payload["leases"][0]["subnet"] == "10.0.0.0/24"
+    assert payload["next_cursor"] is None
+    mock_get_lease_page.assert_awaited_once_with(
+        25,
+        version=4,
+        from_address="start",
+    )
+
+
+def test_list_leases_follows_opaque_cursor():
+    """Continue the normalized collection from KEA's last page address."""
+    client = TestClient(app)
+    first_page = lease_page(
+        active_lease("10.0.0.10", "leaf-01"),
+        active_lease("10.0.0.11", "leaf-02"),
+    )
+    second_page = lease_page(active_lease("10.0.0.12", "leaf-03"))
+
+    with (
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_lease_page",
+            new_callable=AsyncMock,
+            side_effect=(first_page, second_page),
+        ) as mock_get_lease_page,
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_config",
+            new_callable=AsyncMock,
+            return_value=LEASE_DASHBOARD_CONFIG,
+        ),
+        patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED),
+    ):
+        first_rsp = client.get(
+            "/leases?limit=2",
+            headers={"X-Auth-Request-Email": "test@example.com"},
+        )
+        cursor = first_rsp.json()["next_cursor"]
+        second_rsp = client.get(
+            "/leases",
+            params={"cursor": cursor, "limit": 2},
+            headers={"X-Auth-Request-Email": "test@example.com"},
+        )
+
+    assert first_rsp.status_code == 200
+    assert [lease["hostname"] for lease in first_rsp.json()["leases"]] == [
+        "leaf-01",
+        "leaf-02",
+    ]
+    assert cursor is not None
+    assert second_rsp.status_code == 200
+    assert [lease["hostname"] for lease in second_rsp.json()["leases"]] == ["leaf-03"]
+    assert second_rsp.json()["next_cursor"] is None
+    assert mock_get_lease_page.await_args_list == [
+        call(2, version=4, from_address="start"),
+        call(2, version=4, from_address="10.0.0.11"),
+    ]
+
+
+def test_list_leases_searches_across_backend_pages():
+    """Search thousands of leases rather than only the first KEA page."""
+    client = TestClient(app)
+    pages = [
+        lease_page(
+            *(
+                active_lease(
+                    f"10.{page_index}.0.{lease_index}",
+                    "target-switch"
+                    if page_index == 9 and lease_index == 100
+                    else f"leaf-{page_index:02d}-{lease_index:03d}",
+                )
+                for lease_index in range(1, 101)
+            )
+        )
+        for page_index in range(10)
+    ]
+    pages.append(lease_page())
+
+    with (
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_lease_page",
+            new_callable=AsyncMock,
+            side_effect=pages,
+        ) as mock_get_lease_page,
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_config",
+            new_callable=AsyncMock,
+            return_value=LEASE_DASHBOARD_CONFIG,
+        ),
+        patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED),
+    ):
+        rsp = client.get(
+            "/leases?limit=100&search=target",
+            headers={"X-Auth-Request-Email": "test@example.com"},
+        )
+
+    assert rsp.status_code == 200
+    assert [lease["hostname"] for lease in rsp.json()["leases"]] == ["target-switch"]
+    assert rsp.json()["next_cursor"] is None
+    assert mock_get_lease_page.await_count == 11
+    assert mock_get_lease_page.await_args_list[0] == call(
+        100,
+        version=4,
+        from_address="start",
+    )
+    assert mock_get_lease_page.await_args_list[-1] == call(
+        100,
+        version=4,
+        from_address="10.9.0.100",
+    )
+
+
+def test_list_leases_rejects_invalid_cursor():
+    """Reject malformed cursors before contacting the DHCP server."""
+    client = TestClient(app)
+
+    with (
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_lease_page",
+            new_callable=AsyncMock,
+        ) as mock_get_lease_page,
+        patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED),
+    ):
+        rsp = client.get(
+            "/leases?cursor=not-a-cursor",
+            headers={"X-Auth-Request-Email": "test@example.com"},
+        )
+
+    assert rsp.status_code == 422
+    assert rsp.json() == {"detail": "Invalid lease cursor"}
+    mock_get_lease_page.assert_not_awaited()
 
 
 def test_delete_lease():

@@ -86,6 +86,34 @@
         "title": "LeaseDashboardResponse",
         "type": "object"
       },
+      "LeasePageResponse": {
+        "description": "Bounded page of normalized leases.",
+        "properties": {
+          "leases": {
+            "items": {
+              "$ref": "#/components/schemas/LeaseRecord"
+            },
+            "title": "Leases",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "leases"
+        ],
+        "title": "LeasePageResponse",
+        "type": "object"
+      },
       "LeaseRecord": {
         "description": "Active lease returned by the DHCP service.",
         "properties": {
@@ -630,7 +658,7 @@
     },
     "/leases": {
       "get": {
-        "description": "Return a bounded list of normalized leases.",
+        "description": "Return a cursor-paginated, optionally filtered page of normalized leases.",
         "operationId": "list_leases_leases_get",
         "parameters": [
           {
@@ -653,6 +681,41 @@
               "title": "Limit",
               "type": "integer"
             }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 256,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
           }
         ],
         "responses": {
@@ -660,11 +723,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/LeaseRecord"
-                  },
-                  "title": "Response List Leases Leases Get",
-                  "type": "array"
+                  "$ref": "#/components/schemas/LeasePageResponse"
                 }
               }
             },

@@ -19,7 +19,11 @@ import time
 import pytest
 
 from nv_config_manager.dhcp.kea import IpVersion, KeaException
-from nv_config_manager.dhcp.lease_dashboard import build_lease_dashboard
+from nv_config_manager.dhcp.lease_dashboard import (
+    LeaseRecord,
+    build_lease_dashboard,
+    filter_lease_records,
+)
 
 
 def dashboard_payloads() -> tuple[list[dict], list[dict], list[dict]]:
@@ -163,6 +167,22 @@ def test_build_lease_dashboard_logs_malformed_lease(caplog: pytest.LogCaptureFix
     assert len(dashboard.leases) == 1
     assert "Skipping malformed KEA lease row" in caplog.text
     assert "not-an-address" in caplog.text
+
+
+@pytest.mark.parametrize("search", ["020000000010", "0200.0000.0010"])
+def test_filter_lease_records_normalizes_mac_addresses(search: str) -> None:
+    """Match complete MAC addresses independently of common separators."""
+    lease = LeaseRecord(
+        ip_address="10.0.0.10",
+        hostname="leaf-01",
+        hw_address="02:00:00:00:00:10",
+        state=0,
+        cltt=int(time.time()) - 60,
+        valid_lft=3600,
+        expires_at=None,
+    )
+
+    assert filter_lease_records([lease], search) == [lease]
 
 
 def test_build_lease_dashboard_caps_pool_utilization() -> None:

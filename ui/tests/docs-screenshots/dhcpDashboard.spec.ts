@@ -123,6 +123,46 @@ test.beforeEach(async ({ page }) => {
       },
     });
   });
+  await page.route("**/leases?*", async (route) => {
+    await route.fulfill({
+      status: 200,
+      json: {
+        next_cursor: null,
+        leases: [
+          {
+            ip_address: "10.217.162.42",
+            hostname: "SPINE1-GP1-CIN3-PDX01",
+            hw_address: "02:05:91:48:df:cf",
+            subnet: "10.217.162.0/24",
+            state: 0,
+            cltt: 1783700000,
+            valid_lft: 7200,
+            expires_at: "2026-07-10T18:00:00Z",
+          },
+          {
+            ip_address: "10.217.162.51",
+            hostname: "LEAF1-GP1-CIN2-PDX01",
+            client_id: "00:4d:54:32:34:31:35:58",
+            subnet: "10.217.162.0/24",
+            state: 0,
+            cltt: 1783700300,
+            valid_lft: 7200,
+            expires_at: "2026-07-10T18:05:00Z",
+          },
+          {
+            ip_address: "10.217.162.52",
+            hostname: "LEAF2-GP1-CIN1-PDX01",
+            hw_address: "02:05:91:48:df:d0",
+            subnet: "10.217.162.0/24",
+            state: 0,
+            cltt: 1783700600,
+            valid_lft: 7200,
+            expires_at: "2026-07-10T18:10:00Z",
+          },
+        ],
+      },
+    });
+  });
 });
 
 test("captures the DHCP lease dashboard", async ({ page }) => {

@@ -66,7 +66,11 @@ async def test_get_lease_page_forwards_bounded_request() -> None:
     with aioresponses() as mocked:
         mocked.post("http://kea.example.com:8000/", payload=response)
         async with KeaClient(host="kea.example.com", port=8000) as client:
-            result = await client.get_lease_page(limit=75, version=6)
+            result = await client.get_lease_page(
+                limit=75,
+                version=6,
+                from_address="2001:db8::5",
+            )
 
         request = mocked.requests[("POST", URL("http://kea.example.com:8000/"))][0]
 
@@ -74,7 +78,7 @@ async def test_get_lease_page_forwards_bounded_request() -> None:
     assert request.kwargs["json"] == {
         "command": "lease6-get-page",
         "service": ["dhcp6"],
-        "arguments": {"from": "start", "limit": 75},
+        "arguments": {"from": "2001:db8::5", "limit": 75},
     }
 
 

@@ -121,7 +121,7 @@ The generator runs on a 5-minute interval in the Kubernetes deployment, automati
 
 ## Manage Leases
 
-The Config Manager splash page summarizes active leases, reservations, pool utilization, and the age of the last successful configuration refresh reported by the DHCP API's `/metrics` endpoint. Use the filter to find displayed records by IP address, hostname, identifier, or subnet prefix, and select the **Active leases**, **Reservations**, or **Pool usage** tab to inspect each view. You can also clear an active lease after confirming the action.
+The Config Manager splash page summarizes active leases, reservations, pool utilization, and the age of the last successful configuration refresh reported by the DHCP API's `/metrics` endpoint. Active leases are loaded in bounded pages so the dashboard remains responsive with thousands of leases. Use the filter to search the full lease inventory by IP address, hostname, identifier, or subnet prefix, and use **Load more leases** to retrieve the next page. Select the **Active leases**, **Reservations**, or **Pool usage** tab to inspect each view. You can also clear an active lease after confirming the action.
 
 ![DHCP lease activity dashboard](../assets/images/dhcp/lease-dashboard.png)
 
@@ -134,6 +134,8 @@ curl --fail-with-body --get "${DHCP_API_URL}/leases" \
   --header "Authorization: Bearer ${TOKEN}" \
   --data-urlencode "limit=100"
 ```
+
+The response contains a `leases` array and an opaque `next_cursor`. When `next_cursor` is not null, pass it unchanged in the next request together with the same filters. The optional `search` parameter filters across the complete lease inventory rather than only the current page.
 
 Look up the device holding a lease:
 
