@@ -64,6 +64,21 @@ _MAX_POOL_LEASE_PAGES = 20
 _POOL_LEASE_PAGE_SIZE = 500
 _COLLECTION_SNAPSHOT_TTL_SECONDS = 30
 _COLLECTION_SNAPSHOTS: dict[tuple[str, IpVersion], tuple[float, list[Any]]] = {}
+_COLLECTION_SNAPSHOT_LOCKS: dict[
+    tuple[str, IpVersion],
+    tuple[asyncio.AbstractEventLoop, asyncio.Lock],
+] = {}
+
+
+def _collection_snapshot_lock(resource: str, ip_version: IpVersion) -> asyncio.Lock:
+    """Return a lock scoped to the collection, address family, and running loop."""
+    key = (resource, ip_version)
+    loop = asyncio.get_running_loop()
+    lock_entry = _COLLECTION_SNAPSHOT_LOCKS.get(key)
+    if lock_entry is None or lock_entry[0] is not loop:
+        lock_entry = (loop, asyncio.Lock())
+        _COLLECTION_SNAPSHOT_LOCKS[key] = lock_entry
+    return lock_entry[1]
 
 
 def _get_collection_snapshot(
@@ -483,10 +498,13 @@ async def list_reservations(
     offset = _decode_offset_cursor(cursor, "reservation", ip_version)
     reservations = _get_collection_snapshot("reservation", ip_version)
     if reservations is None:
-        async with _kea_lease_client() as client:
-            config_payload = await client.get_config(ip_version)
-        reservations = build_reservation_list(config_payload, ip_version=ip_version)
-        _store_collection_snapshot("reservation", ip_version, reservations)
+        async with _collection_snapshot_lock("reservation", ip_version):
+            reservations = _get_collection_snapshot("reservation", ip_version)
+            if reservations is None:
+                async with _kea_lease_client() as client:
+                    config_payload = await client.get_config(ip_version)
+                reservations = build_reservation_list(config_payload, ip_version=ip_version)
+                _store_collection_snapshot("reservation", ip_version, reservations)
     filtered_reservations = filter_reservation_records(reservations, search)
     page, total_count, next_offset = _slice_offset_page(
         filtered_reservations,
@@ -516,29 +534,32 @@ async def list_pools(
     offset = _decode_offset_cursor(cursor, "pool", ip_version)
     pools = _get_collection_snapshot("pool", ip_version)
     if pools is None:
-        async with _kea_lease_client() as client:
-            config_payload, statistics_payload, lease_payload = await _gather_kea_requests(
-                client.get_config(ip_version),
-                client.get_statistics(ip_version),
-                client.get_lease_page(
-                    _POOL_LEASE_PAGE_SIZE,
-                    version=ip_version,
-                    from_address="start",
-                ),
-            )
-            active_leases = await _collect_active_leases(
-                client,
-                config_payload,
-                lease_payload,
-                ip_version=ip_version,
-            )
-        pools = build_pool_list(
-            config_payload,
-            statistics_payload,
-            active_leases,
-            ip_version=ip_version,
-        )
-        _store_collection_snapshot("pool", ip_version, pools)
+        async with _collection_snapshot_lock("pool", ip_version):
+            pools = _get_collection_snapshot("pool", ip_version)
+            if pools is None:
+                async with _kea_lease_client() as client:
+                    config_payload, statistics_payload, lease_payload = await _gather_kea_requests(
+                        client.get_config(ip_version),
+                        client.get_statistics(ip_version),
+                        client.get_lease_page(
+                            _POOL_LEASE_PAGE_SIZE,
+                            version=ip_version,
+                            from_address="start",
+                        ),
+                    )
+                    active_leases = await _collect_active_leases(
+                        client,
+                        config_payload,
+                        lease_payload,
+                        ip_version=ip_version,
+                    )
+                pools = build_pool_list(
+                    config_payload,
+                    statistics_payload,
+                    active_leases,
+                    ip_version=ip_version,
+                )
+                _store_collection_snapshot("pool", ip_version, pools)
     filtered_pools = filter_pool_records(pools, search)
     page, total_count, next_offset = _slice_offset_page(filtered_pools, offset, limit)
     return PoolPageResponse(

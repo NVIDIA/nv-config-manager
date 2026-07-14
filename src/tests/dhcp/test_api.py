@@ -25,19 +25,21 @@ import jwt as pyjwt
 import pytest
 from aiohttp import ClientConnectionError, ClientResponseError, RequestInfo
 from cryptography.hazmat.primitives.asymmetric import rsa
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 from multidict import CIMultiDict
 from yarl import URL
 
 from nv_config_manager.common.auth import AuthConfig, JwtProviderConfig
 from nv_config_manager.dhcp.api import (
+    _COLLECTION_SNAPSHOT_LOCKS,
     _COLLECTION_SNAPSHOTS,
     _fetch_lease_dashboard_sources,
     _install_cors,
     app,
+    list_pools,
 )
-from nv_config_manager.dhcp.kea import KeaClient
+from nv_config_manager.dhcp.kea import IpVersion, KeaClient
 
 _HEADERS_TRUSTED = AuthConfig(accept_request_headers=True)
 _AUTH_DISABLED = AuthConfig(required=False)
@@ -47,8 +49,10 @@ _AUTH_DISABLED = AuthConfig(required=False)
 def clear_collection_snapshots() -> Iterator[None]:
     """Keep short-lived collection snapshots isolated between API tests."""
     _COLLECTION_SNAPSHOTS.clear()
+    _COLLECTION_SNAPSHOT_LOCKS.clear()
     yield
     _COLLECTION_SNAPSHOTS.clear()
+    _COLLECTION_SNAPSHOT_LOCKS.clear()
 
 
 def make_client_response_error(message: str) -> ClientResponseError:
@@ -1070,6 +1074,57 @@ def test_list_pools_falls_back_to_statistics_after_bounded_lease_scan():
         call(500, version=4, from_address="start"),
         call(500, version=4, from_address="10.0.1.246"),
     ]
+
+
+async def test_list_pools_coalesces_concurrent_snapshot_rebuilds():
+    """Share one KEA snapshot rebuild among concurrent pool requests."""
+    config_started = asyncio.Event()
+    release_config = asyncio.Event()
+
+    async def blocked_config(ip_version: int) -> list[dict]:
+        assert ip_version == 4
+        config_started.set()
+        await release_config.wait()
+        return LEASE_DASHBOARD_CONFIG
+
+    with (
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_config",
+            new_callable=AsyncMock,
+            side_effect=blocked_config,
+        ) as mock_get_config,
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_statistics",
+            new_callable=AsyncMock,
+            return_value=LEASE_DASHBOARD_STATISTICS,
+        ) as mock_get_statistics,
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_lease_page",
+            new_callable=AsyncMock,
+            return_value=lease_page(),
+        ) as mock_get_lease_page,
+    ):
+        request = Request({"type": "http", "method": "GET", "path": "/pools"})
+        first_request = asyncio.create_task(
+            list_pools(request, IpVersion.V4, limit=1, cursor=None, search=None)
+        )
+        await config_started.wait()
+        second_request = asyncio.create_task(
+            list_pools(request, IpVersion.V4, limit=1, cursor=None, search=None)
+        )
+        await asyncio.sleep(0)
+        assert mock_get_config.await_count == 1
+
+        release_config.set()
+        first_response, second_response = await asyncio.gather(
+            first_request,
+            second_request,
+        )
+
+    assert first_response == second_response
+    assert mock_get_config.await_count == 1
+    assert mock_get_statistics.await_count == 1
+    assert mock_get_lease_page.await_count == 1
 
 
 def test_config_collections_bound_thousand_record_pages():
