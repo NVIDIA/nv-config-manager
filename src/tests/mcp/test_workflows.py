@@ -115,6 +115,11 @@ def test_site_level_filter_workflows_default_reachable_statuses() -> None:
         assert normalized["site"] == "PDX01"
         assert normalized["status"] == DEFAULT_SITE_LEVEL_DEVICE_STATUS
 
+        unfiltered = normalize_workflow_parameters(
+            workflows[tool_name], {"site": "PDX01", "status": []}
+        )
+        assert unfiltered["status"] == []
+
     backup_normalized = normalize_workflow_parameters(
         workflows["run_backup"], {"device_id": "device-1"}
     )

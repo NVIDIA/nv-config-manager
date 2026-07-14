@@ -428,7 +428,6 @@ async def test_cumulus_hardware_validation_workflow_no_devices(
         assert result.success is False
         assert result.devices_validated == 0
         assert result.total_entries == 0
-        assert "No devices matched the hardware validation filter" in result.message
 
         stages = await handle.query("stages")
         completed_stages = [s for s in stages if s["state"] == "COMPLETE"]
@@ -438,6 +437,7 @@ async def test_cumulus_hardware_validation_workflow_no_devices(
 
         discovery_stage = next(s for s in stages if s["name"] == "get_devices_to_validate")
         assert "No devices matched the specified filters" in discovery_stage["output"]["display"]
+        assert result.message == discovery_stage["output"]["display"]
 
 
 @pytest.mark.asyncio

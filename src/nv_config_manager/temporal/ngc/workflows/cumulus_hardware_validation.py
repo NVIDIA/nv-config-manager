@@ -971,24 +971,12 @@ class ValidateHardwareWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, A
             ]:
                 self.set_stage_state(stage_name, StateEnum.UNREACHABLE)
 
-            filter_summary = format_filter_summary(
-                workflow_input.site,
-                workflow_input.roles,
-                workflow_input.status,
-                workflow_input.tenant,
-                workflow_input.device_type_ids,
-            )
-            message = (
-                devices_to_validate_output.display
-                if devices_to_validate_output.invalid_filter
-                else f"No devices matched the hardware validation filter ({filter_summary})."
-            )
             await self.archive_results()
             return HardwareValidationResult(
                 success=False,
                 devices_validated=0,
                 total_entries=0,
-                message=message,
+                message=devices_to_validate_output.display,
             )
 
         device_output = await self.get_device_info(

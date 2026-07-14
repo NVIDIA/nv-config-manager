@@ -134,7 +134,7 @@ def normalize_workflow_parameters(
     if "trigger" in fields and "trigger" not in normalized:
         normalized["trigger"] = "API"
 
-    if _tool_prompt_for_input_class(workflow.input_class) and not normalized.get("status"):
+    if _tool_prompt_for_input_class(workflow.input_class) and "status" not in normalized:
         normalized["status"] = DEFAULT_SITE_LEVEL_DEVICE_STATUS.copy()
 
     for field_name, field_info in fields.items():
