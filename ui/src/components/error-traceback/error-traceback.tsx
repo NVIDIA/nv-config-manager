@@ -232,7 +232,12 @@ const ErrorFrame = ({ frame }: { frame: TracebackFrame }) => (
 const ErrorWithCauses = ({ error }: { error: ParsedError }) => (
   <div className="mb-4">
     <div className="bg-red-50/50 dark:bg-red-950/10 p-4 border-l-4 border-red-500">
-      <div className="font-semibold text-red-700 dark:text-red-400 font-mono">{error.type}</div>
+      <div
+        data-testid="error-traceback-type"
+        className="font-semibold text-red-700 dark:text-red-400 font-mono"
+      >
+        {error.type}
+      </div>
       <div className="font-mono text-sm whitespace-pre-wrap mt-1">{error.message}</div>
     </div>
 
@@ -264,7 +269,7 @@ export function ErrorTracebackViewer({ error, className }: ErrorTracebackViewerP
   }
 
   return (
-    <Card className={cn("w-full overflow-hidden", className)}>
+    <Card data-testid="error-traceback-card" className={cn("w-full overflow-hidden", className)}>
       <CardHeader className="bg-red-50 dark:bg-red-950/20 border-b">
         <div className="flex items-center justify-between">
           <CardTitle className="text-red-700 dark:text-red-400">

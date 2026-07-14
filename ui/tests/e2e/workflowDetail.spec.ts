@@ -342,10 +342,8 @@ ServiceUnavailableError: service: retry later`;
 
     await page.goto(`/workflows/${workflowId}`);
 
-    const tracebackCard = page
-      .getByRole("heading", { name: "Traceback", level: 3 })
-      .locator("xpath=ancestor::div[contains(@class, 'rounded-lg')][1]");
-    const errorTypes = tracebackCard.locator(".border-l-4 > .font-semibold");
+    const tracebackCard = page.getByTestId("error-traceback-card");
+    const errorTypes = tracebackCard.getByTestId("error-traceback-type");
 
     await expect(errorTypes).toHaveText([
       "ServiceUnavailableError",
