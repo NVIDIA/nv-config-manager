@@ -150,6 +150,26 @@ def _run_kea_commands(
     return responses
 
 
+def _get_kea_dhcp4_config(namespace: str, pod: str) -> dict[str, Any]:
+    """Fetch the unsanitized running DHCPv4 config for ephemeral restoration."""
+    responses = _run_kea_commands(
+        namespace,
+        pod,
+        [{"command": "config-get", "service": ["dhcp4"]}],
+    )
+    if len(responses) != 1 or len(responses[0]) != 1:
+        pytest.fail("Kea config-get returned an unexpected response envelope")
+
+    response = responses[0][0]
+    if response.get("result") != 0:
+        pytest.fail(f"Kea config-get failed: {response.get('text', 'unknown error')}")
+    arguments = response.get("arguments")
+    dhcp4 = arguments.get("Dhcp4") if isinstance(arguments, dict) else None
+    if not isinstance(dhcp4, dict):
+        pytest.fail("Kea config-get response is missing Dhcp4")
+    return dhcp4
+
+
 def _fetch_lease_pages(
     dhcp_api_url: str,
     dhcp_client: requests.Session,
@@ -729,10 +749,9 @@ class TestDHCPAPI:
         """Traverse multi-page reservation and pool collections with exact totals."""
         print("\n=== Verifying DHCP reservation and pool pagination at scale ===")
 
-        config = self._wait_for_dhcp_data(dhcp_api_url, dhcp_client)
-        dhcp4 = self._extract_dhcp4_config(config)
-        if dhcp4 is None:
-            pytest.fail("No Dhcp4 configuration found")
+        self._wait_for_dhcp_data(dhcp_api_url, dhcp_client)
+        dhcp_pod = _get_dhcp_pod(config_manager_namespace)
+        dhcp4 = _get_kea_dhcp4_config(config_manager_namespace, dhcp_pod)
 
         original_dhcp4 = deepcopy(dhcp4)
         scaled_dhcp4, scale_subnet = _scaled_dhcp4_config(
@@ -744,7 +763,6 @@ class TestDHCPAPI:
             reservation["hostname"] for reservation in scale_config["reservations"]
         }
         seeded_pools = {pool["pool"] for pool in scale_config["pools"]}
-        dhcp_pod = _get_dhcp_pod(config_manager_namespace)
 
         try:
             _set_kea_dhcp4_config(config_manager_namespace, dhcp_pod, scaled_dhcp4)
