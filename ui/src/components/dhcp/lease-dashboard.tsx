@@ -379,7 +379,7 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
                   <TableRow>
                     <TableHead>IP address</TableHead>
                     <TableHead>Device</TableHead>
-                    <TableHead>Identifier</TableHead>
+                    <TableHead>MAC / client ID</TableHead>
                     <TableHead>Subnet</TableHead>
                     <TableHead>Expires</TableHead>
                     <TableHead className="w-14"><span className="sr-only">Actions</span></TableHead>
