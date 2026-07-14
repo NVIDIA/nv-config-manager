@@ -60,6 +60,30 @@ json.dump(responses, sys.stdout)
 
 def _get_dhcp_pod(namespace: str) -> str:
     """Return the live DHCP pod used by the ephemeral Kind integration cluster."""
+    deployment = subprocess.run(
+        [
+            "kubectl",
+            "get",
+            "deployments",
+            "-n",
+            namespace,
+            "-l",
+            "app.kubernetes.io/component=network-dhcp",
+            "-o",
+            "jsonpath={.items[0].spec.selector.matchLabels.app}",
+            "--request-timeout=15s",
+        ],
+        capture_output=True,
+        check=False,
+        text=True,
+        timeout=30,
+    )
+    if deployment.returncode != 0 or not deployment.stdout.strip():
+        pytest.fail(
+            "Could not find the DHCP deployment for lease scale setup: "
+            f"{deployment.stderr.strip() or 'empty kubectl response'}"
+        )
+
     result = subprocess.run(
         [
             "kubectl",
@@ -68,7 +92,7 @@ def _get_dhcp_pod(namespace: str) -> str:
             "-n",
             namespace,
             "-l",
-            "app.kubernetes.io/component=network-dhcp",
+            f"app={deployment.stdout.strip()}",
             "-o",
             "jsonpath={.items[0].metadata.name}",
             "--request-timeout=15s",
