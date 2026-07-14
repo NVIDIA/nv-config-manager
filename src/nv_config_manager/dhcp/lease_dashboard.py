@@ -14,23 +14,26 @@
 # limitations under the License.
 """Build the operator-facing DHCP lease dashboard response."""
 
+from __future__ import annotations
+
 from datetime import UTC, datetime
-from ipaddress import IPv4Address, ip_address, ip_network
+from ipaddress import ip_address, ip_network
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, IPvAnyAddress
 
-from nv_config_manager.dhcp.kea import KeaException
+from nv_config_manager.dhcp.kea import IpVersion, KeaException
 
 
 class LeaseRecord(BaseModel):
-    """Active IPv4 lease returned by KEA."""
+    """Active lease returned by the DHCP service."""
 
-    ip_address: IPv4Address
+    ip_address: IPvAnyAddress
     hostname: str = ""
     hw_address: str | None = None
     client_id: str | None = None
-    subnet_id: int
+    duid: str | None = None
+    subnet: str | None = None
     state: int
     cltt: int
     valid_lft: int
@@ -38,19 +41,18 @@ class LeaseRecord(BaseModel):
 
 
 class ReservationRecord(BaseModel):
-    """Configured IPv4 reservation."""
+    """Configured address reservation."""
 
-    ip_address: IPv4Address | None = None
+    ip_address: IPvAnyAddress | None = None
     hostname: str = ""
     identifier_type: str | None = None
     identifier: str | None = None
-    subnet_id: int | None = None
+    subnet: str | None = None
 
 
 class PoolUsage(BaseModel):
-    """Current allocation statistics for a configured IPv4 pool."""
+    """Current allocation statistics for a configured address pool."""
 
-    subnet_id: int
     subnet: str
     pool: str
     assigned: int
@@ -108,18 +110,17 @@ def _stat_value(statistics: dict[str, Any], name: str) -> int | None:
 
 
 def _pool_capacity(pool: str) -> int:
-    """Return the IPv4 capacity represented by a range or network."""
+    """Return the address capacity represented by a range or network."""
     try:
         if "-" in pool:
             start_text, end_text = (part.strip() for part in pool.split("-", maxsplit=1))
             start = ip_address(start_text)
             end = ip_address(end_text)
-            if not isinstance(start, IPv4Address) or not isinstance(end, IPv4Address):
+            if start.version != end.version:
                 return 0
             return max(int(end) - int(start) + 1, 0)
 
-        network = ip_network(pool.strip(), strict=False)
-        return network.num_addresses if network.version == 4 else 0
+        return ip_network(pool.strip(), strict=False).num_addresses
     except ValueError:
         return 0
 
@@ -134,8 +135,21 @@ def _expires_at(cltt: int, valid_lft: int) -> datetime | None:
         return None
 
 
-def _lease_records(raw_leases: Any) -> list[LeaseRecord]:
-    """Normalize and sort active, unexpired IPv4 leases."""
+def _subnet_prefixes(dhcp_config: dict[str, Any], ip_version: IpVersion) -> dict[int, str]:
+    """Map KEA's internal subnet identifiers to operator-facing prefixes."""
+    prefixes: dict[int, str] = {}
+    for subnet in dhcp_config.get(f"subnet{ip_version}", []):
+        if not isinstance(subnet, dict) or "id" not in subnet:
+            continue
+        try:
+            prefixes[int(subnet["id"])] = str(subnet.get("subnet", ""))
+        except (TypeError, ValueError):
+            continue
+    return prefixes
+
+
+def _lease_records(raw_leases: Any, subnet_prefixes: dict[int, str]) -> list[LeaseRecord]:
+    """Normalize and sort active, unexpired leases."""
     if not isinstance(raw_leases, list):
         return []
 
@@ -150,13 +164,15 @@ def _lease_records(raw_leases: Any) -> list[LeaseRecord]:
             state = int(raw_lease.get("state", 0))
             if state != 0 or cltt + valid_lft <= now:
                 continue
+            subnet_id = int(raw_lease["subnet-id"])
             leases.append(
                 LeaseRecord(
                     ip_address=raw_lease["ip-address"],
                     hostname=str(raw_lease.get("hostname", "")),
                     hw_address=raw_lease.get("hw-address"),
                     client_id=raw_lease.get("client-id"),
-                    subnet_id=int(raw_lease["subnet-id"]),
+                    duid=raw_lease.get("duid"),
+                    subnet=subnet_prefixes.get(subnet_id),
                     state=state,
                     cltt=cltt,
                     valid_lft=valid_lft,
@@ -168,43 +184,53 @@ def _lease_records(raw_leases: Any) -> list[LeaseRecord]:
     return sorted(leases, key=lambda lease: int(lease.ip_address))
 
 
-def _reservation_records(dhcp4: dict[str, Any]) -> list[ReservationRecord]:
+def _reservation_ip(reservation: dict[str, Any]) -> IPvAnyAddress | None:
+    """Return the first configured address from either DHCP reservation format."""
+    raw_ip = reservation.get("ip-address")
+    if raw_ip is None:
+        raw_ips = reservation.get("ip-addresses")
+        raw_ip = raw_ips[0] if isinstance(raw_ips, list) and raw_ips else None
+    try:
+        return ip_address(raw_ip) if raw_ip else None
+    except ValueError:
+        return None
+
+
+def _reservation_records(
+    dhcp_config: dict[str, Any],
+    ip_version: IpVersion,
+) -> list[ReservationRecord]:
     """Flatten global and subnet reservations into dashboard records."""
-    raw_reservations: list[tuple[dict[str, Any], int | None]] = []
-    for reservation in dhcp4.get("reservations", []):
+    raw_reservations: list[tuple[dict[str, Any], str | None]] = []
+    for reservation in dhcp_config.get("reservations", []):
         if isinstance(reservation, dict):
             raw_reservations.append((reservation, None))
 
-    for subnet in dhcp4.get("subnet4", []):
+    for subnet in dhcp_config.get(f"subnet{ip_version}", []):
         if not isinstance(subnet, dict):
             continue
-        subnet_id = subnet.get("id")
+        subnet_prefix = str(subnet.get("subnet", "")) or None
         for reservation in subnet.get("reservations", []):
             if isinstance(reservation, dict):
-                raw_reservations.append((reservation, subnet_id))
+                raw_reservations.append((reservation, subnet_prefix))
 
     records: list[ReservationRecord] = []
-    for reservation, subnet_id in raw_reservations:
+    for reservation, subnet_prefix in raw_reservations:
         identifier_type = next(
             (
                 key
-                for key in ("hw-address", "client-id", "circuit-id", "flex-id")
+                for key in ("hw-address", "client-id", "duid", "circuit-id", "flex-id")
                 if reservation.get(key)
             ),
             None,
         )
-        raw_ip = reservation.get("ip-address")
-        try:
-            reservation_ip = IPv4Address(raw_ip) if raw_ip else None
-        except ValueError:
-            reservation_ip = None
         records.append(
             ReservationRecord(
-                ip_address=reservation_ip,
+                ip_address=_reservation_ip(reservation),
                 hostname=str(reservation.get("hostname", "")),
                 identifier_type=identifier_type,
                 identifier=str(reservation[identifier_type]) if identifier_type else None,
-                subnet_id=int(subnet_id) if subnet_id is not None else None,
+                subnet=subnet_prefix,
             )
         )
 
@@ -217,10 +243,16 @@ def _reservation_records(dhcp4: dict[str, Any]) -> list[ReservationRecord]:
     )
 
 
-def _pool_usage(dhcp4: dict[str, Any], statistics: dict[str, Any]) -> list[PoolUsage]:
+def _pool_usage(
+    dhcp_config: dict[str, Any],
+    statistics: dict[str, Any],
+    ip_version: IpVersion,
+) -> list[PoolUsage]:
     """Combine configured pools with their current KEA statistics."""
     pools: list[PoolUsage] = []
-    for subnet in dhcp4.get("subnet4", []):
+    assigned_stat = "assigned-addresses" if ip_version == 4 else "assigned-nas"
+    total_stat = "total-addresses" if ip_version == 4 else "total-nas"
+    for subnet in dhcp_config.get(f"subnet{ip_version}", []):
         if not isinstance(subnet, dict) or "id" not in subnet:
             continue
         subnet_id = int(subnet["id"])
@@ -230,14 +262,13 @@ def _pool_usage(dhcp4: dict[str, Any], statistics: dict[str, Any]) -> list[PoolU
                 continue
             pool_name = str(pool_config["pool"])
             prefix = f"subnet[{subnet_id}].pool[{pool_index}]"
-            assigned = _stat_value(statistics, f"{prefix}.assigned-addresses") or 0
-            total = _stat_value(statistics, f"{prefix}.total-addresses")
+            assigned = _stat_value(statistics, f"{prefix}.{assigned_stat}") or 0
+            total = _stat_value(statistics, f"{prefix}.{total_stat}")
             if total is None:
                 total = _pool_capacity(pool_name)
             utilization = round(min(assigned / total * 100, 100.0) if total else 0.0, 1)
             pools.append(
                 PoolUsage(
-                    subnet_id=subnet_id,
                     subnet=subnet_name,
                     pool=pool_name,
                     assigned=assigned,
@@ -248,26 +279,91 @@ def _pool_usage(dhcp4: dict[str, Any], statistics: dict[str, Any]) -> list[PoolU
     return pools
 
 
+def _dhcp_config(
+    config_payload: list[dict[str, Any]],
+    ip_version: IpVersion,
+) -> dict[str, Any]:
+    """Return the selected DHCP configuration from a KEA response."""
+    config = _response_arguments(config_payload, "config-get")
+    key = f"Dhcp{ip_version}"
+    dhcp_config = config.get(key)
+    if not isinstance(dhcp_config, dict):
+        raise KeaException(f"KEA config-get response is missing {key}")
+    return dhcp_config
+
+
+def build_lease_list(
+    config_payload: list[dict[str, Any]],
+    lease_payload: list[dict[str, Any]],
+    *,
+    ip_version: IpVersion,
+) -> list[LeaseRecord]:
+    """Build normalized active leases from KEA configuration and lease responses."""
+    dhcp_config = _dhcp_config(config_payload, ip_version)
+    lease_arguments = _response_arguments(
+        lease_payload,
+        f"lease{ip_version}-get-page",
+        allow_empty=True,
+    )
+    return _lease_records(
+        lease_arguments.get("leases", []),
+        _subnet_prefixes(dhcp_config, ip_version),
+    )
+
+
+def build_lease(
+    config_payload: list[dict[str, Any]],
+    lease_payload: list[dict[str, Any]],
+    *,
+    ip_version: IpVersion,
+) -> LeaseRecord | None:
+    """Build one normalized active lease, returning none when it is not found."""
+    dhcp_config = _dhcp_config(config_payload, ip_version)
+    lease_arguments = _response_arguments(
+        lease_payload,
+        f"lease{ip_version}-get",
+        allow_empty=True,
+    )
+    raw_leases = lease_arguments.get("leases", []) if ip_version == IpVersion.V6 else []
+    if ip_version == IpVersion.V4 and lease_arguments:
+        raw_leases = [lease_arguments]
+    records = _lease_records(raw_leases, _subnet_prefixes(dhcp_config, ip_version))
+    return records[0] if records else None
+
+
+def lease_deleted(delete_payload: list[dict[str, Any]], *, ip_version: IpVersion) -> bool:
+    """Validate a KEA delete response and report whether a lease was found."""
+    if delete_payload and delete_payload[0].get("result") == 3:
+        return False
+    _response_arguments(delete_payload, f"lease{ip_version}-del")
+    return True
+
+
 def build_lease_dashboard(
     config_payload: list[dict[str, Any]],
     lease_payload: list[dict[str, Any]],
     statistics_payload: list[dict[str, Any]],
     *,
     limit: int,
+    ip_version: IpVersion = IpVersion.V4,
 ) -> LeaseDashboardResponse:
     """Convert KEA command responses into the bounded dashboard response."""
-    config = _response_arguments(config_payload, "config-get")
-    dhcp4 = config.get("Dhcp4")
-    if not isinstance(dhcp4, dict):
-        raise KeaException("KEA config-get response is missing Dhcp4")
-
-    lease_arguments = _response_arguments(lease_payload, "lease4-get-page", allow_empty=True)
+    dhcp_config = _dhcp_config(config_payload, ip_version)
+    lease_arguments = _response_arguments(
+        lease_payload,
+        f"lease{ip_version}-get-page",
+        allow_empty=True,
+    )
     statistics = _response_arguments(statistics_payload, "statistic-get-all")
 
-    leases = _lease_records(lease_arguments.get("leases", []))
-    reservations = _reservation_records(dhcp4)
-    pools = _pool_usage(dhcp4, statistics)
-    assigned_count = _stat_value(statistics, "assigned-addresses")
+    leases = _lease_records(
+        lease_arguments.get("leases", []),
+        _subnet_prefixes(dhcp_config, ip_version),
+    )
+    reservations = _reservation_records(dhcp_config, ip_version)
+    pools = _pool_usage(dhcp_config, statistics, ip_version)
+    assigned_stat = "assigned-addresses" if ip_version == 4 else "assigned-nas"
+    assigned_count = _stat_value(statistics, assigned_stat)
     if assigned_count is None:
         assigned_count = sum(pool.assigned for pool in pools)
     # KEA's global assigned count can include leases filtered from the active,

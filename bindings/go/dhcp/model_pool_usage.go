@@ -19,12 +19,11 @@ import (
 // checks if the PoolUsage type satisfies the MappedNullable interface at compile time
 var _ MappedNullable = &PoolUsage{}
 
-// PoolUsage Current allocation statistics for a configured IPv4 pool.
+// PoolUsage Current allocation statistics for a configured address pool.
 type PoolUsage struct {
 	Assigned    int32   `json:"assigned"`
 	Pool        string  `json:"pool"`
 	Subnet      string  `json:"subnet"`
-	SubnetId    int32   `json:"subnet_id"`
 	Total       int32   `json:"total"`
 	Utilization float32 `json:"utilization"`
 }
@@ -35,12 +34,11 @@ type _PoolUsage PoolUsage
 // This constructor will assign default values to properties that have it defined,
 // and makes sure properties required by API are set, but the set of arguments
 // will change when the set of required properties is changed
-func NewPoolUsage(assigned int32, pool string, subnet string, subnetId int32, total int32, utilization float32) *PoolUsage {
+func NewPoolUsage(assigned int32, pool string, subnet string, total int32, utilization float32) *PoolUsage {
 	this := PoolUsage{}
 	this.Assigned = assigned
 	this.Pool = pool
 	this.Subnet = subnet
-	this.SubnetId = subnetId
 	this.Total = total
 	this.Utilization = utilization
 	return &this
@@ -126,30 +124,6 @@ func (o *PoolUsage) SetSubnet(v string) {
 	o.Subnet = v
 }
 
-// GetSubnetId returns the SubnetId field value
-func (o *PoolUsage) GetSubnetId() int32 {
-	if o == nil {
-		var ret int32
-		return ret
-	}
-
-	return o.SubnetId
-}
-
-// GetSubnetIdOk returns a tuple with the SubnetId field value
-// and a boolean to check if the value has been set.
-func (o *PoolUsage) GetSubnetIdOk() (*int32, bool) {
-	if o == nil {
-		return nil, false
-	}
-	return &o.SubnetId, true
-}
-
-// SetSubnetId sets field value
-func (o *PoolUsage) SetSubnetId(v int32) {
-	o.SubnetId = v
-}
-
 // GetTotal returns the Total field value
 func (o *PoolUsage) GetTotal() int32 {
 	if o == nil {
@@ -211,7 +185,6 @@ func (o PoolUsage) ToMap() (map[string]interface{}, error) {
 	toSerialize["assigned"] = o.Assigned
 	toSerialize["pool"] = o.Pool
 	toSerialize["subnet"] = o.Subnet
-	toSerialize["subnet_id"] = o.SubnetId
 	toSerialize["total"] = o.Total
 	toSerialize["utilization"] = o.Utilization
 	return toSerialize, nil
@@ -225,7 +198,6 @@ func (o *PoolUsage) UnmarshalJSON(data []byte) (err error) {
 		"assigned":    false,
 		"pool":        false,
 		"subnet":      false,
-		"subnet_id":   false,
 		"total":       false,
 		"utilization": false,
 	}

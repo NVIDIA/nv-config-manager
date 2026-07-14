@@ -18,36 +18,43 @@ from aiohttp import ClientResponseError
 from aioresponses import aioresponses
 from yarl import URL
 
-from nv_config_manager.dhcp.kea import KeaClient, LeaseCommand
+from nv_config_manager.dhcp.kea import KeaClient
 
 
-@pytest.mark.parametrize("command", ["lease4-get", "lease4-del"])
-async def test_lease_command_forwards_restricted_kea_request(command: LeaseCommand) -> None:
-    """Verify lease commands are sent to KEA using its control-agent envelope."""
+@pytest.mark.parametrize(
+    ("method_name", "operation"),
+    [("get_lease", "get"), ("delete_lease", "del")],
+)
+async def test_lease_methods_wrap_kea_requests(method_name: str, operation: str) -> None:
+    """Verify domain lease methods hide KEA's control-agent envelope."""
     response = [{"result": 0, "text": "success"}]
 
     with aioresponses() as mocked:
         mocked.post("http://kea.example.com:8000/", payload=response)
         async with KeaClient(host="kea.example.com", port=8000) as client:
-            result = await client.lease_command(command, "7.245.196.5")
+            method = getattr(client, method_name)
+            result = await method("2001:db8::5", version=6)
 
         request = mocked.requests[("POST", URL("http://kea.example.com:8000/"))][0]
 
     assert result == response
     assert request.kwargs["json"] == {
-        "command": command,
-        "service": ["dhcp4"],
-        "arguments": {"ip-address": "7.245.196.5"},
+        "command": f"lease6-{operation}",
+        "service": ["dhcp6"],
+        "arguments": {
+            "ip-address": "2001:db8::5",
+            **({"type": "IA_NA"} if operation == "get" else {}),
+        },
     }
 
 
-async def test_lease_command_raises_for_kea_http_error() -> None:
+async def test_get_lease_raises_for_kea_http_error() -> None:
     """Verify non-success KEA transport responses are not silently returned."""
     with aioresponses() as mocked:
         mocked.post("http://kea.example.com:8000/", status=503)
         async with KeaClient(host="kea.example.com", port=8000) as client:
             with pytest.raises(ClientResponseError) as exc_info:
-                await client.lease_command("lease4-get", "7.245.196.5")
+                await client.get_lease("7.245.196.5")
 
     assert exc_info.value.status == 503
 
@@ -59,14 +66,14 @@ async def test_get_lease_page_forwards_bounded_request() -> None:
     with aioresponses() as mocked:
         mocked.post("http://kea.example.com:8000/", payload=response)
         async with KeaClient(host="kea.example.com", port=8000) as client:
-            result = await client.get_lease_page(limit=75)
+            result = await client.get_lease_page(limit=75, version=6)
 
         request = mocked.requests[("POST", URL("http://kea.example.com:8000/"))][0]
 
     assert result == response
     assert request.kwargs["json"] == {
-        "command": "lease4-get-page",
-        "service": ["dhcp4"],
+        "command": "lease6-get-page",
+        "service": ["dhcp6"],
         "arguments": {"from": "start", "limit": 75},
     }
 

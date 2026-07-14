@@ -16,8 +16,7 @@
 
 import argparse
 import asyncio
-from ipaddress import IPv4Address
-from typing import Any, Literal
+from typing import Any
 
 import uvicorn
 from aiohttp import ClientError, ClientResponseError
@@ -26,15 +25,19 @@ from fastapi.responses import Response
 from prometheus_client import CONTENT_TYPE_LATEST, Gauge, generate_latest
 from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_fastapi_instrumentator import metrics as instrumentator_metrics
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import IPvAnyAddress
 
 from nv_config_manager.common.auth import install_identity_probe
 from nv_config_manager.common.config import load_config
 from nv_config_manager.common.log import configure_logging
-from nv_config_manager.dhcp.kea import KeaClient, KeaException, LeaseCommand
+from nv_config_manager.dhcp.kea import IpVersion, KeaClient, KeaException
 from nv_config_manager.dhcp.lease_dashboard import (
     LeaseDashboardResponse,
+    LeaseRecord,
+    build_lease,
     build_lease_dashboard,
+    build_lease_list,
+    lease_deleted,
 )
 from nv_config_manager.dhcp.redis import RedisClient
 
@@ -60,32 +63,15 @@ instrumentator.add(
 instrumentator.instrument(app)
 
 
-class LeaseArguments(BaseModel):
-    """Arguments accepted by the supported KEA lease commands."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    ip_address: IPv4Address = Field(alias="ip-address")
-
-
-class LeaseRequest(BaseModel):
-    """Restricted KEA command envelope for IPv4 lease operations."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    command: LeaseCommand
-    service: list[Literal["dhcp4"]] = Field(min_length=1, max_length=1)
-    arguments: LeaseArguments
-
-
 async def _fetch_lease_dashboard_sources(
     client: KeaClient,
     limit: int,
+    ip_version: IpVersion,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
     """Fetch dashboard sources and drain every task before returning or raising."""
-    config_task = asyncio.create_task(client.get_config(4))
-    leases_task = asyncio.create_task(client.get_lease_page(limit))
-    statistics_task = asyncio.create_task(client.get_statistics(4))
+    config_task = asyncio.create_task(client.get_config(ip_version))
+    leases_task = asyncio.create_task(client.get_lease_page(limit, version=ip_version))
+    statistics_task = asyncio.create_task(client.get_statistics(ip_version))
     tasks = (config_task, leases_task, statistics_task)
     try:
         return await asyncio.gather(*tasks)
@@ -95,6 +81,15 @@ async def _fetch_lease_dashboard_sources(
                 task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
         raise
+
+
+def _validate_address_version(ip_address: IPvAnyAddress, ip_version: IpVersion) -> None:
+    """Require an address that matches the selected DHCP service version."""
+    if ip_address.version != ip_version:
+        raise HTTPException(
+            status_code=422,
+            detail=f"IP address version does not match ip_version={ip_version}",
+        )
 
 
 def main() -> None:
@@ -142,20 +137,87 @@ async def get_config(request: Request, ip_version: int = 4) -> Any:
         await client.close()
 
 
-@app.post("/lease")
-async def proxy_lease_command(request: Request, lease_request: LeaseRequest) -> Any:
-    """Proxy a supported IPv4 lease command to KEA."""
+@app.get("/lease", response_model=LeaseRecord)
+async def get_lease(
+    request: Request,
+    ip_address: IPvAnyAddress,
+    ip_version: IpVersion = IpVersion.V4,
+) -> LeaseRecord:
+    """Return one normalized lease from the selected DHCP service."""
+    _validate_address_version(ip_address, ip_version)
     client = KeaClient.from_config()
     try:
-        return await client.lease_command(
-            lease_request.command,
-            str(lease_request.arguments.ip_address),
+        lease_payload = await client.get_lease(str(ip_address), version=ip_version)
+        config_payload = await client.get_config(ip_version)
+        lease = build_lease(
+            config_payload,
+            lease_payload,
+            ip_version=ip_version,
+        )
+        if lease is None:
+            raise HTTPException(status_code=404, detail=f"Lease {ip_address} was not found")
+        return lease
+    except TimeoutError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except ClientResponseError as exc:
+        raise HTTPException(status_code=500, detail=str(exc.message)) from exc
+    except ClientError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except KeaException as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    finally:
+        await client.close()
+
+
+@app.get("/leases", response_model=list[LeaseRecord])
+async def list_leases(
+    request: Request,
+    ip_version: IpVersion = IpVersion.V4,
+    limit: int = Query(default=100, ge=1, le=500),
+) -> list[LeaseRecord]:
+    """Return a bounded list of normalized leases."""
+    client = KeaClient.from_config()
+    try:
+        lease_payload = await client.get_lease_page(limit, version=ip_version)
+        config_payload = await client.get_config(ip_version)
+        return build_lease_list(
+            config_payload,
+            lease_payload,
+            ip_version=ip_version,
         )
     except TimeoutError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     except ClientResponseError as exc:
         raise HTTPException(status_code=500, detail=str(exc.message)) from exc
     except ClientError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except KeaException as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    finally:
+        await client.close()
+
+
+@app.delete("/lease", status_code=204)
+async def delete_lease(
+    request: Request,
+    ip_address: IPvAnyAddress,
+    ip_version: IpVersion = IpVersion.V4,
+) -> Response:
+    """Delete one lease from the selected DHCP service."""
+    _validate_address_version(ip_address, ip_version)
+    client = KeaClient.from_config()
+    try:
+        delete_payload = await client.delete_lease(str(ip_address), version=ip_version)
+        if not lease_deleted(delete_payload, ip_version=ip_version):
+            raise HTTPException(status_code=404, detail=f"Lease {ip_address} was not found")
+        return Response(status_code=204)
+    except TimeoutError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except ClientResponseError as exc:
+        raise HTTPException(status_code=500, detail=str(exc.message)) from exc
+    except ClientError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except KeaException as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     finally:
         await client.close()
@@ -164,13 +226,24 @@ async def proxy_lease_command(request: Request, lease_request: LeaseRequest) -> 
 @app.get("/lease-dashboard", response_model=LeaseDashboardResponse)
 async def get_lease_dashboard(
     request: Request,
+    ip_version: IpVersion = IpVersion.V4,
     limit: int = Query(default=100, ge=1, le=500),
 ) -> LeaseDashboardResponse:
     """Return bounded lease, reservation, and pool data for operators."""
     client = KeaClient.from_config()
     try:
-        config, leases, statistics = await _fetch_lease_dashboard_sources(client, limit)
-        return build_lease_dashboard(config, leases, statistics, limit=limit)
+        config, leases, statistics = await _fetch_lease_dashboard_sources(
+            client,
+            limit,
+            ip_version,
+        )
+        return build_lease_dashboard(
+            config,
+            leases,
+            statistics,
+            limit=limit,
+            ip_version=ip_version,
+        )
     except TimeoutError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     except ClientResponseError as exc:

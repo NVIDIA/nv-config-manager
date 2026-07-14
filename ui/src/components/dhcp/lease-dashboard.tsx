@@ -250,7 +250,8 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
             lease.hostname,
             lease.hw_address,
             lease.client_id,
-            lease.subnet_id,
+            lease.duid,
+            lease.subnet,
           ],
           normalizedSearch,
         ),
@@ -264,7 +265,7 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
             reservation.hostname,
             reservation.identifier_type,
             reservation.identifier,
-            reservation.subnet_id,
+            reservation.subnet,
           ],
           normalizedSearch,
         ),
@@ -273,7 +274,7 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
   const filteredPools = normalizedSearch
     ? data.pools.filter((pool) =>
         matchesSearch(
-          [pool.subnet_id, pool.subnet, pool.pool],
+          [pool.subnet, pool.pool],
           normalizedSearch,
         ),
       )
@@ -288,7 +289,7 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
               <Network className="h-6 w-6 text-primary" /> DHCP lease activity
             </CardTitle>
             <CardDescription className="mt-2">
-              Live IPv4 allocations, configured reservations, and pool capacity.
+              Live address allocations, configured reservations, and pool capacity.
             </CardDescription>
           </div>
           <Button
@@ -369,7 +370,7 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
                 message={
                   normalizedSearch
                     ? `No active leases match “${searchQuery.trim()}”.`
-                    : "No active IPv4 leases."
+                    : "No active leases."
                 }
               />
             ) : (
@@ -390,9 +391,11 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
                       <TableCell className="font-mono font-medium">{lease.ip_address}</TableCell>
                       <TableCell>{lease.hostname || "Unknown device"}</TableCell>
                       <TableCell className="font-mono text-xs">
-                        {lease.hw_address || lease.client_id || "—"}
+                        {lease.hw_address || lease.client_id || lease.duid || "—"}
                       </TableCell>
-                      <TableCell><Badge variant="outline">#{lease.subnet_id}</Badge></TableCell>
+                      <TableCell>
+                        {lease.subnet ? <Badge variant="outline">{lease.subnet}</Badge> : "—"}
+                      </TableCell>
                       <TableCell className="whitespace-nowrap">{formatExpiry(lease.expires_at)}</TableCell>
                       <TableCell>
                         <Button
@@ -418,7 +421,7 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
                 message={
                   normalizedSearch
                     ? `No reservations match “${searchQuery.trim()}”.`
-                    : "No IPv4 reservations are configured."
+                    : "No reservations are configured."
                 }
               />
             ) : (
@@ -439,7 +442,7 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
                       <TableCell>{reservation.hostname || "—"}</TableCell>
                       <TableCell>{reservation.identifier_type || "—"}</TableCell>
                       <TableCell className="font-mono text-xs">{reservation.identifier || "—"}</TableCell>
-                      <TableCell>{reservation.subnet_id == null ? "Global" : `#${reservation.subnet_id}`}</TableCell>
+                      <TableCell>{reservation.subnet || "Global"}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -453,7 +456,7 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
                 message={
                   normalizedSearch
                     ? `No pools match “${searchQuery.trim()}”.`
-                    : "No IPv4 pools are configured."
+                    : "No address pools are configured."
                 }
               />
             ) : (
@@ -469,11 +472,8 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
                 </TableHeader>
                 <TableBody>
                   {filteredPools.map((pool) => (
-                    <TableRow key={`${pool.subnet_id}-${pool.pool}`}>
-                      <TableCell>
-                        <div className="font-medium">{pool.subnet}</div>
-                        <div className="text-xs text-muted-foreground">Subnet #{pool.subnet_id}</div>
-                      </TableCell>
+                    <TableRow key={`${pool.subnet}-${pool.pool}`}>
+                      <TableCell className="font-medium">{pool.subnet}</TableCell>
                       <TableCell className="font-mono text-xs">{pool.pool}</TableCell>
                       <TableCell>{pool.assigned.toLocaleString()}</TableCell>
                       <TableCell>{pool.total.toLocaleString()}</TableCell>

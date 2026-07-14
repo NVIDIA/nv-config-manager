@@ -20,16 +20,17 @@ import (
 // checks if the LeaseRecord type satisfies the MappedNullable interface at compile time
 var _ MappedNullable = &LeaseRecord{}
 
-// LeaseRecord Active IPv4 lease returned by KEA.
+// LeaseRecord Active lease returned by the DHCP service.
 type LeaseRecord struct {
 	ClientId  NullableString `json:"client_id,omitempty"`
 	Cltt      int32          `json:"cltt"`
+	Duid      NullableString `json:"duid,omitempty"`
 	ExpiresAt NullableTime   `json:"expires_at"`
 	Hostname  *string        `json:"hostname,omitempty"`
 	HwAddress NullableString `json:"hw_address,omitempty"`
 	IpAddress string         `json:"ip_address"`
 	State     int32          `json:"state"`
-	SubnetId  int32          `json:"subnet_id"`
+	Subnet    NullableString `json:"subnet,omitempty"`
 	ValidLft  int32          `json:"valid_lft"`
 }
 
@@ -39,7 +40,7 @@ type _LeaseRecord LeaseRecord
 // This constructor will assign default values to properties that have it defined,
 // and makes sure properties required by API are set, but the set of arguments
 // will change when the set of required properties is changed
-func NewLeaseRecord(cltt int32, expiresAt NullableTime, ipAddress string, state int32, subnetId int32, validLft int32) *LeaseRecord {
+func NewLeaseRecord(cltt int32, expiresAt NullableTime, ipAddress string, state int32, validLft int32) *LeaseRecord {
 	this := LeaseRecord{}
 	this.Cltt = cltt
 	this.ExpiresAt = expiresAt
@@ -47,7 +48,6 @@ func NewLeaseRecord(cltt int32, expiresAt NullableTime, ipAddress string, state 
 	this.Hostname = &hostname
 	this.IpAddress = ipAddress
 	this.State = state
-	this.SubnetId = subnetId
 	this.ValidLft = validLft
 	return &this
 }
@@ -129,6 +129,51 @@ func (o *LeaseRecord) GetClttOk() (*int32, bool) {
 // SetCltt sets field value
 func (o *LeaseRecord) SetCltt(v int32) {
 	o.Cltt = v
+}
+
+// GetDuid returns the Duid field value if set, zero value otherwise (both if not set or set to explicit null).
+func (o *LeaseRecord) GetDuid() string {
+	if o == nil || IsNil(o.Duid.Get()) {
+		var ret string
+		return ret
+	}
+	return *o.Duid.Get()
+}
+
+// GetDuidOk returns a tuple with the Duid field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+
+// NOTE: If the value is an explicit nil, `nil, true` will be returned
+
+func (o *LeaseRecord) GetDuidOk() (*string, bool) {
+	if o == nil {
+		return nil, false
+	}
+	return o.Duid.Get(), o.Duid.IsSet()
+}
+
+// HasDuid returns a boolean if a field has been set.
+func (o *LeaseRecord) HasDuid() bool {
+	if o != nil && o.Duid.IsSet() {
+		return true
+	}
+
+	return false
+}
+
+// SetDuid gets a reference to the given NullableString and assigns it to the Duid field.
+func (o *LeaseRecord) SetDuid(v string) {
+	o.Duid.Set(&v)
+}
+
+// SetDuidNil sets the value for Duid to be an explicit nil
+func (o *LeaseRecord) SetDuidNil() {
+	o.Duid.Set(nil)
+}
+
+// UnsetDuid ensures that no value is present for Duid, not even an explicit nil
+func (o *LeaseRecord) UnsetDuid() {
+	o.Duid.Unset()
 }
 
 // GetExpiresAt returns the ExpiresAt field value
@@ -283,28 +328,49 @@ func (o *LeaseRecord) SetState(v int32) {
 	o.State = v
 }
 
-// GetSubnetId returns the SubnetId field value
-func (o *LeaseRecord) GetSubnetId() int32 {
-	if o == nil {
-		var ret int32
+// GetSubnet returns the Subnet field value if set, zero value otherwise (both if not set or set to explicit null).
+func (o *LeaseRecord) GetSubnet() string {
+	if o == nil || IsNil(o.Subnet.Get()) {
+		var ret string
 		return ret
 	}
-
-	return o.SubnetId
+	return *o.Subnet.Get()
 }
 
-// GetSubnetIdOk returns a tuple with the SubnetId field value
+// GetSubnetOk returns a tuple with the Subnet field value if set, nil otherwise
 // and a boolean to check if the value has been set.
-func (o *LeaseRecord) GetSubnetIdOk() (*int32, bool) {
+
+// NOTE: If the value is an explicit nil, `nil, true` will be returned
+
+func (o *LeaseRecord) GetSubnetOk() (*string, bool) {
 	if o == nil {
 		return nil, false
 	}
-	return &o.SubnetId, true
+	return o.Subnet.Get(), o.Subnet.IsSet()
 }
 
-// SetSubnetId sets field value
-func (o *LeaseRecord) SetSubnetId(v int32) {
-	o.SubnetId = v
+// HasSubnet returns a boolean if a field has been set.
+func (o *LeaseRecord) HasSubnet() bool {
+	if o != nil && o.Subnet.IsSet() {
+		return true
+	}
+
+	return false
+}
+
+// SetSubnet gets a reference to the given NullableString and assigns it to the Subnet field.
+func (o *LeaseRecord) SetSubnet(v string) {
+	o.Subnet.Set(&v)
+}
+
+// SetSubnetNil sets the value for Subnet to be an explicit nil
+func (o *LeaseRecord) SetSubnetNil() {
+	o.Subnet.Set(nil)
+}
+
+// UnsetSubnet ensures that no value is present for Subnet, not even an explicit nil
+func (o *LeaseRecord) UnsetSubnet() {
+	o.Subnet.Unset()
 }
 
 // GetValidLft returns the ValidLft field value
@@ -345,6 +411,9 @@ func (o LeaseRecord) ToMap() (map[string]interface{}, error) {
 		toSerialize["client_id"] = o.ClientId.Get()
 	}
 	toSerialize["cltt"] = o.Cltt
+	if o.Duid.IsSet() {
+		toSerialize["duid"] = o.Duid.Get()
+	}
 	toSerialize["expires_at"] = o.ExpiresAt.Get()
 	if !IsNil(o.Hostname) {
 		toSerialize["hostname"] = o.Hostname
@@ -354,7 +423,9 @@ func (o LeaseRecord) ToMap() (map[string]interface{}, error) {
 	}
 	toSerialize["ip_address"] = o.IpAddress
 	toSerialize["state"] = o.State
-	toSerialize["subnet_id"] = o.SubnetId
+	if o.Subnet.IsSet() {
+		toSerialize["subnet"] = o.Subnet.Get()
+	}
 	toSerialize["valid_lft"] = o.ValidLft
 	return toSerialize, nil
 }
@@ -368,7 +439,6 @@ func (o *LeaseRecord) UnmarshalJSON(data []byte) (err error) {
 		"expires_at": true,
 		"ip_address": false,
 		"state":      false,
-		"subnet_id":  false,
 		"valid_lft":  false,
 	}
 

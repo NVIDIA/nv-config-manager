@@ -80,20 +80,15 @@ MIN_UNSYNCED_CONFIG = [
     }
 ]
 
-LEASE_GET_REQUEST = {
-    "command": "lease4-get",
-    "service": ["dhcp4"],
-    "arguments": {"ip-address": "7.245.196.5"},
-}
-
 LEASE_GET_RESPONSE = [
     {
         "arguments": {
+            "cltt": int(time.time()) - 60,
             "hostname": "",
             "hw-address": "02:05:91:48:df:cf",
-            "ip-address": "7.245.196.5",
+            "ip-address": "10.0.0.10",
             "state": 0,
-            "subnet-id": 104,
+            "subnet-id": 7,
             "valid-lft": 7200,
         },
         "result": 0,
@@ -426,78 +421,130 @@ def test_get_config_error():
             assert rsp.json() == {"detail": "HTTP ERROR"}
 
 
-def test_proxy_lease_get():
-    """Verify POST /lease proxies a lease4-get command."""
+def test_get_lease():
+    """Return one normalized lease without exposing KEA's command envelope."""
+    client = TestClient(app)
+
+    with (
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_lease",
+            new_callable=AsyncMock,
+            return_value=LEASE_GET_RESPONSE,
+        ) as mock_get_lease,
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_config",
+            new_callable=AsyncMock,
+            return_value=LEASE_DASHBOARD_CONFIG,
+        ) as mock_get_config,
+        patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED),
+    ):
+        rsp = client.get("/lease?ip_address=10.0.0.10&ip_version=4")
+        assert rsp.status_code == 403
+
+        rsp = client.get(
+            "/lease?ip_address=10.0.0.10&ip_version=4",
+            headers={"X-Auth-Request-Email": "test@example.com"},
+        )
+
+    assert rsp.status_code == 200
+    assert rsp.json()["ip_address"] == "10.0.0.10"
+    assert rsp.json()["subnet"] == "10.0.0.0/24"
+    assert "result" not in rsp.json()
+    assert "subnet_id" not in rsp.json()
+    mock_get_lease.assert_awaited_once_with("10.0.0.10", version=4)
+    mock_get_config.assert_awaited_once_with(4)
+
+
+def test_get_lease_not_found():
+    """Translate KEA's empty result into a RESTful not-found response."""
+    client = TestClient(app)
+
+    with (
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_lease",
+            new_callable=AsyncMock,
+            return_value=[{"result": 3, "text": "Lease not found."}],
+        ),
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_config",
+            new_callable=AsyncMock,
+            return_value=LEASE_DASHBOARD_CONFIG,
+        ),
+        patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED),
+    ):
+        rsp = client.get(
+            "/lease?ip_address=10.0.0.99&ip_version=4",
+            headers={"X-Auth-Request-Email": "test@example.com"},
+        )
+
+    assert rsp.status_code == 404
+    assert rsp.json() == {"detail": "Lease 10.0.0.99 was not found"}
+
+
+def test_list_leases():
+    """Return a bounded normalized lease collection."""
+    client = TestClient(app)
+    lease_page = [{"result": 0, "arguments": {"leases": [LEASE_GET_RESPONSE[0]["arguments"]]}}]
+
+    with (
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_lease_page",
+            new_callable=AsyncMock,
+            return_value=lease_page,
+        ) as mock_get_lease_page,
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_config",
+            new_callable=AsyncMock,
+            return_value=LEASE_DASHBOARD_CONFIG,
+        ),
+        patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED),
+    ):
+        rsp = client.get(
+            "/leases?ip_version=4&limit=25",
+            headers={"X-Auth-Request-Email": "test@example.com"},
+        )
+
+    assert rsp.status_code == 200
+    assert len(rsp.json()) == 1
+    assert rsp.json()[0]["subnet"] == "10.0.0.0/24"
+    mock_get_lease_page.assert_awaited_once_with(25, version=4)
+
+
+def test_delete_lease():
+    """Delete a lease through the domain API without returning KEA's body."""
     client = TestClient(app)
 
     with patch(
-        "nv_config_manager.dhcp.api.KeaClient.lease_command",
+        "nv_config_manager.dhcp.api.KeaClient.delete_lease",
         new_callable=AsyncMock,
-        return_value=LEASE_GET_RESPONSE,
-    ) as mock_lease_command:
+        return_value=[{"result": 0, "text": "Lease deleted."}],
+    ) as mock_delete_lease:
         with patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED):
-            rsp = client.post("/lease", json=LEASE_GET_REQUEST)
-            assert rsp.status_code == 403
-
-            rsp = client.post(
-                "/lease",
-                json=LEASE_GET_REQUEST,
+            rsp = client.delete(
+                "/lease?ip_address=10.0.0.10&ip_version=4",
                 headers={"X-Auth-Request-Email": "test@example.com"},
             )
 
-    assert rsp.status_code == 200
-    assert rsp.json() == LEASE_GET_RESPONSE
-    mock_lease_command.assert_awaited_once_with("lease4-get", "7.245.196.5")
+    assert rsp.status_code == 204
+    assert not rsp.content
+    mock_delete_lease.assert_awaited_once_with("10.0.0.10", version=4)
 
 
-def test_proxy_lease_delete():
-    """Verify POST /lease proxies a lease4-del command."""
-    client = TestClient(app)
-    request = {
-        "command": "lease4-del",
-        "service": ["dhcp4"],
-        "arguments": {"ip-address": "7.245.196.5"},
-    }
-    response = [{"result": 0, "text": "IPv4 lease deleted."}]
-
-    with patch(
-        "nv_config_manager.dhcp.api.KeaClient.lease_command",
-        new_callable=AsyncMock,
-        return_value=response,
-    ) as mock_lease_command:
-        with patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED):
-            rsp = client.post(
-                "/lease",
-                json=request,
-                headers={"X-Auth-Request-Email": "test@example.com"},
-            )
-
-    assert rsp.status_code == 200
-    assert rsp.json() == response
-    mock_lease_command.assert_awaited_once_with("lease4-del", "7.245.196.5")
-
-
-def test_proxy_lease_delete_enforces_allowed_groups():
+def test_delete_lease_enforces_allowed_groups():
     """Reject lease deletion when the caller is outside DHCP's allowed groups."""
     client = TestClient(app)
-    request = {
-        "command": "lease4-del",
-        "service": ["dhcp4"],
-        "arguments": {"ip-address": "7.245.196.5"},
-    }
     auth_config = AuthConfig(
         accept_request_headers=True,
         allowed_groups=("dhcp-admins",),
     )
 
     with patch(
-        "nv_config_manager.dhcp.api.KeaClient.lease_command",
+        "nv_config_manager.dhcp.api.KeaClient.delete_lease",
         new_callable=AsyncMock,
-    ) as mock_lease_command:
+    ) as mock_delete_lease:
         with patch("nv_config_manager.common.auth._auth_config", auth_config):
-            rsp = client.post(
-                "/lease",
-                json=request,
+            rsp = client.delete(
+                "/lease?ip_address=10.0.0.10&ip_version=4",
                 headers={
                     "X-Auth-Request-Email": "test@example.com",
                     "X-Auth-Request-Groups": "dhcp-viewers",
@@ -505,55 +552,57 @@ def test_proxy_lease_delete_enforces_allowed_groups():
             )
 
     assert rsp.status_code == 403
-    mock_lease_command.assert_not_awaited()
+    mock_delete_lease.assert_not_awaited()
 
 
-def test_proxy_lease_rejects_unsupported_requests():
-    """Verify the lease proxy cannot be used for arbitrary KEA commands."""
+def test_delete_lease_not_found():
+    """Return 404 when the selected DHCP service has no matching lease."""
     client = TestClient(app)
-    invalid_requests = [
-        {**LEASE_GET_REQUEST, "command": "config-get"},
-        {**LEASE_GET_REQUEST, "service": ["dhcp6"]},
-        {**LEASE_GET_REQUEST, "service": []},
-        {**LEASE_GET_REQUEST, "service": ["dhcp4", "dhcp4"]},
-        {
-            **LEASE_GET_REQUEST,
-            "arguments": {"ip-address": "2001:db8::1"},
-        },
-        {
-            **LEASE_GET_REQUEST,
-            "arguments": {"ip-address": "7.245.196.5", "subnet-id": 104},
-        },
-    ]
 
     with patch(
-        "nv_config_manager.dhcp.api.KeaClient.lease_command", new_callable=AsyncMock
-    ) as mock_lease_command:
+        "nv_config_manager.dhcp.api.KeaClient.delete_lease",
+        new_callable=AsyncMock,
+        return_value=[{"result": 3, "text": "Lease not found."}],
+    ):
         with patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED):
-            for request in invalid_requests:
-                rsp = client.post(
-                    "/lease",
-                    json=request,
-                    headers={"X-Auth-Request-Email": "test@example.com"},
-                )
-                assert rsp.status_code == 422
+            rsp = client.delete(
+                "/lease?ip_address=10.0.0.99&ip_version=4",
+                headers={"X-Auth-Request-Email": "test@example.com"},
+            )
 
-    mock_lease_command.assert_not_awaited()
+    assert rsp.status_code == 404
 
 
-def test_proxy_lease_http_error():
+def test_lease_address_must_match_ip_version():
+    """Reject addresses that do not match the selected DHCP service."""
+    client = TestClient(app)
+
+    with patch(
+        "nv_config_manager.dhcp.api.KeaClient.get_lease",
+        new_callable=AsyncMock,
+    ) as mock_get_lease:
+        with patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED):
+            rsp = client.get(
+                "/lease?ip_address=2001:db8::1&ip_version=4",
+                headers={"X-Auth-Request-Email": "test@example.com"},
+            )
+
+    assert rsp.status_code == 422
+    mock_get_lease.assert_not_awaited()
+
+
+def test_get_lease_http_error():
     """Verify KEA HTTP errors are surfaced by the DHCP API."""
     client = TestClient(app)
 
     with patch(
-        "nv_config_manager.dhcp.api.KeaClient.lease_command",
+        "nv_config_manager.dhcp.api.KeaClient.get_lease",
         new_callable=AsyncMock,
         side_effect=make_client_response_error("HTTP ERROR"),
     ):
         with patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED):
-            rsp = client.post(
-                "/lease",
-                json=LEASE_GET_REQUEST,
+            rsp = client.get(
+                "/lease?ip_address=10.0.0.10&ip_version=4",
                 headers={"X-Auth-Request-Email": "test@example.com"},
             )
 
@@ -561,19 +610,18 @@ def test_proxy_lease_http_error():
     assert rsp.json() == {"detail": "HTTP ERROR"}
 
 
-def test_proxy_lease_timeout():
+def test_get_lease_timeout():
     """Verify KEA timeouts are surfaced by the DHCP API."""
     client = TestClient(app)
 
     with patch(
-        "nv_config_manager.dhcp.api.KeaClient.lease_command",
+        "nv_config_manager.dhcp.api.KeaClient.get_lease",
         new_callable=AsyncMock,
         side_effect=TimeoutError("KEA Request timed out"),
     ):
         with patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED):
-            rsp = client.post(
-                "/lease",
-                json=LEASE_GET_REQUEST,
+            rsp = client.get(
+                "/lease?ip_address=10.0.0.10&ip_version=4",
                 headers={"X-Auth-Request-Email": "test@example.com"},
             )
 
@@ -581,19 +629,18 @@ def test_proxy_lease_timeout():
     assert rsp.json() == {"detail": "KEA Request timed out"}
 
 
-def test_proxy_lease_connection_error():
+def test_delete_lease_connection_error():
     """Verify other KEA transport errors are surfaced by the DHCP API."""
     client = TestClient(app)
 
     with patch(
-        "nv_config_manager.dhcp.api.KeaClient.lease_command",
+        "nv_config_manager.dhcp.api.KeaClient.delete_lease",
         new_callable=AsyncMock,
         side_effect=ClientConnectionError("KEA connection failed"),
     ):
         with patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED):
-            rsp = client.post(
-                "/lease",
-                json=LEASE_GET_REQUEST,
+            rsp = client.delete(
+                "/lease?ip_address=10.0.0.10&ip_version=4",
                 headers={"X-Auth-Request-Email": "test@example.com"},
             )
 
@@ -641,11 +688,11 @@ def test_get_lease_dashboard():
         ) as mock_get_statistics,
         patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED),
     ):
-        rsp = client.get("/lease-dashboard?limit=25")
+        rsp = client.get("/lease-dashboard?limit=25&ip_version=4")
         assert rsp.status_code == 403
 
         rsp = client.get(
-            "/lease-dashboard?limit=25",
+            "/lease-dashboard?limit=25&ip_version=4",
             headers={"X-Auth-Request-Email": "test@example.com"},
         )
 
@@ -656,10 +703,14 @@ def test_get_lease_dashboard():
     assert payload["assigned_address_count"] == 1
     assert payload["pool_address_count"] == 10
     assert payload["leases"][0]["ip_address"] == "10.0.0.10"
+    assert payload["leases"][0]["subnet"] == "10.0.0.0/24"
+    assert "subnet_id" not in payload["leases"][0]
     assert payload["reservations"][0]["hostname"] == "reserved-switch"
+    assert payload["reservations"][0]["subnet"] is None
     assert payload["pools"][0]["utilization"] == 10.0
+    assert "subnet_id" not in payload["pools"][0]
     mock_get_config.assert_awaited_once_with(4)
-    mock_get_lease_page.assert_awaited_once_with(25)
+    mock_get_lease_page.assert_awaited_once_with(25, version=4)
     mock_get_statistics.assert_awaited_once_with(4)
 
 
@@ -720,9 +771,10 @@ async def test_dashboard_source_failure_cancels_and_drains_siblings() -> None:
         await statistics_started.wait()
         raise ClientConnectionError("KEA connection failed")
 
-    async def block_lease(limit: int) -> list[dict]:
+    async def block_lease(limit: int, *, version: int) -> list[dict]:
         """Record cancellation of the in-flight lease request."""
         assert limit == 25
+        assert version == 4
         lease_started.set()
         try:
             await asyncio.Future()
@@ -747,6 +799,6 @@ async def test_dashboard_source_failure_cancels_and_drains_siblings() -> None:
         patch.object(client, "get_statistics", new=AsyncMock(side_effect=block_statistics)),
         pytest.raises(ClientConnectionError, match="KEA connection failed"),
     ):
-        await _fetch_lease_dashboard_sources(client, limit=25)
+        await _fetch_lease_dashboard_sources(client, limit=25, ip_version=4)
 
     assert cancelled == {"leases", "statistics"}

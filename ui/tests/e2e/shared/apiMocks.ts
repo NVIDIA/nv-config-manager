@@ -127,7 +127,7 @@ export async function mockDhcpEndpoints(page: Page) {
       ip_address: "10.0.0.10",
       hostname: "leaf-01",
       hw_address: "02:00:00:00:00:10",
-      subnet_id: 7,
+      subnet: "10.0.0.0/24",
       state: 0,
       cltt: 1783700000,
       valid_lft: 7200,
@@ -137,7 +137,7 @@ export async function mockDhcpEndpoints(page: Page) {
       ip_address: "10.0.0.11",
       hostname: "leaf-02",
       client_id: "01:02:03:04:05",
-      subnet_id: 7,
+      subnet: "10.0.0.0/24",
       state: 0,
       cltt: 1783700300,
       valid_lft: 7200,
@@ -169,12 +169,11 @@ export async function mockDhcpEndpoints(page: Page) {
             hostname: "spine-02",
             identifier_type: "client-id",
             identifier: "01:02:03:04",
-            subnet_id: 7,
+            subnet: "10.0.0.0/24",
           },
         ],
         pools: [
           {
-            subnet_id: 7,
             subnet: "10.0.0.0/24",
             pool: "10.0.0.10-10.0.0.19",
             assigned: activeLeases.length,
@@ -194,13 +193,15 @@ export async function mockDhcpEndpoints(page: Page) {
     });
   });
 
-  await page.route("**/lease", async (route) => {
-    const body = JSON.parse((await route.request().postData()) || "{}");
-    clearedLease = body.arguments?.["ip-address"] || null;
-    await route.fulfill({
-      status: 200,
-      json: [{ result: 0, text: "IPv4 lease deleted." }],
-    });
+  await page.route("**/lease?*", async (route) => {
+    const request = route.request();
+    const params = new URL(request.url()).searchParams;
+    if (request.method() !== "DELETE" || params.get("ip_version") !== "4") {
+      await route.fulfill({ status: 400, json: { detail: "Invalid lease request" } });
+      return;
+    }
+    clearedLease = params.get("ip_address");
+    await route.fulfill({ status: 204 });
   });
 }
 

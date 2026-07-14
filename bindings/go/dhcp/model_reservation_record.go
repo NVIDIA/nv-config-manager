@@ -17,13 +17,13 @@ import (
 // checks if the ReservationRecord type satisfies the MappedNullable interface at compile time
 var _ MappedNullable = &ReservationRecord{}
 
-// ReservationRecord Configured IPv4 reservation.
+// ReservationRecord Configured address reservation.
 type ReservationRecord struct {
 	Hostname       *string        `json:"hostname,omitempty"`
 	Identifier     NullableString `json:"identifier,omitempty"`
 	IdentifierType NullableString `json:"identifier_type,omitempty"`
 	IpAddress      NullableString `json:"ip_address,omitempty"`
-	SubnetId       NullableInt32  `json:"subnet_id,omitempty"`
+	Subnet         NullableString `json:"subnet,omitempty"`
 }
 
 // NewReservationRecord instantiates a new ReservationRecord object
@@ -215,49 +215,49 @@ func (o *ReservationRecord) UnsetIpAddress() {
 	o.IpAddress.Unset()
 }
 
-// GetSubnetId returns the SubnetId field value if set, zero value otherwise (both if not set or set to explicit null).
-func (o *ReservationRecord) GetSubnetId() int32 {
-	if o == nil || IsNil(o.SubnetId.Get()) {
-		var ret int32
+// GetSubnet returns the Subnet field value if set, zero value otherwise (both if not set or set to explicit null).
+func (o *ReservationRecord) GetSubnet() string {
+	if o == nil || IsNil(o.Subnet.Get()) {
+		var ret string
 		return ret
 	}
-	return *o.SubnetId.Get()
+	return *o.Subnet.Get()
 }
 
-// GetSubnetIdOk returns a tuple with the SubnetId field value if set, nil otherwise
+// GetSubnetOk returns a tuple with the Subnet field value if set, nil otherwise
 // and a boolean to check if the value has been set.
 
 // NOTE: If the value is an explicit nil, `nil, true` will be returned
 
-func (o *ReservationRecord) GetSubnetIdOk() (*int32, bool) {
+func (o *ReservationRecord) GetSubnetOk() (*string, bool) {
 	if o == nil {
 		return nil, false
 	}
-	return o.SubnetId.Get(), o.SubnetId.IsSet()
+	return o.Subnet.Get(), o.Subnet.IsSet()
 }
 
-// HasSubnetId returns a boolean if a field has been set.
-func (o *ReservationRecord) HasSubnetId() bool {
-	if o != nil && o.SubnetId.IsSet() {
+// HasSubnet returns a boolean if a field has been set.
+func (o *ReservationRecord) HasSubnet() bool {
+	if o != nil && o.Subnet.IsSet() {
 		return true
 	}
 
 	return false
 }
 
-// SetSubnetId gets a reference to the given NullableInt32 and assigns it to the SubnetId field.
-func (o *ReservationRecord) SetSubnetId(v int32) {
-	o.SubnetId.Set(&v)
+// SetSubnet gets a reference to the given NullableString and assigns it to the Subnet field.
+func (o *ReservationRecord) SetSubnet(v string) {
+	o.Subnet.Set(&v)
 }
 
-// SetSubnetIdNil sets the value for SubnetId to be an explicit nil
-func (o *ReservationRecord) SetSubnetIdNil() {
-	o.SubnetId.Set(nil)
+// SetSubnetNil sets the value for Subnet to be an explicit nil
+func (o *ReservationRecord) SetSubnetNil() {
+	o.Subnet.Set(nil)
 }
 
-// UnsetSubnetId ensures that no value is present for SubnetId, not even an explicit nil
-func (o *ReservationRecord) UnsetSubnetId() {
-	o.SubnetId.Unset()
+// UnsetSubnet ensures that no value is present for Subnet, not even an explicit nil
+func (o *ReservationRecord) UnsetSubnet() {
+	o.Subnet.Unset()
 }
 
 func (o ReservationRecord) MarshalJSON() ([]byte, error) {
@@ -282,8 +282,8 @@ func (o ReservationRecord) ToMap() (map[string]interface{}, error) {
 	if o.IpAddress.IsSet() {
 		toSerialize["ip_address"] = o.IpAddress.Get()
 	}
-	if o.SubnetId.IsSet() {
-		toSerialize["subnet_id"] = o.SubnetId.Get()
+	if o.Subnet.IsSet() {
+		toSerialize["subnet"] = o.Subnet.Get()
 	}
 	return toSerialize, nil
 }

@@ -17,13 +17,19 @@
 from __future__ import annotations
 
 from configparser import ConfigParser
+from enum import IntEnum
 from typing import Any, Literal
 
 import aiohttp
 
 from nv_config_manager.common.config import load_config
 
-LeaseCommand = Literal["lease4-get", "lease4-del"]
+
+class IpVersion(IntEnum):
+    """Supported DHCP address families."""
+
+    V4 = 4
+    V6 = 6
 
 
 class KeaException(Exception):
@@ -159,12 +165,20 @@ class KeaClient:
                 "KEA Request timed out, are you running within a KEA Docker Container?"
             ) from exc
 
-    async def lease_command(self, command: LeaseCommand, ip_address: str) -> list[dict[str, Any]]:
-        """Run an IPv4 lease lookup or deletion command."""
+    async def _lease_command(
+        self,
+        operation: Literal["get", "del"],
+        ip_address: str,
+        version: IpVersion,
+    ) -> list[dict[str, Any]]:
+        """Run a lease command against the selected KEA service."""
+        arguments: dict[str, Any] = {"ip-address": ip_address}
+        if version == IpVersion.V6 and operation == "get":
+            arguments["type"] = "IA_NA"
         data = {
-            "command": command,
-            "service": ["dhcp4"],
-            "arguments": {"ip-address": ip_address},
+            "command": f"lease{version}-{operation}",
+            "service": [f"dhcp{version}"],
+            "arguments": arguments,
         }
         session = await self._get_session()
         try:
@@ -177,11 +191,31 @@ class KeaClient:
                 "KEA Request timed out, are you running within a KEA Docker Container?"
             ) from exc
 
-    async def get_lease_page(self, limit: int = 100) -> list[dict[str, Any]]:
-        """Return the first page of IPv4 leases from KEA."""
+    async def get_lease(
+        self,
+        ip_address: str,
+        version: IpVersion = IpVersion.V4,
+    ) -> list[dict[str, Any]]:
+        """Return one lease from the selected KEA service."""
+        return await self._lease_command("get", ip_address, version)
+
+    async def delete_lease(
+        self,
+        ip_address: str,
+        version: IpVersion = IpVersion.V4,
+    ) -> list[dict[str, Any]]:
+        """Delete one lease from the selected KEA service."""
+        return await self._lease_command("del", ip_address, version)
+
+    async def get_lease_page(
+        self,
+        limit: int = 100,
+        version: IpVersion = IpVersion.V4,
+    ) -> list[dict[str, Any]]:
+        """Return the first page of leases from the selected KEA service."""
         data = {
-            "command": "lease4-get-page",
-            "service": ["dhcp4"],
+            "command": f"lease{version}-get-page",
+            "service": [f"dhcp{version}"],
             "arguments": {"from": "start", "limit": limit},
         }
         session = await self._get_session()

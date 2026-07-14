@@ -21,6 +21,127 @@ import (
 // DefaultAPIService DefaultAPI service
 type DefaultAPIService service
 
+type ApiDeleteLeaseLeaseDeleteRequest struct {
+	ctx        context.Context
+	ApiService *DefaultAPIService
+	ipAddress  *string
+	ipVersion  *IpVersion
+}
+
+func (r ApiDeleteLeaseLeaseDeleteRequest) IpAddress(ipAddress string) ApiDeleteLeaseLeaseDeleteRequest {
+	r.ipAddress = &ipAddress
+	return r
+}
+
+func (r ApiDeleteLeaseLeaseDeleteRequest) IpVersion(ipVersion IpVersion) ApiDeleteLeaseLeaseDeleteRequest {
+	r.ipVersion = &ipVersion
+	return r
+}
+
+func (r ApiDeleteLeaseLeaseDeleteRequest) Execute() (*http.Response, error) {
+	return r.ApiService.DeleteLeaseLeaseDeleteExecute(r)
+}
+
+/*
+DeleteLeaseLeaseDelete Delete Lease
+
+Delete one lease from the selected DHCP service.
+
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@return ApiDeleteLeaseLeaseDeleteRequest
+*/
+func (a *DefaultAPIService) DeleteLeaseLeaseDelete(ctx context.Context) ApiDeleteLeaseLeaseDeleteRequest {
+	return ApiDeleteLeaseLeaseDeleteRequest{
+		ApiService: a,
+		ctx:        ctx,
+	}
+}
+
+// Execute executes the request
+func (a *DefaultAPIService) DeleteLeaseLeaseDeleteExecute(r ApiDeleteLeaseLeaseDeleteRequest) (*http.Response, error) {
+	var (
+		localVarHTTPMethod = http.MethodDelete
+		localVarPostBody   interface{}
+		formFiles          []formFile
+	)
+
+	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "DefaultAPIService.DeleteLeaseLeaseDelete")
+	if err != nil {
+		return nil, &GenericOpenAPIError{error: err.Error()}
+	}
+
+	localVarPath := localBasePath + "/lease"
+
+	localVarHeaderParams := make(map[string]string)
+	localVarQueryParams := url.Values{}
+	localVarFormParams := url.Values{}
+	if r.ipAddress == nil {
+		return nil, reportError("ipAddress is required and must be specified")
+	}
+
+	parameterAddToHeaderOrQuery(localVarQueryParams, "ip_address", r.ipAddress, "form", "")
+	if r.ipVersion != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "ip_version", r.ipVersion, "form", "")
+	} else {
+		var defaultValue IpVersion = 4
+		parameterAddToHeaderOrQuery(localVarQueryParams, "ip_version", defaultValue, "form", "")
+		r.ipVersion = &defaultValue
+	}
+	// to determine the Content-Type header
+	localVarHTTPContentTypes := []string{}
+
+	// set Content-Type header
+	localVarHTTPContentType := selectHeaderContentType(localVarHTTPContentTypes)
+	if localVarHTTPContentType != "" {
+		localVarHeaderParams["Content-Type"] = localVarHTTPContentType
+	}
+
+	// to determine the Accept header
+	localVarHTTPHeaderAccepts := []string{"application/json"}
+
+	// set Accept header
+	localVarHTTPHeaderAccept := selectHeaderAccept(localVarHTTPHeaderAccepts)
+	if localVarHTTPHeaderAccept != "" {
+		localVarHeaderParams["Accept"] = localVarHTTPHeaderAccept
+	}
+	req, err := a.client.prepareRequest(r.ctx, localVarPath, localVarHTTPMethod, localVarPostBody, localVarHeaderParams, localVarQueryParams, localVarFormParams, formFiles)
+	if err != nil {
+		return nil, err
+	}
+
+	localVarHTTPResponse, err := a.client.callAPI(req)
+	if err != nil || localVarHTTPResponse == nil {
+		return localVarHTTPResponse, err
+	}
+
+	localVarBody, err := io.ReadAll(localVarHTTPResponse.Body)
+	localVarHTTPResponse.Body.Close()
+	localVarHTTPResponse.Body = io.NopCloser(bytes.NewBuffer(localVarBody))
+	if err != nil {
+		return localVarHTTPResponse, err
+	}
+
+	if localVarHTTPResponse.StatusCode >= 300 {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: localVarHTTPResponse.Status,
+		}
+		if localVarHTTPResponse.StatusCode == 422 {
+			var v HTTPValidationError
+			err = a.client.decode(&v, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
+			if err != nil {
+				newErr.error = err.Error()
+				return localVarHTTPResponse, newErr
+			}
+			newErr.error = formatErrorMessage(localVarHTTPResponse.Status, &v)
+			newErr.model = v
+		}
+		return localVarHTTPResponse, newErr
+	}
+
+	return localVarHTTPResponse, nil
+}
+
 type ApiFlushCacheAdminCacheDeleteRequest struct {
 	ctx        context.Context
 	ApiService *DefaultAPIService
@@ -270,7 +391,13 @@ func (a *DefaultAPIService) GetConfigConfigGetExecute(r ApiGetConfigConfigGetReq
 type ApiGetLeaseDashboardLeaseDashboardGetRequest struct {
 	ctx        context.Context
 	ApiService *DefaultAPIService
+	ipVersion  *IpVersion
 	limit      *int32
+}
+
+func (r ApiGetLeaseDashboardLeaseDashboardGetRequest) IpVersion(ipVersion IpVersion) ApiGetLeaseDashboardLeaseDashboardGetRequest {
+	r.ipVersion = &ipVersion
+	return r
 }
 
 func (r ApiGetLeaseDashboardLeaseDashboardGetRequest) Limit(limit int32) ApiGetLeaseDashboardLeaseDashboardGetRequest {
@@ -319,12 +446,152 @@ func (a *DefaultAPIService) GetLeaseDashboardLeaseDashboardGetExecute(r ApiGetLe
 	localVarQueryParams := url.Values{}
 	localVarFormParams := url.Values{}
 
+	if r.ipVersion != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "ip_version", r.ipVersion, "form", "")
+	} else {
+		var defaultValue IpVersion = 4
+		parameterAddToHeaderOrQuery(localVarQueryParams, "ip_version", defaultValue, "form", "")
+		r.ipVersion = &defaultValue
+	}
 	if r.limit != nil {
 		parameterAddToHeaderOrQuery(localVarQueryParams, "limit", r.limit, "form", "")
 	} else {
 		var defaultValue int32 = 100
 		parameterAddToHeaderOrQuery(localVarQueryParams, "limit", defaultValue, "form", "")
 		r.limit = &defaultValue
+	}
+	// to determine the Content-Type header
+	localVarHTTPContentTypes := []string{}
+
+	// set Content-Type header
+	localVarHTTPContentType := selectHeaderContentType(localVarHTTPContentTypes)
+	if localVarHTTPContentType != "" {
+		localVarHeaderParams["Content-Type"] = localVarHTTPContentType
+	}
+
+	// to determine the Accept header
+	localVarHTTPHeaderAccepts := []string{"application/json"}
+
+	// set Accept header
+	localVarHTTPHeaderAccept := selectHeaderAccept(localVarHTTPHeaderAccepts)
+	if localVarHTTPHeaderAccept != "" {
+		localVarHeaderParams["Accept"] = localVarHTTPHeaderAccept
+	}
+	req, err := a.client.prepareRequest(r.ctx, localVarPath, localVarHTTPMethod, localVarPostBody, localVarHeaderParams, localVarQueryParams, localVarFormParams, formFiles)
+	if err != nil {
+		return localVarReturnValue, nil, err
+	}
+
+	localVarHTTPResponse, err := a.client.callAPI(req)
+	if err != nil || localVarHTTPResponse == nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	localVarBody, err := io.ReadAll(localVarHTTPResponse.Body)
+	localVarHTTPResponse.Body.Close()
+	localVarHTTPResponse.Body = io.NopCloser(bytes.NewBuffer(localVarBody))
+	if err != nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	if localVarHTTPResponse.StatusCode >= 300 {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: localVarHTTPResponse.Status,
+		}
+		if localVarHTTPResponse.StatusCode == 422 {
+			var v HTTPValidationError
+			err = a.client.decode(&v, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
+			if err != nil {
+				newErr.error = err.Error()
+				return localVarReturnValue, localVarHTTPResponse, newErr
+			}
+			newErr.error = formatErrorMessage(localVarHTTPResponse.Status, &v)
+			newErr.model = v
+		}
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	err = a.client.decode(&localVarReturnValue, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
+	if err != nil {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: err.Error(),
+		}
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	return localVarReturnValue, localVarHTTPResponse, nil
+}
+
+type ApiGetLeaseLeaseGetRequest struct {
+	ctx        context.Context
+	ApiService *DefaultAPIService
+	ipAddress  *string
+	ipVersion  *IpVersion
+}
+
+func (r ApiGetLeaseLeaseGetRequest) IpAddress(ipAddress string) ApiGetLeaseLeaseGetRequest {
+	r.ipAddress = &ipAddress
+	return r
+}
+
+func (r ApiGetLeaseLeaseGetRequest) IpVersion(ipVersion IpVersion) ApiGetLeaseLeaseGetRequest {
+	r.ipVersion = &ipVersion
+	return r
+}
+
+func (r ApiGetLeaseLeaseGetRequest) Execute() (*LeaseRecord, *http.Response, error) {
+	return r.ApiService.GetLeaseLeaseGetExecute(r)
+}
+
+/*
+GetLeaseLeaseGet Get Lease
+
+Return one normalized lease from the selected DHCP service.
+
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@return ApiGetLeaseLeaseGetRequest
+*/
+func (a *DefaultAPIService) GetLeaseLeaseGet(ctx context.Context) ApiGetLeaseLeaseGetRequest {
+	return ApiGetLeaseLeaseGetRequest{
+		ApiService: a,
+		ctx:        ctx,
+	}
+}
+
+// Execute executes the request
+//
+//	@return LeaseRecord
+func (a *DefaultAPIService) GetLeaseLeaseGetExecute(r ApiGetLeaseLeaseGetRequest) (*LeaseRecord, *http.Response, error) {
+	var (
+		localVarHTTPMethod  = http.MethodGet
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *LeaseRecord
+	)
+
+	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "DefaultAPIService.GetLeaseLeaseGet")
+	if err != nil {
+		return localVarReturnValue, nil, &GenericOpenAPIError{error: err.Error()}
+	}
+
+	localVarPath := localBasePath + "/lease"
+
+	localVarHeaderParams := make(map[string]string)
+	localVarQueryParams := url.Values{}
+	localVarFormParams := url.Values{}
+	if r.ipAddress == nil {
+		return localVarReturnValue, nil, reportError("ipAddress is required and must be specified")
+	}
+
+	parameterAddToHeaderOrQuery(localVarQueryParams, "ip_address", r.ipAddress, "form", "")
+	if r.ipVersion != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "ip_version", r.ipVersion, "form", "")
+	} else {
+		var defaultValue IpVersion = 4
+		parameterAddToHeaderOrQuery(localVarQueryParams, "ip_version", defaultValue, "form", "")
+		r.ipVersion = &defaultValue
 	}
 	// to determine the Content-Type header
 	localVarHTTPContentTypes := []string{}
@@ -490,31 +757,37 @@ func (a *DefaultAPIService) HealthcheckHealthcheckGetExecute(r ApiHealthcheckHea
 	return localVarReturnValue, localVarHTTPResponse, nil
 }
 
-type ApiProxyLeaseCommandLeasePostRequest struct {
-	ctx          context.Context
-	ApiService   *DefaultAPIService
-	leaseRequest *LeaseRequest
+type ApiListLeasesLeasesGetRequest struct {
+	ctx        context.Context
+	ApiService *DefaultAPIService
+	ipVersion  *IpVersion
+	limit      *int32
 }
 
-func (r ApiProxyLeaseCommandLeasePostRequest) LeaseRequest(leaseRequest LeaseRequest) ApiProxyLeaseCommandLeasePostRequest {
-	r.leaseRequest = &leaseRequest
+func (r ApiListLeasesLeasesGetRequest) IpVersion(ipVersion IpVersion) ApiListLeasesLeasesGetRequest {
+	r.ipVersion = &ipVersion
 	return r
 }
 
-func (r ApiProxyLeaseCommandLeasePostRequest) Execute() (interface{}, *http.Response, error) {
-	return r.ApiService.ProxyLeaseCommandLeasePostExecute(r)
+func (r ApiListLeasesLeasesGetRequest) Limit(limit int32) ApiListLeasesLeasesGetRequest {
+	r.limit = &limit
+	return r
+}
+
+func (r ApiListLeasesLeasesGetRequest) Execute() ([]LeaseRecord, *http.Response, error) {
+	return r.ApiService.ListLeasesLeasesGetExecute(r)
 }
 
 /*
-ProxyLeaseCommandLeasePost Proxy Lease Command
+ListLeasesLeasesGet List Leases
 
-Proxy a supported IPv4 lease command to KEA.
+Return a bounded list of normalized leases.
 
 	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
-	@return ApiProxyLeaseCommandLeasePostRequest
+	@return ApiListLeasesLeasesGetRequest
 */
-func (a *DefaultAPIService) ProxyLeaseCommandLeasePost(ctx context.Context) ApiProxyLeaseCommandLeasePostRequest {
-	return ApiProxyLeaseCommandLeasePostRequest{
+func (a *DefaultAPIService) ListLeasesLeasesGet(ctx context.Context) ApiListLeasesLeasesGetRequest {
+	return ApiListLeasesLeasesGetRequest{
 		ApiService: a,
 		ctx:        ctx,
 	}
@@ -522,31 +795,42 @@ func (a *DefaultAPIService) ProxyLeaseCommandLeasePost(ctx context.Context) ApiP
 
 // Execute executes the request
 //
-//	@return interface{}
-func (a *DefaultAPIService) ProxyLeaseCommandLeasePostExecute(r ApiProxyLeaseCommandLeasePostRequest) (interface{}, *http.Response, error) {
+//	@return []LeaseRecord
+func (a *DefaultAPIService) ListLeasesLeasesGetExecute(r ApiListLeasesLeasesGetRequest) ([]LeaseRecord, *http.Response, error) {
 	var (
-		localVarHTTPMethod  = http.MethodPost
+		localVarHTTPMethod  = http.MethodGet
 		localVarPostBody    interface{}
 		formFiles           []formFile
-		localVarReturnValue interface{}
+		localVarReturnValue []LeaseRecord
 	)
 
-	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "DefaultAPIService.ProxyLeaseCommandLeasePost")
+	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "DefaultAPIService.ListLeasesLeasesGet")
 	if err != nil {
 		return localVarReturnValue, nil, &GenericOpenAPIError{error: err.Error()}
 	}
 
-	localVarPath := localBasePath + "/lease"
+	localVarPath := localBasePath + "/leases"
 
 	localVarHeaderParams := make(map[string]string)
 	localVarQueryParams := url.Values{}
 	localVarFormParams := url.Values{}
-	if r.leaseRequest == nil {
-		return localVarReturnValue, nil, reportError("leaseRequest is required and must be specified")
-	}
 
+	if r.ipVersion != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "ip_version", r.ipVersion, "form", "")
+	} else {
+		var defaultValue IpVersion = 4
+		parameterAddToHeaderOrQuery(localVarQueryParams, "ip_version", defaultValue, "form", "")
+		r.ipVersion = &defaultValue
+	}
+	if r.limit != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "limit", r.limit, "form", "")
+	} else {
+		var defaultValue int32 = 100
+		parameterAddToHeaderOrQuery(localVarQueryParams, "limit", defaultValue, "form", "")
+		r.limit = &defaultValue
+	}
 	// to determine the Content-Type header
-	localVarHTTPContentTypes := []string{"application/json"}
+	localVarHTTPContentTypes := []string{}
 
 	// set Content-Type header
 	localVarHTTPContentType := selectHeaderContentType(localVarHTTPContentTypes)
@@ -562,8 +846,6 @@ func (a *DefaultAPIService) ProxyLeaseCommandLeasePostExecute(r ApiProxyLeaseCom
 	if localVarHTTPHeaderAccept != "" {
 		localVarHeaderParams["Accept"] = localVarHTTPHeaderAccept
 	}
-	// body params
-	localVarPostBody = r.leaseRequest
 	req, err := a.client.prepareRequest(r.ctx, localVarPath, localVarHTTPMethod, localVarPostBody, localVarHeaderParams, localVarQueryParams, localVarFormParams, formFiles)
 	if err != nil {
 		return localVarReturnValue, nil, err

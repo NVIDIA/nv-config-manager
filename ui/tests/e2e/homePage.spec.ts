@@ -68,6 +68,12 @@ test.describe("Home Page (Splash Page)", () => {
       activeLeasesMetric.getByText("2", { exact: true })
     ).toBeVisible();
     await expect(dashboard.getByText("leaf-01")).toBeVisible();
+    await expect(
+      dashboard
+        .getByRole("row")
+        .filter({ hasText: "leaf-01" })
+        .getByText("10.0.0.0/24", { exact: true })
+    ).toBeVisible();
     await expect(dashboard.getByText("Config age", { exact: true })).toBeVisible();
     await expect(dashboard.getByText("4m", { exact: true })).toBeVisible();
 

@@ -119,41 +119,40 @@ uv run nv-config-manager-dhcp-confgen generate-kea-configuration \
 
 The generator runs on a 5-minute interval in the Kubernetes deployment, automatically refreshing the running Kea servers with updated configuration.
 
-## Manage IPv4 Leases
+## Manage Leases
 
-The Config Manager splash page summarizes active leases, reservations, pool utilization, and the age of the last successful IPv4 configuration refresh reported by the DHCP API's `/metrics` endpoint. Use the filter to find displayed records by IP address, hostname, identifier, or subnet, and select the **Active leases**, **Reservations**, or **Pool usage** tab to inspect each view. You can also clear an active lease after confirming the action.
+The Config Manager splash page summarizes active leases, reservations, pool utilization, and the age of the last successful configuration refresh reported by the DHCP API's `/metrics` endpoint. Use the filter to find displayed records by IP address, hostname, identifier, or subnet prefix, and select the **Active leases**, **Reservations**, or **Pool usage** tab to inspect each view. You can also clear an active lease after confirming the action.
 
 ![DHCP lease activity dashboard](../assets/images/dhcp/lease-dashboard.png)
 
-The authenticated DHCP API exposes `GET /lease-dashboard` for the bounded dashboard data and `POST /lease` for looking up and deleting individual IPv4 leases. The command request uses the Kea envelope, but only the `lease4-get` and `lease4-del` commands are accepted.
+The authenticated DHCP API exposes domain-oriented lease resources without leaking the underlying DHCP server's command format. Pass `ip_version=4` or `ip_version=6` to select the address family.
+
+List leases with a bounded collection request:
+
+```bash
+curl --fail-with-body --get "${DHCP_API_URL}/leases" \
+  --header "Authorization: Bearer ${TOKEN}" \
+  --data-urlencode "ip_version=4" \
+  --data-urlencode "limit=100"
+```
 
 Look up the device holding a lease:
 
 ```bash
-curl --fail-with-body --request POST "${DHCP_API_URL}/lease" \
+curl --fail-with-body --get "${DHCP_API_URL}/lease" \
   --header "Authorization: Bearer ${TOKEN}" \
-  --header "Content-Type: application/json" \
-  --data '{
-    "command": "lease4-get",
-    "service": ["dhcp4"],
-    "arguments": {"ip-address": "7.245.196.5"}
-  }'
+  --data-urlencode "ip_address=7.245.196.5" \
+  --data-urlencode "ip_version=4"
 ```
 
 Delete a lease so the address can be reassigned:
 
 ```bash
-curl --fail-with-body --request POST "${DHCP_API_URL}/lease" \
-  --header "Authorization: Bearer ${TOKEN}" \
-  --header "Content-Type: application/json" \
-  --data '{
-    "command": "lease4-del",
-    "service": ["dhcp4"],
-    "arguments": {"ip-address": "7.245.196.5"}
-  }'
+curl --fail-with-body --request DELETE "${DHCP_API_URL}/lease?ip_address=7.245.196.5&ip_version=4" \
+  --header "Authorization: Bearer ${TOKEN}"
 ```
 
-The API returns Kea's response unchanged. A successful command has `result: 0`; other result codes and their accompanying text come directly from Kea.
+Lease responses use the Config Manager schema and include subnet prefixes instead of DHCP-server-specific subnet identifiers. A successful delete returns `204 No Content`; a missing lease returns `404 Not Found`.
 
 ## Related Documentation
 

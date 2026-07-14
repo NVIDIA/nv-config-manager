@@ -15,31 +15,31 @@
  * limitations under the License.
  */
 
-/** Active IPv4 lease returned by the DHCP dashboard endpoint. */
+/** Active lease returned by the DHCP dashboard endpoint. */
 export interface DhcpLease {
   ip_address: string;
   hostname: string;
   hw_address?: string | null;
   client_id?: string | null;
-  subnet_id: number;
+  duid?: string | null;
+  subnet?: string | null;
   state: number;
   cltt: number;
   valid_lft: number;
   expires_at?: string | null;
 }
 
-/** Static IPv4 reservation returned by the DHCP dashboard endpoint. */
+/** Static reservation returned by the DHCP dashboard endpoint. */
 export interface DhcpReservation {
   ip_address?: string | null;
   hostname: string;
   identifier_type?: string | null;
   identifier?: string | null;
-  subnet_id?: number | null;
+  subnet?: string | null;
 }
 
-/** Allocation statistics for a configured IPv4 pool. */
+/** Allocation statistics for a configured address pool. */
 export interface DhcpPoolUsage {
-  subnet_id: number;
   subnet: string;
   pool: string;
   assigned: number;

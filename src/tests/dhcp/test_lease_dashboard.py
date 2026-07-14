@@ -17,7 +17,7 @@ import time
 
 import pytest
 
-from nv_config_manager.dhcp.kea import KeaException
+from nv_config_manager.dhcp.kea import IpVersion, KeaException
 from nv_config_manager.dhcp.lease_dashboard import build_lease_dashboard
 
 
@@ -118,9 +118,11 @@ def test_build_lease_dashboard() -> None:
     assert dashboard.reservations_truncated is True
     assert len(dashboard.leases) == 1
     assert str(dashboard.leases[0].ip_address) == "10.0.0.10"
+    assert dashboard.leases[0].subnet == "10.0.0.0/24"
     assert dashboard.leases[0].expires_at is not None
     assert len(dashboard.reservations) == 1
     assert dashboard.reservations[0].identifier_type == "hw-address"
+    assert dashboard.reservations[0].subnet is None
     assert [(pool.assigned, pool.total, pool.utilization) for pool in dashboard.pools] == [
         (3, 10, 30.0),
         (0, 4, 0.0),
@@ -154,6 +156,78 @@ def test_build_lease_dashboard_caps_pool_utilization() -> None:
     assert dashboard.pools[0].assigned == 12
     assert dashboard.pools[0].total == 10
     assert dashboard.pools[0].utilization == 100.0
+
+
+def test_build_ipv6_lease_dashboard() -> None:
+    """Normalize DHCPv6 leases, reservations, prefixes, and pool statistics."""
+    now = int(time.time())
+    config = [
+        {
+            "result": 0,
+            "arguments": {
+                "Dhcp6": {
+                    "subnet6": [
+                        {
+                            "id": 9,
+                            "subnet": "2001:db8:1::/64",
+                            "pools": [{"pool": "2001:db8:1::10-2001:db8:1::1f"}],
+                            "reservations": [
+                                {
+                                    "duid": "00:01:00:01:aa:bb:cc:dd",
+                                    "hostname": "switch-v6",
+                                    "ip-addresses": ["2001:db8:1::2"],
+                                }
+                            ],
+                        }
+                    ]
+                }
+            },
+        }
+    ]
+    leases = [
+        {
+            "result": 0,
+            "arguments": {
+                "leases": [
+                    {
+                        "cltt": now - 60,
+                        "duid": "00:01:00:01:11:22:33:44",
+                        "hostname": "active-v6",
+                        "ip-address": "2001:db8:1::10",
+                        "state": 0,
+                        "subnet-id": 9,
+                        "valid-lft": 3600,
+                    }
+                ]
+            },
+        }
+    ]
+    statistics = [
+        {
+            "result": 0,
+            "arguments": {
+                "assigned-nas": [[1, "2026-07-10 00:00:00"]],
+                "subnet[9].pool[0].assigned-nas": [[1, "2026-07-10 00:00:00"]],
+                "subnet[9].pool[0].total-nas": [[16, "2026-07-10 00:00:00"]],
+            },
+        }
+    ]
+
+    dashboard = build_lease_dashboard(
+        config,
+        leases,
+        statistics,
+        limit=100,
+        ip_version=IpVersion.V6,
+    )
+
+    assert str(dashboard.leases[0].ip_address) == "2001:db8:1::10"
+    assert dashboard.leases[0].duid == "00:01:00:01:11:22:33:44"
+    assert dashboard.leases[0].subnet == "2001:db8:1::/64"
+    assert str(dashboard.reservations[0].ip_address) == "2001:db8:1::2"
+    assert dashboard.reservations[0].identifier_type == "duid"
+    assert dashboard.pools[0].total == 16
+    assert dashboard.pools[0].utilization == 6.2
 
 
 def test_build_lease_dashboard_rejects_kea_error() -> None:

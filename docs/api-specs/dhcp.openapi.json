@@ -14,21 +14,14 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
-      "LeaseArguments": {
-        "additionalProperties": false,
-        "description": "Arguments accepted by the supported KEA lease commands.",
-        "properties": {
-          "ip-address": {
-            "format": "ipv4",
-            "title": "Ip-Address",
-            "type": "string"
-          }
-        },
-        "required": [
-          "ip-address"
+      "IpVersion": {
+        "description": "Supported DHCP address families.",
+        "enum": [
+          4,
+          6
         ],
-        "title": "LeaseArguments",
-        "type": "object"
+        "title": "IpVersion",
+        "type": "integer"
       },
       "LeaseDashboardResponse": {
         "description": "Lease, reservation, and pool data used by the splash-page dashboard.",
@@ -94,7 +87,7 @@
         "type": "object"
       },
       "LeaseRecord": {
-        "description": "Active IPv4 lease returned by KEA.",
+        "description": "Active lease returned by the DHCP service.",
         "properties": {
           "client_id": {
             "anyOf": [
@@ -110,6 +103,17 @@
           "cltt": {
             "title": "Cltt",
             "type": "integer"
+          },
+          "duid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duid"
           },
           "expires_at": {
             "anyOf": [
@@ -140,7 +144,7 @@
             "title": "Hw Address"
           },
           "ip_address": {
-            "format": "ipv4",
+            "format": "ipvanyaddress",
             "title": "Ip Address",
             "type": "string"
           },
@@ -148,9 +152,16 @@
             "title": "State",
             "type": "integer"
           },
-          "subnet_id": {
-            "title": "Subnet Id",
-            "type": "integer"
+          "subnet": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subnet"
           },
           "valid_lft": {
             "title": "Valid Lft",
@@ -159,7 +170,6 @@
         },
         "required": [
           "ip_address",
-          "subnet_id",
           "state",
           "cltt",
           "valid_lft",
@@ -168,42 +178,8 @@
         "title": "LeaseRecord",
         "type": "object"
       },
-      "LeaseRequest": {
-        "additionalProperties": false,
-        "description": "Restricted KEA command envelope for IPv4 lease operations.",
-        "properties": {
-          "arguments": {
-            "$ref": "#/components/schemas/LeaseArguments"
-          },
-          "command": {
-            "enum": [
-              "lease4-get",
-              "lease4-del"
-            ],
-            "title": "Command",
-            "type": "string"
-          },
-          "service": {
-            "items": {
-              "const": "dhcp4",
-              "type": "string"
-            },
-            "maxItems": 1,
-            "minItems": 1,
-            "title": "Service",
-            "type": "array"
-          }
-        },
-        "required": [
-          "command",
-          "service",
-          "arguments"
-        ],
-        "title": "LeaseRequest",
-        "type": "object"
-      },
       "PoolUsage": {
-        "description": "Current allocation statistics for a configured IPv4 pool.",
+        "description": "Current allocation statistics for a configured address pool.",
         "properties": {
           "assigned": {
             "title": "Assigned",
@@ -217,10 +193,6 @@
             "title": "Subnet",
             "type": "string"
           },
-          "subnet_id": {
-            "title": "Subnet Id",
-            "type": "integer"
-          },
           "total": {
             "title": "Total",
             "type": "integer"
@@ -231,7 +203,6 @@
           }
         },
         "required": [
-          "subnet_id",
           "subnet",
           "pool",
           "assigned",
@@ -242,7 +213,7 @@
         "type": "object"
       },
       "ReservationRecord": {
-        "description": "Configured IPv4 reservation.",
+        "description": "Configured address reservation.",
         "properties": {
           "hostname": {
             "default": "",
@@ -274,7 +245,7 @@
           "ip_address": {
             "anyOf": [
               {
-                "format": "ipv4",
+                "format": "ipvanyaddress",
                 "type": "string"
               },
               {
@@ -283,16 +254,16 @@
             ],
             "title": "Ip Address"
           },
-          "subnet_id": {
+          "subnet": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Subnet Id"
+            "title": "Subnet"
           }
         },
         "title": "ReservationRecord",
@@ -494,25 +465,82 @@
       }
     },
     "/lease": {
-      "post": {
-        "description": "Proxy a supported IPv4 lease command to KEA.",
-        "operationId": "proxy_lease_command_lease_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/LeaseRequest"
-              }
+      "delete": {
+        "description": "Delete one lease from the selected DHCP service.",
+        "operationId": "delete_lease_lease_delete",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ip_address",
+            "required": true,
+            "schema": {
+              "format": "ipvanyaddress",
+              "title": "Ip Address",
+              "type": "string"
             }
           },
-          "required": true
+          {
+            "in": "query",
+            "name": "ip_version",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/IpVersion",
+              "default": 4
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Delete Lease"
+      },
+      "get": {
+        "description": "Return one normalized lease from the selected DHCP service.",
+        "operationId": "get_lease_lease_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ip_address",
+            "required": true,
+            "schema": {
+              "format": "ipvanyaddress",
+              "title": "Ip Address",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ip_version",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/IpVersion",
+              "default": 4
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "title": "Response Proxy Lease Command Lease Post"
+                  "$ref": "#/components/schemas/LeaseRecord"
                 }
               }
             },
@@ -534,7 +562,7 @@
             "BearerAuth": []
           }
         ],
-        "summary": "Proxy Lease Command"
+        "summary": "Get Lease"
       }
     },
     "/lease-dashboard": {
@@ -542,6 +570,15 @@
         "description": "Return bounded lease, reservation, and pool data for operators.",
         "operationId": "get_lease_dashboard_lease_dashboard_get",
         "parameters": [
+          {
+            "in": "query",
+            "name": "ip_version",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/IpVersion",
+              "default": 4
+            }
+          },
           {
             "in": "query",
             "name": "limit",
@@ -583,6 +620,67 @@
           }
         ],
         "summary": "Get Lease Dashboard"
+      }
+    },
+    "/leases": {
+      "get": {
+        "description": "Return a bounded list of normalized leases.",
+        "operationId": "list_leases_leases_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ip_version",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/IpVersion",
+              "default": 4
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LeaseRecord"
+                  },
+                  "title": "Response List Leases Leases Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List Leases"
       }
     },
     "/whoami": {

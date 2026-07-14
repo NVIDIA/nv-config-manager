@@ -36,7 +36,7 @@ async function dhcpFetcher(url: string): Promise<DhcpLeaseDashboard> {
   return response.json();
 }
 
-/** Read the latest IPv4 configuration refresh timestamp from Prometheus text. */
+/** Read the latest configuration refresh timestamp from Prometheus text. */
 async function configRefreshFetcher(url: string): Promise<number | null> {
   const response = await fetch(url, {
     credentials: "include",
@@ -61,7 +61,7 @@ async function configRefreshFetcher(url: string): Promise<number | null> {
 /** Subscribe to refreshed DHCP dashboard data for the splash page. */
 export function useDhcpDashboard(dhcpUrl: string) {
   const url = dhcpUrl
-    ? sanitizeUrl(`${dhcpUrl}/lease-dashboard?limit=100`)
+    ? sanitizeUrl(`${dhcpUrl}/lease-dashboard?ip_version=4&limit=100`)
     : null;
   return useSWR<DhcpLeaseDashboard>(url, dhcpFetcher, {
     refreshInterval: 30000,
@@ -69,7 +69,7 @@ export function useDhcpDashboard(dhcpUrl: string) {
   });
 }
 
-/** Subscribe to the last successful IPv4 configuration refresh timestamp. */
+/** Subscribe to the last successful configuration refresh timestamp. */
 export function useDhcpConfigRefreshTimestamp(dhcpUrl: string) {
   const url = dhcpUrl ? sanitizeUrl(`${dhcpUrl}/metrics`) : null;
   return useSWR<number | null>(url, configRefreshFetcher, {
@@ -78,28 +78,22 @@ export function useDhcpConfigRefreshTimestamp(dhcpUrl: string) {
   });
 }
 
-/** Delete an active IPv4 lease through the restricted DHCP proxy. */
+/** Delete an active lease through the DHCP API. */
 export async function clearDhcpLease(
   dhcpUrl: string,
   ipAddress: string,
 ): Promise<void> {
-  const response = await fetch(sanitizeUrl(`${dhcpUrl}/lease`), {
-    body: JSON.stringify({
-      command: "lease4-del",
-      service: ["dhcp4"],
-      arguments: { "ip-address": ipAddress },
-    }),
+  const query = new URLSearchParams({
+    ip_address: ipAddress,
+    ip_version: "4",
+  });
+  const response = await fetch(sanitizeUrl(`${dhcpUrl}/lease?${query}`), {
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    method: "POST",
+    method: "DELETE",
     mode: "cors",
   });
-  const body = await response.json().catch(() => null);
   if (!response.ok) {
+    const body = await response.json().catch(() => null);
     throw new Error(body?.detail || body?.error || "Failed to clear lease");
-  }
-  const result = Array.isArray(body) ? body[0] : body;
-  if (result?.result !== 0) {
-    throw new Error(result?.text || "KEA did not clear the lease");
   }
 }
