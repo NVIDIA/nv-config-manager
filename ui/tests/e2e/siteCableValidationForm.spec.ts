@@ -14,7 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { expect } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import {
   SITES_LIST,
   ROLES_LIST,
@@ -23,6 +23,9 @@ import {
   FORBIDDEN_SITE_ID,
 } from "@/mocks/data";
 import { test, TEST_TIMEOUT } from "./shared/utils";
+
+const statusSelectButton = (page: Page) =>
+  page.getByText("Device Status", { exact: true }).locator("..").getByRole("button");
 
 test.describe("Site Cable Validation Form", () => {
   test.beforeEach(async ({ page }) => {
@@ -195,7 +198,7 @@ test.describe("Site Cable Validation Form", () => {
     ).toBeVisible({ timeout: TEST_TIMEOUT });
 
     // Test multiple selections for Device Status
-    await page.getByRole("button", { name: STATUS_LIST.active }).click();
+    await statusSelectButton(page).click();
     await page.getByRole("dialog").getByText(STATUS_LIST.planned).click();
     await page.getByRole("dialog").getByText(STATUS_LIST.staged).click();
     // Click outside to close any dropdown that might be open
@@ -238,7 +241,7 @@ test.describe("Site Cable Validation Form", () => {
       .getByRole("heading", { name: "New Site Cable Validation Workflow" })
       .click();
 
-    await page.getByRole("button", { name: STATUS_LIST.active }).click();
+    await statusSelectButton(page).click();
     await page.getByRole("dialog").getByText(STATUS_LIST.planned).click();
     // Click outside to close any dropdown that might be open
     await page
@@ -293,7 +296,7 @@ test.describe("Site Cable Validation Form", () => {
       .getByRole("heading", { name: "New Site Cable Validation Workflow" })
       .click();
 
-    await page.getByRole("button", { name: STATUS_LIST.active }).click();
+    await statusSelectButton(page).click();
     await page.getByRole("dialog").getByText(STATUS_LIST.planned).click();
     // Click outside to close any dropdown that might be open
     await page
