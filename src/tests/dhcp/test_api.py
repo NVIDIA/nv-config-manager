@@ -1240,6 +1240,70 @@ def test_delete_lease():
     assert ("pool", IpVersion.V4) not in _COLLECTION_SNAPSHOTS
 
 
+def test_delete_lease_ignores_invalidation_publish_failure(
+    caplog: pytest.LogCaptureFixture,
+):
+    """Keep a completed lease deletion successful when Redis publication fails."""
+    client = TestClient(app)
+
+    with (
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.delete_lease",
+            new_callable=AsyncMock,
+            return_value=[{"result": 0, "text": "Lease deleted."}],
+        ),
+        patch(
+            "nv_config_manager.dhcp.api.RedisClient.publish_collection_invalidation",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("Redis unavailable"),
+        ),
+        patch(
+            "nv_config_manager.dhcp.api.RedisClient.close",
+            new_callable=AsyncMock,
+        ) as mock_close,
+    ):
+        _COLLECTION_SNAPSHOTS[("pool", IpVersion.V4)] = (float("inf"), [])
+        with patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED):
+            rsp = client.delete(
+                "/lease/10.0.0.10",
+                headers={"X-Auth-Request-Email": "test@example.com"},
+            )
+
+    assert rsp.status_code == 204
+    assert ("pool", IpVersion.V4) not in _COLLECTION_SNAPSHOTS
+    mock_close.assert_awaited_once()
+    assert "Failed to publish DHCP collection snapshot invalidation" in caplog.text
+
+
+def test_delete_lease_ignores_invalidation_client_creation_failure(
+    caplog: pytest.LogCaptureFixture,
+):
+    """Keep a completed lease deletion successful when Redis is unavailable."""
+    client = TestClient(app)
+
+    with (
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.delete_lease",
+            new_callable=AsyncMock,
+            return_value=[{"result": 0, "text": "Lease deleted."}],
+        ),
+        patch(
+            "nv_config_manager.dhcp.api.RedisClient.from_config",
+            side_effect=RuntimeError("Redis unavailable"),
+        ),
+    ):
+        _COLLECTION_SNAPSHOTS[("pool", IpVersion.V4)] = (float("inf"), [])
+        with patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED):
+            rsp = client.delete(
+                "/lease/10.0.0.10",
+                headers={"X-Auth-Request-Email": "test@example.com"},
+            )
+
+    assert rsp.status_code == 204
+    assert ("pool", IpVersion.V4) not in _COLLECTION_SNAPSHOTS
+    assert "Failed to publish DHCP collection snapshot invalidation" in caplog.text
+
+
 def test_delete_lease_enforces_allowed_groups():
     """Reject lease deletion when the caller is outside DHCP's allowed groups."""
     client = TestClient(app)

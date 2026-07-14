@@ -144,11 +144,18 @@ async def _listen_for_collection_snapshot_invalidations() -> None:
 async def _publish_collection_snapshot_invalidation(ip_version: IpVersion) -> None:
     """Publish a shared invalidation after first clearing this process locally."""
     _invalidate_collection_snapshots(ip_version)
-    redis_client = RedisClient.from_config(load_config())
+    redis_client: RedisClient | None = None
     try:
+        redis_client = RedisClient.from_config(load_config())
         await redis_client.publish_collection_invalidation(ip_version)
+    except Exception:
+        LOG.exception("Failed to publish DHCP collection snapshot invalidation")
     finally:
-        await redis_client.close()
+        if redis_client is not None:
+            try:
+                await redis_client.close()
+            except Exception:
+                LOG.exception("Failed to close DHCP snapshot invalidation Redis client")
 
 
 @asynccontextmanager
