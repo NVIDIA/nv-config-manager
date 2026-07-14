@@ -143,6 +143,20 @@ def _stat_value(statistics: dict[str, Any], name: str) -> int | None:
     return int(value)
 
 
+def _subnet_stat_total(statistics: dict[str, Any], name: str) -> int | None:
+    """Sum a current statistic across every subnet, including stale subnet IDs."""
+    suffix = f"].{name}"
+    values = [
+        value
+        for stat_name in statistics
+        if stat_name.startswith("subnet[")
+        and ".pool[" not in stat_name
+        and stat_name.endswith(suffix)
+        and (value := _stat_value(statistics, stat_name)) is not None
+    ]
+    return sum(values) if values else None
+
+
 def _pool_bounds(pool: str) -> tuple[int, int, int] | None:
     """Return a pool's IP version and inclusive integer bounds."""
     try:
@@ -592,15 +606,18 @@ def build_lease_dashboard(
     reservations = _reservation_records(dhcp_config, ip_version)
     pools = _pool_usage(dhcp_config, statistics, ip_version)
     assigned_stat = "assigned-addresses" if ip_version == 4 else "assigned-nas"
-    assigned_count = _stat_value(statistics, assigned_stat)
-    if assigned_count is None:
-        assigned_count = sum(pool.assigned for pool in pools)
+    active_lease_count = _stat_value(statistics, assigned_stat)
+    if active_lease_count is None:
+        active_lease_count = _subnet_stat_total(statistics, assigned_stat)
+    if active_lease_count is None:
+        active_lease_count = sum(pool.assigned for pool in pools)
+    pool_assigned_count = sum(min(pool.assigned, pool.total) for pool in pools)
     pool_address_count = sum(pool.total for pool in pools)
 
     return LeaseDashboardResponse(
-        active_lease_count=assigned_count,
+        active_lease_count=active_lease_count,
         reservation_count=len(reservations),
-        assigned_address_count=assigned_count,
+        assigned_address_count=pool_assigned_count,
         pool_count=len(pools),
         pool_address_count=pool_address_count,
     )

@@ -143,6 +143,20 @@ def test_build_lease_dashboard() -> None:
     ]
 
 
+def test_build_lease_dashboard_counts_leases_from_unconfigured_subnets() -> None:
+    """Keep active lease totals independent from configured pool utilization."""
+    config, _, statistics = dashboard_payloads()
+    stats = statistics[0]["arguments"]
+    stats.pop("assigned-addresses")
+    stats["subnet[7].assigned-addresses"] = [[3, "2026-07-10 00:00:00"]]
+    stats["subnet[99].assigned-addresses"] = [[997, "2026-07-10 00:00:00"]]
+
+    dashboard = build_lease_dashboard(config, statistics)
+
+    assert dashboard.active_lease_count == 1000
+    assert dashboard.assigned_address_count == 3
+
+
 def test_build_lease_list_logs_malformed_lease(caplog: pytest.LogCaptureFixture) -> None:
     """Log malformed KEA rows at debug level while keeping the response safe."""
     config, leases, _ = dashboard_payloads()
