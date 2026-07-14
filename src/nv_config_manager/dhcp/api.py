@@ -18,7 +18,6 @@ import argparse
 import asyncio
 import base64
 import binascii
-import logging
 from collections.abc import AsyncIterator, Coroutine
 from contextlib import asynccontextmanager
 from ipaddress import ip_address
@@ -59,12 +58,13 @@ from nv_config_manager.dhcp.lease_dashboard import (
 from nv_config_manager.dhcp.redis import RedisClient
 
 configure_logging(service="dhcp")
-LOG = logging.getLogger(__name__)
 
 _MAX_KEA_LEASE_PAGES_PER_REQUEST = 10
 _MAX_POOL_LEASE_PAGES = 20
 _POOL_LEASE_PAGE_SIZE = 500
 _COLLECTION_SNAPSHOT_TTL_SECONDS = 30
+# These snapshots are intentionally process-local. Other API replicas can serve
+# data that is at most one TTL old; the dashboard revalidates every 30 seconds.
 _COLLECTION_SNAPSHOTS: dict[tuple[str, IpVersion], tuple[float, list[Any]]] = {}
 _COLLECTION_SNAPSHOT_LOCKS: dict[
     tuple[str, IpVersion],
@@ -118,57 +118,6 @@ def _invalidate_collection_snapshots(ip_version: int) -> None:
             _COLLECTION_SNAPSHOTS.pop(key, None)
 
 
-async def _consume_collection_snapshot_invalidations(redis_client: RedisClient) -> None:
-    """Apply shared invalidation messages to this process's local snapshots."""
-    async for ip_version in redis_client.listen_collection_invalidations():
-        _invalidate_collection_snapshots(ip_version)
-
-
-async def _listen_for_collection_snapshot_invalidations() -> None:
-    """Keep a resilient Redis subscription for cross-process invalidation."""
-    while True:
-        redis_client: RedisClient | None = None
-        try:
-            redis_client = RedisClient.from_config(load_config())
-            await _consume_collection_snapshot_invalidations(redis_client)
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            LOG.exception("DHCP collection snapshot invalidation listener failed")
-        finally:
-            if redis_client is not None:
-                await redis_client.close()
-        await asyncio.sleep(1)
-
-
-async def _publish_collection_snapshot_invalidation(ip_version: IpVersion) -> None:
-    """Publish a shared invalidation after first clearing this process locally."""
-    _invalidate_collection_snapshots(ip_version)
-    redis_client: RedisClient | None = None
-    try:
-        redis_client = RedisClient.from_config(load_config())
-        await redis_client.publish_collection_invalidation(ip_version)
-    except Exception:
-        LOG.exception("Failed to publish DHCP collection snapshot invalidation")
-    finally:
-        if redis_client is not None:
-            try:
-                await redis_client.close()
-            except Exception:
-                LOG.exception("Failed to close DHCP snapshot invalidation Redis client")
-
-
-@asynccontextmanager
-async def _lifespan(_application: FastAPI) -> AsyncIterator[None]:
-    """Run the shared collection snapshot invalidation listener."""
-    listener = asyncio.create_task(_listen_for_collection_snapshot_invalidations())
-    try:
-        yield
-    finally:
-        listener.cancel()
-        await asyncio.gather(listener, return_exceptions=True)
-
-
 def _install_cors(application: FastAPI) -> None:
     """Allow configured UI origins to call the DHCP API with credentials."""
     config = load_config()
@@ -195,7 +144,7 @@ def _install_cors(application: FastAPI) -> None:
         )
 
 
-app = FastAPI(lifespan=_lifespan)
+app = FastAPI()
 _install_cors(app)
 
 CACHE_LAST_REFRESH = Gauge(
@@ -642,7 +591,9 @@ async def delete_lease(
         delete_payload = await client.delete_lease(str(ip_address), version=ip_version)
         if not lease_deleted(delete_payload, ip_version=ip_version):
             raise HTTPException(status_code=404, detail=f"Lease {ip_address} was not found")
-        await _publish_collection_snapshot_invalidation(ip_version)
+        # A lease change only affects pool usage. Other API replicas expire
+        # their process-local pool snapshots within the bounded TTL.
+        _COLLECTION_SNAPSHOTS.pop(("pool", ip_version), None)
         return Response(status_code=204)
 
 

@@ -19,7 +19,7 @@ import time
 from collections.abc import Iterator
 from configparser import ConfigParser
 from copy import deepcopy
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, call, patch
 
 import jwt as pyjwt
 import pytest
@@ -34,14 +34,14 @@ from nv_config_manager.common.auth import AuthConfig, JwtProviderConfig
 from nv_config_manager.dhcp.api import (
     _COLLECTION_SNAPSHOT_LOCKS,
     _COLLECTION_SNAPSHOTS,
-    _consume_collection_snapshot_invalidations,
     _fetch_lease_dashboard_sources,
+    _get_collection_snapshot,
     _install_cors,
+    _store_collection_snapshot,
     app,
     list_pools,
 )
 from nv_config_manager.dhcp.kea import IpVersion, KeaClient
-from nv_config_manager.dhcp.redis import RedisClient
 
 _HEADERS_TRUSTED = AuthConfig(accept_request_headers=True)
 _AUTH_DISABLED = AuthConfig(required=False)
@@ -55,6 +55,17 @@ def clear_collection_snapshots() -> Iterator[None]:
     yield
     _COLLECTION_SNAPSHOTS.clear()
     _COLLECTION_SNAPSHOT_LOCKS.clear()
+
+
+def test_collection_snapshots_expire_after_bounded_ttl():
+    """Limit process-local collection staleness to the configured TTL."""
+    with patch(
+        "nv_config_manager.dhcp.api.monotonic",
+        side_effect=[100.0, 129.9, 130.0],
+    ):
+        _store_collection_snapshot("pool", IpVersion.V4, ["cached"])
+        assert _get_collection_snapshot("pool", IpVersion.V4) == ["cached"]
+        assert _get_collection_snapshot("pool", IpVersion.V4) is None
 
 
 def make_client_response_error(message: str) -> ClientResponseError:
@@ -1133,25 +1144,6 @@ async def test_list_pools_coalesces_concurrent_snapshot_rebuilds():
     assert mock_get_lease_page.await_count == 1
 
 
-async def test_shared_invalidation_clears_local_collection_snapshots():
-    """Apply a Redis invalidation signal to every local collection snapshot."""
-
-    async def invalidations():
-        yield IpVersion.V4
-
-    redis_client = MagicMock(spec=RedisClient)
-    redis_client.listen_collection_invalidations = invalidations
-    _COLLECTION_SNAPSHOTS[("reservation", IpVersion.V4)] = (float("inf"), [])
-    _COLLECTION_SNAPSHOTS[("pool", IpVersion.V4)] = (float("inf"), [])
-    _COLLECTION_SNAPSHOTS[("pool", IpVersion.V6)] = (float("inf"), [])
-
-    await _consume_collection_snapshot_invalidations(redis_client)
-
-    assert ("reservation", IpVersion.V4) not in _COLLECTION_SNAPSHOTS
-    assert ("pool", IpVersion.V4) not in _COLLECTION_SNAPSHOTS
-    assert ("pool", IpVersion.V6) in _COLLECTION_SNAPSHOTS
-
-
 def test_config_collections_bound_thousand_record_pages():
     """Keep reservation and pool responses bounded with thousands of records."""
     client = TestClient(app)
@@ -1215,14 +1207,6 @@ def test_delete_lease():
             new_callable=AsyncMock,
             return_value=[{"result": 0, "text": "Lease deleted."}],
         ) as mock_delete_lease,
-        patch(
-            "nv_config_manager.dhcp.api.RedisClient.publish_collection_invalidation",
-            new_callable=AsyncMock,
-        ) as mock_publish,
-        patch(
-            "nv_config_manager.dhcp.api.RedisClient.close",
-            new_callable=AsyncMock,
-        ),
     ):
         _COLLECTION_SNAPSHOTS[("reservation", IpVersion.V4)] = (float("inf"), [])
         _COLLECTION_SNAPSHOTS[("pool", IpVersion.V4)] = (float("inf"), [])
@@ -1235,73 +1219,8 @@ def test_delete_lease():
     assert rsp.status_code == 204
     assert not rsp.content
     mock_delete_lease.assert_awaited_once_with("10.0.0.10", version=4)
-    mock_publish.assert_awaited_once_with(IpVersion.V4)
-    assert ("reservation", IpVersion.V4) not in _COLLECTION_SNAPSHOTS
+    assert ("reservation", IpVersion.V4) in _COLLECTION_SNAPSHOTS
     assert ("pool", IpVersion.V4) not in _COLLECTION_SNAPSHOTS
-
-
-def test_delete_lease_ignores_invalidation_publish_failure(
-    caplog: pytest.LogCaptureFixture,
-):
-    """Keep a completed lease deletion successful when Redis publication fails."""
-    client = TestClient(app)
-
-    with (
-        patch(
-            "nv_config_manager.dhcp.api.KeaClient.delete_lease",
-            new_callable=AsyncMock,
-            return_value=[{"result": 0, "text": "Lease deleted."}],
-        ),
-        patch(
-            "nv_config_manager.dhcp.api.RedisClient.publish_collection_invalidation",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("Redis unavailable"),
-        ),
-        patch(
-            "nv_config_manager.dhcp.api.RedisClient.close",
-            new_callable=AsyncMock,
-        ) as mock_close,
-    ):
-        _COLLECTION_SNAPSHOTS[("pool", IpVersion.V4)] = (float("inf"), [])
-        with patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED):
-            rsp = client.delete(
-                "/lease/10.0.0.10",
-                headers={"X-Auth-Request-Email": "test@example.com"},
-            )
-
-    assert rsp.status_code == 204
-    assert ("pool", IpVersion.V4) not in _COLLECTION_SNAPSHOTS
-    mock_close.assert_awaited_once()
-    assert "Failed to publish DHCP collection snapshot invalidation" in caplog.text
-
-
-def test_delete_lease_ignores_invalidation_client_creation_failure(
-    caplog: pytest.LogCaptureFixture,
-):
-    """Keep a completed lease deletion successful when Redis is unavailable."""
-    client = TestClient(app)
-
-    with (
-        patch(
-            "nv_config_manager.dhcp.api.KeaClient.delete_lease",
-            new_callable=AsyncMock,
-            return_value=[{"result": 0, "text": "Lease deleted."}],
-        ),
-        patch(
-            "nv_config_manager.dhcp.api.RedisClient.from_config",
-            side_effect=RuntimeError("Redis unavailable"),
-        ),
-    ):
-        _COLLECTION_SNAPSHOTS[("pool", IpVersion.V4)] = (float("inf"), [])
-        with patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED):
-            rsp = client.delete(
-                "/lease/10.0.0.10",
-                headers={"X-Auth-Request-Email": "test@example.com"},
-            )
-
-    assert rsp.status_code == 204
-    assert ("pool", IpVersion.V4) not in _COLLECTION_SNAPSHOTS
-    assert "Failed to publish DHCP collection snapshot invalidation" in caplog.text
 
 
 def test_delete_lease_enforces_allowed_groups():

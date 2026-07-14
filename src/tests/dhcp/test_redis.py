@@ -12,60 +12,46 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Tests for shared DHCP Redis state."""
+"""Tests for DHCP Redis state."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
-from nv_config_manager.dhcp.redis import COLLECTION_INVALIDATION_CHANNEL, RedisClient
+from nv_config_manager.dhcp.redis import RedisClient
 
 
-async def test_persist_kea_config_publishes_collection_invalidation() -> None:
-    """Notify every API process after persisting refreshed KEA configuration."""
+async def test_persist_kea_config_writes_config_and_timestamp_atomically() -> None:
+    """Persist refreshed configuration and its timestamp in one pipeline."""
     client = RedisClient(host="redis.example.com")
     pipeline = MagicMock()
-    pipeline.execute = AsyncMock(return_value=[True, True, 1])
+    pipeline.execute = AsyncMock(return_value=[True, True])
 
-    with patch.object(client.redis, "pipeline", return_value=pipeline):
+    with (
+        patch.object(client.redis, "pipeline", return_value=pipeline),
+        patch("nv_config_manager.dhcp.redis.time.time", return_value=123.0),
+    ):
         await client.persist_kea_config(4, {"Dhcp4": {}})
 
-    pipeline.publish.assert_called_once_with(COLLECTION_INVALIDATION_CHANNEL, "4")
+    pipeline.set.assert_has_calls(
+        [
+            call(client.config_key(4), b'{"Dhcp4": {}}'),
+            call(client.refresh_timestamp_key(4), "123.0"),
+        ]
+    )
+    pipeline.execute.assert_awaited_once()
 
 
-async def test_flush_kea_config_publishes_collection_invalidation() -> None:
-    """Notify every API process after deleting cached KEA configuration."""
+async def test_flush_kea_config_deletes_config_and_timestamp() -> None:
+    """Delete cached configuration and its timestamp in one pipeline."""
     client = RedisClient(host="redis.example.com")
     pipeline = MagicMock()
-    pipeline.execute = AsyncMock(return_value=[2, 1])
+    pipeline.execute = AsyncMock(return_value=[2])
 
     with patch.object(client.redis, "pipeline", return_value=pipeline):
         deleted = await client.flush_kea_config(6)
 
     assert deleted is True
-    pipeline.publish.assert_called_once_with(COLLECTION_INVALIDATION_CHANNEL, "6")
-
-
-async def test_collection_invalidation_pubsub_round_trip() -> None:
-    """Publish and consume address-family invalidation messages."""
-    client = RedisClient(host="redis.example.com")
-    publish = AsyncMock()
-    pubsub = MagicMock()
-    pubsub.subscribe = AsyncMock()
-    pubsub.unsubscribe = AsyncMock()
-    pubsub.close = AsyncMock()
-
-    async def messages():
-        yield {"type": "subscribe", "data": 1}
-        yield {"type": "message", "data": b"4"}
-
-    pubsub.listen = messages
-    with (
-        patch.object(client.redis, "publish", publish),
-        patch.object(client.redis, "pubsub", return_value=pubsub),
-    ):
-        await client.publish_collection_invalidation(4)
-        invalidations = [version async for version in client.listen_collection_invalidations()]
-
-    publish.assert_awaited_once_with(COLLECTION_INVALIDATION_CHANNEL, "4")
-    assert invalidations == [4]
-    pubsub.unsubscribe.assert_awaited_once_with(COLLECTION_INVALIDATION_CHANNEL)
-    pubsub.close.assert_awaited_once()
+    pipeline.delete.assert_called_once_with(
+        client.config_key(6),
+        client.refresh_timestamp_key(6),
+    )
+    pipeline.execute.assert_awaited_once()
