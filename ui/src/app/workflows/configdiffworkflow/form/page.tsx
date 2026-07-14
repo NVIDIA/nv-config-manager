@@ -27,18 +27,22 @@ import {
 
 const ConfigDiffWorkflowForm = () => {
   const { toast } = useToast();
-  const onSubmit = (data: DeviceWorkflowFormSchema) => {
+  const onSubmit = async (data: DeviceWorkflowFormSchema) => {
     const endpoint = "/v1/workflow/ngc/config_diff";
     const params: ConfigDiffWorkflowInput = {
       device_id: data.device,
     };
-    startWorkflow(endpoint, params).catch((error) => {
+    try {
+      await startWorkflow(endpoint, params);
+    } catch (error) {
       toast({
         variant: "destructive",
         title: "Workflow Failed",
         description: `Failed to create workflow: ${error}`,
       });
-    });
+      // Rethrow so DeviceWorkflowForm re-enables the form for another attempt.
+      throw error;
+    }
   };
 
   return (

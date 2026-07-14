@@ -185,10 +185,10 @@ export const DeviceWorkflowForm = ({
   if (tenantsError) console.error(`Failed to query tenants: ${tenantsError}`);
   if (statusesError) console.error(`Failed to query statuses: ${statusesError}`);
 
-  const submitWrapper = (data: DeviceWorkflowFormSchema) => {
+  const submitWrapper = async (data: DeviceWorkflowFormSchema) => {
     setIsSubmitting(true);
     try {
-      onSubmit(data);
+      await onSubmit(data);
     } catch (error) {
       console.error(error);
       setIsSubmitting(false);
