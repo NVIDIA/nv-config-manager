@@ -66,6 +66,10 @@ def _install_cors(application: FastAPI) -> None:
         for origin in config.get("dhcp", "cors_origins", fallback="").split(",")
         if origin.strip()
     ]
+    if "*" in origins:
+        raise ValueError(
+            "dhcp.cors_origins must contain explicit origins when credentials are enabled"
+        )
     if origins:
         application.add_middleware(
             CORSMiddleware,  # type: ignore[arg-type]

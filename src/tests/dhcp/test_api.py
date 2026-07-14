@@ -219,6 +219,21 @@ def test_cors_allows_configured_ui_origin() -> None:
     assert response.headers["access-control-allow-credentials"] == "true"
 
 
+def test_cors_rejects_wildcard_origin() -> None:
+    """Verify credentialed CORS cannot be enabled for arbitrary origins."""
+    config = ConfigParser()
+    config.read_dict({"dhcp": {"cors_origins": " https://nvcm.example.com, * "}})
+
+    with (
+        patch("nv_config_manager.dhcp.api.load_config", return_value=config),
+        pytest.raises(
+            ValueError,
+            match="must contain explicit origins when credentials are enabled",
+        ),
+    ):
+        _install_cors(FastAPI())
+
+
 def test_healthcheck_success():
     """Verify healthcheck success case."""
     client = TestClient(app)

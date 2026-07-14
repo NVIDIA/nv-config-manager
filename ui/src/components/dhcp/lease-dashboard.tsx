@@ -375,7 +375,7 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
           <Input
             type="search"
             aria-label="Filter displayed DHCP data"
-            placeholder="Filter by IP, hostname, identifier, or subnet"
+            placeholder="Filter by IP, hostname, MAC address, client ID, or subnet"
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
             className="pl-9"
