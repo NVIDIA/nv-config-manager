@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 import time
 
 import pytest
@@ -142,6 +143,26 @@ def test_build_lease_dashboard_accepts_empty_page() -> None:
 
     assert dashboard.leases == []
     assert dashboard.active_lease_count == 3
+
+
+def test_build_lease_dashboard_logs_malformed_lease(caplog: pytest.LogCaptureFixture) -> None:
+    """Log malformed KEA rows at debug level while keeping the response safe."""
+    config, leases, statistics = dashboard_payloads()
+    malformed_row = {
+        "cltt": int(time.time()) - 60,
+        "ip-address": "not-an-address",
+        "state": 0,
+        "subnet-id": 7,
+        "valid-lft": 3600,
+    }
+    leases[0]["arguments"]["leases"].append(malformed_row)
+
+    with caplog.at_level(logging.DEBUG, logger="nv_config_manager.dhcp.lease_dashboard"):
+        dashboard = build_lease_dashboard(config, leases, statistics, limit=100)
+
+    assert len(dashboard.leases) == 1
+    assert "Skipping malformed KEA lease row" in caplog.text
+    assert "not-an-address" in caplog.text
 
 
 def test_build_lease_dashboard_caps_pool_utilization() -> None:

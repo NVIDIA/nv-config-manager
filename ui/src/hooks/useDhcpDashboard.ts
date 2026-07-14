@@ -22,6 +22,7 @@ import type { DhcpLeaseDashboard } from "@/types/dhcp.types";
 
 const CONFIG_REFRESH_METRIC =
   "nv_config_manager_dhcp_cache_last_refresh_timestamp_seconds";
+const REQUEST_TIMEOUT_MS = 30000;
 
 /** Fetch and validate the dashboard response from the DHCP API. */
 async function dhcpFetcher(url: string): Promise<DhcpLeaseDashboard> {
@@ -87,13 +88,20 @@ export async function clearDhcpLease(
     ip_address: ipAddress,
     ip_version: "4",
   });
-  const response = await fetch(sanitizeUrl(`${dhcpUrl}/lease?${query}`), {
-    credentials: "include",
-    method: "DELETE",
-    mode: "cors",
-  });
-  if (!response.ok) {
-    const body = await response.json().catch(() => null);
-    throw new Error(body?.detail || body?.error || "Failed to clear lease");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(sanitizeUrl(`${dhcpUrl}/lease?${query}`), {
+      credentials: "include",
+      method: "DELETE",
+      mode: "cors",
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      throw new Error(body?.detail || body?.error || "Failed to clear lease");
+    }
+  } finally {
+    clearTimeout(timeout);
   }
 }

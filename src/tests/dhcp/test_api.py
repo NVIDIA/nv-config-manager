@@ -455,6 +455,14 @@ def test_get_lease():
     mock_get_config.assert_awaited_once_with(4)
 
 
+def test_lease_openapi_documents_not_found() -> None:
+    """Advertise the domain-level missing lease response for both operations."""
+    lease_operations = app.openapi()["paths"]["/lease"]
+
+    for method in ("get", "delete"):
+        assert lease_operations[method]["responses"]["404"] == {"description": "Lease not found"}
+
+
 def test_get_lease_not_found():
     """Translate KEA's empty result into a RESTful not-found response."""
     client = TestClient(app)
@@ -595,10 +603,21 @@ def test_get_lease_http_error():
     """Verify KEA HTTP errors are surfaced by the DHCP API."""
     client = TestClient(app)
 
-    with patch(
-        "nv_config_manager.dhcp.api.KeaClient.get_lease",
-        new_callable=AsyncMock,
-        side_effect=make_client_response_error("HTTP ERROR"),
+    with (
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_lease",
+            new_callable=AsyncMock,
+            side_effect=make_client_response_error("HTTP ERROR"),
+        ),
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_config",
+            new_callable=AsyncMock,
+            return_value=LEASE_DASHBOARD_CONFIG,
+        ),
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.close",
+            new_callable=AsyncMock,
+        ) as mock_close,
     ):
         with patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED):
             rsp = client.get(
@@ -608,16 +627,24 @@ def test_get_lease_http_error():
 
     assert rsp.status_code == 500
     assert rsp.json() == {"detail": "HTTP ERROR"}
+    mock_close.assert_awaited_once()
 
 
 def test_get_lease_timeout():
     """Verify KEA timeouts are surfaced by the DHCP API."""
     client = TestClient(app)
 
-    with patch(
-        "nv_config_manager.dhcp.api.KeaClient.get_lease",
-        new_callable=AsyncMock,
-        side_effect=TimeoutError("KEA Request timed out"),
+    with (
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_lease",
+            new_callable=AsyncMock,
+            side_effect=TimeoutError("KEA Request timed out"),
+        ),
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_config",
+            new_callable=AsyncMock,
+            return_value=LEASE_DASHBOARD_CONFIG,
+        ),
     ):
         with patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED):
             rsp = client.get(

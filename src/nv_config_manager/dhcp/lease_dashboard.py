@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from ipaddress import ip_address, ip_network
 from typing import Any
@@ -23,6 +24,8 @@ from typing import Any
 from pydantic import BaseModel, IPvAnyAddress
 
 from nv_config_manager.dhcp.kea import IpVersion, KeaException
+
+LOG = logging.getLogger(__name__)
 
 
 class LeaseRecord(BaseModel):
@@ -179,7 +182,8 @@ def _lease_records(raw_leases: Any, subnet_prefixes: dict[int, str]) -> list[Lea
                     expires_at=_expires_at(cltt, valid_lft),
                 )
             )
-        except (KeyError, TypeError, ValueError):
+        except (KeyError, TypeError, ValueError) as exc:
+            LOG.debug("Skipping malformed KEA lease row %r: %s", raw_lease, exc)
             continue
     return sorted(leases, key=lambda lease: int(lease.ip_address))
 

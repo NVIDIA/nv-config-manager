@@ -493,6 +493,9 @@
           "204": {
             "description": "Successful Response"
           },
+          "404": {
+            "description": "Lease not found"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -545,6 +548,9 @@
               }
             },
             "description": "Successful Response"
+          },
+          "404": {
+            "description": "Lease not found"
           },
           "422": {
             "content": {
