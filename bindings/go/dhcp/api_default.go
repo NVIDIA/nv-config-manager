@@ -392,16 +392,10 @@ type ApiGetLeaseDashboardLeaseDashboardGetRequest struct {
 	ctx        context.Context
 	ApiService *DefaultAPIService
 	ipVersion  *IpVersion
-	limit      *int32
 }
 
 func (r ApiGetLeaseDashboardLeaseDashboardGetRequest) IpVersion(ipVersion IpVersion) ApiGetLeaseDashboardLeaseDashboardGetRequest {
 	r.ipVersion = &ipVersion
-	return r
-}
-
-func (r ApiGetLeaseDashboardLeaseDashboardGetRequest) Limit(limit int32) ApiGetLeaseDashboardLeaseDashboardGetRequest {
-	r.limit = &limit
 	return r
 }
 
@@ -412,7 +406,7 @@ func (r ApiGetLeaseDashboardLeaseDashboardGetRequest) Execute() (*LeaseDashboard
 /*
 GetLeaseDashboardLeaseDashboardGet Get Lease Dashboard
 
-Return bounded lease, reservation, and pool data for operators.
+Return lease counts, reservations, and pool data for operators.
 
 	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
 	@return ApiGetLeaseDashboardLeaseDashboardGetRequest
@@ -452,13 +446,6 @@ func (a *DefaultAPIService) GetLeaseDashboardLeaseDashboardGetExecute(r ApiGetLe
 		var defaultValue IpVersion = 4
 		parameterAddToHeaderOrQuery(localVarQueryParams, "ip_version", defaultValue, "form", "")
 		r.ipVersion = &defaultValue
-	}
-	if r.limit != nil {
-		parameterAddToHeaderOrQuery(localVarQueryParams, "limit", r.limit, "form", "")
-	} else {
-		var defaultValue int32 = 100
-		parameterAddToHeaderOrQuery(localVarQueryParams, "limit", defaultValue, "form", "")
-		r.limit = &defaultValue
 	}
 	// to determine the Content-Type header
 	localVarHTTPContentTypes := []string{}

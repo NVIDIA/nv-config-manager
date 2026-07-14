@@ -892,26 +892,8 @@ def test_delete_lease_connection_error():
 
 
 def test_get_lease_dashboard():
-    """Verify GET /lease-dashboard combines bounded KEA operator data."""
+    """Verify GET /lease-dashboard combines KEA summary data."""
     client = TestClient(app)
-    lease_page = [
-        {
-            "result": 0,
-            "arguments": {
-                "leases": [
-                    {
-                        "cltt": int(time.time()) - 60,
-                        "hostname": "active-switch",
-                        "hw-address": "02:00:00:00:00:10",
-                        "ip-address": "10.0.0.10",
-                        "state": 0,
-                        "subnet-id": 7,
-                        "valid-lft": 3600,
-                    }
-                ]
-            },
-        }
-    ]
 
     with (
         patch(
@@ -920,22 +902,17 @@ def test_get_lease_dashboard():
             return_value=LEASE_DASHBOARD_CONFIG,
         ) as mock_get_config,
         patch(
-            "nv_config_manager.dhcp.api.KeaClient.get_lease_page",
-            new_callable=AsyncMock,
-            return_value=lease_page,
-        ) as mock_get_lease_page,
-        patch(
             "nv_config_manager.dhcp.api.KeaClient.get_statistics",
             new_callable=AsyncMock,
             return_value=LEASE_DASHBOARD_STATISTICS,
         ) as mock_get_statistics,
         patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED),
     ):
-        rsp = client.get("/lease-dashboard?limit=25&ip_version=4")
+        rsp = client.get("/lease-dashboard?ip_version=4")
         assert rsp.status_code == 403
 
         rsp = client.get(
-            "/lease-dashboard?limit=25",
+            "/lease-dashboard",
             headers={"X-Auth-Request-Email": "test@example.com"},
         )
 
@@ -945,29 +922,15 @@ def test_get_lease_dashboard():
     assert payload["reservation_count"] == 1
     assert payload["assigned_address_count"] == 1
     assert payload["pool_address_count"] == 10
-    assert payload["leases"][0]["ip_address"] == "10.0.0.10"
-    assert payload["leases"][0]["subnet"] == "10.0.0.0/24"
-    assert "subnet_id" not in payload["leases"][0]
+    assert "leases" not in payload
+    assert "leases_truncated" not in payload
+    assert "reservations_truncated" not in payload
     assert payload["reservations"][0]["hostname"] == "reserved-switch"
     assert payload["reservations"][0]["subnet"] is None
     assert payload["pools"][0]["utilization"] == 10.0
     assert "subnet_id" not in payload["pools"][0]
     mock_get_config.assert_awaited_once_with(4)
-    mock_get_lease_page.assert_awaited_once_with(25, version=4)
     mock_get_statistics.assert_awaited_once_with(4)
-
-
-def test_get_lease_dashboard_validates_limit():
-    """Keep the splash-page lease response bounded."""
-    client = TestClient(app)
-
-    with patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED):
-        rsp = client.get(
-            "/lease-dashboard?limit=501",
-            headers={"X-Auth-Request-Email": "test@example.com"},
-        )
-
-    assert rsp.status_code == 422
 
 
 def test_get_lease_dashboard_kea_error():
@@ -979,11 +942,6 @@ def test_get_lease_dashboard_kea_error():
             "nv_config_manager.dhcp.api.KeaClient.get_config",
             new_callable=AsyncMock,
             return_value=[{"result": 1, "text": "configuration unavailable"}],
-        ),
-        patch(
-            "nv_config_manager.dhcp.api.KeaClient.get_lease_page",
-            new_callable=AsyncMock,
-            return_value=[{"result": 3, "text": "no leases"}],
         ),
         patch(
             "nv_config_manager.dhcp.api.KeaClient.get_statistics",
@@ -1003,27 +961,14 @@ def test_get_lease_dashboard_kea_error():
 
 async def test_dashboard_source_failure_cancels_and_drains_siblings() -> None:
     """Cancel and await sibling KEA requests before propagating a failure."""
-    lease_started = asyncio.Event()
     statistics_started = asyncio.Event()
     cancelled: set[str] = set()
 
     async def fail_config(version: int) -> list[dict]:
-        """Fail after both sibling requests have started."""
+        """Fail after the sibling request has started."""
         assert version == 4
-        await lease_started.wait()
         await statistics_started.wait()
         raise ClientConnectionError("KEA connection failed")
-
-    async def block_lease(limit: int, *, version: int) -> list[dict]:
-        """Record cancellation of the in-flight lease request."""
-        assert limit == 25
-        assert version == 4
-        lease_started.set()
-        try:
-            await asyncio.Future()
-        except asyncio.CancelledError:
-            cancelled.add("leases")
-            raise
 
     async def block_statistics(version: int) -> list[dict]:
         """Record cancellation of the in-flight statistics request."""
@@ -1038,10 +983,9 @@ async def test_dashboard_source_failure_cancels_and_drains_siblings() -> None:
     client = KeaClient(host="kea.example.com", port=8000)
     with (
         patch.object(client, "get_config", new=AsyncMock(side_effect=fail_config)),
-        patch.object(client, "get_lease_page", new=AsyncMock(side_effect=block_lease)),
         patch.object(client, "get_statistics", new=AsyncMock(side_effect=block_statistics)),
         pytest.raises(ClientConnectionError, match="KEA connection failed"),
     ):
-        await _fetch_lease_dashboard_sources(client, limit=25, ip_version=4)
+        await _fetch_lease_dashboard_sources(client, ip_version=4)
 
-    assert cancelled == {"leases", "statistics"}
+    assert cancelled == {"statistics"}

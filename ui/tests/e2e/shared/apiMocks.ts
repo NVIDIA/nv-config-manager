@@ -186,9 +186,6 @@ export async function mockDhcpEndpoints(page: Page) {
         reservation_count: 2,
         assigned_address_count: activeLeases.length,
         pool_address_count: 10,
-        leases_truncated: false,
-        reservations_truncated: false,
-        leases: activeLeases,
         reservations: [
           {
             ip_address: "10.0.0.2",

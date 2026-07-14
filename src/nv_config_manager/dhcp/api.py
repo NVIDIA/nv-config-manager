@@ -119,16 +119,14 @@ async def _gather_kea_requests(
 
 async def _fetch_lease_dashboard_sources(
     client: KeaClient,
-    limit: int,
     ip_version: IpVersion,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Fetch dashboard sources and drain every task before returning or raising."""
-    config, leases, statistics = await _gather_kea_requests(
+    config, statistics = await _gather_kea_requests(
         client.get_config(ip_version),
-        client.get_lease_page(limit, version=ip_version),
         client.get_statistics(ip_version),
     )
-    return config, leases, statistics
+    return config, statistics
 
 
 @asynccontextmanager
@@ -361,20 +359,16 @@ async def delete_lease(
 async def get_lease_dashboard(
     request: Request,
     ip_version: IpVersion = IpVersion.V4,
-    limit: int = Query(default=100, ge=1, le=500),
 ) -> LeaseDashboardResponse:
-    """Return bounded lease, reservation, and pool data for operators."""
+    """Return lease counts, reservations, and pool data for operators."""
     async with _kea_lease_client() as client:
-        config, leases, statistics = await _fetch_lease_dashboard_sources(
+        config, statistics = await _fetch_lease_dashboard_sources(
             client,
-            limit,
             ip_version,
         )
         return build_lease_dashboard(
             config,
-            leases,
             statistics,
-            limit=limit,
             ip_version=ip_version,
         )
 

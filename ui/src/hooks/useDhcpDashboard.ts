@@ -70,7 +70,7 @@ async function configRefreshFetcher(url: string): Promise<number | null> {
 /** Subscribe to refreshed DHCP dashboard data for the splash page. */
 export function useDhcpDashboard(dhcpUrl: string) {
   const url = dhcpUrl
-    ? sanitizeUrl(`${dhcpUrl}/lease-dashboard?ip_version=4&limit=100`)
+    ? sanitizeUrl(`${dhcpUrl}/lease-dashboard?ip_version=4`)
     : null;
   return useSWR<DhcpLeaseDashboard>(url, dhcpFetcher, {
     refreshInterval: 30000,

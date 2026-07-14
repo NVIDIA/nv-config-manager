@@ -19,17 +19,14 @@ import (
 // checks if the LeaseDashboardResponse type satisfies the MappedNullable interface at compile time
 var _ MappedNullable = &LeaseDashboardResponse{}
 
-// LeaseDashboardResponse Lease, reservation, and pool data used by the splash-page dashboard.
+// LeaseDashboardResponse Reservation and pool summary used by the splash-page dashboard.
 type LeaseDashboardResponse struct {
-	ActiveLeaseCount      int32               `json:"active_lease_count"`
-	AssignedAddressCount  int32               `json:"assigned_address_count"`
-	Leases                []LeaseRecord       `json:"leases"`
-	LeasesTruncated       bool                `json:"leases_truncated"`
-	PoolAddressCount      int32               `json:"pool_address_count"`
-	Pools                 []PoolUsage         `json:"pools"`
-	ReservationCount      int32               `json:"reservation_count"`
-	Reservations          []ReservationRecord `json:"reservations"`
-	ReservationsTruncated bool                `json:"reservations_truncated"`
+	ActiveLeaseCount     int32               `json:"active_lease_count"`
+	AssignedAddressCount int32               `json:"assigned_address_count"`
+	PoolAddressCount     int32               `json:"pool_address_count"`
+	Pools                []PoolUsage         `json:"pools"`
+	ReservationCount     int32               `json:"reservation_count"`
+	Reservations         []ReservationRecord `json:"reservations"`
 }
 
 type _LeaseDashboardResponse LeaseDashboardResponse
@@ -38,17 +35,14 @@ type _LeaseDashboardResponse LeaseDashboardResponse
 // This constructor will assign default values to properties that have it defined,
 // and makes sure properties required by API are set, but the set of arguments
 // will change when the set of required properties is changed
-func NewLeaseDashboardResponse(activeLeaseCount int32, assignedAddressCount int32, leases []LeaseRecord, leasesTruncated bool, poolAddressCount int32, pools []PoolUsage, reservationCount int32, reservations []ReservationRecord, reservationsTruncated bool) *LeaseDashboardResponse {
+func NewLeaseDashboardResponse(activeLeaseCount int32, assignedAddressCount int32, poolAddressCount int32, pools []PoolUsage, reservationCount int32, reservations []ReservationRecord) *LeaseDashboardResponse {
 	this := LeaseDashboardResponse{}
 	this.ActiveLeaseCount = activeLeaseCount
 	this.AssignedAddressCount = assignedAddressCount
-	this.Leases = leases
-	this.LeasesTruncated = leasesTruncated
 	this.PoolAddressCount = poolAddressCount
 	this.Pools = pools
 	this.ReservationCount = reservationCount
 	this.Reservations = reservations
-	this.ReservationsTruncated = reservationsTruncated
 	return &this
 }
 
@@ -106,54 +100,6 @@ func (o *LeaseDashboardResponse) GetAssignedAddressCountOk() (*int32, bool) {
 // SetAssignedAddressCount sets field value
 func (o *LeaseDashboardResponse) SetAssignedAddressCount(v int32) {
 	o.AssignedAddressCount = v
-}
-
-// GetLeases returns the Leases field value
-func (o *LeaseDashboardResponse) GetLeases() []LeaseRecord {
-	if o == nil {
-		var ret []LeaseRecord
-		return ret
-	}
-
-	return o.Leases
-}
-
-// GetLeasesOk returns a tuple with the Leases field value
-// and a boolean to check if the value has been set.
-func (o *LeaseDashboardResponse) GetLeasesOk() ([]LeaseRecord, bool) {
-	if o == nil {
-		return nil, false
-	}
-	return o.Leases, true
-}
-
-// SetLeases sets field value
-func (o *LeaseDashboardResponse) SetLeases(v []LeaseRecord) {
-	o.Leases = v
-}
-
-// GetLeasesTruncated returns the LeasesTruncated field value
-func (o *LeaseDashboardResponse) GetLeasesTruncated() bool {
-	if o == nil {
-		var ret bool
-		return ret
-	}
-
-	return o.LeasesTruncated
-}
-
-// GetLeasesTruncatedOk returns a tuple with the LeasesTruncated field value
-// and a boolean to check if the value has been set.
-func (o *LeaseDashboardResponse) GetLeasesTruncatedOk() (*bool, bool) {
-	if o == nil {
-		return nil, false
-	}
-	return &o.LeasesTruncated, true
-}
-
-// SetLeasesTruncated sets field value
-func (o *LeaseDashboardResponse) SetLeasesTruncated(v bool) {
-	o.LeasesTruncated = v
 }
 
 // GetPoolAddressCount returns the PoolAddressCount field value
@@ -252,30 +198,6 @@ func (o *LeaseDashboardResponse) SetReservations(v []ReservationRecord) {
 	o.Reservations = v
 }
 
-// GetReservationsTruncated returns the ReservationsTruncated field value
-func (o *LeaseDashboardResponse) GetReservationsTruncated() bool {
-	if o == nil {
-		var ret bool
-		return ret
-	}
-
-	return o.ReservationsTruncated
-}
-
-// GetReservationsTruncatedOk returns a tuple with the ReservationsTruncated field value
-// and a boolean to check if the value has been set.
-func (o *LeaseDashboardResponse) GetReservationsTruncatedOk() (*bool, bool) {
-	if o == nil {
-		return nil, false
-	}
-	return &o.ReservationsTruncated, true
-}
-
-// SetReservationsTruncated sets field value
-func (o *LeaseDashboardResponse) SetReservationsTruncated(v bool) {
-	o.ReservationsTruncated = v
-}
-
 func (o LeaseDashboardResponse) MarshalJSON() ([]byte, error) {
 	toSerialize, err := o.ToMap()
 	if err != nil {
@@ -288,13 +210,10 @@ func (o LeaseDashboardResponse) ToMap() (map[string]interface{}, error) {
 	toSerialize := map[string]interface{}{}
 	toSerialize["active_lease_count"] = o.ActiveLeaseCount
 	toSerialize["assigned_address_count"] = o.AssignedAddressCount
-	toSerialize["leases"] = o.Leases
-	toSerialize["leases_truncated"] = o.LeasesTruncated
 	toSerialize["pool_address_count"] = o.PoolAddressCount
 	toSerialize["pools"] = o.Pools
 	toSerialize["reservation_count"] = o.ReservationCount
 	toSerialize["reservations"] = o.Reservations
-	toSerialize["reservations_truncated"] = o.ReservationsTruncated
 	return toSerialize, nil
 }
 
@@ -305,13 +224,10 @@ func (o *LeaseDashboardResponse) UnmarshalJSON(data []byte) (err error) {
 	requiredProperties := map[string]bool{
 		"active_lease_count":     false,
 		"assigned_address_count": false,
-		"leases":                 false,
-		"leases_truncated":       false,
 		"pool_address_count":     false,
 		"pools":                  false,
 		"reservation_count":      false,
 		"reservations":           false,
-		"reservations_truncated": false,
 	}
 
 	allProperties := make(map[string]interface{})

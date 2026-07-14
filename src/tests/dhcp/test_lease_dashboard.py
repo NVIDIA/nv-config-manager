@@ -22,6 +22,7 @@ from nv_config_manager.dhcp.kea import IpVersion, KeaException
 from nv_config_manager.dhcp.lease_dashboard import (
     LeaseRecord,
     build_lease_dashboard,
+    build_lease_list,
     filter_lease_records,
 )
 
@@ -110,22 +111,16 @@ def dashboard_payloads() -> tuple[list[dict], list[dict], list[dict]]:
 
 
 def test_build_lease_dashboard() -> None:
-    """Build a bounded dashboard from config, lease, and statistic responses."""
-    config, leases, statistics = dashboard_payloads()
+    """Build a dashboard summary from configuration and statistics."""
+    config, _, statistics = dashboard_payloads()
 
-    dashboard = build_lease_dashboard(config, leases, statistics, limit=1)
+    dashboard = build_lease_dashboard(config, statistics)
 
     assert dashboard.active_lease_count == 3
     assert dashboard.assigned_address_count == 3
     assert dashboard.reservation_count == 2
     assert dashboard.pool_address_count == 14
-    assert dashboard.leases_truncated is True
-    assert dashboard.reservations_truncated is True
-    assert len(dashboard.leases) == 1
-    assert str(dashboard.leases[0].ip_address) == "10.0.0.10"
-    assert dashboard.leases[0].subnet == "10.0.0.0/24"
-    assert dashboard.leases[0].expires_at is not None
-    assert len(dashboard.reservations) == 1
+    assert len(dashboard.reservations) == 2
     assert dashboard.reservations[0].identifier_type == "hw-address"
     assert dashboard.reservations[0].subnet is None
     assert [(pool.assigned, pool.total, pool.utilization) for pool in dashboard.pools] == [
@@ -133,25 +128,9 @@ def test_build_lease_dashboard() -> None:
         (0, 4, 0.0),
     ]
 
-
-def test_build_lease_dashboard_accepts_empty_page() -> None:
-    """Treat KEA result 3 as an empty lease page rather than an API failure."""
-    config, _, statistics = dashboard_payloads()
-
-    dashboard = build_lease_dashboard(
-        config,
-        [{"result": 3, "text": "0 IPv4 lease(s) found."}],
-        statistics,
-        limit=100,
-    )
-
-    assert dashboard.leases == []
-    assert dashboard.active_lease_count == 3
-
-
-def test_build_lease_dashboard_logs_malformed_lease(caplog: pytest.LogCaptureFixture) -> None:
+def test_build_lease_list_logs_malformed_lease(caplog: pytest.LogCaptureFixture) -> None:
     """Log malformed KEA rows at debug level while keeping the response safe."""
-    config, leases, statistics = dashboard_payloads()
+    config, leases, _ = dashboard_payloads()
     malformed_row = {
         "cltt": int(time.time()) - 60,
         "ip-address": "not-an-address",
@@ -162,9 +141,9 @@ def test_build_lease_dashboard_logs_malformed_lease(caplog: pytest.LogCaptureFix
     leases[0]["arguments"]["leases"].append(malformed_row)
 
     with caplog.at_level(logging.DEBUG, logger="nv_config_manager.dhcp.lease_dashboard"):
-        dashboard = build_lease_dashboard(config, leases, statistics, limit=100)
+        records = build_lease_list(config, leases, ip_version=IpVersion.V4)
 
-    assert len(dashboard.leases) == 1
+    assert len(records) == 1
     assert "Skipping malformed KEA lease row" in caplog.text
     assert "not-an-address" in caplog.text
 
@@ -187,12 +166,12 @@ def test_filter_lease_records_normalizes_mac_addresses(search: str) -> None:
 
 def test_build_lease_dashboard_caps_pool_utilization() -> None:
     """Keep reservation-backed KEA pool statistics within percentage bounds."""
-    config, leases, statistics = dashboard_payloads()
+    config, _, statistics = dashboard_payloads()
     statistics[0]["arguments"]["subnet[7].pool[0].assigned-addresses"] = [
         [12, "2026-07-10 00:00:00"]
     ]
 
-    dashboard = build_lease_dashboard(config, leases, statistics, limit=100)
+    dashboard = build_lease_dashboard(config, statistics)
 
     assert dashboard.pools[0].assigned == 12
     assert dashboard.pools[0].total == 10
@@ -254,17 +233,12 @@ def test_build_ipv6_lease_dashboard() -> None:
         }
     ]
 
-    dashboard = build_lease_dashboard(
-        config,
-        leases,
-        statistics,
-        limit=100,
-        ip_version=IpVersion.V6,
-    )
+    dashboard = build_lease_dashboard(config, statistics, ip_version=IpVersion.V6)
+    lease_records = build_lease_list(config, leases, ip_version=IpVersion.V6)
 
-    assert str(dashboard.leases[0].ip_address) == "2001:db8:1::10"
-    assert dashboard.leases[0].duid == "00:01:00:01:11:22:33:44"
-    assert dashboard.leases[0].subnet == "2001:db8:1::/64"
+    assert str(lease_records[0].ip_address) == "2001:db8:1::10"
+    assert lease_records[0].duid == "00:01:00:01:11:22:33:44"
+    assert lease_records[0].subnet == "2001:db8:1::/64"
     assert str(dashboard.reservations[0].ip_address) == "2001:db8:1::2"
     assert dashboard.reservations[0].identifier_type == "duid"
     assert dashboard.pools[0].total == 16
@@ -273,12 +247,10 @@ def test_build_ipv6_lease_dashboard() -> None:
 
 def test_build_lease_dashboard_rejects_kea_error() -> None:
     """Surface logical KEA command failures to the API route."""
-    _, leases, statistics = dashboard_payloads()
+    _, _, statistics = dashboard_payloads()
 
     with pytest.raises(KeaException, match="config-get failed: configuration unavailable"):
         build_lease_dashboard(
             [{"result": 1, "text": "configuration unavailable"}],
-            leases,
             statistics,
-            limit=100,
         )

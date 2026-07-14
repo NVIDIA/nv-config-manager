@@ -24,7 +24,7 @@
         "type": "integer"
       },
       "LeaseDashboardResponse": {
-        "description": "Lease, reservation, and pool data used by the splash-page dashboard.",
+        "description": "Reservation and pool summary used by the splash-page dashboard.",
         "properties": {
           "active_lease_count": {
             "title": "Active Lease Count",
@@ -33,17 +33,6 @@
           "assigned_address_count": {
             "title": "Assigned Address Count",
             "type": "integer"
-          },
-          "leases": {
-            "items": {
-              "$ref": "#/components/schemas/LeaseRecord"
-            },
-            "title": "Leases",
-            "type": "array"
-          },
-          "leases_truncated": {
-            "title": "Leases Truncated",
-            "type": "boolean"
           },
           "pool_address_count": {
             "title": "Pool Address Count",
@@ -66,10 +55,6 @@
             },
             "title": "Reservations",
             "type": "array"
-          },
-          "reservations_truncated": {
-            "title": "Reservations Truncated",
-            "type": "boolean"
           }
         },
         "required": [
@@ -77,9 +62,6 @@
           "reservation_count",
           "assigned_address_count",
           "pool_address_count",
-          "leases_truncated",
-          "reservations_truncated",
-          "leases",
           "reservations",
           "pools"
         ],
@@ -601,7 +583,7 @@
     },
     "/lease-dashboard": {
       "get": {
-        "description": "Return bounded lease, reservation, and pool data for operators.",
+        "description": "Return lease counts, reservations, and pool data for operators.",
         "operationId": "get_lease_dashboard_lease_dashboard_get",
         "parameters": [
           {
@@ -611,18 +593,6 @@
             "schema": {
               "$ref": "#/components/schemas/IpVersion",
               "default": 4
-            }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 100,
-              "maximum": 500,
-              "minimum": 1,
-              "title": "Limit",
-              "type": "integer"
             }
           }
         ],

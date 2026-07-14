@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-/** Active lease returned by the DHCP dashboard endpoint. */
+/** Active lease returned by the DHCP lease API. */
 export interface DhcpLease {
   ip_address: string;
   hostname: string;
@@ -59,9 +59,6 @@ export interface DhcpLeaseDashboard {
   reservation_count: number;
   assigned_address_count: number;
   pool_address_count: number;
-  leases_truncated: boolean;
-  reservations_truncated: boolean;
-  leases: DhcpLease[];
   reservations: DhcpReservation[];
   pools: DhcpPoolUsage[];
 }

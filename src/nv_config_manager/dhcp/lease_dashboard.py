@@ -64,15 +64,12 @@ class PoolUsage(BaseModel):
 
 
 class LeaseDashboardResponse(BaseModel):
-    """Lease, reservation, and pool data used by the splash-page dashboard."""
+    """Reservation and pool summary used by the splash-page dashboard."""
 
     active_lease_count: int
     reservation_count: int
     assigned_address_count: int
     pool_address_count: int
-    leases_truncated: bool
-    reservations_truncated: bool
-    leases: list[LeaseRecord]
     reservations: list[ReservationRecord]
     pools: list[PoolUsage]
 
@@ -416,45 +413,27 @@ def lease_deleted(delete_payload: list[dict[str, Any]], *, ip_version: IpVersion
 
 def build_lease_dashboard(
     config_payload: list[dict[str, Any]],
-    lease_payload: list[dict[str, Any]],
     statistics_payload: list[dict[str, Any]],
     *,
-    limit: int,
     ip_version: IpVersion = IpVersion.V4,
 ) -> LeaseDashboardResponse:
-    """Convert KEA command responses into the bounded dashboard response."""
+    """Convert KEA configuration and statistics into the dashboard summary."""
     dhcp_config = _dhcp_config(config_payload, ip_version)
-    lease_arguments = _response_arguments(
-        lease_payload,
-        f"lease{ip_version}-get-page",
-        allow_empty=True,
-    )
     statistics = _response_arguments(statistics_payload, "statistic-get-all")
 
-    leases = _lease_records(
-        lease_arguments.get("leases", []),
-        _subnet_prefixes(dhcp_config, ip_version),
-    )
     reservations = _reservation_records(dhcp_config, ip_version)
     pools = _pool_usage(dhcp_config, statistics, ip_version)
     assigned_stat = "assigned-addresses" if ip_version == 4 else "assigned-nas"
     assigned_count = _stat_value(statistics, assigned_stat)
     if assigned_count is None:
         assigned_count = sum(pool.assigned for pool in pools)
-    # KEA's global assigned count can include leases filtered from the active,
-    # unexpired rows above. Keep the global KPI and flag that row-count mismatch
-    # through leases_truncated rather than presenting the smaller list as complete.
-    active_lease_count = max(assigned_count, len(leases))
     pool_address_count = sum(pool.total for pool in pools)
 
     return LeaseDashboardResponse(
-        active_lease_count=active_lease_count,
+        active_lease_count=assigned_count,
         reservation_count=len(reservations),
         assigned_address_count=assigned_count,
         pool_address_count=pool_address_count,
-        leases_truncated=active_lease_count > len(leases),
-        reservations_truncated=len(reservations) > limit,
-        leases=leases[:limit],
-        reservations=reservations[:limit],
+        reservations=reservations,
         pools=pools,
     )
