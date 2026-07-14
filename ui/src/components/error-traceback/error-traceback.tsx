@@ -68,8 +68,10 @@ const parseErrorLine = (line: string): ParsedError | null => {
     return null
   }
 
-  const parts = line.split(": ", 2)
-  return createParsedError(parts[0].trim(), parts[1]?.trim() ?? "")
+  const separatorIndex = line.indexOf(": ")
+  const type = separatorIndex === -1 ? line : line.slice(0, separatorIndex)
+  const message = separatorIndex === -1 ? "" : line.slice(separatorIndex + 2)
+  return createParsedError(type.trim(), message.trim())
 }
 
 const isFrameLine = (line: string) => line.trim().startsWith(FRAME_PREFIX)
@@ -124,17 +126,28 @@ const appendErrorMessage = (currentError: ParsedError | null, line: string) => {
   currentError.message = [currentError.message, message].filter(Boolean).join("\n")
 }
 
-const processTracebackLine = (state: TracebackParseState) => {
-  const line = state.lines[state.index]
-  const parsedError = parseErrorLine(line)
-
-  if (parsedError) {
+const mergeParsedError = (state: TracebackParseState, parsedError: ParsedError) => {
+  if (!state.currentError) {
     state.currentError = parsedError
     state.errors.push(parsedError)
     return
   }
 
+  state.currentError.type = parsedError.type
+  state.currentError.message = parsedError.message
+}
+
+const processTracebackLine = (state: TracebackParseState) => {
+  const line = state.lines[state.index]
+  const parsedError = parseErrorLine(line)
+
+  if (parsedError) {
+    mergeParsedError(state, parsedError)
+    return
+  }
+
   if (line.includes(CAUSE_SEPARATOR)) {
+    state.currentError = null
     return
   }
 
@@ -151,10 +164,14 @@ const processTracebackLine = (state: TracebackParseState) => {
   appendErrorMessage(state.currentError, line)
 }
 
-const linkErrorCauses = (errors: ParsedError[]) => {
-  errors.slice(0, -1).forEach((error, index) => {
-    error.cause = errors[index + 1]
+const linkErrorCauses = (errors: ParsedError[]): ParsedError | undefined => {
+  const errorsInDisplayOrder = [...errors].reverse()
+
+  errorsInDisplayOrder.slice(0, -1).forEach((error, index) => {
+    error.cause = errorsInDisplayOrder[index + 1]
   })
+
+  return errorsInDisplayOrder[0]
 }
 
 const parseTraceback = (traceback: string): ParsedError[] => {
@@ -170,8 +187,8 @@ const parseTraceback = (traceback: string): ParsedError[] => {
     state.index++
   }
 
-  linkErrorCauses(state.errors)
-  return state.errors.length > 0 ? [state.errors[0]] : []
+  const rootError = linkErrorCauses(state.errors)
+  return rootError ? [rootError] : []
 }
 
 const getFrameKey = (frame: TracebackFrame) =>
