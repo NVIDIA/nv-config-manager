@@ -135,7 +135,7 @@ curl --fail-with-body --get "${DHCP_API_URL}/leases" \
   --data-urlencode "limit=100"
 ```
 
-The response contains a `leases` array and an opaque `next_cursor`. When `next_cursor` is not null, pass it unchanged in the next request together with the same filters. The optional `search` parameter filters across the complete lease inventory rather than only the current page.
+The response contains a `leases` array and an opaque `next_cursor`. When `next_cursor` is not null, pass it unchanged in the next request together with the same filters. This also applies to the optional `search` parameter: each request scans a bounded chunk of the lease inventory, and following `next_cursor` continues the same search through the next chunk. The dashboard handles this with **Load more leases**.
 
 Look up the device holding a lease:
 

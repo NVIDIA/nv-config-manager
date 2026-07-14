@@ -613,8 +613,8 @@ def test_list_leases_follows_opaque_cursor():
     ]
 
 
-def test_list_leases_searches_across_backend_pages():
-    """Search thousands of leases rather than only the first KEA page."""
+def test_list_leases_bounds_search_across_backend_pages():
+    """Search 1,000 leases while bounding KEA work behind a continuation cursor."""
     client = TestClient(app)
     pages = [
         lease_page(
@@ -630,8 +630,6 @@ def test_list_leases_searches_across_backend_pages():
         )
         for page_index in range(10)
     ]
-    pages.append(lease_page())
-
     with (
         patch(
             "nv_config_manager.dhcp.api.KeaClient.get_lease_page",
@@ -652,8 +650,8 @@ def test_list_leases_searches_across_backend_pages():
 
     assert rsp.status_code == 200
     assert [lease["hostname"] for lease in rsp.json()["leases"]] == ["target-switch"]
-    assert rsp.json()["next_cursor"] is None
-    assert mock_get_lease_page.await_count == 11
+    assert rsp.json()["next_cursor"] is not None
+    assert mock_get_lease_page.await_count == 10
     assert mock_get_lease_page.await_args_list[0] == call(
         100,
         version=4,
@@ -662,7 +660,7 @@ def test_list_leases_searches_across_backend_pages():
     assert mock_get_lease_page.await_args_list[-1] == call(
         100,
         version=4,
-        from_address="10.9.0.100",
+        from_address="10.8.0.100",
     )
 
 

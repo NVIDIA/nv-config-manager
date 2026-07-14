@@ -51,6 +51,8 @@ from nv_config_manager.dhcp.redis import RedisClient
 
 configure_logging(service="dhcp")
 
+_MAX_KEA_LEASE_PAGES_PER_REQUEST = 10
+
 app = FastAPI()
 
 CACHE_LAST_REFRESH = Gauge(
@@ -168,6 +170,7 @@ async def _collect_lease_page(
     leases: list[LeaseRecord] = []
     lease_payload = initial_lease_payload
     seen_addresses: set[str] = set()
+    scanned_pages = 1
 
     while True:
         page_leases = filter_lease_records(
@@ -191,6 +194,8 @@ async def _collect_lease_page(
         next_cursor = _encode_lease_cursor(last_address)
         if len(leases) >= limit:
             return LeasePageResponse(leases=leases, next_cursor=next_cursor)
+        if scanned_pages >= _MAX_KEA_LEASE_PAGES_PER_REQUEST:
+            return LeasePageResponse(leases=leases, next_cursor=next_cursor)
 
         seen_addresses.add(last_address)
         from_address = last_address
@@ -199,6 +204,7 @@ async def _collect_lease_page(
             version=ip_version,
             from_address=from_address,
         )
+        scanned_pages += 1
 
 
 def main() -> None:
