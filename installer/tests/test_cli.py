@@ -136,17 +136,18 @@ class TestDeployCommand:
         assert "--vault-token-file" in result.output
 
 
-class TestArgoCDCommand:
-    def test_argocd_missing_config(self):
+class TestPVCUpdaterCommand:
+    def test_pvc_updater_help(self):
         runner = CliRunner()
-        result = runner.invoke(main, ["argocd", "/nonexistent/config.yaml"])
-        assert result.exit_code != 0
-
-    def test_argocd_help(self):
-        runner = CliRunner()
-        result = runner.invoke(main, ["argocd", "--help"])
+        result = runner.invoke(main, ["pvc-updater", "--help"])
         assert result.exit_code == 0
-        assert "Prepare installer-owned resources" in result.output
-        assert "--output-dir" in result.output
-        assert "--chart-dir" in result.output
-        assert "--vault-token-file" in result.output
+        assert "jobs" in result.output
+        assert "templates" in result.output
+        assert "ztp" in result.output
+
+    def test_pvc_updater_ztp_help(self):
+        runner = CliRunner()
+        result = runner.invoke(main, ["pvc-updater", "ztp", "--help"])
+        assert result.exit_code == 0
+        assert "--image" in result.output
+        assert "--namespace" in result.output

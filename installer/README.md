@@ -46,8 +46,9 @@ uv run nvcm-installer validate nv-config-manager-install.yaml
 # Generate Helm values without deploying
 uv run nvcm-installer generate-values nv-config-manager-install.yaml -o ./generated
 
-# Prepare installer-owned resources and values before adding the NVCM Argo CD app
-uv run nvcm-installer argocd nv-config-manager-install.yaml -o ./generated
+# Update content in GitOps-managed PVCs after the NVCM application is healthy
+uv run nvcm-installer pvc-updater jobs --namespace nv-config-manager \
+  --release-name nv-config-manager --source ./custom-jobs
 ```
 
 ---
@@ -155,36 +156,10 @@ When `cluster.airgapped` is true, or the chart directory sits inside an
 airgapped bundle with sibling `charts/` and `manifests/` directories, the
 installer uses the local bundled artifacts.
 
-### `nvcm-installer argocd`
-
-Prepare a site before the NVCM Argo CD application is added or synced.
-
-```bash
-# 1. Argo CD and infrastructure applications such as Keycloak, ESO,
-#    Vault, and cert-manager are installed first.
-
-# 2. Create/populate installer-owned resources and generate values.
-nvcm-installer argocd nv-config-manager-install.yaml --output-dir ./generated
-
-# 3. Copy values-generated.yaml into the Argo CD repository, add the NVCM
-#    Application/ApplicationSet, and sync it using the site's normal process.
-```
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--output-dir`, `-o` | `.` | Directory for `values-generated.yaml` |
-| `--chart-dir` | `deploy/helm` | Helm chart used for size-profile generation |
-| `--vault-token-file` | unset | File containing a Vault provisioning token |
-
-The command creates the namespace, creates and populates the Nautobot jobs,
-template plugin, and file-backed OS image PVCs, populates secrets, and writes
-`values-generated.yaml`. It does not install operators, run Helm, create an
-ApplicationSet, copy files to Git, or sync Argo CD.
-
-When ESO is selected, the installer creates the configured KV v2 mounts when
-missing and fills absent keys in the application, Git-token, and per-site
-Vault paths. Existing values are preserved, so rerunning preparation does not
-rotate credentials. The provisioning token is resolved in this order:
+When ESO is selected during a normal `deploy`, the installer creates configured
+KV v2 mounts when missing and fills absent keys in application, Git-token, and
+per-site Vault paths. Existing values are preserved, so rerunning a deployment
+does not rotate credentials. The provisioning token is resolved in this order:
 
 1. `--vault-token-file`
 2. `VAULT_TOKEN`
@@ -194,6 +169,35 @@ The token must be allowed to inspect/create the configured mounts and read/write
 their KV v2 paths. External credentials such as OIDC, Slack, Jira, and Git
 tokens must be supplied in the installer configuration or already exist at the
 configured Vault path; the installer will not invent integration credentials.
+
+### `nvcm-installer pvc-updater`
+
+Use this command from automation after the NVCM GitOps application is healthy.
+GitOps owns the PVC definitions; the updater only replaces their mutable
+content and then waits for the consuming deployments to restart successfully.
+It never creates, resizes, or changes a PVC. A missing PVC is an error.
+
+```bash
+# Custom jobs: restart Nautobot, Celery, and Celery Beat when content changed.
+nvcm-installer pvc-updater jobs --namespace nv-config-manager \
+  --release-name nv-config-manager --source ./custom-jobs
+
+# Template plugins: restart the Render Service deployments when content changed.
+nvcm-installer pvc-updater templates --namespace nv-config-manager \
+  --release-name nv-config-manager --source ./template-plugins
+
+# ZTP OS images: rebuild manifest.json and restart Network ZTP when content changed.
+nvcm-installer pvc-updater ztp --namespace nv-config-manager \
+  --release-name nv-config-manager \
+  --image cumulus 5.13.0 ./cumulus-linux-5.13.0.bin
+```
+
+`jobs` and `templates` accept one or more `--source` directories or tar
+archives. `ztp` accepts one or more `--image PLATFORM VERSION PATH` values.
+The default PVC names are `nautobot-custom-jobs`,
+`render-service-template-plugins`, and `ztp-os-images`; each can be overridden
+with `--pvc-name`. The updater calculates a content checksum, so unchanged
+sources leave the PVC and workloads untouched.
 
 ---
 
@@ -619,7 +623,6 @@ Full deployment orchestration with live monitoring.
 
 | Option | Description |
 |--------|-------------|
-| Prepare for Argo CD | Create/populate installer-owned prerequisites and generate the values file before NVCM sync |
 | Vault Token File | Provisioning token file used to create KV v2 mounts and fill ESO paths |
 | Build Images | Build Docker images locally (content-addressed tags) |
 | Load Kind | Load built images into a Kind cluster |
@@ -820,11 +823,6 @@ execute in order. Steps are automatically skipped when not applicable.
 checksums. On re-runs, it only restarts services when associated PVC content (jobs,
 templates, or file-backed ZTP images) has actually changed, rather than blindly
 restarting everything.
-
-For Argo CD preparation, steps 1, 5–11, and the applicable change-aware restart
-steps 14–16 run. If Argo CD has not created the workloads yet, the restart steps
-finish without error. Operator installation, Helm, post-deploy jobs, tests, and
-endpoint discovery remain deferred to the Argo CD-managed deployment lifecycle.
 
 **INI checksum annotations:** The `nv-config-manager.ini` config secret includes a content
 checksum in pod annotations, triggering automatic rolling restarts when INI
