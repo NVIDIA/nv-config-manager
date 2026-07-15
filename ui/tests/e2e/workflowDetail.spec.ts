@@ -312,4 +312,57 @@ test.describe("Workflow Detail Page", () => {
     ).toBeVisible();
     await expect(page.getByRole("button", { name: "Retry" })).toHaveCount(0);
   });
+
+  test("renders chained traceback errors with their frames and full messages", async ({
+    page,
+  }) => {
+    const workflowId = "failed-workflow-with-traceback";
+    const workflow = createWorkflowWithStage({
+      id: workflowId,
+      retryable: false,
+      stageName: "apply_config",
+      stageState: "FAILED",
+      status: "FAILED",
+    });
+    workflow.stages[0].traceback = `Traceback (most recent call last):
+  File "/app/inner.py", line 12, in load_config
+    load_from_database()
+ConnectionError: database: host: unreachable
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/outer.py", line 28, in apply_config
+    raise ServiceUnavailableError() from error
+ServiceUnavailableError: service: retry later`;
+
+    await page.route(`**/v1/workflow/${workflowId}`, async (route) => {
+      await route.fulfill({ status: 200, json: workflow });
+    });
+
+    await page.goto(`/workflows/${workflowId}`);
+
+    const tracebackCard = page.getByTestId("error-traceback-card");
+    const errorTypes = tracebackCard.getByTestId("error-traceback-type");
+
+    await expect(errorTypes).toHaveText([
+      "ServiceUnavailableError",
+      "ConnectionError",
+    ]);
+    await expect(
+      tracebackCard.getByText("service: retry later", { exact: true })
+    ).toBeVisible();
+    await expect(
+      tracebackCard.getByText("database: host: unreachable", { exact: true })
+    ).toBeVisible();
+    await expect(
+      tracebackCard.getByText("/app/outer.py", { exact: true })
+    ).toBeVisible();
+    await expect(
+      tracebackCard.getByText("/app/inner.py", { exact: true })
+    ).toBeVisible();
+    await expect(
+      tracebackCard.getByText("Unknown Error", { exact: true })
+    ).toHaveCount(0);
+  });
 });
