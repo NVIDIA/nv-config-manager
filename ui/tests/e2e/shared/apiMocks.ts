@@ -66,6 +66,7 @@ export async function setupApiMocks(page: Page) {
 
   // Workflow submission endpoints
   await mockSiteCableValidationEndpoint(page);
+  await mockSiteBackupEndpoint(page);
   await mockSpxOverlayCreationEndpoint(page);
   await mockSpxOverlayDeletionEndpoint(page);
   await mockBackupEndpoint(page);
@@ -324,6 +325,35 @@ export async function mockSiteCableValidationEndpoint(page: Page) {
       });
     }
   );
+}
+
+export async function mockSiteBackupEndpoint(page: Page) {
+  await page.route(`**/v1/workflow/ngc/site_backup`, async (route) => {
+    const request = route.request();
+    const body = JSON.parse((await request.postData()) || "{}");
+
+    if (body.site === FORBIDDEN_SITE_ID) {
+      await route.fulfill({
+        status: 403,
+        json: {
+          error: "Forbidden: You do not have permission to run this workflow",
+        },
+      });
+      return;
+    }
+
+    await delay(100);
+
+    await route.fulfill({
+      status: 201,
+      json: {
+        id: body.site || "site-used-for-id",
+        href: `https://url-to-temporal.com/namespaces/default/workflows/${
+          body.site || "site-used-for-id"
+        }`,
+      },
+    });
+  });
 }
 
 export async function mockSpxOverlayCreationEndpoint(page: Page) {
@@ -1104,6 +1134,7 @@ export async function mockPasswordUsersEndpoint(page: Page) {
 export async function mockWorkflowTypesEndpoint(page: Page) {
   const workflowTypes = [
     "BackupWorkflow",
+    "SiteBackupWorkflow",
     "ConnectedHostMetadataWorkflow",
     "DeployWorkflow",
     "TenantDeployWorkflow",
@@ -1141,6 +1172,7 @@ export async function mockWorkflowTypesEndpoint(page: Page) {
 export async function mockWorkflowMetadataEndpoint(page: Page) {
   const workflowTypes = [
     "BackupWorkflow",
+    "SiteBackupWorkflow",
     "ConnectedHostMetadataWorkflow",
     "DeployWorkflow",
     "TenantDeployWorkflow",
@@ -1168,6 +1200,7 @@ export async function mockWorkflowMetadataEndpoint(page: Page) {
   ];
   const workflowDisplayNames: Record<string, string> = {
     BackupWorkflow: "Configuration Backup",
+    SiteBackupWorkflow: "Site Configuration Backup",
     ConnectedHostMetadataWorkflow: "Connected Host Metadata",
     DeployWorkflow: "Configuration Deploy",
     TenantDeployWorkflow: "Tenant Deploy",
@@ -1192,6 +1225,7 @@ export async function mockWorkflowMetadataEndpoint(page: Page) {
   };
   const workflowEndpoints: Record<string, string> = {
     BackupWorkflow: "/ngc/backup",
+    SiteBackupWorkflow: "/ngc/site_backup",
     ConnectedHostMetadataWorkflow: "/ngc/connected_host_metadata",
     DeployWorkflow: "/ngc/deploy",
     TenantDeployWorkflow: "/ngc/tenant-deploy",

@@ -1,0 +1,33 @@
+---
+title: Site Configuration Backup
+sidebar-title: Site Configuration Backup
+position: 11
+---
+
+Backs up running configurations for all devices at a site by fanning out parallel child backups and consolidating the results.
+
+For step-by-step instructions, see the [user guide](../../user-guides/site-configuration-backup/index.mdx).
+
+## User Interface
+
+### Form Inputs
+
+| Field | Description | Selection Type | Required |
+| :---- | :---------- | :------------- | :------- |
+| **Site** | Choose the site to back up | Single dropdown from available sites | Yes |
+| **Roles** | Device roles to include | Multi-select from managed roles | No |
+| **Device Status** | Filter devices by operational status | Multi-select from: Active, Provisioned | Yes |
+| **Tenant** | Tenant context for the site | Single dropdown from available tenants | No |
+| **Backup enabled only** | Include only devices with backup enabled | Checkbox (default checked) | No |
+
+## Workflow Execution
+
+### Execution Stages
+
+1. Get network devices
+1. Perform backups (parallel child workflows)
+1. Display results
+
+### Child Workflows
+
+The site backup workflow spawns individual [configuration backup](backup.mdx) workflows for each device in parallel. Each backup runs independently; failures on individual devices do not block other devices.

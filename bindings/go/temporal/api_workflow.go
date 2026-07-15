@@ -3845,6 +3845,127 @@ func (a *WorkflowAPIService) RetryV1WorkflowWorkflowIdRetryStageNamePostExecute(
 	return localVarReturnValue, localVarHTTPResponse, nil
 }
 
+type ApiSitebackupworkflowEndpointV1WorkflowNgcSiteBackupPostRequest struct {
+	ctx             context.Context
+	ApiService      *WorkflowAPIService
+	siteBackupInput *SiteBackupInput
+}
+
+func (r ApiSitebackupworkflowEndpointV1WorkflowNgcSiteBackupPostRequest) SiteBackupInput(siteBackupInput SiteBackupInput) ApiSitebackupworkflowEndpointV1WorkflowNgcSiteBackupPostRequest {
+	r.siteBackupInput = &siteBackupInput
+	return r
+}
+
+func (r ApiSitebackupworkflowEndpointV1WorkflowNgcSiteBackupPostRequest) Execute() (*WorkflowResponse, *http.Response, error) {
+	return r.ApiService.SitebackupworkflowEndpointV1WorkflowNgcSiteBackupPostExecute(r)
+}
+
+/*
+SitebackupworkflowEndpointV1WorkflowNgcSiteBackupPost Execute SiteBackupWorkflow
+
+Back up running configurations for all devices in a site to the Config Store
+
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@return ApiSitebackupworkflowEndpointV1WorkflowNgcSiteBackupPostRequest
+*/
+func (a *WorkflowAPIService) SitebackupworkflowEndpointV1WorkflowNgcSiteBackupPost(ctx context.Context) ApiSitebackupworkflowEndpointV1WorkflowNgcSiteBackupPostRequest {
+	return ApiSitebackupworkflowEndpointV1WorkflowNgcSiteBackupPostRequest{
+		ApiService: a,
+		ctx:        ctx,
+	}
+}
+
+// Execute executes the request
+//
+//	@return WorkflowResponse
+func (a *WorkflowAPIService) SitebackupworkflowEndpointV1WorkflowNgcSiteBackupPostExecute(r ApiSitebackupworkflowEndpointV1WorkflowNgcSiteBackupPostRequest) (*WorkflowResponse, *http.Response, error) {
+	var (
+		localVarHTTPMethod  = http.MethodPost
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *WorkflowResponse
+	)
+
+	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "WorkflowAPIService.SitebackupworkflowEndpointV1WorkflowNgcSiteBackupPost")
+	if err != nil {
+		return localVarReturnValue, nil, &GenericOpenAPIError{error: err.Error()}
+	}
+
+	localVarPath := localBasePath + "/v1/workflow/ngc/site_backup"
+
+	localVarHeaderParams := make(map[string]string)
+	localVarQueryParams := url.Values{}
+	localVarFormParams := url.Values{}
+	if r.siteBackupInput == nil {
+		return localVarReturnValue, nil, reportError("siteBackupInput is required and must be specified")
+	}
+
+	// to determine the Content-Type header
+	localVarHTTPContentTypes := []string{"application/json"}
+
+	// set Content-Type header
+	localVarHTTPContentType := selectHeaderContentType(localVarHTTPContentTypes)
+	if localVarHTTPContentType != "" {
+		localVarHeaderParams["Content-Type"] = localVarHTTPContentType
+	}
+
+	// to determine the Accept header
+	localVarHTTPHeaderAccepts := []string{"application/json"}
+
+	// set Accept header
+	localVarHTTPHeaderAccept := selectHeaderAccept(localVarHTTPHeaderAccepts)
+	if localVarHTTPHeaderAccept != "" {
+		localVarHeaderParams["Accept"] = localVarHTTPHeaderAccept
+	}
+	// body params
+	localVarPostBody = r.siteBackupInput
+	req, err := a.client.prepareRequest(r.ctx, localVarPath, localVarHTTPMethod, localVarPostBody, localVarHeaderParams, localVarQueryParams, localVarFormParams, formFiles)
+	if err != nil {
+		return localVarReturnValue, nil, err
+	}
+
+	localVarHTTPResponse, err := a.client.callAPI(req)
+	if err != nil || localVarHTTPResponse == nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	localVarBody, err := io.ReadAll(localVarHTTPResponse.Body)
+	localVarHTTPResponse.Body.Close()
+	localVarHTTPResponse.Body = io.NopCloser(bytes.NewBuffer(localVarBody))
+	if err != nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	if localVarHTTPResponse.StatusCode >= 300 {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: localVarHTTPResponse.Status,
+		}
+		if localVarHTTPResponse.StatusCode == 422 {
+			var v HTTPValidationError
+			err = a.client.decode(&v, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
+			if err != nil {
+				newErr.error = err.Error()
+				return localVarReturnValue, localVarHTTPResponse, newErr
+			}
+			newErr.error = formatErrorMessage(localVarHTTPResponse.Status, &v)
+			newErr.model = v
+		}
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	err = a.client.decode(&localVarReturnValue, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
+	if err != nil {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: err.Error(),
+		}
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	return localVarReturnValue, localVarHTTPResponse, nil
+}
+
 type ApiSitecablevalidationworkflowEndpointV1WorkflowNgcSiteCableValidationPostRequest struct {
 	ctx                      context.Context
 	ApiService               *WorkflowAPIService

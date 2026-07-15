@@ -1284,6 +1284,85 @@
         "title": "Secret",
         "type": "object"
       },
+      "SiteBackupInput": {
+        "description": "Site Configuration Backup Workflow Input Definition.",
+        "properties": {
+          "backup_enabled_only": {
+            "default": true,
+            "description": "When true, only devices with backup enabled are included.",
+            "title": "Backup Enabled Only",
+            "type": "boolean"
+          },
+          "roles": {
+            "default": [],
+            "description": "Device roles used to filter the selected network devices.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "site": {
+            "description": "Site containing the network devices to back up.",
+            "minLength": 1,
+            "title": "Site",
+            "type": "string"
+          },
+          "status": {
+            "default": [
+              "Active",
+              "Provisioned"
+            ],
+            "description": "Device statuses used to filter the selected network devices.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Status",
+            "type": "array"
+          },
+          "tenant": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Tenant used to filter the selected network devices.",
+            "title": "Tenant"
+          },
+          "user": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "User that requested the site backup.",
+            "title": "User"
+          },
+          "user_domain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Domain of the user requesting the site backup.",
+            "title": "User Domain"
+          }
+        },
+        "required": [
+          "site"
+        ],
+        "title": "SiteBackupInput",
+        "type": "object"
+      },
       "SiteCableValidationInput": {
         "description": "Input for Site Cable Validation Workflow.",
         "properties": {
@@ -4775,6 +4854,53 @@
           }
         ],
         "summary": "Execute ReprovisionWorkflow",
+        "tags": [
+          "workflow"
+        ]
+      }
+    },
+    "/v1/workflow/ngc/site_backup": {
+      "post": {
+        "description": "Back up running configurations for all devices in a site to the Config Store",
+        "operationId": "sitebackupworkflow_endpoint_v1_workflow_ngc_site_backup_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SiteBackupInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Execute SiteBackupWorkflow",
         "tags": [
           "workflow"
         ]

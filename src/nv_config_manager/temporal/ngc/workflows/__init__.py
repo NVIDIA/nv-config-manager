@@ -60,6 +60,7 @@ from nv_config_manager.temporal.ngc.workflows.nvlinkswitch_firmware_upgrade impo
 )
 from nv_config_manager.temporal.ngc.workflows.os_upgrade import SwitchOSUpgradeWorkflow
 from nv_config_manager.temporal.ngc.workflows.reprovision import ReprovisionWorkflow
+from nv_config_manager.temporal.ngc.workflows.site_backup import SiteBackupWorkflow
 from nv_config_manager.temporal.ngc.workflows.site_password_rotation import (
     SitePasswordRotationWorkflow,
 )
@@ -72,6 +73,7 @@ from nv_config_manager.temporal.ngc.workflows.spx_overlay import (
 
 REGISTERED_WORKFLOWS = [
     BackupWorkflow,
+    SiteBackupWorkflow,
     SiteCableValidationWorkflow,
     DeviceCableValidationWorkflow,
     DeployWorkflow,

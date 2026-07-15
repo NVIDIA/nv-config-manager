@@ -91,6 +91,8 @@ navigation:
       contents:
       - page: Configuration Backup
         path: ../user-guides/configuration-backup/index.mdx
+      - page: Site Configuration Backup
+        path: ../user-guides/site-configuration-backup/index.mdx
       - page: Configuration Deploy
         path: ../user-guides/configuration-deploy/index.mdx
       - page: Multi-Device Deploy

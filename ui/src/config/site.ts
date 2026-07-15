@@ -37,6 +37,12 @@ export const siteConfig = {
       enabled: true,
     },
     {
+      title: "Site Configuration Backup",
+      workflowName: "SiteBackupWorkflow",
+      slug: "sitebackupworkflow",
+      enabled: true,
+    },
+    {
       title: "Connected Host Metadata",
       workflowName: "ConnectedHostMetadataWorkflow",
       slug: "connectedhostmetadataworkflow",
