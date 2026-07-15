@@ -82,32 +82,42 @@ global:
   # NVIDIA registry path when public publishing is enabled.
   # Service image tags are optional. When omitted, templates use appVersion if
   # a pipeline supplies it, otherwise the chart version.
+  # Service images also accept an optional content-addressed pin
+  # (digest: "sha256:<hex>"). When set it takes precedence over tag and the
+  # chart-version fallback (rendering repository@digest). Digests are written
+  # by deploy automation; leave empty in checked-in values.
   # ---------------------------------------------------------------------------
   images:
     # Main NVIDIA Config Manager Python services image (render, ztp, dhcp, temporal, config-store)
     nvConfigManager:
       repository: registry.example.com/nvidia/nv-config-manager
       pullPolicy: Always
+      digest: ""
     # NVIDIA Config Manager UI (React/Next.js - workflows + config-store)
     nvConfigManagerUi:
       repository: registry.example.com/nvidia/nv-config-manager-ui
       pullPolicy: Always
+      digest: ""
     # Kea DHCP server
     kea:
       repository: registry.example.com/nvidia/nv-config-manager-kea
       pullPolicy: Always
+      digest: ""
     # Kea database admin (for schema initialization)
     keaAdmin:
       repository: registry.example.com/nvidia/nv-config-manager-kea-admin
       pullPolicy: Always
+      digest: ""
     # Nautobot with NVIDIA Config Manager plugins
     nautobot:
       repository: registry.example.com/nvidia/nv-config-manager-nautobot
       pullPolicy: Always
+      digest: ""
     # NATS streams initializer
     natsReady:
       repository: registry.example.com/nvidia/nv-config-manager-nats-ready
       pullPolicy: Always
+      digest: ""
     httpEcho:
       repository: hashicorp/http-echo
       tag: "1.0"
@@ -1752,6 +1762,20 @@ temporal:
   # - key: system.enableActivityEagerExecution
   #   value: true
   #   constraints: []
+  # ---------------------------------------------------------------------------
+  # Observability — OTel trace + metric export
+  # ---------------------------------------------------------------------------
+  # When enabled, the Temporal worker, API, scheduler, and archive export OTLP
+  # traces (Python OTel SDK) and Temporal runtime metrics to an existing OTLP
+  # collector via standard OTel env vars — no per-pod sidecar. Set otlpEndpoint
+  # to the collector in your environment (see values-observability.yaml for the
+  # local dev example using Alloy; for managed clusters use the cluster collector).
+  observability:
+    enabled: false
+    # OTLP gRPC endpoint of an existing collector. Optional — defaults to the
+    # in-cluster Alloy at http://alloy.<namespace>.svc.cluster.local:4317.
+    # Override to target a different collector (e.g. managed cluster collector).
+    otlpEndpoint: ""
 
   # Redfish / BMC workflows
   # Enable only if Redfish provisioning workflows are in use.
@@ -2882,4 +2906,6 @@ grafana:
 loki:
   enabled: false
 alloy:
+  enabled: false
+tempo:
   enabled: false

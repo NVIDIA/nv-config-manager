@@ -33,6 +33,21 @@ tree has only one version to maintain.
 {{- end }}
 
 {{/*
+Resolve a full NVIDIA Config Manager image reference. A digest pin
+(sha256:<hex>, set by deploy automation) takes precedence over any tag and
+renders repository@digest; otherwise fall back to repository:tag with the
+imageTag chart-version fallback. Takes the same dict as imageTag:
+(dict "root" . "image" .Values.global.images.<name>)
+*/}}
+{{- define "nv-config-manager.image" -}}
+{{- if .image.digest -}}
+{{- .image.repository }}@{{ .image.digest -}}
+{{- else -}}
+{{- .image.repository }}:{{ include "nv-config-manager.imageTag" . -}}
+{{- end -}}
+{{- end }}
+
+{{/*
 Selector labels
 */}}
 {{- define "nv-config-manager.selectorLabels" -}}
@@ -1486,4 +1501,28 @@ Usage: {{ include "nv-config-manager.externalDnsHostname" .Values.networkZtp.ing
 {{- if and .Values.networkZtp.enabled (eq .Values.networkZtp.storage.type "s3") $s3.credentialsSecret (not ($ceph.enabled | default false)) (ne .Values.secrets.method "kubernetes") -}}
   {{- fail "networkZtp.storage.s3.credentialsSecret now uses the Kubernetes secret-assembler and requires secrets.method=kubernetes; use secrets.vault.paths.ztpS3 with secrets.method=eso or vault-agent" -}}
 {{- end -}}
+{{- end -}}
+
+{{/*
+OTel app-container env shared by every Temporal pod (worker, api, scheduler,
+archive). Call sites guard the include with
+`if .Values.temporal.observability.enabled`.
+
+temporal.observability.otlpEndpoint is optional. When unset the endpoint
+defaults to the in-cluster Alloy receiver in the release namespace:
+  http://alloy.<namespace>.svc.cluster.local:4317
+Set it explicitly to target a different collector (e.g. the managed cluster
+OTLP collector on ngcops-eks).
+
+  Context: (dict "root" $ "serviceName" "<service.name>").
+*/}}
+{{- define "nv-config-manager.temporal.otelAppEnv" -}}
+{{- $endpoint := .root.Values.temporal.observability.otlpEndpoint -}}
+{{- if not $endpoint -}}
+{{- $endpoint = printf "http://alloy.%s.svc.cluster.local:4317" .root.Values.global.namespace -}}
+{{- end -}}
+- name: OTEL_EXPORTER_OTLP_ENDPOINT
+  value: {{ $endpoint | quote }}
+- name: OTEL_SERVICE_NAME
+  value: {{ .serviceName | quote }}
 {{- end -}}
