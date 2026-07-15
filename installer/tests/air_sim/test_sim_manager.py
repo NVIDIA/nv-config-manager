@@ -19,6 +19,7 @@ from __future__ import annotations
 import subprocess
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from unittest.mock import Mock, call
 
 import pytest
 
@@ -89,6 +90,18 @@ def test_remote_setup_marker_timeout_is_not_success(
     monkeypatch.setattr(sim_manager_module.subprocess, "run", fake_run)
 
     assert not manager._remote_setup_marker_exists(["ssh", "nvcm@worker.example"])
+
+
+def test_terminate_process_kills_after_grace_period() -> None:
+    proc = Mock()
+    proc.poll.return_value = None
+    proc.wait.side_effect = [subprocess.TimeoutExpired("ssh", 5), 0]
+
+    AirSimulationManager._terminate_process(proc)
+
+    proc.terminate.assert_called_once_with()
+    proc.kill.assert_called_once_with()
+    assert proc.wait.call_args_list == [call(timeout=5), call(timeout=5)]
 
 
 def test_resolve_cumulus_vx_images_prefers_exact_name() -> None:
