@@ -57,8 +57,20 @@ test.describe("DHCP Dashboard Page", () => {
       "This lease's subnet ID is not present in the current DHCP configuration."
     );
     await expect(
-      dashboard.getByText("Config age", { exact: true })
+      dashboard.getByText("Config sync age", { exact: true })
     ).toBeVisible();
+    await expect(
+      dashboard.getByRole("group", { name: "Config sync age" })
+    ).toHaveAttribute(
+      "title",
+      "Time since the background DHCP config sync last updated Kea from Nautobot."
+    );
+    await expect(
+      dashboard.getByRole("button", { name: "Reload DHCP data" })
+    ).toHaveAttribute(
+      "title",
+      "Re-fetch the latest data shown here. This does not run the background DHCP config sync."
+    );
     await expect(dashboard.getByText("4m", { exact: true })).toBeVisible();
     await expect(
       dashboard.getByText("Loaded 2 active leases · All active leases loaded", {
@@ -243,7 +255,7 @@ test.describe("DHCP Dashboard Page", () => {
     ).toBeVisible();
   });
 
-  test("keeps lease data available when config age metrics fail", async ({
+  test("keeps lease data available when config sync metrics fail", async ({
     page,
   }) => {
     await page.route("**/metrics", async (route) => {
@@ -256,7 +268,7 @@ test.describe("DHCP Dashboard Page", () => {
       timeout: TEST_TIMEOUT,
     });
     await expect(
-      dashboard.getByText("Config age", { exact: true })
+      dashboard.getByText("Config sync age", { exact: true })
     ).toBeVisible();
     await expect(dashboard.getByText("Unknown", { exact: true })).toBeVisible();
   });

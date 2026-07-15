@@ -31,7 +31,7 @@ from yarl import URL
 
 from nv_config_manager.common.auth import AuthConfig, JwtProviderConfig
 from nv_config_manager.dhcp.api import (
-    _fetch_lease_dashboard_sources,
+    _fetch_summary_sources,
     _install_cors,
     app,
 )
@@ -600,7 +600,7 @@ def test_lease_openapi_version_parameters() -> None:
         app.openapi()["paths"]["/lease"]["get"],
         app.openapi()["paths"]["/pools"]["get"],
         app.openapi()["paths"]["/reservations"]["get"],
-        app.openapi()["paths"]["/lease-dashboard"]["get"],
+        app.openapi()["paths"]["/summary"]["get"],
     )
 
     for operation in operations:
@@ -1139,8 +1139,8 @@ def test_delete_lease_connection_error():
     assert rsp.json() == {"detail": "KEA connection failed"}
 
 
-def test_get_lease_dashboard():
-    """Verify GET /lease-dashboard combines KEA summary data."""
+def test_get_summary():
+    """Verify GET /summary combines KEA summary data."""
     client = TestClient(app)
 
     with (
@@ -1156,11 +1156,11 @@ def test_get_lease_dashboard():
         ) as mock_get_statistics,
         patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED),
     ):
-        rsp = client.get("/lease-dashboard?ip_version=4")
+        rsp = client.get("/summary?ip_version=4")
         assert rsp.status_code == 403
 
         rsp = client.get(
-            "/lease-dashboard",
+            "/summary",
             headers={"X-Auth-Request-Email": "test@example.com"},
         )
 
@@ -1176,7 +1176,7 @@ def test_get_lease_dashboard():
     mock_get_statistics.assert_awaited_once_with(4)
 
 
-def test_get_lease_dashboard_kea_error():
+def test_get_summary_kea_error():
     """Surface logical KEA failures as DHCP API errors."""
     client = TestClient(app)
 
@@ -1194,7 +1194,7 @@ def test_get_lease_dashboard_kea_error():
         patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED),
     ):
         rsp = client.get(
-            "/lease-dashboard",
+            "/summary",
             headers={"X-Auth-Request-Email": "test@example.com"},
         )
 
@@ -1202,7 +1202,7 @@ def test_get_lease_dashboard_kea_error():
     assert rsp.json() == {"detail": "KEA config-get failed: configuration unavailable"}
 
 
-async def test_dashboard_source_failure_cancels_and_drains_siblings() -> None:
+async def test_summary_source_failure_cancels_and_drains_siblings() -> None:
     """Cancel and await sibling KEA requests before propagating a failure."""
     statistics_started = asyncio.Event()
     cancelled: set[str] = set()
@@ -1229,6 +1229,6 @@ async def test_dashboard_source_failure_cancels_and_drains_siblings() -> None:
         patch.object(client, "get_statistics", new=AsyncMock(side_effect=block_statistics)),
         pytest.raises(ClientConnectionError, match="KEA connection failed"),
     ):
-        await _fetch_lease_dashboard_sources(client, ip_version=4)
+        await _fetch_summary_sources(client, ip_version=4)
 
     assert cancelled == {"statistics"}

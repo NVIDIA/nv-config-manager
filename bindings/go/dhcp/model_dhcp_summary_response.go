@@ -16,40 +16,40 @@ import (
 	"fmt"
 )
 
-// checks if the LeaseDashboardResponse type satisfies the MappedNullable interface at compile time
-var _ MappedNullable = &LeaseDashboardResponse{}
+// checks if the DhcpSummaryResponse type satisfies the MappedNullable interface at compile time
+var _ MappedNullable = &DhcpSummaryResponse{}
 
-// LeaseDashboardResponse Lease, reservation, and pool summary used by the dashboard.
-type LeaseDashboardResponse struct {
+// DhcpSummaryResponse Lease, reservation, and pool summary.
+type DhcpSummaryResponse struct {
 	ActiveLeaseCount int32 `json:"active_lease_count"`
 	PoolCount        int32 `json:"pool_count"`
 	ReservationCount int32 `json:"reservation_count"`
 }
 
-type _LeaseDashboardResponse LeaseDashboardResponse
+type _DhcpSummaryResponse DhcpSummaryResponse
 
-// NewLeaseDashboardResponse instantiates a new LeaseDashboardResponse object
+// NewDhcpSummaryResponse instantiates a new DhcpSummaryResponse object
 // This constructor will assign default values to properties that have it defined,
 // and makes sure properties required by API are set, but the set of arguments
 // will change when the set of required properties is changed
-func NewLeaseDashboardResponse(activeLeaseCount int32, poolCount int32, reservationCount int32) *LeaseDashboardResponse {
-	this := LeaseDashboardResponse{}
+func NewDhcpSummaryResponse(activeLeaseCount int32, poolCount int32, reservationCount int32) *DhcpSummaryResponse {
+	this := DhcpSummaryResponse{}
 	this.ActiveLeaseCount = activeLeaseCount
 	this.PoolCount = poolCount
 	this.ReservationCount = reservationCount
 	return &this
 }
 
-// NewLeaseDashboardResponseWithDefaults instantiates a new LeaseDashboardResponse object
+// NewDhcpSummaryResponseWithDefaults instantiates a new DhcpSummaryResponse object
 // This constructor will only assign default values to properties that have it defined,
 // but it doesn't guarantee that properties required by API are set
-func NewLeaseDashboardResponseWithDefaults() *LeaseDashboardResponse {
-	this := LeaseDashboardResponse{}
+func NewDhcpSummaryResponseWithDefaults() *DhcpSummaryResponse {
+	this := DhcpSummaryResponse{}
 	return &this
 }
 
 // GetActiveLeaseCount returns the ActiveLeaseCount field value
-func (o *LeaseDashboardResponse) GetActiveLeaseCount() int32 {
+func (o *DhcpSummaryResponse) GetActiveLeaseCount() int32 {
 	if o == nil {
 		var ret int32
 		return ret
@@ -60,7 +60,7 @@ func (o *LeaseDashboardResponse) GetActiveLeaseCount() int32 {
 
 // GetActiveLeaseCountOk returns a tuple with the ActiveLeaseCount field value
 // and a boolean to check if the value has been set.
-func (o *LeaseDashboardResponse) GetActiveLeaseCountOk() (*int32, bool) {
+func (o *DhcpSummaryResponse) GetActiveLeaseCountOk() (*int32, bool) {
 	if o == nil {
 		return nil, false
 	}
@@ -68,12 +68,12 @@ func (o *LeaseDashboardResponse) GetActiveLeaseCountOk() (*int32, bool) {
 }
 
 // SetActiveLeaseCount sets field value
-func (o *LeaseDashboardResponse) SetActiveLeaseCount(v int32) {
+func (o *DhcpSummaryResponse) SetActiveLeaseCount(v int32) {
 	o.ActiveLeaseCount = v
 }
 
 // GetPoolCount returns the PoolCount field value
-func (o *LeaseDashboardResponse) GetPoolCount() int32 {
+func (o *DhcpSummaryResponse) GetPoolCount() int32 {
 	if o == nil {
 		var ret int32
 		return ret
@@ -84,7 +84,7 @@ func (o *LeaseDashboardResponse) GetPoolCount() int32 {
 
 // GetPoolCountOk returns a tuple with the PoolCount field value
 // and a boolean to check if the value has been set.
-func (o *LeaseDashboardResponse) GetPoolCountOk() (*int32, bool) {
+func (o *DhcpSummaryResponse) GetPoolCountOk() (*int32, bool) {
 	if o == nil {
 		return nil, false
 	}
@@ -92,12 +92,12 @@ func (o *LeaseDashboardResponse) GetPoolCountOk() (*int32, bool) {
 }
 
 // SetPoolCount sets field value
-func (o *LeaseDashboardResponse) SetPoolCount(v int32) {
+func (o *DhcpSummaryResponse) SetPoolCount(v int32) {
 	o.PoolCount = v
 }
 
 // GetReservationCount returns the ReservationCount field value
-func (o *LeaseDashboardResponse) GetReservationCount() int32 {
+func (o *DhcpSummaryResponse) GetReservationCount() int32 {
 	if o == nil {
 		var ret int32
 		return ret
@@ -108,7 +108,7 @@ func (o *LeaseDashboardResponse) GetReservationCount() int32 {
 
 // GetReservationCountOk returns a tuple with the ReservationCount field value
 // and a boolean to check if the value has been set.
-func (o *LeaseDashboardResponse) GetReservationCountOk() (*int32, bool) {
+func (o *DhcpSummaryResponse) GetReservationCountOk() (*int32, bool) {
 	if o == nil {
 		return nil, false
 	}
@@ -116,11 +116,11 @@ func (o *LeaseDashboardResponse) GetReservationCountOk() (*int32, bool) {
 }
 
 // SetReservationCount sets field value
-func (o *LeaseDashboardResponse) SetReservationCount(v int32) {
+func (o *DhcpSummaryResponse) SetReservationCount(v int32) {
 	o.ReservationCount = v
 }
 
-func (o LeaseDashboardResponse) MarshalJSON() ([]byte, error) {
+func (o DhcpSummaryResponse) MarshalJSON() ([]byte, error) {
 	toSerialize, err := o.ToMap()
 	if err != nil {
 		return []byte{}, err
@@ -128,7 +128,7 @@ func (o LeaseDashboardResponse) MarshalJSON() ([]byte, error) {
 	return json.Marshal(toSerialize)
 }
 
-func (o LeaseDashboardResponse) ToMap() (map[string]interface{}, error) {
+func (o DhcpSummaryResponse) ToMap() (map[string]interface{}, error) {
 	toSerialize := map[string]interface{}{}
 	toSerialize["active_lease_count"] = o.ActiveLeaseCount
 	toSerialize["pool_count"] = o.PoolCount
@@ -136,7 +136,7 @@ func (o LeaseDashboardResponse) ToMap() (map[string]interface{}, error) {
 	return toSerialize, nil
 }
 
-func (o *LeaseDashboardResponse) UnmarshalJSON(data []byte) (err error) {
+func (o *DhcpSummaryResponse) UnmarshalJSON(data []byte) (err error) {
 	// This validates that all required properties are included in the JSON object
 	// by unmarshalling the object into a generic map with string keys and checking
 	// that every required field exists as a key in the generic map.
@@ -160,53 +160,53 @@ func (o *LeaseDashboardResponse) UnmarshalJSON(data []byte) (err error) {
 		}
 	}
 
-	varLeaseDashboardResponse := _LeaseDashboardResponse{}
+	varDhcpSummaryResponse := _DhcpSummaryResponse{}
 
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
-	err = decoder.Decode(&varLeaseDashboardResponse)
+	err = decoder.Decode(&varDhcpSummaryResponse)
 
 	if err != nil {
 		return err
 	}
 
-	*o = LeaseDashboardResponse(varLeaseDashboardResponse)
+	*o = DhcpSummaryResponse(varDhcpSummaryResponse)
 
 	return err
 }
 
-type NullableLeaseDashboardResponse struct {
-	value *LeaseDashboardResponse
+type NullableDhcpSummaryResponse struct {
+	value *DhcpSummaryResponse
 	isSet bool
 }
 
-func (v NullableLeaseDashboardResponse) Get() *LeaseDashboardResponse {
+func (v NullableDhcpSummaryResponse) Get() *DhcpSummaryResponse {
 	return v.value
 }
 
-func (v *NullableLeaseDashboardResponse) Set(val *LeaseDashboardResponse) {
+func (v *NullableDhcpSummaryResponse) Set(val *DhcpSummaryResponse) {
 	v.value = val
 	v.isSet = true
 }
 
-func (v NullableLeaseDashboardResponse) IsSet() bool {
+func (v NullableDhcpSummaryResponse) IsSet() bool {
 	return v.isSet
 }
 
-func (v *NullableLeaseDashboardResponse) Unset() {
+func (v *NullableDhcpSummaryResponse) Unset() {
 	v.value = nil
 	v.isSet = false
 }
 
-func NewNullableLeaseDashboardResponse(val *LeaseDashboardResponse) *NullableLeaseDashboardResponse {
-	return &NullableLeaseDashboardResponse{value: val, isSet: true}
+func NewNullableDhcpSummaryResponse(val *DhcpSummaryResponse) *NullableDhcpSummaryResponse {
+	return &NullableDhcpSummaryResponse{value: val, isSet: true}
 }
 
-func (v NullableLeaseDashboardResponse) MarshalJSON() ([]byte, error) {
+func (v NullableDhcpSummaryResponse) MarshalJSON() ([]byte, error) {
 	return json.Marshal(v.value)
 }
 
-func (v *NullableLeaseDashboardResponse) UnmarshalJSON(src []byte) error {
+func (v *NullableDhcpSummaryResponse) UnmarshalJSON(src []byte) error {
 	v.isSet = true
 	return json.Unmarshal(src, &v.value)
 }

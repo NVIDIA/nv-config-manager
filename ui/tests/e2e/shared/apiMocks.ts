@@ -32,7 +32,7 @@ import {
   FORBIDDEN_DEVICE_IDS,
 } from "@/mocks/data";
 
-const CONFIG_REFRESH_METRIC =
+const CONFIG_SYNC_TIMESTAMP_METRIC =
   "nv_config_manager_dhcp_cache_last_refresh_timestamp_seconds";
 
 // Mock the runtime config endpoint
@@ -121,7 +121,7 @@ export async function setupApiMocks(page: Page) {
 /** Mock DHCP dashboard and lease deletion behavior for browser tests. */
 export async function mockDhcpEndpoints(page: Page) {
   let clearedLease: string | null = null;
-  const configRefreshTimestamp = Math.floor(Date.now() / 1000) - 240;
+  const configSyncTimestamp = Math.floor(Date.now() / 1000) - 240;
   const leases = [
     {
       ip_address: "10.0.0.10",
@@ -255,7 +255,7 @@ export async function mockDhcpEndpoints(page: Page) {
     });
   });
 
-  await page.route("**/lease-dashboard*", async (route) => {
+  await page.route("**/summary*", async (route) => {
     const activeLeases = leases.filter(
       (lease) => lease.ip_address !== clearedLease
     );
@@ -273,7 +273,7 @@ export async function mockDhcpEndpoints(page: Page) {
     await route.fulfill({
       status: 200,
       contentType: "text/plain; version=0.0.4",
-      body: `${CONFIG_REFRESH_METRIC}{ip_version="4"} ${configRefreshTimestamp}\n`,
+      body: `${CONFIG_SYNC_TIMESTAMP_METRIC}{ip_version="4"} ${configSyncTimestamp}\n`,
     });
   });
 

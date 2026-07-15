@@ -24,7 +24,7 @@ const SCREENSHOT_DIR = path.resolve(
   __dirname,
   "../../../docs/assets/images/dhcp"
 );
-const CONFIG_REFRESH_METRIC =
+const CONFIG_SYNC_TIMESTAMP_METRIC =
   "nv_config_manager_dhcp_cache_last_refresh_timestamp_seconds";
 
 test.use({
@@ -35,7 +35,7 @@ test.use({
 });
 
 test.beforeEach(async ({ page }) => {
-  const configRefreshTimestamp = Math.floor(Date.now() / 1000) - 240;
+  const configSyncTimestamp = Math.floor(Date.now() / 1000) - 240;
   await page.addInitScript(() => {
     window.BYPASS_MSW = true;
   });
@@ -65,10 +65,10 @@ test.beforeEach(async ({ page }) => {
     await route.fulfill({
       status: 200,
       contentType: "text/plain; version=0.0.4",
-      body: `${CONFIG_REFRESH_METRIC}{ip_version="4"} ${configRefreshTimestamp}\n`,
+      body: `${CONFIG_SYNC_TIMESTAMP_METRIC}{ip_version="4"} ${configSyncTimestamp}\n`,
     });
   });
-  await page.route("**/lease-dashboard*", async (route) => {
+  await page.route("**/summary*", async (route) => {
     await route.fulfill({
       status: 200,
       json: {

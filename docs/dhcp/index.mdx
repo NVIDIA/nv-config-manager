@@ -75,13 +75,13 @@ uv run nv-config-manager-dhcp-confgen generate-kea-configuration --ini-file nv-c
 uv run nv-config-manager-dhcp-confgen generate-kea-configuration --ini-file nv-config-manager.ini --ip-version 6
 ```
 
-### Refresh Running Configuration
+### Sync Running Configuration
 
 ```bash
-# Refresh DHCP4 configuration on running Kea servers
+# Sync DHCPv4 configuration to running Kea servers
 uv run nv-config-manager-dhcp-confgen refresh-kea-configuration --ini-file nv-config-manager.ini --ip-version 4
 
-# Refresh DHCP6 configuration on running Kea servers
+# Sync DHCPv6 configuration to running Kea servers
 uv run nv-config-manager-dhcp-confgen refresh-kea-configuration --ini-file nv-config-manager.ini --ip-version 6
 ```
 
@@ -117,11 +117,13 @@ uv run nv-config-manager-dhcp-confgen generate-kea-configuration \
   --dry-run
 ```
 
-The generator runs on a 5-minute interval in the Kubernetes deployment, automatically refreshing the running Kea servers with updated configuration.
+The generator runs on a 5-minute interval in the Kubernetes deployment, automatically syncing updated configuration to the running Kea servers.
 
 ## Manage Leases
 
-The dedicated DHCP dashboard summarizes active leases, reservations, configured pools, and the age of the last successful configuration refresh reported by the DHCP API's `/metrics` endpoint. Leases, reservations, and pools load 100 at a time as you scroll so the dashboard remains responsive with thousands of records. Summary counts are calculated independently from the detail rows loaded in the browser. Use the filter to search the selected collection by its displayed fields. Reservation and pool results show exact filtered totals. Select the **Active leases**, **Reservations**, or **Pools** tab to inspect each view. You can also clear an active lease after confirming the action.
+The dedicated DHCP dashboard summarizes active leases, reservations, configured pools, and the age of the last successful background configuration sync reported by the DHCP API's `/metrics` endpoint. Leases, reservations, and pools load 100 at a time as you scroll so the dashboard remains responsive with thousands of records. Summary counts are calculated independently from the detail rows loaded in the browser. Use the filter to search the selected collection by its displayed fields. Reservation and pool results show exact filtered totals. Select the **Active leases**, **Reservations**, or **Pools** tab to inspect each view. You can also clear an active lease after confirming the action.
+
+**Reload data** re-fetches the latest dashboard API responses. It does not trigger a configuration sync or regenerate the Kea configuration.
 
 ![DHCP lease activity dashboard](../assets/images/dhcp/lease-dashboard.png)
 

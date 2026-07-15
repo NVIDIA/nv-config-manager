@@ -20,13 +20,13 @@ import useSWRInfinite from "swr/infinite";
 
 import { sanitizeUrl } from "@/lib/utils";
 import type {
-  DhcpLeaseDashboard,
   DhcpLeasePage,
   DhcpPoolPage,
   DhcpReservationPage,
+  DhcpSummary,
 } from "@/types/dhcp.types";
 
-const CONFIG_REFRESH_METRIC =
+const CONFIG_SYNC_TIMESTAMP_METRIC =
   "nv_config_manager_dhcp_cache_last_refresh_timestamp_seconds";
 const REQUEST_TIMEOUT_MS = 30000;
 const DHCP_COLLECTION_PAGE_SIZE = 100;
@@ -53,14 +53,14 @@ async function dhcpFetcher<T>(url: string): Promise<T> {
   }
 }
 
-/** Read the latest configuration refresh timestamp from Prometheus text. */
-async function configRefreshFetcher(url: string): Promise<number | null> {
+/** Read the latest configuration sync timestamp from Prometheus text. */
+async function configSyncTimestampFetcher(url: string): Promise<number | null> {
   const response = await fetch(url, {
     credentials: "include",
     mode: "cors",
   });
   if (!response.ok) {
-    throw new Error("DHCP configuration age is unavailable");
+    throw new Error("DHCP config sync age is unavailable");
   }
 
   const metrics = await response.text();
@@ -68,7 +68,7 @@ async function configRefreshFetcher(url: string): Promise<number | null> {
     .split("\n")
     .find(
       (line) =>
-        line.startsWith(`${CONFIG_REFRESH_METRIC}{`) &&
+        line.startsWith(`${CONFIG_SYNC_TIMESTAMP_METRIC}{`) &&
         line.includes('ip_version="4"')
     );
   if (!sample) return null;
@@ -77,12 +77,10 @@ async function configRefreshFetcher(url: string): Promise<number | null> {
   return Number.isFinite(value) ? value : null;
 }
 
-/** Subscribe to refreshed DHCP dashboard summary data. */
-export function useDhcpDashboard(dhcpUrl: string) {
-  const url = dhcpUrl
-    ? sanitizeUrl(`${dhcpUrl}/lease-dashboard?ip_version=4`)
-    : null;
-  return useSWR<DhcpLeaseDashboard>(url, dhcpFetcher, {
+/** Subscribe to DHCP summary data. */
+export function useDhcpSummary(dhcpUrl: string) {
+  const url = dhcpUrl ? sanitizeUrl(`${dhcpUrl}/summary?ip_version=4`) : null;
+  return useSWR<DhcpSummary>(url, dhcpFetcher, {
     refreshInterval: 30000,
     revalidateOnFocus: true,
   });
@@ -210,10 +208,10 @@ export function useDhcpPools(
   };
 }
 
-/** Subscribe to the last successful configuration refresh timestamp. */
-export function useDhcpConfigRefreshTimestamp(dhcpUrl: string) {
+/** Subscribe to the last successful configuration sync timestamp. */
+export function useDhcpConfigSyncTimestamp(dhcpUrl: string) {
   const url = dhcpUrl ? sanitizeUrl(`${dhcpUrl}/metrics`) : null;
-  return useSWR<number | null>(url, configRefreshFetcher, {
+  return useSWR<number | null>(url, configSyncTimestampFetcher, {
     refreshInterval: 30000,
     revalidateOnFocus: true,
   });

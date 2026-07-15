@@ -30,11 +30,11 @@ import {
 
 import {
   clearDhcpLease,
-  useDhcpConfigRefreshTimestamp,
-  useDhcpDashboard,
+  useDhcpConfigSyncTimestamp,
   useDhcpLeases,
   useDhcpPools,
   useDhcpReservations,
+  useDhcpSummary,
 } from "@/hooks/useDhcpDashboard";
 import type { DhcpLease } from "@/types/dhcp.types";
 import { Badge } from "@/components/ui/badge";
@@ -76,6 +76,7 @@ interface MetricProps {
   readonly label: string;
   readonly value: string;
   readonly detail: string;
+  readonly tooltip?: string;
 }
 
 interface InfiniteScrollStatusProps {
@@ -89,11 +90,12 @@ interface InfiniteScrollStatusProps {
 }
 
 /** Render one summary metric in the DHCP dashboard header. */
-function Metric({ icon, label, value, detail }: MetricProps) {
+function Metric({ icon, label, value, detail, tooltip }: MetricProps) {
   return (
     <div
       role="group"
       aria-label={label}
+      title={tooltip}
       className="rounded-lg border bg-background/60 p-4"
     >
       <div className="flex items-center justify-between gap-3">
@@ -135,8 +137,8 @@ function formatExpiry(expiresAt?: string | null): string {
   }).format(new Date(expiresAt));
 }
 
-/** Format a Prometheus refresh timestamp as a compact age. */
-function formatConfigAge(timestamp?: number | null): string {
+/** Format a Prometheus configuration sync timestamp as a compact age. */
+function formatConfigSyncAge(timestamp?: number | null): string {
   if (timestamp == null) return "Unknown";
   const ageSeconds = Math.max(0, Math.floor(Date.now() / 1000 - timestamp));
   if (ageSeconds < 60) return `${ageSeconds}s`;
@@ -223,12 +225,12 @@ function InfiniteScrollStatus({
 
 /** Render live DHCP leases, reservations, and configured pools. */
 export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
-  const { data, error, isLoading, isValidating, mutate } = useDhcpDashboard(dhcpUrl);
+  const { data, error, isLoading, isValidating, mutate } = useDhcpSummary(dhcpUrl);
   const {
-    data: configRefreshTimestamp,
-    isValidating: isConfigAgeValidating,
-    mutate: mutateConfigRefreshTimestamp,
-  } = useDhcpConfigRefreshTimestamp(dhcpUrl);
+    data: configSyncTimestamp,
+    isValidating: isConfigSyncAgeValidating,
+    mutate: mutateConfigSyncTimestamp,
+  } = useDhcpConfigSyncTimestamp(dhcpUrl);
   const { toast } = useToast();
   const [leaseToClear, setLeaseToClear] = useState<DhcpLease | null>(null);
   const [isClearing, setIsClearing] = useState(false);
@@ -287,10 +289,10 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
     return () => window.clearTimeout(timeout);
   }, [searchQuery]);
 
-  const refresh = () => {
+  const reloadData = () => {
     void Promise.allSettled([
       mutate(),
-      mutateConfigRefreshTimestamp(),
+      mutateConfigSyncTimestamp(),
       mutateLeases(),
       mutateReservations(),
       mutatePools(),
@@ -351,7 +353,7 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
                 : "Lease data is unavailable."}
             </CardDescription>
           </div>
-          <Button variant="outline" size="sm" onClick={refresh}>
+          <Button variant="outline" size="sm" onClick={reloadData}>
             <RefreshCw className="mr-2 h-4 w-4" /> Retry
           </Button>
         </CardHeader>
@@ -378,16 +380,17 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
             </CardDescription>
           </div>
           <Button
-            aria-label="Refresh DHCP lease data"
+            aria-label="Reload DHCP data"
+            title="Re-fetch the latest data shown here. This does not run the background DHCP config sync."
             variant="outline"
             size="sm"
-            onClick={refresh}
-            disabled={isValidating || isConfigAgeValidating || areCollectionsValidating}
+            onClick={reloadData}
+            disabled={isValidating || isConfigSyncAgeValidating || areCollectionsValidating}
           >
             <RefreshCw
-              className={`mr-2 h-4 w-4 ${isValidating || isConfigAgeValidating || areCollectionsValidating ? "animate-spin" : ""}`}
+              className={`mr-2 h-4 w-4 ${isValidating || isConfigSyncAgeValidating || areCollectionsValidating ? "animate-spin" : ""}`}
             />
-            Refresh
+            Reload data
           </Button>
         </div>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -411,13 +414,14 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
           />
           <Metric
             icon={<Clock3 className="h-4 w-4" />}
-            label="Config age"
-            value={formatConfigAge(configRefreshTimestamp)}
+            label="Config sync age"
+            value={formatConfigSyncAge(configSyncTimestamp)}
             detail={
-              configRefreshTimestamp == null
-                ? "Refresh metric unavailable"
-                : "Since last successful refresh"
+              configSyncTimestamp == null
+                ? "Config sync metric unavailable"
+                : "Since last successful config sync"
             }
+            tooltip="Time since the background DHCP config sync last updated Kea from Nautobot."
           />
         </div>
       </CardHeader>

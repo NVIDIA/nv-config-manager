@@ -35,7 +35,7 @@ export interface DhcpLeasePage {
   next_cursor?: string | null;
 }
 
-/** Static reservation returned by the DHCP dashboard endpoint. */
+/** Static reservation returned by the DHCP API. */
 export interface DhcpReservation {
   ip_address?: string | null;
   hostname: string;
@@ -64,8 +64,8 @@ export interface DhcpPoolPage {
   next_cursor?: string | null;
 }
 
-/** Aggregated operator data returned by the DHCP dashboard endpoint. */
-export interface DhcpLeaseDashboard {
+/** Aggregated lease and configuration counts returned by the DHCP API. */
+export interface DhcpSummary {
   active_lease_count: number;
   reservation_count: number;
   pool_count: number;

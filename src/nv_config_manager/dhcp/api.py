@@ -38,13 +38,13 @@ from nv_config_manager.common.config import load_config
 from nv_config_manager.common.log import configure_logging
 from nv_config_manager.dhcp.kea import IpVersion, KeaClient, KeaException
 from nv_config_manager.dhcp.lease_dashboard import (
-    LeaseDashboardResponse,
+    DhcpSummaryResponse,
     LeasePageResponse,
     LeaseRecord,
     PoolPageResponse,
     ReservationPageResponse,
+    build_dhcp_summary,
     build_lease,
-    build_lease_dashboard,
     build_lease_list,
     build_pool_list,
     build_reservation_list,
@@ -123,11 +123,11 @@ async def _gather_requests(
         raise
 
 
-async def _fetch_lease_dashboard_sources(
+async def _fetch_summary_sources(
     client: KeaClient,
     ip_version: IpVersion,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Fetch dashboard sources and drain every task before returning or raising."""
+    """Fetch summary sources and drain every task before returning or raising."""
     config, statistics = await _gather_requests(
         client.get_config(ip_version),
         client.get_statistics(ip_version),
@@ -469,18 +469,18 @@ async def delete_lease(
         return Response(status_code=204)
 
 
-@app.get("/lease-dashboard", response_model=LeaseDashboardResponse)
-async def get_lease_dashboard(
+@app.get("/summary", response_model=DhcpSummaryResponse)
+async def get_summary(
     request: Request,
     ip_version: IpVersion = IpVersion.V4,
-) -> LeaseDashboardResponse:
-    """Return lease, reservation, and pool counts for operators."""
+) -> DhcpSummaryResponse:
+    """Return lease, reservation, and pool counts."""
     async with _kea_lease_client() as client:
-        config, statistics = await _fetch_lease_dashboard_sources(
+        config, statistics = await _fetch_summary_sources(
             client,
             ip_version,
         )
-        return build_lease_dashboard(
+        return build_dhcp_summary(
             config,
             statistics,
             ip_version=ip_version,

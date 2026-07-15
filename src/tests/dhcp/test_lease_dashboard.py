@@ -21,7 +21,7 @@ import pytest
 from nv_config_manager.dhcp.kea import IpVersion, KeaException
 from nv_config_manager.dhcp.lease_dashboard import (
     LeaseRecord,
-    build_lease_dashboard,
+    build_dhcp_summary,
     build_lease_list,
     build_pool_list,
     build_reservation_list,
@@ -112,15 +112,15 @@ def dashboard_payloads() -> tuple[list[dict], list[dict], list[dict]]:
     return config, leases, statistics
 
 
-def test_build_lease_dashboard() -> None:
-    """Build a dashboard summary from configuration and statistics."""
+def test_build_dhcp_summary() -> None:
+    """Build a DHCP summary from configuration and statistics."""
     config, leases, statistics = dashboard_payloads()
 
-    dashboard = build_lease_dashboard(config, statistics)
+    summary = build_dhcp_summary(config, statistics)
 
-    assert dashboard.active_lease_count == 3
-    assert dashboard.reservation_count == 2
-    assert dashboard.pool_count == 2
+    assert summary.active_lease_count == 3
+    assert summary.reservation_count == 2
+    assert summary.pool_count == 2
     reservations = build_reservation_list(config, ip_version=IpVersion.V4)
     assert len(reservations) == 2
     assert reservations[0].identifier_type == "hw-address"
@@ -134,7 +134,7 @@ def test_build_lease_dashboard() -> None:
     ]
 
 
-def test_build_lease_dashboard_counts_leases_from_unconfigured_subnets() -> None:
+def test_build_dhcp_summary_counts_leases_from_unconfigured_subnets() -> None:
     """Keep active lease totals independent from configured pool inventory."""
     config, _, statistics = dashboard_payloads()
     stats = statistics[0]["arguments"]
@@ -142,9 +142,9 @@ def test_build_lease_dashboard_counts_leases_from_unconfigured_subnets() -> None
     stats["subnet[7].assigned-addresses"] = [[3, "2026-07-10 00:00:00"]]
     stats["subnet[99].assigned-addresses"] = [[997, "2026-07-10 00:00:00"]]
 
-    dashboard = build_lease_dashboard(config, statistics)
+    summary = build_dhcp_summary(config, statistics)
 
-    assert dashboard.active_lease_count == 1000
+    assert summary.active_lease_count == 1000
 
 
 def test_build_lease_list_logs_malformed_lease(caplog: pytest.LogCaptureFixture) -> None:
@@ -200,7 +200,7 @@ def test_filter_pool_records_matches_subnet_and_range() -> None:
     assert filter_pool_records(pools, "10.0.1.0/30") == [pools[1]]
 
 
-def test_build_ipv6_lease_dashboard() -> None:
+def test_build_ipv6_dhcp_summary() -> None:
     """Normalize DHCPv6 leases, reservations, prefixes, and configured pools."""
     now = int(time.time())
     config = [
@@ -253,7 +253,7 @@ def test_build_ipv6_lease_dashboard() -> None:
         }
     ]
 
-    dashboard = build_lease_dashboard(config, statistics, ip_version=IpVersion.V6)
+    summary = build_dhcp_summary(config, statistics, ip_version=IpVersion.V6)
     lease_records = build_lease_list(config, leases, ip_version=IpVersion.V6)
     reservations = build_reservation_list(config, ip_version=IpVersion.V6)
     pools = build_pool_list(config, ip_version=IpVersion.V6)
@@ -261,18 +261,18 @@ def test_build_ipv6_lease_dashboard() -> None:
     assert str(lease_records[0].ip_address) == "2001:db8:1::10"
     assert lease_records[0].duid == "00:01:00:01:11:22:33:44"
     assert lease_records[0].subnet == "2001:db8:1::/64"
-    assert dashboard.reservation_count == 1
+    assert summary.reservation_count == 1
     assert str(reservations[0].ip_address) == "2001:db8:1::2"
     assert reservations[0].identifier_type == "duid"
     assert pools[0].pool == "2001:db8:1::10-2001:db8:1::1f"
 
 
-def test_build_lease_dashboard_rejects_kea_error() -> None:
+def test_build_dhcp_summary_rejects_kea_error() -> None:
     """Surface logical KEA command failures to the API route."""
     _, _, statistics = dashboard_payloads()
 
     with pytest.raises(KeaException, match="config-get failed: configuration unavailable"):
-        build_lease_dashboard(
+        build_dhcp_summary(
             [{"result": 1, "text": "configuration unavailable"}],
             statistics,
         )

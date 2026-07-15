@@ -379,53 +379,57 @@ func (a *DefaultAPIService) GetConfigConfigGetExecute(r ApiGetConfigConfigGetReq
 	return localVarReturnValue, localVarHTTPResponse, nil
 }
 
-type ApiGetLeaseDashboardLeaseDashboardGetRequest struct {
+type ApiGetLeaseLeaseIpAddressGetRequest struct {
 	ctx        context.Context
 	ApiService *DefaultAPIService
+	ipAddress  string
 	ipVersion  *IpVersion
 }
 
-func (r ApiGetLeaseDashboardLeaseDashboardGetRequest) IpVersion(ipVersion IpVersion) ApiGetLeaseDashboardLeaseDashboardGetRequest {
+func (r ApiGetLeaseLeaseIpAddressGetRequest) IpVersion(ipVersion IpVersion) ApiGetLeaseLeaseIpAddressGetRequest {
 	r.ipVersion = &ipVersion
 	return r
 }
 
-func (r ApiGetLeaseDashboardLeaseDashboardGetRequest) Execute() (*LeaseDashboardResponse, *http.Response, error) {
-	return r.ApiService.GetLeaseDashboardLeaseDashboardGetExecute(r)
+func (r ApiGetLeaseLeaseIpAddressGetRequest) Execute() (*LeaseRecord, *http.Response, error) {
+	return r.ApiService.GetLeaseLeaseIpAddressGetExecute(r)
 }
 
 /*
-GetLeaseDashboardLeaseDashboardGet Get Lease Dashboard
+GetLeaseLeaseIpAddressGet Get Lease
 
-Return lease, reservation, and pool counts for operators.
+Return one normalized lease from the selected DHCP service.
 
 	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
-	@return ApiGetLeaseDashboardLeaseDashboardGetRequest
+	@param ipAddress
+	@return ApiGetLeaseLeaseIpAddressGetRequest
 */
-func (a *DefaultAPIService) GetLeaseDashboardLeaseDashboardGet(ctx context.Context) ApiGetLeaseDashboardLeaseDashboardGetRequest {
-	return ApiGetLeaseDashboardLeaseDashboardGetRequest{
+func (a *DefaultAPIService) GetLeaseLeaseIpAddressGet(ctx context.Context, ipAddress string) ApiGetLeaseLeaseIpAddressGetRequest {
+	return ApiGetLeaseLeaseIpAddressGetRequest{
 		ApiService: a,
 		ctx:        ctx,
+		ipAddress:  ipAddress,
 	}
 }
 
 // Execute executes the request
 //
-//	@return LeaseDashboardResponse
-func (a *DefaultAPIService) GetLeaseDashboardLeaseDashboardGetExecute(r ApiGetLeaseDashboardLeaseDashboardGetRequest) (*LeaseDashboardResponse, *http.Response, error) {
+//	@return LeaseRecord
+func (a *DefaultAPIService) GetLeaseLeaseIpAddressGetExecute(r ApiGetLeaseLeaseIpAddressGetRequest) (*LeaseRecord, *http.Response, error) {
 	var (
 		localVarHTTPMethod  = http.MethodGet
 		localVarPostBody    interface{}
 		formFiles           []formFile
-		localVarReturnValue *LeaseDashboardResponse
+		localVarReturnValue *LeaseRecord
 	)
 
-	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "DefaultAPIService.GetLeaseDashboardLeaseDashboardGet")
+	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "DefaultAPIService.GetLeaseLeaseIpAddressGet")
 	if err != nil {
 		return localVarReturnValue, nil, &GenericOpenAPIError{error: err.Error()}
 	}
 
-	localVarPath := localBasePath + "/lease-dashboard"
+	localVarPath := localBasePath + "/lease/{ip_address}"
+	localVarPath = strings.Replace(localVarPath, "{"+"ip_address"+"}", url.PathEscape(parameterValueToString(r.ipAddress, "ipAddress")), -1)
 
 	localVarHeaderParams := make(map[string]string)
 	localVarQueryParams := url.Values{}
@@ -433,10 +437,6 @@ func (a *DefaultAPIService) GetLeaseDashboardLeaseDashboardGetExecute(r ApiGetLe
 
 	if r.ipVersion != nil {
 		parameterAddToHeaderOrQuery(localVarQueryParams, "ip_version", r.ipVersion, "form", "")
-	} else {
-		var defaultValue IpVersion = 4
-		parameterAddToHeaderOrQuery(localVarQueryParams, "ip_version", defaultValue, "form", "")
-		r.ipVersion = &defaultValue
 	}
 	// to determine the Content-Type header
 	localVarHTTPContentTypes := []string{}
@@ -502,57 +502,53 @@ func (a *DefaultAPIService) GetLeaseDashboardLeaseDashboardGetExecute(r ApiGetLe
 	return localVarReturnValue, localVarHTTPResponse, nil
 }
 
-type ApiGetLeaseLeaseIpAddressGetRequest struct {
+type ApiGetSummarySummaryGetRequest struct {
 	ctx        context.Context
 	ApiService *DefaultAPIService
-	ipAddress  string
 	ipVersion  *IpVersion
 }
 
-func (r ApiGetLeaseLeaseIpAddressGetRequest) IpVersion(ipVersion IpVersion) ApiGetLeaseLeaseIpAddressGetRequest {
+func (r ApiGetSummarySummaryGetRequest) IpVersion(ipVersion IpVersion) ApiGetSummarySummaryGetRequest {
 	r.ipVersion = &ipVersion
 	return r
 }
 
-func (r ApiGetLeaseLeaseIpAddressGetRequest) Execute() (*LeaseRecord, *http.Response, error) {
-	return r.ApiService.GetLeaseLeaseIpAddressGetExecute(r)
+func (r ApiGetSummarySummaryGetRequest) Execute() (*DhcpSummaryResponse, *http.Response, error) {
+	return r.ApiService.GetSummarySummaryGetExecute(r)
 }
 
 /*
-GetLeaseLeaseIpAddressGet Get Lease
+GetSummarySummaryGet Get Summary
 
-Return one normalized lease from the selected DHCP service.
+Return lease, reservation, and pool counts.
 
 	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
-	@param ipAddress
-	@return ApiGetLeaseLeaseIpAddressGetRequest
+	@return ApiGetSummarySummaryGetRequest
 */
-func (a *DefaultAPIService) GetLeaseLeaseIpAddressGet(ctx context.Context, ipAddress string) ApiGetLeaseLeaseIpAddressGetRequest {
-	return ApiGetLeaseLeaseIpAddressGetRequest{
+func (a *DefaultAPIService) GetSummarySummaryGet(ctx context.Context) ApiGetSummarySummaryGetRequest {
+	return ApiGetSummarySummaryGetRequest{
 		ApiService: a,
 		ctx:        ctx,
-		ipAddress:  ipAddress,
 	}
 }
 
 // Execute executes the request
 //
-//	@return LeaseRecord
-func (a *DefaultAPIService) GetLeaseLeaseIpAddressGetExecute(r ApiGetLeaseLeaseIpAddressGetRequest) (*LeaseRecord, *http.Response, error) {
+//	@return DhcpSummaryResponse
+func (a *DefaultAPIService) GetSummarySummaryGetExecute(r ApiGetSummarySummaryGetRequest) (*DhcpSummaryResponse, *http.Response, error) {
 	var (
 		localVarHTTPMethod  = http.MethodGet
 		localVarPostBody    interface{}
 		formFiles           []formFile
-		localVarReturnValue *LeaseRecord
+		localVarReturnValue *DhcpSummaryResponse
 	)
 
-	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "DefaultAPIService.GetLeaseLeaseIpAddressGet")
+	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "DefaultAPIService.GetSummarySummaryGet")
 	if err != nil {
 		return localVarReturnValue, nil, &GenericOpenAPIError{error: err.Error()}
 	}
 
-	localVarPath := localBasePath + "/lease/{ip_address}"
-	localVarPath = strings.Replace(localVarPath, "{"+"ip_address"+"}", url.PathEscape(parameterValueToString(r.ipAddress, "ipAddress")), -1)
+	localVarPath := localBasePath + "/summary"
 
 	localVarHeaderParams := make(map[string]string)
 	localVarQueryParams := url.Values{}
@@ -560,6 +556,10 @@ func (a *DefaultAPIService) GetLeaseLeaseIpAddressGetExecute(r ApiGetLeaseLeaseI
 
 	if r.ipVersion != nil {
 		parameterAddToHeaderOrQuery(localVarQueryParams, "ip_version", r.ipVersion, "form", "")
+	} else {
+		var defaultValue IpVersion = 4
+		parameterAddToHeaderOrQuery(localVarQueryParams, "ip_version", defaultValue, "form", "")
+		r.ipVersion = &defaultValue
 	}
 	// to determine the Content-Type header
 	localVarHTTPContentTypes := []string{}

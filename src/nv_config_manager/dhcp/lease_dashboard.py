@@ -60,8 +60,8 @@ class PoolRecord(BaseModel):
     pool: str
 
 
-class LeaseDashboardResponse(BaseModel):
-    """Lease, reservation, and pool summary used by the dashboard."""
+class DhcpSummaryResponse(BaseModel):
+    """Lease, reservation, and pool summary."""
 
     active_lease_count: int
     reservation_count: int
@@ -475,13 +475,13 @@ def lease_deleted(delete_payload: list[dict[str, Any]], *, ip_version: IpVersion
     return True
 
 
-def build_lease_dashboard(
+def build_dhcp_summary(
     config_payload: list[dict[str, Any]],
     statistics_payload: list[dict[str, Any]],
     *,
     ip_version: IpVersion = IpVersion.V4,
-) -> LeaseDashboardResponse:
-    """Convert KEA configuration and statistics into the dashboard summary."""
+) -> DhcpSummaryResponse:
+    """Convert KEA configuration and statistics into a DHCP summary."""
     dhcp_config = _dhcp_config(config_payload, ip_version)
     statistics = _response_arguments(statistics_payload, "statistic-get-all")
 
@@ -494,7 +494,7 @@ def build_lease_dashboard(
     if active_lease_count is None:
         active_lease_count = 0
 
-    return LeaseDashboardResponse(
+    return DhcpSummaryResponse(
         active_lease_count=active_lease_count,
         reservation_count=len(reservations),
         pool_count=len(pools),
