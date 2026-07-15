@@ -36,6 +36,9 @@ spec:
         {{- if include "nv-config-manager.spiffe.enabled" . }}
         {{- include "nv-config-manager.spiffe.annotations" (dict "root" . "app" $ztpName) | nindent 8 }}
         {{- end }}
+        {{- if .Values.observability.enabled }}
+        {{- include "nv-config-manager.otelOptOutAnnotations" . | nindent 8 }}
+        {{- end }}
     spec:
       serviceAccountName: {{ include "nv-config-manager.serviceAccountName" . }}
       {{- if .Values.global.imagePullSecrets }}

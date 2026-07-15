@@ -553,12 +553,15 @@ checksum/auth-ini: {{ include "nv-config-manager.authIniSections" . | sha256sum 
 {{- end -}}
 
 {{/*
-Opt out of AWS CloudWatch Application Signals / OTel auto-instrumentation on
-Temporal server pods. The Go Temporal server only supports OTLP over gRPC; EKS
-Application Signals injects http/protobuf env vars that prevent startup.
-Usage: {{ include "nv-config-manager.temporalServerOtelOptOutAnnotations" . | nindent 8 }}
+Opt out of AWS CloudWatch Application Signals / OTel operator auto-instrumentation.
+Config Manager instruments its services with the OTel SDK directly, so the
+platform auto-injector must not inject its own env vars: on the Go Temporal
+server the injected http/protobuf vars prevent startup, and on the Python
+services they collide with the SDK's OTLP export. Apply to any pod that sets up
+manual OTel export (guard with `if .Values.observability.enabled`).
+Usage: {{ include "nv-config-manager.otelOptOutAnnotations" . | nindent 8 }}
 */}}
-{{- define "nv-config-manager.temporalServerOtelOptOutAnnotations" -}}
+{{- define "nv-config-manager.otelOptOutAnnotations" -}}
 instrumentation.opentelemetry.io/inject-java: "false"
 instrumentation.opentelemetry.io/inject-python: "false"
 instrumentation.opentelemetry.io/inject-dotnet: "false"

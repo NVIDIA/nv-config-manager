@@ -32,6 +32,9 @@ spec:
         {{- if eq .Values.secrets.method "vault-agent" }}
         {{- include "nv-config-manager.vaultAgent.injectorAnnotations" . | nindent 8 }}
         {{- end }}
+        {{- if .Values.observability.enabled }}
+        {{- include "nv-config-manager.otelOptOutAnnotations" . | nindent 8 }}
+        {{- end }}
     spec:
       serviceAccountName: {{ include "nv-config-manager.serviceAccountName" . }}
       {{- if .Values.global.imagePullSecrets }}

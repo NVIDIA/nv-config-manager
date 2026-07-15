@@ -66,7 +66,7 @@ spec:
         {{- include "nv-config-manager.customPodLabels" $ | nindent 8 }}
       annotations:
         {{- include "nv-config-manager.authIniChecksum" $ | nindent 8 }}
-        {{- include "nv-config-manager.temporalServerOtelOptOutAnnotations" $ | nindent 8 }}
+        {{- include "nv-config-manager.otelOptOutAnnotations" $ | nindent 8 }}
         checksum/temporal-config: {{ include "nv-config-manager.configmap.temporal-config" $ | sha256sum }}
         checksum/temporal-dynamic-config: {{ include "nv-config-manager.configmap.temporal-dynamic-config" $ | sha256sum }}
         {{- if include "nv-config-manager.spiffe.enabled" $ }}
@@ -297,7 +297,7 @@ spec:
         {{- include "nv-config-manager.spiffe.annotations" (dict "root" . "app" $temporalName) | nindent 8 }}
         {{- end }}
         {{- if .Values.observability.enabled }}
-        {{- include "nv-config-manager.temporalServerOtelOptOutAnnotations" . | nindent 8 }}
+        {{- include "nv-config-manager.otelOptOutAnnotations" . | nindent 8 }}
         {{- end }}
     spec:
       serviceAccountName: {{ include "nv-config-manager.serviceAccountName" . }}
@@ -492,7 +492,7 @@ spec:
         {{- include "nv-config-manager.spiffe.annotations" (dict "root" . "app" $temporalName) | nindent 8 }}
         {{- end }}
         {{- if .Values.observability.enabled }}
-        {{- include "nv-config-manager.temporalServerOtelOptOutAnnotations" . | nindent 8 }}
+        {{- include "nv-config-manager.otelOptOutAnnotations" . | nindent 8 }}
         {{- end }}
     spec:
       serviceAccountName: {{ include "nv-config-manager.serviceAccountName" . }}
@@ -612,7 +612,7 @@ spec:
         {{- include "nv-config-manager.spiffe.annotations" (dict "root" . "app" $temporalName) | nindent 8 }}
         {{- end }}
         {{- if .Values.observability.enabled }}
-        {{- include "nv-config-manager.temporalServerOtelOptOutAnnotations" . | nindent 8 }}
+        {{- include "nv-config-manager.otelOptOutAnnotations" . | nindent 8 }}
         {{- end }}
     spec:
       serviceAccountName: {{ include "nv-config-manager.serviceAccountName" . }}
@@ -696,7 +696,7 @@ spec:
         {{- include "nv-config-manager.spiffe.annotations" (dict "root" . "app" $temporalName) | nindent 8 }}
         {{- end }}
         {{- if .Values.observability.enabled }}
-        {{- include "nv-config-manager.temporalServerOtelOptOutAnnotations" . | nindent 8 }}
+        {{- include "nv-config-manager.otelOptOutAnnotations" . | nindent 8 }}
         {{- end }}
     spec:
       serviceAccountName: {{ include "nv-config-manager.serviceAccountName" . }}
