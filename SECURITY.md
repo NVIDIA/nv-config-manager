@@ -45,7 +45,7 @@ The primary trust boundary is the cluster network.
   SPIFFE fall back to NetworkPolicy namespace isolation and gateway-mediated
   auth.
 - **Gateway mediates external access.** All user-facing traffic enters
-  through Envoy Gateway (or ingress-nginx) with OIDC/JWT authentication.
+  through a supported Gateway API controller and the OIDC/JWT authentication proxy.
   Internal APIs delegate authentication to the gateway and SPIFFE layers
   for flexibility across deployment environments.
 - **Secrets are injected, never hardcoded.** All secrets (database passwords,
@@ -106,8 +106,9 @@ The following items were reviewed during the security audit and accepted:
    (switches, BMCs) use self-signed certificates. Bootstrapping valid
    certificates is a future ZTP roadmap item.
 
-2. **Kea/kea-admin containers run as root.** DHCP requires binding UDP
-   port 67. The kea-admin container is an ephemeral database migration job.
+2. **The Kea DHCP container runs as root.** DHCP requires binding UDP port 67.
+   The kea-admin migration container runs as UID/GID 1000 and is not part of
+   this exception.
 
 3. **Privileged image-loader DaemonSet.** Required for airgapped deployments
    to import images into node containerd. Runs in a dedicated namespace

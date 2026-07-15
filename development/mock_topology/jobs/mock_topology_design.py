@@ -385,16 +385,16 @@ class MockTopologyDesign(DesignJob):
     @staticmethod
     def _get_device_router_id(device: Device) -> Any | None:
         """Return the device loopback IP address for BGP router ID."""
-        if device.primary_ip4:
-            return device.primary_ip4
-
         loopback = Interface.objects.filter(
             device=device,
             name=LOOPBACK_INTERFACE_NAME,
         ).first()
-        if not loopback:
-            return None
-        return loopback.ip_addresses.filter(ip_version=4).first()
+        if loopback:
+            loopback_ip = loopback.ip_addresses.filter(ip_version=4).first()
+            if loopback_ip:
+                return loopback_ip
+
+        return device.primary_ip4
 
     def _ensure_status_content_type_memberships(
         self,
@@ -445,6 +445,7 @@ class MockTopologyDesign(DesignJob):
             "designs/platforms.yaml.j2",
             "designs/location_types.yaml.j2",
             "designs/locations.yaml.j2",
+            "designs/spx_namespaces.yaml.j2",
             "designs/config_contexts.yaml.j2",
             "designs/device_types.yaml.j2",
             "designs/prefixes.yaml.j2",

@@ -40,6 +40,91 @@ class MockBoto3S3Client(MagicMock):
         return {"TagSet": []}
 
 
+class RecordingSession:
+    def __init__(self):
+        self.calls = []
+
+    def client(self, *args, **kwargs):
+        self.calls.append((args, kwargs))
+        return self
+
+    async def __aenter__(self):
+        return MockBoto3S3Client()
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        return None
+
+
+def test_s3_client_uses_constructor_overrides(monkeypatch):
+    monkeypatch.setenv("CUSTOM_S3_BUCKET", "env-bucket")
+    monkeypatch.setenv("CUSTOM_S3_ENDPOINT", "https://env-s3.example.test")
+    monkeypatch.setenv("CUSTOM_S3_ACCESS_KEY", "env-access-key")
+    monkeypatch.setenv("CUSTOM_S3_SECRET_KEY", "env-secret-key")
+
+    client = S3Client(
+        bucket="ini-bucket",
+        custom_endpoint="https://s3.example.test",
+        custom_access_key="ini-access-key",
+        custom_secret_key="ini-secret-key",
+    )
+
+    assert client.bucket == "ini-bucket"
+    assert client.custom_endpoint == "https://s3.example.test"
+    assert client.custom_access_key == "ini-access-key"
+    assert client.custom_secret_key == "ini-secret-key"
+
+
+@pytest.mark.parametrize(
+    ("kwarg", "value"),
+    [
+        ("bucket", ""),
+        ("bucket", "   "),
+        ("custom_endpoint", ""),
+        ("custom_access_key", ""),
+        ("custom_secret_key", ""),
+    ],
+)
+def test_s3_client_rejects_empty_constructor_overrides(kwarg: str, value: str):
+    with pytest.raises(ValueError, match=f"{kwarg} cannot be empty"):
+        S3Client(**{kwarg: value})
+
+
+@pytest.mark.asyncio
+async def test_s3_client_passes_credentials_without_custom_endpoint():
+    client = S3Client(custom_access_key="access", custom_secret_key="secret")
+    session = RecordingSession()
+    client.session = session
+
+    await client.connect()
+
+    args, kwargs = session.calls[0]
+    assert args == ("s3",)
+    assert kwargs["aws_access_key_id"] == "access"
+    assert kwargs["aws_secret_access_key"] == "secret"
+    assert "endpoint_url" not in kwargs
+
+
+@pytest.mark.asyncio
+async def test_s3_client_uses_default_credential_chain_for_irsa(monkeypatch):
+    """Do not pass static credentials when EKS provides a web identity token."""
+    for name in ("CUSTOM_S3_ACCESS_KEY", "CUSTOM_S3_SECRET_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("AWS_ROLE_ARN", "arn:aws:iam::123456789012:role/nv-config-manager-s3")
+    monkeypatch.setenv("AWS_WEB_IDENTITY_TOKEN_FILE", "/var/run/secrets/eks.amazonaws.com/token")
+
+    client = S3Client(region="us-west-2")
+    session = RecordingSession()
+    client.session = session
+
+    await client.connect()
+
+    args, kwargs = session.calls[0]
+    assert args == ("s3",)
+    assert kwargs["region_name"] == "us-west-2"
+    assert "aws_access_key_id" not in kwargs
+    assert "aws_secret_access_key" not in kwargs
+
+
 @pytest.mark.asyncio
 async def test_get_firmware_object():
     client = S3Client()

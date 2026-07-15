@@ -4,7 +4,7 @@ Kubernetes manifests for air-gapped deployment support.
 
 ## Image Loader DaemonSet
 
-The `image-loader-daemonset.yaml` runs a privileged pod on each node to import container images from tarball files directly into containerd.
+The `image-loader-daemonset.yaml` runs a capability-restricted pod on each node to import container images from tarball files through the mounted containerd socket.
 
 ### When to Use
 
@@ -184,4 +184,3 @@ ctr -n k8s.io images ls | grep nv-config-manager
 # Remove specific image
 ctr -n k8s.io images rm <image-ref>
 ```
-

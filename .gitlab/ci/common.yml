@@ -22,6 +22,9 @@ workflow:
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
       when: never
     - if: $CI_COMMIT_BRANCH
+    # Go module tags should not trigger release jobs.
+    - if: $CI_COMMIT_TAG =~ /^bindings\/go\/v/
+      when: never
     - if: $CI_COMMIT_TAG
 
 variables:
@@ -36,11 +39,9 @@ variables:
   NVCM_CI_IMAGE_PYTHON_313: "python:3.13"
   NVCM_CI_IMAGE_SONAR: "sonarsource/sonar-scanner-cli:11"
   NVCM_CI_IMAGE_UBUNTU: "ubuntu:24.04"
-  NVCM_CONTAINER_SCAN_POLICY_REF: "main"
   APT_MIRROR: "$NVCM_APT_MIRROR"
   APT_MIRROR_DEBIAN: "$NVCM_APT_MIRROR_DEBIAN"
   APT_MIRROR_GPG_KEY_URL: "$NVCM_APT_MIRROR_GPG_KEY_URL"
-  PULSE_REGISTRY_NGC_PASSWORD: $NGC_REGISTRY_TOKEN
 
 # Always-run job to ensure pipeline has at least one job
 # Prevents GitLab UI confusion when all other jobs are skipped

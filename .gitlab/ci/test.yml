@@ -407,6 +407,7 @@ integration-test:
 # Python tests for default branch and release tags
 test-main-py:
   stage: test
+  needs: []
   tags:
     - dca
     - linux/amd64
@@ -452,6 +453,7 @@ test-main-py:
 # Network template component tests for default branch and release tags
 test-main-network-templates:
   stage: test
+  needs: []
   tags:
     - dca
     - linux/amd64
@@ -483,6 +485,7 @@ test-main-network-templates:
 # Installer coverage for default-branch and release-tag Sonar analysis.
 test-main-installer:
   stage: test
+  needs: []
   tags:
     - dca
     - linux/amd64

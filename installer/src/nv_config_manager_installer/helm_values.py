@@ -43,6 +43,18 @@ from nv_config_manager_installer.schema import (
 )
 from nv_config_manager_installer.secrets import build_eso_vault_config
 
+_ZTP_S3_CREDENTIALS_SECRET_NAME = "ztp-s3-credentials"
+
+
+def _has_ztp_s3_k8s_credentials(config: NVConfigManagerInstallConfig) -> bool:
+    """Return true when installer-managed Kubernetes S3 credentials are configured."""
+    if config.secrets.method != SecretsMethod.KUBERNETES:
+        return False
+    ztp_s3 = config.secrets.k8s.ztp_s3
+    if not ztp_s3.enabled:
+        return False
+    return bool(ztp_s3.values.get("accessKeyId") and ztp_s3.values.get("secretAccessKey"))
+
 
 def _provider_defaults(provider: SSOProvider, client_id: str) -> dict[str, list[str]]:
     """Return provider-specific default scopes and audiences.
@@ -94,6 +106,8 @@ def _derive_oidc_endpoints(provider: SSOProvider, issuer_url: str) -> dict[str, 
 
     if provider == SSOProvider.KEYCLOAK:
         return {
+            "authorizationEndpoint": f"{issuer}/protocol/openid-connect/auth",
+            "tokenEndpoint": f"{issuer}/protocol/openid-connect/token",
             "endSessionEndpoint": f"{issuer}/protocol/openid-connect/logout",
             "jwksUri": f"{issuer}/protocol/openid-connect/certs",
         }
@@ -161,10 +175,10 @@ _GLOBAL_IMAGE_DEFAULTS: dict[str, tuple[str, str]] = {
 
 _NESTED_IMAGE_DEFAULTS: dict[str, tuple[tuple[str, ...], str, str]] = {
     "spiffeHelper": (("spiffe", "helper", "image"), "ghcr.io/spiffe/spiffe-helper", "0.8.0"),
-    "oauth2Proxy": (
-        ("oidc", "oauth2Proxy", "image"),
+    "oidcProxy": (
+        ("oidc", "proxy", "image"),
         "quay.io/oauth2-proxy/oauth2-proxy",
-        "v7.6.0",
+        "v7.15.3",
     ),
     "prometheusServer": (
         ("prometheus", "server", "image"),
@@ -372,6 +386,8 @@ def _build_global(
         "createServiceAccount": True,
         "serviceAccountName": "vault-access-sa",
     }
+    if c.service_account_eks_role:
+        section["serviceAccountEksRole"] = c.service_account_eks_role
 
     if c.environment == "local":
         section["deploymentStrategy"] = {"type": "Recreate"}
@@ -439,24 +455,33 @@ def _build_secrets(config: NVConfigManagerInstallConfig) -> dict[str, Any]:
 
 
 def _build_gateway(config: NVConfigManagerInstallConfig) -> dict[str, Any]:
-    """Build the ``gateway`` section of Helm values."""
+    """Build the Gateway API controller and ``gateway`` Helm values sections."""
     lb = config.infrastructure.load_balancer
+    gateway_type = config.infrastructure.gateway.value
+    default_class_name = "kgateway" if gateway_type == "kgateway" else "envoy-gateway"
     gateway: dict[str, Any] = {
         "enabled": True,
+        "create": config.infrastructure.create_gateway,
+        "name": config.infrastructure.gateway_name,
+        "namespace": config.infrastructure.gateway_namespace,
+        "sectionName": config.infrastructure.gateway_listener,
+        "className": config.infrastructure.gateway_class_name or default_class_name,
         "baseHostname": config.cluster.hostname,
-        "createGatewayClass": config.infrastructure.create_gateway_class,
+        "createGatewayClass": (
+            config.infrastructure.create_gateway_class and gateway_type == "envoyGateway"
+        ),
         "certificates": {"enabled": config.infrastructure.tls},
     }
     if config.infrastructure.tls:
         gateway["certificates"]["selfSigned"] = True
     if lb.provider == LBProvider.NONE:
         gateway["nodePort"] = {"enabled": True, "http": 30080, "https": 30443}
-    if lb.provider == LBProvider.NLB:
+    if lb.provider == LBProvider.NLB and gateway_type == "envoyGateway":
         gateway["nlb"] = _build_nlb_service_values(lb.nlb_gateway)
 
     gateway["auth"] = {"jwt": _build_jwt_section(config)}
     gateway["rateLimit"] = {"enabled": False}
-    return gateway
+    return {"ingress": {"type": gateway_type}, "gateway": gateway}
 
 
 def _build_jwt_section(config: NVConfigManagerInstallConfig) -> dict[str, Any]:
@@ -681,6 +706,45 @@ def _build_ztp_storage(config: NVConfigManagerInstallConfig) -> dict[str, Any]:
         if zs.pvc_size:
             file_cfg["size"] = zs.pvc_size
         storage["file"] = file_cfg
+    else:
+        s3_cfg: dict[str, Any] = {}
+        if zs.s3_bucket:
+            s3_cfg["bucketName"] = zs.s3_bucket
+        if zs.s3_ceph.enabled:
+            ceph_cfg: dict[str, Any] = {"enabled": True}
+            if zs.s3_ceph.user_secret_name:
+                ceph_cfg["userSecretName"] = zs.s3_ceph.user_secret_name
+
+            user = zs.s3_ceph.object_store_user
+            user_cfg: dict[str, Any] = {}
+            if user.name != "ztp-user":
+                user_cfg["name"] = user.name
+            if user.store != "ceph-objectstore":
+                user_cfg["store"] = user.store
+            if user.cluster_namespace != "rook-ceph":
+                user_cfg["clusterNamespace"] = user.cluster_namespace
+            if user_cfg:
+                ceph_cfg["objectStoreUser"] = user_cfg
+
+            obc = zs.s3_ceph.object_bucket_claim
+            obc_cfg: dict[str, Any] = {}
+            if obc.storage_class_name:
+                obc_cfg["storageClassName"] = obc.storage_class_name
+            if obc.bucket_max_size and obc.bucket_max_size != "50G":
+                obc_cfg["bucketMaxSize"] = obc.bucket_max_size
+            if obc_cfg:
+                ceph_cfg["objectBucketClaim"] = obc_cfg
+
+            s3_cfg["ceph"] = ceph_cfg
+        else:
+            if zs.s3_endpoint:
+                s3_cfg["endpoint"] = zs.s3_endpoint
+            if zs.s3_region:
+                s3_cfg["region"] = zs.s3_region
+            if _has_ztp_s3_k8s_credentials(config):
+                s3_cfg["credentialsSecret"] = _ZTP_S3_CREDENTIALS_SECRET_NAME
+        if s3_cfg:
+            storage["s3"] = s3_cfg
     return storage
 
 
@@ -833,9 +897,17 @@ def build_values(
         paths_section = vault_section.setdefault("paths", {})
         paths_section["gitTokens"] = git_tokens_list
 
-    values["gateway"] = _build_gateway(config)
+    values.update(_build_gateway(config))
     values["spiffe"] = _build_spiffe(config)
-    values["networkPolicy"] = {"enabled": True}
+    values["networkPolicy"] = {
+        "enabled": True,
+        "gatewayNamespace": config.infrastructure.gateway_namespace
+        or (
+            "kgateway-system"
+            if config.infrastructure.gateway.value == "kgateway"
+            else "envoy-gateway-system"
+        ),
+    }
 
     _build_oidc(config, values)
     values["externalServices"] = _build_external_services(config)

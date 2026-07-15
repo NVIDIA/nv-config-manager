@@ -22,6 +22,7 @@ import {
   NAMESPACE_TAGS_LIST_API_RESPONSE,
   ROLES_LIST_API_RESPONSE,
   SITES_LIST_API_RESPONSE,
+  SPX_OVERLAY_LIST_API_RESPONSE,
   STATUS_LIST_API_RESPONSE,
   TENANT_LIST_API_RESPONSE,
 } from "@/mocks/data/formData";
@@ -52,6 +53,9 @@ export const useEnvDataHandlers = [
   }),
   http.get(sanitizeUrl(`${apiURL}/v1/parameter/namespace-tag`), async () => {
     return HttpResponse.json(NAMESPACE_TAGS_LIST_API_RESPONSE, { status: 200 });
+  }),
+  http.get(sanitizeUrl(`${apiURL}/v1/parameter/overlay`), async () => {
+    return HttpResponse.json(SPX_OVERLAY_LIST_API_RESPONSE, { status: 200 });
   }),
   http.get(sanitizeUrl(`${apiURL}/v1/parameter/devicetypeid`), async () => {
     return HttpResponse.json(DEVICE_TYPES_LIST_API_RESPONSE, { status: 200 });

@@ -14,6 +14,7 @@
 # limitations under the License.
 """Temporal test configuration - INI mocking handled by top-level conftest.py."""
 
+import asyncio
 from collections.abc import AsyncGenerator, AsyncIterator, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from typing import Any
@@ -97,6 +98,36 @@ async def mock_send_slack_message(activity_input: SlackMessageInput) -> None:
 #     # Simple mock that returns immediately to prevent hanging
 #     mock_wait = AsyncMock(return_value=None)
 #     mocker.patch("nv_config_manager.temporal.common.mixins.stage.workflow.wait_condition", mock_wait)
+
+
+@pytest.fixture(autouse=True)
+def disable_workflow_lock_io(mocker) -> dict[str, Any]:
+    """Keep the per-resource workflow lock out of Redis and out of the way in tests.
+
+    Acquire and release still run as no-ops, so the lock wiring is exercised end to
+    end, but the renewal loop is neutralized so time-skipping tests don't spin on
+    its timer. Renewal and the Redis backend are covered by the dedicated lock
+    tests (``tests/common/test_lock*`` and ``tests/temporal/common/test_workflow_lock``).
+
+    Returns the acquire/renew/release helper mocks so tests that want to assert on
+    the lock wiring can request this fixture by name.
+    """
+    mocks = {
+        helper: mocker.patch(
+            f"nv_config_manager.temporal.common.activities.lock.{helper}",
+            new=mocker.AsyncMock(return_value=True),
+        )
+        for helper in ("acquire_lock", "renew_lock", "release_lock")
+    }
+
+    async def _never_renew(*_args: object, **_kwargs: object) -> None:
+        await asyncio.Event().wait()
+
+    mocker.patch(
+        "nv_config_manager.temporal.common.decorators.workflow._renew_loop",
+        new=_never_renew,
+    )
+    return mocks
 
 
 @pytest.fixture(autouse=True)

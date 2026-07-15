@@ -35,6 +35,7 @@
             "platform": {
                 "name": "Cumulus Linux"
             },
+            "primary_ip4_interface": "lo",
             "serial": "54:9B:24:41:33:12",
             "config_context": {
                 "intended-firmware": {

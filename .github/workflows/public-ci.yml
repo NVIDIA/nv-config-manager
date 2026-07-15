@@ -22,13 +22,15 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: &actions_checkout actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
       - name: Setup proxy cache
         uses: &setup_proxy_cache nv-gha-runners/setup-proxy-cache@14229018fe157c83e03c008f27d183d8e99bc67c
-      - uses: actions/setup-python@v5
+      - uses: &actions_setup_python actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      - uses: astral-sh/setup-uv@v5
+      - uses: &setup_uv astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
           enable-cache: true
       - run: uv sync --frozen
@@ -55,15 +57,16 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: *actions_checkout
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Setup proxy cache
         uses: *setup_proxy_cache
-      - uses: actions/setup-python@v5
+      - uses: *actions_setup_python
         with:
           python-version: ${{ env.NAUTOBOT_PYTHON_VERSION }}
-      - uses: astral-sh/setup-uv@v5
+      - uses: *setup_uv
         with:
           enable-cache: true
       - name: Lint and build app package
@@ -82,15 +85,16 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: *actions_checkout
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Setup proxy cache
         uses: *setup_proxy_cache
-      - uses: actions/setup-python@v5
+      - uses: *actions_setup_python
         with:
           python-version: ${{ env.NAUTOBOT_PYTHON_VERSION }}
-      - uses: astral-sh/setup-uv@v5
+      - uses: *setup_uv
         with:
           enable-cache: true
       - name: Lint and build app package
@@ -109,7 +113,9 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: *actions_checkout
+        with:
+          persist-credentials: false
       - name: Setup proxy cache
         uses: *setup_proxy_cache
       - name: Check source headers
@@ -139,13 +145,15 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: *actions_checkout
+        with:
+          persist-credentials: false
       - name: Setup proxy cache
         uses: *setup_proxy_cache
-      - uses: actions/setup-python@v5
+      - uses: *actions_setup_python
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      - uses: astral-sh/setup-uv@v5
+      - uses: *setup_uv
         with:
           enable-cache: true
       - run: uv sync --frozen
@@ -155,7 +163,7 @@ jobs:
         run: |
           uv sync --frozen
           uv run pytest tests/ -n auto --cov=nv_config_manager_auth --cov=nv_config_manager_jobs --cov-report=xml:coverage.xml --cov-report=term
-      - uses: actions/upload-artifact@v4
+      - uses: &upload_artifact actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: python-test-artifacts
@@ -169,13 +177,15 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: *actions_checkout
+        with:
+          persist-credentials: false
       - name: Setup proxy cache
         uses: *setup_proxy_cache
-      - uses: actions/setup-python@v5
+      - uses: *actions_setup_python
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      - uses: astral-sh/setup-uv@v5
+      - uses: *setup_uv
         with:
           enable-cache: true
       - name: Test installer
@@ -183,7 +193,7 @@ jobs:
         run: |
           uv sync --frozen
           uv run pytest tests/ -v --cov=src/nv_config_manager_installer --cov-report=xml:coverage.xml --cov-report=term
-      - uses: actions/upload-artifact@v4
+      - uses: *upload_artifact
         if: always()
         with:
           name: installer-test-artifacts
@@ -195,18 +205,20 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: *actions_checkout
+        with:
+          persist-credentials: false
       - name: Setup proxy cache
         uses: *setup_proxy_cache
-      - uses: actions/setup-python@v5
+      - uses: *actions_setup_python
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      - uses: astral-sh/setup-uv@v5
+      - uses: *setup_uv
         with:
           enable-cache: true
       - run: uv sync --frozen
       - run: uv run pytest components/network-templates/tests -v --cov=nv_config_manager_templates --cov-report=xml:components/network-templates/coverage.xml --cov-report=term
-      - uses: actions/upload-artifact@v4
+      - uses: *upload_artifact
         if: always()
         with:
           name: network-template-test-artifacts
@@ -218,10 +230,12 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: *actions_checkout
+        with:
+          persist-credentials: false
       - name: Setup proxy cache
         uses: *setup_proxy_cache
-      - uses: actions/setup-go@v5
+      - uses: &actions_setup_go actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: components/nats-ready/go.mod
           cache-dependency-path: components/nats-ready/go.sum
@@ -237,7 +251,9 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: *actions_checkout
+        with:
+          persist-credentials: false
       - name: Setup proxy cache
         uses: *setup_proxy_cache
       - name: Install Helm
@@ -273,6 +289,84 @@ jobs:
               if (sc == 0 || sc != ok) exit 1
             }
           ' /tmp/nvcm-probes.yaml
+      - name: Image digest pin render
+        run: |
+          # global.images.<name>.digest must pin built-service images by digest
+          # (repository@sha256:...) and win over the tag; an unset digest must
+          # fall back to repository:tag. Render-time check only (no cluster) so
+          # it stays out of the slow kind-integration path.
+          set -euo pipefail
+          names="nvConfigManager nvConfigManagerUi kea keaAdmin nautobot natsReady"
+          r_nvConfigManager=registry.ci.example/nvcm/main
+          r_nvConfigManagerUi=registry.ci.example/nvcm/ui
+          r_kea=registry.ci.example/nvcm/kea
+          r_keaAdmin=registry.ci.example/nvcm/kea-admin
+          r_nautobot=registry.ci.example/nvcm/nautobot
+          r_natsReady=registry.ci.example/nvcm/nats-ready
+          t_nvConfigManager=9.0.1-nvcm
+          t_nvConfigManagerUi=9.0.1-ui
+          t_kea=9.0.1-kea
+          t_keaAdmin=9.0.1-kea-admin
+          t_nautobot=9.0.1-nautobot
+          t_natsReady=9.0.1-nats-ready
+          d_nvConfigManager=sha256:1111111111111111111111111111111111111111111111111111111111111111
+          d_nvConfigManagerUi=sha256:2222222222222222222222222222222222222222222222222222222222222222
+          d_kea=sha256:3333333333333333333333333333333333333333333333333333333333333333
+          d_keaAdmin=sha256:4444444444444444444444444444444444444444444444444444444444444444
+          d_nautobot=sha256:5555555555555555555555555555555555555555555555555555555555555555
+          d_natsReady=sha256:6666666666666666666666666666666666666666666666666666666666666666
+
+          base_set_args=""
+          for n in $names; do
+            eval "repo=\$r_$n"
+            eval "tag=\$t_$n"
+            base_set_args="$base_set_args --set-string global.images.$n.repository=$repo"
+            base_set_args="$base_set_args --set-string global.images.$n.tag=$tag"
+          done
+
+          # Default render: each service must render its seeded repository:tag.
+          # shellcheck disable=SC2086
+          helm template test deploy/helm/ --values deploy/helm/values-ci.yaml $base_set_args >/tmp/nvcm-nodigest.yaml
+          if grep -Eq 'image:[[:space:]]*"?[^"[:space:]]+@sha256:' /tmp/nvcm-nodigest.yaml; then
+            echo "ERROR: an image rendered with a digest even though none was set"
+            exit 1
+          fi
+          fail=0
+          for n in $names; do
+            eval "repo=\$r_$n"
+            eval "tag=\$t_$n"
+            expected="${repo}:${tag}"
+            if ! grep -qF "$expected" /tmp/nvcm-nodigest.yaml; then
+              echo "ERROR: $n missing expected tag reference $expected in default render"
+              fail=1
+            fi
+          done
+          [ "$fail" -eq 0 ] || exit 1
+
+          # Digest render: each service must render its seeded repository@digest.
+          digest_set_args="$base_set_args"
+          for n in $names; do
+            eval "digest=\$d_$n"
+            digest_set_args="$digest_set_args --set-string global.images.$n.digest=$digest"
+          done
+          # shellcheck disable=SC2086
+          helm template test deploy/helm/ --values deploy/helm/values-ci.yaml $digest_set_args >/tmp/nvcm-digest.yaml
+          for n in $names; do
+            eval "repo=\$r_$n"
+            eval "tag=\$t_$n"
+            eval "digest=\$d_$n"
+            expected="${repo}@${digest}"
+            if ! grep -qF "$expected" /tmp/nvcm-digest.yaml; then
+              echo "ERROR: $n missing expected digest reference $expected in digest render"
+              fail=1
+            fi
+            if grep -qF "${repo}:${tag}" /tmp/nvcm-digest.yaml; then
+              echo "ERROR: $n still renders tag reference ${repo}:${tag} when digest is set"
+              fail=1
+            fi
+          done
+          [ "$fail" -eq 0 ] || exit 1
+          echo "All 6 built-service images render exact repository:tag or repository@digest references"
 
   openapi:
     name: OpenAPI And Go Bindings Check
@@ -282,16 +376,18 @@ jobs:
       issues: write
       pull-requests: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: *actions_checkout
+        with:
+          persist-credentials: false
       - name: Setup proxy cache
         uses: *setup_proxy_cache
-      - uses: actions/setup-python@v5
+      - uses: *actions_setup_python
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      - uses: astral-sh/setup-uv@v5
+      - uses: *setup_uv
         with:
           enable-cache: true
-      - uses: actions/setup-go@v5
+      - uses: *actions_setup_go
         with:
           go-version-file: bindings/go/go.mod
           cache: false
@@ -392,6 +488,20 @@ jobs:
             exit 1
           fi
 
+  github-automation:
+    name: GitHub Automation Tests
+    runs-on: linux-amd64-cpu4
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24"
+      - run: node --test .github/scripts/*.test.js
+
   ui-lint:
     name: UI Lint
     runs-on: linux-amd64-cpu8
@@ -405,7 +515,9 @@ jobs:
       run:
         working-directory: ui
     steps:
-      - uses: actions/checkout@v4
+      - uses: *actions_checkout
+        with:
+          persist-credentials: false
       - name: Setup proxy cache
         uses: *setup_proxy_cache
       - name: Cache npm
@@ -429,7 +541,9 @@ jobs:
       run:
         working-directory: ui
     steps:
-      - uses: actions/checkout@v4
+      - uses: *actions_checkout
+        with:
+          persist-credentials: false
       - name: Setup proxy cache
         uses: *setup_proxy_cache
       - name: Cache npm
@@ -447,7 +561,7 @@ jobs:
       - run: npm ci --prefer-offline
       - run: npm run build
       - run: npm run test:e2e:ci
-      - uses: actions/upload-artifact@v4
+      - uses: *upload_artifact
         if: always()
         with:
           name: ui-e2e-artifacts

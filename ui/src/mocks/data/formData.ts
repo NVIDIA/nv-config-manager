@@ -59,6 +59,7 @@ export const ROLES_LIST_API_RESPONSE = [
 
 export const STATUS_LIST = {
   active: "Active",
+  provisioned: "Provisioned",
   provisioning: "Provisioning",
   planned: "Planned",
   staged: "Staged",
@@ -67,6 +68,10 @@ export const STATUS_LIST_API_RESPONSE = [
   {
     id: "Active",
     name: "Active",
+  },
+  {
+    id: "Provisioned",
+    name: "Provisioned",
   },
   {
     id: "Provisioning",
@@ -96,6 +101,20 @@ export const TENANT_LIST_API_RESPONSE = [
     name: "TenantB",
   },
 ];
+
+export const SPX_OVERLAY_LIST = {
+  primary: "test-overlay-1",
+  secondary: "test-overlay-2",
+  modified: "modified-vpc",
+  submission: "test-overlay-submission",
+  forbidden: "test-overlay",
+} as const;
+export const SPX_OVERLAY_LIST_API_RESPONSE = Object.values(SPX_OVERLAY_LIST).map(
+  (name, index) => ({
+    id: `spx-overlay-${index + 1}`,
+    name,
+  })
+);
 
 export const NAMESPACE_TAGS_LIST_API_RESPONSE = [
   {

@@ -24,6 +24,7 @@ from temporalio.contrib.opentelemetry import TracingInterceptor
 from temporalio.worker import Worker
 
 from nv_config_manager.common.log import configure_logging
+from nv_config_manager.temporal.common.activities import REGISTERED_COMMON_ACTIVITIES
 from nv_config_manager.temporal.converter import get_data_converter
 from nv_config_manager.temporal.hello_world.activities import (
     REGISTERED_ACTIVITIES as HELLO_WORLD_REGISTERED_ACTIVITIES,
@@ -59,12 +60,16 @@ async def main() -> None:
         temporal_server,
         namespace="default",
         data_converter=get_data_converter(),
-        interceptors=[TracingInterceptor()],
+        interceptors=[TracingInterceptor(always_create_workflow_spans=True)],
         runtime=runtime,
     )
 
     # Combine activity lists - registered activities are lists of callables
-    all_activities = [*NGC_REGISTERED_ACTIVITIES, *HELLO_WORLD_REGISTERED_ACTIVITIES]
+    all_activities = [
+        *NGC_REGISTERED_ACTIVITIES,
+        *HELLO_WORLD_REGISTERED_ACTIVITIES,
+        *REGISTERED_COMMON_ACTIVITIES,
+    ]
     workflows: list[type[Any]] = [*NGC_REGISTERED_WORKFLOWS, *HELLO_WORLD_REGISTERED_WORKFLOWS]
     if _enabled_env_flag("NVCM_ENABLE_LOCAL_TEST_WORKFLOWS"):
         workflows.extend(HELLO_WORLD_LOCAL_TEST_WORKFLOWS)

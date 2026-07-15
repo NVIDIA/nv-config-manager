@@ -156,6 +156,8 @@ navigation:
 
   - section: Deployment
     contents:
+    - page: Gateway API and OIDC
+      path: ../install/gateway-api.mdx
     - page: Hosting Options
       path: ../hosting-options/index.mdx
     - page: Network Topology Requirements

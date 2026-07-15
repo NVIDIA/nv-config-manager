@@ -1,0 +1,22 @@
+{{- if and .Values.gateway.enabled .Values.gateway.create (eq (include "nv-config-manager.gatewayControllerType" .) "kgateway") (dig "nodePort" "enabled" false .Values.gateway) }}
+apiVersion: gateway.kgateway.dev/v1alpha1
+kind: GatewayParameters
+metadata:
+  name: {{ .Values.gateway.name }}-parameters
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+spec:
+  kube:
+    service:
+      type: NodePort
+      ports:
+      {{- range .Values.gateway.listeners }}
+      - port: {{ .port }}
+        {{- if eq .protocol "HTTP" }}
+        nodePort: {{ $.Values.gateway.nodePort.http | default 30080 }}
+        {{- else if eq .protocol "HTTPS" }}
+        nodePort: {{ $.Values.gateway.nodePort.https | default 30443 }}
+        {{- end }}
+      {{- end }}
+{{- end }}

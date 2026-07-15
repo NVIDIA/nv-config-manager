@@ -44,7 +44,7 @@ spec:
       {{- include "nv-config-manager.podSecurityContext" . | nindent 6 }}
       containers:
       - name: api
-        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ include "nv-config-manager.imageTag" (dict "root" . "image" .Values.global.images.nvConfigManager) }}"
+        image: "{{ include "nv-config-manager.image" (dict "root" . "image" .Values.global.images.nvConfigManager) }}"
         imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
         {{- include "nv-config-manager.containerSecurityContext" . | nindent 8 }}
         command: ["nvidia-config-manager-mcp"]
@@ -110,6 +110,7 @@ spec:
     targetPort: 9000
     protocol: TCP
     name: http
+    appProtocol: agentgateway.dev/mcp
   selector:
     app: {{ $mcpName }}
     component: api

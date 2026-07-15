@@ -16,18 +16,21 @@
 
 import asyncio
 import uuid
+from collections.abc import Generator
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from typing import Any, cast
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from pydantic import ValidationError
 from temporalio import activity, workflow
-from temporalio.exceptions import ApplicationError
+from temporalio.client import WorkflowFailureError
+from temporalio.exceptions import ApplicationError, ChildWorkflowError
 from temporalio.worker import Worker
 
 from nv_config_manager.temporal.common.mixins.device import InterfaceData, NetworkDeviceData
+from nv_config_manager.temporal.common.mixins.stage import StateEnum
 from nv_config_manager.temporal.ngc.activities.deploy import (
     WaitForTenantRenderInput,
     WaitForTenantRenderOutput,
@@ -70,6 +73,22 @@ def make_test_vrf(namespace: str) -> dict[str, Any]:
         "namespace": {"name": namespace, "location": {"name": "mock_site"}},
         "interfaces": [],
     }
+
+
+def make_child_workflow_error(message: str, workflow_id: str) -> ChildWorkflowError:
+    """Build the failure raised when an awaited child workflow fails."""
+    error = ChildWorkflowError(
+        "Child workflow execution failed",
+        namespace="default",
+        workflow_id=workflow_id,
+        run_id="run-id",
+        workflow_type="MockChildWorkflow",
+        initiated_event_id=1,
+        started_event_id=2,
+        retry_state=None,
+    )
+    error.__cause__ = ApplicationError(message)
+    return error
 
 
 @activity.defn(name="get_network_device")
@@ -256,6 +275,124 @@ async def test_spx_deploy_stage_rejects_partial_render_commit_pair(commit_ids):
         )
 
 
+@pytest.mark.asyncio
+async def test_spx_deploy_stage_normalizes_child_workflow_errors():
+    """Convert tenant deploy child failures to the workflow's ApplicationError shape."""
+    device_output = await mock_get_network_device(GetNetworkDeviceInput(device_id="device-1"))
+    with patch(
+        "nv_config_manager.temporal.common.mixins.stage.workflow.time",
+        return_value=float(0),
+    ):
+        workflow_instance = SpXOverlayTenantChangeWorkflow()
+    stage_input = workflow_instance.DeployStageInput(device=device_output.device)
+
+    with (
+        patch(
+            "nv_config_manager.temporal.ngc.workflows.spx_overlay.workflow.start_child_workflow",
+            new=AsyncMock(side_effect=RuntimeError("tenant deploy failed")),
+        ),
+        pytest.raises(ApplicationError, match="tenant deploy failed"),
+    ):
+        await SpXOverlayTenantChangeWorkflow.deploy_stage.__wrapped__(
+            workflow_instance,
+            stage_input,
+        )
+
+
+@pytest.mark.asyncio
+async def test_spx_deploy_stage_surfaces_link_when_child_fails():
+    """Treat a started child failure as displayable stage result data."""
+    device_output = await mock_get_network_device(GetNetworkDeviceInput(device_id="device-1"))
+
+    class FailingChildHandle:
+        id = "failed-deployment-child"
+
+        def __await__(self) -> Generator[Any]:
+            async def fail() -> None:
+                raise make_child_workflow_error("tenant deploy activity failed", self.id)
+
+            return fail().__await__()
+
+    with (
+        patch(
+            "nv_config_manager.temporal.common.mixins.stage.workflow.time",
+            return_value=float(0),
+        ),
+        patch(
+            "nv_config_manager.temporal.common.mixins.stage.workflow.patched",
+            return_value=False,
+        ),
+        patch(
+            "nv_config_manager.temporal.ngc.workflows.spx_overlay.workflow.start_child_workflow",
+            new=AsyncMock(return_value=FailingChildHandle()),
+        ),
+    ):
+        workflow_instance = SpXOverlayTenantChangeWorkflow()
+        workflow_instance.get_stage_by_name("wait_for_render").state = StateEnum.COMPLETE
+        output = await workflow_instance.deploy_stage(
+            workflow_instance.DeployStageInput(device=device_output.device)
+        )
+
+    stage = workflow_instance.get_stage_by_name("deploy")
+    assert stage.state == StateEnum.COMPLETE
+    assert stage.child_workflows == ["failed-deployment-child"]
+    assert output.error == "tenant deploy activity failed"
+    assert output.display == (
+        "**Configuration deployment failed, check workflow "
+        "[failed-deployment-child](/workflows/failed-deployment-child) for details.**"
+    )
+
+
+@pytest.mark.asyncio
+async def test_spx_assignment_stage_publishes_child_link_before_failure():
+    """Treat a started child failure as displayable stage result data."""
+    device_output = await mock_get_network_device(GetNetworkDeviceInput(device_id="device-1"))
+
+    class FailingChildHandle:
+        id = "failed-assignment-child"
+
+        def __await__(self) -> Generator[Any]:
+            async def fail() -> None:
+                raise make_child_workflow_error("Interfaces not found", self.id)
+
+            return fail().__await__()
+
+    with (
+        patch(
+            "nv_config_manager.temporal.common.mixins.stage.workflow.time",
+            return_value=float(0),
+        ),
+        patch(
+            "nv_config_manager.temporal.common.mixins.stage.workflow.patched",
+            return_value=False,
+        ),
+        patch(
+            "nv_config_manager.temporal.ngc.workflows.spx_overlay.workflow.start_child_workflow",
+            new=AsyncMock(return_value=FailingChildHandle()),
+        ),
+    ):
+        workflow_instance = SpXOverlayTenantChangeWorkflow()
+        workflow_instance.get_stage_by_name("get_device").state = StateEnum.COMPLETE
+        output = await workflow_instance.assign_spx_overlay_stage(
+            workflow_instance.AssignSpXOverlayStageInput(
+                overlay_id="mock_overlay_id",
+                device=device_output.device,
+                port_names=["swp5s0"],
+                site="mock_site",
+                namespace_tag="spectrumx",
+            )
+        )
+
+    stage = workflow_instance.get_stage_by_name("assign_spx_overlay")
+    assert stage.state == StateEnum.COMPLETE
+    assert stage.child_workflows == ["failed-assignment-child"]
+    assert output.error == "Interfaces not found"
+    assert output.display == (
+        "**Assignment failed, check workflow "
+        "[failed-assignment-child](/workflows/failed-assignment-child) for details.**"
+    )
+
+
 @workflow.defn(name="TenantDeployWorkflow", sandboxed=False)
 class MockTenantDeployWorkflow:
     """Mock tenant deploy child workflow."""
@@ -264,6 +401,62 @@ class MockTenantDeployWorkflow:
     async def run(self, _workflow_input: TenantDeployInput) -> bool:
         """Mock tenant deploy run."""
         return True
+
+
+@workflow.defn(name="SpXOverlayAssignmentWorkflow", sandboxed=False)
+class MockFailingSpXOverlayAssignmentWorkflow:
+    """Fail after the parent has started and recorded the child workflow."""
+
+    @workflow.run
+    async def run(self, _workflow_input: SpXOverlayAssignmentInput) -> None:
+        """Fail the assignment child workflow."""
+        raise ApplicationError("Interfaces not found", non_retryable=True)
+
+
+@pytest.mark.asyncio
+async def test_spx_tenant_change_surfaces_failed_assignment_child_link(env):
+    """Stop downstream work while leaving the failed child link visible."""
+    task_queue_name = str(uuid.uuid4())
+    async with Worker(
+        env.client,
+        task_queue=task_queue_name,
+        workflows=[
+            MockFailingSpXOverlayAssignmentWorkflow,
+            SpXOverlayTenantChangeWorkflow,
+        ],
+        activities=[mock_get_network_device],
+        activity_executor=ThreadPoolExecutor(1),
+    ):
+        handle = await env.client.start_workflow(
+            SpXOverlayTenantChangeWorkflow.run,
+            SpXOverlayTenantChangeInput(
+                overlay_id="mock_overlay_id",
+                device_id="mock_device_id_with_vrf",
+                port_names=["swp5s0"],
+                site="mock_site",
+            ),
+            id=str(uuid.uuid4()),
+            task_queue=task_queue_name,
+            run_timeout=timedelta(seconds=30),
+        )
+
+        with pytest.raises(WorkflowFailureError) as failure:
+            await handle.result()
+        assert "Interfaces not found" in str(failure.value.cause)
+
+        stages = {stage["name"]: stage for stage in await handle.query("stages")}
+        assignment_stage = stages["assign_spx_overlay"]
+        assignment_child = assignment_stage["child_workflows"][0]
+        assert assignment_stage["state"] == "COMPLETE"
+        assert assignment_stage["output"]["error"] == "Interfaces not found"
+        assert assignment_stage["output"]["display"] == (
+            "**Assignment failed, check workflow "
+            f"[{assignment_child}](/workflows/{assignment_child}) for details.**"
+        )
+        assert stages["determine_deployment_action"]["state"] == "UNREACHABLE"
+        assert stages["render_tenant_config"]["state"] == "UNREACHABLE"
+        assert stages["wait_for_render"]["state"] == "UNREACHABLE"
+        assert stages["deploy"]["state"] == "UNREACHABLE"
 
 
 def test_spx_render_stage_output_requires_snapshot_commit_ids():
@@ -428,6 +621,15 @@ async def test_spx_overlay_tenant_change_is_noop_when_already_assigned(
         assert _mock_state["reconcile_calls"] == 1
 
         stages = {stage["name"]: stage for stage in await handle.query("stages")}
+        assignment_stage = stages["assign_spx_overlay"]
+        assignment_child = assignment_stage["child_workflows"][0]
+        assert assignment_stage["output"]["display"] == (
+            "- **Overlay:** mock_overlay_id\n"
+            "- **L3 VXLAN:** SpXTenant60004\n"
+            "- **VRF:** SpXTenant60004 (already assigned)\n"
+            "- **Ports assigned (0):** None\n\n"
+            f"Assigning via workflow [{assignment_child}](/workflows/{assignment_child})"
+        )
         assert stages["render_tenant_config"]["state"] == "UNREACHABLE"
         assert stages["wait_for_render"]["state"] == "UNREACHABLE"
         assert stages["deploy"]["state"] == "UNREACHABLE"
@@ -497,6 +699,25 @@ async def test_spx_overlay_tenant_change_uses_current_versions_after_render_race
         assert stages["deploy"]["state"] == "COMPLETE"
         assert stages["deploy"]["input"]["tenant_config_commit_id"] == "7"
         assert stages["deploy"]["input"]["intended_config_commit_id"] == "11"
+        assignment_children = stages["assign_spx_overlay"]["child_workflows"]
+        deploy_children = stages["deploy"]["child_workflows"]
+        assert len(assignment_children) == 1
+        assert len(deploy_children) == 1
+        assert handle.id not in assignment_children
+        assert handle.id not in deploy_children
+        assert assignment_children != deploy_children
+        assert stages["assign_spx_overlay"]["output"]["display"] == (
+            "- **Overlay:** mock_overlay_id\n"
+            "- **L3 VXLAN:** SpXTenant60004\n"
+            "- **VRF:** SpXTenant60004 (already assigned)\n"
+            "- **Ports assigned (1):** swp3\n\n"
+            f"Assigning via workflow [{assignment_children[0]}]"
+            f"(/workflows/{assignment_children[0]})"
+        )
+        assert stages["deploy"]["output"]["display"] == (
+            f"Configuration deployed via workflow [{deploy_children[0]}]"
+            f"(/workflows/{deploy_children[0]})"
+        )
 
 
 @pytest.mark.asyncio

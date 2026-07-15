@@ -126,6 +126,11 @@ class ConfigManagerDeviceStatusDetailView(generic.ObjectView):
         context = super().get_extra_context(request, instance)
 
         context["config_store_links"] = generate_config_urls(instance)
+        context["temporal_url"] = settings.PLUGINS_CONFIG["nv_config_manager"].get("temporal_url")
+        context["device_id"] = instance.device.pk if instance else ""
+        context["site"] = instance.device.location.name if instance and instance.device.location else ""
+        context["tenant"] = getattr(instance.device.tenant, "name", "") if instance else ""
+        context["status"] = getattr(instance.device.status, "name", "") if instance else ""
         return context
 
 
@@ -139,8 +144,9 @@ class ConfigManagerDeviceStatusWorkflowsTab(generic.ObjectView):
         """Return any additional context data for the template."""
         context = super().get_extra_context(request, instance)
         context["managed_device"] = instance
-        context["device_id"] = instance.pk if instance else ""
+        context["device_id"] = instance.device.pk if instance else ""
         context["tenant"] = getattr(instance.device.tenant, "name", "") if instance else ""
+        context["status"] = getattr(instance.device.status, "name", "") if instance else ""
         context["temporal_url"] = settings.PLUGINS_CONFIG["nv_config_manager"].get("temporal_url")
         context["site"] = instance.device.location.name if instance and instance.device.location else ""
 
@@ -192,8 +198,9 @@ class DeviceConfigManagerWorkflowsViewTab(generic.ObjectView):
         managed_device = get_object_or_404(models.ConfigManagerDeviceStatus.objects, device=instance)
         context["managed_device"] = managed_device
         context["temporal_url"] = settings.PLUGINS_CONFIG["nv_config_manager"].get("temporal_url")
-        context["device_id"] = managed_device.pk
+        context["device_id"] = managed_device.device.pk
         context["tenant"] = getattr(instance.tenant, "name", "") if instance else ""
+        context["status"] = getattr(instance.status, "name", "") if instance else ""
         context["html"] = "dcim/device.html"
         context["site"] = instance.location.name if instance and instance.location else ""
 
@@ -213,6 +220,11 @@ class DeviceConfigManagerInfoViewTab(generic.ObjectView):
         managed_device_instance = get_object_or_404(models.ConfigManagerDeviceStatus.objects, device=instance)
         context["managed_device_instance"] = managed_device_instance
         context["config_store_links"] = generate_config_urls(managed_device_instance)
+        context["temporal_url"] = settings.PLUGINS_CONFIG["nv_config_manager"].get("temporal_url")
+        context["device_id"] = managed_device_instance.device.pk
+        context["site"] = instance.location.name if instance and instance.location else ""
+        context["tenant"] = getattr(instance.tenant, "name", "") if instance else ""
+        context["status"] = getattr(instance.status, "name", "") if instance else ""
         context["edit_url"] = reverse(
             "plugins:nv_config_manager:configmanagerdevicestatus_edit",
             kwargs={"pk": instance.pk if instance else ""},

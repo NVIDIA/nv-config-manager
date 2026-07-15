@@ -44,7 +44,7 @@ INI sections::
     audiences = spiffe://trust-domain
 
     ; Map SPIFFE ID prefixes to group names.  Matching callers get the
-    ; mapped group (plus spiffe:<workload_name> for tracking).
+    ; mapped group.
     [auth.spiffe.groups]
     spiffe://trust-domain/ns/nv-config-manager = nv-config-manager
     spiffe://trust-domain/ns/dgxc = dgxc
@@ -157,9 +157,20 @@ class JwtProviderConfig:
 class SpiffeConfig:
     """Configuration for SPIFFE JWT-SVID validation via PyJWT + JWKS.
 
-    ``group_prefixes`` maps SPIFFE ID prefixes to group names.
-    When a caller's SPIFFE ID matches a prefix, the mapped group is added
-    to its identity (in addition to ``spiffe:<workload_name>``).
+    ``group_prefixes`` maps SPIFFE ID *path-segment* prefixes to group names.
+    When a caller's SPIFFE ID matches a prefix the mapped group is added to
+    its identity.
+
+    Match semantics: the prefix matches a SPIFFE ID iff either
+    (a) the SPIFFE ID equals the prefix exactly, or
+    (b) the SPIFFE ID starts with the prefix followed by ``/``.
+
+    This is the standard hierarchical-path matching used elsewhere in SPIFFE
+    tooling. It deliberately does **not** match across path-segment boundaries
+    so that a sibling identity such as
+    ``spiffe://td/ns/nv-config-manager-admin`` is not accidentally granted the
+    role mapped to the ``spiffe://td/ns/nv-config-manager`` prefix. Use a
+    longer/exact prefix to scope a role to a single identity.
 
     Configured via ``[auth.spiffe.groups]``::
 
@@ -545,8 +556,16 @@ def identity_from_spiffe(request: Request) -> SSOIdentity | None:
 
         groups: set[str] = {"all"}
 
+        # Match prefixes on path-segment boundaries: either the SPIFFE ID is
+        # exactly the prefix, or the prefix is followed by '/'. A naive
+        # ``startswith`` would also match sibling identities — e.g. the
+        # configured prefix ``spiffe://td/ns/nv-config-manager`` would
+        # otherwise match ``spiffe://td/ns/nv-config-manager-admin`` and
+        # silently grant it the ``nv-config-manager`` role. SPIFFE IDs are
+        # hierarchical paths, so the boundary must be a ``/`` (or
+        # end-of-string).
         for prefix, group in cfg.spiffe.group_prefixes:
-            if spiffe_id.startswith(prefix):
+            if spiffe_id == prefix or spiffe_id.startswith(prefix + "/"):
                 groups.add(group)
 
         return SSOIdentity(
@@ -959,7 +978,7 @@ def install_identity_probe(
         """Populate ``request.state.user`` / ``request.state.roles``.
 
         Uses the consolidated :func:`extract_identity` so mTLS, SPIFFE
-        JWT-SVIDs, OIDC JWTs, and oauth2-proxy / Envoy gateway headers are
+        JWT-SVIDs, OIDC JWTs, and trusted OIDC proxy identity headers are
         all recognised uniformly.
         """
         identity = extract_identity(request, include_request_headers=accept_request_headers())

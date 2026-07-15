@@ -19,8 +19,9 @@ WORKDIR /source
 # Copy the pyproject.toml and uv.lock files first for cache optimization
 COPY pyproject.toml uv.lock /source/
 
-# Copy the rest of the source code
-COPY . /source/
+# Copy only the package inputs required for the editable install.
+COPY README.md /source/
+COPY nautobot_app_overlays/ /source/nautobot_app_overlays/
 
 # Install dependencies
 RUN --mount=type=cache,target=/root/.cache/uv \
@@ -32,3 +33,5 @@ COPY development/nautobot_config.py ${NAUTOBOT_ROOT}/nautobot_config.py
 # Copy the entrypoint script for installing local plugins
 COPY development/entrypoint.sh /opt/entrypoint.sh
 RUN chmod +x /opt/entrypoint.sh
+
+USER nautobot

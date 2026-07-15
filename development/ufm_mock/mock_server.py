@@ -79,7 +79,8 @@ class PKeyAddRequest(BaseModel):
 
     pkey: str
     ip_over_ib: bool = True
-    index0: bool = True
+    # Deprecated: UFM auto-generates index0 on init; accepted for back-compat but ignored.
+    index0: bool | None = None
     guids: list[str] = Field(default_factory=list)
     membership: str = "full"
     memberships: list[str] | None = None
@@ -105,10 +106,9 @@ def _memberships_set(req: PKeyAddRequest) -> list[str]:
 class _PKeyState:
     """In-memory state for a single mock PKey partition."""
 
-    def __init__(self, *, pkey: str, ip_over_ib: bool, index0: bool) -> None:
+    def __init__(self, *, pkey: str, ip_over_ib: bool) -> None:
         self.pkey = pkey
         self.ip_over_ib = ip_over_ib
-        self.index0 = index0
         # Members keyed by lowercase GUID for case-insensitive comparison.
         self.guids: dict[str, dict[str, str]] = {}
 
@@ -117,7 +117,6 @@ class _PKeyState:
         return {
             "partition": f"ib-pkey-{self.pkey}",
             "ip_over_ib": self.ip_over_ib,
-            "index0": self.index0,
         }
 
     def to_detail(self) -> dict[str, Any]:
@@ -149,11 +148,11 @@ class _Store:
         with self._lock:
             return {pkey: state.to_summary() for pkey, state in self._pkeys.items()}
 
-    def create(self, pkey: str, *, ip_over_ib: bool, index0: bool) -> None:
+    def create(self, pkey: str, *, ip_over_ib: bool) -> None:
         with self._lock:
             if pkey in self._pkeys:
                 raise HTTPException(status_code=409, detail=f"PKey {pkey} already exists")
-            self._pkeys[pkey] = _PKeyState(pkey=pkey, ip_over_ib=ip_over_ib, index0=index0)
+            self._pkeys[pkey] = _PKeyState(pkey=pkey, ip_over_ib=ip_over_ib)
 
     def get(self, pkey: str, *, with_guids: bool) -> dict[str, Any]:
         with self._lock:
@@ -169,7 +168,6 @@ class _Store:
         memberships: list[str],
         *,
         ip_over_ib: bool,
-        index0: bool,
     ) -> int:
         """Atomically replace a partition's member list, mirroring UFM's PUT.
 
@@ -181,12 +179,11 @@ class _Store:
         with self._lock:
             state = self._pkeys.get(pkey)
             if state is None:
-                state = _PKeyState(pkey=pkey, ip_over_ib=ip_over_ib, index0=index0)
+                state = _PKeyState(pkey=pkey, ip_over_ib=ip_over_ib)
                 self._pkeys[pkey] = state
             # UFM's PUT overwrites the whole partition, so refresh flags too,
             # not just the member list, even when the partition already exists.
             state.ip_over_ib = ip_over_ib
-            state.index0 = index0
             state.guids = {guid: {"membership": membership} for guid, membership in pairs}
             return len(state.guids)
 
@@ -260,7 +257,7 @@ def create_app(store: _Store | None = None) -> FastAPI:
 
     @app.post("/ufmRest/resources/pkeys/add")
     def create_pkey(payload: Annotated[PKeyAddRequest, Body()]) -> dict[str, str]:
-        store.create(payload.pkey, ip_over_ib=payload.ip_over_ib, index0=payload.index0)
+        store.create(payload.pkey, ip_over_ib=payload.ip_over_ib)
         return {"pkey": payload.pkey, "status": "created"}
 
     @app.get("/ufmRest/resources/pkeys/{pkey}")
@@ -283,7 +280,6 @@ def create_app(store: _Store | None = None) -> FastAPI:
             payload.guids,
             memberships,
             ip_over_ib=payload.ip_over_ib,
-            index0=payload.index0,
         )
         return {"pkey": payload.pkey, "guids_set": count}
 

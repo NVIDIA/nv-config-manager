@@ -26,7 +26,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form } from "@/components/ui/form";
 import { useToast } from "@/components/ui/use-toast";
 import { useEnvData, useDevices } from "@/hooks";
-import { startWorkflow } from "@/lib/utils";
+import { getErrorMessage, startWorkflow } from "@/lib/utils";
 import { WorkflowFormField } from "@/components/forms/formfield";
 import { InfinibandCableValidationWorkflowInput } from "@/types/data-table.types";
 import { DeviceOption } from "@/types/workflow-form.types";
@@ -42,8 +42,8 @@ export const InfinibandValidationWorkflowForm = () => {
   const [isManualChange, setIsManualChange] = React.useState<boolean>(false);
   const { toast } = useToast();
   const searchParams = useSearchParams();
-  const querySite = (searchParams && searchParams.get("site")) || "";
-  const queryDevice = (searchParams && searchParams.get("device")) || "";
+  const querySite = searchParams?.get("site") || "";
+  const queryDevice = searchParams?.get("device") || "";
   const queryDeviceIds = React.useMemo(
     () => searchParams?.getAll("device-id") ?? [],
     [searchParams]
@@ -134,14 +134,8 @@ export const InfinibandValidationWorkflowForm = () => {
   }, [queryDeviceIds, deviceIdsData, form, isManualChange]);
 
   React.useEffect(() => {
-    if (watchSite) {
-      form.setValue("device", ""); // Clear device field when site changes
-      form.setValue("deviceIds", []); // Clear deviceIds field when site changes
-    } else {
-      // Also clear device and deviceIds when site is cleared (empty string)
-      form.setValue("device", "");
-      form.setValue("deviceIds", []);
-    }
+    form.setValue("device", "");
+    form.setValue("deviceIds", []);
   }, [watchSite, form]);
 
   const onSubmit = async (
@@ -160,7 +154,7 @@ export const InfinibandValidationWorkflowForm = () => {
       toast({
         variant: "destructive",
         title: "Workflow Failed",
-        description: error,
+        description: getErrorMessage(error),
       });
     });
     setIsSubmitting(false);

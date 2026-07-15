@@ -1145,6 +1145,134 @@ class TestSpiffeGroupPrefixes:
         assert "dgxc" in data["groups"]
         assert "nv-config-manager" not in data["groups"]
 
+    def test_sibling_identity_not_granted_role(self, rsa_keypair, make_jwt):
+        """A sibling identity sharing a common prefix must NOT inherit the role.
+
+        Regression test for the prefix-matching footgun:
+        ``spiffe://cluster.local/ns/nv-config-manager`` configured as the
+        prefix for the ``nv-config-manager`` role must not match a sibling
+        SPIFFE ID like ``spiffe://cluster.local/ns/nv-config-manager-admin``.
+        Path matching is on segment boundaries, so ``nv-config-manager-admin``
+        falls outside the ``ns/nv-config-manager`` path and gets only the
+        baseline ``all`` group.
+        """
+        cp = _make_config(
+            **{
+                "auth.spiffe": {
+                    "jwks_uri": "https://spire-server:8443/keys",
+                    "audiences": "spiffe://cluster.local",
+                },
+                "auth.spiffe.groups": {
+                    "spiffe://cluster.local/ns/nv-config-manager": "nv-config-manager",
+                },
+            }
+        )
+        auth_mod._auth_config = load_auth_config(cp)
+
+        token, mock_jwk = self._mock_spiffe_request(
+            rsa_keypair,
+            make_jwt,
+            sub="spiffe://cluster.local/ns/nv-config-manager-admin/sa/attacker",
+            aud="spiffe://cluster.local",
+        )
+
+        app = self._make_app()
+        client = TestClient(app)
+        with patch("nv_config_manager.common.auth._get_jwks_client") as mock_get_client:
+            mock_client = MagicMock()
+            mock_client.get_signing_key_from_jwt.return_value = mock_jwk
+            mock_get_client.return_value = mock_client
+            resp = client.get("/whoami", headers={"Authorization": f"Bearer {token}"})
+
+        data = resp.json()
+        assert "nv-config-manager" not in data["groups"], (
+            f"sibling identity must not inherit the 'nv-config-manager' role; "
+            f"got groups={data['groups']!r}"
+        )
+        assert data["groups"] == ["all"]
+
+    def test_exact_match_grants_role(self, rsa_keypair, make_jwt):
+        """An SVID equal to the prefix (no trailing path) still gets the role."""
+        cp = _make_config(
+            **{
+                "auth.spiffe": {
+                    "jwks_uri": "https://spire-server:8443/keys",
+                    "audiences": "spiffe://cluster.local",
+                },
+                "auth.spiffe.groups": {
+                    "spiffe://cluster.local/ns/nv-config-manager": "nv-config-manager",
+                },
+            }
+        )
+        auth_mod._auth_config = load_auth_config(cp)
+
+        token, mock_jwk = self._mock_spiffe_request(
+            rsa_keypair,
+            make_jwt,
+            sub="spiffe://cluster.local/ns/nv-config-manager",
+            aud="spiffe://cluster.local",
+        )
+
+        app = self._make_app()
+        client = TestClient(app)
+        with patch("nv_config_manager.common.auth._get_jwks_client") as mock_get_client:
+            mock_client = MagicMock()
+            mock_client.get_signing_key_from_jwt.return_value = mock_jwk
+            mock_get_client.return_value = mock_client
+            resp = client.get("/whoami", headers={"Authorization": f"Bearer {token}"})
+
+        data = resp.json()
+        assert "nv-config-manager" in data["groups"]
+        assert "all" in data["groups"]
+
+    def test_layered_prefixes_add_both_roles(self, rsa_keypair, make_jwt):
+        """Per-service narrow prefix layers on top of a coarser one.
+
+        A SPIFFE ID *below* ``…/nv-config-manager/render`` must pick up BOTH
+        the broad ``nv-config-manager`` role and the narrow
+        ``nv-config-manager-render`` role -- both matched via the
+        ``prefix + "/"`` path-segment boundary (a descendant SVID, not an
+        exact prefix match). This is what enables progressive scoping: keep
+        coarse roles working while introducing tighter per-service roles to
+        gate sensitive endpoints.
+        """
+        cp = _make_config(
+            **{
+                "auth.spiffe": {
+                    "jwks_uri": "https://spire-server:8443/keys",
+                    "audiences": "spiffe://cluster.local",
+                },
+                "auth.spiffe.groups": {
+                    "spiffe://cluster.local/ns/nv-config-manager": "nv-config-manager",
+                    "spiffe://cluster.local/ns/nv-config-manager/render": "nv-config-manager-render",
+                },
+            }
+        )
+        auth_mod._auth_config = load_auth_config(cp)
+
+        # SVID sits a segment below the narrow prefix so that BOTH mapped
+        # prefixes are hit via the descendant (``prefix + "/"``) branch, not an
+        # exact match -- proving layered roles still accumulate for sub-workload
+        # identities.
+        token, mock_jwk = self._mock_spiffe_request(
+            rsa_keypair,
+            make_jwt,
+            sub="spiffe://cluster.local/ns/nv-config-manager/render/sa/api",
+            aud="spiffe://cluster.local",
+        )
+
+        app = self._make_app()
+        client = TestClient(app)
+        with patch("nv_config_manager.common.auth._get_jwks_client") as mock_get_client:
+            mock_client = MagicMock()
+            mock_client.get_signing_key_from_jwt.return_value = mock_jwk
+            mock_get_client.return_value = mock_client
+            resp = client.get("/whoami", headers={"Authorization": f"Bearer {token}"})
+
+        data = resp.json()
+        assert "nv-config-manager" in data["groups"]
+        assert "nv-config-manager-render" in data["groups"]
+
     def test_group_prefixes_parsed(self):
         """[auth.spiffe.groups] section is parsed into group_prefixes."""
         cp = _make_config(
