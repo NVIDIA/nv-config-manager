@@ -270,6 +270,7 @@ tempo:
 
   # Local dev: no usage reporting, ephemeral storage.
   tempo:
+        memBallastSizeMbs: 0
     reportingEnabled: false
     # 1h retention is plenty for a local demo; keeps the WAL/blocks tiny.
     retention: 1h
