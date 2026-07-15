@@ -2498,11 +2498,12 @@ nautobot:
     # say over the group catalog; purely-manual groups (no managed
     # ``<group>_<action>`` perms attached) are never touched.
     #
-    # Limitation: removing *the last* ``is_superuser: true`` entry from the
-    # mapping leaves no marker on the Django Group, so users previously
-    # promoted by that entry must be demoted manually via the admin UI.
-    # As long as at least one ``is_superuser: true`` entry remains, the
-    # promote/demote reconciliation runs on every login.  See
+    # ``is_superuser: true`` entries are revoked cleanly too: on sync the
+    # Django Group receives an inert ``<group>_nvcm-managed-membership`` marker,
+    # so removing the entry both demotes the user (the is_superuser
+    # reconciliation runs on every login while ``groupMapping`` is configured)
+    # and revokes the Django Group membership on the user's next login -- no
+    # manual admin-UI cleanup required.  See
     # ``components/nautobot/nv_config_manager_auth/rbac.py`` module docstring for
     # full details.
     #
@@ -2515,12 +2516,21 @@ nautobot:
     #                   Per-action permissions are then irrelevant.
     #   nautobot_permissions:
     #     view / add / change / delete / run:
-    #       content_types: list of "app_label.model" (or the shortcuts
-    #                      "all" and "app_label.*").  Unknown models are
+    #       content_types: a LIST of "app_label.model" strings (or the
+    #                      shortcuts "all" and "app_label.*").  Must be a list --
+    #                      a bare string is rejected (it would substring-match
+    #                      "all" and grant everything).  Unknown models are
     #                      logged and skipped, not raised.
-    #       constraints:   optional dict of Django-ORM lookups applied to
-    #                      the ObjectPermission (see Nautobot's
-    #                      ObjectPermission.constraints docs).
+    #       constraints:   optional Django-ORM lookups applied to the
+    #                      ObjectPermission.  Either a single mapping
+    #                      (e.g. {status__name: Active}) or a NON-EMPTY list of
+    #                      mappings (OR-of-constraints).  Omit it (or use {}) for
+    #                      an unconstrained grant -- i.e. the action on every
+    #                      object of the listed content_types.  Any malformed
+    #                      value (a bare string, a number, [] , a list with a
+    #                      non-mapping/empty item) fails closed: the permission
+    #                      is skipped and any existing managed one is pruned
+    #                      (revoked).  See Nautobot's ObjectPermission.constraints.
     #
     # Example:
     #   groupMapping:
