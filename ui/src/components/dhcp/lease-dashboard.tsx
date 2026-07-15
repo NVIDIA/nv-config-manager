@@ -307,7 +307,7 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
         description: `${leaseToClear.ip_address} is available for reassignment.`,
       });
       setLeaseToClear(null);
-      await Promise.all([mutate(), mutateLeases()]);
+      await Promise.allSettled([mutate(), mutateLeases()]);
     } catch (clearError) {
       toast({
         title: "Unable to clear lease",
