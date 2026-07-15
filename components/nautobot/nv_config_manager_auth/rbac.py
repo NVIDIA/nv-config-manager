@@ -42,9 +42,7 @@ Django Groups defined outside the mapping (e.g. manually-created admin groups
 the operator wants to keep static) are never touched -- we only read/write
 group memberships and ObjectPermissions for the names listed in the mapping.
 
-Mapping file format -- the keyset is intentionally provider-agnostic; both
-``groups:`` (preferred) and ``azure_app_roles:`` (cerebro-compatible) are
-accepted::
+Mapping file format -- entries live under a top-level ``groups:`` key::
 
     groups:
       - name: "ipam-rw"               # name from the JWT roles claim
@@ -89,22 +87,32 @@ the user is removed from the Django Group and the group's managed
 references them) deleted outright.  The Django Group row itself stays put
 so operators retain final say over the group catalog.
 
-Manual Django Groups (no ``<group>_<action>`` perms attached) are not
-touched -- operators can layer manual groups on top without worrying
-about a YAML edit silently revoking them.
+This holds even for *membership-only* entries (an entry with no
+``nautobot_permissions``, used to map an IdP role onto a group whose
+ObjectPermissions the operator curates by hand): such a group would carry
+no ``<group>_<action>`` row, so on first sync we attach an inert marker
+permission (``<group>_nvcm-managed-membership``, no actions/object-types --
+it grants nothing) that records the membership as module-managed.  The
+revocation pass keys off that marker, so removing the entry revokes the
+membership just like a permission-bearing entry.
 
-Known limitation for the ``is_superuser: true`` revocation pass:
-``is_superuser: true`` entries strip their group's managed perms (see
-:func:`_prune_group_object_permissions`), so removing an entry leaves
-no ``<group>_<action>`` marker on the Django Group for
-:func:`_revoke_removed_mapping_groups` to find.  ``is_superuser``
-revocation goes through :func:`_sync_superuser_status` instead, gated
-on :func:`mapping_is_configured`: as long as the operator has opted
-into mapping-based RBAC, ``_sync_superuser_status`` runs on every JWT
-login and demotes users who no longer match either source.  Membership
-in the Django Group itself still lingers until the operator removes it
-via the admin UI -- the permissions side, which is what governs
-access, is fully revoked.
+The ``<group>_*`` ObjectPermission namespace is therefore **reserved** for
+this module.  Purely-manual Django Groups (never named in the mapping, with
+no ``<group>_*`` perms attached) are never touched -- operators can layer
+them on top freely.  Operators must not, however, hand-create
+ObjectPermissions named ``<group>_<something>`` on a *mapped* group: those
+names are treated as module-owned and may be overwritten or pruned.
+
+Superuser entries (``is_superuser: true``) are handled the same way.
+They carry no ``<group>_<action>`` perms -- the global superuser flag
+makes per-action perms redundant -- so on sync they receive the same
+inert ``<group>_nvcm-managed-membership`` marker as a membership-only
+entry (via :func:`_apply_group_permission_config` with an empty config).
+Removing such an entry therefore revokes **both** the superuser flag
+(through :func:`_sync_superuser_status`, gated on
+:func:`mapping_is_configured`, which runs on every JWT login and demotes
+users who no longer match either source) **and** the Django Group
+membership (through the marker in :func:`_revoke_removed_mapping_groups`).
 """
 
 from __future__ import annotations
@@ -126,11 +134,95 @@ DEFAULT_MAPPING_PATH = "/app/config/group-mapping.yaml"
 ALL_CONTENT_TYPES = "all"
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
 
-# Django/Nautobot internal models that should NOT be touched by an "all"
-# expansion.  Cerebro maintains a similar list -- granting view/change on
-# session storage, social-auth scratch tables, celery beat schedules etc. is
-# always wrong.  Keep this conservative; opt-in by explicit name if needed.
-_EXCLUDED_FROM_ALL: frozenset[str] = frozenset(
+# Reserved provenance marker for *membership-only* mapping entries (entries with
+# no ``nautobot_permissions`` -- the operator maps an IdP role onto a group whose
+# ObjectPermissions they curate by hand).  Such a group would otherwise carry no
+# ``<group>_<action>`` row, so the revocation pass could not tell the membership
+# was module-managed and would leave the user in the group after the entry was
+# removed.  We attach an inert ObjectPermission (no actions, no object types --
+# it grants nothing) named ``<group>_<this suffix>`` purely as that marker.  The
+# hyphenated suffix cannot collide with a real Nautobot action name.
+_MEMBERSHIP_MARKER_SUFFIX = "nvcm-managed-membership"
+
+
+def _membership_marker_name(group_name: str) -> str:
+    """Return the reserved inert-marker ObjectPermission name for *group_name*."""
+    return f"{group_name}_{_MEMBERSHIP_MARKER_SUFFIX}"
+
+
+def _object_permission_owned_by_other(name: str, group: Group) -> bool:
+    """True if an ObjectPermission *name* exists but belongs to a foreign principal.
+
+    ``ObjectPermission.name`` is globally unique in Nautobot, and we upsert by
+    name.  The ``<group>_*`` namespace is reserved for this module, but that is
+    only a convention -- nothing stops an operator (or another feature) from
+    already owning a row with the name we are about to generate.  Blindly
+    ``update_or_create``-ing it would silently overwrite that row's
+    actions/constraints/object-types and hijack unrelated access.
+
+    We treat a row as *foreign* (and therefore off-limits) when it exists and is
+    bound to any Django Group other than *group*, or to any user directly.  A row
+    that does not exist, or exists but is bound only to *group* (or to nothing
+    yet), is ours to manage.  Callers log and skip foreign collisions instead of
+    overwriting them.
+    """
+    existing = ObjectPermission.objects.filter(name=name).first()
+    if existing is None:
+        return False
+    if existing.groups.exclude(pk=group.pk).exists():
+        return True
+    return existing.users.exists()
+
+
+def _is_valid_constraints(constraints: Any) -> bool:
+    """True if *constraints* is a shape Nautobot's ObjectPermission accepts.
+
+    Nautobot stores ``constraints`` as JSON and evaluates them as a queryset
+    filter, allowing either:
+
+        * a single mapping -- ``{"status__name": "Active"}`` (may be empty ``{}``
+          for an unconstrained grant), or
+        * a **non-empty list of non-empty mappings** -- OR-of-constraints, e.g.
+          ``[{"vid__gte": 100, "vid__lt": 200}, {"status__name": "Reserved"}]``.
+
+    Anything else (a string, a number, an empty list, a list containing a
+    non-mapping or an empty mapping) is malformed.  Callers fail closed on a
+    malformed value rather than dropping it and granting unconstrained access.
+    """
+    if isinstance(constraints, dict):
+        return True
+    return (
+        isinstance(constraints, list)
+        and bool(constraints)
+        and all(isinstance(item, dict) and bool(item) for item in constraints)
+    )
+
+
+# Identity / access-control models that must NEVER be swept in by an ``"all"``
+# expansion: granting write here is privilege escalation, not data access.
+# ``users.token`` lets a holder mint API tokens for any account;
+# ``users.objectpermission`` + ``auth.permission`` let them widen their own
+# grants; ``users.user`` / ``auth.group`` let them flip ``is_superuser`` or
+# rewrite group membership.  Nautobot's own ObjectPermission admin form filters
+# these out of the assignable object-type list for the same reason -- an ``all``
+# mapping must not be a backdoor around that policy.  A caller can still grant
+# access to one of these deliberately by naming it explicitly (``app.model``).
+_PRIVILEGE_MODELS: frozenset[str] = frozenset(
+    {
+        "auth.group",
+        "auth.permission",
+        "contenttypes.contenttype",
+        "users.user",
+        "users.token",
+        "users.objectpermission",
+    }
+)
+
+# Django/Nautobot internal plumbing that should NOT be touched by an "all"
+# expansion.  Granting view/change on session storage, social-auth scratch
+# tables, celery beat schedules etc. is always wrong.  Keep this conservative;
+# opt-in by explicit name if needed.
+_EXCLUDED_FROM_ALL: frozenset[str] = _PRIVILEGE_MODELS | frozenset(
     {
         "sessions.session",
         "social_django.association",
@@ -247,12 +339,12 @@ def load_group_mapping(path: str | None = None) -> dict[str, dict[str, Any]]:
     path = path or _mapping_path()
 
     # Funnel every filesystem failure mode into ``GroupMappingError`` so the
-    # caller's documented fail-closed path always runs.  The previous
-    # ``if not os.path.isfile(path): return {}`` + bare ``open()`` pattern
-    # left a TOCTOU window (file deleted between check and open) and never
-    # caught ``PermissionError`` / ``IsADirectoryError`` / ``UnicodeDecodeError``;
-    # any of those would surface as a raw ``OSError`` past
-    # ``except GroupMappingError`` in the caller and crash the login.
+    # caller's documented fail-closed path always runs.  An ``isfile()`` check
+    # plus a bare ``open()`` would leave a TOCTOU window (file deleted between
+    # check and open) and would not catch ``PermissionError`` /
+    # ``IsADirectoryError`` / ``UnicodeDecodeError``; any of those would surface
+    # as a raw ``OSError`` past ``except GroupMappingError`` in the caller and
+    # crash the login.  Catch and translate them here instead.
     try:
         with open(path, encoding="utf-8") as fh:
             data = yaml.safe_load(fh)
@@ -268,33 +360,28 @@ def load_group_mapping(path: str | None = None) -> dict[str, dict[str, Any]]:
     except yaml.YAMLError as exc:
         raise GroupMappingParseError(f"Failed to parse {path}: {exc}") from exc
 
-    # Distinguish "empty file" (``None`` -- legit, treat as no mappings)
-    # from "non-mapping top-level" (``false`` / ``0`` / ``[]`` / ``""`` --
-    # operator error, must surface).  The previous ``yaml.safe_load(fh) or {}``
-    # collapsed every falsy value into ``{}`` and bypassed the validator
-    # below, silently disabling RBAC.
+    # Distinguish "empty file" (``None`` -- legit, treat as no mappings) from
+    # "non-mapping top-level" (``false`` / ``0`` / ``[]`` / ``""`` -- operator
+    # error, must surface).  Coercing every falsy value into ``{}`` would bypass
+    # the validator below and silently disable RBAC, so handle them explicitly.
     if data is None:
         return {}
     if not isinstance(data, dict):
         raise GroupMappingParseError(f"{path}: top-level must be a mapping, got {type(data).__name__}")
 
-    # Accept "groups" (native) or "azure_app_roles" (cerebro-compat).  We
-    # must distinguish "key absent" (feature unconfigured -- legitimate
-    # no-op) from "key present with wrong shape" (operator error -- raise).
-    # The previous ``data.get("groups") or data.get("azure_app_roles") or []``
-    # collapsed both into the empty list, so ``groups: {}``, ``groups: ""``,
-    # ``groups: false``, etc. silently disabled RBAC instead of surfacing
-    # the misconfiguration.
+    # Entries live under ``groups:``.  Distinguish "key absent" (feature
+    # unconfigured -- legitimate no-op) from "key present with wrong shape"
+    # (operator error -- raise).  A ``data.get("groups") or []`` idiom would
+    # collapse ``groups: {}``, ``groups: ""``, ``groups: false`` into the empty
+    # list and silently disable RBAC instead of surfacing the misconfiguration.
     if "groups" in data:
         source_key, entries = "groups", data["groups"]
-    elif "azure_app_roles" in data:
-        source_key, entries = "azure_app_roles", data["azure_app_roles"]
     else:
         source_key, entries = None, []
 
-    # Explicit ``groups: null`` (or ``azure_app_roles: null``) is the YAML
-    # idiom for "key present, no value" -- treat it identically to an
-    # empty list / absent key.  Empty list (``groups: []``) is also fine.
+    # Explicit ``groups: null`` is the YAML idiom for "key present, no value" --
+    # treat it identically to an empty list / absent key.  Empty list
+    # (``groups: []``) is also fine.
     if entries is None:
         entries = []
 
@@ -343,8 +430,12 @@ def _resolve_content_types(spec: list[str]) -> list[ContentType]:
 
     Accepted entries (exactly one dot, both halves non-empty):
         * ``"all"``                  -- every model (minus :data:`_EXCLUDED_FROM_ALL`)
-        * ``"<app_label>.*"``        -- every model in that app
-        * ``"<app_label>.<model>"``  -- a single model
+        * ``"<app_label>.*"``        -- every model in that app (minus
+          :data:`_PRIVILEGE_MODELS`, so ``users.*`` / ``auth.*`` can't sweep in
+          token/permission/user models)
+        * ``"<app_label>.<model>"``  -- a single model (the deliberate escape
+          hatch: an identity/privilege model can only be granted by naming it
+          exactly, never via a wildcard)
 
     Anything else is malformed and logged + skipped, including:
         * ``"ipam.prefix.*"``  -- multi-dot; would otherwise be parsed as
@@ -357,6 +448,18 @@ def _resolve_content_types(spec: list[str]) -> list[ContentType]:
     skipped with a warning rather than raising, so a single typo doesn't
     block a login.
     """
+    # ``spec`` is Any at runtime (straight from YAML).  It MUST be a list: a
+    # bare string would make the ``ALL_CONTENT_TYPES in spec`` test below a
+    # *substring* match -- e.g. ``content_types: "install"`` -> ``"all" in
+    # "install"`` is True -> silently grants every content type.  Fail closed.
+    if not isinstance(spec, list):
+        log.warning(
+            "rbac: content_types must be a list of strings, got %s; skipping "
+            "(refusing to grant -- a scalar like 'install' would match 'all' as "
+            "a substring and grant every type)",
+            type(spec).__name__,
+        )
+        return []
     if not spec:
         return []
     if ALL_CONTENT_TYPES in spec:
@@ -376,7 +479,11 @@ def _resolve_content_types(spec: list[str]) -> list[ContentType]:
             log.warning("rbac: ignoring malformed content_type %r (expected 'app.model' or 'app.*')", entry)
             continue
         if model == "*":
-            out.extend(ContentType.objects.filter(app_label=app_label))
+            out.extend(
+                ct
+                for ct in ContentType.objects.filter(app_label=app_label)
+                if f"{ct.app_label}.{ct.model}" not in _PRIVILEGE_MODELS
+            )
             continue
         try:
             out.append(ContentType.objects.get(app_label=app_label, model=model))
@@ -406,9 +513,9 @@ def sync_groups_and_permissions(
     NOT short-circuit on an empty mapping.  When the operator opts into
     the feature and then writes ``groupMapping: []`` (or the YAML fails
     to parse), pass 1 + pass 2 become no-ops and pass 3 prunes everything
-    this module previously granted.  Conflating "empty mapping" with
-    "feature disabled" is how previously-granted memberships /
-    ObjectPermissions used to persist after the operator removed them.
+    this module manages.  Conflating "empty mapping" with "feature
+    disabled" would let managed memberships / ObjectPermissions linger
+    after the operator removed them -- the fail-open behavior this avoids.
 
     Three passes run in order:
 
@@ -443,23 +550,29 @@ def _revoke_removed_mapping_groups(user: Any, current_managed_names: set[str]) -
 
     For every Django Group the user belongs to that is **not** in the current
     mapping, we inspect its attached ``ObjectPermission`` rows: if at least
-    one follows our ``<group_name>_<action>`` naming pattern, the group was
-    previously managed by this module.  We then:
+    one carries our reserved ``<group_name>_`` prefix -- either a
+    ``<group_name>_<action>`` perm or the inert
+    ``<group_name>_nvcm-managed-membership`` marker left by a membership-only
+    entry -- the group was managed by this module.  We then:
 
     * remove the user's membership;
-    * detach every ``<group_name>_<action>`` permission from the group, and
+    * detach every ``<group_name>_`` permission from the group, and
       delete the permission row outright when no other group still holds it.
+
+    A group with only manual, non-``<group_name>_`` perms (or none) is treated
+    as purely operator-curated and left alone.
 
     The Django Group row itself is left in place -- the operator may have
     other intentions for it (manually-managed users, scheduled deletion,
     audit trail).  The next sync will continue to skip it as long as it has
     no managed perms attached.
 
-    Heuristic limitation: an ``is_superuser: true`` mapping entry strips its
-    Group's managed perms (see :func:`_prune_group_object_permissions`), so
-    removing such an entry leaves no marker for this pass to detect.  In
-    that case rely on :func:`mapping_is_configured` driving
-    ``_sync_superuser_status`` (see the module docstring).
+    ``is_superuser: true`` groups are covered too: they also receive the inert
+    ``<group_name>_nvcm-managed-membership`` marker on sync (see
+    :func:`_sync_group_permissions`), so this pass detects and revokes their
+    membership just like any other managed group.  The superuser flag itself is
+    revoked separately by :func:`_sync_superuser_status` (see the module
+    docstring).
     """
     for group in list(user.groups.exclude(name__in=current_managed_names)):
         managed_prefix = f"{group.name}_"
@@ -519,9 +632,14 @@ def _sync_group_permissions(user_groups: set[str], mapping: dict[str, dict[str, 
                 continue
 
         # ``is_superuser`` groups don't get per-action ObjectPermissions --
-        # the user's global superuser flag obviates them.
+        # the user's global superuser flag obviates them.  Reconcile with an
+        # empty config: this prunes any stale ``<group>_<action>`` rows AND
+        # leaves the inert ``<group>_nvcm-managed-membership`` marker, so that
+        # removing this entry later is detectable and the Django Group
+        # membership is revoked (:func:`_revoke_removed_mapping_groups`),
+        # rather than lingering with whatever manual perms the group holds.
         if config.get("is_superuser"):
-            _prune_group_object_permissions(group)
+            _apply_group_permission_config(group, {})
             continue
 
         _apply_group_permission_config(group, config.get("nautobot_permissions") or {})
@@ -572,6 +690,24 @@ def _apply_group_permission_config(group: Group, perms_config: dict[str, dict[st
 
     Permissions are named ``"<group>_<action>"`` so they round-trip
     predictably and we can prune any that no longer appear in the config.
+    The ``<group>_*`` name prefix is **reserved** for this module -- operators
+    must not hand-create ObjectPermissions with that prefix on a mapped group,
+    as they will be treated as module-owned (overwritten / pruned).  An entry
+    with no ``perms_config`` (membership-only, and also ``is_superuser`` groups)
+    gets a single inert ``<group>_nvcm-managed-membership`` marker instead so
+    its membership is still revocable.
+
+    That reservation is only a convention, so before creating/overwriting any
+    row we check :func:`_object_permission_owned_by_other`: if a row with the
+    generated name already exists and is bound to a different group or a user,
+    we log and skip it rather than hijack access we do not own.
+
+    Malformed input fails **closed**: ``constraints`` must be a mapping or a
+    non-empty list of mappings (Nautobot's OR-of-constraints form, see
+    :func:`_is_valid_constraints`).  A malformed value is skipped *without*
+    being kept, so any pre-existing managed row is pruned (we revoke rather than
+    silently retain the last-good grant, or worse fall through to an
+    unconstrained one).  A malformed action config (non-mapping) is skipped too.
 
     The snapshot below is used **only** to drive the prune pass at the
     bottom (it tells us which managed ``<group>_<action>`` rows were
@@ -587,6 +723,32 @@ def _apply_group_permission_config(group: Group, perms_config: dict[str, dict[st
     existing_perms = {perm.name: perm for perm in group.object_permissions.all()}
 
     kept_perm_names: set[str] = set()
+
+    # Membership-only entry (no per-action config): drop an inert provenance
+    # marker so a later entry removal can be detected + revoked
+    # (:func:`_revoke_removed_mapping_groups`).  When the entry *does* carry
+    # actions, the ``<group>_<action>`` rows are the marker and a stale
+    # membership marker (from a prior membership-only state) is pruned below.
+    if not perms_config:
+        marker_name = _membership_marker_name(group.name)
+        if _object_permission_owned_by_other(marker_name, group):
+            log.warning(
+                "rbac: membership marker %r already exists and is owned by another "
+                "group/user; skipping -- membership for group %r will not be tracked "
+                "(resolve the ObjectPermission name collision)",
+                marker_name,
+                group.name,
+            )
+        else:
+            kept_perm_names.add(marker_name)
+            marker, _created = ObjectPermission.objects.update_or_create(
+                name=marker_name,
+                defaults={"actions": [], "constraints": {}},
+            )
+            marker.object_types.set([])
+            if group not in marker.groups.all():
+                marker.groups.add(group)
+
     for action, action_config in perms_config.items():
         if not isinstance(action_config, dict):
             log.warning(
@@ -597,18 +759,40 @@ def _apply_group_permission_config(group: Group, perms_config: dict[str, dict[st
             )
             continue
         perm_name = f"{group.name}_{action}"
-        kept_perm_names.add(perm_name)
 
-        content_types = _resolve_content_types(action_config.get("content_types") or [])
-        constraints = action_config.get("constraints") or {}
-        if not isinstance(constraints, dict):
+        # Foreign collision: the name is owned elsewhere, so leave the row
+        # entirely alone -- keep it off the prune list too (it isn't ours).
+        if _object_permission_owned_by_other(perm_name, group):
+            kept_perm_names.add(perm_name)
             log.warning(
-                "rbac: group %r action %r constraints must be a mapping; coercing to {}",
+                "rbac: ObjectPermission %r already exists and is bound to another "
+                "group or user; skipping so a name collision cannot overwrite a "
+                "permission this module does not own (the <group>_* namespace is "
+                "reserved for nv-config-manager)",
+                perm_name,
+            )
+            continue
+
+        # Validate constraints BEFORE marking the perm as kept.  Nautobot accepts
+        # a mapping or a non-empty list of mappings; anything else is malformed.
+        # A malformed value is skipped WITHOUT keeping the name, so an existing
+        # managed row is pruned below (fail closed: revoke rather than grant an
+        # unconstrained perm or silently retain the last-good one).
+        constraints = action_config.get("constraints")
+        if constraints is None:
+            constraints = {}
+        if not _is_valid_constraints(constraints):
+            log.warning(
+                "rbac: group %r action %r has malformed constraints (%s); skipping "
+                "and pruning any existing managed permission instead of granting it",
                 group.name,
                 action,
+                type(action_config.get("constraints")).__name__,
             )
-            constraints = {}
+            continue
 
+        kept_perm_names.add(perm_name)
+        content_types = _resolve_content_types(action_config.get("content_types") or [])
         perm, _created = ObjectPermission.objects.update_or_create(
             name=perm_name,
             defaults={"actions": [action], "constraints": constraints},
@@ -640,15 +824,3 @@ def _apply_group_permission_config(group: Group, perms_config: dict[str, dict[st
             log.info("rbac: removed stale ObjectPermission %r", name)
         else:
             log.info("rbac: detached ObjectPermission %r from group %s", name, group.name)
-
-
-def _prune_group_object_permissions(group: Group) -> None:
-    """Remove all nv-config-manager-managed ObjectPermissions attached to *group*."""
-    managed_prefix = f"{group.name}_"
-    for perm in list(group.object_permissions.all()):
-        if not perm.name.startswith(managed_prefix):
-            continue
-        perm.groups.remove(group)
-        if not perm.groups.exists():
-            perm.delete()
-            log.info("rbac: removed stale ObjectPermission %r (superuser group)", perm.name)

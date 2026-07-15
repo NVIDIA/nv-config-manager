@@ -33,6 +33,21 @@ tree has only one version to maintain.
 {{- end }}
 
 {{/*
+Resolve a full NVIDIA Config Manager image reference. A digest pin
+(sha256:<hex>, set by deploy automation) takes precedence over any tag and
+renders repository@digest; otherwise fall back to repository:tag with the
+imageTag chart-version fallback. Takes the same dict as imageTag:
+(dict "root" . "image" .Values.global.images.<name>)
+*/}}
+{{- define "nv-config-manager.image" -}}
+{{- if .image.digest -}}
+{{- .image.repository }}@{{ .image.digest -}}
+{{- else -}}
+{{- .image.repository }}:{{ include "nv-config-manager.imageTag" . -}}
+{{- end -}}
+{{- end }}
+
+{{/*
 Selector labels
 */}}
 {{- define "nv-config-manager.selectorLabels" -}}
@@ -57,6 +72,7 @@ overrides can switch every Deployment to Recreate in one place.
 {{- if .root.Values.global.deploymentStrategy -}}
 {{- $strategy = .root.Values.global.deploymentStrategy -}}
 {{- end -}}
+
 {{- if $strategy }}
 {{- $type := $strategy.type | default "RollingUpdate" -}}
 strategy:
@@ -69,6 +85,34 @@ strategy:
 {{- end }}
 {{- end }}
 {{- end }}
+
+{{/* HTTPRoute parent reference for chart-managed or shared Gateways. */}}
+{{- define "nv-config-manager.gatewayParentRef" -}}
+- name: {{ .Values.gateway.name }}
+  namespace: {{ .Values.gateway.namespace | default .Values.global.namespace }}
+  {{- with .Values.gateway.sectionName }}
+  sectionName: {{ . }}
+  {{- end }}
+{{- end -}}
+
+{{/*
+Resolve the Gateway API controller selected by the chart.
+
+`ingress.type` predates the Gateway API migration and remains the canonical
+controller selector so existing values files do not need a no-op rename.
+`gateway.type` is accepted as a transition alias for configurations generated
+by early Gateway API releases. Setting both to different values is ambiguous.
+*/}}
+{{- define "nv-config-manager.gatewayControllerType" -}}
+{{- $ingress := .Values.ingress | default dict -}}
+{{- $gateway := .Values.gateway | default dict -}}
+{{- $ingressType := get $ingress "type" | default "" -}}
+{{- $gatewayType := get $gateway "type" | default "" -}}
+{{- if and $ingressType $gatewayType (ne $ingressType $gatewayType) -}}
+{{- fail (printf "ingress.type (%q) and gateway.type (%q) must match when both are set" $ingressType $gatewayType) -}}
+{{- end -}}
+{{- coalesce $ingressType $gatewayType "envoyGateway" -}}
+{{- end -}}
 
 {{/*
 Generate the base hostname for the gateway
@@ -1457,4 +1501,28 @@ Usage: {{ include "nv-config-manager.externalDnsHostname" .Values.networkZtp.ing
 {{- if and .Values.networkZtp.enabled (eq .Values.networkZtp.storage.type "s3") $s3.credentialsSecret (not ($ceph.enabled | default false)) (ne .Values.secrets.method "kubernetes") -}}
   {{- fail "networkZtp.storage.s3.credentialsSecret now uses the Kubernetes secret-assembler and requires secrets.method=kubernetes; use secrets.vault.paths.ztpS3 with secrets.method=eso or vault-agent" -}}
 {{- end -}}
+{{- end -}}
+
+{{/*
+OTel app-container env shared by every Temporal pod (worker, api, scheduler,
+archive). Call sites guard the include with
+`if .Values.temporal.observability.enabled`.
+
+temporal.observability.otlpEndpoint is optional. When unset the endpoint
+defaults to the in-cluster Alloy receiver in the release namespace:
+  http://alloy.<namespace>.svc.cluster.local:4317
+Set it explicitly to target a different collector (e.g. the managed cluster
+OTLP collector on ngcops-eks).
+
+  Context: (dict "root" $ "serviceName" "<service.name>").
+*/}}
+{{- define "nv-config-manager.temporal.otelAppEnv" -}}
+{{- $endpoint := .root.Values.temporal.observability.otlpEndpoint -}}
+{{- if not $endpoint -}}
+{{- $endpoint = printf "http://alloy.%s.svc.cluster.local:4317" .root.Values.global.namespace -}}
+{{- end -}}
+- name: OTEL_EXPORTER_OTLP_ENDPOINT
+  value: {{ $endpoint | quote }}
+- name: OTEL_SERVICE_NAME
+  value: {{ .serviceName | quote }}
 {{- end -}}

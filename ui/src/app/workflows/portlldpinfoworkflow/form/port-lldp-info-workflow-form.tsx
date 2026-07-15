@@ -16,10 +16,15 @@
  * limitations under the License.
  */
 
-import { useState, useEffect } from "react";
+import {
+  useState,
+  useEffect,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import { useSearchParams } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
+import { useForm, type UseFormReturn } from "react-hook-form";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -90,6 +95,61 @@ const PortLLDPFormSchema = z
     }
   });
 
+type PortLLDPFormData = z.infer<typeof PortLLDPFormSchema>;
+type DeviceFieldName = "site" | "device" | "interface";
+type BooleanSetter = Dispatch<SetStateAction<boolean>>;
+
+const DEVICE_FIELDS: DeviceFieldName[] = ["site", "device", "interface"];
+
+/** Clears all device-identifying fields when MAC-address mode is selected. */
+const clearDeviceFields = (form: UseFormReturn<PortLLDPFormData>) => {
+  DEVICE_FIELDS.forEach((fieldName) => form.setValue(fieldName, ""));
+};
+
+/** Activates MAC-address mode and clears incompatible device information. */
+const setMacAddressMode = (
+  value: string,
+  form: UseFormReturn<PortLLDPFormData>,
+  setHasDeviceInfo: BooleanSetter,
+  setHasMacAddress: BooleanSetter
+) => {
+  setHasMacAddress(Boolean(value));
+  setHasDeviceInfo(false);
+
+  if (value) {
+    clearDeviceFields(form);
+  }
+};
+
+/** Reports whether any device field will remain populated after a change. */
+const hasDeviceFieldsAfterChange = (
+  fieldName: string,
+  value: string,
+  form: UseFormReturn<PortLLDPFormData>
+) =>
+  DEVICE_FIELDS.some((deviceField) =>
+    Boolean(deviceField === fieldName ? value : form.getValues(deviceField))
+  );
+
+/** Activates device-information mode and clears an incompatible MAC address. */
+const setDeviceInfoMode = (
+  fieldName: string,
+  value: string,
+  form: UseFormReturn<PortLLDPFormData>,
+  setHasDeviceInfo: BooleanSetter,
+  setHasMacAddress: BooleanSetter
+) => {
+  if (value) {
+    setHasMacAddress(false);
+    setHasDeviceInfo(true);
+    form.setValue("remote_mac_address", "");
+    return;
+  }
+
+  setHasDeviceInfo(hasDeviceFieldsAfterChange(fieldName, value, form));
+};
+
+/** Renders the mutually exclusive device-info and MAC-address workflow form. */
 export const PortLLDPInfoWorkflowForm = () => {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [isManualChange, setIsManualChange] = useState<boolean>(false);
@@ -105,7 +165,7 @@ export const PortLLDPInfoWorkflowForm = () => {
     data: { siteData: sites },
     isLoading: { siteIsLoading },
   } = useEnvData();
-  const form = useForm<z.infer<typeof PortLLDPFormSchema>>({
+  const form = useForm<PortLLDPFormData>({
     resolver: zodResolver(PortLLDPFormSchema),
     defaultValues: {
       site: querySite,
@@ -116,10 +176,6 @@ export const PortLLDPInfoWorkflowForm = () => {
   });
 
   const watchSite = form.watch("site") as string;
-  const watchDevice = form.watch("device") as string;
-  const watchInterface = form.watch("interface") as string;
-  const watchMacAddress = form.watch("remote_mac_address") as string;
-
   const filterParams: string[][] = [
     ["site", watchSite],
     ["managed_only", "true"],
@@ -194,75 +250,26 @@ export const PortLLDPInfoWorkflowForm = () => {
     }
   }, [queryMacAddress, querySite, queryDevice, queryInterface, form]);
 
-  useEffect(() => {
-    if (!isManualChange) return;
-
-    const hasDeviceFields = Boolean(watchSite || watchDevice || watchInterface);
-    const hasMacField = Boolean(watchMacAddress);
-
-    if (hasMacField) {
-      form.setValue("site", "");
-      form.setValue("device", "");
-      form.setValue("interface", "");
-      setHasDeviceInfo(false);
-      setHasMacAddress(true);
-    }
-
-    if (hasDeviceFields) {
-      form.setValue("remote_mac_address", "");
-      setHasMacAddress(false);
-      setHasDeviceInfo(true);
-    }
-  }, [
-    watchSite,
-    watchDevice,
-    watchInterface,
-    watchMacAddress,
-    isManualChange,
-    form,
-  ]);
-
+  /** Selects the input mode associated with the field the user changed. */
   const handleChange = (fieldName: string, value: string) => {
     setIsManualChange(true);
 
     if (fieldName === "remote_mac_address") {
-      if (value) {
-        // If MAC address is being entered
-        setHasMacAddress(true);
-        setHasDeviceInfo(false);
-        form.setValue("site", "");
-        form.setValue("device", "");
-        form.setValue("interface", "");
-      } else {
-        // If MAC address is being cleared
-        setHasMacAddress(false);
-        setHasDeviceInfo(false);
-      }
-    } else {
-      // For site, device, or interface fields
-      if (value) {
-        setHasMacAddress(false);
-        setHasDeviceInfo(true);
-        form.setValue("remote_mac_address", "");
-      } else {
-        // Check all device fields after this change
-        const currentValues = {
-          site: fieldName === "site" ? "" : form.getValues("site"),
-          device: fieldName === "device" ? "" : form.getValues("device"),
-          interface:
-            fieldName === "interface" ? "" : form.getValues("interface"),
-        };
-
-        // Only disable MAC if any device fields are filled
-        const hasAnyDeviceField = Object.values(currentValues).some(
-          (val) => val
-        );
-        setHasDeviceInfo(hasAnyDeviceField);
-      }
+      setMacAddressMode(value, form, setHasDeviceInfo, setHasMacAddress);
+      return;
     }
+
+    setDeviceInfoMode(
+      fieldName,
+      value,
+      form,
+      setHasDeviceInfo,
+      setHasMacAddress
+    );
   };
 
-  const onSubmit = async (data: z.infer<typeof PortLLDPFormSchema>) => {
+  /** Starts the workflow with only the active input mode's data. */
+  const onSubmit = async (data: PortLLDPFormData) => {
     setIsSubmitting(true);
 
     const submissionData: PortLLDPInfoWorkflowInput = data.remote_mac_address

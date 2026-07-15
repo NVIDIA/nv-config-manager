@@ -26,6 +26,7 @@ from nv_config_manager_installer.schema import (
     ClusterConfig,
     ContentConfig,
     ExternalServicesConfig,
+    GatewayType,
     GitTokenEntry,
     ImageOverride,
     ImagePullSecret,
@@ -298,7 +299,7 @@ class TestGenerateHelmValues:
     def test_network_policy(self):
         values = _gen(_make_config())
         assert values["networkPolicy"]["enabled"] is True
-        assert "gatewayNamespace" not in values["networkPolicy"]
+        assert values["networkPolicy"]["gatewayNamespace"] == "envoy-gateway-system"
 
     def test_config_secrets_kubernetes(self):
         values = _gen(_make_config())
@@ -422,8 +423,14 @@ class TestGenerateHelmValues:
             == "https://kc.test/realms/nv-config-manager/protocol/openid-connect/logout"
         )
         assert "auth" in values["gateway"]
-        assert "authorizationEndpoint" not in values["oidc"]
-        assert "tokenEndpoint" not in values["oidc"]
+        assert (
+            values["oidc"]["authorizationEndpoint"]
+            == "https://kc.test/realms/nv-config-manager/protocol/openid-connect/auth"
+        )
+        assert (
+            values["oidc"]["tokenEndpoint"]
+            == "https://kc.test/realms/nv-config-manager/protocol/openid-connect/token"
+        )
         # Keycloak default audiences include "account"
         assert "account" in values["oidc"]["audiences"]
         assert "test-client" in values["oidc"]["audiences"]
@@ -596,6 +603,75 @@ class TestGenerateHelmValues:
         )
         values = _gen(config)
         assert values["gateway"]["createGatewayClass"] is False
+
+    def test_envoy_shared_gateway_uses_custom_data_plane_namespace(self):
+        config = _make_config(
+            infrastructure=InfrastructureConfig(
+                create_gateway=False,
+                gateway_name="shared-gateway",
+                gateway_namespace="custom-envoy",
+            ),
+        )
+        values = _gen(config)
+
+        assert values["gateway"]["namespace"] == "custom-envoy"
+        assert values["networkPolicy"]["gatewayNamespace"] == "custom-envoy"
+
+    def test_kgateway_managed_values(self):
+        config = _make_config(
+            infrastructure=InfrastructureConfig(
+                gateway=GatewayType.KGATEWAY,
+                load_balancer=LoadBalancerConfig(provider=LBProvider.NONE),
+            ),
+        )
+        values = _gen(config)
+
+        assert values["ingress"]["type"] == "kgateway"
+        assert values["gateway"]["className"] == "kgateway"
+        assert values["gateway"]["create"] is True
+        assert values["gateway"]["createGatewayClass"] is False
+        assert values["gateway"]["nodePort"] == {
+            "enabled": True,
+            "http": 30080,
+            "https": 30443,
+        }
+        assert values["networkPolicy"]["gatewayNamespace"] == "kgateway-system"
+
+    def test_kgateway_omits_gateway_nlb_but_keeps_device_nlbs(self):
+        lb = LoadBalancerConfig(provider=LBProvider.NLB)
+        lb.nlb_ztp.name = "network-ztp"
+        config = _make_config(
+            infrastructure=InfrastructureConfig(
+                gateway=GatewayType.KGATEWAY,
+                load_balancer=lb,
+            ),
+        )
+        values = _gen(config)
+
+        assert "nlb" not in values["gateway"]
+        assert values["networkZtp"]["ingress"]["nlb"]["name"] == "network-ztp"
+
+    def test_kgateway_shared_values(self):
+        config = _make_config(
+            infrastructure=InfrastructureConfig(
+                gateway=GatewayType.KGATEWAY,
+                create_gateway=False,
+                gateway_name="shared-gateway",
+                gateway_namespace="shared-gateway-system",
+                gateway_listener="https",
+            ),
+        )
+        values = _gen(config)
+
+        gateway = values["gateway"]
+        assert values["ingress"]["type"] == "kgateway"
+        assert gateway["create"] is False
+        assert gateway["name"] == "shared-gateway"
+        assert gateway["namespace"] == "shared-gateway-system"
+        assert gateway["sectionName"] == "https"
+        assert gateway["className"] == "kgateway"
+        assert gateway["createGatewayClass"] is False
+        assert values["networkPolicy"]["gatewayNamespace"] == "shared-gateway-system"
 
     def test_custom_jobs_in_values(self):
         config = _make_config(
@@ -825,7 +901,7 @@ class TestImagesInHelmValues:
             == "registry.example.com/nv-config-manager/spiffe/spiffe-helper"
         )
         assert (
-            values["oidc"]["oauth2Proxy"]["image"]["repository"]
+            values["oidc"]["proxy"]["image"]["repository"]
             == "registry.example.com/nv-config-manager/oauth2-proxy/oauth2-proxy"
         )
         assert (

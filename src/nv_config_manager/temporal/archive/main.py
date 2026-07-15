@@ -26,6 +26,7 @@ from nv_config_manager.common.config import load_config, nats_archive_config
 from nv_config_manager.common.log import configure_logging
 from nv_config_manager.temporal.api.workflow_v1 import WorkflowDetailResponse, get_client
 from nv_config_manager.temporal.client.nats import NatsConsumer
+from nv_config_manager.temporal.telemetry import setup_telemetry
 
 config = load_config()
 
@@ -204,6 +205,7 @@ def main() -> None:
         logging.getLevelName(args.loglevel),
     )
     configure_logging(service="temporal-archive")
+    setup_telemetry("nv-config-manager-temporal-archive")
 
     stream, subject = nats_archive_config()
     consumer = NatsConsumer(

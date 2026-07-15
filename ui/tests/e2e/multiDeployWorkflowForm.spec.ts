@@ -193,6 +193,38 @@ test.describe("New Multi-Configuration Deploy Workflow", () => {
     ).toBeVisible();
   });
 
+  test("submits the location ID loaded from a URL parameter", async ({
+    page,
+  }) => {
+    const locationName = "SJC01";
+    const locationId = "location-sjc01-id";
+    await page.route("**/v1/parameter/location*", async (route) => {
+      await route.fulfill({
+        status: 200,
+        json: [{ id: locationId, name: locationName }],
+      });
+    });
+
+    const requestPromise = page.waitForRequest((request) =>
+      request.url().includes("/v1/workflow/ngc/multi_deploy")
+    );
+
+    await page.goto(
+      "/workflows/multideployworkflow/form" +
+        `?role=${ROLES_LIST.leaf}` +
+        `&location=${locationName}`
+    );
+    await expect(
+      page.getByRole("button", { name: locationName, exact: true })
+    ).toBeVisible({ timeout: TEST_TIMEOUT });
+
+    await page.getByRole("button", { name: "Submit" }).click();
+
+    const request = await requestPromise;
+    const requestData = JSON.parse((await request.postData()) || "{}");
+    expect(requestData.location).toBe(locationId);
+  });
+
   test("handles manual changes after URL parameter loading", async ({
     page,
   }) => {

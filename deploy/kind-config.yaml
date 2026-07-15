@@ -5,7 +5,7 @@
 #
 # This configuration:
 #   - Single control-plane node (suitable for laptops)
-#   - Exposes NodePorts 30443/30080 as 443/80 for Envoy Gateway v1.6+
+#   - Exposes Gateway NodePorts 30443/30080 as host ports 443/80
 #   - API server accessible from Docker-in-Docker environments (GitLab CI)
 #
 # After cluster creation, remove control-plane taint to allow scheduling:
@@ -29,12 +29,12 @@ kubeadmConfigPatches:
 nodes:
 - role: control-plane
   extraPortMappings:
-  # Envoy Gateway HTTPS (NodePort 30443 → host 443)
+  # Gateway HTTPS (NodePort 30443 → host 443)
   - containerPort: 30443
     hostPort: 443
     listenAddress: "0.0.0.0"
     protocol: TCP
-  # Envoy Gateway HTTP (NodePort 30080 → host 80)
+  # Gateway HTTP (NodePort 30080 → host 80)
   - containerPort: 30080
     hostPort: 80
     listenAddress: "0.0.0.0"

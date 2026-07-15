@@ -19,7 +19,7 @@
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
+import { useForm, type UseFormReturn } from "react-hook-form";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,21 +30,56 @@ import { useToast } from "@/components/ui/use-toast";
 import { SiteCableValidationWorkflowInput } from "@/types/data-table.types";
 import { useEnvData } from "@/hooks";
 import { getErrorMessage, startWorkflow } from "@/lib/utils";
+import { DEFAULT_SITE_WORKFLOW_STATUSES } from "@/lib/workflow-defaults";
 import { WorkflowFormField } from "@/components/forms/formfield";
 
+
+const SiteCableValidationFormSchema = z.object({
+  site: z.string().trim().min(1, { message: "Site is required" }),
+  roles: z.union([z.string(), z.array(z.string())])
+    .optional()
+    .transform((val: string | string[] | undefined) => (Array.isArray(val) ? val : []))
+    .pipe(z.array(z.string())),
+  status: z.union([z.string(), z.array(z.string())])
+    .optional()
+    .transform((val: string | string[] | undefined) => (Array.isArray(val) ? val : []))
+    .pipe(z.array(z.string()).min(1, { message: "Device Status is required" })),
+  tenant: z.string().trim().optional().default(""),
+});
+
+type SiteCableValidationFormData = z.infer<typeof SiteCableValidationFormSchema>;
+type QueryOption = { key: string; value: string };
+type SingleValueField = "site" | "tenant";
+type MultiValueField = "roles" | "status";
+
+/** Maps a single query parameter key to its form option value or clears it. */
+const setSingleQueryValue = (
+  form: UseFormReturn<SiteCableValidationFormData>,
+  queryValue: string | null,
+  options: QueryOption[],
+  fieldName: SingleValueField
+) => {
+  const fieldValue =
+    options.find((option) => option.key === queryValue)?.value ?? "";
+  form.setValue(fieldName, fieldValue);
+};
+
+/** Keeps valid multi-value query keys and clears values without an option. */
+const setMultiQueryValue = (
+  form: UseFormReturn<SiteCableValidationFormData>,
+  queryValues: string[],
+  options: QueryOption[],
+  fieldName: MultiValueField,
+  emptyValue: string[] = []
+) => {
+  const fieldValue = queryValues.filter((queryValue) =>
+    options.some((option) => option.key === queryValue)
+  );
+  form.setValue(fieldName, fieldValue.length > 0 ? fieldValue : emptyValue);
+};
+
+/** Renders the form for starting a site cable validation workflow. */
 export const SiteCableValidationWorkflowForm = () => {
-
-  const SiteCableValidationFormSchema = z.object({
-    site: z.string().trim().min(1, { message: "Site is required" }),
-    roles: z.union([z.string(), z.array(z.string())])
-      .transform((val) => (Array.isArray(val) ? val : []))
-      .pipe(z.array(z.string()).min(1, { message: "Roles is required" })),
-    status: z.union([z.string(), z.array(z.string())])
-      .transform((val) => (Array.isArray(val) ? val : []))
-      .pipe(z.array(z.string()).min(1, { message: "Device Status is required" })),
-    tenant: z.string().trim().min(1, { message: "Tenant is required" }),
-  });
-
   const [isSubmitting, setIsSubmitting] = React.useState<boolean>(false);
   const [isManualChange, setIsManualChange] = React.useState<boolean>(false);
   const { data: siteCableData } = useEnvData();
@@ -55,8 +90,14 @@ export const SiteCableValidationWorkflowForm = () => {
   const queryStatuses = React.useMemo(() => searchParams?.getAll("status") ?? [], [searchParams]);
   const queryTenant = searchParams?.get("tenant");
 
-  const form = useForm<z.infer<typeof SiteCableValidationFormSchema>>({
+  const form = useForm<SiteCableValidationFormData>({
     resolver: zodResolver(SiteCableValidationFormSchema),
+    defaultValues: {
+      site: querySite || "",
+      roles: queryRoles,
+      status: queryStatuses.length > 0 ? queryStatuses : [...DEFAULT_SITE_WORKFLOW_STATUSES],
+      tenant: queryTenant || "",
+    },
   });
 
   // NOTE: might need this to change the api route look at Workflow.tsx. Revist when rest of api routes are defined.
@@ -64,38 +105,21 @@ export const SiteCableValidationWorkflowForm = () => {
   //const params = new URLSearchParams(filterParams).toString();
   React.useEffect(() => {
     if (!isManualChange) {
-      const validateAndSetValue = (
-        queryValue: string | string[] | null,
-        data: { key: string; value: string }[],
-        fieldName: keyof z.infer<typeof SiteCableValidationFormSchema>
-      ) => {
-        if (
-          !queryValue ||
-          (Array.isArray(queryValue) && queryValue.length === 0)
-        ) {
-          form.setValue(fieldName, ""); // Clear if no query value
-          return;
-        }
-
-        if (Array.isArray(queryValue)) {
-          // For fields like roles, status, and device_type_ids
-          const validValues = queryValue.filter((value) =>
-            data.some((option) => option.key === value)
-          );
-          form.setValue(fieldName, validValues.length > 0 ? validValues : "");
-        } else {
-          // For single-value fields like site and tenant
-          const isValid = data.some((option) => option.key === queryValue);
-          const validValue =
-            data.find((option) => option.key === queryValue)?.value || "";
-          form.setValue(fieldName, isValid ? validValue : "");
-        }
-      };
-
-      validateAndSetValue(querySite, siteCableData.siteData, "site");
-      validateAndSetValue(queryRoles, siteCableData.rolesData, "roles");
-      validateAndSetValue(queryStatuses, siteCableData.statusData, "status");
-      validateAndSetValue(queryTenant, siteCableData.tenantsData, "tenant");
+      setSingleQueryValue(form, querySite, siteCableData.siteData, "site");
+      setMultiQueryValue(form, queryRoles, siteCableData.rolesData, "roles");
+      setMultiQueryValue(
+        form,
+        queryStatuses,
+        siteCableData.statusData,
+        "status",
+        [...DEFAULT_SITE_WORKFLOW_STATUSES]
+      );
+      setSingleQueryValue(
+        form,
+        queryTenant,
+        siteCableData.tenantsData,
+        "tenant"
+      );
     }
   }, [
     querySite,
@@ -107,13 +131,14 @@ export const SiteCableValidationWorkflowForm = () => {
     isManualChange,
   ]);
 
-  const onSubmit = async(data: z.infer<typeof SiteCableValidationFormSchema>) => {
+  /** Starts the workflow with the validated form data. */
+  const onSubmit = async (data: SiteCableValidationFormData) => {
       setIsSubmitting(true);
       const workflowParams: SiteCableValidationWorkflowInput = {
         site: data.site,
         roles: data.roles,
         status: data.status,
-        tenant: data.tenant,
+        tenant: data.tenant || undefined,
         // Hardcode these values, not relevant to end users
         // only for advanced scenarios
         device_type_ids: [],
@@ -133,6 +158,7 @@ export const SiteCableValidationWorkflowForm = () => {
     setIsSubmitting(false);
   };
 
+  /** Prevents later query synchronization from replacing a manual selection. */
   const handleChange = () => {
     setIsManualChange(true);
   };

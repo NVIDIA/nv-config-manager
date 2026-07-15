@@ -176,6 +176,18 @@ alloy:
       varlog: false
       dockercontainers: false
 
+    # Expose the OTLP gRPC receiver (below) on the Alloy Service so Temporal
+    # pods can reach it at alloy.<namespace>.svc.cluster.local:4317.
+    extraPorts:
+      - name: otlp-grpc
+        port: 4317
+        targetPort: 4317
+        protocol: TCP
+      - name: otlp-http
+        port: 4318
+        targetPort: 4318
+        protocol: TCP
+
     configMap:
       create: true
       content: |-
@@ -200,6 +212,45 @@ alloy:
           forward_to = [prometheus.remote_write.local.receiver]
         }
 
+        // OTLP receiver for Temporal traces + runtime metrics. Apps point
+        // OTEL_EXPORTER_OTLP_ENDPOINT at alloy:4317 (see temporal.observability).
+        otelcol.receiver.otlp "default" {
+          grpc {
+            endpoint = "0.0.0.0:4317"
+          }
+          http {
+            endpoint = "0.0.0.0:4318"
+          }
+          output {
+            metrics = [otelcol.processor.batch.default.input]
+            traces  = [otelcol.processor.batch.default.input]
+          }
+        }
+
+        otelcol.processor.batch "default" {
+          output {
+            metrics = [otelcol.exporter.prometheus.default.input]
+            traces  = [otelcol.exporter.otlp.tempo.input]
+          }
+        }
+
+        // OTLP metrics -> the same local Prometheus the scrapers write to.
+        otelcol.exporter.prometheus "default" {
+          forward_to = [prometheus.remote_write.local.receiver]
+        }
+
+        // Traces -> the bundled Tempo (tempo.enabled below). Grafana's Tempo
+        // datasource then renders them. In production, point this at your
+        // managed collector / Panoptes instead.
+        otelcol.exporter.otlp "tempo" {
+          client {
+            endpoint = "tempo:4317"
+            tls {
+              insecure = true
+            }
+          }
+        }
+
         prometheus.remote_write "local" {
           endpoint {
             url = "http://prometheus-server:9090/api/v1/write"
@@ -209,3 +260,78 @@ alloy:
   configReloader:
     image:
       tag: v0.90.1
+
+# -----------------------------------------------------------------------------
+# Tempo (trace storage backend)
+# -----------------------------------------------------------------------------
+tempo:
+  enabled: true
+  fullnameOverride: tempo
+
+  # Local dev: no usage reporting, ephemeral storage.
+  tempo:
+    memBallastSizeMbs: 0
+    reportingEnabled: false
+    # 1h retention is plenty for a local demo; keeps the WAL/blocks tiny.
+    retention: 1h
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        memory: 512Mi
+
+  persistence:
+    enabled: false
+
+# -----------------------------------------------------------------------------
+# Grafana (trace/metric UI)
+# -----------------------------------------------------------------------------
+# AGPLv3, off by default in values.yaml. Enabled here so the local stack has a
+# UI to actually view the traces Tempo stores (and the metrics Prometheus
+# holds). Port-forward with `make obs-grafana` -> http://localhost:3000
+# (admin/admin), then Explore -> Tempo.
+grafana:
+  enabled: true
+  fullnameOverride: grafana
+  
+  # Local-dev only: fixed password so `make obs-grafana` (admin/admin) works.
+  # A real deployment would use admin.existingSecret instead.
+  adminUser: admin
+  adminPassword: admin
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+        - name: Prometheus
+          type: prometheus
+          uid: prometheus
+          access: proxy
+          url: http://prometheus-server:9090
+          isDefault: true
+        - name: Tempo
+          type: tempo
+          uid: tempo
+          access: proxy
+          url: http://tempo:3200
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+
+# -----------------------------------------------------------------------------
+# Temporal OTel emission (local)
+# -----------------------------------------------------------------------------
+# Turn tracing on for the local stack and point at the in-cluster Alloy OTLP
+# receiver (enabled above). This is what makes traces actually flow:
+#   Temporal pods -> Alloy (OTLP receiver) -> Tempo -> Grafana.
+# For a managed/external collector (e.g. ngcops-eks) set otlpEndpoint in your
+# environment values override instead and leave this file unchanged.
+temporal:
+  observability:
+    enabled: true
+    # otlpEndpoint defaults to http://alloy.<namespace>.svc.cluster.local:4317 (the in-cluster Alloy).
+    # Override here to target a different collector, e.g. the managed cluster OTLP collector on ngcops-eks.

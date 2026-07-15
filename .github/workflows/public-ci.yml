@@ -289,6 +289,84 @@ jobs:
               if (sc == 0 || sc != ok) exit 1
             }
           ' /tmp/nvcm-probes.yaml
+      - name: Image digest pin render
+        run: |
+          # global.images.<name>.digest must pin built-service images by digest
+          # (repository@sha256:...) and win over the tag; an unset digest must
+          # fall back to repository:tag. Render-time check only (no cluster) so
+          # it stays out of the slow kind-integration path.
+          set -euo pipefail
+          names="nvConfigManager nvConfigManagerUi kea keaAdmin nautobot natsReady"
+          r_nvConfigManager=registry.ci.example/nvcm/main
+          r_nvConfigManagerUi=registry.ci.example/nvcm/ui
+          r_kea=registry.ci.example/nvcm/kea
+          r_keaAdmin=registry.ci.example/nvcm/kea-admin
+          r_nautobot=registry.ci.example/nvcm/nautobot
+          r_natsReady=registry.ci.example/nvcm/nats-ready
+          t_nvConfigManager=9.0.1-nvcm
+          t_nvConfigManagerUi=9.0.1-ui
+          t_kea=9.0.1-kea
+          t_keaAdmin=9.0.1-kea-admin
+          t_nautobot=9.0.1-nautobot
+          t_natsReady=9.0.1-nats-ready
+          d_nvConfigManager=sha256:1111111111111111111111111111111111111111111111111111111111111111
+          d_nvConfigManagerUi=sha256:2222222222222222222222222222222222222222222222222222222222222222
+          d_kea=sha256:3333333333333333333333333333333333333333333333333333333333333333
+          d_keaAdmin=sha256:4444444444444444444444444444444444444444444444444444444444444444
+          d_nautobot=sha256:5555555555555555555555555555555555555555555555555555555555555555
+          d_natsReady=sha256:6666666666666666666666666666666666666666666666666666666666666666
+
+          base_set_args=""
+          for n in $names; do
+            eval "repo=\$r_$n"
+            eval "tag=\$t_$n"
+            base_set_args="$base_set_args --set-string global.images.$n.repository=$repo"
+            base_set_args="$base_set_args --set-string global.images.$n.tag=$tag"
+          done
+
+          # Default render: each service must render its seeded repository:tag.
+          # shellcheck disable=SC2086
+          helm template test deploy/helm/ --values deploy/helm/values-ci.yaml $base_set_args >/tmp/nvcm-nodigest.yaml
+          if grep -Eq 'image:[[:space:]]*"?[^"[:space:]]+@sha256:' /tmp/nvcm-nodigest.yaml; then
+            echo "ERROR: an image rendered with a digest even though none was set"
+            exit 1
+          fi
+          fail=0
+          for n in $names; do
+            eval "repo=\$r_$n"
+            eval "tag=\$t_$n"
+            expected="${repo}:${tag}"
+            if ! grep -qF "$expected" /tmp/nvcm-nodigest.yaml; then
+              echo "ERROR: $n missing expected tag reference $expected in default render"
+              fail=1
+            fi
+          done
+          [ "$fail" -eq 0 ] || exit 1
+
+          # Digest render: each service must render its seeded repository@digest.
+          digest_set_args="$base_set_args"
+          for n in $names; do
+            eval "digest=\$d_$n"
+            digest_set_args="$digest_set_args --set-string global.images.$n.digest=$digest"
+          done
+          # shellcheck disable=SC2086
+          helm template test deploy/helm/ --values deploy/helm/values-ci.yaml $digest_set_args >/tmp/nvcm-digest.yaml
+          for n in $names; do
+            eval "repo=\$r_$n"
+            eval "tag=\$t_$n"
+            eval "digest=\$d_$n"
+            expected="${repo}@${digest}"
+            if ! grep -qF "$expected" /tmp/nvcm-digest.yaml; then
+              echo "ERROR: $n missing expected digest reference $expected in digest render"
+              fail=1
+            fi
+            if grep -qF "${repo}:${tag}" /tmp/nvcm-digest.yaml; then
+              echo "ERROR: $n still renders tag reference ${repo}:${tag} when digest is set"
+              fail=1
+            fi
+          done
+          [ "$fail" -eq 0 ] || exit 1
+          echo "All 6 built-service images render exact repository:tag or repository@digest references"
 
   openapi:
     name: OpenAPI And Go Bindings Check

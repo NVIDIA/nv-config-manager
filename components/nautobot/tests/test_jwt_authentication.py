@@ -420,7 +420,7 @@ class TestSyncSuperuserStatus:
 
         mod._sync_superuser_status(
             user,
-            {"gni-cfa"},
+            {"admin-team"},
             extra_superuser_match=True,
             extra_superuser_enabled=True,
         )

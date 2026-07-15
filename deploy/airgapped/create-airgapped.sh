@@ -27,7 +27,7 @@
 #   --skip-chart            Skip chart/dependency chart packaging
 #   --skip-docs             Skip copying documentation source
 #   --include-skopeo        Include the build host Skopeo binary in tools/skopeo/
-#   --include-agpl-observability Include AGPL Grafana/Loki observability charts and related images
+#   --include-agpl-observability Include AGPL Grafana/Loki/Tempo observability charts and related images
 #   --skopeo-binary PATH    Skopeo binary to include (default: command -v skopeo)
 #   --arch ARCH             Build only for specific architecture: amd64, arm64, or both (default: both)
 #   --help                  Show help message
@@ -186,7 +186,6 @@ load_operator_versions() {
         ENVOY_GATEWAY_VERSION \
         CERT_MANAGER_VERSION \
         CNPG_OPERATOR_VERSION \
-        INGRESS_NGINX_VERSION \
         PROMETHEUS_CRD_VERSION \
         PROMETHEUS_OPERATOR_VERSION; do
         if [[ -z "${!name:-}" ]]; then
@@ -352,8 +351,8 @@ sanitize_agpl_chart_dependencies() {
         return 0
     fi
 
-    log_warn "Excluding AGPL Grafana and Loki chart dependencies from the airgap bundle"
-    rm -f "$helm_dir"/charts/grafana-*.tgz "$helm_dir"/charts/loki-*.tgz
+    log_warn "Excluding AGPL Grafana, Loki, and Tempo chart dependencies from the airgap bundle"
+    rm -f "$helm_dir"/charts/grafana-*.tgz "$helm_dir"/charts/loki-*.tgz "$helm_dir"/charts/tempo-*.tgz
     rm -f "$helm_dir/Chart.lock"
 
     python3 - "$helm_dir/Chart.yaml" <<'PY'
@@ -366,7 +365,11 @@ out = []
 i = 0
 while i < len(lines):
     line = lines[i]
-    if line.startswith("  - name: grafana") or line.startswith("  - name: loki"):
+    if (
+        line.startswith("  - name: grafana")
+        or line.startswith("  - name: loki")
+        or line.startswith("  - name: tempo")
+    ):
         i += 1
         while i < len(lines):
             nxt = lines[i]
@@ -422,7 +425,6 @@ load_external_charts() {
     # Operator charts are generated from deploy/operator-versions.env.
     echo "oci://ghcr.io/cloudnative-pg/charts/cloudnative-pg:${CNPG_OPERATOR_VERSION}"
     echo "oci://quay.io/jetstack/charts/cert-manager:${CERT_MANAGER_VERSION}"
-    echo "helm://https://kubernetes.github.io/ingress-nginx|ingress-nginx:${INGRESS_NGINX_VERSION}"
     echo "helm://https://prometheus-community.github.io/helm-charts|prometheus-operator-crds:28.0.1"
     if [[ "$INCLUDE_AGPL_OBSERVABILITY" == true ]]; then
         echo "helm://https://prometheus-community.github.io/helm-charts|kube-prometheus-stack:${PROMETHEUS_OPERATOR_VERSION}"

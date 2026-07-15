@@ -30,6 +30,7 @@ from nv_config_manager_installer.schema import (
     ExternalPostgresConfig,
     ExternalRedisConfig,
     ExternalServicesConfig,
+    GatewayType,
     GitTokenEntry,
     ImageOverride,
     ImagePullSecret,
@@ -198,6 +199,13 @@ class TestNVConfigManagerInstallConfig:
         assert lb_data["ztp_lb_ip"] == "192.0.2.10"
         assert "nlb_gateway" not in lb_data
         assert "nlb_ztp" not in lb_data
+
+    def test_kgateway_rejects_gateway_nlb_configuration(self):
+        lb = LoadBalancerConfig(provider=LBProvider.NLB)
+        lb.nlb_gateway.name = "nv-config-manager-gateway"
+
+        with pytest.raises(ValueError, match="Gateway AWS NLB configuration"):
+            InfrastructureConfig(gateway=GatewayType.KGATEWAY, load_balancer=lb)
 
     def test_yaml_prunes_other_disabled_and_alternate_sections(self):
         config = NVConfigManagerInstallConfig(

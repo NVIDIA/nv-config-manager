@@ -6,25 +6,68 @@
 # This template creates HTTPRoutes for all enabled services in the platform
 # Uses subdomain-based routing (each service gets its own hostname)
 #
-# When auth sidecar is enabled (gateway.auth.jwt.enabled), routes point to
-# the sidecar port (8443) instead of the app port for JWT validation.
-#
 # Auth Bypass Routes:
 # For services that need to support both OIDC/JWT and native token auth,
-# separate HTTPRoutes are created for bypass paths. These routes get a
-# SecurityPolicy with jwt.optional=true but NO oidc block, allowing:
-#   - Valid Authorization bearer JWT: claims extracted to headers
-#   - No JWT: request passes through (service handles its own auth)
+# separate HTTPRoutes bypass the browser proxy so the service can validate a
+# Bearer JWT or its native token directly.
 # =============================================================================
 
 # =============================================================================
 # Service (svc-*) HTTPRoute Helper Template
 # =============================================================================
+{{- define "nv-config-manager.identityHeaderRemovals" }}
+remove:
+    - ssl-client-cert
+    - X-Auth-Request-Email
+    - X-Auth-Request-User
+    - X-Auth-Request-Groups
+    - X-Auth-Request-Preferred-Username
+    - X-Auth-Request-Name
+    - X-Auth-Request-Roles
+    - X-Auth-Request-Subject
+    - X-Auth-Request-Access-Token
+    - X-Forwarded-Email
+    - X-Forwarded-User
+    - X-Forwarded-Groups
+    - X-Forwarded-Preferred-Username
+    - X-Forwarded-Access-Token
+{{- end }}
+
+{{- define "nv-config-manager.stripIdentityHeaders" }}
+filters:
+- type: RequestHeaderModifier
+  requestHeaderModifier:
+{{ include "nv-config-manager.identityHeaderRemovals" . | nindent 4 }}
+{{- end }}
+
+{{/*
+Protected browser routes must provide oauth2-proxy with an absolute, trusted
+return target. Gateway API cannot express the requested path dynamically, so
+the route supplies its canonical hostname. oauth2-proxy preserves this target
+through its base-hostname callback rather than falling back to the splash page.
+*/}}
+{{- define "nv-config-manager.protectedIdentityHeaders" }}
+filters:
+- type: RequestHeaderModifier
+  requestHeaderModifier:
+{{ include "nv-config-manager.identityHeaderRemovals" . | nindent 4 }}
+    set:
+    - name: X-Auth-Request-Redirect
+      value: {{ printf "https://%s/" .redirectHostname | quote }}
+{{- end }}
+
+{{/* Labels HTTPRoutes for controller-specific timeout policies. */}}
+{{- define "nv-config-manager.httpRoutePolicyLabels" -}}
+labels:
+  {{- include "nv-config-manager.labels" .root | nindent 2 }}
+  nv-config-manager.nvidia.com/timeout-profile: {{ .timeoutProfile | default "default" | quote }}
+{{- end }}
+
 # Creates an HTTPRoute for the svc-* hostname (JWT-only, no OIDC).
 # These routes allow CLI/machine clients to authenticate with just a JWT
 # bearer token without being redirected to the OIDC login flow.
-# A SecurityPolicy (in security-policy.yaml) attaches to this route with
-# jwt.optional=true and no oidc block.
+# These routes bypass the browser proxy and let application middleware validate
+# Bearer JWTs without triggering a browser redirect.
 # =============================================================================
 {{- define "nv-config-manager.svcHTTPRoute" }}
 {{- if and $.root.Values.oidc.enabled $.svcHostname }}
@@ -34,13 +77,13 @@ kind: HTTPRoute
 metadata:
   name: {{ $.routeName }}-svc
   namespace: {{ $.root.Values.global.namespace }}
+  {{- include "nv-config-manager.httpRoutePolicyLabels" (dict "root" $.root "timeoutProfile" ($.timeoutProfile | default "default")) | nindent 2 }}
   annotations:
     # JWT-only service route - OIDC disabled, CLI/machine access
     nv-config-manager.nvidia.com/svc-route: "true"
 spec:
   parentRefs:
-  - name: {{ $.root.Values.gateway.name }}
-    namespace: {{ $.root.Values.global.namespace }}
+  {{- include "nv-config-manager.gatewayParentRef" $.root | nindent 2 }}
   hostnames:
   - {{ $.svcHostname | quote }}
   rules:
@@ -48,19 +91,29 @@ spec:
     - path:
         type: PathPrefix
         value: /
+    {{- include "nv-config-manager.stripIdentityHeaders" $.root | nindent 4 }}
     backendRefs:
     - name: {{ $.backendName }}
       port: {{ $.backendPort }}
 {{- end }}
 {{- end }}
 
+{{- define "nv-config-manager.browserBackendRefs" }}
+backendRefs:
+{{- if $.root.Values.oidc.enabled }}
+- name: {{ include "nv-config-manager.componentName" (dict "root" $.root "component" "oidc-proxy") }}
+  port: {{ $.proxyPort }}
+{{- else }}
+- name: {{ $.backendName }}
+  port: {{ $.backendPort }}
+{{- end }}
+{{- end }}
+
 # =============================================================================
 # Auth Bypass HTTPRoute Helper Template
 # =============================================================================
-# Creates a separate HTTPRoute for paths that bypass OIDC but still support
-# optional Authorization bearer JWT auth. A SecurityPolicy (in
-# security-policy.yaml) attaches to this route with jwt.optional=true and no
-# oidc block.
+# Creates a separate HTTPRoute for paths that bypass the browser proxy while
+# retaining application-native Bearer JWT or service token authentication.
 # =============================================================================
 {{- define "nv-config-manager.authBypassHTTPRoute" }}
 {{- if and $.root.Values.oidc.enabled $.root.Values.gateway.authBypass.enabled $.enabled (gt (len $.paths) 0) }}
@@ -70,13 +123,13 @@ kind: HTTPRoute
 metadata:
   name: {{ $.routeName }}-auth-bypass
   namespace: {{ $.root.Values.global.namespace }}
+  {{- include "nv-config-manager.httpRoutePolicyLabels" (dict "root" $.root "timeoutProfile" ($.timeoutProfile | default "default")) | nindent 2 }}
   annotations:
-    # Auth bypass route - OIDC disabled, bearer JWT optional with claim extraction
+    # Auth bypass route - application-native authentication, no browser redirect
     nv-config-manager.nvidia.com/auth-bypass: "true"
 spec:
   parentRefs:
-  - name: {{ $.root.Values.gateway.name }}
-    namespace: {{ $.root.Values.global.namespace }}
+  {{- include "nv-config-manager.gatewayParentRef" $.root | nindent 2 }}
   hostnames:
   - {{ $.hostname | quote }}
   rules:
@@ -85,6 +138,13 @@ spec:
     - path:
         type: PathPrefix
         value: {{ . }}
+      {{- if $.requireAuthorization }}
+      headers:
+      - name: Authorization
+        type: RegularExpression
+        value: "^(Bearer|Token) .+$"
+      {{- end }}
+    {{- include "nv-config-manager.stripIdentityHeaders" $.root | nindent 4 }}
     backendRefs:
     - name: {{ $.backendName }}
       port: {{ $.backendPort }}
@@ -100,8 +160,35 @@ spec:
 {{- $nautobotName := include "nv-config-manager.componentName" (dict "root" . "component" "nautobot") }}
 {{- $configStoreName := include "nv-config-manager.componentName" (dict "root" . "component" "config-store") }}
 {{- $mcpName := include "nv-config-manager.componentName" (dict "root" . "component" "mcp") }}
+{{- $oidcProxyName := include "nv-config-manager.componentName" (dict "root" . "component" "oidc-proxy") }}
 
-{{- if and .Values.gateway.enabled (eq (.Values.ingress.type | default "envoyGateway") "envoyGateway") }}
+{{- if .Values.gateway.enabled }}
+
+# Shared OIDC callback route. A dedicated proxy serves this endpoint so OIDC
+# remains functional even when the UI component is disabled.
+{{- if .Values.oidc.enabled }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ printf "%s-callback" $oidcProxyName | trunc 63 | trimSuffix "-" }}
+  namespace: {{ .Values.global.namespace }}
+  {{- include "nv-config-manager.httpRoutePolicyLabels" (dict "root" .) | nindent 2 }}
+spec:
+  parentRefs:
+  {{- include "nv-config-manager.gatewayParentRef" . | nindent 2 }}
+  hostnames:
+  - {{ .Values.gateway.baseHostname | quote }}
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /oauth2
+    {{- include "nv-config-manager.stripIdentityHeaders" . | nindent 4 }}
+    backendRefs:
+    - name: {{ $oidcProxyName }}
+      port: 9109
+{{- end }}
 
 # Render Service svc-* HTTPRoute (JWT-only)
 {{- if .Values.renderService.enabled }}
@@ -133,10 +220,10 @@ kind: HTTPRoute
 metadata:
   name: {{ $renderName }}
   namespace: {{ .Values.global.namespace }}
+  {{- include "nv-config-manager.httpRoutePolicyLabels" (dict "root" .) | nindent 2 }}
 spec:
   parentRefs:
-  - name: {{ .Values.gateway.name }}
-    namespace: {{ .Values.global.namespace }}
+  {{- include "nv-config-manager.gatewayParentRef" . | nindent 2 }}
   hostnames:
   - {{ tpl .Values.renderService.gateway.hostname . | quote }}
   rules:
@@ -144,9 +231,8 @@ spec:
     - path:
         type: PathPrefix
         value: /
-    backendRefs:
-    - name: {{ $renderName }}-api
-      port: 9000
+    {{- include "nv-config-manager.protectedIdentityHeaders" (dict "redirectHostname" (tpl .Values.renderService.gateway.hostname .)) | nindent 4 }}
+    {{- include "nv-config-manager.browserBackendRefs" (dict "root" . "backendName" (printf "%s-api" $renderName) "backendPort" 9000 "proxyPort" 9101) | nindent 4 }}
 {{- end }}
 
 # Network ZTP svc-* HTTPRoute (JWT-only)
@@ -157,6 +243,7 @@ spec:
     "svcHostname" (tpl (.Values.networkZtp.gateway.svcHostname | default "") .)
     "backendName" (printf "%s-api" $ztpName)
     "backendPort" 9000
+    "timeoutProfile" "upload"
 ) }}
 {{- end }}
 
@@ -171,6 +258,7 @@ spec:
     "hostname" (tpl .Values.networkZtp.gateway.hostname .)
     "backendName" (printf "%s-api" $ztpName)
     "backendPort" 9000
+    "timeoutProfile" "upload"
 ) }}
 {{- end }}
 ---
@@ -179,10 +267,10 @@ kind: HTTPRoute
 metadata:
   name: {{ $ztpName }}
   namespace: {{ .Values.global.namespace }}
+  {{- include "nv-config-manager.httpRoutePolicyLabels" (dict "root" . "timeoutProfile" "upload") | nindent 2 }}
 spec:
   parentRefs:
-  - name: {{ .Values.gateway.name }}
-    namespace: {{ .Values.global.namespace }}
+  {{- include "nv-config-manager.gatewayParentRef" . | nindent 2 }}
   hostnames:
   - {{ tpl .Values.networkZtp.gateway.hostname . | quote }}
   rules:
@@ -190,9 +278,8 @@ spec:
     - path:
         type: PathPrefix
         value: /
-    backendRefs:
-    - name: {{ $ztpName }}-api
-      port: 9000
+    {{- include "nv-config-manager.protectedIdentityHeaders" (dict "redirectHostname" (tpl .Values.networkZtp.gateway.hostname .)) | nindent 4 }}
+    {{- include "nv-config-manager.browserBackendRefs" (dict "root" . "backendName" (printf "%s-api" $ztpName) "backendPort" 9000 "proxyPort" 9102) | nindent 4 }}
 {{- end }}
 
 # Network DHCP svc-* HTTPRoute (JWT-only)
@@ -225,10 +312,10 @@ kind: HTTPRoute
 metadata:
   name: {{ $dhcpName }}
   namespace: {{ .Values.global.namespace }}
+  {{- include "nv-config-manager.httpRoutePolicyLabels" (dict "root" .) | nindent 2 }}
 spec:
   parentRefs:
-  - name: {{ .Values.gateway.name }}
-    namespace: {{ .Values.global.namespace }}
+  {{- include "nv-config-manager.gatewayParentRef" . | nindent 2 }}
   hostnames:
   - {{ tpl .Values.networkDhcp.gateway.hostname . | quote }}
   rules:
@@ -236,9 +323,8 @@ spec:
     - path:
         type: PathPrefix
         value: /
-    backendRefs:
-    - name: {{ $dhcpName }}-internal
-      port: 9000
+    {{- include "nv-config-manager.protectedIdentityHeaders" (dict "redirectHostname" (tpl .Values.networkDhcp.gateway.hostname .)) | nindent 4 }}
+    {{- include "nv-config-manager.browserBackendRefs" (dict "root" . "backendName" (printf "%s-internal" $dhcpName) "backendPort" 9000 "proxyPort" 9103) | nindent 4 }}
 {{- end }}
 
 # Temporal API svc-* HTTPRoute (JWT-only)
@@ -271,10 +357,10 @@ kind: HTTPRoute
 metadata:
   name: {{ $temporalName }}-api
   namespace: {{ .Values.global.namespace }}
+  {{- include "nv-config-manager.httpRoutePolicyLabels" (dict "root" .) | nindent 2 }}
 spec:
   parentRefs:
-  - name: {{ .Values.gateway.name }}
-    namespace: {{ .Values.global.namespace }}
+  {{- include "nv-config-manager.gatewayParentRef" . | nindent 2 }}
   hostnames:
   - {{ tpl .Values.temporal.gateway.api.hostname . | quote }}
   rules:
@@ -282,20 +368,19 @@ spec:
     - path:
         type: PathPrefix
         value: /
-    backendRefs:
-    - name: {{ $temporalName }}-api
-      port: 9000
+    {{- include "nv-config-manager.protectedIdentityHeaders" (dict "redirectHostname" (tpl .Values.temporal.gateway.api.hostname .)) | nindent 4 }}
+    {{- include "nv-config-manager.browserBackendRefs" (dict "root" . "backendName" (printf "%s-api" $temporalName) "backendPort" 9000 "proxyPort" 9104) | nindent 4 }}
 ---
-# Temporal Web UI HTTPRoute (temporal.<base>) - OIDC-only, direct to app port
+# Temporal Web UI HTTPRoute (temporal.<base>) - OIDC-only, via browser proxy
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   name: {{ $temporalName }}-web
   namespace: {{ .Values.global.namespace }}
+  {{- include "nv-config-manager.httpRoutePolicyLabels" (dict "root" .) | nindent 2 }}
 spec:
   parentRefs:
-  - name: {{ .Values.gateway.name }}
-    namespace: {{ .Values.global.namespace }}
+  {{- include "nv-config-manager.gatewayParentRef" . | nindent 2 }}
   hostnames:
   - {{ tpl .Values.temporal.gateway.devUi.hostname . | quote }}
   rules:
@@ -303,9 +388,8 @@ spec:
     - path:
         type: PathPrefix
         value: /
-    backendRefs:
-    - name: {{ $temporalName }}-web-service
-      port: 8080
+    {{- include "nv-config-manager.protectedIdentityHeaders" (dict "redirectHostname" (tpl .Values.temporal.gateway.devUi.hostname .)) | nindent 4 }}
+    {{- include "nv-config-manager.browserBackendRefs" (dict "root" . "backendName" (printf "%s-web-service" $temporalName) "backendPort" 8080 "proxyPort" 9105) | nindent 4 }}
 {{- end }}
 
 ---
@@ -317,13 +401,13 @@ kind: HTTPRoute
 metadata:
   name: {{ $uiName }}-auth-utility
   namespace: {{ .Values.global.namespace }}
+  {{- include "nv-config-manager.httpRoutePolicyLabels" (dict "root" .) | nindent 2 }}
   annotations:
     # Allows unauthenticated access to public auth utility endpoints.
     nv-config-manager.nvidia.com/no-auth: "true"
 spec:
   parentRefs:
-  - name: {{ .Values.gateway.name }}
-    namespace: {{ .Values.global.namespace }}
+  {{- include "nv-config-manager.gatewayParentRef" . | nindent 2 }}
   hostnames:
   - {{ .Values.gateway.baseHostname | quote }}
   rules:
@@ -334,6 +418,7 @@ spec:
     - path:
         type: PathPrefix
         value: /auth/discovery
+    {{- include "nv-config-manager.stripIdentityHeaders" . | nindent 4 }}
     backendRefs:
     - name: {{ $uiName }}
       port: 3000
@@ -344,10 +429,10 @@ kind: HTTPRoute
 metadata:
   name: {{ $uiName }}
   namespace: {{ .Values.global.namespace }}
+  {{- include "nv-config-manager.httpRoutePolicyLabels" (dict "root" .) | nindent 2 }}
 spec:
   parentRefs:
-  - name: {{ .Values.gateway.name }}
-    namespace: {{ .Values.global.namespace }}
+  {{- include "nv-config-manager.gatewayParentRef" . | nindent 2 }}
   hostnames:
   - {{ .Values.gateway.baseHostname | quote }}
   rules:
@@ -355,9 +440,8 @@ spec:
     - path:
         type: PathPrefix
         value: /
-    backendRefs:
-    - name: {{ $uiName }}
-      port: 3000
+    {{- include "nv-config-manager.protectedIdentityHeaders" (dict "redirectHostname" .Values.gateway.baseHostname) | nindent 4 }}
+    {{- include "nv-config-manager.browserBackendRefs" (dict "root" . "backendName" $uiName "backendPort" 3000 "proxyPort" 9100) | nindent 4 }}
 {{- end }}
 
 # Nautobot svc-* HTTPRoute (JWT-only)
@@ -381,9 +465,10 @@ spec:
 #   - Native API tokens (Authorization: Token <token>)
 #   - Remote user auth (trusts X-Auth-Request-User header from gateway)
 #
-# This route bypasses OIDC redirect but still extracts JWT claims if present,
-# enabling Nautobot's remote user auth for SSO users while allowing native
-# tokens for API clients.
+# This route bypasses the browser proxy only when an Authorization header
+# matches ^(Bearer|Token) .+$, allowing native API tokens without exposing
+# browser API calls. SSO browser requests have no client Authorization header
+# and stay on the main route so the proxy can supply trusted remote-user headers.
 # -----------------------------------------------------------------------------
 {{- include "nv-config-manager.authBypassHTTPRoute" (dict
     "root" .
@@ -393,6 +478,7 @@ spec:
     "hostname" (tpl .Values.nautobot.gateway.hostname .)
     "backendName" $nautobotName
     "backendPort" 80
+    "requireAuthorization" true
 ) }}
 # Main Nautobot HTTPRoute (for UI/browser access with OIDC)
 ---
@@ -401,10 +487,10 @@ kind: HTTPRoute
 metadata:
   name: {{ $nautobotName }}
   namespace: {{ .Values.global.namespace }}
+  {{- include "nv-config-manager.httpRoutePolicyLabels" (dict "root" .) | nindent 2 }}
 spec:
   parentRefs:
-  - name: {{ .Values.gateway.name }}
-    namespace: {{ .Values.global.namespace }}
+  {{- include "nv-config-manager.gatewayParentRef" . | nindent 2 }}
   hostnames:
   - {{ tpl .Values.nautobot.gateway.hostname . | quote }}
   rules:
@@ -412,9 +498,8 @@ spec:
     - path:
         type: PathPrefix
         value: /
-    backendRefs:
-    - name: {{ $nautobotName }}
-      port: 80
+    {{- include "nv-config-manager.protectedIdentityHeaders" (dict "redirectHostname" (tpl .Values.nautobot.gateway.hostname .)) | nindent 4 }}
+    {{- include "nv-config-manager.browserBackendRefs" (dict "root" . "backendName" $nautobotName "backendPort" 80 "proxyPort" 9106) | nindent 4 }}
 {{- end }}
 
 # Config Store API svc-* HTTPRoute (JWT-only)
@@ -447,10 +532,10 @@ kind: HTTPRoute
 metadata:
   name: {{ $configStoreName }}-api
   namespace: {{ .Values.global.namespace }}
+  {{- include "nv-config-manager.httpRoutePolicyLabels" (dict "root" .) | nindent 2 }}
 spec:
   parentRefs:
-  - name: {{ .Values.gateway.name }}
-    namespace: {{ .Values.global.namespace }}
+  {{- include "nv-config-manager.gatewayParentRef" . | nindent 2 }}
   hostnames:
   - {{ tpl .Values.configStore.gateway.api.hostname . | quote }}
   rules:
@@ -458,9 +543,8 @@ spec:
     - path:
         type: PathPrefix
         value: /
-    backendRefs:
-    - name: {{ $configStoreName }}-api
-      port: 9000
+    {{- include "nv-config-manager.protectedIdentityHeaders" (dict "redirectHostname" (tpl .Values.configStore.gateway.api.hostname .)) | nindent 4 }}
+    {{- include "nv-config-manager.browserBackendRefs" (dict "root" . "backendName" (printf "%s-api" $configStoreName) "backendPort" 9000 "proxyPort" 9107) | nindent 4 }}
 {{- end }}
 
 # MCP svc-* HTTPRoute (JWT-only)
@@ -493,10 +577,10 @@ kind: HTTPRoute
 metadata:
   name: {{ $mcpName }}
   namespace: {{ .Values.global.namespace }}
+  {{- include "nv-config-manager.httpRoutePolicyLabels" (dict "root" .) | nindent 2 }}
 spec:
   parentRefs:
-  - name: {{ .Values.gateway.name }}
-    namespace: {{ .Values.global.namespace }}
+  {{- include "nv-config-manager.gatewayParentRef" . | nindent 2 }}
   hostnames:
   - {{ tpl .Values.mcp.gateway.hostname . | quote }}
   rules:
@@ -504,9 +588,8 @@ spec:
     - path:
         type: PathPrefix
         value: /
-    backendRefs:
-    - name: {{ $mcpName }}
-      port: 9000
+    {{- include "nv-config-manager.protectedIdentityHeaders" (dict "redirectHostname" (tpl .Values.mcp.gateway.hostname .)) | nindent 4 }}
+    {{- include "nv-config-manager.browserBackendRefs" (dict "root" . "backendName" $mcpName "backendPort" 9000 "proxyPort" 9108) | nindent 4 }}
 {{- end }}
 
 {{- end }}

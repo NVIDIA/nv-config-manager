@@ -23,6 +23,19 @@ import pytest
 _FakeCT = namedtuple("_FakeCT", ["app_label", "model"])
 
 
+def _op_objects(**kw) -> MagicMock:
+    """Build an ``ObjectPermission.objects`` mock with no name collision.
+
+    The ownership guard (``_object_permission_owned_by_other``) queries
+    ``ObjectPermission.objects.filter(name=...).first()`` before upserting.
+    Returning ``None`` means "no pre-existing row", so the code proceeds to
+    create/upsert exactly as it did before the guard existed.  Tests that want
+    to simulate a foreign collision build the mock inline instead.
+    """
+    kw.setdefault("filter", MagicMock(return_value=MagicMock(first=MagicMock(return_value=None))))
+    return MagicMock(**kw)
+
+
 @pytest.fixture()
 def rbac():
     """Import the module *after* the autouse conftest stubs are installed."""
@@ -65,64 +78,27 @@ def test_load_group_mapping_groups_key(rbac, tmp_path):
     assert out["admins"]["is_superuser"] is True
 
 
-def test_load_group_mapping_azure_app_roles_key_is_accepted_for_cerebro_compat(rbac, tmp_path):
-    path = tmp_path / "m.yaml"
-    path.write_text(
-        textwrap.dedent(
-            """\
-            azure_app_roles:
-              - name: "all-ro"
-                nautobot_permissions:
-                  view:
-                    content_types: ["all"]
-            """
-        )
-    )
-    out = rbac.load_group_mapping(str(path))
-    assert "all-ro" in out
-
-
-def test_load_group_mapping_groups_wins_over_azure_app_roles_when_both_present(rbac, tmp_path):
-    path = tmp_path / "m.yaml"
-    path.write_text(
-        textwrap.dedent(
-            """\
-            groups:
-              - name: native
-            azure_app_roles:
-              - name: cerebro
-            """
-        )
-    )
-    out = rbac.load_group_mapping(str(path))
-    assert set(out) == {"native"}
-
-
 @pytest.mark.parametrize(
     "body,fragment",
     [
         ("- not_a_mapping", "top-level must be a mapping"),
-        # Top-level falsy non-``None`` values used to be coerced to ``{}`` by
-        # ``yaml.safe_load(fh) or {}`` and bypassed the top-level validator,
-        # silently disabling RBAC.  Each must now raise.  (Empty file -- which
-        # ``safe_load`` returns as ``None`` -- is still a legitimate "no
-        # mappings" idiom and is covered by
+        # Top-level falsy non-``None`` values must raise rather than being
+        # coerced to ``{}`` (which would bypass the top-level validator and
+        # silently disable RBAC).  (Empty file -- which ``safe_load`` returns as
+        # ``None`` -- is still a legitimate "no mappings" idiom and is covered by
         # ``test_load_group_mapping_empty_file_returns_empty``.)
         ("false\n", "top-level must be a mapping"),
         ("0\n", "top-level must be a mapping"),
         ("[]\n", "top-level must be a mapping"),
         ("''\n", "top-level must be a mapping"),
         ("groups: not_a_list", "'groups' must be a list"),
-        # The key-present-but-falsy cases: previously the ``or [] `` chain
-        # in the loader swallowed these and silently disabled RBAC.  They
-        # MUST raise so an operator typo is loud, not silent.
+        # The key-present-but-falsy cases MUST raise so an operator typo is loud,
+        # not silent: a ``groups or []`` idiom would swallow these and disable
+        # RBAC.
         ("groups: {}", "'groups' must be a list"),
         ("groups: ''", "'groups' must be a list"),
         ("groups: false", "'groups' must be a list"),
         ("groups: 0", "'groups' must be a list"),
-        # Same checks for the cerebro-compat key when ``groups`` is absent.
-        ("azure_app_roles: {}", "'azure_app_roles' must be a list"),
-        ("azure_app_roles: ''", "'azure_app_roles' must be a list"),
         ("groups:\n  - 'a string'", "must be a mapping"),
         ("groups:\n  - {}", "must have a non-empty string 'name'"),
         ("groups:\n  - name: 42", "must have a non-empty string 'name'"),
@@ -151,14 +127,11 @@ def test_load_group_mapping_validation_errors(rbac, tmp_path, body, fragment):
     [
         # Key absent entirely.
         "other_key: foo\n",
-        # Explicit empty list (nv-config-manager-native).
+        # Explicit empty list.
         "groups: []\n",
         # Explicit YAML null (idiomatic "key present, no value").
         "groups: null\n",
         "groups:\n",  # bare key with no value also parses to null
-        # Same for the cerebro-compat key.
-        "azure_app_roles: []\n",
-        "azure_app_roles: null\n",
     ],
 )
 def test_load_group_mapping_unconfigured_returns_empty(rbac, tmp_path, body):
@@ -171,24 +144,6 @@ def test_load_group_mapping_unconfigured_returns_empty(rbac, tmp_path, body):
     """
     path = tmp_path / "m.yaml"
     path.write_text(body)
-    assert rbac.load_group_mapping(str(path)) == {}
-
-
-def test_load_group_mapping_explicit_empty_native_groups_does_not_fall_back_to_azure_compat(rbac, tmp_path):
-    """If the operator explicitly writes ``groups: []`` while
-    ``azure_app_roles`` is also set, the explicit nv-config-manager-native empty wins
-    (no surprise inheritance from the cerebro-compat key).
-    """
-    path = tmp_path / "m.yaml"
-    path.write_text(
-        textwrap.dedent(
-            """\
-            groups: []
-            azure_app_roles:
-              - name: leftover-from-cerebro
-            """
-        )
-    )
     assert rbac.load_group_mapping(str(path)) == {}
 
 
@@ -217,9 +172,9 @@ def test_load_group_mapping_yaml_parse_error_wrapped(rbac, tmp_path):
 
 def test_load_group_mapping_invalid_utf8_wrapped_as_read_error(rbac, tmp_path):
     """Non-UTF8 bytes must surface as ``GroupMappingReadError`` so the
-    caller's fail-closed path runs.  Previously the bare ``open(...)``
-    raised ``UnicodeDecodeError`` past ``except GroupMappingError`` in
-    ``_get_or_create_user_from_claims`` and crashed the login.
+    caller's fail-closed path runs.  A bare ``open(...)`` would let
+    ``UnicodeDecodeError`` propagate past ``except GroupMappingError`` in
+    ``_get_or_create_user_from_claims`` and crash the login.
     """
     path = tmp_path / "m.yaml"
     # 0xff is invalid as a leading byte in UTF-8.
@@ -367,8 +322,15 @@ def patched_content_type_manager(rbac, monkeypatch):
         _ct("ipam", "ipaddress"),
         _ct("ipam", "prefix"),
         _ct("dcim", "device"),
-        _ct("sessions", "session"),  # excluded from "all"
-        _ct("admin", "logentry"),  # excluded from "all"
+        _ct("sessions", "session"),  # excluded from "all" (internal plumbing)
+        _ct("admin", "logentry"),  # excluded from "all" (internal plumbing)
+        # Identity / privilege models: excluded from "all" AND "app.*" wildcards
+        # (privilege escalation), grantable only by exact name.
+        _ct("users", "user"),
+        _ct("users", "token"),
+        _ct("users", "objectpermission"),
+        _ct("auth", "group"),
+        _ct("auth", "permission"),
     ]
 
     objects = MagicMock()
@@ -394,6 +356,21 @@ def test_resolve_content_types_empty(rbac, patched_content_type_manager):
     assert rbac._resolve_content_types([]) == []
 
 
+@pytest.mark.parametrize("scalar", ["all", "install", "wall", "dcim.device"])
+def test_resolve_content_types_rejects_non_list_scalar(rbac, patched_content_type_manager, caplog, scalar):
+    """A scalar string must be rejected, never treated as a list: ``"all" in
+    "install"`` is a substring match that would otherwise grant every type."""
+    with caplog.at_level("WARNING", logger="nv_config_manager_auth.rbac"):
+        assert rbac._resolve_content_types(scalar) == []
+    assert any("must be a list" in r.message for r in caplog.records)
+
+
+def test_resolve_content_types_all_only_via_list_membership(rbac, patched_content_type_manager):
+    """The 'all' expansion triggers for a real list element, not a substring."""
+    assert rbac._resolve_content_types("install") == []  # scalar containing 'all'
+    assert rbac._resolve_content_types(["all"])  # list -> expands (non-empty)
+
+
 def test_resolve_content_types_all_excludes_internal_models(rbac, patched_content_type_manager):
     resolved = rbac._resolve_content_types(["all"])
     labels = {f"{ct.app_label}.{ct.model}" for ct in resolved}
@@ -402,6 +379,31 @@ def test_resolve_content_types_all_excludes_internal_models(rbac, patched_conten
     # the internal models are filtered out
     assert "sessions.session" not in labels
     assert "admin.logentry" not in labels
+
+
+def test_resolve_content_types_all_excludes_privilege_models(rbac, patched_content_type_manager):
+    """``"all"`` must never sweep in identity/access-control models -- granting
+    write there is privilege escalation (mint tokens, widen own perms, flip
+    is_superuser)."""
+    resolved = rbac._resolve_content_types(["all"])
+    labels = {f"{ct.app_label}.{ct.model}" for ct in resolved}
+    for privileged in ("users.user", "users.token", "users.objectpermission", "auth.group", "auth.permission"):
+        assert privileged not in labels
+
+
+def test_resolve_content_types_app_wildcard_excludes_privilege_models(rbac, patched_content_type_manager):
+    """``users.*`` / ``auth.*`` wildcards must also drop the privilege models --
+    only an exact ``app.model`` spec is the deliberate opt-in."""
+    users = {f"{ct.app_label}.{ct.model}" for ct in rbac._resolve_content_types(["users.*"])}
+    assert users == set()  # every users.* model in the fixture is privileged
+    auth = {f"{ct.app_label}.{ct.model}" for ct in rbac._resolve_content_types(["auth.*"])}
+    assert auth == set()
+
+
+def test_resolve_content_types_exact_privilege_model_is_the_escape_hatch(rbac, patched_content_type_manager):
+    """An identity model can still be granted deliberately by exact name."""
+    resolved = rbac._resolve_content_types(["users.token"])
+    assert [(c.app_label, c.model) for c in resolved] == [("users", "token")]
 
 
 def test_resolve_content_types_app_wildcard(rbac, patched_content_type_manager):
@@ -448,9 +450,9 @@ def test_resolve_content_types_rejects_multi_dot_and_empty_halves(
 ):
     """Tightened parser: only ``app.model`` or ``app.*`` are accepted.
 
-    The previous implementation split on the first ``.`` and accepted any
-    ``model`` ending in ``.*`` -- so a typo like ``"ipam.prefix.*"`` silently
-    widened access to the entire ``ipam`` app.  These shapes now log a
+    A naive parser that split on the first ``.`` and accepted any ``model``
+    ending in ``.*`` would let a typo like ``"ipam.prefix.*"`` silently widen
+    access to the entire ``ipam`` app.  These shapes now log a
     warning and contribute zero content types, never reaching the DB filter.
     """
     filter_calls_before = patched_content_type_manager.filter.call_count
@@ -465,8 +467,8 @@ def test_resolve_content_types_rejects_multi_dot_and_empty_halves(
 
 
 def test_resolve_content_types_does_not_widen_on_prefix_wildcard_typo(rbac, patched_content_type_manager):
-    """Regression: ``"ipam.prefix.*"`` previously returned all of ipam.
-    Now it returns nothing and the valid entries are still resolved."""
+    """Guard: ``"ipam.prefix.*"`` must resolve to nothing (not all of ipam),
+    while the valid entries are still resolved."""
     out = rbac._resolve_content_types(["dcim.device", "ipam.prefix.*", "ipam.ipaddress"])
     resolved = {(c.app_label, c.model) for c in out}
     assert resolved == {("dcim", "device"), ("ipam", "ipaddress")}
@@ -607,7 +609,7 @@ def test_sync_group_permissions_applies_perms_to_existing_group(rbac, monkeypatc
     monkeypatch.setattr(
         rbac.ObjectPermission,
         "objects",
-        MagicMock(update_or_create=MagicMock(side_effect=_make_perm)),
+        _op_objects(update_or_create=MagicMock(side_effect=_make_perm)),
     )
 
     rbac._sync_group_permissions({"ipam-rw"}, mapping)
@@ -687,7 +689,7 @@ def test_sync_group_permissions_auto_creates_when_enabled(rbac, monkeypatch, pat
     monkeypatch.setattr(
         rbac.ObjectPermission,
         "objects",
-        MagicMock(update_or_create=MagicMock(return_value=(new_perm, True))),
+        _op_objects(update_or_create=MagicMock(return_value=(new_perm, True))),
     )
 
     with caplog.at_level("INFO", logger="nv_config_manager_auth.rbac"):
@@ -719,7 +721,7 @@ def test_sync_group_permissions_auto_create_existing_group_no_log(
     monkeypatch.setattr(
         rbac.ObjectPermission,
         "objects",
-        MagicMock(
+        _op_objects(
             update_or_create=MagicMock(
                 return_value=(MagicMock(actions=["view"], constraints={}), True),
             )
@@ -732,8 +734,10 @@ def test_sync_group_permissions_auto_create_existing_group_no_log(
     assert not any("auto-created" in r.message for r in caplog.records)
 
 
-def test_sync_group_permissions_skips_perms_block_for_superuser_group(rbac, monkeypatch):
-    """``is_superuser: true`` entries don't need per-action permissions."""
+def test_sync_group_permissions_superuser_group_keeps_membership_marker(rbac, monkeypatch):
+    """``is_superuser: true`` entries need no per-action permissions, but must
+    still receive the inert membership marker so that removing the entry later
+    is detectable and the Django Group membership gets revoked."""
     mapping = {"admins": {"name": "admins", "is_superuser": True}}
     group = MagicMock()
     group.name = "admins"
@@ -744,11 +748,21 @@ def test_sync_group_permissions_skips_perms_block_for_superuser_group(rbac, monk
         MagicMock(get=MagicMock(return_value=group)),
     )
 
-    create_mock = MagicMock()
-    monkeypatch.setattr(rbac.ObjectPermission, "objects", MagicMock(create=create_mock))
+    marker = MagicMock()
+    marker.name = rbac._membership_marker_name("admins")
+    marker.groups.all.return_value = []
+    update_or_create = MagicMock(return_value=(marker, True))
+    monkeypatch.setattr(rbac.ObjectPermission, "objects", _op_objects(update_or_create=update_or_create))
 
     rbac._sync_group_permissions({"admins"}, mapping)
-    create_mock.assert_not_called()
+
+    # Exactly one upsert -- the marker -- and no per-action permissions.
+    update_or_create.assert_called_once()
+    kwargs = update_or_create.call_args.kwargs
+    assert kwargs["name"] == "admins_nvcm-managed-membership"
+    assert kwargs["defaults"]["actions"] == []  # grants nothing
+    marker.object_types.set.assert_called_once_with([])
+    marker.groups.add.assert_called_once_with(group)
 
 
 def test_apply_group_permission_config_uses_update_or_create_for_upsert_safety(
@@ -756,9 +770,9 @@ def test_apply_group_permission_config_uses_update_or_create_for_upsert_safety(
 ):
     """Concurrent logins for the same group must not race the create path.
 
-    The previous implementation snapshotted ``group.object_permissions.all()``
-    and then branched on "is this name in the snapshot?" -- two concurrent
-    logins could both miss the snapshot and both INSERT, one winning, the
+    A naive implementation that snapshotted ``group.object_permissions.all()``
+    and then branched on "is this name in the snapshot?" would let two concurrent
+    logins both miss the snapshot and both INSERT, one winning, the
     other tripping ``IntegrityError`` and rolling back the whole sync
     transaction.  Even a follow-up ``get_or_create`` fallback left the path
     half-cooked because the snapshot could also hand back a row another
@@ -790,7 +804,7 @@ def test_apply_group_permission_config_uses_update_or_create_for_upsert_safety(
     monkeypatch.setattr(
         rbac.ObjectPermission,
         "objects",
-        MagicMock(
+        _op_objects(
             update_or_create=update_or_create,
             get_or_create=get_or_create_mock,
             create=create_mock,
@@ -839,7 +853,7 @@ def test_apply_group_permission_config_ignores_stale_snapshot_phantom(rbac, monk
     monkeypatch.setattr(
         rbac.ObjectPermission,
         "objects",
-        MagicMock(update_or_create=MagicMock(return_value=(fresh, True))),
+        _op_objects(update_or_create=MagicMock(return_value=(fresh, True))),
     )
 
     rbac._apply_group_permission_config(group, {"view": {"content_types": ["all"]}})
@@ -871,7 +885,7 @@ def test_apply_group_permission_config_prunes_stale_managed_perms(rbac, monkeypa
     monkeypatch.setattr(
         rbac.ObjectPermission,
         "objects",
-        MagicMock(update_or_create=MagicMock(return_value=(keep, False))),
+        _op_objects(update_or_create=MagicMock(return_value=(keep, False))),
     )
 
     rbac._apply_group_permission_config(group, {"view": {"content_types": ["all"]}})
@@ -880,6 +894,58 @@ def test_apply_group_permission_config_prunes_stale_managed_perms(rbac, monkeypa
     stale.delete.assert_called_once()
     manual.groups.remove.assert_not_called()
     manual.delete.assert_not_called()
+
+
+def test_apply_group_permission_config_membership_only_creates_inert_marker(rbac, monkeypatch):
+    """A membership-only entry (no per-action config) gets an inert provenance
+    marker so its membership can later be revoked -- the marker grants nothing
+    (no actions, no object types)."""
+    group = MagicMock()
+    group.name = "net-ops"
+    group.object_permissions.all.return_value = []
+
+    marker = MagicMock()
+    marker.name = rbac._membership_marker_name("net-ops")
+    marker.groups.all.return_value = []
+    update_or_create = MagicMock(return_value=(marker, True))
+    monkeypatch.setattr(rbac.ObjectPermission, "objects", _op_objects(update_or_create=update_or_create))
+
+    rbac._apply_group_permission_config(group, {})
+
+    update_or_create.assert_called_once()
+    kwargs = update_or_create.call_args.kwargs
+    assert kwargs["name"] == "net-ops_nvcm-managed-membership"
+    assert kwargs["defaults"]["actions"] == []  # grants nothing
+    marker.object_types.set.assert_called_once_with([])  # no object types
+    marker.groups.add.assert_called_once_with(group)
+
+
+def test_apply_group_permission_config_membership_marker_pruned_when_actions_added(
+    rbac, monkeypatch, patched_content_type_manager
+):
+    """Transitioning membership-only -> permission-bearing prunes the stale
+    marker (the real ``<group>_<action>`` rows become the provenance)."""
+    group = MagicMock()
+    group.name = "net-ops"
+    stale_marker = MagicMock()
+    stale_marker.name = rbac._membership_marker_name("net-ops")
+    stale_marker.groups.exists.return_value = False
+    group.object_permissions.all.return_value = [stale_marker]
+
+    created = MagicMock()
+    created.name = "net-ops_view"
+    created.object_types.all.return_value = []
+    created.groups.all.return_value = []
+    monkeypatch.setattr(
+        rbac.ObjectPermission,
+        "objects",
+        _op_objects(update_or_create=MagicMock(return_value=(created, True))),
+    )
+
+    rbac._apply_group_permission_config(group, {"view": {"content_types": ["all"]}})
+
+    stale_marker.groups.remove.assert_called_once_with(group)
+    stale_marker.delete.assert_called_once()
 
 
 def test_apply_group_permission_config_warns_on_bad_action_shape(
@@ -896,6 +962,169 @@ def test_apply_group_permission_config_warns_on_bad_action_shape(
 
     assert any("must be a mapping" in r.message for r in caplog.records)
     rbac.ObjectPermission.objects.create.assert_not_called()
+
+
+def test_apply_group_permission_config_malformed_constraints_prunes_stale_perm(rbac, monkeypatch, caplog):
+    """Fail closed: malformed ``constraints`` skip the upsert AND leave the perm
+    unkept, so a pre-existing managed row is pruned (revoked) rather than
+    retained or granted unconstrained."""
+    group = MagicMock()
+    group.name = "ipam-rw"
+    stale = MagicMock()
+    stale.name = "ipam-rw_change"
+    stale.groups.exists.return_value = False
+    group.object_permissions.all.return_value = [stale]
+
+    update_or_create = MagicMock()
+    monkeypatch.setattr(rbac.ObjectPermission, "objects", _op_objects(update_or_create=update_or_create))
+
+    with caplog.at_level("WARNING", logger="nv_config_manager_auth.rbac"):
+        rbac._apply_group_permission_config(
+            group,
+            {"change": {"content_types": ["ipam.prefix"], "constraints": "status=Active"}},
+        )
+
+    update_or_create.assert_not_called()  # never granted
+    stale.groups.remove.assert_called_once_with(group)  # pruned (revoked)
+    stale.delete.assert_called_once()
+    assert any("malformed constraints" in r.message for r in caplog.records)
+
+
+def test_apply_group_permission_config_accepts_list_of_dict_constraints(
+    rbac, monkeypatch, patched_content_type_manager
+):
+    """Nautobot accepts a list of mappings (OR-of-constraints); it must be passed
+    through to update_or_create unchanged, not rejected as malformed."""
+    group = MagicMock()
+    group.name = "ipam-rw"
+    group.object_permissions.all.return_value = []
+    created = MagicMock()
+    created.object_types.all.return_value = []
+    created.groups.all.return_value = []
+    update_or_create = MagicMock(return_value=(created, True))
+    monkeypatch.setattr(rbac.ObjectPermission, "objects", _op_objects(update_or_create=update_or_create))
+
+    constraints = [{"vid__gte": 100, "vid__lt": 200}, {"status__name": "Reserved"}]
+    rbac._apply_group_permission_config(
+        group,
+        {"change": {"content_types": ["ipam.vlan"], "constraints": constraints}},
+    )
+
+    update_or_create.assert_called_once()
+    assert update_or_create.call_args.kwargs["defaults"]["constraints"] == constraints
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        ({}, True),  # unconstrained mapping
+        ({"status__name": "Active"}, True),
+        ([{"a": 1}], True),
+        ([{"a": 1}, {"b": 2}], True),  # OR-of-constraints
+        ([], False),  # empty list
+        ([{}], False),  # list with an empty (match-all) mapping
+        ([{"a": 1}, "nope"], False),  # list with a non-mapping element
+        ("status=Active", False),  # scalar string
+        (5, False),
+        (None, False),
+    ],
+)
+def test_is_valid_constraints(rbac, value, expected):
+    assert rbac._is_valid_constraints(value) is expected
+
+
+def test_apply_group_permission_config_skips_foreign_permission_collision(rbac, monkeypatch, caplog):
+    """A generated ``<group>_<action>`` name already owned by another group/user
+    must not be overwritten -- log and skip instead of hijacking access."""
+    group = MagicMock()
+    group.name = "ipam-rw"
+    group.object_permissions.all.return_value = []
+
+    foreign = MagicMock()
+    foreign.name = "ipam-rw_view"
+    foreign.groups.exclude.return_value.exists.return_value = True  # owned elsewhere
+
+    update_or_create = MagicMock()
+    monkeypatch.setattr(
+        rbac.ObjectPermission,
+        "objects",
+        MagicMock(
+            update_or_create=update_or_create,
+            filter=MagicMock(return_value=MagicMock(first=MagicMock(return_value=foreign))),
+        ),
+    )
+
+    with caplog.at_level("WARNING", logger="nv_config_manager_auth.rbac"):
+        rbac._apply_group_permission_config(group, {"view": {"content_types": ["all"]}})
+
+    update_or_create.assert_not_called()
+    assert any("bound to another group or user" in r.message for r in caplog.records)
+
+
+def test_apply_group_permission_config_skips_foreign_membership_marker_collision(rbac, monkeypatch, caplog):
+    """The same ownership guard protects the membership marker name."""
+    group = MagicMock()
+    group.name = "net-ops"
+    group.object_permissions.all.return_value = []
+
+    foreign = MagicMock()
+    foreign.name = rbac._membership_marker_name("net-ops")
+    foreign.groups.exclude.return_value.exists.return_value = True
+
+    update_or_create = MagicMock()
+    monkeypatch.setattr(
+        rbac.ObjectPermission,
+        "objects",
+        MagicMock(
+            update_or_create=update_or_create,
+            filter=MagicMock(return_value=MagicMock(first=MagicMock(return_value=foreign))),
+        ),
+    )
+
+    with caplog.at_level("WARNING", logger="nv_config_manager_auth.rbac"):
+        rbac._apply_group_permission_config(group, {})
+
+    update_or_create.assert_not_called()
+    assert any("membership marker" in r.message and "another group/user" in r.message for r in caplog.records)
+
+
+def _owned_by_other_objects(first_return):
+    return MagicMock(filter=MagicMock(return_value=MagicMock(first=MagicMock(return_value=first_return))))
+
+
+def test_object_permission_owned_by_other_no_row_is_not_foreign(rbac, monkeypatch):
+    group = MagicMock()
+    monkeypatch.setattr(rbac.ObjectPermission, "objects", _owned_by_other_objects(None))
+    assert rbac._object_permission_owned_by_other("g_view", group) is False
+
+
+def test_object_permission_owned_by_other_same_group_only_is_not_foreign(rbac, monkeypatch):
+    group = MagicMock()
+    group.pk = 7
+    perm = MagicMock()
+    perm.groups.exclude.return_value.exists.return_value = False  # no OTHER group
+    perm.users.exists.return_value = False
+    monkeypatch.setattr(rbac.ObjectPermission, "objects", _owned_by_other_objects(perm))
+    assert rbac._object_permission_owned_by_other("g_view", group) is False
+
+
+def test_object_permission_owned_by_other_another_group_is_foreign(rbac, monkeypatch):
+    group = MagicMock()
+    group.pk = 7
+    perm = MagicMock()
+    perm.groups.exclude.return_value.exists.return_value = True
+    monkeypatch.setattr(rbac.ObjectPermission, "objects", _owned_by_other_objects(perm))
+    assert rbac._object_permission_owned_by_other("g_view", group) is True
+
+
+def test_object_permission_owned_by_other_user_bound_is_foreign(rbac, monkeypatch):
+    group = MagicMock()
+    group.pk = 7
+    perm = MagicMock()
+    perm.groups.exclude.return_value.exists.return_value = False
+    perm.users.exists.return_value = True
+    monkeypatch.setattr(rbac.ObjectPermission, "objects", _owned_by_other_objects(perm))
+    assert rbac._object_permission_owned_by_other("g_view", group) is True
 
 
 # ── _revoke_removed_mapping_groups ─────────────────────────────────────────
@@ -935,7 +1164,23 @@ def test_revoke_removed_mapping_groups_revokes_and_prunes(rbac):
     """User in a Django group not in the mapping, group has managed perms
     matching ``<group>_<action>`` -- the user is removed and the managed
     perms are detached + deleted."""
-    retired = _mock_group("gni-cfa", ["gni-cfa_view", "gni-cfa_change"])
+    retired = _mock_group("retired-net", ["retired-net_view", "retired-net_change"])
+    user = _mock_user_with_groups(retired)
+
+    rbac._revoke_removed_mapping_groups(user, current_managed_names={"ipam-rw"})
+
+    user.groups.remove.assert_called_once_with(retired)
+    for perm in retired.object_permissions.all():
+        perm.groups.remove.assert_called_once_with(retired)
+        perm.delete.assert_called_once()
+
+
+def test_revoke_removed_mapping_groups_revokes_membership_only_via_marker(rbac):
+    """A membership-only entry leaves only the inert marker on the group; that
+    marker must still be enough for pass 3 to revoke the membership when the
+    entry is removed from the mapping."""
+    marker_name = rbac._membership_marker_name("net-ops")
+    retired = _mock_group("net-ops", [marker_name])
     user = _mock_user_with_groups(retired)
 
     rbac._revoke_removed_mapping_groups(user, current_managed_names={"ipam-rw"})
@@ -963,7 +1208,7 @@ def test_revoke_removed_mapping_groups_leaves_manual_groups_alone(rbac):
 def test_revoke_removed_mapping_groups_keeps_perm_when_other_groups_reference_it(rbac):
     """If the managed perm is still attached to another group after detaching
     us, it must be left in the database (not deleted)."""
-    retired = _mock_group("gni-cfa", ["gni-cfa_view"])
+    retired = _mock_group("retired-net", ["retired-net_view"])
     shared_perm = retired.object_permissions.all()[0]
     shared_perm.groups.exists.return_value = True  # someone else still references it
     user = _mock_user_with_groups(retired)
@@ -978,9 +1223,9 @@ def test_revoke_removed_mapping_groups_keeps_unrelated_perms(rbac):
     """Only perms whose name starts with ``<group>_`` are pruned; manually-
     added perms on the same group survive."""
     retired = MagicMock()
-    retired.name = "gni-cfa"
+    retired.name = "retired-net"
     managed = MagicMock()
-    managed.name = "gni-cfa_view"
+    managed.name = "retired-net_view"
     managed.groups.exists.return_value = False
     manual = MagicMock()
     manual.name = "totally-custom"
@@ -1011,9 +1256,9 @@ def test_revoke_removed_mapping_groups_ignores_bare_group_name_perm(rbac):
     """A perm literally named ``"<group_name>_"`` (action half empty) is not a
     valid managed marker -- defensive guard against weirdly-named perms."""
     retired = MagicMock()
-    retired.name = "gni-cfa"
+    retired.name = "retired-net"
     odd = MagicMock()
-    odd.name = "gni-cfa_"  # no action suffix
+    odd.name = "retired-net_"  # no action suffix
     retired.object_permissions.all.return_value = [odd]
     user = _mock_user_with_groups(retired)
 
