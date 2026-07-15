@@ -51,6 +51,27 @@ USER_ADMIN = "nvcm-admin"  # roles: [nvcm-admin, nvcm-network]
 
 _JSON_MARKER = "RBAC_JSON:"
 
+# Identity / access-control models a ``content_types: ["all"]`` grant must never
+# sweep in -- mirrors ``nv_config_manager_auth.rbac._PRIVILEGE_MODELS``. Granting
+# these would be privilege escalation (mint API tokens, widen your own grants,
+# flip ``is_superuser`` / rewrite group membership), so the "all" expansion
+# excludes them. Kept in sync deliberately: this is the live-cluster assertion
+# for that exclusion.
+_PRIVILEGE_MODELS = frozenset(
+    {
+        "auth.group",
+        "auth.permission",
+        "contenttypes.contenttype",
+        "users.user",
+        "users.token",
+        "users.objectpermission",
+    }
+)
+
+# Suffix of the inert provenance marker attached to membership-only /
+# ``is_superuser`` entries -- mirrors ``rbac._MEMBERSHIP_MARKER_SUFFIX``.
+_MEMBERSHIP_MARKER_SUFFIX = "nvcm-managed-membership"
+
 
 def _nbshell_json(nbshell: Callable[[str], str], body: str) -> dict:
     """Run *body* in the Django shell and return the dict it emits via ``_emit``.
@@ -289,6 +310,149 @@ def test_revoke_prunes_stale_managed_group_without_crash(
             f"user = get_user_model().objects.get(username={USER_NETWORK!r})\n"
             "with web_request_context(user, context_detail='nv-config-manager-auth: RBAC integration cleanup'):\n"
             f"    ObjectPermission.objects.filter(name={stale_perm!r}).delete()\n"
+            f"    Group.objects.filter(name={stale_group!r}).delete()\n"
+            "_emit({'cleaned': True})\n"
+        )
+        _nbshell_json(rbac_nbshell, cleanup_body)
+
+
+def test_all_scope_excludes_privilege_models(
+    rbac_require_configured: str,
+    rbac_api_login: Callable[[str], int],
+    rbac_nbshell: Callable[[str], str],
+) -> None:
+    """A ``content_types: ["all"]`` grant resolves to data models, never privilege ones.
+
+    ``nvcm-network`` maps ``view`` to ``content_types: ["all"]``. The "all"
+    expansion is deliberately narrowed (``rbac._EXCLUDED_FROM_ALL``): identity /
+    access-control models -- ``users.user``, ``users.token``,
+    ``users.objectpermission``, ``auth.group``, ``auth.permission``,
+    ``contenttypes.contenttype`` -- are excluded so a broad ``all`` grant can't
+    become a privilege-escalation backdoor around Nautobot's own object-type
+    policy. This is the live-cluster guard for that fix: the resolved scope must
+    be non-empty (real data models present) yet contain none of the protected
+    models.
+    """
+    status = rbac_api_login(USER_NETWORK)
+    assert status == 200, f"expected authorized 200 for {USER_NETWORK}, got {status}"
+
+    grants = _perm_grants(rbac_nbshell, USER_NETWORK)
+    view = grants.get(f"{USER_NETWORK}_view")
+    assert view is not None, f"missing view perm; got {sorted(grants)}"
+
+    scope = set(view["object_types"])
+    assert scope, f"view perm ('all') resolved to an empty scope: {view}"
+
+    leaked = scope & _PRIVILEGE_MODELS
+    assert not leaked, (
+        f"'all' expansion leaked privilege models into {USER_NETWORK}_view: {sorted(leaked)}"
+    )
+    # Sanity: a real data model IS present, so the exclusion didn't nuke everything
+    # (an empty scope would also technically "exclude" the privilege models).
+    assert "dcim.device" in scope, (
+        f"expected dcim.device in the 'all' scope; got a suspiciously narrow set: {sorted(scope)}"
+    )
+
+
+def test_superuser_entry_creates_inert_membership_marker(
+    rbac_require_configured: str,
+    rbac_api_login: Callable[[str], int],
+    rbac_nbshell: Callable[[str], str],
+) -> None:
+    """An ``is_superuser: true`` entry leaves an inert, revocable membership marker.
+
+    ``nvcm-admin`` is membership-only (``is_superuser: true``, no per-action
+    perms). Without a module-owned fingerprint on the group, a later removal of
+    the entry could not be detected and the membership would dangle. So the sync
+    attaches a single inert ``<group>_nvcm-managed-membership`` ObjectPermission:
+    empty ``actions`` and empty ``object_types`` (grants nothing) but marks the
+    group as ours. This asserts the marker exists and is genuinely inert; the
+    end-to-end revoke it enables is covered by
+    ``test_membership_only_group_revoked_via_marker``.
+    """
+    status = rbac_api_login(USER_ADMIN)
+    assert status == 200, f"expected authorized 200 for {USER_ADMIN}, got {status}"
+
+    grants = _perm_grants(rbac_nbshell, USER_ADMIN)
+    marker_name = f"{USER_ADMIN}_{_MEMBERSHIP_MARKER_SUFFIX}"
+    marker = grants.get(marker_name)
+    assert marker is not None, (
+        f"inert membership marker {marker_name!r} missing for the superuser entry; "
+        f"got {sorted(grants)}"
+    )
+    assert marker["actions"] == [], f"marker must grant no actions: {marker}"
+    assert marker["object_types"] == [], f"marker must have no object-type scope: {marker}"
+    # Superuser entries get ONLY the marker -- no per-action <group>_<action> perms.
+    assert set(grants) == {marker_name}, (
+        f"superuser group should carry only the inert marker; got {sorted(grants)}"
+    )
+
+
+def test_membership_only_group_revoked_via_marker(
+    rbac_require_configured: str,
+    rbac_api_login: Callable[[str], int],
+    rbac_nbshell: Callable[[str], str],
+) -> None:
+    """A membership-only managed group is revoked on login via its marker alone.
+
+    ``test_revoke_prunes_stale_managed_group_without_crash`` plants a
+    ``<group>_<action>`` perm; this covers the membership-only fix. We plant a
+    group whose ONLY module-owned fingerprint is the inert
+    ``<group>_nvcm-managed-membership`` marker -- exactly what an ``is_superuser``
+    or perms-less entry leaves behind -- and add ``nvcm-network`` to it. Because
+    the group is not in the mapping, the next login must recognise it as managed
+    *via the marker* and revoke the membership + prune the marker. Before the fix
+    such a group had no ``<group>_<action>`` perm, so removal left the membership
+    (and its access) dangling.
+    """
+    stale_group = f"rbac-it-marker-{uuid.uuid4().hex[:8]}"
+    marker_perm = f"{stale_group}_{_MEMBERSHIP_MARKER_SUFFIX}"
+
+    setup_body = (
+        "from django.contrib.auth import get_user_model\n"
+        "from django.contrib.auth.models import Group\n"
+        "from nautobot.users.models import ObjectPermission\n"
+        "U = get_user_model()\n"
+        # Ensure the user exists even if this test runs before the grant test.
+        f"user, _ = U.objects.get_or_create(username={USER_NETWORK!r})\n"
+        f"group, _ = Group.objects.get_or_create(name={stale_group!r})\n"
+        # Inert marker: empty actions + no object_types, exactly like the real one.
+        f"perm, _ = ObjectPermission.objects.get_or_create(name={marker_perm!r}, "
+        "defaults={'actions': [], 'constraints': {}})\n"
+        "perm.object_types.set([])\n"
+        "perm.groups.add(group)\n"
+        "user.groups.add(group)\n"
+        "_emit({\n"
+        "    'user_in_group': group.name in user.groups.values_list('name', flat=True),\n"
+        f"    'perm_exists': ObjectPermission.objects.filter(name={marker_perm!r}).exists(),\n"
+        "})\n"
+    )
+    try:
+        pre = _nbshell_json(rbac_nbshell, setup_body)
+        assert pre["user_in_group"], "precondition: user should be in the marker-only group"
+        assert pre["perm_exists"], "precondition: marker perm should exist"
+
+        # Login triggers the reconcile -> revoke path for the removed group.
+        status = rbac_api_login(USER_NETWORK)
+        assert status == 200, (
+            f"login regressed to {status}: the marker-driven revoke path likely crashed."
+        )
+
+        state = _user_state(rbac_nbshell, USER_NETWORK)
+        assert stale_group not in state["groups"], (
+            f"marker-only group membership not revoked: groups={state['groups']}"
+        )
+        remaining = _managed_perms(rbac_nbshell, stale_group)
+        assert remaining == [], f"marker perm not pruned on revoke: {remaining}"
+    finally:
+        cleanup_body = (
+            "from django.contrib.auth import get_user_model\n"
+            "from django.contrib.auth.models import Group\n"
+            "from nautobot.extras.context_managers import web_request_context\n"
+            "from nautobot.users.models import ObjectPermission\n"
+            f"user = get_user_model().objects.get(username={USER_NETWORK!r})\n"
+            "with web_request_context(user, context_detail='nv-config-manager-auth: RBAC integration cleanup'):\n"
+            f"    ObjectPermission.objects.filter(name={marker_perm!r}).delete()\n"
             f"    Group.objects.filter(name={stale_group!r}).delete()\n"
             "_emit({'cleaned': True})\n"
         )
