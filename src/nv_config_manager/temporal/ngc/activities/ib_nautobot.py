@@ -1188,6 +1188,15 @@ async def _find_device(client: NautobotClient, host: str) -> dict[str, Any]:
     return next(iter(by_id.values()))
 
 
+async def canonicalize_ufm_host(host: str) -> str:
+    """Resolve a UFM host (device name or IPv4) to one identifier."""
+    client = NautobotClient()
+    async with client:
+        device = await _find_device(client, host)
+    canonical = (device.get("primary_ip4") or {}).get("host") or device["name"]
+    return str(canonical)
+
+
 def _walk_location_chain(location: dict[str, Any] | None) -> list[dict[str, Any]]:
     """Return [location, parent, grandparent, ...] until parent is missing."""
     chain: list[dict[str, Any]] = []

@@ -7,16 +7,20 @@
         <strong>InfiniBand PKey</strong>
     </div>
     <table class="table table-hover panel-body attr-table">
+        <colgroup>
+            <col style="width: 25%;">
+            <col>
+        </colgroup>
         <tr>
-            <td>Name</td>
+            <th scope="row">Name</th>
             <td>{{ object.name }}</td>
         </tr>
         <tr>
-            <td>Status</td>
+            <th scope="row">Status</th>
             <td>{{ object.status|hyperlinked_object_with_color }}</td>
         </tr>
         <tr>
-            <td>PKey</td>
+            <th scope="row">PKey</th>
             <td>
                 <span class="hover_copy">
                     <span id="copy_title">{{ object.pkey }}</span>
@@ -27,15 +31,15 @@
             </td>
         </tr>
         <tr>
-            <td>Membership Type</td>
+            <th scope="row">Membership Type</th>
             <td>{{ object.get_membership_type_display|placeholder }}</td>
         </tr>
         <tr>
-            <td>Overlay</td>
+            <th scope="row">Overlay</th>
             <td>{{ object.overlay|hyperlinked_object|placeholder }}</td>
         </tr>
         <tr>
-            <td>Tenant</td>
+            <th scope="row">Tenant</th>
             <td>{{ object.tenant|hyperlinked_object|placeholder }}</td>
         </tr>
     </table>
@@ -60,20 +64,24 @@
         <strong>Overlay Details</strong>
     </div>
     <table class="table table-hover panel-body attr-table">
+        <colgroup>
+            <col style="width: 25%;">
+            <col>
+        </colgroup>
         <tr>
-            <td>Overlay</td>
+            <th scope="row">Overlay</th>
             <td>{{ object.overlay|hyperlinked_object }}</td>
         </tr>
         <tr>
-            <td>Overlay Status</td>
+            <th scope="row">Overlay Status</th>
             <td>{{ object.overlay.status|hyperlinked_object_with_color }}</td>
         </tr>
         <tr>
-            <td>Location</td>
+            <th scope="row">Location</th>
             <td>{{ object.overlay.location|hyperlinked_object|placeholder }}</td>
         </tr>
         <tr>
-            <td>Isolation Type</td>
+            <th scope="row">Isolation Type</th>
             <td>{{ object.overlay.get_isolation_type_display|placeholder }}</td>
         </tr>
     </table>

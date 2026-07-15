@@ -18,6 +18,8 @@ import re
 
 from pydantic import BaseModel
 
+from nv_config_manager.temporal.common.lock import WorkflowLockSpec
+
 
 class WorkflowMetadataMixin:
     """Mixin to provide metadata for workflows."""
@@ -29,6 +31,7 @@ class WorkflowMetadataMixin:
     workflow_api_endpoint: str | None = None
     workflow_namespace: str | None = None
     workflow_mcp_enabled: bool = False
+    workflow_lock: WorkflowLockSpec | None = None
 
     @classmethod
     def get_workflow_name(cls) -> str:
@@ -82,6 +85,16 @@ class WorkflowMetadataMixin:
     def get_workflow_mcp_enabled(cls) -> bool:
         """Return whether this workflow can be exposed as an MCP tool."""
         return cls.workflow_mcp_enabled
+
+    @classmethod
+    def get_workflow_lock(cls) -> WorkflowLockSpec | None:
+        """Return the per-resource lock this workflow serializes on, if any."""
+        return cls.workflow_lock
+
+    @classmethod
+    async def canonicalize_input(cls, body: BaseModel) -> BaseModel:
+        """Normalize workflow input at the API boundary before the run starts."""
+        return body
 
     @classmethod
     def has_complete_metadata(cls) -> bool:

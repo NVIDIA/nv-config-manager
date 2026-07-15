@@ -1,16 +1,9 @@
-{{/*
-GatewayClass - Only create if:
-  - ingress.type is envoyGateway
-  - gateway.createGatewayClass is not explicitly false
-
-Set gateway.createGatewayClass=false when using an existing Envoy Gateway
-installation (e.g., shared infrastructure, pre-installed by platform team).
-*/}}
+{{/* GatewayClass ownership belongs to Envoy Gateway when chart-managed. */}}
 {{- $createGatewayClass := true }}
 {{- if hasKey .Values.gateway "createGatewayClass" }}
   {{- $createGatewayClass = .Values.gateway.createGatewayClass }}
 {{- end }}
-{{- if and (eq (.Values.ingress.type | default "envoyGateway") "envoyGateway") $createGatewayClass }}
+{{- if and .Values.gateway.enabled .Values.gateway.create $createGatewayClass (eq (include "nv-config-manager.gatewayControllerType" .) "envoyGateway") }}
 apiVersion: gateway.networking.k8s.io/v1
 kind: GatewayClass
 metadata:

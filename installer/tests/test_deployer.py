@@ -46,6 +46,7 @@ from nv_config_manager_installer.k8s import LOADER_POD_IMAGE
 from nv_config_manager_installer.schema import (
     ClusterConfig,
     ContentConfig,
+    GatewayType,
     GitTokenEntry,
     ImagePullSecret,
     ImagesConfig,
@@ -64,6 +65,8 @@ from nv_config_manager_installer.schema import (
     ServicesConfig,
     SiteConfig,
     TemplatePath,
+    ZTPStorageConfig,
+    ZTPStorageType,
 )
 
 _OPERATOR_VERSIONS = """\
@@ -71,7 +74,6 @@ GATEWAY_API_VERSION=v1.4.1
 ENVOY_GATEWAY_VERSION=v1.6.5
 CERT_MANAGER_VERSION=v1.20.2
 CNPG_OPERATOR_VERSION=0.28.0
-INGRESS_NGINX_VERSION=4.15.1
 PROMETHEUS_CRD_VERSION=v0.90.1
 PROMETHEUS_OPERATOR_VERSION=84.5.0
 """
@@ -348,6 +350,18 @@ class TestStepSequencing:
 
 
 class TestInstallCrds:
+    def test_kgateway_rejects_envoy_gateway_install(self):
+        config = _make_config()
+        config.infrastructure.gateway = GatewayType.KGATEWAY
+        deployer = Deployer(
+            config,
+            DeployOptions(install_envoy_gateway=True),
+            RecordingCallback(),
+        )
+
+        with pytest.raises(RuntimeError, match="install kgateway"):
+            deployer._install_crds()
+
     def test_cert_manager_online_install_uses_matching_pin(self, tmp_path, monkeypatch):
         (tmp_path / "helm").mkdir()
         (tmp_path / "operator-versions.env").write_text(_OPERATOR_VERSIONS)
@@ -503,6 +517,20 @@ class TestInstallCrds:
             ["helm", "show", "crds", str(charts_dir / "gateway-helm-v1.6.5.tgz")]
         ]
         assert not any("github.com/cert-manager" in cmd for cmd in rendered_commands)
+
+
+class TestGatewayPatching:
+    def test_kgateway_skips_envoy_host_port_patch(self):
+        config = _make_config()
+        config.infrastructure.gateway = GatewayType.KGATEWAY
+        callback = RecordingCallback()
+        deployer = Deployer(config, DeployOptions(), callback)
+
+        deployer._patch_gateway()
+
+        statuses = dict(callback.step_updates)
+        assert statuses["patch-gateway"] == StepStatus.SKIPPED
+        assert "GatewayParameters" in deployer._get_step("patch-gateway").output[0]
 
 
 class TestDeployOptions:
@@ -1402,6 +1430,54 @@ class TestK8sClientIntegration:
             if call.args[0] == "nautobot-token"
         )
         assert nautobot_token_call.args[2]["read-only-token"] == "ro-token"
+
+    @patch("nv_config_manager_installer.deployer._run_logged")
+    @patch("nv_config_manager_installer.deployer._run")
+    @patch("nv_config_manager_installer.deployer.K8sClient")
+    @patch("nv_config_manager_installer.deployer.shutil.which", return_value="/usr/bin/kubectl")
+    def test_create_secrets_includes_ztp_s3_credentials(
+        self,
+        mock_which,
+        mock_k8s_class,
+        mock_run,
+        mock_run_logged,
+    ):
+        mock_k8s = _mock_k8s()
+        mock_k8s_class.return_value = mock_k8s
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        mock_run_logged.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+        config = _make_config()
+        config.infrastructure = InfrastructureConfig(
+            ztp_storage=ZTPStorageConfig(type=ZTPStorageType.S3)
+        )
+        config.secrets = SecretsConfig(
+            method=SecretsMethod.KUBERNETES,
+            k8s=KubernetesSecretsConfig(
+                ztp_s3=K8sSecretGroup(
+                    enabled=True,
+                    values={
+                        "endpoint": "https://minio.example",
+                        "accessKeyId": "access",
+                        "secretAccessKey": "secret",
+                    },
+                )
+            ),
+        )
+        cb = RecordingCallback()
+        deployer = Deployer(config, DeployOptions(dry_run=True), cb)
+        deployer.run()
+
+        ztp_s3_call = next(
+            call
+            for call in mock_k8s.apply_secret.call_args_list
+            if call.args[0] == "ztp-s3-credentials"
+        )
+        assert ztp_s3_call.args[2] == {
+            "CUSTOM_S3_ENDPOINT": "https://minio.example",
+            "CUSTOM_S3_ACCESS_KEY": "access",
+            "CUSTOM_S3_SECRET_KEY": "secret",
+        }
 
     def test_api_token_retrieval(self):
         config = _make_config()

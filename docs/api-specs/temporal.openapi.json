@@ -135,6 +135,32 @@
         "title": "CommandEntry",
         "type": "object"
       },
+      "ConfigDiffInput": {
+        "description": "Config Diff Workflow input.",
+        "properties": {
+          "device": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NetworkDeviceData"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Preloaded network device data, if available."
+          },
+          "device_id": {
+            "description": "Identifier of the network device to compare.",
+            "title": "Device Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "device_id"
+        ],
+        "title": "ConfigDiffInput",
+        "type": "object"
+      },
       "ConnectedHostWorkflowInput": {
         "description": "Connected Host Workflow Input.",
         "properties": {
@@ -987,6 +1013,25 @@
         "title": "NetworkDeviceData",
         "type": "object"
       },
+      "Overlay": {
+        "description": "Overlay data for dropdown population.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "Overlay",
+        "type": "object"
+      },
       "Platform": {
         "description": "Network device platform types.",
         "enum": [
@@ -1258,19 +1303,7 @@
             "type": "boolean"
           },
           "roles": {
-            "default": [
-              "tan-bbr",
-              "cin-core",
-              "cin-spine",
-              "cin-leaf",
-              "tan-core",
-              "tan-spine",
-              "tan-leaf",
-              "smn-core",
-              "smn-spine",
-              "smn-leaf",
-              "smn-aggleaf"
-            ],
+            "default": [],
             "description": "Device roles used to filter the selected network devices.",
             "items": {
               "type": "string"
@@ -1285,8 +1318,8 @@
           },
           "status": {
             "default": [
-              "active",
-              "provisioning"
+              "Active",
+              "Provisioned"
             ],
             "description": "Device statuses used to filter the selected network devices.",
             "items": {
@@ -1296,10 +1329,16 @@
             "type": "array"
           },
           "tenant": {
-            "default": "nsv",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "description": "Tenant used to filter the selected network devices.",
-            "title": "Tenant",
-            "type": "string"
+            "title": "Tenant"
           }
         },
         "required": [
@@ -1313,19 +1352,12 @@
         "properties": {
           "location": {
             "description": "Location containing the devices to update.",
+            "minLength": 1,
             "title": "Location",
             "type": "string"
           },
           "roles": {
-            "default": [
-              "TAN-Core",
-              "TAN-Spine",
-              "TAN-Leaf",
-              "SMN-Core",
-              "SMN-Spine",
-              "SMN-Leaf",
-              "SMN-Aggleaf"
-            ],
+            "default": [],
             "description": "Device roles used to filter the selected network devices.",
             "items": {
               "type": "string"
@@ -1351,10 +1383,16 @@
             "type": "array"
           },
           "tenant": {
-            "default": "NGC",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "description": "Tenant used to filter the selected network devices.",
-            "title": "Tenant",
-            "type": "string"
+            "title": "Tenant"
           }
         },
         "required": [
@@ -1857,7 +1895,10 @@
             "type": "string"
           },
           "status": {
-            "default": [],
+            "default": [
+              "Active",
+              "Provisioned"
+            ],
             "description": "Device statuses used to filter the selected network devices.",
             "items": {
               "type": "string"
@@ -1866,14 +1907,20 @@
             "type": "array"
           },
           "tenant": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "description": "Tenant used to filter the selected network devices.",
-            "title": "Tenant",
-            "type": "string"
+            "title": "Tenant"
           }
         },
         "required": [
-          "site",
-          "tenant"
+          "site"
         ],
         "title": "ValidateHardwareInput",
         "type": "object"
@@ -3028,6 +3075,85 @@
         ]
       }
     },
+    "/v1/parameter/overlay": {
+      "get": {
+        "description": "Return overlays, optionally filtered by location and isolation type.",
+        "operationId": "get_overlays_v1_parameter_overlay_get",
+        "parameters": [
+          {
+            "description": "Limit to overlays at this location",
+            "in": "query",
+            "name": "location",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Limit to overlays at this location",
+              "title": "Location"
+            }
+          },
+          {
+            "description": "Limit to overlays with this isolation type",
+            "in": "query",
+            "name": "isolation_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Limit to overlays with this isolation type",
+              "title": "Isolation Type"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Overlay"
+                  },
+                  "title": "Response Get Overlays V1 Parameter Overlay Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Overlays",
+        "tags": [
+          "parameters"
+        ]
+      }
+    },
     "/v1/parameter/role": {
       "get": {
         "description": "Return a list of roles. Default: all. With managed_only=true: only those with managed devices.",
@@ -3709,6 +3835,53 @@
           }
         ],
         "summary": "Execute BatchDeployWorkflow",
+        "tags": [
+          "workflow"
+        ]
+      }
+    },
+    "/v1/workflow/ngc/config_diff": {
+      "post": {
+        "description": "Compare the intended configuration against the live device without applying any changes",
+        "operationId": "configdiffworkflow_endpoint_v1_workflow_ngc_config_diff_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigDiffInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Execute ConfigDiffWorkflow",
         "tags": [
           "workflow"
         ]

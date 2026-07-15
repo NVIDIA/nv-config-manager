@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from temporalio import workflow
 
 from nv_config_manager.temporal.common.decorators.workflow import run_nv_config_manager_workflow
+from nv_config_manager.temporal.common.lock import WorkflowLockSpec
 from nv_config_manager.temporal.common.mixins.metadata import WorkflowMetadataMixin
 from nv_config_manager.temporal.common.mixins.stage import (
     StageInput,
@@ -27,6 +28,7 @@ from nv_config_manager.temporal.common.mixins.stage import (
     StageOutput,
     stage_executor,
 )
+from nv_config_manager.temporal.ngc.workflows._ib_pkey_lock import UFMHostLockMixin
 
 with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.common.mixins.archive import ArchiveMixin
@@ -101,7 +103,7 @@ class IBPKeyMemberDeleteOutput(BaseModel):
 
 
 @workflow.defn
-class IBPKeyMemberDeleteWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin):
+class IBPKeyMemberDeleteWorkflow(UFMHostLockMixin, WorkflowMetadataMixin, StageMixin, ArchiveMixin):
     """Remove device interface GUIDs from an existing IB PKey partition."""
 
     workflow_name = "InfiniBand PKey Member Delete"
@@ -109,6 +111,7 @@ class IBPKeyMemberDeleteWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
     workflow_input_class = IBPKeyMemberDeleteInput
     workflow_api_endpoint = "/ngc/ib_pkey_member_delete"
     workflow_namespace = "ngc"
+    workflow_lock = WorkflowLockSpec(key_fields=["host", "pkey"])
 
     def __init__(self) -> None:
         """Initialize workflow with five stages."""

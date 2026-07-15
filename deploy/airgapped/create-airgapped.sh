@@ -27,7 +27,7 @@
 #   --skip-chart            Skip chart/dependency chart packaging
 #   --skip-docs             Skip copying documentation source
 #   --include-skopeo        Include the build host Skopeo binary in tools/skopeo/
-#   --include-agpl-observability Include AGPL Grafana/Loki observability charts and related images
+#   --include-agpl-observability Include AGPL Grafana/Loki/Tempo observability charts and related images
 #   --skopeo-binary PATH    Skopeo binary to include (default: command -v skopeo)
 #   --arch ARCH             Build only for specific architecture: amd64, arm64, or both (default: both)
 #   --help                  Show help message
@@ -148,19 +148,27 @@ done
 
 # Helper functions
 log_info() {
-    echo -e "${BLUE}ℹ${NC} $1"
+    local message="$1"
+    echo -e "${BLUE}ℹ${NC} $message"
+    return 0
 }
 
 log_success() {
-    echo -e "${GREEN}✓${NC} $1"
+    local message="$1"
+    echo -e "${GREEN}✓${NC} $message"
+    return 0
 }
 
 log_warn() {
-    echo -e "${YELLOW}⚠${NC} $1"
+    local message="$1"
+    echo -e "${YELLOW}⚠${NC} $message"
+    return 0
 }
 
 log_error() {
-    echo -e "${RED}✗${NC} $1"
+    local message="$1"
+    echo -e "${RED}✗${NC} $message"
+    return 0
 }
 
 load_operator_versions() {
@@ -178,7 +186,6 @@ load_operator_versions() {
         ENVOY_GATEWAY_VERSION \
         CERT_MANAGER_VERSION \
         CNPG_OPERATOR_VERSION \
-        INGRESS_NGINX_VERSION \
         PROMETHEUS_CRD_VERSION \
         PROMETHEUS_OPERATOR_VERSION; do
         if [[ -z "${!name:-}" ]]; then
@@ -216,6 +223,7 @@ detect_container_runtime() {
         log_error "  - containerd (ctr + crictl)"
         exit 1
     fi
+    return 0
 }
 
 check_prerequisites() {
@@ -269,6 +277,7 @@ check_prerequisites() {
     fi
     
     log_success "All prerequisites met"
+    return 0
 }
 
 setup_ngc_authentication() {
@@ -297,6 +306,7 @@ setup_ngc_authentication() {
         log_success "NGC API key is set - will pass credentials directly to ctr image pull"
         return 0
     fi
+    return 0
 }
 
 setup_build_dir() {
@@ -319,6 +329,7 @@ setup_build_dir() {
     
     log_success "Build directory: $BUILD_DIR"
     log_info "Output directory: $OUTPUT_DIR"
+    return 0
 }
 
 get_version() {
@@ -330,17 +341,18 @@ get_version() {
         fi
     fi
     log_info "Using version: $VERSION"
+    return 0
 }
 
 sanitize_agpl_chart_dependencies() {
     local helm_dir="$1"
 
     if [[ "$INCLUDE_AGPL_OBSERVABILITY" == true ]]; then
-        return
+        return 0
     fi
 
-    log_warn "Excluding AGPL Grafana and Loki chart dependencies from the airgap bundle"
-    rm -f "$helm_dir"/charts/grafana-*.tgz "$helm_dir"/charts/loki-*.tgz
+    log_warn "Excluding AGPL Grafana, Loki, and Tempo chart dependencies from the airgap bundle"
+    rm -f "$helm_dir"/charts/grafana-*.tgz "$helm_dir"/charts/loki-*.tgz "$helm_dir"/charts/tempo-*.tgz
     rm -f "$helm_dir/Chart.lock"
 
     python3 - "$helm_dir/Chart.yaml" <<'PY'
@@ -353,7 +365,11 @@ out = []
 i = 0
 while i < len(lines):
     line = lines[i]
-    if line.startswith("  - name: grafana") or line.startswith("  - name: loki"):
+    if (
+        line.startswith("  - name: grafana")
+        or line.startswith("  - name: loki")
+        or line.startswith("  - name: tempo")
+    ):
         i += 1
         while i < len(lines):
             nxt = lines[i]
@@ -368,12 +384,13 @@ while i < len(lines):
     i += 1
 path.write_text("".join(out))
 PY
+    return 0
 }
 
 package_helm_chart() {
     if [[ "$SKIP_CHART" = true ]]; then
         log_warn "Skipping Helm chart packaging"
-        return
+        return 0
     fi
     
     log_info "Packaging Helm chart from local source..."
@@ -401,13 +418,13 @@ package_helm_chart() {
     else
         log_success "Helm chart ready: $helm_dir/"
     fi
+    return 0
 }
 
 load_external_charts() {
     # Operator charts are generated from deploy/operator-versions.env.
     echo "oci://ghcr.io/cloudnative-pg/charts/cloudnative-pg:${CNPG_OPERATOR_VERSION}"
     echo "oci://quay.io/jetstack/charts/cert-manager:${CERT_MANAGER_VERSION}"
-    echo "helm://https://kubernetes.github.io/ingress-nginx|ingress-nginx:${INGRESS_NGINX_VERSION}"
     echo "helm://https://prometheus-community.github.io/helm-charts|prometheus-operator-crds:28.0.1"
     if [[ "$INCLUDE_AGPL_OBSERVABILITY" == true ]]; then
         echo "helm://https://prometheus-community.github.io/helm-charts|kube-prometheus-stack:${PROMETHEUS_OPERATOR_VERSION}"
@@ -418,7 +435,7 @@ load_external_charts() {
     local charts_config="$SCRIPT_DIR/charts.config"
     
     if [[ ! -f "$charts_config" ]]; then
-        return
+        return 0
     fi
     
     while IFS= read -r line || [[ -n "$line" ]]; do
@@ -428,12 +445,13 @@ load_external_charts() {
         line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
         [[ -n "$line" ]] && echo "$line"
     done < "$charts_config"
+    return 0
 }
 
 package_external_charts() {
     if [[ "$SKIP_CHART" = true ]]; then
         log_warn "Skipping external chart packaging"
-        return
+        return 0
     fi
     
     local charts_dir="$BUILD_DIR/charts"
@@ -447,7 +465,7 @@ package_external_charts() {
     
     if [[ ${#external_charts[@]} -eq 0 ]]; then
         log_info "No external charts configured"
-        return
+        return 0
     fi
     
     log_info "Packaging ${#external_charts[@]} external chart(s)..."
@@ -538,6 +556,7 @@ package_external_charts() {
             rm -rf "$temp_pull_dir"
         fi
     done
+    return 0
 }
 
 # Package dependency manifests (Gateway API CRDs, Prometheus Operator CRDs)
@@ -546,7 +565,7 @@ package_external_charts() {
 package_dependency_manifests() {
     if [[ "$SKIP_CHART" = true ]]; then
         log_warn "Skipping dependency manifest packaging"
-        return
+        return 0
     fi
     
     local manifests_dir="$BUILD_DIR/manifests"
@@ -576,6 +595,7 @@ package_dependency_manifests() {
     fi
     
     log_success "Dependency manifests packaged"
+    return 0
 }
 
 extract_images_from_external_charts() {
@@ -615,6 +635,7 @@ extract_images_from_external_charts() {
     done
     
     printf '%s\n' "${images[@]}" | sort -u
+    return $?
 }
 
 load_extra_images() {
@@ -622,7 +643,7 @@ load_extra_images() {
     local extra_images_file="$SCRIPT_DIR/extraimages.config"
     
     if [[ ! -f "$extra_images_file" ]]; then
-        return
+        return 0
     fi
     
     while IFS= read -r line || [[ -n "$line" ]]; do
@@ -632,6 +653,30 @@ load_extra_images() {
         line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
         [[ -n "$line" ]] && echo "$line"
     done < "$extra_images_file"
+    return 0
+}
+
+normalize_image_reference() {
+    local image_value="$1"
+    local first_segment="${image_value%%/*}"
+    first_segment="${first_segment%%:*}"
+
+    if [[ "$first_segment" != *.* &&
+        "$first_segment" != "docker.io" &&
+        "$first_segment" != "nvcr.io" &&
+        "$first_segment" != "ghcr.io" &&
+        "$first_segment" != "quay.io" &&
+        "$first_segment" != "gcr.io" &&
+        "$first_segment" != "registry.k8s.io" ]]; then
+        if [[ "$image_value" == */* ]]; then
+            image_value="docker.io/${image_value}"
+        else
+            image_value="docker.io/library/${image_value}"
+        fi
+    fi
+
+    printf '%s\n' "$image_value"
+    return 0
 }
 
 extract_images_from_manifests() {
@@ -640,7 +685,7 @@ extract_images_from_manifests() {
     local images=()
     
     if [[ ! -d "$manifests_dir" ]]; then
-        return
+        return 0
     fi
     
     # Find all YAML files in manifests directory
@@ -673,17 +718,7 @@ extract_images_from_manifests() {
                 image_value="${image_value}:latest"
             fi
             
-            # Normalize image reference - add docker.io registry if no registry specified
-            local first_segment=$(echo "$image_value" | cut -d'/' -f1 | cut -d':' -f1)
-            if ! echo "$first_segment" | grep -q '\.'; then
-                if [[ "$first_segment" != "docker.io" && "$first_segment" != "nvcr.io" && "$first_segment" != "ghcr.io" && "$first_segment" != "quay.io" && "$first_segment" != "gcr.io" && "$first_segment" != "registry.k8s.io" ]]; then
-                    if echo "$image_value" | grep -q '/'; then
-                        image_value="docker.io/${image_value}"
-                    else
-                        image_value="docker.io/library/${image_value}"
-                    fi
-                fi
-            fi
+            image_value=$(normalize_image_reference "$image_value")
             
             images+=("$image_value")
         done < <(grep -iE '^\s*image:' "$manifest_file" 2>/dev/null | sed 's/^[[:space:]]*//')
@@ -691,6 +726,7 @@ extract_images_from_manifests() {
     
     # Remove duplicates and return
     printf '%s\n' "${images[@]}" | sort -u
+    return $?
 }
 
 extract_images_from_chart() {
@@ -703,7 +739,7 @@ extract_images_from_chart() {
     # Check if helm is available
     if ! command -v helm &> /dev/null; then
         printf '%s\n' "${images[@]}"
-        return
+        return 0
     fi
     
     # Find the extracted chart directory
@@ -768,17 +804,7 @@ extract_images_from_chart() {
                 image_value="${image_value}:latest"
             fi
             
-            # Normalize image reference - add docker.io registry if no registry specified
-            local first_segment=$(echo "$image_value" | cut -d'/' -f1 | cut -d':' -f1)
-            if ! echo "$first_segment" | grep -q '\.'; then
-                if [[ "$first_segment" != "docker.io" && "$first_segment" != "nvcr.io" && "$first_segment" != "ghcr.io" && "$first_segment" != "quay.io" && "$first_segment" != "gcr.io" && "$first_segment" != "registry.k8s.io" ]]; then
-                    if echo "$image_value" | grep -q '/'; then
-                        image_value="docker.io/${image_value}"
-                    else
-                        image_value="docker.io/library/${image_value}"
-                    fi
-                fi
-            fi
+            image_value=$(normalize_image_reference "$image_value")
             
             images+=("$image_value")
         done < <(echo "$templated_output" | grep -iE '^\s*image:' | sed 's/^[[:space:]]*//')
@@ -786,6 +812,7 @@ extract_images_from_chart() {
     
     # Remove duplicates and return
     printf '%s\n' "${images[@]}" | sort -u
+    return $?
 }
 
 
@@ -814,6 +841,7 @@ save_with_skopeo_archive() {
     fi
 
     "$skopeo_bin" "${skopeo_args[@]}" "docker://${image}" "docker-archive:${archive}:${image}"
+    return $?
 }
 
 save_image_archive() {
@@ -840,7 +868,7 @@ pull_docker_images() {
     
     if [[ "$SKIP_IMAGES" = true ]]; then
         log_warn "Skipping Docker image pulling"
-        return
+        return 0
     fi
     
     # Setup NGC authentication before pulling images (only on first call)
@@ -1120,12 +1148,13 @@ pull_docker_images() {
     fi
     
     log_success "Docker images pulled and saved for $arch"
+    return 0
 }
 
 create_documentation() {
     if [[ "$SKIP_DOCS" = true ]]; then
         log_warn "Skipping documentation copy"
-        return
+        return 0
     fi
 
     local docs_src="$REPO_ROOT/docs"
@@ -1136,11 +1165,12 @@ create_documentation() {
     else
         log_warn "docs/ not found; documentation will not be included"
     fi
+    return 0
 }
 
 copy_skopeo_tool() {
     if [[ "$INCLUDE_SKOPEO" != true ]]; then
-        return
+        return 0
     fi
 
     local src="$SKOPEO_BINARY"
@@ -1173,6 +1203,7 @@ SKOPEO_README
 
     log_success "Included Skopeo binary: $src"
     log_warn "Verify the bundled Skopeo binary is compatible with the target OS/architecture"
+    return 0
 }
 
 copy_deployment_files() {
@@ -1220,6 +1251,7 @@ copy_deployment_files() {
 
     copy_skopeo_tool
     package_installer
+    return 0
 }
 
 
@@ -1229,6 +1261,7 @@ pip_download() {
     else
         uv run --with pip python -m pip download "$@"
     fi
+    return $?
 }
 
 package_installer() {
@@ -1237,13 +1270,13 @@ package_installer() {
     local installer_src="$REPO_ROOT/installer"
     if [[ ! -f "$installer_src/pyproject.toml" ]]; then
         log_warn "Installer package not found at $installer_src, skipping"
-        return
+        return 0
     fi
 
     if ! command -v uv &>/dev/null; then
         log_warn "uv not available, skipping installer packaging"
         log_warn "Install uv (https://docs.astral.sh/uv/) to include the installer in the bundle"
-        return
+        return 0
     fi
 
     local installer_dest="$BUILD_DIR/installer"
@@ -1349,6 +1382,7 @@ package_installer() {
 
     _write_installer_bootstrap "$installer_dest"
     log_success "Installer packaging complete"
+    return 0
 }
 
 _write_installer_bootstrap() {
@@ -1422,6 +1456,7 @@ echo "  export PATH=\"$VENV_DIR/bin:\$PATH\""
 INSTALL_EOF
     chmod +x "$dest/install.sh"
     log_success "Created installer/install.sh"
+    return 0
 }
 
 create_manifest() {
@@ -1430,7 +1465,8 @@ create_manifest() {
     log_info "Creating manifest for $arch..."
 
     local chart_version=$(grep '^version:' "$CHART_DIR/Chart.yaml" | awk '{print $2}' | tr -d '"' | tr -d "'")
-    local app_version=$(grep '^appVersion:' "$CHART_DIR/Chart.yaml" | awk '{print $2}' | tr -d '"' | tr -d "'" || true)
+    local app_version
+    app_version=$(grep '^appVersion:' "$CHART_DIR/Chart.yaml" | awk '{print $2}' | tr -d '"' | tr -d "'" || true)
     app_version="${app_version:-$chart_version}"
 
     cat > "$BUILD_DIR/manifest-$arch.json" << EOF
@@ -1449,6 +1485,7 @@ create_manifest() {
 EOF
 
     log_success "Manifest created for $arch"
+    return 0
 }
 
 create_tarball() {
@@ -1528,6 +1565,7 @@ BUNDLE_README
         popd &> /dev/null
         log_success "Checksum created: $tarball_path.sha256"
     fi
+    return 0
 }
 
 print_summary() {
@@ -1556,6 +1594,7 @@ print_summary() {
     echo "  5. Install CLI: ./installer/install.sh"
     echo "  6. Configure/deploy with ./installer/nvcm-installer"
     echo ""
+    return 0
 }
 
 # Main execution
@@ -1611,6 +1650,7 @@ main() {
     print_summary
     
     log_success "All done!"
+    return 0
 }
 
 # Run main function

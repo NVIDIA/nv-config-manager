@@ -43,6 +43,17 @@ interface IBPKeyCreationRequest {
   pkey?: string;
 }
 
+const getPkeyHint = (pkeyValue?: string) => {
+  const normalizedPkeyValue = pkeyValue?.trim() ?? "";
+  if (!normalizedPkeyValue) {
+    return "Leave blank to auto-assign the next free PKey.";
+  }
+  if (!PKEY_HINT_PATTERN.test(normalizedPkeyValue)) {
+    return "Expected format: 0x followed by 1-4 hex digits (e.g. 0x8001). Server will reject if invalid.";
+  }
+  return "Will be canonicalized server-side to 0xNNNN.";
+};
+
 export const IBPKeyCreationWorkflowForm = () => {
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const { toast } = useToast();
@@ -57,13 +68,7 @@ export const IBPKeyCreationWorkflowForm = () => {
   });
 
   const pkeyValue = form.watch("pkey");
-  const normalizedPkeyValue = pkeyValue?.trim() ?? "";
-  const pkeyHint =
-    normalizedPkeyValue && !PKEY_HINT_PATTERN.test(normalizedPkeyValue)
-      ? "Expected format: 0x followed by 1-4 hex digits (e.g. 0x8001). Server will reject if invalid."
-      : normalizedPkeyValue
-        ? "Will be canonicalized server-side to 0xNNNN."
-        : "Leave blank to auto-assign the next free PKey.";
+  const pkeyHint = getPkeyHint(pkeyValue);
 
   const onSubmit = async (data: IBPKeyCreationFormValues) => {
     setIsSubmitting(true);

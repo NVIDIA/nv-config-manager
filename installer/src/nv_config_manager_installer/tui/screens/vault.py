@@ -44,6 +44,7 @@ _PATH_GROUPS: list[tuple[str, str]] = [
     ("slack", "Slack"),
     ("jira", "Jira"),
     ("cnpg_backup", "CNPG Backup S3"),
+    ("ztp_s3", "ZTP S3"),
 ]
 
 _DEFAULTS = VaultPathsConfig()
@@ -128,6 +129,16 @@ _K8S_GROUPS: list[tuple[str, str, bool, list[tuple[str, str]]]] = [
         [
             ("accessKeyId", "Access Key ID"),
             ("accessSecretKey", "Access Secret Key"),
+        ],
+    ),
+    (
+        "ztp_s3",
+        "ZTP S3",
+        True,
+        [
+            ("endpoint", "Endpoint"),
+            ("accessKeyId", "Access Key ID"),
+            ("secretAccessKey", "Secret Access Key"),
         ],
     ),
 ]
@@ -509,7 +520,7 @@ class SecretsScreen(Container):
             yield Label("─" * 40, classes="section-divider")
             yield Label(
                 "Leave any field empty to auto-generate a password at deploy time. "
-                "Enable optional integrations (Slack, Jira, CNPG Backup) to configure their credentials."
+                "Enable optional integrations (Slack, Jira, CNPG Backup, ZTP S3) to configure their credentials."
             )
             for field_name, label, optional, keys in _K8S_GROUPS:
                 grp: K8sSecretGroup = getattr(s.k8s, field_name)

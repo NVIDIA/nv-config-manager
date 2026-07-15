@@ -169,13 +169,13 @@
       "targets": [
         {
           "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
-          "expr": "sum(rate(nv_config_manager_nautobot_change_messages_processed{namespace=~\"$namespace\"}[5m]))",
+          "expr": "sum(rate(nv_config_manager_nautobot_change_messages_processed_total{namespace=~\"$namespace\"}[5m]))",
           "legendFormat": "Processed",
           "refId": "A"
         },
         {
           "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
-          "expr": "sum(rate(nv_config_manager_nautobot_change_messages_failed{namespace=~\"$namespace\"}[5m]))",
+          "expr": "sum(rate(nv_config_manager_nautobot_change_messages_failed_total{namespace=~\"$namespace\"}[5m]))",
           "legendFormat": "Failed",
           "refId": "B"
         }

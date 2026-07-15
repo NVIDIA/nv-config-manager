@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Hello World Temporal Worker."""
+"""Temporal Worker — NVIDIA Config Manager."""
 
 import asyncio
 import os
@@ -20,9 +20,11 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from temporalio.client import Client
+from temporalio.contrib.opentelemetry import TracingInterceptor
 from temporalio.worker import Worker
 
 from nv_config_manager.common.log import configure_logging
+from nv_config_manager.temporal.common.activities import REGISTERED_COMMON_ACTIVITIES
 from nv_config_manager.temporal.converter import get_data_converter
 from nv_config_manager.temporal.hello_world.activities import (
     REGISTERED_ACTIVITIES as HELLO_WORLD_REGISTERED_ACTIVITIES,
@@ -39,6 +41,7 @@ from nv_config_manager.temporal.ngc.activities import (
 from nv_config_manager.temporal.ngc.workflows import (
     REGISTERED_WORKFLOWS as NGC_REGISTERED_WORKFLOWS,
 )
+from nv_config_manager.temporal.telemetry import setup_telemetry
 
 configure_logging(service="temporal-worker")
 
@@ -51,18 +54,29 @@ def _enabled_env_flag(name: str) -> bool:
 async def main() -> None:
     """Run the temporal worker."""
     temporal_server = os.getenv("TEMPORAL_ADDRESS", "localhost:7233")
+    runtime = setup_telemetry("nv-config-manager-temporal-worker")
+
     client = await Client.connect(
         temporal_server,
         namespace="default",
         data_converter=get_data_converter(),
+        interceptors=[TracingInterceptor(always_create_workflow_spans=True)],
+        runtime=runtime,
     )
 
     # Combine activity lists - registered activities are lists of callables
-    all_activities = [*NGC_REGISTERED_ACTIVITIES, *HELLO_WORLD_REGISTERED_ACTIVITIES]
+    all_activities = [
+        *NGC_REGISTERED_ACTIVITIES,
+        *HELLO_WORLD_REGISTERED_ACTIVITIES,
+        *REGISTERED_COMMON_ACTIVITIES,
+    ]
     workflows: list[type[Any]] = [*NGC_REGISTERED_WORKFLOWS, *HELLO_WORLD_REGISTERED_WORKFLOWS]
     if _enabled_env_flag("NVCM_ENABLE_LOCAL_TEST_WORKFLOWS"):
         workflows.extend(HELLO_WORLD_LOCAL_TEST_WORKFLOWS)
 
+    # The TracingInterceptor is registered on the client above, which already
+    # covers worker activity/workflow calls. Registering it again here would
+    # double-instrument and emit duplicate spans.
     worker = Worker(
         client,
         task_queue="default-task-queue",

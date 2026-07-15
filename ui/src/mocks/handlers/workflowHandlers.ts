@@ -172,78 +172,130 @@ const getWorkflowDisplayStatus = (workflow: unknown): string => {
   return workflowRecord.status ?? "";
 };
 
-const filterWorkflows = (workflows: unknown[], url: URL) => {
-  const searchAttributeFilters = [
-    ["device_id", "DeviceID"],
-    ["device_name", "DeviceName"],
-    ["device_platform", "DevicePlatform"],
-    ["device_role", "DeviceRole"],
-    ["site", "Site"],
-    ["user", "User"],
-  ];
+const SEARCH_ATTRIBUTE_FILTERS = [
+  ["device_id", "DeviceID"],
+  ["device_name", "DeviceName"],
+  ["device_platform", "DevicePlatform"],
+  ["device_role", "DeviceRole"],
+  ["site", "Site"],
+  ["user", "User"],
+] as const;
 
-  return workflows.filter((workflow) => {
-    const workflowRecord = workflow as {
-      id?: string;
-      pending_approval?: boolean;
-      status?: string;
-      workflow_type?: string;
-    };
-    const workflowType = url.searchParams.get("workflow_type");
-    const workflowId = url.searchParams.get("workflow_id");
-    const status = url.searchParams.get("status");
-    const pendingApproval =
-      url.searchParams.get("pending_approval")?.toLowerCase() === "true";
-    const hideCompleted =
-      url.searchParams.get("hide_completed")?.toLowerCase() === "true";
-    const startTimeFilter = Date.parse(url.searchParams.get("start_time") ?? "");
-    const endTimeFilter = Date.parse(url.searchParams.get("end_time") ?? "");
+type WorkflowFilterRecord = {
+  id?: string;
+  pending_approval?: boolean;
+  status?: string;
+  workflow_type?: string;
+};
 
-    if (workflowType && workflowRecord.workflow_type !== workflowType) {
-      return false;
-    }
-    if (workflowId && workflowRecord.id !== workflowId) {
-      return false;
-    }
-    if (hideCompleted && workflowRecord.status === "COMPLETED") {
-      return false;
-    }
-    if (pendingApproval && !workflowRecord.pending_approval) {
-      return false;
-    }
-    if (
-      status &&
-      workflowRecord.status !== status &&
-      getWorkflowDisplayStatus(workflow) !== status
-    ) {
-      return false;
-    }
-    if (!Number.isNaN(startTimeFilter) || !Number.isNaN(endTimeFilter)) {
-      const workflowStartTime = getWorkflowStartTimestamp(workflow);
-      const workflowCloseTime = getWorkflowCloseTimestamp(workflow);
+type WorkflowFilters = {
+  workflowType: string | null;
+  workflowId: string | null;
+  status: string | null;
+  pendingApproval: boolean;
+  hideCompleted: boolean;
+  startTime: number;
+  endTime: number;
+};
 
-      if (Number.isNaN(workflowStartTime)) {
-        return false;
-      }
-      if (!Number.isNaN(startTimeFilter) && workflowStartTime < startTimeFilter) {
-        return false;
-      }
-      if (!Number.isNaN(endTimeFilter) && Number.isNaN(workflowCloseTime)) {
-        return false;
-      }
-      if (!Number.isNaN(endTimeFilter) && workflowCloseTime > endTimeFilter) {
-        return false;
-      }
-    }
+const getWorkflowFilters = (searchParams: URLSearchParams): WorkflowFilters => ({
+  workflowType: searchParams.get("workflow_type"),
+  workflowId: searchParams.get("workflow_id"),
+  status: searchParams.get("status"),
+  pendingApproval:
+    searchParams.get("pending_approval")?.toLowerCase() === "true",
+  hideCompleted:
+    searchParams.get("hide_completed")?.toLowerCase() === "true",
+  startTime: Date.parse(searchParams.get("start_time") ?? ""),
+  endTime: Date.parse(searchParams.get("end_time") ?? ""),
+});
 
-    return searchAttributeFilters.every(([param, attribute]) => {
-      const value = url.searchParams.get(param);
-      if (!value) {
-        return true;
-      }
-      return getFirstSearchAttribute(workflow, attribute) === value;
-    });
+const matchesWorkflowFields = (
+  workflow: unknown,
+  workflowRecord: WorkflowFilterRecord,
+  filters: WorkflowFilters
+): boolean => {
+  if (
+    filters.workflowType &&
+    workflowRecord.workflow_type !== filters.workflowType
+  ) {
+    return false;
+  }
+  if (filters.workflowId && workflowRecord.id !== filters.workflowId) {
+    return false;
+  }
+  if (filters.hideCompleted && workflowRecord.status === "COMPLETED") {
+    return false;
+  }
+  if (filters.pendingApproval && !workflowRecord.pending_approval) {
+    return false;
+  }
+  if (
+    filters.status &&
+    workflowRecord.status !== filters.status &&
+    getWorkflowDisplayStatus(workflow) !== filters.status
+  ) {
+    return false;
+  }
+  return true;
+};
+
+const matchesWorkflowTimeRange = (
+  workflow: unknown,
+  filters: WorkflowFilters
+): boolean => {
+  if (Number.isNaN(filters.startTime) && Number.isNaN(filters.endTime)) {
+    return true;
+  }
+
+  const workflowStartTime = getWorkflowStartTimestamp(workflow);
+  const workflowCloseTime = getWorkflowCloseTimestamp(workflow);
+
+  if (Number.isNaN(workflowStartTime)) {
+    return false;
+  }
+  if (
+    !Number.isNaN(filters.startTime) &&
+    workflowStartTime < filters.startTime
+  ) {
+    return false;
+  }
+  if (!Number.isNaN(filters.endTime) && Number.isNaN(workflowCloseTime)) {
+    return false;
+  }
+  if (!Number.isNaN(filters.endTime) && workflowCloseTime > filters.endTime) {
+    return false;
+  }
+  return true;
+};
+
+const matchesSearchAttributes = (
+  workflow: unknown,
+  searchParams: URLSearchParams
+): boolean =>
+  SEARCH_ATTRIBUTE_FILTERS.every(([param, attribute]) => {
+    const value = searchParams.get(param);
+    return !value || getFirstSearchAttribute(workflow, attribute) === value;
   });
+
+const matchesWorkflow = (
+  workflow: unknown,
+  filters: WorkflowFilters,
+  searchParams: URLSearchParams
+): boolean => {
+  const workflowRecord = workflow as WorkflowFilterRecord;
+  return (
+    matchesWorkflowFields(workflow, workflowRecord, filters) &&
+    matchesWorkflowTimeRange(workflow, filters) &&
+    matchesSearchAttributes(workflow, searchParams)
+  );
+};
+
+const filterWorkflows = (workflows: unknown[], url: URL) => {
+  const filters = getWorkflowFilters(url.searchParams);
+  return workflows.filter((workflow) =>
+    matchesWorkflow(workflow, filters, url.searchParams)
+  );
 };
 
 export const workflowFetchingHandlers = [
@@ -265,8 +317,8 @@ export const workflowFetchingHandlers = [
     const nextPageToken = url.searchParams.get("next_page_token");
     const limit = url.searchParams.get("limit");
 
-    const pageSize = limit ? parseInt(limit) : 10;
-    const page = nextPageToken ? parseInt(nextPageToken) : 0;
+    const pageSize = limit ? Number.parseInt(limit, 10) : 10;
+    const page = nextPageToken ? Number.parseInt(nextPageToken, 10) : 0;
 
     const workflows = filterWorkflows(
       workflowType

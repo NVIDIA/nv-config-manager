@@ -82,6 +82,8 @@ def create_workflow_endpoint(
             # TODO: add a default user domain to INI file for external customers
             body.user_domain = user.split("@")[1] if "@" in user else "nvidia.com"  # type: ignore[attr-defined]
 
+        body = await cast(type[WorkflowMetadataMixin], workflow_class).canonicalize_input(body)
+
         workflow_id = await start_workflow(request, workflow_class, body)
         return WorkflowResponse(id=workflow_id)
 

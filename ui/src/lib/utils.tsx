@@ -154,7 +154,7 @@ export const startWorkflow = async (endpoint: string, params: object) => {
   const apiURL = config.workflowApiUrl;
   
   if (!apiURL) {
-    return Promise.reject("API URL not configured");
+    throw new Error("API URL not configured");
   }
   
   const sanitizedUrl = sanitizeUrl(apiURL + endpoint);
@@ -169,15 +169,19 @@ export const startWorkflow = async (endpoint: string, params: object) => {
     if (!response.ok) {
       const result = await response.json();
       if (result.error) {
-        return Promise.reject(result.error);
+        throw new Error(String(result.error));
       } else {
-        return Promise.reject("Failed to submit workflow.");
+        throw new Error("Failed to submit workflow.");
       }
     }
     const result = await response.json();
     window.location.href = `/workflows/${result.id}`;
   });
 };
+
+export function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 /* Remove any trailing slashes in a url.
  * */

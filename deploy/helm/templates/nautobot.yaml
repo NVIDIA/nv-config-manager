@@ -269,7 +269,7 @@ spec:
         # Use nats-ready binary for production (streams have 20GB max_bytes)
         # Note: Production nats-ready creates both streams using nv-config-manager account
         # For local dev, we use nats CLI which creates streams in each account
-        image: {{ .Values.global.images.natsReady.repository }}:{{ include "nv-config-manager.imageTag" (dict "root" . "image" .Values.global.images.natsReady) }}
+        image: {{ include "nv-config-manager.image" (dict "root" . "image" .Values.global.images.natsReady) }}
         imagePullPolicy: {{ .Values.global.imagePullPolicy | default .Values.global.images.natsReady.pullPolicy }}
         command: ["/nats-ready"]
         args: ["--address", "nats://$(NATS_USER):$(NATS_PASSWORD)@{{ $natsName }}:4222"]
@@ -511,7 +511,7 @@ spec:
         # IMPORTANT: Lock is held by a single Python process for the entire duration
         # to prevent the session-level advisory lock from being released on disconnect.
         - name: run-migrations
-          image: {{ .Values.global.images.nautobot.repository }}:{{ include "nv-config-manager.imageTag" (dict "root" . "image" .Values.global.images.nautobot) }}
+          image: {{ include "nv-config-manager.image" (dict "root" . "image" .Values.global.images.nautobot) }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy | default .Values.global.images.nautobot.pullPolicy }}
           # Use the migration runner script (distroless-compatible, no shell needed)
           command: ["python", "/opt/nautobot/jobs/nv_config_manager_jobs/migration_runner.py"]
@@ -586,7 +586,7 @@ spec:
             {{- toYaml $migrationResources | nindent 12 }}
       containers:
         - name: nautobot
-          image: {{ .Values.global.images.nautobot.repository }}:{{ include "nv-config-manager.imageTag" (dict "root" . "image" .Values.global.images.nautobot) }}
+          image: {{ include "nv-config-manager.image" (dict "root" . "image" .Values.global.images.nautobot) }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy | default .Values.global.images.nautobot.pullPolicy }}
           command:
             - nautobot-server
@@ -866,7 +866,7 @@ spec:
         {{- include "nv-config-manager.waitForNautobot" . | nindent 8 }}
       containers:
         - name: celery
-          image: {{ .Values.global.images.nautobot.repository }}:{{ include "nv-config-manager.imageTag" (dict "root" . "image" .Values.global.images.nautobot) }}
+          image: {{ include "nv-config-manager.image" (dict "root" . "image" .Values.global.images.nautobot) }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy | default .Values.global.images.nautobot.pullPolicy }}
           command:
             - nautobot-server
@@ -1001,7 +1001,7 @@ spec:
         {{- include "nv-config-manager.waitForNautobot" . | nindent 8 }}
       containers:
         - name: celery-beat
-          image: {{ .Values.global.images.nautobot.repository }}:{{ include "nv-config-manager.imageTag" (dict "root" . "image" .Values.global.images.nautobot) }}
+          image: {{ include "nv-config-manager.image" (dict "root" . "image" .Values.global.images.nautobot) }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy | default .Values.global.images.nautobot.pullPolicy }}
           command: ["nautobot-server", "celery", "beat", "--loglevel", "INFO"]
           {{- include "nv-config-manager.containerSecurityContext" . | nindent 10 }}

@@ -13,10 +13,15 @@ on:
         required: false
         default: false
         type: boolean
+      approved_sha:
+        description: Exact PR commit set by /kind test; leave blank for manual runs
+        required: false
+        default: ""
+        type: string
 
 concurrency:
   group: kind-integration-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   PYTHON_VERSION: "3.13"
@@ -43,10 +48,21 @@ jobs:
       NV_CONFIG_MANAGER_HOSTNAME: config-manager.local
       TEST_PATH: ${{ inputs.test_path }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         timeout-minutes: 5
         with:
           persist-credentials: false
+      - name: Verify approved commit
+        if: inputs.approved_sha != ''
+        env:
+          APPROVED_SHA: ${{ inputs.approved_sha }}
+        run: |
+          set -euo pipefail
+          actual_sha="$(git rev-parse HEAD)"
+          if [ "${actual_sha}" != "${APPROVED_SHA}" ]; then
+            echo "Expected approved commit ${APPROVED_SHA}, checked out ${actual_sha}"
+            exit 1
+          fi
       - name: Setup proxy cache
         timeout-minutes: 5
         uses: nv-gha-runners/setup-proxy-cache@14229018fe157c83e03c008f27d183d8e99bc67c
@@ -215,3 +231,47 @@ jobs:
           path: |
             integration-test-logs/
             integration-test-results.xml
+
+  report-result:
+    name: Report Kind Integration Result
+    needs: integration
+    if: always() && startsWith(github.ref, 'refs/heads/pull-request/')
+    runs-on: linux-amd64-cpu4
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      # The slash-command dispatcher uses GITHUB_TOKEN, so a follow-on
+      # workflow_run event is not reliable. Report from the dispatched workflow
+      # instead, using the same approved pull-request/* SHA that Kind tested.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        timeout-minutes: 5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Update PR with result
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        timeout-minutes: 5
+        env:
+          KIND_RESULT_CONCLUSION: ${{ needs.integration.result }}
+          KIND_RESULT_EVENT: ${{ github.event_name }}
+          KIND_RESULT_HEAD_BRANCH: ${{ github.ref_name }}
+          KIND_RESULT_HEAD_SHA: ${{ github.sha }}
+          KIND_RESULT_HTML_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          script: |
+            const report = require("./.github/scripts/kind-integration-result.js");
+            await report({
+              github,
+              context,
+              core,
+              run: {
+                conclusion: process.env.KIND_RESULT_CONCLUSION,
+                event: process.env.KIND_RESULT_EVENT,
+                head_branch: process.env.KIND_RESULT_HEAD_BRANCH,
+                head_sha: process.env.KIND_RESULT_HEAD_SHA,
+                html_url: process.env.KIND_RESULT_HTML_URL,
+                status: "completed",
+              },
+            });

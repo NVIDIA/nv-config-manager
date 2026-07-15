@@ -406,7 +406,8 @@
       ],
       "platform": {
         "name": "Cumulus Linux"
-      }
+      },
+      "primary_ip4_interface": "lo"
     }
   }
 }

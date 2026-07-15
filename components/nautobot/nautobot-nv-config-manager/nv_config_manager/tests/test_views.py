@@ -22,6 +22,7 @@ from urllib.parse import parse_qs, urlparse
 from bs4 import BeautifulSoup
 from django.contrib.contenttypes.models import ContentType
 from django.db.models import Model, Q
+from django.test import override_settings
 from django.urls import reverse
 from django.utils import timezone
 from nautobot.apps.testing import (
@@ -48,6 +49,10 @@ from nv_config_manager.models import (
 )
 from nv_config_manager.tests.fixtures import mock_data as data
 from nv_config_manager.tests.fixtures.create_obj_fixtures import create_nested_locations
+
+with_temporal_url = override_settings(
+    PLUGINS_CONFIG={"nv_config_manager": {"temporal_url": "https://temporal.example.com"}}
+)
 
 
 def extract_links(html_content, link_texts):
@@ -201,6 +206,31 @@ class ConfigManagerDeviceStatusTestCase(
 
         self.assertEqual(site, self.site.name)
         self.assertEqual(device_id, str(self.managed_device_overdue.id))
+
+    @with_temporal_url
+    def test_see_diff_column_present(self):
+        """The managed devices list exposes a per-row See Diff workflow link."""
+        obj_perm = ObjectPermission(name="Test permission", actions=["view"])
+        obj_perm.save()
+        obj_perm.users.add(self.user)
+        obj_perm.object_types.add(ContentType.objects.get_for_model(self.model))
+
+        url = reverse("plugins:nv_config_manager:configmanagerdevicestatus_list")
+        response = self.client.get(url)
+        self.assertHttpStatus(response, 200)
+
+        response_content = extract_page_body(response.content.decode(response.charset))
+        soup = BeautifulSoup(response_content, "html.parser")
+        diff_links = [
+            a["href"] for a in soup.find_all("a", href=True) if "/workflows/configdiffworkflow/form" in a["href"]
+        ]
+        self.assertTrue(diff_links, "See Diff link missing from the managed devices list.")
+        expected_status = self.device.status.name
+        for href in diff_links:
+            query_params = parse_qs(urlparse(href).query)
+            self.assertIn("device-id", query_params)
+            # The device's status is carried so the workflow form pre-selects it.
+            self.assertEqual(query_params.get("status", [None])[0], expected_status)
 
     def test_view_managed_devices_stats(self):
         """Test viewing managed device stats."""
@@ -379,6 +409,7 @@ class TestConfigManagerDeviceStatusDetailView(
             deployed_commit_id=data.TEST_UPDATED_COMMIT_ID,
         )
 
+    @with_temporal_url
     def test_workflow_urls(self):
         """Test the urls are correct."""
         obj_perm = ObjectPermission(name="Test permission", actions=["view"])
@@ -397,7 +428,11 @@ class TestConfigManagerDeviceStatusDetailView(
         soup = BeautifulSoup(response_content, "html.parser")
         workflow_panel = soup.find("table")
         href_values = [a["href"] for a in workflow_panel.find_all("a", href=True)]
-        self.assertEqual(len(href_values), 5)
+        self.assertEqual(len(href_values), 6)
+        self.assertTrue(
+            any("/workflows/configdiffworkflow/form" in href for href in href_values),
+            "Config Diff workflow launch link missing from the workflows tab.",
+        )
 
         for href in href_values:
             parsed_url = urlparse(href)
@@ -774,6 +809,7 @@ class ConfigManagerWorkflowsTabTestCase(ConfigManagerViewTestMixin, ViewTestCase
             deployed_commit_id=data.TEST_INTENDED_COMMIT_ID,
         )
 
+    @with_temporal_url
     def test_workflow_urls(self):
         """Test the urls are correct."""
         obj_perm = ObjectPermission(name="Test permission", actions=["view"])
@@ -788,7 +824,11 @@ class ConfigManagerWorkflowsTabTestCase(ConfigManagerViewTestMixin, ViewTestCase
         soup = BeautifulSoup(response_content, "html.parser")
         workflow_panel = soup.find("table")
         href_values = [a["href"] for a in workflow_panel.find_all("a", href=True)]
-        self.assertEqual(len(href_values), 5)
+        self.assertEqual(len(href_values), 6)
+        self.assertTrue(
+            any("/workflows/configdiffworkflow/form" in href for href in href_values),
+            "Config Diff workflow launch link missing from the workflows tab.",
+        )
 
         for href in href_values:
             parsed_url = urlparse(href)

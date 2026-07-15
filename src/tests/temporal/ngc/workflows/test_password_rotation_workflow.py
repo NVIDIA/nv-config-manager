@@ -15,12 +15,15 @@
 # pylint: disable=B101,C0115,C0116
 """Test Suite for Password Rotation Workflows"""
 
+import pytest
+from pydantic import ValidationError
 from temporalio import workflow
 
 with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.common.mixins.device import NetworkDeviceData
     from nv_config_manager.temporal.ngc.workflows.site_password_rotation import (
         PasswordRotationResultData,
+        SitePasswordRotationInput,
     )
 
 
@@ -48,6 +51,15 @@ TEST_DEVICE_DATA = {
         }
     },
 }
+
+
+class TestSitePasswordRotationInput:
+    """Tests for SitePasswordRotationInput validation."""
+
+    def test_location_must_not_be_empty(self):
+        """Reject an empty location before starting the workflow."""
+        with pytest.raises(ValidationError):
+            SitePasswordRotationInput(location="", selected_secret="device-password")
 
 
 class TestPasswordRotationResultData:

@@ -54,7 +54,15 @@ class S3Client(ObjectStorageClient):
     Implements the ObjectStorageClient interface for S3/Ceph object storage.
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        bucket: str | None = None,
+        custom_endpoint: str | None = None,
+        region: str | None = None,
+        custom_access_key: str | None = None,
+        custom_secret_key: str | None = None,
+    ) -> None:
         """Initialize the S3 client with optimized configuration for large file transfers."""
         # Optimized configuration for large file streaming performance
         config = Config(
@@ -68,15 +76,47 @@ class S3Client(ObjectStorageClient):
             tcp_keepalive=True,
         )
 
-        self.bucket = "ngc-network-firmware-images"
+        self._validate_optional_override("bucket", bucket)
+        self._validate_optional_override("custom_endpoint", custom_endpoint)
+        self._validate_optional_override("region", region)
+        self._validate_optional_override("custom_access_key", custom_access_key)
+        self._validate_optional_override("custom_secret_key", custom_secret_key)
+
+        self.bucket = (
+            bucket
+            if bucket is not None
+            else os.environ.get("CUSTOM_S3_BUCKET") or "ngc-network-firmware-images"
+        )
         self.config = config
-        self.custom_endpoint = os.environ.get("CUSTOM_S3_ENDPOINT")
-        self.custom_access_key = os.environ.get("CUSTOM_S3_ACCESS_KEY")
-        self.custom_secret_key = os.environ.get("CUSTOM_S3_SECRET_KEY")
+        self.custom_endpoint = (
+            custom_endpoint if custom_endpoint is not None else os.environ.get("CUSTOM_S3_ENDPOINT")
+        )
+        self.region = (
+            region
+            if region is not None
+            else os.environ.get("CUSTOM_S3_REGION")
+            or os.environ.get("AWS_REGION")
+            or os.environ.get("AWS_DEFAULT_REGION")
+        )
+        self.custom_access_key = (
+            custom_access_key
+            if custom_access_key is not None
+            else os.environ.get("CUSTOM_S3_ACCESS_KEY")
+        )
+        self.custom_secret_key = (
+            custom_secret_key
+            if custom_secret_key is not None
+            else os.environ.get("CUSTOM_S3_SECRET_KEY")
+        )
 
         # Create session for async operations
         self.session = aioboto3.Session()
         self._client_instance: Any = None
+
+    @staticmethod
+    def _validate_optional_override(name: str, value: str | None) -> None:
+        if value is not None and not value.strip():
+            raise ValueError(f"{name} cannot be empty when provided")
 
     @property
     def _client(self) -> Any:
@@ -87,6 +127,13 @@ class S3Client(ObjectStorageClient):
 
     async def connect(self) -> Self:
         """Connect to S3 and initialize the client session."""
+        client_kwargs: dict[str, Any] = {}
+        if self.region is not None:
+            client_kwargs["region_name"] = self.region
+        if self.custom_access_key is not None:
+            client_kwargs["aws_access_key_id"] = self.custom_access_key
+        if self.custom_secret_key is not None:
+            client_kwargs["aws_secret_access_key"] = self.custom_secret_key
         if self.custom_endpoint:
             custom_config = Config(
                 signature_version="s3v4",
@@ -98,13 +145,16 @@ class S3Client(ObjectStorageClient):
             self._client_instance = await self.session.client(
                 "s3",
                 endpoint_url=self.custom_endpoint,
-                aws_access_key_id=self.custom_access_key,
-                aws_secret_access_key=self.custom_secret_key,
                 config=custom_config,
                 verify=False,
+                **client_kwargs,
             ).__aenter__()
         else:
-            self._client_instance = await self.session.client("s3", config=self.config).__aenter__()
+            self._client_instance = await self.session.client(
+                "s3",
+                config=self.config,
+                **client_kwargs,
+            ).__aenter__()
         return self
 
     async def close(self) -> None:

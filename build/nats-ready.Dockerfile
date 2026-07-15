@@ -39,7 +39,9 @@ ENV CGO_ENABLED=0
 
 # Note: Build context is components/nats-ready/
 WORKDIR /build
-COPY . .
+COPY go.mod go.sum ./
+COPY cmd/nats-ready/ ./cmd/nats-ready/
+COPY internal/nats-ready/ ./internal/nats-ready/
 
 # Build static binary
 RUN go build -ldflags="-s -w" -o bin/nats-ready ./cmd/nats-ready
@@ -50,4 +52,5 @@ RUN go build -ldflags="-s -w" -o bin/nats-ready ./cmd/nats-ready
 FROM nvcr.io/nvidia/distroless/go:v4.0.8
 
 COPY --from=builder /build/bin/nats-ready /nats-ready
+USER nvs
 ENTRYPOINT ["/nats-ready"]
