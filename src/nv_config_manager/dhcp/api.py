@@ -166,7 +166,7 @@ def _resolve_address_version(
 
 
 def _normalize_subnet_filter(
-    subnet: IPvAnyNetwork | None,
+    subnet: IPvAnyNetwork | None,  # ty: ignore[unsupported-operator]
     ip_version: IpVersion,
 ) -> str | None:
     """Validate and normalize an optional collection subnet filter."""
@@ -384,7 +384,7 @@ async def list_leases(
     limit: int = Query(default=100, ge=1, le=500),
     cursor: str | None = Query(default=None, min_length=1, max_length=128),
     search: str | None = Query(default=None, max_length=256),
-    subnet: IPvAnyNetwork | None = None,
+    subnet: IPvAnyNetwork | None = None,  # ty: ignore[unsupported-operator]
 ) -> LeasePageResponse:
     """Return a cursor-paginated, optionally filtered page of normalized leases."""
     subnet_filter = _normalize_subnet_filter(subnet, ip_version)
@@ -441,7 +441,7 @@ async def list_reservations(
     limit: int = Query(default=100, ge=1, le=500),
     cursor: str | None = Query(default=None, min_length=1, max_length=128),
     search: str | None = Query(default=None, max_length=256),
-    subnet: IPvAnyNetwork | None = None,
+    subnet: IPvAnyNetwork | None = None,  # ty: ignore[unsupported-operator]
 ) -> ReservationPageResponse:
     """Return a cursor-paginated, optionally filtered reservation page."""
     subnet_filter = _normalize_subnet_filter(subnet, ip_version)
@@ -477,7 +477,7 @@ async def list_pools(
     limit: int = Query(default=100, ge=1, le=500),
     cursor: str | None = Query(default=None, min_length=1, max_length=128),
     search: str | None = Query(default=None, max_length=256),
-    subnet: IPvAnyNetwork | None = None,
+    subnet: IPvAnyNetwork | None = None,  # ty: ignore[unsupported-operator]
 ) -> PoolPageResponse:
     """Return a cursor-paginated, optionally filtered configured-pool page."""
     subnet_filter = _normalize_subnet_filter(subnet, ip_version)
