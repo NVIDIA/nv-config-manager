@@ -150,23 +150,47 @@ def rbac_require_configured(
     config_manager_namespace: str,
     rbac_release: str,
 ) -> str:
-    """Skip the suite unless the group-mapping ConfigMap is mounted (CONFIGURED).
+    """Return the group-mapping ConfigMap name, failing if it isn't mounted.
 
-    Returns the ConfigMap name. The suite is meaningless in the UNCONFIGURED
-    state (no mapping -> nothing to reconcile), so we skip with a pointer to the
-    override rather than emit misleading failures.
+    The suite is opt-in behind ``--rbac`` (skipped otherwise). Once you have
+    opted in, a missing ConfigMap is a *setup error*, not a "not applicable"
+    condition, so we ``fail`` rather than ``skip``: a skip reports green and
+    would let a broken CONFIGURED deploy -- or a forgotten
+    ``values-configured.yaml`` -- pass the whole suite silently, which defeats
+    the point of running it.
+
+    We also distinguish a genuinely-absent ConfigMap from a ``kubectl`` failure
+    (cluster unreachable, RBAC-forbidden, wrong namespace). ``--ignore-not-found``
+    makes "absent" a clean exit with empty output, so any non-zero return is a
+    real tooling error and must never masquerade as "not configured".
     """
     if not rbac_enabled:
         pytest.skip("group-mapping RBAC tests require --rbac")
     configmap = f"{rbac_release}-nautobot-group-mapping"
     res = subprocess.run(
-        ["kubectl", "get", "configmap", "-n", config_manager_namespace, configmap],
+        [
+            "kubectl",
+            "get",
+            "configmap",
+            "-n",
+            config_manager_namespace,
+            configmap,
+            "-o",
+            "name",
+            "--ignore-not-found",
+        ],
         capture_output=True,
         text=True,
         check=False,
     )
     if res.returncode != 0:
-        pytest.skip(
+        pytest.fail(
+            f"kubectl could not query ConfigMap {configmap!r} in namespace "
+            f"{config_manager_namespace!r} (rc={res.returncode}): "
+            f"{(res.stderr or res.stdout).strip()}"
+        )
+    if not res.stdout.strip():
+        pytest.fail(
             f"ConfigMap {configmap!r} not found in namespace {config_manager_namespace!r}; "
             "deploy is not in the CONFIGURED state. Apply "
             "scripts/rbac-local-test/values-configured.yaml (helm upgrade --reuse-values) "
