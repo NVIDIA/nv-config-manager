@@ -132,6 +132,7 @@ ui/.env.local
 ui/playwright-report/
 ui/test-results/
 ui/.nvmrc
+ui/*.tsbuildinfo
 
 # macOS
 .DS_Store

@@ -20,6 +20,7 @@ from nv_config_manager.temporal.ngc.workflows.cable_validation import (
     DeviceCableValidationWorkflow,
     SiteCableValidationWorkflow,
 )
+from nv_config_manager.temporal.ngc.workflows.config_diff import ConfigDiffWorkflow
 from nv_config_manager.temporal.ngc.workflows.connected_host import ConnectedHostMetadataWorkflow
 from nv_config_manager.temporal.ngc.workflows.cumulus_hardware_validation import (
     ValidateHardwareWorkflow,
@@ -74,6 +75,7 @@ REGISTERED_WORKFLOWS = [
     SiteCableValidationWorkflow,
     DeviceCableValidationWorkflow,
     DeployWorkflow,
+    ConfigDiffWorkflow,
     TenantDeployWorkflow,
     MultiDeployWorkflow,
     BatchDeployWorkflow,

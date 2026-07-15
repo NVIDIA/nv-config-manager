@@ -44,7 +44,7 @@ spec:
       {{- include "nv-config-manager.podSecurityContext" . | nindent 6 }}
       containers:
       - name: ui
-        image: "{{ .Values.global.images.nvConfigManagerUi.repository }}:{{ include "nv-config-manager.imageTag" (dict "root" . "image" .Values.global.images.nvConfigManagerUi) }}"
+        image: "{{ include "nv-config-manager.image" (dict "root" . "image" .Values.global.images.nvConfigManagerUi) }}"
         imagePullPolicy: {{ .Values.global.images.nvConfigManagerUi.pullPolicy }}
         command: ["node", "server.js"]
         env:

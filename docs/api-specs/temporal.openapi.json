@@ -135,6 +135,32 @@
         "title": "CommandEntry",
         "type": "object"
       },
+      "ConfigDiffInput": {
+        "description": "Config Diff Workflow input.",
+        "properties": {
+          "device": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NetworkDeviceData"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Preloaded network device data, if available."
+          },
+          "device_id": {
+            "description": "Identifier of the network device to compare.",
+            "title": "Device Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "device_id"
+        ],
+        "title": "ConfigDiffInput",
+        "type": "object"
+      },
       "ConnectedHostWorkflowInput": {
         "description": "Connected Host Workflow Input.",
         "properties": {
@@ -3809,6 +3835,53 @@
           }
         ],
         "summary": "Execute BatchDeployWorkflow",
+        "tags": [
+          "workflow"
+        ]
+      }
+    },
+    "/v1/workflow/ngc/config_diff": {
+      "post": {
+        "description": "Compare the intended configuration against the live device without applying any changes",
+        "operationId": "configdiffworkflow_endpoint_v1_workflow_ngc_config_diff_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigDiffInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Execute ConfigDiffWorkflow",
         "tags": [
           "workflow"
         ]
