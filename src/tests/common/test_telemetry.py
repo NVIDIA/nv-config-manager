@@ -14,6 +14,7 @@
 # limitations under the License.
 """Tests for the shared, backend-agnostic OpenTelemetry tracing bootstrap."""
 
+import concurrent.futures
 from unittest import mock
 
 import pytest
@@ -150,7 +151,6 @@ class TestSetupTracingEnabled:
 
     def test_concurrent_calls_configure_once(self, _clean_env, otel_mocks):
         """Concurrent startup calls register the provider only once."""
-        import concurrent.futures
 
         _clean_env.setenv(OTLP_ENV, "http://collector:4317")
 
