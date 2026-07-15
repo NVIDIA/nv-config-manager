@@ -200,12 +200,7 @@ async def validate_serial(device_uuid: str, body: ValidateSerialBody, request: R
         async with nb_client:
             expected_serial = await nb_client.get_device_serial(device_uuid)
         if not _compare_serials(expected_serial, body.serial):
-            logger.error(
-                "Serial number mismatch observed on device %s, expected: %s, observed: %s.",
-                device_uuid,
-                expected_serial,
-                body.serial,
-            )
+            logger.error("Serial number mismatch for ZTP device request.")
             raise HTTPException(
                 status_code=400,
                 detail="Serial number does not match device in Nautobot.",

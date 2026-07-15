@@ -421,10 +421,7 @@ def test_device_v1_validate_serial(mock_request_client, mock_device_data, client
                 )
             assert rsp.status_code == 400
             mock_logger.error.assert_called_once_with(
-                "Serial number mismatch observed on device %s, expected: %s, observed: %s.",
-                device_uuid,
-                "expected_serial",
-                "invalid_serial",
+                "Serial number mismatch for ZTP device request."
             )
 
 
