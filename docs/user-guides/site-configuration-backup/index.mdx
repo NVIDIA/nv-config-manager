@@ -26,7 +26,7 @@ By default the workflow includes only devices with **backup enabled** in Nautobo
 1. Click the **+** in the top right and select **SiteBackupWorkflow**.
 1. Fill in the form using the field reference below and submit.
 
-![Site Configuration Backup workflow form](../../assets/images/workflows/sitebackupworkflow-form.png)
+![Site Configuration Backup workflow form](../../assets/images/workflows/backupworkflow-form.png)
 
 | Field | Description | Required |
 | :---- | :---------- | :------- |
@@ -65,11 +65,11 @@ The workflow runs three stages. None require manual approval at the site level.
 
 1. **`format_result` — Aggregate per-device results.**
 
-   Combines all child outcomes into a markdown summary with success, failure, changed, and unchanged counts. Each entry links to the child workflow for follow-up.
+   Combines all child outcomes into a markdown summary with success, failure, changed, and unchanged counts. Each entry includes a child-workflow link or workflow ID for follow-up.
 
 ## Result structure
 
-The workflow returns a markdown summary. Each successful device entry notes whether the backup **changed** the stored snapshot (`changed`) or matched the previous backup (`unchanged`). Failed entries include the error message and a link to the child workflow.
+The workflow returns a markdown summary. Each successful device entry notes whether the backup **changed** the stored snapshot (`changed`) or matched the previous backup (`unchanged`), plus a child-workflow link or workflow ID. Failed entries include the error message and a child-workflow link or workflow ID.
 
 ## Partial failures and re-runs
 

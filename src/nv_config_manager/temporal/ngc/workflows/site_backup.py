@@ -247,7 +247,7 @@ class SiteBackupWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin):
 
         while remaining_items:
             remaining_handles = [handle for _, handle in remaining_items]
-            done, _ = await asyncio.wait(remaining_handles, return_when=asyncio.FIRST_COMPLETED)
+            done, _ = await workflow.wait(remaining_handles, return_when=asyncio.FIRST_COMPLETED)
 
             for completed_handle in done:
                 device_name = None

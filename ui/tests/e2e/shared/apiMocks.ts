@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 import { Page } from "@playwright/test";
+import { validateSiteBackupPayload } from "@/mocks/handlers/siteBackupHandlers";
 import { createGenericWorkflow } from "@/mocks/data/workflows/genericWorkflow";
 import {
   SITES_LIST_API_RESPONSE,
@@ -332,6 +333,15 @@ export async function mockSiteBackupEndpoint(page: Page) {
     const request = route.request();
     const body = JSON.parse((await request.postData()) || "{}");
 
+    const validationError = validateSiteBackupPayload(body);
+    if (validationError) {
+      await route.fulfill({
+        status: 400,
+        json: validationError,
+      });
+      return;
+    }
+
     if (body.site === FORBIDDEN_SITE_ID) {
       await route.fulfill({
         status: 403,
@@ -347,10 +357,8 @@ export async function mockSiteBackupEndpoint(page: Page) {
     await route.fulfill({
       status: 201,
       json: {
-        id: body.site || "site-used-for-id",
-        href: `https://url-to-temporal.com/namespaces/default/workflows/${
-          body.site || "site-used-for-id"
-        }`,
+        id: body.site,
+        href: `https://url-to-temporal.com/namespaces/default/workflows/${body.site}`,
       },
     });
   });

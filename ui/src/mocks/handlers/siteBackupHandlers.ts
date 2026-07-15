@@ -20,11 +20,41 @@ import { mockApiURL as apiURL } from "@/config/mockApiUrl";
 import { SiteBackupWorkflowInput } from "@/types/data-table.types";
 import { FORBIDDEN_SITE_ID } from "@/mocks/data/formData";
 
+export function validateSiteBackupPayload(
+  body: unknown
+): { error: string } | null {
+  if (!body || typeof body !== "object") {
+    return { error: "Invalid request body" };
+  }
+
+  const payload = body as Partial<SiteBackupWorkflowInput>;
+
+  if (typeof payload.site !== "string" || !payload.site.trim()) {
+    return { error: "Missing required field: site" };
+  }
+  if (!Array.isArray(payload.roles)) {
+    return { error: "Missing required field: roles" };
+  }
+  if (!Array.isArray(payload.status) || payload.status.length === 0) {
+    return { error: "Missing required field: status" };
+  }
+  if (typeof payload.backup_enabled_only !== "boolean") {
+    return { error: "Missing required field: backup_enabled_only" };
+  }
+
+  return null;
+}
+
 export const siteBackupHandlers = [
   http.post(
     sanitizeUrl(`${apiURL}/v1/workflow/ngc/site_backup`),
     async ({ request }) => {
       const body = (await request.json()) as SiteBackupWorkflowInput;
+
+      const validationError = validateSiteBackupPayload(body);
+      if (validationError) {
+        return HttpResponse.json(validationError, { status: 400 });
+      }
 
       if (body.site === FORBIDDEN_SITE_ID) {
         return HttpResponse.json(
@@ -39,10 +69,8 @@ export const siteBackupHandlers = [
 
       return HttpResponse.json(
         {
-          id: body.site || "site-used-for-id",
-          href: `https://url-to-temporal.com/namespaces/default/workflows/${
-            body.site || "site-used-for-id"
-          }`,
+          id: body.site,
+          href: `https://url-to-temporal.com/namespaces/default/workflows/${body.site}`,
         },
         { status: 201 }
       );
