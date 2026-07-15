@@ -431,12 +431,18 @@ def test_flush_cache():
             new_callable=AsyncMock,
             return_value=False,
         ):
+            _COLLECTION_SNAPSHOTS[("reservation", IpVersion.V4)] = (float("inf"), [])
+            _COLLECTION_SNAPSHOTS[("pool", IpVersion.V4)] = (float("inf"), [])
+            _COLLECTION_SNAPSHOTS[("pool", IpVersion.V6)] = (float("inf"), [])
             rsp = client.delete(
                 "/admin/cache",
                 headers={"X-Auth-Request-Email": "admin@example.com"},
             )
             assert rsp.status_code == 404
             assert rsp.json() == {"detail": "No cached configuration found for DHCPv4"}
+            assert ("reservation", IpVersion.V4) not in _COLLECTION_SNAPSHOTS
+            assert ("pool", IpVersion.V4) not in _COLLECTION_SNAPSHOTS
+            assert ("pool", IpVersion.V6) in _COLLECTION_SNAPSHOTS
 
 
 def test_get_config_success():

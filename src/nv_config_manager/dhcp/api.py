@@ -622,12 +622,12 @@ async def flush_cache(request: Request, ip_version: int = 4) -> dict[str, str]:
     redis_client = RedisClient.from_config(app_config)
     try:
         deleted = await redis_client.flush_kea_config(ip_version)
+        _invalidate_collection_snapshots(ip_version)
         if not deleted:
             raise HTTPException(
                 status_code=404,
                 detail=f"No cached configuration found for DHCPv{ip_version}",
             )
-        _invalidate_collection_snapshots(ip_version)
         return {"detail": f"DHCPv{ip_version} cached configuration flushed"}
     finally:
         await redis_client.close()
