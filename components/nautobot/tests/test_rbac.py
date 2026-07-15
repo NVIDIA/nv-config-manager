@@ -356,6 +356,21 @@ def test_resolve_content_types_empty(rbac, patched_content_type_manager):
     assert rbac._resolve_content_types([]) == []
 
 
+@pytest.mark.parametrize("scalar", ["all", "install", "wall", "dcim.device"])
+def test_resolve_content_types_rejects_non_list_scalar(rbac, patched_content_type_manager, caplog, scalar):
+    """A scalar string must be rejected, never treated as a list: ``"all" in
+    "install"`` is a substring match that would otherwise grant every type."""
+    with caplog.at_level("WARNING", logger="nv_config_manager_auth.rbac"):
+        assert rbac._resolve_content_types(scalar) == []
+    assert any("must be a list" in r.message for r in caplog.records)
+
+
+def test_resolve_content_types_all_only_via_list_membership(rbac, patched_content_type_manager):
+    """The 'all' expansion triggers for a real list element, not a substring."""
+    assert rbac._resolve_content_types("install") == []  # scalar containing 'all'
+    assert rbac._resolve_content_types(["all"])  # list -> expands (non-empty)
+
+
 def test_resolve_content_types_all_excludes_internal_models(rbac, patched_content_type_manager):
     resolved = rbac._resolve_content_types(["all"])
     labels = {f"{ct.app_label}.{ct.model}" for ct in resolved}
@@ -949,12 +964,17 @@ def test_apply_group_permission_config_warns_on_bad_action_shape(
     rbac.ObjectPermission.objects.create.assert_not_called()
 
 
-def test_apply_group_permission_config_skips_permission_on_malformed_constraints(rbac, monkeypatch, caplog):
-    """Fail closed: ``constraints`` that are not a mapping must NOT fall through
-    to an unconstrained grant -- the action is skipped, no perm is upserted."""
+def test_apply_group_permission_config_malformed_constraints_prunes_stale_perm(rbac, monkeypatch, caplog):
+    """Fail closed: malformed ``constraints`` skip the upsert AND leave the perm
+    unkept, so a pre-existing managed row is pruned (revoked) rather than
+    retained or granted unconstrained."""
     group = MagicMock()
     group.name = "ipam-rw"
-    group.object_permissions.all.return_value = []
+    stale = MagicMock()
+    stale.name = "ipam-rw_change"
+    stale.groups.exists.return_value = False
+    group.object_permissions.all.return_value = [stale]
+
     update_or_create = MagicMock()
     monkeypatch.setattr(rbac.ObjectPermission, "objects", _op_objects(update_or_create=update_or_create))
 
@@ -964,8 +984,53 @@ def test_apply_group_permission_config_skips_permission_on_malformed_constraints
             {"change": {"content_types": ["ipam.prefix"], "constraints": "status=Active"}},
         )
 
-    update_or_create.assert_not_called()
-    assert any("constraints must be a mapping" in r.message and "unconstrained" in r.message for r in caplog.records)
+    update_or_create.assert_not_called()  # never granted
+    stale.groups.remove.assert_called_once_with(group)  # pruned (revoked)
+    stale.delete.assert_called_once()
+    assert any("malformed constraints" in r.message for r in caplog.records)
+
+
+def test_apply_group_permission_config_accepts_list_of_dict_constraints(
+    rbac, monkeypatch, patched_content_type_manager
+):
+    """Nautobot accepts a list of mappings (OR-of-constraints); it must be passed
+    through to update_or_create unchanged, not rejected as malformed."""
+    group = MagicMock()
+    group.name = "ipam-rw"
+    group.object_permissions.all.return_value = []
+    created = MagicMock()
+    created.object_types.all.return_value = []
+    created.groups.all.return_value = []
+    update_or_create = MagicMock(return_value=(created, True))
+    monkeypatch.setattr(rbac.ObjectPermission, "objects", _op_objects(update_or_create=update_or_create))
+
+    constraints = [{"vid__gte": 100, "vid__lt": 200}, {"status__name": "Reserved"}]
+    rbac._apply_group_permission_config(
+        group,
+        {"change": {"content_types": ["ipam.vlan"], "constraints": constraints}},
+    )
+
+    update_or_create.assert_called_once()
+    assert update_or_create.call_args.kwargs["defaults"]["constraints"] == constraints
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        ({}, True),  # unconstrained mapping
+        ({"status__name": "Active"}, True),
+        ([{"a": 1}], True),
+        ([{"a": 1}, {"b": 2}], True),  # OR-of-constraints
+        ([], False),  # empty list
+        ([{}], False),  # list with an empty (match-all) mapping
+        ([{"a": 1}, "nope"], False),  # list with a non-mapping element
+        ("status=Active", False),  # scalar string
+        (5, False),
+        (None, False),
+    ],
+)
+def test_is_valid_constraints(rbac, value, expected):
+    assert rbac._is_valid_constraints(value) is expected
 
 
 def test_apply_group_permission_config_skips_foreign_permission_collision(rbac, monkeypatch, caplog):

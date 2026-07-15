@@ -174,6 +174,30 @@ def _object_permission_owned_by_other(name: str, group: Group) -> bool:
     return existing.users.exists()
 
 
+def _is_valid_constraints(constraints: Any) -> bool:
+    """True if *constraints* is a shape Nautobot's ObjectPermission accepts.
+
+    Nautobot stores ``constraints`` as JSON and evaluates them as a queryset
+    filter, allowing either:
+
+        * a single mapping -- ``{"status__name": "Active"}`` (may be empty ``{}``
+          for an unconstrained grant), or
+        * a **non-empty list of non-empty mappings** -- OR-of-constraints, e.g.
+          ``[{"vid__gte": 100, "vid__lt": 200}, {"status__name": "Reserved"}]``.
+
+    Anything else (a string, a number, an empty list, a list containing a
+    non-mapping or an empty mapping) is malformed.  Callers fail closed on a
+    malformed value rather than dropping it and granting unconstrained access.
+    """
+    if isinstance(constraints, dict):
+        return True
+    return (
+        isinstance(constraints, list)
+        and bool(constraints)
+        and all(isinstance(item, dict) and bool(item) for item in constraints)
+    )
+
+
 # Identity / access-control models that must NEVER be swept in by an ``"all"``
 # expansion: granting write here is privilege escalation, not data access.
 # ``users.token`` lets a holder mint API tokens for any account;
@@ -424,6 +448,18 @@ def _resolve_content_types(spec: list[str]) -> list[ContentType]:
     skipped with a warning rather than raising, so a single typo doesn't
     block a login.
     """
+    # ``spec`` is Any at runtime (straight from YAML).  It MUST be a list: a
+    # bare string would make the ``ALL_CONTENT_TYPES in spec`` test below a
+    # *substring* match -- e.g. ``content_types: "install"`` -> ``"all" in
+    # "install"`` is True -> silently grants every content type.  Fail closed.
+    if not isinstance(spec, list):
+        log.warning(
+            "rbac: content_types must be a list of strings, got %s; skipping "
+            "(refusing to grant -- a scalar like 'install' would match 'all' as "
+            "a substring and grant every type)",
+            type(spec).__name__,
+        )
+        return []
     if not spec:
         return []
     if ALL_CONTENT_TYPES in spec:
@@ -666,9 +702,12 @@ def _apply_group_permission_config(group: Group, perms_config: dict[str, dict[st
     generated name already exists and is bound to a different group or a user,
     we log and skip it rather than hijack access we do not own.
 
-    Malformed input fails **closed**: an action whose ``constraints`` are not a
-    mapping is skipped (never granted unconstrained), and a malformed action
-    config is skipped as well.
+    Malformed input fails **closed**: ``constraints`` must be a mapping or a
+    non-empty list of mappings (Nautobot's OR-of-constraints form, see
+    :func:`_is_valid_constraints`).  A malformed value is skipped *without*
+    being kept, so any pre-existing managed row is pruned (we revoke rather than
+    silently retain the last-good grant, or worse fall through to an
+    unconstrained one).  A malformed action config (non-mapping) is skipped too.
 
     The snapshot below is used **only** to drive the prune pass at the
     bottom (it tells us which managed ``<group>_<action>`` rows were
@@ -720,11 +759,11 @@ def _apply_group_permission_config(group: Group, perms_config: dict[str, dict[st
             )
             continue
         perm_name = f"{group.name}_{action}"
-        # Keep the name off the prune list in every branch below (create, skip,
-        # or collision) so we never delete a row we deliberately left untouched.
-        kept_perm_names.add(perm_name)
 
+        # Foreign collision: the name is owned elsewhere, so leave the row
+        # entirely alone -- keep it off the prune list too (it isn't ours).
         if _object_permission_owned_by_other(perm_name, group):
+            kept_perm_names.add(perm_name)
             log.warning(
                 "rbac: ObjectPermission %r already exists and is bound to another "
                 "group or user; skipping so a name collision cannot overwrite a "
@@ -734,19 +773,25 @@ def _apply_group_permission_config(group: Group, perms_config: dict[str, dict[st
             )
             continue
 
-        constraints = action_config.get("constraints") or {}
-        if not isinstance(constraints, dict):
-            # Fail closed: a malformed constraint must never fall through to an
-            # unconstrained grant.  Skip this action, preserving any prior
-            # (last-good) row rather than broadening access.
+        # Validate constraints BEFORE marking the perm as kept.  Nautobot accepts
+        # a mapping or a non-empty list of mappings; anything else is malformed.
+        # A malformed value is skipped WITHOUT keeping the name, so an existing
+        # managed row is pruned below (fail closed: revoke rather than grant an
+        # unconstrained perm or silently retain the last-good one).
+        constraints = action_config.get("constraints")
+        if constraints is None:
+            constraints = {}
+        if not _is_valid_constraints(constraints):
             log.warning(
-                "rbac: group %r action %r constraints must be a mapping; skipping "
-                "this permission instead of granting it unconstrained",
+                "rbac: group %r action %r has malformed constraints (%s); skipping "
+                "and pruning any existing managed permission instead of granting it",
                 group.name,
                 action,
+                type(action_config.get("constraints")).__name__,
             )
             continue
 
+        kept_perm_names.add(perm_name)
         content_types = _resolve_content_types(action_config.get("content_types") or [])
         perm, _created = ObjectPermission.objects.update_or_create(
             name=perm_name,
