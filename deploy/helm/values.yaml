@@ -2492,11 +2492,14 @@ nautobot:
     #
     # Revocation: removing a whole entry (``- name: foo``) revokes access
     # automatically on each affected user's next login -- they are removed
-    # from the Django Group and its ``<group>_<action>`` ObjectPermissions
-    # are detached and (when no other group references them) deleted.  The
-    # Django Group row itself is left in place so operators retain final
-    # say over the group catalog; purely-manual groups (no managed
-    # ``<group>_<action>`` perms attached) are never touched.
+    # from the Django Group and its managed ``<group>_*`` ObjectPermissions
+    # (the ``<group>_<action>`` rows and the inert
+    # ``<group>_nvcm-managed-membership`` marker) are detached and (when no
+    # other group references them) deleted.  This holds for membership-only
+    # entries too -- the marker is what makes them revocable.  The Django
+    # Group row itself is left in place so operators retain final say over
+    # the group catalog; purely-manual groups (no managed ``<group>_*`` perms
+    # attached) are never touched.
     #
     # ``is_superuser: true`` entries are revoked cleanly too: on sync the
     # Django Group receives an inert ``<group>_nvcm-managed-membership`` marker,
