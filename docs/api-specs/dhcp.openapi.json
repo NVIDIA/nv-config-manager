@@ -717,10 +717,10 @@
         "summary": "Get Lease"
       }
     },
-    "/pools": {
+    "/pool": {
       "get": {
         "description": "Return a cursor-paginated, optionally filtered configured-pool page.",
-        "operationId": "list_pools_pools_get",
+        "operationId": "list_pools_pool_get",
         "parameters": [
           {
             "in": "query",
@@ -777,6 +777,23 @@
               ],
               "title": "Search"
             }
+          },
+          {
+            "in": "query",
+            "name": "subnet",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "ipvanynetwork",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Subnet"
+            }
           }
         ],
         "responses": {
@@ -809,10 +826,10 @@
         "summary": "List Pools"
       }
     },
-    "/reservations": {
+    "/reservation": {
       "get": {
         "description": "Return a cursor-paginated, optionally filtered reservation page.",
-        "operationId": "list_reservations_reservations_get",
+        "operationId": "list_reservations_reservation_get",
         "parameters": [
           {
             "in": "query",
@@ -899,6 +916,71 @@
           }
         ],
         "summary": "List Reservations"
+      }
+    },
+    "/reservation/{ip_address}": {
+      "get": {
+        "description": "Return one normalized reservation from the selected DHCP configuration.",
+        "operationId": "get_reservation_reservation__ip_address__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ip_address",
+            "required": true,
+            "schema": {
+              "format": "ipvanyaddress",
+              "title": "Ip Address",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ip_version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/IpVersion"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ip Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReservationRecord"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Reservation not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Reservation"
       }
     },
     "/summary": {

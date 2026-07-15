@@ -192,7 +192,7 @@ export async function mockDhcpEndpoints(page: Page) {
     });
   });
 
-  await page.route("**/reservations?*", async (route) => {
+  await page.route("**/reservation?*", async (route) => {
     const search = new URL(route.request().url()).searchParams
       .get("search")
       ?.toLowerCase();
@@ -230,7 +230,7 @@ export async function mockDhcpEndpoints(page: Page) {
     });
   });
 
-  await page.route("**/pools?*", async (route) => {
+  await page.route("**/pool?*", async (route) => {
     const search = new URL(route.request().url()).searchParams
       .get("search")
       ?.toLowerCase();

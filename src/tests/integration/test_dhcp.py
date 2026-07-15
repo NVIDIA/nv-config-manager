@@ -770,7 +770,7 @@ class TestDHCPAPI:
             reservation_pages, reservation_total = _fetch_exact_collection_pages(
                 dhcp_api_url,
                 dhcp_client,
-                "reservations",
+                "reservation",
                 "reservations",
                 DHCP_SCALE_PAGE_SIZE,
             )
@@ -793,7 +793,7 @@ class TestDHCPAPI:
                 "No seeded reservation landed beyond the first API page"
             )
             reservation_search = dhcp_client.get(
-                f"{dhcp_api_url}/reservations",
+                f"{dhcp_api_url}/reservation",
                 params={
                     "limit": DHCP_SCALE_PAGE_SIZE,
                     "search": target_reservation["hostname"],
@@ -807,11 +807,17 @@ class TestDHCPAPI:
                 reservation["hostname"]
                 for reservation in reservation_search_payload["reservations"]
             ] == [target_reservation["hostname"]]
+            reservation_get = dhcp_client.get(
+                f"{dhcp_api_url}/reservation/{target_reservation['ip_address']}",
+                timeout=30,
+            )
+            reservation_get.raise_for_status()
+            assert reservation_get.json()["hostname"] == target_reservation["hostname"]
 
             pool_pages, pool_total = _fetch_exact_collection_pages(
                 dhcp_api_url,
                 dhcp_client,
-                "pools",
+                "pool",
                 "pools",
                 DHCP_SCALE_PAGE_SIZE,
             )
@@ -828,7 +834,7 @@ class TestDHCPAPI:
             )
             assert target_pool is not None, "No seeded pool landed beyond the first API page"
             pool_search = dhcp_client.get(
-                f"{dhcp_api_url}/pools",
+                f"{dhcp_api_url}/pool",
                 params={"limit": DHCP_SCALE_PAGE_SIZE, "search": target_pool["pool"]},
                 timeout=30,
             )
@@ -836,6 +842,15 @@ class TestDHCPAPI:
             pool_search_payload = pool_search.json()
             assert pool_search_payload["total_count"] == 1
             assert [pool["pool"] for pool in pool_search_payload["pools"]] == [target_pool["pool"]]
+            subnet_pools = dhcp_client.get(
+                f"{dhcp_api_url}/pool",
+                params={"limit": 500, "subnet": scale_subnet},
+                timeout=30,
+            )
+            subnet_pools.raise_for_status()
+            subnet_pool_payload = subnet_pools.json()
+            assert subnet_pool_payload["total_count"] == len(seeded_pools)
+            assert {pool["pool"] for pool in subnet_pool_payload["pools"]} == seeded_pools
             print(
                 f"✅ Found {DHCP_SCALE_CONFIG_RECORD_COUNT} synthetic reservations and "
                 f"pools in {scale_subnet} across {len(reservation_pages)} and "

@@ -198,8 +198,8 @@ test.describe("DHCP Dashboard Page", () => {
   test("infinitely loads reservations and pools with exact totals", async ({
     page,
   }) => {
-    await page.unroute("**/reservations?*");
-    await page.route("**/reservations?*", async (route) => {
+    await page.unroute("**/reservation?*");
+    await page.route("**/reservation?*", async (route) => {
       const params = new URL(route.request().url()).searchParams;
       const cursor = params.get("cursor");
       expect(params.get("limit")).toBe("100");
@@ -219,8 +219,8 @@ test.describe("DHCP Dashboard Page", () => {
         },
       });
     });
-    await page.unroute("**/pools?*");
-    await page.route("**/pools?*", async (route) => {
+    await page.unroute("**/pool?*");
+    await page.route("**/pool?*", async (route) => {
       const params = new URL(route.request().url()).searchParams;
       const cursor = params.get("cursor");
       expect(params.get("limit")).toBe("100");

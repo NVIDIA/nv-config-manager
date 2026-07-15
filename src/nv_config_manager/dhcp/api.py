@@ -31,7 +31,7 @@ from fastapi.responses import Response
 from prometheus_client import CONTENT_TYPE_LATEST, Gauge, generate_latest
 from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_fastapi_instrumentator import metrics as instrumentator_metrics
-from pydantic import IPvAnyAddress
+from pydantic import IPvAnyAddress, IPvAnyNetwork
 
 from nv_config_manager.common.auth import install_identity_probe
 from nv_config_manager.common.config import load_config
@@ -43,10 +43,12 @@ from nv_config_manager.dhcp.lease_dashboard import (
     LeaseRecord,
     PoolPageResponse,
     ReservationPageResponse,
+    ReservationRecord,
     build_dhcp_summary,
     build_lease,
     build_lease_list,
     build_pool_list,
+    build_reservation,
     build_reservation_list,
     filter_lease_records,
     filter_pool_records,
@@ -391,7 +393,31 @@ async def list_leases(
         )
 
 
-@app.get("/reservations", response_model=ReservationPageResponse)
+@app.get(
+    "/reservation/{ip_address}",
+    response_model=ReservationRecord,
+    responses={404: {"description": "Reservation not found"}},
+)
+async def get_reservation(
+    request: Request,
+    ip_address: IPvAnyAddress,
+    ip_version: IpVersion | None = None,
+) -> ReservationRecord:
+    """Return one normalized reservation from the selected DHCP configuration."""
+    ip_version = _resolve_address_version(ip_address, ip_version)
+    async with _kea_lease_client() as client:
+        config_payload = await client.get_config(ip_version)
+    reservation = build_reservation(
+        config_payload,
+        ip_address,
+        ip_version=ip_version,
+    )
+    if reservation is None:
+        raise HTTPException(status_code=404, detail=f"Reservation {ip_address} was not found")
+    return reservation
+
+
+@app.get("/reservation", response_model=ReservationPageResponse)
 async def list_reservations(
     request: Request,
     ip_version: IpVersion = IpVersion.V4,
@@ -421,15 +447,21 @@ async def list_reservations(
     )
 
 
-@app.get("/pools", response_model=PoolPageResponse)
+@app.get("/pool", response_model=PoolPageResponse)
 async def list_pools(
     request: Request,
     ip_version: IpVersion = IpVersion.V4,
     limit: int = Query(default=100, ge=1, le=500),
     cursor: str | None = Query(default=None, min_length=1, max_length=128),
     search: str | None = Query(default=None, max_length=256),
+    subnet: IPvAnyNetwork | None = None,
 ) -> PoolPageResponse:
     """Return a cursor-paginated, optionally filtered configured-pool page."""
+    if subnet is not None and subnet.version != ip_version:
+        raise HTTPException(
+            status_code=422,
+            detail=f"IP subnet version does not match ip_version={ip_version}",
+        )
     offset = _decode_offset_cursor(cursor, "pool", ip_version)
     async with _kea_lease_client() as client:
         config_payload = await client.get_config(ip_version)
@@ -437,6 +469,8 @@ async def list_pools(
         config_payload,
         ip_version=ip_version,
     )
+    if subnet is not None:
+        pools = [pool for pool in pools if pool.subnet == str(subnet)]
     filtered_pools = filter_pool_records(pools, search)
     page, total_count, next_offset = _slice_offset_page(filtered_pools, offset, limit)
     return PoolPageResponse(

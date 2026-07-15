@@ -166,7 +166,7 @@ export function useDhcpReservations(
 ) {
   const response = useDhcpCollectionPages<DhcpReservationPage>(
     dhcpUrl,
-    "reservations",
+    "reservation",
     search,
     enabled
   );
@@ -196,7 +196,7 @@ export function useDhcpPools(
 ) {
   const response = useDhcpCollectionPages<DhcpPoolPage>(
     dhcpUrl,
-    "pools",
+    "pool",
     search,
     enabled
   );

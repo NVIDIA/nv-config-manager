@@ -127,7 +127,7 @@ The dedicated DHCP dashboard summarizes active leases, reservations, configured 
 
 ![DHCP lease activity dashboard](../assets/images/dhcp/lease-dashboard.png)
 
-Collection requests default `ip_version` to `4`; pass `ip_version=6` to select IPv6. Lease item requests infer the version from the address and also accept an optional matching `ip_version`.
+Collection requests default `ip_version` to `4`; pass `ip_version=6` to select IPv6. Lease and reservation item requests infer the version from the address and also accept an optional matching `ip_version`.
 
 List leases with a bounded collection request:
 
@@ -142,22 +142,30 @@ The response contains a `leases` array and an opaque `next_cursor`. When `next_c
 Reservations and configured pools use the same bounded query parameters:
 
 ```bash
-curl --fail-with-body --get "${DHCP_API_URL}/reservations" \
+curl --fail-with-body --get "${DHCP_API_URL}/reservation" \
   --header "Authorization: Bearer ${TOKEN}" \
   --data-urlencode "limit=100" \
   --data-urlencode "search=leaf"
 
-curl --fail-with-body --get "${DHCP_API_URL}/pools" \
+curl --fail-with-body --get "${DHCP_API_URL}/pool" \
   --header "Authorization: Bearer ${TOKEN}" \
-  --data-urlencode "limit=100"
+  --data-urlencode "limit=100" \
+  --data-urlencode "subnet=10.217.162.0/24"
 ```
 
-These responses contain `reservations` or `pools`, an exact `total_count` for the current filter, and an opaque `next_cursor`. Pass the cursor unchanged with the same `ip_version`, `limit`, and `search` values to continue.
+These responses contain `reservations` or `pools`, an exact `total_count` for the current filter, and an opaque `next_cursor`. The optional pool `subnet` parameter matches one exact configured prefix. Pass the cursor unchanged with the same `ip_version`, `limit`, `search`, and `subnet` values to continue.
 
 Look up the device holding a lease:
 
 ```bash
 curl --fail-with-body --get "${DHCP_API_URL}/lease/7.245.196.5" \
+  --header "Authorization: Bearer ${TOKEN}"
+```
+
+Look up a configured reservation by address:
+
+```bash
+curl --fail-with-body --get "${DHCP_API_URL}/reservation/7.245.196.5" \
   --header "Authorization: Bearer ${TOKEN}"
 ```
 

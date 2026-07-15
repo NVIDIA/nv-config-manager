@@ -586,20 +586,23 @@ def test_get_lease_infers_ipv6_from_path_address():
     mock_get_config.assert_awaited_once_with(6)
 
 
-def test_lease_openapi_documents_not_found() -> None:
-    """Advertise the domain-level missing lease response for both operations."""
+def test_item_openapi_documents_not_found() -> None:
+    """Advertise domain-level missing resource responses."""
     lease_operations = app.openapi()["paths"]["/lease/{ip_address}"]
 
     for method in ("get", "delete"):
         assert lease_operations[method]["responses"]["404"] == {"description": "Lease not found"}
+    assert app.openapi()["paths"]["/reservation/{ip_address}"]["get"]["responses"]["404"] == {
+        "description": "Reservation not found"
+    }
 
 
 def test_lease_openapi_version_parameters() -> None:
     """Advertise collection defaults while item routes infer address version."""
     operations = (
         app.openapi()["paths"]["/lease"]["get"],
-        app.openapi()["paths"]["/pools"]["get"],
-        app.openapi()["paths"]["/reservations"]["get"],
+        app.openapi()["paths"]["/pool"]["get"],
+        app.openapi()["paths"]["/reservation"]["get"],
         app.openapi()["paths"]["/summary"]["get"],
     )
 
@@ -610,8 +613,12 @@ def test_lease_openapi_version_parameters() -> None:
         assert parameter["required"] is False
         assert parameter["schema"]["default"] == 4
 
-    for method in ("get", "delete"):
-        operation = app.openapi()["paths"]["/lease/{ip_address}"][method]
+    item_operations = (
+        app.openapi()["paths"]["/lease/{ip_address}"]["get"],
+        app.openapi()["paths"]["/lease/{ip_address}"]["delete"],
+        app.openapi()["paths"]["/reservation/{ip_address}"]["get"],
+    )
+    for operation in item_operations:
         parameter = next(
             parameter for parameter in operation["parameters"] if parameter["name"] == "ip_version"
         )
@@ -800,6 +807,76 @@ def test_list_leases_rejects_invalid_cursor():
     mock_get_lease_page.assert_not_awaited()
 
 
+def test_get_reservation_by_ip_address():
+    """Return one normalized reservation and infer its IP version."""
+    client = TestClient(app)
+
+    with (
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_config",
+            new_callable=AsyncMock,
+            return_value=LEASE_DASHBOARD_CONFIG,
+        ) as mock_get_config,
+        patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED),
+    ):
+        rsp = client.get(
+            "/reservation/10.0.0.2",
+            headers={"X-Auth-Request-Email": "test@example.com"},
+        )
+
+    assert rsp.status_code == 200
+    assert rsp.json() == {
+        "hostname": "reserved-switch",
+        "identifier": "02:00:00:00:00:01",
+        "identifier_type": "hw-address",
+        "ip_address": "10.0.0.2",
+        "subnet": None,
+    }
+    mock_get_config.assert_awaited_once_with(4)
+
+
+def test_get_reservation_not_found():
+    """Return 404 when no reservation is configured for the address."""
+    client = TestClient(app)
+
+    with (
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_config",
+            new_callable=AsyncMock,
+            return_value=LEASE_DASHBOARD_CONFIG,
+        ),
+        patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED),
+    ):
+        rsp = client.get(
+            "/reservation/10.0.0.99",
+            headers={"X-Auth-Request-Email": "test@example.com"},
+        )
+
+    assert rsp.status_code == 404
+    assert rsp.json() == {"detail": "Reservation 10.0.0.99 was not found"}
+
+
+def test_get_reservation_rejects_mismatched_version():
+    """Reject an explicit version that conflicts with the reservation address."""
+    client = TestClient(app)
+
+    with (
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_config",
+            new_callable=AsyncMock,
+        ) as mock_get_config,
+        patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED),
+    ):
+        rsp = client.get(
+            "/reservation/10.0.0.2?ip_version=6",
+            headers={"X-Auth-Request-Email": "test@example.com"},
+        )
+
+    assert rsp.status_code == 422
+    assert rsp.json() == {"detail": "IP address version does not match ip_version=6"}
+    mock_get_config.assert_not_awaited()
+
+
 def test_list_reservations_paginates_and_filters_with_exact_total():
     """Return bounded reservation pages with exact filtered totals."""
     client = TestClient(app)
@@ -829,17 +906,17 @@ def test_list_reservations_paginates_and_filters_with_exact_total():
         patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED),
     ):
         first_rsp = client.get(
-            "/reservations?limit=2",
+            "/reservation?limit=2",
             headers={"X-Auth-Request-Email": "test@example.com"},
         )
         cursor = first_rsp.json()["next_cursor"]
         second_rsp = client.get(
-            "/reservations",
+            "/reservation",
             params={"cursor": cursor, "limit": 2},
             headers={"X-Auth-Request-Email": "test@example.com"},
         )
         search_rsp = client.get(
-            "/reservations?limit=2&search=0200.0000.0002",
+            "/reservation?limit=2&search=0200.0000.0002",
             headers={"X-Auth-Request-Email": "test@example.com"},
         )
 
@@ -882,11 +959,11 @@ def test_list_reservations_rejects_mismatched_cursor_version():
         patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED),
     ):
         first_rsp = client.get(
-            "/reservations?limit=1",
+            "/reservation?limit=1",
             headers={"X-Auth-Request-Email": "test@example.com"},
         )
         rsp = client.get(
-            "/reservations",
+            "/reservation",
             params={"cursor": first_rsp.json()["next_cursor"], "ip_version": 6},
             headers={"X-Auth-Request-Email": "test@example.com"},
         )
@@ -911,16 +988,16 @@ def test_list_pools_paginates_and_filters_with_exact_total():
         patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED),
     ):
         first_rsp = client.get(
-            "/pools?limit=1",
+            "/pool?limit=1",
             headers={"X-Auth-Request-Email": "test@example.com"},
         )
         second_rsp = client.get(
-            "/pools",
+            "/pool",
             params={"cursor": first_rsp.json()["next_cursor"], "limit": 1},
             headers={"X-Auth-Request-Email": "test@example.com"},
         )
         search_rsp = client.get(
-            "/pools?limit=1&search=10.0.1.0/30",
+            "/pool?limit=1&search=10.0.1.0/30",
             headers={"X-Auth-Request-Email": "test@example.com"},
         )
 
@@ -935,6 +1012,77 @@ def test_list_pools_paginates_and_filters_with_exact_total():
     assert search_rsp.json()["total_count"] == 1
     assert search_rsp.json()["pools"] == [{"subnet": "10.0.0.0/24", "pool": "10.0.1.0/30"}]
     assert mock_get_config.await_count == 3
+
+
+def test_list_pools_filters_by_subnet():
+    """Return only pools configured in the requested subnet."""
+    client = TestClient(app)
+    config = deepcopy(LEASE_DASHBOARD_CONFIG)
+    dhcp_config = config[0]["arguments"]["Dhcp4"]
+    dhcp_config["subnet4"][0]["pools"].append({"pool": "10.0.0.20-10.0.0.29"})
+    dhcp_config["subnet4"].append(
+        {
+            "id": 8,
+            "subnet": "10.0.1.0/24",
+            "pools": [{"pool": "10.0.1.10-10.0.1.19"}],
+        }
+    )
+
+    with (
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_config",
+            new_callable=AsyncMock,
+            return_value=config,
+        ) as mock_get_config,
+        patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED),
+    ):
+        first_rsp = client.get(
+            "/pool",
+            params={"limit": 1, "subnet": "10.0.0.0/24"},
+            headers={"X-Auth-Request-Email": "test@example.com"},
+        )
+        second_rsp = client.get(
+            "/pool",
+            params={
+                "cursor": first_rsp.json()["next_cursor"],
+                "limit": 1,
+                "subnet": "10.0.0.0/24",
+            },
+            headers={"X-Auth-Request-Email": "test@example.com"},
+        )
+
+    assert first_rsp.status_code == 200
+    assert first_rsp.json()["total_count"] == 2
+    assert first_rsp.json()["pools"] == [{"subnet": "10.0.0.0/24", "pool": "10.0.0.10-10.0.0.19"}]
+    assert first_rsp.json()["next_cursor"] is not None
+    assert second_rsp.status_code == 200
+    assert second_rsp.json()["total_count"] == 2
+    assert second_rsp.json()["pools"] == [{"subnet": "10.0.0.0/24", "pool": "10.0.0.20-10.0.0.29"}]
+    assert second_rsp.json()["next_cursor"] is None
+    assert mock_get_config.await_count == 2
+    assert all(call.args == (4,) for call in mock_get_config.await_args_list)
+
+
+def test_list_pools_rejects_mismatched_subnet_version():
+    """Reject an explicit version that conflicts with the subnet prefix."""
+    client = TestClient(app)
+
+    with (
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_config",
+            new_callable=AsyncMock,
+        ) as mock_get_config,
+        patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED),
+    ):
+        rsp = client.get(
+            "/pool",
+            params={"ip_version": 6, "subnet": "10.0.0.0/24"},
+            headers={"X-Auth-Request-Email": "test@example.com"},
+        )
+
+    assert rsp.status_code == 422
+    assert rsp.json() == {"detail": "IP subnet version does not match ip_version=6"}
+    mock_get_config.assert_not_awaited()
 
 
 def test_config_collections_bound_thousand_record_pages():
@@ -962,11 +1110,11 @@ def test_config_collections_bound_thousand_record_pages():
         patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED),
     ):
         reservation_rsp = client.get(
-            "/reservations?limit=100",
+            "/reservation?limit=100",
             headers={"X-Auth-Request-Email": "test@example.com"},
         )
         pool_rsp = client.get(
-            "/pools?limit=100",
+            "/pool?limit=100",
             headers={"X-Auth-Request-Email": "test@example.com"},
         )
 

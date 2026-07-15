@@ -438,6 +438,20 @@ def build_reservation_list(
     return _reservation_records(_dhcp_config(config_payload, ip_version), ip_version)
 
 
+def build_reservation(
+    config_payload: list[dict[str, Any]],
+    address: IPvAnyAddress,
+    *,
+    ip_version: IpVersion,
+) -> ReservationRecord | None:
+    """Build one normalized reservation, returning none when it is not found."""
+    reservations = build_reservation_list(config_payload, ip_version=ip_version)
+    return next(
+        (reservation for reservation in reservations if reservation.ip_address == address),
+        None,
+    )
+
+
 def build_pool_list(
     config_payload: list[dict[str, Any]],
     *,
