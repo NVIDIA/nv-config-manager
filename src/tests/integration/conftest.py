@@ -1291,18 +1291,26 @@ def rbac_get_token(
 def rbac_api_login(
     rbac_get_token: Callable[[str], str],
     rbac_nautobot_url: str,
-) -> Callable[[str], int]:
+) -> Callable[..., int]:
     """Return a callable that logs a user in over the Nautobot REST API.
 
     Fetches the user's JWT then GETs an authenticated endpoint with it, which is
-    what triggers `nv_config_manager_auth.jwt_authentication` + the rbac sync.
-    Returns the HTTP status code so tests can assert authorization outcomes.
+    what triggers `nv_config_manager_auth.jwt_authentication` + the rbac sync
+    (the sync runs inside `authenticate()`, so it fires regardless of the
+    subsequent authorization outcome). Returns the HTTP status code so tests can
+    assert authorization results.
+
+    The default probe hits a data endpoint (`/api/dcim/devices/`) rather than
+    `/api/users/users/`: a mapped user with `view: all` is *intentionally* not
+    granted `users.user` (privilege-model exclusion), so listing users 403s by
+    design. Pass an explicit `path` to probe a specific endpoint (e.g. to assert
+    that exclusion).
     """
 
-    def _login(username: str) -> int:
+    def _login(username: str, path: str = "/api/dcim/devices/") -> int:
         token = rbac_get_token(username)
         resp = requests.get(
-            f"{rbac_nautobot_url}/api/users/users/",
+            f"{rbac_nautobot_url}{path}",
             headers={"Authorization": f"Bearer {token}"},
             verify=False,
             timeout=30,

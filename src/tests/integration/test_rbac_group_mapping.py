@@ -350,7 +350,7 @@ def test_revoke_prunes_stale_managed_group_without_crash(
 
 def test_all_scope_excludes_privilege_models(
     rbac_require_configured: str,
-    rbac_api_login: Callable[[str], int],
+    rbac_api_login: Callable[..., int],
     rbac_nbshell: Callable[[str], str],
 ) -> None:
     """A ``content_types: ["all"]`` grant resolves to data models, never privilege ones.
@@ -361,9 +361,13 @@ def test_all_scope_excludes_privilege_models(
     ``users.objectpermission``, ``auth.group``, ``auth.permission``,
     ``contenttypes.contenttype`` -- are excluded so a broad ``all`` grant can't
     become a privilege-escalation backdoor around Nautobot's own object-type
-    policy. This is the live-cluster guard for that fix: the resolved scope must
-    be non-empty (real data models present) yet contain none of the protected
-    models.
+    policy.
+
+    Checked two ways: (1) the resolved ObjectPermission scope is non-empty (real
+    data models present) yet contains none of the protected models; and (2)
+    end-to-end, the user can list a data endpoint but is *forbidden* from the
+    users endpoint -- proving the exclusion is enforced by Nautobot, not just
+    bookkeeping.
     """
     status = rbac_api_login(USER_NETWORK)
     assert status == 200, f"expected authorized 200 for {USER_NETWORK}, got {status}"
@@ -383,6 +387,15 @@ def test_all_scope_excludes_privilege_models(
     # (an empty scope would also technically "exclude" the privilege models).
     assert "dcim.device" in scope, (
         f"expected dcim.device in the 'all' scope; got a suspiciously narrow set: {sorted(scope)}"
+    )
+
+    # End-to-end: the exclusion must be *enforced*, not just recorded. Listing
+    # users requires view on users.user, which "all" omits, so this must 403 --
+    # while the data endpoint the default probe hit above returned 200.
+    users_status = rbac_api_login(USER_NETWORK, "/api/users/users/")
+    assert users_status == 403, (
+        f"a 'view: all' grant must NOT authorize listing users (users.user is "
+        f"excluded from the expansion); got {users_status} from /api/users/users/"
     )
 
 
