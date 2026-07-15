@@ -17,6 +17,7 @@
 import importlib
 import logging
 import os
+import threading
 from collections.abc import Callable
 from typing import Any
 
@@ -51,6 +52,7 @@ RequestsInstrumentor = _optional_instrumentor(
 )
 
 _tracing_configured = False
+_tracing_lock = threading.Lock()
 
 
 def setup_tracing(service_name: str) -> bool:
@@ -69,22 +71,24 @@ def setup_tracing(service_name: str) -> bool:
     otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "").strip()
     if not otlp_endpoint:
         return False
-    if _tracing_configured:
-        return True
 
-    resolved_name = os.getenv("OTEL_SERVICE_NAME", service_name)
-    resource = Resource.create(
-        {
-            "service.name": resolved_name,
-            "deployment.environment": os.getenv("ENVIRONMENT", "unknown"),
-        }
-    )
-    provider = TracerProvider(resource=resource)
-    provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=otlp_endpoint)))
-    trace.set_tracer_provider(provider)
-    _instrument_http_clients()
-    _tracing_configured = True
-    return True
+    with _tracing_lock:
+        if _tracing_configured:
+            return True
+
+        resolved_name = os.getenv("OTEL_SERVICE_NAME", service_name)
+        resource = Resource.create(
+            {
+                "service.name": resolved_name,
+                "deployment.environment": os.getenv("ENVIRONMENT", "unknown"),
+            }
+        )
+        provider = TracerProvider(resource=resource)
+        provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=otlp_endpoint)))
+        trace.set_tracer_provider(provider)
+        _instrument_http_clients()
+        _tracing_configured = True
+        return True
 
 
 def _instrument_http_clients() -> None:

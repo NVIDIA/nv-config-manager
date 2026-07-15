@@ -296,7 +296,7 @@ spec:
         {{- if include "nv-config-manager.spiffe.enabled" . }}
         {{- include "nv-config-manager.spiffe.annotations" (dict "root" . "app" $temporalName) | nindent 8 }}
         {{- end }}
-        {{- if .Values.temporal.observability.enabled }}
+        {{- if .Values.observability.enabled }}
         {{- include "nv-config-manager.temporalServerOtelOptOutAnnotations" . | nindent 8 }}
         {{- end }}
     spec:
@@ -491,7 +491,7 @@ spec:
         {{- if include "nv-config-manager.spiffe.enabled" . }}
         {{- include "nv-config-manager.spiffe.annotations" (dict "root" . "app" $temporalName) | nindent 8 }}
         {{- end }}
-        {{- if .Values.temporal.observability.enabled }}
+        {{- if .Values.observability.enabled }}
         {{- include "nv-config-manager.temporalServerOtelOptOutAnnotations" . | nindent 8 }}
         {{- end }}
     spec:
@@ -611,7 +611,7 @@ spec:
         {{- if include "nv-config-manager.spiffe.enabled" . }}
         {{- include "nv-config-manager.spiffe.annotations" (dict "root" . "app" $temporalName) | nindent 8 }}
         {{- end }}
-        {{- if .Values.temporal.observability.enabled }}
+        {{- if .Values.observability.enabled }}
         {{- include "nv-config-manager.temporalServerOtelOptOutAnnotations" . | nindent 8 }}
         {{- end }}
     spec:
@@ -695,7 +695,7 @@ spec:
         {{- if include "nv-config-manager.spiffe.enabled" . }}
         {{- include "nv-config-manager.spiffe.annotations" (dict "root" . "app" $temporalName) | nindent 8 }}
         {{- end }}
-        {{- if .Values.temporal.observability.enabled }}
+        {{- if .Values.observability.enabled }}
         {{- include "nv-config-manager.temporalServerOtelOptOutAnnotations" . | nindent 8 }}
         {{- end }}
     spec:

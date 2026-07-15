@@ -148,6 +148,20 @@ class TestSetupTracingEnabled:
         otel_mocks["provider_cls"].assert_called_once()
         otel_mocks["instrument_http_clients"].assert_called_once()
 
+    def test_concurrent_calls_configure_once(self, _clean_env, otel_mocks):
+        """Concurrent startup calls register the provider only once."""
+        import concurrent.futures
+
+        _clean_env.setenv(OTLP_ENV, "http://collector:4317")
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+            results = list(pool.map(lambda _: telemetry.setup_tracing("svc"), range(16)))
+
+        assert all(results)
+        otel_mocks["set_tracer_provider"].assert_called_once()
+        otel_mocks["provider_cls"].assert_called_once()
+        otel_mocks["instrument_http_clients"].assert_called_once()
+
 
 class TestHttpClientInstrumentation:
     """Outbound client instrumentation makes trace context cross service hops."""

@@ -1518,7 +1518,8 @@ Fails fast when neither is available so pods never point at a dead OTLP target.
 */}}
 {{- define "nv-config-manager.otelAppEnv" -}}
 {{- $endpoint := .root.Values.observability.otlpEndpoint -}}
-{{- if and (not $endpoint) .root.Values.alloy.enabled -}}
+{{- $alloy := .root.Values.alloy | default dict -}}
+{{- if and (not $endpoint) ($alloy.enabled | default false) -}}
 {{- $endpoint = printf "http://alloy.%s.svc.cluster.local:4317" .root.Values.global.namespace -}}
 {{- end -}}
 {{- if not $endpoint -}}
