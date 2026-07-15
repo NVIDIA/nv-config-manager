@@ -55,26 +55,33 @@ async function dhcpFetcher<T>(url: string): Promise<T> {
 
 /** Read the latest configuration sync timestamp from Prometheus text. */
 async function configSyncTimestampFetcher(url: string): Promise<number | null> {
-  const response = await fetch(url, {
-    credentials: "include",
-    mode: "cors",
-  });
-  if (!response.ok) {
-    throw new Error("DHCP config sync age is unavailable");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, {
+      credentials: "include",
+      mode: "cors",
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new Error("DHCP config sync age is unavailable");
+    }
+
+    const metrics = await response.text();
+    const sample = metrics
+      .split("\n")
+      .find(
+        (line) =>
+          line.startsWith(`${CONFIG_SYNC_TIMESTAMP_METRIC}{`) &&
+          line.includes('ip_version="4"')
+      );
+    if (!sample) return null;
+
+    const value = Number(sample.trim().split(/\s+/)[1]);
+    return Number.isFinite(value) ? value : null;
+  } finally {
+    clearTimeout(timeout);
   }
-
-  const metrics = await response.text();
-  const sample = metrics
-    .split("\n")
-    .find(
-      (line) =>
-        line.startsWith(`${CONFIG_SYNC_TIMESTAMP_METRIC}{`) &&
-        line.includes('ip_version="4"')
-    );
-  if (!sample) return null;
-
-  const value = Number(sample.trim().split(/\s+/)[1]);
-  return Number.isFinite(value) ? value : null;
 }
 
 /** Subscribe to DHCP summary data. */
