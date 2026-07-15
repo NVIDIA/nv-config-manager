@@ -137,7 +137,7 @@ export async function mockDhcpEndpoints(page: Page) {
       ip_address: "10.0.0.11",
       hostname: "leaf-02",
       client_id: "01:02:03:04:05",
-      subnet: "10.0.0.0/24",
+      subnet: null,
       state: 0,
       cltt: 1783700300,
       valid_lft: 7200,

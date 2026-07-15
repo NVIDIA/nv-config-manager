@@ -473,7 +473,16 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
                         {lease.hw_address || lease.client_id || lease.duid || "—"}
                       </TableCell>
                       <TableCell>
-                        {lease.subnet ? <Badge variant="outline">{lease.subnet}</Badge> : "—"}
+                        {lease.subnet ? (
+                          <Badge variant="outline">{lease.subnet}</Badge>
+                        ) : (
+                          <span
+                            className="text-sm text-muted-foreground"
+                            title="This lease's subnet ID is not present in the current DHCP configuration."
+                          >
+                            Removed
+                          </span>
+                        )}
                       </TableCell>
                       <TableCell className="whitespace-nowrap">{formatExpiry(lease.expires_at)}</TableCell>
                       <TableCell>

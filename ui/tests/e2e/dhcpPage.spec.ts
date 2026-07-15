@@ -47,6 +47,15 @@ test.describe("DHCP Dashboard Page", () => {
         .filter({ hasText: "leaf-01" })
         .getByText("10.0.0.0/24", { exact: true })
     ).toBeVisible();
+    const unconfiguredSubnet = dashboard
+      .getByRole("row")
+      .filter({ hasText: "leaf-02" })
+      .getByText("Removed", { exact: true });
+    await expect(unconfiguredSubnet).toBeVisible();
+    await expect(unconfiguredSubnet).toHaveAttribute(
+      "title",
+      "This lease's subnet ID is not present in the current DHCP configuration."
+    );
     await expect(
       dashboard.getByText("Config age", { exact: true })
     ).toBeVisible();
