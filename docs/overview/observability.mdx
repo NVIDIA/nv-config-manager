@@ -62,6 +62,45 @@ Key service metrics include:
 | DHCP | Config generation duration, config generation errors, Nautobot query errors, cache refresh failures, last refresh timestamp |
 | Config Store, ZTP, Temporal | FastAPI request metrics and service-specific metrics exposed by each component |
 
+## Tracing
+
+OpenTelemetry trace export is controlled by a single global Helm toggle, `observability.enabled`. When enabled, the chart injects standard `OTEL_*` environment variables into every instrumented service — no per-pod sidecar.
+
+Instrumented components:
+
+| Component | `OTEL_SERVICE_NAME` |
+| :-------- | :-------------------- |
+| Config Store API | `config-store` |
+| DHCP API | `dhcp` |
+| ZTP API | `ztp` |
+| Render API | `render` |
+| MCP server | `mcp` |
+| Temporal worker, API, scheduler, archive | `temporal-worker`, `temporal-api`, etc. |
+
+The chart points each service's OTel SDK at an existing OTLP collector:
+
+| Setting | Behavior |
+| :------ | :------- |
+| `observability.otlpEndpoint` set | Export to that gRPC endpoint (managed or external collector). |
+| `observability.otlpEndpoint` empty and `alloy.enabled: true` | Default to `http://alloy.<namespace>.svc.cluster.local:4317`. |
+| `observability.enabled: true` with neither of the above | Helm render fails so pods never target a dead OTLP endpoint. |
+
+Temporal also exports built-in runtime metrics (workflow completion, activity latency, and similar) to the same OTLP endpoint when tracing is enabled.
+
+**Local development:** layer `deploy/helm/values-observability.yaml` on your values file. It enables the bundled Alloy OTLP receiver and Tempo, sets `observability.enabled: true`, and leaves `otlpEndpoint` empty so traces flow:
+
+```
+HTTP APIs + Temporal pods → Alloy (OTLP) → Tempo → Grafana
+```
+
+**Production:** set `observability.enabled: true` and `observability.otlpEndpoint` to your cluster's OTLP collector URL. The collector fans traces out to whatever backend it is wired to; the chart does not deploy a trace backend in that path.
+
+```yaml
+observability:
+  enabled: true
+  otlpEndpoint: "http://otel-collector.observability.svc.cluster.local:4317"
+```
+
 ## Local Observability Stack
 
 For Kind and airgapped demo environments, the installer can deploy a local observability stack by setting `infrastructure.monitoring.observability_enabled: true` or by toggling **Enable local observability stack** on the TUI Infrastructure screen.

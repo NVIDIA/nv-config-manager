@@ -1509,7 +1509,7 @@ config-store/dhcp/ztp/render/mcp and the Temporal worker/api/scheduler/archive).
 Call sites guard the include with `if .Values.observability.enabled`.
 
 Points the OTel SDK at an existing OTLP collector:
-  - observability.otlpEndpoint when set (managed/external collector, e.g. Panoptes), else
+  - observability.otlpEndpoint when set (managed or external collector), else
   - the in-cluster Grafana Alloy service, but only when the bundled Alloy is
     enabled (alloy.enabled, e.g. via values-observability.yaml).
 Fails fast when neither is available so pods never point at a dead OTLP target.

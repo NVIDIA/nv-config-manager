@@ -241,7 +241,7 @@ alloy:
 
         // Traces -> the bundled Tempo (tempo.enabled below). Grafana's Tempo
         // datasource then renders them. In production, point this at your
-        // managed collector / Panoptes instead.
+        // managed or external OTLP collector instead.
         otelcol.exporter.otlp "tempo" {
           client {
             endpoint = "tempo:4317"

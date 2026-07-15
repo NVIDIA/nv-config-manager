@@ -1529,21 +1529,9 @@ networkDhcp:
   # Kea configuration
   kea:
     storkAgentPort: 9457
-# =============================================================================
-# Observability — OTel tracing (global toggle)
-# =============================================================================
-# One switch for OpenTelemetry trace export across every HTTP API
-# (config-store, dhcp, ztp, render, mcp) and the Temporal worker/api/scheduler/
-# archive. When enabled, each service's OTel SDK exports OTLP spans (and Temporal
-# runtime metrics) via standard OTEL_* env vars injected by the chart — no
-# per-pod sidecar. Backend-agnostic: the collector fans traces out to whatever
-# it is wired to (local Tempo via values-observability.yaml, Panoptes in prod).
+# See docs/overview/observability.mdx (Tracing) for configuration details.
 observability:
   enabled: false
-  # OTLP gRPC endpoint. Empty falls back to the in-cluster Grafana Alloy
-  # (alloy.<namespace>.svc:4317) only when alloy.enabled=true (e.g. via
-  # values-observability.yaml); otherwise this must be set or rendering fails
-  # (no dead OTLP target).
   otlpEndpoint: ""
 # =============================================================================
 # Service: Temporal (Workflows)
