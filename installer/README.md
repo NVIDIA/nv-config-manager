@@ -162,7 +162,7 @@ per-site Vault paths. Existing values are preserved, so rerunning a deployment
 does not rotate credentials. The provisioning token is resolved in this order:
 
 1. `--vault-token-file`
-2. `VAULT_TOKEN`
+2. `VAULT_TOKEN` or `OPENBAO_TOKEN`
 3. The Kubernetes Secret named by token authentication, using its `token` key
 
 The token must be allowed to inspect/create the configured mounts and read/write
@@ -182,6 +182,19 @@ It never creates, resizes, or changes a PVC. A missing PVC is an error.
 nvcm-installer pvc-updater jobs --namespace nv-config-manager \
   --release-name nv-config-manager --source ./custom-jobs
 
+# Optionally run a custom job after its content is available and the workers are ready.
+# The job runs even if the staged jobs content is unchanged.
+nvcm-installer pvc-updater jobs --namespace nv-config-manager \
+  --release-name nv-config-manager --source ./mock_topology \
+  --run-job custom.mock_topology.jobs.mock_topology_design.MockTopologyDesign \
+  --job-input '{"blueprint":"superpod","deployment_name":"site-1"}'
+
+# Re-run a bundled or previously installed job without changing the jobs PVC.
+nvcm-installer pvc-updater jobs --namespace nv-config-manager \
+  --release-name nv-config-manager \
+  --run-job nv_config_manager_jobs.bootstrap.load_bootstrap_data.LoadBootstrapData \
+  --job-input '{}'
+
 # Template plugins: restart the Render Service deployments when content changed.
 nvcm-installer pvc-updater templates --namespace nv-config-manager \
   --release-name nv-config-manager --source ./template-plugins
@@ -189,11 +202,18 @@ nvcm-installer pvc-updater templates --namespace nv-config-manager \
 # ZTP OS images: rebuild manifest.json and restart Network ZTP when content changed.
 nvcm-installer pvc-updater ztp --namespace nv-config-manager \
   --release-name nv-config-manager \
-  --image cumulus 5.13.0 ./cumulus-linux-5.13.0.bin
+  --image cumulus-linux 5.13.0 ./cumulus-linux-5.13.0.bin
 ```
 
-`jobs` and `templates` accept one or more `--source` directories or tar
-archives. `ztp` accepts one or more `--image PLATFORM VERSION PATH` values.
+`templates` accepts one or more `--source` directories or tar archives, and
+`ztp` accepts one or more `--image PLATFORM VERSION PATH` values. `jobs`
+requires either one or more `--source` values, `--run-job MODULE.CLASS`, or
+both. `--run-job` and `--job-input JSON_OBJECT` invoke one Nautobot job after
+any requested jobs PVC update, or by themselves to re-run a bundled or
+previously installed job. Use `--job-timeout` to override the 1,800-second
+completion timeout. The PVC is mounted as the `custom` package to keep bundled
+bootstrap jobs available from the image, so job classes supplied by a source
+directory are named `custom.<source-package>...`.
 The default PVC names are `nautobot-custom-jobs`,
 `render-service-template-plugins`, and `ztp-os-images`; each can be overridden
 with `--pvc-name`. The updater calculates a content checksum, so unchanged
@@ -807,22 +827,22 @@ execute in order. Steps are automatically skipped when not applicable.
 | 7 | **Populate Vault** | Ensure configured KV v2 mounts exist and fill missing ESO secret values (skip unless ESO is selected) |
 | 8 | **Setup Jobs PVC** | Create PVC and load custom Nautobot jobs (skip if none configured) |
 | 9 | **Setup Templates PVC** | Create PVC and load template plugins (skip if none configured) |
-| 10 | **Setup ZTP Images PVC** | Create PVC, upload OS images with proper directory structure and `manifest.json` (skip if storage type is S3 or no images configured) |
+| 10 | **Setup ZTP Images PVC** | Create PVC, upload OS images with proper directory structure and `manifest.json` (skip if storage type is S3 or no images configured; GitOps runs use `pvc-updater ztp` to restart Network ZTP after image changes) |
 | 11 | **Generate Values** | Produce the combined Helm override YAML from config, secrets, and the selected size profile |
 | 12 | **Helm Install** | `helm upgrade --install` with generated values |
 | 13 | **Patch Gateway** | HostPort patch on Envoy Gateway for NodePort access (skip if LB is configured) |
 | 14 | **Restart Nautobot** | Rolling restart of Nautobot workloads on re-run when jobs changed |
 | 15 | **Restart Render** | Rolling restart of render service on re-run when templates changed |
-| 16 | **Restart ZTP** | Rolling restart of the ZTP service on re-run when file-backed OS images changed |
-| 17 | **Run Jobs** | Execute post-deploy Nautobot jobs via API (skip if none configured) |
-| 18 | **Refresh Caches** | Restart config-store-cache and dhcp-refresh pods |
-| 19 | **Run Tests** | Run integration tests from a ZTP pod with streamed output (skip if not requested or SSO enabled) |
-| 20 | **Endpoints** | Display service URLs for all enabled services |
+| 16 | **Run Jobs** | Execute post-deploy Nautobot jobs via API (skip if none configured) |
+| 17 | **Refresh Caches** | Restart config-store-cache and dhcp-refresh pods |
+| 18 | **Run Tests** | Run integration tests from a ZTP pod with streamed output (skip if not requested or SSO enabled) |
+| 19 | **Endpoints** | Display service URLs for all enabled services |
 
 **Re-run intelligence:** The deployer detects existing deployments and content
-checksums. On re-runs, it only restarts services when associated PVC content (jobs,
-templates, or file-backed ZTP images) has actually changed, rather than blindly
-restarting everything.
+checksums. On re-runs, it only restarts services when associated jobs or template
+PVC content has actually changed, rather than blindly restarting everything. For
+GitOps-managed file-backed ZTP images, `pvc-updater ztp` restarts Network ZTP after
+a successful content update.
 
 **INI checksum annotations:** The `nv-config-manager.ini` config secret includes a content
 checksum in pod annotations, triggering automatic rolling restarts when INI

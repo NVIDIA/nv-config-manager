@@ -29,6 +29,7 @@ from nv_config_manager_installer.schema import (
     VaultPathsConfig,
 )
 from nv_config_manager_installer.secrets import (
+    REQUIRED_SITE_SECRET_KEYS,
     build_openbao_secret_data,
     generate_secrets,
 )
@@ -45,6 +46,7 @@ _GROUP_PATH_DEFAULTS = {
     "slack": "slack",
     "jira": "jira",
     "cnpg_backup": "cnpg-backup",
+    "ztp_s3": "ztp-s3",
 }
 
 
@@ -204,7 +206,7 @@ class OpenBaoPopulator:
             if not path_config.enabled:
                 continue
             default_keys = getattr(defaults, group).keys
-            key_mapping = path_config.keys or default_keys
+            key_mapping = {**default_keys, **path_config.keys}
             translated = {
                 key_mapping.get(logical_name, logical_name): value
                 for logical_name, value in desired.items()
@@ -212,7 +214,7 @@ class OpenBaoPopulator:
             path = path_config.path or f"{environment}/{_GROUP_PATH_DEFAULTS[group]}"
             self._write_path(mount, path, translated, result)
             existing, _ = self.client.read_secret(mount, path)
-            missing = [key for key in translated if key not in existing]
+            missing = [key for key in translated if not existing.get(key)]
             if missing:
                 raise OpenBaoError(
                     f"Vault secret '{mount}/{path}' is missing required values: "
@@ -236,7 +238,7 @@ class OpenBaoPopulator:
             path_config = getattr(self.config.secrets.vault.paths, group)
             if not path_config.enabled:
                 continue
-            key_mapping = path_config.keys or getattr(defaults, group).keys
+            key_mapping = {**getattr(defaults, group).keys, **path_config.keys}
             path = path_config.path or f"{environment}/{_GROUP_PATH_DEFAULTS[group]}"
             existing, _ = self.client.read_secret(mount, path)
             if token := existing.get(key_mapping.get(logical_key, logical_key)):
@@ -258,7 +260,7 @@ class OpenBaoPopulator:
             desired = {"token": token.token, "username": token.username}
             self._write_path(mount, token.vault_path, desired, result)
             existing, _ = self.client.read_secret(mount, token.vault_path)
-            if "token" not in existing:
+            if not existing.get("token"):
                 raise OpenBaoError(
                     f"Git token '{token.name}' has no configured value and is absent from "
                     f"Vault path '{mount}/{token.vault_path}'"
@@ -271,6 +273,7 @@ class OpenBaoPopulator:
             key: value
             for key, value in generated.items()
             if key == "hash_salt"
+            or key in REQUIRED_SITE_SECRET_KEYS
             or any(
                 entry.secret_key
                 and key
@@ -295,7 +298,7 @@ class OpenBaoPopulator:
                     if not entry.rotation
                     else f"{entry.secret_key}_{entry.rotation}"
                 )
-                if key not in existing:
+                if not existing.get(key):
                     missing_vault_keys.append(key)
             if missing_vault_keys:
                 raise OpenBaoError(

@@ -19,10 +19,13 @@ from __future__ import annotations
 import tempfile
 import tomllib
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
+import click
+import pytest
 from click.testing import CliRunner
 
-from nv_config_manager_installer.cli import main
+from nv_config_manager_installer.cli import _run_pvc_updater, main
 from nv_config_manager_installer.schema import (
     ClusterConfig,
     NVConfigManagerInstallConfig,
@@ -151,3 +154,147 @@ class TestPVCUpdaterCommand:
         assert result.exit_code == 0
         assert "--image" in result.output
         assert "--namespace" in result.output
+
+    def test_pvc_updater_jobs_help_lists_job_execution_options(self):
+        runner = CliRunner()
+        result = runner.invoke(main, ["pvc-updater", "jobs", "--help"])
+        assert result.exit_code == 0
+        assert "--run-job" in result.output
+        assert "--job-input" in result.output
+
+    def test_pvc_updater_jobs_rejects_non_object_job_input(self, tmp_path: Path):
+        source = tmp_path / "jobs"
+        source.mkdir()
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "pvc-updater",
+                "jobs",
+                "--source",
+                str(source),
+                "--run-job",
+                "custom_jobs.bootstrap.SiteBootstrap",
+                "--job-input",
+                "[]",
+                "--namespace",
+                "nv-config-manager",
+                "--release-name",
+                "nv-config-manager",
+            ],
+        )
+        assert result.exit_code != 0
+        assert "must be a JSON object" in result.output
+
+    @patch("nv_config_manager_installer.cli._run_pvc_updater")
+    def test_pvc_updater_jobs_passes_requested_job_to_updater(
+        self,
+        mock_run_pvc_updater,
+        tmp_path: Path,
+    ):
+        source = tmp_path / "jobs"
+        source.mkdir()
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "pvc-updater",
+                "jobs",
+                "--source",
+                str(source),
+                "--run-job",
+                "custom_jobs.bootstrap.SiteBootstrap",
+                "--job-input",
+                '{"site":"site-1"}',
+                "--namespace",
+                "nv-config-manager",
+                "--release-name",
+                "nv-config-manager",
+            ],
+        )
+        assert result.exit_code == 0
+        after_update = mock_run_pvc_updater.call_args.kwargs["after_update"]
+        updater = MagicMock()
+        updater.run_nautobot_job.return_value = True
+        assert after_update(updater) is True
+        updater.run_nautobot_job.assert_called_once_with(
+            "custom_jobs.bootstrap.SiteBootstrap",
+            {"site": "site-1"},
+            timeout=1_800,
+        )
+
+    @patch("nv_config_manager_installer.cli._run_pvc_updater")
+    def test_pvc_updater_runs_existing_job_without_content_source(
+        self,
+        mock_run_pvc_updater,
+    ):
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "pvc-updater",
+                "jobs",
+                "--run-job",
+                "nv_config_manager_jobs.bootstrap.load_bootstrap_data.LoadBootstrapData",
+                "--job-input",
+                "{}",
+                "--namespace",
+                "nv-config-manager",
+                "--release-name",
+                "nv-config-manager",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert mock_run_pvc_updater.call_args.kwargs["update"] is None
+        after_update = mock_run_pvc_updater.call_args.kwargs["after_update"]
+        updater = MagicMock()
+        updater.run_nautobot_job.return_value = True
+        assert after_update(updater) is True
+        updater.run_nautobot_job.assert_called_once_with(
+            "nv_config_manager_jobs.bootstrap.load_bootstrap_data.LoadBootstrapData",
+            {},
+            timeout=1_800,
+        )
+
+    def test_pvc_updater_jobs_requires_content_source_or_job(self):
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "pvc-updater",
+                "jobs",
+                "--namespace",
+                "nv-config-manager",
+                "--release-name",
+                "nv-config-manager",
+            ],
+        )
+
+        assert result.exit_code != 0
+        assert "--source or --run-job" in result.output
+
+    @patch(
+        "nv_config_manager_installer.cli.K8sClient",
+        side_effect=RuntimeError("Unable to load kubeconfig"),
+    )
+    def test_pvc_updater_wraps_kubernetes_client_initialization(self, _mock_k8s):
+        with pytest.raises(click.ClickException, match="Unable to load kubeconfig"):
+            _run_pvc_updater(
+                namespace="nv-config-manager",
+                release_name="nv-config-manager",
+                rollout_timeout=60,
+                update=lambda _updater: False,
+            )
+
+    @patch("nv_config_manager_installer.cli.K8sClient")
+    def test_pvc_updater_wraps_connectivity_failure(self, mock_k8s):
+        mock_k8s.return_value.check_connectivity.return_value = False
+
+        with pytest.raises(click.ClickException, match="Unable to connect"):
+            _run_pvc_updater(
+                namespace="nv-config-manager",
+                release_name="nv-config-manager",
+                rollout_timeout=60,
+                update=lambda _updater: False,
+            )

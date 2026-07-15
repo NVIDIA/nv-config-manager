@@ -895,7 +895,11 @@ def _replace_with_keys(section: dict[str, Any], keys: set[str]) -> None:
 def _prune_secrets(secrets: dict[str, Any], data: dict[str, Any]) -> None:
     method = secrets.get("method")
     if method == SecretsMethod.ESO.value:
-        secrets.pop("k8s", None)
+        # The app-secrets UI stores optional initial values in ``k8s`` for
+        # both secret backends.  In ESO mode the installer writes those
+        # values to Vault/OpenBao instead of Kubernetes Secrets, so retain
+        # them in the saved installer config for subsequent runs.
+        _prune_k8s_secret_values(_as_dict(secrets.get("k8s")))
         _prune_vault(_as_dict(secrets.get("vault")))
         return
 
@@ -904,7 +908,11 @@ def _prune_secrets(secrets: dict[str, Any], data: dict[str, Any]) -> None:
         if isinstance(site, dict):
             site.pop("vault_path", None)
 
-    k8s = _as_dict(secrets.get("k8s"))
+    _prune_k8s_secret_values(_as_dict(secrets.get("k8s")))
+
+
+def _prune_k8s_secret_values(k8s: dict[str, Any]) -> None:
+    """Remove values for Kubernetes secret groups that are disabled."""
     for group in k8s.values():
         group_data = _as_dict(group)
         if group_data.get("enabled") is False:

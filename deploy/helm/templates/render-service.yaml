@@ -13,6 +13,7 @@ metadata:
     component: api
     app.kubernetes.io/name: nv-config-manager
     app.kubernetes.io/component: render-service
+    app.kubernetes.io/instance: {{ .Release.Name }}
 spec:
   replicas: {{ .Values.renderService.api.replicas }}
   selector:
@@ -148,6 +149,9 @@ metadata:
   labels:
     app: {{ $renderName }}
     component: consumer-nautobot
+    app.kubernetes.io/name: nv-config-manager
+    app.kubernetes.io/component: render-service
+    app.kubernetes.io/instance: {{ .Release.Name }}
 spec:
   {{- if not (and .Values.renderService.autoscaling.enabled .Values.renderService.autoscaling.consumers.nautobot.enabled) }}
   replicas: {{ .Values.renderService.consumers.nautobot.replicas }}
@@ -255,6 +259,9 @@ metadata:
   labels:
     app: {{ $renderName }}
     component: consumer-device
+    app.kubernetes.io/name: nv-config-manager
+    app.kubernetes.io/component: render-service
+    app.kubernetes.io/instance: {{ .Release.Name }}
 spec:
   {{- if not (and .Values.renderService.autoscaling.enabled .Values.renderService.autoscaling.consumers.device.enabled) }}
   replicas: {{ .Values.renderService.consumers.device.replicas }}

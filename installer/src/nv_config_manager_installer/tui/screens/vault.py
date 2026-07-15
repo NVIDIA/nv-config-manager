@@ -52,6 +52,7 @@ _PATH_GROUPS: list[tuple[str, str]] = [
     ("slack", "Slack"),
     ("jira", "Jira"),
     ("cnpg_backup", "CNPG Backup S3"),
+    ("ztp_s3", "ZTP S3"),
 ]
 
 _DEFAULTS = VaultPathsConfig()
@@ -140,6 +141,16 @@ _K8S_GROUPS: list[tuple[str, str, bool, list[tuple[str, str]]]] = [
         [
             ("accessKeyId", "Access Key ID"),
             ("accessSecretKey", "Access Secret Key"),
+        ],
+    ),
+    (
+        "ztp_s3",
+        "ZTP S3",
+        True,
+        [
+            ("endpoint", "Endpoint"),
+            ("accessKeyId", "Access Key ID"),
+            ("secretAccessKey", "Secret Access Key"),
         ],
     ),
 ]
@@ -364,7 +375,7 @@ class _VaultPathCard(Vertical):
             inp.styles.width = "1fr"
             yield inp
 
-        effective_keys = pc.keys if pc.keys else self._default_pc.keys
+        effective_keys = {**self._default_pc.keys, **pc.keys}
         value_labels = dict(self._value_fields)
         with Vertical(id=f"vp-keys-section-{fn}", classes="compact-field-row"):
             if self._value_fields:
@@ -420,7 +431,7 @@ class _VaultPathCard(Vertical):
         except Exception:
             pass
 
-        effective_keys = pc.keys if pc.keys else self._default_pc.keys
+        effective_keys = {**self._default_pc.keys, **pc.keys}
         for key_name, vault_property in effective_keys.items():
             try:
                 self.query_one(f"#vp-key-{fn}-{key_name}", Input).value = vault_property
@@ -773,9 +784,13 @@ class SecretsScreen(Container):
         environment_token = (
             os.environ.get("VAULT_TOKEN", "").strip() or os.environ.get("OPENBAO_TOKEN", "").strip()
         )
-        if not environment_token and (
-            vault.auth.method != VaultAuthMethod.TOKEN or not vault.auth.token_secret_name
-        ):
+        if not environment_token and vault.auth.method == VaultAuthMethod.JWT:
+            self._set_vault_presence_status(
+                "[yellow]Vault values not loaded: JWT presence checks require VAULT_TOKEN or "
+                "OPENBAO_TOKEN.[/yellow]"
+            )
+            return
+        if not environment_token and not vault.auth.token_secret_name:
             self._set_vault_presence_status(
                 "[yellow]Vault values not loaded: set VAULT_TOKEN or configure a token Secret.[/yellow]"
             )
@@ -817,9 +832,14 @@ class SecretsScreen(Container):
                         f"[yellow]Vault values not loaded: {exc}[/yellow]",
                     )
         if not token:
+            guidance = (
+                "JWT presence checks require VAULT_TOKEN or OPENBAO_TOKEN."
+                if vault.auth.method == VaultAuthMethod.JWT
+                else "set VAULT_TOKEN or configure a token Secret."
+            )
             return (
                 None,
-                "[yellow]Vault values not loaded: set VAULT_TOKEN or configure a token Secret.[/yellow]",
+                f"[yellow]Vault values not loaded: {guidance}[/yellow]",
             )
 
         try:
@@ -839,7 +859,7 @@ class SecretsScreen(Container):
                 if not path_config.enabled:
                     continue
                 default_keys = getattr(_DEFAULTS, field_name).keys
-                key_mapping = path_config.keys or default_keys
+                key_mapping = {**default_keys, **path_config.keys}
                 path = path_config.path or f"{environment}/{field_name.replace('_', '-')}"
                 data, _version = client.read_secret(vault.secrets_path, path)
                 presence[field_name] = {

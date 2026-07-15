@@ -43,6 +43,7 @@ from nv_config_manager_installer.deployer import (
     _unready_pod_summary_lines,
 )
 from nv_config_manager_installer.k8s import LOADER_POD_IMAGE
+from nv_config_manager_installer.nautobot_jobs import NautobotJobRunner
 from nv_config_manager_installer.schema import (
     ClusterConfig,
     ContentConfig,
@@ -190,7 +191,7 @@ class TestDeployerInit:
     def test_steps_initialized(self):
         config = _make_config()
         deployer = Deployer(config, DeployOptions())
-        assert len(deployer.steps) == 18
+        assert len(deployer.steps) == 19
         assert all(s.status == StepStatus.PENDING for s in deployer.steps)
 
     def test_step_ids_unique(self):
@@ -1485,7 +1486,9 @@ class TestK8sClientIntegration:
         deployer._k8s = _mock_k8s()
         deployer._k8s.read_secret_data.return_value = {"api_token": "test-token-123"}
 
-        token = deployer._get_nautobot_api_token()
+        token = NautobotJobRunner(
+            deployer._k8s, "nv-config-manager", "nv-config-manager"
+        )._get_api_token()
         assert token == "test-token-123"
         deployer._k8s.read_secret_data.assert_called_with("nautobot-admin", "nv-config-manager")
 
@@ -1498,7 +1501,9 @@ class TestK8sClientIntegration:
             {"token": "fallback-token"},
         ]
 
-        token = deployer._get_nautobot_api_token()
+        token = NautobotJobRunner(
+            deployer._k8s, "nv-config-manager", "nv-config-manager"
+        )._get_api_token()
         assert token == "fallback-token"
 
     def test_network_secret_updates_stale_existing_content(self):

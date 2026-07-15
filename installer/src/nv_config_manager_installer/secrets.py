@@ -51,6 +51,7 @@ _URL_SAFE_CHARS = string.ascii_letters + string.digits + "-_~"
 _NATS_CONFIG_PASSWORD_FIRST_CHARS = string.ascii_letters
 _NATS_CONFIG_PASSWORD_CHARS = string.ascii_letters + string.digits
 _NATS_CONFIG_PASSWORD_MIN_LENGTH = 16
+REQUIRED_SITE_SECRET_KEYS = ("root_password_r1", "api_user_key_r1")
 
 
 def _validate_nats_config_password(password: str) -> str:
@@ -165,6 +166,7 @@ def generate_secrets(config: NVConfigManagerInstallConfig) -> dict[str, str]:
                           nats_password, hash_salt, django_secret_key, etc.
     """
     state: dict[str, str] = {}
+    configured_network_keys: set[str] = set()
 
     # -- Network secrets --
     for entry in config.network_secrets:
@@ -173,6 +175,7 @@ def generate_secrets(config: NVConfigManagerInstallConfig) -> dict[str, str]:
         full_key = (
             entry.secret_key if not entry.rotation else f"{entry.secret_key}_{entry.rotation}"
         )
+        configured_network_keys.add(full_key)
         if entry.source == PasswordSource.GENERATE:
             state[full_key] = _generate_password()
         elif entry.source == PasswordSource.MANUAL:
@@ -185,6 +188,14 @@ def generate_secrets(config: NVConfigManagerInstallConfig) -> dict[str, str]:
 
     # -- Hash salt --
     state["hash_salt"] = _generate_password(8)
+
+    # These values are used by every NVCM site.  The TUI normally creates
+    # their entries, but keep non-interactive ESO runs safe as well.  Do not
+    # generate over an explicitly Vault-sourced entry: the OpenBao populator
+    # verifies that it already exists at the site's configured path.
+    for key in REQUIRED_SITE_SECRET_KEYS:
+        if key not in configured_network_keys:
+            state[key] = _generate_password()
 
     if config.secrets.method != SecretsMethod.KUBERNETES:
         return state
@@ -270,8 +281,21 @@ def build_openbao_secret_data(
                 "accessSecretKey": value("cnpg_backup", "accessSecretKey"),
             },
         ),
+        (
+            "ztp_s3",
+            {
+                "endpoint": value("ztp_s3", "endpoint"),
+                "accessKeyId": value("ztp_s3", "accessKeyId"),
+                "secretAccessKey": value("ztp_s3", "secretAccessKey"),
+            },
+        ),
     )
     for group, data in optional:
+        if group == "ztp_s3" and (
+            config.infrastructure.ztp_storage.type != ZTPStorageType.S3
+            or config.infrastructure.ztp_storage.s3_ceph.enabled
+        ):
+            continue
         if getattr(config.secrets.vault.paths, group).enabled:
             groups[group] = data
 
@@ -351,7 +375,7 @@ def _build_vault_paths(v: Any, env: str) -> dict[str, Any]:
         if not pc.enabled:
             continue
         entry: dict[str, Any] = {"path": pc.path or f"{env}/{default_suffix}"}
-        keys = pc.keys if pc.keys else getattr(defaults, schema_field).keys
+        keys = {**getattr(defaults, schema_field).keys, **pc.keys}
         if keys:
             entry["keys"] = dict(keys)
         paths[helm_key] = entry

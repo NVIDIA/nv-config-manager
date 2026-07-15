@@ -22,6 +22,7 @@ Commands:
 
 from __future__ import annotations
 
+import json
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -266,26 +267,34 @@ def _run_pvc_updater(
     namespace: str,
     release_name: str,
     rollout_timeout: int,
-    update: Callable[[PVCUpdater], bool],
+    update: Callable[[PVCUpdater], bool] | None,
+    after_update: Callable[[PVCUpdater], bool] | None = None,
 ) -> None:
     """Run one PVC content update with a connected Kubernetes client."""
-    k8s = K8sClient()
-    if not k8s.check_connectivity():
-        raise click.ClickException("Unable to connect to the current Kubernetes cluster")
-    updater = PVCUpdater(
-        k8s,
-        namespace,
-        release_name,
-        rollout_timeout=rollout_timeout,
-        on_log=click.echo,
-    )
     try:
-        changed = update(updater)
+        k8s = K8sClient()
+        if not k8s.check_connectivity():
+            raise RuntimeError("Unable to connect to the current Kubernetes cluster")
+        updater = PVCUpdater(
+            k8s,
+            namespace,
+            release_name,
+            rollout_timeout=rollout_timeout,
+            on_log=click.echo,
+        )
+        changed = update(updater) if update is not None else False
+        job_ran = False
+        if after_update is not None:
+            if not after_update(updater):
+                raise RuntimeError("Nautobot job did not complete successfully")
+            job_ran = True
     except Exception as exc:
         raise click.ClickException(str(exc)) from exc
     click.echo(
         "PVC content updated and consumers restarted." if changed else "PVC content unchanged."
     )
+    if job_ran:
+        click.echo("Nautobot job completed successfully.")
 
 
 def _pvc_common_options(command: Callable[..., None]) -> Callable[..., None]:
@@ -298,7 +307,7 @@ def _pvc_common_options(command: Callable[..., None]) -> Callable[..., None]:
     command = click.option(
         "--release-name",
         required=True,
-        help="Helm release name of NVCM (recorded for operator visibility).",
+        help="Helm release name of NVCM (used to target the workloads to restart).",
     )(command)
     return click.option(
         "--rollout-timeout",
@@ -315,24 +324,65 @@ def _pvc_common_options(command: Callable[..., None]) -> Callable[..., None]:
     "sources",
     type=click.Path(exists=True, path_type=Path),
     multiple=True,
-    required=True,
     help="Custom-job directory or tar archive. May be supplied more than once.",
 )
 @click.option("--pvc-name", default=JOBS_PVC_NAME, show_default=True)
+@click.option(
+    "--run-job",
+    metavar="MODULE.CLASS",
+    help="Run this Nautobot job after any requested PVC update and worker rollouts.",
+)
+@click.option(
+    "--job-input",
+    default="{}",
+    show_default=True,
+    help="JSON object supplied as the Nautobot job input. Requires --run-job.",
+)
+@click.option(
+    "--job-timeout",
+    type=click.IntRange(min=1),
+    default=1_800,
+    show_default=True,
+    help="Seconds to wait for the requested Nautobot job to complete.",
+)
 @_pvc_common_options
 def pvc_updater_jobs(
     sources: tuple[Path, ...],
     pvc_name: str,
+    run_job: str | None,
+    job_input: str,
+    job_timeout: int,
     namespace: str,
     release_name: str,
     rollout_timeout: int,
 ) -> None:
-    """Update custom Nautobot jobs."""
+    """Update custom Nautobot jobs and optionally run one."""
+    try:
+        parsed_job_input = json.loads(job_input)
+    except json.JSONDecodeError as exc:
+        raise click.UsageError("--job-input must be valid JSON") from exc
+    if not isinstance(parsed_job_input, dict):
+        raise click.UsageError("--job-input must be a JSON object")
+    if parsed_job_input and not run_job:
+        raise click.UsageError("--job-input requires --run-job")
+    if not sources and not run_job:
+        raise click.UsageError("Provide at least one --source or --run-job")
     _run_pvc_updater(
         namespace=namespace,
         release_name=release_name,
         rollout_timeout=rollout_timeout,
-        update=lambda updater: updater.update_jobs(sources, pvc_name=pvc_name),
+        update=(lambda updater: updater.update_jobs(sources, pvc_name=pvc_name))
+        if sources
+        else None,
+        after_update=(
+            lambda updater: updater.run_nautobot_job(
+                run_job,
+                parsed_job_input,
+                timeout=job_timeout,
+            )
+        )
+        if run_job
+        else None,
     )
 
 
