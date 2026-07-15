@@ -41,17 +41,15 @@ async def test_persist_kea_config_writes_config_and_timestamp_atomically() -> No
 
 
 async def test_flush_kea_config_deletes_config_and_timestamp() -> None:
-    """Delete cached configuration and its timestamp in one pipeline."""
+    """Delete cached configuration and its timestamp in one command."""
     client = RedisClient(host="redis.example.com")
-    pipeline = MagicMock()
-    pipeline.execute = AsyncMock(return_value=[2])
+    delete = AsyncMock(return_value=2)
 
-    with patch.object(client.redis, "pipeline", return_value=pipeline):
+    with patch.object(client.redis, "delete", delete):
         deleted = await client.flush_kea_config(6)
 
     assert deleted is True
-    pipeline.delete.assert_called_once_with(
+    delete.assert_awaited_once_with(
         client.config_key(6),
         client.refresh_timestamp_key(6),
     )
-    pipeline.execute.assert_awaited_once()

@@ -81,10 +81,8 @@ class RedisClient(BaseRedisClient):
 
     async def flush_kea_config(self, ip_version: int) -> bool:
         """Delete the cached KEA DHCP Server Configuration and its timestamp."""
-        pipe = self._redis.pipeline()
-        pipe.delete(
+        deleted: int = await self._redis.delete(
             self.config_key(ip_version),
             self.refresh_timestamp_key(ip_version),
         )
-        (deleted,) = await pipe.execute()
-        return bool(deleted)
+        return deleted > 0
