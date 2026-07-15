@@ -564,6 +564,23 @@
               ],
               "title": "Search"
             }
+          },
+          {
+            "in": "query",
+            "name": "subnet",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "ipvanynetwork",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Subnet"
+            }
           }
         ],
         "responses": {
@@ -885,6 +902,23 @@
                 }
               ],
               "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "subnet",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "ipvanynetwork",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Subnet"
             }
           }
         ],

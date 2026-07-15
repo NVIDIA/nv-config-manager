@@ -711,9 +711,23 @@ class TestDHCPAPI:
             assert [lease["ip_address"] for lease in search_payload["leases"]] == [
                 target_lease["ip_address"]
             ]
+            assert target_lease["subnet"] is not None
+            subnet_search_response = dhcp_client.get(
+                f"{dhcp_api_url}/lease",
+                params={
+                    "limit": DHCP_SCALE_PAGE_SIZE,
+                    "search": target_lease["hostname"],
+                    "subnet": target_lease["subnet"],
+                },
+                timeout=30,
+            )
+            subnet_search_response.raise_for_status()
+            assert [lease["ip_address"] for lease in subnet_search_response.json()["leases"]] == [
+                target_lease["ip_address"]
+            ]
             print(
                 f"✅ Found {DHCP_SCALE_LEASE_COUNT} seeded leases across {len(pages)} pages "
-                "and searched beyond page one"
+                "and searched beyond page one with and without a subnet filter"
             )
         finally:
             if added_addresses:
@@ -813,6 +827,18 @@ class TestDHCPAPI:
             )
             reservation_get.raise_for_status()
             assert reservation_get.json()["hostname"] == target_reservation["hostname"]
+            subnet_reservations = dhcp_client.get(
+                f"{dhcp_api_url}/reservation",
+                params={"limit": 500, "subnet": scale_subnet},
+                timeout=30,
+            )
+            subnet_reservations.raise_for_status()
+            subnet_reservation_payload = subnet_reservations.json()
+            assert subnet_reservation_payload["total_count"] == len(seeded_reservation_names)
+            assert {
+                reservation["hostname"]
+                for reservation in subnet_reservation_payload["reservations"]
+            } == seeded_reservation_names
 
             pool_pages, pool_total = _fetch_exact_collection_pages(
                 dhcp_api_url,

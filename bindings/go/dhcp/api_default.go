@@ -855,6 +855,7 @@ type ApiListLeasesLeaseGetRequest struct {
 	limit      *int32
 	cursor     *string
 	search     *string
+	subnet     *string
 }
 
 func (r ApiListLeasesLeaseGetRequest) IpVersion(ipVersion IpVersion) ApiListLeasesLeaseGetRequest {
@@ -874,6 +875,11 @@ func (r ApiListLeasesLeaseGetRequest) Cursor(cursor string) ApiListLeasesLeaseGe
 
 func (r ApiListLeasesLeaseGetRequest) Search(search string) ApiListLeasesLeaseGetRequest {
 	r.search = &search
+	return r
+}
+
+func (r ApiListLeasesLeaseGetRequest) Subnet(subnet string) ApiListLeasesLeaseGetRequest {
+	r.subnet = &subnet
 	return r
 }
 
@@ -937,6 +943,9 @@ func (a *DefaultAPIService) ListLeasesLeaseGetExecute(r ApiListLeasesLeaseGetReq
 	}
 	if r.search != nil {
 		parameterAddToHeaderOrQuery(localVarQueryParams, "search", r.search, "form", "")
+	}
+	if r.subnet != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "subnet", r.subnet, "form", "")
 	}
 	// to determine the Content-Type header
 	localVarHTTPContentTypes := []string{}
@@ -1172,6 +1181,7 @@ type ApiListReservationsReservationGetRequest struct {
 	limit      *int32
 	cursor     *string
 	search     *string
+	subnet     *string
 }
 
 func (r ApiListReservationsReservationGetRequest) IpVersion(ipVersion IpVersion) ApiListReservationsReservationGetRequest {
@@ -1191,6 +1201,11 @@ func (r ApiListReservationsReservationGetRequest) Cursor(cursor string) ApiListR
 
 func (r ApiListReservationsReservationGetRequest) Search(search string) ApiListReservationsReservationGetRequest {
 	r.search = &search
+	return r
+}
+
+func (r ApiListReservationsReservationGetRequest) Subnet(subnet string) ApiListReservationsReservationGetRequest {
+	r.subnet = &subnet
 	return r
 }
 
@@ -1254,6 +1269,9 @@ func (a *DefaultAPIService) ListReservationsReservationGetExecute(r ApiListReser
 	}
 	if r.search != nil {
 		parameterAddToHeaderOrQuery(localVarQueryParams, "search", r.search, "form", "")
+	}
+	if r.subnet != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "subnet", r.subnet, "form", "")
 	}
 	// to determine the Content-Type header
 	localVarHTTPContentTypes := []string{}

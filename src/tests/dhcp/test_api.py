@@ -114,7 +114,7 @@ def lease_page(*leases: dict[str, object]) -> list[dict[str, object]]:
     ]
 
 
-def active_lease(ip: str, hostname: str) -> dict[str, object]:
+def active_lease(ip: str, hostname: str, subnet_id: int = 7) -> dict[str, object]:
     """Return one active lease row for API pagination tests."""
     return {
         "cltt": int(time.time()) - 60,
@@ -122,7 +122,7 @@ def active_lease(ip: str, hostname: str) -> dict[str, object]:
         "hw-address": f"02:00:00:00:00:{int(ip.rsplit('.', maxsplit=1)[1]):02x}",
         "ip-address": ip,
         "state": 0,
-        "subnet-id": 7,
+        "subnet-id": subnet_id,
         "valid-lft": 3600,
     }
 
@@ -626,6 +626,17 @@ def test_lease_openapi_version_parameters() -> None:
         assert "default" not in parameter["schema"]
 
 
+def test_collection_openapi_subnet_parameters() -> None:
+    """Advertise the optional subnet filter on every collection route."""
+    for path in ("/lease", "/reservation", "/pool"):
+        parameter = next(
+            parameter
+            for parameter in app.openapi()["paths"][path]["get"]["parameters"]
+            if parameter["name"] == "subnet"
+        )
+        assert parameter["required"] is False
+
+
 def test_get_lease_not_found():
     """Translate KEA's empty result into a RESTful not-found response."""
     client = TestClient(app)
@@ -685,6 +696,47 @@ def test_list_leases():
         version=4,
         from_address="start",
     )
+
+
+def test_list_leases_filters_by_subnet():
+    """Return only active leases assigned to the requested subnet."""
+    client = TestClient(app)
+    config = deepcopy(LEASE_DASHBOARD_CONFIG)
+    config[0]["arguments"]["Dhcp4"]["subnet4"].append(
+        {
+            "id": 8,
+            "subnet": "10.0.1.0/24",
+            "pools": [{"pool": "10.0.1.10-10.0.1.19"}],
+        }
+    )
+    lease_payload = lease_page(
+        active_lease("10.0.0.10", "leaf-01"),
+        active_lease("10.0.1.10", "leaf-02", subnet_id=8),
+    )
+
+    with (
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_lease_page",
+            new_callable=AsyncMock,
+            return_value=lease_payload,
+        ),
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_config",
+            new_callable=AsyncMock,
+            return_value=config,
+        ),
+        patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED),
+    ):
+        rsp = client.get(
+            "/lease",
+            params={"limit": 25, "subnet": "10.0.1.0/24"},
+            headers={"X-Auth-Request-Email": "test@example.com"},
+        )
+
+    assert rsp.status_code == 200
+    assert [lease["hostname"] for lease in rsp.json()["leases"]] == ["leaf-02"]
+    assert rsp.json()["leases"][0]["subnet"] == "10.0.1.0/24"
+    assert rsp.json()["next_cursor"] is None
 
 
 def test_list_leases_follows_opaque_cursor():
@@ -973,6 +1025,57 @@ def test_list_reservations_rejects_mismatched_cursor_version():
     mock_get_config.assert_awaited_once_with(4)
 
 
+def test_list_reservations_filters_by_subnet_before_pagination():
+    """Filter reservations by configured subnet before slicing exact-total pages."""
+    client = TestClient(app)
+    config = deepcopy(LEASE_DASHBOARD_CONFIG)
+    dhcp_config = config[0]["arguments"]["Dhcp4"]
+    dhcp_config["subnet4"][0]["reservations"] = [
+        {"hostname": "leaf-a-01", "ip-address": "10.0.0.2"},
+        {"hostname": "leaf-a-02", "ip-address": "10.0.0.3"},
+    ]
+    dhcp_config["subnet4"].append(
+        {
+            "id": 8,
+            "subnet": "10.0.1.0/24",
+            "pools": [],
+            "reservations": [{"hostname": "leaf-b-01", "ip-address": "10.0.1.2"}],
+        }
+    )
+
+    with (
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_config",
+            new_callable=AsyncMock,
+            return_value=config,
+        ),
+        patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED),
+    ):
+        first_rsp = client.get(
+            "/reservation",
+            params={"limit": 1, "subnet": "10.0.0.0/24"},
+            headers={"X-Auth-Request-Email": "test@example.com"},
+        )
+        second_rsp = client.get(
+            "/reservation",
+            params={
+                "cursor": first_rsp.json()["next_cursor"],
+                "limit": 1,
+                "subnet": "10.0.0.0/24",
+            },
+            headers={"X-Auth-Request-Email": "test@example.com"},
+        )
+
+    assert first_rsp.status_code == 200
+    assert first_rsp.json()["total_count"] == 2
+    assert [item["hostname"] for item in first_rsp.json()["reservations"]] == ["leaf-a-01"]
+    assert first_rsp.json()["next_cursor"] is not None
+    assert second_rsp.status_code == 200
+    assert second_rsp.json()["total_count"] == 2
+    assert [item["hostname"] for item in second_rsp.json()["reservations"]] == ["leaf-a-02"]
+    assert second_rsp.json()["next_cursor"] is None
+
+
 def test_list_pools_paginates_and_filters_with_exact_total():
     """Return bounded pool pages with exact filtered totals."""
     client = TestClient(app)
@@ -1063,8 +1166,9 @@ def test_list_pools_filters_by_subnet():
     assert all(call.args == (4,) for call in mock_get_config.await_args_list)
 
 
-def test_list_pools_rejects_mismatched_subnet_version():
-    """Reject an explicit version that conflicts with the subnet prefix."""
+@pytest.mark.parametrize("resource", ("lease", "reservation", "pool"))
+def test_list_collections_reject_mismatched_subnet_version(resource: str):
+    """Reject a collection version that conflicts with its subnet filter."""
     client = TestClient(app)
 
     with (
@@ -1072,10 +1176,14 @@ def test_list_pools_rejects_mismatched_subnet_version():
             "nv_config_manager.dhcp.api.KeaClient.get_config",
             new_callable=AsyncMock,
         ) as mock_get_config,
+        patch(
+            "nv_config_manager.dhcp.api.KeaClient.get_lease_page",
+            new_callable=AsyncMock,
+        ) as mock_get_lease_page,
         patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED),
     ):
         rsp = client.get(
-            "/pool",
+            f"/{resource}",
             params={"ip_version": 6, "subnet": "10.0.0.0/24"},
             headers={"X-Auth-Request-Email": "test@example.com"},
         )
@@ -1083,6 +1191,7 @@ def test_list_pools_rejects_mismatched_subnet_version():
     assert rsp.status_code == 422
     assert rsp.json() == {"detail": "IP subnet version does not match ip_version=6"}
     mock_get_config.assert_not_awaited()
+    mock_get_lease_page.assert_not_awaited()
 
 
 def test_config_collections_bound_thousand_record_pages():

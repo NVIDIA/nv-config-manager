@@ -165,6 +165,19 @@ def _resolve_address_version(
     return ip_version or inferred_version
 
 
+def _normalize_subnet_filter(
+    subnet: IPvAnyNetwork | None,
+    ip_version: IpVersion,
+) -> str | None:
+    """Validate and normalize an optional collection subnet filter."""
+    if subnet is not None and subnet.version != ip_version:
+        raise HTTPException(
+            status_code=422,
+            detail=f"IP subnet version does not match ip_version={ip_version}",
+        )
+    return str(subnet) if subnet is not None else None
+
+
 def _encode_lease_cursor(from_address: str) -> str:
     """Encode the DHCP server's paging address as an opaque API cursor."""
     return base64.urlsafe_b64encode(from_address.encode()).decode().rstrip("=")
@@ -249,6 +262,7 @@ async def _collect_lease_page(
     ip_version: IpVersion,
     limit: int,
     search: str | None,
+    subnet: str | None,
 ) -> LeasePageResponse:
     """Collect a filtered page while advancing through bounded KEA pages."""
     leases: list[LeaseRecord] = []
@@ -257,10 +271,10 @@ async def _collect_lease_page(
     scanned_pages = 1
 
     while True:
-        page_leases = filter_lease_records(
-            build_lease_list(config_payload, lease_payload, ip_version=ip_version),
-            search,
-        )
+        page_leases = build_lease_list(config_payload, lease_payload, ip_version=ip_version)
+        if subnet is not None:
+            page_leases = [lease for lease in page_leases if lease.subnet == subnet]
+        page_leases = filter_lease_records(page_leases, search)
         raw_count, last_address = lease_page_details(lease_payload, ip_version=ip_version)
 
         if leases and len(leases) + len(page_leases) > limit:
@@ -370,8 +384,10 @@ async def list_leases(
     limit: int = Query(default=100, ge=1, le=500),
     cursor: str | None = Query(default=None, min_length=1, max_length=128),
     search: str | None = Query(default=None, max_length=256),
+    subnet: IPvAnyNetwork | None = None,
 ) -> LeasePageResponse:
     """Return a cursor-paginated, optionally filtered page of normalized leases."""
+    subnet_filter = _normalize_subnet_filter(subnet, ip_version)
     from_address = _decode_lease_cursor(cursor, ip_version)
     async with _kea_lease_client() as client:
         lease_payload, config_payload = await _gather_requests(
@@ -390,6 +406,7 @@ async def list_leases(
             ip_version=ip_version,
             limit=limit,
             search=search,
+            subnet=subnet_filter,
         )
 
 
@@ -424,12 +441,18 @@ async def list_reservations(
     limit: int = Query(default=100, ge=1, le=500),
     cursor: str | None = Query(default=None, min_length=1, max_length=128),
     search: str | None = Query(default=None, max_length=256),
+    subnet: IPvAnyNetwork | None = None,
 ) -> ReservationPageResponse:
     """Return a cursor-paginated, optionally filtered reservation page."""
+    subnet_filter = _normalize_subnet_filter(subnet, ip_version)
     offset = _decode_offset_cursor(cursor, "reservation", ip_version)
     async with _kea_lease_client() as client:
         config_payload = await client.get_config(ip_version)
     reservations = build_reservation_list(config_payload, ip_version=ip_version)
+    if subnet_filter is not None:
+        reservations = [
+            reservation for reservation in reservations if reservation.subnet == subnet_filter
+        ]
     filtered_reservations = filter_reservation_records(reservations, search)
     page, total_count, next_offset = _slice_offset_page(
         filtered_reservations,
@@ -457,11 +480,7 @@ async def list_pools(
     subnet: IPvAnyNetwork | None = None,
 ) -> PoolPageResponse:
     """Return a cursor-paginated, optionally filtered configured-pool page."""
-    if subnet is not None and subnet.version != ip_version:
-        raise HTTPException(
-            status_code=422,
-            detail=f"IP subnet version does not match ip_version={ip_version}",
-        )
+    subnet_filter = _normalize_subnet_filter(subnet, ip_version)
     offset = _decode_offset_cursor(cursor, "pool", ip_version)
     async with _kea_lease_client() as client:
         config_payload = await client.get_config(ip_version)
@@ -469,8 +488,8 @@ async def list_pools(
         config_payload,
         ip_version=ip_version,
     )
-    if subnet is not None:
-        pools = [pool for pool in pools if pool.subnet == str(subnet)]
+    if subnet_filter is not None:
+        pools = [pool for pool in pools if pool.subnet == subnet_filter]
     filtered_pools = filter_pool_records(pools, search)
     page, total_count, next_offset = _slice_offset_page(filtered_pools, offset, limit)
     return PoolPageResponse(
