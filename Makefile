@@ -504,6 +504,10 @@ PLATFORMS ?= linux/amd64,linux/arm64
 PLATFORM ?= linux/amd64
 # Extra tags can be passed via EXTRA_TAGS, e.g. EXTRA_TAGS="-t repo:tag1 -t repo:tag2"
 EXTRA_TAGS ?=
+# Buildx output for the single-arch targets. Default pushes to $(REGISTRY)
+# (requires docker login). Credential-less builds override with e.g.
+# DOCKER_BUILD_OUTPUT="--output type=docker,dest=/path/image.tar"
+DOCKER_BUILD_OUTPUT ?= --push
 # Set PUSH_LATEST=true to also push :latest tags (only for main branch releases)
 PUSH_LATEST ?=
 LATEST_TAG_nv_config_manager = $(if $(PUSH_LATEST),-t $(REGISTRY)/nv-config-manager:latest,)
@@ -575,7 +579,7 @@ docker-build-single-nv-config-manager: ## Builds and pushes NVIDIA Config Manage
 		$(TEMPLATE_ENGINE_VERSION_ARG) \
 		$(NVCM_NUMPY_BUILD_ARGS) \
 		-f build/nv-config-manager.Dockerfile \
-		--push \
+		$(DOCKER_BUILD_OUTPUT) \
 		.
 	@echo "✅ nv-config-manager:$(VERSION) pushed to $(REGISTRY)"
 
@@ -588,7 +592,7 @@ docker-build-single-kea: ## Builds and pushes KEA image for PLATFORM.
 		$(EXTRA_TAGS) \
 		$(APT_MIRROR_ARGS) \
 		-f build/kea.Dockerfile \
-		--push \
+		$(DOCKER_BUILD_OUTPUT) \
 		.
 	@echo "✅ nv-config-manager-kea:$(VERSION) pushed to $(REGISTRY)"
 
@@ -601,7 +605,7 @@ docker-build-single-kea-admin: ## Builds and pushes KEA Admin image for PLATFORM
 		$(EXTRA_TAGS) \
 		$(APT_MIRROR_ARGS) \
 		-f build/kea-admin.Dockerfile \
-		--push \
+		$(DOCKER_BUILD_OUTPUT) \
 		.
 	@echo "✅ nv-config-manager-kea-admin:$(VERSION) pushed to $(REGISTRY)"
 
@@ -614,7 +618,7 @@ docker-build-single-ui: ## Builds and pushes UI image for PLATFORM.
 		$(EXTRA_TAGS) \
 		$(APT_MIRROR_ARGS) \
 		-f build/ui.Dockerfile \
-		--push \
+		$(DOCKER_BUILD_OUTPUT) \
 		ui/
 	@echo "✅ nv-config-manager-ui:$(VERSION) pushed to $(REGISTRY)"
 
@@ -629,7 +633,7 @@ docker-build-single-nb: ## Builds and pushes Nautobot image for PLATFORM.
 		$(NAUTOBOT_APP_OVERLAYS_VERSION_ARG) \
 		$(NAUTOBOT_NV_CONFIG_MANAGER_VERSION_ARG) \
 		-f build/nautobot.Dockerfile \
-		--push \
+		$(DOCKER_BUILD_OUTPUT) \
 		components/nautobot/
 	@echo "✅ nv-config-manager-nautobot:$(VERSION) pushed to $(REGISTRY)"
 
@@ -642,7 +646,7 @@ docker-build-single-nats-ready: ## Builds and pushes NATS-ready image for PLATFO
 		$(EXTRA_TAGS) \
 		$(APT_MIRROR_ARGS) \
 		-f build/nats-ready.Dockerfile \
-		--push \
+		$(DOCKER_BUILD_OUTPUT) \
 		components/nats-ready/
 	@echo "✅ nv-config-manager-nats-ready:$(VERSION) pushed to $(REGISTRY)"
 

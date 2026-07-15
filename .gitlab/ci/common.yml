@@ -19,6 +19,10 @@ stages:
 workflow:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    # Vetted copy-pr-bot refs may run only deliberately triggered pipelines
+    # (the test-env promote flow builds untrusted PR code here without
+    # secrets). Mirror pushes to these refs never create pipelines.
+    - if: $CI_COMMIT_BRANCH =~ /^pull-request\// && ($CI_PIPELINE_SOURCE == "pipeline" || $CI_PIPELINE_SOURCE == "trigger" || $CI_PIPELINE_SOURCE == "api" || $CI_PIPELINE_SOURCE == "web")
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
       when: never
     - if: $CI_COMMIT_BRANCH
