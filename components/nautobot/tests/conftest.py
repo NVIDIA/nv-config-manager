@@ -22,6 +22,7 @@ from __future__ import annotations
 import re
 import sys
 import unicodedata
+from contextlib import contextmanager
 from types import ModuleType
 from unittest.mock import MagicMock
 
@@ -73,12 +74,40 @@ def _django_stubs(monkeypatch):
         "django.contrib.auth",
         {"get_user_model": _get_user_model, "login": MagicMock()},
     )
+    # django.contrib.auth.models.Group + User (for nv_config_manager_auth.rbac)
+    mock_group_cls = MagicMock()
+    mock_group_cls.DoesNotExist = type("DoesNotExist", (Exception,), {})
+    mock_group_cls.objects = MagicMock()
+    stubs["django.contrib.auth.models"] = _stub_module(
+        "django.contrib.auth.models",
+        {"Group": mock_group_cls, "User": mock_user_cls},
+    )
     stubs["django.contrib.contenttypes"] = _stub_module("django.contrib.contenttypes")
     mock_ct = MagicMock()
     mock_ct.DoesNotExist = type("DoesNotExist", (Exception,), {})
     stubs["django.contrib.contenttypes.models"] = _stub_module(
         "django.contrib.contenttypes.models",
         {"ContentType": mock_ct},
+    )
+    # django.db.transaction (nv_config_manager_auth.rbac uses @transaction.atomic as a decorator)
+    stubs["django.db"] = _stub_module("django.db")
+
+    def _passthrough_atomic(func=None, *_a, **_kw):
+        if callable(func):
+            return func
+        return lambda f: f
+
+    stubs["django.db.transaction"] = _stub_module(
+        "django.db.transaction",
+        {"atomic": _passthrough_atomic},
+    )
+    # nautobot.users.models.ObjectPermission
+    mock_obj_perm = MagicMock()
+    mock_obj_perm.objects = MagicMock()
+    stubs["nautobot.users"] = _stub_module("nautobot.users")
+    stubs["nautobot.users.models"] = _stub_module(
+        "nautobot.users.models",
+        {"ObjectPermission": mock_obj_perm},
     )
     stubs["django.http"] = _stub_module(
         "django.http",
@@ -147,6 +176,17 @@ def _django_stubs(monkeypatch):
     mock_tenant = MagicMock()
     mock_tenant.DoesNotExist = type("DoesNotExist", (Exception,), {})
     stubs["nautobot.tenancy.models"].Tenant = mock_tenant
+
+    # nautobot.extras.context_managers.web_request_context: the real one binds a
+    # change-logging user around DB writes; in tests it's a no-op passthrough.
+    @contextmanager
+    def _web_request_context(*_args, **_kwargs):
+        yield
+
+    stubs["nautobot.extras.context_managers"] = _stub_module(
+        "nautobot.extras.context_managers",
+        {"web_request_context": _web_request_context},
+    )
 
     yield
 
