@@ -4105,7 +4105,7 @@ func (r ApiSpxoverlayassignmentworkflowEndpointV1WorkflowNgcSpxOverlayAssignment
 /*
 SpxoverlayassignmentworkflowEndpointV1WorkflowNgcSpxOverlayAssignmentPost Execute SpXOverlayAssignmentWorkflow
 
-Assign a SpX Overlay/VRF to a device and its specified ports
+Change or remove a SpX Overlay/VRF assignment on device ports
 
 	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
 	@return ApiSpxoverlayassignmentworkflowEndpointV1WorkflowNgcSpxOverlayAssignmentPostRequest
@@ -4468,7 +4468,7 @@ func (r ApiSpxoverlaytenantchangeworkflowEndpointV1WorkflowNgcSpxOverlayTenantCh
 /*
 SpxoverlaytenantchangeworkflowEndpointV1WorkflowNgcSpxOverlayTenantChangePost Execute SpXOverlayTenantChangeWorkflow
 
-Assign a SpX Overlay to a device and deploy tenant configuration
+Change or remove a SpX Overlay assignment and deploy tenant configuration
 
 	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
 	@return ApiSpxoverlaytenantchangeworkflowEndpointV1WorkflowNgcSpxOverlayTenantChangePostRequest

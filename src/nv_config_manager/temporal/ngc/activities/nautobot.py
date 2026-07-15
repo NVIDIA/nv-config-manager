@@ -45,6 +45,7 @@ SPECTRUMX_ISOLATION_TYPE = "spectrum_x_vrf"
 VXLAN_L3_VNI_TYPE = "l3"
 DEFAULT_STATUS_NAME = "Active"
 OVERLAY_ASSIGNMENTS_PATH = f"{OVERLAYS_PLUGIN_BASE}/overlay-assignments/"
+VRF_DEVICE_ASSIGNMENTS_PATH = "ipam/vrf-device-assignments/"
 
 
 def _vni_from_rd(route_distinguisher: str) -> int:
@@ -784,17 +785,17 @@ async def get_device_interfaces(
 
 
 class AssignVrfToInterfaceInput(BaseModel):
-    """Assign VRF to Interface Input."""
+    """Set the VRF assigned to an interface."""
 
     interface_id: str
-    vrf_id: str
+    vrf_id: str | None
 
 
 @activity.defn
 async def assign_vrf_to_interface(
     activity_input: AssignVrfToInterfaceInput,
 ) -> None:
-    """Assign a VRF to an interface."""
+    """Set or clear the VRF assigned to an interface."""
     client = NautobotClient()
     async with client:
         await client.update_interface(
@@ -805,10 +806,11 @@ async def assign_vrf_to_interface(
 class ReconcileSpXOverlayAssignmentsInput(BaseModel):
     """Spectrum-X overlay assignments to reconcile in Nautobot."""
 
-    overlay_id: str
+    overlay_id: str | None
     site: str
     device_id: str
     interface_ids: list[str]
+    device_interface_ids: list[str]
 
 
 class ReconcileSpXOverlayAssignmentsOutput(BaseModel):
@@ -865,7 +867,7 @@ async def _get_assignment_overlay_isolation_type(
 async def _stale_spectrumx_assignment_ids(
     client: NautobotClient,
     assignments: list[dict[str, Any]],
-    target_overlay_id: str,
+    target_overlay_id: str | None,
 ) -> list[str]:
     """Return stale Spectrum-X assignment IDs, preserving other overlay types."""
     stale_assignment_ids: list[str] = []
@@ -879,6 +881,15 @@ async def _stale_spectrumx_assignment_ids(
             stale_assignment_ids.append(str(assignment["id"]))
 
     return stale_assignment_ids
+
+
+def _assignment_ids_for_overlay(assignments: list[dict[str, Any]], overlay_id: str) -> list[str]:
+    """Return assignment IDs that refer to an overlay."""
+    return [
+        str(assignment["id"])
+        for assignment in assignments
+        if _related_object_id(assignment.get("overlay")) == overlay_id
+    ]
 
 
 async def _lookup_overlay_assignment_status_id(client: NautobotClient) -> str:
@@ -928,30 +939,35 @@ async def reconcile_spx_overlay_assignments(
 ) -> ReconcileSpXOverlayAssignmentsOutput:
     """Make overlay-plugin assignments match Spectrum-X device and port intent.
 
-    Device assignments are additive because a switch can host several VRFs. An
-    interface can belong to only one Spectrum-X VRF, so stale Spectrum-X
-    assignments are removed when a port moves between overlays.
+    An interface can belong to only one Spectrum-X VRF, so stale Spectrum-X
+    assignments are removed when a port moves between overlays. Omitting the
+    target overlay removes the selected ports' Spectrum-X assignments. Device
+    assignments are removed when no interface on the device uses their overlay.
     """
     client = NautobotClient()
     created = 0
     removed = 0
     status_id: str | None = None
+    target_overlay_id: str | None = None
 
     async with client:
-        overlay = await client.find_overlay(activity_input.overlay_id, activity_input.site)
-        if not overlay:
-            raise ApplicationError(
-                f"Overlay {activity_input.overlay_id} not found in site {activity_input.site}"
-            )
-        if overlay.get("isolation_type") != SPECTRUMX_ISOLATION_TYPE:
-            raise ApplicationError(
-                f"Overlay {activity_input.overlay_id} in site {activity_input.site} "
-                f"is not a {SPECTRUMX_ISOLATION_TYPE} overlay"
-            )
-        target_overlay_id = str(overlay["id"])
+        if activity_input.overlay_id is not None:
+            overlay = await client.find_overlay(activity_input.overlay_id, activity_input.site)
+            if not overlay:
+                raise ApplicationError(
+                    f"Overlay {activity_input.overlay_id} not found in site {activity_input.site}"
+                )
+            if overlay.get("isolation_type") != SPECTRUMX_ISOLATION_TYPE:
+                raise ApplicationError(
+                    f"Overlay {activity_input.overlay_id} in site {activity_input.site} "
+                    f"is not a {SPECTRUMX_ISOLATION_TYPE} overlay"
+                )
+            target_overlay_id = str(overlay["id"])
 
         device_assignments = await _get_overlay_assignments(client, activity_input.device_id)
-        if not _has_overlay_assignment(device_assignments, target_overlay_id):
+        if target_overlay_id is not None and not _has_overlay_assignment(
+            device_assignments, target_overlay_id
+        ):
             status_id = await _lookup_overlay_assignment_status_id(client)
             await _create_overlay_assignment(
                 client,
@@ -962,15 +978,26 @@ async def reconcile_spx_overlay_assignments(
             )
             created += 1
 
+        assignments_by_interface: dict[str, list[dict[str, Any]]] = {}
+        stale_overlay_ids: set[str] = set()
         for interface_id in activity_input.interface_ids:
             interface_assignments = await _get_overlay_assignments(client, interface_id)
+            assignments_by_interface[interface_id] = interface_assignments
             stale_assignment_ids = await _stale_spectrumx_assignment_ids(
                 client,
                 interface_assignments,
                 target_overlay_id,
             )
+            stale_overlay_ids.update(
+                overlay_id
+                for assignment in interface_assignments
+                if str(assignment["id"]) in stale_assignment_ids
+                and (overlay_id := _related_object_id(assignment.get("overlay"))) is not None
+            )
 
-            if not _has_overlay_assignment(interface_assignments, target_overlay_id):
+            if target_overlay_id is not None and not _has_overlay_assignment(
+                interface_assignments, target_overlay_id
+            ):
                 if status_id is None:
                     status_id = await _lookup_overlay_assignment_status_id(client)
                 await _create_overlay_assignment(
@@ -981,10 +1008,89 @@ async def reconcile_spx_overlay_assignments(
                     status_id=status_id,
                 )
                 created += 1
+                interface_assignments.append(
+                    {"id": "created", "overlay": {"id": target_overlay_id}}
+                )
 
             removed += await _delete_overlay_assignments(
                 client,
                 stale_assignment_ids,
             )
+            assignments_by_interface[interface_id] = [
+                assignment
+                for assignment in interface_assignments
+                if str(assignment["id"]) not in stale_assignment_ids
+            ]
+
+        if stale_overlay_ids:
+            for interface_id in activity_input.device_interface_ids:
+                if interface_id not in assignments_by_interface:
+                    assignments_by_interface[interface_id] = await _get_overlay_assignments(
+                        client, interface_id
+                    )
+
+            active_overlay_ids = {
+                overlay_id
+                for assignments in assignments_by_interface.values()
+                for assignment in assignments
+                if (overlay_id := _related_object_id(assignment.get("overlay"))) is not None
+            }
+            unused_overlay_ids = stale_overlay_ids - active_overlay_ids
+            for overlay_id in unused_overlay_ids:
+                removed += await _delete_overlay_assignments(
+                    client,
+                    _assignment_ids_for_overlay(device_assignments, overlay_id),
+                )
 
     return ReconcileSpXOverlayAssignmentsOutput(created=created, removed=removed)
+
+
+class RemoveUnmappedDeviceVrfsInput(BaseModel):
+    """Device whose VRF associations should be reconciled with its interfaces."""
+
+    device_id: str
+    vrf_ids: list[str]
+
+
+class RemoveUnmappedDeviceVrfsOutput(BaseModel):
+    """VRF associations removed because no device interface used them."""
+
+    removed_vrf_ids: list[str]
+
+
+@activity.defn
+async def remove_unmapped_device_vrfs(
+    activity_input: RemoveUnmappedDeviceVrfsInput,
+) -> RemoveUnmappedDeviceVrfsOutput:
+    """Remove affected device/VRF associations that have no interface mappings."""
+    if not activity_input.vrf_ids:
+        return RemoveUnmappedDeviceVrfsOutput(removed_vrf_ids=[])
+
+    client = NautobotClient()
+    removed_vrf_ids: list[str] = []
+
+    async with client:
+        interfaces = await client.get_device_interfaces(activity_input.device_id)
+        mapped_vrf_ids = {interface.vrf_id for interface in interfaces if interface.vrf_id}
+
+        for vrf_id in dict.fromkeys(activity_input.vrf_ids):
+            if vrf_id in mapped_vrf_ids:
+                continue
+
+            assignments = await client.get_all(
+                VRF_DEVICE_ASSIGNMENTS_PATH,
+                params={"device": activity_input.device_id, "vrf": vrf_id},
+            )
+            matching_assignment_ids = [
+                str(assignment["id"])
+                for assignment in assignments
+                if _related_object_id(assignment.get("device")) == activity_input.device_id
+                and _related_object_id(assignment.get("vrf")) == vrf_id
+            ]
+            for assignment_id in matching_assignment_ids:
+                await client.delete(f"{VRF_DEVICE_ASSIGNMENTS_PATH}{assignment_id}/")
+
+            if matching_assignment_ids:
+                removed_vrf_ids.append(vrf_id)
+
+    return RemoveUnmappedDeviceVrfsOutput(removed_vrf_ids=removed_vrf_ids)

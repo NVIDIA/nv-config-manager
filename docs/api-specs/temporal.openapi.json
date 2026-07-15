@@ -317,6 +317,25 @@
         "title": "DeviceDiffData",
         "type": "object"
       },
+      "DeviceInterface": {
+        "description": "Device interface data for dropdown population.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "DeviceInterface",
+        "type": "object"
+      },
       "DevicePasswordRotationInput": {
         "description": "Device Password Rotation Workflow Input Definition.",
         "properties": {
@@ -1424,15 +1443,23 @@
             "type": "string"
           },
           "overlay_id": {
-            "description": "Identifier of the SpX overlay whose VRF will be assigned to the device and ports.",
-            "title": "Overlay ID",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Identifier of the SpX overlay whose VRF will be assigned to the device and ports. Omit it to remove the selected ports' current SpX assignment.",
+            "title": "Overlay ID"
           },
           "port_names": {
             "description": "Names of the device interfaces to assign to the overlay.",
             "items": {
               "type": "string"
             },
+            "minItems": 1,
             "title": "Port Names",
             "type": "array"
           },
@@ -1443,7 +1470,6 @@
           }
         },
         "required": [
-          "overlay_id",
           "device",
           "port_names",
           "site"
@@ -1538,15 +1564,23 @@
             "type": "string"
           },
           "overlay_id": {
-            "description": "Identifier of the SpX overlay to assign and deploy tenant configuration for.",
-            "title": "Overlay ID",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Identifier of the SpX overlay to assign and deploy tenant configuration for. Omit it to remove the selected ports' current SpX assignment.",
+            "title": "Overlay ID"
           },
           "port_names": {
             "description": "Names of the device interfaces to assign to the overlay.",
             "items": {
               "type": "string"
             },
+            "minItems": 1,
             "title": "Port Names",
             "type": "array"
           },
@@ -1557,7 +1591,6 @@
           }
         },
         "required": [
-          "overlay_id",
           "device_id",
           "port_names",
           "site"
@@ -2729,6 +2762,58 @@
           }
         ],
         "summary": "Get Device ID by Name",
+        "tags": [
+          "parameters"
+        ]
+      }
+    },
+    "/v1/parameter/device/{device_id}/interfaces": {
+      "get": {
+        "description": "Return the interfaces belonging to a device.",
+        "operationId": "get_device_interfaces_v1_parameter_device__device_id__interfaces_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": {
+              "title": "Device Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DeviceInterface"
+                  },
+                  "title": "Response Get Device Interfaces V1 Parameter Device  Device Id  Interfaces Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Device Interfaces",
         "tags": [
           "parameters"
         ]
@@ -4876,7 +4961,7 @@
     },
     "/v1/workflow/ngc/spx_overlay_assignment": {
       "post": {
-        "description": "Assign a SpX Overlay/VRF to a device and its specified ports",
+        "description": "Change or remove a SpX Overlay/VRF assignment on device ports",
         "operationId": "spxoverlayassignmentworkflow_endpoint_v1_workflow_ngc_spx_overlay_assignment_post",
         "requestBody": {
           "content": {
@@ -5017,7 +5102,7 @@
     },
     "/v1/workflow/ngc/spx_overlay_tenant_change": {
       "post": {
-        "description": "Assign a SpX Overlay to a device and deploy tenant configuration",
+        "description": "Change or remove a SpX Overlay assignment and deploy tenant configuration",
         "operationId": "spxoverlaytenantchangeworkflow_endpoint_v1_workflow_ngc_spx_overlay_tenant_change_post",
         "requestBody": {
           "content": {
