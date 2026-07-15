@@ -70,12 +70,15 @@ Instrumented components:
 
 | Component | `OTEL_SERVICE_NAME` |
 | :-------- | :-------------------- |
-| Config Store API | `config-store` |
-| DHCP API | `dhcp` |
-| ZTP API | `ztp` |
-| Render API | `render` |
-| MCP server | `mcp` |
-| Temporal worker, API, scheduler, archive | `temporal-worker`, `temporal-api`, etc. |
+| Config Store API | `nv-config-manager-config-store` |
+| DHCP API | `nv-config-manager-dhcp` |
+| ZTP API | `nv-config-manager-ztp` |
+| Render API | `nv-config-manager-render` |
+| MCP server | `nvidia-config-manager-mcp` |
+| Temporal worker | `nv-config-manager-temporal-worker` |
+| Temporal API | `nv-config-manager-temporal-api` |
+| Temporal scheduler | `nv-config-manager-temporal-scheduler` |
+| Temporal archive | `nv-config-manager-temporal-archive` |
 
 The chart points each service's OTel SDK at an existing OTLP collector:
 
