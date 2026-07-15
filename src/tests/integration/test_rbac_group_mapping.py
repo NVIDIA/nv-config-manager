@@ -167,22 +167,30 @@ def rbac_require_configured(
     if not rbac_enabled:
         pytest.skip("group-mapping RBAC tests require --rbac")
     configmap = f"{rbac_release}-nautobot-group-mapping"
-    res = subprocess.run(
-        [
-            "kubectl",
-            "get",
-            "configmap",
-            "-n",
-            config_manager_namespace,
-            configmap,
-            "-o",
-            "name",
-            "--ignore-not-found",
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        res = subprocess.run(
+            [
+                "kubectl",
+                "get",
+                "configmap",
+                "-n",
+                config_manager_namespace,
+                configmap,
+                "-o",
+                "name",
+                "--ignore-not-found",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        pytest.fail(
+            f"kubectl timed out (30s) querying ConfigMap {configmap!r} in namespace "
+            f"{config_manager_namespace!r}; the cluster / API server may be unreachable. "
+            "Failing fast so this session-scoped fixture can't hang the suite."
+        )
     if res.returncode != 0:
         pytest.fail(
             f"kubectl could not query ConfigMap {configmap!r} in namespace "
