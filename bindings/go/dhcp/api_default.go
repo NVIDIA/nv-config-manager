@@ -915,7 +915,7 @@ func (r ApiListPoolsPoolsGetRequest) Execute() (*PoolPageResponse, *http.Respons
 /*
 ListPoolsPoolsGet List Pools
 
-Return a cursor-paginated, optionally filtered pool-usage page.
+Return a cursor-paginated, optionally filtered configured-pool page.
 
 	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
 	@return ApiListPoolsPoolsGetRequest

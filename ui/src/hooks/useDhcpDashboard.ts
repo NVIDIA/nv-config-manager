@@ -183,7 +183,7 @@ export function useDhcpReservations(
   };
 }
 
-/** Subscribe to the loaded cursor-paginated pool-usage pages. */
+/** Subscribe to the loaded cursor-paginated configured pool pages. */
 export function useDhcpPools(
   dhcpUrl: string,
   search: string,

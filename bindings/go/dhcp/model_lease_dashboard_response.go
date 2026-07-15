@@ -21,11 +21,9 @@ var _ MappedNullable = &LeaseDashboardResponse{}
 
 // LeaseDashboardResponse Lease, reservation, and pool summary used by the dashboard.
 type LeaseDashboardResponse struct {
-	ActiveLeaseCount     int32 `json:"active_lease_count"`
-	AssignedAddressCount int32 `json:"assigned_address_count"`
-	PoolAddressCount     int32 `json:"pool_address_count"`
-	PoolCount            int32 `json:"pool_count"`
-	ReservationCount     int32 `json:"reservation_count"`
+	ActiveLeaseCount int32 `json:"active_lease_count"`
+	PoolCount        int32 `json:"pool_count"`
+	ReservationCount int32 `json:"reservation_count"`
 }
 
 type _LeaseDashboardResponse LeaseDashboardResponse
@@ -34,11 +32,9 @@ type _LeaseDashboardResponse LeaseDashboardResponse
 // This constructor will assign default values to properties that have it defined,
 // and makes sure properties required by API are set, but the set of arguments
 // will change when the set of required properties is changed
-func NewLeaseDashboardResponse(activeLeaseCount int32, assignedAddressCount int32, poolAddressCount int32, poolCount int32, reservationCount int32) *LeaseDashboardResponse {
+func NewLeaseDashboardResponse(activeLeaseCount int32, poolCount int32, reservationCount int32) *LeaseDashboardResponse {
 	this := LeaseDashboardResponse{}
 	this.ActiveLeaseCount = activeLeaseCount
-	this.AssignedAddressCount = assignedAddressCount
-	this.PoolAddressCount = poolAddressCount
 	this.PoolCount = poolCount
 	this.ReservationCount = reservationCount
 	return &this
@@ -74,54 +70,6 @@ func (o *LeaseDashboardResponse) GetActiveLeaseCountOk() (*int32, bool) {
 // SetActiveLeaseCount sets field value
 func (o *LeaseDashboardResponse) SetActiveLeaseCount(v int32) {
 	o.ActiveLeaseCount = v
-}
-
-// GetAssignedAddressCount returns the AssignedAddressCount field value
-func (o *LeaseDashboardResponse) GetAssignedAddressCount() int32 {
-	if o == nil {
-		var ret int32
-		return ret
-	}
-
-	return o.AssignedAddressCount
-}
-
-// GetAssignedAddressCountOk returns a tuple with the AssignedAddressCount field value
-// and a boolean to check if the value has been set.
-func (o *LeaseDashboardResponse) GetAssignedAddressCountOk() (*int32, bool) {
-	if o == nil {
-		return nil, false
-	}
-	return &o.AssignedAddressCount, true
-}
-
-// SetAssignedAddressCount sets field value
-func (o *LeaseDashboardResponse) SetAssignedAddressCount(v int32) {
-	o.AssignedAddressCount = v
-}
-
-// GetPoolAddressCount returns the PoolAddressCount field value
-func (o *LeaseDashboardResponse) GetPoolAddressCount() int32 {
-	if o == nil {
-		var ret int32
-		return ret
-	}
-
-	return o.PoolAddressCount
-}
-
-// GetPoolAddressCountOk returns a tuple with the PoolAddressCount field value
-// and a boolean to check if the value has been set.
-func (o *LeaseDashboardResponse) GetPoolAddressCountOk() (*int32, bool) {
-	if o == nil {
-		return nil, false
-	}
-	return &o.PoolAddressCount, true
-}
-
-// SetPoolAddressCount sets field value
-func (o *LeaseDashboardResponse) SetPoolAddressCount(v int32) {
-	o.PoolAddressCount = v
 }
 
 // GetPoolCount returns the PoolCount field value
@@ -183,8 +131,6 @@ func (o LeaseDashboardResponse) MarshalJSON() ([]byte, error) {
 func (o LeaseDashboardResponse) ToMap() (map[string]interface{}, error) {
 	toSerialize := map[string]interface{}{}
 	toSerialize["active_lease_count"] = o.ActiveLeaseCount
-	toSerialize["assigned_address_count"] = o.AssignedAddressCount
-	toSerialize["pool_address_count"] = o.PoolAddressCount
 	toSerialize["pool_count"] = o.PoolCount
 	toSerialize["reservation_count"] = o.ReservationCount
 	return toSerialize, nil
@@ -195,11 +141,9 @@ func (o *LeaseDashboardResponse) UnmarshalJSON(data []byte) (err error) {
 	// by unmarshalling the object into a generic map with string keys and checking
 	// that every required field exists as a key in the generic map.
 	requiredProperties := map[string]bool{
-		"active_lease_count":     false,
-		"assigned_address_count": false,
-		"pool_address_count":     false,
-		"pool_count":             false,
-		"reservation_count":      false,
+		"active_lease_count": false,
+		"pool_count":         false,
+		"reservation_count":  false,
 	}
 
 	allProperties := make(map[string]interface{})

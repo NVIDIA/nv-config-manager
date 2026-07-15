@@ -24,7 +24,7 @@ test.describe("DHCP Dashboard Page", () => {
     await page.goto("/dhcp");
   });
 
-  test("displays DHCP lease activity, reservations, and pool usage", async ({
+  test("displays DHCP lease activity, reservations, and pools", async ({
     page,
   }) => {
     const dashboard = page.getByTestId("dhcp-dashboard");
@@ -63,13 +63,10 @@ test.describe("DHCP Dashboard Page", () => {
       dashboard.getByText("Loaded 2 of 2 reservations", { exact: true })
     ).toBeVisible();
 
-    await dashboard.getByRole("tab", { name: "Pool usage" }).click();
+    await dashboard.getByRole("tab", { name: "Pools" }).click();
     await expect(dashboard.getByText("10.0.0.10-10.0.0.19")).toBeVisible();
     await expect(
       dashboard.getByText("Loaded 1 of 1 pools", { exact: true })
-    ).toBeVisible();
-    await expect(
-      dashboard.getByText("20.0%", { exact: true }).last()
     ).toBeVisible();
   });
 
@@ -213,9 +210,6 @@ test.describe("DHCP Dashboard Page", () => {
             {
               subnet: cursor ? "10.0.1.0/24" : "10.0.0.0/24",
               pool: cursor ? "10.0.1.10-10.0.1.19" : "10.0.0.10-10.0.0.19",
-              assigned: 2,
-              total: 10,
-              utilization: 20,
             },
           ],
           total_count: 2,
@@ -232,7 +226,7 @@ test.describe("DHCP Dashboard Page", () => {
       dashboard.getByText("Loaded 2 of 2 reservations", { exact: true })
     ).toBeVisible();
 
-    await dashboard.getByRole("tab", { name: "Pool usage" }).click();
+    await dashboard.getByRole("tab", { name: "Pools" }).click();
     await expect(dashboard.getByText("10.0.0.10-10.0.0.19")).toBeVisible();
     await expect(dashboard.getByText("10.0.1.10-10.0.1.19")).toBeVisible();
     await expect(

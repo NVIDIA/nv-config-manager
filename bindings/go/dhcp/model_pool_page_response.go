@@ -19,10 +19,10 @@ import (
 // checks if the PoolPageResponse type satisfies the MappedNullable interface at compile time
 var _ MappedNullable = &PoolPageResponse{}
 
-// PoolPageResponse Bounded page of configured pool usage.
+// PoolPageResponse Bounded page of configured pools.
 type PoolPageResponse struct {
 	NextCursor NullableString `json:"next_cursor,omitempty"`
-	Pools      []PoolUsage    `json:"pools"`
+	Pools      []PoolRecord   `json:"pools"`
 	TotalCount int32          `json:"total_count"`
 }
 
@@ -32,7 +32,7 @@ type _PoolPageResponse PoolPageResponse
 // This constructor will assign default values to properties that have it defined,
 // and makes sure properties required by API are set, but the set of arguments
 // will change when the set of required properties is changed
-func NewPoolPageResponse(pools []PoolUsage, totalCount int32) *PoolPageResponse {
+func NewPoolPageResponse(pools []PoolRecord, totalCount int32) *PoolPageResponse {
 	this := PoolPageResponse{}
 	this.Pools = pools
 	this.TotalCount = totalCount
@@ -93,9 +93,9 @@ func (o *PoolPageResponse) UnsetNextCursor() {
 }
 
 // GetPools returns the Pools field value
-func (o *PoolPageResponse) GetPools() []PoolUsage {
+func (o *PoolPageResponse) GetPools() []PoolRecord {
 	if o == nil {
-		var ret []PoolUsage
+		var ret []PoolRecord
 		return ret
 	}
 
@@ -104,7 +104,7 @@ func (o *PoolPageResponse) GetPools() []PoolUsage {
 
 // GetPoolsOk returns a tuple with the Pools field value
 // and a boolean to check if the value has been set.
-func (o *PoolPageResponse) GetPoolsOk() ([]PoolUsage, bool) {
+func (o *PoolPageResponse) GetPoolsOk() ([]PoolRecord, bool) {
 	if o == nil {
 		return nil, false
 	}
@@ -112,7 +112,7 @@ func (o *PoolPageResponse) GetPoolsOk() ([]PoolUsage, bool) {
 }
 
 // SetPools sets field value
-func (o *PoolPageResponse) SetPools(v []PoolUsage) {
+func (o *PoolPageResponse) SetPools(v []PoolRecord) {
 	o.Pools = v
 }
 

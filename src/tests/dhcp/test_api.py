@@ -16,7 +16,6 @@ import asyncio
 import json
 import os
 import time
-from collections.abc import Iterator
 from configparser import ConfigParser
 from copy import deepcopy
 from unittest.mock import AsyncMock, call, patch
@@ -25,47 +24,21 @@ import jwt as pyjwt
 import pytest
 from aiohttp import ClientConnectionError, ClientResponseError, RequestInfo
 from cryptography.hazmat.primitives.asymmetric import rsa
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from multidict import CIMultiDict
 from yarl import URL
 
 from nv_config_manager.common.auth import AuthConfig, JwtProviderConfig
 from nv_config_manager.dhcp.api import (
-    _COLLECTION_SNAPSHOT_LOCKS,
-    _COLLECTION_SNAPSHOTS,
     _fetch_lease_dashboard_sources,
-    _get_collection_snapshot,
     _install_cors,
-    _store_collection_snapshot,
     app,
-    list_pools,
 )
-from nv_config_manager.dhcp.kea import IpVersion, KeaClient
+from nv_config_manager.dhcp.kea import KeaClient
 
 _HEADERS_TRUSTED = AuthConfig(accept_request_headers=True)
 _AUTH_DISABLED = AuthConfig(required=False)
-
-
-@pytest.fixture(autouse=True)
-def clear_collection_snapshots() -> Iterator[None]:
-    """Keep short-lived collection snapshots isolated between API tests."""
-    _COLLECTION_SNAPSHOTS.clear()
-    _COLLECTION_SNAPSHOT_LOCKS.clear()
-    yield
-    _COLLECTION_SNAPSHOTS.clear()
-    _COLLECTION_SNAPSHOT_LOCKS.clear()
-
-
-def test_collection_snapshots_expire_after_bounded_ttl():
-    """Limit process-local collection staleness to the configured TTL."""
-    with patch(
-        "nv_config_manager.dhcp.api.monotonic",
-        side_effect=[100.0, 129.9, 130.0],
-    ):
-        _store_collection_snapshot("pool", IpVersion.V4, ["cached"])
-        assert _get_collection_snapshot("pool", IpVersion.V4) == ["cached"]
-        assert _get_collection_snapshot("pool", IpVersion.V4) is None
 
 
 def make_client_response_error(message: str) -> ClientResponseError:
@@ -183,8 +156,6 @@ LEASE_DASHBOARD_STATISTICS = [
         "result": 0,
         "arguments": {
             "assigned-addresses": [[1, "2026-07-10 00:00:00"]],
-            "subnet[7].pool[0].assigned-addresses": [[1, "2026-07-10 00:00:00"]],
-            "subnet[7].pool[0].total-addresses": [[10, "2026-07-10 00:00:00"]],
         },
     }
 ]
@@ -403,16 +374,12 @@ def test_flush_cache():
             new_callable=AsyncMock,
             return_value=True,
         ):
-            _COLLECTION_SNAPSHOTS[("reservation", IpVersion.V4)] = (float("inf"), [])
-            _COLLECTION_SNAPSHOTS[("pool", IpVersion.V4)] = (float("inf"), [])
             rsp = client.delete(
                 "/admin/cache",
                 headers={"X-Auth-Request-Email": "admin@example.com"},
             )
             assert rsp.status_code == 200
             assert rsp.json() == {"detail": "DHCPv4 cached configuration flushed"}
-            assert ("reservation", IpVersion.V4) not in _COLLECTION_SNAPSHOTS
-            assert ("pool", IpVersion.V4) not in _COLLECTION_SNAPSHOTS
 
         with patch(
             "nv_config_manager.dhcp.api.RedisClient.flush_kea_config",
@@ -431,18 +398,12 @@ def test_flush_cache():
             new_callable=AsyncMock,
             return_value=False,
         ):
-            _COLLECTION_SNAPSHOTS[("reservation", IpVersion.V4)] = (float("inf"), [])
-            _COLLECTION_SNAPSHOTS[("pool", IpVersion.V4)] = (float("inf"), [])
-            _COLLECTION_SNAPSHOTS[("pool", IpVersion.V6)] = (float("inf"), [])
             rsp = client.delete(
                 "/admin/cache",
                 headers={"X-Auth-Request-Email": "admin@example.com"},
             )
             assert rsp.status_code == 404
             assert rsp.json() == {"detail": "No cached configuration found for DHCPv4"}
-            assert ("reservation", IpVersion.V4) not in _COLLECTION_SNAPSHOTS
-            assert ("pool", IpVersion.V4) not in _COLLECTION_SNAPSHOTS
-            assert ("pool", IpVersion.V6) in _COLLECTION_SNAPSHOTS
 
 
 def test_get_config_success():
@@ -898,7 +859,8 @@ def test_list_reservations_paginates_and_filters_with_exact_total():
     assert search_rsp.status_code == 200
     assert search_rsp.json()["total_count"] == 1
     assert search_rsp.json()["reservations"][0]["hostname"] == "reserved-switch-02"
-    mock_get_config.assert_awaited_once_with(4)
+    assert mock_get_config.await_count == 3
+    assert all(call.args == (4,) for call in mock_get_config.await_args_list)
 
 
 def test_list_reservations_rejects_mismatched_cursor_version():
@@ -939,13 +901,6 @@ def test_list_pools_paginates_and_filters_with_exact_total():
     client = TestClient(app)
     config = deepcopy(LEASE_DASHBOARD_CONFIG)
     config[0]["arguments"]["Dhcp4"]["subnet4"][0]["pools"].append({"pool": "10.0.1.0/30"})
-    statistics = deepcopy(LEASE_DASHBOARD_STATISTICS)
-    statistics[0]["arguments"].update(
-        {
-            "subnet[7].pool[1].assigned-addresses": [[2, "2026-07-10 00:00:00"]],
-            "subnet[7].pool[1].total-addresses": [[4, "2026-07-10 00:00:00"]],
-        }
-    )
 
     with (
         patch(
@@ -953,20 +908,6 @@ def test_list_pools_paginates_and_filters_with_exact_total():
             new_callable=AsyncMock,
             return_value=config,
         ) as mock_get_config,
-        patch(
-            "nv_config_manager.dhcp.api.KeaClient.get_statistics",
-            new_callable=AsyncMock,
-            return_value=statistics,
-        ) as mock_get_statistics,
-        patch(
-            "nv_config_manager.dhcp.api.KeaClient.get_lease_page",
-            new_callable=AsyncMock,
-            return_value=lease_page(
-                active_lease("10.0.0.10", "pool-0-client"),
-                active_lease("10.0.1.1", "pool-1-client-1"),
-                active_lease("10.0.1.2", "pool-1-client-2"),
-            ),
-        ) as mock_get_lease_page,
         patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED),
     ):
         first_rsp = client.get(
@@ -992,162 +933,8 @@ def test_list_pools_paginates_and_filters_with_exact_total():
     assert second_rsp.json()["next_cursor"] is None
     assert search_rsp.status_code == 200
     assert search_rsp.json()["total_count"] == 1
-    assert search_rsp.json()["pools"][0]["utilization"] == 50.0
-    mock_get_config.assert_awaited_once_with(4)
-    mock_get_statistics.assert_awaited_once_with(4)
-    mock_get_lease_page.assert_awaited_once_with(500, version=4, from_address="start")
-
-
-def test_list_pools_counts_active_leases_across_kea_pages():
-    """Count in-pool assignments across every KEA lease page."""
-    client = TestClient(app)
-    config = deepcopy(LEASE_DASHBOARD_CONFIG)
-    subnet = config[0]["arguments"]["Dhcp4"]["subnet4"][0]
-    subnet["subnet"] = "10.0.0.0/22"
-    subnet["pools"] = [{"pool": "10.0.0.0/22"}]
-    statistics = deepcopy(LEASE_DASHBOARD_STATISTICS)
-    statistics[0]["arguments"]["subnet[7].pool[0].total-addresses"] = [
-        [1024, "2026-07-10 00:00:00"]
-    ]
-    active_leases = [
-        active_lease(
-            f"10.0.{index // 254}.{index % 254 + 1}",
-            f"switch-{index:04d}",
-        )
-        for index in range(1002)
-    ]
-
-    with (
-        patch(
-            "nv_config_manager.dhcp.api.KeaClient.get_config",
-            new_callable=AsyncMock,
-            return_value=config,
-        ),
-        patch(
-            "nv_config_manager.dhcp.api.KeaClient.get_statistics",
-            new_callable=AsyncMock,
-            return_value=statistics,
-        ),
-        patch(
-            "nv_config_manager.dhcp.api.KeaClient.get_lease_page",
-            new_callable=AsyncMock,
-            side_effect=[
-                lease_page(*active_leases[:500]),
-                lease_page(*active_leases[500:1000]),
-                lease_page(*active_leases[1000:]),
-            ],
-        ) as mock_get_lease_page,
-        patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED),
-    ):
-        rsp = client.get(
-            "/pools?limit=1",
-            headers={"X-Auth-Request-Email": "test@example.com"},
-        )
-
-    assert rsp.status_code == 200
-    assert rsp.json()["pools"][0]["assigned"] == 1002
-    assert rsp.json()["pools"][0]["utilization"] == 97.9
-    assert mock_get_lease_page.await_args_list == [
-        call(500, version=4, from_address="start"),
-        call(500, version=4, from_address="10.0.1.246"),
-        call(500, version=4, from_address="10.0.3.238"),
-    ]
-
-
-def test_list_pools_falls_back_to_statistics_after_bounded_lease_scan():
-    """Use KEA pool statistics instead of scanning an unbounded lease table."""
-    active_leases = [
-        active_lease(
-            f"10.0.{index // 254}.{index % 254 + 1}",
-            f"switch-{index:04d}",
-        )
-        for index in range(1000)
-    ]
-
-    with (
-        patch(
-            "nv_config_manager.dhcp.api.KeaClient.get_config",
-            new_callable=AsyncMock,
-            return_value=LEASE_DASHBOARD_CONFIG,
-        ),
-        patch(
-            "nv_config_manager.dhcp.api.KeaClient.get_statistics",
-            new_callable=AsyncMock,
-            return_value=LEASE_DASHBOARD_STATISTICS,
-        ),
-        patch(
-            "nv_config_manager.dhcp.api.KeaClient.get_lease_page",
-            new_callable=AsyncMock,
-            side_effect=[
-                lease_page(*active_leases[:500]),
-                lease_page(*active_leases[500:]),
-            ],
-        ) as mock_get_lease_page,
-        patch("nv_config_manager.dhcp.api._MAX_POOL_LEASE_PAGES", 2),
-        patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED),
-    ):
-        rsp = TestClient(app).get(
-            "/pools?limit=1",
-            headers={"X-Auth-Request-Email": "test@example.com"},
-        )
-
-    assert rsp.status_code == 200
-    assert rsp.json()["pools"][0]["assigned"] == 1
-    assert mock_get_lease_page.await_args_list == [
-        call(500, version=4, from_address="start"),
-        call(500, version=4, from_address="10.0.1.246"),
-    ]
-
-
-async def test_list_pools_coalesces_concurrent_snapshot_rebuilds():
-    """Share one KEA snapshot rebuild among concurrent pool requests."""
-    config_started = asyncio.Event()
-    release_config = asyncio.Event()
-
-    async def blocked_config(ip_version: int) -> list[dict]:
-        assert ip_version == 4
-        config_started.set()
-        await release_config.wait()
-        return LEASE_DASHBOARD_CONFIG
-
-    with (
-        patch(
-            "nv_config_manager.dhcp.api.KeaClient.get_config",
-            new_callable=AsyncMock,
-            side_effect=blocked_config,
-        ) as mock_get_config,
-        patch(
-            "nv_config_manager.dhcp.api.KeaClient.get_statistics",
-            new_callable=AsyncMock,
-            return_value=LEASE_DASHBOARD_STATISTICS,
-        ) as mock_get_statistics,
-        patch(
-            "nv_config_manager.dhcp.api.KeaClient.get_lease_page",
-            new_callable=AsyncMock,
-            return_value=lease_page(),
-        ) as mock_get_lease_page,
-    ):
-        request = Request({"type": "http", "method": "GET", "path": "/pools"})
-        first_request = asyncio.create_task(
-            list_pools(request, IpVersion.V4, limit=1, cursor=None, search=None)
-        )
-        await config_started.wait()
-        second_request = asyncio.create_task(
-            list_pools(request, IpVersion.V4, limit=1, cursor=None, search=None)
-        )
-        await asyncio.sleep(0)
-        assert mock_get_config.await_count == 1
-
-        release_config.set()
-        first_response, second_response = await asyncio.gather(
-            first_request,
-            second_request,
-        )
-
-    assert first_response == second_response
-    assert mock_get_config.await_count == 1
-    assert mock_get_statistics.await_count == 1
-    assert mock_get_lease_page.await_count == 1
+    assert search_rsp.json()["pools"] == [{"subnet": "10.0.0.0/24", "pool": "10.0.1.0/30"}]
+    assert mock_get_config.await_count == 3
 
 
 def test_config_collections_bound_thousand_record_pages():
@@ -1171,16 +958,6 @@ def test_config_collections_bound_thousand_record_pages():
             "nv_config_manager.dhcp.api.KeaClient.get_config",
             new_callable=AsyncMock,
             return_value=config,
-        ),
-        patch(
-            "nv_config_manager.dhcp.api.KeaClient.get_statistics",
-            new_callable=AsyncMock,
-            return_value=LEASE_DASHBOARD_STATISTICS,
-        ),
-        patch(
-            "nv_config_manager.dhcp.api.KeaClient.get_lease_page",
-            new_callable=AsyncMock,
-            return_value=lease_page(),
         ),
         patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED),
     ):
@@ -1214,8 +991,6 @@ def test_delete_lease():
             return_value=[{"result": 0, "text": "Lease deleted."}],
         ) as mock_delete_lease,
     ):
-        _COLLECTION_SNAPSHOTS[("reservation", IpVersion.V4)] = (float("inf"), [])
-        _COLLECTION_SNAPSHOTS[("pool", IpVersion.V4)] = (float("inf"), [])
         with patch("nv_config_manager.common.auth._auth_config", _HEADERS_TRUSTED):
             rsp = client.delete(
                 "/lease/10.0.0.10",
@@ -1225,8 +1000,6 @@ def test_delete_lease():
     assert rsp.status_code == 204
     assert not rsp.content
     mock_delete_lease.assert_awaited_once_with("10.0.0.10", version=4)
-    assert ("reservation", IpVersion.V4) in _COLLECTION_SNAPSHOTS
-    assert ("pool", IpVersion.V4) not in _COLLECTION_SNAPSHOTS
 
 
 def test_delete_lease_enforces_allowed_groups():
@@ -1395,9 +1168,7 @@ def test_get_lease_dashboard():
     payload = rsp.json()
     assert payload["active_lease_count"] == 1
     assert payload["reservation_count"] == 1
-    assert payload["assigned_address_count"] == 1
     assert payload["pool_count"] == 1
-    assert payload["pool_address_count"] == 10
     assert "leases" not in payload
     assert "reservations" not in payload
     assert "pools" not in payload

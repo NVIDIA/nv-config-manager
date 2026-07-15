@@ -51,18 +51,15 @@ export interface DhcpReservationPage {
   next_cursor?: string | null;
 }
 
-/** Allocation statistics for a configured address pool. */
-export interface DhcpPoolUsage {
+/** Configured address pool returned by the DHCP API. */
+export interface DhcpPool {
   subnet: string;
   pool: string;
-  assigned: number;
-  total: number;
-  utilization: number;
 }
 
-/** Cursor-paginated pool usage returned by the DHCP API. */
+/** Cursor-paginated configured pools returned by the DHCP API. */
 export interface DhcpPoolPage {
-  pools: DhcpPoolUsage[];
+  pools: DhcpPool[];
   total_count: number;
   next_cursor?: string | null;
 }
@@ -71,7 +68,5 @@ export interface DhcpPoolPage {
 export interface DhcpLeaseDashboard {
   active_lease_count: number;
   reservation_count: number;
-  assigned_address_count: number;
   pool_count: number;
-  pool_address_count: number;
 }

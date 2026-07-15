@@ -21,7 +21,6 @@ import binascii
 from collections.abc import AsyncIterator, Coroutine
 from contextlib import asynccontextmanager
 from ipaddress import ip_address
-from time import monotonic
 from typing import Any
 
 import uvicorn
@@ -60,62 +59,6 @@ from nv_config_manager.dhcp.redis import RedisClient
 configure_logging(service="dhcp")
 
 _MAX_KEA_LEASE_PAGES_PER_REQUEST = 10
-_MAX_POOL_LEASE_PAGES = 20
-_POOL_LEASE_PAGE_SIZE = 500
-_COLLECTION_SNAPSHOT_TTL_SECONDS = 30
-# These snapshots are intentionally process-local. Other API replicas can serve
-# data that is at most one TTL old; the dashboard revalidates every 30 seconds.
-_COLLECTION_SNAPSHOTS: dict[tuple[str, IpVersion], tuple[float, list[Any]]] = {}
-_COLLECTION_SNAPSHOT_LOCKS: dict[
-    tuple[str, IpVersion],
-    tuple[asyncio.AbstractEventLoop, asyncio.Lock],
-] = {}
-
-
-def _collection_snapshot_lock(resource: str, ip_version: IpVersion) -> asyncio.Lock:
-    """Return a lock scoped to the collection, address family, and running loop."""
-    key = (resource, ip_version)
-    loop = asyncio.get_running_loop()
-    lock_entry = _COLLECTION_SNAPSHOT_LOCKS.get(key)
-    if lock_entry is None or lock_entry[0] is not loop:
-        lock_entry = (loop, asyncio.Lock())
-        _COLLECTION_SNAPSHOT_LOCKS[key] = lock_entry
-    return lock_entry[1]
-
-
-def _get_collection_snapshot(
-    resource: str,
-    ip_version: IpVersion,
-) -> list[Any] | None:
-    """Return an unexpired normalized collection snapshot."""
-    key = (resource, ip_version)
-    snapshot = _COLLECTION_SNAPSHOTS.get(key)
-    if snapshot is None:
-        return None
-    expires_at, items = snapshot
-    if monotonic() >= expires_at:
-        _COLLECTION_SNAPSHOTS.pop(key, None)
-        return None
-    return items
-
-
-def _store_collection_snapshot(
-    resource: str,
-    ip_version: IpVersion,
-    items: list[Any],
-) -> None:
-    """Cache normalized collection data for subsequent cursor pages."""
-    _COLLECTION_SNAPSHOTS[(resource, ip_version)] = (
-        monotonic() + _COLLECTION_SNAPSHOT_TTL_SECONDS,
-        items,
-    )
-
-
-def _invalidate_collection_snapshots(ip_version: int) -> None:
-    """Remove reservation and pool snapshots for one address family."""
-    for key in tuple(_COLLECTION_SNAPSHOTS):
-        if int(key[1]) == ip_version:
-            _COLLECTION_SNAPSHOTS.pop(key, None)
 
 
 def _install_cors(application: FastAPI) -> None:
@@ -165,10 +108,10 @@ instrumentator.add(
 instrumentator.instrument(app)
 
 
-async def _gather_kea_requests(
+async def _gather_requests(
     *requests: Coroutine[Any, Any, Any],
 ) -> tuple[Any, ...]:
-    """Run KEA requests concurrently and drain every task before returning or raising."""
+    """Run requests concurrently and drain every task before returning or raising."""
     tasks = tuple(asyncio.create_task(request) for request in requests)
     try:
         return tuple(await asyncio.gather(*tasks))
@@ -185,7 +128,7 @@ async def _fetch_lease_dashboard_sources(
     ip_version: IpVersion,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Fetch dashboard sources and drain every task before returning or raising."""
-    config, statistics = await _gather_kea_requests(
+    config, statistics = await _gather_requests(
         client.get_config(ip_version),
         client.get_statistics(ip_version),
     )
@@ -198,13 +141,9 @@ async def _kea_lease_client() -> AsyncIterator[KeaClient]:
     client = KeaClient.from_config()
     try:
         yield client
-    except TimeoutError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
     except ClientResponseError as exc:
         raise HTTPException(status_code=500, detail=str(exc.message)) from exc
-    except ClientError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-    except KeaException as exc:
+    except (TimeoutError, ClientError, KeaException) as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     finally:
         await client.close()
@@ -350,42 +289,6 @@ async def _collect_lease_page(
         scanned_pages += 1
 
 
-async def _collect_active_leases(
-    client: KeaClient,
-    config_payload: list[dict[str, Any]],
-    initial_lease_payload: list[dict[str, Any]],
-    *,
-    ip_version: IpVersion,
-) -> list[LeaseRecord] | None:
-    """Collect active leases for pool usage, falling back after a bounded scan."""
-    leases_by_address: dict[str, LeaseRecord] = {}
-    lease_payload = initial_lease_payload
-    from_address = "start"
-    scanned_pages = 1
-    seen_addresses: set[str] = set()
-
-    while True:
-        for lease in build_lease_list(config_payload, lease_payload, ip_version=ip_version):
-            leases_by_address[str(lease.ip_address)] = lease
-
-        raw_count, last_address = lease_page_details(lease_payload, ip_version=ip_version)
-        if raw_count < _POOL_LEASE_PAGE_SIZE or last_address is None:
-            return sorted(leases_by_address.values(), key=lambda lease: int(lease.ip_address))
-        if last_address == from_address or last_address in seen_addresses:
-            raise KeaException("KEA lease pagination did not advance")
-        if scanned_pages >= _MAX_POOL_LEASE_PAGES:
-            return None
-
-        seen_addresses.add(last_address)
-        from_address = last_address
-        lease_payload = await client.get_lease_page(
-            _POOL_LEASE_PAGE_SIZE,
-            version=ip_version,
-            from_address=from_address,
-        )
-        scanned_pages += 1
-
-
 def main() -> None:
     """CLI entrypoint for DHCP API."""
 
@@ -444,7 +347,7 @@ async def get_lease(
     """Return one normalized lease from the selected DHCP service."""
     ip_version = _resolve_address_version(ip_address, ip_version)
     async with _kea_lease_client() as client:
-        lease_payload, config_payload = await _gather_kea_requests(
+        lease_payload, config_payload = await _gather_requests(
             client.get_lease(str(ip_address), version=ip_version),
             client.get_config(ip_version),
         )
@@ -469,7 +372,7 @@ async def list_leases(
     """Return a cursor-paginated, optionally filtered page of normalized leases."""
     from_address = _decode_lease_cursor(cursor, ip_version)
     async with _kea_lease_client() as client:
-        lease_payload, config_payload = await _gather_kea_requests(
+        lease_payload, config_payload = await _gather_requests(
             client.get_lease_page(
                 limit,
                 version=ip_version,
@@ -498,15 +401,9 @@ async def list_reservations(
 ) -> ReservationPageResponse:
     """Return a cursor-paginated, optionally filtered reservation page."""
     offset = _decode_offset_cursor(cursor, "reservation", ip_version)
-    reservations = _get_collection_snapshot("reservation", ip_version)
-    if reservations is None:
-        async with _collection_snapshot_lock("reservation", ip_version):
-            reservations = _get_collection_snapshot("reservation", ip_version)
-            if reservations is None:
-                async with _kea_lease_client() as client:
-                    config_payload = await client.get_config(ip_version)
-                reservations = build_reservation_list(config_payload, ip_version=ip_version)
-                _store_collection_snapshot("reservation", ip_version, reservations)
+    async with _kea_lease_client() as client:
+        config_payload = await client.get_config(ip_version)
+    reservations = build_reservation_list(config_payload, ip_version=ip_version)
     filtered_reservations = filter_reservation_records(reservations, search)
     page, total_count, next_offset = _slice_offset_page(
         filtered_reservations,
@@ -532,36 +429,14 @@ async def list_pools(
     cursor: str | None = Query(default=None, min_length=1, max_length=128),
     search: str | None = Query(default=None, max_length=256),
 ) -> PoolPageResponse:
-    """Return a cursor-paginated, optionally filtered pool-usage page."""
+    """Return a cursor-paginated, optionally filtered configured-pool page."""
     offset = _decode_offset_cursor(cursor, "pool", ip_version)
-    pools = _get_collection_snapshot("pool", ip_version)
-    if pools is None:
-        async with _collection_snapshot_lock("pool", ip_version):
-            pools = _get_collection_snapshot("pool", ip_version)
-            if pools is None:
-                async with _kea_lease_client() as client:
-                    config_payload, statistics_payload, lease_payload = await _gather_kea_requests(
-                        client.get_config(ip_version),
-                        client.get_statistics(ip_version),
-                        client.get_lease_page(
-                            _POOL_LEASE_PAGE_SIZE,
-                            version=ip_version,
-                            from_address="start",
-                        ),
-                    )
-                    active_leases = await _collect_active_leases(
-                        client,
-                        config_payload,
-                        lease_payload,
-                        ip_version=ip_version,
-                    )
-                pools = build_pool_list(
-                    config_payload,
-                    statistics_payload,
-                    active_leases,
-                    ip_version=ip_version,
-                )
-                _store_collection_snapshot("pool", ip_version, pools)
+    async with _kea_lease_client() as client:
+        config_payload = await client.get_config(ip_version)
+    pools = build_pool_list(
+        config_payload,
+        ip_version=ip_version,
+    )
     filtered_pools = filter_pool_records(pools, search)
     page, total_count, next_offset = _slice_offset_page(filtered_pools, offset, limit)
     return PoolPageResponse(
@@ -591,9 +466,6 @@ async def delete_lease(
         delete_payload = await client.delete_lease(str(ip_address), version=ip_version)
         if not lease_deleted(delete_payload, ip_version=ip_version):
             raise HTTPException(status_code=404, detail=f"Lease {ip_address} was not found")
-        # A lease change only affects pool usage. Other API replicas expire
-        # their process-local pool snapshots within the bounded TTL.
-        _COLLECTION_SNAPSHOTS.pop(("pool", ip_version), None)
         return Response(status_code=204)
 
 
@@ -622,7 +494,6 @@ async def flush_cache(request: Request, ip_version: int = 4) -> dict[str, str]:
     redis_client = RedisClient.from_config(app_config)
     try:
         deleted = await redis_client.flush_kea_config(ip_version)
-        _invalidate_collection_snapshots(ip_version)
         if not deleted:
             raise HTTPException(
                 status_code=404,

@@ -30,14 +30,6 @@
             "title": "Active Lease Count",
             "type": "integer"
           },
-          "assigned_address_count": {
-            "title": "Assigned Address Count",
-            "type": "integer"
-          },
-          "pool_address_count": {
-            "title": "Pool Address Count",
-            "type": "integer"
-          },
           "pool_count": {
             "title": "Pool Count",
             "type": "integer"
@@ -50,9 +42,7 @@
         "required": [
           "active_lease_count",
           "reservation_count",
-          "assigned_address_count",
-          "pool_count",
-          "pool_address_count"
+          "pool_count"
         ],
         "title": "LeaseDashboardResponse",
         "type": "object"
@@ -178,7 +168,7 @@
         "type": "object"
       },
       "PoolPageResponse": {
-        "description": "Bounded page of configured pool usage.",
+        "description": "Bounded page of configured pools.",
         "properties": {
           "next_cursor": {
             "anyOf": [
@@ -193,7 +183,7 @@
           },
           "pools": {
             "items": {
-              "$ref": "#/components/schemas/PoolUsage"
+              "$ref": "#/components/schemas/PoolRecord"
             },
             "title": "Pools",
             "type": "array"
@@ -210,13 +200,9 @@
         "title": "PoolPageResponse",
         "type": "object"
       },
-      "PoolUsage": {
-        "description": "Current allocation statistics for a configured address pool.",
+      "PoolRecord": {
+        "description": "Configured address pool.",
         "properties": {
-          "assigned": {
-            "title": "Assigned",
-            "type": "integer"
-          },
           "pool": {
             "title": "Pool",
             "type": "string"
@@ -224,24 +210,13 @@
           "subnet": {
             "title": "Subnet",
             "type": "string"
-          },
-          "total": {
-            "title": "Total",
-            "type": "integer"
-          },
-          "utilization": {
-            "title": "Utilization",
-            "type": "number"
           }
         },
         "required": [
           "subnet",
-          "pool",
-          "assigned",
-          "total",
-          "utilization"
+          "pool"
         ],
-        "title": "PoolUsage",
+        "title": "PoolRecord",
         "type": "object"
       },
       "ReservationPageResponse": {
@@ -789,7 +764,7 @@
     },
     "/pools": {
       "get": {
-        "description": "Return a cursor-paginated, optionally filtered pool-usage page.",
+        "description": "Return a cursor-paginated, optionally filtered configured-pool page.",
         "operationId": "list_pools_pools_get",
         "parameters": [
           {

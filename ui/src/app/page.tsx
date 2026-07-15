@@ -157,7 +157,7 @@ export default function HomePage() {
     },
     {
       name: "DHCP Dashboard",
-      description: "Inspect active leases, reservations, and pool usage",
+      description: "Inspect active leases, reservations, and configured pools",
       url: "/dhcp",
       icon: <Network className="h-6 w-6" />,
       type: "internal",

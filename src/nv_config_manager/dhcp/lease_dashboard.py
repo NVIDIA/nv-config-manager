@@ -17,10 +17,8 @@
 from __future__ import annotations
 
 import logging
-from bisect import bisect_right
-from dataclasses import dataclass
 from datetime import UTC, datetime
-from ipaddress import ip_address, ip_network
+from ipaddress import ip_address
 from typing import Any
 
 from pydantic import BaseModel, IPvAnyAddress
@@ -55,14 +53,11 @@ class ReservationRecord(BaseModel):
     subnet: str | None = None
 
 
-class PoolUsage(BaseModel):
-    """Current allocation statistics for a configured address pool."""
+class PoolRecord(BaseModel):
+    """Configured address pool."""
 
     subnet: str
     pool: str
-    assigned: int
-    total: int
-    utilization: float
 
 
 class LeaseDashboardResponse(BaseModel):
@@ -70,9 +65,7 @@ class LeaseDashboardResponse(BaseModel):
 
     active_lease_count: int
     reservation_count: int
-    assigned_address_count: int
     pool_count: int
-    pool_address_count: int
 
 
 class LeasePageResponse(BaseModel):
@@ -91,21 +84,11 @@ class ReservationPageResponse(BaseModel):
 
 
 class PoolPageResponse(BaseModel):
-    """Bounded page of configured pool usage."""
+    """Bounded page of configured pools."""
 
-    pools: list[PoolUsage]
+    pools: list[PoolRecord]
     total_count: int
     next_cursor: str | None = None
-
-
-@dataclass(frozen=True)
-class _PoolDefinition:
-    """Preparsed pool metadata used for fast lease assignment."""
-
-    subnet: str
-    name: str
-    statistics_prefix: str
-    bounds: tuple[int, int, int] | None
 
 
 def _response_arguments(
@@ -155,69 +138,6 @@ def _subnet_stat_total(statistics: dict[str, Any], name: str) -> int | None:
         and (value := _stat_value(statistics, stat_name)) is not None
     ]
     return sum(values) if values else None
-
-
-def _pool_bounds(pool: str) -> tuple[int, int, int] | None:
-    """Return a pool's IP version and inclusive integer bounds."""
-    try:
-        if "-" in pool:
-            start_text, end_text = (part.strip() for part in pool.split("-", maxsplit=1))
-            start = ip_address(start_text)
-            end = ip_address(end_text)
-            if start.version != end.version:
-                return None
-            if int(start) > int(end):
-                return None
-            return start.version, int(start), int(end)
-
-        network = ip_network(pool.strip(), strict=False)
-        return network.version, int(network.network_address), int(network.broadcast_address)
-    except ValueError:
-        return None
-
-
-def _pool_capacity(pool: str) -> int:
-    """Return the address capacity represented by a range or network."""
-    bounds = _pool_bounds(pool)
-    return bounds[2] - bounds[1] + 1 if bounds is not None else 0
-
-
-def _active_pool_assignments(
-    pools: list[_PoolDefinition],
-    leases: list[LeaseRecord],
-) -> list[int]:
-    """Count active leases by pool using one binary lookup per lease."""
-    intervals_by_subnet: dict[tuple[str, int], list[tuple[int, int, int]]] = {}
-    for pool_index, pool in enumerate(pools):
-        if pool.bounds is None:
-            continue
-        version, start, end = pool.bounds
-        intervals_by_subnet.setdefault((pool.subnet, version), []).append((start, end, pool_index))
-
-    lookups: dict[
-        tuple[str, int],
-        tuple[list[int], list[tuple[int, int, int]]],
-    ] = {}
-    for key, intervals in intervals_by_subnet.items():
-        sorted_intervals = sorted(intervals)
-        lookups[key] = (
-            [interval[0] for interval in sorted_intervals],
-            sorted_intervals,
-        )
-
-    assigned = [0] * len(pools)
-    for lease in leases:
-        lookup = lookups.get((lease.subnet or "", lease.ip_address.version))
-        if lookup is None:
-            continue
-        starts, intervals = lookup
-        interval_index = bisect_right(starts, int(lease.ip_address)) - 1
-        if interval_index < 0:
-            continue
-        _, end, pool_index = intervals[interval_index]
-        if int(lease.ip_address) <= end:
-            assigned[pool_index] += 1
-    return assigned
 
 
 def _expires_at(cltt: int, valid_lft: int) -> datetime | None:
@@ -446,63 +366,29 @@ def filter_reservation_records(
     ]
 
 
-def _pool_usage(
+def _pool_records(
     dhcp_config: dict[str, Any],
-    statistics: dict[str, Any],
     ip_version: IpVersion,
-    active_leases: list[LeaseRecord] | None = None,
-) -> list[PoolUsage]:
-    """Combine configured pools with their current KEA statistics."""
-    pool_definitions: list[_PoolDefinition] = []
-    assigned_stat = "assigned-addresses" if ip_version == 4 else "assigned-nas"
-    total_stat = "total-addresses" if ip_version == 4 else "total-nas"
+) -> list[PoolRecord]:
+    """Return configured pools without deriving allocation statistics."""
+    pools: list[PoolRecord] = []
     for subnet in dhcp_config.get(f"subnet{ip_version}", []):
-        if not isinstance(subnet, dict) or "id" not in subnet:
+        if not isinstance(subnet, dict):
             continue
-        subnet_id = int(subnet["id"])
         subnet_name = str(subnet.get("subnet", ""))
-        for pool_index, pool_config in enumerate(subnet.get("pools", [])):
+        for pool_config in subnet.get("pools", []):
             if not isinstance(pool_config, dict) or not pool_config.get("pool"):
                 continue
-            pool_name = str(pool_config["pool"])
-            pool_definitions.append(
-                _PoolDefinition(
+            pools.append(
+                PoolRecord(
                     subnet=subnet_name,
-                    name=pool_name,
-                    statistics_prefix=f"subnet[{subnet_id}].pool[{pool_index}]",
-                    bounds=_pool_bounds(pool_name),
+                    pool=str(pool_config["pool"]),
                 )
             )
-
-    active_assignments = (
-        _active_pool_assignments(pool_definitions, active_leases)
-        if active_leases is not None
-        else None
-    )
-    pools: list[PoolUsage] = []
-    for pool_index, pool in enumerate(pool_definitions):
-        assigned = (
-            active_assignments[pool_index]
-            if active_assignments is not None
-            else _stat_value(statistics, f"{pool.statistics_prefix}.{assigned_stat}") or 0
-        )
-        total = _stat_value(statistics, f"{pool.statistics_prefix}.{total_stat}")
-        if total is None:
-            total = _pool_capacity(pool.name)
-        utilization = round(min(assigned / total * 100, 100.0) if total else 0.0, 1)
-        pools.append(
-            PoolUsage(
-                subnet=pool.subnet,
-                pool=pool.name,
-                assigned=assigned,
-                total=total,
-                utilization=utilization,
-            )
-        )
     return pools
 
 
-def filter_pool_records(pools: list[PoolUsage], search: str | None) -> list[PoolUsage]:
+def filter_pool_records(pools: list[PoolRecord], search: str | None) -> list[PoolRecord]:
     """Filter pools using their user-facing subnet and range fields."""
     query, mac_query = _normalized_search(search)
     if not query:
@@ -554,15 +440,11 @@ def build_reservation_list(
 
 def build_pool_list(
     config_payload: list[dict[str, Any]],
-    statistics_payload: list[dict[str, Any]],
-    active_leases: list[LeaseRecord] | None,
     *,
     ip_version: IpVersion,
-) -> list[PoolUsage]:
-    """Build pool usage from active leases or KEA statistics when the scan is bounded."""
-    dhcp_config = _dhcp_config(config_payload, ip_version)
-    statistics = _response_arguments(statistics_payload, "statistic-get-all")
-    return _pool_usage(dhcp_config, statistics, ip_version, active_leases)
+) -> list[PoolRecord]:
+    """Build configured pool records from KEA configuration."""
+    return _pool_records(_dhcp_config(config_payload, ip_version), ip_version)
 
 
 def build_lease(
@@ -604,20 +486,16 @@ def build_lease_dashboard(
     statistics = _response_arguments(statistics_payload, "statistic-get-all")
 
     reservations = _reservation_records(dhcp_config, ip_version)
-    pools = _pool_usage(dhcp_config, statistics, ip_version)
+    pools = _pool_records(dhcp_config, ip_version)
     assigned_stat = "assigned-addresses" if ip_version == 4 else "assigned-nas"
     active_lease_count = _stat_value(statistics, assigned_stat)
     if active_lease_count is None:
         active_lease_count = _subnet_stat_total(statistics, assigned_stat)
     if active_lease_count is None:
-        active_lease_count = sum(pool.assigned for pool in pools)
-    pool_assigned_count = sum(min(pool.assigned, pool.total) for pool in pools)
-    pool_address_count = sum(pool.total for pool in pools)
+        active_lease_count = 0
 
     return LeaseDashboardResponse(
         active_lease_count=active_lease_count,
         reservation_count=len(reservations),
-        assigned_address_count=pool_assigned_count,
         pool_count=len(pools),
-        pool_address_count=pool_address_count,
     )

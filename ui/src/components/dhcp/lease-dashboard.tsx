@@ -19,7 +19,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Activity,
-  CalendarClock,
   Clock3,
   Database,
   Network,
@@ -222,25 +221,7 @@ function InfiniteScrollStatus({
   );
 }
 
-/** Render a utilization bar using warning colors near pool capacity. */
-function PoolBar({ utilization }: Readonly<{ utilization: number }>) {
-  const color =
-    utilization >= 90
-      ? "bg-destructive"
-      : utilization >= 70
-        ? "bg-amber-500"
-        : "bg-primary";
-  return (
-    <div className="h-2 w-28 overflow-hidden rounded-full bg-muted" aria-hidden="true">
-      <div
-        className={`h-full rounded-full ${color}`}
-        style={{ width: `${Math.min(utilization, 100)}%` }}
-      />
-    </div>
-  );
-}
-
-/** Render live DHCP lease, reservation, and pool activity. */
+/** Render live DHCP leases, reservations, and configured pools. */
 export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
   const { data, error, isLoading, isValidating, mutate } = useDhcpDashboard(dhcpUrl);
   const {
@@ -346,8 +327,8 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
           <Skeleton className="h-7 w-48" />
           <Skeleton className="h-4 w-72" />
         </CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          {[0, 1, 2, 3, 4].map((item) => (
+        <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {[0, 1, 2, 3].map((item) => (
             <Skeleton key={item} className="h-28" />
           ))}
         </CardContent>
@@ -378,9 +359,6 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
     );
   }
 
-  const utilization = data.pool_address_count
-    ? Math.min((data.assigned_address_count / data.pool_address_count) * 100, 100)
-    : 0;
   const leaseResourceLabel = activeLeaseSearchQuery
     ? "matching active leases"
     : "active leases";
@@ -396,7 +374,7 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
               <Network className="h-6 w-6 text-primary" /> DHCP lease activity
             </CardTitle>
             <CardDescription className="mt-2">
-              Live address allocations, configured reservations, and pool capacity.
+              Live address allocations, configured reservations, and address pools.
             </CardDescription>
           </div>
           <Button
@@ -412,7 +390,7 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
             Refresh
           </Button>
         </div>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Metric
             icon={<Activity className="h-4 w-4" />}
             label="Active leases"
@@ -427,15 +405,9 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
           />
           <Metric
             icon={<Database className="h-4 w-4" />}
-            label="Pool capacity"
-            value={data.pool_address_count.toLocaleString()}
-            detail={`${data.assigned_address_count.toLocaleString()} addresses assigned`}
-          />
-          <Metric
-            icon={<CalendarClock className="h-4 w-4" />}
-            label="Pool utilization"
-            value={`${utilization.toFixed(1)}%`}
-            detail={`${data.pool_count.toLocaleString()} configured pool${data.pool_count === 1 ? "" : "s"}`}
+            label="Pools"
+            value={data.pool_count.toLocaleString()}
+            detail="Configured address pools"
           />
           <Metric
             icon={<Clock3 className="h-4 w-4" />}
@@ -468,7 +440,7 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
           <TabsList className="grid w-full grid-cols-3 sm:w-auto">
             <TabsTrigger value="leases">Active leases</TabsTrigger>
             <TabsTrigger value="reservations">Reservations</TabsTrigger>
-            <TabsTrigger value="pools">Pool usage</TabsTrigger>
+            <TabsTrigger value="pools">Pools</TabsTrigger>
           </TabsList>
 
           <TabsContent value="leases" className="mt-4">
@@ -585,7 +557,7 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
             {arePoolsLoading ? (
               <CollectionLoading />
             ) : poolError ? (
-              <EmptyState message="Pool usage data is unavailable." />
+              <EmptyState message="Pool data is unavailable." />
             ) : pools.length === 0 ? (
               <EmptyState
                 message={
@@ -600,9 +572,6 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
                   <TableRow>
                     <TableHead>Subnet</TableHead>
                     <TableHead>Pool</TableHead>
-                    <TableHead>Assigned</TableHead>
-                    <TableHead>Capacity</TableHead>
-                    <TableHead>Utilization</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -610,14 +579,6 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
                     <TableRow key={`${pool.subnet}-${pool.pool}`}>
                       <TableCell className="font-medium">{pool.subnet}</TableCell>
                       <TableCell className="font-mono text-xs">{pool.pool}</TableCell>
-                      <TableCell>{pool.assigned.toLocaleString()}</TableCell>
-                      <TableCell>{pool.total.toLocaleString()}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <PoolBar utilization={pool.utilization} />
-                          <span className="w-12 text-right text-sm font-medium">{pool.utilization.toFixed(1)}%</span>
-                        </div>
-                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

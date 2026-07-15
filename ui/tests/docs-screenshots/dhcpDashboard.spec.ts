@@ -74,9 +74,7 @@ test.beforeEach(async ({ page }) => {
       json: {
         active_lease_count: 3,
         reservation_count: 18,
-        assigned_address_count: 3,
         pool_count: 1,
-        pool_address_count: 256,
       },
     });
   });

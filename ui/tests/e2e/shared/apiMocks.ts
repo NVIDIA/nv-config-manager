@@ -234,14 +234,10 @@ export async function mockDhcpEndpoints(page: Page) {
     const search = new URL(route.request().url()).searchParams
       .get("search")
       ?.toLowerCase();
-    const activeLeases = leases.filter((lease) => lease.ip_address !== clearedLease);
     const pools = [
       {
         subnet: "10.0.0.0/24",
         pool: "10.0.0.10-10.0.0.19",
-        assigned: activeLeases.length,
-        total: 10,
-        utilization: activeLeases.length * 10,
       },
     ];
     const filteredPools = search
@@ -268,9 +264,7 @@ export async function mockDhcpEndpoints(page: Page) {
       json: {
         active_lease_count: activeLeases.length,
         reservation_count: 2,
-        assigned_address_count: activeLeases.length,
         pool_count: 1,
-        pool_address_count: 10,
       },
     });
   });
