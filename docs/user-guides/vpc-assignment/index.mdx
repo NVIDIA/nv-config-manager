@@ -40,17 +40,26 @@ The workflow runs three stages in order. None require manual approval.
 
 1. **`assign_vrf_to_ports` — Bind the VRF to each named port.**
 
-   For each port in `port_names`, sets the target VRF or clears the VRF for a removal-only change, running all per-port writes in parallel. It reconciles the overlays plugin so interface assignments match the new Spectrum-X intent while preserving assignments for other overlay types. When no interface on the device remains mapped to an old VRF or Spectrum-X overlay, the corresponding device-level association is deleted. The result separates changed ports into `assigned_ports` and `unassigned_ports`, and reports cleaned-up device VRFs in `removed_vrf_ids`.
+   For each port in `port_names`, sets the target VRF or clears the VRF for a removal-only change, running all per-port writes in parallel. It reconciles the overlays plugin so interface assignments match the new Spectrum-X intent while preserving assignments for other overlay types. When no interface on the device remains mapped to an old VRF or Spectrum-X overlay, the corresponding device-level association is deleted. The result separates changed ports into `assigned_ports` and `unassigned_ports`, reports cleaned-up device VRFs in `removed_vrf_ids`, and exposes plugin mutations through `overlay_assignments_created` and `overlay_assignments_removed`.
 
 ## Verifying outcomes
 
 After the workflow reports success, confirm:
 
 - **All three stages green** on the Config Manager run page.
-- **Result shape** — `assigned_ports` and `unassigned_ports` list the ports actually changed; `vrf_assigned=true` means the target device-level binding was new; `removed_vrf_ids` lists unused device/VRF associations deleted during cleanup; `vrf` is `null` for removal-only changes.
-- **Nautobot** shows the VRF on the device and on each named interface.
-- **Nautobot overlays plugin** shows `OverlayAssignment` entries for the device and each named interface under the target overlay.
 - **Run a deploy** to push the resulting intended-config change to the device. The simplest path is [SpX Overlay Tenant Change](../vpc-tenant-change/index.mdx), which combines assignment with the subsequent re-render and deploy.
+
+For assignment runs, also confirm:
+
+- **Result shape** — `assigned_ports` lists the interfaces changed, `vrf_assigned=true` means the target device-level binding was new, and `overlay_assignments_created` and `overlay_assignments_removed` reflect plugin reconciliation.
+- **Nautobot** shows the target VRF on the device and on each named interface.
+- **Nautobot overlays plugin** shows `OverlayAssignment` entries for the device and each named interface under the target overlay.
+
+For removal-only runs, instead confirm:
+
+- **Result shape** — `unassigned_ports` lists the interfaces changed, `vrf` is `null`, `removed_vrf_ids` lists unused device/VRF associations cleaned up, and the overlay-assignment counts reflect plugin reconciliation.
+- **Nautobot** shows no VRF association on any selected interface and no device/VRF association when no other device interface uses that VRF.
+- **Nautobot overlays plugin** shows no Spectrum-X `OverlayAssignment` on any selected interface and no device-level assignment when no other interface uses that overlay.
 
 ## Common issues
 

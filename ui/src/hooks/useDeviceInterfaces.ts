@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 import useSWR from "swr";
+import { useMemo } from "react";
 import { useRuntimeConfig } from "@/config/runtime";
 import { fetcher } from "@/lib/fetcher";
 import { sanitizeUrl } from "@/lib/utils";
@@ -28,6 +29,7 @@ interface DeviceInterfaceResult {
 interface UseDeviceInterfacesReturn {
   interfaces: Option[];
   error: Error | null;
+  hasLoaded: boolean;
   isLoading: boolean;
 }
 
@@ -44,15 +46,21 @@ const useDeviceInterfaces = (
       : null,
     fetcher
   );
+  const interfaces = useMemo(
+    () =>
+      Array.isArray(data)
+        ? data.map((deviceInterface) => ({
+            key: deviceInterface.name,
+            value: deviceInterface.name,
+          }))
+        : [],
+    [data]
+  );
 
   return {
-    interfaces: Array.isArray(data)
-      ? data.map((deviceInterface) => ({
-          key: deviceInterface.name,
-          value: deviceInterface.name,
-        }))
-      : [],
+    interfaces,
     error,
+    hasLoaded: data !== undefined,
     isLoading,
   };
 };

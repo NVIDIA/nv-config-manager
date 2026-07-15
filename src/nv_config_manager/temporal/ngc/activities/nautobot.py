@@ -883,15 +883,6 @@ async def _stale_spectrumx_assignment_ids(
     return stale_assignment_ids
 
 
-def _assignment_ids_for_overlay(assignments: list[dict[str, Any]], overlay_id: str) -> list[str]:
-    """Return assignment IDs that refer to an overlay."""
-    return [
-        str(assignment["id"])
-        for assignment in assignments
-        if _related_object_id(assignment.get("overlay")) == overlay_id
-    ]
-
-
 async def _lookup_overlay_assignment_status_id(client: NautobotClient) -> str:
     """Return the default status ID used for new overlay assignments."""
     status_id = await client.lookup_id_by_name("extras/statuses/", DEFAULT_STATUS_NAME)
@@ -979,7 +970,6 @@ async def reconcile_spx_overlay_assignments(
             created += 1
 
         assignments_by_interface: dict[str, list[dict[str, Any]]] = {}
-        stale_overlay_ids: set[str] = set()
         for interface_id in activity_input.interface_ids:
             interface_assignments = await _get_overlay_assignments(client, interface_id)
             assignments_by_interface[interface_id] = interface_assignments
@@ -987,12 +977,6 @@ async def reconcile_spx_overlay_assignments(
                 client,
                 interface_assignments,
                 target_overlay_id,
-            )
-            stale_overlay_ids.update(
-                overlay_id
-                for assignment in interface_assignments
-                if str(assignment["id"]) in stale_assignment_ids
-                and (overlay_id := _related_object_id(assignment.get("overlay"))) is not None
             )
 
             if target_overlay_id is not None and not _has_overlay_assignment(
@@ -1022,25 +1006,30 @@ async def reconcile_spx_overlay_assignments(
                 if str(assignment["id"]) not in stale_assignment_ids
             ]
 
-        if stale_overlay_ids:
-            for interface_id in activity_input.device_interface_ids:
-                if interface_id not in assignments_by_interface:
-                    assignments_by_interface[interface_id] = await _get_overlay_assignments(
-                        client, interface_id
-                    )
-
-            active_overlay_ids = {
-                overlay_id
-                for assignments in assignments_by_interface.values()
-                for assignment in assignments
-                if (overlay_id := _related_object_id(assignment.get("overlay"))) is not None
-            }
-            unused_overlay_ids = stale_overlay_ids - active_overlay_ids
-            for overlay_id in unused_overlay_ids:
-                removed += await _delete_overlay_assignments(
-                    client,
-                    _assignment_ids_for_overlay(device_assignments, overlay_id),
+        # Always rebuild the complete active interface state. On an activity
+        # retry, selected-interface deletions from an earlier attempt may
+        # already be absent, but any now-unused device assignment must still be
+        # discovered and removed.
+        for interface_id in activity_input.device_interface_ids:
+            if interface_id not in assignments_by_interface:
+                assignments_by_interface[interface_id] = await _get_overlay_assignments(
+                    client, interface_id
                 )
+
+        active_overlay_ids = {
+            overlay_id
+            for assignments in assignments_by_interface.values()
+            for assignment in assignments
+            if (overlay_id := _related_object_id(assignment.get("overlay"))) is not None
+        }
+        for assignment in device_assignments:
+            overlay_id = _related_object_id(assignment.get("overlay"))
+            if overlay_id is None or overlay_id in active_overlay_ids:
+                continue
+            isolation_type = await _get_assignment_overlay_isolation_type(client, assignment)
+            if isolation_type != SPECTRUMX_ISOLATION_TYPE:
+                continue
+            removed += await _delete_overlay_assignments(client, [str(assignment["id"])])
 
     return ReconcileSpXOverlayAssignmentsOutput(created=created, removed=removed)
 
@@ -1090,7 +1079,9 @@ async def remove_unmapped_device_vrfs(
             for assignment_id in matching_assignment_ids:
                 await client.delete(f"{VRF_DEVICE_ASSIGNMENTS_PATH}{assignment_id}/")
 
-            if matching_assignment_ids:
-                removed_vrf_ids.append(vrf_id)
+            # The output represents the requested VRFs now reconciled as
+            # unmapped, including associations deleted by an earlier partial
+            # attempt. This keeps the activity result stable across retries.
+            removed_vrf_ids.append(vrf_id)
 
     return RemoveUnmappedDeviceVrfsOutput(removed_vrf_ids=removed_vrf_ids)

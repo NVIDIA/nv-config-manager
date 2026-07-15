@@ -65,7 +65,7 @@ After the workflow reports success, confirm:
 
 - **All five stages green** on the Config Manager run page (or `assign_spx_overlay` green and downstream UNREACHABLE on the no-op path).
 - **`assign_spx_overlay` stage display** shows either the target Overlay, L3 VXLAN, VRF, and assigned ports or the ports whose assignment was removed. It also lists device/VRF associations removed by cleanup.
-- **`vrf_assigned`, `assigned_ports`, `unassigned_ports`, `removed_vrf_ids`, and `vrf`** in the result reflect the change you intended.
+- **`vrf_assigned`, `assigned_ports`, `unassigned_ports`, `removed_vrf_ids`, `overlay_assignments_created`, `overlay_assignments_removed`, and `vrf`** in the result reflect the change you intended.
 - **`device_deployed`** is the device name when a deploy actually ran; `null` when the no-op short-circuit fired.
 - **Nautobot shows the desired VRF on assigned ports and no VRF on ports removed without replacement.** Device/VRF associations remain only while at least one interface maps to that VRF.
 - **Nautobot overlays plugin** shows matching Spectrum-X assignments for the device and interfaces; stale assignments are removed.

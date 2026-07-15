@@ -123,6 +123,8 @@ _mock_state = {
     "interfaces_with_vrf": [],
     "newer_commit_allowed": True,
     "reconcile_calls": 0,
+    "reconcile_created": 0,
+    "reconcile_removed": 0,
     "recorded_config_drift": False,
     "removed_vrf_ids": [],
     "interface_vrf_updates": [],
@@ -135,6 +137,8 @@ _mock_state = {
 def reset_spx_mock_mutations() -> Generator[None]:
     """Keep workflow mutation outputs isolated between tests."""
     _mock_state["removed_vrf_ids"] = []
+    _mock_state["reconcile_created"] = 0
+    _mock_state["reconcile_removed"] = 0
     _mock_state["interface_vrf_updates"] = []
     _mock_state["reconcile_overlay_ids"] = []
     _mock_state["cleanup_vrf_ids"] = []
@@ -235,8 +239,8 @@ async def mock_reconcile_spx_overlay_assignments(
     overlay_ids = cast(list[str | None], _mock_state["reconcile_overlay_ids"])
     overlay_ids.append(activity_input.overlay_id)
     return ReconcileSpXOverlayAssignmentsOutput(
-        created=1 + len(activity_input.interface_ids),
-        removed=0,
+        created=int(_mock_state["reconcile_created"]),
+        removed=int(_mock_state["reconcile_removed"]),
     )
 
 
@@ -740,6 +744,66 @@ async def test_spx_overlay_tenant_change_is_noop_when_already_assigned(
         assert stages["render_tenant_config"]["state"] == "UNREACHABLE"
         assert stages["wait_for_render"]["state"] == "UNREACHABLE"
         assert stages["deploy"]["state"] == "UNREACHABLE"
+
+
+@pytest.mark.asyncio
+@patch("nv_config_manager.temporal.ngc.activities.nats.NatsProducer", autospec=True)
+@patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
+async def test_spx_overlay_tenant_change_deploys_reconciliation_only_change(
+    _mock_time, _mock_nats_client, env
+):
+    """Overlay-plugin-only mutations still require a render and deploy."""
+    _mock_state["vrf_exists"] = True
+    _mock_state["interfaces_with_vrf"] = ["swp1", "swp2"]
+    _mock_state["reconcile_created"] = 1
+
+    task_queue_name = str(uuid.uuid4())
+    async with Worker(
+        env.client,
+        task_queue=task_queue_name,
+        workflows=[
+            SpXOverlayAssignmentWorkflow,
+            SpXOverlayTenantChangeWorkflow,
+            MockTenantDeployWorkflow,
+        ],
+        activities=[
+            mock_get_network_device,
+            mock_get_vrfs_by_overlay_id,
+            mock_get_device_vrfs,
+            mock_assign_vrf_to_device,
+            mock_get_device_interfaces,
+            mock_assign_vrf_to_interface,
+            mock_reconcile_spx_overlay_assignments,
+            mock_remove_unmapped_device_vrfs,
+            mock_execute_render,
+            mock_wait_for_tenant_render,
+            publish_nats,
+        ],
+        activity_executor=ThreadPoolExecutor(1),
+    ):
+        handle = await env.client.start_workflow(
+            SpXOverlayTenantChangeWorkflow.run,
+            SpXOverlayTenantChangeInput(
+                overlay_id="mock_overlay_id",
+                device_id="mock_device_id_with_vrf",
+                port_names=["swp1", "swp2"],
+                site="mock_site",
+            ),
+            id=str(uuid.uuid4()),
+            task_queue=task_queue_name,
+            run_timeout=timedelta(seconds=30),
+        )
+
+        result = await handle.result()
+        stages = {stage["name"]: stage for stage in await handle.query("stages")}
+
+    assert result.assigned_ports == []
+    assert result.unassigned_ports == []
+    assert result.overlay_assignments_created == 1
+    assert result.overlay_assignments_removed == 0
+    assert result.device_deployed == "mock_device_id_with_vrf"
+    assert stages["render_tenant_config"]["state"] == "COMPLETE"
+    assert stages["deploy"]["state"] == "COMPLETE"
 
 
 @pytest.mark.asyncio

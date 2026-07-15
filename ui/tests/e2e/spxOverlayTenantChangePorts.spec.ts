@@ -69,3 +69,19 @@ test("loads device and port selections from URL parameters", async ({ page }) =>
   ).toBeVisible({ timeout: TEST_TIMEOUT });
   await expect(page.getByRole("button", { name: "Submit" })).toBeEnabled();
 });
+
+test("rejects URL port selections that are not on the device", async ({ page }) => {
+  const device = DEVICES_LIST.PDX01[0];
+  await page.goto(
+    "/workflows/spxoverlaytenantchangeworkflow/form" +
+      `?site=${SITES_LIST.pdx01}` +
+      `&device-id=${device.id}` +
+      "&port_names=not-a-device-port"
+  );
+
+  await expect(
+    page.getByRole("button", { name: device.name })
+  ).toBeVisible({ timeout: TEST_TIMEOUT });
+  await expect(page.getByRole("button", { name: "Submit" })).toBeDisabled();
+  await expect(page.getByText("not-a-device-port")).toHaveCount(0);
+});

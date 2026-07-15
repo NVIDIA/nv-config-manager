@@ -76,6 +76,7 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
 
   const site = form.watch("site");
   const device = form.watch("device");
+  const selectedPortNames = form.watch("port_names");
   const filterParams: [string, string][] = site
     ? [
         ["site", site],
@@ -90,6 +91,7 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
   const {
     interfaces: deviceInterfaces,
     error: deviceInterfacesError,
+    hasLoaded: deviceInterfacesHaveLoaded,
     isLoading: deviceInterfacesAreLoading,
   } = useDeviceInterfaces(device);
   const {
@@ -106,6 +108,11 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
   if (deviceInterfacesError) {
     console.error(`Failed to query device interfaces: ${deviceInterfacesError}`);
   }
+  const selectedPortNamesAreValid =
+    selectedPortNames.length > 0 &&
+    selectedPortNames.every((portName) =>
+      deviceInterfaces.some((option) => option.value === portName)
+    );
 
   useEffect(() => {
     if (!siteIsLoading && querySite) {
@@ -135,6 +142,27 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
     }
   }, [queryDevice, deviceData, form]);
 
+  useEffect(() => {
+    if (!device || !deviceInterfacesHaveLoaded || deviceInterfacesAreLoading) return;
+
+    const currentPortNames = form.getValues("port_names");
+    const validPortNames = currentPortNames.filter((portName) =>
+      deviceInterfaces.some((option) => option.value === portName)
+    );
+    if (
+      validPortNames.length !== currentPortNames.length ||
+      validPortNames.some((portName, index) => portName !== currentPortNames[index])
+    ) {
+      form.setValue("port_names", validPortNames, { shouldValidate: true });
+    }
+  }, [
+    device,
+    deviceInterfaces,
+    deviceInterfacesAreLoading,
+    deviceInterfacesHaveLoaded,
+    form,
+  ]);
+
   useSyncSelectFromQuery({
     fieldName: "overlay_id",
     form,
@@ -145,12 +173,23 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
   });
 
   const onSubmit = async (data: SpXOverlayTenantChangeFormData): Promise<void> => {
+    const validPortNames = data.port_names.filter((portName) =>
+      deviceInterfaces.some((option) => option.value === portName)
+    );
+    if (validPortNames.length !== data.port_names.length || validPortNames.length === 0) {
+      form.setError("port_names", {
+        type: "validate",
+        message: "Select at least one port available on the selected device",
+      });
+      return;
+    }
+
     setIsSubmitting(true);
     const submissionData: SpXOverlayTenantChangeWorkflowInput = {
       site: data.site,
       overlay_id: data.overlay_id || null,
       device_id: data.device,
-      port_names: data.port_names,
+      port_names: validPortNames,
     };
     await startWorkflow(
       "/v1/workflow/ngc/spx_overlay_tenant_change",
@@ -228,7 +267,7 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
                   isSubmitting ||
                   !site ||
                   !device ||
-                  form.watch("port_names").length === 0 ||
+                  !selectedPortNamesAreValid ||
                   deviceIsLoading ||
                   deviceInterfacesAreLoading ||
                   spxOverlaysAreLoading ||
