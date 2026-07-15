@@ -21,14 +21,14 @@ Useful options:
 | `--runtime auto|docker|containerd` | Select image pull/save runtime |
 | `--include-skopeo` | Include a local Skopeo binary under `tools/skopeo/` |
 | `--skopeo-binary PATH` | Select the Skopeo binary to include |
-| `--include-agpl-observability` | Include AGPL Grafana/Loki observability charts and related images |
+| `--include-agpl-observability` | Include AGPL Grafana/Loki/Tempo observability charts and related images |
 | `--skip-images` | Package chart and installer without image tarballs |
 | `--local-image-fallback` | For pre-release E2E tests, save a locally tagged image when its source registry pull fails |
 | `--allow-missing-images` | Continue after missing images; use only for diagnostics because the bundle may not install offline |
 | `--skip-chart` | Skip Helm chart packaging |
 | `--skip-docs` | Skip copying documentation source |
 
-Default bundles exclude Grafana and Loki charts/images because their OSS distributions are AGPLv3. Pass `--include-agpl-observability` only when that license is acceptable for the target environment.
+Default bundles exclude Grafana, Loki, and Tempo charts/images because their OSS distributions are AGPLv3. Pass `--include-agpl-observability` only when that license is acceptable for the target environment.
 
 ## Bundle Contents
 

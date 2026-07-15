@@ -34,6 +34,7 @@ from temporalio.common import (
     SearchAttributePair,
     TypedSearchAttributes,
 )
+from temporalio.contrib.opentelemetry import TracingInterceptor
 
 from nv_config_manager.common.config import load_config
 from nv_config_manager.common.log import LogCategory, get_logger
@@ -48,6 +49,7 @@ from nv_config_manager.temporal.common.search_attributes import (
 )
 from nv_config_manager.temporal.converter import get_data_converter
 from nv_config_manager.temporal.ngc.workflows.backup import BackupInput, BackupWorkflow, TriggerEnum
+from nv_config_manager.temporal.telemetry import get_runtime, setup_telemetry
 
 
 class BackupScheduler:
@@ -85,6 +87,8 @@ query ($is_aggregate_managed: Boolean) {
             temporal_server,
             namespace="default",
             data_converter=get_data_converter(),
+            interceptors=[TracingInterceptor(always_create_workflow_spans=True)],
+            runtime=get_runtime(),
         )
 
     async def devices_to_schedule(self) -> set[str]:
@@ -225,6 +229,7 @@ query ($is_aggregate_managed: Boolean) {
 def main() -> None:
     """Entry point for nv-config-manager-temporal-scheduler command."""
     logging.basicConfig(level=logging.INFO)
+    setup_telemetry("nv-config-manager-temporal-scheduler")
     asyncio.run(BackupScheduler().run())
 
 
