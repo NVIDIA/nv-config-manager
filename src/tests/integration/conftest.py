@@ -1096,16 +1096,16 @@ def exec_python_in_spiffe_pod(
 # operator: they fetch a JWT from the local Keycloak via password grant, hit the
 # Nautobot REST API to *trigger* the JWT authenticator + rbac sync (reconcile
 # only runs on login), and inspect the resulting Django Group / ObjectPermission
-# state through `nautobot-server nbshell`. This is the automated counterpart to
-# scripts/rbac-local-test/verify.sh, and covers the code paths unit tests can't:
-# Nautobot's change-logging signals firing on ObjectPermission.delete() during
-# the revoke path.
+# state through `nautobot-server nbshell`. It covers the code paths unit tests
+# can't: Nautobot's change-logging signals firing on ObjectPermission.delete()
+# during the revoke path.
 #
 # Requires a deploy in the CONFIGURED state (nautobot.rbac.groupMapping set), so
 # the group-mapping ConfigMap is mounted and the seeded nvcm-* Keycloak users
 # exist. In CI the kind-integration workflow applies values-configured.yaml
-# after `make kind-up-sec`; locally, run `scripts/rbac-local-test/verify.sh
-# state-c` first (or the same helm upgrade) before `pytest --rbac`.
+# after `make kind-up-sec`; locally, apply
+# `scripts/rbac-local-test/values-configured.yaml` (helm upgrade --reuse-values)
+# before `pytest --rbac`.
 # =============================================================================
 
 RBAC_NB_SELECTOR_TMPL = (

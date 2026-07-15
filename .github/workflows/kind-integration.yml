@@ -163,8 +163,7 @@ jobs:
 
             # Move from the default UNCONFIGURED state into CONFIGURED so the
             # group-mapping ConfigMap is rendered/mounted and the seeded users
-            # get real grants on login (mirrors scripts/rbac-local-test verify.sh
-            # state-c). The --rbac tests skip themselves without this.
+            # get real grants on login. The --rbac tests fail fast without this.
             helm upgrade "${NV_CONFIG_MANAGER_RELEASE}" deploy/helm \
               -n "${NV_CONFIG_MANAGER_NAMESPACE}" \
               --reuse-values \

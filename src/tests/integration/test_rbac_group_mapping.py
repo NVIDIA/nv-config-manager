@@ -201,8 +201,8 @@ def rbac_require_configured(
         pytest.fail(
             f"ConfigMap {configmap!r} not found in namespace {config_manager_namespace!r}; "
             "deploy is not in the CONFIGURED state. Apply "
-            "scripts/rbac-local-test/values-configured.yaml (helm upgrade --reuse-values) "
-            "or run scripts/rbac-local-test/verify.sh state-c first."
+            "scripts/rbac-local-test/values-configured.yaml first "
+            "(helm upgrade <release> deploy/helm --reuse-values -f <that file>)."
         )
     return configmap
 
