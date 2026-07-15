@@ -23,13 +23,17 @@ from textual.widgets import Input, Select
 
 from nv_config_manager_installer.schema import (
     ClusterConfig,
+    NetworkSecretEntry,
     NVConfigManagerInstallConfig,
+    PasswordSource,
     SecretsConfig,
     SecretsMethod,
     SiteConfig,
     VaultAuth,
     VaultAuthMethod,
     VaultConfig,
+    VaultPathConfig,
+    VaultPathsConfig,
     ZTPOSImage,
 )
 from nv_config_manager_installer.tui.app import NVConfigManagerInstallerApp
@@ -150,6 +154,46 @@ async def test_app_secrets_eso_defaults_site_path_and_collects_manual_value():
 
 
 @pytest.mark.asyncio
+async def test_network_secrets_eso_preserves_vault_sourced_entries():
+    config = NVConfigManagerInstallConfig(
+        secrets=SecretsConfig(method=SecretsMethod.ESO),
+        network_secrets=[
+            NetworkSecretEntry(
+                name="RADIUS Password",
+                secret_key="radius_password",
+                source=PasswordSource.VAULT,
+            )
+        ],
+    )
+    app = NVConfigManagerInstallerApp(config=config)
+
+    async with app.run_test() as pilot:
+        app.switch_section("network_secrets")
+        await pilot.pause()
+        network_screen = app._screens["network_secrets"]
+        assert network_screen.query_one("#ns-content").display is True
+
+        app.collect_config()
+
+        assert len(app.config.network_secrets) == 1
+        assert app.config.network_secrets[0].source == PasswordSource.VAULT
+
+
+@pytest.mark.asyncio
+async def test_network_secrets_eso_initializes_required_site_entries():
+    config = NVConfigManagerInstallConfig(secrets=SecretsConfig(method=SecretsMethod.ESO))
+    app = NVConfigManagerInstallerApp(config=config)
+
+    async with app.run_test() as pilot:
+        app.switch_section("network_secrets")
+        await pilot.pause()
+        app.collect_config()
+
+        secret_keys = {entry.secret_key for entry in app.config.network_secrets}
+        assert {"root_password", "api_user_key"} <= secret_keys
+
+
+@pytest.mark.asyncio
 @patch("nv_config_manager_installer.tui.screens.vault.OpenBaoClient")
 @patch("nv_config_manager_installer.tui.screens.vault.K8sClient")
 async def test_app_secrets_marks_existing_vault_values_without_copying_them(
@@ -191,3 +235,71 @@ async def test_app_secrets_marks_existing_vault_values_without_copying_them(
             )
             app.collect_config()
             assert "password" not in app.config.secrets.k8s.redis.values
+
+
+@pytest.mark.asyncio
+@patch("nv_config_manager_installer.tui.screens.vault.OpenBaoClient")
+async def test_app_secrets_merges_partial_vault_key_overrides(mock_vault_cls, monkeypatch):
+    monkeypatch.setenv("VAULT_TOKEN", "vault-token")
+    defaults = VaultPathsConfig().nautobot.keys
+    mock_vault_cls.return_value.read_secret.return_value = (
+        {
+            "api_token": "existing-token",
+            **{vault_key: "existing" for key, vault_key in defaults.items() if key != "token"},
+        },
+        1,
+    )
+    config = NVConfigManagerInstallConfig(
+        secrets=SecretsConfig(
+            method=SecretsMethod.ESO,
+            vault=VaultConfig(),
+        ),
+    )
+    config.secrets.vault.paths.nautobot = VaultPathConfig(keys={"token": "api_token"})
+    app = NVConfigManagerInstallerApp(config=config)
+
+    async with app.run_test():
+        app.switch_section("secrets")
+        secrets_screen = app._screens["secrets"]
+        config.secrets.vault.server = "https://vault.example.com"
+        config.secrets.vault.secrets_path = "nv-config-manager"
+        presence, error = secrets_screen._read_vault_presence()
+
+        assert error is None
+        assert presence is not None
+        secrets_screen._apply_vault_presence(presence)
+        for logical_name, default_key in defaults.items():
+            key_input = secrets_screen.query_one(f"#vp-key-nautobot-{logical_name}", Input)
+            assert key_input.value == ("api_token" if logical_name == "token" else default_key)
+            assert "Present in Vault" in str(
+                secrets_screen.query_one(f"#vp-status-nautobot-{logical_name}").render()
+            )
+
+        app.collect_config()
+        assert app.config.secrets.vault.paths.nautobot.keys == {
+            **defaults,
+            "token": "api_token",
+        }
+
+
+@pytest.mark.asyncio
+async def test_app_secrets_jwt_presence_guidance_requires_environment_token(monkeypatch):
+    monkeypatch.delenv("VAULT_TOKEN", raising=False)
+    monkeypatch.delenv("OPENBAO_TOKEN", raising=False)
+    config = NVConfigManagerInstallConfig(
+        secrets=SecretsConfig(
+            method=SecretsMethod.ESO,
+            vault=VaultConfig(
+                server="https://vault.example.com",
+                secrets_path="nv-config-manager",
+                auth=VaultAuth(method=VaultAuthMethod.JWT),
+            ),
+        ),
+    )
+    app = NVConfigManagerInstallerApp(config=config)
+
+    async with app.run_test():
+        app.switch_section("secrets")
+        await app.workers.wait_for_complete()
+        status = app._screens["secrets"].query_one("#vault-presence-status")
+        assert "JWT presence checks require VAULT_TOKEN or OPENBAO_TOKEN" in str(status.render())

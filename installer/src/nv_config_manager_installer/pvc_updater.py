@@ -26,18 +26,22 @@ import json
 import shutil
 import tarfile
 import tempfile
+import uuid
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from nv_config_manager_installer.k8s import K8sClient
+from nv_config_manager_installer.nautobot_jobs import NautobotJobRunner
 
 CONTENT_HASH_ANNOTATION = "nv-config-manager.nvidia.com/content-sha256"
 JOBS_PVC_NAME = "nautobot-custom-jobs"
 TEMPLATES_PVC_NAME = "render-service-template-plugins"
 ZTP_PVC_NAME = "ztp-os-images"
+PVC_UPDATE_LEASE_DURATION_SECONDS = 3_600
 
-_COMMON_IGNORES = (".venv", "__pycache__", ".git", "*.pyc")
+_COMMON_IGNORES = (".venv", "__pycache__", ".git", "*.pyc", "tests")
 _TEMPLATE_IGNORES = (*_COMMON_IGNORES, "tests")
 
 
@@ -48,6 +52,29 @@ class ZTPImageSource:
     platform: str
     version: str
     path: Path
+
+
+def _validate_ztp_path_component(label: str, component: str) -> None:
+    """Reject ZTP metadata that cannot safely become one directory name."""
+    if (
+        not component
+        or component in {".", ".."}
+        or "/" in component
+        or "\\" in component
+        or Path(component).name != component
+    ):
+        raise ValueError(f"Invalid ZTP {label}: {component!r}")
+
+
+def _normalize_ztp_platform(platform: str) -> str:
+    """Normalize a display platform name to the storage path identifier."""
+    return platform.strip().replace(" ", "-").lower()
+
+
+def _pvc_update_lease_name(pvc_name: str) -> str:
+    """Return a stable, DNS-safe Lease name for one PVC."""
+    digest = hashlib.sha256(pvc_name.encode()).hexdigest()[:16]
+    return f"nvcm-pvc-update-{digest}"
 
 
 def _safe_extract(tarball: Path, destination: Path) -> None:
@@ -108,6 +135,49 @@ def _make_tarball(staging: Path, output: Path) -> None:
             archive.add(path, arcname=path.name)
 
 
+def _replace_pvc_content_command(mount_path: str, post_extract: str) -> str:
+    """Build a transactional same-volume PVC content replacement command.
+
+    A PVC is mounted at ``mount_path``, so its root cannot be renamed. The
+    command validates content in a hidden staging directory, moves old entries
+    into a hidden backup directory, then moves the staged entries into place.
+    If the switch fails, it restores the backup before reporting the error.
+    """
+    staging_name = ".nvcm-pvc-updater-staging"
+    backup_name = ".nvcm-pvc-updater-backup"
+    post_extract_command = f'\n(cd "$staging" && {post_extract})' if post_extract else ""
+    return f'''set -eu
+live="{mount_path}"
+staging="$live/{staging_name}"
+backup="$live/{backup_name}"
+if [ -e "$staging" ] || [ -e "$backup" ]; then
+    echo "Incomplete previous PVC update found; inspect $staging and $backup before retrying" >&2
+    exit 1
+fi
+cleanup_staging() {{
+    rm -rf "$staging"
+}}
+trap cleanup_staging EXIT
+mkdir "$staging"
+tar xzf /tmp/content.tar.gz -C "$staging"{post_extract_command}
+mkdir "$backup"
+swap_content() {{
+    find "$live" -mindepth 1 -maxdepth 1 ! -name "{staging_name}" ! -name "{backup_name}" -exec mv {{}} "$backup"/ \\;
+    find "$staging" -mindepth 1 -maxdepth 1 -exec mv {{}} "$live"/ \\;
+}}
+rollback_content() {{
+    find "$live" -mindepth 1 -maxdepth 1 ! -name "{staging_name}" ! -name "{backup_name}" -exec rm -rf {{}} \\;
+    find "$backup" -mindepth 1 -maxdepth 1 -exec mv {{}} "$live"/ \\;
+}}
+if ! swap_content; then
+    rollback_content || true
+    exit 1
+fi
+rm -rf "$backup"
+rmdir "$staging"
+trap - EXIT'''
+
+
 class PVCUpdater:
     """Populate the three NVCM content PVCs and restart their consumers."""
 
@@ -134,13 +204,31 @@ class PVCUpdater:
             pvc_name=pvc_name,
             mount_path="/jobs",
             ignore_patterns=_COMMON_IGNORES,
-            post_extract="chown -R 1000:1000 /jobs",
+            post_extract="chown -R 1000:1000 .",
             selectors=(
                 "app.kubernetes.io/component=nautobot",
                 "app.kubernetes.io/component=celery",
                 "app.kubernetes.io/component=celery-beat",
             ),
+            package_marker=True,
         )
+
+    def run_nautobot_job(
+        self,
+        job_class: str,
+        job_input: dict[str, Any],
+        *,
+        timeout: int = 1_800,
+    ) -> bool:
+        """Run a custom Nautobot job after its PVC content is available."""
+        self._on_log(f"jobs: running Nautobot job {job_class}")
+        runner = NautobotJobRunner(
+            self._k8s,
+            self.namespace,
+            self.release_name,
+            on_log=lambda message: self._on_log(f"jobs: {message}"),
+        )
+        return runner.run(job_class, job_input, timeout=timeout)
 
     def update_templates(
         self,
@@ -155,7 +243,7 @@ class PVCUpdater:
             pvc_name=pvc_name,
             mount_path="/plugins",
             ignore_patterns=_TEMPLATE_IGNORES,
-            post_extract="chmod -R a+rX /plugins",
+            post_extract="chmod -R a+rX .",
             selectors=("app.kubernetes.io/component=render-service",),
         )
 
@@ -176,14 +264,17 @@ class PVCUpdater:
             for image in image_list:
                 if not image.path.is_file():
                     raise FileNotFoundError(f"OS image does not exist: {image.path}")
-                platform = image.platform.replace(" ", "_").lower()
-                destination = staging / platform / image.version
+                platform = _normalize_ztp_platform(image.platform)
+                version = image.version
+                _validate_ztp_path_component("platform", platform)
+                _validate_ztp_path_component("version", version)
+                destination = staging / platform / version
                 destination.mkdir(parents=True, exist_ok=True)
                 target = destination / image.path.name
                 shutil.copy2(image.path, target)
                 manifest["images"].append(
                     {
-                        "platform": image.platform,
+                        "platform": platform,
                         "version": image.version,
                         "filename": image.path.name,
                         "path": target.relative_to(staging).as_posix(),
@@ -211,6 +302,7 @@ class PVCUpdater:
         ignore_patterns: tuple[str, ...],
         post_extract: str,
         selectors: tuple[str, ...],
+        package_marker: bool = False,
     ) -> bool:
         source_list = list(sources)
         if not source_list:
@@ -219,6 +311,10 @@ class PVCUpdater:
             staging = Path(tmpdir) / kind
             staging.mkdir()
             _stage_sources(source_list, staging, ignore_patterns=ignore_patterns)
+            if package_marker:
+                (staging / "__init__.py").write_text(
+                    "# Custom Nautobot jobs package maintained by nvcm-installer.\n"
+                )
             return self._upload_staging(
                 kind=kind,
                 staging=staging,
@@ -239,38 +335,47 @@ class PVCUpdater:
         selectors: tuple[str, ...],
     ) -> bool:
         self._require_pvc(pvc_name)
-        content_hash = _hash_staged_content(staging)
-        current_hash = self._k8s.get_pvc_annotation(
-            pvc_name, self.namespace, CONTENT_HASH_ANNOTATION
+        lease_name = _pvc_update_lease_name(pvc_name)
+        holder_identity = f"nvcm-installer-{uuid.uuid4().hex}"
+        self._k8s.acquire_lease(
+            lease_name,
+            self.namespace,
+            holder_identity,
+            duration_seconds=PVC_UPDATE_LEASE_DURATION_SECONDS,
         )
-        if current_hash == content_hash:
-            self._on_log(f"{kind}: content unchanged; PVC and workloads left untouched")
-            return False
+        try:
+            content_hash = _hash_staged_content(staging)
+            current_hash = self._k8s.get_pvc_annotation(
+                pvc_name, self.namespace, CONTENT_HASH_ANNOTATION
+            )
+            if current_hash == content_hash:
+                self._on_log(f"{kind}: content unchanged; PVC and workloads left untouched")
+                return False
 
-        with tempfile.TemporaryDirectory(prefix="nvcm-pvc-updater-") as tmpdir:
-            tarball = Path(tmpdir) / f"{kind}.tar.gz"
-            _make_tarball(staging, tarball)
-            pod_name = f"nvcm-pvc-updater-{kind}"
-            self._k8s.delete_pod(pod_name, self.namespace)
-            self._k8s.wait_for_pod_gone(pod_name, self.namespace)
-            try:
-                self._k8s.create_loader_pod(pod_name, self.namespace, pvc_name, mount_path)
-                self._k8s.wait_for_pod_ready(pod_name, self.namespace)
-                self._on_log(f"{kind}: copying content into PVC {pvc_name}")
-                self._k8s.copy_to_pod(str(tarball), pod_name, self.namespace, "/tmp/content.tar.gz")
-                command = (
-                    f"cd {mount_path} && find . -mindepth 1 -maxdepth 1 -exec rm -rf {{}} \\; "
-                    "&& tar xzf /tmp/content.tar.gz"
-                )
-                if post_extract:
-                    command = f"{command} && {post_extract}"
-                self._k8s.exec_command(pod_name, self.namespace, ["sh", "-c", command])
-            finally:
+            with tempfile.TemporaryDirectory(prefix="nvcm-pvc-updater-") as tmpdir:
+                tarball = Path(tmpdir) / f"{kind}.tar.gz"
+                _make_tarball(staging, tarball)
+                pod_name = f"nvcm-pvc-updater-{kind}"
                 self._k8s.delete_pod(pod_name, self.namespace)
+                self._k8s.wait_for_pod_gone(pod_name, self.namespace)
+                try:
+                    self._k8s.create_loader_pod(pod_name, self.namespace, pvc_name, mount_path)
+                    self._k8s.wait_for_pod_ready(pod_name, self.namespace)
+                    self._on_log(f"{kind}: copying content into PVC {pvc_name}")
+                    self._k8s.copy_to_pod(
+                        str(tarball), pod_name, self.namespace, "/tmp/content.tar.gz"
+                    )
+                    command = _replace_pvc_content_command(mount_path, post_extract)
+                    self._k8s.exec_command(pod_name, self.namespace, ["sh", "-c", command])
+                finally:
+                    self._k8s.delete_pod(pod_name, self.namespace)
+                    self._k8s.wait_for_pod_gone(pod_name, self.namespace)
 
-        self._k8s.annotate_pvc(pvc_name, self.namespace, CONTENT_HASH_ANNOTATION, content_hash)
-        self._restart_consumers(kind, selectors)
-        return True
+            self._restart_consumers(kind, selectors)
+            self._k8s.annotate_pvc(pvc_name, self.namespace, CONTENT_HASH_ANNOTATION, content_hash)
+            return True
+        finally:
+            self._k8s.release_lease(lease_name, self.namespace, holder_identity)
 
     def _require_pvc(self, pvc_name: str) -> None:
         if not self._k8s.pvc_exists(pvc_name, self.namespace):
@@ -282,15 +387,13 @@ class PVCUpdater:
     def _restart_consumers(self, kind: str, selectors: tuple[str, ...]) -> None:
         deployment_names: set[str] = set()
         for selector in selectors:
+            release_selector = f"{selector},app.kubernetes.io/instance={self.release_name}"
             deployment_names.update(
-                self._k8s.list_deployment_names(self.namespace, label_selector=selector)
+                self._k8s.list_deployment_names(
+                    self.namespace,
+                    label_selector=release_selector,
+                )
             )
-        release_prefix = f"{self.release_name}-"
-        deployment_names = {
-            name
-            for name in deployment_names
-            if name == self.release_name or name.startswith(release_prefix)
-        }
         if not deployment_names:
             raise RuntimeError(
                 f"No workloads for release '{self.release_name}' consume the {kind} PVC "

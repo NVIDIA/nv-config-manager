@@ -145,6 +145,7 @@ class K8sClient:
             config.load_kube_config()
         self.v1 = client.CoreV1Api()
         self.apps_v1 = client.AppsV1Api()
+        self.coordination_v1 = client.CoordinationV1Api()
         # Use the context we explicitly bound to as the source of truth.
         # ``config.list_kube_config_contexts()`` is unreliable here: the
         # kubernetes module captures the KUBECONFIG default path at import
@@ -460,6 +461,84 @@ class K8sClient:
     def annotate_pvc(self, name: str, namespace: str, annotation: str, value: str) -> None:
         body = {"metadata": {"annotations": {annotation: value}}}
         self.v1.patch_namespaced_persistent_volume_claim(name, namespace, body)
+
+    # -- Lease operations -----------------------------------------------------
+
+    @staticmethod
+    def _lease_is_expired(lease: client.V1Lease, now: datetime.datetime) -> bool:
+        """Return whether a Lease may safely be claimed by another holder."""
+        spec = lease.spec
+        if spec is None or not spec.lease_duration_seconds:
+            return False
+        renewal = spec.renew_time or spec.acquire_time
+        if renewal is None:
+            return False
+        if renewal.tzinfo is None:
+            renewal = renewal.replace(tzinfo=datetime.UTC)
+        return renewal + datetime.timedelta(seconds=spec.lease_duration_seconds) <= now
+
+    def acquire_lease(
+        self,
+        name: str,
+        namespace: str,
+        holder_identity: str,
+        *,
+        duration_seconds: int,
+    ) -> None:
+        """Acquire a namespace-scoped Lease or fail if another update holds it."""
+        now = datetime.datetime.now(datetime.UTC)
+        lease = client.V1Lease(
+            metadata=client.V1ObjectMeta(name=name, namespace=namespace),
+            spec=client.V1LeaseSpec(
+                holder_identity=holder_identity,
+                lease_duration_seconds=duration_seconds,
+                acquire_time=now,
+                renew_time=now,
+            ),
+        )
+        try:
+            self.coordination_v1.create_namespaced_lease(namespace, lease)
+            return
+        except ApiException as exc:
+            if exc.status != 409:
+                raise
+
+        existing = self.coordination_v1.read_namespaced_lease(name, namespace)
+        if not self._lease_is_expired(existing, now):
+            holder = getattr(existing.spec, "holder_identity", None) or "unknown"
+            raise RuntimeError(
+                f"Another NVCM PVC update is already in progress for '{name}' (holder: {holder})."
+            )
+
+        existing.spec = lease.spec
+        try:
+            self.coordination_v1.replace_namespaced_lease(name, namespace, existing)
+        except ApiException as exc:
+            if exc.status == 409:
+                raise RuntimeError(
+                    f"Another NVCM PVC update acquired lease '{name}' before this run."
+                ) from exc
+            raise
+
+    def release_lease(self, name: str, namespace: str, holder_identity: str) -> None:
+        """Release a Lease only when it is still held by this installer run."""
+        try:
+            lease = self.coordination_v1.read_namespaced_lease(name, namespace)
+        except ApiException as exc:
+            if exc.status == 404:
+                return
+            raise
+        if getattr(lease.spec, "holder_identity", None) != holder_identity:
+            return
+        resource_version = getattr(lease.metadata, "resource_version", None)
+        body = client.V1DeleteOptions(
+            preconditions=client.V1Preconditions(resource_version=resource_version)
+        )
+        try:
+            self.coordination_v1.delete_namespaced_lease(name, namespace, body=body)
+        except ApiException as exc:
+            if exc.status not in {404, 409}:
+                raise
 
     # -- Pod operations -------------------------------------------------------
 

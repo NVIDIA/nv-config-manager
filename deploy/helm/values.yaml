@@ -2741,7 +2741,8 @@ nautobot:
   # Custom Jobs Configuration
   # ---------------------------------------------------------------------------
   # Mount custom Nautobot jobs from a ConfigMap or hostPath.
-  # Jobs are mounted to $NAUTOBOT_ROOT/jobs/ (default: /opt/nautobot/jobs/)
+  # Jobs are mounted under $NAUTOBOT_ROOT/custom/ (default:
+  # /opt/nautobot/jobs/custom/) so image-bundled NVCM jobs stay available.
   # See: https://docs.nautobot.com/projects/core/en/stable/development/jobs/installation/#manual-installation-via-jobs_root
   #
   # The jobs must contain valid Job classes (subclasses of nautobot.apps.jobs.Job)

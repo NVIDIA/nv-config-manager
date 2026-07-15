@@ -170,6 +170,31 @@ class TestGenerateSecrets:
         assert "nautobot_token" not in state
         assert "redis_password" not in state
 
+    def test_eso_generates_required_site_secrets_without_tui_defaults(self):
+        config = NVConfigManagerInstallConfig(secrets=SecretsConfig(method=SecretsMethod.ESO))
+
+        state = generate_secrets(config)
+
+        assert state["root_password_r1"]
+        assert state["api_user_key_r1"]
+
+    def test_eso_does_not_generate_over_vault_sourced_required_site_secret(self):
+        config = NVConfigManagerInstallConfig(
+            secrets=SecretsConfig(method=SecretsMethod.ESO),
+            network_secrets=[
+                NetworkSecretEntry(
+                    name="Device Admin Password",
+                    secret_key="root_password",
+                    source=PasswordSource.VAULT,
+                )
+            ],
+        )
+
+        state = generate_secrets(config)
+
+        assert "root_password_r1" not in state
+        assert state["api_user_key_r1"]
+
     def test_unique_network_secret_passwords(self):
         config = NVConfigManagerInstallConfig(
             network_secrets=[
@@ -448,6 +473,35 @@ class TestOpenBaoSecretData:
         assert "credsJson" in groups["bmc"]
         assert len(groups["nautobot"]["token"]) == 40
         assert groups["postgres"]["temporalUser"] == "temporal"
+
+    def test_includes_ztp_s3_credentials_when_eso_file_storage_is_enabled(self):
+        config = NVConfigManagerInstallConfig(
+            secrets=SecretsConfig(
+                method=SecretsMethod.ESO,
+                k8s=KubernetesSecretsConfig(
+                    ztp_s3=K8sSecretGroup(
+                        enabled=True,
+                        values={
+                            "endpoint": "https://minio.example",
+                            "accessKeyId": "access",
+                            "secretAccessKey": "secret",
+                        },
+                    )
+                ),
+                vault=VaultConfig(paths=VaultPathsConfig(ztp_s3=VaultPathConfig(enabled=True))),
+            ),
+            infrastructure=InfrastructureConfig(
+                ztp_storage=ZTPStorageConfig(type=ZTPStorageType.S3)
+            ),
+        )
+
+        groups = build_openbao_secret_data(config)
+
+        assert groups["ztp_s3"] == {
+            "endpoint": "https://minio.example",
+            "accessKeyId": "access",
+            "secretAccessKey": "secret",
+        }
 
 
 class TestRedfishSecrets:

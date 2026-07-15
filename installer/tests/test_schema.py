@@ -136,7 +136,11 @@ class TestNVConfigManagerInstallConfig:
 
         assert data["secrets"]["method"] == "eso"
         assert "vault" in data["secrets"]
-        assert "k8s" not in data["secrets"]
+        assert data["secrets"]["k8s"]["nautobot"]["values"]["token"] == "stale-k8s-token"
+        assert (
+            NVConfigManagerInstallConfig.model_validate(data).secrets.k8s.nautobot.values["token"]
+            == "stale-k8s-token"
+        )
         assert "token_secret_name" not in data["secrets"]["vault"]["auth"]
         assert data["secrets"]["vault"]["paths"]["slack"] == {"enabled": False}
 

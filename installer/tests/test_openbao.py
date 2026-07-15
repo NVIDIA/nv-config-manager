@@ -28,13 +28,16 @@ from nv_config_manager_installer.openbao import (
 )
 from nv_config_manager_installer.schema import (
     ClusterConfig,
+    GitTokenEntry,
     NetworkSecretEntry,
     NVConfigManagerInstallConfig,
+    PasswordSource,
     SecretsConfig,
     SecretsMethod,
     SiteConfig,
     SSOConfig,
     VaultConfig,
+    VaultPathConfig,
 )
 
 
@@ -168,6 +171,17 @@ class TestOpenBaoPopulator:
         assert "hash_salt" in site_data
         assert result.keys_added > 0
 
+    def test_populates_required_site_secrets_without_network_secret_config(self):
+        config = self._config()
+        config.network_secrets = []
+        client = InMemoryOpenBaoClient()
+
+        OpenBaoPopulator(config, client).populate()
+
+        site_data = client.data[("secrets", "prod/site/dc01/config_secrets")]
+        assert site_data["root_password_r1"]
+        assert site_data["api_user_key_r1"]
+
     def test_rejects_existing_mismatched_nautobot_tokens(self):
         config = self._config()
         client = InMemoryOpenBaoClient()
@@ -185,4 +199,49 @@ class TestOpenBaoPopulator:
         client = InMemoryOpenBaoClient()
 
         with pytest.raises(OpenBaoError, match="client_secret"):
+            OpenBaoPopulator(config, client).populate()
+
+    def test_merges_default_vault_keys_with_partial_overrides(self):
+        config = self._config()
+        config.secrets.vault.paths.nautobot = VaultPathConfig(keys={"token": "api_token"})
+        client = InMemoryOpenBaoClient()
+
+        OpenBaoPopulator(config, client).populate()
+
+        nautobot = client.data[("nv-config-manager", "prod/nautobot")]
+        assert "api_token" in nautobot
+        assert "read_only_token" in nautobot
+        assert "readOnlyToken" not in nautobot
+
+    def test_rejects_empty_existing_application_secret(self):
+        config = self._config()
+        config.sso = SSOConfig(enabled=True, client_secret="")
+        client = InMemoryOpenBaoClient()
+        client.data[("nv-config-manager", "prod/oidc")] = {"client_secret": ""}
+
+        with pytest.raises(OpenBaoError, match="client_secret"):
+            OpenBaoPopulator(config, client).populate()
+
+    def test_rejects_empty_existing_git_token(self):
+        config = self._config()
+        config.git_tokens = [GitTokenEntry(name="repo", vault_path="prod/git/repo", token="")]
+        client = InMemoryOpenBaoClient()
+        client.data[("nv-config-manager", "prod/git/repo")] = {"token": ""}
+
+        with pytest.raises(OpenBaoError, match="Git token 'repo'"):
+            OpenBaoPopulator(config, client).populate()
+
+    def test_rejects_empty_existing_vault_sourced_site_secret(self):
+        config = self._config()
+        config.network_secrets = [
+            NetworkSecretEntry(
+                name="RADIUS password",
+                secret_key="radius_password",
+                source=PasswordSource.VAULT,
+            )
+        ]
+        client = InMemoryOpenBaoClient()
+        client.data[("secrets", "prod/site/dc01/config_secrets")] = {"radius_password_r1": ""}
+
+        with pytest.raises(OpenBaoError, match="radius_password_r1"):
             OpenBaoPopulator(config, client).populate()
