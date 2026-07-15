@@ -31,6 +31,13 @@ class IpVersion(IntEnum):
     V4 = 4
     V6 = 6
 
+    @classmethod
+    def __get_pydantic_json_schema__(cls, core_schema: Any, handler: Any) -> dict[str, Any]:
+        """Expose stable enum names to generated API clients."""
+        schema: dict[str, Any] = handler(core_schema)
+        schema["x-enum-varnames"] = [member.name for member in cls]
+        return schema
+
 
 class KeaException(Exception):
     """KEA Exception Class."""

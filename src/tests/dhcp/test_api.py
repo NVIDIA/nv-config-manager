@@ -637,6 +637,12 @@ def test_collection_openapi_subnet_parameters() -> None:
         assert parameter["required"] is False
 
 
+def test_ip_version_openapi_exports_enum_names() -> None:
+    """Publish stable names for generated address-family constants."""
+    schema = app.openapi()["components"]["schemas"]["IpVersion"]
+    assert schema["x-enum-varnames"] == ["V4", "V6"]
+
+
 def test_get_lease_not_found():
     """Translate KEA's empty result into a RESTful not-found response."""
     client = TestClient(app)

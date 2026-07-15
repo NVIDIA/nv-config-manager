@@ -20,8 +20,8 @@ type IpVersion int32
 
 // List of IpVersion
 const (
-	_4 IpVersion = 4
-	_6 IpVersion = 6
+	V4 IpVersion = 4
+	V6 IpVersion = 6
 )
 
 // All allowed values of IpVersion enum

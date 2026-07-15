@@ -45,7 +45,11 @@
           6
         ],
         "title": "IpVersion",
-        "type": "integer"
+        "type": "integer",
+        "x-enum-varnames": [
+          "V4",
+          "V6"
+        ]
       },
       "LeasePageResponse": {
         "description": "Bounded page of normalized leases.",

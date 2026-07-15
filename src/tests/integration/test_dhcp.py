@@ -656,6 +656,7 @@ class TestDHCPAPI:
             for lease in lease_records
         ]
         dhcp_pod = _get_dhcp_pod(config_manager_namespace)
+        cleanup_addresses = [str(lease["ip-address"]) for lease in lease_records]
         added_addresses: list[str] = []
 
         try:
@@ -730,7 +731,7 @@ class TestDHCPAPI:
                 "and searched beyond page one with and without a subnet filter"
             )
         finally:
-            if added_addresses:
+            if cleanup_addresses:
                 delete_responses = _run_kea_commands(
                     config_manager_namespace,
                     dhcp_pod,
@@ -740,7 +741,7 @@ class TestDHCPAPI:
                             "service": ["dhcp4"],
                             "arguments": {"ip-address": address},
                         }
-                        for address in added_addresses
+                        for address in cleanup_addresses
                     ],
                 )
                 delete_failures = [
@@ -791,6 +792,17 @@ class TestDHCPAPI:
             reservations = [record for page in reservation_pages for record in page]
             assert len(reservation_pages) >= 3
             assert len(reservations) == reservation_total
+            reservation_identities = {
+                (
+                    reservation["ip_address"],
+                    reservation["hostname"],
+                    reservation["identifier_type"],
+                    reservation["identifier"],
+                    reservation["subnet"],
+                )
+                for reservation in reservations
+            }
+            assert len(reservation_identities) == len(reservations), "Reservation pages overlap"
             assert seeded_reservation_names <= {
                 reservation["hostname"] for reservation in reservations
             }
