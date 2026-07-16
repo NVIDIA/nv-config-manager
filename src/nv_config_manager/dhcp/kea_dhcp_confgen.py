@@ -307,7 +307,7 @@ def _build_subnet_config(
         subnet_config["reservations-in-subnet"] = True
 
     for opt, value in config.items():
-        if opt in subnet_config:
+        if opt in subnet_config and subnet_config[opt] != value:
             raise DhcpConfigGenerationError(f"Cannot override subnet config {opt} with {value}")
         subnet_config[opt] = value
     return subnet_config
