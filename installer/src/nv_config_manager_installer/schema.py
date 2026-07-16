@@ -26,10 +26,12 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
+import re
+
 import yaml
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from nv_config_manager_installer.validation import normalize_kubernetes_namespace
+_KUBERNETES_NAMESPACE_RE = re.compile(r"^[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?$")
 
 # ---------------------------------------------------------------------------
 # Enums
@@ -455,7 +457,15 @@ class MonitoringConfig(BaseModel):
     @field_validator("prometheus_namespace")
     @classmethod
     def _validate_prometheus_namespace(cls, v: str) -> str:
-        return normalize_kubernetes_namespace(v)
+        normalized = v.strip()
+        if not normalized:
+            raise ValueError("namespace must not be empty")
+        if not _KUBERNETES_NAMESPACE_RE.fullmatch(normalized):
+            raise ValueError(
+                "namespace must be a lowercase DNS-1123 label (alphanumeric, hyphens, "
+                "start/end with alphanumeric, max 63 characters)"
+            )
+        return normalized
 
 
 class NLBServiceConfig(BaseModel):
