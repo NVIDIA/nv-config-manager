@@ -18,11 +18,6 @@ on:
         required: false
         default: ""
         type: string
-      security:
-        description: Deploy the local security stack (Keycloak + SPIRE) via kind-up-sec and run group-mapping RBAC tests
-        required: false
-        default: false
-        type: boolean
 
 concurrency:
   group: kind-integration-${{ github.ref }}
@@ -133,55 +128,19 @@ jobs:
         env:
           BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
           OBSERVABILITY: ${{ inputs.observability }}
-          SECURITY: ${{ inputs.security }}
         run: |
           sudo sysctl -w fs.inotify.max_user_instances=512
           sudo sysctl -w fs.inotify.max_user_watches=524288
 
-          # Opt-in security: deploy the local Keycloak + SPIRE stack via
-          # `make kind-up-sec` instead of the plain `make kind-up`, then move the
-          # chart into the group-mapping CONFIGURED state so the --rbac tests have
-          # a mapping mounted and the seeded nvcm-* Keycloak users to log in as.
-          # This is a separate deploy path from observability (which piggybacks on
-          # `make kind-up`), so the two toggles are mutually exclusive; security
-          # wins if both are set.
-          #
-          # `make kind-up-sec` creates the cluster and installs the security
-          # dependencies (cert-manager, Envoy Gateway, SPIRE, Keycloak) itself,
-          # pulling their images in-cluster through the runner's registry proxy
-          # cache. We deliberately do NOT pre-`kind load` those images: the
-          # runner's Docker uses the containerd image store, which keeps a
-          # multi-arch index that `kind load` can't import ("content digest not
-          # found"), and the in-cluster pulls complete within the helm timeout
-          # anyway.
-          if [ "${SECURITY}" = "true" ]; then
-            echo "Security stack enabled for this run"
-
-            make kind-up-sec \
-              KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME}" \
-              HELM_TIMEOUT=20m
-
-            # Move from the default UNCONFIGURED state into CONFIGURED so the
-            # group-mapping ConfigMap is rendered/mounted and the seeded users
-            # get real grants on login. The --rbac tests fail fast without this.
-            helm upgrade "${NV_CONFIG_MANAGER_RELEASE}" deploy/helm \
-              -n "${NV_CONFIG_MANAGER_NAMESPACE}" \
-              --reuse-values \
-              -f scripts/rbac-local-test/values-configured.yaml
-            kubectl -n "${NV_CONFIG_MANAGER_NAMESPACE}" rollout status \
-              "deploy/${NV_CONFIG_MANAGER_RELEASE}-nautobot" --timeout=15m
-
-            kubectl get pods -n "${NV_CONFIG_MANAGER_NAMESPACE}" -o wide
-            exit 0
-          fi
-
-          # Opt-in observability: flip the two monitoring switches on the base
-          # config in place (the runner checkout is throwaway, so we keep a
-          # single source of truth instead of a near-duplicate config file).
-          # This installs the prometheus-operator CRDs + standalone
-          # Prometheus/Alloy and enables monitoring.probes, so the Probe CRs
-          # render with the SLO customLabels from values-observability.yaml.
-          # Defaults off so normal kind runs stay fast.
+          # Observability is the one lightweight exception: it flips the two
+          # monitoring switches on the base config in place (the runner checkout
+          # is throwaway, so we keep a single source of truth instead of a
+          # near-duplicate config file), installs the prometheus-operator CRDs +
+          # standalone Prometheus/Alloy, and enables monitoring.probes so the
+          # Probe CRs render with the SLO customLabels from
+          # values-observability.yaml. Those tests only assert wiring/labels and
+          # need no auth, so they run on the plain `make kind-up` deploy to stay
+          # fast.
           #
           # We also append the observability stack's runtime images to
           # kind_preload_images. The installer preloads these on the host (which
@@ -193,7 +152,7 @@ jobs:
           #   helm template t deploy/helm -f deploy/helm/values-ci.yaml \
           #     -f deploy/helm/values-observability.yaml | grep -E 'image:'
           if [ "${OBSERVABILITY}" = "true" ]; then
-            echo "Observability enabled for this run"
+            echo "Observability run: plain kind-up + monitoring stack"
             yq -i '
               .infrastructure.monitoring.enabled = true |
               .infrastructure.monitoring.observability_enabled = true |
@@ -203,13 +162,92 @@ jobs:
                 "docker.io/grafana/alloy:v1.16.0"
               ]
             ' deploy/configs/ci-integration-test.yaml
+
+            make kind-up \
+              KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME}" \
+              INSTALL_CONFIG=deploy/configs/ci-integration-test.yaml \
+              HELM_TIMEOUT=20m
+            kubectl get pods -n "${NV_CONFIG_MANAGER_NAMESPACE}" -o wide
+            exit 0
           fi
 
-          make kind-up \
+          # Default: the full security stack (Keycloak + SPIRE) via
+          # `make kind-up-sec`, then move the chart into the group-mapping
+          # CONFIGURED state so the mapping ConfigMap is mounted and the seeded
+          # nvcm-* users get real grants on login. The whole integration suite
+          # then runs auth-aware — SSO (headless token minted below), group-mapping
+          # RBAC, and SPIFFE — which is far more representative of production than
+          # the old unauthenticated plain run.
+          #
+          # `make kind-up-sec` creates the cluster and installs the security
+          # dependencies (cert-manager, Envoy Gateway, SPIRE, Keycloak) itself,
+          # pulling their images in-cluster through the runner's registry proxy
+          # cache. We deliberately do NOT pre-`kind load` those images: the
+          # runner's Docker uses the containerd image store, whose multi-arch
+          # index `kind load` can't import ("content digest not found"), and the
+          # in-cluster pulls complete within the helm timeout anyway.
+          echo "Default run: kind-up-sec security stack + CONFIGURED group mapping"
+          make kind-up-sec \
             KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME}" \
-            INSTALL_CONFIG=deploy/configs/ci-integration-test.yaml \
             HELM_TIMEOUT=20m
+
+          helm upgrade "${NV_CONFIG_MANAGER_RELEASE}" deploy/helm \
+            -n "${NV_CONFIG_MANAGER_NAMESPACE}" \
+            --reuse-values \
+            -f scripts/rbac-local-test/values-configured.yaml
+          kubectl -n "${NV_CONFIG_MANAGER_NAMESPACE}" rollout status \
+            "deploy/${NV_CONFIG_MANAGER_RELEASE}-nautobot" --timeout=15m
+
           kubectl get pods -n "${NV_CONFIG_MANAGER_NAMESPACE}" -o wide
+      - name: Mint headless OIDC token
+        # Only the security (default) deploy runs the --sso suite; observability
+        # runs stay unauthenticated on the plain deploy.
+        if: inputs.observability != true
+        timeout-minutes: 5
+        env:
+          KEYCLOAK_NAMESPACE: keycloak
+          KEYCLOAK_SERVICE: keycloak
+          OIDC_REALM: nv-config-manager
+          OIDC_CLIENT_ID: nv-config-manager
+          OIDC_CLIENT_SECRET: nvcm-local-client-secret
+          OIDC_USERNAME: nvcm-admin
+        run: |
+          set -euo pipefail
+          # The --sso suite authenticates headlessly with a caller-supplied token
+          # (NVCM_OIDC_ACCESS_TOKEN) instead of the browser OIDC redirect, which
+          # can't run on a headless runner. Mint one for the seeded superuser via
+          # the confidential client's direct-access (ROPC) grant — the client
+          # secret already lives in-cluster, and the realm's accessTokenLifespan
+          # (3600s) comfortably outlives a full suite run. This is the CI analogue
+          # of the per-user token minting the --rbac fixtures do in-process.
+          kubectl -n "${KEYCLOAK_NAMESPACE}" port-forward "svc/${KEYCLOAK_SERVICE}" 18080:80 >/tmp/keycloak-pf.log 2>&1 &
+          PF_PID=$!
+          trap 'kill ${PF_PID} 2>/dev/null || true' EXIT
+          for _ in $(seq 1 30); do
+            if curl -sf "http://127.0.0.1:18080/realms/${OIDC_REALM}/.well-known/openid-configuration" >/dev/null 2>&1; then
+              break
+            fi
+            sleep 2
+          done
+          # -s (not -sf) so an HTTP error still yields a body for jq to parse to
+          # empty, letting the guard below print the port-forward log instead of
+          # aborting on the pipefail.
+          TOKEN="$(curl -s -X POST \
+            "http://127.0.0.1:18080/realms/${OIDC_REALM}/protocol/openid-connect/token" \
+            -d "client_id=${OIDC_CLIENT_ID}" \
+            -d "client_secret=${OIDC_CLIENT_SECRET}" \
+            -d "grant_type=password" \
+            -d "scope=openid" \
+            -d "username=${OIDC_USERNAME}" \
+            -d "password=${OIDC_USERNAME}" | jq -r '.access_token // empty')"
+          if [ -z "${TOKEN}" ]; then
+            echo "Failed to mint OIDC token via ROPC grant" >&2
+            cat /tmp/keycloak-pf.log >&2 || true
+            exit 1
+          fi
+          echo "::add-mask::${TOKEN}"
+          echo "NVCM_OIDC_ACCESS_TOKEN=${TOKEN}" >> "${GITHUB_ENV}"
+          echo "Minted headless OIDC token for ${OIDC_USERNAME} (length ${#TOKEN})"
       - name: Run integration tests
         timeout-minutes: 50
         env:
@@ -217,34 +255,28 @@ jobs:
           # skip themselves unless this is "true". Mirrors the JIRA_ISSUE_KEY
           # gate on the diagnostics tests.
           OBSERVABILITY: ${{ inputs.observability }}
-          SECURITY: ${{ inputs.security }}
         run: |
-          # --rbac opts into the group-mapping RBAC suite (test_rbac_group_mapping.py),
-          # which needs the CONFIGURED security deploy above; otherwise those tests
-          # skip themselves.
+          # Default runs exercise the whole suite against the security deploy,
+          # authenticated end to end:
+          #   --sso    routes service calls through the svc-* JWT-only hostnames
+          #            and attaches the headless NVCM_OIDC_ACCESS_TOKEN minted in
+          #            the previous step (browser OIDC can't run on the runner).
+          #   --rbac   runs the group-mapping suite (test_rbac_group_mapping.py),
+          #            which mints its own per-user tokens against the local
+          #            Keycloak; needs the CONFIGURED mapping deployed above.
+          #   --spiffe runs the Workload-Identity suite; it skips itself cleanly
+          #            when no spiffe-helper sidecar pod is present.
+          # The mock topology is loaded by kind-up-sec (deploy/configs/local-sec.yaml
+          # installs development/mock_topology and runs MockTopologyDesign), so the
+          # data-dependent tests have fixtures.
           #
-          # Why scope down, instead of running the whole suite? The security deploy
-          # (kind-up-sec) turns SSO + SPIFFE enforcement ON. The rest of the
-          # integration suite calls protected service endpoints WITHOUT a bearer
-          # token, so under this deploy they 401 (and test_render hangs into the
-          # timeout). Only the RBAC suite is written to mint a token (headless
-          # password grant against the local Keycloak) and authenticate. Note the
-          # mock topology IS loaded here -- kind-up-sec deploys
-          # deploy/configs/local-sec.yaml, which installs development/mock_topology
-          # and runs MockTopologyDesign -- so missing fixtures are NOT the reason.
-          # Making the full suite auth-aware (so it can run under the security
-          # deploy) is tracked as follow-up. Until then, scope a security run to the
-          # RBAC suite unless the caller pinned an explicit test_path.
-          RBAC_FLAG=""
-          TEST_TARGET="${TEST_PATH}"
-          if [ "${SECURITY}" = "true" ]; then
-            RBAC_FLAG="--rbac"
-            case "${TEST_PATH}" in
-              src/tests/integration | src/tests/integration/)
-                TEST_TARGET="src/tests/integration/test_rbac_group_mapping.py"
-                ;;
-            esac
+          # Observability runs use the plain unauthenticated deploy, so they pass
+          # no auth flags.
+          EXTRA_FLAGS=""
+          if [ "${OBSERVABILITY}" != "true" ]; then
+            EXTRA_FLAGS="--sso --rbac --spiffe"
           fi
+          TEST_TARGET="${TEST_PATH}"
 
           for attempt in 1 2 3; do
             echo "Attempt ${attempt} of 3"
@@ -252,7 +284,7 @@ jobs:
             set +e
             timeout --kill-after=1m 15m uv run pytest "${TEST_TARGET}" -v \
               --ci \
-              ${RBAC_FLAG} \
+              ${EXTRA_FLAGS} \
               --nv-config-manager-namespace "${NV_CONFIG_MANAGER_NAMESPACE}" \
               --tb=short \
               --junitxml="${results_file}"
