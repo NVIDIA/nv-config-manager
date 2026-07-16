@@ -12,14 +12,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""OpenTelemetry bootstrap shared by the Temporal worker and API.
+"""Temporal OpenTelemetry bootstrap (SDK Runtime + built-in metrics).
 
 Call setup_telemetry() once at process startup. When an OTLP endpoint is
 configured (OTEL_EXPORTER_OTLP_ENDPOINT, injected by the Helm chart only when
-temporal.observability.enabled), it:
-  1. Configures the global Python OTel TracerProvider to export spans via
-     OTLP/gRPC to the configured collector (in-cluster Grafana Alloy by
-     default, or a managed/external collector when otlpEndpoint is set).
+observability.enabled), it:
+  1. Configures the global Python OTel TracerProvider via common.telemetry to
+     export spans via OTLP/gRPC to the configured collector (in-cluster Grafana
+     Alloy by default, or a managed/external collector when otlpEndpoint is set).
   2. Returns a Temporal Runtime whose SDK core pushes built-in Temporal
      metrics (workflow_completed, activity_execution_latency, etc.) via
      OTLP to the same endpoint.
@@ -34,12 +34,9 @@ Runtime for passing to Client.connect(runtime=...).
 
 import os
 
-from opentelemetry import trace
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from temporalio.runtime import OpenTelemetryConfig, Runtime, TelemetryConfig
+
+from nv_config_manager.common.telemetry import setup_tracing
 
 _runtime: Runtime | None = None
 
@@ -55,20 +52,10 @@ def setup_telemetry(service_name: str) -> Runtime:
     """
     global _runtime
     otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "").strip()
+    setup_tracing(service_name)
     if not otlp_endpoint:
         _runtime = Runtime(telemetry=TelemetryConfig())
         return _runtime
-
-    resolved_name = os.getenv("OTEL_SERVICE_NAME", service_name)
-    resource = Resource.create(
-        {
-            "service.name": resolved_name,
-            "deployment.environment": os.getenv("ENVIRONMENT", "unknown"),
-        }
-    )
-    provider = TracerProvider(resource=resource)
-    provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=otlp_endpoint)))
-    trace.set_tracer_provider(provider)
 
     _runtime = Runtime(telemetry=TelemetryConfig(metrics=OpenTelemetryConfig(url=otlp_endpoint)))
     return _runtime

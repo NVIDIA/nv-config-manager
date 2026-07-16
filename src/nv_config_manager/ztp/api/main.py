@@ -20,14 +20,17 @@ import argparse
 
 import uvicorn
 from fastapi import FastAPI
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from prometheus_fastapi_instrumentator import Instrumentator, metrics
 
 from nv_config_manager.common.auth import install_identity_probe
 from nv_config_manager.common.log import configure_logging
+from nv_config_manager.common.telemetry import setup_tracing
 from nv_config_manager.ztp.api import device_v1, files_v1, firmware_v1
 from nv_config_manager.ztp.api.metrics import device_http_requests
 
 configure_logging(service="ztp")
+setup_tracing("ztp")
 
 
 def main() -> None:
@@ -52,6 +55,7 @@ def main() -> None:
 
 
 app = FastAPI()
+FastAPIInstrumentor.instrument_app(app)
 
 # Include routers
 app.include_router(device_v1.router, prefix="/v1")
