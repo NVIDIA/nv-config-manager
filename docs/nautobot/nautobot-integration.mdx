@@ -195,6 +195,56 @@ kubectl exec -it -n nv-config-manager deployment/nautobot -- nautobot-server nbs
 >>> device.interfaces.all()
 ```
 
+## Authentication and RBAC
+
+When users and services authenticate to Nautobot with a JWT (OIDC browser cookie, SPIFFE JWT-SVID, or a configured external provider), Config Manager reconciles their Django privileges from the token on **every login**, so promotions and demotions in your IdP take effect without manual intervention. Two chart settings under `nautobot.rbac` control this:
+
+### `superuserGroups` — the admin shortcut
+
+A flat list of group/role names (from the JWT `roles` claim) that grant Django `is_superuser` + `is_staff`:
+
+```yaml
+nautobot:
+  rbac:
+    superuserGroups:
+      - nautobot-admins
+      - nv-config-manager-admins
+```
+
+When empty (the default), the feature is disabled and existing privileges are left untouched — the bootstrap `admin` user stays a superuser.
+
+### `groupMapping` — fine-grained RBAC
+
+A richer mapping of IdP group names to Django Groups and per-action `ObjectPermission` records. On each login the user is added to (or removed from) the named Django Group and the Group's permissions are reconciled against `nautobot_permissions`:
+
+```yaml
+nautobot:
+  rbac:
+    groupMapping:
+      - name: "ipam-rw"
+        nautobot_permissions:
+          view:
+            content_types: ["all"]        # "all" or "app.*" or "app.model"
+          change:
+            content_types: ["ipam.*"]
+          delete:
+            content_types: ["ipam.ipaddress"]
+            constraints:
+              status__name: "Active"
+      - name: "nv-config-manager-admins"
+        is_superuser: true
+```
+
+`groupMapping` has **three states**, keyed on whether the value is set at all:
+
+| Value | Behavior |
+| :---- | :------- |
+| _omitted_ (default) | **Unconfigured.** No ConfigMap is mounted, group sync never runs, and existing memberships/privileges are left untouched. |
+| `groupMapping: []` | **Configured-but-empty.** Every login runs the revoke-everyone path: users are removed from all mapping-managed Django Groups and the managed permissions are pruned. Use this to deliberately tear down a previous mapping. |
+| `groupMapping: [ ... ]` | **Configured.** Memberships and permissions are reconciled against the entries on each login. |
+
+By default, Config Manager does not create Django Groups — matching `Group` rows must exist up front (admin UI, fixture, or a one-shot Job), and mapping entries whose Group is missing are logged and skipped. Set `nautobot.rbac.autoCreateGroups: true` to create missing Groups on the fly. Removing an entry from the mapping automatically revokes the corresponding access on each affected user's next login. See the `nv_config_manager_auth.rbac` module for the full revocation semantics.
+
 ## Metrics
 
 Nautobot metrics are controlled by the chart's `nautobot.metrics` settings and Nautobot's built-in Prometheus metrics support. No capacity-metrics plugin is installed in the Config Manager Nautobot image. Refer to the [Nautobot documentation](https://docs.nautobot.com/projects/core/en/stable/user-guide/administration/guides/prometheus-metrics/) for available metrics.
