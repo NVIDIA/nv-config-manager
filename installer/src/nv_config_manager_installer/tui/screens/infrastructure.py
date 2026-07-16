@@ -302,9 +302,12 @@ class InfraScreen(Container):
         infra.cnpg_s3_backup.path = self.query_one("#cnpg-path", Input).value
         infra.cnpg_s3_backup.endpoint = self.query_one("#cnpg-endpoint", Input).value
         infra.monitoring.enabled = self.query_one("#monitoring-enabled", LabeledSwitch).value
-        infra.monitoring.prometheus_namespace = self.query_one(
-            "#monitoring-prometheus-namespace", Input
-        ).value
+        try:
+            infra.monitoring.prometheus_namespace = self.query_one(
+                "#monitoring-prometheus-namespace", Input
+            ).value
+        except Exception as exc:
+            self.app.notify(f"Invalid Prometheus namespace: {exc}", severity="error")
         infra.monitoring.observability_enabled = self.query_one(
             "#monitoring-observability-enabled", LabeledSwitch
         ).value

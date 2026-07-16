@@ -22,11 +22,10 @@ Helm values and config-secrets.ini.
 from __future__ import annotations
 
 import os
+import re
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
-
-import re
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
