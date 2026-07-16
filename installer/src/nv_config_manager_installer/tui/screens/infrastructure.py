@@ -140,6 +140,12 @@ class InfraScreen(Container):
         yield LabeledSwitch(
             "Enable monitoring", value=infra.monitoring.enabled, id="monitoring-enabled"
         )
+        yield Label("Prometheus namespace (network policy)", classes="field-label")
+        yield Input(
+            value=infra.monitoring.prometheus_namespace,
+            placeholder="monitoring",
+            id="monitoring-prometheus-namespace",
+        )
         yield LabeledSwitch(
             "Enable local observability stack (Prometheus + Alloy, dev only)",
             value=infra.monitoring.observability_enabled,
@@ -296,6 +302,9 @@ class InfraScreen(Container):
         infra.cnpg_s3_backup.path = self.query_one("#cnpg-path", Input).value
         infra.cnpg_s3_backup.endpoint = self.query_one("#cnpg-endpoint", Input).value
         infra.monitoring.enabled = self.query_one("#monitoring-enabled", LabeledSwitch).value
+        infra.monitoring.prometheus_namespace = self.query_one(
+            "#monitoring-prometheus-namespace", Input
+        ).value
         infra.monitoring.observability_enabled = self.query_one(
             "#monitoring-observability-enabled", LabeledSwitch
         ).value
@@ -345,6 +354,9 @@ class InfraScreen(Container):
         self.query_one("#cnpg-path", Input).value = infra.cnpg_s3_backup.path
         self.query_one("#cnpg-endpoint", Input).value = infra.cnpg_s3_backup.endpoint
         self.query_one("#monitoring-enabled", LabeledSwitch).value = infra.monitoring.enabled
+        self.query_one(
+            "#monitoring-prometheus-namespace", Input
+        ).value = infra.monitoring.prometheus_namespace
         self.query_one(
             "#monitoring-observability-enabled", LabeledSwitch
         ).value = infra.monitoring.observability_enabled

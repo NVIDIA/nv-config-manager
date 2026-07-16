@@ -440,6 +440,10 @@ class MonitoringConfig(BaseModel):
     """Monitoring / observability configuration."""
 
     enabled: bool = False
+    # Namespace where Prometheus scrapes from (for network policy ingress).
+    # Ignored when observability_enabled is true — the local stack runs in
+    # cluster.namespace and helm_values sets that automatically.
+    prometheus_namespace: str = "monitoring"
     # Bundles Prometheus + Grafana Alloy as subcharts of nv-config-manager
     # (see deploy/helm/values-observability.yaml). LOCAL-DEV / KIND ONLY.
     # Grafana/Loki are AGPL-licensed and are not enabled by the default
