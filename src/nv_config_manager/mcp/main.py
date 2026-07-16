@@ -53,7 +53,7 @@ from nv_config_manager.mcp.settings import (
 from nv_config_manager.mcp.tools import register_tools
 
 configure_logging(service="mcp")
-setup_tracing("mcp")
+setup_tracing("nv-config-manager-mcp")
 
 
 def create_mcp_server(
