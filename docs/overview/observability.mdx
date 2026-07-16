@@ -92,7 +92,7 @@ Temporal also exports built-in runtime metrics (workflow completion, activity la
 
 **Local development:** layer `deploy/helm/values-observability.yaml` on your values file. It enables the bundled Alloy OTLP receiver and Tempo, sets `observability.enabled: true`, and leaves `otlpEndpoint` empty so traces flow:
 
-```
+```text
 HTTP APIs + Temporal pods → Alloy (OTLP) → Tempo → Grafana
 ```
 
