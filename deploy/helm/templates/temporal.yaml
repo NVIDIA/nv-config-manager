@@ -66,7 +66,7 @@ spec:
         {{- include "nv-config-manager.customPodLabels" $ | nindent 8 }}
       annotations:
         {{- include "nv-config-manager.authIniChecksum" $ | nindent 8 }}
-        {{- include "nv-config-manager.temporalServerOtelOptOutAnnotations" $ | nindent 8 }}
+        {{- include "nv-config-manager.otelOptOutAnnotations" $ | nindent 8 }}
         checksum/temporal-config: {{ include "nv-config-manager.configmap.temporal-config" $ | sha256sum }}
         checksum/temporal-dynamic-config: {{ include "nv-config-manager.configmap.temporal-dynamic-config" $ | sha256sum }}
         {{- if include "nv-config-manager.spiffe.enabled" $ }}
@@ -296,8 +296,8 @@ spec:
         {{- if include "nv-config-manager.spiffe.enabled" . }}
         {{- include "nv-config-manager.spiffe.annotations" (dict "root" . "app" $temporalName) | nindent 8 }}
         {{- end }}
-        {{- if .Values.temporal.observability.enabled }}
-        {{- include "nv-config-manager.temporalServerOtelOptOutAnnotations" . | nindent 8 }}
+        {{- if .Values.observability.enabled }}
+        {{- include "nv-config-manager.otelOptOutAnnotations" . | nindent 8 }}
         {{- end }}
     spec:
       serviceAccountName: {{ include "nv-config-manager.serviceAccountName" . }}
@@ -430,8 +430,8 @@ spec:
         - name: BMC_CREDS_PATH
           value: "/vault/secrets/bmc-creds.json"
         {{- end }}
-        {{- if .Values.temporal.observability.enabled }}
-        {{- include "nv-config-manager.temporal.otelAppEnv" (dict "root" . "serviceName" "nv-config-manager-temporal-worker") | nindent 8 }}
+        {{- if .Values.observability.enabled }}
+        {{- include "nv-config-manager.otelAppEnv" (dict "root" . "serviceName" "nv-config-manager-temporal-worker") | nindent 8 }}
         {{- end }}
         resources:
           {{- toYaml .Values.temporal.configManagerWorker.resources | nindent 10 }}
@@ -491,8 +491,8 @@ spec:
         {{- if include "nv-config-manager.spiffe.enabled" . }}
         {{- include "nv-config-manager.spiffe.annotations" (dict "root" . "app" $temporalName) | nindent 8 }}
         {{- end }}
-        {{- if .Values.temporal.observability.enabled }}
-        {{- include "nv-config-manager.temporalServerOtelOptOutAnnotations" . | nindent 8 }}
+        {{- if .Values.observability.enabled }}
+        {{- include "nv-config-manager.otelOptOutAnnotations" . | nindent 8 }}
         {{- end }}
     spec:
       serviceAccountName: {{ include "nv-config-manager.serviceAccountName" . }}
@@ -518,8 +518,8 @@ spec:
         {{- include "nv-config-manager.customLabelsEnv" . | nindent 8 }}
         - name: TEMPORAL_ADDRESS
           value: "{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.temporal.services.frontend.port }}"
-        {{- if .Values.temporal.observability.enabled }}
-        {{- include "nv-config-manager.temporal.otelAppEnv" (dict "root" . "serviceName" "nv-config-manager-temporal-api") | nindent 8 }}
+        {{- if .Values.observability.enabled }}
+        {{- include "nv-config-manager.otelAppEnv" (dict "root" . "serviceName" "nv-config-manager-temporal-api") | nindent 8 }}
         {{- end }}
         ports:
         - containerPort: 9000
@@ -611,8 +611,8 @@ spec:
         {{- if include "nv-config-manager.spiffe.enabled" . }}
         {{- include "nv-config-manager.spiffe.annotations" (dict "root" . "app" $temporalName) | nindent 8 }}
         {{- end }}
-        {{- if .Values.temporal.observability.enabled }}
-        {{- include "nv-config-manager.temporalServerOtelOptOutAnnotations" . | nindent 8 }}
+        {{- if .Values.observability.enabled }}
+        {{- include "nv-config-manager.otelOptOutAnnotations" . | nindent 8 }}
         {{- end }}
     spec:
       serviceAccountName: {{ include "nv-config-manager.serviceAccountName" . }}
@@ -640,8 +640,8 @@ spec:
           value: {{ .Values.global.environment }}
         - name: TEMPORAL_ADDRESS
           value: "{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.temporal.services.frontend.port }}"
-        {{- if .Values.temporal.observability.enabled }}
-        {{- include "nv-config-manager.temporal.otelAppEnv" (dict "root" . "serviceName" "nv-config-manager-temporal-scheduler") | nindent 8 }}
+        {{- if .Values.observability.enabled }}
+        {{- include "nv-config-manager.otelAppEnv" (dict "root" . "serviceName" "nv-config-manager-temporal-scheduler") | nindent 8 }}
         {{- end }}
         resources:
           {{- toYaml .Values.temporal.scheduler.resources | nindent 10 }}
@@ -695,8 +695,8 @@ spec:
         {{- if include "nv-config-manager.spiffe.enabled" . }}
         {{- include "nv-config-manager.spiffe.annotations" (dict "root" . "app" $temporalName) | nindent 8 }}
         {{- end }}
-        {{- if .Values.temporal.observability.enabled }}
-        {{- include "nv-config-manager.temporalServerOtelOptOutAnnotations" . | nindent 8 }}
+        {{- if .Values.observability.enabled }}
+        {{- include "nv-config-manager.otelOptOutAnnotations" . | nindent 8 }}
         {{- end }}
     spec:
       serviceAccountName: {{ include "nv-config-manager.serviceAccountName" . }}
@@ -721,8 +721,8 @@ spec:
           value: {{ tpl .Values.temporal.gateway.api.hostname . | quote }}
         - name: TEMPORAL_ADDRESS
           value: "{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.temporal.services.frontend.port }}"
-        {{- if .Values.temporal.observability.enabled }}
-        {{- include "nv-config-manager.temporal.otelAppEnv" (dict "root" . "serviceName" "nv-config-manager-temporal-archive") | nindent 8 }}
+        {{- if .Values.observability.enabled }}
+        {{- include "nv-config-manager.otelAppEnv" (dict "root" . "serviceName" "nv-config-manager-temporal-archive") | nindent 8 }}
         {{- end }}
         resources:
           {{- toYaml .Values.temporal.archive.resources | nindent 10 }}

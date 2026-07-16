@@ -553,12 +553,15 @@ checksum/auth-ini: {{ include "nv-config-manager.authIniSections" . | sha256sum 
 {{- end -}}
 
 {{/*
-Opt out of AWS CloudWatch Application Signals / OTel auto-instrumentation on
-Temporal server pods. The Go Temporal server only supports OTLP over gRPC; EKS
-Application Signals injects http/protobuf env vars that prevent startup.
-Usage: {{ include "nv-config-manager.temporalServerOtelOptOutAnnotations" . | nindent 8 }}
+Opt out of AWS CloudWatch Application Signals / OTel operator auto-instrumentation.
+Config Manager instruments its services with the OTel SDK directly, so the
+platform auto-injector must not inject its own env vars: on the Go Temporal
+server the injected http/protobuf vars prevent startup, and on the Python
+services they collide with the SDK's OTLP export. Apply to any pod that sets up
+manual OTel export (guard with `if .Values.observability.enabled`).
+Usage: {{ include "nv-config-manager.otelOptOutAnnotations" . | nindent 8 }}
 */}}
-{{- define "nv-config-manager.temporalServerOtelOptOutAnnotations" -}}
+{{- define "nv-config-manager.otelOptOutAnnotations" -}}
 instrumentation.opentelemetry.io/inject-java: "false"
 instrumentation.opentelemetry.io/inject-python: "false"
 instrumentation.opentelemetry.io/inject-dotnet: "false"
@@ -1504,22 +1507,26 @@ Usage: {{ include "nv-config-manager.externalDnsHostname" .Values.networkZtp.ing
 {{- end -}}
 
 {{/*
-OTel app-container env shared by every Temporal pod (worker, api, scheduler,
-archive). Call sites guard the include with
-`if .Values.temporal.observability.enabled`.
+OTel app-container env shared by every instrumented service (the HTTP APIs
+config-store/dhcp/ztp/render/mcp and the Temporal worker/api/scheduler/archive).
+Call sites guard the include with `if .Values.observability.enabled`.
 
-temporal.observability.otlpEndpoint is optional. When unset the endpoint
-defaults to the in-cluster Alloy receiver in the release namespace:
-  http://alloy.<namespace>.svc.cluster.local:4317
-Set it explicitly to target a different collector (e.g. the managed cluster
-OTLP collector on ngcops-eks).
+Points the OTel SDK at an existing OTLP collector:
+  - observability.otlpEndpoint when set (managed or external collector), else
+  - the in-cluster Grafana Alloy service, but only when the bundled Alloy is
+    enabled (alloy.enabled, e.g. via values-observability.yaml).
+Fails fast when neither is available so pods never point at a dead OTLP target.
 
   Context: (dict "root" $ "serviceName" "<service.name>").
 */}}
-{{- define "nv-config-manager.temporal.otelAppEnv" -}}
-{{- $endpoint := .root.Values.temporal.observability.otlpEndpoint -}}
-{{- if not $endpoint -}}
+{{- define "nv-config-manager.otelAppEnv" -}}
+{{- $endpoint := .root.Values.observability.otlpEndpoint -}}
+{{- $alloy := .root.Values.alloy | default dict -}}
+{{- if and (not $endpoint) ($alloy.enabled | default false) -}}
 {{- $endpoint = printf "http://alloy.%s.svc.cluster.local:4317" .root.Values.global.namespace -}}
+{{- end -}}
+{{- if not $endpoint -}}
+{{- fail "observability.enabled=true requires observability.otlpEndpoint to be set, or the bundled Alloy collector enabled (alloy.enabled=true, e.g. values-observability.yaml)" -}}
 {{- end -}}
 - name: OTEL_EXPORTER_OTLP_ENDPOINT
   value: {{ $endpoint | quote }}
