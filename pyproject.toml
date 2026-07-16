@@ -54,8 +54,8 @@ dependencies = [
     # OpenTelemetry — trace export and FastAPI HTTP instrumentation
     # (opentelemetry-api and opentelemetry-sdk come via temporalio[opentelemetry])
     "opentelemetry-exporter-otlp-proto-grpc>=1.11.1,<2",
-    "opentelemetry-instrumentation-fastapi>=0.46b0",
-    "opentelemetry-instrumentation-asgi>=0.46b0",
+    "opentelemetry-instrumentation-fastapi>=0.64b0",
+    "opentelemetry-instrumentation-asgi>=0.64b0",
     # Outbound HTTP client instrumentation so trace context propagates across
     # service hops: aiohttp (inter-service clients), httpx + requests (Nautobot,
     # devices, OIDC).
