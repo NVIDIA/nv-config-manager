@@ -137,7 +137,7 @@ nv-config-manager-config-store-api = "nv_config_manager.config_store.api.main:ma
 nv-config-manager-config-store-cache-refresh = "nv_config_manager.config_store.cache_refresh_service:cli_main"
 
 # MCP Service
-nvidia-config-manager-mcp = "nv_config_manager.mcp.main:main"
+nv-config-manager-mcp = "nv_config_manager.mcp.main:main"
 nvcm-mcp-cli = "nv_config_manager.mcp.cli:main"
 
 [dependency-groups]

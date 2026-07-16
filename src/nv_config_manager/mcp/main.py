@@ -64,7 +64,7 @@ def create_mcp_server(
     resolved_settings = settings or MCPSettings.from_config()
     resolved_oauth_settings = oauth_settings or MCPOAuthSettings.from_config()
     server = FastMCP(
-        "nvidia-config-manager-mcp",
+        "nv-config-manager-mcp",
         instructions=(
             "Read-only NVIDIA Config Manager operator tools plus explicitly "
             "enabled safe diagnostic workflow starters. When auth is enabled, tools "

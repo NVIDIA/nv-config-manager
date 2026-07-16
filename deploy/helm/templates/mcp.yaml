@@ -50,7 +50,7 @@ spec:
         image: "{{ include "nv-config-manager.image" (dict "root" . "image" .Values.global.images.nvConfigManager) }}"
         imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
         {{- include "nv-config-manager.containerSecurityContext" . | nindent 8 }}
-        command: ["nvidia-config-manager-mcp"]
+        command: ["nv-config-manager-mcp"]
         args: []
         env:
         - name: LOG_LEVEL
@@ -65,7 +65,7 @@ spec:
         - name: NV_CONFIG_MANAGER_SERVICE
           value: "mcp"
         {{- if .Values.observability.enabled }}
-        {{- include "nv-config-manager.otelAppEnv" (dict "root" . "serviceName" "nvidia-config-manager-mcp") | nindent 8 }}
+        {{- include "nv-config-manager.otelAppEnv" (dict "root" . "serviceName" "nv-config-manager-mcp") | nindent 8 }}
         {{- end }}
         ports:
         - containerPort: 9000
