@@ -459,6 +459,7 @@ nv-config-manager.ini body (consul-template): must stay in sync with vault-secre
           api_service = http://{{ $dhcpName }}-internal:{{ $internalPort }}
           # External URL for user-facing links
           api_url = https://{{ tpl $root.Values.networkDhcp.gateway.hostname $root }}
+          cors_origins = https://{{ $root.Values.gateway.baseHostname }}
           {{- if $root.Values.networkDhcp.gateway.allowedGroups }}
           allowed_groups = {{ $root.Values.networkDhcp.gateway.allowedGroups | join "," }}
           {{- end }}

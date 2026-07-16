@@ -16,10 +16,122 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 )
 
 // DefaultAPIService DefaultAPI service
 type DefaultAPIService service
+
+type ApiDeleteLeaseLeaseIpAddressDeleteRequest struct {
+	ctx        context.Context
+	ApiService *DefaultAPIService
+	ipAddress  string
+	ipVersion  *IpVersion
+}
+
+func (r ApiDeleteLeaseLeaseIpAddressDeleteRequest) IpVersion(ipVersion IpVersion) ApiDeleteLeaseLeaseIpAddressDeleteRequest {
+	r.ipVersion = &ipVersion
+	return r
+}
+
+func (r ApiDeleteLeaseLeaseIpAddressDeleteRequest) Execute() (*http.Response, error) {
+	return r.ApiService.DeleteLeaseLeaseIpAddressDeleteExecute(r)
+}
+
+/*
+DeleteLeaseLeaseIpAddressDelete Delete Lease
+
+Delete one lease from the selected DHCP service.
+
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@param ipAddress
+	@return ApiDeleteLeaseLeaseIpAddressDeleteRequest
+*/
+func (a *DefaultAPIService) DeleteLeaseLeaseIpAddressDelete(ctx context.Context, ipAddress string) ApiDeleteLeaseLeaseIpAddressDeleteRequest {
+	return ApiDeleteLeaseLeaseIpAddressDeleteRequest{
+		ApiService: a,
+		ctx:        ctx,
+		ipAddress:  ipAddress,
+	}
+}
+
+// Execute executes the request
+func (a *DefaultAPIService) DeleteLeaseLeaseIpAddressDeleteExecute(r ApiDeleteLeaseLeaseIpAddressDeleteRequest) (*http.Response, error) {
+	var (
+		localVarHTTPMethod = http.MethodDelete
+		localVarPostBody   interface{}
+		formFiles          []formFile
+	)
+
+	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "DefaultAPIService.DeleteLeaseLeaseIpAddressDelete")
+	if err != nil {
+		return nil, &GenericOpenAPIError{error: err.Error()}
+	}
+
+	localVarPath := localBasePath + "/lease/{ip_address}"
+	localVarPath = strings.Replace(localVarPath, "{"+"ip_address"+"}", url.PathEscape(parameterValueToString(r.ipAddress, "ipAddress")), -1)
+
+	localVarHeaderParams := make(map[string]string)
+	localVarQueryParams := url.Values{}
+	localVarFormParams := url.Values{}
+
+	if r.ipVersion != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "ip_version", r.ipVersion, "form", "")
+	}
+	// to determine the Content-Type header
+	localVarHTTPContentTypes := []string{}
+
+	// set Content-Type header
+	localVarHTTPContentType := selectHeaderContentType(localVarHTTPContentTypes)
+	if localVarHTTPContentType != "" {
+		localVarHeaderParams["Content-Type"] = localVarHTTPContentType
+	}
+
+	// to determine the Accept header
+	localVarHTTPHeaderAccepts := []string{"application/json"}
+
+	// set Accept header
+	localVarHTTPHeaderAccept := selectHeaderAccept(localVarHTTPHeaderAccepts)
+	if localVarHTTPHeaderAccept != "" {
+		localVarHeaderParams["Accept"] = localVarHTTPHeaderAccept
+	}
+	req, err := a.client.prepareRequest(r.ctx, localVarPath, localVarHTTPMethod, localVarPostBody, localVarHeaderParams, localVarQueryParams, localVarFormParams, formFiles)
+	if err != nil {
+		return nil, err
+	}
+
+	localVarHTTPResponse, err := a.client.callAPI(req)
+	if err != nil || localVarHTTPResponse == nil {
+		return localVarHTTPResponse, err
+	}
+
+	localVarBody, err := io.ReadAll(localVarHTTPResponse.Body)
+	localVarHTTPResponse.Body.Close()
+	localVarHTTPResponse.Body = io.NopCloser(bytes.NewBuffer(localVarBody))
+	if err != nil {
+		return localVarHTTPResponse, err
+	}
+
+	if localVarHTTPResponse.StatusCode >= 300 {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: localVarHTTPResponse.Status,
+		}
+		if localVarHTTPResponse.StatusCode == 422 {
+			var v HTTPValidationError
+			err = a.client.decode(&v, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
+			if err != nil {
+				newErr.error = err.Error()
+				return localVarHTTPResponse, newErr
+			}
+			newErr.error = formatErrorMessage(localVarHTTPResponse.Status, &v)
+			newErr.model = v
+		}
+		return localVarHTTPResponse, newErr
+	}
+
+	return localVarHTTPResponse, nil
+}
 
 type ApiFlushCacheAdminCacheDeleteRequest struct {
 	ctx        context.Context
@@ -267,6 +379,375 @@ func (a *DefaultAPIService) GetConfigConfigGetExecute(r ApiGetConfigConfigGetReq
 	return localVarReturnValue, localVarHTTPResponse, nil
 }
 
+type ApiGetLeaseLeaseIpAddressGetRequest struct {
+	ctx        context.Context
+	ApiService *DefaultAPIService
+	ipAddress  string
+	ipVersion  *IpVersion
+}
+
+func (r ApiGetLeaseLeaseIpAddressGetRequest) IpVersion(ipVersion IpVersion) ApiGetLeaseLeaseIpAddressGetRequest {
+	r.ipVersion = &ipVersion
+	return r
+}
+
+func (r ApiGetLeaseLeaseIpAddressGetRequest) Execute() (*LeaseRecord, *http.Response, error) {
+	return r.ApiService.GetLeaseLeaseIpAddressGetExecute(r)
+}
+
+/*
+GetLeaseLeaseIpAddressGet Get Lease
+
+Return one normalized lease from the selected DHCP service.
+
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@param ipAddress
+	@return ApiGetLeaseLeaseIpAddressGetRequest
+*/
+func (a *DefaultAPIService) GetLeaseLeaseIpAddressGet(ctx context.Context, ipAddress string) ApiGetLeaseLeaseIpAddressGetRequest {
+	return ApiGetLeaseLeaseIpAddressGetRequest{
+		ApiService: a,
+		ctx:        ctx,
+		ipAddress:  ipAddress,
+	}
+}
+
+// Execute executes the request
+//
+//	@return LeaseRecord
+func (a *DefaultAPIService) GetLeaseLeaseIpAddressGetExecute(r ApiGetLeaseLeaseIpAddressGetRequest) (*LeaseRecord, *http.Response, error) {
+	var (
+		localVarHTTPMethod  = http.MethodGet
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *LeaseRecord
+	)
+
+	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "DefaultAPIService.GetLeaseLeaseIpAddressGet")
+	if err != nil {
+		return localVarReturnValue, nil, &GenericOpenAPIError{error: err.Error()}
+	}
+
+	localVarPath := localBasePath + "/lease/{ip_address}"
+	localVarPath = strings.Replace(localVarPath, "{"+"ip_address"+"}", url.PathEscape(parameterValueToString(r.ipAddress, "ipAddress")), -1)
+
+	localVarHeaderParams := make(map[string]string)
+	localVarQueryParams := url.Values{}
+	localVarFormParams := url.Values{}
+
+	if r.ipVersion != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "ip_version", r.ipVersion, "form", "")
+	}
+	// to determine the Content-Type header
+	localVarHTTPContentTypes := []string{}
+
+	// set Content-Type header
+	localVarHTTPContentType := selectHeaderContentType(localVarHTTPContentTypes)
+	if localVarHTTPContentType != "" {
+		localVarHeaderParams["Content-Type"] = localVarHTTPContentType
+	}
+
+	// to determine the Accept header
+	localVarHTTPHeaderAccepts := []string{"application/json"}
+
+	// set Accept header
+	localVarHTTPHeaderAccept := selectHeaderAccept(localVarHTTPHeaderAccepts)
+	if localVarHTTPHeaderAccept != "" {
+		localVarHeaderParams["Accept"] = localVarHTTPHeaderAccept
+	}
+	req, err := a.client.prepareRequest(r.ctx, localVarPath, localVarHTTPMethod, localVarPostBody, localVarHeaderParams, localVarQueryParams, localVarFormParams, formFiles)
+	if err != nil {
+		return localVarReturnValue, nil, err
+	}
+
+	localVarHTTPResponse, err := a.client.callAPI(req)
+	if err != nil || localVarHTTPResponse == nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	localVarBody, err := io.ReadAll(localVarHTTPResponse.Body)
+	localVarHTTPResponse.Body.Close()
+	localVarHTTPResponse.Body = io.NopCloser(bytes.NewBuffer(localVarBody))
+	if err != nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	if localVarHTTPResponse.StatusCode >= 300 {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: localVarHTTPResponse.Status,
+		}
+		if localVarHTTPResponse.StatusCode == 422 {
+			var v HTTPValidationError
+			err = a.client.decode(&v, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
+			if err != nil {
+				newErr.error = err.Error()
+				return localVarReturnValue, localVarHTTPResponse, newErr
+			}
+			newErr.error = formatErrorMessage(localVarHTTPResponse.Status, &v)
+			newErr.model = v
+		}
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	err = a.client.decode(&localVarReturnValue, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
+	if err != nil {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: err.Error(),
+		}
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	return localVarReturnValue, localVarHTTPResponse, nil
+}
+
+type ApiGetReservationReservationIpAddressGetRequest struct {
+	ctx        context.Context
+	ApiService *DefaultAPIService
+	ipAddress  string
+	ipVersion  *IpVersion
+}
+
+func (r ApiGetReservationReservationIpAddressGetRequest) IpVersion(ipVersion IpVersion) ApiGetReservationReservationIpAddressGetRequest {
+	r.ipVersion = &ipVersion
+	return r
+}
+
+func (r ApiGetReservationReservationIpAddressGetRequest) Execute() (*ReservationRecord, *http.Response, error) {
+	return r.ApiService.GetReservationReservationIpAddressGetExecute(r)
+}
+
+/*
+GetReservationReservationIpAddressGet Get Reservation
+
+Return one normalized reservation from the selected DHCP configuration.
+
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@param ipAddress
+	@return ApiGetReservationReservationIpAddressGetRequest
+*/
+func (a *DefaultAPIService) GetReservationReservationIpAddressGet(ctx context.Context, ipAddress string) ApiGetReservationReservationIpAddressGetRequest {
+	return ApiGetReservationReservationIpAddressGetRequest{
+		ApiService: a,
+		ctx:        ctx,
+		ipAddress:  ipAddress,
+	}
+}
+
+// Execute executes the request
+//
+//	@return ReservationRecord
+func (a *DefaultAPIService) GetReservationReservationIpAddressGetExecute(r ApiGetReservationReservationIpAddressGetRequest) (*ReservationRecord, *http.Response, error) {
+	var (
+		localVarHTTPMethod  = http.MethodGet
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *ReservationRecord
+	)
+
+	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "DefaultAPIService.GetReservationReservationIpAddressGet")
+	if err != nil {
+		return localVarReturnValue, nil, &GenericOpenAPIError{error: err.Error()}
+	}
+
+	localVarPath := localBasePath + "/reservation/{ip_address}"
+	localVarPath = strings.Replace(localVarPath, "{"+"ip_address"+"}", url.PathEscape(parameterValueToString(r.ipAddress, "ipAddress")), -1)
+
+	localVarHeaderParams := make(map[string]string)
+	localVarQueryParams := url.Values{}
+	localVarFormParams := url.Values{}
+
+	if r.ipVersion != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "ip_version", r.ipVersion, "form", "")
+	}
+	// to determine the Content-Type header
+	localVarHTTPContentTypes := []string{}
+
+	// set Content-Type header
+	localVarHTTPContentType := selectHeaderContentType(localVarHTTPContentTypes)
+	if localVarHTTPContentType != "" {
+		localVarHeaderParams["Content-Type"] = localVarHTTPContentType
+	}
+
+	// to determine the Accept header
+	localVarHTTPHeaderAccepts := []string{"application/json"}
+
+	// set Accept header
+	localVarHTTPHeaderAccept := selectHeaderAccept(localVarHTTPHeaderAccepts)
+	if localVarHTTPHeaderAccept != "" {
+		localVarHeaderParams["Accept"] = localVarHTTPHeaderAccept
+	}
+	req, err := a.client.prepareRequest(r.ctx, localVarPath, localVarHTTPMethod, localVarPostBody, localVarHeaderParams, localVarQueryParams, localVarFormParams, formFiles)
+	if err != nil {
+		return localVarReturnValue, nil, err
+	}
+
+	localVarHTTPResponse, err := a.client.callAPI(req)
+	if err != nil || localVarHTTPResponse == nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	localVarBody, err := io.ReadAll(localVarHTTPResponse.Body)
+	localVarHTTPResponse.Body.Close()
+	localVarHTTPResponse.Body = io.NopCloser(bytes.NewBuffer(localVarBody))
+	if err != nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	if localVarHTTPResponse.StatusCode >= 300 {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: localVarHTTPResponse.Status,
+		}
+		if localVarHTTPResponse.StatusCode == 422 {
+			var v HTTPValidationError
+			err = a.client.decode(&v, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
+			if err != nil {
+				newErr.error = err.Error()
+				return localVarReturnValue, localVarHTTPResponse, newErr
+			}
+			newErr.error = formatErrorMessage(localVarHTTPResponse.Status, &v)
+			newErr.model = v
+		}
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	err = a.client.decode(&localVarReturnValue, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
+	if err != nil {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: err.Error(),
+		}
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	return localVarReturnValue, localVarHTTPResponse, nil
+}
+
+type ApiGetSummarySummaryGetRequest struct {
+	ctx        context.Context
+	ApiService *DefaultAPIService
+	ipVersion  *IpVersion
+}
+
+func (r ApiGetSummarySummaryGetRequest) IpVersion(ipVersion IpVersion) ApiGetSummarySummaryGetRequest {
+	r.ipVersion = &ipVersion
+	return r
+}
+
+func (r ApiGetSummarySummaryGetRequest) Execute() (*DhcpSummaryResponse, *http.Response, error) {
+	return r.ApiService.GetSummarySummaryGetExecute(r)
+}
+
+/*
+GetSummarySummaryGet Get Summary
+
+Return lease, reservation, and pool counts.
+
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@return ApiGetSummarySummaryGetRequest
+*/
+func (a *DefaultAPIService) GetSummarySummaryGet(ctx context.Context) ApiGetSummarySummaryGetRequest {
+	return ApiGetSummarySummaryGetRequest{
+		ApiService: a,
+		ctx:        ctx,
+	}
+}
+
+// Execute executes the request
+//
+//	@return DhcpSummaryResponse
+func (a *DefaultAPIService) GetSummarySummaryGetExecute(r ApiGetSummarySummaryGetRequest) (*DhcpSummaryResponse, *http.Response, error) {
+	var (
+		localVarHTTPMethod  = http.MethodGet
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *DhcpSummaryResponse
+	)
+
+	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "DefaultAPIService.GetSummarySummaryGet")
+	if err != nil {
+		return localVarReturnValue, nil, &GenericOpenAPIError{error: err.Error()}
+	}
+
+	localVarPath := localBasePath + "/summary"
+
+	localVarHeaderParams := make(map[string]string)
+	localVarQueryParams := url.Values{}
+	localVarFormParams := url.Values{}
+
+	if r.ipVersion != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "ip_version", r.ipVersion, "form", "")
+	} else {
+		var defaultValue IpVersion = 4
+		parameterAddToHeaderOrQuery(localVarQueryParams, "ip_version", defaultValue, "form", "")
+		r.ipVersion = &defaultValue
+	}
+	// to determine the Content-Type header
+	localVarHTTPContentTypes := []string{}
+
+	// set Content-Type header
+	localVarHTTPContentType := selectHeaderContentType(localVarHTTPContentTypes)
+	if localVarHTTPContentType != "" {
+		localVarHeaderParams["Content-Type"] = localVarHTTPContentType
+	}
+
+	// to determine the Accept header
+	localVarHTTPHeaderAccepts := []string{"application/json"}
+
+	// set Accept header
+	localVarHTTPHeaderAccept := selectHeaderAccept(localVarHTTPHeaderAccepts)
+	if localVarHTTPHeaderAccept != "" {
+		localVarHeaderParams["Accept"] = localVarHTTPHeaderAccept
+	}
+	req, err := a.client.prepareRequest(r.ctx, localVarPath, localVarHTTPMethod, localVarPostBody, localVarHeaderParams, localVarQueryParams, localVarFormParams, formFiles)
+	if err != nil {
+		return localVarReturnValue, nil, err
+	}
+
+	localVarHTTPResponse, err := a.client.callAPI(req)
+	if err != nil || localVarHTTPResponse == nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	localVarBody, err := io.ReadAll(localVarHTTPResponse.Body)
+	localVarHTTPResponse.Body.Close()
+	localVarHTTPResponse.Body = io.NopCloser(bytes.NewBuffer(localVarBody))
+	if err != nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	if localVarHTTPResponse.StatusCode >= 300 {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: localVarHTTPResponse.Status,
+		}
+		if localVarHTTPResponse.StatusCode == 422 {
+			var v HTTPValidationError
+			err = a.client.decode(&v, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
+			if err != nil {
+				newErr.error = err.Error()
+				return localVarReturnValue, localVarHTTPResponse, newErr
+			}
+			newErr.error = formatErrorMessage(localVarHTTPResponse.Status, &v)
+			newErr.model = v
+		}
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	err = a.client.decode(&localVarReturnValue, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
+	if err != nil {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: err.Error(),
+		}
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	return localVarReturnValue, localVarHTTPResponse, nil
+}
+
 type ApiHealthcheckHealthcheckGetRequest struct {
 	ctx        context.Context
 	ApiService *DefaultAPIService
@@ -351,6 +832,495 @@ func (a *DefaultAPIService) HealthcheckHealthcheckGetExecute(r ApiHealthcheckHea
 		newErr := &GenericOpenAPIError{
 			body:  localVarBody,
 			error: localVarHTTPResponse.Status,
+		}
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	err = a.client.decode(&localVarReturnValue, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
+	if err != nil {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: err.Error(),
+		}
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	return localVarReturnValue, localVarHTTPResponse, nil
+}
+
+type ApiListLeasesLeaseGetRequest struct {
+	ctx        context.Context
+	ApiService *DefaultAPIService
+	ipVersion  *IpVersion
+	limit      *int32
+	cursor     *string
+	search     *string
+	subnet     *string
+}
+
+func (r ApiListLeasesLeaseGetRequest) IpVersion(ipVersion IpVersion) ApiListLeasesLeaseGetRequest {
+	r.ipVersion = &ipVersion
+	return r
+}
+
+func (r ApiListLeasesLeaseGetRequest) Limit(limit int32) ApiListLeasesLeaseGetRequest {
+	r.limit = &limit
+	return r
+}
+
+func (r ApiListLeasesLeaseGetRequest) Cursor(cursor string) ApiListLeasesLeaseGetRequest {
+	r.cursor = &cursor
+	return r
+}
+
+func (r ApiListLeasesLeaseGetRequest) Search(search string) ApiListLeasesLeaseGetRequest {
+	r.search = &search
+	return r
+}
+
+func (r ApiListLeasesLeaseGetRequest) Subnet(subnet string) ApiListLeasesLeaseGetRequest {
+	r.subnet = &subnet
+	return r
+}
+
+func (r ApiListLeasesLeaseGetRequest) Execute() (*LeasePageResponse, *http.Response, error) {
+	return r.ApiService.ListLeasesLeaseGetExecute(r)
+}
+
+/*
+ListLeasesLeaseGet List Leases
+
+Return a cursor-paginated, optionally filtered page of normalized leases.
+
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@return ApiListLeasesLeaseGetRequest
+*/
+func (a *DefaultAPIService) ListLeasesLeaseGet(ctx context.Context) ApiListLeasesLeaseGetRequest {
+	return ApiListLeasesLeaseGetRequest{
+		ApiService: a,
+		ctx:        ctx,
+	}
+}
+
+// Execute executes the request
+//
+//	@return LeasePageResponse
+func (a *DefaultAPIService) ListLeasesLeaseGetExecute(r ApiListLeasesLeaseGetRequest) (*LeasePageResponse, *http.Response, error) {
+	var (
+		localVarHTTPMethod  = http.MethodGet
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *LeasePageResponse
+	)
+
+	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "DefaultAPIService.ListLeasesLeaseGet")
+	if err != nil {
+		return localVarReturnValue, nil, &GenericOpenAPIError{error: err.Error()}
+	}
+
+	localVarPath := localBasePath + "/lease"
+
+	localVarHeaderParams := make(map[string]string)
+	localVarQueryParams := url.Values{}
+	localVarFormParams := url.Values{}
+
+	if r.ipVersion != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "ip_version", r.ipVersion, "form", "")
+	} else {
+		var defaultValue IpVersion = 4
+		parameterAddToHeaderOrQuery(localVarQueryParams, "ip_version", defaultValue, "form", "")
+		r.ipVersion = &defaultValue
+	}
+	if r.limit != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "limit", r.limit, "form", "")
+	} else {
+		var defaultValue int32 = 100
+		parameterAddToHeaderOrQuery(localVarQueryParams, "limit", defaultValue, "form", "")
+		r.limit = &defaultValue
+	}
+	if r.cursor != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "cursor", r.cursor, "form", "")
+	}
+	if r.search != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "search", r.search, "form", "")
+	}
+	if r.subnet != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "subnet", r.subnet, "form", "")
+	}
+	// to determine the Content-Type header
+	localVarHTTPContentTypes := []string{}
+
+	// set Content-Type header
+	localVarHTTPContentType := selectHeaderContentType(localVarHTTPContentTypes)
+	if localVarHTTPContentType != "" {
+		localVarHeaderParams["Content-Type"] = localVarHTTPContentType
+	}
+
+	// to determine the Accept header
+	localVarHTTPHeaderAccepts := []string{"application/json"}
+
+	// set Accept header
+	localVarHTTPHeaderAccept := selectHeaderAccept(localVarHTTPHeaderAccepts)
+	if localVarHTTPHeaderAccept != "" {
+		localVarHeaderParams["Accept"] = localVarHTTPHeaderAccept
+	}
+	req, err := a.client.prepareRequest(r.ctx, localVarPath, localVarHTTPMethod, localVarPostBody, localVarHeaderParams, localVarQueryParams, localVarFormParams, formFiles)
+	if err != nil {
+		return localVarReturnValue, nil, err
+	}
+
+	localVarHTTPResponse, err := a.client.callAPI(req)
+	if err != nil || localVarHTTPResponse == nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	localVarBody, err := io.ReadAll(localVarHTTPResponse.Body)
+	localVarHTTPResponse.Body.Close()
+	localVarHTTPResponse.Body = io.NopCloser(bytes.NewBuffer(localVarBody))
+	if err != nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	if localVarHTTPResponse.StatusCode >= 300 {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: localVarHTTPResponse.Status,
+		}
+		if localVarHTTPResponse.StatusCode == 422 {
+			var v HTTPValidationError
+			err = a.client.decode(&v, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
+			if err != nil {
+				newErr.error = err.Error()
+				return localVarReturnValue, localVarHTTPResponse, newErr
+			}
+			newErr.error = formatErrorMessage(localVarHTTPResponse.Status, &v)
+			newErr.model = v
+		}
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	err = a.client.decode(&localVarReturnValue, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
+	if err != nil {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: err.Error(),
+		}
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	return localVarReturnValue, localVarHTTPResponse, nil
+}
+
+type ApiListPoolsPoolGetRequest struct {
+	ctx        context.Context
+	ApiService *DefaultAPIService
+	ipVersion  *IpVersion
+	limit      *int32
+	cursor     *string
+	search     *string
+	subnet     *string
+}
+
+func (r ApiListPoolsPoolGetRequest) IpVersion(ipVersion IpVersion) ApiListPoolsPoolGetRequest {
+	r.ipVersion = &ipVersion
+	return r
+}
+
+func (r ApiListPoolsPoolGetRequest) Limit(limit int32) ApiListPoolsPoolGetRequest {
+	r.limit = &limit
+	return r
+}
+
+func (r ApiListPoolsPoolGetRequest) Cursor(cursor string) ApiListPoolsPoolGetRequest {
+	r.cursor = &cursor
+	return r
+}
+
+func (r ApiListPoolsPoolGetRequest) Search(search string) ApiListPoolsPoolGetRequest {
+	r.search = &search
+	return r
+}
+
+func (r ApiListPoolsPoolGetRequest) Subnet(subnet string) ApiListPoolsPoolGetRequest {
+	r.subnet = &subnet
+	return r
+}
+
+func (r ApiListPoolsPoolGetRequest) Execute() (*PoolPageResponse, *http.Response, error) {
+	return r.ApiService.ListPoolsPoolGetExecute(r)
+}
+
+/*
+ListPoolsPoolGet List Pools
+
+Return a cursor-paginated, optionally filtered configured-pool page.
+
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@return ApiListPoolsPoolGetRequest
+*/
+func (a *DefaultAPIService) ListPoolsPoolGet(ctx context.Context) ApiListPoolsPoolGetRequest {
+	return ApiListPoolsPoolGetRequest{
+		ApiService: a,
+		ctx:        ctx,
+	}
+}
+
+// Execute executes the request
+//
+//	@return PoolPageResponse
+func (a *DefaultAPIService) ListPoolsPoolGetExecute(r ApiListPoolsPoolGetRequest) (*PoolPageResponse, *http.Response, error) {
+	var (
+		localVarHTTPMethod  = http.MethodGet
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *PoolPageResponse
+	)
+
+	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "DefaultAPIService.ListPoolsPoolGet")
+	if err != nil {
+		return localVarReturnValue, nil, &GenericOpenAPIError{error: err.Error()}
+	}
+
+	localVarPath := localBasePath + "/pool"
+
+	localVarHeaderParams := make(map[string]string)
+	localVarQueryParams := url.Values{}
+	localVarFormParams := url.Values{}
+
+	if r.ipVersion != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "ip_version", r.ipVersion, "form", "")
+	} else {
+		var defaultValue IpVersion = 4
+		parameterAddToHeaderOrQuery(localVarQueryParams, "ip_version", defaultValue, "form", "")
+		r.ipVersion = &defaultValue
+	}
+	if r.limit != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "limit", r.limit, "form", "")
+	} else {
+		var defaultValue int32 = 100
+		parameterAddToHeaderOrQuery(localVarQueryParams, "limit", defaultValue, "form", "")
+		r.limit = &defaultValue
+	}
+	if r.cursor != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "cursor", r.cursor, "form", "")
+	}
+	if r.search != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "search", r.search, "form", "")
+	}
+	if r.subnet != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "subnet", r.subnet, "form", "")
+	}
+	// to determine the Content-Type header
+	localVarHTTPContentTypes := []string{}
+
+	// set Content-Type header
+	localVarHTTPContentType := selectHeaderContentType(localVarHTTPContentTypes)
+	if localVarHTTPContentType != "" {
+		localVarHeaderParams["Content-Type"] = localVarHTTPContentType
+	}
+
+	// to determine the Accept header
+	localVarHTTPHeaderAccepts := []string{"application/json"}
+
+	// set Accept header
+	localVarHTTPHeaderAccept := selectHeaderAccept(localVarHTTPHeaderAccepts)
+	if localVarHTTPHeaderAccept != "" {
+		localVarHeaderParams["Accept"] = localVarHTTPHeaderAccept
+	}
+	req, err := a.client.prepareRequest(r.ctx, localVarPath, localVarHTTPMethod, localVarPostBody, localVarHeaderParams, localVarQueryParams, localVarFormParams, formFiles)
+	if err != nil {
+		return localVarReturnValue, nil, err
+	}
+
+	localVarHTTPResponse, err := a.client.callAPI(req)
+	if err != nil || localVarHTTPResponse == nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	localVarBody, err := io.ReadAll(localVarHTTPResponse.Body)
+	localVarHTTPResponse.Body.Close()
+	localVarHTTPResponse.Body = io.NopCloser(bytes.NewBuffer(localVarBody))
+	if err != nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	if localVarHTTPResponse.StatusCode >= 300 {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: localVarHTTPResponse.Status,
+		}
+		if localVarHTTPResponse.StatusCode == 422 {
+			var v HTTPValidationError
+			err = a.client.decode(&v, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
+			if err != nil {
+				newErr.error = err.Error()
+				return localVarReturnValue, localVarHTTPResponse, newErr
+			}
+			newErr.error = formatErrorMessage(localVarHTTPResponse.Status, &v)
+			newErr.model = v
+		}
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	err = a.client.decode(&localVarReturnValue, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
+	if err != nil {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: err.Error(),
+		}
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	return localVarReturnValue, localVarHTTPResponse, nil
+}
+
+type ApiListReservationsReservationGetRequest struct {
+	ctx        context.Context
+	ApiService *DefaultAPIService
+	ipVersion  *IpVersion
+	limit      *int32
+	cursor     *string
+	search     *string
+	subnet     *string
+}
+
+func (r ApiListReservationsReservationGetRequest) IpVersion(ipVersion IpVersion) ApiListReservationsReservationGetRequest {
+	r.ipVersion = &ipVersion
+	return r
+}
+
+func (r ApiListReservationsReservationGetRequest) Limit(limit int32) ApiListReservationsReservationGetRequest {
+	r.limit = &limit
+	return r
+}
+
+func (r ApiListReservationsReservationGetRequest) Cursor(cursor string) ApiListReservationsReservationGetRequest {
+	r.cursor = &cursor
+	return r
+}
+
+func (r ApiListReservationsReservationGetRequest) Search(search string) ApiListReservationsReservationGetRequest {
+	r.search = &search
+	return r
+}
+
+func (r ApiListReservationsReservationGetRequest) Subnet(subnet string) ApiListReservationsReservationGetRequest {
+	r.subnet = &subnet
+	return r
+}
+
+func (r ApiListReservationsReservationGetRequest) Execute() (*ReservationPageResponse, *http.Response, error) {
+	return r.ApiService.ListReservationsReservationGetExecute(r)
+}
+
+/*
+ListReservationsReservationGet List Reservations
+
+Return a cursor-paginated, optionally filtered reservation page.
+
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@return ApiListReservationsReservationGetRequest
+*/
+func (a *DefaultAPIService) ListReservationsReservationGet(ctx context.Context) ApiListReservationsReservationGetRequest {
+	return ApiListReservationsReservationGetRequest{
+		ApiService: a,
+		ctx:        ctx,
+	}
+}
+
+// Execute executes the request
+//
+//	@return ReservationPageResponse
+func (a *DefaultAPIService) ListReservationsReservationGetExecute(r ApiListReservationsReservationGetRequest) (*ReservationPageResponse, *http.Response, error) {
+	var (
+		localVarHTTPMethod  = http.MethodGet
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *ReservationPageResponse
+	)
+
+	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "DefaultAPIService.ListReservationsReservationGet")
+	if err != nil {
+		return localVarReturnValue, nil, &GenericOpenAPIError{error: err.Error()}
+	}
+
+	localVarPath := localBasePath + "/reservation"
+
+	localVarHeaderParams := make(map[string]string)
+	localVarQueryParams := url.Values{}
+	localVarFormParams := url.Values{}
+
+	if r.ipVersion != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "ip_version", r.ipVersion, "form", "")
+	} else {
+		var defaultValue IpVersion = 4
+		parameterAddToHeaderOrQuery(localVarQueryParams, "ip_version", defaultValue, "form", "")
+		r.ipVersion = &defaultValue
+	}
+	if r.limit != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "limit", r.limit, "form", "")
+	} else {
+		var defaultValue int32 = 100
+		parameterAddToHeaderOrQuery(localVarQueryParams, "limit", defaultValue, "form", "")
+		r.limit = &defaultValue
+	}
+	if r.cursor != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "cursor", r.cursor, "form", "")
+	}
+	if r.search != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "search", r.search, "form", "")
+	}
+	if r.subnet != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "subnet", r.subnet, "form", "")
+	}
+	// to determine the Content-Type header
+	localVarHTTPContentTypes := []string{}
+
+	// set Content-Type header
+	localVarHTTPContentType := selectHeaderContentType(localVarHTTPContentTypes)
+	if localVarHTTPContentType != "" {
+		localVarHeaderParams["Content-Type"] = localVarHTTPContentType
+	}
+
+	// to determine the Accept header
+	localVarHTTPHeaderAccepts := []string{"application/json"}
+
+	// set Accept header
+	localVarHTTPHeaderAccept := selectHeaderAccept(localVarHTTPHeaderAccepts)
+	if localVarHTTPHeaderAccept != "" {
+		localVarHeaderParams["Accept"] = localVarHTTPHeaderAccept
+	}
+	req, err := a.client.prepareRequest(r.ctx, localVarPath, localVarHTTPMethod, localVarPostBody, localVarHeaderParams, localVarQueryParams, localVarFormParams, formFiles)
+	if err != nil {
+		return localVarReturnValue, nil, err
+	}
+
+	localVarHTTPResponse, err := a.client.callAPI(req)
+	if err != nil || localVarHTTPResponse == nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	localVarBody, err := io.ReadAll(localVarHTTPResponse.Body)
+	localVarHTTPResponse.Body.Close()
+	localVarHTTPResponse.Body = io.NopCloser(bytes.NewBuffer(localVarBody))
+	if err != nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	if localVarHTTPResponse.StatusCode >= 300 {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: localVarHTTPResponse.Status,
+		}
+		if localVarHTTPResponse.StatusCode == 422 {
+			var v HTTPValidationError
+			err = a.client.decode(&v, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
+			if err != nil {
+				newErr.error = err.Error()
+				return localVarReturnValue, localVarHTTPResponse, newErr
+			}
+			newErr.error = formatErrorMessage(localVarHTTPResponse.Status, &v)
+			newErr.model = v
 		}
 		return localVarReturnValue, localVarHTTPResponse, newErr
 	}
