@@ -91,11 +91,20 @@ test.describe("Site Backup Form", () => {
       return request.url().includes("/v1/workflow/ngc/site_backup");
     });
 
+    await page.goto(
+      "/workflows/sitebackupworkflow/form?backup_enabled_only=false"
+    );
+
+    await expect(page.getByLabel("Backup enabled only")).not.toBeChecked();
+
     await page.locator("form").getByRole("button", { name: "Site" }).click();
     await page.getByRole("dialog").getByText(SITES_LIST.pdx01).click();
     await page
       .getByRole("heading", { name: "New Site Configuration Backup Workflow" })
       .click();
+
+    await page.getByLabel("Backup enabled only").click();
+    await expect(page.getByLabel("Backup enabled only")).toBeChecked();
 
     await page.getByRole("button", { name: "Submit" }).click();
 

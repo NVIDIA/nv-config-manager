@@ -14,7 +14,7 @@ Before running, confirm the following are in place for the devices you expect to
 
 - **Devices exist in Nautobot** with primary IPv4, platform, and managed status. The workflow resolves the device list from Nautobot using your site, role, status, and tenant filters.
 - **Devices are reachable** from Config Manager on their management addresses, and credentials are current in the secrets store.
-- **Intended configurations are available** in the [Config Store](../../config-store/index.mdx) when you want drift detection on each child backup. Children compare running config against rendered intended config unless a commit ID is supplied.
+- **Intended configurations are available** in the [Config Store](../../config-store/index.mdx) when you want drift detection on each child backup. Each child compares running config against the device's rendered intended configuration from the Config Store.
 - **Backup paths are configured** on device records so each child can record where the snapshot landed.
 - **User attribution is present.** UI and CLI submissions populate the requesting user automatically; the workflow rejects requests with no user attached.
 
