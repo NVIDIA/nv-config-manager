@@ -29,7 +29,7 @@ from typing import Any
 import re
 
 import yaml
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 _KUBERNETES_NAMESPACE_RE = re.compile(r"^[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?$")
 
@@ -442,6 +442,8 @@ class CNPGBackupConfig(BaseModel):
 
 class MonitoringConfig(BaseModel):
     """Monitoring / observability configuration."""
+
+    model_config = ConfigDict(validate_assignment=True)
 
     enabled: bool = False
     # Namespace where Prometheus scrapes from (for network policy ingress).
