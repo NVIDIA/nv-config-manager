@@ -56,6 +56,7 @@ class NautobotClient:
         verify: bool | str = True,
         timeout: int = 30,
         headers: dict[str, str] | Callable[[], dict[str, str]] | None = None,
+        connection_limit: int = 100,
     ) -> None:
         """Initialize the Nautobot client.
 
@@ -66,12 +67,17 @@ class NautobotClient:
             timeout: Default request timeout in seconds
             headers: Static dict or callable returning fresh headers per-request.
                 If set, these headers take precedence over token auth.
+            connection_limit: Max simultaneous TCP connections in the session's
+                pool. Only meaningful when the client (and therefore its session)
+                is shared across requests; a per-request client gets its own pool
+                and this cap does not bound total concurrency toward Nautobot.
         """
         self.nautobot_url = nautobot_url.rstrip("/") + "/"
         self.token = token
         self._verify = verify
         self._timeout = timeout
         self._headers = headers
+        self._connection_limit = connection_limit
         self.graphql_endpoint = f"{self.nautobot_url}api/graphql/"
         self.rest_endpoint = f"{self.nautobot_url}api/"
         self._session: aiohttp.ClientSession | None = None
@@ -142,8 +148,8 @@ class NautobotClient:
                 ssl_context.check_hostname = False
                 ssl_context.verify_mode = ssl.CERT_NONE
 
-            connector = TCPConnector(ssl=ssl_context)
-            timeout = ClientTimeout(total=self._timeout, connect=10)
+            connector = TCPConnector(ssl=ssl_context, limit=self._connection_limit)
+            timeout = ClientTimeout(total=self._timeout, connect=min(10, self._timeout))
 
             self._session = aiohttp.ClientSession(
                 connector=connector,
