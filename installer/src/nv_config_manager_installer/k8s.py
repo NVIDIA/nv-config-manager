@@ -540,6 +540,33 @@ class K8sClient:
             if exc.status not in {404, 409}:
                 raise
 
+    def renew_lease(
+        self,
+        name: str,
+        namespace: str,
+        holder_identity: str,
+        *,
+        duration_seconds: int,
+    ) -> None:
+        """Renew a held Lease, failing if another updater has claimed it."""
+        try:
+            lease = self.coordination_v1.read_namespaced_lease(name, namespace)
+        except ApiException as exc:
+            if exc.status == 404:
+                raise RuntimeError(f"PVC update lease '{name}' no longer exists.") from exc
+            raise
+
+        if lease.spec is None or lease.spec.holder_identity != holder_identity:
+            raise RuntimeError(f"PVC update lease '{name}' is no longer held by this run.")
+        lease.spec.renew_time = datetime.datetime.now(datetime.UTC)
+        lease.spec.lease_duration_seconds = duration_seconds
+        try:
+            self.coordination_v1.replace_namespaced_lease(name, namespace, lease)
+        except ApiException as exc:
+            if exc.status == 409:
+                raise RuntimeError(f"PVC update lease '{name}' changed during renewal.") from exc
+            raise
+
     # -- Pod operations -------------------------------------------------------
 
     def delete_pod(self, name: str, namespace: str, wait: bool = False) -> None:

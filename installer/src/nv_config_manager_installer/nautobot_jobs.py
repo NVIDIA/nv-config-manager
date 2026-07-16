@@ -100,6 +100,18 @@ class NautobotJobRunner:
                 time.sleep(self._poll_interval)
         raise TimeoutError("Nautobot API did not become healthy within timeout")
 
+    @staticmethod
+    def _running_pod_name(pods: Any, action: str) -> str:
+        """Return an eligible Nautobot pod name for a shell-based fallback."""
+        running_pods = [
+            pod
+            for pod in pods.items
+            if pod.status and pod.status.phase == "Running" and pod.metadata and pod.metadata.name
+        ]
+        if not running_pods:
+            raise RuntimeError(f"Could not find a running Nautobot pod to {action}")
+        return running_pods[0].metadata.name
+
     def _reload_jobs(self) -> None:
         """Reload JOBS_ROOT in Nautobot so freshly mounted custom jobs are registered."""
         pods = self._k8s.v1.list_namespaced_pod(
@@ -109,15 +121,7 @@ class NautobotJobRunner:
                 f"app.kubernetes.io/instance={self._release_name}"
             ),
         )
-        running_pods = [
-            pod
-            for pod in pods.items
-            if pod.status and pod.status.phase == "Running" and pod.metadata and pod.metadata.name
-        ]
-        if not running_pods:
-            raise RuntimeError("Could not find a running Nautobot pod to reload custom jobs")
-
-        pod_name = running_pods[0].metadata.name
+        pod_name = self._running_pod_name(pods, "reload custom jobs")
         self._on_log("Reloading Nautobot job registry...")
         self._k8s.exec_command(
             pod_name,
@@ -206,9 +210,7 @@ class NautobotJobRunner:
                     f"app.kubernetes.io/instance={self._release_name}"
                 ),
             )
-            if not pods.items:
-                raise RuntimeError("Could not find a Nautobot pod to enable the job") from None
-            pod_name = pods.items[0].metadata.name
+            pod_name = self._running_pod_name(pods, "enable the job")
             self._k8s.exec_command(
                 pod_name,
                 self._namespace,
