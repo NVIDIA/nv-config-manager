@@ -1529,6 +1529,10 @@ networkDhcp:
   # Kea configuration
   kea:
     storkAgentPort: 9457
+# See docs/overview/observability.mdx (Tracing) for configuration details.
+observability:
+  enabled: false
+  otlpEndpoint: ""
 # =============================================================================
 # Service: Temporal (Workflows)
 # =============================================================================
@@ -1762,21 +1766,6 @@ temporal:
   # - key: system.enableActivityEagerExecution
   #   value: true
   #   constraints: []
-  # ---------------------------------------------------------------------------
-  # Observability — OTel trace + metric export
-  # ---------------------------------------------------------------------------
-  # When enabled, the Temporal worker, API, scheduler, and archive export OTLP
-  # traces (Python OTel SDK) and Temporal runtime metrics to an existing OTLP
-  # collector via standard OTel env vars — no per-pod sidecar. Set otlpEndpoint
-  # to the collector in your environment (see values-observability.yaml for the
-  # local dev example using Alloy; for managed clusters use the cluster collector).
-  observability:
-    enabled: false
-    # OTLP gRPC endpoint of an existing collector. Optional — defaults to the
-    # in-cluster Alloy at http://alloy.<namespace>.svc.cluster.local:4317.
-    # Override to target a different collector (e.g. managed cluster collector).
-    otlpEndpoint: ""
-
   # Redfish / BMC workflows
   # Enable only if Redfish provisioning workflows are in use.
   # When disabled, redfish-creds secret is not required.
