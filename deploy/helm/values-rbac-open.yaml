@@ -24,6 +24,11 @@ rbac:
         - all
       execute_roles:
         - all
+    - name: ConfigDiffWorkflow
+      read_roles:
+        - all
+      execute_roles:
+        - all
     - name: TenantDeployWorkflow
       read_roles:
         - all

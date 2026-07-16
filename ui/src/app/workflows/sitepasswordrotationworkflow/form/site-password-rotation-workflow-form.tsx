@@ -29,6 +29,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { SitePasswordRotationWorkflowInput } from "@/types/data-table.types";
 import { useEnvData, useDevices } from "@/hooks";
 import { startWorkflow, sanitizeUrl } from "@/lib/utils";
+import { DEFAULT_SITE_WORKFLOW_STATUSES } from "@/lib/workflow-defaults";
 import { useRuntimeConfig } from "@/config/runtime";
 import { WorkflowFormField } from "@/components/forms/formfield";
 import { fetcher } from "@/lib/fetcher";
@@ -38,12 +39,14 @@ const SitePasswordRotationWorkflowFormSchema = z.object({
   location: z.string().trim().min(1, { message: "Location is required" }),
   selected_secret: z.string().trim().min(1, { message: "Secret is required" }),
   roles: z.union([z.string(), z.array(z.string())])
-    .transform((val: string | string[]) => (Array.isArray(val) ? val : []))
-    .pipe(z.array(z.string()).min(1, { message: "Roles is required" })),
+    .optional()
+    .transform((val: string | string[] | undefined) => (Array.isArray(val) ? val : []))
+    .pipe(z.array(z.string())),
   status: z.union([z.string(), z.array(z.string())])
-    .transform((val: string | string[]) => (Array.isArray(val) ? val : []))
+    .optional()
+    .transform((val: string | string[] | undefined) => (Array.isArray(val) ? val : []))
     .pipe(z.array(z.string()).min(1, { message: "Device Status is required" })),
-  tenant: z.string().trim().min(1, { message: "Tenant is required" }),
+  tenant: z.string().trim().optional().default(""),
 });
 
 type SitePasswordRotationFormData = z.infer<
@@ -291,7 +294,7 @@ export const SitePasswordRotationWorkflowForm = () => {
       location: queryLocation || "",
       selected_secret: querySecret || "",
       roles: queryRoles,
-      status: queryStatuses,
+      status: queryStatuses.length > 0 ? queryStatuses : [...DEFAULT_SITE_WORKFLOW_STATUSES],
       tenant: queryTenant || "",
     },
   });
@@ -365,7 +368,7 @@ export const SitePasswordRotationWorkflowForm = () => {
       selected_secret: data.selected_secret,
       roles: data.roles,
       status: data.status,
-      tenant: data.tenant,
+      tenant: data.tenant || undefined,
     };
 
     try {

@@ -60,6 +60,11 @@ Configuration (environment variables on the Nautobot pod)::
     # superuser access on their next login.  When unset (default) the
     # feature is disabled and no user's privileges are touched.
     NV_CONFIG_MANAGER_SUPERUSER_GROUPS     = nautobot-admins,nv-config-manager-admins
+    # Optional path to a YAML group-mapping file (see :mod:`nv_config_manager_auth.rbac`)
+    # that drives Django Group + ObjectPermission sync per JWT login.  When
+    # missing or unset, group sync is disabled and only the
+    # ``NV_CONFIG_MANAGER_SUPERUSER_GROUPS`` superuser shortcut applies.
+    NV_CONFIG_MANAGER_GROUP_MAPPING_PATH   = /app/config/group-mapping.yaml
 
 Provider flags:
 
@@ -117,6 +122,12 @@ def _derive_jwks_uri(issuer: str) -> str:
 
 
 def _load_jwt_providers() -> list[JwtProviderConfig]:
+    """Parse ``NV_CONFIG_MANAGER_JWT_PROVIDERS`` JSON into provider configs.
+
+    Returns an empty list when the env var is unset or not valid JSON;
+    entries without an ``issuer`` are skipped and the JWKS URI is derived
+    from the issuer when not supplied.
+    """
     raw = os.getenv("NV_CONFIG_MANAGER_JWT_PROVIDERS", "")
     if not raw:
         return []
@@ -154,6 +165,12 @@ _jwks_lock = threading.Lock()
 
 
 def _get_jwks_client(jwks_uri: str) -> pyjwt.PyJWKClient:
+    """Return a cached :class:`PyJWKClient` for *jwks_uri*, creating one if needed.
+
+    Clients are memoised per URI behind a lock (double-checked) so JWKS key
+    sets are fetched once and shared across threads rather than re-fetched
+    on every request.
+    """
     client = _jwks_clients.get(jwks_uri)
     if client is not None:
         return client
@@ -167,10 +184,12 @@ def _get_jwks_client(jwks_uri: str) -> pyjwt.PyJWKClient:
 
 
 def _get_spiffe_jwks_uri() -> str:
+    """Return the SPIFFE JWKS URI (``SPIFFE_JWKS_URI``), or "" when SPIFFE is off."""
     return os.getenv("SPIFFE_JWKS_URI", "")
 
 
 def _get_spiffe_audiences() -> list[str]:
+    """Return the accepted SPIFFE audiences parsed from ``SPIFFE_AUDIENCES``."""
     raw = os.getenv("SPIFFE_AUDIENCES", "")
     return [a.strip() for a in raw.split(",") if a.strip()]
 
@@ -210,6 +229,7 @@ def _spiffe_id_to_workload_name(spiffe_id: str) -> str:
 
 
 def _strip_email_domain(email: str) -> str:
+    """Return the local part of an email/UPN (text before ``@``), unchanged if none."""
     if "@" in email:
         return email.split("@", 1)[0]
     return email
@@ -231,20 +251,51 @@ def _extract_groups(claims: dict[str, Any], claim: str) -> set[str]:
     return set()
 
 
-def _sync_superuser_status(user: Any, user_groups: set[str]) -> None:
+def _sync_superuser_status(
+    user: Any,
+    user_groups: set[str],
+    *,
+    extra_superuser_match: bool = False,
+    extra_superuser_enabled: bool = False,
+) -> None:
     """Reconcile Django ``is_superuser``/``is_staff`` against ``NV_CONFIG_MANAGER_SUPERUSER_GROUPS``.
 
     Called on every JWT login so privilege changes in the IdP propagate
-    without manual intervention.  No-op when the env var is unset, which
-    leaves any pre-existing superusers (e.g. the bootstrap ``admin`` user
-    created by the migration init container) untouched.
+    without manual intervention.  The function is a no-op only when
+    *neither* superuser source is configured -- i.e.
+    ``NV_CONFIG_MANAGER_SUPERUSER_GROUPS`` is unset **and**
+    ``extra_superuser_enabled`` is False -- so any pre-existing superusers
+    (e.g. the bootstrap ``admin`` user created by the migration init
+    container) are left untouched.
+
+    The two extra-source flags decouple "mapping-based RBAC is operational"
+    from "this specific user matches a superuser entry on this login", so
+    revocation works correctly: an operator who opts into group-mapping
+    RBAC gets ``extra_superuser_enabled=True`` regardless of whether the
+    *current* mapping happens to declare superuser entries, and a logging-in
+    user who no longer matches any superuser source flips
+    ``extra_superuser_match`` to False -- which together drive demotion.
+    Conflating these is how someone promoted on a previous login can stay
+    an accidental superuser after the IdP group is revoked or the entire
+    mapping is wiped.
+
+    ``extra_superuser_match`` -- this user matched an ``is_superuser: true``
+    mapping entry on this login.  Folded into the same promote-or-demote
+    decision as the env-var list.
+
+    ``extra_superuser_enabled`` -- the operator has opted into group-mapping
+    RBAC (see :func:`nv_config_manager_auth.rbac.mapping_is_configured`).
+    When True we reconcile ``is_superuser`` even if the loaded mapping is
+    currently empty (operator wrote ``groupMapping: []`` to revoke everyone)
+    or failed to parse (fail-closed): the demotion path must run so
+    previously-granted superusers cannot persist.
     """
     superuser_groups = _get_superuser_groups()
-    if not superuser_groups:
+    if not superuser_groups and not extra_superuser_enabled:
         return
 
     matched = user_groups & superuser_groups
-    should_be_superuser = bool(matched)
+    should_be_superuser = bool(matched) or extra_superuser_match
 
     fields: list[str] = []
     if user.is_superuser != should_be_superuser:
@@ -271,6 +322,11 @@ def _sync_superuser_status(user: Any, user_groups: set[str]) -> None:
 
 
 def _get_or_create_service_user() -> Any:
+    """Return the shared Nautobot service user, creating it on first use.
+
+    Used for non-human providers (SPIFFE / service JWTs) where requests map
+    to a single shared identity rather than an individual Django user.
+    """
     service_username = os.getenv("NV_CONFIG_MANAGER_SERVICE_USER", "nv-config-manager-service")
     user, created = User.objects.get_or_create(
         username=service_username,
@@ -309,7 +365,58 @@ def _get_or_create_user_from_claims(
         user.save(update_fields=["email"])
 
     user_groups = _extract_groups(claims, provider.claim_groups)
-    _sync_superuser_status(user, user_groups)
+
+    # Avoid an import cycle at module load: ``rbac`` pulls in Nautobot/Django
+    # models which can't be imported until the app registry is ready.
+    from nv_config_manager_auth import rbac  # noqa: PLC0415 -- defer until first login
+
+    # Three states we must distinguish (truthiness of ``mapping`` alone is
+    # not enough -- valid-empty and load-failed both look "falsy" but mean
+    # different things):
+    #
+    # * unconfigured: operator never opted in -> skip sync, preserve any
+    #   manual is_superuser / Django Group state set outside the SSO flow.
+    # * configured + loaded OK: run sync.  Empty content means "operator
+    #   wrote ``groupMapping: []`` to revoke everyone"; pass 3 prunes
+    #   everything previously managed.
+    # * configured + load failed: fail closed.  Treat as empty so the
+    #   revoke/demote paths run -- a corrupt YAML must NOT silently
+    #   preserve previously-granted access.  Loud log helps the operator
+    #   spot it; once they fix the YAML, valid grants come back on the
+    #   next login.
+    mapping_configured = rbac.mapping_is_configured()
+    mapping: dict[str, dict[str, Any]] = {}
+    if mapping_configured:
+        try:
+            mapping = rbac.load_group_mapping()
+        except rbac.GroupMappingError:
+            log.exception(
+                "rbac: failed to load group mapping; treating as empty "
+                "(previously-granted access will be revoked on this login)"
+            )
+
+    extra_super = rbac.is_superuser_per_mapping(user_groups, mapping) if mapping else False
+
+    # Nautobot's change-logging signals attribute every create/update/delete to
+    # the user in the active change context.  During ``authenticate()`` no user
+    # is attached to the request yet, so ObjectPermission deletes (the revoke /
+    # prune paths) reach ``_handle_deleted_object`` with a ``None`` user and
+    # raise ``AttributeError: 'NoneType' object has no attribute 'pk'`` -- which,
+    # because the sync is ``@transaction.atomic``, rolls the whole reconciliation
+    # back.  Bind the reconciliation to an explicit web request context for the
+    # authenticating user so deletes succeed and the audit trail is attributed
+    # correctly.
+    from nautobot.extras.context_managers import web_request_context  # noqa: PLC0415 -- defer until first login
+
+    with web_request_context(user, context_detail="nv-config-manager-auth: RBAC sync"):
+        _sync_superuser_status(
+            user,
+            user_groups,
+            extra_superuser_match=extra_super,
+            extra_superuser_enabled=mapping_configured,
+        )
+        if mapping_configured:
+            rbac.sync_groups_and_permissions(user, user_groups, mapping=mapping)
 
     return user
 
@@ -411,6 +518,11 @@ _providers_lock = threading.Lock()
 
 
 def _get_providers() -> list[JwtProviderConfig]:
+    """Return the process-wide JWT provider list, loading it once and caching it.
+
+    The list is parsed from the environment on first call behind a lock
+    (double-checked) so configuration is read a single time per process.
+    """
     global _providers
     if _providers is not None:
         return _providers
@@ -455,6 +567,12 @@ class NVConfigManagerJWTAuthentication(BaseAuthentication):
     keyword = "Bearer"
 
     def authenticate(self, request: Request) -> tuple[Any, str] | None:
+        """Authenticate *request*, trying SPIFFE then each configured JWT provider.
+
+        Returns a ``(user, auth)`` tuple on success, or ``None`` to fall
+        through to the next authenticator when no token is present or no
+        provider accepts the token.
+        """
         token = _extract_token(request)
         if token is None:
             return None
@@ -476,4 +594,5 @@ class NVConfigManagerJWTAuthentication(BaseAuthentication):
         return None
 
     def authenticate_header(self, request: Request) -> str:
+        """Return the ``WWW-Authenticate`` challenge keyword (``Bearer``)."""
         return self.keyword

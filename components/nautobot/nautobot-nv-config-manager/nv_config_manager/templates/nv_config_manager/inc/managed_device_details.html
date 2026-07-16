@@ -35,6 +35,21 @@
   {% endif %}
 </tr>
 <tr>
+  <th scope="row">Live Config Diff</th>
+  {% if temporal_url %}
+    <td>
+      <a href="{{ temporal_url }}/workflows/configdiffworkflow/form?site={{ site|urlencode }}&device-id={{ device_id }}{% if tenant %}&tenant={{ tenant|urlencode }}{% endif %}{% if status %}&status={{ status|urlencode }}{% endif %}"
+         target="_blank" class="btn btn-xs btn-primary">
+        <i class="mdi mdi-file-compare" aria-hidden="true"></i> See Diff
+      </a>
+    </td>
+  {% else %}
+    <td>
+      —
+    </td>
+  {% endif %}
+</tr>
+<tr>
   <th scope="row">Last Config Backup</th>
   {% if config_store_links.last_config_backup %}
   <td>

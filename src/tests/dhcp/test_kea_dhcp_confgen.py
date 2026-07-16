@@ -596,6 +596,58 @@ class MockAdditionalAutoSubnetsClient(MockNautobotClient):
         ]
 
 
+class MockOptionCandidateSubnetConfigClient(MockNautobotClient):
+    """Mock an option candidate whose context repeats generated subnet config."""
+
+    def __init__(self, reservations_in_subnet: bool):
+        super().__init__("https://nautobot.example.com/", "dummy")
+        self.reservations_in_subnet = reservations_in_subnet
+
+    async def load_auto_dhcp_subnets(
+        self, family: int = 4, is_aggregate_managed: bool | None = None
+    ):
+        return [
+            {
+                "prefix": ipaddress.ip_network("10.26.160.0/26"),
+                "gateway": ipaddress.ip_address("10.26.160.1"),
+                "pool_ips": [ipaddress.ip_address("10.26.160.10")],
+                "option_candidates": [
+                    {
+                        "address": ipaddress.ip_address("10.26.160.10"),
+                        "mac_address": "00:11:22:33:44:99",
+                        "serial": "OPTION001",
+                        "device_id": "device-option-candidate",
+                        "device_name": "option-candidate-device",
+                        "interface_name": "eth0",
+                        "interface_role": "management",
+                        "platform": "Cumulus Linux",
+                    }
+                ],
+                "reservations": [],
+            }
+        ]
+
+    async def load_dhcp_contexts(self, is_aggregate_managed: bool | None = None):
+        return {
+            "device-option-candidate": {
+                "dhcp": {
+                    "options": {
+                        "interface_roles": {
+                            "management": {
+                                "reservation_options": {
+                                    "boot-file-name": "http://boot.example.com/boot"
+                                },
+                                "subnet_config": {
+                                    "reservations-in-subnet": self.reservations_in_subnet
+                                },
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+
 class MockMultiplePoolRangesClient(MockNautobotClient):
     """Mock Nautobot client that returns auto subnets with non-contiguous pool IPs."""
 
@@ -791,6 +843,40 @@ async def test_auto_dhcp_subnets_pool_generation():
     assert len(subnet_24["pools"]) == 1
     # Should generate range from 10.23.160.10 to 10.23.160.11
     assert subnet_24["pools"][0]["pool"] == "10.24.160.10-10.24.160.11"
+
+
+@pytest.mark.asyncio
+async def test_option_candidate_allows_matching_generated_subnet_config():
+    """Test context may repeat the generated reservations-in-subnet value."""
+    config = await generate_config(
+        MockOptionCandidateSubnetConfigClient(reservations_in_subnet=True),
+        version=4,
+    )
+
+    subnet = next(
+        subnet for subnet in config["Dhcp4"]["subnet4"] if subnet["subnet"] == "10.26.160.0/26"
+    )
+    assert subnet["reservations-in-subnet"] is True
+    assert subnet["reservations"] == [
+        {
+            "hostname": "option-candidate-device",
+            "option-data": [{"name": "boot-file-name", "data": "http://boot.example.com/boot"}],
+            "hw-address": "00:11:22:33:44:99",
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_option_candidate_rejects_conflicting_generated_subnet_config():
+    """Test context cannot contradict generated reservations-in-subnet value."""
+    with pytest.raises(
+        DhcpConfigGenerationError,
+        match="Cannot override subnet config reservations-in-subnet with False",
+    ):
+        await generate_config(
+            MockOptionCandidateSubnetConfigClient(reservations_in_subnet=False),
+            version=4,
+        )
 
 
 @pytest.mark.asyncio

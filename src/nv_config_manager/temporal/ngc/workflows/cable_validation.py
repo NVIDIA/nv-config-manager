@@ -85,21 +85,8 @@ with workflow.unsafe.imports_passed_through():
 
 ACTIVITY_NO_RETRY_POLICY = RetryPolicy(maximum_attempts=1)
 DEFAULT_ACTIVITY_RETRY_POLICY = RetryPolicy(maximum_attempts=3)
-DEFAULT_CONFIG_MANAGER_ROLES = [
-    "tan-bbr",
-    "cin-core",
-    "cin-spine",
-    "cin-leaf",
-    "tan-core",
-    "tan-spine",
-    "tan-leaf",
-    "smn-core",
-    "smn-spine",
-    "smn-leaf",
-    "smn-aggleaf",
-]
-DEFAULT_CONFIG_MANAGER_STATUS = ["active", "provisioning"]
-DEFAULT_CONFIG_MANAGER_TENANT = "nsv"
+DEFAULT_CONFIG_MANAGER_STATUS = ["Active", "Provisioned"]
+DEFAULT_CONFIG_MANAGER_TENANT = None
 # list of search attributes to clone from parent to child
 CLONE_SEARCH_ATTRS = [
     USER_SEARCH_ATTRIBUTE,
@@ -118,14 +105,14 @@ class SiteCableValidationInput(BaseModel):
 
     site: str = Field(description="Site containing the network devices to validate.")
     roles: list[str] = Field(
-        default=DEFAULT_CONFIG_MANAGER_ROLES,
+        default=[],
         description="Device roles used to filter the selected network devices.",
     )
     status: list[str] = Field(
         default=DEFAULT_CONFIG_MANAGER_STATUS,
         description="Device statuses used to filter the selected network devices.",
     )
-    tenant: str = Field(
+    tenant: str | None = Field(
         default=DEFAULT_CONFIG_MANAGER_TENANT,
         description="Tenant used to filter the selected network devices.",
     )
@@ -212,7 +199,7 @@ class SiteCableValidationWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixi
         site: str
         roles: list[str]
         status: list[str]
-        tenant: str
+        tenant: str | None
         device_type_ids: list[str]
 
     class GetDevicesStageOutput(StageOutput):
@@ -233,6 +220,7 @@ class SiteCableValidationWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixi
                 status=stage_input.status,
                 tenant=stage_input.tenant,
                 device_type_ids=stage_input.device_type_ids,
+                managed_only=True,
                 platforms=SUPPORTED_PLATFORMS,
             ),
             start_to_close_timeout=timedelta(minutes=1),

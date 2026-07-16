@@ -16,7 +16,7 @@ import pytest
 from aioresponses import aioresponses
 from temporalio.exceptions import ApplicationError
 
-from nv_config_manager.temporal.client.nautobot import DeviceVrfInfo
+from nv_config_manager.temporal.client.nautobot import DeviceVrfInfo, NautobotClient
 from nv_config_manager.temporal.common.mixins.device import (
     DeviceBayData,
     HostDeviceData,
@@ -465,8 +465,9 @@ async def test_graphql_query_error():
         )
 
         async with NautobotClient() as client:
-            with pytest.raises(ApplicationError, match="GraphQL error"):
+            with pytest.raises(ApplicationError, match="GraphQL error") as exc_info:
                 await client.graphql_query("bad query")
+            assert exc_info.value.non_retryable is True
 
 
 @pytest.mark.asyncio
@@ -668,6 +669,28 @@ async def test_device_filter_variations():
             from nv_config_manager.temporal.common.mixins.device import Platform
 
             await client.get_devices(fields="id", platform=Platform.CUMULUS_LINUX)
+
+
+@pytest.mark.asyncio
+async def test_device_filter_managed_only_variable():
+    """Test managed_only is sent as the Nautobot managed-device GraphQL filter."""
+    with aioresponses() as m:
+        m.post(
+            "https://nautobot.example.com/api/graphql/",
+            payload={"data": {"devices": []}},
+        )
+
+        async with NautobotClient() as client:
+            await client.get_devices(fields="id", site="test-site", managed_only=True)
+
+        request_call = next(iter(m.requests.values()))[0]
+        assert request_call.kwargs["json"]["variables"] == {
+            "site": ["test-site"],
+            "managed_only": True,
+        }
+        assert (
+            "nv_config_manager_device_status: $managed_only" in request_call.kwargs["json"]["query"]
+        )
 
 
 @pytest.mark.asyncio

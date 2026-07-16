@@ -383,6 +383,127 @@ func (a *WorkflowAPIService) BatchdeployworkflowEndpointV1WorkflowNgcBatchDeploy
 	return localVarReturnValue, localVarHTTPResponse, nil
 }
 
+type ApiConfigdiffworkflowEndpointV1WorkflowNgcConfigDiffPostRequest struct {
+	ctx             context.Context
+	ApiService      *WorkflowAPIService
+	configDiffInput *ConfigDiffInput
+}
+
+func (r ApiConfigdiffworkflowEndpointV1WorkflowNgcConfigDiffPostRequest) ConfigDiffInput(configDiffInput ConfigDiffInput) ApiConfigdiffworkflowEndpointV1WorkflowNgcConfigDiffPostRequest {
+	r.configDiffInput = &configDiffInput
+	return r
+}
+
+func (r ApiConfigdiffworkflowEndpointV1WorkflowNgcConfigDiffPostRequest) Execute() (*WorkflowResponse, *http.Response, error) {
+	return r.ApiService.ConfigdiffworkflowEndpointV1WorkflowNgcConfigDiffPostExecute(r)
+}
+
+/*
+ConfigdiffworkflowEndpointV1WorkflowNgcConfigDiffPost Execute ConfigDiffWorkflow
+
+Compare the intended configuration against the live device without applying any changes
+
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@return ApiConfigdiffworkflowEndpointV1WorkflowNgcConfigDiffPostRequest
+*/
+func (a *WorkflowAPIService) ConfigdiffworkflowEndpointV1WorkflowNgcConfigDiffPost(ctx context.Context) ApiConfigdiffworkflowEndpointV1WorkflowNgcConfigDiffPostRequest {
+	return ApiConfigdiffworkflowEndpointV1WorkflowNgcConfigDiffPostRequest{
+		ApiService: a,
+		ctx:        ctx,
+	}
+}
+
+// Execute executes the request
+//
+//	@return WorkflowResponse
+func (a *WorkflowAPIService) ConfigdiffworkflowEndpointV1WorkflowNgcConfigDiffPostExecute(r ApiConfigdiffworkflowEndpointV1WorkflowNgcConfigDiffPostRequest) (*WorkflowResponse, *http.Response, error) {
+	var (
+		localVarHTTPMethod  = http.MethodPost
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *WorkflowResponse
+	)
+
+	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "WorkflowAPIService.ConfigdiffworkflowEndpointV1WorkflowNgcConfigDiffPost")
+	if err != nil {
+		return localVarReturnValue, nil, &GenericOpenAPIError{error: err.Error()}
+	}
+
+	localVarPath := localBasePath + "/v1/workflow/ngc/config_diff"
+
+	localVarHeaderParams := make(map[string]string)
+	localVarQueryParams := url.Values{}
+	localVarFormParams := url.Values{}
+	if r.configDiffInput == nil {
+		return localVarReturnValue, nil, reportError("configDiffInput is required and must be specified")
+	}
+
+	// to determine the Content-Type header
+	localVarHTTPContentTypes := []string{"application/json"}
+
+	// set Content-Type header
+	localVarHTTPContentType := selectHeaderContentType(localVarHTTPContentTypes)
+	if localVarHTTPContentType != "" {
+		localVarHeaderParams["Content-Type"] = localVarHTTPContentType
+	}
+
+	// to determine the Accept header
+	localVarHTTPHeaderAccepts := []string{"application/json"}
+
+	// set Accept header
+	localVarHTTPHeaderAccept := selectHeaderAccept(localVarHTTPHeaderAccepts)
+	if localVarHTTPHeaderAccept != "" {
+		localVarHeaderParams["Accept"] = localVarHTTPHeaderAccept
+	}
+	// body params
+	localVarPostBody = r.configDiffInput
+	req, err := a.client.prepareRequest(r.ctx, localVarPath, localVarHTTPMethod, localVarPostBody, localVarHeaderParams, localVarQueryParams, localVarFormParams, formFiles)
+	if err != nil {
+		return localVarReturnValue, nil, err
+	}
+
+	localVarHTTPResponse, err := a.client.callAPI(req)
+	if err != nil || localVarHTTPResponse == nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	localVarBody, err := io.ReadAll(localVarHTTPResponse.Body)
+	localVarHTTPResponse.Body.Close()
+	localVarHTTPResponse.Body = io.NopCloser(bytes.NewBuffer(localVarBody))
+	if err != nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	if localVarHTTPResponse.StatusCode >= 300 {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: localVarHTTPResponse.Status,
+		}
+		if localVarHTTPResponse.StatusCode == 422 {
+			var v HTTPValidationError
+			err = a.client.decode(&v, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
+			if err != nil {
+				newErr.error = err.Error()
+				return localVarReturnValue, localVarHTTPResponse, newErr
+			}
+			newErr.error = formatErrorMessage(localVarHTTPResponse.Status, &v)
+			newErr.model = v
+		}
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	err = a.client.decode(&localVarReturnValue, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
+	if err != nil {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: err.Error(),
+		}
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	return localVarReturnValue, localVarHTTPResponse, nil
+}
+
 type ApiConnectedhostmetadataworkflowEndpointV1WorkflowNgcConnectedHostMetadataPostRequest struct {
 	ctx                        context.Context
 	ApiService                 *WorkflowAPIService
