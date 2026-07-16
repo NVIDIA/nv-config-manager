@@ -6,7 +6,7 @@ position: 11
 
 The Site Configuration Backup workflow captures running configurations for every in-scope device at a site. It fans out one [Configuration Backup](../configuration-backup/index.mdx) child workflow per device, aggregates the per-device results, and produces a consolidated report distinguishing successes, failures, and whether each backup changed the stored snapshot.
 
-Use this workflow before demos, maintenance windows, or broad configuration changes when you want a known-good baseline for the whole site. For a single device, use [Configuration Backup](../configuration-backup/index.mdx) directly.
+Use this workflow when you need a fresh site-wide backup outside the normal scheduled backup run—for example, before a maintenance window or broad configuration change. For a single device, use [Configuration Backup](../configuration-backup/index.mdx) directly.
 
 ## Prerequisites
 
