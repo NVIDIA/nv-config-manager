@@ -258,7 +258,7 @@ const DeviceMatchStatus = ({
     return (
       <div className="text-sm text-muted-foreground mb-4">
         <div className="text-green-600">
-          ✓ Found {deviceCount} matching device{deviceCount !== 1 ? "s" : ""}
+          ✓ Found {deviceCount} matching device{deviceCount === 1 ? "" : "s"}
         </div>
       </div>
     );
