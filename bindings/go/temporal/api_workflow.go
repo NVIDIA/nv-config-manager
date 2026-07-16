@@ -3863,7 +3863,7 @@ func (r ApiSitebackupworkflowEndpointV1WorkflowNgcSiteBackupPostRequest) Execute
 /*
 SitebackupworkflowEndpointV1WorkflowNgcSiteBackupPost Execute SiteBackupWorkflow
 
-Back up running configurations for all devices in a site to the Config Store
+Back up running configurations for in-scope devices at a site to the Config Store
 
 	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
 	@return ApiSitebackupworkflowEndpointV1WorkflowNgcSiteBackupPostRequest

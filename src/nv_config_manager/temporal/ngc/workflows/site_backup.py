@@ -122,7 +122,7 @@ class SiteBackupWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin):
 
     workflow_name = "Site Configuration Backup"
     workflow_description = (
-        "Back up running configurations for all devices in a site to the Config Store"
+        "Back up running configurations for in-scope devices at a site to the Config Store"
     )
     workflow_input_class = SiteBackupInput
     workflow_api_endpoint = "/ngc/site_backup"
@@ -212,7 +212,7 @@ class SiteBackupWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin):
     async def perform_backups(
         self, stage_input: PerformBackupsStageInput
     ) -> PerformBackupsStageOutput:
-        """Execute configuration backups on all devices using child workflows."""
+        """Execute configuration backups on in-scope devices using child workflows."""
         handles: dict[str, Any] = {}
 
         search_attrs = {

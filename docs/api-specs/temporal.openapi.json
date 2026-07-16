@@ -4861,7 +4861,7 @@
     },
     "/v1/workflow/ngc/site_backup": {
       "post": {
-        "description": "Back up running configurations for all devices in a site to the Config Store",
+        "description": "Back up running configurations for in-scope devices at a site to the Config Store",
         "operationId": "sitebackupworkflow_endpoint_v1_workflow_ngc_site_backup_post",
         "requestBody": {
           "content": {
