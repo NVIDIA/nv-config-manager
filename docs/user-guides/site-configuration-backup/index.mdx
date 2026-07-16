@@ -16,7 +16,7 @@ Before running, confirm the following are in place for the devices you expect to
 - **Devices are reachable** from Config Manager on their management addresses, and credentials are current in the secrets store.
 - **Intended configurations are available** in the [Config Store](../../config-store/index.mdx) when you want drift detection on each child backup. Children compare running config against rendered intended config unless a commit ID is supplied.
 - **Backup paths are configured** on device records so each child can record where the snapshot landed.
-- **User attribution is present.** API and UI submissions populate the requesting user automatically; the workflow rejects requests with no user attached.
+- **User attribution is present.** UI and CLI submissions populate the requesting user automatically; the workflow rejects requests with no user attached.
 
 By default the workflow includes only devices with **backup enabled** in Nautobot. Uncheck **Backup enabled only** on the form to include all managed devices that match the other filters.
 
@@ -38,17 +38,16 @@ By default the workflow includes only devices with **backup enabled** in Nautobo
 
 After submission, a status page appears showing the three stages. The middle stage updates its display incrementally as child backups complete.
 
-You can also start the workflow via API:
+You can also start the workflow from the CLI. Authenticate first, then invoke `site-backup`. See [Temporal CLI](../../temporal/temporal-cli.mdx) for login and discovery details.
 
 ```bash
-curl -X POST "${CONFIG_MANAGER_URL}/v1/workflow/ngc/site_backup" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "site": "rno1",
-    "roles": [],
-    "status": ["Active", "Provisioned"],
-    "backup_enabled_only": true
-  }'
+uv run workflow-cli login -H config-manager.example.com
+
+uv run workflow-cli site-backup \
+  -H config-manager.example.com \
+  --site rno1 \
+  --status Active,Provisioned \
+  --backup-enabled-only true
 ```
 
 ## Execution stages
