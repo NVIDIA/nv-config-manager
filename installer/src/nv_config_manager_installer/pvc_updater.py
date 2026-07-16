@@ -26,6 +26,7 @@ import json
 import shutil
 import tarfile
 import tempfile
+import threading
 import uuid
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -54,7 +55,7 @@ class ZTPImageSource:
     path: Path
 
 
-def _validate_ztp_path_component(label: str, component: str) -> None:
+def validate_ztp_path_component(label: str, component: str) -> None:
     """Reject ZTP metadata that cannot safely become one directory name."""
     if (
         not component
@@ -62,11 +63,12 @@ def _validate_ztp_path_component(label: str, component: str) -> None:
         or "/" in component
         or "\\" in component
         or Path(component).name != component
+        or not component.replace("-", "").replace("_", "").replace(".", "").isalnum()
     ):
         raise ValueError(f"Invalid ZTP {label}: {component!r}")
 
 
-def _normalize_ztp_platform(platform: str) -> str:
+def normalize_ztp_platform(platform: str) -> str:
     """Normalize a display platform name to the storage path identifier."""
     return platform.strip().replace(" ", "-").lower()
 
@@ -161,21 +163,77 @@ trap cleanup_staging EXIT
 mkdir "$staging"
 tar xzf /tmp/content.tar.gz -C "$staging"{post_extract_command}
 mkdir "$backup"
-swap_content() {{
+move_old_content() {{
     find "$live" -mindepth 1 -maxdepth 1 ! -name "{staging_name}" ! -name "{backup_name}" -exec mv {{}} "$backup"/ \\;
+}}
+move_new_content() {{
     find "$staging" -mindepth 1 -maxdepth 1 -exec mv {{}} "$live"/ \\;
 }}
-rollback_content() {{
-    find "$live" -mindepth 1 -maxdepth 1 ! -name "{staging_name}" ! -name "{backup_name}" -exec rm -rf {{}} \\;
+restore_old_content() {{
     find "$backup" -mindepth 1 -maxdepth 1 -exec mv {{}} "$live"/ \\;
+    rmdir "$backup"
 }}
-if ! swap_content; then
-    rollback_content || true
+rollback_new_content() {{
+    find "$live" -mindepth 1 -maxdepth 1 ! -name "{staging_name}" ! -name "{backup_name}" -exec rm -rf {{}} \\;
+    restore_old_content
+}}
+if ! move_old_content; then
+    restore_old_content || true
+    exit 1
+fi
+if ! move_new_content; then
+    rollback_new_content || true
     exit 1
 fi
 rm -rf "$backup"
 rmdir "$staging"
 trap - EXIT'''
+
+
+class _LeaseRenewer:
+    """Keep one PVC-update Lease valid while a long update is running."""
+
+    def __init__(
+        self,
+        k8s: K8sClient,
+        lease_name: str,
+        namespace: str,
+        holder_identity: str,
+        duration_seconds: int,
+    ) -> None:
+        self._k8s = k8s
+        self._lease_name = lease_name
+        self._namespace = namespace
+        self._holder_identity = holder_identity
+        self._duration_seconds = duration_seconds
+        self._stop_event = threading.Event()
+        self._failure: Exception | None = None
+        self._thread = threading.Thread(target=self._run, daemon=True)
+
+    def __enter__(self) -> _LeaseRenewer:
+        self._thread.start()
+        return self
+
+    def __exit__(self, exc_type: object, exc_value: object, traceback: object) -> None:
+        self._stop_event.set()
+        self._thread.join()
+        if exc_type is None and self._failure is not None:
+            raise RuntimeError(f"Lost PVC update lease '{self._lease_name}': {self._failure}")
+
+    def _run(self) -> None:
+        interval = max(1, self._duration_seconds // 3)
+        while not self._stop_event.wait(interval):
+            try:
+                self._k8s.renew_lease(
+                    self._lease_name,
+                    self._namespace,
+                    self._holder_identity,
+                    duration_seconds=self._duration_seconds,
+                )
+            except Exception as exc:  # pragma: no cover - timing-dependent
+                self._failure = exc
+                self._stop_event.set()
+                return
 
 
 class PVCUpdater:
@@ -264,13 +322,17 @@ class PVCUpdater:
             for image in image_list:
                 if not image.path.is_file():
                     raise FileNotFoundError(f"OS image does not exist: {image.path}")
-                platform = _normalize_ztp_platform(image.platform)
+                platform = normalize_ztp_platform(image.platform)
                 version = image.version
-                _validate_ztp_path_component("platform", platform)
-                _validate_ztp_path_component("version", version)
+                validate_ztp_path_component("platform", platform)
+                validate_ztp_path_component("version", version)
                 destination = staging / platform / version
                 destination.mkdir(parents=True, exist_ok=True)
                 target = destination / image.path.name
+                if target.exists():
+                    raise ValueError(
+                        f"Duplicate ZTP image destination: {target.relative_to(staging).as_posix()}"
+                    )
                 shutil.copy2(image.path, target)
                 manifest["images"].append(
                     {
@@ -311,8 +373,9 @@ class PVCUpdater:
             staging = Path(tmpdir) / kind
             staging.mkdir()
             _stage_sources(source_list, staging, ignore_patterns=ignore_patterns)
-            if package_marker:
-                (staging / "__init__.py").write_text(
+            package_init = staging / "__init__.py"
+            if package_marker and not package_init.exists():
+                package_init.write_text(
                     "# Custom Nautobot jobs package maintained by nvcm-installer.\n"
                 )
             return self._upload_staging(
@@ -344,36 +407,46 @@ class PVCUpdater:
             duration_seconds=PVC_UPDATE_LEASE_DURATION_SECONDS,
         )
         try:
-            content_hash = _hash_staged_content(staging)
-            current_hash = self._k8s.get_pvc_annotation(
-                pvc_name, self.namespace, CONTENT_HASH_ANNOTATION
-            )
-            if current_hash == content_hash:
-                self._on_log(f"{kind}: content unchanged; PVC and workloads left untouched")
-                return False
+            with _LeaseRenewer(
+                self._k8s,
+                lease_name,
+                self.namespace,
+                holder_identity,
+                PVC_UPDATE_LEASE_DURATION_SECONDS,
+            ):
+                content_hash = _hash_staged_content(staging)
+                current_hash = self._k8s.get_pvc_annotation(
+                    pvc_name, self.namespace, CONTENT_HASH_ANNOTATION
+                )
+                if current_hash == content_hash:
+                    self._on_log(f"{kind}: content unchanged; PVC and workloads left untouched")
+                    return False
 
-            with tempfile.TemporaryDirectory(prefix="nvcm-pvc-updater-") as tmpdir:
-                tarball = Path(tmpdir) / f"{kind}.tar.gz"
-                _make_tarball(staging, tarball)
-                pod_name = f"nvcm-pvc-updater-{kind}"
-                self._k8s.delete_pod(pod_name, self.namespace)
-                self._k8s.wait_for_pod_gone(pod_name, self.namespace)
-                try:
-                    self._k8s.create_loader_pod(pod_name, self.namespace, pvc_name, mount_path)
-                    self._k8s.wait_for_pod_ready(pod_name, self.namespace)
-                    self._on_log(f"{kind}: copying content into PVC {pvc_name}")
-                    self._k8s.copy_to_pod(
-                        str(tarball), pod_name, self.namespace, "/tmp/content.tar.gz"
-                    )
-                    command = _replace_pvc_content_command(mount_path, post_extract)
-                    self._k8s.exec_command(pod_name, self.namespace, ["sh", "-c", command])
-                finally:
+                with tempfile.TemporaryDirectory(prefix="nvcm-pvc-updater-") as tmpdir:
+                    tarball = Path(tmpdir) / f"{kind}.tar.gz"
+                    _make_tarball(staging, tarball)
+                    pvc_suffix = hashlib.sha256(pvc_name.encode()).hexdigest()[:12]
+                    pod_name = f"nvcm-pvc-updater-{kind}-{pvc_suffix}"
                     self._k8s.delete_pod(pod_name, self.namespace)
                     self._k8s.wait_for_pod_gone(pod_name, self.namespace)
+                    try:
+                        self._k8s.create_loader_pod(pod_name, self.namespace, pvc_name, mount_path)
+                        self._k8s.wait_for_pod_ready(pod_name, self.namespace)
+                        self._on_log(f"{kind}: copying content into PVC {pvc_name}")
+                        self._k8s.copy_to_pod(
+                            str(tarball), pod_name, self.namespace, "/tmp/content.tar.gz"
+                        )
+                        command = _replace_pvc_content_command(mount_path, post_extract)
+                        self._k8s.exec_command(pod_name, self.namespace, ["sh", "-c", command])
+                    finally:
+                        self._k8s.delete_pod(pod_name, self.namespace)
+                        self._k8s.wait_for_pod_gone(pod_name, self.namespace)
 
-            self._restart_consumers(kind, selectors)
-            self._k8s.annotate_pvc(pvc_name, self.namespace, CONTENT_HASH_ANNOTATION, content_hash)
-            return True
+                self._restart_consumers(kind, selectors)
+                self._k8s.annotate_pvc(
+                    pvc_name, self.namespace, CONTENT_HASH_ANNOTATION, content_hash
+                )
+                return True
         finally:
             self._k8s.release_lease(lease_name, self.namespace, holder_identity)
 

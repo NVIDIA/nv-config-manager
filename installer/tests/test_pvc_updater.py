@@ -29,9 +29,9 @@ from nv_config_manager_installer.pvc_updater import (
     PVCUpdater,
     ZTPImageSource,
     _make_tarball,
-    _normalize_ztp_platform,
     _replace_pvc_content_command,
     _safe_extract,
+    normalize_ztp_platform,
 )
 
 
@@ -66,16 +66,16 @@ def test_jobs_updates_existing_pvc_and_restarts_consumers(tmp_path: Path) -> Non
 
     assert changed is True
     assert "Custom Nautobot jobs package" in staged_package_marker
-    k8s.create_loader_pod.assert_called_once_with(
-        "nvcm-pvc-updater-jobs", "nv-config-manager", JOBS_PVC_NAME, "/jobs"
-    )
+    loader_call = k8s.create_loader_pod.call_args.args
+    assert loader_call[0].startswith("nvcm-pvc-updater-jobs-")
+    assert loader_call[1:] == ("nv-config-manager", JOBS_PVC_NAME, "/jobs")
     k8s.annotate_pvc.assert_called_once()
     assert k8s.restart_deployment.call_count == 3
     assert k8s.wait_for_rollout.call_count == 3
     command = k8s.exec_command.call_args.args[2][2]
     assert 'tar xzf /tmp/content.tar.gz -C "$staging"' in command
-    assert command.index("tar xzf") < command.index("swap_content")
-    assert "rollback_content" in command
+    assert command.index("tar xzf") < command.index("move_old_content")
+    assert "rollback_new_content" in command
 
     annotation_index = next(
         index
@@ -96,10 +96,11 @@ def test_jobs_updates_existing_pvc_and_restarts_consumers(tmp_path: Path) -> Non
     assert rollout_index < annotation_index
     assert k8s.wait_for_pod_gone.call_count == 2
 
+    loader_pod_name = loader_call[0]
     cleanup_wait_index = max(
         index
         for index, recorded_call in enumerate(k8s.mock_calls)
-        if recorded_call == call.wait_for_pod_gone("nvcm-pvc-updater-jobs", "nv-config-manager")
+        if recorded_call == call.wait_for_pod_gone(loader_pod_name, "nv-config-manager")
     )
     first_restart_index = next(
         index
@@ -190,9 +191,9 @@ def test_ztp_rebuilds_content_and_restarts_ztp(tmp_path: Path) -> None:
         )
 
     assert changed is True
-    k8s.create_loader_pod.assert_called_once_with(
-        "nvcm-pvc-updater-ztp", "nv-config-manager", "ztp-os-images", "/mnt/images"
-    )
+    loader_call = k8s.create_loader_pod.call_args.args
+    assert loader_call[0].startswith("nvcm-pvc-updater-ztp-")
+    assert loader_call[1:] == ("nv-config-manager", "ztp-os-images", "/mnt/images")
     k8s.restart_deployment.assert_called_once_with("nv-config-manager-ztp", "nv-config-manager")
     assert manifest["images"] == [
         {
@@ -207,7 +208,7 @@ def test_ztp_rebuilds_content_and_restarts_ztp(tmp_path: Path) -> None:
 
 
 def test_ztp_normalizes_cumulus_linux_platform_identifier() -> None:
-    assert _normalize_ztp_platform("Cumulus Linux") == "cumulus-linux"
+    assert normalize_ztp_platform("Cumulus Linux") == "cumulus-linux"
 
 
 def test_restarts_only_requested_release(tmp_path: Path) -> None:
@@ -241,6 +242,7 @@ def test_restarts_only_requested_release(tmp_path: Path) -> None:
         ("cumulus/linux", "5.13.0"),
         ("cumulus", "5.13.0/evil"),
         ("cumulus", "."),
+        ("cumulus;id", "5.13.0"),
     ],
 )
 def test_ztp_rejects_unsafe_destination_components(
@@ -256,6 +258,52 @@ def test_ztp_rejects_unsafe_destination_components(
         _updater(k8s).update_ztp([ZTPImageSource(platform=platform, version=version, path=image)])
 
     k8s.create_loader_pod.assert_not_called()
+
+
+def test_ztp_rejects_duplicate_normalized_destinations(tmp_path: Path) -> None:
+    first = tmp_path / "one" / "image.bin"
+    second = tmp_path / "two" / "image.bin"
+    first.parent.mkdir()
+    second.parent.mkdir()
+    first.write_bytes(b"first")
+    second.write_bytes(b"second")
+    k8s = MagicMock()
+
+    with pytest.raises(ValueError, match="Duplicate ZTP image destination"):
+        _updater(k8s).update_ztp(
+            [
+                ZTPImageSource("Cumulus Linux", "5.13.0", first),
+                ZTPImageSource("cumulus-linux", "5.13.0", second),
+            ]
+        )
+
+    k8s.create_loader_pod.assert_not_called()
+
+
+def test_jobs_preserve_a_source_provided_package_init(tmp_path: Path) -> None:
+    package_init_source = tmp_path / "__init__.py"
+    package_init_source.write_text("from .example import Example\n")
+    source = tmp_path / "jobs.tar"
+    with tarfile.open(source, "w") as archive:
+        archive.add(package_init_source, arcname="__init__.py")
+    k8s = MagicMock()
+    k8s.pvc_exists.return_value = True
+    k8s.get_pvc_annotation.return_value = "old-content"
+    k8s.list_deployment_names.return_value = ["nv-config-manager-nautobot"]
+    k8s.restart_deployment.return_value = 1
+    package_init = ""
+
+    def capture_package_init(staging: Path, _tarball: Path) -> None:
+        nonlocal package_init
+        package_init = (staging / "__init__.py").read_text()
+
+    with patch(
+        "nv_config_manager_installer.pvc_updater._make_tarball",
+        side_effect=capture_package_init,
+    ):
+        _updater(k8s).update_jobs([source])
+
+    assert package_init == "from .example import Example\n"
 
 
 def test_failed_consumer_restart_does_not_record_content_hash(tmp_path: Path) -> None:

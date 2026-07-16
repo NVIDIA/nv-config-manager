@@ -54,6 +54,10 @@ from nv_config_manager_installer.k8s import (
 from nv_config_manager_installer.nautobot_jobs import NautobotJobRunner
 from nv_config_manager_installer.openbao import OpenBaoClient, OpenBaoPopulator
 from nv_config_manager_installer.operator_versions import load_operator_versions
+from nv_config_manager_installer.pvc_updater import (
+    normalize_ztp_platform,
+    validate_ztp_path_component,
+)
 from nv_config_manager_installer.schema import (
     GatewayType,
     ImageSource,
@@ -2526,8 +2530,10 @@ class Deployer:
         for img in images:
             local_path = img.path
             fname = Path(local_path).name
-            platform = img.platform.strip().replace(" ", "-").lower()
+            platform = normalize_ztp_platform(img.platform)
             version = img.version
+            validate_ztp_path_component("platform", platform)
+            validate_ztp_path_component("version", version)
 
             self.callback.on_log(f"  Computing sha256 for {fname}...")
             checksum = self._compute_sha256(local_path)
@@ -2538,11 +2544,7 @@ class Deployer:
             remote_tmp = f"/tmp/{fname}"
             self.callback.on_log(f"  Copying {fname} -> {platform}/{version}/...")
             self._k8s.copy_to_pod(local_path, pod_name, ns, remote_tmp)
-            self._k8s.exec_command(
-                pod_name,
-                ns,
-                ["sh", "-c", f"mv {remote_tmp} {remote_dir}/{fname}"],
-            )
+            self._k8s.exec_command(pod_name, ns, ["mv", remote_tmp, f"{remote_dir}/{fname}"])
 
             manifest["images"].append(
                 {
@@ -2940,6 +2942,7 @@ class Deployer:
         if failed > 0:
             step.error = f"{failed} of {total} job(s) failed"
             self._finish_step(step, StepStatus.FAILED)
+            raise RuntimeError(step.error)
         else:
             step.output.append(f"All {total} job(s) completed successfully")
             self._finish_step(step)
