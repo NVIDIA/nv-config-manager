@@ -2849,7 +2849,7 @@ monitoring:
   grafanaUrl: ""
   # Prometheus namespace (for network policy to allow scraping)
   prometheus:
-    namespace: ""
+    namespace: "monitoring"
   # PodMonitor configuration
   # ---------------------------------------------------------------------------
   # Probes (Blackbox Exporter)
