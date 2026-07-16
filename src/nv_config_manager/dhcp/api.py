@@ -15,28 +15,85 @@
 """Simple HealthCheck API for DHCP Server."""
 
 import argparse
+import asyncio
+import base64
+import binascii
+from collections.abc import AsyncIterator, Coroutine
+from contextlib import asynccontextmanager
+from ipaddress import ip_address
 from typing import Any
 
 import uvicorn
-from aiohttp import ClientResponseError
-from fastapi import FastAPI, HTTPException, Request
+from aiohttp import ClientError, ClientResponseError
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from prometheus_client import CONTENT_TYPE_LATEST, Gauge, generate_latest
 from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_fastapi_instrumentator import metrics as instrumentator_metrics
+from pydantic import IPvAnyAddress, IPvAnyNetwork
 
 from nv_config_manager.common.auth import install_identity_probe
 from nv_config_manager.common.config import load_config
 from nv_config_manager.common.log import configure_logging
 from nv_config_manager.common.telemetry import setup_tracing
-from nv_config_manager.dhcp.kea import KeaClient
+from nv_config_manager.dhcp.kea import IpVersion, KeaClient, KeaException
+from nv_config_manager.dhcp.lease_dashboard import (
+    DhcpSummaryResponse,
+    LeasePageResponse,
+    LeaseRecord,
+    PoolPageResponse,
+    ReservationPageResponse,
+    ReservationRecord,
+    build_dhcp_summary,
+    build_lease,
+    build_lease_list,
+    build_pool_list,
+    build_reservation,
+    build_reservation_list,
+    filter_lease_records,
+    filter_pool_records,
+    filter_reservation_records,
+    lease_deleted,
+    lease_page_details,
+)
 from nv_config_manager.dhcp.redis import RedisClient
 
 configure_logging(service="dhcp")
 setup_tracing("dhcp")
 
+_MAX_KEA_LEASE_PAGES_PER_REQUEST = 10
+
+
+def _install_cors(application: FastAPI) -> None:
+    """Allow configured UI origins to call the DHCP API with credentials."""
+    config = load_config()
+    if not config.has_section("dhcp"):
+        return
+
+    origins = [
+        origin.strip()
+        for origin in config.get("dhcp", "cors_origins", fallback="").split(",")
+        if origin.strip()
+    ]
+    if "*" in origins:
+        raise ValueError(
+            "dhcp.cors_origins must contain explicit origins when credentials are enabled"
+        )
+    if origins:
+        application.add_middleware(
+            CORSMiddleware,  # type: ignore[arg-type]
+            allow_origins=origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+            expose_headers=["*"],
+        )
+
+
 app = FastAPI()
+_install_cors(app)
 FastAPIInstrumentor.instrument_app(app)
 
 CACHE_LAST_REFRESH = Gauge(
@@ -55,6 +112,201 @@ instrumentator.add(
     )
 )
 instrumentator.instrument(app)
+
+
+async def _gather_requests(
+    *requests: Coroutine[Any, Any, Any],
+) -> tuple[Any, ...]:
+    """Run requests concurrently and drain every task before returning or raising."""
+    tasks = tuple(asyncio.create_task(request) for request in requests)
+    try:
+        return tuple(await asyncio.gather(*tasks))
+    except BaseException:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        raise
+
+
+async def _fetch_summary_sources(
+    client: KeaClient,
+    ip_version: IpVersion,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Fetch summary sources and drain every task before returning or raising."""
+    config, statistics = await _gather_requests(
+        client.get_config(ip_version),
+        client.get_statistics(ip_version),
+    )
+    return config, statistics
+
+
+@asynccontextmanager
+async def _kea_lease_client() -> AsyncIterator[KeaClient]:
+    """Map KEA client errors for lease routes and always close the client."""
+    client = KeaClient.from_config()
+    try:
+        yield client
+    except ClientResponseError as exc:
+        raise HTTPException(status_code=500, detail=str(exc.message)) from exc
+    except (TimeoutError, ClientError, KeaException) as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    finally:
+        await client.close()
+
+
+def _resolve_address_version(
+    ip_address: IPvAnyAddress,
+    ip_version: IpVersion | None,
+) -> IpVersion:
+    """Infer the DHCP service version unless the caller supplies a matching value."""
+    inferred_version = IpVersion(ip_address.version)
+    if ip_version is not None and ip_version != inferred_version:
+        raise HTTPException(
+            status_code=422,
+            detail=f"IP address version does not match ip_version={ip_version}",
+        )
+    return ip_version or inferred_version
+
+
+def _normalize_subnet_filter(
+    subnet: IPvAnyNetwork | None,  # ty: ignore[unsupported-operator]
+    ip_version: IpVersion,
+) -> str | None:
+    """Validate and normalize an optional collection subnet filter."""
+    if subnet is not None and subnet.version != ip_version:
+        raise HTTPException(
+            status_code=422,
+            detail=f"IP subnet version does not match ip_version={ip_version}",
+        )
+    return str(subnet) if subnet is not None else None
+
+
+def _encode_lease_cursor(from_address: str) -> str:
+    """Encode the DHCP server's paging address as an opaque API cursor."""
+    return base64.urlsafe_b64encode(from_address.encode()).decode().rstrip("=")
+
+
+def _decode_lease_cursor(cursor: str | None, ip_version: IpVersion) -> str:
+    """Decode and validate an opaque lease cursor for the selected address family."""
+    if cursor is None:
+        return "start"
+    try:
+        padding = "=" * (-len(cursor) % 4)
+        decoded = base64.b64decode(
+            f"{cursor}{padding}",
+            altchars=b"-_",
+            validate=True,
+        ).decode()
+        address = ip_address(decoded)
+    except (binascii.Error, UnicodeDecodeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail="Invalid lease cursor") from exc
+    if address.version != ip_version:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Lease cursor does not match ip_version={ip_version}",
+        )
+    return str(address)
+
+
+def _encode_offset_cursor(resource: str, offset: int, ip_version: IpVersion) -> str:
+    """Encode a config-derived collection offset as an opaque cursor."""
+    value = f"{resource}:{ip_version}:{offset}"
+    return base64.urlsafe_b64encode(value.encode()).decode().rstrip("=")
+
+
+def _decode_offset_cursor(
+    cursor: str | None,
+    resource: str,
+    ip_version: IpVersion,
+) -> int:
+    """Decode and validate a config-derived collection cursor."""
+    if cursor is None:
+        return 0
+    try:
+        padding = "=" * (-len(cursor) % 4)
+        decoded = base64.b64decode(
+            f"{cursor}{padding}",
+            altchars=b"-_",
+            validate=True,
+        ).decode()
+        cursor_resource, cursor_version, raw_offset = decoded.split(":", maxsplit=2)
+        version = int(cursor_version)
+        offset = int(raw_offset)
+    except (binascii.Error, UnicodeDecodeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid {resource} cursor") from exc
+    if cursor_resource != resource or offset < 0:
+        raise HTTPException(status_code=422, detail=f"Invalid {resource} cursor")
+    if version != ip_version:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{resource.title()} cursor does not match ip_version={ip_version}",
+        )
+    return offset
+
+
+def _slice_offset_page[PageItem](
+    items: list[PageItem],
+    offset: int,
+    limit: int,
+) -> tuple[list[PageItem], int, int | None]:
+    """Return one bounded page, its exact total, and the next offset."""
+    total_count = len(items)
+    page = items[offset : offset + limit]
+    next_offset = offset + len(page)
+    return page, total_count, next_offset if next_offset < total_count else None
+
+
+async def _collect_lease_page(
+    client: KeaClient,
+    config_payload: list[dict[str, Any]],
+    initial_lease_payload: list[dict[str, Any]],
+    *,
+    from_address: str,
+    ip_version: IpVersion,
+    limit: int,
+    search: str | None,
+    subnet: str | None,
+) -> LeasePageResponse:
+    """Collect a filtered page while advancing through bounded KEA pages."""
+    leases: list[LeaseRecord] = []
+    lease_payload = initial_lease_payload
+    seen_addresses: set[str] = set()
+    scanned_pages = 1
+
+    while True:
+        page_leases = build_lease_list(config_payload, lease_payload, ip_version=ip_version)
+        if subnet is not None:
+            page_leases = [lease for lease in page_leases if lease.subnet == subnet]
+        page_leases = filter_lease_records(page_leases, search)
+        raw_count, last_address = lease_page_details(lease_payload, ip_version=ip_version)
+
+        if leases and len(leases) + len(page_leases) > limit:
+            return LeasePageResponse(
+                leases=leases,
+                next_cursor=_encode_lease_cursor(from_address),
+            )
+        leases.extend(page_leases)
+
+        if raw_count < limit or last_address is None:
+            return LeasePageResponse(leases=leases)
+        if last_address == from_address or last_address in seen_addresses:
+            raise KeaException("KEA lease pagination did not advance")
+
+        next_cursor = _encode_lease_cursor(last_address)
+        if len(leases) >= limit:
+            return LeasePageResponse(leases=leases, next_cursor=next_cursor)
+        if scanned_pages >= _MAX_KEA_LEASE_PAGES_PER_REQUEST:
+            return LeasePageResponse(leases=leases, next_cursor=next_cursor)
+
+        seen_addresses.add(last_address)
+        from_address = last_address
+        lease_payload = await client.get_lease_page(
+            limit,
+            version=ip_version,
+            from_address=from_address,
+        )
+        scanned_pages += 1
 
 
 def main() -> None:
@@ -100,6 +352,196 @@ async def get_config(request: Request, ip_version: int = 4) -> Any:
         raise HTTPException(status_code=500, detail=str(exc.message)) from exc
     finally:
         await client.close()
+
+
+@app.get(
+    "/lease/{ip_address}",
+    response_model=LeaseRecord,
+    responses={404: {"description": "Lease not found"}},
+)
+async def get_lease(
+    request: Request,
+    ip_address: IPvAnyAddress,
+    ip_version: IpVersion | None = None,
+) -> LeaseRecord:
+    """Return one normalized lease from the selected DHCP service."""
+    ip_version = _resolve_address_version(ip_address, ip_version)
+    async with _kea_lease_client() as client:
+        lease_payload, config_payload = await _gather_requests(
+            client.get_lease(str(ip_address), version=ip_version),
+            client.get_config(ip_version),
+        )
+        lease = build_lease(
+            config_payload,
+            lease_payload,
+            ip_version=ip_version,
+        )
+        if lease is None:
+            raise HTTPException(status_code=404, detail=f"Lease {ip_address} was not found")
+        return lease
+
+
+@app.get("/lease", response_model=LeasePageResponse)
+async def list_leases(
+    request: Request,
+    ip_version: IpVersion = IpVersion.V4,
+    limit: int = Query(default=100, ge=1, le=500),
+    cursor: str | None = Query(default=None, min_length=1, max_length=128),
+    search: str | None = Query(default=None, max_length=256),
+    subnet: IPvAnyNetwork | None = None,  # ty: ignore[unsupported-operator]
+) -> LeasePageResponse:
+    """Return a cursor-paginated, optionally filtered page of normalized leases."""
+    subnet_filter = _normalize_subnet_filter(subnet, ip_version)
+    from_address = _decode_lease_cursor(cursor, ip_version)
+    async with _kea_lease_client() as client:
+        lease_payload, config_payload = await _gather_requests(
+            client.get_lease_page(
+                limit,
+                version=ip_version,
+                from_address=from_address,
+            ),
+            client.get_config(ip_version),
+        )
+        return await _collect_lease_page(
+            client,
+            config_payload,
+            lease_payload,
+            from_address=from_address,
+            ip_version=ip_version,
+            limit=limit,
+            search=search,
+            subnet=subnet_filter,
+        )
+
+
+@app.get(
+    "/reservation/{ip_address}",
+    response_model=ReservationRecord,
+    responses={404: {"description": "Reservation not found"}},
+)
+async def get_reservation(
+    request: Request,
+    ip_address: IPvAnyAddress,
+    ip_version: IpVersion | None = None,
+) -> ReservationRecord:
+    """Return one normalized reservation from the selected DHCP configuration."""
+    ip_version = _resolve_address_version(ip_address, ip_version)
+    async with _kea_lease_client() as client:
+        config_payload = await client.get_config(ip_version)
+    reservation = build_reservation(
+        config_payload,
+        ip_address,
+        ip_version=ip_version,
+    )
+    if reservation is None:
+        raise HTTPException(status_code=404, detail=f"Reservation {ip_address} was not found")
+    return reservation
+
+
+@app.get("/reservation", response_model=ReservationPageResponse)
+async def list_reservations(
+    request: Request,
+    ip_version: IpVersion = IpVersion.V4,
+    limit: int = Query(default=100, ge=1, le=500),
+    cursor: str | None = Query(default=None, min_length=1, max_length=128),
+    search: str | None = Query(default=None, max_length=256),
+    subnet: IPvAnyNetwork | None = None,  # ty: ignore[unsupported-operator]
+) -> ReservationPageResponse:
+    """Return a cursor-paginated, optionally filtered reservation page."""
+    subnet_filter = _normalize_subnet_filter(subnet, ip_version)
+    offset = _decode_offset_cursor(cursor, "reservation", ip_version)
+    async with _kea_lease_client() as client:
+        config_payload = await client.get_config(ip_version)
+    reservations = build_reservation_list(config_payload, ip_version=ip_version)
+    if subnet_filter is not None:
+        reservations = [
+            reservation for reservation in reservations if reservation.subnet == subnet_filter
+        ]
+    filtered_reservations = filter_reservation_records(reservations, search)
+    page, total_count, next_offset = _slice_offset_page(
+        filtered_reservations,
+        offset,
+        limit,
+    )
+    return ReservationPageResponse(
+        reservations=page,
+        total_count=total_count,
+        next_cursor=(
+            _encode_offset_cursor("reservation", next_offset, ip_version)
+            if next_offset is not None
+            else None
+        ),
+    )
+
+
+@app.get("/pool", response_model=PoolPageResponse)
+async def list_pools(
+    request: Request,
+    ip_version: IpVersion = IpVersion.V4,
+    limit: int = Query(default=100, ge=1, le=500),
+    cursor: str | None = Query(default=None, min_length=1, max_length=128),
+    search: str | None = Query(default=None, max_length=256),
+    subnet: IPvAnyNetwork | None = None,  # ty: ignore[unsupported-operator]
+) -> PoolPageResponse:
+    """Return a cursor-paginated, optionally filtered configured-pool page."""
+    subnet_filter = _normalize_subnet_filter(subnet, ip_version)
+    offset = _decode_offset_cursor(cursor, "pool", ip_version)
+    async with _kea_lease_client() as client:
+        config_payload = await client.get_config(ip_version)
+    pools = build_pool_list(
+        config_payload,
+        ip_version=ip_version,
+    )
+    if subnet_filter is not None:
+        pools = [pool for pool in pools if pool.subnet == subnet_filter]
+    filtered_pools = filter_pool_records(pools, search)
+    page, total_count, next_offset = _slice_offset_page(filtered_pools, offset, limit)
+    return PoolPageResponse(
+        pools=page,
+        total_count=total_count,
+        next_cursor=(
+            _encode_offset_cursor("pool", next_offset, ip_version)
+            if next_offset is not None
+            else None
+        ),
+    )
+
+
+@app.delete(
+    "/lease/{ip_address}",
+    status_code=204,
+    responses={404: {"description": "Lease not found"}},
+)
+async def delete_lease(
+    request: Request,
+    ip_address: IPvAnyAddress,
+    ip_version: IpVersion | None = None,
+) -> Response:
+    """Delete one lease from the selected DHCP service."""
+    ip_version = _resolve_address_version(ip_address, ip_version)
+    async with _kea_lease_client() as client:
+        delete_payload = await client.delete_lease(str(ip_address), version=ip_version)
+        if not lease_deleted(delete_payload, ip_version=ip_version):
+            raise HTTPException(status_code=404, detail=f"Lease {ip_address} was not found")
+        return Response(status_code=204)
+
+
+@app.get("/summary", response_model=DhcpSummaryResponse)
+async def get_summary(
+    request: Request,
+    ip_version: IpVersion = IpVersion.V4,
+) -> DhcpSummaryResponse:
+    """Return lease, reservation, and pool counts."""
+    async with _kea_lease_client() as client:
+        config, statistics = await _fetch_summary_sources(
+            client,
+            ip_version,
+        )
+        return build_dhcp_summary(
+            config,
+            statistics,
+            ip_version=ip_version,
+        )
 
 
 @app.delete("/admin/cache")
