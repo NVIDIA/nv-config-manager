@@ -20,6 +20,7 @@ from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, Vertical
 from textual.widgets import Button, Input, Label, RadioButton, RadioSet
 
+from nv_config_manager_installer.validation import normalize_kubernetes_namespace
 from nv_config_manager_installer.schema import (
     GatewayType,
     LBProvider,
@@ -302,9 +303,11 @@ class InfraScreen(Container):
         infra.cnpg_s3_backup.path = self.query_one("#cnpg-path", Input).value
         infra.cnpg_s3_backup.endpoint = self.query_one("#cnpg-endpoint", Input).value
         infra.monitoring.enabled = self.query_one("#monitoring-enabled", LabeledSwitch).value
-        infra.monitoring.prometheus_namespace = self.query_one(
-            "#monitoring-prometheus-namespace", Input
-        ).value
+        raw_ns = self.query_one("#monitoring-prometheus-namespace", Input).value
+        try:
+            infra.monitoring.prometheus_namespace = normalize_kubernetes_namespace(raw_ns)
+        except ValueError:
+            infra.monitoring.prometheus_namespace = raw_ns.strip()
         infra.monitoring.observability_enabled = self.query_one(
             "#monitoring-observability-enabled", LabeledSwitch
         ).value

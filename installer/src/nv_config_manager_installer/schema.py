@@ -27,7 +27,9 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+from nv_config_manager_installer.validation import normalize_kubernetes_namespace
 
 # ---------------------------------------------------------------------------
 # Enums
@@ -449,6 +451,11 @@ class MonitoringConfig(BaseModel):
     # Grafana/Loki are AGPL-licensed and are not enabled by the default
     # installer-managed observability path.
     observability_enabled: bool = False
+
+    @field_validator("prometheus_namespace")
+    @classmethod
+    def _validate_prometheus_namespace(cls, v: str) -> str:
+        return normalize_kubernetes_namespace(v)
 
 
 class NLBServiceConfig(BaseModel):
