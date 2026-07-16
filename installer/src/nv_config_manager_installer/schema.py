@@ -459,15 +459,14 @@ class MonitoringConfig(BaseModel):
     @field_validator("prometheus_namespace")
     @classmethod
     def _validate_prometheus_namespace(cls, v: str) -> str:
-        normalized = v.strip()
-        if not normalized:
+        if not v:
             raise ValueError("namespace must not be empty")
-        if not _KUBERNETES_NAMESPACE_RE.fullmatch(normalized):
+        if not _KUBERNETES_NAMESPACE_RE.fullmatch(v):
             raise ValueError(
                 "namespace must be a lowercase DNS-1123 label (alphanumeric, hyphens, "
                 "start/end with alphanumeric, max 63 characters)"
             )
-        return normalized
+        return v
 
 
 class NLBServiceConfig(BaseModel):
