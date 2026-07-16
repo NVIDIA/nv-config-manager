@@ -86,6 +86,15 @@ func TestGeneratedModelsRejectNullForRequiredFields(t *testing.T) {
 	}
 }
 
+func TestGeneratedDhcpIpVersionUsesExportedNames(t *testing.T) {
+	if dhcp.V4 != dhcp.IpVersion(4) {
+		t.Fatalf("dhcp.V4 = %d, want 4", dhcp.V4)
+	}
+	if dhcp.V6 != dhcp.IpVersion(6) {
+		t.Fatalf("dhcp.V6 = %d, want 6", dhcp.V6)
+	}
+}
+
 func TestGeneratedMultipartLengthIncludesClosingBoundary(t *testing.T) {
 	configuration := ztp.NewConfiguration()
 	configuration.Servers[0].URL = "https://example.test"

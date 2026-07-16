@@ -34,9 +34,7 @@ test.describe("Home Page (Splash Page)", () => {
     ).toBeVisible({ timeout: TEST_TIMEOUT });
   });
 
-  test("displays User Interfaces section with Workflows and Device Configs links", async ({
-    page,
-  }) => {
+  test("displays links to the primary user interfaces", async ({ page }) => {
     // Check section heading
     await expect(
       page.getByRole("heading", { name: "User Interfaces", level: 2 })
@@ -47,8 +45,14 @@ test.describe("Home Page (Splash Page)", () => {
     await expect(workflowsHeading).toBeVisible({ timeout: TEST_TIMEOUT });
 
     // Check Device Configs card exists (look for card with heading)
-    const configsHeading = page.getByRole("heading", { name: "Device Configs" });
+    const configsHeading = page.getByRole("heading", {
+      name: "Device Configs",
+    });
     await expect(configsHeading).toBeVisible({ timeout: TEST_TIMEOUT });
+
+    const dhcpHeading = page.getByRole("heading", { name: "DHCP Dashboard" });
+    await expect(dhcpHeading).toBeVisible({ timeout: TEST_TIMEOUT });
+    await expect(page.getByTestId("dhcp-dashboard")).toHaveCount(0);
   });
 
   test("displays External Services section with Nautobot link", async ({
@@ -59,9 +63,7 @@ test.describe("Home Page (Splash Page)", () => {
     ).toBeVisible({ timeout: TEST_TIMEOUT });
 
     // Check Nautobot card (external link)
-    const nautobotLink = page.locator(
-      "a[href='https://nautobot.example.com']"
-    );
+    const nautobotLink = page.locator("a[href='https://nautobot.example.com']");
     await expect(nautobotLink).toBeVisible({ timeout: TEST_TIMEOUT });
     await expect(nautobotLink.getByText("Nautobot")).toBeVisible();
     await expect(
@@ -86,12 +88,12 @@ test.describe("Home Page (Splash Page)", () => {
     await expect(
       page.getByRole("heading", { name: "Render Service API" })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
-    await expect(
-      page.getByRole("heading", { name: "ZTP API" })
-    ).toBeVisible({ timeout: TEST_TIMEOUT });
-    await expect(
-      page.getByRole("heading", { name: "DHCP API" })
-    ).toBeVisible({ timeout: TEST_TIMEOUT });
+    await expect(page.getByRole("heading", { name: "ZTP API" })).toBeVisible({
+      timeout: TEST_TIMEOUT,
+    });
+    await expect(page.getByRole("heading", { name: "DHCP API" })).toBeVisible({
+      timeout: TEST_TIMEOUT,
+    });
   });
 
   test("navigates to Workflows page when clicking Workflows card", async ({
@@ -109,11 +111,22 @@ test.describe("Home Page (Splash Page)", () => {
     page,
   }) => {
     // Click the Device Configs heading/card in the main content area
-    const configsHeading = page.getByRole("heading", { name: "Device Configs" });
+    const configsHeading = page.getByRole("heading", {
+      name: "Device Configs",
+    });
     await configsHeading.click();
 
     await page.waitForURL("**/configs");
     await expect(page).toHaveURL(/\/configs$/);
   });
-});
 
+  test("navigates to the dedicated DHCP dashboard", async ({ page }) => {
+    await page.getByRole("heading", { name: "DHCP Dashboard" }).click();
+
+    await page.waitForURL("**/dhcp");
+    await expect(page).toHaveURL(/\/dhcp$/);
+    await expect(
+      page.getByRole("heading", { name: "DHCP lease activity" })
+    ).toBeVisible();
+  });
+});
