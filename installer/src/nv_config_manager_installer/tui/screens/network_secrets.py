@@ -118,7 +118,13 @@ class _SecretCard(Vertical):
         """Read widget values into a NetworkSecretEntry."""
         prefix = f"ns-{self._index}"
         value = self.query_one(f"#{prefix}-value", Input).value
-        source = PasswordSource.MANUAL if value.strip() else PasswordSource.GENERATE
+        source = (
+            PasswordSource.MANUAL
+            if value.strip()
+            else PasswordSource.VAULT
+            if self._entry.source == PasswordSource.VAULT
+            else PasswordSource.GENERATE
+        )
         return NetworkSecretEntry(
             name=self.query_one(f"#{prefix}-name", Input).value,
             description=self._entry.description,
@@ -147,8 +153,9 @@ class NetworkSecretsScreen(Container):
 
         with Container(id="ns-eso-notice"):
             yield Label(
-                "ESO is enabled — network secrets are managed by External Secrets Operator. "
-                "This panel is not applicable; configure secret references in App Secrets.",
+                "ESO is enabled — these values populate each site's Vault path. "
+                "Vault-sourced values are left unchanged; enter initial values or leave "
+                "generated values blank.",
                 classes="error-text",
             )
 
@@ -170,26 +177,29 @@ class NetworkSecretsScreen(Container):
 
     def _toggle_eso_mode(self) -> None:
         self.query_one("#ns-eso-notice").display = self._eso_mode
-        self.query_one("#ns-content").display = not self._eso_mode
+        self.query_one("#ns-content").display = True
 
     def on_mount(self) -> None:
         self._toggle_eso_mode()
-        if not self._eso_mode:
-            if not self._config.network_secrets:
-                self._config.network_secrets = [
-                    NetworkSecretEntry(
-                        name=name,
-                        description=desc,
-                        source=PasswordSource.MANUAL if value else PasswordSource.GENERATE,
-                        secret_key=key,
-                        rotation=rotation,
-                        required=req,
-                        value=value,
-                    )
-                    for name, key, desc, req, rotation, value in DEFAULT_ENTRIES
-                ]
-                self._merge_bootstrap_keys()
-            self._rebuild_cards()
+        self._ensure_default_entries()
+        self._rebuild_cards()
+
+    def _ensure_default_entries(self) -> None:
+        """Initialize the standard site secrets for interactive configuration."""
+        if not self._config.network_secrets:
+            self._config.network_secrets = [
+                NetworkSecretEntry(
+                    name=name,
+                    description=desc,
+                    source=PasswordSource.MANUAL if value else PasswordSource.GENERATE,
+                    secret_key=key,
+                    rotation=rotation,
+                    required=req,
+                    value=value,
+                )
+                for name, key, desc, req, rotation, value in DEFAULT_ENTRIES
+            ]
+            self._merge_bootstrap_keys()
 
     def _merge_bootstrap_keys(self) -> None:
         """Merge secret keys discovered from bundled config_contexts.yaml."""
@@ -282,26 +292,10 @@ class NetworkSecretsScreen(Container):
     def sync_from_config(self, config: NVConfigManagerInstallConfig) -> None:
         self._config = config
         self._toggle_eso_mode()
-        if not self._eso_mode:
-            if not self._config.network_secrets:
-                self._config.network_secrets = [
-                    NetworkSecretEntry(
-                        name=name,
-                        description=desc,
-                        source=PasswordSource.MANUAL if value else PasswordSource.GENERATE,
-                        secret_key=key,
-                        rotation=rotation,
-                        required=req,
-                        value=value,
-                    )
-                    for name, key, desc, req, rotation, value in DEFAULT_ENTRIES
-                ]
-                self._merge_bootstrap_keys()
-            self._rebuild_cards()
+        self._ensure_default_entries()
+        self._rebuild_cards()
 
     def get_status(self, config: NVConfigManagerInstallConfig) -> str:
-        if config.secrets.method == SecretsMethod.ESO:
-            return "[~]"
         if not config.network_secrets:
             return "[ ]"
         if all(e.secret_key for e in config.network_secrets):

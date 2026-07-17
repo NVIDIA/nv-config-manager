@@ -45,7 +45,7 @@ _NETWORK_SECRET_KEYS = [
     ("tacacs_key", "TACACS+ shared key"),
 ]
 
-_MOCK_TOPOLOGY_JOB = "mock_topology.jobs.mock_topology_design.MockTopologyDesign"
+_MOCK_TOPOLOGY_JOB = "custom.mock_topology.jobs.mock_topology_design.MockTopologyDesign"
 _DEMO_TEMPLATE_BLUEPRINTS = {"air_trial", "air_superpod"}
 
 
