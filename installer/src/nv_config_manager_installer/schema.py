@@ -402,7 +402,6 @@ class ContentConfig(BaseModel):
     jobs_config: JobsConfig = Field(default_factory=JobsConfig)
     template_plugins: list[TemplatePath] = Field(default_factory=list)
     template_plugins_config: TemplatePluginsConfig = Field(default_factory=TemplatePluginsConfig)
-    include_bootstrap_jobs: bool = True
     run_after_deploy: list[PostDeployJob] = Field(default_factory=list)
 
 
@@ -524,10 +523,7 @@ class ZTPOSImage(BaseModel):
     def validate_platform(cls, value: str) -> str:
         """Reject ZTP platforms the installer does not yet support."""
         if value and value not in SUPPORTED_ZTP_IMAGE_PLATFORMS:
-            supported = ", ".join(sorted(SUPPORTED_ZTP_IMAGE_PLATFORMS))
-            raise ValueError(
-                f"Unsupported ZTP platform {value!r}. Supported platforms: {supported}."
-            )
+            raise ValueError(f"Unsupported ZTP platform {value!r}.")
         return value
 
 
@@ -840,13 +836,11 @@ class NVConfigManagerInstallConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_external_nautobot(self) -> NVConfigManagerInstallConfig:
-        """Custom jobs and bootstrap jobs require local Nautobot."""
-        if not self.services.nautobot and (
-            self.content.jobs or self.content.include_bootstrap_jobs
-        ):
+        """Custom jobs require local Nautobot."""
+        if not self.services.nautobot and self.content.jobs:
             msg = (
-                "Custom jobs and bootstrap jobs require a local Nautobot deployment "
-                "(services.nautobot must be true). Disable them or switch to local Nautobot."
+                "Custom jobs require a local Nautobot deployment "
+                "(services.nautobot must be true). Remove content.jobs or switch to local Nautobot."
             )
             raise ValueError(msg)
         return self

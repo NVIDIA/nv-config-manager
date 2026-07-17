@@ -40,6 +40,7 @@ from nv_config_manager_installer.schema import (
 from nv_config_manager_installer.tui.app import NVConfigManagerInstallerApp
 from nv_config_manager_installer.tui.screens.cluster import ClusterScreen
 from nv_config_manager_installer.tui.screens.deploy import DeployScreen
+from nv_config_manager_installer.tui.screens.network_secrets import NetworkSecretsScreen
 from nv_config_manager_installer.tui.widgets import LabeledSwitch
 
 
@@ -282,6 +283,24 @@ async def test_network_secrets_eso_initializes_required_site_entries():
 
         secret_keys = {entry.secret_key for entry in app.config.network_secrets}
         assert {"root_password", "api_user_key"} <= secret_keys
+
+
+def test_network_secrets_status_requires_manual_values():
+    config = NVConfigManagerInstallConfig(
+        network_secrets=[
+            NetworkSecretEntry(
+                name="BGP Password",
+                secret_key="bgp_password",
+                source=PasswordSource.MANUAL,
+            )
+        ]
+    )
+    screen = NetworkSecretsScreen(config)
+
+    assert screen.get_status(config) == "[!]"
+
+    config.network_secrets[0].value = "manual-password"
+    assert screen.get_status(config) == "[*]"
 
 
 @pytest.mark.asyncio

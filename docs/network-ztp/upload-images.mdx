@@ -64,7 +64,7 @@ Path: `POST /v1/files/{platform}/{version}/{filename}`
 
 | Parameter | Where | Required | Description |
 | :-------- | :---- | :------- | :---------- |
-| `platform` | path | yes | Platform key — for example `cumulus-linux`, `mlnx-os`, `nvos`. Must match the platform value devices in Nautobot resolve to. |
+| `platform` | path | yes | Platform key — for example `cumulus-linux`, `mlnx-os`, `nv-os`. Must match the platform value devices in Nautobot resolve to. |
 | `version` | path | yes | Version string the workflows will reference — for example `5.14.0`. Used directly in the `{platform}/{version}/` storage path. |
 | `filename` | path | yes | The on-disk filename to store. Devices fetch by this name. |
 | `checksum` | query | yes | SHA256 of the file you are uploading. |
