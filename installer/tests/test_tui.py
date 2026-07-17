@@ -18,13 +18,16 @@ from __future__ import annotations
 
 import pytest
 
+from nv_config_manager_installer.deployer import DeployOptions
 from nv_config_manager_installer.schema import (
     ClusterConfig,
+    ImageSource,
     NVConfigManagerInstallConfig,
     SiteConfig,
 )
 from nv_config_manager_installer.tui.app import NVConfigManagerInstallerApp
 from nv_config_manager_installer.tui.screens.cluster import ClusterScreen
+from nv_config_manager_installer.tui.screens.deploy import DeployScreen
 
 
 @pytest.mark.asyncio
@@ -90,3 +93,17 @@ async def test_airgapped_collected_from_cluster():
     async with app.run_test():
         app.collect_config()
         assert app.config.cluster.airgapped is True
+
+
+@pytest.mark.parametrize(
+    "options",
+    [DeployOptions(build_images=True), DeployOptions(load_kind=True)],
+)
+def test_local_image_operations_select_local_image_source(options):
+    """Building or loading local images must also deploy those images."""
+    config = NVConfigManagerInstallConfig()
+    screen = DeployScreen(config)
+
+    screen._sync_image_source_from_options(options)
+
+    assert config.images.source == ImageSource.LOCAL
