@@ -22,7 +22,7 @@ from unittest.mock import Mock, patch
 import pytest
 from aiohttp import ClientResponse
 
-from nv_config_manager.common.config import load_config
+from nv_config_manager.common.config import clear_config_cache
 
 _CLIENT_RESPONSE_INIT = ClientResponse.__init__
 
@@ -172,7 +172,7 @@ def mock_ini_config(mocker):
     _current_ini["content"] = DEFAULT_INI
 
     # Clear any cached config from previous tests
-    load_config.cache_clear()
+    clear_config_cache()
 
     read_func = configparser.ConfigParser.read
 
@@ -185,7 +185,7 @@ def mock_ini_config(mocker):
     yield
 
     # Clear cache after test to prevent leaking to next test
-    load_config.cache_clear()
+    clear_config_cache()
 
 
 @pytest.fixture()
@@ -208,6 +208,6 @@ def custom_ini():
         # Update the shared INI content
         _current_ini["content"] = ini_content
         # Clear the cached config so it will be reloaded with new settings
-        load_config.cache_clear()
+        clear_config_cache()
 
     return _set_ini
