@@ -17,6 +17,7 @@ For a real lab or production site, start with workflows that prove reachability 
 | Workflow | Start here when... |
 | :------- | :----------------- |
 | [Configuration Backup](../user-guides/configuration-backup/index.mdx) | You need to confirm credentials, management reachability, and baseline running config capture. |
+| [Site Configuration Backup](../user-guides/site-configuration-backup/index.mdx) | You need a fresh site-wide backup without waiting for the next scheduled backup run. |
 | [Configuration Deploy](../user-guides/configuration-deploy/index.mdx) | You have one reviewed intended-config change to apply to one device. |
 | [Multi-Device Deploy](../user-guides/multi-deploy/index.mdx) | Single-device deploy is proven and you need grouped diff approval across a role. |
 | [Cable Validation](../user-guides/cable-validation/index.mdx) | Devices are reachable and Nautobot cabling needs to be compared against observed LLDP/FDB/ARP data. |
@@ -52,6 +53,7 @@ Use [Controlling Running Workflows](../user-guides/workflow-lifecycle/index.mdx)
 Config Manager supports multiple workflow categories visible in the Temporal UI:
 
 - `BackupWorkflow`
+- `SiteBackupWorkflow`
 - `BatchDeployWorkflow`
 - `ConnectedHostMetadataWorkflow`
 - `DeployWorkflow`
@@ -100,6 +102,7 @@ Each built-in workflow has a concrete POST endpoint, for example `POST /v1/workf
 | Endpoint | Description |
 | :------- | :---------- |
 | `/backup` | Execute BackupWorkflow |
+| `/site_backup` | Execute SiteBackupWorkflow |
 | `/batch_deploy` | Execute BatchDeployWorkflow |
 | `/connected_host_metadata` | Execute ConnectedHostMetadataWorkflow |
 | `/cumulus_hardware_validation` | Execute ValidateHardwareWorkflow |

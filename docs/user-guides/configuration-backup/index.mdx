@@ -6,6 +6,8 @@ position: 10
 
 The Configuration Backup workflow pulls the running configuration off a network device, compares it against the intended configuration that Config Manager would deploy, and persists the snapshot to the [Config Store](../../config-store/index.mdx). It is the canonical way to capture a known-good record of what a device is actually running, and the primary mechanism Config Manager uses to detect configuration drift between the device and Nautobot.
 
+For a site-wide snapshot, use [Site Configuration Backup](../site-configuration-backup/index.mdx) to back up every in-scope device in parallel.
+
 The workflow runs directly from the Config Manager UI for ad-hoc backups, on a schedule for routine snapshots, and as a child workflow at the end of Reprovision and Deploy runs.
 
 ## Prerequisites
