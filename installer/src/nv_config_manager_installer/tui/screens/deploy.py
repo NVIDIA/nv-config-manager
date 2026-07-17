@@ -602,6 +602,7 @@ class DeployScreen(Container):
             with Horizontal(classes="compact-field-row"):
                 yield LabeledSwitch("Recreate existing secrets", id="opt-recreate-secrets")
                 yield LabeledSwitch("Run integration tests", id="opt-run-tests")
+                yield LabeledSwitch("Populate Vault secrets", id="opt-populate-vault", value=True)
 
         yield Button("Start Deployment", id="start-deploy", variant="success", classes="add-button")
 
@@ -695,6 +696,7 @@ class DeployScreen(Container):
             recreate_secrets=self.query_one("#opt-recreate-secrets", LabeledSwitch).value,
             run_tests=self.query_one("#opt-run-tests", LabeledSwitch).value,
             vault_token_file=vault_token_file,
+            populate_vault=self.query_one("#opt-populate-vault", LabeledSwitch).value,
         )
 
     def _sync_image_source_from_options(self, options: DeployOptions) -> None:

@@ -317,7 +317,11 @@ def build_openbao_secret_data(
             "credsJson": json.dumps(
                 {
                     "default": {
-                        "username": (default_creds.default_user if default_creds else "admin"),
+                        "username": (
+                            default_creds.default_user
+                            if default_creds and default_creds.default_user
+                            else "admin"
+                        ),
                         "password": (
                             default_creds.default_password
                             if default_creds and default_creds.default_password

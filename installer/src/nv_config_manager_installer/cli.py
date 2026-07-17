@@ -211,6 +211,11 @@ def generate_values(
     default=None,
     help="File containing the Vault provisioning token (ESO deployments).",
 )
+@click.option(
+    "--populate-vault/--skip-vault-population",
+    default=True,
+    help="Populate missing ESO values, or use already provisioned Vault paths.",
+)
 @click.option("--dry-run", is_flag=True, help="Generate values only, skip helm install.")
 def deploy(
     config_path: Path,
@@ -228,6 +233,7 @@ def deploy(
     watch_pods: bool,
     recreate_secrets: bool,
     vault_token_file: Path | None,
+    populate_vault: bool,
     dry_run: bool,
 ) -> None:
     """Deploy NVIDIA Config Manager from a config file (headless, for CI/CD)."""
@@ -251,6 +257,7 @@ def deploy(
         watch_pods=watch_pods,
         recreate_secrets=recreate_secrets,
         vault_token_file=vault_token_file,
+        populate_vault=populate_vault,
         dry_run=dry_run,
     )
 

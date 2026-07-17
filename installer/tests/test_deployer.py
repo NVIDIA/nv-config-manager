@@ -544,6 +544,7 @@ class TestDeployOptions:
         assert opts.helm_debug is False
         assert opts.watch_pods is False
         assert opts.dry_run is False
+        assert opts.populate_vault is True
 
     def test_custom_options(self):
         opts = DeployOptions(
@@ -553,11 +554,26 @@ class TestDeployOptions:
             helm_debug=True,
             watch_pods=True,
             dry_run=True,
+            populate_vault=False,
         )
         assert opts.build_images is True
         assert opts.kind_cluster == "test-cluster"
         assert opts.helm_debug is True
         assert opts.watch_pods is True
+        assert opts.populate_vault is False
+
+
+def test_vault_population_can_use_preprovisioned_eso_paths() -> None:
+    config = _make_config()
+    config.secrets = SecretsConfig(method=SecretsMethod.ESO)
+    callback = RecordingCallback()
+    deployer = Deployer(config, DeployOptions(populate_vault=False), callback)
+
+    deployer._populate_vault()
+
+    step = deployer._get_step("populate-vault")
+    assert step.status == StepStatus.SKIPPED
+    assert step.output == ["Vault population disabled; using pre-provisioned ESO paths"]
 
 
 class TestImageBuilds:

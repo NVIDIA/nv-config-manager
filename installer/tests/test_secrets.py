@@ -16,6 +16,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from nv_config_manager_installer import secrets as secrets_module
@@ -501,6 +503,28 @@ class TestOpenBaoSecretData:
             "endpoint": "https://minio.example",
             "accessKeyId": "access",
             "secretAccessKey": "secret",
+        }
+
+    def test_bmc_default_username_falls_back_when_configured_value_is_empty(self):
+        config = NVConfigManagerInstallConfig(
+            secrets=SecretsConfig(method=SecretsMethod.ESO),
+            redfish=RedfishConfig(
+                enabled=True,
+                vendors={
+                    "default": RedfishVendorCreds(
+                        default_user="",
+                        default_password="bmc-password",
+                    )
+                },
+            ),
+        )
+
+        groups = build_openbao_secret_data(config)
+
+        creds = json.loads(groups["bmc"]["credsJson"])
+        assert creds["default"] == {
+            "username": "admin",
+            "password": "bmc-password",
         }
 
 

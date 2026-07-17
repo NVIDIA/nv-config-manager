@@ -605,8 +605,9 @@ class K8sClient:
         mount_path: str,
         image: str = LOADER_POD_IMAGE,
         node_selector: dict[str, str] | None = None,
+        node_name: str | None = None,
     ) -> None:
-        """Create a short-lived pod that mounts a PVC for content loading."""
+        """Create a pod that mounts a PVC and remains alive until explicitly deleted."""
         body = client.V1Pod(
             metadata=client.V1ObjectMeta(name=name, namespace=namespace),
             spec=client.V1PodSpec(
@@ -615,7 +616,7 @@ class K8sClient:
                     client.V1Container(
                         name="loader",
                         image=image,
-                        command=["sleep", "300"],
+                        command=["sh", "-c", "while true; do sleep 3600; done"],
                         volume_mounts=[client.V1VolumeMount(name="data", mount_path=mount_path)],
                     )
                 ],
@@ -628,9 +629,25 @@ class K8sClient:
                     )
                 ],
                 node_selector=node_selector or None,
+                node_name=node_name,
             ),
         )
         self.v1.create_namespaced_pod(namespace, body)
+
+    def get_pvc_mounted_node(self, name: str, namespace: str) -> str | None:
+        """Return one node currently running a pod that mounts *name*, if any."""
+        pods = self.v1.list_namespaced_pod(namespace).items
+        for pod in pods:
+            if not pod.status or pod.status.phase != "Running" or not pod.spec:
+                continue
+            node_name = pod.spec.node_name
+            if not node_name:
+                continue
+            for volume in pod.spec.volumes or []:
+                claim = volume.persistent_volume_claim
+                if claim and claim.claim_name == name:
+                    return str(node_name)
+        return None
 
     @staticmethod
     def _short_status_text(value: str, *, limit: int = 180) -> str:
@@ -756,8 +773,9 @@ class K8sClient:
         namespace: str,
         command: list[str],
         container: str | None = None,
+        timeout: int = 1_800,
     ) -> str:
-        """Execute a command in a running pod and return its stdout."""
+        """Execute a command in a running pod, raising when it fails or times out."""
         kwargs: dict[str, Any] = {
             "name": name,
             "namespace": namespace,
@@ -766,10 +784,32 @@ class K8sClient:
             "stdout": True,
             "stdin": False,
             "tty": False,
+            "_preload_content": False,
         }
         if container:
             kwargs["container"] = container
-        return k8s_stream(self.v1.connect_get_namespaced_pod_exec, **kwargs)
+        ws = k8s_stream(self.v1.connect_get_namespaced_pod_exec, **kwargs)
+        deadline = time.monotonic() + timeout
+        try:
+            while ws.is_open():
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError(
+                        f"Command in pod {namespace}/{name} did not complete within {timeout}s"
+                    )
+                ws.update(timeout=min(1, remaining))
+
+            returncode = ws.returncode
+            output = ws.read_all()
+            if returncode != 0:
+                detail = str(output).strip()
+                suffix = f": {detail}" if detail else ""
+                raise RuntimeError(
+                    f"Command in pod {namespace}/{name} failed with exit {returncode}{suffix}"
+                )
+            return str(output)
+        finally:
+            ws.close()
 
     def exec_command_streaming(
         self,
