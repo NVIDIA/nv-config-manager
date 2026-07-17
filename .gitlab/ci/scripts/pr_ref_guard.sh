@@ -27,7 +27,10 @@ expected="${2:-${CI_COMMIT_SHA:?expected-sha argument or CI_COMMIT_SHA required}
 
 echo "Checking that ${ref} still points at ${expected}..."
 
-mirror_head="$(git ls-remote "$CI_REPOSITORY_URL" "refs/heads/${ref}" | cut -f1)"
+mirror_head="$(
+    timeout 30s git ls-remote "$CI_REPOSITORY_URL" "refs/heads/${ref}" |
+        cut -f1
+)"
 if [ -z "$mirror_head" ]; then
     echo "ERROR: ${ref} no longer exists on the mirror (PR closed or merged?)"
     exit 1
