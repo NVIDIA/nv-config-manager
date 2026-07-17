@@ -266,7 +266,7 @@ def deploy(
 
 @main.group("pvc-updater")
 def pvc_updater_command() -> None:
-    """Populate GitOps-managed NVCM content PVCs and restart consumers."""
+    """Populate GitOps-managed NVCM content PVCs and reload consumers as needed."""
 
 
 def _run_pvc_updater(
@@ -297,9 +297,7 @@ def _run_pvc_updater(
             job_ran = True
     except Exception as exc:
         raise click.ClickException(str(exc)) from exc
-    click.echo(
-        "PVC content updated and consumers restarted." if changed else "PVC content unchanged."
-    )
+    click.echo("PVC content updated successfully." if changed else "PVC content unchanged.")
     if job_ran:
         click.echo("Nautobot job completed successfully.")
 

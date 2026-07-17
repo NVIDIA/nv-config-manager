@@ -177,11 +177,11 @@ avoids requiring a provisioning token for the deployment command.
 
 Use this command from automation after the NVCM GitOps application is healthy.
 GitOps owns the PVC definitions; the updater only replaces their mutable
-content. During a changed-content update, it briefly scales the consuming
-deployments to zero, replaces the content, restores their original replica
-counts, and waits for them to become ready. This prevents workloads from reading
-partially replaced content but causes a short service interruption. The updater
-never creates, resizes, or changes a PVC. A missing PVC is an error.
+content. Jobs and template updates briefly scale their consuming deployments to
+zero, replace the content, restore the original replica counts, and wait for
+them to become ready. ZTP image updates instead publish image files before an
+atomic manifest replacement and leave Network ZTP running. The updater never
+creates, resizes, or changes a PVC. A missing PVC is an error.
 
 ```bash
 # Custom jobs: restart Nautobot, Celery, and Celery Beat when content changed.
@@ -205,7 +205,7 @@ nvcm-installer pvc-updater jobs --namespace nv-config-manager \
 nvcm-installer pvc-updater templates --namespace nv-config-manager \
   --release-name nv-config-manager --source ./template-plugins
 
-# ZTP OS images: rebuild manifest.json and restart Network ZTP when content changed.
+# ZTP OS images: publish images and manifest.json without restarting Network ZTP.
 nvcm-installer pvc-updater ztp --namespace nv-config-manager \
   --release-name nv-config-manager \
   --image cumulus-linux 5.13.0 ./cumulus-linux-5.13.0.bin
@@ -834,7 +834,7 @@ execute in order. Steps are automatically skipped when not applicable.
 | 7 | **Populate Vault** | Ensure configured KV v2 mounts exist and fill missing ESO secret values (skip unless ESO is selected) |
 | 8 | **Setup Jobs PVC** | Create PVC and load custom Nautobot jobs (skip if none configured) |
 | 9 | **Setup Templates PVC** | Create PVC and load template plugins (skip if none configured) |
-| 10 | **Setup ZTP Images PVC** | Create PVC, upload OS images with proper directory structure and `manifest.json` (skip if storage type is S3 or no images configured; GitOps runs use `pvc-updater ztp` to restart Network ZTP after image changes) |
+| 10 | **Setup ZTP Images PVC** | Create PVC, upload OS images with proper directory structure and `manifest.json` (skip if storage type is S3 or no images configured; GitOps runs can use `pvc-updater ztp` for initial image publication without restarting Network ZTP) |
 | 11 | **Generate Values** | Produce the combined Helm override YAML from config, secrets, and the selected size profile |
 | 12 | **Helm Install** | `helm upgrade --install` with generated values |
 | 13 | **Patch Gateway** | HostPort patch on Envoy Gateway for NodePort access (skip if LB is configured) |
@@ -847,9 +847,10 @@ execute in order. Steps are automatically skipped when not applicable.
 
 **Re-run intelligence:** The deployer detects existing deployments and content
 checksums. On re-runs, it only restarts services when associated jobs or template
-PVC content has actually changed, rather than blindly restarting everything. For
-GitOps-managed file-backed ZTP images, `pvc-updater ztp` restarts Network ZTP after
-a successful content update.
+PVC content has actually changed, rather than blindly restarting everything.
+For GitOps-managed file-backed ZTP images, `pvc-updater ztp` publishes initial
+image content without restarting Network ZTP. Use the ZTP upload API for Day 2
+image changes.
 
 **INI checksum annotations:** The `nv-config-manager.ini` config secret includes a content
 checksum in pod annotations, triggering automatic rolling restarts when INI

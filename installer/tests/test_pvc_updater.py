@@ -33,6 +33,7 @@ from nv_config_manager_installer.pvc_updater import (
     _LeaseRenewer,
     _make_tarball,
     _replace_pvc_content_command,
+    _replace_ztp_pvc_content_command,
     _safe_extract,
     normalize_ztp_platform,
 )
@@ -214,13 +215,12 @@ def test_missing_pvc_fails_without_attempting_to_create_it(tmp_path: Path) -> No
     k8s.create_loader_pod.assert_not_called()
 
 
-def test_ztp_rebuilds_content_and_restarts_ztp(tmp_path: Path) -> None:
+def test_ztp_rebuilds_content_without_restarting_ztp(tmp_path: Path) -> None:
     image = tmp_path / "image.bin"
     image.write_bytes(b"firmware")
     k8s = MagicMock()
     k8s.pvc_exists.return_value = True
     k8s.get_pvc_annotation.return_value = "old-content"
-    k8s.list_deployment_names.return_value = ["nv-config-manager-ztp"]
     manifest: dict[str, object] = {}
 
     def capture_manifest(staging: Path, _tarball: Path) -> None:
@@ -237,10 +237,9 @@ def test_ztp_rebuilds_content_and_restarts_ztp(tmp_path: Path) -> None:
     loader_call = k8s.create_loader_pod.call_args.args
     assert loader_call[0].startswith("nvcm-pvc-updater-ztp-")
     assert loader_call[1:] == ("nv-config-manager", "ztp-os-images", "/mnt/images")
-    assert k8s.scale_deployment.call_args_list == [
-        call("nv-config-manager-ztp", "nv-config-manager", 0),
-        call("nv-config-manager-ztp", "nv-config-manager", 1),
-    ]
+    k8s.list_deployment_names.assert_not_called()
+    k8s.get_deployment_replicas.assert_not_called()
+    k8s.scale_deployment.assert_not_called()
     assert manifest["images"] == [
         {
             "platform": "cumulus-linux",
@@ -522,6 +521,66 @@ def test_pvc_content_replacement_stages_then_replaces_live_content(tmp_path: Pat
     assert (live / "new.py").read_text() == "new\n"
     assert not (live / ".nvcm-pvc-updater-staging").exists()
     assert not (live / ".nvcm-pvc-updater-backup").exists()
+
+
+def test_ztp_content_replacement_publishes_manifest_last(tmp_path: Path) -> None:
+    live = tmp_path / "ztp"
+    old_image = live / "cumulus-linux" / "5.12.0" / "old.bin"
+    old_image.parent.mkdir(parents=True)
+    old_image.write_bytes(b"old")
+    (live / "manifest.json").write_text(
+        json.dumps({"generation": "old", "images": [{"path": "cumulus-linux/5.12.0/old.bin"}]})
+    )
+
+    staged = tmp_path / "staged"
+    new_image = staged / "cumulus-linux" / "5.13.0" / "new.bin"
+    new_image.parent.mkdir(parents=True)
+    new_image.write_bytes(b"new")
+    (staged / "manifest.json").write_text(
+        json.dumps({"generation": "new", "images": [{"path": "cumulus-linux/5.13.0/new.bin"}]})
+    )
+    tarball = tmp_path / "content.tar.gz"
+    _make_tarball(staged, tarball)
+    command = _replace_ztp_pvc_content_command(str(live)).replace(
+        "/tmp/content.tar.gz", str(tarball)
+    )
+
+    real_mv = shutil.which("mv")
+    assert real_mv is not None
+    observed = tmp_path / "manifest-last-observed"
+    fake_bin = tmp_path / "fake-bin"
+    fake_bin.mkdir()
+    fake_mv = fake_bin / "mv"
+    fake_mv.write_text(
+        f'''#!/bin/sh
+if [ "$#" -eq 3 ] && [ "$1" = "-f" ]; then
+    case "$2" in
+        */manifest.json)
+            test -f "$LIVE/cumulus-linux/5.13.0/new.bin" || exit 91
+            grep -q '"generation": "old"' "$LIVE/manifest.json" || exit 92
+            : > "$OBSERVED"
+            ;;
+    esac
+fi
+exec "{real_mv}" "$@"
+'''
+    )
+    fake_mv.chmod(0o755)
+    env = {
+        **os.environ,
+        "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
+        "LIVE": str(live),
+        "OBSERVED": str(observed),
+    }
+
+    subprocess.run(["sh", "-c", command], env=env, check=True)
+
+    assert observed.exists()
+    assert json.loads((live / "manifest.json").read_text())["generation"] == "new"
+    assert (live / "cumulus-linux" / "5.13.0" / "new.bin").read_bytes() == b"new"
+    assert not old_image.exists()
+    assert not (live / ".nvcm-pvc-updater-staging").exists()
+    assert not (live / ".nvcm-pvc-updater-desired").exists()
 
 
 def test_pvc_content_replacement_preserves_live_content_when_validation_fails(

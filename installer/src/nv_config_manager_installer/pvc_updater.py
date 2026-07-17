@@ -16,7 +16,8 @@
 
 This module deliberately does not create or resize PVCs.  GitOps owns their
 specification; this updater only supplies the mutable data that a GitOps
-controller cannot put into a volume and restarts the workloads that consume it.
+controller cannot put into a volume and restarts workloads when changed content
+must be reloaded.
 """
 
 from __future__ import annotations
@@ -218,6 +219,74 @@ rmdir "$staging"
 trap - EXIT'''
 
 
+def _replace_ztp_pvc_content_command(mount_path: str) -> str:
+    """Build a live-safe ZTP update command that publishes the manifest last.
+
+    Image files are moved into place with same-volume renames while the old
+    manifest remains available.  The new manifest is then atomically renamed
+    over it before files that are no longer referenced are removed.
+    """
+    staging_name = ".nvcm-pvc-updater-staging"
+    desired_name = ".nvcm-pvc-updater-desired"
+    return f'''set -eu
+live="{mount_path}"
+staging="$live/{staging_name}"
+desired="$live/{desired_name}"
+if [ -e "$staging" ] || [ -e "$desired" ]; then
+    echo "Incomplete previous ZTP PVC update found; inspect $staging and $desired before retrying" >&2
+    exit 1
+fi
+cleanup_workdirs() {{
+    rm -rf "$staging" "$desired"
+}}
+trap cleanup_workdirs EXIT
+mkdir "$staging" "$desired"
+tar xzf /tmp/content.tar.gz -C "$staging"
+if [ ! -f "$staging/manifest.json" ]; then
+    echo "ZTP content archive does not contain manifest.json" >&2
+    exit 1
+fi
+find "$staging" -type f ! -path "$staging/manifest.json" -exec sh -c '
+staging=$1
+desired=$2
+shift 2
+for source do
+    relative=${{source#"$staging"/}}
+    marker="$desired/$relative"
+    mkdir -p "$(dirname "$marker")"
+    : > "$marker"
+done
+' sh "$staging" "$desired" {{}} +
+find "$staging" -type f ! -path "$staging/manifest.json" -exec sh -c '
+staging=$1
+live=$2
+shift 2
+for source do
+    relative=${{source#"$staging"/}}
+    destination="$live/$relative"
+    mkdir -p "$(dirname "$destination")"
+    mv -f "$source" "$destination"
+done
+' sh "$staging" "$live" {{}} +
+mv -f "$staging/manifest.json" "$live/manifest.json"
+find "$live" \\( -path "$staging" -o -path "$desired" \\) -prune -o \
+    -type f ! -path "$live/manifest.json" -exec sh -c '
+live=$1
+desired=$2
+shift 2
+for current do
+    relative=${{current#"$live"/}}
+    if [ ! -f "$desired/$relative" ]; then
+        rm -f "$current"
+    fi
+done
+' sh "$live" "$desired" {{}} +
+find "$live" -depth -type d ! -path "$live" ! -path "$staging" ! -path "$desired" \
+    -exec rmdir {{}} \\; 2>/dev/null || true
+cleanup_workdirs
+trap - EXIT'''
+
+
 class _LeaseRenewer:
     """Keep one PVC-update Lease valid while a long update is running."""
 
@@ -296,7 +365,7 @@ class _LeaseRenewer:
 
 
 class PVCUpdater:
-    """Populate the three NVCM content PVCs and restart their consumers."""
+    """Populate the three NVCM content PVCs and reload consumers when needed."""
 
     def __init__(
         self,
@@ -370,7 +439,7 @@ class PVCUpdater:
         *,
         pvc_name: str = ZTP_PVC_NAME,
     ) -> bool:
-        """Update ZTP OS images and their manifest, then restart Network ZTP."""
+        """Update ZTP OS images and publish their manifest without stopping ZTP."""
         image_list = list(images)
         if not image_list:
             raise ValueError("At least one --image is required")
@@ -410,7 +479,8 @@ class PVCUpdater:
                 pvc_name=pvc_name,
                 mount_path="/mnt/images",
                 post_extract="",
-                selectors=("app.kubernetes.io/component=network-ztp",),
+                selectors=(),
+                publish_manifest_last=True,
             )
 
     def _update_content(
@@ -453,6 +523,7 @@ class PVCUpdater:
         mount_path: str,
         post_extract: str,
         selectors: tuple[str, ...],
+        publish_manifest_last: bool = False,
     ) -> bool:
         self._require_pvc(pvc_name)
         lease_name = _pvc_update_lease_name(pvc_name)
@@ -479,7 +550,9 @@ class PVCUpdater:
                     self._on_log(f"{kind}: content unchanged; PVC and workloads left untouched")
                     return False
 
-                deployment_names = self._consumer_deployment_names(kind, selectors)
+                deployment_names = (
+                    self._consumer_deployment_names(kind, selectors) if selectors else []
+                )
 
                 with tempfile.TemporaryDirectory(prefix="nvcm-pvc-updater-") as tmpdir:
                     tarball = Path(tmpdir) / f"{kind}.tar.gz"
@@ -508,13 +581,18 @@ class PVCUpdater:
                             str(tarball), pod_name, self.namespace, "/tmp/content.tar.gz"
                         )
                         lease_renewer.ensure_healthy()
-                        original_replicas = self._quiesce_consumers(
-                            kind,
-                            deployment_names,
-                            lease_renewer,
-                        )
+                        if deployment_names:
+                            original_replicas = self._quiesce_consumers(
+                                kind,
+                                deployment_names,
+                                lease_renewer,
+                            )
                         lease_renewer.ensure_healthy()
-                        command = _replace_pvc_content_command(mount_path, post_extract)
+                        command = (
+                            _replace_ztp_pvc_content_command(mount_path)
+                            if publish_manifest_last
+                            else _replace_pvc_content_command(mount_path, post_extract)
+                        )
                         self._k8s.exec_command(pod_name, self.namespace, ["sh", "-c", command])
                         lease_renewer.ensure_healthy()
                     finally:
