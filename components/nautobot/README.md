@@ -42,7 +42,9 @@ docker build -t nv-config-manager-nats-ready:local -f build/nats-ready.Dockerfil
 
 ## Jobs
 
-`nv_config_manager_jobs/` contains bootstrap and development jobs. The installer stages these jobs when `content.include_bootstrap_jobs` or `content.jobs` is enabled in `nv-config-manager-install.yaml`.
+`nv_config_manager_jobs/` contains bootstrap and development jobs. Bootstrap jobs are
+always available from the Nautobot image; the installer stages only custom job paths
+configured through `content.jobs` in `nv-config-manager-install.yaml`.
 
 ## Plugins
 

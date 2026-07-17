@@ -118,12 +118,11 @@ def _collect_validation_errors(config: NVConfigManagerInstallConfig) -> list[str
         errors.append("At least one site is required")
     if config.sso.enabled and not config.sso.issuer_url:
         errors.append("sso.issuer_url is required when SSO is enabled")
-    if not config.services.nautobot and (
-        config.content.jobs or config.content.include_bootstrap_jobs
-    ):
+    if not config.services.nautobot and config.content.requires_local_nautobot:
         errors.append(
-            "Custom jobs require a local Nautobot deployment "
-            "(services.nautobot must be true, or remove content.jobs)"
+            "Custom jobs and post-deploy jobs require a local Nautobot deployment "
+            "(services.nautobot must be true, or remove content.jobs and "
+            "content.run_after_deploy)"
         )
     return errors
 

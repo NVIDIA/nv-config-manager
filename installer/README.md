@@ -430,15 +430,15 @@ Path fields open an interactive directory picker (see below).
 
 | Field | Description |
 |-------|-------------|
-| Include Bootstrap Jobs | Ship standard bootstrap jobs |
 | Custom Jobs | Paths to job directories or tarballs (use `...` to browse) |
 | Jobs PVC Storage Class | Kubernetes storage class for the Nautobot jobs PVC (optional, uses cluster default) |
 | Jobs PVC Access Mode | `ReadWriteOnce` or `ReadWriteMany` for the Nautobot jobs PVC |
 | Jobs Node Selector | Node label selector for loader and Nautobot pods that mount the jobs PVC |
-| Post-Deploy Jobs | Nautobot jobs to run after deployment (class name + JSON input) |
+| Post-Deploy Jobs | Nautobot jobs to run after deployment (class name + JSON input; local Nautobot only) |
 
-> **Note:** Custom jobs and bootstrap jobs require local Nautobot
-> (`services.nautobot: true`). If Nautobot is set to remote, a validation warning is shown.
+> **Note:** Bundled bootstrap jobs are always available from the Nautobot image.
+> Custom and post-deploy jobs require local Nautobot (`services.nautobot: true`). If
+> Nautobot is set to remote, configure and run those jobs directly on that instance.
 
 #### 7. Template Plugins
 

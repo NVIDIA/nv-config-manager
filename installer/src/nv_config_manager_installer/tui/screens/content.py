@@ -27,7 +27,6 @@ from textual_fspicker import SelectDirectory
 
 from nv_config_manager_installer.schema import JobPath, NVConfigManagerInstallConfig, PostDeployJob
 from nv_config_manager_installer.tui.screens.node_picker import NodeSelectorPanel
-from nv_config_manager_installer.tui.widgets import LabeledSwitch
 
 
 class IngestDataScreen(Container):
@@ -44,8 +43,9 @@ class IngestDataScreen(Container):
         yield Label("─" * 40, classes="section-divider")
 
         warning = Label(
-            "⚠ Nautobot is external — custom jobs cannot be loaded via PVC mount. "
-            "Configure jobs on the external Nautobot instance directly.",
+            "⚠ Nautobot is external — custom jobs cannot be loaded via PVC mount and "
+            "post-deploy jobs cannot be run. Configure or run them on the external "
+            "Nautobot instance directly.",
             id="content-nautobot-warning",
         )
         warning.styles.color = "yellow"
@@ -53,12 +53,6 @@ class IngestDataScreen(Container):
         warning.styles.padding = (0, 1)
         warning.display = not self._config.services.nautobot
         yield warning
-
-        yield LabeledSwitch(
-            "Include bootstrap jobs",
-            value=ct.include_bootstrap_jobs,
-            id="content-bootstrap",
-        )
 
         # -- Custom jobs --
         yield Label("Custom Nautobot Jobs", classes="field-label")
@@ -167,7 +161,6 @@ class IngestDataScreen(Container):
 
     def _collect_all(self) -> None:
         ct = self._config.content
-        ct.include_bootstrap_jobs = self.query_one("#content-bootstrap", LabeledSwitch).value
 
         jobs: list[JobPath] = []
         for i in range(len(ct.jobs)):
@@ -203,7 +196,6 @@ class IngestDataScreen(Container):
         self._collect_all()
         config.content.jobs = list(self._config.content.jobs)
         config.content.jobs_config = self._config.content.jobs_config.model_copy()
-        config.content.include_bootstrap_jobs = self._config.content.include_bootstrap_jobs
         config.content.run_after_deploy = list(self._config.content.run_after_deploy)
 
     def sync_from_config(self, config: NVConfigManagerInstallConfig) -> None:

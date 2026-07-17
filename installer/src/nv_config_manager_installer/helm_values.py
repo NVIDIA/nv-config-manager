@@ -801,7 +801,7 @@ def _build_nautobot(config: NVConfigManagerInstallConfig) -> dict[str, Any]:
             "persistence": {"staticFiles": {"enabled": True, "size": "1Gi"}},
         }
     )
-    if config.content.jobs or config.content.include_bootstrap_jobs:
+    if config.content.jobs:
         jobs_config = config.content.jobs_config
         section["customJobs"] = {
             "enabled": True,

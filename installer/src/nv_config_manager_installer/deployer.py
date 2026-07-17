@@ -1041,7 +1041,7 @@ class Deployer:
         options: DeployOptions,
         callback: DeployCallback | None = None,
     ) -> None:
-        self.config = config
+        self.config = NVConfigManagerInstallConfig.model_validate(config.model_dump())
         self.options = options
         self.callback = callback or _NoopCallback()
         self._secrets_state: dict[str, str] = {}
@@ -1350,7 +1350,7 @@ class Deployer:
         else:
             self.callback.on_log("Fresh install: no existing Helm release found")
 
-        if self.config.content.jobs or self.config.content.include_bootstrap_jobs:
+        if self.config.content.jobs:
             self._rerun.jobs_changed = self._check_content_diff(
                 _build_job_paths(self.config), "nautobot-custom-jobs", ns, "Jobs content"
             )
@@ -2281,7 +2281,7 @@ class Deployer:
             self.callback.on_log(msg)
 
     def _setup_jobs_pvc(self) -> None:
-        if not self.config.content.jobs and not self.config.content.include_bootstrap_jobs:
+        if not self.config.content.jobs:
             self._skip_step("setup-jobs-pvc", "No custom jobs configured")
             return
 
