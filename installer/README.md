@@ -177,8 +177,11 @@ avoids requiring a provisioning token for the deployment command.
 
 Use this command from automation after the NVCM GitOps application is healthy.
 GitOps owns the PVC definitions; the updater only replaces their mutable
-content and then waits for the consuming deployments to restart successfully.
-It never creates, resizes, or changes a PVC. A missing PVC is an error.
+content. During a changed-content update, it briefly scales the consuming
+deployments to zero, replaces the content, restores their original replica
+counts, and waits for them to become ready. This prevents workloads from reading
+partially replaced content but causes a short service interruption. The updater
+never creates, resizes, or changes a PVC. A missing PVC is an error.
 
 ```bash
 # Custom jobs: restart Nautobot, Celery, and Celery Beat when content changed.

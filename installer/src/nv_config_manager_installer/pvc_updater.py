@@ -27,6 +27,7 @@ import shutil
 import tarfile
 import tempfile
 import threading
+import time
 import uuid
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -234,6 +235,7 @@ class _LeaseRenewer:
         self._duration_seconds = duration_seconds
         self._stop_event = threading.Event()
         self._failure: Exception | None = None
+        self._failure_lock = threading.Lock()
         self._thread = threading.Thread(target=self._run, daemon=True)
 
     def __enter__(self) -> _LeaseRenewer:
@@ -243,12 +245,30 @@ class _LeaseRenewer:
     def __exit__(self, exc_type: object, exc_value: object, traceback: object) -> None:
         self._stop_event.set()
         self._thread.join()
-        if exc_type is None and self._failure is not None:
-            raise RuntimeError(f"Lost PVC update lease '{self._lease_name}': {self._failure}")
+        if exc_type is None:
+            self.ensure_healthy()
+
+    def ensure_healthy(self) -> None:
+        """Raise immediately once lease ownership can no longer be guaranteed."""
+        with self._failure_lock:
+            failure = self._failure
+        if failure is not None:
+            raise RuntimeError(
+                f"Lost PVC update lease '{self._lease_name}': {failure}"
+            ) from failure
+
+    def _record_failure(self, failure: Exception) -> None:
+        with self._failure_lock:
+            self._failure = failure
+        self._stop_event.set()
 
     def _run(self) -> None:
-        interval = max(1, self._duration_seconds // 3)
-        while not self._stop_event.wait(interval):
+        renewal_interval = max(1, self._duration_seconds // 4)
+        retry_interval = max(1, min(30, self._duration_seconds // 12))
+        safe_retry_window = max(1, self._duration_seconds // 2)
+        last_success = time.monotonic()
+        delay = renewal_interval
+        while not self._stop_event.wait(delay):
             try:
                 self._k8s.renew_lease(
                     self._lease_name,
@@ -256,10 +276,22 @@ class _LeaseRenewer:
                     self._holder_identity,
                     duration_seconds=self._duration_seconds,
                 )
-            except Exception as exc:  # pragma: no cover - timing-dependent
-                self._failure = exc
-                self._stop_event.set()
+            except RuntimeError as exc:  # ownership loss is not retryable
+                self._record_failure(exc)
                 return
+            except Exception as exc:  # pragma: no cover - timing-dependent
+                status = getattr(exc, "status", None)
+                if status and status < 500 and status not in {408, 429}:
+                    self._record_failure(exc)
+                    return
+                remaining = safe_retry_window - (time.monotonic() - last_success)
+                if remaining <= 0:
+                    self._record_failure(exc)
+                    return
+                delay = min(retry_interval, remaining)
+            else:
+                last_success = time.monotonic()
+                delay = renewal_interval
 
 
 class PVCUpdater:
@@ -439,7 +471,7 @@ class PVCUpdater:
                 self.namespace,
                 holder_identity,
                 PVC_UPDATE_LEASE_DURATION_SECONDS,
-            ):
+            ) as lease_renewer:
                 content_hash = _hash_staged_content(staging)
                 current_hash = self._k8s.get_pvc_annotation(
                     pvc_name, self.namespace, CONTENT_HASH_ANNOTATION
@@ -448,6 +480,8 @@ class PVCUpdater:
                     self._on_log(f"{kind}: content unchanged; PVC and workloads left untouched")
                     return False
 
+                deployment_names = self._consumer_deployment_names(kind, selectors)
+
                 with tempfile.TemporaryDirectory(prefix="nvcm-pvc-updater-") as tmpdir:
                     tarball = Path(tmpdir) / f"{kind}.tar.gz"
                     _make_tarball(staging, tarball)
@@ -455,6 +489,7 @@ class PVCUpdater:
                     pod_name = f"nvcm-pvc-updater-{kind}-{pvc_suffix}"
                     self._k8s.delete_pod(pod_name, self.namespace)
                     self._k8s.wait_for_pod_gone(pod_name, self.namespace)
+                    original_replicas: dict[str, int] | None = None
                     try:
                         mounted_node = self._k8s.get_pvc_mounted_node(pvc_name, self.namespace)
                         if mounted_node:
@@ -473,13 +508,25 @@ class PVCUpdater:
                         self._k8s.copy_to_pod(
                             str(tarball), pod_name, self.namespace, "/tmp/content.tar.gz"
                         )
+                        lease_renewer.ensure_healthy()
+                        original_replicas = self._quiesce_consumers(
+                            kind,
+                            deployment_names,
+                            lease_renewer,
+                        )
+                        lease_renewer.ensure_healthy()
                         command = _replace_pvc_content_command(mount_path, post_extract)
                         self._k8s.exec_command(pod_name, self.namespace, ["sh", "-c", command])
+                        lease_renewer.ensure_healthy()
                     finally:
-                        self._k8s.delete_pod(pod_name, self.namespace)
-                        self._k8s.wait_for_pod_gone(pod_name, self.namespace)
+                        try:
+                            self._k8s.delete_pod(pod_name, self.namespace)
+                            self._k8s.wait_for_pod_gone(pod_name, self.namespace)
+                        finally:
+                            if original_replicas is not None:
+                                self._restore_consumers(kind, original_replicas)
 
-                self._restart_consumers(kind, selectors)
+                lease_renewer.ensure_healthy()
                 self._k8s.annotate_pvc(
                     pvc_name, self.namespace, CONTENT_HASH_ANNOTATION, content_hash
                 )
@@ -494,7 +541,11 @@ class PVCUpdater:
                 "Create it through the NVCM GitOps application before running pvc-updater."
             )
 
-    def _restart_consumers(self, kind: str, selectors: tuple[str, ...]) -> None:
+    def _consumer_deployment_names(
+        self,
+        kind: str,
+        selectors: tuple[str, ...],
+    ) -> list[str]:
         deployment_names: set[str] = set()
         for selector in selectors:
             release_selector = f"{selector},app.kubernetes.io/instance={self.release_name}"
@@ -509,17 +560,57 @@ class PVCUpdater:
                 f"No workloads for release '{self.release_name}' consume the {kind} PVC "
                 f"in namespace '{self.namespace}'"
             )
+        return sorted(deployment_names)
+
+    def _quiesce_consumers(
+        self,
+        kind: str,
+        deployment_names: list[str],
+        lease_renewer: _LeaseRenewer,
+    ) -> dict[str, int]:
+        original_replicas = {
+            name: self._k8s.get_deployment_replicas(name, self.namespace)
+            for name in deployment_names
+        }
         generations: dict[str, int] = {}
-        for name in sorted(deployment_names):
-            self._on_log(f"{kind}: restarting deployment {name}")
-            generations[name] = self._k8s.restart_deployment(name, self.namespace)
-        for name in sorted(deployment_names):
+        try:
+            for name in deployment_names:
+                lease_renewer.ensure_healthy()
+                if original_replicas[name] == 0:
+                    continue
+                self._on_log(f"{kind}: quiescing deployment {name}")
+                generations[name] = self._k8s.scale_deployment(name, self.namespace, 0)
+            for name, generation in generations.items():
+                self._k8s.wait_for_rollout(
+                    name,
+                    self.namespace,
+                    timeout=self.rollout_timeout,
+                    on_message=self._on_log,
+                    min_generation=generation,
+                )
+                lease_renewer.ensure_healthy()
+        except Exception:
+            self._restore_consumers(
+                kind,
+                {name: original_replicas[name] for name in generations},
+            )
+            raise
+        return original_replicas
+
+    def _restore_consumers(self, kind: str, original_replicas: dict[str, int]) -> None:
+        generations: dict[str, int] = {}
+        for name, replicas in original_replicas.items():
+            if replicas == 0:
+                continue
+            self._on_log(f"{kind}: restoring deployment {name} to {replicas} replica(s)")
+            generations[name] = self._k8s.scale_deployment(name, self.namespace, replicas)
+        for name, generation in generations.items():
             self._k8s.wait_for_rollout(
                 name,
                 self.namespace,
                 timeout=self.rollout_timeout,
                 on_message=self._on_log,
-                min_generation=generations[name],
+                min_generation=generation,
             )
 
     @staticmethod

@@ -1032,13 +1032,32 @@ class K8sClient:
         result = self.apps_v1.patch_namespaced_deployment(name, namespace, patch)
         return result.metadata.generation or 0
 
+    def get_deployment_replicas(self, name: str, namespace: str) -> int:
+        """Return the deployment's desired replica count."""
+        deployment = self.apps_v1.read_namespaced_deployment(name, namespace)
+        replicas = deployment.spec.replicas
+        return int(replicas) if replicas is not None else 1
+
+    def scale_deployment(self, name: str, namespace: str, replicas: int) -> int:
+        """Set a deployment's replica count and return its new generation."""
+        result = self.apps_v1.patch_namespaced_deployment(
+            name,
+            namespace,
+            {"spec": {"replicas": replicas}},
+        )
+        return int(result.metadata.generation or 0)
+
     @staticmethod
     def _rollout_complete(dep: Any) -> bool:
         """Check whether a deployment rollout has fully converged."""
         status = dep.status
         if status is None:
             return False
-        spec_replicas = dep.spec.replicas or 1
+        spec_replicas = dep.spec.replicas if dep.spec.replicas is not None else 1
+        if spec_replicas == 0:
+            return (status.observed_generation or 0) >= (dep.metadata.generation or 0) and (
+                status.replicas or 0
+            ) == 0
         return (
             (status.observed_generation or 0) >= (dep.metadata.generation or 0)
             and (status.updated_replicas or 0) >= spec_replicas
@@ -1060,7 +1079,7 @@ class K8sClient:
         status = dep.status
         if status is None:
             return False
-        spec_replicas = dep.spec.replicas or 1
+        spec_replicas = dep.spec.replicas if dep.spec.replicas is not None else 1
         ready = status.ready_replicas or 0
         updated = status.updated_replicas or 0
         available = status.available_replicas or 0

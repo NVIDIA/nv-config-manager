@@ -27,6 +27,7 @@ from nv_config_manager_installer.k8s import K8sClient
 def _client() -> K8sClient:
     k8s = object.__new__(K8sClient)
     k8s.v1 = MagicMock()
+    k8s.apps_v1 = MagicMock()
     return k8s
 
 
@@ -99,3 +100,30 @@ def test_get_pvc_mounted_node_uses_a_running_consumer() -> None:
     k8s.v1.list_namespaced_pod.return_value.items = [pending, running]
 
     assert k8s.get_pvc_mounted_node("jobs", "nv-config-manager") == "worker-a"
+
+
+def test_deployment_scale_helpers_preserve_replica_counts() -> None:
+    k8s = _client()
+    k8s.apps_v1.read_namespaced_deployment.return_value.spec.replicas = 3
+    k8s.apps_v1.patch_namespaced_deployment.return_value.metadata.generation = 9
+
+    assert k8s.get_deployment_replicas("render", "nv-config-manager") == 3
+    assert k8s.scale_deployment("render", "nv-config-manager", 0) == 9
+    k8s.apps_v1.patch_namespaced_deployment.assert_called_once_with(
+        "render",
+        "nv-config-manager",
+        {"spec": {"replicas": 0}},
+    )
+
+
+def test_rollout_completion_waits_for_scaled_down_pods_to_exit() -> None:
+    deployment = SimpleNamespace(
+        metadata=SimpleNamespace(generation=4),
+        spec=SimpleNamespace(replicas=0),
+        status=SimpleNamespace(observed_generation=4, replicas=1),
+    )
+
+    assert K8sClient._rollout_complete(deployment) is False
+
+    deployment.status.replicas = 0
+    assert K8sClient._rollout_complete(deployment) is True
