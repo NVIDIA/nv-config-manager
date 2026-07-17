@@ -687,6 +687,11 @@ class DeployScreen(Container):
             run_tests=self.query_one("#opt-run-tests", LabeledSwitch).value,
         )
 
+    def _sync_image_source_from_options(self, options: DeployOptions) -> None:
+        """Use locally built or loaded images for the deployment."""
+        if options.build_images or options.load_kind:
+            self._config.images.source = ImageSource.LOCAL
+
     def _start_deploy(self) -> None:
         from nv_config_manager_installer.tui.app import NVConfigManagerInstallerApp
 
@@ -706,6 +711,7 @@ class DeployScreen(Container):
         log_viewer.clear_deploy_log()
 
         options = self._collect_deploy_options()
+        self._sync_image_source_from_options(options)
         callback = _TuiCallback(self)
 
         try:
