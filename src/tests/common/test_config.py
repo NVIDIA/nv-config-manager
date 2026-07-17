@@ -18,7 +18,13 @@ import os
 from configparser import ConfigParser
 from unittest.mock import patch
 
-from nv_config_manager.common.config import _read_spiffe_jwt, get_internal_auth_headers
+from nv_config_manager.common.config import (
+    _read_spiffe_jwt,
+    clear_config_cache,
+    get_internal_auth_headers,
+    load_config,
+    reload_config,
+)
 
 
 def _config_with_spiffe_path(jwt_path: str) -> ConfigParser:
@@ -27,6 +33,90 @@ def _config_with_spiffe_path(jwt_path: str) -> ConfigParser:
     cp.add_section("auth.spiffe")
     cp.set("auth.spiffe", "jwt_svid_path", jwt_path)
     return cp
+
+
+class TestLoadConfig:
+    """Tests for automatic invalidation of the parsed INI cache."""
+
+    def test_reuses_config_while_file_is_unchanged(self, monkeypatch, tmp_path):
+        config_file = tmp_path / "nv-config-manager.ini"
+        config_file.write_text("[dynamic]\nvalue = one\n")
+        monkeypatch.setenv("NV_CONFIG_MANAGER_INI", str(config_file))
+        clear_config_cache()
+
+        first = load_config()
+        second = load_config()
+
+        assert first is second
+        assert second["dynamic"]["value"] == "one"
+
+    def test_reloads_after_direct_file_update(self, monkeypatch, tmp_path):
+        config_file = tmp_path / "nv-config-manager.ini"
+        config_file.write_text("[dynamic]\nvalue = one\n")
+        monkeypatch.setenv("NV_CONFIG_MANAGER_INI", str(config_file))
+        clear_config_cache()
+        first = load_config()
+
+        config_file.write_text("[dynamic]\nvalue = updated\n")
+        second = load_config()
+
+        assert second is not first
+        assert second["dynamic"]["value"] == "updated"
+
+    def test_reloads_after_kubernetes_style_symlink_swap(self, monkeypatch, tmp_path):
+        version_one = tmp_path / "..2026_01"
+        version_two = tmp_path / "..2026_02"
+        version_one.mkdir()
+        version_two.mkdir()
+        first_file = version_one / "nv-config-manager.ini"
+        second_file = version_two / "nv-config-manager.ini"
+        first_file.write_text("[dynamic]\nvalue = one\n")
+        second_file.write_text("[dynamic]\nvalue = two\n")
+
+        # Make size and timestamps identical so target inode replacement is
+        # what invalidates the cache, matching Kubernetes' atomic writer.
+        timestamp_ns = 1_700_000_000_000_000_000
+        os.utime(first_file, ns=(timestamp_ns, timestamp_ns))
+        os.utime(second_file, ns=(timestamp_ns, timestamp_ns))
+
+        data_link = tmp_path / "..data"
+        data_link.symlink_to(version_one.name, target_is_directory=True)
+        config_file = tmp_path / "nv-config-manager.ini"
+        config_file.symlink_to("..data/nv-config-manager.ini")
+        monkeypatch.setenv("NV_CONFIG_MANAGER_INI", str(config_file))
+        clear_config_cache()
+        first = load_config()
+
+        replacement_link = tmp_path / "..data-next"
+        replacement_link.symlink_to(version_two.name, target_is_directory=True)
+        replacement_link.replace(data_link)
+        second = load_config()
+
+        assert second is not first
+        assert second["dynamic"]["value"] == "two"
+
+    def test_loads_file_created_after_initial_miss(self, monkeypatch, tmp_path):
+        config_file = tmp_path / "nv-config-manager.ini"
+        monkeypatch.setenv("NV_CONFIG_MANAGER_INI", str(config_file))
+        clear_config_cache()
+
+        assert not load_config().has_section("dynamic")
+
+        config_file.write_text("[dynamic]\nvalue = created\n")
+
+        assert load_config()["dynamic"]["value"] == "created"
+
+    def test_reload_config_forces_reparse(self, monkeypatch, tmp_path):
+        config_file = tmp_path / "nv-config-manager.ini"
+        config_file.write_text("[dynamic]\nvalue = one\n")
+        monkeypatch.setenv("NV_CONFIG_MANAGER_INI", str(config_file))
+        clear_config_cache()
+        first = load_config()
+
+        second = reload_config()
+
+        assert second is not first
+        assert second["dynamic"]["value"] == "one"
 
 
 class TestGetInternalAuthHeaders:
