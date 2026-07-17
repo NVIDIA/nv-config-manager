@@ -35,18 +35,23 @@ set -euo pipefail
 
 if [ -n "${NV_CONFIG_MANAGER_VALUES_REPO_URL:-}" ]; then
     # A full URL override is used as-is (provide any auth it needs in the URL).
-    values_repo="$NV_CONFIG_MANAGER_VALUES_REPO_URL"
     values_repo_url="$NV_CONFIG_MANAGER_VALUES_REPO_URL"
+    # Credential-free label for logs: strip any "userinfo@" (e.g. oauth2:token@)
+    # so an override URL that embeds a token can't leak it into the job log.
+    values_repo_display="$(printf '%s' "$NV_CONFIG_MANAGER_VALUES_REPO_URL" | sed -E 's#://[^/@]*@#://#')"
+    # No clean project path is available from a full-URL override.
+    values_repo_path=""
 else
     # A path builds the authenticated GitLab URL with the push token.
-    values_repo="${NVCM_VALUES_REPO_PATH:?Set NVCM_VALUES_REPO_PATH or NV_CONFIG_MANAGER_VALUES_REPO_URL}"
-    values_repo_url="https://oauth2:${NV_CONFIG_MANAGER_VALUES_PUSH_TOKEN}@${CI_SERVER_HOST}/${values_repo}.git"
+    values_repo_path="${NVCM_VALUES_REPO_PATH:?Set NVCM_VALUES_REPO_PATH or NV_CONFIG_MANAGER_VALUES_REPO_URL}"
+    values_repo_url="https://oauth2:${NV_CONFIG_MANAGER_VALUES_PUSH_TOKEN}@${CI_SERVER_HOST}/${values_repo_path}.git"
+    values_repo_display="$values_repo_path"
 fi
 
 state_file="${NVCM_ENV_STATE_DIR}/deploy-state.yaml"
 occupant="${GITLAB_USER_LOGIN:-${GITLAB_USER_NAME:-ci}}"
 
-echo "Committing deploy-state for env '${NVCM_ENV}' to ${values_repo}@${NVCM_ENV_BRANCH}:${state_file}"
+echo "Committing deploy-state for env '${NVCM_ENV}' to ${values_repo_display}@${NVCM_ENV_BRANCH}:${state_file}"
 
 git clone "$values_repo_url" values-repo
 cd values-repo
@@ -55,7 +60,7 @@ if git ls-remote --heads origin "${NVCM_ENV_BRANCH}" | grep -q "${NVCM_ENV_BRANC
     git fetch origin "${NVCM_ENV_BRANCH}"
     git checkout "${NVCM_ENV_BRANCH}"
 else
-    echo "ERROR: env branch '${NVCM_ENV_BRANCH}' does not exist in ${values_repo}."
+    echo "ERROR: env branch '${NVCM_ENV_BRANCH}' does not exist in ${values_repo_display}."
     echo "Seed it from main first (see the kiwi-argocd README migration steps)."
     exit 1
 fi
@@ -136,4 +141,8 @@ git push origin "HEAD:refs/heads/${NVCM_ENV_BRANCH}"
 
 echo ""
 echo "Deploy-state committed. ArgoCD will sync ${NVCM_ENV} to chart ${PROMOTE_VERSION} with digest-pinned images."
-echo "View: https://${CI_SERVER_HOST}/${values_repo}/-/commits/${NVCM_ENV_BRANCH}"
+# Only build the web view URL from a known project path - a full-URL override
+# has no clean path and could otherwise produce a malformed/credential URL.
+if [ -n "$values_repo_path" ]; then
+    echo "View: https://${CI_SERVER_HOST}/${values_repo_path}/-/commits/${NVCM_ENV_BRANCH}"
+fi
