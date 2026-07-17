@@ -87,6 +87,7 @@ interface MetricProps {
 interface InfiniteScrollStatusProps {
   readonly completeLabel?: string;
   readonly hasMore: boolean;
+  readonly hasLoadError?: boolean;
   readonly isValidating: boolean;
   readonly itemCount: number;
   readonly onLoadMore: () => Promise<unknown>;
@@ -226,6 +227,7 @@ function getInfiniteScrollSummary({
 function InfiniteScrollStatus({
   completeLabel,
   hasMore,
+  hasLoadError = false,
   isValidating,
   itemCount,
   onLoadMore,
@@ -238,20 +240,27 @@ function InfiniteScrollStatus({
   const requestLoadMore = useCallback(() => {
     if (loadRequestedRef.current) return;
     loadRequestedRef.current = true;
-    onLoadMore().catch(() => {
-      loadRequestedRef.current = false;
-    });
+    onLoadMore().then(
+      () => {
+        loadRequestedRef.current = false;
+      },
+      () => {
+        loadRequestedRef.current = true;
+      },
+    );
   }, [onLoadMore]);
 
-  useEffect(() => {
-    if (!isValidating) loadRequestedRef.current = false;
-  }, [isValidating, itemCount]);
+  const requestLoadMoreManually = useCallback(() => {
+    loadRequestedRef.current = false;
+    requestLoadMore();
+  }, [requestLoadMore]);
 
   useEffect(() => {
     const sentinel = sentinelRef.current;
     if (
       !sentinel ||
       !hasMore ||
+      hasLoadError ||
       isValidating ||
       typeof IntersectionObserver === "undefined"
     ) {
@@ -267,7 +276,7 @@ function InfiniteScrollStatus({
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [hasMore, isValidating, requestLoadMore]);
+  }, [hasLoadError, hasMore, isValidating, requestLoadMore]);
 
   if (itemCount === 0) return null;
 
@@ -292,7 +301,7 @@ function InfiniteScrollStatus({
           variant="ghost"
           size="sm"
           aria-label={`Load more ${resourceLabel}`}
-          onClick={requestLoadMore}
+          onClick={requestLoadMoreManually}
           disabled={isValidating}
         >
           {isValidating && <RefreshCw className="mr-2 h-4 w-4 animate-spin" />}
@@ -576,6 +585,7 @@ function ReservationsTab({
       {content}
       <InfiniteScrollStatus
         hasMore={hasMore}
+        hasLoadError={Boolean(error)}
         isValidating={isValidating}
         itemCount={reservations.length}
         onLoadMore={loadMore}
@@ -635,6 +645,7 @@ function PoolsTab({
       {content}
       <InfiniteScrollStatus
         hasMore={hasMore}
+        hasLoadError={Boolean(error)}
         isValidating={isValidating}
         itemCount={pools.length}
         onLoadMore={loadMore}
