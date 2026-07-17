@@ -16,15 +16,20 @@
 
 from __future__ import annotations
 
+from unittest.mock import Mock
+
 import pytest
 
+from nv_config_manager_installer.deployer import DeployOptions
 from nv_config_manager_installer.schema import (
     ClusterConfig,
+    ImageSource,
     NVConfigManagerInstallConfig,
     SiteConfig,
 )
 from nv_config_manager_installer.tui.app import NVConfigManagerInstallerApp
 from nv_config_manager_installer.tui.screens.cluster import ClusterScreen
+from nv_config_manager_installer.tui.screens.deploy import DeployScreen
 
 
 @pytest.mark.asyncio
@@ -90,3 +95,31 @@ async def test_airgapped_collected_from_cluster():
     async with app.run_test():
         app.collect_config()
         assert app.config.cluster.airgapped is True
+
+
+@pytest.mark.parametrize(
+    "options",
+    [DeployOptions(build_images=True), DeployOptions(load_kind=True)],
+)
+@pytest.mark.asyncio
+async def test_deployment_start_selects_local_image_source(
+    monkeypatch: pytest.MonkeyPatch, options: DeployOptions
+):
+    """Deployment must use local images when building or loading them."""
+    config = NVConfigManagerInstallConfig()
+    app = NVConfigManagerInstallerApp(config=config)
+    deployer = Mock()
+    deployer.return_value.steps = []
+    monkeypatch.setattr("nv_config_manager_installer.tui.screens.deploy.Deployer", deployer)
+    monkeypatch.setattr(DeployScreen, "_collect_deploy_options", lambda self: options)
+    monkeypatch.setattr(DeployScreen, "_run_deploy", lambda self: None)
+
+    async with app.run_test():
+        screen = app._screens["deploy"]
+        assert isinstance(screen, DeployScreen)
+        screen._start_deploy()
+
+    deployed_config, deployed_options, _ = deployer.call_args.args
+
+    assert deployed_config.images.source == ImageSource.LOCAL
+    assert deployed_options is options

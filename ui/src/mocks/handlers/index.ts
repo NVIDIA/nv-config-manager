@@ -22,6 +22,7 @@ import { useEnvDataHandlers } from "./useEnvHandlers";
 import { useDevicesHandlers } from "./useDevicesHandlers";
 import { portLLDPInfoHandlers } from "./portlldpinfoHandlers";
 import { siteCableValidationHandlers } from "./siteCableValidationHandlers";
+import { siteBackupHandlers } from "./siteBackupHandlers";
 import { deviceCableValidationHandlers } from "./deviceCableValidationHandlers";
 import { devicePasswordRotationHandlers } from "./devicePasswordRotationHandlers";
 import { connectedHostMetadataHandlers } from "./connectedHostMetadataHandlers";
@@ -42,6 +43,7 @@ export * from "./useEnvHandlers";
 export * from "./useDevicesHandlers";
 export * from "./portlldpinfoHandlers";
 export * from "./siteCableValidationHandlers";
+export * from "./siteBackupHandlers";
 export * from "./deviceCableValidationHandlers";
 export * from "./devicePasswordRotationHandlers";
 export * from "./connectedHostMetadataHandlers";
@@ -63,6 +65,7 @@ export const handlers = [
   ...useDevicesHandlers,
   ...portLLDPInfoHandlers,
   ...siteCableValidationHandlers,
+  ...siteBackupHandlers,
   ...deviceCableValidationHandlers,
   ...devicePasswordRotationHandlers,
   ...connectedHostMetadataHandlers,

@@ -89,7 +89,7 @@ const ensureCurrentError = (state: TracebackParseState) => {
 }
 
 const addStackFrame = (state: TracebackParseState, line: string) => {
-  const fileMatch = line.match(FRAME_PATTERN)
+  const fileMatch = FRAME_PATTERN.exec(line)
   if (!fileMatch || !state.currentError) {
     return
   }
