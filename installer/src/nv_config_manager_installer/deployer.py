@@ -172,6 +172,7 @@ class DeployOptions:
     run_tests: bool = False
     dry_run: bool = False
     vault_token_file: Path | None = None
+    populate_vault: bool = True
 
 
 @dataclass
@@ -2056,6 +2057,12 @@ class Deployer:
         """Create configured KV v2 mounts and populate missing ESO secret values."""
         if self.config.secrets.method != SecretsMethod.ESO:
             self._skip_step("populate-vault", "ESO is not selected")
+            return
+        if not self.options.populate_vault:
+            self._skip_step(
+                "populate-vault",
+                "Vault population disabled; using pre-provisioned ESO paths",
+            )
             return
 
         assert self._k8s is not None

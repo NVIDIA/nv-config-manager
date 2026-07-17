@@ -137,6 +137,7 @@ class TestDeployCommand:
         assert "--watch-pods" in result.output
         assert "--no-watch-pods" in result.output
         assert "--vault-token-file" in result.output
+        assert "--skip-vault-population" in result.output
 
 
 class TestPVCUpdaterCommand:

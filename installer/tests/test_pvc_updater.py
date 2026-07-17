@@ -17,6 +17,8 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
 import subprocess
 import tarfile
 from pathlib import Path
@@ -36,6 +38,7 @@ from nv_config_manager_installer.pvc_updater import (
 
 
 def _updater(k8s: MagicMock) -> PVCUpdater:
+    k8s.get_pvc_mounted_node.return_value = None
     return PVCUpdater(k8s, "nv-config-manager", "nv-config-manager")
 
 
@@ -128,6 +131,29 @@ def test_unchanged_templates_do_not_create_loader_or_restart(tmp_path: Path) -> 
     assert changed is False
     k8s.create_loader_pod.assert_not_called()
     k8s.restart_deployment.assert_not_called()
+
+
+def test_loader_targets_the_node_currently_mounting_the_pvc(tmp_path: Path) -> None:
+    source = tmp_path / "templates"
+    source.mkdir()
+    (source / "plugin.py").write_text("PLUGIN = True\n")
+    k8s = MagicMock()
+    k8s.pvc_exists.return_value = True
+    k8s.get_pvc_annotation.return_value = "old-content"
+    k8s.list_deployment_names.return_value = ["nv-config-manager-render"]
+    k8s.restart_deployment.return_value = 1
+    updater = _updater(k8s)
+    k8s.get_pvc_mounted_node.return_value = "worker-a"
+
+    updater.update_templates([source])
+
+    loader_call = k8s.create_loader_pod.call_args
+    assert loader_call.args[1:] == (
+        "nv-config-manager",
+        "render-service-template-plugins",
+        "/plugins",
+    )
+    assert loader_call.kwargs == {"node_name": "worker-a"}
 
 
 @patch("nv_config_manager_installer.pvc_updater.NautobotJobRunner")
@@ -390,3 +416,38 @@ def test_pvc_content_replacement_preserves_live_content_when_validation_fails(
 
     assert (live / "old.py").read_text() == "old\n"
     assert not (live / "new.py").exists()
+
+
+def test_pvc_content_replacement_rolls_back_when_a_move_fails(tmp_path: Path) -> None:
+    live = tmp_path / "jobs"
+    live.mkdir()
+    (live / "old-a.py").write_text("old a\n")
+    (live / "old-b.py").write_text("old b\n")
+    staged = tmp_path / "staged"
+    staged.mkdir()
+    (staged / "new.py").write_text("new\n")
+    tarball = tmp_path / "content.tar.gz"
+    _make_tarball(staged, tarball)
+    command = _replace_pvc_content_command(str(live), "").replace(
+        "/tmp/content.tar.gz", str(tarball)
+    )
+
+    real_mv = shutil.which("mv")
+    assert real_mv is not None
+    fake_bin = tmp_path / "fake-bin"
+    fake_bin.mkdir()
+    fake_mv = fake_bin / "mv"
+    fake_mv.write_text(
+        f'#!/bin/sh\ncase "$1" in\n  *old-b.py) exit 1 ;;\nesac\nexec "{real_mv}" "$@"\n'
+    )
+    fake_mv.chmod(0o755)
+    env = {**os.environ, "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}"}
+
+    result = subprocess.run(["sh", "-c", command], env=env, check=False)
+
+    assert result.returncode != 0
+    assert (live / "old-a.py").read_text() == "old a\n"
+    assert (live / "old-b.py").read_text() == "old b\n"
+    assert not (live / "new.py").exists()
+    assert not (live / ".nvcm-pvc-updater-staging").exists()
+    assert not (live / ".nvcm-pvc-updater-backup").exists()

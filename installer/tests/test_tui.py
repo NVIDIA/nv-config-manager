@@ -38,6 +38,7 @@ from nv_config_manager_installer.schema import (
 )
 from nv_config_manager_installer.tui.app import NVConfigManagerInstallerApp
 from nv_config_manager_installer.tui.screens.cluster import ClusterScreen
+from nv_config_manager_installer.tui.widgets import LabeledSwitch
 
 
 @pytest.mark.asyncio
@@ -58,6 +59,17 @@ async def test_switch_section():
         assert app.active_section == "sso"
         assert app._screens["sso"].display is True
         assert app._screens["cluster"].display is False
+
+
+@pytest.mark.asyncio
+async def test_deploy_can_skip_vault_population():
+    app = NVConfigManagerInstallerApp(config=NVConfigManagerInstallConfig())
+    async with app.run_test():
+        app.switch_section("deploy")
+        deploy_screen = app._screens["deploy"]
+        deploy_screen.query_one("#opt-populate-vault", LabeledSwitch).value = False
+
+        assert deploy_screen._collect_deploy_options().populate_vault is False
 
 
 @pytest.mark.asyncio

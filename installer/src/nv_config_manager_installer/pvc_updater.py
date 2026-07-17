@@ -164,17 +164,43 @@ mkdir "$staging"
 tar xzf /tmp/content.tar.gz -C "$staging"{post_extract_command}
 mkdir "$backup"
 move_old_content() {{
-    find "$live" -mindepth 1 -maxdepth 1 ! -name "{staging_name}" ! -name "{backup_name}" -exec mv {{}} "$backup"/ \\;
+    for entry in "$live"/.[!.]* "$live"/..?* "$live"/*; do
+        if [ ! -e "$entry" ] && [ ! -L "$entry" ]; then
+            continue
+        fi
+        if [ "$entry" = "$staging" ] || [ "$entry" = "$backup" ]; then
+            continue
+        fi
+        mv "$entry" "$backup"/ || return 1
+    done
 }}
 move_new_content() {{
-    find "$staging" -mindepth 1 -maxdepth 1 -exec mv {{}} "$live"/ \\;
+    for entry in "$staging"/.[!.]* "$staging"/..?* "$staging"/*; do
+        if [ ! -e "$entry" ] && [ ! -L "$entry" ]; then
+            continue
+        fi
+        mv "$entry" "$live"/ || return 1
+    done
 }}
 restore_old_content() {{
-    find "$backup" -mindepth 1 -maxdepth 1 -exec mv {{}} "$live"/ \\;
+    for entry in "$backup"/.[!.]* "$backup"/..?* "$backup"/*; do
+        if [ ! -e "$entry" ] && [ ! -L "$entry" ]; then
+            continue
+        fi
+        mv "$entry" "$live"/ || return 1
+    done
     rmdir "$backup"
 }}
 rollback_new_content() {{
-    find "$live" -mindepth 1 -maxdepth 1 ! -name "{staging_name}" ! -name "{backup_name}" -exec rm -rf {{}} \\;
+    for entry in "$live"/.[!.]* "$live"/..?* "$live"/*; do
+        if [ ! -e "$entry" ] && [ ! -L "$entry" ]; then
+            continue
+        fi
+        if [ "$entry" = "$staging" ] || [ "$entry" = "$backup" ]; then
+            continue
+        fi
+        rm -rf "$entry" || return 1
+    done
     restore_old_content
 }}
 if ! move_old_content; then
@@ -430,7 +456,18 @@ class PVCUpdater:
                     self._k8s.delete_pod(pod_name, self.namespace)
                     self._k8s.wait_for_pod_gone(pod_name, self.namespace)
                     try:
-                        self._k8s.create_loader_pod(pod_name, self.namespace, pvc_name, mount_path)
+                        mounted_node = self._k8s.get_pvc_mounted_node(pvc_name, self.namespace)
+                        if mounted_node:
+                            self._on_log(
+                                f"{kind}: placing loader on PVC consumer node {mounted_node}"
+                            )
+                        self._k8s.create_loader_pod(
+                            pod_name,
+                            self.namespace,
+                            pvc_name,
+                            mount_path,
+                            node_name=mounted_node,
+                        )
                         self._k8s.wait_for_pod_ready(pod_name, self.namespace)
                         self._on_log(f"{kind}: copying content into PVC {pvc_name}")
                         self._k8s.copy_to_pod(

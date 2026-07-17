@@ -149,6 +149,7 @@ nvcm-installer deploy nv-config-manager-install.yaml \
 | `--helm-timeout` | `15m` | Helm install/upgrade timeout |
 | `--recreate-secrets` | `false` | Force-recreate Kubernetes secrets |
 | `--vault-token-file` | unset | File containing a provisioning token when ESO/Vault is selected |
+| `--populate-vault` / `--skip-vault-population` | populate | Populate missing ESO values, or use pre-provisioned Vault paths |
 | `--dry-run` | `false` | Generate values but skip Helm install |
 
 Prerequisite operator versions are read from `deploy/operator-versions.env`.
@@ -169,6 +170,8 @@ The token must be allowed to inspect/create the configured mounts and read/write
 their KV v2 paths. External credentials such as OIDC, Slack, Jira, and Git
 tokens must be supplied in the installer configuration or already exist at the
 configured Vault path; the installer will not invent integration credentials.
+Use `--skip-vault-population` when those paths are managed separately; this also
+avoids requiring a provisioning token for the deployment command.
 
 ### `nvcm-installer pvc-updater`
 
@@ -644,6 +647,7 @@ Full deployment orchestration with live monitoring.
 | Option | Description |
 |--------|-------------|
 | Vault Token File | Provisioning token file used to create KV v2 mounts and fill ESO paths |
+| Populate Vault Secrets | Disable when ESO paths are provisioned outside the installer |
 | Build Images | Build Docker images locally (content-addressed tags) |
 | Load Kind | Load built images into a Kind cluster |
 | Kind Cluster | Kind cluster name (default: `nv-config-manager`) |
