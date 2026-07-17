@@ -55,6 +55,7 @@ from nv_config_manager_installer.nautobot_jobs import NautobotJobRunner
 from nv_config_manager_installer.openbao import OpenBaoClient, OpenBaoPopulator
 from nv_config_manager_installer.operator_versions import load_operator_versions
 from nv_config_manager_installer.pvc_updater import (
+    CUSTOM_JOBS_PACKAGE_MARKER,
     normalize_ztp_platform,
     validate_ztp_path_component,
 )
@@ -188,7 +189,6 @@ _CONTENT_HASH_ANNOTATION = "nv-config-manager.nvidia.com/content-sha256"
 _IGNORE_COMMON = (".venv", "__pycache__", ".git", "*.pyc")
 _IGNORE_TEMPLATES = (".venv", "__pycache__", ".git", "tests")
 _SKIP_REASON = "Not requested"
-_BOOTSTRAP_JOBS_PATH = Path("components/nautobot/nv_config_manager_jobs")
 _CI_ENV_VAR = "CI"
 _DOCKER_SYSTEM_PRUNE_COMMAND = ("docker", "system", "prune", "-af")
 _TRUTHY_ENV_VALUES = {"1", "true", "yes", "on"}
@@ -200,11 +200,8 @@ def _is_ci_environment() -> bool:
 
 
 def _build_job_paths(config: NVConfigManagerInstallConfig) -> list[Path]:
-    """Return the list of job source paths for PVC upload and content hashing."""
-    paths = [Path(j.path) for j in config.content.jobs]
-    if config.content.include_bootstrap_jobs and _BOOTSTRAP_JOBS_PATH.is_dir():
-        paths.append(_BOOTSTRAP_JOBS_PATH)
-    return paths
+    """Return custom job paths; bootstrap jobs remain available from the image."""
+    return [Path(j.path) for j in config.content.jobs]
 
 
 def _hash_content_dir(
@@ -2327,16 +2324,9 @@ class Deployer:
         with tempfile.TemporaryDirectory() as tmpdir:
             staging = Path(tmpdir) / "jobs"
             staging.mkdir()
-
-            if self.config.content.include_bootstrap_jobs:
-                bootstrap = _BOOTSTRAP_JOBS_PATH
-                if bootstrap.is_dir():
-                    shutil.copytree(
-                        bootstrap,
-                        staging / bootstrap.name,
-                        dirs_exist_ok=True,
-                        ignore=shutil.ignore_patterns(*_IGNORE_COMMON),
-                    )
+            # The PVC is mounted as JOBS_ROOT/custom, which must be a package for
+            # Nautobot's recursive module discovery to descend into it.
+            (staging / "__init__.py").write_text(CUSTOM_JOBS_PACKAGE_MARKER)
 
             for job_entry in self.config.content.jobs:
                 src = Path(job_entry.path)

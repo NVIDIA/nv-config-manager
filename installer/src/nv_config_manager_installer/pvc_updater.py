@@ -38,6 +38,7 @@ from nv_config_manager_installer.k8s import K8sClient
 from nv_config_manager_installer.nautobot_jobs import NautobotJobRunner
 
 CONTENT_HASH_ANNOTATION = "nv-config-manager.nvidia.com/content-sha256"
+CUSTOM_JOBS_PACKAGE_MARKER = "# Custom Nautobot jobs package maintained by nvcm-installer.\n"
 JOBS_PVC_NAME = "nautobot-custom-jobs"
 TEMPLATES_PVC_NAME = "render-service-template-plugins"
 ZTP_PVC_NAME = "ztp-os-images"
@@ -433,9 +434,7 @@ class PVCUpdater:
             _stage_sources(source_list, staging, ignore_patterns=ignore_patterns)
             package_init = staging / "__init__.py"
             if package_marker and not package_init.exists():
-                package_init.write_text(
-                    "# Custom Nautobot jobs package maintained by nvcm-installer.\n"
-                )
+                package_init.write_text(CUSTOM_JOBS_PACKAGE_MARKER)
             return self._upload_staging(
                 kind=kind,
                 staging=staging,
