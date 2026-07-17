@@ -307,7 +307,11 @@ class InfraScreen(Container):
                 "#monitoring-prometheus-namespace", Input
             ).value
         except Exception as exc:
-            self.app.notify(f"Invalid Prometheus namespace: {exc}", severity="error")
+            self.app.notify(
+                f"Invalid Prometheus namespace: {exc}",
+                severity="error",
+                markup=False,
+            )
         infra.monitoring.observability_enabled = self.query_one(
             "#monitoring-observability-enabled", LabeledSwitch
         ).value
