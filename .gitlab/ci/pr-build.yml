@@ -45,9 +45,6 @@ pr-build-image:
     DOCKER_HOST: tcp://docker:2375/
     DOCKER_TLS_CERTDIR: ""
     DOCKER_DRIVER: overlay2
-    # Untrusted stage: no outbound GitHub calls (rate-limit-prone, and the
-    # authoritative freshness/provenance checks live in the promote consumer).
-    NVCM_PR_GUARD_SKIP_GITHUB: "1"
   rules: *pr-build-rules
   parallel:
     matrix:
@@ -117,9 +114,6 @@ pr-build-chart:
     - docker
   needs: []
   image: $NVCM_CI_IMAGE_ALPINE
-  variables:
-    # Untrusted stage: no outbound GitHub calls (see pr-build-image).
-    NVCM_PR_GUARD_SKIP_GITHUB: "1"
   rules: *pr-build-rules
   before_script:
     - apk add -q bash git curl helm yq
