@@ -78,6 +78,10 @@ sonar-scanner:
   # The internal mirror is post-merge reporting, not an upstream merge gate.
   allow_failure: true
   rules:
+    # Skip during test-env promote pipelines (web pipelines on the default
+    # branch with $NVCM_PROMOTE_ENV set).
+    - if: $NVCM_PROMOTE_ENV
+      when: never
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes: *sonar-change-paths
       when: always
@@ -112,6 +116,9 @@ sonarqube-vulnerability-report:
     - 'jq -e ''.version and (.vulnerabilities | type == "array")'' gl-sast-sonar-report.json >/dev/null'
   allow_failure: true
   rules:
+    # Skip during test-env promote pipelines (see sonar-scanner).
+    - if: $NVCM_PROMOTE_ENV
+      when: never
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes: *sonar-change-paths
       when: always
