@@ -16,6 +16,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import Mock
+
 import pytest
 
 from nv_config_manager_installer.deployer import DeployOptions
@@ -99,11 +101,25 @@ async def test_airgapped_collected_from_cluster():
     "options",
     [DeployOptions(build_images=True), DeployOptions(load_kind=True)],
 )
-def test_local_image_operations_select_local_image_source(options):
-    """Building or loading local images must also deploy those images."""
+@pytest.mark.asyncio
+async def test_deployment_start_selects_local_image_source(
+    monkeypatch: pytest.MonkeyPatch, options: DeployOptions
+):
+    """Deployment must use local images when building or loading them."""
     config = NVConfigManagerInstallConfig()
-    screen = DeployScreen(config)
+    app = NVConfigManagerInstallerApp(config=config)
+    deployer = Mock()
+    deployer.return_value.steps = []
+    monkeypatch.setattr("nv_config_manager_installer.tui.screens.deploy.Deployer", deployer)
+    monkeypatch.setattr(DeployScreen, "_collect_deploy_options", lambda self: options)
+    monkeypatch.setattr(DeployScreen, "_run_deploy", lambda self: None)
 
-    screen._sync_image_source_from_options(options)
+    async with app.run_test():
+        screen = app._screens["deploy"]
+        assert isinstance(screen, DeployScreen)
+        screen._start_deploy()
 
-    assert config.images.source == ImageSource.LOCAL
+    deployed_config, deployed_options, _ = deployer.call_args.args
+
+    assert deployed_config.images.source == ImageSource.LOCAL
+    assert deployed_options is options
