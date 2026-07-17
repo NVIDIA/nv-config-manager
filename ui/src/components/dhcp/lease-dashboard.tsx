@@ -90,6 +90,7 @@ interface InfiniteScrollStatusProps {
   readonly hasLoadError?: boolean;
   readonly isValidating: boolean;
   readonly itemCount: number;
+  readonly loadErrorMessage?: string;
   readonly onLoadMore: () => Promise<unknown>;
   readonly resourceLabel: string;
   readonly totalCount?: number;
@@ -230,6 +231,7 @@ function InfiniteScrollStatus({
   hasLoadError = false,
   isValidating,
   itemCount,
+  loadErrorMessage,
   onLoadMore,
   resourceLabel,
   totalCount,
@@ -295,6 +297,11 @@ function InfiniteScrollStatus({
       className="mt-4 block border-t pt-4 text-center text-sm"
     >
       <span className="block text-xs text-muted-foreground">{summary}</span>
+      {loadErrorMessage && (
+        <span className="mt-1 block text-xs text-destructive">
+          {loadErrorMessage}
+        </span>
+      )}
       {hasMore && (
         <Button
           className="mt-2"
@@ -537,7 +544,7 @@ function ReservationsTab({
   let content: React.ReactNode;
   if (isLoading) {
     content = <CollectionLoading />;
-  } else if (error) {
+  } else if (error && reservations.length === 0) {
     content = <EmptyState message="Reservation data is unavailable." />;
   } else if (reservations.length === 0) {
     const message = activeSearchQuery
@@ -588,6 +595,9 @@ function ReservationsTab({
         hasLoadError={Boolean(error)}
         isValidating={isValidating}
         itemCount={reservations.length}
+        loadErrorMessage={
+          error ? "Reservation data is unavailable." : undefined
+        }
         onLoadMore={loadMore}
         resourceLabel={resourceLabel}
         totalCount={totalCount}
@@ -611,7 +621,7 @@ function PoolsTab({
   let content: React.ReactNode;
   if (isLoading) {
     content = <CollectionLoading />;
-  } else if (error) {
+  } else if (error && pools.length === 0) {
     content = <EmptyState message="Pool data is unavailable." />;
   } else if (pools.length === 0) {
     const message = activeSearchQuery
@@ -648,6 +658,7 @@ function PoolsTab({
         hasLoadError={Boolean(error)}
         isValidating={isValidating}
         itemCount={pools.length}
+        loadErrorMessage={error ? "Pool data is unavailable." : undefined}
         onLoadMore={loadMore}
         resourceLabel={resourceLabel}
         totalCount={totalCount}

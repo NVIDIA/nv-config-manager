@@ -313,6 +313,7 @@ test.describe("DHCP Dashboard Page", () => {
     await expect(
       dashboard.getByText("Reservation data is unavailable.")
     ).toBeVisible();
+    await expect(dashboard.getByText("spine-01")).toBeVisible();
     await page.waitForTimeout(750);
     expect(failedPageAttempts).toBe(1);
 
