@@ -912,6 +912,13 @@ oidc:
   proxy:
     replicas: 2
     cookieName: _nvcm_oidc_proxy
+    # Use only ID token claims instead of the OIDC discovery profile URL.
+    # Keep disabled by default for compatibility with providers that require
+    # claims to be resolved from their UserInfo endpoint.
+    skipClaimsFromProfileURL: false
+    # Allow an ID token that omits email_verified. Signature, issuer, audience,
+    # and nonce validation remain enabled.
+    insecureAllowUnverifiedEmail: false
     image:
       repository: quay.io/oauth2-proxy/oauth2-proxy
       tag: v7.15.3

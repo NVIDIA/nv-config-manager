@@ -79,6 +79,10 @@ data:
     set_authorization_header = true
     set_xauthrequest = true
     oidc_groups_claim = {{ $.Values.oidc.groupsClaim | default "groups" | quote }}
+    # Some providers advertise a profile endpoint that does not accept access
+    # tokens issued for a custom API audience (for example, Entra UserInfo).
+    skip_claims_from_profile_url = {{ $.Values.oidc.proxy.skipClaimsFromProfileURL }}
+    insecure_oidc_allow_unverified_email = {{ $.Values.oidc.proxy.insecureAllowUnverifiedEmail }}
     silence_ping_logging = true
     {{- with $internalIssuerUrl }}
     # Keep the public issuer for token validation, but use explicit in-cluster
