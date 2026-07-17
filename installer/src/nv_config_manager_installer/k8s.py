@@ -788,8 +788,9 @@ class K8sClient:
         }
         if container:
             kwargs["container"] = container
-        ws = k8s_stream(self.v1.connect_get_namespaced_pod_exec, **kwargs)
         deadline = time.monotonic() + timeout
+        kwargs["_request_timeout"] = timeout
+        ws = k8s_stream(self.v1.connect_get_namespaced_pod_exec, **kwargs)
         try:
             while ws.is_open():
                 remaining = deadline - time.monotonic()

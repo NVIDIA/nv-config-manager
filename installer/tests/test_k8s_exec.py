@@ -38,10 +38,11 @@ def test_exec_command_returns_output_after_zero_exit() -> None:
     websocket.returncode = 0
     websocket.read_all.return_value = "done\n"
 
-    with patch("nv_config_manager_installer.k8s.k8s_stream", return_value=websocket):
-        output = k8s.exec_command("loader", "nv-config-manager", ["true"])
+    with patch("nv_config_manager_installer.k8s.k8s_stream", return_value=websocket) as stream:
+        output = k8s.exec_command("loader", "nv-config-manager", ["true"], timeout=30)
 
     assert output == "done\n"
+    assert stream.call_args.kwargs["_request_timeout"] == 30
     websocket.close.assert_called_once()
 
 
@@ -108,6 +109,8 @@ def test_deployment_scale_helpers_preserve_replica_counts() -> None:
     k8s.apps_v1.patch_namespaced_deployment.return_value.metadata.generation = 9
 
     assert k8s.get_deployment_replicas("render", "nv-config-manager") == 3
+    k8s.apps_v1.read_namespaced_deployment.return_value.spec.replicas = None
+    assert k8s.get_deployment_replicas("render", "nv-config-manager") == 1
     assert k8s.scale_deployment("render", "nv-config-manager", 0) == 9
     k8s.apps_v1.patch_namespaced_deployment.assert_called_once_with(
         "render",
