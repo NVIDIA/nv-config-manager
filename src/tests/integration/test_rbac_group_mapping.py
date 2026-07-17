@@ -120,22 +120,28 @@ def _managed_perms(nbshell: Callable[[str], str], group_name: str) -> list[str]:
 
 
 def _perm_grants(nbshell: Callable[[str], str], group_name: str) -> dict[str, dict]:
-    """Return ``{name: {actions, object_types}}`` for *group_name*'s managed perms.
+    """Return ``{name: {actions, object_types, groups}}`` for *group_name*'s managed perms.
 
     Asserting on names alone would let an empty-``actions`` or empty/mis-scoped
     ``object_types`` ObjectPermission pass the suite, so callers verify the
     concrete grant contents (which actions, over which content types).
+
+    We also surface the ``groups`` M2M: an ObjectPermission only grants anything
+    when it is attached to the Group (the name is just a label), so callers must
+    confirm the perm is actually bound to *group_name* -- otherwise an orphaned
+    perm (right name, attached to nothing) would pass while granting nothing.
     """
     body = (
         "from nautobot.users.models import ObjectPermission\n"
         f"qs = ObjectPermission.objects.filter(name__startswith={group_name + '_'!r})"
-        ".prefetch_related('object_types')\n"
+        ".prefetch_related('object_types', 'groups')\n"
         "out = {\n"
         "    p.name: {\n"
         "        'actions': sorted(p.actions),\n"
         "        'object_types': sorted(\n"
         "            f'{ct.app_label}.{ct.model}' for ct in p.object_types.all()\n"
         "        ),\n"
+        "        'groups': sorted(p.groups.values_list('name', flat=True)),\n"
         "    }\n"
         "    for p in qs\n"
         "}\n"
@@ -243,17 +249,32 @@ def test_login_grants_managed_group_and_permissions(
     assert view["actions"] == ["view"], f"view perm has wrong actions: {view['actions']}"
     # Mapped to ``view: all`` -> must resolve to a non-empty content-type scope.
     assert view["object_types"], f"view perm ('all') resolved to an empty scope: {view}"
+    # Must be bound to the managed group -- an orphaned perm grants nothing.
+    assert USER_NETWORK in view["groups"], (
+        f"view perm not attached to the {USER_NETWORK} group (orphaned): {view}"
+    )
 
     change = grants.get(f"{USER_NETWORK}_change")
     assert change is not None, f"missing change perm; got {sorted(grants)}"
     assert change["actions"] == ["change"], f"change perm has wrong actions: {change['actions']}"
-    # Mapped to ``change: dcim.* + ipam.*`` -> both app scopes must be present.
+    # Mapped to ``change: dcim.* + ipam.*``: both app scopes must be present AND
+    # nothing may leak beyond them. An ``any``-only check would let an
+    # over-broad grant (e.g. an extra ``extras.*`` or a privilege model) pass, so
+    # also assert every resolved content type is within dcim.*/ipam.*.
     change_ots = change["object_types"]
     assert any(o.startswith("dcim.") for o in change_ots), (
         f"change perm missing dcim.* scope: {change_ots}"
     )
     assert any(o.startswith("ipam.") for o in change_ots), (
         f"change perm missing ipam.* scope: {change_ots}"
+    )
+    leaked = [o for o in change_ots if not (o.startswith("dcim.") or o.startswith("ipam."))]
+    assert not leaked, (
+        f"change perm leaked scope beyond dcim.*/ipam.*: {leaked} (full scope: {change_ots})"
+    )
+    # Must be bound to the managed group -- an orphaned perm grants nothing.
+    assert USER_NETWORK in change["groups"], (
+        f"change perm not attached to the {USER_NETWORK} group (orphaned): {change}"
     )
 
 
@@ -262,13 +283,37 @@ def test_login_sets_superuser_from_mapping(
     rbac_api_login: Callable[[str], int],
     rbac_nbshell: Callable[[str], str],
 ) -> None:
-    """An ``is_superuser: true`` mapping entry promotes the user on login."""
+    """An ``is_superuser: true`` mapping entry promotes the user on login.
+
+    ``make kind-up-sec`` seeds ``nvcm-admin`` as a superuser already (see
+    scripts/create-local-security-nautobot-users), so a bare "assert is_superuser
+    after login" would pass even if the group-mapping promotion path were broken.
+    Demote the user first, then assert the login re-promotes it -- that isolates
+    the assertion to our ``_sync_superuser_status`` code rather than the seed.
+    """
+    reset_body = (
+        "from django.contrib.auth import get_user_model\n"
+        "U = get_user_model()\n"
+        f"user, _ = U.objects.get_or_create(username={USER_ADMIN!r})\n"
+        "user.is_superuser = False\n"
+        "user.is_staff = False\n"
+        "user.save(update_fields=['is_superuser', 'is_staff'])\n"
+        "_emit({'is_superuser': user.is_superuser, 'is_staff': user.is_staff})\n"
+    )
+    pre = _nbshell_json(rbac_nbshell, reset_body)
+    assert not pre["is_superuser"], (
+        f"precondition: {USER_ADMIN} should be demoted before login, got {pre}"
+    )
+
     status = rbac_api_login(USER_ADMIN)
     assert status == 200, f"expected authorized 200 for {USER_ADMIN}, got {status}"
 
     state = _user_state(rbac_nbshell, USER_ADMIN)
     assert state["exists"], f"{USER_ADMIN} was not created by the JWT login"
-    assert state["is_superuser"], f"{USER_ADMIN} was not promoted to superuser: {state}"
+    assert state["is_superuser"], (
+        f"{USER_ADMIN} was not promoted to superuser by the mapping on login "
+        f"(demoted pre-login, so this is our promotion path, not the seed): {state}"
+    )
 
 
 def test_revoke_prunes_stale_managed_group_without_crash(
@@ -427,6 +472,13 @@ def test_superuser_entry_creates_inert_membership_marker(
     )
     assert marker["actions"] == [], f"marker must grant no actions: {marker}"
     assert marker["object_types"] == [], f"marker must have no object-type scope: {marker}"
+    # The marker's whole purpose is to fingerprint the group as module-managed, so
+    # it must be attached to that group; an orphaned marker exists by name but
+    # can't drive the revoke path it was created to enable.
+    assert USER_ADMIN in marker["groups"], (
+        f"membership marker exists but is orphaned (not bound to the {USER_ADMIN} "
+        f"group), so it can't mark the group as managed: {marker}"
+    )
     # Superuser entries get ONLY the marker -- no per-action <group>_<action> perms.
     assert set(grants) == {marker_name}, (
         f"superuser group should carry only the inert marker; got {sorted(grants)}"
