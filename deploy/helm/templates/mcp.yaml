@@ -32,6 +32,9 @@ spec:
         {{- if eq .Values.secrets.method "vault-agent" }}
         {{- include "nv-config-manager.vaultAgent.injectorAnnotations" . | nindent 8 }}
         {{- end }}
+        {{- if .Values.observability.enabled }}
+        {{- include "nv-config-manager.otelOptOutAnnotations" . | nindent 8 }}
+        {{- end }}
     spec:
       serviceAccountName: {{ include "nv-config-manager.serviceAccountName" . }}
       {{- if .Values.global.imagePullSecrets }}
@@ -47,7 +50,7 @@ spec:
         image: "{{ include "nv-config-manager.image" (dict "root" . "image" .Values.global.images.nvConfigManager) }}"
         imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
         {{- include "nv-config-manager.containerSecurityContext" . | nindent 8 }}
-        command: ["nvidia-config-manager-mcp"]
+        command: ["nv-config-manager-mcp"]
         args: []
         env:
         - name: LOG_LEVEL
@@ -61,6 +64,9 @@ spec:
           value: "/etc/nv-config-manager-mcp-auth/mcp-auth.ini"
         - name: NV_CONFIG_MANAGER_SERVICE
           value: "mcp"
+        {{- if .Values.observability.enabled }}
+        {{- include "nv-config-manager.otelAppEnv" (dict "root" . "serviceName" "nv-config-manager-mcp") | nindent 8 }}
+        {{- end }}
         ports:
         - containerPort: 9000
           name: http

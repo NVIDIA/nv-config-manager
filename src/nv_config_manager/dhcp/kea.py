@@ -17,11 +17,26 @@
 from __future__ import annotations
 
 from configparser import ConfigParser
-from typing import Any
+from enum import IntEnum
+from typing import Any, Literal
 
 import aiohttp
 
 from nv_config_manager.common.config import load_config
+
+
+class IpVersion(IntEnum):
+    """Supported DHCP address families."""
+
+    V4 = 4
+    V6 = 6
+
+    @classmethod
+    def __get_pydantic_json_schema__(cls, core_schema: Any, handler: Any) -> dict[str, Any]:
+        """Expose stable enum names to generated API clients."""
+        schema: dict[str, Any] = handler(core_schema)
+        schema["x-enum-varnames"] = [member.name for member in cls]
+        return schema
 
 
 class KeaException(Exception):
@@ -33,6 +48,7 @@ class KeaClient:
 
     @staticmethod
     def from_config(config: ConfigParser | None = None, attached: bool = False) -> KeaClient:
+        """Create a KEA client from the configured server and port."""
         if config is None:
             config = load_config()
         if attached:
@@ -151,6 +167,89 @@ class KeaClient:
                 result: list[dict[str, Any]] = await rsp.json()
                 return result
 
+        except TimeoutError as exc:
+            raise TimeoutError(
+                "KEA Request timed out, are you running within a KEA Docker Container?"
+            ) from exc
+
+    async def _lease_command(
+        self,
+        operation: Literal["get", "del"],
+        ip_address: str,
+        version: IpVersion,
+    ) -> list[dict[str, Any]]:
+        """Run a lease command against the selected KEA service."""
+        arguments: dict[str, Any] = {"ip-address": ip_address}
+        if version == IpVersion.V6 and operation == "get":
+            arguments["type"] = "IA_NA"
+        data = {
+            "command": f"lease{version}-{operation}",
+            "service": [f"dhcp{version}"],
+            "arguments": arguments,
+        }
+        session = await self._get_session()
+        try:
+            async with session.post(self.url, json=data) as rsp:
+                rsp.raise_for_status()
+                result: list[dict[str, Any]] = await rsp.json()
+                return result
+        except TimeoutError as exc:
+            raise TimeoutError(
+                "KEA Request timed out, are you running within a KEA Docker Container?"
+            ) from exc
+
+    async def get_lease(
+        self,
+        ip_address: str,
+        version: IpVersion = IpVersion.V4,
+    ) -> list[dict[str, Any]]:
+        """Return one lease from the selected KEA service."""
+        return await self._lease_command("get", ip_address, version)
+
+    async def delete_lease(
+        self,
+        ip_address: str,
+        version: IpVersion = IpVersion.V4,
+    ) -> list[dict[str, Any]]:
+        """Delete one lease from the selected KEA service."""
+        return await self._lease_command("del", ip_address, version)
+
+    async def get_lease_page(
+        self,
+        limit: int = 100,
+        version: IpVersion = IpVersion.V4,
+        from_address: str = "start",
+    ) -> list[dict[str, Any]]:
+        """Return a page of leases from the selected KEA service."""
+        data = {
+            "command": f"lease{version}-get-page",
+            "service": [f"dhcp{version}"],
+            "arguments": {"from": from_address, "limit": limit},
+        }
+        session = await self._get_session()
+        try:
+            async with session.post(self.url, json=data) as rsp:
+                rsp.raise_for_status()
+                result: list[dict[str, Any]] = await rsp.json()
+                return result
+        except TimeoutError as exc:
+            raise TimeoutError(
+                "KEA Request timed out, are you running within a KEA Docker Container?"
+            ) from exc
+
+    async def get_statistics(self, version: int = 4) -> list[dict[str, Any]]:
+        """Return all statistics recorded by the KEA DHCP service."""
+        data = {
+            "command": "statistic-get-all",
+            "service": [f"dhcp{version}"],
+            "arguments": {},
+        }
+        session = await self._get_session()
+        try:
+            async with session.post(self.url, json=data) as rsp:
+                rsp.raise_for_status()
+                result: list[dict[str, Any]] = await rsp.json()
+                return result
         except TimeoutError as exc:
             raise TimeoutError(
                 "KEA Request timed out, are you running within a KEA Docker Container?"

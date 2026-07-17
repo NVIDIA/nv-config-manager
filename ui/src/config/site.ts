@@ -28,6 +28,10 @@ export const siteConfig = {
       title: "Configs",
       href: "/configs",
     },
+    {
+      title: "DHCP",
+      href: "/dhcp",
+    },
   ],
   workflows: [
     {
