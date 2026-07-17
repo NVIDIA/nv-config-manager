@@ -80,7 +80,7 @@ sonar-scanner:
   rules:
     # Skip during test-env promote pipelines (web pipelines on the default
     # branch with $NVCM_PROMOTE_ENV set).
-    - if: $NVCM_PROMOTE_ENV
+    - if: ($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api") && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $NVCM_PROMOTE_ENV =~ /^(test|test01)$/
       when: never
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes: *sonar-change-paths
@@ -117,7 +117,7 @@ sonarqube-vulnerability-report:
   allow_failure: true
   rules:
     # Skip during test-env promote pipelines (see sonar-scanner).
-    - if: $NVCM_PROMOTE_ENV
+    - if: ($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api") && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $NVCM_PROMOTE_ENV =~ /^(test|test01)$/
       when: never
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes: *sonar-change-paths

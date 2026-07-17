@@ -415,7 +415,7 @@ test-main-py:
   rules:
     # Skip during test-env promote pipelines (web pipelines on the default
     # branch with $NVCM_PROMOTE_ENV set).
-    - if: $NVCM_PROMOTE_ENV
+    - if: ($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api") && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $NVCM_PROMOTE_ENV =~ /^(test|test01)$/
       when: never
     - if: $CI_COMMIT_TAG
       when: on_success
@@ -465,7 +465,7 @@ test-main-network-templates:
   rules:
     # Skip during test-env promote pipelines (web pipelines on the default
     # branch with $NVCM_PROMOTE_ENV set).
-    - if: $NVCM_PROMOTE_ENV
+    - if: ($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api") && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $NVCM_PROMOTE_ENV =~ /^(test|test01)$/
       when: never
     - if: $CI_COMMIT_TAG
       when: on_success
@@ -501,7 +501,7 @@ test-main-installer:
   rules:
     # Skip during test-env promote pipelines (web pipelines on the default
     # branch with $NVCM_PROMOTE_ENV set).
-    - if: $NVCM_PROMOTE_ENV
+    - if: ($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api") && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $NVCM_PROMOTE_ENV =~ /^(test|test01)$/
       when: never
     - if: $CI_COMMIT_TAG
       when: on_success
@@ -537,7 +537,7 @@ test-main-ui-e2e:
   rules:
     # Skip during test-env promote pipelines (web pipelines on the default
     # branch with $NVCM_PROMOTE_ENV set).
-    - if: $NVCM_PROMOTE_ENV
+    - if: ($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api") && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $NVCM_PROMOTE_ENV =~ /^(test|test01)$/
       when: never
     - if: $CI_COMMIT_TAG
       when: on_success

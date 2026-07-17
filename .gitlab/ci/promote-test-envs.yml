@@ -132,7 +132,12 @@ test-promote-chart:
       echo "deb [signed-by=/usr/share/keyrings/helm.gpg] https://packages.buildkite.com/helm-linux/helm-debian/any/ any main" | tee /etc/apt/sources.list.d/helm-stable-debian.list
       apt update
       apt install -y helm git wget unzip
-      wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+      # Pinned yq + SHA-256 verification (this is a secret-bearing job; do not
+      # run an unverified binary from a floating 'latest' URL).
+      YQ_VERSION=v4.44.6
+      YQ_SHA256=0c2b24e645b57d8e7c0566d18643a6d4f5580feeea3878127354a46f2a1e4598
+      wget -qO /usr/local/bin/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
+      echo "${YQ_SHA256}  /usr/local/bin/yq" | sha256sum -c -
       chmod +x /usr/local/bin/yq
     - wget --content-disposition https://api.ngc.nvidia.com/v2/resources/nvidia/ngc-apps/ngc_cli/versions/4.8.2/files/ngccli_linux.zip -O ngccli_linux.zip
     - unzip ngccli_linux.zip
@@ -170,11 +175,17 @@ test-promote-chart:
       # packaged .tgz already vendors its subcharts, so nothing is fetched.
       eval "$(bash "${CI_PROJECT_DIR}/.gitlab/ci/scripts/test_env_config.sh" "$NVCM_PROMOTE_ENV")"
       if [ -n "${NV_CONFIG_MANAGER_VALUES_REPO_URL:-}" ]; then
-        values_repo="$NV_CONFIG_MANAGER_VALUES_REPO_URL"
+        values_repo_url="$NV_CONFIG_MANAGER_VALUES_REPO_URL"
       else
-        values_repo="$NVCM_VALUES_REPO_PATH"
+        values_repo_url="https://oauth2:${NV_CONFIG_MANAGER_VALUES_PUSH_TOKEN}@${CI_SERVER_HOST}/${NVCM_VALUES_REPO_PATH}.git"
       fi
-      git clone "https://oauth2:${NV_CONFIG_MANAGER_VALUES_PUSH_TOKEN}@${CI_SERVER_HOST}/${values_repo}.git" /tmp/values-repo
+      git clone "$values_repo_url" /tmp/values-repo
+      # Capture the exact main SHA whose baseline values this render validates.
+      # write_deploy_state consumes it (via dotenv) instead of re-resolving
+      # origin/main, so the DEPLOYED baseline is the one that was validated even
+      # if main moves before the deploy-state job runs.
+      baseline_revision="$(git -C /tmp/values-repo rev-parse HEAD)"
+      echo "BASELINE_REVISION=${baseline_revision}" > "${CI_PROJECT_DIR}/chart.env"
       git -C /tmp/values-repo fetch origin "${NVCM_ENV_BRANCH}"
       git -C /tmp/values-repo worktree add /tmp/values-env "origin/${NVCM_ENV_BRANCH}"
       overrides_file="/tmp/values-env/${NVCM_ENV_STATE_DIR}/values-aws-${NVCM_ENV}.overrides.yaml"
@@ -199,6 +210,9 @@ test-promote-chart:
       cp "$chart_file" "${CI_PROJECT_DIR}/${CHART_NAME}-${PROMOTE_VERSION}.tgz"
       cd "${CI_PROJECT_DIR}"
       bash .gitlab/ci/scripts/publish_chart_targets.sh "${CHART_NAME}-${PROMOTE_VERSION}.tgz" "$PROMOTE_VERSION" "$CHART_NAME"
+  artifacts:
+    reports:
+      dotenv: chart.env
 
 # -----------------------------------------------------------------------------
 # 4) Commit the deployment-state to the env branch. ArgoCD does the rest.
@@ -217,8 +231,12 @@ test-promote-deploy-state:
     - job: test-promote-push-images
       artifacts: true
     - job: test-promote-chart
+      artifacts: true
   environment:
     name: $NVCM_PROMOTE_ENV
+  # Serialize env-branch mutations (promote / rollback / release) per env so
+  # concurrent runs can't race on the same nvcm-<env> branch.
+  resource_group: nvcm-env-$NVCM_PROMOTE_ENV
   before_script:
     - apk add --no-cache bash git yq curl coreutils
     - git config --global user.email "${CI_PUSH_EMAIL:-ci@nv-config-manager}"
@@ -243,6 +261,9 @@ test-rollback-env:
   needs: []
   environment:
     name: $NVCM_PROMOTE_ENV
+  # Serialize env-branch mutations (promote / rollback / release) per env so
+  # concurrent runs can't race on the same nvcm-<env> branch.
+  resource_group: nvcm-env-$NVCM_PROMOTE_ENV
   before_script:
     - apk add --no-cache bash git yq coreutils
     - git config --global user.email "${CI_PUSH_EMAIL:-ci@nv-config-manager}"
@@ -252,11 +273,11 @@ test-rollback-env:
       set -e
       eval "$(bash .gitlab/ci/scripts/test_env_config.sh "$NVCM_PROMOTE_ENV")"
       if [ -n "${NV_CONFIG_MANAGER_VALUES_REPO_URL:-}" ]; then
-        values_repo="$NV_CONFIG_MANAGER_VALUES_REPO_URL"
+        values_repo_url="$NV_CONFIG_MANAGER_VALUES_REPO_URL"
       else
-        values_repo="$NVCM_VALUES_REPO_PATH"
+        values_repo_url="https://oauth2:${NV_CONFIG_MANAGER_VALUES_PUSH_TOKEN}@${CI_SERVER_HOST}/${NVCM_VALUES_REPO_PATH}.git"
       fi
-      git clone "https://oauth2:${NV_CONFIG_MANAGER_VALUES_PUSH_TOKEN}@${CI_SERVER_HOST}/${values_repo}.git" values-repo
+      git clone "$values_repo_url" values-repo
       cd values-repo
       git fetch origin "${NVCM_ENV_BRANCH}"
       git checkout "${NVCM_ENV_BRANCH}"
@@ -303,6 +324,9 @@ test-release-env:
   needs: []
   environment:
     name: $NVCM_PROMOTE_ENV
+  # Serialize env-branch mutations (promote / rollback / release) per env so
+  # concurrent runs can't race on the same nvcm-<env> branch.
+  resource_group: nvcm-env-$NVCM_PROMOTE_ENV
   before_script:
     - apk add --no-cache bash git coreutils
     - git config --global user.email "${CI_PUSH_EMAIL:-ci@nv-config-manager}"
@@ -312,11 +336,11 @@ test-release-env:
       set -e
       eval "$(bash .gitlab/ci/scripts/test_env_config.sh "$NVCM_PROMOTE_ENV")"
       if [ -n "${NV_CONFIG_MANAGER_VALUES_REPO_URL:-}" ]; then
-        values_repo="$NV_CONFIG_MANAGER_VALUES_REPO_URL"
+        values_repo_url="$NV_CONFIG_MANAGER_VALUES_REPO_URL"
       else
-        values_repo="$NVCM_VALUES_REPO_PATH"
+        values_repo_url="https://oauth2:${NV_CONFIG_MANAGER_VALUES_PUSH_TOKEN}@${CI_SERVER_HOST}/${NVCM_VALUES_REPO_PATH}.git"
       fi
-      git clone "https://oauth2:${NV_CONFIG_MANAGER_VALUES_PUSH_TOKEN}@${CI_SERVER_HOST}/${values_repo}.git" values-repo
+      git clone "$values_repo_url" values-repo
       cd values-repo
       git fetch origin "${NVCM_ENV_BRANCH}" main
       git checkout "${NVCM_ENV_BRANCH}"

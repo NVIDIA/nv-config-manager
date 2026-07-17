@@ -8,7 +8,7 @@
 # overrides on the env branch are never modified.
 #
 # Requires (dotenv from earlier stages): PROMOTE_VERSION, PR_NUM, PR_SHA,
-#          DIGEST_<IMAGE> x6
+#          DIGEST_<IMAGE> x6, BASELINE_REVISION (from test-promote-chart)
 # Requires (eval of test_env_config.sh): NVCM_ENV, NVCM_ENV_BRANCH,
 #          NVCM_ENV_NAMESPACE, NVCM_ENV_RELEASE_NAME, NVCM_ENV_STATE_DIR
 # Requires (protected variables): NV_CONFIG_MANAGER_VALUES_PUSH_TOKEN,
@@ -34,9 +34,13 @@ set -euo pipefail
 : "${DIGEST_NV_CONFIG_MANAGER_NATS_READY:?missing dotenv from test-promote-push-images}"
 
 if [ -n "${NV_CONFIG_MANAGER_VALUES_REPO_URL:-}" ]; then
+    # A full URL override is used as-is (provide any auth it needs in the URL).
     values_repo="$NV_CONFIG_MANAGER_VALUES_REPO_URL"
+    values_repo_url="$NV_CONFIG_MANAGER_VALUES_REPO_URL"
 else
+    # A path builds the authenticated GitLab URL with the push token.
     values_repo="${NVCM_VALUES_REPO_PATH:?Set NVCM_VALUES_REPO_PATH or NV_CONFIG_MANAGER_VALUES_REPO_URL}"
+    values_repo_url="https://oauth2:${NV_CONFIG_MANAGER_VALUES_PUSH_TOKEN}@${CI_SERVER_HOST}/${values_repo}.git"
 fi
 
 state_file="${NVCM_ENV_STATE_DIR}/deploy-state.yaml"
@@ -44,7 +48,7 @@ occupant="${GITLAB_USER_LOGIN:-${GITLAB_USER_NAME:-ci}}"
 
 echo "Committing deploy-state for env '${NVCM_ENV}' to ${values_repo}@${NVCM_ENV_BRANCH}:${state_file}"
 
-git clone "https://oauth2:${NV_CONFIG_MANAGER_VALUES_PUSH_TOKEN}@${CI_SERVER_HOST}/${values_repo}.git" values-repo
+git clone "$values_repo_url" values-repo
 cd values-repo
 
 if git ls-remote --heads origin "${NVCM_ENV_BRANCH}" | grep -q "${NVCM_ENV_BRANCH}"; then
@@ -70,10 +74,12 @@ if [ "$current_hold" = "true" ] && [ "$current_occupant" != "$occupant" ]; then
     exit 1
 fi
 
-# Baseline pin: the kiwi-argocd main SHA whose baseline values this deployment
-# renders against. Pinning (instead of tracking main) makes rollback exact.
-git fetch origin main
-baseline_rev="$(git rev-parse origin/main)"
+# Baseline pin: the kiwi-argocd main SHA whose baseline values the render gate
+# validated against, captured in test-promote-chart and passed via dotenv.
+# Consuming that exact SHA - rather than re-resolving origin/main here - keeps
+# the deployed baseline identical to the one that was validated even if main
+# moved in between. Pinning (vs tracking main) also makes rollback exact.
+baseline_rev="${BASELINE_REVISION:?BASELINE_REVISION missing (dotenv from test-promote-chart)}"
 
 export NVCM_ENV NVCM_ENV_NAMESPACE NVCM_ENV_BRANCH NVCM_ENV_RELEASE_NAME \
     NVCM_CHART_REPO PROMOTE_VERSION PR_SHA PR_NUM occupant baseline_rev \
