@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Activity,
   Clock3,
@@ -36,7 +36,12 @@ import {
   useDhcpReservations,
   useDhcpSummary,
 } from "@/hooks/useDhcpDashboard";
-import type { DhcpLease } from "@/types/dhcp.types";
+import type {
+  DhcpLease,
+  DhcpPool,
+  DhcpReservation,
+  DhcpSummary,
+} from "@/types/dhcp.types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -82,18 +87,67 @@ interface MetricProps {
 interface InfiniteScrollStatusProps {
   readonly completeLabel?: string;
   readonly hasMore: boolean;
+  readonly hasLoadError?: boolean;
   readonly isValidating: boolean;
   readonly itemCount: number;
-  readonly onLoadMore: () => void;
+  readonly loadErrorMessage?: string;
+  readonly onLoadMore: () => Promise<unknown>;
   readonly resourceLabel: string;
   readonly totalCount?: number;
+}
+
+interface DashboardHeaderProps {
+  readonly configSyncTimestamp?: number | null;
+  readonly data: DhcpSummary;
+  readonly isReloading: boolean;
+  readonly onReload: () => Promise<void>;
+}
+
+interface LeasesTabProps {
+  readonly activeSearchQuery: string;
+  readonly hasMore: boolean;
+  readonly isValidating: boolean;
+  readonly leases: DhcpLease[];
+  readonly loadMore: () => Promise<unknown>;
+  readonly onClearLease: (lease: DhcpLease) => void;
+  readonly searchQuery: string;
+}
+
+interface ReservationsTabProps {
+  readonly activeSearchQuery: string;
+  readonly error: unknown;
+  readonly hasMore: boolean;
+  readonly isLoading: boolean;
+  readonly isValidating: boolean;
+  readonly loadMore: () => Promise<unknown>;
+  readonly reservations: DhcpReservation[];
+  readonly searchQuery: string;
+  readonly totalCount: number;
+}
+
+interface PoolsTabProps {
+  readonly activeSearchQuery: string;
+  readonly error: unknown;
+  readonly hasMore: boolean;
+  readonly isLoading: boolean;
+  readonly isValidating: boolean;
+  readonly loadMore: () => Promise<unknown>;
+  readonly pools: DhcpPool[];
+  readonly searchQuery: string;
+  readonly totalCount: number;
+}
+
+interface ClearLeaseDialogProps {
+  readonly isClearing: boolean;
+  readonly lease: DhcpLease | null;
+  readonly onClear: () => Promise<void>;
+  readonly onClose: () => void;
 }
 
 /** Render one summary metric in the DHCP dashboard header. */
 function Metric({ icon, label, value, detail, tooltip }: MetricProps) {
   return (
-    <div
-      role="group"
+    <fieldset
       aria-label={label}
       title={tooltip}
       className="rounded-lg border bg-background/60 p-4"
@@ -104,7 +158,7 @@ function Metric({ icon, label, value, detail, tooltip }: MetricProps) {
       </div>
       <p className="mt-3 text-2xl font-semibold tracking-tight">{value}</p>
       <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
-    </div>
+    </fieldset>
   );
 }
 
@@ -147,28 +201,68 @@ function formatConfigSyncAge(timestamp?: number | null): string {
   return `${Math.floor(ageSeconds / 86400)}d`;
 }
 
+/** Build the pagination status without nested conditionals or templates. */
+function getInfiniteScrollSummary({
+  completeLabel,
+  hasMore,
+  itemCount,
+  resourceLabel,
+  totalCount,
+}: Pick<
+  InfiniteScrollStatusProps,
+  "completeLabel" | "hasMore" | "itemCount" | "resourceLabel" | "totalCount"
+>): string {
+  const loadedCount = itemCount.toLocaleString();
+  if (totalCount !== undefined) {
+    return `Loaded ${loadedCount} of ${totalCount.toLocaleString()} ${resourceLabel}`;
+  }
+
+  const loadedSummary = `Loaded ${loadedCount} ${resourceLabel}`;
+  if (hasMore) return loadedSummary;
+
+  const completionSummary = completeLabel ?? `All ${resourceLabel} loaded`;
+  return `${loadedSummary} · ${completionSummary}`;
+}
+
 /** Load the next cursor page when the shared collection footer enters view. */
 function InfiniteScrollStatus({
   completeLabel,
   hasMore,
+  hasLoadError = false,
   isValidating,
   itemCount,
+  loadErrorMessage,
   onLoadMore,
   resourceLabel,
   totalCount,
 }: InfiniteScrollStatusProps) {
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const sentinelRef = useRef<HTMLOutputElement | null>(null);
   const loadRequestedRef = useRef(false);
 
-  useEffect(() => {
-    if (!isValidating) loadRequestedRef.current = false;
-  }, [isValidating, itemCount]);
+  const requestLoadMore = useCallback(() => {
+    if (loadRequestedRef.current) return;
+    loadRequestedRef.current = true;
+    onLoadMore().then(
+      () => {
+        loadRequestedRef.current = false;
+      },
+      () => {
+        loadRequestedRef.current = true;
+      },
+    );
+  }, [onLoadMore]);
+
+  const requestLoadMoreManually = useCallback(() => {
+    loadRequestedRef.current = false;
+    requestLoadMore();
+  }, [requestLoadMore]);
 
   useEffect(() => {
     const sentinel = sentinelRef.current;
     if (
       !sentinel ||
       !hasMore ||
+      hasLoadError ||
       isValidating ||
       typeof IntersectionObserver === "undefined"
     ) {
@@ -177,50 +271,470 @@ function InfiniteScrollStatus({
 
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (!entry.isIntersecting || loadRequestedRef.current) return;
-        loadRequestedRef.current = true;
-        onLoadMore();
+        if (!entry.isIntersecting) return;
+        requestLoadMore();
       },
       { rootMargin: "200px" },
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [hasMore, isValidating, onLoadMore]);
+  }, [hasLoadError, hasMore, isValidating, requestLoadMore]);
 
   if (itemCount === 0) return null;
 
-  const summary =
-    totalCount === undefined
-      ? `Loaded ${itemCount.toLocaleString()} ${resourceLabel}${hasMore ? "" : ` · ${completeLabel ?? `All ${resourceLabel} loaded`}`}`
-      : `Loaded ${itemCount.toLocaleString()} of ${totalCount.toLocaleString()} ${resourceLabel}`;
+  const summary = getInfiniteScrollSummary({
+    completeLabel,
+    hasMore,
+    itemCount,
+    resourceLabel,
+    totalCount,
+  });
 
   return (
-    <div
+    <output
       ref={sentinelRef}
-      role="status"
       aria-live="polite"
-      className="mt-4 border-t pt-4 text-center text-sm"
+      className="mt-4 block border-t pt-4 text-center text-sm"
     >
-      <p className="text-xs text-muted-foreground">{summary}</p>
+      <span className="block text-xs text-muted-foreground">{summary}</span>
+      {loadErrorMessage && (
+        <span className="mt-1 block text-xs text-destructive">
+          {loadErrorMessage}
+        </span>
+      )}
       {hasMore && (
         <Button
           className="mt-2"
           variant="ghost"
           size="sm"
           aria-label={`Load more ${resourceLabel}`}
-          onClick={() => {
-            if (loadRequestedRef.current) return;
-            loadRequestedRef.current = true;
-            onLoadMore();
-          }}
+          onClick={requestLoadMoreManually}
           disabled={isValidating}
         >
           {isValidating && <RefreshCw className="mr-2 h-4 w-4 animate-spin" />}
           {isValidating ? "Loading more" : "Load more"}
         </Button>
       )}
-    </div>
+    </output>
   );
+}
+
+/** Render the dashboard skeleton while its required collections load. */
+function DashboardLoading() {
+  return (
+    <Card data-testid="dhcp-dashboard-loading">
+      <CardHeader>
+        <Skeleton className="h-7 w-48" />
+        <Skeleton className="h-4 w-72" />
+      </CardHeader>
+      <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {[0, 1, 2, 3].map((item) => (
+          <Skeleton key={item} className="h-28" />
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Render an actionable error when required dashboard data is unavailable. */
+function DashboardError({
+  error,
+  onRetry,
+}: Readonly<{ error: unknown; onRetry: () => Promise<void> }>) {
+  let description = "Lease data is unavailable.";
+  if (error instanceof Error) description = error.message;
+
+  return (
+    <Card className="border-dashed" data-testid="dhcp-dashboard-error">
+      <CardHeader className="flex-row items-start justify-between space-y-0">
+        <div className="space-y-1.5">
+          <CardTitle className="flex items-center gap-2 text-xl">
+            <Network className="h-5 w-5" /> DHCP leases
+          </CardTitle>
+          <CardDescription>{description}</CardDescription>
+        </div>
+        <Button variant="outline" size="sm" onClick={onRetry}>
+          <RefreshCw className="mr-2 h-4 w-4" /> Retry
+        </Button>
+      </CardHeader>
+    </Card>
+  );
+}
+
+/** Render the dashboard title, reload action, and summary metrics. */
+function DashboardHeader({
+  configSyncTimestamp,
+  data,
+  isReloading,
+  onReload,
+}: DashboardHeaderProps) {
+  let configSyncDetail = "Since last successful config sync";
+  if (configSyncTimestamp == null) {
+    configSyncDetail = "Config sync metric unavailable";
+  }
+  const reloadIconClassName = `mr-2 h-4 w-4${isReloading ? " animate-spin" : ""}`;
+
+  return (
+    <CardHeader className="border-b bg-card/70">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <CardTitle className="flex items-center gap-2 text-2xl">
+            <Network className="h-6 w-6 text-primary" /> DHCP lease activity
+          </CardTitle>
+          <CardDescription className="mt-2">
+            Live address allocations, configured reservations, and address pools.
+          </CardDescription>
+        </div>
+        <Button
+          aria-label="Reload DHCP data"
+          title="Re-fetch the latest data shown here. This does not run the background DHCP config sync."
+          variant="outline"
+          size="sm"
+          onClick={onReload}
+          disabled={isReloading}
+        >
+          <RefreshCw className={reloadIconClassName} />
+          Reload data
+        </Button>
+      </div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Metric
+          icon={<Activity className="h-4 w-4" />}
+          label="Active leases"
+          value={data.active_lease_count.toLocaleString()}
+          detail="Current active allocations"
+        />
+        <Metric
+          icon={<ShieldCheck className="h-4 w-4" />}
+          label="Reservations"
+          value={data.reservation_count.toLocaleString()}
+          detail="Configured static addresses"
+        />
+        <Metric
+          icon={<Database className="h-4 w-4" />}
+          label="Pools"
+          value={data.pool_count.toLocaleString()}
+          detail="Configured address pools"
+        />
+        <Metric
+          icon={<Clock3 className="h-4 w-4" />}
+          label="Config sync age"
+          value={formatConfigSyncAge(configSyncTimestamp)}
+          detail={configSyncDetail}
+          tooltip="Time since the background DHCP config sync last updated Kea from Nautobot."
+        />
+      </div>
+    </CardHeader>
+  );
+}
+
+/** Render a lease's configured subnet or its removed-subnet marker. */
+function LeaseSubnet({ subnet }: Readonly<{ subnet?: string | null }>) {
+  if (subnet) return <Badge variant="outline">{subnet}</Badge>;
+
+  return (
+    <span
+      className="text-sm text-muted-foreground"
+      title="This lease's subnet ID is not present in the current DHCP configuration."
+    >
+      Removed
+    </span>
+  );
+}
+
+/** Render the active lease table and its pagination status. */
+function LeasesTab({
+  activeSearchQuery,
+  hasMore,
+  isValidating,
+  leases,
+  loadMore,
+  onClearLease,
+  searchQuery,
+}: LeasesTabProps) {
+  let content: React.ReactNode;
+  if (leases.length === 0) {
+    const message = activeSearchQuery
+      ? `No active leases match “${searchQuery.trim()}”.`
+      : "No active leases.";
+    content = <EmptyState message={message} />;
+  } else {
+    content = (
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>IP address</TableHead>
+            <TableHead>Device</TableHead>
+            <TableHead>MAC / client ID</TableHead>
+            <TableHead>Subnet</TableHead>
+            <TableHead>Expires</TableHead>
+            <TableHead className="w-14">
+              <span className="sr-only">Actions</span>
+            </TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {leases.map((lease) => (
+            <TableRow key={lease.ip_address}>
+              <TableCell className="font-mono font-medium">
+                {lease.ip_address}
+              </TableCell>
+              <TableCell>{lease.hostname || "Unknown device"}</TableCell>
+              <TableCell className="font-mono text-xs">
+                {lease.hw_address || lease.client_id || lease.duid || "—"}
+              </TableCell>
+              <TableCell>
+                <LeaseSubnet subnet={lease.subnet} />
+              </TableCell>
+              <TableCell className="whitespace-nowrap">
+                {formatExpiry(lease.expires_at)}
+              </TableCell>
+              <TableCell>
+                <Button
+                  aria-label={`Clear lease ${lease.ip_address}`}
+                  title={`Clear lease ${lease.ip_address}`}
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => onClearLease(lease)}
+                >
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                </Button>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    );
+  }
+
+  const resourceLabel = activeSearchQuery
+    ? "matching active leases"
+    : "active leases";
+  const completeLabel = activeSearchQuery
+    ? "All matches loaded"
+    : "All active leases loaded";
+
+  return (
+    <TabsContent value="leases" className="mt-4">
+      {content}
+      <InfiniteScrollStatus
+        completeLabel={completeLabel}
+        hasMore={hasMore}
+        isValidating={isValidating}
+        itemCount={leases.length}
+        onLoadMore={loadMore}
+        resourceLabel={resourceLabel}
+      />
+    </TabsContent>
+  );
+}
+
+/** Render the static reservation table and its pagination status. */
+function ReservationsTab({
+  activeSearchQuery,
+  error,
+  hasMore,
+  isLoading,
+  isValidating,
+  loadMore,
+  reservations,
+  searchQuery,
+  totalCount,
+}: ReservationsTabProps) {
+  let content: React.ReactNode;
+  if (isLoading) {
+    content = <CollectionLoading />;
+  } else if (error && reservations.length === 0) {
+    content = <EmptyState message="Reservation data is unavailable." />;
+  } else if (reservations.length === 0) {
+    const message = activeSearchQuery
+      ? `No reservations match “${searchQuery.trim()}”.`
+      : "No reservations are configured.";
+    content = <EmptyState message={message} />;
+  } else {
+    content = (
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>IP address</TableHead>
+            <TableHead>Hostname</TableHead>
+            <TableHead>Identifier type</TableHead>
+            <TableHead>Identifier</TableHead>
+            <TableHead>Subnet</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {reservations.map((reservation, index) => (
+            <TableRow
+              key={`${reservation.ip_address || "reservation"}-${index}`}
+            >
+              <TableCell className="font-mono font-medium">
+                {reservation.ip_address || "—"}
+              </TableCell>
+              <TableCell>{reservation.hostname || "—"}</TableCell>
+              <TableCell>{reservation.identifier_type || "—"}</TableCell>
+              <TableCell className="font-mono text-xs">
+                {reservation.identifier || "—"}
+              </TableCell>
+              <TableCell>{reservation.subnet || "Global"}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    );
+  }
+
+  const resourceLabel = activeSearchQuery
+    ? "matching reservations"
+    : "reservations";
+  return (
+    <TabsContent value="reservations" className="mt-4">
+      {content}
+      <InfiniteScrollStatus
+        hasMore={hasMore}
+        hasLoadError={Boolean(error)}
+        isValidating={isValidating}
+        itemCount={reservations.length}
+        loadErrorMessage={
+          error ? "Reservation data is unavailable." : undefined
+        }
+        onLoadMore={loadMore}
+        resourceLabel={resourceLabel}
+        totalCount={totalCount}
+      />
+    </TabsContent>
+  );
+}
+
+/** Render the configured pool table and its pagination status. */
+function PoolsTab({
+  activeSearchQuery,
+  error,
+  hasMore,
+  isLoading,
+  isValidating,
+  loadMore,
+  pools,
+  searchQuery,
+  totalCount,
+}: PoolsTabProps) {
+  let content: React.ReactNode;
+  if (isLoading) {
+    content = <CollectionLoading />;
+  } else if (error && pools.length === 0) {
+    content = <EmptyState message="Pool data is unavailable." />;
+  } else if (pools.length === 0) {
+    const message = activeSearchQuery
+      ? `No pools match “${searchQuery.trim()}”.`
+      : "No address pools are configured.";
+    content = <EmptyState message={message} />;
+  } else {
+    content = (
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Subnet</TableHead>
+            <TableHead>Pool</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {pools.map((pool) => (
+            <TableRow key={`${pool.subnet}-${pool.pool}`}>
+              <TableCell className="font-medium">{pool.subnet}</TableCell>
+              <TableCell className="font-mono text-xs">{pool.pool}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    );
+  }
+
+  const resourceLabel = activeSearchQuery ? "matching pools" : "pools";
+  return (
+    <TabsContent value="pools" className="mt-4">
+      {content}
+      <InfiniteScrollStatus
+        hasMore={hasMore}
+        hasLoadError={Boolean(error)}
+        isValidating={isValidating}
+        itemCount={pools.length}
+        loadErrorMessage={error ? "Pool data is unavailable." : undefined}
+        onLoadMore={loadMore}
+        resourceLabel={resourceLabel}
+        totalCount={totalCount}
+      />
+    </TabsContent>
+  );
+}
+
+/** Confirm an active lease deletion while preserving in-flight state. */
+function ClearLeaseDialog({
+  isClearing,
+  lease,
+  onClear,
+  onClose,
+}: ClearLeaseDialogProps) {
+  return (
+    <Dialog
+      open={lease !== null}
+      onOpenChange={(open) => {
+        if (!open && !isClearing) onClose();
+      }}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Clear DHCP lease?</DialogTitle>
+          <DialogDescription>
+            Delete the lease for{" "}
+            <span className="font-mono font-medium text-foreground">
+              {lease?.ip_address}
+            </span>
+            . The address can be assigned again immediately.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={isClearing}>
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={onClear}
+            disabled={isClearing}
+          >
+            {isClearing && (
+              <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+            )}
+            Clear lease
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Debounce dashboard searches before they trigger API collection requests. */
+function useDebouncedSearchQuery(searchQuery: string): string {
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
+
+  useEffect(() => {
+    const timeout = globalThis.setTimeout(
+      () => setDebouncedSearchQuery(searchQuery.trim()),
+      300,
+    );
+    return () => globalThis.clearTimeout(timeout);
+  }, [searchQuery]);
+
+  return debouncedSearchQuery;
+}
+
+/** Only apply the shared search query to the currently visible collection. */
+function getActiveSearchQuery(
+  activeTab: string,
+  targetTab: string,
+  searchQuery: string,
+): string {
+  if (activeTab !== targetTab) return "";
+  return searchQuery;
 }
 
 /** Render live DHCP leases, reservations, and configured pools. */
@@ -236,11 +750,22 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
   const [isClearing, setIsClearing] = useState(false);
   const [activeTab, setActiveTab] = useState("leases");
   const [searchQuery, setSearchQuery] = useState("");
-  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
-  const activeLeaseSearchQuery = activeTab === "leases" ? debouncedSearchQuery : "";
-  const activeReservationSearchQuery =
-    activeTab === "reservations" ? debouncedSearchQuery : "";
-  const activePoolSearchQuery = activeTab === "pools" ? debouncedSearchQuery : "";
+  const debouncedSearchQuery = useDebouncedSearchQuery(searchQuery);
+  const activeLeaseSearchQuery = getActiveSearchQuery(
+    activeTab,
+    "leases",
+    debouncedSearchQuery,
+  );
+  const activeReservationSearchQuery = getActiveSearchQuery(
+    activeTab,
+    "reservations",
+    debouncedSearchQuery,
+  );
+  const activePoolSearchQuery = getActiveSearchQuery(
+    activeTab,
+    "pools",
+    debouncedSearchQuery,
+  );
   const {
     error: leaseError,
     isLoading: areLeasesLoading,
@@ -281,16 +806,8 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
   const areCollectionsValidating =
     areLeasesValidating || areReservationsValidating || arePoolsValidating;
 
-  useEffect(() => {
-    const timeout = window.setTimeout(
-      () => setDebouncedSearchQuery(searchQuery.trim()),
-      300,
-    );
-    return () => window.clearTimeout(timeout);
-  }, [searchQuery]);
-
-  const reloadData = () => {
-    void Promise.allSettled([
+  const reloadData = async () => {
+    await Promise.allSettled([
       mutate(),
       mutateConfigSyncTimestamp(),
       mutateLeases(),
@@ -311,10 +828,11 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
       setLeaseToClear(null);
       await Promise.allSettled([mutate(), mutateLeases()]);
     } catch (clearError) {
+      let description = "The request failed.";
+      if (clearError instanceof Error) description = clearError.message;
       toast({
         title: "Unable to clear lease",
-        description:
-          clearError instanceof Error ? clearError.message : "The request failed.",
+        description,
         variant: "destructive",
       });
     } finally {
@@ -323,108 +841,24 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
   };
 
   if (isLoading || areLeasesLoading) {
-    return (
-      <Card data-testid="dhcp-dashboard-loading">
-        <CardHeader>
-          <Skeleton className="h-7 w-48" />
-          <Skeleton className="h-4 w-72" />
-        </CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {[0, 1, 2, 3].map((item) => (
-            <Skeleton key={item} className="h-28" />
-          ))}
-        </CardContent>
-      </Card>
-    );
+    return <DashboardLoading />;
   }
 
   if (error || leaseError || !data) {
     const dashboardError = error || leaseError;
-    return (
-      <Card className="border-dashed" data-testid="dhcp-dashboard-error">
-        <CardHeader className="flex-row items-start justify-between space-y-0">
-          <div className="space-y-1.5">
-            <CardTitle className="flex items-center gap-2 text-xl">
-              <Network className="h-5 w-5" /> DHCP leases
-            </CardTitle>
-            <CardDescription>
-              {dashboardError instanceof Error
-                ? dashboardError.message
-                : "Lease data is unavailable."}
-            </CardDescription>
-          </div>
-          <Button variant="outline" size="sm" onClick={reloadData}>
-            <RefreshCw className="mr-2 h-4 w-4" /> Retry
-          </Button>
-        </CardHeader>
-      </Card>
-    );
+    return <DashboardError error={dashboardError} onRetry={reloadData} />;
   }
 
-  const leaseResourceLabel = activeLeaseSearchQuery
-    ? "matching active leases"
-    : "active leases";
-  const leaseCompleteLabel = activeLeaseSearchQuery
-    ? "All matches loaded"
-    : "All active leases loaded";
+  const isReloading =
+    isValidating || isConfigSyncAgeValidating || areCollectionsValidating;
   return (
     <Card className="overflow-hidden" data-testid="dhcp-dashboard">
-      <CardHeader className="border-b bg-card/70">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2 text-2xl">
-              <Network className="h-6 w-6 text-primary" /> DHCP lease activity
-            </CardTitle>
-            <CardDescription className="mt-2">
-              Live address allocations, configured reservations, and address pools.
-            </CardDescription>
-          </div>
-          <Button
-            aria-label="Reload DHCP data"
-            title="Re-fetch the latest data shown here. This does not run the background DHCP config sync."
-            variant="outline"
-            size="sm"
-            onClick={reloadData}
-            disabled={isValidating || isConfigSyncAgeValidating || areCollectionsValidating}
-          >
-            <RefreshCw
-              className={`mr-2 h-4 w-4 ${isValidating || isConfigSyncAgeValidating || areCollectionsValidating ? "animate-spin" : ""}`}
-            />
-            Reload data
-          </Button>
-        </div>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Metric
-            icon={<Activity className="h-4 w-4" />}
-            label="Active leases"
-            value={data.active_lease_count.toLocaleString()}
-            detail="Current active allocations"
-          />
-          <Metric
-            icon={<ShieldCheck className="h-4 w-4" />}
-            label="Reservations"
-            value={data.reservation_count.toLocaleString()}
-            detail="Configured static addresses"
-          />
-          <Metric
-            icon={<Database className="h-4 w-4" />}
-            label="Pools"
-            value={data.pool_count.toLocaleString()}
-            detail="Configured address pools"
-          />
-          <Metric
-            icon={<Clock3 className="h-4 w-4" />}
-            label="Config sync age"
-            value={formatConfigSyncAge(configSyncTimestamp)}
-            detail={
-              configSyncTimestamp == null
-                ? "Config sync metric unavailable"
-                : "Since last successful config sync"
-            }
-            tooltip="Time since the background DHCP config sync last updated Kea from Nautobot."
-          />
-        </div>
-      </CardHeader>
+      <DashboardHeader
+        configSyncTimestamp={configSyncTimestamp}
+        data={data}
+        isReloading={isReloading}
+        onReload={reloadData}
+      />
       <CardContent className="p-6">
         <div className="relative mb-4 max-w-xl">
           <Search
@@ -447,194 +881,48 @@ export function LeaseDashboard({ dhcpUrl }: LeaseDashboardProps) {
             <TabsTrigger value="pools">Pools</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="leases" className="mt-4">
-            {leases.length === 0 ? (
-              <EmptyState
-                message={
-                  activeLeaseSearchQuery
-                    ? `No active leases match “${searchQuery.trim()}”.`
-                    : "No active leases."
-                }
-              />
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>IP address</TableHead>
-                    <TableHead>Device</TableHead>
-                    <TableHead>MAC / client ID</TableHead>
-                    <TableHead>Subnet</TableHead>
-                    <TableHead>Expires</TableHead>
-                    <TableHead className="w-14"><span className="sr-only">Actions</span></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {leases.map((lease) => (
-                    <TableRow key={lease.ip_address}>
-                      <TableCell className="font-mono font-medium">{lease.ip_address}</TableCell>
-                      <TableCell>{lease.hostname || "Unknown device"}</TableCell>
-                      <TableCell className="font-mono text-xs">
-                        {lease.hw_address || lease.client_id || lease.duid || "—"}
-                      </TableCell>
-                      <TableCell>
-                        {lease.subnet ? (
-                          <Badge variant="outline">{lease.subnet}</Badge>
-                        ) : (
-                          <span
-                            className="text-sm text-muted-foreground"
-                            title="This lease's subnet ID is not present in the current DHCP configuration."
-                          >
-                            Removed
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap">{formatExpiry(lease.expires_at)}</TableCell>
-                      <TableCell>
-                        <Button
-                          aria-label={`Clear lease ${lease.ip_address}`}
-                          title={`Clear lease ${lease.ip_address}`}
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setLeaseToClear(lease)}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-            <InfiniteScrollStatus
-              completeLabel={leaseCompleteLabel}
-              hasMore={hasMoreLeases}
-              isValidating={areLeasesValidating}
-              itemCount={leases.length}
-              onLoadMore={() => void loadMoreLeases()}
-              resourceLabel={leaseResourceLabel}
-            />
-          </TabsContent>
+          <LeasesTab
+            activeSearchQuery={activeLeaseSearchQuery}
+            hasMore={hasMoreLeases}
+            isValidating={areLeasesValidating}
+            leases={leases}
+            loadMore={loadMoreLeases}
+            onClearLease={setLeaseToClear}
+            searchQuery={searchQuery}
+          />
 
-          <TabsContent value="reservations" className="mt-4">
-            {areReservationsLoading ? (
-              <CollectionLoading />
-            ) : reservationError ? (
-              <EmptyState message="Reservation data is unavailable." />
-            ) : reservations.length === 0 ? (
-              <EmptyState
-                message={
-                  activeReservationSearchQuery
-                    ? `No reservations match “${searchQuery.trim()}”.`
-                    : "No reservations are configured."
-                }
-              />
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>IP address</TableHead>
-                    <TableHead>Hostname</TableHead>
-                    <TableHead>Identifier type</TableHead>
-                    <TableHead>Identifier</TableHead>
-                    <TableHead>Subnet</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {reservations.map((reservation, index) => (
-                    <TableRow key={`${reservation.ip_address || "reservation"}-${index}`}>
-                      <TableCell className="font-mono font-medium">{reservation.ip_address || "—"}</TableCell>
-                      <TableCell>{reservation.hostname || "—"}</TableCell>
-                      <TableCell>{reservation.identifier_type || "—"}</TableCell>
-                      <TableCell className="font-mono text-xs">{reservation.identifier || "—"}</TableCell>
-                      <TableCell>{reservation.subnet || "Global"}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-            <InfiniteScrollStatus
-              hasMore={hasMoreReservations}
-              isValidating={areReservationsValidating}
-              itemCount={reservations.length}
-              onLoadMore={() => void loadMoreReservations()}
-              resourceLabel={
-                activeReservationSearchQuery
-                  ? "matching reservations"
-                  : "reservations"
-              }
-              totalCount={reservationTotalCount}
-            />
-          </TabsContent>
+          <ReservationsTab
+            activeSearchQuery={activeReservationSearchQuery}
+            error={reservationError}
+            hasMore={hasMoreReservations}
+            isLoading={areReservationsLoading}
+            isValidating={areReservationsValidating}
+            loadMore={loadMoreReservations}
+            reservations={reservations}
+            searchQuery={searchQuery}
+            totalCount={reservationTotalCount}
+          />
 
-          <TabsContent value="pools" className="mt-4">
-            {arePoolsLoading ? (
-              <CollectionLoading />
-            ) : poolError ? (
-              <EmptyState message="Pool data is unavailable." />
-            ) : pools.length === 0 ? (
-              <EmptyState
-                message={
-                  activePoolSearchQuery
-                    ? `No pools match “${searchQuery.trim()}”.`
-                    : "No address pools are configured."
-                }
-              />
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Subnet</TableHead>
-                    <TableHead>Pool</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {pools.map((pool) => (
-                    <TableRow key={`${pool.subnet}-${pool.pool}`}>
-                      <TableCell className="font-medium">{pool.subnet}</TableCell>
-                      <TableCell className="font-mono text-xs">{pool.pool}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-            <InfiniteScrollStatus
-              hasMore={hasMorePools}
-              isValidating={arePoolsValidating}
-              itemCount={pools.length}
-              onLoadMore={() => void loadMorePools()}
-              resourceLabel={
-                activePoolSearchQuery ? "matching pools" : "pools"
-              }
-              totalCount={poolTotalCount}
-            />
-          </TabsContent>
+          <PoolsTab
+            activeSearchQuery={activePoolSearchQuery}
+            error={poolError}
+            hasMore={hasMorePools}
+            isLoading={arePoolsLoading}
+            isValidating={arePoolsValidating}
+            loadMore={loadMorePools}
+            pools={pools}
+            searchQuery={searchQuery}
+            totalCount={poolTotalCount}
+          />
         </Tabs>
       </CardContent>
 
-      <Dialog
-        open={leaseToClear !== null}
-        onOpenChange={(open) => {
-          if (!open && !isClearing) setLeaseToClear(null);
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Clear DHCP lease?</DialogTitle>
-            <DialogDescription>
-              Delete the lease for <span className="font-mono font-medium text-foreground">{leaseToClear?.ip_address}</span>. The address can be assigned again immediately.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setLeaseToClear(null)} disabled={isClearing}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={clearLease} disabled={isClearing}>
-              {isClearing && <RefreshCw className="mr-2 h-4 w-4 animate-spin" />}
-              Clear lease
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ClearLeaseDialog
+        isClearing={isClearing}
+        lease={leaseToClear}
+        onClear={clearLease}
+        onClose={() => setLeaseToClear(null)}
+      />
     </Card>
   );
 }

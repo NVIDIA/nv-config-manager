@@ -255,6 +255,76 @@ test.describe("DHCP Dashboard Page", () => {
     ).toBeVisible();
   });
 
+  test("waits for a manual retry after a collection page fails", async ({
+    page,
+  }) => {
+    let failedPageAttempts = 0;
+    let allowRetry = false;
+    await page.unroute("**/reservation?*");
+    await page.route("**/reservation?*", async (route) => {
+      const cursor = new URL(route.request().url()).searchParams.get("cursor");
+      if (!cursor) {
+        await route.fulfill({
+          status: 200,
+          json: {
+            reservations: [
+              {
+                ip_address: "10.0.0.2",
+                hostname: "spine-01",
+                identifier_type: "hw-address",
+                identifier: "02:00:00:00:00:01",
+              },
+            ],
+            total_count: 2,
+            next_cursor: "next-reservation-page",
+          },
+        });
+        return;
+      }
+
+      failedPageAttempts += 1;
+      if (!allowRetry) {
+        await route.fulfill({
+          status: 503,
+          json: { detail: "Reservation data is unavailable." },
+        });
+        return;
+      }
+
+      await route.fulfill({
+        status: 200,
+        json: {
+          reservations: [
+            {
+              ip_address: "10.0.0.3",
+              hostname: "spine-02",
+              identifier_type: "hw-address",
+              identifier: "02:00:00:00:00:02",
+            },
+          ],
+          total_count: 2,
+          next_cursor: null,
+        },
+      });
+    });
+
+    const dashboard = page.getByTestId("dhcp-dashboard");
+    await dashboard.getByRole("tab", { name: "Reservations" }).click();
+    await expect(
+      dashboard.getByText("Reservation data is unavailable.")
+    ).toBeVisible();
+    await expect(dashboard.getByText("spine-01")).toBeVisible();
+    await page.waitForTimeout(750);
+    expect(failedPageAttempts).toBe(1);
+
+    allowRetry = true;
+    await dashboard
+      .getByRole("button", { name: "Load more reservations" })
+      .click();
+    await expect(dashboard.getByText("spine-02")).toBeVisible();
+    expect(failedPageAttempts).toBe(2);
+  });
+
   test("keeps lease data available when config sync metrics fail", async ({
     page,
   }) => {
