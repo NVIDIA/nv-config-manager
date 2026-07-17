@@ -177,11 +177,11 @@ avoids requiring a provisioning token for the deployment command.
 
 Use this command from automation after the NVCM GitOps application is healthy.
 GitOps owns the PVC definitions; the updater only replaces their mutable
-content. Jobs and template updates briefly scale their consuming deployments to
-zero, replace the content, restore the original replica counts, and wait for
-them to become ready. ZTP image updates instead publish image files before an
-atomic manifest replacement and leave Network ZTP running. The updater never
-creates, resizes, or changes a PVC. A missing PVC is an error.
+content. Jobs and template updates stage and transactionally replace the stored
+files, then rollout-restart their consumers so the new content is loaded. ZTP
+image updates instead publish image files before an atomic manifest replacement
+and leave Network ZTP running. The updater never creates, resizes, or changes a
+PVC. A missing PVC is an error.
 
 ```bash
 # Custom jobs: restart Nautobot, Celery, and Celery Beat when content changed.

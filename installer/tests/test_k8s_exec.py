@@ -211,19 +211,15 @@ def test_get_pvc_mounted_node_uses_a_running_consumer() -> None:
     assert k8s.get_pvc_mounted_node("jobs", "nv-config-manager") == "worker-a"
 
 
-def test_deployment_scale_helpers_preserve_replica_counts() -> None:
+def test_restart_deployment_returns_new_generation() -> None:
     k8s = _client()
-    k8s.apps_v1.read_namespaced_deployment.return_value.spec.replicas = 3
     k8s.apps_v1.patch_namespaced_deployment.return_value.metadata.generation = 9
 
-    assert k8s.get_deployment_replicas("render", "nv-config-manager") == 3
-    k8s.apps_v1.read_namespaced_deployment.return_value.spec.replicas = None
-    assert k8s.get_deployment_replicas("render", "nv-config-manager") == 1
-    assert k8s.scale_deployment("render", "nv-config-manager", 0) == 9
-    k8s.apps_v1.patch_namespaced_deployment.assert_called_once_with(
-        "render",
-        "nv-config-manager",
-        {"spec": {"replicas": 0}},
+    assert k8s.restart_deployment("render", "nv-config-manager") == 9
+    patch_body = k8s.apps_v1.patch_namespaced_deployment.call_args.args[2]
+    assert (
+        "kubectl.kubernetes.io/restartedAt"
+        in patch_body["spec"]["template"]["metadata"]["annotations"]
     )
 
 

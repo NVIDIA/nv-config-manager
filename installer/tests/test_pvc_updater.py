@@ -41,8 +41,7 @@ from nv_config_manager_installer.pvc_updater import (
 
 def _updater(k8s: MagicMock) -> PVCUpdater:
     k8s.get_pvc_mounted_node.return_value = None
-    k8s.get_deployment_replicas.return_value = 1
-    k8s.scale_deployment.return_value = 1
+    k8s.restart_deployment.return_value = 1
     return PVCUpdater(k8s, "nv-config-manager", "nv-config-manager")
 
 
@@ -58,8 +57,7 @@ def test_jobs_updates_existing_pvc_and_restarts_consumers(tmp_path: Path) -> Non
         ["nv-config-manager-nautobot-celery"],
         ["nv-config-manager-nautobot-celery-beat"],
     ]
-    k8s.get_deployment_replicas.side_effect = [2, 3, 1]
-    k8s.scale_deployment.side_effect = [3, 4, 5, 6, 7, 8]
+    k8s.restart_deployment.side_effect = [3, 4, 5]
     staged_package_marker = ""
 
     def capture_package_marker(staging: Path, _tarball: Path) -> None:
@@ -83,13 +81,10 @@ def test_jobs_updates_existing_pvc_and_restarts_consumers(tmp_path: Path) -> Non
         "nv-config-manager-nautobot-celery",
         "nv-config-manager-nautobot-celery-beat",
     ]
-    assert k8s.scale_deployment.call_args_list == [
-        *(call(name, "nv-config-manager", 0) for name in expected_deployments),
-        call("nv-config-manager-nautobot", "nv-config-manager", 2),
-        call("nv-config-manager-nautobot-celery", "nv-config-manager", 3),
-        call("nv-config-manager-nautobot-celery-beat", "nv-config-manager", 1),
+    assert k8s.restart_deployment.call_args_list == [
+        call(name, "nv-config-manager") for name in expected_deployments
     ]
-    assert k8s.wait_for_rollout.call_count == 6
+    assert k8s.wait_for_rollout.call_count == 3
     command = k8s.exec_command.call_args.args[2][2]
     assert 'tar xzf /tmp/content.tar.gz -C "$staging"' in command
     assert command.index("tar xzf") < command.index("move_old_content")
@@ -120,17 +115,16 @@ def test_jobs_updates_existing_pvc_and_restarts_consumers(tmp_path: Path) -> Non
         for index, recorded_call in enumerate(k8s.mock_calls)
         if recorded_call == call.wait_for_pod_gone(loader_pod_name, "nv-config-manager")
     )
-    first_restore_index = next(
+    first_restart_index = next(
         index
         for index, recorded_call in enumerate(k8s.mock_calls)
         if recorded_call
-        == call.scale_deployment(
+        == call.restart_deployment(
             "nv-config-manager-nautobot",
             "nv-config-manager",
-            2,
         )
     )
-    assert cleanup_wait_index < first_restore_index
+    assert cleanup_wait_index < first_restart_index
     k8s.release_lease.assert_called_once()
 
 
@@ -150,7 +144,7 @@ def test_unchanged_templates_do_not_create_loader_or_restart(tmp_path: Path) -> 
 
     assert changed is False
     k8s.create_loader_pod.assert_not_called()
-    k8s.scale_deployment.assert_not_called()
+    k8s.restart_deployment.assert_not_called()
 
 
 def test_loader_targets_the_node_currently_mounting_the_pvc(tmp_path: Path) -> None:
@@ -238,8 +232,7 @@ def test_ztp_rebuilds_content_without_restarting_ztp(tmp_path: Path) -> None:
     assert loader_call[0].startswith("nvcm-pvc-updater-ztp-")
     assert loader_call[1:] == ("nv-config-manager", "ztp-os-images", "/mnt/images")
     k8s.list_deployment_names.assert_not_called()
-    k8s.get_deployment_replicas.assert_not_called()
-    k8s.scale_deployment.assert_not_called()
+    k8s.restart_deployment.assert_not_called()
     assert manifest["images"] == [
         {
             "platform": "cumulus-linux",
@@ -256,7 +249,7 @@ def test_ztp_normalizes_cumulus_linux_platform_identifier() -> None:
     assert normalize_ztp_platform("Cumulus Linux") == "cumulus-linux"
 
 
-def test_quiesces_only_requested_release(tmp_path: Path) -> None:
+def test_restarts_only_requested_release(tmp_path: Path) -> None:
     source = tmp_path / "templates"
     source.mkdir()
     (source / "plugin.py").write_text("PLUGIN = True\n")
@@ -274,10 +267,7 @@ def test_quiesces_only_requested_release(tmp_path: Path) -> None:
     k8s.list_deployment_names.assert_called_once_with(
         "nv-config-manager", label_selector=expected_selector
     )
-    assert k8s.scale_deployment.call_args_list == [
-        call("nv-config-manager-render", "nv-config-manager", 0),
-        call("nv-config-manager-render", "nv-config-manager", 1),
-    ]
+    k8s.restart_deployment.assert_called_once_with("nv-config-manager-render", "nv-config-manager")
 
 
 @pytest.mark.parametrize(
@@ -351,7 +341,7 @@ def test_jobs_preserve_a_source_provided_package_init(tmp_path: Path) -> None:
     assert package_init == "from .example import Example\n"
 
 
-def test_failed_consumer_restore_does_not_record_content_hash(tmp_path: Path) -> None:
+def test_failed_consumer_rollout_does_not_record_content_hash(tmp_path: Path) -> None:
     source = tmp_path / "templates"
     source.mkdir()
     (source / "plugin.py").write_text("PLUGIN = True\n")
@@ -359,16 +349,16 @@ def test_failed_consumer_restore_does_not_record_content_hash(tmp_path: Path) ->
     k8s.pvc_exists.return_value = True
     k8s.get_pvc_annotation.return_value = "old-content"
     k8s.list_deployment_names.return_value = ["nv-config-manager-render"]
-    k8s.scale_deployment.side_effect = [9, 10]
-    k8s.wait_for_rollout.side_effect = [None, RuntimeError("rollout failed")]
+    k8s.wait_for_rollout.side_effect = RuntimeError("rollout failed")
 
     with pytest.raises(RuntimeError, match="rollout failed"):
         _updater(k8s).update_templates([source])
 
+    k8s.restart_deployment.assert_called_once_with("nv-config-manager-render", "nv-config-manager")
     k8s.annotate_pvc.assert_not_called()
 
 
-def test_failed_content_swap_restores_original_replica_count(tmp_path: Path) -> None:
+def test_failed_content_swap_does_not_restart_consumers(tmp_path: Path) -> None:
     source = tmp_path / "templates"
     source.mkdir()
     (source / "plugin.py").write_text("PLUGIN = True\n")
@@ -377,21 +367,16 @@ def test_failed_content_swap_restores_original_replica_count(tmp_path: Path) -> 
     k8s.get_pvc_annotation.return_value = "old-content"
     k8s.list_deployment_names.return_value = ["nv-config-manager-render"]
     updater = _updater(k8s)
-    k8s.get_deployment_replicas.return_value = 3
-    k8s.scale_deployment.side_effect = [9, 10]
     k8s.exec_command.side_effect = RuntimeError("swap failed")
 
     with pytest.raises(RuntimeError, match="swap failed"):
         updater.update_templates([source])
 
-    assert k8s.scale_deployment.call_args_list == [
-        call("nv-config-manager-render", "nv-config-manager", 0),
-        call("nv-config-manager-render", "nv-config-manager", 3),
-    ]
+    k8s.restart_deployment.assert_not_called()
     k8s.annotate_pvc.assert_not_called()
 
 
-def test_lease_failure_before_swap_restores_consumers_without_replacing_content(
+def test_lease_failure_before_swap_does_not_replace_content_or_restart_consumers(
     tmp_path: Path,
 ) -> None:
     source = tmp_path / "templates"
@@ -404,12 +389,7 @@ def test_lease_failure_before_swap_restores_consumers_without_replacing_content(
     updater = _updater(k8s)
     renewer = MagicMock()
     renewer.__enter__.return_value = renewer
-    renewer.ensure_healthy.side_effect = [
-        None,
-        None,
-        None,
-        RuntimeError("lease lost"),
-    ]
+    renewer.ensure_healthy.side_effect = RuntimeError("lease lost")
 
     with (
         patch("nv_config_manager_installer.pvc_updater._LeaseRenewer", return_value=renewer),
@@ -418,10 +398,7 @@ def test_lease_failure_before_swap_restores_consumers_without_replacing_content(
         updater.update_templates([source])
 
     k8s.exec_command.assert_not_called()
-    assert k8s.scale_deployment.call_args_list == [
-        call("nv-config-manager-render", "nv-config-manager", 0),
-        call("nv-config-manager-render", "nv-config-manager", 1),
-    ]
+    k8s.restart_deployment.assert_not_called()
     k8s.annotate_pvc.assert_not_called()
 
 
@@ -438,9 +415,6 @@ def test_lease_failure_after_swap_prevents_checksum_commit(tmp_path: Path) -> No
     renewer.__enter__.return_value = renewer
     renewer.ensure_healthy.side_effect = [
         None,
-        None,
-        None,
-        None,
         RuntimeError("lease lost"),
     ]
 
@@ -451,10 +425,7 @@ def test_lease_failure_after_swap_prevents_checksum_commit(tmp_path: Path) -> No
         updater.update_templates([source])
 
     k8s.exec_command.assert_called_once()
-    assert k8s.scale_deployment.call_args_list == [
-        call("nv-config-manager-render", "nv-config-manager", 0),
-        call("nv-config-manager-render", "nv-config-manager", 1),
-    ]
+    k8s.restart_deployment.assert_not_called()
     k8s.annotate_pvc.assert_not_called()
 
 

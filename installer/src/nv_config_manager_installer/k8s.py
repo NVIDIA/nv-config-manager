@@ -1062,21 +1062,6 @@ class K8sClient:
         result = self.apps_v1.patch_namespaced_deployment(name, namespace, patch)
         return result.metadata.generation or 0
 
-    def get_deployment_replicas(self, name: str, namespace: str) -> int:
-        """Return the deployment's desired replica count."""
-        deployment = self.apps_v1.read_namespaced_deployment(name, namespace)
-        replicas = deployment.spec.replicas
-        return int(replicas) if replicas is not None else 1
-
-    def scale_deployment(self, name: str, namespace: str, replicas: int) -> int:
-        """Set a deployment's replica count and return its new generation."""
-        result = self.apps_v1.patch_namespaced_deployment(
-            name,
-            namespace,
-            {"spec": {"replicas": replicas}},
-        )
-        return int(result.metadata.generation or 0)
-
     @staticmethod
     def _rollout_complete(dep: Any) -> bool:
         """Check whether a deployment rollout has fully converged."""

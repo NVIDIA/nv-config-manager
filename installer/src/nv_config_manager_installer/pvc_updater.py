@@ -561,7 +561,6 @@ class PVCUpdater:
                     pod_name = f"nvcm-pvc-updater-{kind}-{pvc_suffix}"
                     self._k8s.delete_pod(pod_name, self.namespace)
                     self._k8s.wait_for_pod_gone(pod_name, self.namespace)
-                    original_replicas: dict[str, int] | None = None
                     try:
                         mounted_node = self._k8s.get_pvc_mounted_node(pvc_name, self.namespace)
                         if mounted_node:
@@ -581,13 +580,6 @@ class PVCUpdater:
                             str(tarball), pod_name, self.namespace, "/tmp/content.tar.gz"
                         )
                         lease_renewer.ensure_healthy()
-                        if deployment_names:
-                            original_replicas = self._quiesce_consumers(
-                                kind,
-                                deployment_names,
-                                lease_renewer,
-                            )
-                        lease_renewer.ensure_healthy()
                         command = (
                             _replace_ztp_pvc_content_command(mount_path)
                             if publish_manifest_last
@@ -596,12 +588,11 @@ class PVCUpdater:
                         self._k8s.exec_command(pod_name, self.namespace, ["sh", "-c", command])
                         lease_renewer.ensure_healthy()
                     finally:
-                        try:
-                            self._k8s.delete_pod(pod_name, self.namespace)
-                            self._k8s.wait_for_pod_gone(pod_name, self.namespace)
-                        finally:
-                            if original_replicas is not None:
-                                self._restore_consumers(kind, original_replicas)
+                        self._k8s.delete_pod(pod_name, self.namespace)
+                        self._k8s.wait_for_pod_gone(pod_name, self.namespace)
+
+                if deployment_names:
+                    self._restart_consumers(kind, deployment_names, lease_renewer)
 
                 lease_renewer.ensure_healthy()
                 self._k8s.annotate_pvc(
@@ -639,48 +630,17 @@ class PVCUpdater:
             )
         return sorted(deployment_names)
 
-    def _quiesce_consumers(
+    def _restart_consumers(
         self,
         kind: str,
         deployment_names: list[str],
         lease_renewer: _LeaseRenewer,
-    ) -> dict[str, int]:
-        original_replicas = {
-            name: self._k8s.get_deployment_replicas(name, self.namespace)
-            for name in deployment_names
-        }
+    ) -> None:
         generations: dict[str, int] = {}
-        try:
-            for name in deployment_names:
-                lease_renewer.ensure_healthy()
-                if original_replicas[name] == 0:
-                    continue
-                self._on_log(f"{kind}: quiescing deployment {name}")
-                generations[name] = self._k8s.scale_deployment(name, self.namespace, 0)
-            for name, generation in generations.items():
-                self._k8s.wait_for_rollout(
-                    name,
-                    self.namespace,
-                    timeout=self.rollout_timeout,
-                    on_message=self._on_log,
-                    min_generation=generation,
-                )
-                lease_renewer.ensure_healthy()
-        except Exception:
-            self._restore_consumers(
-                kind,
-                {name: original_replicas[name] for name in generations},
-            )
-            raise
-        return original_replicas
-
-    def _restore_consumers(self, kind: str, original_replicas: dict[str, int]) -> None:
-        generations: dict[str, int] = {}
-        for name, replicas in original_replicas.items():
-            if replicas == 0:
-                continue
-            self._on_log(f"{kind}: restoring deployment {name} to {replicas} replica(s)")
-            generations[name] = self._k8s.scale_deployment(name, self.namespace, replicas)
+        for name in deployment_names:
+            lease_renewer.ensure_healthy()
+            self._on_log(f"{kind}: restarting deployment {name}")
+            generations[name] = self._k8s.restart_deployment(name, self.namespace)
         for name, generation in generations.items():
             self._k8s.wait_for_rollout(
                 name,
@@ -689,6 +649,7 @@ class PVCUpdater:
                 on_message=self._on_log,
                 min_generation=generation,
             )
+            lease_renewer.ensure_healthy()
 
     @staticmethod
     def _file_sha256(path: Path) -> str:
