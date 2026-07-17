@@ -299,6 +299,9 @@ def test_network_secrets_status_requires_manual_values():
 
     assert screen.get_status(config) == "[!]"
 
+    config.network_secrets[0].value = "   "
+    assert screen.get_status(config) == "[!]"
+
     config.network_secrets[0].value = "manual-password"
     assert screen.get_status(config) == "[*]"
 

@@ -124,12 +124,12 @@ Configure custom Nautobot jobs and post-deploy job execution. Bundled bootstrap 
 | Field | Description |
 | :---- | :---------- |
 | Custom Nautobot Jobs | Paths to job directories or tarballs |
-| Post-Deploy Jobs | Nautobot jobs to run after deployment, including class name and JSON input |
+| Post-Deploy Jobs | Nautobot jobs to run after deployment, including class name and JSON input (local Nautobot only) |
 | Jobs PVC Storage Class | Kubernetes storage class for the Nautobot jobs PVC |
 | Jobs PVC Access Mode | `ReadWriteOnce` or `ReadWriteMany` |
 | Node Selector | Node label selector for loader and Nautobot pods that mount the jobs PVC |
 
-Custom jobs require local Nautobot (`services.nautobot: true`). If Nautobot is remote, configure custom jobs directly on that instance.
+Custom and post-deploy jobs require local Nautobot (`services.nautobot: true`). If Nautobot is remote, configure and run those jobs directly on that instance.
 
 For a concrete Design Builder example, see [Design Builder Data Loading](../nautobot/design-builder-data-loading.mdx).
 

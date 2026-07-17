@@ -43,8 +43,9 @@ class IngestDataScreen(Container):
         yield Label("─" * 40, classes="section-divider")
 
         warning = Label(
-            "⚠ Nautobot is external — custom jobs cannot be loaded via PVC mount. "
-            "Configure jobs on the external Nautobot instance directly.",
+            "⚠ Nautobot is external — custom jobs cannot be loaded via PVC mount and "
+            "post-deploy jobs cannot be run. Configure or run them on the external "
+            "Nautobot instance directly.",
             id="content-nautobot-warning",
         )
         warning.styles.color = "yellow"

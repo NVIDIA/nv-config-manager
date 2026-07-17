@@ -404,6 +404,11 @@ class ContentConfig(BaseModel):
     template_plugins_config: TemplatePluginsConfig = Field(default_factory=TemplatePluginsConfig)
     run_after_deploy: list[PostDeployJob] = Field(default_factory=list)
 
+    @property
+    def requires_local_nautobot(self) -> bool:
+        """Return whether the configured content needs the local Nautobot deployment."""
+        return bool(self.jobs or self.run_after_deploy)
+
 
 class ServicesConfig(BaseModel):
     """Toggle individual NVIDIA Config Manager services on/off.
@@ -836,11 +841,12 @@ class NVConfigManagerInstallConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_external_nautobot(self) -> NVConfigManagerInstallConfig:
-        """Custom jobs require local Nautobot."""
-        if not self.services.nautobot and self.content.jobs:
+        """Reject content that cannot run against an external Nautobot instance."""
+        if not self.services.nautobot and self.content.requires_local_nautobot:
             msg = (
-                "Custom jobs require a local Nautobot deployment "
-                "(services.nautobot must be true). Remove content.jobs or switch to local Nautobot."
+                "Custom jobs and post-deploy jobs require a local Nautobot deployment "
+                "(services.nautobot must be true). Remove content.jobs and "
+                "content.run_after_deploy or switch to local Nautobot."
             )
             raise ValueError(msg)
         return self

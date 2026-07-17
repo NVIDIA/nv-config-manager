@@ -1041,7 +1041,7 @@ class Deployer:
         options: DeployOptions,
         callback: DeployCallback | None = None,
     ) -> None:
-        self.config = config
+        self.config = NVConfigManagerInstallConfig.model_validate(config.model_dump())
         self.options = options
         self.callback = callback or _NoopCallback()
         self._secrets_state: dict[str, str] = {}

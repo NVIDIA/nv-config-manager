@@ -60,6 +60,7 @@ from nv_config_manager_installer.schema import (
     KubernetesSecretsConfig,
     NetworkSecretEntry,
     NVConfigManagerInstallConfig,
+    PostDeployJob,
     RedfishConfig,
     RedfishVendorCreds,
     SecretsConfig,
@@ -200,6 +201,14 @@ class TestDeployerInit:
         deployer = Deployer(config, DeployOptions())
         ids = [s.id for s in deployer.steps]
         assert len(ids) == len(set(ids))
+
+    def test_revalidates_tui_config_before_deployment(self):
+        config = _make_config()
+        config.services.nautobot = False
+        config.content.run_after_deploy = [PostDeployJob(job="jobs.bootstrap.SiteBootstrap")]
+
+        with pytest.raises(ValueError, match="post-deploy jobs require a local Nautobot"):
+            Deployer(config, DeployOptions())
 
 
 class TestGatewayClassReuse:

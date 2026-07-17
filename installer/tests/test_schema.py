@@ -301,6 +301,15 @@ class TestNVConfigManagerInstallConfig:
                 content=ContentConfig(jobs=[{"path": "jobs/my_job"}]),
             )
 
+    def test_post_deploy_jobs_require_local_nautobot(self):
+        with pytest.raises(ValueError, match="post-deploy jobs require a local Nautobot"):
+            NVConfigManagerInstallConfig(
+                services=ServicesConfig(
+                    nautobot=False, external_nautobot_url="https://nb.example.com"
+                ),
+                content=ContentConfig(run_after_deploy=[{"job": "jobs.bootstrap.SiteBootstrap"}]),
+            )
+
     def test_external_nautobot_valid_without_jobs(self):
         config = NVConfigManagerInstallConfig(
             services=ServicesConfig(nautobot=False, external_nautobot_url="https://nb.example.com"),
