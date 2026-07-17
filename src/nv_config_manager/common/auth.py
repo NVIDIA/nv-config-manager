@@ -103,6 +103,7 @@ from fastapi.responses import JSONResponse
 from jwt.types import Options as JWTDecodeOptions
 from pydantic import BaseModel
 
+from nv_config_manager.common.config import load_config
 from nv_config_manager.common.log import LogCategory, get_logger
 
 logger = get_logger(__name__, category=LogCategory.AUTH)
@@ -311,8 +312,6 @@ def load_auth_config(config: ConfigParser | None = None) -> AuthConfig:
         if _auth_config is not None and not _auth_config_tracks_file:
             return _auth_config
         try:
-            from nv_config_manager.common.config import load_config
-
             config = load_config()
         except Exception:
             config = ConfigParser()
