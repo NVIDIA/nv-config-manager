@@ -207,7 +207,6 @@ nvcm-installer pvc-updater templates --namespace nv-config-manager \
 
 # ZTP OS images: publish images and manifest.json without restarting Network ZTP.
 nvcm-installer pvc-updater ztp --namespace nv-config-manager \
-  --release-name nv-config-manager \
   --image cumulus-linux 5.13.0 ./cumulus-linux-5.13.0.bin
 ```
 

@@ -272,8 +272,8 @@ def pvc_updater_command() -> None:
 def _run_pvc_updater(
     *,
     namespace: str,
-    release_name: str,
-    rollout_timeout: int,
+    release_name: str = "",
+    rollout_timeout: int = 600,
     update: Callable[[PVCUpdater], bool] | None,
     after_update: Callable[[PVCUpdater], bool] | None = None,
     kubeconfig: Path | None = None,
@@ -303,8 +303,8 @@ def _run_pvc_updater(
         click.echo("Nautobot job completed successfully.")
 
 
-def _pvc_common_options(command: Callable[..., None]) -> Callable[..., None]:
-    """Apply the options shared by the PVC updater subcommands."""
+def _pvc_cluster_options(command: Callable[..., None]) -> Callable[..., None]:
+    """Apply cluster connection options shared by PVC updater subcommands."""
     command = click.option(
         "--kubeconfig",
         type=click.Path(exists=True, dir_okay=False, path_type=Path),
@@ -315,6 +315,12 @@ def _pvc_common_options(command: Callable[..., None]) -> Callable[..., None]:
         required=True,
         help="Namespace containing the NVCM release and its PVCs.",
     )(command)
+    return command
+
+
+def _pvc_common_options(command: Callable[..., None]) -> Callable[..., None]:
+    """Apply options shared by PVC updates that restart consumers."""
+    command = _pvc_cluster_options(command)
     command = click.option(
         "--release-name",
         required=True,
@@ -439,13 +445,11 @@ def pvc_updater_templates(
     help="OS image metadata and local file. May be supplied more than once.",
 )
 @click.option("--pvc-name", default=ZTP_PVC_NAME, show_default=True)
-@_pvc_common_options
+@_pvc_cluster_options
 def pvc_updater_ztp(
     images: tuple[tuple[str, str, Path], ...],
     pvc_name: str,
     namespace: str,
-    release_name: str,
-    rollout_timeout: int,
     kubeconfig: Path | None,
 ) -> None:
     """Update ZTP OS images and manifest.json."""
@@ -455,8 +459,6 @@ def pvc_updater_ztp(
     ]
     _run_pvc_updater(
         namespace=namespace,
-        release_name=release_name,
-        rollout_timeout=rollout_timeout,
         kubeconfig=kubeconfig,
         update=lambda updater: updater.update_ztp(sources, pvc_name=pvc_name),
     )

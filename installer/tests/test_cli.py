@@ -157,6 +157,8 @@ class TestPVCUpdaterCommand:
         assert "--kubeconfig" in result.output
         assert "KUBECONFIG" in result.output
         assert "--namespace" in result.output
+        assert "--release-name" not in result.output
+        assert "--rollout-timeout" not in result.output
 
     @patch("nv_config_manager_installer.cli._run_pvc_updater")
     def test_pvc_updater_passes_explicit_kubeconfig(
