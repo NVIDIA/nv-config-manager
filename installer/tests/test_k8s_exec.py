@@ -22,11 +22,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from nv_config_manager_installer.k8s import K8sClient
+from nv_config_manager_installer.k8s import K8sClient, ServiceProxy
 
 
 def _client() -> K8sClient:
     k8s = object.__new__(K8sClient)
+    k8s.kubeconfig = None
     k8s.v1 = MagicMock()
     k8s.apps_v1 = MagicMock()
     return k8s
@@ -45,8 +46,9 @@ def test_client_loads_explicit_kubeconfig(tmp_path: Path) -> None:
         patch("nv_config_manager_installer.k8s.client.AppsV1Api"),
         patch("nv_config_manager_installer.k8s.client.CoordinationV1Api"),
     ):
-        K8sClient(kubeconfig=kubeconfig)
+        k8s = K8sClient(kubeconfig=kubeconfig)
 
+    assert k8s.kubeconfig == str(kubeconfig)
     current_context.assert_called_once_with(str(kubeconfig))
     load_kube_config.assert_called_once_with(
         config_file=str(kubeconfig),
@@ -68,8 +70,9 @@ def test_client_reads_kubeconfig_environment_at_runtime(monkeypatch: pytest.Monk
         patch("nv_config_manager_installer.k8s.client.AppsV1Api"),
         patch("nv_config_manager_installer.k8s.client.CoordinationV1Api"),
     ):
-        K8sClient()
+        k8s = K8sClient()
 
+    assert k8s.kubeconfig == kubeconfig
     current_context.assert_called_once_with(kubeconfig)
     load_kube_config.assert_called_once_with(
         config_file=kubeconfig,
@@ -90,6 +93,65 @@ def test_exec_command_returns_output_after_zero_exit() -> None:
     assert output == "done\n"
     assert stream.call_args.kwargs["_request_timeout"] == 30
     websocket.close.assert_called_once()
+
+
+def test_kubectl_copy_uses_client_kubeconfig(monkeypatch: pytest.MonkeyPatch) -> None:
+    k8s = _client()
+    k8s.kubeconfig = "/tmp/explicit.yaml"
+    monkeypatch.setenv("KUBECONFIG", "/tmp/ambient.yaml")
+
+    with (
+        patch(
+            "nv_config_manager_installer.k8s.subprocess.run",
+            return_value=SimpleNamespace(returncode=0, stderr=""),
+        ) as run,
+        patch.object(k8s, "_verify_remote_path"),
+    ):
+        k8s._copy_to_pod_kubectl(
+            "/tmp/source",
+            "loader",
+            "nv-config-manager",
+            "/tmp/destination",
+        )
+
+    assert run.call_args.kwargs["env"]["KUBECONFIG"] == "/tmp/explicit.yaml"
+
+
+def test_port_forward_uses_client_kubeconfig(monkeypatch: pytest.MonkeyPatch) -> None:
+    k8s = _client()
+    k8s.kubeconfig = "/tmp/explicit.yaml"
+    monkeypatch.setenv("KUBECONFIG", "/tmp/ambient.yaml")
+    process = MagicMock()
+
+    with (
+        patch("nv_config_manager_installer.k8s._find_free_port", return_value=12345),
+        patch("nv_config_manager_installer.k8s._wait_for_port"),
+        patch("nv_config_manager_installer.k8s.subprocess.Popen", return_value=process) as popen,
+        k8s.port_forward("nautobot", "nv-config-manager") as local_port,
+    ):
+        assert local_port == 12345
+
+    assert popen.call_args.kwargs["env"]["KUBECONFIG"] == "/tmp/explicit.yaml"
+    process.terminate.assert_called_once()
+
+
+def test_service_proxy_uses_client_kubeconfig(monkeypatch: pytest.MonkeyPatch) -> None:
+    k8s = _client()
+    k8s.kubeconfig = "/tmp/explicit.yaml"
+    monkeypatch.setenv("KUBECONFIG", "/tmp/ambient.yaml")
+    process = MagicMock()
+    proxy = ServiceProxy(k8s, "nautobot", "nv-config-manager")
+
+    with (
+        patch("nv_config_manager_installer.k8s._find_free_port", return_value=12345),
+        patch("nv_config_manager_installer.k8s._wait_for_port"),
+        patch("nv_config_manager_installer.k8s.subprocess.Popen", return_value=process) as popen,
+    ):
+        proxy.start()
+        proxy.stop()
+
+    assert popen.call_args.kwargs["env"]["KUBECONFIG"] == "/tmp/explicit.yaml"
+    process.terminate.assert_called_once()
 
 
 def test_exec_command_raises_for_remote_nonzero_exit() -> None:

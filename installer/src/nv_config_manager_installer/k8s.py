@@ -148,6 +148,7 @@ class K8sClient:
         kubeconfig_value = str(kubeconfig) if kubeconfig is not None else None
         if kubeconfig_value is None:
             kubeconfig_value = os.environ.get("KUBECONFIG") or None
+        self.kubeconfig: str | None = kubeconfig_value
         if context is None:
             context = kubectl_current_context(kubeconfig_value)
         if context:
@@ -172,6 +173,12 @@ class K8sClient:
             self.api_server: str | None = self.v1.api_client.configuration.host
         except Exception:
             self.api_server = None
+
+    def _kubectl_env(self) -> dict[str, str] | None:
+        """Return a subprocess environment pinned to this client's kubeconfig."""
+        if self.kubeconfig is None:
+            return None
+        return {**os.environ, "KUBECONFIG": self.kubeconfig}
 
     # -- Cluster connectivity -------------------------------------------------
 
@@ -954,7 +961,13 @@ class K8sClient:
         if container:
             cmd += ["-c", container]
 
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            env=self._kubectl_env(),
+            text=True,
+            timeout=1800,
+        )
         if result.returncode != 0:
             raise RuntimeError(
                 f"kubectl cp failed (exit {result.returncode}): {result.stderr.strip()}"
@@ -1167,6 +1180,7 @@ class K8sClient:
                 "-n",
                 namespace,
             ],
+            env=self._kubectl_env(),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
@@ -1207,6 +1221,7 @@ class ServiceProxy:
                 "-n",
                 self._namespace,
             ],
+            env=self._k8s._kubectl_env(),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
