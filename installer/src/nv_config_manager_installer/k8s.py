@@ -50,17 +50,21 @@ from kubernetes.stream import stream as k8s_stream
 LOADER_POD_IMAGE = "docker.io/library/busybox:1.36"
 
 
-def kubectl_current_context() -> str | None:
+def kubectl_current_context(kubeconfig: str | Path | None = None) -> str | None:
     """Return ``kubectl config current-context`` output, or None on failure.
 
     This is the canonical answer to "which cluster is the user pointed at?".
     The Python kubernetes client's own merge logic disagrees with kubectl
     when KUBECONFIG lists multiple files, so we always defer to kubectl.
     """
+    env = None
+    if kubeconfig is not None:
+        env = {**os.environ, "KUBECONFIG": str(kubeconfig)}
     try:
         result = subprocess.run(
             ["kubectl", "config", "current-context"],
             capture_output=True,
+            env=env,
             text=True,
             timeout=5,
             check=False,
@@ -128,7 +132,11 @@ def pin_kubeconfig_to_current_context() -> tuple[Path, str] | None:
 class K8sClient:
     """High-level wrapper around the ``kubernetes`` Python client."""
 
-    def __init__(self, context: str | None = None) -> None:
+    def __init__(
+        self,
+        context: str | None = None,
+        kubeconfig: str | Path | None = None,
+    ) -> None:
         # The Python kubernetes client and kubectl/helm disagree on which
         # context is "current" when KUBECONFIG merges multiple files that each
         # set their own current-context: kubectl picks the FIRST file's value,
@@ -137,10 +145,18 @@ class K8sClient:
         # helm later operates on a different one. To keep every code path
         # honest we always pin Python to the exact context kubectl reports,
         # falling back only if kubectl is unavailable (e.g. in-cluster auth).
+        kubeconfig_value = str(kubeconfig) if kubeconfig is not None else None
+        if kubeconfig_value is None:
+            kubeconfig_value = os.environ.get("KUBECONFIG") or None
         if context is None:
-            context = kubectl_current_context()
+            context = kubectl_current_context(kubeconfig_value)
         if context:
-            config.load_kube_config(context=context)
+            if kubeconfig_value:
+                config.load_kube_config(config_file=kubeconfig_value, context=context)
+            else:
+                config.load_kube_config(context=context)
+        elif kubeconfig_value:
+            config.load_kube_config(config_file=kubeconfig_value)
         else:
             config.load_kube_config()
         self.v1 = client.CoreV1Api()

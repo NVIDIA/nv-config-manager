@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -29,6 +30,51 @@ def _client() -> K8sClient:
     k8s.v1 = MagicMock()
     k8s.apps_v1 = MagicMock()
     return k8s
+
+
+def test_client_loads_explicit_kubeconfig(tmp_path: Path) -> None:
+    kubeconfig = tmp_path / "config"
+
+    with (
+        patch(
+            "nv_config_manager_installer.k8s.kubectl_current_context",
+            return_value="test-context",
+        ) as current_context,
+        patch("nv_config_manager_installer.k8s.config.load_kube_config") as load_kube_config,
+        patch("nv_config_manager_installer.k8s.client.CoreV1Api"),
+        patch("nv_config_manager_installer.k8s.client.AppsV1Api"),
+        patch("nv_config_manager_installer.k8s.client.CoordinationV1Api"),
+    ):
+        K8sClient(kubeconfig=kubeconfig)
+
+    current_context.assert_called_once_with(str(kubeconfig))
+    load_kube_config.assert_called_once_with(
+        config_file=str(kubeconfig),
+        context="test-context",
+    )
+
+
+def test_client_reads_kubeconfig_environment_at_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
+    kubeconfig = "/tmp/first.yaml:/tmp/second.yaml"
+    monkeypatch.setenv("KUBECONFIG", kubeconfig)
+
+    with (
+        patch(
+            "nv_config_manager_installer.k8s.kubectl_current_context",
+            return_value="test-context",
+        ) as current_context,
+        patch("nv_config_manager_installer.k8s.config.load_kube_config") as load_kube_config,
+        patch("nv_config_manager_installer.k8s.client.CoreV1Api"),
+        patch("nv_config_manager_installer.k8s.client.AppsV1Api"),
+        patch("nv_config_manager_installer.k8s.client.CoordinationV1Api"),
+    ):
+        K8sClient()
+
+    current_context.assert_called_once_with(kubeconfig)
+    load_kube_config.assert_called_once_with(
+        config_file=kubeconfig,
+        context="test-context",
+    )
 
 
 def test_exec_command_returns_output_after_zero_exit() -> None:

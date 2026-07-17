@@ -276,10 +276,11 @@ def _run_pvc_updater(
     rollout_timeout: int,
     update: Callable[[PVCUpdater], bool] | None,
     after_update: Callable[[PVCUpdater], bool] | None = None,
+    kubeconfig: Path | None = None,
 ) -> None:
     """Run one PVC content update with a connected Kubernetes client."""
     try:
-        k8s = K8sClient()
+        k8s = K8sClient(kubeconfig=kubeconfig)
         if not k8s.check_connectivity():
             raise RuntimeError("Unable to connect to the current Kubernetes cluster")
         updater = PVCUpdater(
@@ -304,6 +305,11 @@ def _run_pvc_updater(
 
 def _pvc_common_options(command: Callable[..., None]) -> Callable[..., None]:
     """Apply the options shared by the PVC updater subcommands."""
+    command = click.option(
+        "--kubeconfig",
+        type=click.Path(exists=True, dir_okay=False, path_type=Path),
+        help="Kubeconfig file to use. Defaults to KUBECONFIG, then the standard kubeconfig.",
+    )(command)
     command = click.option(
         "--namespace",
         required=True,
@@ -360,6 +366,7 @@ def pvc_updater_jobs(
     namespace: str,
     release_name: str,
     rollout_timeout: int,
+    kubeconfig: Path | None,
 ) -> None:
     """Update custom Nautobot jobs and optionally run one."""
     try:
@@ -376,6 +383,7 @@ def pvc_updater_jobs(
         namespace=namespace,
         release_name=release_name,
         rollout_timeout=rollout_timeout,
+        kubeconfig=kubeconfig,
         update=(lambda updater: updater.update_jobs(sources, pvc_name=pvc_name))
         if sources
         else None,
@@ -408,12 +416,14 @@ def pvc_updater_templates(
     namespace: str,
     release_name: str,
     rollout_timeout: int,
+    kubeconfig: Path | None,
 ) -> None:
     """Update Render Service template plugins."""
     _run_pvc_updater(
         namespace=namespace,
         release_name=release_name,
         rollout_timeout=rollout_timeout,
+        kubeconfig=kubeconfig,
         update=lambda updater: updater.update_templates(sources, pvc_name=pvc_name),
     )
 
@@ -436,6 +446,7 @@ def pvc_updater_ztp(
     namespace: str,
     release_name: str,
     rollout_timeout: int,
+    kubeconfig: Path | None,
 ) -> None:
     """Update ZTP OS images and manifest.json."""
     sources = [
@@ -446,6 +457,7 @@ def pvc_updater_ztp(
         namespace=namespace,
         release_name=release_name,
         rollout_timeout=rollout_timeout,
+        kubeconfig=kubeconfig,
         update=lambda updater: updater.update_ztp(sources, pvc_name=pvc_name),
     )
 

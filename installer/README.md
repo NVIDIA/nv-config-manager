@@ -220,6 +220,9 @@ previously installed job. Use `--job-timeout` to override the 1,800-second
 completion timeout. The PVC is mounted as the `custom` package to keep bundled
 bootstrap jobs available from the image, so job classes supplied by a source
 directory are named `custom.<source-package>...`.
+Every `pvc-updater` subcommand accepts `--kubeconfig PATH`. When the flag is
+omitted, the updater reads `KUBECONFIG` at runtime, including path-separated
+multi-file values, before falling back to the standard kubeconfig location.
 The default PVC names are `nautobot-custom-jobs`,
 `render-service-template-plugins`, and `ztp-os-images`; each can be overridden
 with `--pvc-name`. The updater calculates a content checksum, so unchanged

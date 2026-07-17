@@ -154,7 +154,40 @@ class TestPVCUpdaterCommand:
         result = runner.invoke(main, ["pvc-updater", "ztp", "--help"])
         assert result.exit_code == 0
         assert "--image" in result.output
+        assert "--kubeconfig" in result.output
+        assert "KUBECONFIG" in result.output
         assert "--namespace" in result.output
+
+    @patch("nv_config_manager_installer.cli._run_pvc_updater")
+    def test_pvc_updater_passes_explicit_kubeconfig(
+        self,
+        mock_run_pvc_updater,
+        tmp_path: Path,
+    ):
+        source = tmp_path / "templates"
+        source.mkdir()
+        kubeconfig = tmp_path / "config"
+        kubeconfig.write_text("apiVersion: v1\n")
+        runner = CliRunner()
+
+        result = runner.invoke(
+            main,
+            [
+                "pvc-updater",
+                "templates",
+                "--source",
+                str(source),
+                "--namespace",
+                "nv-config-manager",
+                "--release-name",
+                "nv-config-manager",
+                "--kubeconfig",
+                str(kubeconfig),
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert mock_run_pvc_updater.call_args.kwargs["kubeconfig"] == kubeconfig
 
     def test_pvc_updater_jobs_help_lists_job_execution_options(self):
         runner = CliRunner()
@@ -299,3 +332,18 @@ class TestPVCUpdaterCommand:
                 rollout_timeout=60,
                 update=lambda _updater: False,
             )
+
+    @patch("nv_config_manager_installer.cli.K8sClient")
+    def test_pvc_updater_initializes_client_with_kubeconfig(self, mock_k8s, tmp_path: Path):
+        kubeconfig = tmp_path / "config"
+        mock_k8s.return_value.check_connectivity.return_value = True
+
+        _run_pvc_updater(
+            namespace="nv-config-manager",
+            release_name="nv-config-manager",
+            rollout_timeout=60,
+            update=lambda _updater: False,
+            kubeconfig=kubeconfig,
+        )
+
+        mock_k8s.assert_called_once_with(kubeconfig=kubeconfig)
