@@ -54,6 +54,7 @@ from nv_config_manager_installer.schema import (
     GatewayType,
     ImageSource,
     NVConfigManagerInstallConfig,
+    SecretsMethod,
 )
 from nv_config_manager_installer.tui.widgets import LabeledSwitch
 
@@ -640,6 +641,7 @@ class DeployScreen(Container):
         self._sync_image_defaults()
         self._sync_gateway_options()
         self._sync_test_toggle()
+        self._sync_secret_options()
 
     def _sync_image_defaults(self) -> None:
         """Auto-toggle build/load switches based on config.images.source."""
@@ -671,6 +673,42 @@ class DeployScreen(Container):
             test_switch.disabled = False
             test_switch.tooltip = ""
 
+    def _sync_secret_options(self) -> None:
+        """Enable only the deploy controls supported by the secrets backend."""
+        is_eso = self._config.secrets.method == SecretsMethod.ESO
+
+        recreate_switch = self.query_one("#opt-recreate-secrets", LabeledSwitch)
+        recreate_switch.disabled = is_eso
+        recreate_switch.tooltip = (
+            "Only applies to Kubernetes secrets. ESO-managed secrets are reconciled from Vault."
+            if is_eso
+            else ""
+        )
+        if is_eso:
+            recreate_switch.value = False
+
+        populate_switch = self.query_one("#opt-populate-vault", LabeledSwitch)
+        was_disabled = populate_switch.disabled
+        populate_switch.disabled = not is_eso
+        populate_switch.tooltip = "" if is_eso else "Only applies when ESO is selected."
+        if not is_eso:
+            populate_switch.value = False
+        elif was_disabled:
+            populate_switch.value = True
+
+        token_input = self.query_one("#opt-openbao-token-file", Input)
+        token_input.disabled = not is_eso or not populate_switch.value
+        if not is_eso:
+            token_input.tooltip = "Only applies when ESO is selected."
+        elif not populate_switch.value:
+            token_input.tooltip = "Not needed when Vault population is disabled."
+        else:
+            token_input.tooltip = ""
+
+    def on_labeled_switch_changed(self, event: LabeledSwitch.Changed) -> None:
+        if event.labeled_switch.id == "opt-populate-vault":
+            self._sync_secret_options()
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "start-deploy" and not self._deploy_running:
             opts = self.query_one(_W_DEPLOY_OPTIONS)
@@ -682,7 +720,8 @@ class DeployScreen(Container):
             self._start_deploy()
 
     def _collect_deploy_options(self) -> DeployOptions:
-        token_file_value = self.query_one("#opt-openbao-token-file", Input).value.strip()
+        token_input = self.query_one("#opt-openbao-token-file", Input)
+        token_file_value = "" if token_input.disabled else token_input.value.strip()
         vault_token_file = Path(token_file_value).expanduser() if token_file_value else None
         return DeployOptions(
             chart_dir="deploy/helm",
@@ -713,6 +752,7 @@ class DeployScreen(Container):
             app.collect_config()
             self._config = app.config
             self._sync_gateway_options()
+            self._sync_secret_options()
 
         self._deploy_running = True
         btn = self.query_one("#start-deploy", Button)
@@ -772,9 +812,12 @@ class DeployScreen(Container):
             self.app.notify("Deployment failed. Check logs for details.", severity="error")
 
     def sync_from_config(self, config: NVConfigManagerInstallConfig) -> None:
+        """Refresh deploy controls after another TUI section updates the config."""
         self._config = config
         self._sync_image_defaults()
         self._sync_gateway_options()
+        self._sync_test_toggle()
+        self._sync_secret_options()
 
     def get_status(self, config: NVConfigManagerInstallConfig) -> str:
         if self._deploy_running:

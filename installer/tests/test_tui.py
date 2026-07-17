@@ -19,7 +19,7 @@ from __future__ import annotations
 from unittest.mock import Mock, patch
 
 import pytest
-from textual.widgets import Input, Select
+from textual.widgets import Input, RadioButton, Select
 
 from nv_config_manager_installer.deployer import DeployOptions
 from nv_config_manager_installer.schema import (
@@ -66,13 +66,80 @@ async def test_switch_section():
 
 @pytest.mark.asyncio
 async def test_deploy_can_skip_vault_population():
-    app = NVConfigManagerInstallerApp(config=NVConfigManagerInstallConfig())
+    config = NVConfigManagerInstallConfig(secrets=SecretsConfig(method=SecretsMethod.ESO))
+    app = NVConfigManagerInstallerApp(config=config)
     async with app.run_test():
         app.switch_section("deploy")
         deploy_screen = app._screens["deploy"]
         deploy_screen.query_one("#opt-populate-vault", LabeledSwitch).value = False
 
         assert deploy_screen._collect_deploy_options().populate_vault is False
+
+
+@pytest.mark.parametrize(
+    ("method", "recreate_disabled", "populate_disabled", "token_disabled"),
+    [
+        (SecretsMethod.KUBERNETES, False, True, True),
+        (SecretsMethod.ESO, True, False, False),
+    ],
+)
+@pytest.mark.asyncio
+async def test_deploy_secret_options_follow_secret_method(
+    method: SecretsMethod,
+    recreate_disabled: bool,
+    populate_disabled: bool,
+    token_disabled: bool,
+):
+    config = NVConfigManagerInstallConfig(secrets=SecretsConfig(method=method))
+    app = NVConfigManagerInstallerApp(config=config)
+
+    async with app.run_test():
+        app.switch_section("deploy")
+        deploy_screen = app._screens["deploy"]
+
+        assert (
+            deploy_screen.query_one("#opt-recreate-secrets", LabeledSwitch).disabled
+            is recreate_disabled
+        )
+        assert (
+            deploy_screen.query_one("#opt-populate-vault", LabeledSwitch).disabled
+            is populate_disabled
+        )
+        assert deploy_screen.query_one("#opt-openbao-token-file", Input).disabled is token_disabled
+
+
+@pytest.mark.asyncio
+async def test_deploy_disables_token_file_when_vault_population_is_off():
+    config = NVConfigManagerInstallConfig(secrets=SecretsConfig(method=SecretsMethod.ESO))
+    app = NVConfigManagerInstallerApp(config=config)
+
+    async with app.run_test() as pilot:
+        app.switch_section("deploy")
+        deploy_screen = app._screens["deploy"]
+        token_input = deploy_screen.query_one("#opt-openbao-token-file", Input)
+        token_input.value = "/tmp/token"
+        deploy_screen.query_one("#opt-populate-vault", LabeledSwitch).value = False
+        await pilot.pause()
+
+        assert token_input.disabled is True
+        assert deploy_screen._collect_deploy_options().vault_token_file is None
+
+
+@pytest.mark.asyncio
+async def test_deploy_secret_options_refresh_after_switching_to_eso():
+    app = NVConfigManagerInstallerApp(config=NVConfigManagerInstallConfig())
+
+    async with app.run_test() as pilot:
+        app.switch_section("secrets")
+        app._screens["secrets"].query_one("#method-eso", RadioButton).value = True
+        await pilot.pause()
+        app.switch_section("deploy")
+        deploy_screen = app._screens["deploy"]
+
+        assert deploy_screen.query_one("#opt-recreate-secrets", LabeledSwitch).disabled is True
+        assert deploy_screen.query_one("#opt-populate-vault", LabeledSwitch).disabled is False
+        assert deploy_screen.query_one("#opt-populate-vault", LabeledSwitch).value is True
+        assert deploy_screen.query_one("#opt-openbao-token-file", Input).disabled is False
 
 
 @pytest.mark.asyncio
