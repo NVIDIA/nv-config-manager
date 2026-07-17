@@ -16,6 +16,7 @@ metadata:
     app: {{ $ztpName }}
     app.kubernetes.io/name: nv-config-manager
     app.kubernetes.io/component: network-ztp
+    app.kubernetes.io/instance: {{ .Release.Name }}
 spec:
   replicas: {{ .Values.networkZtp.replicas }}
   selector:

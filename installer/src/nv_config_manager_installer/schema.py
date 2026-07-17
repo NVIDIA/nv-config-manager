@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # ---------------------------------------------------------------------------
 # Enums
@@ -87,6 +87,9 @@ class LBProvider(StrEnum):
 class ZTPStorageType(StrEnum):
     S3 = "s3"
     FILE = "file"
+
+
+SUPPORTED_ZTP_IMAGE_PLATFORMS = frozenset({"cumulus-linux", "arista-eos", "nv-os", "mlnx-os"})
 
 
 class ImageSource(StrEnum):
@@ -151,6 +154,8 @@ class VaultPathsConfig(BaseModel):
             token="token",
             readOnlyToken="read_only_token",
             natsPassword="nats_password",
+            natsSysPassword="nats_sys_password",
+            natsNautobotPassword="nats_nautobot_password",
         )
     )
     redis: VaultPathConfig = Field(default_factory=lambda: _path(password="password"))
@@ -181,6 +186,17 @@ class VaultPathsConfig(BaseModel):
     oidc: VaultPathConfig = Field(
         default_factory=lambda: _path(clientSecret="client_secret", cookieSecret="cookie_secret")
     )
+    redfish: VaultPathConfig = Field(
+        default_factory=lambda: _path(
+            lenovoDefaultUser="lenovo_default_user",
+            lenovoDefaultPassword="lenovo_default_password",
+            lenovoConfigManagerPassword="lenovo_config_manager_password",
+            bluefieldDefaultUser="bluefield_default_user",
+            bluefieldDefaultPassword="bluefield_default_password",
+            bluefieldConfigManagerPassword="bluefield_config_manager_password",
+        )
+    )
+    bmc: VaultPathConfig = Field(default_factory=lambda: _path(credsJson="bmc-creds.json"))
     slack: VaultPathConfig = Field(default_factory=lambda: _path(enabled=False, token="token"))
     jira: VaultPathConfig = Field(
         default_factory=lambda: _path(enabled=False, baseUrl="base_url", apiToken="api_token")
@@ -218,7 +234,7 @@ class VaultConfig(BaseModel):
 
 
 class K8sSecretGroup(BaseModel):
-    """Manual value overrides for one secret group in kubernetes-secrets mode.
+    """Manual value overrides for a Kubernetes Secret or OpenBao path group.
 
     Each key in ``values`` matches the corresponding vault property name so the
     same key names are meaningful in both ESO and kubernetes modes.
@@ -230,7 +246,7 @@ class K8sSecretGroup(BaseModel):
 
 
 class KubernetesSecretsConfig(BaseModel):
-    """Optional manual overrides for kubernetes-mode secrets.
+    """Optional values shared by Kubernetes-secret and OpenBao population modes.
 
     Required groups default to enabled; optional integrations default to disabled.
     Any value left empty (or the group left at defaults) will be auto-generated
@@ -502,6 +518,17 @@ class ZTPOSImage(BaseModel):
     platform: str = ""
     version: str = ""
     path: str = ""
+
+    @field_validator("platform")
+    @classmethod
+    def validate_platform(cls, value: str) -> str:
+        """Reject ZTP platforms the installer does not yet support."""
+        if value and value not in SUPPORTED_ZTP_IMAGE_PLATFORMS:
+            supported = ", ".join(sorted(SUPPORTED_ZTP_IMAGE_PLATFORMS))
+            raise ValueError(
+                f"Unsupported ZTP platform {value!r}. Supported platforms: {supported}."
+            )
+        return value
 
 
 class ZTPS3CephObjectStoreUserConfig(BaseModel):
@@ -882,7 +909,11 @@ def _replace_with_keys(section: dict[str, Any], keys: set[str]) -> None:
 def _prune_secrets(secrets: dict[str, Any], data: dict[str, Any]) -> None:
     method = secrets.get("method")
     if method == SecretsMethod.ESO.value:
-        secrets.pop("k8s", None)
+        # The app-secrets UI stores optional initial values in ``k8s`` for
+        # both secret backends.  In ESO mode the installer writes those
+        # values to Vault/OpenBao instead of Kubernetes Secrets, so retain
+        # them in the saved installer config for subsequent runs.
+        _prune_k8s_secret_values(_as_dict(secrets.get("k8s")))
         _prune_vault(_as_dict(secrets.get("vault")))
         return
 
@@ -891,7 +922,11 @@ def _prune_secrets(secrets: dict[str, Any], data: dict[str, Any]) -> None:
         if isinstance(site, dict):
             site.pop("vault_path", None)
 
-    k8s = _as_dict(secrets.get("k8s"))
+    _prune_k8s_secret_values(_as_dict(secrets.get("k8s")))
+
+
+def _prune_k8s_secret_values(k8s: dict[str, Any]) -> None:
+    """Remove values for Kubernetes secret groups that are disabled."""
     for group in k8s.values():
         group_data = _as_dict(group)
         if group_data.get("enabled") is False:

@@ -359,6 +359,26 @@ class TestGenerateHelmValues:
         assert nb["path"] == "custom/nb"
         assert nb["keys"]["token"] == "token"
 
+    def test_eso_partial_key_override_preserves_default_keys(self):
+        config = _make_config(
+            secrets=SecretsConfig(
+                method=SecretsMethod.ESO,
+                vault=VaultConfig(
+                    server="https://vault.test",
+                    secrets_path="nv-config-manager",
+                    paths=VaultPathsConfig(
+                        nautobot=VaultPathConfig(keys={"token": "api_token"}),
+                    ),
+                ),
+            ),
+        )
+
+        values = _gen(config)
+        keys = values["secrets"]["vault"]["paths"]["nautobot"]["keys"]
+
+        assert keys["token"] == "api_token"
+        assert keys["readOnlyToken"] == "read_only_token"
+
     def test_eso_ztp_s3_path(self):
         config = _make_config(
             secrets=SecretsConfig(

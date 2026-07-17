@@ -593,7 +593,9 @@ spec:
               mountPath: /opt/nautobot/static
             {{- if .Values.nautobot.customJobs.enabled }}
             - name: custom-jobs
-              mountPath: /opt/nautobot/jobs
+              # Keep the image's nv_config_manager_jobs available for the
+              # migration runner while a GitOps-created PVC is still empty.
+              mountPath: /opt/nautobot/jobs/custom
               readOnly: true
             {{- end }}
           {{- $defaultMigrationResources := dict "requests" (dict "cpu" "250m" "memory" "512Mi") "limits" (dict "memory" "2Gi") }}
@@ -707,7 +709,7 @@ spec:
             {{- end }}
             {{- if .Values.nautobot.customJobs.enabled }}
             - name: custom-jobs
-              mountPath: /opt/nautobot/jobs
+              mountPath: /opt/nautobot/jobs/custom
               readOnly: true
             {{- end }}
             {{- if .Values.spiffe.enabled }}
@@ -958,7 +960,7 @@ spec:
           {{- if .Values.nautobot.customJobs.enabled }}
           volumeMounts:
             - name: custom-jobs
-              mountPath: /opt/nautobot/jobs
+              mountPath: /opt/nautobot/jobs/custom
               readOnly: true
           {{- end }}
           livenessProbe:

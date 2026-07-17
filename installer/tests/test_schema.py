@@ -69,6 +69,10 @@ class TestNVConfigManagerInstallConfig:
         assert config.secrets.config_manager_service_username == "nv-config-manager"
         assert config.services.render is True
 
+    def test_ztp_image_rejects_unsupported_platform(self):
+        with pytest.raises(ValueError, match="Unsupported ZTP platform 'sonic'"):
+            ZTPOSImage(platform="sonic", version="4.0.0", path="/images/sonic.bin")
+
     def test_yaml_roundtrip(self):
         config = NVConfigManagerInstallConfig(
             cluster=ClusterConfig(
@@ -136,7 +140,11 @@ class TestNVConfigManagerInstallConfig:
 
         assert data["secrets"]["method"] == "eso"
         assert "vault" in data["secrets"]
-        assert "k8s" not in data["secrets"]
+        assert data["secrets"]["k8s"]["nautobot"]["values"]["token"] == "stale-k8s-token"
+        assert (
+            NVConfigManagerInstallConfig.model_validate(data).secrets.k8s.nautobot.values["token"]
+            == "stale-k8s-token"
+        )
         assert "token_secret_name" not in data["secrets"]["vault"]["auth"]
         assert data["secrets"]["vault"]["paths"]["slack"] == {"enabled": False}
 
