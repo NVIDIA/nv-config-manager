@@ -30,6 +30,7 @@ from nv_config_manager_installer.pvc_updater import (
     JOBS_PVC_NAME,
     PVCUpdater,
     ZTPImageSource,
+    _hash_staged_content,
     _LeaseRenewer,
     _make_tarball,
     _replace_pvc_content_command,
@@ -43,6 +44,22 @@ def _updater(k8s: MagicMock) -> PVCUpdater:
     k8s.get_pvc_mounted_node.return_value = None
     k8s.restart_deployment.return_value = 1
     return PVCUpdater(k8s, "nv-config-manager", "nv-config-manager")
+
+
+def test_hash_staged_content_frames_each_file_bytes(tmp_path: Path) -> None:
+    one_file = tmp_path / "one-file"
+    two_files = tmp_path / "two-files"
+    one_file.mkdir()
+    two_files.mkdir()
+
+    first_content = b"first"
+    second_content = b"second"
+    next_file_record = len(b"b").to_bytes(8, "big") + b"b" + second_content
+    (one_file / "a").write_bytes(first_content + next_file_record)
+    (two_files / "a").write_bytes(first_content)
+    (two_files / "b").write_bytes(second_content)
+
+    assert _hash_staged_content(one_file) != _hash_staged_content(two_files)
 
 
 def test_jobs_updates_existing_pvc_and_restarts_consumers(tmp_path: Path) -> None:

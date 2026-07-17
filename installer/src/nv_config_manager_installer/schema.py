@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # ---------------------------------------------------------------------------
 # Enums
@@ -87,6 +87,9 @@ class LBProvider(StrEnum):
 class ZTPStorageType(StrEnum):
     S3 = "s3"
     FILE = "file"
+
+
+SUPPORTED_ZTP_IMAGE_PLATFORMS = frozenset({"cumulus-linux", "arista-eos", "nv-os", "mlnx-os"})
 
 
 class ImageSource(StrEnum):
@@ -515,6 +518,17 @@ class ZTPOSImage(BaseModel):
     platform: str = ""
     version: str = ""
     path: str = ""
+
+    @field_validator("platform")
+    @classmethod
+    def validate_platform(cls, value: str) -> str:
+        """Reject ZTP platforms the installer does not yet support."""
+        if value and value not in SUPPORTED_ZTP_IMAGE_PLATFORMS:
+            supported = ", ".join(sorted(SUPPORTED_ZTP_IMAGE_PLATFORMS))
+            raise ValueError(
+                f"Unsupported ZTP platform {value!r}. Supported platforms: {supported}."
+            )
+        return value
 
 
 class ZTPS3CephObjectStoreUserConfig(BaseModel):

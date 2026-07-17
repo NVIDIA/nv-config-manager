@@ -119,7 +119,7 @@ def _stage_sources(
 
 
 def _hash_staged_content(staging: Path) -> str:
-    """Hash staged files by relative path and bytes, ignoring filesystem metadata."""
+    """Hash staged files by relative path, byte length, and bytes."""
     digest = hashlib.sha256()
     for path in sorted(staging.rglob("*")):
         if not path.is_file():
@@ -127,6 +127,7 @@ def _hash_staged_content(staging: Path) -> str:
         relative_path = path.relative_to(staging).as_posix().encode()
         digest.update(len(relative_path).to_bytes(8, "big"))
         digest.update(relative_path)
+        digest.update(path.stat().st_size.to_bytes(8, "big"))
         with path.open("rb") as content:
             for chunk in iter(lambda: content.read(8 * 1024 * 1024), b""):
                 digest.update(chunk)

@@ -77,7 +77,10 @@ def init(config_path: Path) -> None:
     config = NVConfigManagerInstallConfig()
     if config_path.exists():
         click.echo(f"Loading existing config: {config_path}")
-        config = NVConfigManagerInstallConfig.from_yaml(config_path)
+        try:
+            config = NVConfigManagerInstallConfig.from_yaml(config_path)
+        except Exception as exc:
+            raise click.ClickException(f"Failed to load config: {exc}") from exc
 
     app = NVConfigManagerInstallerApp(config=config, config_path=config_path)
     app.run()

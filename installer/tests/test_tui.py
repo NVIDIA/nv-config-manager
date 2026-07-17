@@ -19,7 +19,7 @@ from __future__ import annotations
 from unittest.mock import Mock, patch
 
 import pytest
-from textual.widgets import Input, RadioButton, Select
+from textual.widgets import Input, RadioButton
 
 from nv_config_manager_installer.deployer import DeployOptions
 from nv_config_manager_installer.schema import (
@@ -36,7 +36,6 @@ from nv_config_manager_installer.schema import (
     VaultConfig,
     VaultPathConfig,
     VaultPathsConfig,
-    ZTPOSImage,
 )
 from nv_config_manager_installer.tui.app import NVConfigManagerInstallerApp
 from nv_config_manager_installer.tui.screens.cluster import ClusterScreen
@@ -213,24 +212,6 @@ async def test_deployment_start_selects_local_image_source(
 
     assert deployed_config.images.source == ImageSource.LOCAL
     assert deployed_options is options
-
-
-@pytest.mark.asyncio
-async def test_ztp_screen_clears_unsupported_platform_from_config():
-    config = NVConfigManagerInstallConfig()
-    config.infrastructure.ztp_storage.os_images = [
-        ZTPOSImage(platform="sonic", version="e2e-v1", path="/tmp/sonic.bin")
-    ]
-    app = NVConfigManagerInstallerApp(config=config)
-
-    async with app.run_test() as pilot:
-        await pilot.pause()
-        app.switch_section("ztp")
-        platform = app._screens["ztp"].query_one("#ztp-img-0-platform", Select)
-
-        assert not isinstance(platform.value, str)
-        app.collect_config()
-        assert app.config.infrastructure.ztp_storage.os_images[0].platform == ""
 
 
 @pytest.mark.asyncio

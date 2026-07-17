@@ -118,6 +118,25 @@ class TestValidateCommand:
         assert "--config" in result.output
 
 
+class TestInitCommand:
+    def test_init_rejects_unsupported_ztp_platform(self, tmp_path: Path):
+        config_path = tmp_path / "installer.yaml"
+        config_path.write_text(
+            """infrastructure:
+  ztp_storage:
+    os_images:
+      - platform: sonic
+        version: 4.0.0
+        path: /images/sonic.bin
+"""
+        )
+
+        result = CliRunner().invoke(main, ["init", "--config", str(config_path)])
+
+        assert result.exit_code != 0
+        assert "Unsupported ZTP platform 'sonic'" in result.output
+
+
 class TestDeployCommand:
     def test_deploy_missing_config(self):
         runner = CliRunner()
