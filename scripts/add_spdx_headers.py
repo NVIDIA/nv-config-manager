@@ -15,6 +15,7 @@
 # limitations under the License.
 """Add SPDX license headers to source files in the NVIDIA Config Manager repository."""
 
+import re
 import sys
 from pathlib import Path
 
@@ -90,7 +91,7 @@ JS_TS_DIRS = [
 ]
 
 GO_DIRS = [
-    "components/nats-ready",
+    "components",
 ]
 
 SKIP_PATTERNS = {
@@ -101,23 +102,6 @@ SKIP_PATTERNS = {
     ".venv",
     "uv.lock",
 }
-
-SHORT_SPDX_PYTHON = (
-    "# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES."
-    " All rights reserved.\n"
-    "# SPDX-License-Identifier: Apache-2.0\n"
-)
-
-SHORT_SPDX_PYTHON_ALT = (
-    "# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES.\n"
-    "# SPDX-License-Identifier: Apache-2.0\n"
-)
-
-SHORT_SPDX_JS = (
-    "// SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES."
-    " All rights reserved.\n"
-    "// SPDX-License-Identifier: Apache-2.0\n"
-)
 
 
 def should_skip(path: Path) -> bool:
@@ -136,16 +120,36 @@ def has_short_header(content: str) -> bool:
 
 
 def replace_short_header_python(content: str) -> str:
-    """Replace a short 2-line SPDX header with the full license block."""
-    if SHORT_SPDX_PYTHON in content:
-        return content.replace(SHORT_SPDX_PYTHON, PYTHON_HEADER, 1)
-    if SHORT_SPDX_PYTHON_ALT in content:
-        return content.replace(SHORT_SPDX_PYTHON_ALT, PYTHON_HEADER, 1)
-    return content
+    """Replace any Python-style two-line SPDX header with the full block."""
+    return re.sub(
+        r"^# SPDX-FileCopyrightText:.*\n# SPDX-License-Identifier: Apache-2\.0\n",
+        PYTHON_HEADER,
+        content,
+        count=1,
+        flags=re.MULTILINE,
+    )
 
 
 def replace_short_header_js(content: str) -> str:
-    return content.replace(SHORT_SPDX_JS, JS_TS_HEADER, 1)
+    """Replace any JavaScript-style two-line SPDX header with the full block."""
+    return re.sub(
+        r"^// SPDX-FileCopyrightText:.*\n// SPDX-License-Identifier: Apache-2\.0\n",
+        JS_TS_HEADER,
+        content,
+        count=1,
+        flags=re.MULTILINE,
+    )
+
+
+def replace_short_header_go(content: str) -> str:
+    """Replace any Go-style two-line SPDX header with the full block."""
+    return re.sub(
+        r"^// SPDX-FileCopyrightText:.*\n// SPDX-License-Identifier: Apache-2\.0\n",
+        GO_HEADER,
+        content,
+        count=1,
+        flags=re.MULTILINE,
+    )
 
 
 def add_header_to_python(file_path: Path) -> bool:
@@ -156,7 +160,11 @@ def add_header_to_python(file_path: Path) -> bool:
             return False
 
         if has_short_header(content):
-            file_path.write_text(replace_short_header_python(content), encoding="utf-8")
+            new_content = replace_short_header_python(content)
+            if new_content == content:
+                print(f"Error processing {file_path}: unsupported short SPDX header")
+                return False
+            file_path.write_text(new_content, encoding="utf-8")
             return True
 
         if content.startswith("#!"):
@@ -180,7 +188,11 @@ def add_header_to_js_ts(file_path: Path) -> bool:
             return False
 
         if has_short_header(content):
-            file_path.write_text(replace_short_header_js(content), encoding="utf-8")
+            new_content = replace_short_header_js(content)
+            if new_content == content:
+                print(f"Error processing {file_path}: unsupported short SPDX header")
+                return False
+            file_path.write_text(new_content, encoding="utf-8")
             return True
 
         stripped = content.strip()
@@ -205,7 +217,11 @@ def add_header_to_go(file_path: Path) -> bool:
             return False
 
         if has_short_header(content):
-            file_path.write_text(replace_short_header_js(content), encoding="utf-8")
+            new_content = replace_short_header_go(content)
+            if new_content == content:
+                print(f"Error processing {file_path}: unsupported short SPDX header")
+                return False
+            file_path.write_text(new_content, encoding="utf-8")
             return True
 
         if content.startswith("//go:build") or content.startswith("// +build"):
@@ -291,6 +307,8 @@ def main() -> None:
     print()
     print(f"Total files modified: {total_modified}")
     print(f"Total files skipped (already had header): {total_skipped}")
+    if total_modified:
+        print("Re-stage modified files before committing.")
 
 
 if __name__ == "__main__":

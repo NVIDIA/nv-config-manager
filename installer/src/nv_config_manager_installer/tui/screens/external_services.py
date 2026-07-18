@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""External Services configuration screen — Nautobot, Redis, and PostgreSQL host overrides."""
+"""External Services configuration screen — service and database host overrides."""
 
 from __future__ import annotations
 
@@ -20,17 +20,19 @@ from textual.app import ComposeResult
 from textual.containers import Container
 from textual.widgets import Input, Label
 
-from nv_config_manager_installer.schema import NVConfigManagerInstallConfig
+from nv_config_manager_installer.schema import NVConfigManagerInstallConfig, TemporalAuthMethod
 from nv_config_manager_installer.tui.widgets import LabeledSwitch
 
 _W_EXT_NAUTOBOT = "#ext-nautobot-enabled"
 _W_EXT_REDIS = "#ext-redis-enabled"
 _W_EXT_PG = "#ext-pg-enabled"
+_W_EXT_TEMPORAL = "#ext-temporal-enabled"
+_W_EXT_TEMPORAL_MTLS = "#ext-temporal-mtls"
 _PG_HOST_PLACEHOLDER = "postgres.example.com  (leave empty to keep CNPG)"
 
 
 class ExternalServicesScreen(Container):
-    """Configure out-of-cluster Nautobot, Redis, and PostgreSQL instances."""
+    """Configure out-of-cluster service and database instances."""
 
     def __init__(self, config: NVConfigManagerInstallConfig, **kwargs: object) -> None:
         super().__init__(**kwargs)
@@ -40,6 +42,7 @@ class ExternalServicesScreen(Container):
         es = self._config.external_services
         r = es.redis
         pg = es.postgres
+        temporal = es.temporal
         svc = self._config.services
 
         yield Label("External Services", classes="section-title")
@@ -88,6 +91,45 @@ class ExternalServicesScreen(Container):
             id="ext-slack-channel",
         )
 
+        # ── Temporal ───────────────────────────────────────────────────────
+        yield Label("Temporal", classes="field-label")
+        yield LabeledSwitch(
+            "Use external Temporal",
+            value=bool(temporal.address),
+            id="ext-temporal-enabled",
+        )
+        with Container(id="ext-temporal-fields"):
+            yield Label("gRPC address", classes="field-label")
+            yield Input(
+                value=temporal.address,
+                placeholder="temporal.example.com:7233",
+                id="ext-temporal-address",
+            )
+            yield Label("Namespace", classes="field-label")
+            yield Input(
+                value=temporal.namespace,
+                placeholder="default",
+                id="ext-temporal-namespace",
+            )
+            yield LabeledSwitch(
+                "Use mTLS",
+                value=temporal.auth_method == TemporalAuthMethod.MTLS,
+                id="ext-temporal-mtls",
+            )
+            with Container(id="ext-temporal-mtls-fields"):
+                yield Label("Client TLS Secret", classes="field-label")
+                yield Input(
+                    value=temporal.tls_secret_name,
+                    placeholder="temporal-client-tls",
+                    id="ext-temporal-tls-secret",
+                )
+                yield Label("TLS server name (optional)", classes="field-label")
+                yield Input(
+                    value=temporal.tls_server_name,
+                    placeholder="temporal.example.com",
+                    id="ext-temporal-tls-server-name",
+                )
+
         # ── PostgreSQL ─────────────────────────────────────────────────────
         yield Label("PostgreSQL", classes="field-label")
         yield LabeledSwitch("Use external PostgreSQL", value=pg.enabled, id="ext-pg-enabled")
@@ -132,6 +174,7 @@ class ExternalServicesScreen(Container):
     def on_mount(self) -> None:
         self._toggle_nautobot_fields()
         self._toggle_redis_fields()
+        self._toggle_temporal_fields()
         self._toggle_pg_fields()
 
     def on_labeled_switch_changed(self, event: LabeledSwitch.Changed) -> None:
@@ -140,6 +183,10 @@ class ExternalServicesScreen(Container):
             self._toggle_nautobot_fields()
         elif sid == "ext-redis-enabled":
             self._toggle_redis_fields()
+        elif sid == "ext-temporal-enabled":
+            self._toggle_temporal_fields()
+        elif sid == "ext-temporal-mtls":
+            self._toggle_temporal_tls_fields()
         elif sid == "ext-pg-enabled":
             self._toggle_pg_fields()
 
@@ -152,6 +199,16 @@ class ExternalServicesScreen(Container):
         self.query_one("#ext-redis-fields").display = self.query_one(
             _W_EXT_REDIS, LabeledSwitch
         ).value
+
+    def _toggle_temporal_fields(self) -> None:
+        enabled = self.query_one(_W_EXT_TEMPORAL, LabeledSwitch).value
+        self.query_one("#ext-temporal-fields").display = enabled
+        self._toggle_temporal_tls_fields()
+
+    def _toggle_temporal_tls_fields(self) -> None:
+        enabled = self.query_one(_W_EXT_TEMPORAL, LabeledSwitch).value
+        mtls = self.query_one(_W_EXT_TEMPORAL_MTLS, LabeledSwitch).value
+        self.query_one("#ext-temporal-mtls-fields").display = enabled and mtls
 
     def _toggle_pg_fields(self) -> None:
         self.query_one("#ext-pg-fields").display = self.query_one(_W_EXT_PG, LabeledSwitch).value
@@ -178,6 +235,24 @@ class ExternalServicesScreen(Container):
 
         es.slack.channel = self.query_one("#ext-slack-channel", Input).value.strip()
 
+        temporal = es.temporal
+        temporal_enabled = self.query_one(_W_EXT_TEMPORAL, LabeledSwitch).value
+        temporal.address = (
+            self.query_one("#ext-temporal-address", Input).value.strip() if temporal_enabled else ""
+        )
+        temporal.namespace = (
+            self.query_one("#ext-temporal-namespace", Input).value.strip() or "default"
+        )
+        temporal.auth_method = (
+            TemporalAuthMethod.MTLS
+            if temporal_enabled and self.query_one(_W_EXT_TEMPORAL_MTLS, LabeledSwitch).value
+            else TemporalAuthMethod.NONE
+        )
+        temporal.tls_secret_name = self.query_one("#ext-temporal-tls-secret", Input).value.strip()
+        temporal.tls_server_name = self.query_one(
+            "#ext-temporal-tls-server-name", Input
+        ).value.strip()
+
         pg = es.postgres
         pg.enabled = self.query_one(_W_EXT_PG, LabeledSwitch).value
         pg.port = self._safe_int("#ext-pg-port", 5432)
@@ -192,6 +267,7 @@ class ExternalServicesScreen(Container):
         es = config.external_services
         r = es.redis
         pg = es.postgres
+        temporal = es.temporal
         svc = config.services
         try:
             self.query_one(_W_EXT_NAUTOBOT, LabeledSwitch).value = not svc.nautobot
@@ -202,6 +278,14 @@ class ExternalServicesScreen(Container):
             self.query_one("#ext-redis-ssl", LabeledSwitch).value = r.ssl
             self.query_one("#ext-redis-password-auth", LabeledSwitch).value = r.password_auth
             self.query_one("#ext-slack-channel", Input).value = es.slack.channel
+            self.query_one(_W_EXT_TEMPORAL, LabeledSwitch).value = bool(temporal.address)
+            self.query_one("#ext-temporal-address", Input).value = temporal.address
+            self.query_one("#ext-temporal-namespace", Input).value = temporal.namespace
+            self.query_one(_W_EXT_TEMPORAL_MTLS, LabeledSwitch).value = (
+                temporal.auth_method == TemporalAuthMethod.MTLS
+            )
+            self.query_one("#ext-temporal-tls-secret", Input).value = temporal.tls_secret_name
+            self.query_one("#ext-temporal-tls-server-name", Input).value = temporal.tls_server_name
             self.query_one(_W_EXT_PG, LabeledSwitch).value = pg.enabled
             self.query_one("#ext-pg-port", Input).value = str(pg.port)
             self.query_one("#ext-pg-temporal", Input).value = pg.temporal_host
@@ -213,6 +297,7 @@ class ExternalServicesScreen(Container):
             pass  # widgets may not be mounted yet (called before compose)
         self._toggle_nautobot_fields()
         self._toggle_redis_fields()
+        self._toggle_temporal_fields()
         self._toggle_pg_fields()
 
     def get_status(self, config: NVConfigManagerInstallConfig) -> str:

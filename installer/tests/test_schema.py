@@ -30,6 +30,7 @@ from nv_config_manager_installer.schema import (
     ExternalPostgresConfig,
     ExternalRedisConfig,
     ExternalServicesConfig,
+    ExternalTemporalConfig,
     GatewayType,
     GitTokenEntry,
     ImageOverride,
@@ -51,6 +52,7 @@ from nv_config_manager_installer.schema import (
     SPIFFEProvider,
     SSOConfig,
     SSOProvider,
+    TemporalAuthMethod,
     VaultAuthMethod,
     ZTPOSImage,
     ZTPS3CephConfig,
@@ -68,6 +70,31 @@ class TestNVConfigManagerInstallConfig:
         assert config.secrets.method == SecretsMethod.KUBERNETES
         assert config.secrets.config_manager_service_username == "nv-config-manager"
         assert config.services.render is True
+
+    def test_external_temporal_mtls_requires_address_and_secret(self):
+        with pytest.raises(ValueError, match="requires an address"):
+            ExternalTemporalConfig(auth_method=TemporalAuthMethod.MTLS)
+
+        with pytest.raises(ValueError, match="requires tls_secret_name"):
+            ExternalTemporalConfig(
+                address="temporal.example.com:7233",
+                auth_method=TemporalAuthMethod.MTLS,
+            )
+
+        config = ExternalTemporalConfig(
+            address="temporal.example.com:7233",
+            namespace="network-automation",
+            auth_method=TemporalAuthMethod.MTLS,
+            tls_secret_name="temporal-client-tls",
+            tls_server_name="temporal.example.com",
+        )
+
+        assert config.tls_server_name == "temporal.example.com"
+
+    @pytest.mark.parametrize("server_name", ['"temporal.example.com"', "temporal\n[other]"])
+    def test_external_temporal_rejects_unsafe_tls_server_name(self, server_name: str):
+        with pytest.raises(ValueError, match="tls_server_name may contain only"):
+            ExternalTemporalConfig(tls_server_name=server_name)
 
     def test_ztp_image_rejects_unsupported_platform(self):
         with pytest.raises(ValueError, match="Unsupported ZTP platform 'sonic'"):
@@ -370,6 +397,14 @@ class TestImagesConfig:
         assert config.images.overrides["nautobot"].tag == "custom"
         assert config.images.overrides["nvConfigManager"].tag == "dev-branch"
         assert config.images.overrides["nvConfigManager"].repository == ""
+
+    def test_temporal_bootstrap_image_override_is_rejected(self):
+        with pytest.raises(ValueError, match="temporalBootstrap is not supported"):
+            ImagesConfig(
+                overrides={
+                    "temporalBootstrap": ImageOverride(repository="registry.example/bootstrap")
+                }
+            )
 
     def test_roundtrip_with_overrides(self):
         config = NVConfigManagerInstallConfig(

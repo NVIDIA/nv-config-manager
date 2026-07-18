@@ -1,0 +1,55 @@
+---
+title: External Temporal
+---
+
+NVIDIA Config Manager can run its worker, Workflow API, scheduler, and archive
+services against a Temporal service managed outside the deployment. Set an
+endpoint under `external_services.temporal.address`; the installer then omits
+the Temporal server, UI, database-schema setup, namespace creation, and
+search-attribute bootstrap jobs.
+
+```yaml
+external_services:
+  temporal:
+    address: temporal.example.com:7233
+    namespace: network-automation
+    auth_method: mtls
+    tls_secret_name: temporal-client-tls
+    tls_server_name: temporal.example.com
+```
+
+For `auth_method: mtls`, create `temporal-client-tls` in the deployment
+namespace before installing. It must use the normal Kubernetes TLS keys:
+`ca.crt`, `tls.crt`, and `tls.key`. The installer mounts this Secret only into
+the NVIDIA Config Manager workloads that use the Temporal SDK.
+
+The external server administrator must create the namespace and the following
+search attributes before starting the deployment:
+
+| Name | Type |
+| --- | --- |
+| `User` | `Keyword` |
+| `DeviceID` | `Keyword` |
+| `DeviceRole` | `Keyword` |
+| `DeviceName` | `Text` |
+| `DevicePlatform` | `Keyword` |
+| `Site` | `Text` |
+| `ReadRoles` | `KeywordList` |
+| `ExecuteRoles` | `KeywordList` |
+| `PendingApproval` | `Bool` |
+| `FailedStage` | `Bool` |
+| `IssueKey` | `Keyword` |
+
+For example, provision one attribute with the Temporal CLI:
+
+```bash
+temporal operator search-attribute create \
+  --address temporal.example.com:7233 \
+  --name DeviceID --type Keyword
+```
+
+When NVIDIA Config Manager manages Temporal itself (the default), the
+project-owned distroless bootstrap image creates the `default` namespace and
+these attributes idempotently during deployment. External Temporal deployments
+never run this image and retain full control of their own schema, namespace,
+and search attributes.

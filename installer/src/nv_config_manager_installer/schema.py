@@ -22,6 +22,7 @@ Helm values and config-secrets.ini.
 from __future__ import annotations
 
 import os
+import re
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
@@ -602,6 +603,46 @@ class ExternalPostgresConfig(BaseModel):
     nautobot_host: str = ""
 
 
+class TemporalAuthMethod(StrEnum):
+    """Authentication mode used for a user-managed Temporal endpoint."""
+
+    NONE = "none"
+    MTLS = "mtls"
+
+
+class ExternalTemporalConfig(BaseModel):
+    """User-managed Temporal connection settings.
+
+    Set ``address`` to leave Temporal server ownership with the operator while
+    still deploying NVIDIA Config Manager's Temporal worker and Workflow API.
+    For mTLS, ``tls_secret_name`` names an existing Kubernetes Secret with the
+    standard ``ca.crt``, ``tls.crt``, and ``tls.key`` entries.
+    """
+
+    address: str = ""
+    namespace: str = "default"
+    auth_method: TemporalAuthMethod = TemporalAuthMethod.NONE
+    tls_secret_name: str = ""
+    tls_server_name: str = ""
+
+    @field_validator("tls_server_name")
+    @classmethod
+    def validate_tls_server_name(cls, value: str) -> str:
+        """Reject values that cannot safely be rendered as one INI value."""
+        if value and not re.fullmatch(r"[A-Za-z0-9:.-]+", value):
+            raise ValueError("tls_server_name may contain only DNS-name or IP-literal characters")
+        return value
+
+    @model_validator(mode="after")
+    def validate_mtls(self) -> ExternalTemporalConfig:
+        if self.auth_method == TemporalAuthMethod.MTLS:
+            if not self.address:
+                raise ValueError("External Temporal mTLS requires an address")
+            if not self.tls_secret_name:
+                raise ValueError("External Temporal mTLS requires tls_secret_name")
+        return self
+
+
 class SlackConfig(BaseModel):
     """Slack integration configuration."""
 
@@ -613,6 +654,7 @@ class ExternalServicesConfig(BaseModel):
 
     redis: ExternalRedisConfig = Field(default_factory=ExternalRedisConfig)
     postgres: ExternalPostgresConfig = Field(default_factory=ExternalPostgresConfig)
+    temporal: ExternalTemporalConfig = Field(default_factory=ExternalTemporalConfig)
     slack: SlackConfig = Field(default_factory=SlackConfig)
 
 
@@ -682,6 +724,16 @@ class ImagesConfig(BaseModel):
     pull_secret: ImagePullSecret = Field(default_factory=ImagePullSecret)
     overrides: dict[str, ImageOverride] = Field(default_factory=dict)
 
+    @model_validator(mode="after")
+    def validate_bootstrap_image_override(self) -> ImagesConfig:
+        """Keep schema bootstrap coupled to the supported Temporal version."""
+        if "temporalBootstrap" in self.overrides:
+            raise ValueError(
+                "images.overrides.temporalBootstrap is not supported; "
+                "use images.registry to mirror the project-owned bootstrap image"
+            )
+        return self
+
 
 NV_CONFIG_MANAGER_IMAGE_KEYS: list[tuple[str, str]] = [
     ("nvConfigManager", "nv-config-manager"),
@@ -690,6 +742,9 @@ NV_CONFIG_MANAGER_IMAGE_KEYS: list[tuple[str, str]] = [
     ("keaAdmin", "nv-config-manager-kea-admin"),
     ("nautobot", "nv-config-manager-nautobot"),
     ("natsReady", "nv-config-manager-nats-ready"),
+    ("temporalServer", "nv-config-manager-temporal"),
+    ("temporalBootstrap", "nv-config-manager-temporal-bootstrap"),
+    ("temporalUi", "nv-config-manager-temporal-ui"),
 ]
 
 # Image override keys accepted by the installer. The second field is the
@@ -708,9 +763,11 @@ IMAGE_OVERRIDE_KEYS: list[tuple[str, str]] = [
     ("redis", "docker.io/library/redis"),
     ("nats", "docker.io/library/nats"),
     ("natsBox", "docker.io/natsio/nats-box"),
-    ("temporalServer", "docker.io/temporalio/server"),
-    ("temporalAdminTools", "docker.io/temporalio/admin-tools"),
-    ("temporalUi", "docker.io/temporalio/ui"),
+    # The bootstrap image is intentionally absent: it is version-coupled to
+    # the project-managed server schema.  Operators may override the server
+    # and UI with compatible upstream or locally built images instead.
+    ("temporalServer", "temporalio/server"),
+    ("temporalUi", "temporalio/ui"),
     ("nautobotNginx", "docker.io/nginxinc/nginx-unprivileged"),
     ("spiffeHelper", "ghcr.io/spiffe/spiffe-helper"),
     ("oidcProxy", "quay.io/oauth2-proxy/oauth2-proxy"),

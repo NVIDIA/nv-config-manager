@@ -48,6 +48,51 @@ imageTag chart-version fallback. Takes the same dict as imageTag:
 {{- end }}
 
 {{/*
+Resolve the Temporal gRPC endpoint.  When the project-owned server is
+disabled, a user-managed Temporal endpoint is required instead.
+*/}}
+{{- define "nv-config-manager.temporalGrpcAddress" -}}
+{{- if .Values.temporal.server.enabled -}}
+{{- $temporalName := include "nv-config-manager.componentName" (dict "root" . "component" "temporal") -}}
+{{ printf "%s-frontend-service.%s.svc.cluster.local:%v" $temporalName .Values.global.namespace .Values.temporal.services.frontend.port }}
+{{- else -}}
+{{- required "temporal.client.address is required when temporal.server.enabled=false" .Values.temporal.client.address -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Render a Temporal TLS server name as a single raw INI value.  Helm's `quote`
+helper produces YAML quotes, which ConfigParser preserves as part of the TLS
+domain name.  Limit the value to DNS-name/IP-literal characters so direct
+Helm values cannot add another INI setting.
+*/}}
+{{- define "nv-config-manager.temporalTLSServerName" -}}
+{{- $serverName := .Values.temporal.client.tls.serverName | default "" -}}
+{{- if $serverName -}}
+{{- if not (regexMatch `^[A-Za-z0-9:.-]+$` $serverName) -}}
+{{- fail "temporal.client.tls.serverName may contain only DNS-name or IP-literal characters" -}}
+{{- end -}}
+{{- $serverName -}}
+{{- end -}}
+{{- end }}
+
+{{- define "nv-config-manager.temporalClientTLSVolumeMount" -}}
+{{- if .Values.temporal.client.tls.enabled }}
+- name: temporal-client-tls
+  mountPath: /var/run/secrets/temporal-client-tls
+  readOnly: true
+{{- end }}
+{{- end }}
+
+{{- define "nv-config-manager.temporalClientTLSVolume" -}}
+{{- if .Values.temporal.client.tls.enabled }}
+- name: temporal-client-tls
+  secret:
+    secretName: {{ required "temporal.client.tls.secretName is required when TLS is enabled" .Values.temporal.client.tls.secretName }}
+{{- end }}
+{{- end }}
+
+{{/*
 Selector labels
 */}}
 {{- define "nv-config-manager.selectorLabels" -}}
@@ -794,20 +839,12 @@ Usage: {{ include "nv-config-manager.waitForTemporalNamespace" . | nindent 6 }}
 {{- define "nv-config-manager.waitForTemporalNamespace" -}}
 {{- $temporalName := include "nv-config-manager.componentName" (dict "root" . "component" "temporal") -}}
 - name: wait-for-temporal-namespace
-  image: "{{ .Values.global.images.temporalAdminTools.repository }}:{{ .Values.global.images.temporalAdminTools.tag }}"
-  imagePullPolicy: {{ .Values.global.imagePullPolicy | default "IfNotPresent" }}
-  command:
-    - /bin/bash
-    - -c
-    - |
-      TEMPORAL_ADDR="{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.temporal.services.frontend.port }}"
-
-      echo "Waiting for Temporal default namespace..."
-      until tctl --address "$TEMPORAL_ADDR" --namespace default namespace describe >/dev/null 2>&1; do
-        echo "Temporal default namespace not ready yet, retrying in 5s..."
-        sleep 5
-      done
-      echo "Temporal default namespace is available."
+  image: "{{ include "nv-config-manager.image" (dict "root" . "image" .Values.global.images.temporalBootstrap) }}"
+  imagePullPolicy: {{ .Values.global.images.temporalBootstrap.pullPolicy }}
+  command: ["/usr/local/bin/temporal-bootstrap", "wait-namespace"]
+  env:
+  - name: TEMPORAL_ADDR
+    value: "{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.temporal.services.frontend.port }}"
   resources:
     requests:
       cpu: 10m
@@ -815,6 +852,7 @@ Usage: {{ include "nv-config-manager.waitForTemporalNamespace" . | nindent 6 }}
     limits:
       cpu: 50m
       memory: 64Mi
+  {{- include "nv-config-manager.containerSecurityContext" . | nindent 2 }}
 {{- end -}}
 
 {{/*
