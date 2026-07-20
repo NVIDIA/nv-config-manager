@@ -50,6 +50,15 @@ NAUTOBOT_APP_OVERLAYS_VERSION ?= $(TEMPLATE_ENGINE_VERSION)
 NAUTOBOT_APP_OVERLAYS_VERSION_ARG = $(if $(NAUTOBOT_APP_OVERLAYS_VERSION),--build-arg NAUTOBOT_APP_OVERLAYS_VERSION=$(NAUTOBOT_APP_OVERLAYS_VERSION),)
 NAUTOBOT_NV_CONFIG_MANAGER_VERSION ?= $(TEMPLATE_ENGINE_VERSION)
 NAUTOBOT_NV_CONFIG_MANAGER_VERSION_ARG = $(if $(NAUTOBOT_NV_CONFIG_MANAGER_VERSION),--build-arg NAUTOBOT_NV_CONFIG_MANAGER_VERSION=$(NAUTOBOT_NV_CONFIG_MANAGER_VERSION),)
+# Keep this aligned with the currently approved production server version.
+# A Temporal server upgrade is a separately planned schema migration.
+TEMPORAL_SERVER_VERSION ?= 1.29.7
+# Admin tools run only in the bootstrap init containers.  Temporal does not
+# publish an admin-tools:1.29.7 tag, so retain the available 1.29.6 release.
+TEMPORAL_ADMIN_TOOLS_VERSION ?= 1.29.6
+# UI is independently deployable and does not change Temporal persistence.
+TEMPORAL_UI_VERSION ?= 2.52.1
+TEMPORAL_BUILD_ARGS = --build-arg TEMPORAL_SERVER_VERSION=$(TEMPORAL_SERVER_VERSION) --build-arg TEMPORAL_ADMIN_TOOLS_VERSION=$(TEMPORAL_ADMIN_TOOLS_VERSION) --build-arg TEMPORAL_UI_VERSION=$(TEMPORAL_UI_VERSION)
 
 # Default target
 help:
@@ -394,13 +403,25 @@ ui-lint:
 
 # Build all local Docker images
 docker-build:
-	$(MAKE) docker-build-nv-config-manager &\
-	$(MAKE) docker-build-kea &\
-	$(MAKE) docker-build-kea-admin &\
-	$(MAKE) docker-build-ui &\
-	$(MAKE) docker-build-nb &\
-	$(MAKE) docker-build-nats-ready &\
-	wait
+	@pids=""; \
+	$(MAKE) docker-build-nv-config-manager & pids="$$pids $$!"; \
+	$(MAKE) docker-build-kea & pids="$$pids $$!"; \
+	$(MAKE) docker-build-kea-admin & pids="$$pids $$!"; \
+	$(MAKE) docker-build-ui & pids="$$pids $$!"; \
+	$(MAKE) docker-build-nb & pids="$$pids $$!"; \
+	$(MAKE) docker-build-nats-ready & pids="$$pids $$!"; \
+	$(MAKE) docker-build-temporal & pids="$$pids $$!"; \
+	failed=0; \
+	for pid in $$pids; do \
+		if ! wait "$$pid"; then \
+			echo "❌ Docker build process $$pid failed"; \
+			failed=1; \
+		fi; \
+	done; \
+	if [ "$$failed" -ne 0 ]; then \
+		echo "❌ One or more Docker image builds failed"; \
+		exit 1; \
+	fi
 	@echo "✅ All images built successfully"
 
 # Build NVIDIA Config Manager services image
@@ -439,19 +460,34 @@ docker-build-nats-ready:
 	docker build --provenance=false $(APT_MIRROR_ARGS) -t nv-config-manager-nats-ready:$(LOCAL_TAG) -f build/nats-ready.Dockerfile components/nats-ready/
 	@echo "✅ Built nv-config-manager-nats-ready:$(LOCAL_TAG)"
 
+# Build project-owned Temporal server, bootstrap, and web UI images.
+.PHONY: docker-build-temporal
+docker-build-temporal:
+	@echo "🏗️  Building distroless Temporal images with tag $(LOCAL_TAG)..."
+	docker build --provenance=false $(TEMPORAL_BUILD_ARGS) --target server -t nv-config-manager-temporal:$(LOCAL_TAG) -f build/temporal.Dockerfile .
+	docker build --provenance=false $(TEMPORAL_BUILD_ARGS) --target bootstrap -t nv-config-manager-temporal-bootstrap:$(LOCAL_TAG) -f build/temporal.Dockerfile .
+	docker build --provenance=false $(TEMPORAL_BUILD_ARGS) --target ui -t nv-config-manager-temporal-ui:$(LOCAL_TAG) -f build/temporal.Dockerfile .
+	@echo "✅ Built distroless Temporal images with tag $(LOCAL_TAG)"
+
 # Push images to registry (requires REGISTRY env var)
 REGISTRY ?= ghcr.io/your-org
 VERSION ?= latest
 
 docker-push:
-	docker tag nv-config-manager:local $(REGISTRY)/nv-config-manager:$(VERSION)
-	docker tag nv-config-manager-ui:local $(REGISTRY)/nv-config-manager-ui:$(VERSION)
-	docker tag nv-config-manager-nautobot:local $(REGISTRY)/nv-config-manager-nautobot:$(VERSION)
-	docker tag nv-config-manager-nats-ready:local $(REGISTRY)/nv-config-manager-nats-ready:$(VERSION)
+	docker tag nv-config-manager:$(LOCAL_TAG) $(REGISTRY)/nv-config-manager:$(VERSION)
+	docker tag nv-config-manager-ui:$(LOCAL_TAG) $(REGISTRY)/nv-config-manager-ui:$(VERSION)
+	docker tag nv-config-manager-nautobot:$(LOCAL_TAG) $(REGISTRY)/nv-config-manager-nautobot:$(VERSION)
+	docker tag nv-config-manager-nats-ready:$(LOCAL_TAG) $(REGISTRY)/nv-config-manager-nats-ready:$(VERSION)
+	docker tag nv-config-manager-temporal:$(LOCAL_TAG) $(REGISTRY)/nv-config-manager-temporal:$(VERSION)
+	docker tag nv-config-manager-temporal-bootstrap:$(LOCAL_TAG) $(REGISTRY)/nv-config-manager-temporal-bootstrap:$(VERSION)
+	docker tag nv-config-manager-temporal-ui:$(LOCAL_TAG) $(REGISTRY)/nv-config-manager-temporal-ui:$(VERSION)
 	docker push $(REGISTRY)/nv-config-manager:$(VERSION)
 	docker push $(REGISTRY)/nv-config-manager-ui:$(VERSION)
 	docker push $(REGISTRY)/nv-config-manager-nautobot:$(VERSION)
 	docker push $(REGISTRY)/nv-config-manager-nats-ready:$(VERSION)
+	docker push $(REGISTRY)/nv-config-manager-temporal:$(VERSION)
+	docker push $(REGISTRY)/nv-config-manager-temporal-bootstrap:$(VERSION)
+	docker push $(REGISTRY)/nv-config-manager-temporal-ui:$(VERSION)
 
 # =============================================================================
 # Multi-Arch Build Targets
@@ -471,9 +507,12 @@ LATEST_TAG_kea_admin = $(if $(PUSH_LATEST),-t $(REGISTRY)/nv-config-manager-kea-
 LATEST_TAG_ui = $(if $(PUSH_LATEST),-t $(REGISTRY)/nv-config-manager-ui:latest,)
 LATEST_TAG_nautobot = $(if $(PUSH_LATEST),-t $(REGISTRY)/nv-config-manager-nautobot:latest,)
 LATEST_TAG_nats_ready = $(if $(PUSH_LATEST),-t $(REGISTRY)/nv-config-manager-nats-ready:latest,)
+LATEST_TAG_temporal = $(if $(PUSH_LATEST),-t $(REGISTRY)/nv-config-manager-temporal:latest,)
+LATEST_TAG_temporal_bootstrap = $(if $(PUSH_LATEST),-t $(REGISTRY)/nv-config-manager-temporal-bootstrap:latest,)
+LATEST_TAG_temporal_ui = $(if $(PUSH_LATEST),-t $(REGISTRY)/nv-config-manager-temporal-ui:latest,)
 
 # All image names for manifest operations
-IMAGES := nv-config-manager nv-config-manager-kea nv-config-manager-kea-admin nv-config-manager-ui nv-config-manager-nautobot nv-config-manager-nats-ready
+IMAGES := nv-config-manager nv-config-manager-kea nv-config-manager-kea-admin nv-config-manager-ui nv-config-manager-nautobot nv-config-manager-nats-ready nv-config-manager-temporal nv-config-manager-temporal-bootstrap nv-config-manager-temporal-ui
 
 .PHONY: docker-buildx-setup
 docker-buildx-setup: ## Sets up Docker Buildx for multi-arch builds.
@@ -489,7 +528,7 @@ docker-buildx-setup-native: ## Sets up Docker Buildx for native single-arch buil
 	@echo "✅ Buildx ready for native $(PLATFORM) builds"
 
 .PHONY: docker-build-multiarch
-docker-build-multiarch: docker-buildx-setup docker-build-nv-config-manager-multiarch docker-build-kea-multiarch docker-build-kea-admin-multiarch docker-build-ui-multiarch docker-build-nb-multiarch docker-build-nats-ready-multiarch ## Builds and pushes all multi-arch images (requires registry login).
+docker-build-multiarch: docker-buildx-setup docker-build-nv-config-manager-multiarch docker-build-kea-multiarch docker-build-kea-admin-multiarch docker-build-ui-multiarch docker-build-nb-multiarch docker-build-nats-ready-multiarch docker-build-temporal-multiarch ## Builds and pushes all multi-arch images (requires registry login).
 	@echo "✅ All multi-arch images built and pushed successfully"
 
 # =============================================================================
@@ -506,6 +545,7 @@ docker-build-all: ## Builds and pushes all images for PLATFORM in parallel. Call
 	$(MAKE) docker-build-single-ui & pids="$$pids $$!"; \
 	$(MAKE) docker-build-single-nb & pids="$$pids $$!"; \
 	$(MAKE) docker-build-single-nats-ready & pids="$$pids $$!"; \
+	$(MAKE) docker-build-single-temporal & pids="$$pids $$!"; \
 	failed=0; \
 	for pid in $$pids; do \
 		if ! wait $$pid; then \
@@ -600,6 +640,14 @@ docker-build-single-nats-ready: ## Builds and pushes NATS-ready image for PLATFO
 		--push \
 		components/nats-ready/
 	@echo "✅ nv-config-manager-nats-ready:$(VERSION) pushed to $(REGISTRY)"
+
+.PHONY: docker-build-single-temporal
+docker-build-single-temporal: ## Builds and pushes distroless Temporal images for PLATFORM.
+	@echo "🏗️  Building distroless Temporal images for $(PLATFORM)..."
+	docker buildx build --platform $(PLATFORM) -t $(REGISTRY)/nv-config-manager-temporal:$(VERSION) $(LATEST_TAG_temporal) $(EXTRA_TAGS) $(TEMPORAL_BUILD_ARGS) --target server -f build/temporal.Dockerfile --push .
+	docker buildx build --platform $(PLATFORM) -t $(REGISTRY)/nv-config-manager-temporal-bootstrap:$(VERSION) $(LATEST_TAG_temporal_bootstrap) $(EXTRA_TAGS) $(TEMPORAL_BUILD_ARGS) --target bootstrap -f build/temporal.Dockerfile --push .
+	docker buildx build --platform $(PLATFORM) -t $(REGISTRY)/nv-config-manager-temporal-ui:$(VERSION) $(LATEST_TAG_temporal_ui) $(EXTRA_TAGS) $(TEMPORAL_BUILD_ARGS) --target ui -f build/temporal.Dockerfile --push .
+	@echo "✅ Distroless Temporal images pushed to $(REGISTRY)"
 
 # =============================================================================
 # Manifest Merge Targets (for combining arch-specific images)
@@ -716,6 +764,14 @@ docker-build-nats-ready-multiarch: docker-buildx-setup ## Builds and pushes mult
 		--push \
 		components/nats-ready/
 	@echo "✅ Multi-arch nv-config-manager-nats-ready pushed to $(REGISTRY)"
+
+.PHONY: docker-build-temporal-multiarch
+docker-build-temporal-multiarch: docker-buildx-setup ## Builds and pushes multi-arch distroless Temporal images.
+	@echo "🏗️  Building multi-arch distroless Temporal images..."
+	docker buildx build --platform $(PLATFORMS) -t $(REGISTRY)/nv-config-manager-temporal:$(VERSION) $(LATEST_TAG_temporal) $(EXTRA_TAGS) $(TEMPORAL_BUILD_ARGS) --target server -f build/temporal.Dockerfile --push .
+	docker buildx build --platform $(PLATFORMS) -t $(REGISTRY)/nv-config-manager-temporal-bootstrap:$(VERSION) $(LATEST_TAG_temporal_bootstrap) $(EXTRA_TAGS) $(TEMPORAL_BUILD_ARGS) --target bootstrap -f build/temporal.Dockerfile --push .
+	docker buildx build --platform $(PLATFORMS) -t $(REGISTRY)/nv-config-manager-temporal-ui:$(VERSION) $(LATEST_TAG_temporal_ui) $(EXTRA_TAGS) $(TEMPORAL_BUILD_ARGS) --target ui -f build/temporal.Dockerfile --push .
+	@echo "✅ Multi-arch distroless Temporal images pushed to $(REGISTRY)"
 
 # =============================================================================
 # Service run targets (for local development without k8s)

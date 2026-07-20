@@ -225,7 +225,7 @@ spec:
 {{- end }}
 
 {{- /* Temporal UI Probe */}}
-{{- if and .Values.monitoring.probes.enabled .Values.temporal.enabled }}
+{{- if and .Values.monitoring.probes.enabled .Values.temporal.enabled .Values.temporal.server.enabled }}
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: Probe
@@ -495,7 +495,7 @@ spec:
 {{- end }}
 
 {{- /* Temporal Frontend PodMonitor */}}
-{{- if and .Values.monitoring.podMonitors.enabled .Values.temporal.enabled }}
+{{- if and .Values.monitoring.podMonitors.enabled .Values.temporal.enabled .Values.temporal.server.enabled }}
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: PodMonitor
@@ -529,7 +529,7 @@ spec:
 {{- end }}
 
 {{- /* Temporal History PodMonitor */}}
-{{- if and .Values.monitoring.podMonitors.enabled .Values.temporal.enabled }}
+{{- if and .Values.monitoring.podMonitors.enabled .Values.temporal.enabled .Values.temporal.server.enabled }}
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: PodMonitor
@@ -563,7 +563,7 @@ spec:
 {{- end }}
 
 {{- /* Temporal Matching PodMonitor */}}
-{{- if and .Values.monitoring.podMonitors.enabled .Values.temporal.enabled }}
+{{- if and .Values.monitoring.podMonitors.enabled .Values.temporal.enabled .Values.temporal.server.enabled }}
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: PodMonitor
@@ -597,7 +597,7 @@ spec:
 {{- end }}
 
 {{- /* Temporal Worker PodMonitor */}}
-{{- if and .Values.monitoring.podMonitors.enabled .Values.temporal.enabled }}
+{{- if and .Values.monitoring.podMonitors.enabled .Values.temporal.enabled .Values.temporal.server.enabled }}
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: PodMonitor

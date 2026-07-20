@@ -139,15 +139,23 @@ global:
     natsBox:
       repository: docker.io/natsio/nats-box
       tag: "0.14.3"
+    # Project-owned Temporal images use distroless runtimes. temporalServer
+    # and temporalUi may be replaced with compatible upstream or locally built
+    # images. temporalBootstrap is intentionally project-owned: it contains
+    # the version-matched schema files and bootstrap binary used only when
+    # this chart manages the Temporal server.
     temporalServer:
-      repository: docker.io/temporalio/server
-      tag: "1.29"
-    temporalAdminTools:
-      repository: docker.io/temporalio/admin-tools
-      tag: "1.29"
+      repository: registry.example.com/nvidia/nv-config-manager-temporal
+      pullPolicy: Always
+      digest: ""
+    temporalBootstrap:
+      repository: registry.example.com/nvidia/nv-config-manager-temporal-bootstrap
+      pullPolicy: Always
+      digest: ""
     temporalUi:
-      repository: docker.io/temporalio/ui
-      tag: "v2.37.4"
+      repository: registry.example.com/nvidia/nv-config-manager-temporal-ui
+      pullPolicy: Always
+      digest: ""
 # =============================================================================
 # Local Development - Mock SSO Authentication
 # =============================================================================
@@ -1538,6 +1546,10 @@ observability:
 # =============================================================================
 temporal:
   enabled: true
+  # Set false to keep the NVIDIA Config Manager worker and Workflow API while
+  # connecting them to a user-managed Temporal service.
+  server:
+    enabled: true
   # Gateway routing - subdomain based
   gateway:
     api:
@@ -1564,10 +1576,9 @@ temporal:
       authBypass:
         enabled: false
         pathRegex: ""
-  # Temporal Web UI (built-in temporalio/ui)
+  # Temporal Web UI deployed with the project-owned Temporal server.
   devUi:
     replicas: 2
-    tag: "v2.37.4"
     # Codec endpoint for payload decode in UI. Builds from gateway.baseHostname when set.
     codecEndpoint: "https://workflow.{{ .Values.gateway.baseHostname }}/v1/codec"
     resources:
@@ -1776,6 +1787,15 @@ temporal:
     # Set to true for internal cluster communication (uses api_service endpoint)
     # Set to false for external mTLS communication (uses api_url endpoint)
     useInternalEndpoint: false
+    # Address and transport for a user-managed Temporal server. `address` is
+    # required when server.enabled=false.  The TLS Secret must provide ca.crt,
+    # tls.crt, and tls.key; it is mounted only into Temporal SDK clients.
+    address: ""
+    namespace: default
+    tls:
+      enabled: false
+      secretName: ""
+      serverName: ""
 # =============================================================================
 # Service: Config Store
 # =============================================================================

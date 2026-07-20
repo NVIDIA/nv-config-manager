@@ -16,6 +16,22 @@ The installer controls Temporal deployment through `nv-config-manager-install.ya
 - `rbac`: configures workflow read and execute roles.
 - `infrastructure`: configures TLS, gateway, storage, and optional observability.
 
+## Temporal Images
+
+The managed Temporal deployment uses three independently scoped distroless
+images:
+
+| Image key | Purpose | Override policy |
+| --- | --- | --- |
+| `temporalServer` | Temporal server roles | Compatible upstream or locally built images are supported. Keep the server version compatible with the bundled bootstrap schema. |
+| `temporalBootstrap` | Database schema setup, namespace creation, and search-attribute registration | Project-owned. It contains the version-matched Temporal schema, CLI tools, and NVIDIA Config Manager bootstrap binary. Mirror it through `images.registry` for private or airgapped registries; do not set a per-image override. |
+| `temporalUi` | Temporal Web UI | Compatible upstream or locally built images are supported. The UI version does not alter Temporal persistence. |
+
+For a user-managed remote Temporal service, configure the [external Temporal
+connection](external-temporal.mdx) instead. The chart does not run the server,
+UI, database schema, namespace, or search-attribute bootstrap workloads in
+that mode.
+
 ## Verify Temporal
 
 After deployment, verify the workflow API and Temporal Web routes:
