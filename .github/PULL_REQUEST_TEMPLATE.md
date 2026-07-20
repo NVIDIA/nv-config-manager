@@ -10,7 +10,10 @@
 - [ ] Kind integration passes, or this PR explains why it was not run.
 
 The kind integration test is manual due to taking ~30 min to complete. When the PR is ready for
-review, approve the current commit and start the suite with these PR comments:
+review, approve the current commit and start the suite with these PR comments. If this PR changes
+CI trust-boundary files, first review the `Trust Boundary Review` check and apply the
+`trust-boundary-reviewed` label only after reviewing the current head. The label is cleared when
+the PR head changes.
 
 ```text
 /ok to test <sha>

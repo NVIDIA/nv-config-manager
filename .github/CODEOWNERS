@@ -1,2 +1,11 @@
 # Default reviewers for all repository changes.
 * @dmathur0 @jojung1 @polarweasel @ryanheffernan @spidercensus @susanhooks @zsblevins
+
+# These files define the boundary between untrusted pull requests and privileged CI.
+/.gitlab-ci.yml @dmathur0 @jojung1 @polarweasel @ryanheffernan @spidercensus @susanhooks @zsblevins
+/.gitlab/ci/ @dmathur0 @jojung1 @polarweasel @ryanheffernan @spidercensus @susanhooks @zsblevins
+/.github/CODEOWNERS @dmathur0 @jojung1 @polarweasel @ryanheffernan @spidercensus @susanhooks @zsblevins
+/.github/actions/ @dmathur0 @jojung1 @polarweasel @ryanheffernan @spidercensus @susanhooks @zsblevins
+/.github/copy-pr-bot.yaml @dmathur0 @jojung1 @polarweasel @ryanheffernan @spidercensus @susanhooks @zsblevins
+/.github/scripts/ @dmathur0 @jojung1 @polarweasel @ryanheffernan @spidercensus @susanhooks @zsblevins
+/.github/workflows/ @dmathur0 @jojung1 @polarweasel @ryanheffernan @spidercensus @susanhooks @zsblevins
