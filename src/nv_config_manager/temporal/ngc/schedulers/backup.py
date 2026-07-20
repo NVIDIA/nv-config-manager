@@ -16,7 +16,6 @@
 
 import asyncio
 import logging
-import os
 import signal
 from collections.abc import Sequence
 from datetime import timedelta
@@ -38,6 +37,7 @@ from temporalio.contrib.opentelemetry import TracingInterceptor
 
 from nv_config_manager.common.config import load_config
 from nv_config_manager.common.log import LogCategory, get_logger
+from nv_config_manager.temporal.client.connection import client_connect_options, temporal_address
 from nv_config_manager.temporal.client.nautobot import NautobotClient, NautobotException
 from nv_config_manager.temporal.common.rbac_config import RBACConfig
 from nv_config_manager.temporal.common.search_attributes import (
@@ -82,10 +82,9 @@ query ($is_aggregate_managed: Boolean) {
     logger = get_logger(__name__, category=LogCategory.TEMPORAL_WORKFLOW)
 
     async def temporal_client(self) -> Client:
-        temporal_server = os.getenv("TEMPORAL_ADDRESS", "localhost:7233")
         return await Client.connect(
-            temporal_server,
-            namespace="default",
+            temporal_address(),
+            **client_connect_options(),
             data_converter=get_data_converter(),
             interceptors=[TracingInterceptor(always_create_workflow_spans=True)],
             runtime=get_runtime(),

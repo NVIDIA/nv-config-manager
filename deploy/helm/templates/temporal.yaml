@@ -13,6 +13,7 @@ data:
   {{- include "nv-config-manager.configmap.temporal-rbac" . | nindent 2 }}
 {{- end }}
 ---
+{{- if .Values.temporal.server.enabled }}
 # Temporal Server ConfigMap (PostgreSQL configuration)
 apiVersion: v1
 kind: ConfigMap
@@ -76,8 +77,58 @@ spec:
       securityContext:
         fsGroup: 1000
         runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       {{- include "nv-config-manager.scheduling" $serviceValues | nindent 6 }}
       initContainers:
+      # Render the upstream-compatible config template without introducing a
+      # shell into the Temporal server runtime.
+      - name: render-config
+        image: "{{ include "nv-config-manager.image" (dict "root" $ "image" $.Values.global.images.temporalServer) }}"
+        imagePullPolicy: {{ $.Values.global.images.temporalServer.pullPolicy }}
+        command: ["/usr/local/bin/dockerize", "-template", "/etc/temporal/config-template/config_template.yaml:/etc/temporal/config/docker.yaml"]
+        # dockerize expands these values into the config consumed by the server.
+        # Keep them aligned with the server container below; otherwise its
+        # template defaults (including PostgreSQL at 127.0.0.1) are used.
+        env:
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: SERVICES
+          value: {{ $service }}
+        - name: POSTGRES_HOST
+          value: {{ tpl $.Values.externalServices.postgres.temporal.host $ | quote }}
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: cluster-temporal-app
+              key: username
+        - name: POSTGRES_PASS
+          valueFrom:
+            secretKeyRef:
+              name: cluster-temporal-app
+              key: password
+        - name: POSTGRES_VISIBILITY_HOST
+          value: {{ tpl $.Values.externalServices.postgres.temporal.visibilityHost $ | quote }}
+        - name: POSTGRES_VISIBILITY_USER
+          valueFrom:
+            secretKeyRef:
+              name: cluster-temporal-visibility-app
+              key: username
+        - name: POSTGRES_VISIBILITY_PASS
+          valueFrom:
+            secretKeyRef:
+              name: cluster-temporal-visibility-app
+              key: password
+        volumeMounts:
+        - name: config-template
+          mountPath: /etc/temporal/config-template
+          readOnly: true
+        - name: rendered-config
+          mountPath: /etc/temporal/config
+        {{- include "nv-config-manager.containerSecurityContext" $ | nindent 8 }}
       # Wait for both PostgreSQL clusters to be ready (temporal and visibility)
       - name: wait-for-postgres
         image: "{{ $.Values.global.images.busybox.repository }}:{{ $.Values.global.images.busybox.tag }}"
@@ -101,25 +152,17 @@ spec:
       {{- if eq $service "frontend" }}
       # Frontend runs schema setup before starting (other services wait for frontend)
       - name: schema-setup
-        image: "{{ $.Values.global.images.temporalAdminTools.repository }}:{{ $.Values.global.images.temporalAdminTools.tag }}"
-        imagePullPolicy: {{ $.Values.global.imagePullPolicy | default "IfNotPresent" }}
-        command: ["sh", "-c"]
-        args:
-        - |
-          set -e
-          echo "Setting up temporal database schema..."
-          temporal-sql-tool --ep "${TEMPORAL_DB_HOST}" --user "${TEMPORAL_DB_USER}" --password "${TEMPORAL_DB_PASS}" --port {{ $.Values.externalServices.postgres.port }} --db {{ $.Values.externalServices.postgres.temporal.database }} --plugin postgres12 setup-schema -v 0.0 || echo "Schema may already exist"
-          temporal-sql-tool --ep "${TEMPORAL_DB_HOST}" --user "${TEMPORAL_DB_USER}" --password "${TEMPORAL_DB_PASS}" --port {{ $.Values.externalServices.postgres.port }} --db {{ $.Values.externalServices.postgres.temporal.database }} --plugin postgres12 update-schema -d /etc/temporal/schema/postgresql/v12/temporal/versioned
-          
-          echo "Setting up temporal visibility database schema..."
-          temporal-sql-tool --ep "${VISIBILITY_DB_HOST}" --user "${VISIBILITY_DB_USER}" --password "${VISIBILITY_DB_PASS}" --port {{ $.Values.externalServices.postgres.port }} --db {{ $.Values.externalServices.postgres.temporal.visibilityDatabase }} --plugin postgres12 setup-schema -v 0.0 || echo "Visibility schema may already exist"
-          temporal-sql-tool --ep "${VISIBILITY_DB_HOST}" --user "${VISIBILITY_DB_USER}" --password "${VISIBILITY_DB_PASS}" --port {{ $.Values.externalServices.postgres.port }} --db {{ $.Values.externalServices.postgres.temporal.visibilityDatabase }} --plugin postgres12 update-schema -d /etc/temporal/schema/postgresql/v12/visibility/versioned
-          
-          echo "Schema setup complete!"
+        image: "{{ include "nv-config-manager.image" (dict "root" $ "image" $.Values.global.images.temporalBootstrap) }}"
+        imagePullPolicy: {{ $.Values.global.images.temporalBootstrap.pullPolicy }}
+        command: ["/usr/local/bin/temporal-bootstrap", "setup-schema"]
         env:
         # Temporal database credentials
         - name: TEMPORAL_DB_HOST
           value: {{ tpl $.Values.externalServices.postgres.temporal.host $ | quote }}
+        - name: TEMPORAL_DB_NAME
+          value: {{ $.Values.externalServices.postgres.temporal.database | quote }}
+        - name: TEMPORAL_DB_PORT
+          value: {{ $.Values.externalServices.postgres.port | quote }}
         - name: TEMPORAL_DB_USER
           valueFrom:
             secretKeyRef:
@@ -133,6 +176,8 @@ spec:
         # Visibility database credentials
         - name: VISIBILITY_DB_HOST
           value: {{ tpl $.Values.externalServices.postgres.temporal.visibilityHost $ | quote }}
+        - name: VISIBILITY_DB_NAME
+          value: {{ $.Values.externalServices.postgres.temporal.visibilityDatabase | quote }}
         - name: VISIBILITY_DB_USER
           valueFrom:
             secretKeyRef:
@@ -143,6 +188,7 @@ spec:
             secretKeyRef:
               name: cluster-temporal-visibility-app
               key: password
+        {{- include "nv-config-manager.containerSecurityContext" $ | nindent 8 }}
       {{- else }}
       # Non-frontend services wait for frontend to be ready (which implies schema is set up)
       - name: wait-for-frontend
@@ -151,9 +197,12 @@ spec:
       {{- end }}
       containers:
       - name: temporal-{{ $service }}
-        image: "{{ $.Values.global.images.temporalServer.repository }}:{{ $.Values.global.images.temporalServer.tag }}"
-        imagePullPolicy: {{ $.Values.global.imagePullPolicy | default "IfNotPresent" }}
-        command: ["/etc/temporal/entrypoint.sh"]
+        image: "{{ include "nv-config-manager.image" (dict "root" $ "image" $.Values.global.images.temporalServer) }}"
+        imagePullPolicy: {{ $.Values.global.images.temporalServer.pullPolicy }}
+        # Temporal 1.29 parses --root and --env as global options, before the
+        # start subcommand.  The upstream entrypoint also translates SERVICES
+        # into --service flags; do that explicitly in the distroless image.
+        command: ["/usr/local/bin/temporal-server", "--root", "/etc/temporal", "--env", "docker", "start", "--service={{ $service }}"]
         env:
         - name: POD_IP
           valueFrom:
@@ -204,17 +253,19 @@ spec:
             port: rpc
         {{- end }}
         volumeMounts:
-        - name: config
-          mountPath: "/etc/temporal/config/config_template.yaml"
-          subPath: config_template.yaml
+        - name: rendered-config
+          mountPath: /etc/temporal/config
         - name: dynamic-config
           mountPath: /etc/temporal/dynamic_config
         resources:
           {{- toYaml $serviceValues.resources | nindent 10 }}
+        {{- include "nv-config-manager.containerSecurityContext" $ | nindent 8 }}
       volumes:
-      - name: config
+      - name: config-template
         configMap:
           name: {{ $temporalName }}-config
+      - name: rendered-config
+        emptyDir: {}
       - name: dynamic-config
         configMap:
           name: {{ $temporalName }}-dynamic-config
@@ -264,6 +315,7 @@ spec:
     component: {{ $service }}
 ---
 {{- end }}
+{{- end }}
 # NVIDIA Config Manager Temporal Worker Deployment
 apiVersion: apps/v1
 kind: Deployment
@@ -309,94 +361,17 @@ spec:
       {{- end }}
       {{- include "nv-config-manager.scheduling" .Values.temporal.configManagerWorker | nindent 6 }}
       initContainers:
+      {{- if .Values.temporal.server.enabled }}
       # Initialize Temporal namespace and search attributes
       - name: temporal-setup
-        image: "{{ .Values.global.images.temporalAdminTools.repository }}:{{ .Values.global.images.temporalAdminTools.tag }}"
-        imagePullPolicy: {{ .Values.global.imagePullPolicy | default "IfNotPresent" }}
-        command:
-        - /bin/bash
-        - -c
-        - |
-          set -e
-          TEMPORAL_ADDR="{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.temporal.services.frontend.port }}"
-          MAX_RETRIES=30
-          RETRY_DELAY=5
-
-          echo "Waiting for temporal frontend..."
-          until nc -z {{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc.cluster.local {{ .Values.temporal.services.frontend.port }}; do
-            echo "waiting for {{ $temporalName }}-frontend-service..."
-            sleep 2
-          done
-          echo "Temporal frontend is ready!"
-
-          # Register default namespace with retries.
-          # The frontend may accept TCP connections before it is fully ready
-          # to serve gRPC requests, so the first few attempts can fail.
-          echo "Registering default namespace..."
-          for i in $(seq 1 $MAX_RETRIES); do
-            if tctl --address "$TEMPORAL_ADDR" --namespace default namespace register 2>&1; then
-              echo "Namespace registered."
-              break
-            fi
-            msg=$(tctl --address "$TEMPORAL_ADDR" --namespace default namespace register 2>&1 || true)
-            if echo "$msg" | grep -qi "already exist"; then
-              echo "Namespace default already exists."
-              break
-            fi
-            echo "Attempt $i/$MAX_RETRIES: namespace register failed, retrying in ${RETRY_DELAY}s..."
-            sleep $RETRY_DELAY
-          done
-
-          # Update retention (retry — namespace may take a moment to propagate)
-          echo "Setting namespace retention..."
-          for i in $(seq 1 $MAX_RETRIES); do
-            if tctl --address "$TEMPORAL_ADDR" --namespace default namespace update --retention 14 2>&1; then
-              echo "Namespace retention updated."
-              break
-            fi
-            echo "Attempt $i/$MAX_RETRIES: namespace update failed, retrying in ${RETRY_DELAY}s..."
-            sleep $RETRY_DELAY
-          done
-
-          create_search_attribute() {
-            local name="$1"
-            local type="$2"
-            local output
-
-            for i in $(seq 1 "$MAX_RETRIES"); do
-              if output=$(temporal operator search-attribute create --address "$TEMPORAL_ADDR" --name "$name" --type "$type" 2>&1); then
-                echo "$output"
-                return 0
-              fi
-              if echo "$output" | grep -qi "already exist"; then
-                echo "Search attribute $name already exists."
-                return 0
-              fi
-              echo "$output"
-              if [ "$i" -eq "$MAX_RETRIES" ]; then
-                echo "Failed to create search attribute $name after $MAX_RETRIES attempts."
-                return 1
-              fi
-              echo "Attempt $i/$MAX_RETRIES: search attribute $name creation failed, retrying in ${RETRY_DELAY}s..."
-              sleep "$RETRY_DELAY"
-            done
-          }
-
-          # Create search attributes, retrying while Temporal's internal services start.
-          echo "Creating search attributes..."
-          create_search_attribute User Keyword
-          create_search_attribute DeviceID Keyword
-          create_search_attribute DeviceRole Keyword
-          create_search_attribute DeviceName Text
-          create_search_attribute DevicePlatform Keyword
-          create_search_attribute Site Text
-          create_search_attribute ReadRoles KeywordList
-          create_search_attribute ExecuteRoles KeywordList
-          create_search_attribute PendingApproval Bool
-          create_search_attribute FailedStage Bool
-          create_search_attribute IssueKey Keyword
-
-          echo "Temporal setup complete!"
+        image: "{{ include "nv-config-manager.image" (dict "root" . "image" .Values.global.images.temporalBootstrap) }}"
+        imagePullPolicy: {{ .Values.global.images.temporalBootstrap.pullPolicy }}
+        command: ["/usr/local/bin/temporal-bootstrap", "setup-namespace"]
+        env:
+        - name: TEMPORAL_ADDR
+          value: "{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.temporal.services.frontend.port }}"
+        - name: TEMPORAL_NAMESPACE
+          value: {{ .Values.temporal.client.namespace | default "default" | quote }}
         resources:
           requests:
             cpu: 50m
@@ -404,6 +379,8 @@ spec:
           limits:
             cpu: 50m
             memory: 64Mi
+        {{- include "nv-config-manager.containerSecurityContext" . | nindent 8 }}
+      {{- end }}
       containers:
       - name: worker
         image: "{{ include "nv-config-manager.image" (dict "root" . "image" .Values.global.images.nvConfigManager) }}"
@@ -416,8 +393,6 @@ spec:
         - name: ENVIRONMENT
           value: {{ .Values.global.environment }}
         {{- include "nv-config-manager.customLabelsEnv" . | nindent 8 }}
-        - name: TEMPORAL_ADDRESS
-          value: "{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.temporal.services.frontend.port }}"
         {{- if .Values.localDev.enableLocalTestWorkflows }}
         - name: NVCM_ENABLE_LOCAL_TEST_WORKFLOWS
           value: "true"
@@ -446,11 +421,13 @@ spec:
           mountPath: /var/run/secrets/spiffe
           readOnly: true
         {{- end }}
+        {{- include "nv-config-manager.temporalClientTLSVolumeMount" . | nindent 8 }}
       {{- include "nv-config-manager.spiffeClientSidecar" (dict "root" .) | nindent 6 }}
       volumes:
       {{- include "nv-config-manager.vaultAgent.projectedSATokenVolume" . | nindent 6 }}
       {{- include "nv-config-manager.vaultAgent.configManagerIniVolume" . | nindent 6 }}
       {{- include "nv-config-manager.vaultAgent.bmcVolume" . | nindent 6 }}
+      {{- include "nv-config-manager.temporalClientTLSVolume" . | nindent 6 }}
       {{- if .Values.secrets.vault.configSecrets.enabled }}
       {{- include "nv-config-manager.vaultAgent.configSecretsVolume" . | nindent 6 }}
       {{- end }}
@@ -516,8 +493,6 @@ spec:
         - name: ENVIRONMENT
           value: {{ .Values.global.environment }}
         {{- include "nv-config-manager.customLabelsEnv" . | nindent 8 }}
-        - name: TEMPORAL_ADDRESS
-          value: "{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.temporal.services.frontend.port }}"
         {{- if .Values.observability.enabled }}
         {{- include "nv-config-manager.otelAppEnv" (dict "root" . "serviceName" "nv-config-manager-temporal-api") | nindent 8 }}
         {{- end }}
@@ -528,6 +503,7 @@ spec:
           {{- toYaml .Values.temporal.configManagerWorker.resources | nindent 10 }}
         volumeMounts:
         {{- include "nv-config-manager.vaultAgent.configManagerIniVolumeMount" . | nindent 8 }}
+        {{- include "nv-config-manager.temporalClientTLSVolumeMount" . | nindent 8 }}
         {{- if .Values.rbac }}
         - name: rbac-config
           mountPath: /etc/rbac
@@ -547,6 +523,7 @@ spec:
       volumes:
       {{- include "nv-config-manager.vaultAgent.projectedSATokenVolume" . | nindent 6 }}
       {{- include "nv-config-manager.vaultAgent.configManagerIniVolume" . | nindent 6 }}
+      {{- include "nv-config-manager.temporalClientTLSVolume" . | nindent 6 }}
       {{- if .Values.rbac }}
       - name: rbac-config
         configMap:
@@ -626,8 +603,10 @@ spec:
       initContainers:
       # Wait for Nautobot to be available before starting scheduler
       {{- include "nv-config-manager.waitForNautobot" . | nindent 6 }}
-      # Wait for Temporal default namespace (created by nv-config-manager-worker init)
+      # A locally managed Temporal server creates the configured namespace.
+      {{- if .Values.temporal.server.enabled }}
       {{- include "nv-config-manager.waitForTemporalNamespace" . | nindent 6 }}
+      {{- end }}
       containers:
       - name: scheduler
         image: "{{ include "nv-config-manager.image" (dict "root" . "image" .Values.global.images.nvConfigManager) }}"
@@ -638,8 +617,6 @@ spec:
           value: {{ include "nv-config-manager.vaultAgent.configManagerIniPathApp" . | quote }}
         - name: ENVIRONMENT
           value: {{ .Values.global.environment }}
-        - name: TEMPORAL_ADDRESS
-          value: "{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.temporal.services.frontend.port }}"
         {{- if .Values.observability.enabled }}
         {{- include "nv-config-manager.otelAppEnv" (dict "root" . "serviceName" "nv-config-manager-temporal-scheduler") | nindent 8 }}
         {{- end }}
@@ -647,6 +624,7 @@ spec:
           {{- toYaml .Values.temporal.scheduler.resources | nindent 10 }}
         volumeMounts:
         {{- include "nv-config-manager.vaultAgent.configManagerIniVolumeMount" . | nindent 8 }}
+        {{- include "nv-config-manager.temporalClientTLSVolumeMount" . | nindent 8 }}
         {{- if .Values.rbac }}
         - name: rbac-config
           mountPath: /etc/rbac
@@ -655,6 +633,7 @@ spec:
       volumes:
       {{- include "nv-config-manager.vaultAgent.projectedSATokenVolume" . | nindent 6 }}
       {{- include "nv-config-manager.vaultAgent.configManagerIniVolume" . | nindent 6 }}
+      {{- include "nv-config-manager.temporalClientTLSVolume" . | nindent 6 }}
       {{- if .Values.rbac }}
       - name: rbac-config
         configMap:
@@ -719,8 +698,6 @@ spec:
           value: {{ .Values.global.environment }}
         - name: TEMPORAL_API_HOST
           value: {{ tpl .Values.temporal.gateway.api.hostname . | quote }}
-        - name: TEMPORAL_ADDRESS
-          value: "{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.temporal.services.frontend.port }}"
         {{- if .Values.observability.enabled }}
         {{- include "nv-config-manager.otelAppEnv" (dict "root" . "serviceName" "nv-config-manager-temporal-archive") | nindent 8 }}
         {{- end }}
@@ -728,16 +705,19 @@ spec:
           {{- toYaml .Values.temporal.archive.resources | nindent 10 }}
         volumeMounts:
         {{- include "nv-config-manager.vaultAgent.configManagerIniVolumeMount" . | nindent 8 }}
+        {{- include "nv-config-manager.temporalClientTLSVolumeMount" . | nindent 8 }}
         {{- /* SPIFFE volume mount for outbound mTLS */ -}}
         {{- include "nv-config-manager.spiffe.volumeMounts" . | nindent 8 }}
       volumes:
       {{- include "nv-config-manager.vaultAgent.projectedSATokenVolume" . | nindent 6 }}
       {{- include "nv-config-manager.vaultAgent.configManagerIniVolume" . | nindent 6 }}
+      {{- include "nv-config-manager.temporalClientTLSVolume" . | nindent 6 }}
       {{- /* SPIFFE volumes for outbound JWT-SVID */ -}}
       {{- include "nv-config-manager.authSidecar.volumes" (dict "root" .) | nindent 6 }}
 {{- end }}
 ---
 # Temporal Web UI Deployment
+{{- if .Values.temporal.server.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -764,14 +744,15 @@ spec:
         {{- include "nv-config-manager.spiffe.annotations" (dict "root" . "app" (printf "%s-web" $temporalName)) | nindent 8 }}
         {{- end }}
     spec:
+      {{- include "nv-config-manager.podSecurityContext" . | nindent 6 }}
       {{- include "nv-config-manager.scheduling" .Values.temporal.devUi | nindent 6 }}
       containers:
       - name: {{ $temporalName }}-web
-        image: "{{ .Values.global.images.temporalUi.repository }}:{{ .Values.global.images.temporalUi.tag }}"
-        imagePullPolicy: {{ .Values.global.imagePullPolicy | default "IfNotPresent" }}
+        image: "{{ include "nv-config-manager.image" (dict "root" . "image" .Values.global.images.temporalUi) }}"
+        imagePullPolicy: {{ .Values.global.images.temporalUi.pullPolicy }}
         env:
         - name: TEMPORAL_ADDRESS
-          value: "{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.temporal.services.frontend.port }}"
+          value: {{ include "nv-config-manager.temporalGrpcAddress" . | quote }}
         {{- $codecEndpoint := .Values.temporal.devUi.codecEndpoint }}
         {{- if $codecEndpoint }}
         - name: TEMPORAL_CODEC_ENDPOINT
@@ -795,6 +776,7 @@ spec:
           periodSeconds: 5
         resources:
           {{- toYaml (.Values.temporal.devUi.resources | default (dict "requests" (dict "cpu" "50m" "memory" "64Mi") "limits" (dict "cpu" "200m" "memory" "128Mi"))) | nindent 10 }}
+        {{- include "nv-config-manager.containerSecurityContext" . | nindent 8 }}
       {{- /* Temporal Web is OIDC-only: no auth sidecar - Envoy Gateway handles auth at the edge */}}
 ---
 # Temporal Web UI Service
@@ -831,6 +813,7 @@ spec:
     matchLabels:
       app: {{ $temporalName }}
       app.kubernetes.io/component: temporal-worker
+{{- end }}
 ---
 # PodDisruptionBudget for nv-config-manager Temporal worker (workflow executor)
 apiVersion: policy/v1

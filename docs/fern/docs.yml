@@ -244,6 +244,8 @@ navigation:
         path: ../temporal/index.mdx
       - page: Deployment
         path: ../temporal/temporal-deployment.mdx
+      - page: External Temporal
+        path: ../temporal/external-temporal.mdx
       - page: CLI Reference
         path: ../temporal/temporal-cli.mdx
       - folder: ../temporal/workflows
