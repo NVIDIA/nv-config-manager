@@ -218,12 +218,11 @@ async def test_reprovision_workflow(
 @patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
 @patch(
     "nv_config_manager.temporal.ngc.workflows.reprovision.DEFAULT_ACTIVITY_RETRY_POLICY",
-    return_value=TEST_RETRY_POLICY,
+    new=TEST_RETRY_POLICY,
 )
 @patch("nv_config_manager.temporal.ngc.workflows.reprovision.timedelta", return_value=TEST_TIMEOUT)
 async def test_reprovision_validates_intended_config_before_factory_reset(
     mock_timedelta,
-    mock_retry_policy,
     mock_time,
     env,
 ):
