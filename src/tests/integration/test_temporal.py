@@ -251,6 +251,48 @@ class TestTemporalAPI:
 
         print("✅ Temporal API healthcheck passed")
 
+    @pytest.mark.ci_only
+    @pytest.mark.timeout(30)
+    def test_codec_server_cors_preflight(self, base_hostname: str) -> None:
+        """Test Temporal Web can send codec requests through the gateway."""
+        print("\n=== Testing Temporal codec CORS preflight ===")
+
+        origin = f"https://temporal.{base_hostname}"
+        response = requests.options(
+            f"https://workflow.{base_hostname}{API_PREFIX}/codec/decode",
+            params={"preserveStorageRefs": "true"},
+            headers={
+                "Origin": origin,
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "content-type,x-namespace",
+            },
+            timeout=10,
+            verify=False,
+            allow_redirects=False,
+        )
+
+        assert response.status_code == 200, (
+            f"Codec CORS preflight returned {response.status_code}: {response.text}"
+        )
+        assert response.headers.get("Access-Control-Allow-Origin") == origin, response.headers
+        assert response.headers.get("Access-Control-Allow-Credentials") == "true", response.headers
+
+        allowed_methods = {
+            method.strip().upper()
+            for method in response.headers.get("Access-Control-Allow-Methods", "").split(",")
+            if method.strip()
+        }
+        assert "POST" in allowed_methods, response.headers
+
+        allowed_headers = {
+            header.strip().lower()
+            for header in response.headers.get("Access-Control-Allow-Headers", "").split(",")
+            if header.strip()
+        }
+        assert {"content-type", "x-namespace"} <= allowed_headers, response.headers
+
+        print("✅ Temporal codec CORS preflight passed")
+
     @pytest.mark.timeout(30)
     def test_workflow_types_endpoint(
         self,
