@@ -16,9 +16,13 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
+from nv_config_manager_installer import secrets as secrets_module
 from nv_config_manager_installer.schema import (
+    InfrastructureConfig,
     K8sSecretGroup,
     KubernetesSecretsConfig,
     NetworkSecretEntry,
@@ -28,13 +32,20 @@ from nv_config_manager_installer.schema import (
     RedfishVendorCreds,
     SecretsConfig,
     SecretsMethod,
+    SSOConfig,
     VaultAuth,
     VaultAuthMethod,
     VaultConfig,
     VaultPathConfig,
     VaultPathsConfig,
+    ZTPStorageConfig,
+    ZTPStorageType,
 )
-from nv_config_manager_installer.secrets import build_eso_vault_config, generate_secrets
+from nv_config_manager_installer.secrets import (
+    build_eso_vault_config,
+    build_openbao_secret_data,
+    generate_secrets,
+)
 
 
 class TestGenerateSecrets:
@@ -67,6 +78,30 @@ class TestGenerateSecrets:
         assert "django_secret_key" in state
         assert "temporal_db_password" in state
 
+    def test_generated_nats_password_is_safe_for_unquoted_nats_config_variable(self, monkeypatch):
+        monkeypatch.setattr(secrets_module.secrets, "choice", lambda alphabet: alphabet[-1])
+
+        assert secrets_module._generate_nats_config_password(16) == "Z" + ("9" * 15)
+
+    def test_generated_nats_password_rejects_too_short_lengths(self):
+        with pytest.raises(ValueError, match="length must be at least 16"):
+            secrets_module._generate_nats_config_password(2)
+
+    def test_kubernetes_nats_password_override_must_be_config_safe(self):
+        config = NVConfigManagerInstallConfig(
+            secrets=SecretsConfig(
+                method=SecretsMethod.KUBERNETES,
+                k8s=KubernetesSecretsConfig(
+                    nautobot=K8sSecretGroup(
+                        values={"natsPassword": "2026-06-25aaaaaaaaaaaaaaaaaaaaaa"}
+                    ),
+                ),
+            ),
+        )
+
+        with pytest.raises(ValueError, match=r"natsPassword must match"):
+            generate_secrets(config)
+
     def test_kubernetes_nautobot_read_only_token_passes_through(self):
         config = NVConfigManagerInstallConfig(
             secrets=SecretsConfig(
@@ -93,12 +128,74 @@ class TestGenerateSecrets:
 
         assert state["nautobot_admin_password"] == "admin"
 
+    def test_kubernetes_ztp_s3_credentials_pass_through(self):
+        config = NVConfigManagerInstallConfig(
+            secrets=SecretsConfig(
+                method=SecretsMethod.KUBERNETES,
+                k8s=KubernetesSecretsConfig(
+                    ztp_s3=K8sSecretGroup(
+                        enabled=True,
+                        values={
+                            "endpoint": "https://minio.example",
+                            "accessKeyId": "access",
+                            "secretAccessKey": "secret",
+                        },
+                    )
+                ),
+            ),
+            infrastructure=InfrastructureConfig(
+                ztp_storage=ZTPStorageConfig(type=ZTPStorageType.S3)
+            ),
+        )
+        state = generate_secrets(config)
+
+        assert state["ztp_s3_endpoint"] == "https://minio.example"
+        assert state["ztp_s3_access_key_id"] == "access"
+        assert state["ztp_s3_secret_access_key"] == "secret"
+
+    def test_kubernetes_ztp_s3_credentials_optional(self):
+        config = NVConfigManagerInstallConfig(
+            secrets=SecretsConfig(method=SecretsMethod.KUBERNETES),
+            infrastructure=InfrastructureConfig(
+                ztp_storage=ZTPStorageConfig(type=ZTPStorageType.S3)
+            ),
+        )
+        state = generate_secrets(config)
+
+        assert "ztp_s3_access_key_id" not in state
+        assert "ztp_s3_secret_access_key" not in state
+
     def test_infra_secrets_omitted_for_eso(self):
         config = NVConfigManagerInstallConfig(secrets=SecretsConfig(method=SecretsMethod.ESO))
         state = generate_secrets(config)
 
         assert "nautobot_token" not in state
         assert "redis_password" not in state
+
+    def test_eso_generates_required_site_secrets_without_tui_defaults(self):
+        config = NVConfigManagerInstallConfig(secrets=SecretsConfig(method=SecretsMethod.ESO))
+
+        state = generate_secrets(config)
+
+        assert state["root_password_r1"]
+        assert state["api_user_key_r1"]
+
+    def test_eso_does_not_generate_over_vault_sourced_required_site_secret(self):
+        config = NVConfigManagerInstallConfig(
+            secrets=SecretsConfig(method=SecretsMethod.ESO),
+            network_secrets=[
+                NetworkSecretEntry(
+                    name="Device Admin Password",
+                    secret_key="root_password",
+                    source=PasswordSource.VAULT,
+                )
+            ],
+        )
+
+        state = generate_secrets(config)
+
+        assert "root_password_r1" not in state
+        assert state["api_user_key_r1"]
 
     def test_unique_network_secret_passwords(self):
         config = NVConfigManagerInstallConfig(
@@ -241,13 +338,15 @@ class TestESOVaultConfig:
             "network",
             "nautobotApp",
             "oidc",
+            "redfish",
+            "bmc",
         ):
             assert group in paths, f"{group} missing from paths"
             assert "path" in paths[group]
             assert "keys" in paths[group]
 
         # Optional groups disabled by default
-        for group in ("slack", "jira", "cnpgBackup"):
+        for group in ("slack", "jira", "cnpgBackup", "ztpS3"):
             assert group not in paths, f"{group} should be disabled by default"
 
     def test_custom_path_preserves_default_keys(self):
@@ -328,7 +427,7 @@ class TestESOVaultConfig:
 
         assert "redfish" not in paths
 
-    def test_oidc_includes_cookie_secret(self):
+    def test_oidc_includes_client_and_cookie_secrets(self):
         config = NVConfigManagerInstallConfig(
             secrets=SecretsConfig(
                 method=SecretsMethod.ESO,
@@ -338,8 +437,95 @@ class TestESOVaultConfig:
         result = build_eso_vault_config(config)
         oidc_keys = result["secrets"]["vault"]["paths"]["oidc"]["keys"]
 
-        assert "clientSecret" in oidc_keys
-        assert "cookieSecret" in oidc_keys
+        assert set(oidc_keys) == {"clientSecret", "cookieSecret"}
+
+
+class TestOpenBaoSecretData:
+    def test_builds_core_and_configured_integration_values(self):
+        config = NVConfigManagerInstallConfig(
+            secrets=SecretsConfig(
+                method=SecretsMethod.ESO,
+                k8s=KubernetesSecretsConfig(
+                    network=K8sSecretGroup(
+                        values={"user": "automation", "password": "device-password"}
+                    ),
+                ),
+            ),
+            sso=SSOConfig(enabled=True, client_secret="oidc-secret"),
+            redfish=RedfishConfig(
+                enabled=True,
+                vendors={
+                    "lenovo": RedfishVendorCreds(
+                        default_user="USERID",
+                        default_password="lenovo-password",
+                    )
+                },
+            ),
+        )
+
+        groups = build_openbao_secret_data(config)
+
+        assert groups["network"] == {
+            "user": "automation",
+            "password": "device-password",
+        }
+        assert groups["oidc"]["clientSecret"] == "oidc-secret"
+        assert groups["redfish"]["lenovoDefaultUser"] == "USERID"
+        assert groups["redfish"]["lenovoDefaultPassword"] == "lenovo-password"
+        assert "credsJson" in groups["bmc"]
+        assert len(groups["nautobot"]["token"]) == 40
+        assert groups["postgres"]["temporalUser"] == "temporal"
+
+    def test_includes_ztp_s3_credentials_when_eso_file_storage_is_enabled(self):
+        config = NVConfigManagerInstallConfig(
+            secrets=SecretsConfig(
+                method=SecretsMethod.ESO,
+                k8s=KubernetesSecretsConfig(
+                    ztp_s3=K8sSecretGroup(
+                        enabled=True,
+                        values={
+                            "endpoint": "https://minio.example",
+                            "accessKeyId": "access",
+                            "secretAccessKey": "secret",
+                        },
+                    )
+                ),
+                vault=VaultConfig(paths=VaultPathsConfig(ztp_s3=VaultPathConfig(enabled=True))),
+            ),
+            infrastructure=InfrastructureConfig(
+                ztp_storage=ZTPStorageConfig(type=ZTPStorageType.S3)
+            ),
+        )
+
+        groups = build_openbao_secret_data(config)
+
+        assert groups["ztp_s3"] == {
+            "endpoint": "https://minio.example",
+            "accessKeyId": "access",
+            "secretAccessKey": "secret",
+        }
+
+    def test_bmc_default_username_falls_back_when_configured_value_is_empty(self):
+        config = NVConfigManagerInstallConfig(
+            secrets=SecretsConfig(method=SecretsMethod.ESO),
+            redfish=RedfishConfig(
+                enabled=True,
+                vendors={
+                    "default": RedfishVendorCreds(
+                        default_user="",
+                        default_password="bmc-password",
+                    )
+                },
+            ),
+        )
+
+        groups = build_openbao_secret_data(config)
+
+        creds = json.loads(groups["bmc"]["credsJson"])
+        assert creds["default"] == {
+            "username": "admin",
+            "password": "bmc-password",
+        }
 
 
 class TestRedfishSecrets:

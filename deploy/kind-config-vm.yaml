@@ -17,16 +17,16 @@ kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 nodes:
 # Control plane - Gateway and control services run here
-# With Envoy Gateway v1.6+, use NodePort mode for reliable external access.
+# Use NodePort mode for reliable Gateway API external access.
 # NodePorts are mapped to standard ports (443→443, 80→80) on the host.
 - role: control-plane
   extraPortMappings:
-  # Envoy Gateway HTTPS (NodePort 30443 → host 443)
+  # Gateway HTTPS (NodePort 30443 → host 443)
   - containerPort: 30443
     hostPort: 443
     listenAddress: "0.0.0.0"
     protocol: TCP
-  # Envoy Gateway HTTP (NodePort 30080 → host 80)
+  # Gateway HTTP (NodePort 30080 → host 80)
   - containerPort: 30080
     hostPort: 80
     listenAddress: "0.0.0.0"

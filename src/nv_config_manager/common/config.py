@@ -52,6 +52,7 @@ from nv_config_manager.common.client import (
 # =============================================================================
 # LOGGING (re-exported from nv_config_manager.common.log to avoid circular imports)
 # =============================================================================
+from nv_config_manager.common.ini import FileFingerprint, file_fingerprint
 from nv_config_manager.common.log import (  # noqa: F401, E402
     LogCategory,
     configure_logging,
@@ -83,6 +84,16 @@ class ConfigStoreType(Enum):
 
 
 @lru_cache(maxsize=1)
+def _load_config(
+    config_path: str,
+    _fingerprint: FileFingerprint | None,
+) -> ConfigParser:
+    """Parse one version of the unified INI file."""
+    config = ConfigParser(interpolation=None, delimiters=("=",))
+    config.read(config_path)
+    return config
+
+
 def load_config() -> ConfigParser:
     """Load the unified nv-config-manager.ini configuration.
 
@@ -90,18 +101,24 @@ def load_config() -> ConfigParser:
     1. NV_CONFIG_MANAGER_INI environment variable
     2. Default: /etc/vault/nv-config-manager.ini
 
+    The parsed result is reused while the file is unchanged. Direct writes and
+    Kubernetes Secret-volume symlink swaps invalidate the cache automatically.
+
     Returns:
-        Loaded ConfigParser instance (cached)
+        Loaded ConfigParser instance for the current file version
     """
-    config = ConfigParser(interpolation=None, delimiters=("=",))
     config_path = os.getenv("NV_CONFIG_MANAGER_INI", "/etc/vault/nv-config-manager.ini")
-    config.read(config_path)
-    return config
+    return _load_config(config_path, file_fingerprint(config_path))
+
+
+def clear_config_cache() -> None:
+    """Clear the parsed INI cache without reading the file again."""
+    _load_config.cache_clear()
 
 
 def reload_config() -> ConfigParser:
     """Force reload the configuration (clears cache)."""
-    load_config.cache_clear()
+    clear_config_cache()
     return load_config()
 
 
@@ -645,23 +662,37 @@ def pynautobot_client() -> Any:
 # =============================================================================
 
 
-def get_storage_client() -> ObjectStorageClient:
-    """Return the appropriate storage client based on environment.
+def _nonblank_config_value(value: str | None) -> str | None:
+    return value if value and value.strip() else None
 
-    Uses STORAGE_TYPE environment variable:
+
+def get_storage_client() -> ObjectStorageClient:
+    """Return the appropriate storage client based on ZTP configuration.
+
+    Uses [ztp] config values with environment variable fallback:
     - "file": Returns FileStoreClient
     - "s3" or unset: Returns S3Client (default)
 
     Returns:
         ObjectStorageClient implementation
     """
-    storage_type = os.environ.get("STORAGE_TYPE", "s3").lower()
+    config = load_config()
+    ztp_config = config["ztp"] if config.has_section("ztp") else {}
+    storage_type = ztp_config.get("storage_type") or os.environ.get("STORAGE_TYPE", "s3")
+    storage_type = storage_type.lower()
 
     if storage_type == "file":
-        if not os.environ.get("FILE_STORE_PATH"):
-            raise ValueError("STORAGE_TYPE is 'file' but FILE_STORE_PATH is not set.")
-        return FileStoreClient()
-    return S3Client()
+        file_store_path = ztp_config.get("file_store_path") or os.environ.get("FILE_STORE_PATH")
+        if not file_store_path:
+            raise ValueError("storage_type is 'file' but file_store_path is not set.")
+        return FileStoreClient(base_path=file_store_path)
+    return S3Client(
+        bucket=_nonblank_config_value(ztp_config.get("s3_bucket")),
+        custom_endpoint=_nonblank_config_value(ztp_config.get("s3_endpoint")),
+        region=_nonblank_config_value(ztp_config.get("s3_region")),
+        custom_access_key=_nonblank_config_value(ztp_config.get("s3_access_key")),
+        custom_secret_key=_nonblank_config_value(ztp_config.get("s3_secret_key")),
+    )
 
 
 # =============================================================================

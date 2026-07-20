@@ -15,21 +15,83 @@
  * limitations under the License.
  */
 import { expect } from "@playwright/test";
+import { providerLogoutRedirect } from "../../src/lib/auth/logout";
 import { test } from "./shared/utils";
 
+const gatewayUrl = new URL(
+  process.env.OIDC_GATEWAY_URL || "http://localhost:3000"
+);
+const gatewayHome = new URL("/", gatewayUrl).toString();
+const applicationUrl = new URL(gatewayUrl);
+applicationUrl.hostname = `nautobot.${gatewayUrl.hostname}`;
+const applicationHome = new URL("/", applicationUrl).toString();
+const providerEndSessionUrl = "https://idp.example.com/oidc/logout";
+const providerReturnUrl = "https://nautobot.config-manager.example.com/";
+
+const providerLogoutUrl = (clientId?: string): URL => {
+  const redirect = providerLogoutRedirect(
+    providerReturnUrl,
+    providerEndSessionUrl,
+    clientId
+  );
+  return new URL(new URL(redirect, gatewayUrl).searchParams.get("rd")!);
+};
+
 test.describe("Workflows Page", () => {
-  test("logout uses a relative provider logout redirect", async ({ request }) => {
+  test("logout builds a provider end-session redirect", () => {
+    const url = providerLogoutUrl("nv-config-manager");
+
+    expect(url.origin).toBe("https://idp.example.com");
+    expect(url.pathname).toBe("/oidc/logout");
+    expect(url.searchParams.get("post_logout_redirect_uri")).toBe(
+      providerReturnUrl
+    );
+    expect(url.searchParams.get("client_id")).toBe("nv-config-manager");
+    expect(url.searchParams.get("id_token_hint")).toBe("{id_token}");
+  });
+
+  test("logout omits the optional provider client ID", () => {
+    expect(providerLogoutUrl().searchParams.has("client_id")).toBe(false);
+  });
+
+  test("logout returns to the base hostname by default", async ({ request }) => {
     const response = await request.get("/auth/logout", { maxRedirects: 0 });
 
     expect(response.status()).toBe(302);
-    expect(response.headers().location).toBe("/oauth2/logout");
+    expect(response.headers().location).toBe(
+      `/oauth2/sign_out?rd=${encodeURIComponent(gatewayHome)}`
+    );
+  });
+
+  test("logout accepts a return URL on a gateway subdomain", async ({ request }) => {
+    const response = await request.get(
+      `/auth/logout?rd=${encodeURIComponent(applicationHome)}`,
+      { maxRedirects: 0 }
+    );
+
+    expect(response.status()).toBe(302);
+    expect(response.headers().location).toBe(
+      `/oauth2/sign_out?rd=${encodeURIComponent(applicationHome)}`
+    );
+  });
+
+  test("logout rejects a return URL outside the gateway domain", async ({ request }) => {
+    const response = await request.get(
+      "/auth/logout?rd=https%3A%2F%2Fexample.com%2F",
+      { maxRedirects: 0 }
+    );
+
+    expect(response.status()).toBe(302);
+    expect(response.headers().location).toBe(
+      `/oauth2/sign_out?rd=${encodeURIComponent(gatewayHome)}`
+    );
   });
 
   test("logout expires cookies sent by the site", async ({ request }) => {
     const response = await request.get("/auth/logout", {
       headers: {
         Cookie:
-          "NVConfigManagerAccessToken=access; azureSession=session; appPreference=compact",
+          "NVConfigManagerAccessToken=access; _nvcm_oidc_proxy=session; azureSession=session; appPreference=compact",
       },
       maxRedirects: 0,
     });
@@ -51,6 +113,11 @@ test.describe("Workflows Page", () => {
     expect(
       setCookieHeaders.some((header) => header.startsWith("azureSession=;"))
     ).toBe(true);
+    expect(
+      setCookieHeaders.some((header) =>
+        header.startsWith("_nvcm_oidc_proxy=;")
+      )
+    ).toBe(false);
     expect(
       setCookieHeaders.some((header) => header.startsWith("appPreference=;"))
     ).toBe(true);
@@ -160,6 +227,64 @@ test.describe("Workflows Page", () => {
     await expect(page.getByText(/Page 2 of \d+/)).toBeVisible();
     await expect(page.getByText(/\d+ workflows/)).toBeVisible();
     await expect(page.locator("tbody tr").first()).toBeVisible();
+  });
+
+  test("applies workflow ID filtering through the backend from page 2", async ({
+    page,
+  }) => {
+    await page.goto("/workflows");
+    await page.getByRole("button", { exact: true, name: "Next" }).click();
+    await expect(page.getByText(/Page 2 of \d+/)).toBeVisible();
+
+    const workflowId = (
+      await page.locator("tbody tr").last().locator("a").first().innerText()
+    ).trim();
+    const filteredResponse = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+
+      return (
+        url.pathname.endsWith("/v1/workflow/") &&
+        url.searchParams.get("workflow_id") === workflowId &&
+        !url.searchParams.has("next_page_token")
+      );
+    });
+
+    await page
+      .locator("thead")
+      .getByRole("textbox", { name: "Search..." })
+      .first()
+      .fill(workflowId);
+    await filteredResponse;
+
+    await expect(page.getByText("Page 1 of 1")).toBeVisible();
+    await expect(page.getByText("1 workflow", { exact: true })).toBeVisible();
+    await expect(page.locator("tbody").getByText(workflowId)).toBeVisible();
+  });
+
+  test("uses exact case-sensitive workflow attribute filters", async ({
+    page,
+  }) => {
+    await page.goto("/workflows");
+
+    const siteFilter = page
+      .locator("thead th")
+      .filter({ hasText: "Site" })
+      .getByRole("textbox");
+
+    await siteFilter.fill("rno1");
+    await expect(page.getByText("No results.")).toBeVisible();
+
+    await siteFilter.fill("RNO1");
+    await expect(page.getByText("RNO1").first()).toBeVisible();
+    await page
+      .locator("thead th")
+      .filter({ hasText: "Device Name" })
+      .getByRole("textbox")
+      .fill("rno1-m04-c10-core1-cg1-tan-lab1");
+
+    await expect(page.getByText("RNO1").first()).toBeVisible();
+    await expect(page.getByText("rno1-m04-c10-core1-cg1-tan-lab1").first()).toBeVisible();
+    await expect(page.getByText("No results.")).toHaveCount(0);
   });
 
   test("uses backend hide-completed filtering and disables header sorting", async ({
@@ -296,6 +421,38 @@ test.describe("Workflows Page", () => {
 
     await expect(page).toHaveURL(/\/workflows$/);
     await expect(page.getByText("LEAF1-GP1-CIN2-PDX01").first()).toBeVisible();
+  });
+
+  test("renders the backend result set without additional status filtering", async ({
+    page,
+  }) => {
+    await page.goto("/workflows");
+
+    const runningResponse = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+
+      return (
+        url.pathname.endsWith("/v1/workflow/") &&
+        url.searchParams.get("status") === "RUNNING" &&
+        !url.searchParams.has("pending_approval")
+      );
+    });
+    await page
+      .locator("thead")
+      .getByRole("cell", { name: /Status/ })
+      .getByRole("combobox")
+      .click();
+    await page.getByRole("option", { name: "Running", exact: true }).click();
+
+    const responseBody = (await (await runningResponse).json()) as {
+      workflows: unknown[];
+    };
+    await expect(page.locator("tbody tr")).toHaveCount(
+      responseBody.workflows.length
+    );
+    await expect(
+      page.locator("tbody").getByText("Pending Approval", { exact: true }).first()
+    ).toBeVisible();
   });
 
   test("supports top-level workflow timeframe filters", async ({ page }) => {

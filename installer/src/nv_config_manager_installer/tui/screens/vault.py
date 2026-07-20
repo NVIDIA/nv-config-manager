@@ -16,10 +16,16 @@
 
 from __future__ import annotations
 
+import asyncio
+import os
+
+from textual import work
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, Vertical
 from textual.widgets import Button, Input, Label, RadioButton, RadioSet
 
+from nv_config_manager_installer.k8s import K8sClient
+from nv_config_manager_installer.openbao import OpenBaoClient, OpenBaoError
 from nv_config_manager_installer.schema import (
     GitTokenEntry,
     K8sSecretGroup,
@@ -41,15 +47,19 @@ _PATH_GROUPS: list[tuple[str, str]] = [
     ("network", "Network/Device Creds"),
     ("nautobot_app", "Nautobot App (admin/django)"),
     ("oidc", "OIDC / SSO"),
+    ("redfish", "Redfish Credentials"),
+    ("bmc", "BMC Credentials JSON"),
     ("slack", "Slack"),
     ("jira", "Jira"),
     ("cnpg_backup", "CNPG Backup S3"),
+    ("ztp_s3", "ZTP S3"),
 ]
 
 _DEFAULTS = VaultPathsConfig()
 _LABEL_API_TOKEN = "API Token"
+_VAULT_PRESENT_SENTINEL = "vault-value-present"
 
-# K8s mode: (schema_field, display_label, optional_by_default, [(vault_key, display_label)])
+# Writable secret values shared by Kubernetes and Vault modes.
 _K8S_GROUPS: list[tuple[str, str, bool, list[tuple[str, str]]]] = [
     (
         "nautobot",
@@ -57,7 +67,10 @@ _K8S_GROUPS: list[tuple[str, str, bool, list[tuple[str, str]]]] = [
         False,
         [
             ("token", _LABEL_API_TOKEN),
+            ("readOnlyToken", "Read-only API Token"),
             ("natsPassword", "NATS Password"),
+            ("natsSysPassword", "NATS System Password"),
+            ("natsNautobotPassword", "NATS Nautobot Password"),
         ],
     ),
     (
@@ -130,7 +143,19 @@ _K8S_GROUPS: list[tuple[str, str, bool, list[tuple[str, str]]]] = [
             ("accessSecretKey", "Access Secret Key"),
         ],
     ),
+    (
+        "ztp_s3",
+        "ZTP S3",
+        True,
+        [
+            ("endpoint", "Endpoint"),
+            ("accessKeyId", "Access Key ID"),
+            ("secretAccessKey", "Secret Access Key"),
+        ],
+    ),
 ]
+
+_SECRET_VALUE_FIELDS = {field_name: keys for field_name, _label, _optional, keys in _K8S_GROUPS}
 
 
 class _K8sSecretCard(Vertical):
@@ -307,7 +332,7 @@ class _SiteVaultCard(Vertical):
             self._site.name or f"Site {self._index + 1}",
             classes="account-header",
         )
-        yield Label("Vault Path [required]", classes="field-label-compact")
+        yield Label("Vault Path Override (optional)", classes="field-label-compact")
         yield Input(
             value=self._site.vault_path,
             placeholder="e.g. nv-config-manager/site/dc01/config_secrets",
@@ -320,14 +345,23 @@ class _SiteVaultCard(Vertical):
 
 
 class _VaultPathCard(Vertical):
-    """Static card for a single vault path group — built once during compose."""
+    """Vault path card with editable key mappings and initial Vault values."""
 
-    def __init__(self, field_name: str, label: str, pc: VaultPathConfig) -> None:
+    def __init__(
+        self,
+        field_name: str,
+        label: str,
+        pc: VaultPathConfig,
+        value_group: K8sSecretGroup | None = None,
+        value_fields: list[tuple[str, str]] | None = None,
+    ) -> None:
         super().__init__(classes="account-card", id=f"vp-card-{field_name}")
         self._field_name = field_name
         self._label = label
         self._pc = pc
         self._default_pc: VaultPathConfig = getattr(_DEFAULTS, field_name)
+        self._value_group = value_group
+        self._value_fields = value_fields or []
 
     def compose(self) -> ComposeResult:
         fn = self._field_name
@@ -341,13 +375,27 @@ class _VaultPathCard(Vertical):
             inp.styles.width = "1fr"
             yield inp
 
-        effective_keys = pc.keys if pc.keys else self._default_pc.keys
+        effective_keys = {**self._default_pc.keys, **pc.keys}
+        value_labels = dict(self._value_fields)
         with Vertical(id=f"vp-keys-section-{fn}", classes="compact-field-row"):
+            if self._value_fields:
+                with Horizontal(classes="compact-field-row"):
+                    field_header = Label("Field", classes="field-label-compact")
+                    field_header.styles.width = "1fr"
+                    yield field_header
+                    key_header = Label("Vault Key", classes="field-label-compact")
+                    key_header.styles.width = "1fr"
+                    yield key_header
+                    value_header = Label("Initial Value", classes="field-label-compact")
+                    value_header.styles.width = "1fr"
+                    yield value_header
+                    status_header = Label("Vault Status", classes="field-label-compact")
+                    status_header.styles.width = "1fr"
+                    yield status_header
             for key_name, vault_property in effective_keys.items():
                 with Horizontal(classes="compact-field-row"):
-                    lbl = Label(key_name, classes="field-label-compact")
-                    lbl.styles.width = "auto"
-                    lbl.styles.min_width = 20
+                    lbl = Label(value_labels.get(key_name, key_name), classes="field-label-compact")
+                    lbl.styles.width = "1fr"
                     yield lbl
                     key_inp = Input(
                         value=vault_property,
@@ -356,10 +404,25 @@ class _VaultPathCard(Vertical):
                     )
                     key_inp.styles.width = "1fr"
                     yield key_inp
+                    if key_name in value_labels and self._value_group is not None:
+                        value_inp = Input(
+                            value=self._value_group.values.get(key_name, ""),
+                            placeholder="generate if empty",
+                            password=True,
+                            id=f"vp-value-{fn}-{key_name}",
+                        )
+                        value_inp.styles.width = "1fr"
+                        yield value_inp
+                        status = Label(
+                            "[dim]Not checked[/dim]",
+                            id=f"vp-status-{fn}-{key_name}",
+                        )
+                        status.styles.width = "1fr"
+                        yield status
 
     def on_mount(self) -> None: ...  # widgets are statically composed; no dynamic setup needed
 
-    def sync_values(self, pc: VaultPathConfig) -> None:
+    def sync_values(self, pc: VaultPathConfig, value_group: K8sSecretGroup | None) -> None:
         """Update widget values from config without rebuilding."""
         fn = self._field_name
         try:
@@ -368,12 +431,19 @@ class _VaultPathCard(Vertical):
         except Exception:
             pass
 
-        effective_keys = pc.keys if pc.keys else self._default_pc.keys
+        effective_keys = {**self._default_pc.keys, **pc.keys}
         for key_name, vault_property in effective_keys.items():
             try:
                 self.query_one(f"#vp-key-{fn}-{key_name}", Input).value = vault_property
             except Exception:
                 pass
+            if value_group is not None:
+                try:
+                    self.query_one(
+                        f"#vp-value-{fn}-{key_name}", Input
+                    ).value = value_group.values.get(key_name, "")
+                except Exception:
+                    pass
 
     def collect(self) -> VaultPathConfig:
         """Read current widget state into a VaultPathConfig."""
@@ -393,6 +463,41 @@ class _VaultPathCard(Vertical):
                 pass
 
         return VaultPathConfig(enabled=enabled, path=path, keys=effective_keys)
+
+    def collect_value_group(self) -> K8sSecretGroup | None:
+        """Collect initial values shown alongside this path's key mappings."""
+        if self._value_group is None:
+            return None
+        enabled = self.query_one(f"#vp-enabled-{self._field_name}", LabeledSwitch).value
+        values: dict[str, str] = {}
+        for key_name, _label in self._value_fields:
+            try:
+                value = self.query_one(
+                    f"#vp-value-{self._field_name}-{key_name}", Input
+                ).value.strip()
+                if value and value != _VAULT_PRESENT_SENTINEL:
+                    values[key_name] = value
+            except Exception:
+                pass
+        return K8sSecretGroup(enabled=enabled, values=values)
+
+    def set_vault_presence(self, present_keys: set[str]) -> None:
+        """Show which mapped values already exist without reading them into config."""
+        for key_name, _label in self._value_fields:
+            value_input = self.query_one(f"#vp-value-{self._field_name}-{key_name}", Input)
+            status = self.query_one(f"#vp-status-{self._field_name}-{key_name}", Label)
+            if key_name in present_keys:
+                if not value_input.value:
+                    value_input.value = _VAULT_PRESENT_SENTINEL
+                status.update("[green]Present in Vault[/green]")
+            else:
+                if value_input.value == _VAULT_PRESENT_SENTINEL:
+                    value_input.value = ""
+                status.update(
+                    "[yellow]Configured locally[/yellow]"
+                    if value_input.value
+                    else "[dim]Missing — will generate[/dim]"
+                )
 
 
 class SecretsScreen(Container):
@@ -423,6 +528,25 @@ class SecretsScreen(Container):
                 value=s.method == SecretsMethod.ESO,
                 id="method-eso",
             )
+
+        yield Label(
+            "Enter initial secret values below. Empty required values are generated at deploy time.",
+            id="secret-values-guidance",
+        )
+
+        with Container(id="k8s-secrets-section"):
+            yield Label("Secret Values to Create / Populate", classes="section-title")
+            yield Label("─" * 40, classes="section-divider")
+            yield Label(
+                "Values are written to Kubernetes Secrets or Vault based on the selected method. "
+                "Enter a value to use it as the initial password or token. Leave generated "
+                "credentials empty to create them at deploy time. Vault values that already "
+                "exist are never overwritten. "
+                "Enable optional integrations (Slack, Jira, CNPG Backup) to configure their credentials."
+            )
+            for field_name, label, optional, keys in _K8S_GROUPS:
+                grp: K8sSecretGroup = getattr(s.k8s, field_name)
+                yield _K8sSecretCard(field_name, label, optional, keys, grp)
 
         with Container(id="vault-fields"):
             yield Label("Vault Server", classes="field-label")
@@ -477,56 +601,56 @@ class SecretsScreen(Container):
             yield Label("Token Secret Name (token auth only)", classes="field-label")
             yield Input(
                 value=s.vault.auth.token_secret_name,
-                placeholder="openbao-token",
+                placeholder="vault-token",
                 id="vault-token-secret-name",
             )
+
+            with Horizontal(classes="compact-field-row"):
+                yield Button("Refresh Vault Values", id="refresh-vault-values")
+                yield Label(
+                    "[dim]Vault values not checked[/dim]",
+                    id="vault-presence-status",
+                )
 
             yield Label("")
             yield Label("Vault Secret Paths", classes="section-title")
             yield Label("─" * 40, classes="section-divider")
             yield Label(
                 "Each group maps to a Vault path where ESO reads secrets. "
-                "Disable groups you don't need; customize paths to match your Vault layout."
+                "For application secrets, edit the Vault key and its initial value side by side. "
+                "Empty values are generated; existing Vault keys are preserved."
             )
 
             paths_cfg = s.vault.paths
             for field_name, label in _PATH_GROUPS:
                 pc: VaultPathConfig = getattr(paths_cfg, field_name)
-                yield _VaultPathCard(field_name, label, pc)
+                value_fields = _SECRET_VALUE_FIELDS.get(field_name)
+                value_group = getattr(s.k8s, field_name) if value_fields else None
+                yield _VaultPathCard(field_name, label, pc, value_group, value_fields)
 
             yield Label("")
             yield Label("Site Vault Paths", classes="section-title")
             yield Label("─" * 40, classes="section-divider")
             yield Label(
-                "Vault path for each site's config_secrets. "
-                "Required when ESO is enabled. "
+                "Optional Vault path override for each site's config_secrets. "
+                "When empty, the installer uses <environment>/site/<site>/config_secrets. "
                 "Sites are defined in the Cluster section."
             )
             yield Vertical(id="site-vault-paths")
-
-        with Container(id="k8s-secrets-section"):
-            yield Label("Secret Values", classes="section-title")
-            yield Label("─" * 40, classes="section-divider")
-            yield Label(
-                "Leave any field empty to auto-generate a password at deploy time. "
-                "Enable optional integrations (Slack, Jira, CNPG Backup) to configure their credentials."
-            )
-            for field_name, label, optional, keys in _K8S_GROUPS:
-                grp: K8sSecretGroup = getattr(s.k8s, field_name)
-                yield _K8sSecretCard(field_name, label, optional, keys, grp)
 
         yield Label("")
         yield Label("Git Repository Tokens", classes="section-title")
         yield Label("─" * 40, classes="section-divider")
         yield Label(
             "Tokens for Nautobot git repository sync (e.g. Prismo). "
-            "Each creates a K8s secret and GIT_TOKEN_<NAME> env var in Nautobot.",
+            "Each is written to a Kubernetes Secret or its configured Vault path.",
         )
         yield Button("+ Add Git Token", id="add-gt", classes="add-button")
         yield Vertical(id="gt-list")
 
     def on_mount(self) -> None:
         self._toggle_vault_fields()
+        self._rebuild_site_vault_rows()
         self._rebuild_git_token_cards()
 
     def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
@@ -537,21 +661,36 @@ class SecretsScreen(Container):
         eso_selected = self.query_one("#method-eso", RadioButton).value
         self.query_one("#vault-fields").display = eso_selected
         self.query_one("#k8s-secrets-section").display = not eso_selected
+        guidance = self.query_one("#secret-values-guidance", Label)
+        guidance.update(
+            "Configure each Vault path below using the Key and Initial Value columns. "
+            "Initial values fill missing keys only; existing values are preserved."
+            if eso_selected
+            else "Enter Kubernetes Secret values below. Empty required values are generated "
+            "at deploy time."
+        )
 
     # --- Vault Path Rows ---
 
-    def _collect_vault_paths(self) -> None:
+    def _collect_vault_paths(self, *, collect_values: bool) -> None:
         """Read vault path UI state back into config."""
         paths_cfg = self._config.secrets.vault.paths
         for card in self.query(_VaultPathCard):
             setattr(paths_cfg, card._field_name, card.collect())
+            if collect_values and (group := card.collect_value_group()) is not None:
+                setattr(self._config.secrets.k8s, card._field_name, group)
 
     def _sync_vault_path_values(self) -> None:
         """Push current config values into existing vault path widgets."""
         paths_cfg = self._config.secrets.vault.paths
         for card in self.query(_VaultPathCard):
             pc: VaultPathConfig = getattr(paths_cfg, card._field_name)
-            card.sync_values(pc)
+            value_group = (
+                getattr(self._config.secrets.k8s, card._field_name)
+                if card._value_group is not None
+                else None
+            )
+            card.sync_values(pc, value_group)
 
     # --- K8s Secret Cards ---
 
@@ -599,7 +738,10 @@ class SecretsScreen(Container):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         bid = event.button.id or ""
 
-        if bid == "add-gt":
+        if bid == "refresh-vault-values":
+            self._sync_vault_connection_from_widgets()
+            self._load_vault_presence()
+        elif bid == "add-gt":
             self._collect_git_tokens()
             self._config.git_tokens.append(GitTokenEntry(name=""))
             self._rebuild_git_token_cards()
@@ -613,6 +755,134 @@ class SecretsScreen(Container):
             except (ValueError, IndexError):
                 pass
             self._rebuild_git_token_cards()
+
+    def _sync_vault_connection_from_widgets(self) -> None:
+        """Capture connection fields before a user-requested presence refresh."""
+        vault = self._config.secrets.vault
+        vault.server = self.query_one("#vault-server", Input).value.strip()
+        vault.namespace = self.query_one("#vault-namespace", Input).value.strip()
+        vault.secrets_path = self.query_one("#vault-secrets-path", Input).value.strip()
+        vault.auth.method = (
+            VaultAuthMethod.JWT
+            if self.query_one("#auth-jwt", RadioButton).value
+            else VaultAuthMethod.TOKEN
+        )
+        vault.auth.token_secret_name = self.query_one(
+            "#vault-token-secret-name", Input
+        ).value.strip()
+        self._collect_vault_paths(collect_values=False)
+
+    @work(group="vault-presence", exclusive=True, exit_on_error=False)
+    async def _load_vault_presence(self) -> None:
+        """Read Vault key presence without copying secret values into the TUI config."""
+        vault = self._config.secrets.vault
+        if not vault.server or not vault.secrets_path:
+            self._set_vault_presence_status(
+                "[yellow]Enter a Vault server and secrets mount, then refresh.[/yellow]"
+            )
+            return
+        environment_token = (
+            os.environ.get("VAULT_TOKEN", "").strip() or os.environ.get("OPENBAO_TOKEN", "").strip()
+        )
+        if not environment_token and vault.auth.method == VaultAuthMethod.JWT:
+            self._set_vault_presence_status(
+                "[yellow]Vault values not loaded: JWT presence checks require VAULT_TOKEN or "
+                "OPENBAO_TOKEN.[/yellow]"
+            )
+            return
+        if not environment_token and not vault.auth.token_secret_name:
+            self._set_vault_presence_status(
+                "[yellow]Vault values not loaded: set VAULT_TOKEN or configure a token Secret.[/yellow]"
+            )
+            return
+
+        presence, error = await asyncio.to_thread(self._read_vault_presence)
+        if error:
+            self._set_vault_presence_status(error)
+        elif presence is not None:
+            self._apply_vault_presence(presence)
+
+    def _read_vault_presence(self) -> tuple[dict[str, set[str]] | None, str | None]:
+        """Perform blocking Vault and Kubernetes reads away from the UI thread."""
+        vault = self._config.secrets.vault
+        if not vault.server or not vault.secrets_path:
+            return (
+                None,
+                "[yellow]Enter a Vault server and secrets mount, then refresh.[/yellow]",
+            )
+
+        token = (
+            os.environ.get("VAULT_TOKEN", "").strip() or os.environ.get("OPENBAO_TOKEN", "").strip()
+        )
+        if not token and vault.auth.method == VaultAuthMethod.TOKEN:
+            secret_name = vault.auth.token_secret_name
+            if secret_name:
+                try:
+                    token = (
+                        K8sClient()
+                        .read_secret_data(
+                            secret_name,
+                            self._config.cluster.namespace,
+                        )
+                        .get("token", "")
+                    )
+                except Exception as exc:
+                    return (
+                        None,
+                        f"[yellow]Vault values not loaded: {exc}[/yellow]",
+                    )
+        if not token:
+            guidance = (
+                "JWT presence checks require VAULT_TOKEN or OPENBAO_TOKEN."
+                if vault.auth.method == VaultAuthMethod.JWT
+                else "set VAULT_TOKEN or configure a token Secret."
+            )
+            return (
+                None,
+                f"[yellow]Vault values not loaded: {guidance}[/yellow]",
+            )
+
+        try:
+            client = OpenBaoClient(
+                vault.server,
+                token,
+                namespace=vault.namespace,
+                timeout=10,
+            )
+            presence: dict[str, set[str]] = {}
+            environment = self._config.cluster.environment
+            for field_name, _label in _PATH_GROUPS:
+                value_fields = _SECRET_VALUE_FIELDS.get(field_name)
+                if not value_fields:
+                    continue
+                path_config: VaultPathConfig = getattr(vault.paths, field_name)
+                if not path_config.enabled:
+                    continue
+                default_keys = getattr(_DEFAULTS, field_name).keys
+                key_mapping = {**default_keys, **path_config.keys}
+                path = path_config.path or f"{environment}/{field_name.replace('_', '-')}"
+                data, _version = client.read_secret(vault.secrets_path, path)
+                presence[field_name] = {
+                    logical_name
+                    for logical_name, _key_label in value_fields
+                    if key_mapping.get(logical_name, logical_name) in data
+                }
+        except (OpenBaoError, OSError, ValueError) as exc:
+            return (
+                None,
+                f"[yellow]Vault values not loaded: {exc}[/yellow]",
+            )
+        return presence, None
+
+    def _set_vault_presence_status(self, message: str) -> None:
+        self.query_one("#vault-presence-status", Label).update(message)
+
+    def _apply_vault_presence(self, presence: dict[str, set[str]]) -> None:
+        for card in self.query(_VaultPathCard):
+            if card._value_group is not None:
+                card.set_vault_presence(presence.get(card._field_name, set()))
+        count = sum(len(keys) for keys in presence.values())
+        self._set_vault_presence_status(f"[green]Loaded {count} existing Vault key(s)[/green]")
 
     def write_to_config(self, config: NVConfigManagerInstallConfig) -> None:
         """Collect widget values into the config model."""
@@ -636,10 +906,11 @@ class SecretsScreen(Container):
             "#vault-token-secret-name", Input
         ).value
 
-        self._collect_vault_paths()
+        self._collect_vault_paths(collect_values=not method_k8s.value)
         config.secrets.vault.paths = self._config.secrets.vault.paths
 
-        self._collect_k8s_secrets()
+        if method_k8s.value:
+            self._collect_k8s_secrets()
         config.secrets.k8s = self._config.secrets.k8s
 
         self._collect_site_vault_paths()
@@ -664,12 +935,12 @@ class SecretsScreen(Container):
         self._sync_k8s_secret_values()
         self._rebuild_site_vault_rows()
         self._rebuild_git_token_cards()
+        if self._eso_mode:
+            self._load_vault_presence()
 
     def get_status(self, config: NVConfigManagerInstallConfig) -> str:
         """Return sidebar status indicator."""
         if config.secrets.method == SecretsMethod.ESO:
             if not config.secrets.vault.server:
-                return "[!]"
-            if config.sites and not all(s.vault_path for s in config.sites):
                 return "[!]"
         return "[*]"

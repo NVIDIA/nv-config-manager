@@ -18,10 +18,14 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
+from temporalio.exceptions import ApplicationError
 
-from nv_config_manager.temporal.client.nautobot import NautobotClient
+from nv_config_manager.common.log import LogCategory, get_logger
+from nv_config_manager.temporal.client.nautobot import OVERLAYS_PLUGIN_BASE, NautobotClient
 from nv_config_manager.temporal.common.mixins.device import NetworkDeviceData, Platform
 from nv_config_manager.temporal.ngc.activities.diagnostics import get_available_commands
+
+logger = get_logger(__name__, category=LogCategory.TEMPORAL_API)
 
 
 class Device(BaseModel):
@@ -106,6 +110,13 @@ class Role(BaseModel):
 
 class Tag(BaseModel):
     """Tag data for dropdown population."""
+
+    id: str
+    name: str
+
+
+class Overlay(BaseModel):
+    """Overlay data for dropdown population."""
 
     id: str
     name: str
@@ -312,6 +323,47 @@ async def get_namespace_tags(
     return [Tag(id=name, name=name) for name in sorted(tag_names)]
 
 
+@router.get("/overlay")
+async def get_overlays(
+    location: Annotated[str | None, Query(description="Limit to overlays at this location")] = None,
+    isolation_type: Annotated[
+        str | None, Query(description="Limit to overlays with this isolation type")
+    ] = None,
+) -> list[Overlay]:
+    """Return overlays, optionally filtered by location and isolation type."""
+    params: dict[str, str] = {}
+    if location:
+        params["location"] = location
+    if isolation_type:
+        params["isolation_type"] = isolation_type
+
+    client = NautobotClient()
+    try:
+        async with client:
+            overlays = await client.get_all(
+                f"{OVERLAYS_PLUGIN_BASE}/overlays/",
+                params=params,
+            )
+    except Exception as exc:
+        logger.exception("Failed to query Nautobot overlays", exc_info=exc)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to query Nautobot overlays.",
+        ) from exc
+
+    result: list[Overlay] = []
+    for overlay in overlays:
+        overlay_id = overlay.get("id")
+        name = overlay.get("name")
+        if not isinstance(overlay_id, str) or not isinstance(name, str):
+            raise HTTPException(
+                status_code=500,
+                detail="Malformed Nautobot overlay response.",
+            )
+        result.append(Overlay(id=overlay_id, name=name))
+    return sorted(result, key=lambda overlay: overlay.name)
+
+
 class Status(BaseModel):
     """Status data for dropdown population."""
 
@@ -355,12 +407,12 @@ async def get_devices(  # pylint: disable=R0913,R0914
     device_type_id: Annotated[list[str] | None, Query()] = None,
     manufacturer: Annotated[list[str] | None, Query()] = None,
     platform: Annotated[list[str] | None, Query()] = None,
+    managed_only: Annotated[
+        bool, Query(description="Limit to NVIDIA Config Manager-managed devices")
+    ] = False,
 ) -> list[Device]:
     """Return a list of filtered devices."""
     client = NautobotClient()
-
-    if not platform:
-        platform = ["Arista EOS", "Cumulus Linux", "MLNX-OS", "NV-OS"]
 
     query = """
             query (
@@ -370,7 +422,8 @@ async def get_devices(  # pylint: disable=R0913,R0914
             $tenant: [String],
             $device_type_id: [String],
             $manufacturer: [String],
-            $platform: [String]
+            $platform: [String],
+            $managed_only: Boolean
             ) {
                 devices(
                     location: $site,
@@ -380,7 +433,8 @@ async def get_devices(  # pylint: disable=R0913,R0914
                     device_type: $device_type_id,
                     manufacturer: $manufacturer,
                     platform: $platform,
-                    has_primary_ip: true
+                    has_primary_ip: true,
+                    nv_config_manager_device_status: $managed_only
                 ) {
                     id
                     name
@@ -391,7 +445,7 @@ async def get_devices(  # pylint: disable=R0913,R0914
             }
         """
 
-    variables = {}
+    variables: dict[str, list[str] | bool] = {}
     if site:
         variables["site"] = site
     if status:
@@ -404,14 +458,22 @@ async def get_devices(  # pylint: disable=R0913,R0914
         variables["device_type_id"] = device_type_id
     if manufacturer:
         variables["manufacturer"] = manufacturer
-    variables["platform"] = platform
+    if platform:
+        variables["platform"] = platform
+    if managed_only:
+        variables["managed_only"] = True
 
     if not variables:
         raise HTTPException(status_code=400, detail="Must apply at least one filter.")
-    async with client:
-        data = await client.graphql_query(query, variables)
-    if "errors" in data:
-        raise HTTPException(status_code=400, detail=data["errors"][0]["message"])
+
+    try:
+        async with client:
+            data = await client.graphql_query(query, variables)
+    except ApplicationError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    devices = [device for device in data["data"]["devices"] if device["name"]]
+
     return [
         Device(
             id=device["id"],
@@ -419,8 +481,7 @@ async def get_devices(  # pylint: disable=R0913,R0914
             platform=NetworkDeviceData._slugify((device.get("platform") or {}).get("name") or "")
             or None,
         )
-        for device in data["data"]["devices"]
-        if device["name"]
+        for device in devices
     ]
 
 

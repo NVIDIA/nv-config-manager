@@ -19,7 +19,17 @@ rbac:
         - all
       execute_roles:
         - all
+    - name: SiteBackupWorkflow
+      read_roles:
+        - all
+      execute_roles:
+        - all
     - name: DeployWorkflow
+      read_roles:
+        - all
+      execute_roles:
+        - all
+    - name: ConfigDiffWorkflow
       read_roles:
         - all
       execute_roles:

@@ -36,6 +36,7 @@ from temporalio.client import (
     WorkflowQueryFailedError,
 )
 from temporalio.common import SearchAttributes
+from temporalio.contrib.opentelemetry import TracingInterceptor
 from temporalio.service import RPCError, RPCStatusCode
 
 from nv_config_manager.common.config import load_config
@@ -74,6 +75,7 @@ from nv_config_manager.temporal.hello_world.workflows import (
 from nv_config_manager.temporal.ngc.workflows import (
     REGISTERED_WORKFLOWS as NGC_REGISTERED_WORKFLOWS,
 )
+from nv_config_manager.temporal.telemetry import get_runtime
 
 logger = get_logger(__name__, category=LogCategory.TEMPORAL_API)
 
@@ -464,6 +466,8 @@ async def get_client() -> Client:
         temporal_server,
         namespace="default",
         data_converter=get_data_converter(),
+        interceptors=[TracingInterceptor(always_create_workflow_spans=True)],
+        runtime=get_runtime(),
     )
 
 
@@ -650,6 +654,7 @@ async def get_workflows(  # pylint: disable=R0913,R0914
     request: Request,
     user: str | None = None,
     workflow_type: str | None = None,
+    workflow_id: str | None = None,
     device_id: str | None = None,
     device_name: str | None = None,
     device_role: str | None = None,
@@ -673,6 +678,8 @@ async def get_workflows(  # pylint: disable=R0913,R0914
         filters.append(
             f"WorkflowType = '{_sanitize_visibility_value(workflow_type, 'workflow_type')}'"
         )
+    if workflow_id:
+        filters.append(f"WorkflowId = '{_sanitize_visibility_value(workflow_id, 'workflow_id')}'")
     if device_id:
         filters.append(
             f"{DEVICE_ID_SEARCH_ATTRIBUTE} = '{_sanitize_visibility_value(device_id, 'device_id')}'"

@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from unittest.mock import patch
+
 from aioresponses import aioresponses
 from fastapi.testclient import TestClient
 
@@ -96,6 +98,16 @@ NAMESPACE_TAGS = {
     }
 }
 
+SPX_OVERLAYS = {
+    "count": 2,
+    "next": None,
+    "previous": None,
+    "results": [
+        {"id": "overlay-uuid-2", "name": "overlay-b"},
+        {"id": "overlay-uuid-1", "name": "overlay-a"},
+    ],
+}
+
 
 def test_site_v2():
     with aioresponses() as m:
@@ -142,6 +154,108 @@ def test_device_v2():
                 "platform": "cumulus-linux",
             }
         ]
+
+
+UFM_DEVICES = {
+    "data": {
+        "devices": [
+            {
+                "id": "ufm-uuid-1",
+                "name": "ufm-test-device",
+                "platform": {"name": "UFM"},
+            }
+        ]
+    }
+}
+
+# Server-side managed_only filter returns only the managed switch.
+MANAGED_DEVICES = {
+    "data": {
+        "devices": [
+            {
+                "id": "aa6ef75b-00fe-45e6-8adb-62609509cb4f",
+                "name": "managed-switch",
+                "platform": {"name": "Cumulus Linux"},
+            },
+        ]
+    }
+}
+
+
+def test_device_no_platform_allow_list():
+    """Without an explicit platform, no default platform allow-list is injected."""
+    with aioresponses() as m:
+        m.post("https://nautobot.example.com/api/graphql/", payload=DEVICES)
+
+        client = TestClient(app)
+        rsp = client.get("/v1/parameter/device?site=SITEA")
+        assert rsp.status_code == 200
+
+        sent = next(iter(m.requests.values()))[0]
+        variables = sent.kwargs["json"]["variables"]
+        assert "platform" not in variables
+
+
+def test_device_role_without_platform_filter():
+    """A role-scoped query is trusted as-is, with no platform allow-list injected."""
+    with aioresponses() as m:
+        m.post("https://nautobot.example.com/api/graphql/", payload=UFM_DEVICES)
+
+        client = TestClient(app)
+        rsp = client.get("/v1/parameter/device?role=UFM")
+        assert rsp.json() == [{"id": "ufm-uuid-1", "name": "ufm-test-device", "platform": "ufm"}]
+
+        sent = next(iter(m.requests.values()))[0]
+        variables = sent.kwargs["json"]["variables"]
+        assert variables["role"] == ["UFM"]
+        assert "platform" not in variables
+
+
+def test_device_managed_only():
+    """managed_only=true sets the nv_config_manager_device_status filter in one query."""
+    with aioresponses() as m:
+        m.post("https://nautobot.example.com/api/graphql/", payload=MANAGED_DEVICES)
+
+        client = TestClient(app)
+        rsp = client.get("/v1/parameter/device?site=SITEA&managed_only=true")
+        assert rsp.json() == [
+            {
+                "id": "aa6ef75b-00fe-45e6-8adb-62609509cb4f",
+                "name": "managed-switch",
+                "platform": "cumulus-linux",
+            }
+        ]
+
+        # Single round-trip; the managed filter is passed as a GraphQL variable.
+        assert len(m.requests) == 1
+        sent = next(iter(m.requests.values()))[0]
+        assert sent.kwargs["json"]["variables"]["managed_only"] is True
+
+
+def test_device_managed_only_omitted_by_default():
+    """Without managed_only, the filter variable is omitted (null = no constraint)."""
+    with aioresponses() as m:
+        m.post("https://nautobot.example.com/api/graphql/", payload=DEVICES)
+
+        client = TestClient(app)
+        rsp = client.get("/v1/parameter/device?site=SITEA")
+        assert rsp.status_code == 200
+
+        sent = next(iter(m.requests.values()))[0]
+        assert "managed_only" not in sent.kwargs["json"]["variables"]
+
+
+def test_device_graphql_error_returns_400():
+    """A GraphQL error is translated to HTTP 400 instead of an unhandled 500."""
+    with aioresponses() as m:
+        m.post(
+            "https://nautobot.example.com/api/graphql/",
+            payload={"errors": [{"message": "invalid query"}]},
+        )
+
+        client = TestClient(app)
+        rsp = client.get("/v1/parameter/device?site=SITEA")
+        assert rsp.status_code == 400
 
 
 def test_tenant_default():
@@ -242,6 +356,43 @@ def test_namespace_tag_malformed_response():
         rsp = client.get("/v1/parameter/namespace-tag")
         assert rsp.status_code == 500
         assert rsp.json() == {"detail": "Malformed Nautobot namespace tag response."}
+
+
+def test_overlays_with_filters():
+    """Test the generic overlay parameter endpoint with filters."""
+    with aioresponses() as m:
+        m.get(
+            "https://nautobot.example.com/api/plugins/overlays/overlays/"
+            "?location=SITEA&isolation_type=spectrum_x_vrf&limit=250&offset=0",
+            payload=SPX_OVERLAYS,
+        )
+
+        client = TestClient(app)
+        rsp = client.get("/v1/parameter/overlay?location=SITEA&isolation_type=spectrum_x_vrf")
+        assert rsp.json() == [
+            {"id": "overlay-uuid-1", "name": "overlay-a"},
+            {"id": "overlay-uuid-2", "name": "overlay-b"},
+        ]
+
+
+def test_overlay_query_failure_is_logged():
+    """Log the underlying Nautobot failure while preserving the generic API response."""
+    with (
+        aioresponses() as m,
+        patch("nv_config_manager.temporal.api.parameter_v1.logger.exception") as log_exception,
+    ):
+        m.get(
+            "https://nautobot.example.com/api/plugins/overlays/overlays/?limit=250&offset=0",
+            status=500,
+        )
+
+        client = TestClient(app)
+        rsp = client.get("/v1/parameter/overlay")
+
+    assert rsp.status_code == 500
+    assert rsp.json() == {"detail": "Failed to query Nautobot overlays."}
+    log_exception.assert_called_once()
+    assert isinstance(log_exception.call_args.kwargs["exc_info"], Exception)
 
 
 def test_status_with_content_type():

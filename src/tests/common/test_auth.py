@@ -41,6 +41,7 @@ from nv_config_manager.common.auth import (
     require_authenticated_identity,
     require_group,
 )
+from nv_config_manager.common.config import clear_config_cache
 
 # ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -79,9 +80,13 @@ def _clear_caches():
     """Reset module-level caches between tests."""
     _jwks_clients.clear()
     auth_mod._auth_config = None
+    auth_mod._auth_config_source = None
+    auth_mod._auth_config_tracks_file = False
     yield
     _jwks_clients.clear()
     auth_mod._auth_config = None
+    auth_mod._auth_config_source = None
+    auth_mod._auth_config_tracks_file = False
 
 
 @pytest.fixture
@@ -239,6 +244,21 @@ class TestConfigLoading:
         cfg = load_auth_config(cp)
         assert len(cfg.jwt_providers) == 0
 
+    def test_file_backed_auth_config_reloads_after_ini_update(self, monkeypatch, tmp_path):
+        config_file = tmp_path / "nv-config-manager.ini"
+        config_file.write_text("[auth]\nrequired = true\n")
+        monkeypatch.setenv("NV_CONFIG_MANAGER_INI", str(config_file))
+        clear_config_cache()
+
+        first = load_auth_config()
+        assert first.required is True
+
+        config_file.write_text("[auth]\nrequired = false\n")
+        second = load_auth_config()
+
+        assert second is not first
+        assert second.required is False
+
 
 # ── install_identity_probe enforcement tests ─────────────────────────────
 
@@ -296,6 +316,34 @@ class TestInstallIdentityProbe:
         resp = client.get("/state-user")
         assert resp.status_code == 200
         assert resp.json() == {"user": "anonymous"}
+
+    def test_openapi_describes_default_bearer_auth_and_public_paths(self):
+        schema = self._make_app().openapi()
+
+        assert schema["components"]["securitySchemes"]["BearerAuth"] == {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT",
+            "description": auth_mod.OPENAPI_BEARER_DESCRIPTION,
+        }
+        assert "security" not in schema
+        assert schema["paths"]["/healthcheck"]["get"]["security"] == []
+        assert schema["paths"]["/protected"]["get"]["security"] == [{"BearerAuth": []}]
+
+    def test_openapi_marks_deferred_device_auth_as_optional_bearer(self):
+        app = FastAPI()
+
+        @app.get("/v1/device/{device_id}")
+        async def device(device_id: str):
+            return {"device_id": device_id}
+
+        install_identity_probe(app, deferred_auth_prefixes=("/v1/device/",))
+        schema = app.openapi()
+
+        assert schema["paths"]["/v1/device/{device_id}"]["get"]["security"] == [
+            {"BearerAuth": []},
+            {},
+        ]
 
 
 # ── JWKS URI derivation tests ────────────────────────────────────────────
@@ -1116,6 +1164,134 @@ class TestSpiffeGroupPrefixes:
         assert data["user"] == "workflow-runner"
         assert "dgxc" in data["groups"]
         assert "nv-config-manager" not in data["groups"]
+
+    def test_sibling_identity_not_granted_role(self, rsa_keypair, make_jwt):
+        """A sibling identity sharing a common prefix must NOT inherit the role.
+
+        Regression test for the prefix-matching footgun:
+        ``spiffe://cluster.local/ns/nv-config-manager`` configured as the
+        prefix for the ``nv-config-manager`` role must not match a sibling
+        SPIFFE ID like ``spiffe://cluster.local/ns/nv-config-manager-admin``.
+        Path matching is on segment boundaries, so ``nv-config-manager-admin``
+        falls outside the ``ns/nv-config-manager`` path and gets only the
+        baseline ``all`` group.
+        """
+        cp = _make_config(
+            **{
+                "auth.spiffe": {
+                    "jwks_uri": "https://spire-server:8443/keys",
+                    "audiences": "spiffe://cluster.local",
+                },
+                "auth.spiffe.groups": {
+                    "spiffe://cluster.local/ns/nv-config-manager": "nv-config-manager",
+                },
+            }
+        )
+        auth_mod._auth_config = load_auth_config(cp)
+
+        token, mock_jwk = self._mock_spiffe_request(
+            rsa_keypair,
+            make_jwt,
+            sub="spiffe://cluster.local/ns/nv-config-manager-admin/sa/attacker",
+            aud="spiffe://cluster.local",
+        )
+
+        app = self._make_app()
+        client = TestClient(app)
+        with patch("nv_config_manager.common.auth._get_jwks_client") as mock_get_client:
+            mock_client = MagicMock()
+            mock_client.get_signing_key_from_jwt.return_value = mock_jwk
+            mock_get_client.return_value = mock_client
+            resp = client.get("/whoami", headers={"Authorization": f"Bearer {token}"})
+
+        data = resp.json()
+        assert "nv-config-manager" not in data["groups"], (
+            f"sibling identity must not inherit the 'nv-config-manager' role; "
+            f"got groups={data['groups']!r}"
+        )
+        assert data["groups"] == ["all"]
+
+    def test_exact_match_grants_role(self, rsa_keypair, make_jwt):
+        """An SVID equal to the prefix (no trailing path) still gets the role."""
+        cp = _make_config(
+            **{
+                "auth.spiffe": {
+                    "jwks_uri": "https://spire-server:8443/keys",
+                    "audiences": "spiffe://cluster.local",
+                },
+                "auth.spiffe.groups": {
+                    "spiffe://cluster.local/ns/nv-config-manager": "nv-config-manager",
+                },
+            }
+        )
+        auth_mod._auth_config = load_auth_config(cp)
+
+        token, mock_jwk = self._mock_spiffe_request(
+            rsa_keypair,
+            make_jwt,
+            sub="spiffe://cluster.local/ns/nv-config-manager",
+            aud="spiffe://cluster.local",
+        )
+
+        app = self._make_app()
+        client = TestClient(app)
+        with patch("nv_config_manager.common.auth._get_jwks_client") as mock_get_client:
+            mock_client = MagicMock()
+            mock_client.get_signing_key_from_jwt.return_value = mock_jwk
+            mock_get_client.return_value = mock_client
+            resp = client.get("/whoami", headers={"Authorization": f"Bearer {token}"})
+
+        data = resp.json()
+        assert "nv-config-manager" in data["groups"]
+        assert "all" in data["groups"]
+
+    def test_layered_prefixes_add_both_roles(self, rsa_keypair, make_jwt):
+        """Per-service narrow prefix layers on top of a coarser one.
+
+        A SPIFFE ID *below* ``…/nv-config-manager/render`` must pick up BOTH
+        the broad ``nv-config-manager`` role and the narrow
+        ``nv-config-manager-render`` role -- both matched via the
+        ``prefix + "/"`` path-segment boundary (a descendant SVID, not an
+        exact prefix match). This is what enables progressive scoping: keep
+        coarse roles working while introducing tighter per-service roles to
+        gate sensitive endpoints.
+        """
+        cp = _make_config(
+            **{
+                "auth.spiffe": {
+                    "jwks_uri": "https://spire-server:8443/keys",
+                    "audiences": "spiffe://cluster.local",
+                },
+                "auth.spiffe.groups": {
+                    "spiffe://cluster.local/ns/nv-config-manager": "nv-config-manager",
+                    "spiffe://cluster.local/ns/nv-config-manager/render": "nv-config-manager-render",
+                },
+            }
+        )
+        auth_mod._auth_config = load_auth_config(cp)
+
+        # SVID sits a segment below the narrow prefix so that BOTH mapped
+        # prefixes are hit via the descendant (``prefix + "/"``) branch, not an
+        # exact match -- proving layered roles still accumulate for sub-workload
+        # identities.
+        token, mock_jwk = self._mock_spiffe_request(
+            rsa_keypair,
+            make_jwt,
+            sub="spiffe://cluster.local/ns/nv-config-manager/render/sa/api",
+            aud="spiffe://cluster.local",
+        )
+
+        app = self._make_app()
+        client = TestClient(app)
+        with patch("nv_config_manager.common.auth._get_jwks_client") as mock_get_client:
+            mock_client = MagicMock()
+            mock_client.get_signing_key_from_jwt.return_value = mock_jwk
+            mock_get_client.return_value = mock_client
+            resp = client.get("/whoami", headers={"Authorization": f"Bearer {token}"})
+
+        data = resp.json()
+        assert "nv-config-manager" in data["groups"]
+        assert "nv-config-manager-render" in data["groups"]
 
     def test_group_prefixes_parsed(self):
         """[auth.spiffe.groups] section is parsed into group_prefixes."""

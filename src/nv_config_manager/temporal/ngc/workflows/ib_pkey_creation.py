@@ -17,7 +17,7 @@
 from datetime import timedelta
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 
@@ -71,12 +71,23 @@ class IBPKeyCreationInput(BaseModel):
     Nautobot round-trip).
     """
 
-    host: str
-    site: str | None = None
-    pkey: str | None = None
-    ip_over_ib: bool = True
-    pkey_min: int = 0x0001
-    pkey_max: int = 0x7FFE
+    host: str = Field(description="Hostname of the UFM server managing the InfiniBand fabric.")
+    site: str | None = Field(
+        default=None,
+        description="Site used for UFM credential lookup; resolved from the host when omitted.",
+    )
+    pkey: str | None = Field(
+        default=None, description="Partition key to create; automatically allocated when omitted."
+    )
+    ip_over_ib: bool = Field(
+        default=True, description="Whether IP over InfiniBand is enabled for the partition."
+    )
+    pkey_min: int = Field(
+        default=0x0001, description="Lowest partition key eligible for automatic allocation."
+    )
+    pkey_max: int = Field(
+        default=0x7FFE, description="Highest partition key eligible for automatic allocation."
+    )
 
 
 class IBPKeyCreationWorkflowOutput(BaseModel):

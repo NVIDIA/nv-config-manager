@@ -19,7 +19,12 @@
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useFieldArray, useForm } from "react-hook-form";
+import {
+  type Control,
+  type FieldPath,
+  useFieldArray,
+  useForm,
+} from "react-hook-form";
 import { z } from "zod";
 import { Plus, Trash2 } from "lucide-react";
 
@@ -35,7 +40,13 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 import { WorkflowFormField } from "@/components/forms/formfield";
 import { startWorkflow } from "@/lib/utils";
@@ -48,81 +59,107 @@ const MEMBERSHIP_OPTIONS = [
   { key: "limited", value: "limited" },
 ];
 
-const membershipFormSchema = z
-  .object({
-    host: z.string().trim().min(1, { message: "Host is required" }),
-    pkey: z
-      .string()
-      .trim()
-      .min(1, { message: "PKey is required" })
-      .regex(PKEY_PATTERN, {
-        message: "PKey must match 0x + 1-4 hex digits (e.g. 0x8001)",
-      }),
-    input_mode: z.enum(["interfaces", "guids"]),
-    interfaces: z
-      .array(
-        z.object({
-          device: z.string().trim(),
-          interface: z.string().trim(),
-        }),
-      )
-      .default([]),
-    guids_text: z.string().default(""),
-    membership_type: z.string().default("full"),
-  })
-  .superRefine((data, ctx) => {
-    if (data.input_mode === "interfaces") {
-      const nonEmpty = data.interfaces.filter(
-        (row) => row.device && row.interface,
-      );
-      if (nonEmpty.length === 0) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["interfaces"],
-          message: "Add at least one device/interface row",
-        });
-      }
-      data.interfaces.forEach((row, idx) => {
-        if (row.device && !row.interface) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ["interfaces", idx, "interface"],
-            message: "Interface name is required",
-          });
-        }
-        if (!row.device && row.interface) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ["interfaces", idx, "device"],
-            message: "Device name is required",
-          });
-        }
-      });
-    } else {
-      const guids = parseGuidList(data.guids_text);
-      if (guids.length === 0) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["guids_text"],
-          message: "Provide at least one GUID",
-        });
-      }
-      const bad = guids.filter((g) => !GUID_PATTERN.test(g));
-      if (bad.length > 0) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["guids_text"],
-          message: `Invalid GUID(s): ${bad.slice(0, 3).join(", ")}${bad.length > 3 ? "..." : ""}. Expected 0x + 16 hex digits.`,
-        });
-      }
-    }
-  });
+const MEMBERSHIP_REQUIRED_MESSAGE = "Select a membership type";
 
-type MembershipFormValues = z.infer<typeof membershipFormSchema>;
+const makeMembershipFormSchema = (requireMembership: boolean) =>
+  z
+    .object({
+      host: z.string().trim().min(1, { message: "Host is required" }),
+      pkey: z
+        .string()
+        .trim()
+        .min(1, { message: "PKey is required" })
+        .regex(PKEY_PATTERN, {
+          message: "PKey must match 0x + 1-4 hex digits (e.g. 0x8001)",
+        }),
+      input_mode: z.enum(["interfaces", "guids"]),
+      interfaces: z
+        .array(
+          z.object({
+            device: z.string().trim(),
+            interface: z.string().trim(),
+            membership: z.string().default(""),
+          }),
+        )
+        .default([]),
+      guids: z
+        .array(
+          z.object({
+            guid: z.string().trim(),
+            membership: z.string().default(""),
+          }),
+        )
+        .default([]),
+    })
+    .superRefine((data, ctx) => {
+      if (data.input_mode === "interfaces") {
+        const nonEmpty = data.interfaces.filter(
+          (row) => row.device && row.interface,
+        );
+        if (nonEmpty.length === 0) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["interfaces"],
+            message: "Add at least one device/interface row",
+          });
+        }
+        data.interfaces.forEach((row, idx) => {
+          if (row.device && !row.interface) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ["interfaces", idx, "interface"],
+              message: "Interface name is required",
+            });
+          }
+          if (!row.device && row.interface) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ["interfaces", idx, "device"],
+              message: "Device name is required",
+            });
+          }
+          if (requireMembership && row.device && row.interface && !row.membership) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ["interfaces", idx, "membership"],
+              message: MEMBERSHIP_REQUIRED_MESSAGE,
+            });
+          }
+        });
+      } else {
+        const nonEmpty = data.guids.filter((row) => row.guid);
+        if (nonEmpty.length === 0) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["guids"],
+            message: "Provide at least one GUID",
+          });
+        }
+        data.guids.forEach((row, idx) => {
+          if (row.guid && !GUID_PATTERN.test(row.guid)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ["guids", idx, "guid"],
+              message: "Invalid GUID. Expected 0x + 16 hex digits.",
+            });
+          }
+          if (requireMembership && row.guid && !row.membership) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ["guids", idx, "membership"],
+              message: MEMBERSHIP_REQUIRED_MESSAGE,
+            });
+          }
+        });
+      }
+    });
+
+type MembershipFormValues = z.infer<ReturnType<typeof makeMembershipFormSchema>>;
 
 interface InterfaceRefPayload {
   device: string;
   interface: string;
+  membership?: string;
 }
 
 interface MembershipRequest {
@@ -130,15 +167,48 @@ interface MembershipRequest {
   pkey: string;
   interfaces?: InterfaceRefPayload[];
   guids?: string[];
-  membership_type?: string;
+  guid_memberships?: string[];
 }
 
-function parseGuidList(text: string): string[] {
-  return text
-    .split(/[\s,]+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
+const MembershipSelect = ({
+  control,
+  name,
+  ariaLabel,
+  disabled,
+}: {
+  control: Control<MembershipFormValues>;
+  name: FieldPath<MembershipFormValues>;
+  ariaLabel: string;
+  disabled?: boolean;
+}) => (
+  <FormField
+    control={control}
+    name={name}
+    render={({ field }) => (
+      <FormItem className="w-40">
+        <Select
+          value={(field.value as string) || undefined}
+          onValueChange={field.onChange}
+          disabled={disabled}
+        >
+          <FormControl>
+            <SelectTrigger aria-label={ariaLabel}>
+              <SelectValue placeholder="Membership Type" />
+            </SelectTrigger>
+          </FormControl>
+          <SelectContent>
+            {MEMBERSHIP_OPTIONS.map((opt) => (
+              <SelectItem key={opt.key} value={opt.value}>
+                {opt.value}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <FormMessage />
+      </FormItem>
+    )}
+  />
+);
 
 export interface IBPKeyMembershipFormProps {
   title: string;
@@ -159,15 +229,19 @@ export const IBPKeyMembershipForm = ({
   const { toast } = useToast();
   const searchParams = useSearchParams();
 
+  const schema = React.useMemo(
+    () => makeMembershipFormSchema(includeMembershipType),
+    [includeMembershipType],
+  );
+
   const form = useForm<MembershipFormValues>({
-    resolver: zodResolver(membershipFormSchema),
+    resolver: zodResolver(schema),
     defaultValues: {
       host: searchParams?.get("host") ?? "",
       pkey: searchParams?.get("pkey") ?? "",
       input_mode: "interfaces",
-      interfaces: [{ device: "", interface: "" }],
-      guids_text: "",
-      membership_type: "full",
+      interfaces: [{ device: "", interface: "", membership: "" }],
+      guids: [{ guid: "", membership: "" }],
     },
   });
 
@@ -178,11 +252,25 @@ export const IBPKeyMembershipForm = ({
     name: "interfaces",
   });
 
+  const {
+    fields: guidFields,
+    append: guidAppend,
+    remove: guidRemove,
+  } = useFieldArray({
+    control: form.control,
+    name: "guids",
+  });
+
   const interfacesErr = form.formState.errors.interfaces as
     | { message?: string; root?: { message?: string } }
     | undefined;
   const interfacesErrorMessage =
     interfacesErr?.message ?? interfacesErr?.root?.message;
+
+  const guidsErr = form.formState.errors.guids as
+    | { message?: string; root?: { message?: string } }
+    | undefined;
+  const guidsErrorMessage = guidsErr?.message ?? guidsErr?.root?.message;
 
   const onSubmit = async (data: MembershipFormValues) => {
     setIsSubmitting(true);
@@ -192,14 +280,23 @@ export const IBPKeyMembershipForm = ({
       pkey: data.pkey,
     };
     if (data.input_mode === "interfaces") {
-      params.interfaces = data.interfaces.filter(
-        (row) => row.device && row.interface,
-      );
+      const rows = data.interfaces.filter((row) => row.device && row.interface);
+      params.interfaces = rows.map((row) => {
+        const ref: InterfaceRefPayload = {
+          device: row.device,
+          interface: row.interface,
+        };
+        if (includeMembershipType) {
+          ref.membership = row.membership;
+        }
+        return ref;
+      });
     } else {
-      params.guids = parseGuidList(data.guids_text);
-    }
-    if (includeMembershipType) {
-      params.membership_type = data.membership_type;
+      const rows = data.guids.filter((row) => row.guid);
+      params.guids = rows.map((row) => row.guid);
+      if (includeMembershipType) {
+        params.guid_memberships = rows.map((row) => row.membership);
+      }
     }
 
     await startWorkflow(endpoint, params).catch((error) => {
@@ -243,17 +340,6 @@ export const IBPKeyMembershipForm = ({
                 isSubmitting={isSubmitting}
               />
 
-              {includeMembershipType ? (
-                <WorkflowFormField
-                  type="select"
-                  control={form.control}
-                  name="membership_type"
-                  label="Membership Type"
-                  options={MEMBERSHIP_OPTIONS}
-                  isSubmitting={isSubmitting}
-                />
-              ) : null}
-
               <FormField
                 control={form.control}
                 name="input_mode"
@@ -284,6 +370,7 @@ export const IBPKeyMembershipForm = ({
 
               {inputMode === "interfaces" ? (
                 <FormField
+                  key="interfaces"
                   control={form.control}
                   name="interfaces"
                   render={() => (
@@ -327,6 +414,14 @@ export const IBPKeyMembershipForm = ({
                                 </FormItem>
                               )}
                             />
+                            {includeMembershipType ? (
+                              <MembershipSelect
+                                control={form.control}
+                                name={`interfaces.${idx}.membership`}
+                                ariaLabel={`Membership for interface row ${idx + 1}`}
+                                disabled={isSubmitting}
+                              />
+                            ) : null}
                             <Button
                               type="button"
                               variant="ghost"
@@ -343,7 +438,13 @@ export const IBPKeyMembershipForm = ({
                           type="button"
                           variant="outline"
                           size="sm"
-                          onClick={() => append({ device: "", interface: "" })}
+                          onClick={() =>
+                            append({
+                              device: "",
+                              interface: "",
+                              membership: "",
+                            })
+                          }
                           disabled={isSubmitting}
                         >
                           <Plus className="mr-1 h-4 w-4" />
@@ -360,24 +461,79 @@ export const IBPKeyMembershipForm = ({
                 />
               ) : (
                 <FormField
+                  key="guids"
                   control={form.control}
-                  name="guids_text"
-                  render={({ field }) => (
+                  name="guids"
+                  render={() => (
                     <FormItem>
                       <FormLabel>GUIDs</FormLabel>
-                      <FormControl>
-                        <Textarea
-                          {...field}
-                          rows={5}
-                          placeholder={"0x0011223344556677\n0x8899aabbccddeeff"}
+                      <div className="space-y-2">
+                        {guidFields.map((arrayField, idx) => (
+                          <div
+                            key={arrayField.id}
+                            className="flex items-start gap-2"
+                          >
+                            <FormField
+                              control={form.control}
+                              name={`guids.${idx}.guid`}
+                              render={({ field }) => (
+                                <FormItem className="flex-1">
+                                  <FormControl>
+                                    <Input
+                                      placeholder="0x0011223344556677"
+                                      aria-label={`GUID ${idx + 1}`}
+                                      disabled={isSubmitting}
+                                      {...field}
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            {includeMembershipType ? (
+                              <MembershipSelect
+                                control={form.control}
+                                name={`guids.${idx}.membership`}
+                                ariaLabel={`Membership for GUID row ${idx + 1}`}
+                                disabled={isSubmitting}
+                              />
+                            ) : null}
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              aria-label={`Remove GUID row ${idx + 1}`}
+                              onClick={() => guidRemove(idx)}
+                              disabled={isSubmitting || guidFields.length === 1}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ))}
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            guidAppend({
+                              guid: "",
+                              membership: "",
+                            })
+                          }
                           disabled={isSubmitting}
-                        />
-                      </FormControl>
+                        >
+                          <Plus className="mr-1 h-4 w-4" />
+                          Add Row
+                        </Button>
+                      </div>
                       <p className="mt-1 text-sm text-muted-foreground">
-                        One GUID per line, or comma-separated. Each must match
-                        0x + 16 hex digits.
+                        One GUID per row. Each must match 0x + 16 hex digits.
                       </p>
-                      <FormMessage />
+                      {guidsErrorMessage ? (
+                        <p className="text-sm font-medium text-destructive">
+                          {guidsErrorMessage}
+                        </p>
+                      ) : null}
                     </FormItem>
                   )}
                 />

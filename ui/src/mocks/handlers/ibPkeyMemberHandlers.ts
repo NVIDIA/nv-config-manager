@@ -21,6 +21,7 @@ import { mockApiURL as apiURL } from "@/config/mockApiUrl";
 interface InterfaceRefPayload {
   device: string;
   interface: string;
+  membership?: string;
 }
 
 interface MembershipRequest {
@@ -28,7 +29,7 @@ interface MembershipRequest {
   pkey?: string;
   interfaces?: InterfaceRefPayload[];
   guids?: string[];
-  membership_type?: string;
+  guid_memberships?: string[];
 }
 
 const PKEY_PATTERN = /^0[xX][0-9a-fA-F]{1,4}$/;

@@ -1,0 +1,210 @@
+{{- if and .Values.gateway.enabled .Values.oidc.enabled }}
+{{- $proxyName := include "nv-config-manager.componentName" (dict "root" . "component" "oidc-proxy") }}
+{{- $uiName := include "nv-config-manager.componentName" (dict "root" . "component" "ui") }}
+{{- $renderName := include "nv-config-manager.componentName" (dict "root" . "component" "render") }}
+{{- $ztpName := include "nv-config-manager.componentName" (dict "root" . "component" "ztp") }}
+{{- $dhcpName := include "nv-config-manager.componentName" (dict "root" . "component" "dhcp") }}
+{{- $temporalName := include "nv-config-manager.componentName" (dict "root" . "component" "temporal") }}
+{{- $nautobotName := include "nv-config-manager.componentName" (dict "root" . "component" "nautobot") }}
+{{- $configStoreName := include "nv-config-manager.componentName" (dict "root" . "component" "config-store") }}
+{{- $mcpName := include "nv-config-manager.componentName" (dict "root" . "component" "mcp") }}
+{{- $internalIssuerUrl := .Values.oidc.internalIssuerUrl | default "" }}
+{{- $redisHost := include "nv-config-manager.redisHost" . }}
+{{- $redisPort := .Values.externalServices.redis.port | default 6379 }}
+{{- $redisScheme := .Values.externalServices.redis.ssl | ternary "rediss" "redis" }}
+{{- $proxies := list }}
+{{- /* A dedicated callback proxy keeps OIDC usable when the UI is disabled. */}}
+{{- $proxies = append $proxies (dict "name" "callback" "port" 9109 "upstream" "static://200") }}
+{{- if .Values.ui.enabled }}
+  {{- $proxies = append $proxies (dict "name" "ui" "port" 9100 "upstream" (printf "http://%s:3000" $uiName)) }}
+{{- end }}
+{{- if .Values.renderService.enabled }}
+  {{- $proxies = append $proxies (dict "name" "render" "port" 9101 "upstream" (printf "http://%s-api:9000" $renderName)) }}
+{{- end }}
+{{- if .Values.networkZtp.enabled }}
+  {{- $proxies = append $proxies (dict "name" "ztp" "port" 9102 "upstream" (printf "http://%s-api:9000" $ztpName)) }}
+{{- end }}
+{{- if .Values.networkDhcp.enabled }}
+  {{- $proxies = append $proxies (dict "name" "dhcp" "port" 9103 "upstream" (printf "http://%s-internal:9000" $dhcpName)) }}
+{{- end }}
+{{- if .Values.temporal.enabled }}
+  {{- $proxies = append $proxies (dict "name" "workflow" "port" 9104 "upstream" (printf "http://%s-api:9000" $temporalName)) }}
+  {{- $proxies = append $proxies (dict "name" "temporal" "port" 9105 "upstream" (printf "http://%s-web-service:8080" $temporalName)) }}
+{{- end }}
+{{- if and .Values.nautobot.enabled .Values.externalServices.nautobot.local }}
+  {{- $proxies = append $proxies (dict "name" "nautobot" "port" 9106 "upstream" (printf "http://%s:80" $nautobotName)) }}
+{{- end }}
+{{- if .Values.configStore.enabled }}
+  {{- $proxies = append $proxies (dict "name" "config-store" "port" 9107 "upstream" (printf "http://%s-api:9000" $configStoreName)) }}
+{{- end }}
+{{- if .Values.mcp.enabled }}
+  {{- $proxies = append $proxies (dict "name" "mcp" "port" 9108 "upstream" (printf "http://%s:9000" $mcpName)) }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $proxyName }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: oidc-proxy
+data:
+  {{- range $proxy := $proxies }}
+  {{ $proxy.name }}.cfg: |
+    provider = "oidc"
+    oidc_issuer_url = {{ $.Values.oidc.issuerUrl | quote }}
+    client_id = {{ $.Values.oidc.clientId | quote }}
+    client_secret_file = "/etc/oidc-secret/client-secret"
+    redirect_url = {{ printf "https://%s%s/oauth2/callback" $.Values.gateway.baseHostname (ternary (printf ":%v" $.Values.oidc.callbackPort) "" (not (empty $.Values.oidc.callbackPort))) | quote }}
+    http_address = {{ printf "0.0.0.0:%v" $proxy.port | quote }}
+    upstreams = [{{ $proxy.upstream | quote }}]
+    email_domains = ["*"]
+    scope = {{ join " " ($.Values.oidc.scopes | default (list "openid" "email" "profile")) | quote }}
+    cookie_name = {{ $.Values.oidc.proxy.cookieName | default "_nvcm_oidc_proxy" | quote }}
+    cookie_domains = [{{ printf ".%s" $.Values.gateway.baseHostname | quote }}]
+    whitelist_domains = [{{ printf ".%s" $.Values.gateway.baseHostname | quote }}{{ with $.Values.oidc.endSessionEndpoint }}, {{ (urlParse .).host | quote }}{{ end }}]
+    cookie_secure = true
+    cookie_httponly = true
+    cookie_samesite = "lax"
+    cookie_refresh = "1h"
+    cookie_expire = "8h"
+    session_store_type = "redis"
+    redis_connection_url = {{ printf "%s://%s:%v/%v" $redisScheme $redisHost $redisPort ($.Values.externalServices.redis.db | default 0) | quote }}
+    reverse_proxy = true
+    skip_provider_button = true
+    # Let browser CORS preflight requests reach the API without an auth redirect.
+    skip_auth_preflight = true
+    pass_authorization_header = true
+    pass_access_token = true
+    set_authorization_header = true
+    set_xauthrequest = true
+    oidc_groups_claim = {{ $.Values.oidc.groupsClaim | default "groups" | quote }}
+    silence_ping_logging = true
+    {{- with $internalIssuerUrl }}
+    # Keep the public issuer for token validation, but use explicit in-cluster
+    # endpoints when the public hostname is not reachable from workloads.
+    skip_oidc_discovery = true
+    {{- end }}
+    {{- if $internalIssuerUrl }}
+    login_url = {{ required "oidc.authorizationEndpoint is required when oidc.internalIssuerUrl disables discovery" $.Values.oidc.authorizationEndpoint | quote }}
+    {{- else }}
+    {{- with $.Values.oidc.authorizationEndpoint }}
+    login_url = {{ . | quote }}
+    {{- end }}
+    {{- end }}
+    {{- if or $.Values.oidc.tokenEndpoint $internalIssuerUrl }}
+    redeem_url = {{ (ternary (printf "%s/protocol/openid-connect/token" (trimSuffix "/" $internalIssuerUrl)) $.Values.oidc.tokenEndpoint (not (empty $internalIssuerUrl))) | quote }}
+    {{- end }}
+    {{- if or $.Values.oidc.jwksUri $internalIssuerUrl }}
+    oidc_jwks_url = {{ ($.Values.oidc.jwksUri | default (printf "%s/protocol/openid-connect/certs" (trimSuffix "/" $internalIssuerUrl))) | quote }}
+    {{- end }}
+  {{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $proxyName }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app: {{ $proxyName }}
+    app.kubernetes.io/component: oidc-proxy
+spec:
+  replicas: {{ .Values.oidc.proxy.replicas | default 2 }}
+  selector:
+    matchLabels:
+      app: {{ $proxyName }}
+  {{- include "nv-config-manager.deploymentStrategy" (dict "root" .) | nindent 2 }}
+  template:
+    metadata:
+      labels:
+        app: {{ $proxyName }}
+        app.kubernetes.io/component: oidc-proxy
+        {{- include "nv-config-manager.customPodLabels" . | nindent 8 }}
+      annotations:
+        checksum/config: {{ dict "proxies" $proxies "oidc" .Values.oidc "redis" .Values.externalServices.redis "baseHostname" .Values.gateway.baseHostname | toJson | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "nv-config-manager.serviceAccountName" . }}
+      {{- include "nv-config-manager.podSecurityContext" . | nindent 6 }}
+      {{- if .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range .Values.global.imagePullSecrets }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      containers:
+      {{- range $proxy := $proxies }}
+      - name: {{ $proxy.name }}
+        image: "{{ $.Values.oidc.proxy.image.repository }}:{{ $.Values.oidc.proxy.image.tag }}"
+        imagePullPolicy: {{ $.Values.oidc.proxy.image.pullPolicy | default "IfNotPresent" }}
+        args:
+        - --config=/etc/oauth2-proxy/{{ $proxy.name }}.cfg
+        env:
+        - name: OAUTH2_PROXY_COOKIE_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: {{ $.Values.oidc.clientSecretName | default "oidc-client-secret" }}
+              key: cookie-secret
+        {{- if $.Values.externalServices.redis.passwordAuth }}
+        - name: OAUTH2_PROXY_REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: redis-password
+              key: password
+        {{- end }}
+        ports:
+        - name: {{ $proxy.name }}
+          containerPort: {{ $proxy.port }}
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: {{ $proxy.name }}
+        livenessProbe:
+          httpGet:
+            path: /ping
+            port: {{ $proxy.name }}
+        resources:
+          {{- toYaml $.Values.oidc.proxy.resources | nindent 10 }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 65532
+          runAsGroup: 65532
+          capabilities:
+            drop: ["ALL"]
+        volumeMounts:
+        - name: config
+          mountPath: /etc/oauth2-proxy
+          readOnly: true
+        - name: oidc-secret
+          mountPath: /etc/oidc-secret
+          readOnly: true
+      {{- end }}
+      volumes:
+      - name: config
+        configMap:
+          name: {{ $proxyName }}
+      - name: oidc-secret
+        secret:
+          secretName: {{ .Values.oidc.clientSecretName | default "oidc-client-secret" }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $proxyName }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app: {{ $proxyName }}
+    app.kubernetes.io/component: oidc-proxy
+spec:
+  ports:
+  {{- range $proxy := $proxies }}
+  - name: {{ $proxy.name }}
+    port: {{ $proxy.port }}
+    targetPort: {{ $proxy.name }}
+{{- end }}
+  selector:
+    app: {{ $proxyName }}
+{{- end }}

@@ -19,7 +19,7 @@ from __future__ import annotations
 from textual import work
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, Vertical
-from textual.widgets import Button, Input, Label, RadioButton, RadioSet, Select
+from textual.widgets import Button, Checkbox, Input, Label, RadioButton, RadioSet, Select
 from textual_fspicker import FileOpen
 
 from nv_config_manager_installer.schema import (
@@ -65,12 +65,39 @@ class ZTPScreen(Container):
             )
 
         with Container(id="ztp-s3-fields"):
-            yield Label("S3 Bucket", classes="field-label")
-            yield Input(
-                value=zs.s3_bucket,
-                placeholder="ngc-network-firmware-images",
-                id="ztp-s3-bucket",
+            yield Checkbox(
+                "Use Rook Ceph object storage",
+                value=zs.s3_ceph.enabled,
+                id="ztp-s3-ceph-enabled",
             )
+            with Container(id="ztp-s3-bucket-fields"):
+                yield Label("S3 Bucket", classes="field-label")
+                yield Input(
+                    value=zs.s3_bucket,
+                    placeholder="ngc-network-firmware-images",
+                    id="ztp-s3-bucket",
+                )
+            with Container(id="ztp-s3-endpoint-fields"):
+                yield Label("S3 Endpoint", classes="field-label")
+                yield Input(
+                    value=zs.s3_endpoint,
+                    placeholder="https://s3.example.com",
+                    id="ztp-s3-endpoint",
+                )
+            with Container(id="ztp-s3-region-fields"):
+                yield Label("AWS S3 Region (IRSA, optional)", classes="field-label")
+                yield Input(
+                    value=zs.s3_region,
+                    placeholder="us-west-2",
+                    id="ztp-s3-region",
+                )
+            with Container(id="ztp-s3-ceph-fields"):
+                yield Label("Ceph ObjectBucketClaim Storage Class", classes="field-label")
+                yield Input(
+                    value=zs.s3_ceph.object_bucket_claim.storage_class_name,
+                    placeholder="ceph-object-store",
+                    id="ztp-s3-ceph-storage-class",
+                )
 
         with Container(id="ztp-file-fields"):
             yield Label("PVC Name", classes="field-label")
@@ -112,26 +139,30 @@ class ZTPScreen(Container):
 
             yield NodeSelectorPanel("ztp", zs.node_selector, id="ztp-node-selector")
 
-    def on_mount(self) -> None:
+    async def on_mount(self) -> None:
         self._toggle_storage_fields()
-        self._rebuild_image_rows()
+        await self._rebuild_image_rows()
 
     def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
         if event.radio_set.id == "ztp-storage-type":
             self._toggle_storage_fields()
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
+    def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
+        if event.checkbox.id == "ztp-s3-ceph-enabled":
+            self._toggle_storage_fields()
+
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
         bid = event.button.id or ""
         if bid == "ztp-img-add":
             self._collect_images()
             self._config.infrastructure.ztp_storage.os_images.append(ZTPOSImage())
-            self._rebuild_image_rows()
+            await self._rebuild_image_rows()
         elif bid.startswith("ztp-img-") and bid.endswith("-browse"):
             self._pick_image(int(bid.split("-")[2]))
         elif bid.startswith("ztp-img-") and bid.endswith("-remove"):
-            self._handle_image_remove(bid)
+            await self._handle_image_remove(bid)
 
-    def _handle_image_remove(self, bid: str) -> None:
+    async def _handle_image_remove(self, bid: str) -> None:
         self._collect_images()
         try:
             idx = int(bid.split("-")[2])
@@ -140,7 +171,7 @@ class ZTPScreen(Container):
                 images.pop(idx)
         except (ValueError, IndexError):
             pass
-        self._rebuild_image_rows()
+        await self._rebuild_image_rows()
 
     @work
     async def _pick_image(self, idx: int) -> None:
@@ -153,13 +184,23 @@ class ZTPScreen(Container):
 
     def _toggle_storage_fields(self) -> None:
         is_file = self.query_one(_W_ZTP_FILE, RadioButton).value
+        ceph_enabled = False
+        try:
+            ceph_enabled = self.query_one("#ztp-s3-ceph-enabled", Checkbox).value
+        except LookupError:
+            pass
         self.query_one("#ztp-file-fields").display = is_file
         self.query_one("#ztp-s3-fields").display = not is_file
+        self.query_one("#ztp-s3-bucket-fields").display = not is_file
+        self.query_one("#ztp-s3-endpoint-fields").display = not is_file and not ceph_enabled
+        self.query_one("#ztp-s3-region-fields").display = not is_file and not ceph_enabled
+        self.query_one("#ztp-s3-ceph-fields").display = not is_file and ceph_enabled
         self.query_one("#ztp-file-only-fields").display = is_file
 
-    def _rebuild_image_rows(self) -> None:
+    async def _rebuild_image_rows(self) -> None:
         container = self.query_one("#ztp-img-list", Vertical)
-        container.remove_children()
+        await container.remove_children()
+        rows: list[Horizontal] = []
         for i, img in enumerate(self._config.infrastructure.ztp_storage.os_images):
             plat_kwargs: dict = {
                 "options": [(label, slug) for label, slug in _ZTP_PLATFORMS],
@@ -167,7 +208,7 @@ class ZTPScreen(Container):
                 "prompt": "Select platform",
                 "id": f"ztp-img-{i}-platform",
             }
-            if img.platform:
+            if img.platform in {slug for _, slug in _ZTP_PLATFORMS}:
                 plat_kwargs["value"] = img.platform
             plat = Select(**plat_kwargs)
             plat.styles.width = "1fr"
@@ -183,20 +224,16 @@ class ZTPScreen(Container):
             btn = Button("Remove", variant="error", id=f"ztp-img-{i}-remove")
             btn.styles.width = "auto"
             btn.styles.min_width = 10
-            row = Horizontal(classes="account-title-row")
-            row.compose_add_child(plat)
-            row.compose_add_child(ver)
-            row.compose_add_child(path_inp)
-            row.compose_add_child(browse)
-            row.compose_add_child(btn)
-            container.mount(row)
+            rows.append(Horizontal(plat, ver, path_inp, browse, btn, classes="account-title-row"))
+        if rows:
+            await container.mount(*rows)
 
     def _collect_images(self) -> None:
         images: list[ZTPOSImage] = []
         for i in range(len(self._config.infrastructure.ztp_storage.os_images)):
             try:
                 sel = self.query_one(f"#ztp-img-{i}-platform", Select)
-                platform = str(sel.value) if sel.value is not Select.BLANK else ""
+                platform = sel.value if isinstance(sel.value, str) else ""
                 version = self.query_one(f"#ztp-img-{i}-version", Input).value.strip()
                 path = self.query_one(f"#ztp-img-{i}-path", Input).value.strip()
                 if path:
@@ -213,7 +250,17 @@ class ZTPScreen(Container):
             if self.query_one(_W_ZTP_FILE, RadioButton).value
             else ZTPStorageType.S3
         )
+        zs.s3_ceph.enabled = self.query_one("#ztp-s3-ceph-enabled", Checkbox).value
         zs.s3_bucket = self.query_one("#ztp-s3-bucket", Input).value
+        if zs.s3_ceph.enabled:
+            zs.s3_endpoint = ""
+            zs.s3_region = ""
+        else:
+            zs.s3_endpoint = self.query_one("#ztp-s3-endpoint", Input).value
+            zs.s3_region = self.query_one("#ztp-s3-region", Input).value
+        zs.s3_ceph.object_bucket_claim.storage_class_name = self.query_one(
+            "#ztp-s3-ceph-storage-class", Input
+        ).value
         zs.pvc_name = self.query_one("#ztp-pvc-name", Input).value
         zs.pvc_size = self.query_one("#ztp-pvc-size", Input).value
         zs.storage_class = self.query_one("#ztp-storage-class", Input).value
@@ -235,6 +282,12 @@ class ZTPScreen(Container):
             self.query_one("#ztp-storage-s3", RadioButton).value = zs.type == ZTPStorageType.S3
             self.query_one(_W_ZTP_FILE, RadioButton).value = zs.type == ZTPStorageType.FILE
             self.query_one("#ztp-s3-bucket", Input).value = zs.s3_bucket
+            self.query_one("#ztp-s3-endpoint", Input).value = zs.s3_endpoint
+            self.query_one("#ztp-s3-region", Input).value = zs.s3_region
+            self.query_one("#ztp-s3-ceph-enabled", Checkbox).value = zs.s3_ceph.enabled
+            self.query_one(
+                "#ztp-s3-ceph-storage-class", Input
+            ).value = zs.s3_ceph.object_bucket_claim.storage_class_name
             self.query_one("#ztp-pvc-name", Input).value = zs.pvc_name
             self.query_one("#ztp-pvc-size", Input).value = zs.pvc_size
             self.query_one("#ztp-storage-class", Input).value = zs.storage_class
@@ -244,7 +297,7 @@ class ZTPScreen(Container):
         except Exception:
             pass
         self._config.infrastructure.ztp_storage.os_images = list(zs.os_images)
-        self._rebuild_image_rows()
+        self.call_after_refresh(self._rebuild_image_rows)
         self._toggle_storage_fields()
 
     def get_status(self, config: NVConfigManagerInstallConfig) -> str:

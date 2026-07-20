@@ -18,7 +18,8 @@ from collections.abc import Callable
 from typing import Any
 
 import pytest
-from pydantic import BaseModel
+from mcp.server.fastmcp import FastMCP
+from pydantic import BaseModel, Field
 
 from nv_config_manager.mcp import tools
 from nv_config_manager.mcp.settings import MCPSettings
@@ -28,6 +29,7 @@ from nv_config_manager.mcp.workflows import MCPWorkflow
 class FakeServer:
     def __init__(self) -> None:
         self.tools: dict[str, Callable[..., Any]] = {}
+        self.tool_descriptions: dict[str, str | None] = {}
 
     def tool(
         self,
@@ -35,14 +37,17 @@ class FakeServer:
         description: str | None = None,
     ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         def decorator(function: Callable[..., Any]) -> Callable[..., Any]:
-            self.tools[name or function.__name__] = function
+            tool_name = name or function.__name__
+            self.tools[tool_name] = function
+            self.tool_descriptions[tool_name] = description
             return function
 
         return decorator
 
 
 class WorkflowInput(BaseModel):
-    device_id: str
+    device_id: str = Field(description="Device to back up.")
+    include_metadata: bool = Field(default=True, description="Include backup metadata.")
 
 
 @pytest.fixture
@@ -86,16 +91,49 @@ async def test_workflow_starter_promotes_config_manager_ui_href(
         description="Run a backup.",
         endpoint="/ngc/backup",
         input_class=WorkflowInput,
+        tool_prompt="Resolve the device first.",
     )
 
     tools._register_workflow_starter(server, settings, workflow)
-    result = await server.tools["run_backup"]({"device_id": "device-1"})
+    result = await server.tools["run_backup"](device_id="device-1")
 
     assert result["workflow_id"] == "workflow-123"
     assert result["workflow_ui_href"] == (
         "https://config-manager.example.test/workflows/workflow-123"
     )
+    assert server.tool_descriptions["run_backup"] == ("Run a backup.\n\nResolve the device first.")
+    assert "Resolve the device first." in (server.tools["run_backup"].__doc__ or "")
     assert "workflow_ui_href" in (server.tools["run_backup"].__doc__ or "")
+
+
+async def test_workflow_starter_exposes_workflow_specific_input_schema(
+    settings: MCPSettings,
+) -> None:
+    server = FastMCP("test")
+    workflow = MCPWorkflow(
+        tool_name="run_backup",
+        workflow_name="BackupWorkflow",
+        description="Run a backup.",
+        endpoint="/ngc/backup",
+        input_class=WorkflowInput,
+    )
+
+    tools._register_workflow_starter(server, settings, workflow)
+    registered_tool = next(tool for tool in await server.list_tools() if tool.name == "run_backup")
+
+    assert "parameters" not in registered_tool.inputSchema["properties"]
+    assert registered_tool.inputSchema["required"] == ["device_id"]
+    assert registered_tool.inputSchema["properties"]["device_id"] == {
+        "description": "Device to back up.",
+        "title": "Device Id",
+        "type": "string",
+    }
+    assert registered_tool.inputSchema["properties"]["include_metadata"] == {
+        "default": True,
+        "description": "Include backup metadata.",
+        "title": "Include Metadata",
+        "type": "boolean",
+    }
 
 
 async def test_related_mcp_servers_includes_public_docs(

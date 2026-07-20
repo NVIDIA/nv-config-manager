@@ -35,6 +35,7 @@ const DEMO_VPC_ID = "vpc-demo-101";
 
 const DOC_WORKFLOW_DISPLAY_NAMES: Record<string, string> = {
   BackupWorkflow: "Configuration Backup",
+  SiteBackupWorkflow: "Site Configuration Backup",
   ConnectedHostMetadataWorkflow: "Connected Host Metadata",
   DeployWorkflow: "Configuration Deploy",
   TenantDeployWorkflow: "Tenant Deploy",
@@ -63,6 +64,7 @@ const DOC_WORKFLOW_DISPLAY_NAMES: Record<string, string> = {
 
 const DOC_WORKFLOW_ENDPOINTS: Record<string, string> = {
   BackupWorkflow: "/ngc/backup",
+  SiteBackupWorkflow: "/ngc/site_backup",
   ConnectedHostMetadataWorkflow: "/ngc/connected_host_metadata",
   DeployWorkflow: "/ngc/deploy",
   TenantDeployWorkflow: "/ngc/tenant-deploy",
@@ -499,6 +501,12 @@ const WORKFLOW_SCREENSHOTS: WorkflowScreenshot[] = [
     title: "New Site Cable Validation Workflow",
   },
   {
+    fileName: "sitebackupworkflow-form.png",
+    path: "/workflows/sitebackupworkflow/form",
+    query: SITE_SCOPE_QUERY,
+    title: "New Site Configuration Backup Workflow",
+  },
+  {
     fileName: "sitepasswordrotationworkflow-form.png",
     path: "/workflows/sitepasswordrotationworkflow/form",
     query: {
@@ -701,6 +709,10 @@ async function setupDocsMocks(page: Page): Promise<void> {
     await fulfillJson(route, DOC_NAMESPACE_TAGS);
   });
 
+  await page.route(/.*\/v1\/parameter\/overlay/, async (route) => {
+    await fulfillJson(route, [{ id: "spx-overlay-demo", name: DEMO_VPC_ID }]);
+  });
+
   await page.route(/^.*\/v1\/parameter\/device(\?.*)?$/, async (route) => {
     const url = new URL(route.request().url());
     await fulfillJson(route, filterDevices(url));
@@ -792,6 +804,7 @@ function filterWorkflows(
     ["user", "User"],
   ];
   const workflowType = url.searchParams.get("workflow_type");
+  const workflowId = url.searchParams.get("workflow_id");
   const status = url.searchParams.get("status");
   const pendingApproval =
     url.searchParams.get("pending_approval")?.toLowerCase() === "true";
@@ -810,6 +823,9 @@ function filterWorkflows(
     if (workflowType && workflow.workflow_type !== workflowType) {
       return false;
     }
+    if (workflowId && workflow.id !== workflowId) {
+      return false;
+    }
     if (hideCompleted && workflow.status === "COMPLETED") {
       return false;
     }
@@ -820,8 +836,8 @@ function filterWorkflows(
 
     if (
       status &&
-      displayStatus !== status &&
-      !(pendingApproval && status === "RUNNING" && workflow.pending_approval)
+      workflow.status !== status &&
+      displayStatus !== status
     ) {
       return false;
     }
@@ -848,9 +864,7 @@ function filterWorkflows(
         return true;
       }
 
-      return getFirstSearchAttribute(workflow, attribute)
-        .toLowerCase()
-        .includes(value.toLowerCase());
+      return getFirstSearchAttribute(workflow, attribute) === value;
     });
   });
 }

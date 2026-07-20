@@ -22,10 +22,6 @@ on:
         default: true
         type: boolean
 
-permissions:
-  actions: read
-  contents: read
-
 concurrency:
   group: release-tagging-${{ github.repository }}
   cancel-in-progress: false
@@ -34,8 +30,12 @@ jobs:
   validate:
     name: Validate RC Tag
     runs-on: linux-amd64-cpu4
+    permissions:
+      actions: read
+      contents: read
     outputs:
       commit: ${{ steps.resolve.outputs.commit }}
+      go_tag: ${{ steps.version.outputs.go_tag }}
       rc_tag: ${{ steps.version.outputs.rc_tag }}
     steps:
       - uses: actions/checkout@v4
@@ -131,6 +131,13 @@ jobs:
             exit 1
           fi
 
+          go_tag="bindings/go/v${rc_tag}"
+          if git rev-parse --verify "refs/tags/${go_tag}" >/dev/null 2>&1; then
+            echo "Tag ${go_tag} already exists."
+            exit 1
+          fi
+
+          echo "go_tag=${go_tag}" >> "$GITHUB_OUTPUT"
           echo "rc_tag=${rc_tag}" >> "$GITHUB_OUTPUT"
           echo "RC tag: ${rc_tag}"
 
@@ -157,14 +164,17 @@ jobs:
       - name: Summary
         env:
           COMMIT: ${{ steps.resolve.outputs.commit }}
+          GO_TAG: ${{ steps.version.outputs.go_tag }}
           RC_TAG: ${{ steps.version.outputs.rc_tag }}
+          SOURCE_REF: ${{ inputs.source_ref }}
         run: |
           {
             echo "### RC tag request"
             echo ""
             echo "- Tag: \`${RC_TAG}\`"
+            echo "- Go module tag: \`${GO_TAG}\`"
             echo "- Commit: \`${COMMIT}\`"
-            echo "- Source ref: \`${{ inputs.source_ref }}\`"
+            echo "- Source ref: \`${SOURCE_REF}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
   create-tag:
@@ -182,6 +192,7 @@ jobs:
       - name: Create and push RC tag
         env:
           COMMIT: ${{ needs.validate.outputs.commit }}
+          GO_TAG: ${{ needs.validate.outputs.go_tag }}
           RC_TAG: ${{ needs.validate.outputs.rc_tag }}
           TAG_PUSH_TOKEN: ${{ secrets.RELEASE_TAG_TOKEN || github.token }}
         run: |
@@ -192,12 +203,17 @@ jobs:
             echo "Tag ${RC_TAG} already exists."
             exit 1
           fi
+          if git rev-parse --verify "refs/tags/${GO_TAG}" >/dev/null 2>&1; then
+            echo "Tag ${GO_TAG} already exists."
+            exit 1
+          fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -a "$RC_TAG" "$COMMIT" -m "Release candidate ${RC_TAG}"
+          git tag -a "$GO_TAG" "$COMMIT" -m "Go bindings release candidate ${RC_TAG}"
 
           git remote set-url origin "https://x-access-token:${TAG_PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          git push origin "refs/tags/${RC_TAG}"
+          git push --atomic origin "refs/tags/${RC_TAG}" "refs/tags/${GO_TAG}"
 
-          echo "Created ${RC_TAG} at ${COMMIT}."
+          echo "Created ${RC_TAG} and ${GO_TAG} at ${COMMIT}."

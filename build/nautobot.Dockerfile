@@ -41,8 +41,10 @@ ARG NAUTOBOT_NV_CONFIG_MANAGER_VERSION=""
 # Copy configuration and dependencies
 # Note: Build context is components/nautobot/
 COPY pyproject.toml uv.lock /opt/nautobot/
-COPY nautobot-app-overlays /opt/nautobot/nautobot-app-overlays
-COPY nautobot-nv-config-manager /opt/nautobot/nautobot-nv-config-manager
+COPY nautobot-app-overlays/pyproject.toml nautobot-app-overlays/README.md /opt/nautobot/nautobot-app-overlays/
+COPY nautobot-app-overlays/nautobot_app_overlays/ /opt/nautobot/nautobot-app-overlays/nautobot_app_overlays/
+COPY nautobot-nv-config-manager/pyproject.toml nautobot-nv-config-manager/README.md /opt/nautobot/nautobot-nv-config-manager/
+COPY nautobot-nv-config-manager/nv_config_manager/ /opt/nautobot/nautobot-nv-config-manager/nv_config_manager/
 COPY nautobot_config.py /opt/nautobot/nautobot_config.py
 COPY nv_config_manager_jobs /opt/nautobot/jobs/nv_config_manager_jobs
 COPY nv_config_manager_auth /opt/nautobot/nv_config_manager_auth
@@ -72,7 +74,7 @@ RUN mkdir -p /opt/nautobot/static \
 # =============================================================================
 # Runtime stage - NVIDIA distroless Python
 # =============================================================================
-FROM nvcr.io/nvidia/distroless/python:3.11-v4.0.7
+FROM nvcr.io/nvidia/distroless/python:3.11-v4.0.8
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
@@ -85,10 +87,10 @@ WORKDIR /opt/nautobot
 COPY --from=builder /opt/nautobot/.venv /opt/nautobot/.venv
 COPY --from=builder /opt/nautobot/nautobot_config.py /opt/nautobot/nautobot_config.py
 COPY --from=builder /opt/nautobot/nv_config_manager_auth /opt/nautobot/nv_config_manager_auth
-COPY --from=builder --chown=1000:1000 /opt/nautobot/static /opt/nautobot/static
+COPY --from=builder --chown=root:root --chmod=0755 /opt/nautobot/static /opt/nautobot/static
 COPY --from=builder --chown=1000:1000 /opt/nautobot/media /opt/nautobot/media
 COPY --from=builder --chown=1000:1000 /opt/nautobot/git /opt/nautobot/git
-COPY --from=builder --chown=1000:1000 /opt/nautobot/jobs /opt/nautobot/jobs
+COPY --from=builder --chown=root:root --chmod=0755 /opt/nautobot/jobs /opt/nautobot/jobs
 COPY --from=builder --chown=1000:1000 /opt/nautobot/.cache /opt/nautobot/.cache
 
 # Copy required shared libraries for native extensions (psycopg2, ldap, xml, etc.)
@@ -143,6 +145,8 @@ COPY --from=builder /lib/*-linux-gnu/libzstd.so* /usr/lib/
 
 # Set PATH to include the venv executables
 ENV PATH="/opt/nautobot/.venv/bin:$PATH"
+
+USER nvs
 
 # Expose Nautobot port
 EXPOSE 8080

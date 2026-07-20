@@ -19,7 +19,7 @@ import hashlib
 from datetime import timedelta
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 from temporalio.exceptions import ChildWorkflowError
@@ -77,12 +77,23 @@ DEFAULT_ACTIVITY_RETRY_POLICY = RetryPolicy(
 class MultiDeployInput(BaseModel):
     """Multi-Deploy Workflow Input Definition."""
 
-    role: str
-    max_batch_size: int = 10
-    location: str | None = None
-    status: list[str] | None = None
-    tenant: str | None = None
-    commit_confirm: bool = True
+    role: str = Field(description="Device role used to select network devices for deployment.")
+    max_batch_size: int = Field(
+        default=10, description="Maximum number of devices included in each deployment batch."
+    )
+    location: str | None = Field(
+        default=None, description="Location used to filter the selected network devices."
+    )
+    status: list[str] | None = Field(
+        default=None, description="Device statuses used to filter the selected network devices."
+    )
+    tenant: str | None = Field(
+        default=None, description="Tenant used to filter the selected network devices."
+    )
+    commit_confirm: bool = Field(
+        default=True,
+        description="Whether to use commit-confirmed mode when the platform supports it.",
+    )
 
 
 class DeviceDiffData(BaseModel):
@@ -110,11 +121,18 @@ class DiffGroup(BaseModel):
 class BatchDeployInput(BaseModel):
     """Input for batch deploy child workflow."""
 
-    diff_group: DiffGroup
-    batch_devices: list[DeviceDiffData]
-    parent_workflow_id: str
-    batch_number: int | None = None
-    commit_confirm: bool = True
+    diff_group: DiffGroup = Field(description="Shared configuration diff for the device batch.")
+    batch_devices: list[DeviceDiffData] = Field(
+        description="Devices whose configurations will be deployed in this batch."
+    )
+    parent_workflow_id: str = Field(description="Identifier of the parent multi-deploy workflow.")
+    batch_number: int | None = Field(
+        default=None, description="Sequence number of this batch within the parent workflow."
+    )
+    commit_confirm: bool = Field(
+        default=True,
+        description="Whether to use commit-confirmed mode when the platform supports it.",
+    )
 
 
 @workflow.defn

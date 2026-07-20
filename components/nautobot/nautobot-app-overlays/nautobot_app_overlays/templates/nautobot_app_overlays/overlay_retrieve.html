@@ -9,29 +9,33 @@
         <strong>Overlay</strong>
     </div>
     <table class="table table-hover panel-body attr-table">
+        <colgroup>
+            <col style="width: 25%;">
+            <col>
+        </colgroup>
         <tr>
-            <td>Name</td>
+            <th scope="row">Name</th>
             <td>{{ object.name }}</td>
         </tr>
         <tr>
-            <td>Status</td>
+            <th scope="row">Status</th>
             <td>{{ object.status|hyperlinked_object_with_color }}</td>
         </tr>
         <tr>
-            <td>Tenant</td>
+            <th scope="row">Tenant</th>
             <td>{{ object.tenant|hyperlinked_object|placeholder }}</td>
         </tr>
         <tr>
-            <td>Location</td>
+            <th scope="row">Location</th>
             <td>{{ object.location|hyperlinked_object }}</td>
         </tr>
         <tr>
-            <td>Isolation Type</td>
+            <th scope="row">Isolation Type</th>
             <td>{{ object.get_isolation_type_display }}</td>
         </tr>
         {% if object.partition_id %}
         <tr>
-            <td>Partition ID</td>
+            <th scope="row">Partition ID</th>
             <td>{{ object.partition_id }}</td>
         </tr>
         {% endif %}

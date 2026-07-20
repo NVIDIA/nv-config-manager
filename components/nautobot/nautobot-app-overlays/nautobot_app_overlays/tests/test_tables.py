@@ -15,7 +15,9 @@
 
 """Tests for Overlays tables."""
 
+from django.db.models import Count
 from django.test import RequestFactory, TestCase
+from django.urls import reverse
 from django_tables2 import RequestConfig
 
 from nautobot_app_overlays import models, tables
@@ -40,6 +42,54 @@ class OverlayTableTestCase(TestCase):
         table = tables.OverlayTable(models.Overlay.objects.all())
         RequestConfig(self.factory.get("/")).configure(table)
         self.assertEqual(len(table.rows), models.Overlay.objects.count())
+
+
+class AssignmentCountColumnTestCase(TestCase):
+    """The Assignments column always links to the filtered list, regardless of count.
+
+    Nautobot core's LinkedCountColumn links a count of 1 to the (un-templated,
+    dead-end) assignment detail page while a count > 1 links to the filtered
+    list. AssignmentCountColumn must link to the filtered list in both cases.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        create_assignment_test_data(cls)
+        cls.factory = RequestFactory()
+        # overlays[0] has 2 assignments, overlays[1] has 1, overlays[2] has 0.
+        cls.list_url = reverse("plugins:nautobot_app_overlays:overlayassignment_list")
+
+    def _rendered_cells(self):
+        """Render OverlayTable the way the list view does (annotated count).
+
+        BaseTable injects the ``assignments_list`` prefetch for the linked-count
+        column, which is what makes core's column reach for the single-record
+        detail link -- so this faithfully reproduces the buggy condition.
+        """
+        queryset = models.Overlay.objects.annotate(assignment_count=Count("assignments")).order_by("name")
+        table = tables.OverlayTable(queryset)
+        RequestConfig(self.factory.get("/")).configure(table)
+        return {row.record.pk: row.get_cell("assignment_count") for row in table.rows}
+
+    def test_single_assignment_links_to_filtered_list_not_detail(self):
+        """A count of 1 links to the filtered list, not the assignment detail page."""
+        overlay = self.overlays[1]
+        cell = self._rendered_cells()[overlay.pk]
+        self.assertIn(f"{self.list_url}?overlay={overlay.pk}", cell)
+        self.assertNotIn(self.assignments[2].get_absolute_url(), cell)
+
+    def test_multiple_assignments_link_to_filtered_list(self):
+        """A count > 1 links to the filtered list (unchanged from core)."""
+        overlay = self.overlays[0]
+        cell = self._rendered_cells()[overlay.pk]
+        self.assertIn(f"{self.list_url}?overlay={overlay.pk}", cell)
+        self.assertIn(">2<", cell)
+
+    def test_zero_assignments_render_placeholder(self):
+        """A count of 0 renders a placeholder, not a link."""
+        overlay = self.overlays[2]
+        cell = self._rendered_cells()[overlay.pk]
+        self.assertNotIn("<a ", cell)
 
 
 class OverlayAssignmentTableTestCase(TestCase):

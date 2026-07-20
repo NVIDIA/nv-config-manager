@@ -27,7 +27,7 @@
 #   --skip-chart            Skip chart/dependency chart packaging
 #   --skip-docs             Skip copying documentation source
 #   --include-skopeo        Include the build host Skopeo binary in tools/skopeo/
-#   --include-agpl-observability Include AGPL Grafana/Loki observability charts and related images
+#   --include-agpl-observability Include AGPL Grafana/Loki/Tempo observability charts and related images
 #   --skopeo-binary PATH    Skopeo binary to include (default: command -v skopeo)
 #   --arch ARCH             Build only for specific architecture: amd64, arm64, or both (default: both)
 #   --help                  Show help message
@@ -148,19 +148,27 @@ done
 
 # Helper functions
 log_info() {
-    echo -e "${BLUE}ℹ${NC} $1"
+    local message="$1"
+    echo -e "${BLUE}ℹ${NC} $message"
+    return 0
 }
 
 log_success() {
-    echo -e "${GREEN}✓${NC} $1"
+    local message="$1"
+    echo -e "${GREEN}✓${NC} $message"
+    return 0
 }
 
 log_warn() {
-    echo -e "${YELLOW}⚠${NC} $1"
+    local message="$1"
+    echo -e "${YELLOW}⚠${NC} $message"
+    return 0
 }
 
 log_error() {
-    echo -e "${RED}✗${NC} $1"
+    local message="$1"
+    echo -e "${RED}✗${NC} $message"
+    return 0
 }
 
 load_operator_versions() {
@@ -178,7 +186,6 @@ load_operator_versions() {
         ENVOY_GATEWAY_VERSION \
         CERT_MANAGER_VERSION \
         CNPG_OPERATOR_VERSION \
-        INGRESS_NGINX_VERSION \
         PROMETHEUS_CRD_VERSION \
         PROMETHEUS_OPERATOR_VERSION; do
         if [[ -z "${!name:-}" ]]; then
@@ -195,7 +202,7 @@ load_operator_versions() {
 }
 
 detect_container_runtime() {
-    if [ "$CONTAINER_RUNTIME" != "auto" ]; then
+    if [[ "$CONTAINER_RUNTIME" != "auto" ]]; then
         log_info "Using specified container runtime: $CONTAINER_RUNTIME"
         return 0
     fi
@@ -216,6 +223,7 @@ detect_container_runtime() {
         log_error "  - containerd (ctr + crictl)"
         exit 1
     fi
+    return 0
 }
 
 check_prerequisites() {
@@ -231,36 +239,36 @@ check_prerequisites() {
         fi
     done
     
-    if [ ${#missing_tools[@]} -gt 0 ]; then
+    if [[ ${#missing_tools[@]} -gt 0 ]]; then
         log_error "Missing required tools: ${missing_tools[*]}"
         log_error "Please install them and try again."
         exit 1
     fi
     
     # Check that the chart exists
-    if [ ! -f "$CHART_DIR/Chart.yaml" ]; then
+    if [[ ! -f "$CHART_DIR/Chart.yaml" ]]; then
         log_error "Chart.yaml not found in $CHART_DIR"
         log_error "This script should be run from the bootstrap/ directory of nv-config-manager-chart"
         exit 1
     fi
     
     # Only require NGC_API_KEY if we're pulling images
-    if [ "$SKIP_IMAGES" != "true" ] && [ -z "$NGC_API_KEY" ]; then
+    if [[ "$SKIP_IMAGES" != "true" && -z "$NGC_API_KEY" ]]; then
         log_warn "NGC_REGISTRY_TOKEN/NGC_API_KEY not set"
         log_warn "Images from NVCR may fail to pull without authentication"
         log_info "Set NGC_REGISTRY_TOKEN or NGC_API_KEY environment variable, or use --ngc-api-key"
     fi
     
     # Detect and verify container runtime
-    if [ "$SKIP_IMAGES" != "true" ]; then
+    if [[ "$SKIP_IMAGES" != "true" ]]; then
         detect_container_runtime
         
-        if [ "$CONTAINER_RUNTIME" = "docker" ]; then
+        if [[ "$CONTAINER_RUNTIME" = "docker" ]]; then
             if ! docker info &> /dev/null; then
                 log_error "Docker is not running. Please start Docker and try again."
                 exit 1
             fi
-        elif [ "$CONTAINER_RUNTIME" = "containerd" ]; then
+        elif [[ "$CONTAINER_RUNTIME" = "containerd" ]]; then
             if ! ctr version &> /dev/null; then
                 log_error "containerd is not running or not accessible."
                 exit 1
@@ -269,12 +277,13 @@ check_prerequisites() {
     fi
     
     log_success "All prerequisites met"
+    return 0
 }
 
 setup_ngc_authentication() {
     log_info "Setting up NGC authentication..."
     
-    if [ -z "$NGC_API_KEY" ]; then
+    if [[ -z "$NGC_API_KEY" ]]; then
         log_warn "NGC_REGISTRY_TOKEN/NGC_API_KEY not set"
         log_info "Attempting to pull images without NVCR authentication..."
         return 0
@@ -283,7 +292,7 @@ setup_ngc_authentication() {
     # Login to NVCR with NGC API key
     log_info "Logging in to NVCR (nvcr.io)..."
     
-    if [ "$CONTAINER_RUNTIME" = "docker" ]; then
+    if [[ "$CONTAINER_RUNTIME" = "docker" ]]; then
         if echo "$NGC_API_KEY" | docker login nvcr.io --username '$oauthtoken' --password-stdin &> /dev/null; then
             log_success "Successfully authenticated with NVCR"
             return 0
@@ -292,11 +301,12 @@ setup_ngc_authentication() {
             log_error "Please check your NGC_API_KEY and try again"
             exit 1
         fi
-    elif [ "$CONTAINER_RUNTIME" = "containerd" ]; then
+    elif [[ "$CONTAINER_RUNTIME" = "containerd" ]]; then
         # For containerd, we'll pass credentials directly to ctr image pull
         log_success "NGC API key is set - will pass credentials directly to ctr image pull"
         return 0
     fi
+    return 0
 }
 
 setup_build_dir() {
@@ -319,28 +329,30 @@ setup_build_dir() {
     
     log_success "Build directory: $BUILD_DIR"
     log_info "Output directory: $OUTPUT_DIR"
+    return 0
 }
 
 get_version() {
-    if [ -z "$VERSION" ]; then
+    if [[ -z "$VERSION" ]]; then
         # Extract version from Chart.yaml
         VERSION=$(grep '^version:' "$CHART_DIR/Chart.yaml" | awk '{print $2}' | tr -d '"' | tr -d "'")
-        if [ -z "$VERSION" ]; then
+        if [[ -z "$VERSION" ]]; then
             VERSION="0.0.0-dev"
         fi
     fi
     log_info "Using version: $VERSION"
+    return 0
 }
 
 sanitize_agpl_chart_dependencies() {
     local helm_dir="$1"
 
     if [[ "$INCLUDE_AGPL_OBSERVABILITY" == true ]]; then
-        return
+        return 0
     fi
 
-    log_warn "Excluding AGPL Grafana and Loki chart dependencies from the airgap bundle"
-    rm -f "$helm_dir"/charts/grafana-*.tgz "$helm_dir"/charts/loki-*.tgz
+    log_warn "Excluding AGPL Grafana, Loki, and Tempo chart dependencies from the airgap bundle"
+    rm -f "$helm_dir"/charts/grafana-*.tgz "$helm_dir"/charts/loki-*.tgz "$helm_dir"/charts/tempo-*.tgz
     rm -f "$helm_dir/Chart.lock"
 
     python3 - "$helm_dir/Chart.yaml" <<'PY'
@@ -353,7 +365,11 @@ out = []
 i = 0
 while i < len(lines):
     line = lines[i]
-    if line.startswith("  - name: grafana") or line.startswith("  - name: loki"):
+    if (
+        line.startswith("  - name: grafana")
+        or line.startswith("  - name: loki")
+        or line.startswith("  - name: tempo")
+    ):
         i += 1
         while i < len(lines):
             nxt = lines[i]
@@ -368,12 +384,13 @@ while i < len(lines):
     i += 1
 path.write_text("".join(out))
 PY
+    return 0
 }
 
 package_helm_chart() {
-    if [ "$SKIP_CHART" = true ]; then
+    if [[ "$SKIP_CHART" = true ]]; then
         log_warn "Skipping Helm chart packaging"
-        return
+        return 0
     fi
     
     log_info "Packaging Helm chart from local source..."
@@ -396,18 +413,18 @@ package_helm_chart() {
     helm package "$helm_dir" --destination "$helm_dir"
     
     local chart_tgz=$(ls "$helm_dir"/*.tgz 2>/dev/null | head -1)
-    if [ -n "$chart_tgz" ]; then
+    if [[ -n "$chart_tgz" ]]; then
         log_success "Helm chart ready: $helm_dir/ (packaged: $(basename "$chart_tgz"))"
     else
         log_success "Helm chart ready: $helm_dir/"
     fi
+    return 0
 }
 
 load_external_charts() {
     # Operator charts are generated from deploy/operator-versions.env.
     echo "oci://ghcr.io/cloudnative-pg/charts/cloudnative-pg:${CNPG_OPERATOR_VERSION}"
     echo "oci://quay.io/jetstack/charts/cert-manager:${CERT_MANAGER_VERSION}"
-    echo "helm://https://kubernetes.github.io/ingress-nginx|ingress-nginx:${INGRESS_NGINX_VERSION}"
     echo "helm://https://prometheus-community.github.io/helm-charts|prometheus-operator-crds:28.0.1"
     if [[ "$INCLUDE_AGPL_OBSERVABILITY" == true ]]; then
         echo "helm://https://prometheus-community.github.io/helm-charts|kube-prometheus-stack:${PROMETHEUS_OPERATOR_VERSION}"
@@ -417,23 +434,24 @@ load_external_charts() {
     # Load any additional charts from charts.config.
     local charts_config="$SCRIPT_DIR/charts.config"
     
-    if [ ! -f "$charts_config" ]; then
-        return
+    if [[ ! -f "$charts_config" ]]; then
+        return 0
     fi
     
-    while IFS= read -r line || [ -n "$line" ]; do
+    while IFS= read -r line || [[ -n "$line" ]]; do
         # Skip empty lines and comments
         [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
         # Remove leading/trailing whitespace
         line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-        [ -n "$line" ] && echo "$line"
+        [[ -n "$line" ]] && echo "$line"
     done < "$charts_config"
+    return 0
 }
 
 package_external_charts() {
-    if [ "$SKIP_CHART" = true ]; then
+    if [[ "$SKIP_CHART" = true ]]; then
         log_warn "Skipping external chart packaging"
-        return
+        return 0
     fi
     
     local charts_dir="$BUILD_DIR/charts"
@@ -442,12 +460,12 @@ package_external_charts() {
     # Load operator charts from the shared manifest plus any extra charts from config.
     local external_charts=()
     while IFS= read -r line; do
-        [ -n "$line" ] && external_charts+=("$line")
+        [[ -n "$line" ]] && external_charts+=("$line")
     done < <(load_external_charts)
     
-    if [ ${#external_charts[@]} -eq 0 ]; then
+    if [[ ${#external_charts[@]} -eq 0 ]]; then
         log_info "No external charts configured"
-        return
+        return 0
     fi
     
     log_info "Packaging ${#external_charts[@]} external chart(s)..."
@@ -476,7 +494,7 @@ package_external_charts() {
             local chart_name="${chart_spec%%:*}"       # Extract chart name
             local chart_version="${chart_spec#*:}"     # Extract version
             
-            if [ -z "$repo_url" ] || [ -z "$chart_name" ] || [ -z "$chart_version" ]; then
+            if [[ -z "$repo_url" || -z "$chart_name" || -z "$chart_version" ]]; then
                 log_warn "Invalid helm entry: $chart_entry (expected helm://repo-url|chart-name:version)"
                 continue
             fi
@@ -502,7 +520,7 @@ package_external_charts() {
             local chart_name="${chart_entry%%:*}"
             local chart_version="${chart_entry#*:}"
             
-            if [ -z "$chart_name" ] || [ -z "$chart_version" ]; then
+            if [[ -z "$chart_name" || -z "$chart_version" ]]; then
                 log_warn "Invalid chart entry: $chart_entry (expected chart-name:version or oci://...)"
                 continue
             fi
@@ -516,7 +534,7 @@ package_external_charts() {
             local temp_pull_dir=$(mktemp -d)
             pushd "$temp_pull_dir" &> /dev/null
             
-            if [ -n "$NGC_API_KEY" ]; then
+            if [[ -n "$NGC_API_KEY" ]]; then
                 if helm fetch "$chart_url" --username='$oauthtoken' --password="$NGC_API_KEY" 2>/dev/null; then
                     pull_success=true
                 fi
@@ -527,7 +545,7 @@ package_external_charts() {
                 fi
             fi
             
-            if [ "$pull_success" = true ] && ls *.tgz 2>/dev/null | head -1 | grep -q .; then
+            if [[ "$pull_success" = true ]] && ls *.tgz 2>/dev/null | head -1 | grep -q .; then
                 mv *.tgz "$charts_dir/"
                 log_success "Packaged: $chart_tgz"
             else
@@ -538,15 +556,16 @@ package_external_charts() {
             rm -rf "$temp_pull_dir"
         fi
     done
+    return 0
 }
 
 # Package dependency manifests (Gateway API CRDs, Prometheus Operator CRDs)
 # These are required for airgapped deployment
 # Note: Envoy Gateway is installed via the chart generated from operator-versions.env.
 package_dependency_manifests() {
-    if [ "$SKIP_CHART" = true ]; then
+    if [[ "$SKIP_CHART" = true ]]; then
         log_warn "Skipping dependency manifest packaging"
-        return
+        return 0
     fi
     
     local manifests_dir="$BUILD_DIR/manifests"
@@ -576,6 +595,7 @@ package_dependency_manifests() {
     fi
     
     log_success "Dependency manifests packaged"
+    return 0
 }
 
 extract_images_from_external_charts() {
@@ -584,7 +604,7 @@ extract_images_from_external_charts() {
     
     # Find all external chart tarballs (excluding nv-config-manager)
     for chart_tgz in "$charts_dir"/*.tgz; do
-        [ -f "$chart_tgz" ] || continue
+        [[ -f "$chart_tgz" ]] || continue
         
         local chart_basename=$(basename "$chart_tgz" .tgz)
         # Skip the main nv-config-manager chart
@@ -596,16 +616,16 @@ extract_images_from_external_charts() {
         
         # Find the chart directory inside
         local chart_dir=$(find "$temp_extract" -maxdepth 1 -type d ! -path "$temp_extract" | head -1)
-        [ -d "$chart_dir" ] || { rm -rf "$temp_extract"; continue; }
+        [[ -d "$chart_dir" ]] || { rm -rf "$temp_extract"; continue; }
         
         # Use helm template to extract images
         local templated_output
         templated_output=$(helm template test "$chart_dir" 2>/dev/null) || true
         
-        if [ -n "$templated_output" ]; then
+        if [[ -n "$templated_output" ]]; then
             # Extract image references
             while IFS= read -r img; do
-                [ -n "$img" ] && images+=("$img")
+                [[ -n "$img" ]] && images+=("$img")
             done < <(echo "$templated_output" | grep -E 'image:|repository:' | \
                      sed -E 's/.*image:[[:space:]]*["'"'"']?([^"'"'"'[:space:]]+)["'"'"']?.*/\1/' | \
                      grep -E '^[a-zA-Z0-9]' | sort -u)
@@ -615,23 +635,48 @@ extract_images_from_external_charts() {
     done
     
     printf '%s\n' "${images[@]}" | sort -u
+    return $?
 }
 
 load_extra_images() {
     # Load additional images from extraimages.config
     local extra_images_file="$SCRIPT_DIR/extraimages.config"
     
-    if [ ! -f "$extra_images_file" ]; then
-        return
+    if [[ ! -f "$extra_images_file" ]]; then
+        return 0
     fi
     
-    while IFS= read -r line || [ -n "$line" ]; do
+    while IFS= read -r line || [[ -n "$line" ]]; do
         # Skip empty lines and comments
         [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
         # Remove leading/trailing whitespace
         line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-        [ -n "$line" ] && echo "$line"
+        [[ -n "$line" ]] && echo "$line"
     done < "$extra_images_file"
+    return 0
+}
+
+normalize_image_reference() {
+    local image_value="$1"
+    local first_segment="${image_value%%/*}"
+    first_segment="${first_segment%%:*}"
+
+    if [[ "$first_segment" != *.* &&
+        "$first_segment" != "docker.io" &&
+        "$first_segment" != "nvcr.io" &&
+        "$first_segment" != "ghcr.io" &&
+        "$first_segment" != "quay.io" &&
+        "$first_segment" != "gcr.io" &&
+        "$first_segment" != "registry.k8s.io" ]]; then
+        if [[ "$image_value" == */* ]]; then
+            image_value="docker.io/${image_value}"
+        else
+            image_value="docker.io/library/${image_value}"
+        fi
+    fi
+
+    printf '%s\n' "$image_value"
+    return 0
 }
 
 extract_images_from_manifests() {
@@ -639,13 +684,13 @@ extract_images_from_manifests() {
     local manifests_dir="$1"
     local images=()
     
-    if [ ! -d "$manifests_dir" ]; then
-        return
+    if [[ ! -d "$manifests_dir" ]]; then
+        return 0
     fi
     
     # Find all YAML files in manifests directory
     for manifest_file in "$manifests_dir"/*.yaml "$manifests_dir"/*.yml; do
-        [ -f "$manifest_file" ] || continue
+        [[ -f "$manifest_file" ]] || continue
         
         # Extract image references from the manifest
         # Look for "image:" fields in Kubernetes manifests
@@ -654,7 +699,7 @@ extract_images_from_manifests() {
             local image_value=$(echo "$image_line" | sed -E 's/^[[:space:]]*image:[[:space:]]*//' | sed -E 's/^["'\''"]|["'\''"]$//g')
             
             # Skip empty, null, or invalid values
-            if [ -z "$image_value" ] || [ "$image_value" = "null" ] || [ "$image_value" = "~" ]; then
+            if [[ -z "$image_value" || "$image_value" = "null" || "$image_value" = "~" ]]; then
                 continue
             fi
             
@@ -673,17 +718,7 @@ extract_images_from_manifests() {
                 image_value="${image_value}:latest"
             fi
             
-            # Normalize image reference - add docker.io registry if no registry specified
-            local first_segment=$(echo "$image_value" | cut -d'/' -f1 | cut -d':' -f1)
-            if ! echo "$first_segment" | grep -q '\.'; then
-                if [ "$first_segment" != "docker.io" ] && [ "$first_segment" != "nvcr.io" ] && [ "$first_segment" != "ghcr.io" ] && [ "$first_segment" != "quay.io" ] && [ "$first_segment" != "gcr.io" ] && [ "$first_segment" != "registry.k8s.io" ]; then
-                    if echo "$image_value" | grep -q '/'; then
-                        image_value="docker.io/${image_value}"
-                    else
-                        image_value="docker.io/library/${image_value}"
-                    fi
-                fi
-            fi
+            image_value=$(normalize_image_reference "$image_value")
             
             images+=("$image_value")
         done < <(grep -iE '^\s*image:' "$manifest_file" 2>/dev/null | sed 's/^[[:space:]]*//')
@@ -691,6 +726,7 @@ extract_images_from_manifests() {
     
     # Remove duplicates and return
     printf '%s\n' "${images[@]}" | sort -u
+    return $?
 }
 
 extract_images_from_chart() {
@@ -703,12 +739,12 @@ extract_images_from_chart() {
     # Check if helm is available
     if ! command -v helm &> /dev/null; then
         printf '%s\n' "${images[@]}"
-        return
+        return 0
     fi
     
     # Find the extracted chart directory
     local chart_dir=$(find "$charts_dir" -maxdepth 1 -type d -name "nv-config-manager*" | head -1)
-    if [ -z "$chart_dir" ] || [ ! -f "$chart_dir/Chart.yaml" ]; then
+    if [[ -z "$chart_dir" || ! -f "$chart_dir/Chart.yaml" ]]; then
         # Try the packaged tgz
         chart_dir="$charts_dir"
     fi
@@ -718,15 +754,23 @@ extract_images_from_chart() {
     local values_file="$SCRIPT_DIR/values-airgapped-extract.yaml"
     local templated_output
     local helm_err=""
+    local helm_exit
     
-    if [ -f "$values_file" ]; then
-        helm_err=$(helm template test "$chart_dir" -f "$values_file" 2>&1)
+    if [[ -f "$values_file" ]]; then
+        if helm_err=$(helm template test "$chart_dir" -f "$values_file" 2>&1); then
+            helm_exit=0
+        else
+            helm_exit=$?
+        fi
     else
-        helm_err=$(helm template test "$chart_dir" 2>&1)
+        if helm_err=$(helm template test "$chart_dir" 2>&1); then
+            helm_exit=0
+        else
+            helm_exit=$?
+        fi
     fi
-    local helm_exit=$?
     
-    if [ $helm_exit -eq 0 ]; then
+    if [[ $helm_exit -eq 0 ]]; then
         templated_output="$helm_err"
     else
         # Write error to stderr so it doesn't mix with image output
@@ -734,14 +778,14 @@ extract_images_from_chart() {
         templated_output=""
     fi
     
-    if [ -n "$templated_output" ]; then
+    if [[ -n "$templated_output" ]]; then
         # Extract image references from the templated output
         while IFS= read -r image_line; do
             # Remove leading whitespace and "image:" prefix
             local image_value=$(echo "$image_line" | sed -E 's/^[[:space:]]*image:[[:space:]]*//' | sed -E 's/^["'\''"]|["'\''"]$//g')
             
             # Skip empty, null, or invalid values
-            if [ -z "$image_value" ] || [ "$image_value" = "null" ] || [ "$image_value" = "~" ]; then
+            if [[ -z "$image_value" || "$image_value" = "null" || "$image_value" = "~" ]]; then
                 continue
             fi
             
@@ -760,17 +804,7 @@ extract_images_from_chart() {
                 image_value="${image_value}:latest"
             fi
             
-            # Normalize image reference - add docker.io registry if no registry specified
-            local first_segment=$(echo "$image_value" | cut -d'/' -f1 | cut -d':' -f1)
-            if ! echo "$first_segment" | grep -q '\.'; then
-                if [ "$first_segment" != "docker.io" ] && [ "$first_segment" != "nvcr.io" ] && [ "$first_segment" != "ghcr.io" ] && [ "$first_segment" != "quay.io" ] && [ "$first_segment" != "gcr.io" ] && [ "$first_segment" != "registry.k8s.io" ]; then
-                    if echo "$image_value" | grep -q '/'; then
-                        image_value="docker.io/${image_value}"
-                    else
-                        image_value="docker.io/library/${image_value}"
-                    fi
-                fi
-            fi
+            image_value=$(normalize_image_reference "$image_value")
             
             images+=("$image_value")
         done < <(echo "$templated_output" | grep -iE '^\s*image:' | sed 's/^[[:space:]]*//')
@@ -778,6 +812,7 @@ extract_images_from_chart() {
     
     # Remove duplicates and return
     printf '%s\n' "${images[@]}" | sort -u
+    return $?
 }
 
 
@@ -806,6 +841,7 @@ save_with_skopeo_archive() {
     fi
 
     "$skopeo_bin" "${skopeo_args[@]}" "docker://${image}" "docker-archive:${archive}:${image}"
+    return $?
 }
 
 save_image_archive() {
@@ -830,13 +866,13 @@ save_image_archive() {
 pull_docker_images() {
     local arch="${1:-amd64}"
     
-    if [ "$SKIP_IMAGES" = true ]; then
+    if [[ "$SKIP_IMAGES" = true ]]; then
         log_warn "Skipping Docker image pulling"
-        return
+        return 0
     fi
     
     # Setup NGC authentication before pulling images (only on first call)
-    if [ "$arch" = "amd64" ] || [ "$TARGET_ARCH" = "arm64" ]; then
+    if [[ "$arch" = "amd64" || "$TARGET_ARCH" = "arm64" ]]; then
         setup_ngc_authentication
     fi
     
@@ -850,19 +886,19 @@ pull_docker_images() {
     log_info "Extracting image references from chart..."
     local images=()
     local temp_err=$(mktemp)
-    if [ -d "$helm_dir" ]; then
+    if [[ -d "$helm_dir" ]]; then
         local extracted_output
         extracted_output=$(extract_images_from_chart "$helm_dir" 2>"$temp_err")
         while IFS= read -r line; do
-            [ -n "$line" ] && images+=("$line")
+            [[ -n "$line" ]] && images+=("$line")
         done <<< "$extracted_output"
     fi
     
     # Log any helm template errors
-    if [ -s "$temp_err" ]; then
+    if [[ -s "$temp_err" ]]; then
         log_warn "Helm template errors encountered:"
         while IFS= read -r err_line; do
-            [ -n "$err_line" ] && log_info "  $err_line"
+            [[ -n "$err_line" ]] && log_info "  $err_line"
         done < "$temp_err"
     fi
     rm -f "$temp_err"
@@ -871,10 +907,10 @@ pull_docker_images() {
     log_info "Loading extra images from extraimages.config..."
     local extra_images=()
     while IFS= read -r line; do
-        [ -n "$line" ] && extra_images+=("$line")
+        [[ -n "$line" ]] && extra_images+=("$line")
     done < <(load_extra_images)
     
-    if [ ${#extra_images[@]} -gt 0 ]; then
+    if [[ ${#extra_images[@]} -gt 0 ]]; then
         log_info "Found ${#extra_images[@]} extra image(s) in extraimages.config"
         images+=("${extra_images[@]}")
     fi
@@ -884,10 +920,10 @@ pull_docker_images() {
     log_info "Extracting images from external charts..."
     local external_chart_images=()
     while IFS= read -r line; do
-        [ -n "$line" ] && external_chart_images+=("$line")
+        [[ -n "$line" ]] && external_chart_images+=("$line")
     done < <(extract_images_from_external_charts "$charts_dir")
     
-    if [ ${#external_chart_images[@]} -gt 0 ]; then
+    if [[ ${#external_chart_images[@]} -gt 0 ]]; then
         log_info "Found ${#external_chart_images[@]} image(s) from external charts"
         images+=("${external_chart_images[@]}")
     fi
@@ -897,10 +933,10 @@ pull_docker_images() {
     log_info "Extracting images from dependency manifests..."
     local manifest_images=()
     while IFS= read -r line; do
-        [ -n "$line" ] && manifest_images+=("$line")
+        [[ -n "$line" ]] && manifest_images+=("$line")
     done < <(extract_images_from_manifests "$manifests_dir")
     
-    if [ ${#manifest_images[@]} -gt 0 ]; then
+    if [[ ${#manifest_images[@]} -gt 0 ]]; then
         log_info "Found ${#manifest_images[@]} image(s) from dependency manifests (Envoy Gateway, etc.)"
         images+=("${manifest_images[@]}")
     fi
@@ -908,11 +944,11 @@ pull_docker_images() {
     # Remove duplicates
     local unique_images=()
     while IFS= read -r img; do
-        [ -n "$img" ] && unique_images+=("$img")
+        [[ -n "$img" ]] && unique_images+=("$img")
     done < <(printf '%s\n' "${images[@]}" | sort -u)
     images=("${unique_images[@]}")
     
-    if [ ${#images[@]} -eq 0 ]; then
+    if [[ ${#images[@]} -eq 0 ]]; then
         log_warn "No images found"
         return 0
     fi
@@ -930,24 +966,24 @@ pull_docker_images() {
         
         local pull_success=false
         
-        if [ "$CONTAINER_RUNTIME" = "docker" ]; then
+        if [[ "$CONTAINER_RUNTIME" = "docker" ]]; then
             set +e
             local pull_err=""
             pull_err=$(docker pull --platform linux/$arch "$image" 2>&1)
             local pull_exit=$?
             set -e
             
-            if [ $pull_exit -eq 0 ]; then
+            if [[ $pull_exit -eq 0 ]]; then
                 log_success "  Pulled $image"
                 log_info "  Saving $image to $filename..."
                 save_image_archive "$image" "$images_dir/$filename" "$arch"
                 pull_success=true
             else
                 log_warn "  Failed to pull $image for $arch"
-                if [ -n "$pull_err" ]; then
+                if [[ -n "$pull_err" ]]; then
                     log_info "  Error: $(echo "$pull_err" | grep -v "^$" | head -3 | tr '\n' ' ')"
                 fi
-                if [ "$LOCAL_IMAGE_FALLBACK" = true ] && docker image inspect "$image" &>/dev/null; then
+                if [[ "$LOCAL_IMAGE_FALLBACK" = true ]] && docker image inspect "$image" &>/dev/null; then
                     log_warn "  Using local image for $image because remote pull failed"
                     log_info "  Saving $image to $filename..."
                     if save_image_archive "$image" "$images_dir/$filename" "$arch"; then
@@ -958,7 +994,7 @@ pull_docker_images() {
                     fi
                 fi
             fi
-        elif [ "$CONTAINER_RUNTIME" = "containerd" ]; then
+        elif [[ "$CONTAINER_RUNTIME" = "containerd" ]]; then
             # Use ctr for pulling and exporting with containerd
             # Pass credentials directly for NVCR images
             local pull_exit=1
@@ -966,18 +1002,18 @@ pull_docker_images() {
             
             # Pull with specified platform for all images (multi-arch manifests)
             set +e  # Temporarily disable exit on error
-            if [[ "$image" == nvcr.io/* ]] && [ -n "$NGC_API_KEY" ]; then
+            if [[ "$image" == nvcr.io/* && -n "$NGC_API_KEY" ]]; then
                 # NVCR images - pull with specified platform
                 # Retry up to 3 times for large images
                 local pull_output=""
                 local retry_count=0
                 pull_exit=1
-                while [ $retry_count -lt 3 ] && [ $pull_exit -ne 0 ]; do
-                    if [ $retry_count -gt 0 ]; then
+                while [[ $retry_count -lt 3 && $pull_exit -ne 0 ]]; do
+                    if [[ $retry_count -gt 0 ]]; then
                         log_info "  Retrying pull (attempt $((retry_count + 1))/3)..."
                         sleep 2
                     fi
-                    pull_output=$(timeout 300 ctr image pull --snapshotter=native --platform linux/$arch -u '$oauthtoken:'"$NGC_API_KEY" "$image" 2>&1 || true)
+                    pull_output=$(timeout 300 ctr image pull --snapshotter=native --platform linux/$arch -u '$oauthtoken:'"$NGC_API_KEY" "$image" 2>&1)
                     pull_exit=$?
                     
                     # Check if timeout occurred
@@ -989,7 +1025,7 @@ pull_docker_images() {
                 done
                 
                 # Log error if pull failed
-                if [ $pull_exit -ne 0 ]; then
+                if [[ $pull_exit -ne 0 ]]; then
                     log_info "  Pull error: $(echo "$pull_output" | grep -v "^$" | head -5 | tr '\n' ' ')"
                 fi
             else
@@ -999,25 +1035,25 @@ pull_docker_images() {
                 pull_output=$(ctr image pull --snapshotter=native --platform linux/$arch "$image" 2>&1)
                 pull_exit=$?
                 # If native snapshotter fails, try default overlayfs
-                if [ $pull_exit -ne 0 ]; then
+                if [[ $pull_exit -ne 0 ]]; then
                     pull_output=$(ctr image pull --platform linux/$arch "$image" 2>&1)
                     pull_exit=$?
                 fi
                 # Log error if pull failed
-                if [ $pull_exit -ne 0 ]; then
+                if [[ $pull_exit -ne 0 ]]; then
                     log_warn "  Pull failed for $arch architecture (image may not have $arch variant)"
                 fi
             fi
             set -e  # Re-enable exit on error
             
             # Verify architecture matches what we requested
-            if [ $pull_exit -eq 0 ]; then
+            if [[ $pull_exit -eq 0 ]]; then
                 # Check actual platforms of pulled image
                 local list_output=$(ctr image list "name==$image" 2>&1)
                 # PLATFORMS is the 6th field
                 local platforms=$(echo "$list_output" | awk 'NR==2 {print $6}')
                 
-                if [ -n "$platforms" ] && [ "$platforms" != "-" ]; then
+                if [[ -n "$platforms" && "$platforms" != "-" ]]; then
                     # Check if our requested architecture is in the platforms list
                     if echo "$platforms" | grep -q "linux/$arch"; then
                         log_info "  Verified architecture: linux/$arch"
@@ -1032,7 +1068,7 @@ pull_docker_images() {
                 fi
             fi
             
-            if [ $pull_exit -eq 0 ]; then
+            if [[ $pull_exit -eq 0 ]]; then
                 log_success "  Pulled $image"
                 log_info "  Exporting $image to $filename..."
                 set +e  # Temporarily disable exit on error
@@ -1043,13 +1079,13 @@ pull_docker_images() {
                 export_exit=$?
                 
                 # If export failed, try re-pulling
-                if [ $export_exit -ne 0 ]; then
+                if [[ $export_exit -ne 0 ]]; then
                     if echo "$export_err" | grep -q "content digest.*not found\|not found"; then
                         log_info "  Export failed, re-pulling image..."
                         # Remove the image first to ensure clean state
                         ctr image rm "$image" &> /dev/null || true
                         # Re-pull (use native snapshotter to avoid whiteout issues)
-                        if [[ "$image" == nvcr.io/* ]] && [ -n "$NGC_API_KEY" ]; then
+                        if [[ "$image" == nvcr.io/* && -n "$NGC_API_KEY" ]]; then
                             ctr image pull --snapshotter=native --platform linux/$arch -u '$oauthtoken:'"$NGC_API_KEY" "$image" &> /dev/null || true
                         else
                             ctr image pull --snapshotter=native --platform linux/$arch "$image" &> /dev/null || true
@@ -1065,23 +1101,23 @@ pull_docker_images() {
                 set -e  # Re-enable exit on error
                 
                 # Check if export succeeded and file exists with non-zero size
-                if [ $export_exit -eq 0 ] && [ -f "$images_dir/$filename" ]; then
+                if [[ $export_exit -eq 0 && -f "$images_dir/$filename" ]]; then
                     local file_size=$(stat -f%z "$images_dir/$filename" 2>/dev/null || stat -c%s "$images_dir/$filename" 2>/dev/null || echo "0")
-                    if [ "$file_size" -gt 0 ]; then
+                    if [[ "$file_size" -gt 0 ]]; then
                         pull_success=true
                         log_success "  Exported $image (${file_size} bytes)"
                     else
                         log_warn "  Export created empty file for $image (removing)"
                         rm -f "$images_dir/$filename"
-                        if [ -n "$export_err" ]; then
+                        if [[ -n "$export_err" ]]; then
                             log_info "  Export error: $export_err"
                         fi
                     fi
                 else
                     log_warn "  Failed to export $image (pull succeeded but export failed)"
                     # Remove empty file if it was created
-                    [ -f "$images_dir/$filename" ] && [ ! -s "$images_dir/$filename" ] && rm -f "$images_dir/$filename"
-                    if [ -n "$export_err" ]; then
+                    [[ -f "$images_dir/$filename" && ! -s "$images_dir/$filename" ]] && rm -f "$images_dir/$filename"
+                    if [[ -n "$export_err" ]]; then
                         log_info "  Export error: $export_err"
                     fi
                 fi
@@ -1090,7 +1126,7 @@ pull_docker_images() {
             fi
         fi
         
-        if [ "$pull_success" = true ]; then
+        if [[ "$pull_success" = true ]]; then
             log_success "  Saved $image"
             echo "$image" >> "$image_list_file"
         else
@@ -1098,12 +1134,12 @@ pull_docker_images() {
         fi
     done
 
-    if [ ${#failed_images[@]} -gt 0 ]; then
+    if [[ ${#failed_images[@]} -gt 0 ]]; then
         log_error "Failed to pull or save ${#failed_images[@]} image(s) for $arch:"
         for failed_image in "${failed_images[@]}"; do
             log_error "  $failed_image"
         done
-        if [ "$ALLOW_MISSING_IMAGES" = true ]; then
+        if [[ "$ALLOW_MISSING_IMAGES" = true ]]; then
             log_warn "Continuing because --allow-missing-images was set; bundle may not install offline"
         else
             log_error "Bundle image set is incomplete. Set --allow-missing-images only for best-effort diagnostics."
@@ -1112,12 +1148,13 @@ pull_docker_images() {
     fi
     
     log_success "Docker images pulled and saved for $arch"
+    return 0
 }
 
 create_documentation() {
-    if [ "$SKIP_DOCS" = true ]; then
+    if [[ "$SKIP_DOCS" = true ]]; then
         log_warn "Skipping documentation copy"
-        return
+        return 0
     fi
 
     local docs_src="$REPO_ROOT/docs"
@@ -1128,11 +1165,12 @@ create_documentation() {
     else
         log_warn "docs/ not found; documentation will not be included"
     fi
+    return 0
 }
 
 copy_skopeo_tool() {
-    if [ "$INCLUDE_SKOPEO" != true ]; then
-        return
+    if [[ "$INCLUDE_SKOPEO" != true ]]; then
+        return 0
     fi
 
     local src="$SKOPEO_BINARY"
@@ -1165,6 +1203,7 @@ SKOPEO_README
 
     log_success "Included Skopeo binary: $src"
     log_warn "Verify the bundled Skopeo binary is compatible with the target OS/architecture"
+    return 0
 }
 
 copy_deployment_files() {
@@ -1212,6 +1251,7 @@ copy_deployment_files() {
 
     copy_skopeo_tool
     package_installer
+    return 0
 }
 
 
@@ -1221,6 +1261,7 @@ pip_download() {
     else
         uv run --with pip python -m pip download "$@"
     fi
+    return $?
 }
 
 package_installer() {
@@ -1229,13 +1270,13 @@ package_installer() {
     local installer_src="$REPO_ROOT/installer"
     if [[ ! -f "$installer_src/pyproject.toml" ]]; then
         log_warn "Installer package not found at $installer_src, skipping"
-        return
+        return 0
     fi
 
     if ! command -v uv &>/dev/null; then
         log_warn "uv not available, skipping installer packaging"
         log_warn "Install uv (https://docs.astral.sh/uv/) to include the installer in the bundle"
-        return
+        return 0
     fi
 
     local installer_dest="$BUILD_DIR/installer"
@@ -1341,6 +1382,7 @@ package_installer() {
 
     _write_installer_bootstrap "$installer_dest"
     log_success "Installer packaging complete"
+    return 0
 }
 
 _write_installer_bootstrap() {
@@ -1414,6 +1456,7 @@ echo "  export PATH=\"$VENV_DIR/bin:\$PATH\""
 INSTALL_EOF
     chmod +x "$dest/install.sh"
     log_success "Created installer/install.sh"
+    return 0
 }
 
 create_manifest() {
@@ -1422,7 +1465,9 @@ create_manifest() {
     log_info "Creating manifest for $arch..."
 
     local chart_version=$(grep '^version:' "$CHART_DIR/Chart.yaml" | awk '{print $2}' | tr -d '"' | tr -d "'")
-    local app_version=$(grep '^appVersion:' "$CHART_DIR/Chart.yaml" | awk '{print $2}' | tr -d '"' | tr -d "'")
+    local app_version
+    app_version=$(grep '^appVersion:' "$CHART_DIR/Chart.yaml" | awk '{print $2}' | tr -d '"' | tr -d "'" || true)
+    app_version="${app_version:-$chart_version}"
 
     cat > "$BUILD_DIR/manifest-$arch.json" << EOF
 {
@@ -1440,6 +1485,7 @@ create_manifest() {
 EOF
 
     log_success "Manifest created for $arch"
+    return 0
 }
 
 create_tarball() {
@@ -1519,6 +1565,7 @@ BUNDLE_README
         popd &> /dev/null
         log_success "Checksum created: $tarball_path.sha256"
     fi
+    return 0
 }
 
 print_summary() {
@@ -1532,10 +1579,10 @@ print_summary() {
     echo "  Version: $VERSION"
     echo ""
 
-    if [ "$TARGET_ARCH" = "both" ] || [ "$TARGET_ARCH" = "amd64" ]; then
+    if [[ "$TARGET_ARCH" = "both" || "$TARGET_ARCH" = "amd64" ]]; then
         echo "  AMD64 Package: $abs_output_dir/nv-config-manager-airgapped-${VERSION}-amd64.tar.gz"
     fi
-    if [ "$TARGET_ARCH" = "both" ] || [ "$TARGET_ARCH" = "arm64" ]; then
+    if [[ "$TARGET_ARCH" = "both" || "$TARGET_ARCH" = "arm64" ]]; then
         echo "  ARM64 Package: $abs_output_dir/nv-config-manager-airgapped-${VERSION}-arm64.tar.gz"
     fi
     echo ""
@@ -1547,6 +1594,7 @@ print_summary() {
     echo "  5. Install CLI: ./installer/install.sh"
     echo "  6. Configure/deploy with ./installer/nvcm-installer"
     echo ""
+    return 0
 }
 
 # Main execution
@@ -1583,7 +1631,7 @@ main() {
     
     # Build architectures
     local archs=()
-    if [ "$TARGET_ARCH" = "both" ]; then
+    if [[ "$TARGET_ARCH" = "both" ]]; then
         archs=("amd64" "arm64")
     else
         archs=("$TARGET_ARCH")
@@ -1602,6 +1650,7 @@ main() {
     print_summary
     
     log_success "All done!"
+    return 0
 }
 
 # Run main function

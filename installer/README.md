@@ -45,6 +45,10 @@ uv run nvcm-installer validate nv-config-manager-install.yaml
 
 # Generate Helm values without deploying
 uv run nvcm-installer generate-values nv-config-manager-install.yaml -o ./generated
+
+# Update content in GitOps-managed PVCs after the NVCM application is healthy
+uv run nvcm-installer pvc-updater jobs --namespace nv-config-manager \
+  --release-name nv-config-manager --source ./custom-jobs
 ```
 
 ---
@@ -144,12 +148,84 @@ nvcm-installer deploy nv-config-manager-install.yaml \
 | `--install-cnpg-operator` | `false` | Install CloudNativePG operator |
 | `--helm-timeout` | `15m` | Helm install/upgrade timeout |
 | `--recreate-secrets` | `false` | Force-recreate Kubernetes secrets |
+| `--vault-token-file` | unset | File containing a provisioning token when ESO/Vault is selected |
+| `--populate-vault` / `--skip-vault-population` | populate | Populate missing ESO values, or use pre-provisioned Vault paths |
 | `--dry-run` | `false` | Generate values but skip Helm install |
 
 Prerequisite operator versions are read from `deploy/operator-versions.env`.
 When `cluster.airgapped` is true, or the chart directory sits inside an
 airgapped bundle with sibling `charts/` and `manifests/` directories, the
 installer uses the local bundled artifacts.
+
+When ESO is selected during a normal `deploy`, the installer creates configured
+KV v2 mounts when missing and fills absent keys in application, Git-token, and
+per-site Vault paths. Existing values are preserved, so rerunning a deployment
+does not rotate credentials. The provisioning token is resolved in this order:
+
+1. `--vault-token-file`
+2. `VAULT_TOKEN` or `OPENBAO_TOKEN`
+3. The Kubernetes Secret named by token authentication, using its `token` key
+
+The token must be allowed to inspect/create the configured mounts and read/write
+their KV v2 paths. External credentials such as OIDC, Slack, Jira, and Git
+tokens must be supplied in the installer configuration or already exist at the
+configured Vault path; the installer will not invent integration credentials.
+Use `--skip-vault-population` when those paths are managed separately; this also
+avoids requiring a provisioning token for the deployment command.
+
+### `nvcm-installer pvc-updater`
+
+Use this command from automation after the NVCM GitOps application is healthy.
+GitOps owns the PVC definitions; the updater only replaces their mutable
+content. Jobs and template updates stage and transactionally replace the stored
+files, then rollout-restart their consumers so the new content is loaded. ZTP
+image updates instead publish image files before an atomic manifest replacement
+and leave Network ZTP running. The updater never creates, resizes, or changes a
+PVC. A missing PVC is an error.
+
+```bash
+# Custom jobs: restart Nautobot, Celery, and Celery Beat when content changed.
+nvcm-installer pvc-updater jobs --namespace nv-config-manager \
+  --release-name nv-config-manager --source ./custom-jobs
+
+# Optionally run a custom job after its content is available and the workers are ready.
+# The job runs even if the staged jobs content is unchanged.
+nvcm-installer pvc-updater jobs --namespace nv-config-manager \
+  --release-name nv-config-manager --source ./mock_topology \
+  --run-job custom.mock_topology.jobs.mock_topology_design.MockTopologyDesign \
+  --job-input '{"blueprint":"superpod","deployment_name":"site-1"}'
+
+# Re-run a bundled or previously installed job without changing the jobs PVC.
+nvcm-installer pvc-updater jobs --namespace nv-config-manager \
+  --release-name nv-config-manager \
+  --run-job nv_config_manager_jobs.bootstrap.load_bootstrap_data.LoadBootstrapData \
+  --job-input '{}'
+
+# Template plugins: restart the Render Service deployments when content changed.
+nvcm-installer pvc-updater templates --namespace nv-config-manager \
+  --release-name nv-config-manager --source ./template-plugins
+
+# ZTP OS images: publish images and manifest.json without restarting Network ZTP.
+nvcm-installer pvc-updater ztp --namespace nv-config-manager \
+  --image cumulus-linux 5.13.0 ./cumulus-linux-5.13.0.bin
+```
+
+`templates` accepts one or more `--source` directories or tar archives, and
+`ztp` accepts one or more `--image PLATFORM VERSION PATH` values. `jobs`
+requires either one or more `--source` values, `--run-job MODULE.CLASS`, or
+both. `--run-job` and `--job-input JSON_OBJECT` invoke one Nautobot job after
+any requested jobs PVC update, or by themselves to re-run a bundled or
+previously installed job. Use `--job-timeout` to override the 1,800-second
+completion timeout. The PVC is mounted as the `custom` package to keep bundled
+bootstrap jobs available from the image, so job classes supplied by a source
+directory are named `custom.<source-package>...`.
+Every `pvc-updater` subcommand accepts `--kubeconfig PATH`. When the flag is
+omitted, the updater reads `KUBECONFIG` at runtime, including path-separated
+multi-file values, before falling back to the standard kubeconfig location.
+The default PVC names are `nautobot-custom-jobs`,
+`render-service-template-plugins`, and `ztp-os-images`; each can be overridden
+with `--pvc-name`. The updater calculates a content checksum, so unchanged
+sources leave the PVC and workloads untouched.
 
 ---
 
@@ -286,7 +362,7 @@ When **ESO** is selected, additional Vault fields appear:
 
 | Field | Description |
 |-------|-------------|
-| Vault Server | Vault/OpenBao URL |
+| Vault Server | Vault URL |
 | Vault Namespace | Enterprise Vault namespace |
 | Secrets Path | Vault secrets engine path |
 | Config Secrets Path | Separate path for config secrets (optional) |
@@ -296,9 +372,20 @@ When **ESO** is selected, additional Vault fields appear:
 | Token Secret Name | K8s secret name for token auth |
 
 **Vault Paths** — Each secret group maps to a Vault path. Toggle groups on/off and
-customize paths to match your Vault layout. Click "Keys" to override individual
-key name mappings. Supported groups: Nautobot, Redis, PostgreSQL, Network/Device Creds,
-Nautobot App, OIDC, Redfish, BMC, Slack, Jira, CNPG Backup.
+customize paths to match your Vault layout. Application-secret rows show the logical
+field, editable Vault key, and initial value in columns. Supported groups: Nautobot,
+Redis, PostgreSQL, Network/Device Creds, Nautobot App, OIDC, Redfish, BMC, Slack, Jira,
+CNPG Backup.
+
+With `kubernetes`, values are edited in grouped Secret Values cards. With `eso`, values
+are edited beside their Vault key mappings. Enter a password or token to use it as
+the initial value. Empty generated credentials are created during installation, while
+external integration credentials must be supplied explicitly. Vault population only
+fills missing keys and never replaces an existing value.
+
+Per-site Vault paths are optional. When omitted, the installer uses
+`<environment>/site/<site>/config_secrets` under the configured config-secrets
+mount.
 
 **Git Tokens** — Add/remove Git repository tokens for Nautobot Git sync:
 
@@ -343,15 +430,15 @@ Path fields open an interactive directory picker (see below).
 
 | Field | Description |
 |-------|-------------|
-| Include Bootstrap Jobs | Ship standard bootstrap jobs |
 | Custom Jobs | Paths to job directories or tarballs (use `...` to browse) |
 | Jobs PVC Storage Class | Kubernetes storage class for the Nautobot jobs PVC (optional, uses cluster default) |
 | Jobs PVC Access Mode | `ReadWriteOnce` or `ReadWriteMany` for the Nautobot jobs PVC |
 | Jobs Node Selector | Node label selector for loader and Nautobot pods that mount the jobs PVC |
-| Post-Deploy Jobs | Nautobot jobs to run after deployment (class name + JSON input) |
+| Post-Deploy Jobs | Nautobot jobs to run after deployment (class name + JSON input; local Nautobot only) |
 
-> **Note:** Custom jobs and bootstrap jobs require local Nautobot
-> (`services.nautobot: true`). If Nautobot is set to remote, a validation warning is shown.
+> **Note:** Bundled bootstrap jobs are always available from the Nautobot image.
+> Custom and post-deploy jobs require local Nautobot (`services.nautobot: true`). If
+> Nautobot is set to remote, configure and run those jobs directly on that instance.
 
 #### 7. Template Plugins
 
@@ -564,6 +651,8 @@ Full deployment orchestration with live monitoring.
 
 | Option | Description |
 |--------|-------------|
+| Vault Token File | Provisioning token file used to create KV v2 mounts and fill ESO paths |
+| Populate Vault Secrets | Disable when ESO paths are provisioned outside the installer |
 | Build Images | Build Docker images locally (content-addressed tags) |
 | Load Kind | Load built images into a Kind cluster |
 | Kind Cluster | Kind cluster name (default: `nv-config-manager`) |
@@ -744,22 +833,26 @@ execute in order. Steps are automatically skipped when not applicable.
 | 4 | **Install CRDs** | Gateway API CRDs, Envoy Gateway, cert-manager, CNPG operator (skip if not requested) |
 | 5 | **Create Namespace** | Ensure the Kubernetes namespace exists |
 | 6 | **Create Secrets** | Apply K8s secrets for database, Redis, Nautobot, NATS, devices, Git, registry, OIDC (skip if using ESO) |
-| 7 | **Setup Jobs PVC** | Create PVC and load custom Nautobot jobs (skip if none configured) |
-| 8 | **Setup Templates PVC** | Create PVC and load template plugins (skip if none configured) |
-| 9 | **Setup ZTP Images PVC** | Create PVC, upload OS images with proper directory structure and `manifest.json` (skip if storage type is S3 or no images configured) |
-| 10 | **Generate Values** | Produce the combined Helm override YAML from config, secrets, and the selected size profile |
-| 11 | **Helm Install** | `helm upgrade --install` with generated values |
-| 12 | **Patch Gateway** | HostPort patch on Envoy Gateway for NodePort access (skip if LB is configured) |
-| 13 | **Restart Nautobot** | Rolling restart of Nautobot workloads on re-run when jobs changed |
-| 14 | **Restart Render** | Rolling restart of render service on re-run when templates changed |
-| 15 | **Run Jobs** | Execute post-deploy Nautobot jobs via API (skip if none configured) |
-| 16 | **Refresh Caches** | Restart config-store-cache and dhcp-refresh pods |
-| 17 | **Run Tests** | Run integration tests from a ZTP pod with streamed output (skip if not requested or SSO enabled) |
-| 18 | **Endpoints** | Display service URLs for all enabled services |
+| 7 | **Populate Vault** | Ensure configured KV v2 mounts exist and fill missing ESO secret values (skip unless ESO is selected) |
+| 8 | **Setup Jobs PVC** | Create PVC and load custom Nautobot jobs (skip if none configured) |
+| 9 | **Setup Templates PVC** | Create PVC and load template plugins (skip if none configured) |
+| 10 | **Setup ZTP Images PVC** | Create PVC, upload OS images with proper directory structure and `manifest.json` (skip if storage type is S3 or no images configured; GitOps runs can use `pvc-updater ztp` for initial image publication without restarting Network ZTP) |
+| 11 | **Generate Values** | Produce the combined Helm override YAML from config, secrets, and the selected size profile |
+| 12 | **Helm Install** | `helm upgrade --install` with generated values |
+| 13 | **Patch Gateway** | HostPort patch on Envoy Gateway for NodePort access (skip if LB is configured) |
+| 14 | **Restart Nautobot** | Rolling restart of Nautobot workloads on re-run when jobs changed |
+| 15 | **Restart Render** | Rolling restart of render service on re-run when templates changed |
+| 16 | **Run Jobs** | Execute post-deploy Nautobot jobs via API (skip if none configured) |
+| 17 | **Refresh Caches** | Restart config-store-cache and dhcp-refresh pods |
+| 18 | **Run Tests** | Run integration tests from a ZTP pod with streamed output (skip if not requested or SSO enabled) |
+| 19 | **Endpoints** | Display service URLs for all enabled services |
 
 **Re-run intelligence:** The deployer detects existing deployments and content
-checksums. On re-runs, it only restarts services when associated PVC content (jobs or
-templates) has actually changed, rather than blindly restarting everything.
+checksums. On re-runs, it only restarts services when associated jobs or template
+PVC content has actually changed, rather than blindly restarting everything.
+For GitOps-managed file-backed ZTP images, `pvc-updater ztp` publishes initial
+image content without restarting Network ZTP. Use the ZTP upload API for Day 2
+image changes.
 
 **INI checksum annotations:** The `nv-config-manager.ini` config secret includes a content
 checksum in pod annotations, triggering automatic rolling restarts when INI

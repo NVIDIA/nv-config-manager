@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # ---------------------------------------------------------------------------
 # Enums
@@ -74,6 +74,7 @@ class SPIFFEAuthMode(StrEnum):
 
 class GatewayType(StrEnum):
     ENVOY_GATEWAY = "envoyGateway"
+    KGATEWAY = "kgateway"
 
 
 class LBProvider(StrEnum):
@@ -86,6 +87,9 @@ class LBProvider(StrEnum):
 class ZTPStorageType(StrEnum):
     S3 = "s3"
     FILE = "file"
+
+
+SUPPORTED_ZTP_IMAGE_PLATFORMS = frozenset({"cumulus-linux", "arista-eos", "nv-os", "mlnx-os"})
 
 
 class ImageSource(StrEnum):
@@ -105,6 +109,7 @@ class ClusterConfig(BaseModel):
     environment: str = "local"
     namespace: str = "nv-config-manager"
     release_name: str = "nv-config-manager"
+    service_account_eks_role: str = ""
     airgapped: bool = False
     mock_devices: bool = False
     size: DeploySize = DeploySize.SMALL
@@ -149,6 +154,8 @@ class VaultPathsConfig(BaseModel):
             token="token",
             readOnlyToken="read_only_token",
             natsPassword="nats_password",
+            natsSysPassword="nats_sys_password",
+            natsNautobotPassword="nats_nautobot_password",
         )
     )
     redis: VaultPathConfig = Field(default_factory=lambda: _path(password="password"))
@@ -179,6 +186,17 @@ class VaultPathsConfig(BaseModel):
     oidc: VaultPathConfig = Field(
         default_factory=lambda: _path(clientSecret="client_secret", cookieSecret="cookie_secret")
     )
+    redfish: VaultPathConfig = Field(
+        default_factory=lambda: _path(
+            lenovoDefaultUser="lenovo_default_user",
+            lenovoDefaultPassword="lenovo_default_password",
+            lenovoConfigManagerPassword="lenovo_config_manager_password",
+            bluefieldDefaultUser="bluefield_default_user",
+            bluefieldDefaultPassword="bluefield_default_password",
+            bluefieldConfigManagerPassword="bluefield_config_manager_password",
+        )
+    )
+    bmc: VaultPathConfig = Field(default_factory=lambda: _path(credsJson="bmc-creds.json"))
     slack: VaultPathConfig = Field(default_factory=lambda: _path(enabled=False, token="token"))
     jira: VaultPathConfig = Field(
         default_factory=lambda: _path(enabled=False, baseUrl="base_url", apiToken="api_token")
@@ -186,6 +204,14 @@ class VaultPathsConfig(BaseModel):
     cnpg_backup: VaultPathConfig = Field(
         default_factory=lambda: _path(
             enabled=False, accessKeyId="ACCESS_KEY_ID", accessSecretKey="ACCESS_SECRET_KEY"
+        )
+    )
+    ztp_s3: VaultPathConfig = Field(
+        default_factory=lambda: _path(
+            enabled=False,
+            endpoint="",
+            accessKeyId="access_key_id",
+            secretAccessKey="secret_access_key",
         )
     )
 
@@ -208,7 +234,7 @@ class VaultConfig(BaseModel):
 
 
 class K8sSecretGroup(BaseModel):
-    """Manual value overrides for one secret group in kubernetes-secrets mode.
+    """Manual value overrides for a Kubernetes Secret or OpenBao path group.
 
     Each key in ``values`` matches the corresponding vault property name so the
     same key names are meaningful in both ESO and kubernetes modes.
@@ -220,7 +246,7 @@ class K8sSecretGroup(BaseModel):
 
 
 class KubernetesSecretsConfig(BaseModel):
-    """Optional manual overrides for kubernetes-mode secrets.
+    """Optional values shared by Kubernetes-secret and OpenBao population modes.
 
     Required groups default to enabled; optional integrations default to disabled.
     Any value left empty (or the group left at defaults) will be auto-generated
@@ -235,6 +261,7 @@ class KubernetesSecretsConfig(BaseModel):
     slack: K8sSecretGroup = Field(default_factory=lambda: K8sSecretGroup(enabled=False))
     jira: K8sSecretGroup = Field(default_factory=lambda: K8sSecretGroup(enabled=False))
     cnpg_backup: K8sSecretGroup = Field(default_factory=lambda: K8sSecretGroup(enabled=False))
+    ztp_s3: K8sSecretGroup = Field(default_factory=lambda: K8sSecretGroup(enabled=False))
 
 
 class SecretsConfig(BaseModel):
@@ -375,8 +402,12 @@ class ContentConfig(BaseModel):
     jobs_config: JobsConfig = Field(default_factory=JobsConfig)
     template_plugins: list[TemplatePath] = Field(default_factory=list)
     template_plugins_config: TemplatePluginsConfig = Field(default_factory=TemplatePluginsConfig)
-    include_bootstrap_jobs: bool = True
     run_after_deploy: list[PostDeployJob] = Field(default_factory=list)
+
+    @property
+    def requires_local_nautobot(self) -> bool:
+        """Return whether the configured content needs the local Nautobot deployment."""
+        return bool(self.jobs or self.run_after_deploy)
 
 
 class ServicesConfig(BaseModel):
@@ -492,6 +523,42 @@ class ZTPOSImage(BaseModel):
     version: str = ""
     path: str = ""
 
+    @field_validator("platform")
+    @classmethod
+    def validate_platform(cls, value: str) -> str:
+        """Reject ZTP platforms the installer does not yet support."""
+        if value and value not in SUPPORTED_ZTP_IMAGE_PLATFORMS:
+            raise ValueError(f"Unsupported ZTP platform {value!r}.")
+        return value
+
+
+class ZTPS3CephObjectStoreUserConfig(BaseModel):
+    """Rook Ceph object store user settings for ZTP S3 storage."""
+
+    name: str = "ztp-user"
+    store: str = "ceph-objectstore"
+    cluster_namespace: str = "rook-ceph"
+
+
+class ZTPS3CephObjectBucketClaimConfig(BaseModel):
+    """Rook ObjectBucketClaim settings for ZTP S3 storage."""
+
+    storage_class_name: str = "ceph-object-store"
+    bucket_max_size: str = "50G"
+
+
+class ZTPS3CephConfig(BaseModel):
+    """Rook Ceph-backed ZTP S3 storage configuration."""
+
+    enabled: bool = False
+    object_store_user: ZTPS3CephObjectStoreUserConfig = Field(
+        default_factory=ZTPS3CephObjectStoreUserConfig
+    )
+    object_bucket_claim: ZTPS3CephObjectBucketClaimConfig = Field(
+        default_factory=ZTPS3CephObjectBucketClaimConfig
+    )
+    user_secret_name: str = ""
+
 
 class ZTPStorageConfig(BaseModel):
     """ZTP service storage configuration for OS images and firmware."""
@@ -503,6 +570,9 @@ class ZTPStorageConfig(BaseModel):
     access_mode: str = "ReadWriteOnce"
     node_selector: dict[str, str] = Field(default_factory=dict)
     s3_bucket: str = ""
+    s3_endpoint: str = ""
+    s3_region: str = ""
+    s3_ceph: ZTPS3CephConfig = Field(default_factory=ZTPS3CephConfig)
     os_images: list[ZTPOSImage] = Field(default_factory=list)
 
 
@@ -550,12 +620,39 @@ class InfrastructureConfig(BaseModel):
     """Infrastructure and gateway settings."""
 
     gateway: GatewayType = GatewayType.ENVOY_GATEWAY
+    create_gateway: bool = True
+    gateway_name: str = "nv-config-manager-gateway"
+    gateway_namespace: str = ""
+    gateway_listener: str = ""
+    gateway_class_name: str = ""
     create_gateway_class: bool = True
     tls: bool = True
     cnpg_s3_backup: CNPGBackupConfig = Field(default_factory=CNPGBackupConfig)
     monitoring: MonitoringConfig = Field(default_factory=MonitoringConfig)
     load_balancer: LoadBalancerConfig = Field(default_factory=LoadBalancerConfig)
     ztp_storage: ZTPStorageConfig = Field(default_factory=ZTPStorageConfig)
+
+    @model_validator(mode="after")
+    def validate_kgateway_nlb(self) -> InfrastructureConfig:
+        """Reject Gateway NLB settings that kgateway cannot render."""
+        nlb = self.load_balancer.nlb_gateway
+        nlb_gateway_configured = any(
+            (
+                nlb.type != "external",
+                nlb.target_type != "ip",
+                nlb.name,
+                nlb.sg,
+                nlb.subnets,
+                nlb.ips,
+                nlb.dns_name,
+            )
+        )
+        if self.gateway == GatewayType.KGATEWAY and nlb_gateway_configured:
+            raise ValueError(
+                "Gateway AWS NLB configuration is supported only with Envoy Gateway; "
+                "kgateway service parameters do not yet support it"
+            )
+        return self
 
 
 class ImageOverride(BaseModel):
@@ -616,7 +713,7 @@ IMAGE_OVERRIDE_KEYS: list[tuple[str, str]] = [
     ("temporalUi", "docker.io/temporalio/ui"),
     ("nautobotNginx", "docker.io/nginxinc/nginx-unprivileged"),
     ("spiffeHelper", "ghcr.io/spiffe/spiffe-helper"),
-    ("oauth2Proxy", "quay.io/oauth2-proxy/oauth2-proxy"),
+    ("oidcProxy", "quay.io/oauth2-proxy/oauth2-proxy"),
     ("templatePluginInstaller", "docker.io/library/python"),
     ("envoyGateway", "docker.io/envoyproxy/gateway"),
     ("envoyRatelimit", "docker.io/envoyproxy/ratelimit"),
@@ -744,13 +841,12 @@ class NVConfigManagerInstallConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_external_nautobot(self) -> NVConfigManagerInstallConfig:
-        """Custom jobs and bootstrap jobs require local Nautobot."""
-        if not self.services.nautobot and (
-            self.content.jobs or self.content.include_bootstrap_jobs
-        ):
+        """Reject content that cannot run against an external Nautobot instance."""
+        if not self.services.nautobot and self.content.requires_local_nautobot:
             msg = (
-                "Custom jobs and bootstrap jobs require a local Nautobot deployment "
-                "(services.nautobot must be true). Disable them or switch to local Nautobot."
+                "Custom jobs and post-deploy jobs require a local Nautobot deployment "
+                "(services.nautobot must be true). Remove content.jobs and "
+                "content.run_after_deploy or switch to local Nautobot."
             )
             raise ValueError(msg)
         return self
@@ -813,7 +909,11 @@ def _replace_with_keys(section: dict[str, Any], keys: set[str]) -> None:
 def _prune_secrets(secrets: dict[str, Any], data: dict[str, Any]) -> None:
     method = secrets.get("method")
     if method == SecretsMethod.ESO.value:
-        secrets.pop("k8s", None)
+        # The app-secrets UI stores optional initial values in ``k8s`` for
+        # both secret backends.  In ESO mode the installer writes those
+        # values to Vault/OpenBao instead of Kubernetes Secrets, so retain
+        # them in the saved installer config for subsequent runs.
+        _prune_k8s_secret_values(_as_dict(secrets.get("k8s")))
         _prune_vault(_as_dict(secrets.get("vault")))
         return
 
@@ -822,7 +922,11 @@ def _prune_secrets(secrets: dict[str, Any], data: dict[str, Any]) -> None:
         if isinstance(site, dict):
             site.pop("vault_path", None)
 
-    k8s = _as_dict(secrets.get("k8s"))
+    _prune_k8s_secret_values(_as_dict(secrets.get("k8s")))
+
+
+def _prune_k8s_secret_values(k8s: dict[str, Any]) -> None:
+    """Remove values for Kubernetes secret groups that are disabled."""
     for group in k8s.values():
         group_data = _as_dict(group)
         if group_data.get("enabled") is False:
@@ -924,8 +1028,23 @@ def _prune_ztp_storage(ztp_storage: dict[str, Any]) -> None:
     if storage_type == ZTPStorageType.S3.value:
         for key in file_keys:
             ztp_storage.pop(key, None)
+        s3_ceph = _as_dict(ztp_storage.get("s3_ceph"))
+        if not ztp_storage.get("s3_bucket"):
+            ztp_storage.pop("s3_bucket", None)
+        if s3_ceph.get("enabled"):
+            ztp_storage.pop("s3_endpoint", None)
+            ztp_storage.pop("s3_region", None)
+        else:
+            ztp_storage.pop("s3_ceph", None)
+            if not ztp_storage.get("s3_endpoint"):
+                ztp_storage.pop("s3_endpoint", None)
+            if not ztp_storage.get("s3_region"):
+                ztp_storage.pop("s3_region", None)
     else:
         ztp_storage.pop("s3_bucket", None)
+        ztp_storage.pop("s3_endpoint", None)
+        ztp_storage.pop("s3_region", None)
+        ztp_storage.pop("s3_ceph", None)
 
 
 def _prune_images(images: dict[str, Any]) -> None:

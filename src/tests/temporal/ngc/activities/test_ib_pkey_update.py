@@ -17,6 +17,7 @@
 Covers:
 - fetch_pkey_members
 - remove_guids_from_pkey
+- set_pkey_members
 - fetch_pkey_assignments
 - sync_pkey_assignments
 """
@@ -26,9 +27,10 @@ from configparser import ConfigParser
 from unittest.mock import patch
 
 import pytest
-from aioresponses import aioresponses
+from aioresponses import CallbackResult, aioresponses
 from temporalio.exceptions import ApplicationError
 
+from nv_config_manager.temporal.client.ufm import UFMClientError
 from nv_config_manager.temporal.common.secrets import clear_secrets_cache
 from nv_config_manager.temporal.ngc.activities.ib_nautobot import (
     FetchPKeyAssignmentsInput,
@@ -40,8 +42,10 @@ from nv_config_manager.temporal.ngc.activities.ib_nautobot import (
 from nv_config_manager.temporal.ngc.activities.ib_pkey import (
     FetchPKeyMembersInput,
     RemoveGuidsInput,
+    SetGuidsInput,
     fetch_pkey_members,
     remove_guids_from_pkey,
+    set_pkey_members,
 )
 
 UFM_BASE = "https://ufm.example.com/ufmRest"
@@ -161,29 +165,107 @@ class TestFetchPKeyMembers:
         assert result.guids == []
 
     @pytest.mark.asyncio
-    async def test_pkey_not_found_raises(self, mock_ufm_config):
+    async def test_unexpected_response_raises(self, mock_ufm_config):
+        """A non-dict UFM body (not a 404) is a hard error."""
         with aioresponses() as m:
             m.get(_pkey_members_url("0x0005"), payload=None)
 
-            with pytest.raises(ApplicationError, match="not found"):
+            with pytest.raises(ApplicationError, match="unexpected response"):
                 await fetch_pkey_members(
                     FetchPKeyMembersInput(host="ufm.example.com", pkey="0x0005")
                 )
 
     @pytest.mark.asyncio
-    async def test_handles_plain_string_guids(self, mock_ufm_config):
-        """UFM may return guids as plain strings rather than dicts."""
+    async def test_pkey_404_reports_not_exists(self, mock_ufm_config):
+        """A 404 is tolerated: the partition is reported as missing and empty."""
+        with aioresponses() as m:
+            m.get(_pkey_members_url("0x0005"), status=404)
+
+            result = await fetch_pkey_members(
+                FetchPKeyMembersInput(host="ufm.example.com", pkey="0x0005")
+            )
+
+        assert result.exists is False
+        assert result.guids == []
+        assert result.memberships == []
+        assert result.ip_over_ib is None
+
+    @pytest.mark.asyncio
+    async def test_non_404_error_propagates(self, mock_ufm_config):
+        """Only 404 is tolerated; other UFM errors must surface, not read as empty."""
+        with aioresponses() as m:
+            m.get(_pkey_members_url("0x0005"), status=500, payload={"error": "boom"})
+
+            with pytest.raises(UFMClientError):
+                await fetch_pkey_members(
+                    FetchPKeyMembersInput(host="ufm.example.com", pkey="0x0005")
+                )
+
+    @pytest.mark.asyncio
+    async def test_returns_memberships_and_ip_over_ib(self, mock_ufm_config):
+        """Membership per GUID and the partition ip_over_ib flag are surfaced."""
         with aioresponses() as m:
             m.get(
                 _pkey_members_url("0x0005"),
-                payload={"guids": [GUID_1, GUID_2]},
+                payload={
+                    "guids": [
+                        {"guid": GUID_1, "membership": "full"},
+                        {"guid": GUID_2, "membership": "limited"},
+                    ],
+                    "ip_over_ib": False,
+                },
             )
 
             result = await fetch_pkey_members(
                 FetchPKeyMembersInput(host="ufm.example.com", pkey="0x0005")
             )
 
-        assert len(result.guids) == 2
+        assert result.exists is True
+        assert result.guids == [GUID_1, GUID_2]
+        assert result.memberships == ["full", "limited"]
+        assert result.ip_over_ib is False
+
+    @pytest.mark.asyncio
+    async def test_plain_string_guids_rejected(self, mock_ufm_config):
+        """A guids_data read must carry a membership per member; bare strings are malformed."""
+        with aioresponses() as m:
+            m.get(
+                _pkey_members_url("0x0005"),
+                payload={"guids": [GUID_1, GUID_2]},
+            )
+
+            with pytest.raises(ApplicationError, match="no guid or membership"):
+                await fetch_pkey_members(
+                    FetchPKeyMembersInput(host="ufm.example.com", pkey="0x0005")
+                )
+
+    @pytest.mark.asyncio
+    async def test_member_without_membership_rejected(self, mock_ufm_config):
+        """A member entry lacking a membership fails loudly rather than defaulting a type."""
+        with aioresponses() as m:
+            m.get(
+                _pkey_members_url("0x0005"),
+                payload={"guids": [{"guid": GUID_1}]},
+            )
+
+            with pytest.raises(ApplicationError, match="no guid or membership"):
+                await fetch_pkey_members(
+                    FetchPKeyMembersInput(host="ufm.example.com", pkey="0x0005")
+                )
+
+    @pytest.mark.asyncio
+    async def test_null_guids_treated_as_empty(self, mock_ufm_config):
+        """A null `guids` value is treated as an empty member list, not a crash."""
+        with aioresponses() as m:
+            m.get(_pkey_members_url("0x0005"), payload={"guids": None})
+
+            result = await fetch_pkey_members(
+                FetchPKeyMembersInput(host="ufm.example.com", pkey="0x0005")
+            )
+
+        assert result.exists is True
+        assert result.guids == []
+        assert result.memberships == []
 
 
 # ---------------------------------------------------------------------------
@@ -244,6 +326,114 @@ class TestRemoveGuidsFromPKey:
 
 
 # ---------------------------------------------------------------------------
+# set_pkey_members
+# ---------------------------------------------------------------------------
+
+
+class TestSetPKeyMembers:
+    @pytest.mark.asyncio
+    async def test_issues_single_put_with_full_desired_set(self, mock_ufm_config):
+        """Membership is replaced via one PUT carrying the entire desired set."""
+        with aioresponses() as m:
+            m.put(f"{UFM_BASE}/resources/pkeys/", payload={})
+
+            result = await set_pkey_members(
+                SetGuidsInput(
+                    host="ufm.example.com",
+                    pkey="0x0005",
+                    guids=[GUID_1, GUID_2],
+                    memberships=["full", "full"],
+                )
+            )
+
+            requests = [(method, str(url)) for (method, url) in m.requests]
+
+        assert result.pkey == "0x0005"
+        assert result.guids_set == [GUID_1, GUID_2]
+        assert result.memberships_set == ["full", "full"]
+        # Exactly one mutation, and it is a PUT (atomic overwrite).
+        assert requests == [("PUT", f"{UFM_BASE}/resources/pkeys/")]
+
+    @pytest.mark.asyncio
+    async def test_put_body_carries_per_guid_memberships(self, mock_ufm_config):
+        """The PUT payload carries the pkey, guids, and index-aligned memberships."""
+        captured: dict = {}
+
+        def _capture(url, **kwargs):
+            captured.update(kwargs.get("json") or {})
+            return CallbackResult(status=200, payload={})
+
+        with aioresponses() as m:
+            m.put(f"{UFM_BASE}/resources/pkeys/", callback=_capture)
+
+            await set_pkey_members(
+                SetGuidsInput(
+                    host="ufm.example.com",
+                    pkey="0x0005",
+                    guids=[GUID_1, GUID_2],
+                    memberships=["full", "limited"],
+                )
+            )
+
+        assert captured["pkey"] == "0x0005"
+        assert captured["guids"] == [GUID_1, GUID_2]
+        # UFM's Set endpoint (PUT) honors the index-aligned plural `memberships`.
+        assert captured["memberships"] == ["full", "limited"]
+        assert "membership" not in captured
+
+    @pytest.mark.asyncio
+    async def test_misaligned_memberships_rejected_without_http(self, mock_ufm_config):
+        """memberships must be index-aligned with guids."""
+        with aioresponses() as m:
+            with pytest.raises(ApplicationError):
+                await set_pkey_members(
+                    SetGuidsInput(
+                        host="ufm.example.com",
+                        pkey="0x0005",
+                        guids=[GUID_1, GUID_2],
+                        memberships=["full"],
+                    )
+                )
+
+            assert len(m.requests) == 0
+
+    @pytest.mark.asyncio
+    async def test_empty_guid_set_rejected_without_http(self, mock_ufm_config):
+        """Emptying a partition is the delete workflow's job; reject here."""
+        with aioresponses() as m:
+            with pytest.raises(ApplicationError):
+                await set_pkey_members(
+                    SetGuidsInput(
+                        host="ufm.example.com",
+                        pkey="0x0005",
+                        guids=[],
+                        memberships=[],
+                    )
+                )
+
+            assert len(m.requests) == 0
+
+    @pytest.mark.asyncio
+    async def test_ufm_error_raises(self, mock_ufm_config):
+        with aioresponses() as m:
+            m.put(
+                f"{UFM_BASE}/resources/pkeys/",
+                status=400,
+                payload={"error": "bad request"},
+            )
+
+            with pytest.raises(Exception):
+                await set_pkey_members(
+                    SetGuidsInput(
+                        host="ufm.example.com",
+                        pkey="0x0005",
+                        guids=[GUID_1],
+                        memberships=["full"],
+                    )
+                )
+
+
+# ---------------------------------------------------------------------------
 # fetch_pkey_assignments
 # ---------------------------------------------------------------------------
 
@@ -289,6 +479,46 @@ class TestFetchPKeyAssignments:
             )
 
         assert result.assignments == []
+
+    @pytest.mark.asyncio
+    async def test_follows_pagination(self, mock_nb_config):
+        """Assignments spanning multiple Nautobot pages are all collected."""
+        with aioresponses() as m:
+            m.get(
+                _NB_ASSIGNMENTS,
+                payload={
+                    "next": "http://nautobot/api/.../overlay-assignments/?offset=1",
+                    "results": [
+                        {
+                            "id": ASSIGNMENT_UUID_1,
+                            "assigned_object_id": IFACE_UUID_1,
+                            "guid": GUID_1,
+                        }
+                    ],
+                },
+            )
+            m.get(
+                _NB_ASSIGNMENTS,
+                payload={
+                    "next": None,
+                    "results": [
+                        {
+                            "id": ASSIGNMENT_UUID_2,
+                            "assigned_object_id": IFACE_UUID_2,
+                            "guid": GUID_2,
+                        }
+                    ],
+                },
+            )
+
+            result = await fetch_pkey_assignments(
+                FetchPKeyAssignmentsInput(overlay_id=OVERLAY_UUID)
+            )
+
+        assert [a.assignment_id for a in result.assignments] == [
+            ASSIGNMENT_UUID_1,
+            ASSIGNMENT_UUID_2,
+        ]
 
 
 # ---------------------------------------------------------------------------
@@ -403,6 +633,49 @@ class TestSyncPKeyAssignments:
         assert ASSIGNMENT_UUID_1 in result.unchanged
         assert len(result.added) == 0
         assert len(result.removed) == 0
+
+    @pytest.mark.asyncio
+    async def test_membership_change_patches_existing(self, mock_nb_config):
+        """An existing member whose desired membership differs is PATCHed."""
+        with aioresponses() as m:
+            self._stub_status(m)
+            m.get(
+                _NB_ASSIGNMENTS,
+                payload={
+                    "results": [
+                        {
+                            "id": ASSIGNMENT_UUID_1,
+                            "assigned_object_id": IFACE_UUID_1,
+                            "guid": GUID_1,
+                            "membership_type": "full",
+                        }
+                    ]
+                },
+            )
+            m.patch(
+                f"{PLUGIN}/overlay-assignments/{ASSIGNMENT_UUID_1}/",
+                payload={"id": ASSIGNMENT_UUID_1},
+            )
+
+            result = await sync_pkey_assignments(
+                SyncPKeyAssignmentsInput(
+                    overlay_id=OVERLAY_UUID,
+                    desired=[
+                        ResolvedInterface(
+                            device="hca01",
+                            interface="mlx5_0",
+                            interface_id=IFACE_UUID_1,
+                            guid=GUID_1,
+                            membership="limited",
+                        )
+                    ],
+                )
+            )
+
+        assert ASSIGNMENT_UUID_1 in result.unchanged
+        # A membership-only change issues a PATCH but no add/remove.
+        patch_calls = [(method, str(url)) for (method, url) in m.requests if method == "PATCH"]
+        assert patch_calls == [("PATCH", f"{PLUGIN}/overlay-assignments/{ASSIGNMENT_UUID_1}/")]
 
     @pytest.mark.asyncio
     async def test_mixed_add_remove_unchanged(self, mock_nb_config):

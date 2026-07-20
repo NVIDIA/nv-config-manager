@@ -50,17 +50,21 @@ from kubernetes.stream import stream as k8s_stream
 LOADER_POD_IMAGE = "docker.io/library/busybox:1.36"
 
 
-def kubectl_current_context() -> str | None:
+def kubectl_current_context(kubeconfig: str | Path | None = None) -> str | None:
     """Return ``kubectl config current-context`` output, or None on failure.
 
     This is the canonical answer to "which cluster is the user pointed at?".
     The Python kubernetes client's own merge logic disagrees with kubectl
     when KUBECONFIG lists multiple files, so we always defer to kubectl.
     """
+    env = None
+    if kubeconfig is not None:
+        env = {**os.environ, "KUBECONFIG": str(kubeconfig)}
     try:
         result = subprocess.run(
             ["kubectl", "config", "current-context"],
             capture_output=True,
+            env=env,
             text=True,
             timeout=5,
             check=False,
@@ -128,7 +132,11 @@ def pin_kubeconfig_to_current_context() -> tuple[Path, str] | None:
 class K8sClient:
     """High-level wrapper around the ``kubernetes`` Python client."""
 
-    def __init__(self, context: str | None = None) -> None:
+    def __init__(
+        self,
+        context: str | None = None,
+        kubeconfig: str | Path | None = None,
+    ) -> None:
         # The Python kubernetes client and kubectl/helm disagree on which
         # context is "current" when KUBECONFIG merges multiple files that each
         # set their own current-context: kubectl picks the FIRST file's value,
@@ -137,14 +145,24 @@ class K8sClient:
         # helm later operates on a different one. To keep every code path
         # honest we always pin Python to the exact context kubectl reports,
         # falling back only if kubectl is unavailable (e.g. in-cluster auth).
+        kubeconfig_value = str(kubeconfig) if kubeconfig is not None else None
+        if kubeconfig_value is None:
+            kubeconfig_value = os.environ.get("KUBECONFIG") or None
+        self.kubeconfig: str | None = kubeconfig_value
         if context is None:
-            context = kubectl_current_context()
+            context = kubectl_current_context(kubeconfig_value)
         if context:
-            config.load_kube_config(context=context)
+            if kubeconfig_value:
+                config.load_kube_config(config_file=kubeconfig_value, context=context)
+            else:
+                config.load_kube_config(context=context)
+        elif kubeconfig_value:
+            config.load_kube_config(config_file=kubeconfig_value)
         else:
             config.load_kube_config()
         self.v1 = client.CoreV1Api()
         self.apps_v1 = client.AppsV1Api()
+        self.coordination_v1 = client.CoordinationV1Api()
         # Use the context we explicitly bound to as the source of truth.
         # ``config.list_kube_config_contexts()`` is unreliable here: the
         # kubernetes module captures the KUBECONFIG default path at import
@@ -155,6 +173,12 @@ class K8sClient:
             self.api_server: str | None = self.v1.api_client.configuration.host
         except Exception:
             self.api_server = None
+
+    def _kubectl_env(self) -> dict[str, str] | None:
+        """Return a subprocess environment pinned to this client's kubeconfig."""
+        if self.kubeconfig is None:
+            return None
+        return {**os.environ, "KUBECONFIG": self.kubeconfig}
 
     # -- Cluster connectivity -------------------------------------------------
 
@@ -442,9 +466,129 @@ class K8sClient:
         except ApiException:
             return ""
 
+    def pvc_exists(self, name: str, namespace: str) -> bool:
+        """Return whether a PersistentVolumeClaim exists.
+
+        Unlike :meth:`get_pvc_annotation`, this deliberately preserves API
+        errors other than ``404`` so callers do not mistake an authorization or
+        connectivity issue for an absent PVC.
+        """
+        try:
+            self.v1.read_namespaced_persistent_volume_claim(name, namespace)
+            return True
+        except ApiException as exc:
+            if exc.status == 404:
+                return False
+            raise
+
     def annotate_pvc(self, name: str, namespace: str, annotation: str, value: str) -> None:
         body = {"metadata": {"annotations": {annotation: value}}}
         self.v1.patch_namespaced_persistent_volume_claim(name, namespace, body)
+
+    # -- Lease operations -----------------------------------------------------
+
+    @staticmethod
+    def _lease_is_expired(lease: client.V1Lease, now: datetime.datetime) -> bool:
+        """Return whether a Lease may safely be claimed by another holder."""
+        spec = lease.spec
+        if spec is None or not spec.lease_duration_seconds:
+            return False
+        renewal = spec.renew_time or spec.acquire_time
+        if renewal is None:
+            return False
+        if renewal.tzinfo is None:
+            renewal = renewal.replace(tzinfo=datetime.UTC)
+        return renewal + datetime.timedelta(seconds=spec.lease_duration_seconds) <= now
+
+    def acquire_lease(
+        self,
+        name: str,
+        namespace: str,
+        holder_identity: str,
+        *,
+        duration_seconds: int,
+    ) -> None:
+        """Acquire a namespace-scoped Lease or fail if another update holds it."""
+        now = datetime.datetime.now(datetime.UTC)
+        lease = client.V1Lease(
+            metadata=client.V1ObjectMeta(name=name, namespace=namespace),
+            spec=client.V1LeaseSpec(
+                holder_identity=holder_identity,
+                lease_duration_seconds=duration_seconds,
+                acquire_time=now,
+                renew_time=now,
+            ),
+        )
+        try:
+            self.coordination_v1.create_namespaced_lease(namespace, lease)
+            return
+        except ApiException as exc:
+            if exc.status != 409:
+                raise
+
+        existing = self.coordination_v1.read_namespaced_lease(name, namespace)
+        if not self._lease_is_expired(existing, now):
+            holder = getattr(existing.spec, "holder_identity", None) or "unknown"
+            raise RuntimeError(
+                f"Another NVCM PVC update is already in progress for '{name}' (holder: {holder})."
+            )
+
+        existing.spec = lease.spec
+        try:
+            self.coordination_v1.replace_namespaced_lease(name, namespace, existing)
+        except ApiException as exc:
+            if exc.status == 409:
+                raise RuntimeError(
+                    f"Another NVCM PVC update acquired lease '{name}' before this run."
+                ) from exc
+            raise
+
+    def release_lease(self, name: str, namespace: str, holder_identity: str) -> None:
+        """Release a Lease only when it is still held by this installer run."""
+        try:
+            lease = self.coordination_v1.read_namespaced_lease(name, namespace)
+        except ApiException as exc:
+            if exc.status == 404:
+                return
+            raise
+        if getattr(lease.spec, "holder_identity", None) != holder_identity:
+            return
+        resource_version = getattr(lease.metadata, "resource_version", None)
+        body = client.V1DeleteOptions(
+            preconditions=client.V1Preconditions(resource_version=resource_version)
+        )
+        try:
+            self.coordination_v1.delete_namespaced_lease(name, namespace, body=body)
+        except ApiException as exc:
+            if exc.status not in {404, 409}:
+                raise
+
+    def renew_lease(
+        self,
+        name: str,
+        namespace: str,
+        holder_identity: str,
+        *,
+        duration_seconds: int,
+    ) -> None:
+        """Renew a held Lease, failing if another updater has claimed it."""
+        try:
+            lease = self.coordination_v1.read_namespaced_lease(name, namespace)
+        except ApiException as exc:
+            if exc.status == 404:
+                raise RuntimeError(f"PVC update lease '{name}' no longer exists.") from exc
+            raise
+
+        if lease.spec is None or lease.spec.holder_identity != holder_identity:
+            raise RuntimeError(f"PVC update lease '{name}' is no longer held by this run.")
+        lease.spec.renew_time = datetime.datetime.now(datetime.UTC)
+        lease.spec.lease_duration_seconds = duration_seconds
+        try:
+            self.coordination_v1.replace_namespaced_lease(name, namespace, lease)
+        except ApiException as exc:
+            if exc.status == 409:
+                raise RuntimeError(f"PVC update lease '{name}' changed during renewal.") from exc
+            raise
 
     # -- Pod operations -------------------------------------------------------
 
@@ -484,8 +628,9 @@ class K8sClient:
         mount_path: str,
         image: str = LOADER_POD_IMAGE,
         node_selector: dict[str, str] | None = None,
+        node_name: str | None = None,
     ) -> None:
-        """Create a short-lived pod that mounts a PVC for content loading."""
+        """Create a pod that mounts a PVC and remains alive until explicitly deleted."""
         body = client.V1Pod(
             metadata=client.V1ObjectMeta(name=name, namespace=namespace),
             spec=client.V1PodSpec(
@@ -494,7 +639,7 @@ class K8sClient:
                     client.V1Container(
                         name="loader",
                         image=image,
-                        command=["sleep", "300"],
+                        command=["sh", "-c", "while true; do sleep 3600; done"],
                         volume_mounts=[client.V1VolumeMount(name="data", mount_path=mount_path)],
                     )
                 ],
@@ -507,9 +652,25 @@ class K8sClient:
                     )
                 ],
                 node_selector=node_selector or None,
+                node_name=node_name,
             ),
         )
         self.v1.create_namespaced_pod(namespace, body)
+
+    def get_pvc_mounted_node(self, name: str, namespace: str) -> str | None:
+        """Return one node currently running a pod that mounts *name*, if any."""
+        pods = self.v1.list_namespaced_pod(namespace).items
+        for pod in pods:
+            if not pod.status or pod.status.phase != "Running" or not pod.spec:
+                continue
+            node_name = pod.spec.node_name
+            if not node_name:
+                continue
+            for volume in pod.spec.volumes or []:
+                claim = volume.persistent_volume_claim
+                if claim and claim.claim_name == name:
+                    return str(node_name)
+        return None
 
     @staticmethod
     def _short_status_text(value: str, *, limit: int = 180) -> str:
@@ -635,8 +796,9 @@ class K8sClient:
         namespace: str,
         command: list[str],
         container: str | None = None,
+        timeout: int = 1_800,
     ) -> str:
-        """Execute a command in a running pod and return its stdout."""
+        """Execute a command in a running pod, raising when it fails or times out."""
         kwargs: dict[str, Any] = {
             "name": name,
             "namespace": namespace,
@@ -645,10 +807,33 @@ class K8sClient:
             "stdout": True,
             "stdin": False,
             "tty": False,
+            "_preload_content": False,
         }
         if container:
             kwargs["container"] = container
-        return k8s_stream(self.v1.connect_get_namespaced_pod_exec, **kwargs)
+        deadline = time.monotonic() + timeout
+        kwargs["_request_timeout"] = timeout
+        ws = k8s_stream(self.v1.connect_get_namespaced_pod_exec, **kwargs)
+        try:
+            while ws.is_open():
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError(
+                        f"Command in pod {namespace}/{name} did not complete within {timeout}s"
+                    )
+                ws.update(timeout=min(1, remaining))
+
+            returncode = ws.returncode
+            output = ws.read_all()
+            if returncode != 0:
+                detail = str(output).strip()
+                suffix = f": {detail}" if detail else ""
+                raise RuntimeError(
+                    f"Command in pod {namespace}/{name} failed with exit {returncode}{suffix}"
+                )
+            return str(output)
+        finally:
+            ws.close()
 
     def exec_command_streaming(
         self,
@@ -776,7 +961,13 @@ class K8sClient:
         if container:
             cmd += ["-c", container]
 
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            env=self._kubectl_env(),
+            text=True,
+            timeout=1800,
+        )
         if result.returncode != 0:
             raise RuntimeError(
                 f"kubectl cp failed (exit {result.returncode}): {result.stderr.strip()}"
@@ -877,7 +1068,11 @@ class K8sClient:
         status = dep.status
         if status is None:
             return False
-        spec_replicas = dep.spec.replicas or 1
+        spec_replicas = dep.spec.replicas if dep.spec.replicas is not None else 1
+        if spec_replicas == 0:
+            return (status.observed_generation or 0) >= (dep.metadata.generation or 0) and (
+                status.replicas or 0
+            ) == 0
         return (
             (status.observed_generation or 0) >= (dep.metadata.generation or 0)
             and (status.updated_replicas or 0) >= spec_replicas
@@ -899,7 +1094,7 @@ class K8sClient:
         status = dep.status
         if status is None:
             return False
-        spec_replicas = dep.spec.replicas or 1
+        spec_replicas = dep.spec.replicas if dep.spec.replicas is not None else 1
         ready = status.ready_replicas or 0
         updated = status.updated_replicas or 0
         available = status.available_replicas or 0
@@ -970,6 +1165,7 @@ class K8sClient:
                 "-n",
                 namespace,
             ],
+            env=self._kubectl_env(),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
@@ -1010,6 +1206,7 @@ class ServiceProxy:
                 "-n",
                 self._namespace,
             ],
+            env=self._k8s._kubectl_env(),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )

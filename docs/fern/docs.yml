@@ -91,6 +91,8 @@ navigation:
       contents:
       - page: Configuration Backup
         path: ../user-guides/configuration-backup/index.mdx
+      - page: Site Configuration Backup
+        path: ../user-guides/site-configuration-backup/index.mdx
       - page: Configuration Deploy
         path: ../user-guides/configuration-deploy/index.mdx
       - page: Multi-Device Deploy
@@ -138,6 +140,8 @@ navigation:
         path: ../user-guides/ib-pkey-member-update/index.mdx
       - page: IB PKey Member Delete
         path: ../user-guides/ib-pkey-member-delete/index.mdx
+      - page: IB Port GUID Discovery
+        path: ../user-guides/ib-port-guid-discovery/index.mdx
 
     - section: SpX Overlay Lifecycle
       collapsible: true
@@ -154,6 +158,8 @@ navigation:
 
   - section: Deployment
     contents:
+    - page: Gateway API and OIDC
+      path: ../install/gateway-api.mdx
     - page: Hosting Options
       path: ../hosting-options/index.mdx
     - page: Network Topology Requirements

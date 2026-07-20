@@ -20,6 +20,7 @@ from nv_config_manager.temporal.ngc.workflows.cable_validation import (
     DeviceCableValidationWorkflow,
     SiteCableValidationWorkflow,
 )
+from nv_config_manager.temporal.ngc.workflows.config_diff import ConfigDiffWorkflow
 from nv_config_manager.temporal.ngc.workflows.connected_host import ConnectedHostMetadataWorkflow
 from nv_config_manager.temporal.ngc.workflows.cumulus_hardware_validation import (
     ValidateHardwareWorkflow,
@@ -59,6 +60,7 @@ from nv_config_manager.temporal.ngc.workflows.nvlinkswitch_firmware_upgrade impo
 )
 from nv_config_manager.temporal.ngc.workflows.os_upgrade import SwitchOSUpgradeWorkflow
 from nv_config_manager.temporal.ngc.workflows.reprovision import ReprovisionWorkflow
+from nv_config_manager.temporal.ngc.workflows.site_backup import SiteBackupWorkflow
 from nv_config_manager.temporal.ngc.workflows.site_password_rotation import (
     SitePasswordRotationWorkflow,
 )
@@ -71,9 +73,11 @@ from nv_config_manager.temporal.ngc.workflows.spx_overlay import (
 
 REGISTERED_WORKFLOWS = [
     BackupWorkflow,
+    SiteBackupWorkflow,
     SiteCableValidationWorkflow,
     DeviceCableValidationWorkflow,
     DeployWorkflow,
+    ConfigDiffWorkflow,
     TenantDeployWorkflow,
     MultiDeployWorkflow,
     BatchDeployWorkflow,

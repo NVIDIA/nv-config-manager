@@ -26,6 +26,7 @@ from nv_config_manager_installer.schema import (
     ClusterConfig,
     ContentConfig,
     ExternalServicesConfig,
+    GatewayType,
     GitTokenEntry,
     ImageOverride,
     ImagePullSecret,
@@ -35,6 +36,8 @@ from nv_config_manager_installer.schema import (
     JobPath,
     JobsConfig,
     JWTProvider,
+    K8sSecretGroup,
+    KubernetesSecretsConfig,
     LBProvider,
     LoadBalancerConfig,
     MonitoringConfig,
@@ -54,6 +57,9 @@ from nv_config_manager_installer.schema import (
     VaultPathConfig,
     VaultPathsConfig,
     WorkflowRBACOverride,
+    ZTPS3CephConfig,
+    ZTPS3CephObjectBucketClaimConfig,
+    ZTPS3CephObjectStoreUserConfig,
     ZTPStorageConfig,
     ZTPStorageType,
     get_known_workflows,
@@ -114,6 +120,33 @@ class TestGenerateHelmValues:
         assert ext["postgres"]["temporal"]["host"] == "cluster-temporal-rw"
         assert ext["postgres"]["configStore"]["host"] == "cluster-config-store-rw"
         assert values["mcp"]["enabled"] is True
+
+    def test_s3_irsa_role_and_region(self):
+        """S3 IRSA emits an annotated ServiceAccount without a credentials Secret."""
+        config = _make_config(
+            cluster=ClusterConfig(
+                hostname="test.example.com",
+                environment="prod",
+                service_account_eks_role="arn:aws:iam::123456789012:role/nv-config-manager-s3",
+            ),
+            infrastructure=InfrastructureConfig(
+                ztp_storage=ZTPStorageConfig(
+                    type=ZTPStorageType.S3,
+                    s3_bucket="firmware-images",
+                    s3_region="us-west-2",
+                )
+            ),
+        )
+
+        values = _gen(config)
+
+        assert values["global"]["serviceAccountEksRole"] == (
+            "arn:aws:iam::123456789012:role/nv-config-manager-s3"
+        )
+        assert values["networkZtp"]["storage"]["s3"] == {
+            "bucketName": "firmware-images",
+            "region": "us-west-2",
+        }
 
     def test_local_environment_uses_recreate_deployment_strategy(self):
         values = _gen(
@@ -230,7 +263,7 @@ class TestGenerateHelmValues:
     def test_nautobot_disabled(self):
         config = _make_config(
             services=ServicesConfig(nautobot=False),
-            content=ContentConfig(jobs=[], include_bootstrap_jobs=False),
+            content=ContentConfig(jobs=[]),
         )
         values = _gen(config)
 
@@ -266,7 +299,7 @@ class TestGenerateHelmValues:
     def test_network_policy(self):
         values = _gen(_make_config())
         assert values["networkPolicy"]["enabled"] is True
-        assert "gatewayNamespace" not in values["networkPolicy"]
+        assert values["networkPolicy"]["gatewayNamespace"] == "envoy-gateway-system"
 
     def test_config_secrets_kubernetes(self):
         values = _gen(_make_config())
@@ -326,6 +359,48 @@ class TestGenerateHelmValues:
         assert nb["path"] == "custom/nb"
         assert nb["keys"]["token"] == "token"
 
+    def test_eso_partial_key_override_preserves_default_keys(self):
+        config = _make_config(
+            secrets=SecretsConfig(
+                method=SecretsMethod.ESO,
+                vault=VaultConfig(
+                    server="https://vault.test",
+                    secrets_path="nv-config-manager",
+                    paths=VaultPathsConfig(
+                        nautobot=VaultPathConfig(keys={"token": "api_token"}),
+                    ),
+                ),
+            ),
+        )
+
+        values = _gen(config)
+        keys = values["secrets"]["vault"]["paths"]["nautobot"]["keys"]
+
+        assert keys["token"] == "api_token"
+        assert keys["readOnlyToken"] == "read_only_token"
+
+    def test_eso_ztp_s3_path(self):
+        config = _make_config(
+            secrets=SecretsConfig(
+                method=SecretsMethod.ESO,
+                vault=VaultConfig(
+                    server="https://vault.test",
+                    secrets_path="nv-config-manager",
+                    paths=VaultPathsConfig(
+                        ztp_s3=VaultPathConfig(enabled=True, path="custom/ztp-s3"),
+                    ),
+                ),
+            ),
+        )
+        values = _gen(config)
+        ztp_s3 = values["secrets"]["vault"]["paths"]["ztpS3"]
+        assert ztp_s3["path"] == "custom/ztp-s3"
+        assert ztp_s3["keys"] == {
+            "endpoint": "",
+            "accessKeyId": "access_key_id",
+            "secretAccessKey": "secret_access_key",
+        }
+
     def test_local_images(self):
         values = _gen(_make_config(), local_images=True)
 
@@ -368,8 +443,14 @@ class TestGenerateHelmValues:
             == "https://kc.test/realms/nv-config-manager/protocol/openid-connect/logout"
         )
         assert "auth" in values["gateway"]
-        assert "authorizationEndpoint" not in values["oidc"]
-        assert "tokenEndpoint" not in values["oidc"]
+        assert (
+            values["oidc"]["authorizationEndpoint"]
+            == "https://kc.test/realms/nv-config-manager/protocol/openid-connect/auth"
+        )
+        assert (
+            values["oidc"]["tokenEndpoint"]
+            == "https://kc.test/realms/nv-config-manager/protocol/openid-connect/token"
+        )
         # Keycloak default audiences include "account"
         assert "account" in values["oidc"]["audiences"]
         assert "test-client" in values["oidc"]["audiences"]
@@ -543,11 +624,79 @@ class TestGenerateHelmValues:
         values = _gen(config)
         assert values["gateway"]["createGatewayClass"] is False
 
+    def test_envoy_shared_gateway_uses_custom_data_plane_namespace(self):
+        config = _make_config(
+            infrastructure=InfrastructureConfig(
+                create_gateway=False,
+                gateway_name="shared-gateway",
+                gateway_namespace="custom-envoy",
+            ),
+        )
+        values = _gen(config)
+
+        assert values["gateway"]["namespace"] == "custom-envoy"
+        assert values["networkPolicy"]["gatewayNamespace"] == "custom-envoy"
+
+    def test_kgateway_managed_values(self):
+        config = _make_config(
+            infrastructure=InfrastructureConfig(
+                gateway=GatewayType.KGATEWAY,
+                load_balancer=LoadBalancerConfig(provider=LBProvider.NONE),
+            ),
+        )
+        values = _gen(config)
+
+        assert values["ingress"]["type"] == "kgateway"
+        assert values["gateway"]["className"] == "kgateway"
+        assert values["gateway"]["create"] is True
+        assert values["gateway"]["createGatewayClass"] is False
+        assert values["gateway"]["nodePort"] == {
+            "enabled": True,
+            "http": 30080,
+            "https": 30443,
+        }
+        assert values["networkPolicy"]["gatewayNamespace"] == "kgateway-system"
+
+    def test_kgateway_omits_gateway_nlb_but_keeps_device_nlbs(self):
+        lb = LoadBalancerConfig(provider=LBProvider.NLB)
+        lb.nlb_ztp.name = "network-ztp"
+        config = _make_config(
+            infrastructure=InfrastructureConfig(
+                gateway=GatewayType.KGATEWAY,
+                load_balancer=lb,
+            ),
+        )
+        values = _gen(config)
+
+        assert "nlb" not in values["gateway"]
+        assert values["networkZtp"]["ingress"]["nlb"]["name"] == "network-ztp"
+
+    def test_kgateway_shared_values(self):
+        config = _make_config(
+            infrastructure=InfrastructureConfig(
+                gateway=GatewayType.KGATEWAY,
+                create_gateway=False,
+                gateway_name="shared-gateway",
+                gateway_namespace="shared-gateway-system",
+                gateway_listener="https",
+            ),
+        )
+        values = _gen(config)
+
+        gateway = values["gateway"]
+        assert values["ingress"]["type"] == "kgateway"
+        assert gateway["create"] is False
+        assert gateway["name"] == "shared-gateway"
+        assert gateway["namespace"] == "shared-gateway-system"
+        assert gateway["sectionName"] == "https"
+        assert gateway["className"] == "kgateway"
+        assert gateway["createGatewayClass"] is False
+        assert values["networkPolicy"]["gatewayNamespace"] == "shared-gateway-system"
+
     def test_custom_jobs_in_values(self):
         config = _make_config(
             content=ContentConfig(
                 jobs=[JobPath(path="/opt/jobs/custom")],
-                include_bootstrap_jobs=True,
             ),
         )
         values = _gen(config)
@@ -555,6 +704,11 @@ class TestGenerateHelmValues:
         assert values["nautobot"]["customJobs"]["enabled"] is True
         assert values["nautobot"]["customJobs"]["createPvc"] is False
         assert values["nautobot"]["customJobs"]["pvcName"] == "nautobot-custom-jobs"
+
+    def test_no_custom_jobs_omits_custom_jobs_values(self):
+        values = _gen(_make_config(content=ContentConfig()))
+
+        assert "customJobs" not in values["nautobot"]
 
     def test_custom_jobs_node_selector_in_values(self):
         config = _make_config(
@@ -598,7 +752,7 @@ class TestGenerateHelmValues:
                 nautobot=False,
                 external_nautobot_url="https://nb.prod.example.com",
             ),
-            content=ContentConfig(jobs=[], include_bootstrap_jobs=False),
+            content=ContentConfig(jobs=[]),
         )
         values = _gen(config)
 
@@ -771,7 +925,7 @@ class TestImagesInHelmValues:
             == "registry.example.com/nv-config-manager/spiffe/spiffe-helper"
         )
         assert (
-            values["oidc"]["oauth2Proxy"]["image"]["repository"]
+            values["oidc"]["proxy"]["image"]["repository"]
             == "registry.example.com/nv-config-manager/oauth2-proxy/oauth2-proxy"
         )
         assert (
@@ -918,6 +1072,75 @@ class TestZTPStorage:
         storage = values["networkZtp"]["storage"]
         assert storage["type"] == "s3"
         assert "file" not in storage
+
+    def test_s3_storage_generic_overrides(self):
+        """Generic S3 config maps to chart S3 INI settings."""
+        config = _make_config(
+            infrastructure=InfrastructureConfig(
+                ztp_storage=ZTPStorageConfig(
+                    type=ZTPStorageType.S3,
+                    s3_bucket="firmware-images",
+                    s3_endpoint="https://minio.example",
+                )
+            )
+        )
+        values = _gen(config)
+        storage = values["networkZtp"]["storage"]
+        assert storage["type"] == "s3"
+        assert storage["s3"] == {
+            "bucketName": "firmware-images",
+            "endpoint": "https://minio.example",
+        }
+
+    def test_s3_storage_app_secret_credentials(self):
+        """Installer-managed S3 app secrets use a fixed chart Secret name."""
+        config = _make_config(
+            secrets=SecretsConfig(
+                method=SecretsMethod.KUBERNETES,
+                k8s=KubernetesSecretsConfig(
+                    ztp_s3=K8sSecretGroup(
+                        enabled=True,
+                        values={"accessKeyId": "access", "secretAccessKey": "secret"},
+                    )
+                ),
+            ),
+            infrastructure=InfrastructureConfig(
+                ztp_storage=ZTPStorageConfig(type=ZTPStorageType.S3)
+            ),
+        )
+        values = _gen(config)
+        storage = values["networkZtp"]["storage"]
+        assert storage["s3"] == {"credentialsSecret": "ztp-s3-credentials"}
+
+    def test_s3_storage_ceph(self):
+        """Ceph-backed S3 config emits only Ceph chart settings."""
+        config = _make_config(
+            infrastructure=InfrastructureConfig(
+                ztp_storage=ZTPStorageConfig(
+                    type=ZTPStorageType.S3,
+                    s3_bucket="firmware-images",
+                    s3_endpoint="https://ignored.example",
+                    s3_ceph=ZTPS3CephConfig(
+                        enabled=True,
+                        object_store_user=ZTPS3CephObjectStoreUserConfig(name="custom-user"),
+                        object_bucket_claim=ZTPS3CephObjectBucketClaimConfig(
+                            storage_class_name="ceph-object-store"
+                        ),
+                    ),
+                )
+            )
+        )
+        values = _gen(config)
+        storage = values["networkZtp"]["storage"]
+        assert storage["type"] == "s3"
+        assert storage["s3"] == {
+            "bucketName": "firmware-images",
+            "ceph": {
+                "enabled": True,
+                "objectStoreUser": {"name": "custom-user"},
+                "objectBucketClaim": {"storageClassName": "ceph-object-store"},
+            },
+        }
 
 
 class TestWorkflowRBAC:

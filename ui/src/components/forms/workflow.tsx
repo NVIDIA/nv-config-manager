@@ -52,6 +52,11 @@ type WorkflowFormProps = {
   deviceFilterParams?: string[][];
   /** When true, show the commit-confirm checkbox (for deploy workflow) */
   showCommitConfirm?: boolean;
+  /**
+   * Restrict the device list to NVCM-managed devices. Defaults to true.
+   * Set false for workflows that target unmanaged devices such as the UFM.
+   */
+  managedOnly?: boolean;
 };
 
 type TenantFieldProps = {
@@ -59,9 +64,16 @@ type TenantFieldProps = {
   tenants: { key: string; value: string }[];
   tenantsIsLoading: boolean;
   isSubmitting: boolean;
+  onManualChange: () => void;
 };
 
-const TenantField = ({ form, tenants, tenantsIsLoading, isSubmitting }: TenantFieldProps) => {
+const TenantField = ({
+  form,
+  tenants,
+  tenantsIsLoading,
+  isSubmitting,
+  onManualChange,
+}: TenantFieldProps) => {
   return (
     <WorkflowFormField
       type="select"
@@ -74,6 +86,7 @@ const TenantField = ({ form, tenants, tenantsIsLoading, isSubmitting }: TenantFi
       isLoading={tenantsIsLoading}
       disabled={isSubmitting}
       handleChange={(_, value) => {
+        onManualChange();
         if (Array.isArray(value)) {
           form.setValue("tenant", value);
         } else {
@@ -91,9 +104,16 @@ type StatusFieldProps = {
   statuses: { key: string; value: string }[];
   statusesIsLoading: boolean;
   isSubmitting: boolean;
+  onManualChange: () => void;
 };
 
-const StatusField = ({ form, statuses, statusesIsLoading, isSubmitting }: StatusFieldProps) => {
+const StatusField = ({
+  form,
+  statuses,
+  statusesIsLoading,
+  isSubmitting,
+  onManualChange,
+}: StatusFieldProps) => {
   return (
     <WorkflowFormField
       type="select"
@@ -106,6 +126,7 @@ const StatusField = ({ form, statuses, statusesIsLoading, isSubmitting }: Status
       isLoading={statusesIsLoading}
       disabled={isSubmitting}
       handleChange={(_, value) => {
+        onManualChange();
         if (Array.isArray(value)) {
           form.setValue("status", value);
         } else {
@@ -123,11 +144,14 @@ export const DeviceWorkflowForm = ({
   onSubmit,
   deviceFilterParams = [],
   showCommitConfirm = false,
+  managedOnly = true,
 }: WorkflowFormProps) => {
 
   const [isSubmitting, setIsSubmitting] = React.useState<boolean>(false);
   const [isManualSiteChange, setIsManualSiteChange] = React.useState(false);
   const [isManualDeviceChange, setIsManualDeviceChange] = React.useState(false);
+  const [isManualTenantChange, setIsManualTenantChange] = React.useState(false);
+  const [isManualStatusChange, setIsManualStatusChange] = React.useState(false);
   const {
     data: { siteData: sites, tenantsData: tenants, statusData: statuses },
     errors: { siteError, tenantsError, statusesError },
@@ -135,15 +159,23 @@ export const DeviceWorkflowForm = ({
   } = useEnvData();
 
   const searchParams = useSearchParams();
-  const querySite = searchParams && searchParams.get("site");
-  const queryDeviceId = searchParams && searchParams.get("device-id");
+  const querySite = searchParams?.get("site");
+  const queryDeviceId = searchParams?.get("device-id");
+  const queryTenants = React.useMemo(
+    () => searchParams?.getAll("tenant").filter(Boolean) ?? [],
+    [searchParams]
+  );
+  const queryStatuses = React.useMemo(
+    () => searchParams?.getAll("status").filter(Boolean) ?? [],
+    [searchParams]
+  );
 
   const form = useForm<DeviceWorkflowFormSchema>({
     resolver: zodResolver(deviceWorkflowFormSchema),
     defaultValues: {
       site: querySite || "",
-      tenant: [],
-      status: [],
+      tenant: queryTenants,
+      status: queryStatuses,
       device: queryDeviceId || "",
       commit_confirm: true,
     },
@@ -153,10 +185,10 @@ export const DeviceWorkflowForm = ({
   if (tenantsError) console.error(`Failed to query tenants: ${tenantsError}`);
   if (statusesError) console.error(`Failed to query statuses: ${statusesError}`);
 
-  const submitWrapper = (data: DeviceWorkflowFormSchema) => {
+  const submitWrapper = async (data: DeviceWorkflowFormSchema) => {
     setIsSubmitting(true);
     try {
-      onSubmit(data);
+      await onSubmit(data);
     } catch (error) {
       console.error(error);
       setIsSubmitting(false);
@@ -174,7 +206,13 @@ export const DeviceWorkflowForm = ({
   const statusFilters = selectedStatuses && selectedStatuses.length > 0
     ? selectedStatuses.map(status => ["status", status] as [string, string])
     : [];
-  const filterParams = [["site", site], ...tenantFilters, ...statusFilters, ...deviceFilterParams];
+  const filterParams = [
+    ["site", site],
+    ...(managedOnly ? [["managed_only", "true"]] : []),
+    ...tenantFilters,
+    ...statusFilters,
+    ...deviceFilterParams,
+  ];
   
   const {
     devices: deviceData,
@@ -227,6 +265,38 @@ export const DeviceWorkflowForm = ({
       form.setValue("device", ""); // Clear device field when site changes
     }
   }, [site, form]);
+
+  React.useEffect(() => {
+    setIsManualTenantChange(false);
+  }, [queryTenants]);
+  React.useEffect(() => {
+    setIsManualStatusChange(false);
+  }, [queryStatuses]);
+
+  // Pre-select the Tenant filter from the URL, keeping only values that exist
+  // in the loaded options so a stale link cannot hide the target device.
+  React.useEffect(() => {
+    if (!queryTenants.length || !tenants.length || isManualTenantChange) return;
+    const valid = queryTenants.filter((t) =>
+      tenants.some((option) => option.value === t)
+    );
+    const current = form.getValues("tenant") ?? [];
+    if (valid.join("\u0000") !== current.join("\u0000")) {
+      form.setValue("tenant", valid);
+    }
+  }, [queryTenants, tenants, form, isManualTenantChange]);
+
+  // Pre-select the Status filter from the URL, validated the same way.
+  React.useEffect(() => {
+    if (!queryStatuses.length || !statuses.length || isManualStatusChange) return;
+    const valid = queryStatuses.filter((s) =>
+      statuses.some((option) => option.value === s)
+    );
+    const current = form.getValues("status") ?? [];
+    if (valid.join("\u0000") !== current.join("\u0000")) {
+      form.setValue("status", valid);
+    }
+  }, [queryStatuses, statuses, form, isManualStatusChange]);
 
   const handleSiteChange = (newSite: string | string[]) => {
     setIsManualSiteChange(true);
@@ -301,12 +371,14 @@ export const DeviceWorkflowForm = ({
                 tenants={tenants}
                 tenantsIsLoading={tenantsIsLoading}
                 isSubmitting={isSubmitting}
+                onManualChange={() => setIsManualTenantChange(true)}
               />
               <StatusField
                 form={form}
                 statuses={statuses}
                 statusesIsLoading={statusesIsLoading}
                 isSubmitting={isSubmitting}
+                onManualChange={() => setIsManualStatusChange(true)}
               />
               <DeviceField />
               {showCommitConfirm && (

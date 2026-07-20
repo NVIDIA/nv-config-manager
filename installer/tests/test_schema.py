@@ -30,6 +30,7 @@ from nv_config_manager_installer.schema import (
     ExternalPostgresConfig,
     ExternalRedisConfig,
     ExternalServicesConfig,
+    GatewayType,
     GitTokenEntry,
     ImageOverride,
     ImagePullSecret,
@@ -52,6 +53,8 @@ from nv_config_manager_installer.schema import (
     SSOProvider,
     VaultAuthMethod,
     ZTPOSImage,
+    ZTPS3CephConfig,
+    ZTPS3CephObjectBucketClaimConfig,
     ZTPStorageConfig,
     ZTPStorageType,
 )
@@ -66,12 +69,22 @@ class TestNVConfigManagerInstallConfig:
         assert config.secrets.config_manager_service_username == "nv-config-manager"
         assert config.services.render is True
 
+    def test_ztp_image_rejects_unsupported_platform(self):
+        with pytest.raises(ValueError, match="Unsupported ZTP platform 'sonic'"):
+            ZTPOSImage(platform="sonic", version="4.0.0", path="/images/sonic.bin")
+
+    def test_ztp_image_accepts_nv_os_platform(self):
+        image = ZTPOSImage(platform="nv-os", version="25.02.2344", path="/images/nv-os.bin")
+
+        assert image.platform == "nv-os"
+
     def test_yaml_roundtrip(self):
         config = NVConfigManagerInstallConfig(
             cluster=ClusterConfig(
                 hostname="test.example.com",
                 airgapped=True,
                 size=DeploySize.MEDIUM,
+                service_account_eks_role="arn:aws:iam::123456789012:role/nv-config-manager-s3",
             ),
             secrets=SecretsConfig(config_manager_service_username="myuser"),
             network_secrets=[
@@ -101,6 +114,10 @@ class TestNVConfigManagerInstallConfig:
             assert loaded.cluster.hostname == "test.example.com"
             assert loaded.cluster.airgapped is True
             assert loaded.cluster.size == DeploySize.MEDIUM
+            assert (
+                loaded.cluster.service_account_eks_role
+                == "arn:aws:iam::123456789012:role/nv-config-manager-s3"
+            )
             assert loaded.secrets.config_manager_service_username == "myuser"
             assert len(loaded.network_secrets) == 1
             assert loaded.network_secrets[0].secret_key == "bgp_password"
@@ -128,7 +145,11 @@ class TestNVConfigManagerInstallConfig:
 
         assert data["secrets"]["method"] == "eso"
         assert "vault" in data["secrets"]
-        assert "k8s" not in data["secrets"]
+        assert data["secrets"]["k8s"]["nautobot"]["values"]["token"] == "stale-k8s-token"
+        assert (
+            NVConfigManagerInstallConfig.model_validate(data).secrets.k8s.nautobot.values["token"]
+            == "stale-k8s-token"
+        )
         assert "token_secret_name" not in data["secrets"]["vault"]["auth"]
         assert data["secrets"]["vault"]["paths"]["slack"] == {"enabled": False}
 
@@ -191,6 +212,13 @@ class TestNVConfigManagerInstallConfig:
         assert lb_data["ztp_lb_ip"] == "192.0.2.10"
         assert "nlb_gateway" not in lb_data
         assert "nlb_ztp" not in lb_data
+
+    def test_kgateway_rejects_gateway_nlb_configuration(self):
+        lb = LoadBalancerConfig(provider=LBProvider.NLB)
+        lb.nlb_gateway.name = "nv-config-manager-gateway"
+
+        with pytest.raises(ValueError, match="Gateway AWS NLB configuration"):
+            InfrastructureConfig(gateway=GatewayType.KGATEWAY, load_balancer=lb)
 
     def test_yaml_prunes_other_disabled_and_alternate_sections(self):
         config = NVConfigManagerInstallConfig(
@@ -273,17 +301,19 @@ class TestNVConfigManagerInstallConfig:
                 content=ContentConfig(jobs=[{"path": "jobs/my_job"}]),
             )
 
-    def test_bootstrap_jobs_require_local_nautobot(self):
-        with pytest.raises(ValueError, match="Custom jobs.*require a local Nautobot"):
+    def test_post_deploy_jobs_require_local_nautobot(self):
+        with pytest.raises(ValueError, match="post-deploy jobs require a local Nautobot"):
             NVConfigManagerInstallConfig(
-                services=ServicesConfig(nautobot=False),
-                content=ContentConfig(include_bootstrap_jobs=True),
+                services=ServicesConfig(
+                    nautobot=False, external_nautobot_url="https://nb.example.com"
+                ),
+                content=ContentConfig(run_after_deploy=[{"job": "jobs.bootstrap.SiteBootstrap"}]),
             )
 
     def test_external_nautobot_valid_without_jobs(self):
         config = NVConfigManagerInstallConfig(
             services=ServicesConfig(nautobot=False, external_nautobot_url="https://nb.example.com"),
-            content=ContentConfig(jobs=[], include_bootstrap_jobs=False),
+            content=ContentConfig(jobs=[]),
         )
         assert config.services.nautobot is False
         assert config.services.external_nautobot_url == "https://nb.example.com"
@@ -446,6 +476,9 @@ class TestGitTokenConfig:
         assert zs.pvc_size == "10Gi"
         assert zs.storage_class == ""
         assert zs.s3_bucket == ""
+        assert zs.s3_endpoint == ""
+        assert zs.s3_region == ""
+        assert zs.s3_ceph.enabled is False
         assert zs.os_images == []
 
     def test_jobs_config_defaults(self):
@@ -508,6 +541,55 @@ class TestGitTokenConfig:
         assert zs.os_images[0].platform == "cumulus-linux"
         assert zs.os_images[0].version == "5.9.0"
         assert zs.os_images[0].path == "/path/to/image.bin"
+
+    def test_ztp_s3_storage_yaml_roundtrip(self, tmp_path):
+        path = tmp_path / "config.yaml"
+        config = NVConfigManagerInstallConfig(
+            infrastructure=InfrastructureConfig(
+                ztp_storage=ZTPStorageConfig(
+                    type=ZTPStorageType.S3,
+                    s3_bucket="firmware-images",
+                    s3_endpoint="https://minio.example",
+                    s3_region="us-west-2",
+                )
+            )
+        )
+        config.to_yaml(path)
+        loaded = NVConfigManagerInstallConfig.from_yaml(path)
+        zs = loaded.infrastructure.ztp_storage
+        assert zs.type == ZTPStorageType.S3
+        assert zs.s3_bucket == "firmware-images"
+        assert zs.s3_endpoint == "https://minio.example"
+        assert zs.s3_region == "us-west-2"
+
+    def test_ztp_ceph_storage_yaml_keeps_bucket_and_prunes_endpoint(self, tmp_path):
+        path = tmp_path / "config.yaml"
+        config = NVConfigManagerInstallConfig(
+            infrastructure=InfrastructureConfig(
+                ztp_storage=ZTPStorageConfig(
+                    type=ZTPStorageType.S3,
+                    s3_bucket="firmware-images",
+                    s3_endpoint="https://ignored.example",
+                    s3_ceph=ZTPS3CephConfig(
+                        enabled=True,
+                        object_bucket_claim=ZTPS3CephObjectBucketClaimConfig(
+                            storage_class_name="ceph-object-store"
+                        ),
+                    ),
+                )
+            )
+        )
+        config.to_yaml(path)
+        data = yaml.safe_load(path.read_text())
+        ztp_storage = data["infrastructure"]["ztp_storage"]
+        assert ztp_storage["type"] == "s3"
+        assert ztp_storage["s3_bucket"] == "firmware-images"
+        assert "s3_endpoint" not in ztp_storage
+        assert ztp_storage["s3_ceph"]["enabled"] is True
+        assert (
+            ztp_storage["s3_ceph"]["object_bucket_claim"]["storage_class_name"]
+            == "ceph-object-store"
+        )
 
     def test_redfish_defaults(self):
         config = NVConfigManagerInstallConfig()

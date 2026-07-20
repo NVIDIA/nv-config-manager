@@ -42,7 +42,9 @@ RUN npm ci
 # =============================================================================
 FROM deps AS builder
 WORKDIR /app
-COPY . .
+COPY next-env.d.ts next.config.mjs postcss.config.mjs tailwind.config.ts tsconfig.json ./
+COPY public/ ./public/
+COPY src/ ./src/
 
 # Next.js telemetry disabled
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -52,7 +54,7 @@ RUN npm run build
 # =============================================================================
 # Runtime stage - NVIDIA distroless Node.js
 # =============================================================================
-FROM nvcr.io/nvidia/distroless/node:24-v4.0.8 AS runner
+FROM nvcr.io/nvidia/distroless/node:24-v4.0.10@sha256:43151afc5b44dc241551e1f816ba27b07d02424b529faa758374b45c44eb86e4 AS runner
 
 WORKDIR /app
 
@@ -65,6 +67,8 @@ COPY --from=builder --chown=1000:1000 /app/public ./public
 # Copy the standalone build output
 COPY --from=builder --chown=1000:1000 /app/.next/standalone ./
 COPY --from=builder --chown=1000:1000 /app/.next/static ./.next/static
+
+USER nvs
 
 EXPOSE 3000
 

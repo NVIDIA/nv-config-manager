@@ -81,6 +81,7 @@ export const DEVICES_LIST = {
       tenant: "TenantA",
       status: "Provisioned",
       platform: "UFM",
+      role: "UFM",
     },
     {
       id: "e768a90c-f868-4d92-9b4f-cefa57b15e91",
@@ -102,6 +103,7 @@ export const DEVICES_LIST = {
       tenant: "TenantB",
       status: "Provisioned",
       platform: "UFM",
+      role: "UFM",
     },
     {
       id: "e4d8a939-7c4c-51a8-b080-eaeea62257c1",
@@ -130,6 +132,7 @@ export const DEVICES_LIST = {
       tenant: "TenantA",
       status: "Provisioned",
       platform: "UFM",
+      role: "UFM",
     },
     {
       id: "fae22069-6833-4cf7-b5f7-92167e6abbb8",
@@ -158,6 +161,7 @@ export const DEVICES_LIST = {
       tenant: "TenantA",
       status: "Provisioned",
       platform: "UFM",
+      role: "UFM",
     },
     {
       id: "6a2b6815-3042-4c90-a7b8-0b61d9c2d601",
@@ -186,6 +190,7 @@ export const DEVICES_LIST = {
       tenant: "TenantA",
       status: "Provisioned",
       platform: "UFM",
+      role: "UFM",
     },
     {
       id: "67a4c2d6-0b61-4c90-a7b8-3042d9c26815",
@@ -230,6 +235,7 @@ export const DEVICES_LIST = {
       tenant: "TenantB",
       status: "Active",
       platform: "UFM",
+      role: "UFM",
     },
     {
       id: "ca22595f-63ca-46d1-b760-c2f947b37044",
@@ -253,6 +259,7 @@ export const DEVICES_LIST = {
       tenant: "TenantA",
       status: "Provisioned",
       platform: "UFM",
+      role: "UFM",
     },
     {
       id: FORBIDDEN_DEVICE_IDS.CUMULUS,

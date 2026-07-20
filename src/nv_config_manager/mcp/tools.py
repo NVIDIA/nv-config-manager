@@ -16,7 +16,8 @@
 
 from __future__ import annotations
 
-from typing import Any, cast
+import inspect
+from typing import Annotated, Any, cast
 
 from mcp.server.fastmcp import FastMCP
 
@@ -37,6 +38,7 @@ from nv_config_manager.mcp.clients import (
 from nv_config_manager.mcp.settings import MCPSettings
 from nv_config_manager.mcp.workflows import (
     MCPWorkflow,
+    allows_none,
     discover_mcp_workflows,
     normalize_workflow_parameters,
 )
@@ -222,7 +224,7 @@ def register_tools(server: FastMCP, settings: MCPSettings) -> None:
         device_id: str,
         file_type: str | None = "intended",
     ) -> dict[str, Any]:
-        """List configuration files for a device from Config Store."""
+        """Return a bounded response whose data is a list of Config Store files."""
         return await fetch_device_configs(settings, device_id, file_type=file_type)
 
     @server.tool()
@@ -307,7 +309,7 @@ def register_tools(server: FastMCP, settings: MCPSettings) -> None:
 def _register_workflow_starter(
     server: FastMCP, settings: MCPSettings, workflow: MCPWorkflow
 ) -> None:
-    async def run_workflow(parameters: dict[str, Any] | None = None) -> dict[str, Any]:
+    async def run_workflow(**parameters: Any) -> dict[str, Any]:
         """Start a safe diagnostic workflow."""
         normalized = normalize_workflow_parameters(workflow, parameters)
         result = await start_workflow(settings, workflow.endpoint, normalized)
@@ -326,13 +328,38 @@ def _register_workflow_starter(
         }
 
     run_workflow.__name__ = workflow.tool_name
+    cast(Any, run_workflow).__signature__ = _workflow_tool_signature(workflow)
     run_workflow.__doc__ = (
-        f"{workflow.description}\n\n"
-        "Pass workflow input fields as the `parameters` object. "
+        f"{workflow.tool_description}\n\n"
+        "Pass the workflow input fields shown in this tool's input schema. "
         "Use `workflow_ui_href` as the end-user Config Manager workflow link. "
         "The response includes the workflow input schema for reference."
     )
-    server.tool(name=workflow.tool_name, description=workflow.description)(run_workflow)
+    server.tool(name=workflow.tool_name, description=workflow.tool_description)(run_workflow)
+
+
+def _workflow_tool_signature(workflow: MCPWorkflow) -> inspect.Signature:
+    """Build the workflow-specific signature FastMCP uses for its input schema."""
+    parameters: list[inspect.Parameter] = []
+    for field_name, field_info in workflow.input_class.model_fields.items():
+        default: Any = inspect.Parameter.empty
+        if field_name == "trigger":
+            default = "API"
+        elif allows_none(field_info.annotation):
+            default = None
+        elif not field_info.is_required():
+            default = field_info
+
+        parameters.append(
+            inspect.Parameter(
+                field_name,
+                kind=inspect.Parameter.KEYWORD_ONLY,
+                default=default,
+                annotation=Annotated[field_info.annotation, field_info],
+            )
+        )
+
+    return inspect.Signature(parameters, return_annotation=dict[str, Any])
 
 
 def _drop_none(values: dict[str, Any]) -> dict[str, Any]:

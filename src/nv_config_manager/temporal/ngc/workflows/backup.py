@@ -18,7 +18,7 @@ import asyncio
 from datetime import timedelta
 from enum import StrEnum
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 from temporalio.exceptions import ApplicationError
@@ -72,12 +72,18 @@ class TriggerEnum(StrEnum):
 class BackupInput(BaseModel):
     """Backup Workflow Input Definiton."""
 
-    device_id: str
-    trigger: TriggerEnum
-    user: str | None
-    user_domain: str | None
-    workflow_id: str | None
-    intended_config_commit_id: str | None
+    device_id: str = Field(description="Identifier of the network device to back up.")
+    trigger: TriggerEnum = Field(description="Reason the backup workflow was started.")
+    user: str | None = Field(default=None, description="User that requested the backup.")
+    user_domain: str | None = Field(
+        default=None, description="Domain of the user requesting the backup."
+    )
+    workflow_id: str | None = Field(
+        default=None, description="Identifier of the parent workflow, if any."
+    )
+    intended_config_commit_id: str | None = Field(
+        default=None, description="Config Store commit containing the intended configuration."
+    )
 
 
 @workflow.defn
@@ -300,7 +306,8 @@ class BackupWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, ArchiveMixi
             ),
         )
 
-        # If no drift update it to match the latest commit ID
+        # No full-config drift means the device matches the latest intended
+        # content, even when this backup follows a partial tenant deployment.
         if not drift_output.has_drift and not workflow_input.intended_config_commit_id:
             workflow_input.intended_config_commit_id = drift_output.commit_id
 

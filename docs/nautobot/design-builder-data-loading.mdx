@@ -60,7 +60,6 @@ Set `blueprint` to the context directory name when you run the job. You can set 
 content:
   jobs:
     - path: path/to/mock_topology
-  include_bootstrap_jobs: true
   run_after_deploy:
     - job: mock_topology.jobs.mock_topology_design.MockTopologyDesign
       input: '{"blueprint": "site_a", "deployment_name": "site-a"}'
@@ -76,7 +75,6 @@ Stage the job directory with `content.jobs`, then run the job with `content.run_
 content:
   jobs:
     - path: development/mock_topology
-  include_bootstrap_jobs: true
   run_after_deploy:
     - job: mock_topology.jobs.mock_topology_design.MockTopologyDesign
       input: '{"blueprint": "superpod", "deployment_name": "test"}'

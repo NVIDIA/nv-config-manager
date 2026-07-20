@@ -21,14 +21,14 @@ Useful options:
 | `--runtime auto|docker|containerd` | Select image pull/save runtime |
 | `--include-skopeo` | Include a local Skopeo binary under `tools/skopeo/` |
 | `--skopeo-binary PATH` | Select the Skopeo binary to include |
-| `--include-agpl-observability` | Include AGPL Grafana/Loki observability charts and related images |
+| `--include-agpl-observability` | Include AGPL Grafana/Loki/Tempo observability charts and related images |
 | `--skip-images` | Package chart and installer without image tarballs |
 | `--local-image-fallback` | For pre-release E2E tests, save a locally tagged image when its source registry pull fails |
 | `--allow-missing-images` | Continue after missing images; use only for diagnostics because the bundle may not install offline |
 | `--skip-chart` | Skip Helm chart packaging |
 | `--skip-docs` | Skip copying documentation source |
 
-Default bundles exclude Grafana and Loki charts/images because their OSS distributions are AGPLv3. Pass `--include-agpl-observability` only when that license is acceptable for the target environment.
+Default bundles exclude Grafana, Loki, and Tempo charts/images because their OSS distributions are AGPLv3. Pass `--include-agpl-observability` only when that license is acceptable for the target environment.
 
 ## Bundle Contents
 
@@ -74,7 +74,7 @@ cluster:
 images:
   source: registry
   registry: registry.example.com/nv-config-manager
-  tag: "1.2.2-rc.23"
+  tag: "1.3.0"
   pull_secret:
     name: registry-credentials
     server: registry.example.com
@@ -83,22 +83,16 @@ images:
   overrides:
     nvConfigManager:
       repository: registry.example.com/nv-config-manager/nvidian/cfa/nv-config-manager
-      tag: "1.2.2-rc.23"
     nvConfigManagerUi:
       repository: registry.example.com/nv-config-manager/nvidian/cfa/nv-config-manager-ui
-      tag: "1.2.2-rc.23"
     kea:
       repository: registry.example.com/nv-config-manager/nvidian/cfa/nv-config-manager-kea
-      tag: "1.2.2-rc.23"
     keaAdmin:
       repository: registry.example.com/nv-config-manager/nvidian/cfa/nv-config-manager-kea-admin
-      tag: "1.2.2-rc.23"
     nautobot:
       repository: registry.example.com/nv-config-manager/nvidian/cfa/nv-config-manager-nautobot
-      tag: "1.2.2-rc.23"
     natsReady:
       repository: registry.example.com/nv-config-manager/nvidian/cfa/nv-config-manager-nats-ready
-      tag: "1.2.2-rc.23"
     httpEcho:
       repository: registry.example.com/nv-config-manager/hashicorp/http-echo
       tag: "1.0"
@@ -132,9 +126,9 @@ images:
     spiffeHelper:
       repository: registry.example.com/nv-config-manager/spiffe/spiffe-helper
       tag: "0.8.0"
-    oauth2Proxy:
+    oidcProxy:
       repository: registry.example.com/nv-config-manager/oauth2-proxy/oauth2-proxy
-      tag: "v7.6.0"
+      tag: "v7.15.3"
     templatePluginInstaller:
       repository: registry.example.com/nv-config-manager/library/python
       tag: "3.13-alpine"

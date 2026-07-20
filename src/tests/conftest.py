@@ -15,8 +15,33 @@
 """Top-level pytest configuration and shared fixtures."""
 
 import configparser
+from collections.abc import Generator
+from typing import Any
+from unittest.mock import Mock, patch
 
 import pytest
+from aiohttp import ClientResponse
+
+from nv_config_manager.common import auth as auth_mod
+from nv_config_manager.common.config import clear_config_cache
+
+_CLIENT_RESPONSE_INIT = ClientResponse.__init__
+
+
+def _client_response_init_with_stream_writer(
+    self: ClientResponse, *args: Any, **kwargs: Any
+) -> None:
+    """Bridge aioresponses to the aiohttp 3.14 ClientResponse signature."""
+    kwargs.setdefault("stream_writer", Mock(output_size=0))
+    _CLIENT_RESPONSE_INIT(self, *args, **kwargs)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def aiohttp_mock_response_compatibility() -> Generator[None]:
+    """Supply the argument omitted by the latest aioresponses release."""
+    with patch.object(ClientResponse, "__init__", _client_response_init_with_stream_writer):
+        yield
+
 
 # Default INI content that covers all common sections
 # All hostnames are generic - no vendor-specific references
@@ -136,6 +161,13 @@ channel_name = nv-config-manager-test
 _current_ini = {"content": DEFAULT_INI}
 
 
+def _clear_auth_config_cache() -> None:
+    """Clear derived auth state when the backing INI cache is reset."""
+    auth_mod._auth_config = None
+    auth_mod._auth_config_source = None
+    auth_mod._auth_config_tracks_file = False
+
+
 @pytest.fixture(autouse=True)
 def mock_ini_config(mocker):
     """
@@ -144,13 +176,12 @@ def mock_ini_config(mocker):
     This fixture runs automatically for all tests, providing a consistent
     INI configuration across the test suite.
     """
-    from nv_config_manager.common.config import load_config
-
     # Reset to default INI for each test
     _current_ini["content"] = DEFAULT_INI
 
     # Clear any cached config from previous tests
-    load_config.cache_clear()
+    clear_config_cache()
+    _clear_auth_config_cache()
 
     read_func = configparser.ConfigParser.read
 
@@ -163,7 +194,8 @@ def mock_ini_config(mocker):
     yield
 
     # Clear cache after test to prevent leaking to next test
-    load_config.cache_clear()
+    clear_config_cache()
+    _clear_auth_config_cache()
 
 
 @pytest.fixture()
@@ -181,12 +213,11 @@ def custom_ini():
 
     Note: This also clears the load_config() cache to ensure the new config is used.
     """
-    from nv_config_manager.common.config import load_config
 
     def _set_ini(ini_content: str):
         # Update the shared INI content
         _current_ini["content"] = ini_content
         # Clear the cached config so it will be reloaded with new settings
-        load_config.cache_clear()
+        clear_config_cache()
 
     return _set_ini

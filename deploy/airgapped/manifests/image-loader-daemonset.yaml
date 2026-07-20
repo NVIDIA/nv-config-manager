@@ -183,16 +183,24 @@ spec:
           operator: Exists
           effect: NoSchedule
       
-      # Privileged to access host containerd
-      hostNetwork: true
-      hostPID: true
+      # Root is needed for the mounted containerd socket, but host namespaces
+      # and privileged mode are not required to use the containerd API.
+      # The socket grants node-level control, so this short-lived loader has no
+      # service-account token and mounts all host resources read-only.
       containers:
       - name: image-loader
         image: busybox:1.36
         imagePullPolicy: IfNotPresent
         command: ["/bin/sh", "/scripts/load-images.sh"]
         securityContext:
-          privileged: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+          privileged: false
+          readOnlyRootFilesystem: true
+          seccompProfile:
+            type: RuntimeDefault
         env:
         - name: CONTAINERD_SOCKET
           value: "/host/run/containerd/containerd.sock"
@@ -205,6 +213,7 @@ spec:
         volumeMounts:
         - name: containerd-sock
           mountPath: /host/run/containerd
+          readOnly: true
         - name: containerd-bin
           mountPath: /host/ctr-bin
           readOnly: true
@@ -250,4 +259,3 @@ spec:
     type: RollingUpdate
     rollingUpdate:
       maxUnavailable: 1
-

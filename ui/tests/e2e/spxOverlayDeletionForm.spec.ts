@@ -15,12 +15,16 @@
  * limitations under the License.
  */
 import { expect } from "@playwright/test";
-import { SITES_LIST, FORBIDDEN_SITE_ID } from "@/mocks/data";
+import {
+  SITES_LIST,
+  FORBIDDEN_SITE_ID,
+  SPX_OVERLAY_LIST,
+} from "@/mocks/data";
 import { test, TEST_TIMEOUT } from "./shared/utils";
 
 // Sample VPC data for testing
 const VPC_DATA = {
-  overlay_id: "test-overlay-1",
+  overlay_id: SPX_OVERLAY_LIST.primary,
   namespace_tag: "tenant-a",
   site: SITES_LIST.pdx01,
 };
@@ -73,7 +77,9 @@ test.describe("New SpX Overlay Deletion Workflow - URL Parameters", () => {
     await expect(
       page.getByRole("button", { name: SITES_LIST.pdx01, exact: true })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
-    await expect(page.getByLabel("Overlay ID")).toHaveValue(VPC_DATA.overlay_id);
+    await expect(
+      page.getByRole("button", { name: VPC_DATA.overlay_id, exact: true })
+    ).toBeVisible({ timeout: TEST_TIMEOUT });
     await expect(
       page.getByRole("button", { name: VPC_DATA.namespace_tag, exact: true })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
@@ -127,8 +133,12 @@ test.describe("New SpX Overlay Deletion Workflow - URL Parameters", () => {
       .getByRole("heading", { name: "New SpX Overlay Deletion Workflow" })
       .click();
 
-    // Change the VPC ID
-    await page.getByLabel("Overlay ID").fill("modified-vpc");
+    // Change the overlay ID
+    await page.getByRole("button", { name: "Overlay ID" }).click();
+    await page
+      .getByRole("dialog")
+      .getByText(SPX_OVERLAY_LIST.modified)
+      .click();
 
     // Change the namespace tag
     await page.getByRole("button", { name: VPC_DATA.namespace_tag }).click();
@@ -149,7 +159,7 @@ test.describe("New SpX Overlay Deletion Workflow - URL Parameters", () => {
     // Verify the request data matches the manually changed values
     expect(requestData).toEqual({
       site: SITES_LIST.rno1,
-      overlay_id: "modified-vpc",
+      overlay_id: SPX_OVERLAY_LIST.modified,
       namespace_tag: "spectrumx",
     });
 
@@ -180,7 +190,11 @@ test.describe("New SpX Overlay Deletion Workflow - Standard Tests", () => {
       .getByRole("heading", { name: "New SpX Overlay Deletion Workflow" })
       .click();
 
-    await page.getByLabel("Overlay ID").fill("test-overlay-submission");
+    await page.getByRole("button", { name: "Overlay ID" }).click();
+    await page
+      .getByRole("dialog")
+      .getByText(SPX_OVERLAY_LIST.submission)
+      .click();
     await page.getByRole("button", { name: "spectrumx" }).click();
     await page.getByRole("dialog").getByText("tenant-a").click();
 
@@ -193,7 +207,7 @@ test.describe("New SpX Overlay Deletion Workflow - Standard Tests", () => {
     // Verify the request data
     expect(requestData).toEqual({
       site: SITES_LIST.pdx01,
-      overlay_id: "test-overlay-submission",
+      overlay_id: SPX_OVERLAY_LIST.submission,
       namespace_tag: "tenant-a",
     });
 
@@ -212,7 +226,11 @@ test.describe("New SpX Overlay Deletion Workflow - Standard Tests", () => {
       .getByRole("heading", { name: "New SpX Overlay Deletion Workflow" })
       .click();
 
-    await page.getByLabel("Overlay ID").fill("test-overlay-submission");
+    await page.getByRole("button", { name: "Overlay ID" }).click();
+    await page
+      .getByRole("dialog")
+      .getByText(SPX_OVERLAY_LIST.submission)
+      .click();
 
     await page.getByRole("button", { name: "Submit" }).click();
 
@@ -220,7 +238,12 @@ test.describe("New SpX Overlay Deletion Workflow - Standard Tests", () => {
     await expect(
       page.getByRole("button", { name: SITES_LIST.pdx01, exact: true })
     ).toBeDisabled();
-    await expect(page.getByLabel("Overlay ID")).toBeDisabled();
+    await expect(
+      page.getByRole("button", {
+        name: SPX_OVERLAY_LIST.submission,
+        exact: true,
+      })
+    ).toBeDisabled();
     await expect(
       page.getByRole("button", { name: "spectrumx", exact: true })
     ).toBeDisabled();
@@ -236,7 +259,11 @@ test.describe("New SpX Overlay Deletion Workflow - Standard Tests", () => {
     await page.getByRole("button", { name: "Site" }).click();
     await page.getByRole("dialog").getByText(FORBIDDEN_SITE_ID).click();
 
-    await page.getByLabel("Overlay ID").fill("test-overlay");
+    await page.getByRole("button", { name: "Overlay ID" }).click();
+    await page
+      .getByRole("dialog")
+      .getByText(SPX_OVERLAY_LIST.forbidden, { exact: true })
+      .click();
 
     await page.getByRole("button", { name: "Submit" }).click();
 
@@ -309,6 +336,8 @@ test.describe("New SpX Overlay Deletion Workflow - URL Parameters 2", () => {
     await expect(page.getByRole("button", { name: "Site" })).toBeVisible({
       timeout: TEST_TIMEOUT,
     });
-    await expect(page.getByLabel("Overlay ID")).toHaveValue("");
+    await expect(
+      page.getByRole("button", { name: "Overlay ID" })
+    ).toBeDisabled();
   });
 });

@@ -25,16 +25,15 @@ the public repository.
 
 | Variable | Purpose |
 | -------- | ------- |
-| `NGC_REGISTRY_TOKEN` | Registry token used for image pulls, image pushes, and NGC chart publishing |
-| `NGC_REGISTRY_TOKEN_DSX` | Registry token used by the secondary DSX OCI chart target |
-| `NVCM_IMAGE_TARGETS` | Newline-delimited image targets, one `name|repository_prefix|token_variable` record per target |
+| `NVCM_IMAGE_TARGETS` | Newline-delimited image targets, one `name\|repository_prefix\|token_variable` record per target |
 | `NVCM_IMAGE_TARGET` | Optional default image target for build/publish jobs; the first `NVCM_IMAGE_TARGETS` record is used when unset |
 | `NVCM_VALUES_IMAGE_TARGET` | Image target name used when publishing charts and updating downstream `kiwi-argocd` values |
-| `NVCM_IMAGE_REPOSITORY` | Compatibility repository prefix used by config-time GitLab component inputs; set to the same repository as the selected internal image target |
-| `NVCM_NGC_API_BASE` | Base NGC API URL |
-| `NVCM_NGC_ORG` | NGC organization used by tag existence checks |
-| `NVCM_NGC_TEAM` | NGC team used by tag existence checks |
-| `NVCM_CHART_TARGETS` | Newline-delimited chart targets, one `type|repository|token_variable|options` record per target |
+| `NVCM_IMAGE_REPOSITORY` | Legacy/default image repository prefix; when `NVCM_IMAGE_TARGETS` is set, jobs derive this from the selected image target |
+| `NVCM_NGC_API_BASE` | Base registry API URL |
+| `NVCM_NGC_ORG` | Registry organization used by tag existence checks |
+| `NVCM_NGC_TEAM` | Registry team used by tag existence checks |
+| `NVCM_CHART_TARGETS` | Newline-delimited chart targets, one `type\|repository\|token_variable\|options` record per target |
+| Token variables referenced by target records | Registry credentials used for configured image and chart targets |
 | `CI_PUSH_TOKEN` | Token allowed to push CI-generated commits, chart branches, and package uploads |
 | `CI_PUSH_EMAIL` | Commit email used by CI-generated commits |
 
@@ -46,7 +45,7 @@ Example image target layout:
 
 ```text
 NVCM_IMAGE_TARGETS
-internal|nvcr.io/nvidian/cfa|NGC_REGISTRY_TOKEN
+internal|registry.example.com/example/team|REGISTRY_TOKEN
 
 NVCM_VALUES_IMAGE_TARGET
 internal
@@ -56,12 +55,11 @@ Example chart target layout:
 
 ```text
 NVCM_CHART_TARGETS
-ngc|nvidian/cfa|NGC_REGISTRY_TOKEN|org=nvidian
-oci|nvcr.io/0837451325059433/components-dev|NGC_REGISTRY_TOKEN_DSX
+oci|registry.example.com/example/components|CHART_REGISTRY_TOKEN
 ```
 
-Supported chart target types are `ngc` and `oci`. Supported optional chart
-options are `org`, `registry`, `username`, and `label`.
+Supported optional chart target options are `org`, `registry`, `username`,
+and `label`.
 
 `deploy/helm/values.yaml` uses `registry.example.com/nvidia/...` placeholders
 for checked-in service image repositories. Internal publishing and deployment
@@ -104,13 +102,28 @@ charts or updating downstream values.
 | `PULSE_NSPECT_ID` | Pulse project or engagement identifier |
 | `SSA_CLIENT_ID` | Service account client ID used by Pulse scanner authentication |
 | `SSA_CLIENT_SECRET` | Service account client secret used by Pulse scanner authentication |
-| `NV_CONFIG_MANAGER_CONTAINER_SCAN_POLICY_TOKEN` | Token that can read the container scan policy file |
-| `NVCM_CONTAINER_SCAN_POLICY_PROJECT` | URL-encoded GitLab project path for the scan policy project |
-| `NVCM_CONTAINER_SCAN_POLICY_FILE` | URL-encoded scan policy file path |
-| `NVCM_CONTAINER_SCAN_POLICY_REF` | Ref for the scan policy file, usually `main` |
+| `NV_CONFIG_MANAGER_CONTAINER_SCAN_POLICY_TOKEN` | Token that can read the internal container scan policy file |
+| `NVCM_CONTAINER_SCAN_POLICY_PROJECT` | URL-encoded GitLab project path for the internal scan policy project |
+| `NVCM_CONTAINER_SCAN_POLICY_FILE` | URL-encoded internal scan policy file path |
+| `NVCM_CONTAINER_SCAN_POLICY_REF` | Ref for the internal scan policy file, defaults to `main` |
 | `SONAR_HOST_URL` | SonarQube URL |
-| `SONAR_TOKEN` | Token used for SonarQube analysis and report export |
-| `NVCM_SONAR_PROJECT_KEY` | SonarQube project key |
+| `SONAR_TOKEN` | Token authorized to analyze the SonarQube project and export its report |
+| `NVCM_SONAR_PROJECT_KEY` | SonarQube project key; configure as a protected CI/CD variable |
+
+SonarQube runs on every mirrored default-branch commit as an informational,
+post-merge report. Both Sonar jobs intentionally use `allow_failure: true` and
+do not gate upstream code. The default-branch Python test jobs run before every
+scan so all configured coverage reports are available; the scanner skips an
+analysis rather than replacing valid dashboard coverage with 0% if an expected
+artifact is missing. Generated Go API clients under `bindings/go/` are excluded
+from Sonar analysis.
+
+Pulse scan jobs use the versioned Pulse `scan-images` CI/CD component. The
+component scans each published image from the selected `NVCM_IMAGE_TARGETS`
+repository for both `linux/amd64` and `linux/arm64`, mints a fresh SSA token at
+scan time, and applies the configured internal policy file fetched from
+`NVCM_CONTAINER_SCAN_POLICY_PROJECT`. The matrix also scans the exact pinned
+upstream oauth2-proxy image shipped by the Helm chart on both architectures.
 
 ## Downstream Deployments
 

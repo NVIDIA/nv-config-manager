@@ -22,6 +22,7 @@ For source=vault, the value comes from ESO at runtime and is not stored here.
 
 from __future__ import annotations
 
+import json
 import secrets
 import string
 from typing import Any
@@ -33,6 +34,7 @@ from nv_config_manager_installer.schema import (
     VaultAuthMethod,
     VaultPathConfig,
     VaultPathsConfig,
+    ZTPStorageType,
 )
 
 
@@ -46,6 +48,21 @@ def _k8s_val(config: NVConfigManagerInstallConfig, group: str, vault_key: str) -
 
 _CRYPT_SAFE_CHARS = string.ascii_letters + string.digits + "./"
 _URL_SAFE_CHARS = string.ascii_letters + string.digits + "-_~"
+_NATS_CONFIG_PASSWORD_FIRST_CHARS = string.ascii_letters
+_NATS_CONFIG_PASSWORD_CHARS = string.ascii_letters + string.digits
+_NATS_CONFIG_PASSWORD_MIN_LENGTH = 16
+REQUIRED_SITE_SECRET_KEYS = ("root_password_r1", "api_user_key_r1")
+
+
+def _validate_nats_config_password(password: str) -> str:
+    """Validate a password used in unquoted NATS config variable expansion."""
+    if len(password) < _NATS_CONFIG_PASSWORD_MIN_LENGTH:
+        raise ValueError(f"natsPassword must be at least {_NATS_CONFIG_PASSWORD_MIN_LENGTH} chars")
+    if password[0] not in _NATS_CONFIG_PASSWORD_FIRST_CHARS or any(
+        char not in _NATS_CONFIG_PASSWORD_CHARS for char in password[1:]
+    ):
+        raise ValueError("natsPassword must match [A-Za-z][A-Za-z0-9]*")
+    return password
 
 
 def _generate_password(length: int = 32) -> str:
@@ -56,6 +73,15 @@ def _generate_password(length: int = 32) -> str:
 def _generate_url_safe_password(length: int = 32) -> str:
     """Generate a random password safe for use in database/service connection string URLs."""
     return "".join(secrets.choice(_URL_SAFE_CHARS) for _ in range(length))
+
+
+def _generate_nats_config_password(length: int = 32) -> str:
+    """Generate a password safe for unquoted NATS config variable expansion."""
+    if length < _NATS_CONFIG_PASSWORD_MIN_LENGTH:
+        raise ValueError(f"length must be at least {_NATS_CONFIG_PASSWORD_MIN_LENGTH}")
+    first = secrets.choice(_NATS_CONFIG_PASSWORD_FIRST_CHARS)
+    rest = "".join(secrets.choice(_NATS_CONFIG_PASSWORD_CHARS) for _ in range(length - 1))
+    return _validate_nats_config_password(f"{first}{rest}")
 
 
 def _generate_token(length: int = 40) -> str:
@@ -89,7 +115,8 @@ def _generate_core_k8s_secrets(state: dict[str, str], _v: Any) -> None:
     state["nautobot_token"] = _v("nautobot", "token") or _generate_token(40)
     if ro_token := _v("nautobot", "readOnlyToken"):
         state["nautobot_read_only_token"] = ro_token
-    state["nats_password"] = _v("nautobot", "natsPassword") or _generate_url_safe_password()
+    nats_password = _v("nautobot", "natsPassword") or _generate_nats_config_password()
+    state["nats_password"] = _validate_nats_config_password(nats_password)
     state["redis_password"] = _v("redis", "password") or _generate_url_safe_password()
     state["nautobot_admin_password"] = _v("nautobot_app", "adminPassword") or _generate_password()
     state["django_secret_key"] = _v("nautobot_app", "djangoSecretKey") or _generate_password(50)
@@ -105,6 +132,8 @@ def _generate_optional_k8s_secrets(
 ) -> None:
     """Populate optional integration secrets (Slack, Jira, CNPG backup)."""
     k8s = config.secrets.k8s
+    if config.sso.enabled:
+        state["oidc_cookie_secret"] = _generate_token(32)
     if k8s.slack.enabled:
         state["slack_token"] = _v("slack", "token") or _generate_url_safe_password()
     if k8s.jira.enabled:
@@ -113,6 +142,15 @@ def _generate_optional_k8s_secrets(
     if k8s.cnpg_backup.enabled:
         state["cnpg_access_key_id"] = _v("cnpg_backup", "accessKeyId") or ""
         state["cnpg_access_secret_key"] = _v("cnpg_backup", "accessSecretKey") or ""
+    ztp_storage = config.infrastructure.ztp_storage
+    if (
+        ztp_storage.type == ZTPStorageType.S3
+        and not ztp_storage.s3_ceph.enabled
+        and k8s.ztp_s3.enabled
+    ):
+        state["ztp_s3_endpoint"] = _v("ztp_s3", "endpoint") or ""
+        state["ztp_s3_access_key_id"] = _v("ztp_s3", "accessKeyId") or ""
+        state["ztp_s3_secret_access_key"] = _v("ztp_s3", "secretAccessKey") or ""
 
 
 def generate_secrets(config: NVConfigManagerInstallConfig) -> dict[str, str]:
@@ -128,6 +166,7 @@ def generate_secrets(config: NVConfigManagerInstallConfig) -> dict[str, str]:
                           nats_password, hash_salt, django_secret_key, etc.
     """
     state: dict[str, str] = {}
+    configured_network_keys: set[str] = set()
 
     # -- Network secrets --
     for entry in config.network_secrets:
@@ -136,6 +175,7 @@ def generate_secrets(config: NVConfigManagerInstallConfig) -> dict[str, str]:
         full_key = (
             entry.secret_key if not entry.rotation else f"{entry.secret_key}_{entry.rotation}"
         )
+        configured_network_keys.add(full_key)
         if entry.source == PasswordSource.GENERATE:
             state[full_key] = _generate_password()
         elif entry.source == PasswordSource.MANUAL:
@@ -149,6 +189,14 @@ def generate_secrets(config: NVConfigManagerInstallConfig) -> dict[str, str]:
     # -- Hash salt --
     state["hash_salt"] = _generate_password(8)
 
+    # These values are used by every NVCM site.  The TUI normally creates
+    # their entries, but keep non-interactive ESO runs safe as well.  Do not
+    # generate over an explicitly Vault-sourced entry: the OpenBao populator
+    # verifies that it already exists at the site's configured path.
+    for key in REQUIRED_SITE_SECRET_KEYS:
+        if key not in configured_network_keys:
+            state[key] = _generate_password()
+
     if config.secrets.method != SecretsMethod.KUBERNETES:
         return state
 
@@ -160,6 +208,131 @@ def generate_secrets(config: NVConfigManagerInstallConfig) -> dict[str, str]:
     _generate_redfish_secrets(config, state)
 
     return state
+
+
+def build_openbao_secret_data(
+    config: NVConfigManagerInstallConfig,
+) -> dict[str, dict[str, str]]:
+    """Build logical OpenBao values for every installer-supported ESO path.
+
+    The returned keys are schema path-group names and logical Helm key names.
+    The OpenBao writer translates logical names through each group's configured
+    ``keys`` mapping before writing KV v2 data.
+    """
+
+    def value(group: str, key: str) -> str:
+        return _k8s_val(config, group, key)
+
+    nats_password = value("nautobot", "natsPassword") or _generate_nats_config_password()
+    nautobot_token = (
+        value("nautobot", "token")
+        or value("nautobot_app", "superuserApiToken")
+        or _generate_token(40)
+    )
+    groups: dict[str, dict[str, str]] = {
+        "nautobot": {
+            "token": nautobot_token,
+            "readOnlyToken": value("nautobot", "readOnlyToken") or _generate_token(40),
+            "natsPassword": _validate_nats_config_password(nats_password),
+            "natsSysPassword": value("nautobot", "natsSysPassword")
+            or _generate_nats_config_password(),
+            "natsNautobotPassword": value("nautobot", "natsNautobotPassword")
+            or _generate_nats_config_password(),
+        },
+        "redis": {
+            "password": value("redis", "password") or _generate_url_safe_password(),
+        },
+        "postgres": {},
+        "network": {
+            "user": value("network", "user") or config.secrets.config_manager_service_username,
+            "password": value("network", "password") or _generate_url_safe_password(),
+        },
+        "nautobot_app": {
+            "adminPassword": value("nautobot_app", "adminPassword") or _generate_password(),
+            "djangoSecretKey": value("nautobot_app", "djangoSecretKey") or _generate_password(50),
+            "superuserApiToken": nautobot_token,
+        },
+    }
+    for database, user_key, password_key in _DB_GROUPS:
+        groups["postgres"][user_key] = value("postgres", user_key) or database
+        groups["postgres"][password_key] = value("postgres", password_key) or (
+            _generate_url_safe_password()
+        )
+
+    if config.sso.enabled:
+        groups["oidc"] = {
+            "clientSecret": config.sso.client_secret,
+            "cookieSecret": _generate_url_safe_password(),
+        }
+
+    optional = (
+        ("slack", {"token": value("slack", "token")}),
+        (
+            "jira",
+            {
+                "baseUrl": value("jira", "baseUrl"),
+                "apiToken": value("jira", "apiToken"),
+            },
+        ),
+        (
+            "cnpg_backup",
+            {
+                "accessKeyId": value("cnpg_backup", "accessKeyId"),
+                "accessSecretKey": value("cnpg_backup", "accessSecretKey"),
+            },
+        ),
+        (
+            "ztp_s3",
+            {
+                "endpoint": value("ztp_s3", "endpoint"),
+                "accessKeyId": value("ztp_s3", "accessKeyId"),
+                "secretAccessKey": value("ztp_s3", "secretAccessKey"),
+            },
+        ),
+    )
+    for group, data in optional:
+        if group == "ztp_s3" and (
+            config.infrastructure.ztp_storage.type != ZTPStorageType.S3
+            or config.infrastructure.ztp_storage.s3_ceph.enabled
+        ):
+            continue
+        if getattr(config.secrets.vault.paths, group).enabled:
+            groups[group] = data
+
+    if config.redfish.enabled:
+        redfish: dict[str, str] = {}
+        for vendor in ("lenovo", "bluefield"):
+            creds = config.redfish.vendors.get(vendor)
+            default_user = creds.default_user if creds else ""
+            default_password = creds.default_password if creds else ""
+            manager_password = creds.config_manager_password if creds else ""
+            redfish[f"{vendor}DefaultUser"] = default_user or (
+                "USERID" if vendor == "lenovo" else "admin"
+            )
+            redfish[f"{vendor}DefaultPassword"] = default_password or _generate_password()
+            redfish[f"{vendor}ConfigManagerPassword"] = manager_password or _generate_password()
+        groups["redfish"] = redfish
+        default_creds = config.redfish.vendors.get("default")
+        groups["bmc"] = {
+            "credsJson": json.dumps(
+                {
+                    "default": {
+                        "username": (
+                            default_creds.default_user
+                            if default_creds and default_creds.default_user
+                            else "admin"
+                        ),
+                        "password": (
+                            default_creds.default_password
+                            if default_creds and default_creds.default_password
+                            else _generate_password()
+                        ),
+                    }
+                }
+            )
+        }
+
+    return groups
 
 
 # ---------------------------------------------------------------------------
@@ -177,9 +350,12 @@ _VAULT_PATH_GROUPS: list[tuple[str, str, str]] = [
     ("network", "network", "network"),
     ("nautobot_app", "nautobotApp", "nautobot-app"),
     ("oidc", "oidc", "oidc"),
+    ("redfish", "redfish", "redfish"),
+    ("bmc", "bmc", "bmc"),
     ("slack", "slack", "slack"),
     ("jira", "jira", "jira"),
     ("cnpg_backup", "cnpgBackup", "cnpg-backup"),
+    ("ztp_s3", "ztpS3", "ztp-s3"),
 ]
 
 
@@ -203,7 +379,7 @@ def _build_vault_paths(v: Any, env: str) -> dict[str, Any]:
         if not pc.enabled:
             continue
         entry: dict[str, Any] = {"path": pc.path or f"{env}/{default_suffix}"}
-        keys = pc.keys if pc.keys else getattr(defaults, schema_field).keys
+        keys = {**getattr(defaults, schema_field).keys, **pc.keys}
         if keys:
             entry["keys"] = dict(keys)
         paths[helm_key] = entry

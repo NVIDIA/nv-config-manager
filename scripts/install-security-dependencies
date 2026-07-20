@@ -23,6 +23,7 @@ KEYCLOAK_HOSTNAME=""
 SPIFFE_TRUST_DOMAIN=""
 KEYCLOAK_ADMIN_PASSWORD="admin"
 OIDC_CLIENT_SECRET="nvcm-local-client-secret"
+GATEWAY_CONTROLLER="envoyGateway"
 
 GATEWAY_API_VERSION="v1.4.1"
 ENVOY_GATEWAY_VERSION="v1.6.5"
@@ -30,6 +31,7 @@ CERT_MANAGER_VERSION="v1.20.2"
 SPIRE_CRDS_VERSION="0.5.0"
 SPIRE_VERSION="0.29.0"
 KEYCLOAK_CONFIG_IMAGE="curlimages/curl:8.15.0"
+KGATEWAY_VERSION="v2.3.4"
 if [[ -f "$OPERATOR_VERSIONS_FILE" ]]; then
     # shellcheck disable=SC1090
     source "$OPERATOR_VERSIONS_FILE"
@@ -47,6 +49,7 @@ Options:
   --spiffe-trust-domain DOMAIN     SPIRE trust domain (default: <base-hostname>)
   --keycloak-admin-password PASS   Local Keycloak admin password (default: admin)
   --oidc-client-secret SECRET      OIDC client secret shared with installer config
+  --gateway-controller TYPE       envoyGateway or kgateway (default: envoyGateway)
   --help                           Show this help
 EOF
 }
@@ -94,6 +97,10 @@ while [[ $# -gt 0 ]]; do
             OIDC_CLIENT_SECRET="$(require_option_value "$1" "${2:-}")"
             shift 2
             ;;
+        --gateway-controller)
+            GATEWAY_CONTROLLER="$(require_option_value "$1" "${2:-}")"
+            shift 2
+            ;;
         --help|-h)
             usage
             exit 0
@@ -105,6 +112,11 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+if [[ "$GATEWAY_CONTROLLER" != "envoyGateway" && "$GATEWAY_CONTROLLER" != "kgateway" ]]; then
+    echo "--gateway-controller must be envoyGateway or kgateway" >&2
+    exit 1
+fi
 
 if [[ -z "$KEYCLOAK_HOSTNAME" ]]; then
     KEYCLOAK_HOSTNAME="keycloak.${BASE_HOSTNAME}"
@@ -290,6 +302,25 @@ install_envoy_gateway() {
         --create-namespace \
         --skip-crds \
         --wait --timeout 5m
+}
+
+install_kgateway() {
+    echo "Installing kgateway ${KGATEWAY_VERSION}"
+    echo "Installing Gateway API ${GATEWAY_API_VERSION} CRDs"
+    kubectl apply --server-side --force-conflicts \
+        -f "https://github.com/kubernetes-sigs/gateway-api/releases/download/${GATEWAY_API_VERSION}/standard-install.yaml"
+    helm upgrade --install kgateway-crds \
+        oci://cr.kgateway.dev/kgateway-dev/charts/kgateway-crds \
+        --namespace kgateway-system \
+        --create-namespace \
+        --version "${KGATEWAY_VERSION}" \
+        --wait --timeout 5m
+    helm upgrade --install kgateway \
+        oci://cr.kgateway.dev/kgateway-dev/charts/kgateway \
+        --namespace kgateway-system \
+        --version "${KGATEWAY_VERSION}" \
+        --wait --timeout 5m
+    kubectl wait --timeout=120s -n kgateway-system deployment/kgateway --for=condition=Available
 }
 
 install_spire() {
@@ -643,6 +674,7 @@ spec:
               "protocol": "openid-connect",
               "redirectUris": ["http://localhost:*", "http://127.0.0.1:*"],
               "webOrigins": ["*"],
+              "optionalClientScopes": ["offline_access"],
               "attributes": {
                 "access.token.lifespan": "3600",
                 "pkce.code.challenge.method": "S256"
@@ -801,7 +833,10 @@ spec:
     - group: ""
       kind: Service
       name: keycloak
----
+KEYCLOAK_ROUTE_EOF
+
+    if [[ "$GATEWAY_CONTROLLER" == "envoyGateway" ]]; then
+        kubectl apply -f - <<KEYCLOAK_ENVOY_POLICY_EOF
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: SecurityPolicy
 metadata:
@@ -829,7 +864,8 @@ spec:
       - "*"
     allowCredentials: true
     maxAge: 86400s
-KEYCLOAK_ROUTE_EOF
+KEYCLOAK_ENVOY_POLICY_EOF
+    fi
 
     if kubectl get gateway -n "$APP_NAMESPACE" nv-config-manager-gateway >/dev/null 2>&1; then
         kubectl wait --timeout=120s -n "$APP_NAMESPACE" httproute/keycloak --for=condition=Accepted 2>/dev/null || true
@@ -837,7 +873,11 @@ KEYCLOAK_ROUTE_EOF
 }
 
 install_cert_manager
-install_envoy_gateway
+if [[ "$GATEWAY_CONTROLLER" == "kgateway" ]]; then
+    install_kgateway
+else
+    install_envoy_gateway
+fi
 install_spire
 install_keycloak
 

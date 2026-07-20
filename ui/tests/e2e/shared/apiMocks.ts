@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 import { Page } from "@playwright/test";
+import { validateSiteBackupPayload } from "@/mocks/handlers/siteBackupHandlers";
 import { createGenericWorkflow } from "@/mocks/data/workflows/genericWorkflow";
 import {
   SITES_LIST_API_RESPONSE,
@@ -25,11 +26,15 @@ import {
   STATUS_LIST_API_RESPONSE,
   TENANT_LIST_API_RESPONSE,
   NAMESPACE_TAGS_LIST_API_RESPONSE,
+  SPX_OVERLAY_LIST_API_RESPONSE,
   DEVICE_TYPES_LIST_API_RESPONSE,
   FORBIDDEN_WORKFLOW_ID,
   FORBIDDEN_SITE_ID,
   FORBIDDEN_DEVICE_IDS,
 } from "@/mocks/data";
+
+const CONFIG_SYNC_TIMESTAMP_METRIC =
+  "nv_config_manager_dhcp_cache_last_refresh_timestamp_seconds";
 
 // Mock the runtime config endpoint
 export async function mockRuntimeConfigEndpoint(page: Page) {
@@ -62,9 +67,11 @@ export async function setupApiMocks(page: Page) {
   // Runtime config endpoint (must be first!)
   await mockRuntimeConfigEndpoint(page);
   await mockWhoamiEndpoint(page);
+  await mockDhcpEndpoints(page);
 
   // Workflow submission endpoints
   await mockSiteCableValidationEndpoint(page);
+  await mockSiteBackupEndpoint(page);
   await mockSpxOverlayCreationEndpoint(page);
   await mockSpxOverlayDeletionEndpoint(page);
   await mockBackupEndpoint(page);
@@ -92,6 +99,7 @@ export async function setupApiMocks(page: Page) {
   await mockStatusEndpoint(page);
   await mockTenantsEndpoint(page);
   await mockNamespaceTagsEndpoint(page);
+  await mockOverlaysEndpoint(page);
   await mockDeviceTypesEndpoint(page);
   await mockDevicesEndpoint(page);
   await mockPasswordUsersEndpoint(page);
@@ -112,6 +120,178 @@ export async function setupApiMocks(page: Page) {
   await mockHealthCheckEndpoint(page);
 }
 
+/** Mock DHCP dashboard and lease deletion behavior for browser tests. */
+export async function mockDhcpEndpoints(page: Page) {
+  let clearedLease: string | null = null;
+  const configSyncTimestamp = Math.floor(Date.now() / 1000) - 240;
+  const leases = [
+    {
+      ip_address: "10.0.0.10",
+      hostname: "leaf-01",
+      hw_address: "02:00:00:00:00:10",
+      subnet: "10.0.0.0/24",
+      state: 0,
+      cltt: 1783700000,
+      valid_lft: 7200,
+      expires_at: "2026-07-10T18:00:00Z",
+    },
+    {
+      ip_address: "10.0.0.11",
+      hostname: "leaf-02",
+      client_id: "01:02:03:04:05",
+      subnet: null,
+      state: 0,
+      cltt: 1783700300,
+      valid_lft: 7200,
+      expires_at: "2026-07-10T18:05:00Z",
+    },
+  ];
+  const reservations = [
+    {
+      ip_address: "10.0.0.2",
+      hostname: "spine-01",
+      identifier_type: "hw-address",
+      identifier: "02:00:00:00:00:01",
+    },
+    {
+      ip_address: "10.0.0.3",
+      hostname: "spine-02",
+      identifier_type: "client-id",
+      identifier: "01:02:03:04",
+      subnet: "10.0.0.0/24",
+    },
+  ];
+
+  await page.route("**/lease?*", async (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    const search = (params.get("search") || "").toLowerCase();
+    const compactSearch = search.replaceAll(/[:.-]/g, "");
+    const normalizedMacSearch = /^[0-9a-f]{12}$/.test(compactSearch)
+      ? compactSearch
+      : null;
+    const activeLeases = leases.filter((lease) => lease.ip_address !== clearedLease);
+    const filteredLeases = search
+      ? activeLeases.filter((lease) =>
+          [
+            lease.ip_address,
+            lease.hostname,
+            "hw_address" in lease ? lease.hw_address : null,
+            "client_id" in lease ? lease.client_id : null,
+            lease.subnet,
+          ].some((value) => {
+            const normalizedValue = String(value || "").toLowerCase();
+            return (
+              normalizedValue.includes(search) ||
+              (normalizedMacSearch !== null &&
+                normalizedValue.replaceAll(/[:.-]/g, "") === normalizedMacSearch)
+            );
+          }),
+        )
+      : activeLeases;
+    await route.fulfill({
+      status: 200,
+      json: { leases: filteredLeases, next_cursor: null },
+    });
+  });
+
+  await page.route("**/reservation?*", async (route) => {
+    const search = new URL(route.request().url()).searchParams
+      .get("search")
+      ?.toLowerCase();
+    const compactSearch = search?.replaceAll(/[:.-]/g, "");
+    const normalizedMacSearch =
+      compactSearch && /^[0-9a-f]{12}$/.test(compactSearch)
+        ? compactSearch
+        : null;
+    const filteredReservations = search
+      ? reservations.filter((reservation) =>
+          [
+            reservation.ip_address,
+            reservation.hostname,
+            reservation.identifier_type,
+            reservation.identifier,
+            "subnet" in reservation ? reservation.subnet : null,
+          ].some((value) => {
+            const normalizedValue = String(value || "").toLowerCase();
+            return (
+              normalizedValue.includes(search) ||
+              (normalizedMacSearch !== null &&
+                normalizedValue.replaceAll(/[:.-]/g, "") ===
+                  normalizedMacSearch)
+            );
+          })
+        )
+      : reservations;
+    await route.fulfill({
+      status: 200,
+      json: {
+        reservations: filteredReservations,
+        total_count: filteredReservations.length,
+        next_cursor: null,
+      },
+    });
+  });
+
+  await page.route("**/pool?*", async (route) => {
+    const search = new URL(route.request().url()).searchParams
+      .get("search")
+      ?.toLowerCase();
+    const pools = [
+      {
+        subnet: "10.0.0.0/24",
+        pool: "10.0.0.10-10.0.0.19",
+      },
+    ];
+    const filteredPools = search
+      ? pools.filter(
+          (pool) => pool.subnet.includes(search) || pool.pool.includes(search)
+        )
+      : pools;
+    await route.fulfill({
+      status: 200,
+      json: {
+        pools: filteredPools,
+        total_count: filteredPools.length,
+        next_cursor: null,
+      },
+    });
+  });
+
+  await page.route("**/summary*", async (route) => {
+    const activeLeases = leases.filter(
+      (lease) => lease.ip_address !== clearedLease
+    );
+    await route.fulfill({
+      status: 200,
+      json: {
+        active_lease_count: activeLeases.length,
+        reservation_count: 2,
+        pool_count: 1,
+      },
+    });
+  });
+
+  await page.route("**/metrics", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "text/plain; version=0.0.4",
+      body: `${CONFIG_SYNC_TIMESTAMP_METRIC}{ip_version="4"} ${configSyncTimestamp}\n`,
+    });
+  });
+
+  await page.route("**/lease/*", async (route) => {
+    const request = route.request();
+    if (request.method() !== "DELETE") {
+      await route.fulfill({ status: 400, json: { detail: "Invalid lease request" } });
+      return;
+    }
+    clearedLease = decodeURIComponent(
+      new URL(request.url()).pathname.split("/").at(-1) || ""
+    );
+    await route.fulfill({ status: 204 });
+  });
+}
+
 export async function mockWhoamiEndpoint(page: Page) {
   await page.route('**/whoami', async (route) => {
     await route.fulfill({
@@ -120,6 +300,15 @@ export async function mockWhoamiEndpoint(page: Page) {
         user: 'joliao@nvidia.com',
         roles: ['all', 'nvcm-network'],
       },
+    });
+  });
+}
+
+export async function mockOverlaysEndpoint(page: Page) {
+  await page.route(/.*\/v1\/parameter\/overlay/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      json: SPX_OVERLAY_LIST_API_RESPONSE,
     });
   });
 }
@@ -315,6 +504,42 @@ export async function mockSiteCableValidationEndpoint(page: Page) {
   );
 }
 
+export async function mockSiteBackupEndpoint(page: Page) {
+  await page.route(`**/v1/workflow/ngc/site_backup`, async (route) => {
+    const request = route.request();
+    const body = JSON.parse((await request.postData()) || "{}");
+
+    const validationError = validateSiteBackupPayload(body);
+    if (validationError) {
+      await route.fulfill({
+        status: 400,
+        json: validationError,
+      });
+      return;
+    }
+
+    if (body.site === FORBIDDEN_SITE_ID) {
+      await route.fulfill({
+        status: 403,
+        json: {
+          error: "Forbidden: You do not have permission to run this workflow",
+        },
+      });
+      return;
+    }
+
+    await delay(100);
+
+    await route.fulfill({
+      status: 201,
+      json: {
+        id: body.site,
+        href: `https://url-to-temporal.com/namespaces/default/workflows/${body.site}`,
+      },
+    });
+  });
+}
+
 export async function mockSpxOverlayCreationEndpoint(page: Page) {
   await page.route(`**/v1/workflow/ngc/spx_overlay_creation`, async (route) => {
     const request = route.request();
@@ -346,7 +571,7 @@ export async function mockSpxOverlayCreationEndpoint(page: Page) {
       return;
     }
 
-    await delay(100);
+    await delay(500);
 
     await route.fulfill({
       status: 201,
@@ -1025,6 +1250,9 @@ export async function mockDevicesEndpoint(page: Page) {
     // Process all filter parameters
     url.searchParams.forEach((value, key) => {
       if (key === "site") return; // Already handled above
+      // Mock devices are all NVCM-managed; managed_only does not map to a
+      // device field, so skip it instead of filtering everything out.
+      if (key === "managed_only") return;
 
       // Filter devices based on the parameter
       devices = devices.filter((device) => {
@@ -1090,6 +1318,7 @@ export async function mockPasswordUsersEndpoint(page: Page) {
 export async function mockWorkflowTypesEndpoint(page: Page) {
   const workflowTypes = [
     "BackupWorkflow",
+    "SiteBackupWorkflow",
     "ConnectedHostMetadataWorkflow",
     "DeployWorkflow",
     "TenantDeployWorkflow",
@@ -1127,6 +1356,7 @@ export async function mockWorkflowTypesEndpoint(page: Page) {
 export async function mockWorkflowMetadataEndpoint(page: Page) {
   const workflowTypes = [
     "BackupWorkflow",
+    "SiteBackupWorkflow",
     "ConnectedHostMetadataWorkflow",
     "DeployWorkflow",
     "TenantDeployWorkflow",
@@ -1154,6 +1384,7 @@ export async function mockWorkflowMetadataEndpoint(page: Page) {
   ];
   const workflowDisplayNames: Record<string, string> = {
     BackupWorkflow: "Configuration Backup",
+    SiteBackupWorkflow: "Site Configuration Backup",
     ConnectedHostMetadataWorkflow: "Connected Host Metadata",
     DeployWorkflow: "Configuration Deploy",
     TenantDeployWorkflow: "Tenant Deploy",
@@ -1178,6 +1409,7 @@ export async function mockWorkflowMetadataEndpoint(page: Page) {
   };
   const workflowEndpoints: Record<string, string> = {
     BackupWorkflow: "/ngc/backup",
+    SiteBackupWorkflow: "/ngc/site_backup",
     ConnectedHostMetadataWorkflow: "/ngc/connected_host_metadata",
     DeployWorkflow: "/ngc/deploy",
     TenantDeployWorkflow: "/ngc/tenant-deploy",
@@ -1243,6 +1475,7 @@ export async function mockWorkflowsListEndpoint(page: Page) {
     }
 
     const workflowType = url.searchParams.get("workflow_type");
+    const workflowId = url.searchParams.get("workflow_id");
     const nextPageToken = url.searchParams.get("next_page_token");
     const limit = url.searchParams.get("limit");
     const hideCompleted =
@@ -1268,6 +1501,9 @@ export async function mockWorkflowsListEndpoint(page: Page) {
       if (workflowType && workflow.workflow_type !== workflowType) {
         return false;
       }
+      if (workflowId && workflow.id !== workflowId) {
+        return false;
+      }
       if (hideCompleted && workflow.status === "COMPLETED") {
         return false;
       }
@@ -1287,8 +1523,8 @@ export async function mockWorkflowsListEndpoint(page: Page) {
       }
       if (
         status &&
-        displayStatus !== status &&
-        !(pendingApproval && status === "RUNNING" && workflow.pending_approval)
+        workflow.status !== status &&
+        displayStatus !== status
       ) {
         return false;
       }
@@ -1323,15 +1559,23 @@ export async function mockWorkflowsListEndpoint(page: Page) {
           string,
           Array<string | number | boolean> | undefined
         >;
-        const attributeValue = String(searchAttributes[attribute]?.[0] ?? "").toLowerCase();
-        return attributeValue.includes(value.toLowerCase());
+        const attributeValue = String(searchAttributes[attribute]?.[0] ?? "");
+        return attributeValue === value;
       });
     });
-    const paginatedWorkflows = workflows.slice(
+    const responseWorkflows =
+      url.searchParams.get("status") === "RUNNING" &&
+      !url.searchParams.has("pending_approval") &&
+      workflows.length > 0
+        ? workflows.map((workflow, index) =>
+            index === 0 ? { ...workflow, pending_approval: true } : workflow
+          )
+        : workflows;
+    const paginatedWorkflows = responseWorkflows.slice(
       page * pageSize,
       (page + 1) * pageSize
     );
-    const hasMore = (page + 1) * pageSize < workflows.length;
+    const hasMore = (page + 1) * pageSize < responseWorkflows.length;
 
     await delay(100);
 
@@ -1340,9 +1584,11 @@ export async function mockWorkflowsListEndpoint(page: Page) {
       json: {
         workflows: paginatedWorkflows,
         next_page_token: hasMore ? (page + 1).toString() : null,
-        total_count: workflows.length,
+        total_count: responseWorkflows.length,
         page_count:
-          workflows.length === 0 ? 0 : Math.ceil(workflows.length / pageSize),
+          responseWorkflows.length === 0
+            ? 0
+            : Math.ceil(responseWorkflows.length / pageSize),
       },
     });
   });

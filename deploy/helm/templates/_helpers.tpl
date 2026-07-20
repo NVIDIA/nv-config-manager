@@ -18,11 +18,33 @@ Common labels
 {{- define "nv-config-manager.labels" -}}
 helm.sh/chart: {{ include "nv-config-manager.chart" . }}
 {{ include "nv-config-manager.selectorLabels" . }}
-{{- if .Chart.AppVersion }}
-app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
-{{- end }}
+app.kubernetes.io/version: {{ .Chart.AppVersion | default .Chart.Version | quote }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 app.kubernetes.io/part-of: nv-config-manager
+{{- end }}
+
+{{/*
+Resolve an NVIDIA Config Manager image tag. Release pipelines may set a
+per-image tag; checked-in values fall back to the chart version so the source
+tree has only one version to maintain.
+*/}}
+{{- define "nv-config-manager.imageTag" -}}
+{{- .image.tag | default .root.Chart.AppVersion | default .root.Chart.Version -}}
+{{- end }}
+
+{{/*
+Resolve a full NVIDIA Config Manager image reference. A digest pin
+(sha256:<hex>, set by deploy automation) takes precedence over any tag and
+renders repository@digest; otherwise fall back to repository:tag with the
+imageTag chart-version fallback. Takes the same dict as imageTag:
+(dict "root" . "image" .Values.global.images.<name>)
+*/}}
+{{- define "nv-config-manager.image" -}}
+{{- if .image.digest -}}
+{{- .image.repository }}@{{ .image.digest -}}
+{{- else -}}
+{{- .image.repository }}:{{ include "nv-config-manager.imageTag" . -}}
+{{- end -}}
 {{- end }}
 
 {{/*
@@ -50,6 +72,7 @@ overrides can switch every Deployment to Recreate in one place.
 {{- if .root.Values.global.deploymentStrategy -}}
 {{- $strategy = .root.Values.global.deploymentStrategy -}}
 {{- end -}}
+
 {{- if $strategy }}
 {{- $type := $strategy.type | default "RollingUpdate" -}}
 strategy:
@@ -62,6 +85,34 @@ strategy:
 {{- end }}
 {{- end }}
 {{- end }}
+
+{{/* HTTPRoute parent reference for chart-managed or shared Gateways. */}}
+{{- define "nv-config-manager.gatewayParentRef" -}}
+- name: {{ .Values.gateway.name }}
+  namespace: {{ .Values.gateway.namespace | default .Values.global.namespace }}
+  {{- with .Values.gateway.sectionName }}
+  sectionName: {{ . }}
+  {{- end }}
+{{- end -}}
+
+{{/*
+Resolve the Gateway API controller selected by the chart.
+
+`ingress.type` predates the Gateway API migration and remains the canonical
+controller selector so existing values files do not need a no-op rename.
+`gateway.type` is accepted as a transition alias for configurations generated
+by early Gateway API releases. Setting both to different values is ambiguous.
+*/}}
+{{- define "nv-config-manager.gatewayControllerType" -}}
+{{- $ingress := .Values.ingress | default dict -}}
+{{- $gateway := .Values.gateway | default dict -}}
+{{- $ingressType := get $ingress "type" | default "" -}}
+{{- $gatewayType := get $gateway "type" | default "" -}}
+{{- if and $ingressType $gatewayType (ne $ingressType $gatewayType) -}}
+{{- fail (printf "ingress.type (%q) and gateway.type (%q) must match when both are set" $ingressType $gatewayType) -}}
+{{- end -}}
+{{- coalesce $ingressType $gatewayType "envoyGateway" -}}
+{{- end -}}
 
 {{/*
 Generate the base hostname for the gateway
@@ -502,6 +553,26 @@ checksum/auth-ini: {{ include "nv-config-manager.authIniSections" . | sha256sum 
 {{- end -}}
 
 {{/*
+Opt out of AWS CloudWatch Application Signals / OTel operator auto-instrumentation.
+Config Manager instruments its services with the OTel SDK directly, so the
+platform auto-injector must not inject its own env vars: on the Go Temporal
+server the injected http/protobuf vars prevent startup, and on the Python
+services they collide with the SDK's OTLP export. Apply to any pod that sets up
+manual OTel export (guard with `if .Values.observability.enabled`).
+Usage: {{ include "nv-config-manager.otelOptOutAnnotations" . | nindent 8 }}
+*/}}
+{{- define "nv-config-manager.otelOptOutAnnotations" -}}
+instrumentation.opentelemetry.io/inject-java: "false"
+instrumentation.opentelemetry.io/inject-python: "false"
+instrumentation.opentelemetry.io/inject-dotnet: "false"
+instrumentation.opentelemetry.io/inject-nodejs: "false"
+cloudwatch.aws.amazon.com/auto-annotate-java: "false"
+cloudwatch.aws.amazon.com/auto-annotate-python: "false"
+cloudwatch.aws.amazon.com/auto-annotate-dotnet: "false"
+cloudwatch.aws.amazon.com/auto-annotate-nodejs: "false"
+{{- end -}}
+
+{{/*
 Generate a JSON array of JWT provider configs for the Nautobot
 nv_config_manager_auth.jwt_authentication module.  Includes:
   - OIDC provider (user_provider: true) for browser users
@@ -786,6 +857,19 @@ Usage: {{ include "nv-config-manager.vault.keyName" (dict "root" . "secret" "nau
 {{- end -}}
 
 {{/*
+Get a configured Vault key name for optional fields. Unlike vault.keyName, this
+does not fall back to the logical key name when the field is absent or empty.
+*/}}
+{{- define "nv-config-manager.vault.configuredKeyName" -}}
+{{- if hasKey .root.Values.secrets.vault.paths .secret -}}
+{{- $secretConfig := index .root.Values.secrets.vault.paths .secret -}}
+{{- if and (hasKey $secretConfig "keys") (hasKey $secretConfig.keys .key) (index $secretConfig.keys .key) -}}
+{{- index $secretConfig.keys .key -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 =============================================================================
 Template Plugins Init Container Helper
 =============================================================================
@@ -947,6 +1031,10 @@ mcp-auth.ini: |
   {{- if $enabled }}
   {{- $resourceUrl := get $oauth "resourceUrl" | default (printf "https://%s/mcp" (tpl (.Values.mcp.gateway.svcHostname | default "") .)) -}}
   {{- $resourceUrl = trimSuffix "/" (tpl $resourceUrl .) -}}
+  {{- $forwardResourceParameter := true -}}
+  {{- if hasKey $oauth "forwardResourceParameter" -}}
+  {{- $forwardResourceParameter = $oauth.forwardResourceParameter -}}
+  {{- end -}}
   {{- $issuerUrl := get $oauth "issuerUrl" | default .Values.oidc.issuerUrl -}}
   {{- $issuerUrl = required "mcp.auth.oauth.issuerUrl or oidc.issuerUrl is required when MCP OAuth metadata is enabled" $issuerUrl -}}
   {{- $issuerUrl = trimSuffix "/" (tpl $issuerUrl .) -}}
@@ -978,6 +1066,7 @@ mcp-auth.ini: |
   scopes = {{ if kindIs "string" $scopes }}{{ $scopes }}{{ else }}{{ join " " $scopes }}{{ end }}
   authorization_endpoint = {{ $authorizationEndpoint }}
   token_endpoint = {{ $tokenEndpoint }}
+  forward_resource_parameter = {{ $forwardResourceParameter }}
   {{- if $jwksUri }}
   jwks_uri = {{ $jwksUri }}
   {{- end }}
@@ -1142,6 +1231,128 @@ Usage: {{ include "nv-config-manager.customLabelsEnv" . | nindent 8 }}
 {{- end -}}
 
 {{/*
+Network ZTP storage env vars. Only Ceph uses env refs because Rook generates
+the endpoint and credentials Secret at runtime. Other storage settings render
+into the main INI.
+Usage: {{ include "nv-config-manager.networkZtpStorageEnv" . | nindent 8 }}
+*/}}
+{{- define "nv-config-manager.networkZtp.s3CephUserSecretName" -}}
+{{- $s3 := .Values.networkZtp.storage.s3 | default dict -}}
+{{- $ceph := $s3.ceph | default dict -}}
+{{- $user := $ceph.objectStoreUser | default dict -}}
+{{- $storeName := $user.store | default "ceph-objectstore" -}}
+{{- $userName := $user.name | default "ztp-user" -}}
+{{- $ceph.userSecretName | default (printf "rook-ceph-object-user-%s-%s" $storeName $userName) -}}
+{{- end -}}
+
+{{- define "nv-config-manager.networkZtp.s3EsoIniEnabled" -}}
+{{- $s3 := .Values.networkZtp.storage.s3 | default dict -}}
+{{- $ceph := $s3.ceph | default dict -}}
+{{- $ztpS3 := index (.Values.secrets.vault.paths | default dict) "ztpS3" | default dict -}}
+{{- if and .Values.networkZtp.enabled (eq .Values.networkZtp.storage.type "s3") (eq .Values.secrets.method "eso") (not ($ceph.enabled | default false)) (not $s3.credentialsSecret) ($ztpS3.path | default "") -}}
+true
+{{- end -}}
+{{- end -}}
+
+{{- define "nv-config-manager.networkZtp.s3VaultAgentIniEnabled" -}}
+{{- $s3 := .Values.networkZtp.storage.s3 | default dict -}}
+{{- $ceph := $s3.ceph | default dict -}}
+{{- $ztpS3 := index (.Values.secrets.vault.paths | default dict) "ztpS3" | default dict -}}
+{{- if and .Values.networkZtp.enabled (eq .Values.networkZtp.storage.type "s3") (eq .Values.secrets.method "vault-agent") (not ($ceph.enabled | default false)) (not $s3.credentialsSecret) ($ztpS3.path | default "") -}}
+true
+{{- end -}}
+{{- end -}}
+
+{{- define "nv-config-manager.networkZtp.s3ExistingSecretIniEnabled" -}}
+{{- $s3 := .Values.networkZtp.storage.s3 | default dict -}}
+{{- $ceph := $s3.ceph | default dict -}}
+{{- if and .Values.networkZtp.enabled (eq .Values.networkZtp.storage.type "s3") (eq .Values.secrets.method "kubernetes") (not ($ceph.enabled | default false)) $s3.credentialsSecret -}}
+true
+{{- end -}}
+{{- end -}}
+
+{{- define "nv-config-manager.networkZtp.s3CredentialSource" -}}
+{{- $s3 := .Values.networkZtp.storage.s3 | default dict -}}
+{{- $ceph := $s3.ceph | default dict -}}
+{{- if $ceph.enabled | default false -}}
+ceph
+{{- else if eq (include "nv-config-manager.networkZtp.s3VaultAgentIniEnabled" .) "true" -}}
+vault-agent
+{{- else if $s3.credentialsSecret -}}
+existing-secret
+{{- else if eq (include "nv-config-manager.networkZtp.s3EsoIniEnabled" .) "true" -}}
+eso
+{{- else -}}
+default
+{{- end -}}
+{{- end -}}
+
+{{- define "nv-config-manager.networkZtpIniStorageConfig" -}}
+{{- $storage := .Values.networkZtp.storage | default dict -}}
+{{- $storageType := $storage.type | default "s3" -}}
+storage_type = {{ $storageType }}
+{{ if eq $storageType "file" -}}
+file_store_path = {{ $storage.file.mountPath | default "/mnt/images" }}
+{{ else if eq $storageType "s3" -}}
+{{- $s3 := $storage.s3 | default dict -}}
+{{- $ceph := $s3.ceph | default dict -}}
+s3_bucket = {{ $s3.bucketName | default "ngc-network-firmware-images" }}
+{{ if and (not ($ceph.enabled | default false)) $s3.endpoint -}}
+s3_endpoint = {{ $s3.endpoint }}
+{{ end -}}
+{{ if and (not ($ceph.enabled | default false)) $s3.region -}}
+s3_region = {{ $s3.region }}
+{{ end -}}
+{{ end -}}
+{{- end -}}
+
+{{- define "nv-config-manager.networkZtpExistingSecretIniConfig" -}}
+{{- if eq (include "nv-config-manager.networkZtp.s3ExistingSecretIniEnabled" .) "true" -}}
+{{- $s3 := .Values.networkZtp.storage.s3 | default dict -}}
+{{- $mountPath := "/secrets/ztp-s3-credentials" -}}
+{{- $endpointSecretKey := $s3.endpointSecretKey | default "CUSTOM_S3_ENDPOINT" -}}
+{{- if and (not $s3.endpoint) $endpointSecretKey }}
+s3_endpoint = $(cat {{ $mountPath }}/{{ $endpointSecretKey }})
+{{- end }}
+s3_access_key = $(cat {{ $mountPath }}/{{ $s3.accessKeySecretKey | default "CUSTOM_S3_ACCESS_KEY" }})
+s3_secret_key = $(cat {{ $mountPath }}/{{ $s3.secretKeySecretKey | default "CUSTOM_S3_SECRET_KEY" }})
+{{- end -}}
+{{- end -}}
+
+{{- define "nv-config-manager.networkZtpStorageEnv" -}}
+{{- $s3 := .Values.networkZtp.storage.s3 | default dict }}
+{{- $ceph := $s3.ceph | default dict }}
+{{- $cephSecret := include "nv-config-manager.networkZtp.s3CephUserSecretName" . }}
+{{- $credentialSource := include "nv-config-manager.networkZtp.s3CredentialSource" . }}
+{{- if and (eq .Values.networkZtp.storage.type "s3") (eq $credentialSource "ceph") }}
+- name: CUSTOM_S3_ENDPOINT
+  valueFrom:
+    secretKeyRef:
+      name: {{ $cephSecret | quote }}
+      key: {{ $ceph.endpointSecretKey | default "Endpoint" | quote }}
+- name: CUSTOM_S3_ACCESS_KEY
+  valueFrom:
+    secretKeyRef:
+      name: {{ $cephSecret | quote }}
+      key: {{ $ceph.accessKeySecretKey | default "AccessKey" | quote }}
+- name: CUSTOM_S3_SECRET_KEY
+  valueFrom:
+    secretKeyRef:
+      name: {{ $cephSecret | quote }}
+      key: {{ $ceph.secretKeySecretKey | default "SecretKey" | quote }}
+{{- end }}
+{{- end -}}
+
+{{- define "nv-config-manager.networkZtpEntrypoint" -}}
+{{- $command := required "command is required" .command -}}
+{{- $args := .args | default (list) -}}
+command: {{ $command | toJson }}
+{{- if hasKey . "args" }}
+args: {{ $args | toJson }}
+{{- end }}
+{{- end -}}
+
+{{/*
 Custom pod labels -- emits global.customLabels as pod labels for
 PodMonitor podTargetLabels to promote onto Prometheus metrics.
 Usage: {{ include "nv-config-manager.customPodLabels" . | nindent 8 }}
@@ -1288,4 +1499,37 @@ Usage: {{ include "nv-config-manager.externalDnsHostname" .Values.networkZtp.ing
 {{- if and (eq .Values.secrets.method "vault-agent") (eq (.Values.secrets.vaultAgent.autoAuthMethod | default "kubernetes") "jwt") (not .Values.secrets.vaultAgent.serviceAccountTokenAudience) -}}
   {{- fail "secrets.vaultAgent.serviceAccountTokenAudience is required when secrets.vaultAgent.autoAuthMethod=jwt (projected SA token / ESO kubernetesServiceAccountToken audiences)" -}}
 {{- end -}}
+{{- $s3 := .Values.networkZtp.storage.s3 | default dict -}}
+{{- $ceph := $s3.ceph | default dict -}}
+{{- if and .Values.networkZtp.enabled (eq .Values.networkZtp.storage.type "s3") $s3.credentialsSecret (not ($ceph.enabled | default false)) (ne .Values.secrets.method "kubernetes") -}}
+  {{- fail "networkZtp.storage.s3.credentialsSecret now uses the Kubernetes secret-assembler and requires secrets.method=kubernetes; use secrets.vault.paths.ztpS3 with secrets.method=eso or vault-agent" -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+OTel app-container env shared by every instrumented service (the HTTP APIs
+config-store/dhcp/ztp/render/mcp and the Temporal worker/api/scheduler/archive).
+Call sites guard the include with `if .Values.observability.enabled`.
+
+Points the OTel SDK at an existing OTLP collector:
+  - observability.otlpEndpoint when set (managed or external collector), else
+  - the in-cluster Grafana Alloy service, but only when the bundled Alloy is
+    enabled (alloy.enabled, e.g. via values-observability.yaml).
+Fails fast when neither is available so pods never point at a dead OTLP target.
+
+  Context: (dict "root" $ "serviceName" "<service.name>").
+*/}}
+{{- define "nv-config-manager.otelAppEnv" -}}
+{{- $endpoint := .root.Values.observability.otlpEndpoint -}}
+{{- $alloy := .root.Values.alloy | default dict -}}
+{{- if and (not $endpoint) ($alloy.enabled | default false) -}}
+{{- $endpoint = printf "http://alloy.%s.svc.cluster.local:4317" .root.Values.global.namespace -}}
+{{- end -}}
+{{- if not $endpoint -}}
+{{- fail "observability.enabled=true requires observability.otlpEndpoint to be set, or the bundled Alloy collector enabled (alloy.enabled=true, e.g. values-observability.yaml)" -}}
+{{- end -}}
+- name: OTEL_EXPORTER_OTLP_ENDPOINT
+  value: {{ $endpoint | quote }}
+- name: OTEL_SERVICE_NAME
+  value: {{ .serviceName | quote }}
 {{- end -}}

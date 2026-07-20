@@ -22,10 +22,16 @@ import { useConfigVersions, useConfigDiff } from "@/lib/config-store-api";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatDate, formatRelativeTime } from "@/lib/utils";
-import { ArrowLeft, GitCompare } from "lucide-react";
+import { ArrowLeft, GitCompare, Info } from "lucide-react";
 import Link from "next/link";
 import { useTheme } from "next-themes";
 import { parseDiff, Diff, Hunk } from "react-diff-view";
@@ -58,8 +64,8 @@ function DiffViewer({
 
   return (
     <div className={`border rounded-lg overflow-hidden ${currentTheme === "dark" ? "diff-dark" : "diff-light"}`}>
-      {files.map((file, idx) => (
-        <div key={idx}>
+      {files.map((file) => (
+        <div key={`${file.oldPath ?? ""}-${file.newPath ?? ""}-${file.type}`}>
           <Diff
             viewType="split"
             diffType={file.type}
@@ -175,6 +181,22 @@ export default function ConfigHistoryPage({
             </p>
           )}
         </div>
+
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-flex w-fit cursor-help items-center gap-1.5 text-sm text-muted-foreground">
+                <Info className="h-4 w-4" />
+                Stored versions, not a live device diff
+              </span>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-sm">
+              Diffs only the two selected Config Store versions, not the running
+              device configuration. To compare against the live device, run the
+              Configuration Diff workflow.
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
 
         <Tabs defaultValue="history" className="w-full">
           <TabsList>
@@ -329,4 +351,3 @@ export default function ConfigHistoryPage({
     </div>
   );
 }
-

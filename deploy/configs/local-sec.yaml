@@ -79,9 +79,8 @@ content:
   jobs:
     - path: development/mock_topology
   template_plugins: []
-  include_bootstrap_jobs: true
   run_after_deploy:
-    - job: mock_topology.jobs.mock_topology_design.MockTopologyDesign
+    - job: custom.mock_topology.jobs.mock_topology_design.MockTopologyDesign
       input: '{"blueprint": "superpod", "deployment_name": "test"}'
 
 services:

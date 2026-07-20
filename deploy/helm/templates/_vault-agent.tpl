@@ -196,6 +196,14 @@ Usage: ctKv2Key emits a full consul-template action (including outer braces). In
 {{- printf "{{if $%s}}{{if $%s.Data}}{{index (or (index $%s.Data \"data\") (index $%s.Data \"Data\")) %q}}{{end}}{{end}}" $vn $vn $vn $vn $vk -}}
 {{- end -}}
 
+{{- define "nv-config-manager.vaultAgent.ctKv2ShellExport" -}}
+{{- $vn := required "var is required" .var -}}
+{{- $vk := .key | toString -}}
+{{- $env := required "env is required" .env -}}
+{{- $marker := printf "__NV_CONFIG_MANAGER_%s__" $env -}}
+{{- printf "%s=$(cat <<'%s'\n%s\n%s\n)\nexport %s\n" $env $marker (include "nv-config-manager.vaultAgent.ctKv2Key" (dict "var" $vn "key" $vk)) $marker $env -}}
+{{- end -}}
+
 {{- define "nv-config-manager.vaultAgent.ctKv2OptionalIniLine" -}}
 {{- $vn := required "var is required" .var -}}
 {{- $vk := .key | toString -}}
@@ -451,6 +459,7 @@ nv-config-manager.ini body (consul-template): must stay in sync with vault-secre
           api_service = http://{{ $dhcpName }}-internal:{{ $internalPort }}
           # External URL for user-facing links
           api_url = https://{{ tpl $root.Values.networkDhcp.gateway.hostname $root }}
+          cors_origins = https://{{ $root.Values.gateway.baseHostname }}
           {{- if $root.Values.networkDhcp.gateway.allowedGroups }}
           allowed_groups = {{ $root.Values.networkDhcp.gateway.allowedGroups | join "," }}
           {{- end }}
@@ -486,6 +495,8 @@ nv-config-manager.ini body (consul-template): must stay in sync with vault-secre
           {{- if $root.Values.networkZtp.gateway.allowedGroups }}
           allowed_groups = {{ $root.Values.networkZtp.gateway.allowedGroups | join "," }}
           {{- end }}
+{{ include "nv-config-manager.networkZtpIniStorageConfig" $root | indent 10 }}
+{{ include "nv-config-manager.vaultAgent.ztpS3IniConfig" $root | indent 10 }}
 
           {{- end }}
 
@@ -575,6 +586,24 @@ Using template { source = ... } avoids HCL <<-EOT heredocs, which break if gener
 {{- define "nv-config-manager.vaultAgent.configSecretsTplFile" -}}
 {{- include "nv-config-manager.vaultAgent.configSecretsPrelude" . -}}
 {{- include "nv-config-manager.vaultAgent.configSecretsIniBody" . -}}
+{{- end -}}
+
+{{- define "nv-config-manager.vaultAgent.ztpS3IniConfig" -}}
+{{- $root := . -}}
+{{- $s3 := $root.Values.networkZtp.storage.s3 | default dict -}}
+{{- if eq (include "nv-config-manager.networkZtp.s3VaultAgentIniEnabled" $root) "true" -}}
+{{- $m := include "nv-config-manager.vault.kvMountPath" $root -}}
+{{- $p := include "nv-config-manager.vault.secretPath" (dict "root" $root "secret" "ztpS3") -}}
+{{- printf "{{- $ztpS3 := secret %q -}}\n" (printf "%s/data/%s" $m $p) -}}
+{{- $endpointKey := include "nv-config-manager.vault.configuredKeyName" (dict "root" $root "secret" "ztpS3" "key" "endpoint") -}}
+{{- if and (not $s3.endpoint) $endpointKey -}}
+{{- printf "s3_endpoint = %s\n" (include "nv-config-manager.vaultAgent.ctKv2Key" (dict "var" "ztpS3" "key" $endpointKey)) -}}
+{{- end -}}
+{{- $accessKey := include "nv-config-manager.vault.keyName" (dict "root" $root "secret" "ztpS3" "key" "accessKeyId") -}}
+{{- $secretKey := include "nv-config-manager.vault.keyName" (dict "root" $root "secret" "ztpS3" "key" "secretAccessKey") -}}
+{{- printf "s3_access_key = %s\n" (include "nv-config-manager.vaultAgent.ctKv2Key" (dict "var" "ztpS3" "key" $accessKey)) -}}
+{{- printf "s3_secret_key = %s\n" (include "nv-config-manager.vaultAgent.ctKv2Key" (dict "var" "ztpS3" "key" $secretKey)) -}}
+{{- end -}}
 {{- end -}}
 
 {{- define "nv-config-manager.vaultAgent.bmcJsonTplFile" -}}

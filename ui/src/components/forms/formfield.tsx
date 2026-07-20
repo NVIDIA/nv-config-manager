@@ -70,12 +70,14 @@ export const WorkflowFormField = ({
     <FormField
       control={control}
       name={name}
-      render={({ field }) => (
-        <FormItem className="flex flex-col">
-          <FormLabel>{label}</FormLabel>
-          <FormMessage />
-          <FormControl>
-            {props.type === "select" ? (
+      render={({ field }) => {
+        let fieldControl = null;
+
+        if (props.type === "select") {
+          const placeholder = props.multiple
+            ? `Select ${label}...`
+            : `Select a ${label}...`;
+          fieldControl = (
               <div className="flex items-center space-x-2">
                 <SelectBox
                   options={props.options}
@@ -84,8 +86,7 @@ export const WorkflowFormField = ({
                     handleChange?.(name, value as string);
                     field.onChange(value);
                   }}
-                  placeholder={`Select a ${label}...`}
-                  //placeholder={props.multiple ? `Select ${label}...` : `Select a ${label}...`}
+                  placeholder={placeholder}
                   inputPlaceholder={`Search ${label}`}
                   emptyPlaceholder={`No ${label} found.`}
                   multiple={props.multiple}
@@ -94,7 +95,9 @@ export const WorkflowFormField = ({
                 />
                 {props.isLoading ? <LoadingSpinner /> : null}
               </div>
-            ) : props.type === "input" || props.type === "number" ? (
+          );
+        } else if (props.type === "input" || props.type === "number") {
+          fieldControl = (
               <Input
                 type={props.type}
                 placeholder={props.placeholder || label}
@@ -109,7 +112,9 @@ export const WorkflowFormField = ({
                   field.onChange(value);
                 }}
               />
-            ) : props.type === "textarea" ? (
+          );
+        } else if (props.type === "textarea") {
+          fieldControl = (
               <Textarea
                 placeholder={props.placeholder || label}
                 {...field}
@@ -120,10 +125,17 @@ export const WorkflowFormField = ({
                   field.onChange(value);
                 }}
               />
-            ) : null}
-          </FormControl>
-        </FormItem>
-      )}
+          );
+        }
+
+        return (
+          <FormItem className="flex flex-col">
+            <FormLabel>{label}</FormLabel>
+            <FormMessage />
+            <FormControl>{fieldControl}</FormControl>
+          </FormItem>
+        );
+      }}
     />
   );
 };

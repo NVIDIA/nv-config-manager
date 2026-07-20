@@ -35,6 +35,7 @@ import {
   Server,
   Globe,
   BarChart3,
+  Network,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -123,6 +124,7 @@ function ServiceSection({ title, services }: Readonly<ServiceSectionProps>) {
   );
 }
 
+/** Render the Config Manager splash page and service health overview. */
 export default function HomePage() {
   const { config, isLoading } = useRuntimeConfig();
 
@@ -151,6 +153,13 @@ export default function HomePage() {
       description: "Browse and search device configurations",
       url: "/configs",
       icon: <FileText className="h-6 w-6" />,
+      type: "internal",
+    },
+    {
+      name: "DHCP Dashboard",
+      description: "Inspect active leases, reservations, and configured pools",
+      url: "/dhcp",
+      icon: <Network className="h-6 w-6" />,
       type: "internal",
     },
     // External Services

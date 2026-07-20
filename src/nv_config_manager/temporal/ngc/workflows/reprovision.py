@@ -16,7 +16,7 @@
 
 from datetime import timedelta
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 from temporalio.exceptions import ApplicationError
@@ -58,7 +58,7 @@ DEFAULT_ACTIVITY_RETRY_POLICY = RetryPolicy(
 class ReprovisionInput(BaseModel):
     """Reprovision Workflow Input Definition."""
 
-    device_id: str
+    device_id: str = Field(description="Identifier of the network device to reprovision.")
 
 
 @workflow.defn

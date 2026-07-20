@@ -4,12 +4,12 @@
 # Reference: https://kea.readthedocs.io/en/kea-2.6.2/arm/admin.html
 set -e
 
-if [ -z "$INI_FILE" ]; then
+if [[ -z "$INI_FILE" ]]; then
   INI_FILE=/etc/vault/nv-config-manager.ini
 fi
 
-if [ ! -f "$INI_FILE" ]; then
-  echo "Error: $INI_FILE does not exist"
+if [[ ! -f "$INI_FILE" ]]; then
+  echo "Error: $INI_FILE does not exist" >&2
   exit 1
 fi
 
@@ -27,9 +27,9 @@ echo "  User: $DB_USER"
 echo "  Database: $DB_NAME"
 
 # Validate required variables
-if [ -z "$DB_HOST" ] || [ -z "$DB_PORT" ] || [ -z "$DB_USER" ] || [ -z "$DB_PASSWORD" ] || [ -z "$DB_NAME" ]; then
-    echo "Error: Required database configuration not found in $INI_FILE"
-    echo "Please ensure [dhcp.lease_db] section has host, port, user, password, and database"
+if [[ -z "$DB_HOST" || -z "$DB_PORT" || -z "$DB_USER" || -z "$DB_PASSWORD" || -z "$DB_NAME" ]]; then
+    echo "Error: Required database configuration not found in $INI_FILE" >&2
+    echo "Please ensure [dhcp.lease_db] section has host, port, user, password, and database" >&2
     exit 1
 fi
 
@@ -62,9 +62,8 @@ kea-admin db-init pgsql -h $DB_HOST -P $DB_PORT -u $DB_USER -p $DB_PASSWORD -n $
 # Verify schema was created
 echo "Verifying schema version..."
 PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -p $DB_PORT -U "$DB_USER" -d "$DB_NAME" -c "SELECT version, minor FROM schema_version;" || {
-    echo "Error: Failed to verify schema version after initialization"
+    echo "Error: Failed to verify schema version after initialization" >&2
     exit 1
 }
 
 echo "Kea database schema initialized successfully!"
-

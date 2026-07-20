@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -25,9 +25,15 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form } from "@/components/ui/form";
 import { useToast } from "@/components/ui/use-toast";
-import { useEnvData, useNamespaceTags } from "@/hooks";
+import {
+  SPX_OVERLAY_ISOLATION_TYPE,
+  useEnvData,
+  useNamespaceTags,
+  useOverlays,
+  useSyncSelectFromQuery,
+} from "@/hooks";
 import { WorkflowFormField } from "@/components/forms/formfield";
-import { startWorkflow } from "@/lib/utils";
+import { getErrorMessage, startWorkflow } from "@/lib/utils";
 import { SpXOverlayDeletionWorkflowInput } from "@/types/data-table.types";
 
 const SpXOverlayDeletionFormSchema = z.object({
@@ -40,11 +46,11 @@ export const SpXOverlayDeletionWorkflowForm = () => {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const { toast } = useToast();
   const searchParams = useSearchParams();
-  const querySite = (searchParams && searchParams.get("site")) || "";
-  const queryOverlayId = (searchParams && searchParams.get("overlay_id")) || "";
+  const querySite = searchParams?.get("site") || "";
+  const queryOverlayId = searchParams?.get("overlay_id") || "";
   const queryNamespaceTag =
-    (searchParams &&
-      (searchParams.get("namespace_tag") || searchParams.get("namespace"))) ||
+    searchParams?.get("namespace_tag") ||
+    searchParams?.get("namespace") ||
     "spectrumx";
   const {
     data: { siteData: sites },
@@ -60,11 +66,21 @@ export const SpXOverlayDeletionWorkflowForm = () => {
     },
   });
   const selectedSite = form.watch("site");
+  const previousSite = useRef(selectedSite);
   const {
     namespaceTags,
     hasLoaded: namespaceTagsHasLoaded,
     isLoading: namespaceTagsIsLoading,
   } = useNamespaceTags(selectedSite);
+  const {
+    overlays: spxOverlays,
+    hasLoaded: spxOverlaysHaveLoaded,
+    isLoading: spxOverlaysAreLoading,
+  } = useOverlays({
+    enabled: Boolean(selectedSite),
+    isolationType: SPX_OVERLAY_ISOLATION_TYPE,
+    location: selectedSite,
+  });
 
   useEffect(() => {
     if (!siteIsLoading && sites && querySite) {
@@ -79,6 +95,22 @@ export const SpXOverlayDeletionWorkflowForm = () => {
       }
     }
   }, [sites, querySite, siteIsLoading, form]);
+
+  useEffect(() => {
+    if (previousSite.current !== selectedSite) {
+      form.setValue("overlay_id", "");
+      previousSite.current = selectedSite;
+    }
+  }, [selectedSite, form]);
+
+  useSyncSelectFromQuery({
+    fieldName: "overlay_id",
+    form,
+    hasLoaded: spxOverlaysHaveLoaded,
+    isLoading: spxOverlaysAreLoading,
+    options: spxOverlays,
+    queryValue: queryOverlayId,
+  });
 
   useEffect(() => {
     if (!namespaceTagsHasLoaded || namespaceTagsIsLoading) return;
@@ -106,7 +138,7 @@ export const SpXOverlayDeletionWorkflowForm = () => {
       toast({
         variant: "destructive",
         title: "SpX Overlay Deletion Workflow Failed",
-        description: error,
+        description: getErrorMessage(error),
       });
     });
     setIsSubmitting(false);
@@ -131,11 +163,14 @@ export const SpXOverlayDeletionWorkflowForm = () => {
                 isSubmitting={isSubmitting}
               />
               <WorkflowFormField
-                type="input"
+                type="select"
                 control={form.control}
                 name="overlay_id"
                 label="Overlay ID"
+                options={spxOverlays}
+                isLoading={spxOverlaysAreLoading}
                 isSubmitting={isSubmitting}
+                disabled={!selectedSite}
               />
               <WorkflowFormField
                 type="select"

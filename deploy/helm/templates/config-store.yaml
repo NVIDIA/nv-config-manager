@@ -35,6 +35,9 @@ spec:
         {{- if include "nv-config-manager.spiffe.enabled" . }}
         {{- include "nv-config-manager.spiffe.annotations" (dict "root" . "app" $configStoreName) | nindent 8 }}
         {{- end }}
+        {{- if .Values.observability.enabled }}
+        {{- include "nv-config-manager.otelOptOutAnnotations" . | nindent 8 }}
+        {{- end }}
     spec:
       serviceAccountName: {{ include "nv-config-manager.serviceAccountName" . }}
       {{- if .Values.global.imagePullSecrets }}
@@ -50,7 +53,7 @@ spec:
       {{- include "nv-config-manager.waitForRedis" . | nindent 6 }}
       containers:
       - name: api
-        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ .Values.global.images.nvConfigManager.tag }}"
+        image: "{{ include "nv-config-manager.image" (dict "root" . "image" .Values.global.images.nvConfigManager) }}"
         imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
         {{- include "nv-config-manager.containerSecurityContext" . | nindent 8 }}
         command: ["nv-config-manager-config-store-api"]
@@ -67,6 +70,9 @@ spec:
           value: {{ include "nv-config-manager.vaultAgent.configManagerIniPathApp" . | quote }}
         - name: NV_CONFIG_MANAGER_SERVICE
           value: "config_store.api"
+        {{- if .Values.observability.enabled }}
+        {{- include "nv-config-manager.otelAppEnv" (dict "root" . "serviceName" "nv-config-manager-config-store") | nindent 8 }}
+        {{- end }}
         ports:
         - containerPort: 9000
           name: http
@@ -169,7 +175,7 @@ spec:
           echo "Config-store postgres is ready"
       containers:
       - name: db-init
-        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ .Values.global.images.nvConfigManager.tag }}"
+        image: "{{ include "nv-config-manager.image" (dict "root" . "image" .Values.global.images.nvConfigManager) }}"
         imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
         {{- include "nv-config-manager.containerSecurityContext" . | nindent 8 }}
         workingDir: /code/nv-config-manager
@@ -233,7 +239,7 @@ spec:
       {{- include "nv-config-manager.waitForNautobot" . | nindent 6 }}
       containers:
       - name: cache-refresh
-        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ .Values.global.images.nvConfigManager.tag }}"
+        image: "{{ include "nv-config-manager.image" (dict "root" . "image" .Values.global.images.nvConfigManager) }}"
         imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
         {{- include "nv-config-manager.containerSecurityContext" . | nindent 8 }}
         command: ["nv-config-manager-config-store-cache-refresh"]

@@ -10,13 +10,12 @@
 # =============================================================================
 # Probe Resources (Blackbox Exporter)
 # =============================================================================
-# These probes work with both Envoy Gateway (ingress.type=envoyGateway) and
-# nginx Ingress (ingress.type=ingressNginx). They use the same hostnames
-# configured in each service's gateway.hostname setting.
+# These probes work with any supported Gateway API controller and use the
+# hostnames configured in each service's gateway.hostname setting.
 #
 # The scheme (http/https) is determined by:
 #   1. monitoring.probes.scheme if explicitly set
-#   2. Otherwise, auto-detected from gateway.certificates.enabled
+#   2. Otherwise, auto-detected from an HTTPS Gateway listener
 # =============================================================================
 {{- if and .Values.monitoring .Values.monitoring.enabled }}
 
@@ -35,10 +34,17 @@
 {{- $nautobotName := include "nv-config-manager.componentName" (dict "root" . "component" "nautobot") }}
 {{- $uiName := include "nv-config-manager.componentName" (dict "root" . "component" "ui") }}
 
-{{- /* Determine ingress type and scheme for probes */}}
-{{- $ingressType := .Values.ingress.type | default "envoyGateway" }}
-{{- $hasIngress := or (eq $ingressType "envoyGateway") (eq $ingressType "ingressNginx") }}
-{{- $probeScheme := .Values.monitoring.probes.scheme | default (ternary "https" "http" .Values.gateway.certificates.enabled) }}
+{{- /* Determine gateway availability and scheme for probes */}}
+{{- $hasIngress := .Values.gateway.enabled }}
+{{- $probeScheme := .Values.monitoring.probes.scheme | default "" }}
+{{- if not $probeScheme }}
+{{- $probeScheme = "http" }}
+{{- range .Values.gateway.listeners | default list }}
+{{- if eq .protocol "HTTPS" }}
+{{- $probeScheme = "https" }}
+{{- end }}
+{{- end }}
+{{- end }}
 
 {{- /*
   Optional static `jobName` prefix prepended to every Probe resource's
@@ -369,7 +375,7 @@ spec:
     matchLabels:
       app: {{ $ztpName }}
   podMetricsEndpoints:
-    - port: http-api
+    - port: http
       path: /metrics
       interval: {{ $scrapeInterval }}
       scrapeTimeout: {{ $scrapeTimeout }}
@@ -613,6 +619,7 @@ spec:
     matchLabels:
       app: {{ $temporalName }}
       component: worker
+      app.kubernetes.io/component: temporal-worker
   podMetricsEndpoints:
     - port: metrics
       path: /metrics
@@ -648,41 +655,7 @@ spec:
       app: {{ $temporalName }}
       component: api
   podMetricsEndpoints:
-    - port: metrics
-      path: /metrics
-      interval: {{ $scrapeInterval }}
-      scrapeTimeout: {{ $scrapeTimeout }}
-      {{- if .Values.global.customLabels }}
-      metricRelabelings:
-        {{- include "nv-config-manager.podMonitorMetricRelabelings" . | nindent 8 }}
-      {{- end }}
-{{- end }}
-
-{{- /* Temporal Scheduler PodMonitor */}}
-{{- if and .Values.monitoring.podMonitors.enabled .Values.temporal.enabled }}
----
-apiVersion: monitoring.coreos.com/v1
-kind: PodMonitor
-metadata:
-  name: {{ $temporalName }}-scheduler
-  namespace: {{ $namespace }}
-  labels:
-    {{- include "nv-config-manager.labels" . | nindent 4 }}
-    app.kubernetes.io/component: temporal-scheduler
-    {{- with $monitoringCRLabels }}
-    {{- toYaml . | nindent 4 }}
-    {{- end }}
-spec:
-  {{- include "nv-config-manager.podTargetLabels" . | nindent 2 }}
-  namespaceSelector:
-    matchNames:
-      - {{ $namespace }}
-  selector:
-    matchLabels:
-      app: {{ $temporalName }}
-      component: scheduler
-  podMetricsEndpoints:
-    - port: metrics
+    - port: http
       path: /metrics
       interval: {{ $scrapeInterval }}
       scrapeTimeout: {{ $scrapeTimeout }}

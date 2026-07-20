@@ -1,4 +1,4 @@
-{{- if eq (.Values.ingress.type | default "envoyGateway") "envoyGateway" }}
+{{- if and .Values.gateway.enabled .Values.gateway.create (eq (include "nv-config-manager.gatewayControllerType" .) "envoyGateway") }}
 {{- $envoyImage := dig "envoyProxy" "image" "" .Values.gateway }}
 {{- $envoyResources := dig "envoyProxy" "resources" nil .Values.gateway }}
 {{- $createOwnProxy := or .Values.gateway.hostNetwork.enabled .Values.gateway.hostPorts.enabled (dig "nodePort" "enabled" false .Values.gateway) .Values.gateway.nlb (dig "envoyProxy" "enabled" false .Values.gateway) $envoyImage $envoyResources }}
@@ -40,7 +40,7 @@ spec:
           {{- if .Values.gateway.nlb.ips }}
           service.beta.kubernetes.io/aws-load-balancer-private-ipv4-addresses: {{ .Values.gateway.nlb.ips }}
           {{- end }}
-          service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+          service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: {{ dig "cross_zone_load_balancing_enabled" true .Values.gateway.nlb | quote }}
           {{- if .Values.gateway.nlb.dns_name }}
           external-dns.alpha.kubernetes.io/hostname: {{ .Values.gateway.nlb.dns_name }}
           {{- end }}

@@ -89,7 +89,7 @@ class NautobotClient(BaseNautobotClient):
         try:
             return await super().graphql_query(query, variables, timeout)
         except NautobotException as e:
-            raise ApplicationError(str(e)) from e
+            raise ApplicationError(str(e), non_retryable=True) from e
 
     async def get_device(self, fields: str, device_id: str) -> Any:
         """Query device by device UUID."""
@@ -229,9 +229,10 @@ class NautobotClient(BaseNautobotClient):
         mac_address: str | list[str] | None,
         device_ids: str | list[str] | None,
         platform: Platform | list[Platform] | None,
-    ) -> dict[str, list[str]]:
+        managed_only: bool | None,
+    ) -> dict[str, list[str] | bool]:
         """Build variables dictionary for device filtering."""
-        variables: dict[str, list[str]] = {}
+        variables: dict[str, list[str] | bool] = {}
 
         if site:
             variables["site"] = self._normalize_to_list(site)
@@ -253,6 +254,8 @@ class NautobotClient(BaseNautobotClient):
                 if isinstance(platform, list | tuple)
                 else [platform.nautobot_name]
             )
+        if managed_only is not None:
+            variables["managed_only"] = managed_only
 
         if not variables:
             raise NautobotException("Must apply at least one filter.")
@@ -290,10 +293,19 @@ class NautobotClient(BaseNautobotClient):
         mac_address: str | list[str] | None = None,
         device_ids: str | list[str] | None = None,
         platform: Platform | list[Platform] | None = None,
+        managed_only: bool | None = None,
     ) -> list[dict[str, Any]]:
         """Return a filtered list of devices."""
         variables = self._build_device_filter_variables(
-            site, status, role, tenant, device_type_id, mac_address, device_ids, platform
+            site,
+            status,
+            role,
+            tenant,
+            device_type_id,
+            mac_address,
+            device_ids,
+            platform,
+            managed_only,
         )
 
         query = (
@@ -306,7 +318,8 @@ class NautobotClient(BaseNautobotClient):
               $device_type_id: [String],
               $mac_address: [String],
               $device_ids: [String],
-              $platform: [String]
+              $platform: [String],
+              $managed_only: Boolean
             ) {
               devices(
                 location: $site,
@@ -316,7 +329,8 @@ class NautobotClient(BaseNautobotClient):
                 device_type: $device_type_id,
                 mac_address: $mac_address,
                 id: $device_ids,
-                platform: $platform
+                platform: $platform,
+                nv_config_manager_device_status: $managed_only
               ) {
         """
             f"{fields}"
@@ -626,10 +640,9 @@ class NautobotClient(BaseNautobotClient):
         """
         data = await self.get(path, params={"name": name})
         results = data.get("results", [])
-        if len(results) > 1:
-            raise NautobotException(
-                f"Ambiguous name '{name}' at {path}: {len(results)} objects match"
-            )
+        count = data.get("count", len(results))
+        if count > 1:
+            raise NautobotException(f"Ambiguous name '{name}' at {path}: {count} objects match")
         return cast(str, results[0]["id"]) if results else None
 
     async def create_overlay(self, data: Any) -> Any:
@@ -647,9 +660,10 @@ class NautobotClient(BaseNautobotClient):
             params={"name": name, "location": location_id},
         )
         results = data.get("results", [])
-        if len(results) > 1:
+        count = data.get("count", len(results))
+        if count > 1:
             raise NautobotException(
-                f"Ambiguous overlay: {len(results)} overlays match name={name!r} location={location_id!r}"
+                f"Ambiguous overlay: {count} overlays match name={name!r} location={location_id!r}"
             )
         return cast(dict[str, Any], results[0]) if results else None
 
@@ -670,16 +684,16 @@ class NautobotClient(BaseNautobotClient):
 
     async def get_vxlans_by_vnid(self, vnid: int) -> list[dict[str, Any]]:
         """Return overlay-plugin VXLANs with the given VNI (namespace resolved via depth)."""
-        data = await self.get(f"{OVERLAYS_PLUGIN_BASE}/vxlans/", params={"vnid": vnid, "depth": 1})
-        return cast(list[dict[str, Any]], data.get("results", []))
+        return await self.get_all(
+            f"{OVERLAYS_PLUGIN_BASE}/vxlans/", params={"vnid": vnid, "depth": 1}
+        )
 
     async def get_vxlans_by_overlay(self, overlay_id: str, depth: int = 0) -> list[dict[str, Any]]:
         """Return overlay-plugin VXLANs bound to the given overlay."""
         params: dict[str, Any] = {"overlay": overlay_id}
         if depth:
             params["depth"] = depth
-        data = await self.get(f"{OVERLAYS_PLUGIN_BASE}/vxlans/", params=params)
-        return cast(list[dict[str, Any]], data.get("results", []))
+        return await self.get_all(f"{OVERLAYS_PLUGIN_BASE}/vxlans/", params=params)
 
     async def delete_vxlan(self, vxlan_id: str) -> None:
         """Delete a VXLAN."""

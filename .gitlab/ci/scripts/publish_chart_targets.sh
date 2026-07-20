@@ -10,6 +10,7 @@ trim() {
   value="${value#"${value%%[![:space:]]*}"}"
   value="${value%"${value##*[![:space:]]}"}"
   printf '%s' "$value"
+  return 0
 }
 
 parse_options() {
@@ -20,7 +21,7 @@ parse_options() {
   local -n label_ref="$5"
 
   if [[ -z "$options" ]]; then
-    return
+    return 0
   fi
 
   local raw_option option key value
@@ -41,6 +42,7 @@ parse_options() {
         ;;
     esac
   done
+  return 0
 }
 
 publish_target() {
@@ -129,6 +131,7 @@ publish_target() {
       exit 1
       ;;
   esac
+  return 0
 }
 
 publish_records() {
@@ -147,6 +150,7 @@ publish_records() {
   if ((count == 0)); then
     echo "No external chart publish targets configured."
   fi
+  return 0
 }
 
 read_lines() {
@@ -155,7 +159,7 @@ read_lines() {
 
   output=()
   if [[ -z "${!variable_name:-}" ]]; then
-    return
+    return 0
   fi
 
   mapfile -t output <<< "${!variable_name}"
@@ -167,6 +171,7 @@ read_lines() {
     fi
     unset "output[$last_index]"
   done
+  return 0
 }
 
 publish_legacy_lists() {
@@ -189,7 +194,7 @@ publish_legacy_lists() {
   local target_count="${#types[@]}"
   if ((target_count == 0)); then
     echo "No external chart publish targets configured."
-    return
+    return 0
   fi
 
   if ((${#repositories[@]} != target_count)); then
@@ -218,6 +223,7 @@ publish_legacy_lists() {
     fi
     publish_target "${types[$index]}" "${repositories[$index]}" "${token_vars[$index]}" "$options"
   done
+  return 0
 }
 
 if [[ -n "${NVCM_CHART_TARGETS:-}" ]]; then

@@ -209,6 +209,23 @@ class TestCreatePKeyOnUfm:
             assert request_body["ip_over_ib"] is False
             assert "guids" not in request_body
             assert "membership" not in request_body
+            assert "index0" not in request_body
+
+    @pytest.mark.asyncio
+    async def test_deprecated_index0_not_sent(self, mock_config):
+        """The deprecated index0 field is accepted for back-compat but never sent to UFM."""
+        assert CreatePKeyInput(host="ufm.example.com", pkey="0x8001").index0 is None
+
+        with aioresponses() as m:
+            m.post(f"{UFM_BASE}/resources/pkeys/add", payload={})
+
+            await create_pkey_on_ufm(
+                CreatePKeyInput(host="ufm.example.com", pkey="0x8001", index0=True)
+            )
+
+            request_key = next(iter(m.requests))
+            request_body = m.requests[request_key][0].kwargs.get("json", {})
+            assert "index0" not in request_body
 
 
 class TestVerifyPKeyCreated:

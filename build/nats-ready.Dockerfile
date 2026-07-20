@@ -12,9 +12,9 @@ ARG APT_MIRROR=""
 ARG APT_MIRROR_GPG_KEY_URL=""
 
 # Official SHA256 checksums from https://go.dev/dl/
-ARG GO_VERSION=1.26.3
-ARG GO_SHA256_AMD64=2b2cfc7148493da5e73981bffbf3353af381d5f93e789c82c79aff64962eb556
-ARG GO_SHA256_ARM64=9d89a3ea57d141c2b22d70083f2c8459ba3890f2d9e818e7e933b75614936565
+ARG GO_VERSION=1.26.4
+ARG GO_SHA256_AMD64=1153d3d50e0ac764b447adfe05c2bcf08e889d42a02e0fe0259bd47f6733ad7f
+ARG GO_SHA256_ARM64=ef758ae7c6cf9267c9c0ef080b8965f453d89ab2d25d9eb22de4405925238768
 
 # Install Go with checksum verification
 COPY --from=scripts configure-apt-mirror.sh /tmp/configure-apt-mirror.sh
@@ -39,7 +39,9 @@ ENV CGO_ENABLED=0
 
 # Note: Build context is components/nats-ready/
 WORKDIR /build
-COPY . .
+COPY go.mod go.sum ./
+COPY cmd/nats-ready/ ./cmd/nats-ready/
+COPY internal/nats-ready/ ./internal/nats-ready/
 
 # Build static binary
 RUN go build -ldflags="-s -w" -o bin/nats-ready ./cmd/nats-ready
@@ -47,7 +49,8 @@ RUN go build -ldflags="-s -w" -o bin/nats-ready ./cmd/nats-ready
 # =============================================================================
 # Runtime stage - NVIDIA distroless Go image (minimal, no shell)
 # =============================================================================
-FROM nvcr.io/nvidia/distroless/go:v4.0.7
+FROM nvcr.io/nvidia/distroless/go:v4.0.8
 
 COPY --from=builder /build/bin/nats-ready /nats-ready
+USER nvs
 ENTRYPOINT ["/nats-ready"]

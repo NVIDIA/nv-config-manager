@@ -56,10 +56,17 @@ spec:
       labels:
         app: {{ $temporalName }}
         component: {{ $service }}
+        app.kubernetes.io/name: nv-config-manager
+        {{- if eq $service "worker" }}
+        app.kubernetes.io/component: temporal-worker
+        {{- else }}
+        app.kubernetes.io/component: temporal
+        {{- end }}
         {{- include "nv-config-manager.spiffe.podLabels" $ | nindent 8 }}
         {{- include "nv-config-manager.customPodLabels" $ | nindent 8 }}
       annotations:
         {{- include "nv-config-manager.authIniChecksum" $ | nindent 8 }}
+        {{- include "nv-config-manager.otelOptOutAnnotations" $ | nindent 8 }}
         checksum/temporal-config: {{ include "nv-config-manager.configmap.temporal-config" $ | sha256sum }}
         checksum/temporal-dynamic-config: {{ include "nv-config-manager.configmap.temporal-dynamic-config" $ | sha256sum }}
         {{- if include "nv-config-manager.spiffe.enabled" $ }}
@@ -154,6 +161,9 @@ spec:
               fieldPath: status.podIP
         - name: SERVICES
           value: {{ $service }}
+        # Temporal server only supports OTLP/gRPC; disable injected http/protobuf tracing.
+        - name: OTEL_TRACES_EXPORTER
+          value: "none"
         # Temporal database credentials
         - name: POSTGRES_HOST
           value: {{ tpl $.Values.externalServices.postgres.temporal.host $ | quote }}
@@ -275,6 +285,7 @@ spec:
       labels:
         app: {{ $temporalName }}
         component: worker
+        app.kubernetes.io/component: nv-config-manager-worker
         {{- include "nv-config-manager.spiffe.podLabels" . | nindent 8 }}
         {{- include "nv-config-manager.customPodLabels" . | nindent 8 }}
       annotations:
@@ -284,6 +295,9 @@ spec:
         {{- end }}
         {{- if include "nv-config-manager.spiffe.enabled" . }}
         {{- include "nv-config-manager.spiffe.annotations" (dict "root" . "app" $temporalName) | nindent 8 }}
+        {{- end }}
+        {{- if .Values.observability.enabled }}
+        {{- include "nv-config-manager.otelOptOutAnnotations" . | nindent 8 }}
         {{- end }}
     spec:
       serviceAccountName: {{ include "nv-config-manager.serviceAccountName" . }}
@@ -344,19 +358,43 @@ spec:
             sleep $RETRY_DELAY
           done
 
-          # Create search attributes (idempotent — ignore "already exists" errors)
+          create_search_attribute() {
+            local name="$1"
+            local type="$2"
+            local output
+
+            for i in $(seq 1 "$MAX_RETRIES"); do
+              if output=$(temporal operator search-attribute create --address "$TEMPORAL_ADDR" --name "$name" --type "$type" 2>&1); then
+                echo "$output"
+                return 0
+              fi
+              if echo "$output" | grep -qi "already exist"; then
+                echo "Search attribute $name already exists."
+                return 0
+              fi
+              echo "$output"
+              if [ "$i" -eq "$MAX_RETRIES" ]; then
+                echo "Failed to create search attribute $name after $MAX_RETRIES attempts."
+                return 1
+              fi
+              echo "Attempt $i/$MAX_RETRIES: search attribute $name creation failed, retrying in ${RETRY_DELAY}s..."
+              sleep "$RETRY_DELAY"
+            done
+          }
+
+          # Create search attributes, retrying while Temporal's internal services start.
           echo "Creating search attributes..."
-          temporal operator search-attribute create --address "$TEMPORAL_ADDR" --name User --type Keyword || true
-          temporal operator search-attribute create --address "$TEMPORAL_ADDR" --name DeviceID --type Keyword || true
-          temporal operator search-attribute create --address "$TEMPORAL_ADDR" --name DeviceRole --type Keyword || true
-          temporal operator search-attribute create --address "$TEMPORAL_ADDR" --name DeviceName --type Text || true
-          temporal operator search-attribute create --address "$TEMPORAL_ADDR" --name DevicePlatform --type Keyword || true
-          temporal operator search-attribute create --address "$TEMPORAL_ADDR" --name Site --type Text || true
-          temporal operator search-attribute create --address "$TEMPORAL_ADDR" --name ReadRoles --type KeywordList || true
-          temporal operator search-attribute create --address "$TEMPORAL_ADDR" --name ExecuteRoles --type KeywordList || true
-          temporal operator search-attribute create --address "$TEMPORAL_ADDR" --name PendingApproval --type Bool || true
-          temporal operator search-attribute create --address "$TEMPORAL_ADDR" --name FailedStage --type Bool || true
-          temporal operator search-attribute create --address "$TEMPORAL_ADDR" --name IssueKey --type Keyword || true
+          create_search_attribute User Keyword
+          create_search_attribute DeviceID Keyword
+          create_search_attribute DeviceRole Keyword
+          create_search_attribute DeviceName Text
+          create_search_attribute DevicePlatform Keyword
+          create_search_attribute Site Text
+          create_search_attribute ReadRoles KeywordList
+          create_search_attribute ExecuteRoles KeywordList
+          create_search_attribute PendingApproval Bool
+          create_search_attribute FailedStage Bool
+          create_search_attribute IssueKey Keyword
 
           echo "Temporal setup complete!"
         resources:
@@ -368,7 +406,7 @@ spec:
             memory: 64Mi
       containers:
       - name: worker
-        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ .Values.global.images.nvConfigManager.tag }}"
+        image: "{{ include "nv-config-manager.image" (dict "root" . "image" .Values.global.images.nvConfigManager) }}"
         imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
         command: ["nv-config-manager-temporal-worker"]
         args: []
@@ -391,6 +429,9 @@ spec:
         {{- if and (eq .Values.secrets.method "vault-agent") .Values.temporal.redfish.enabled }}
         - name: BMC_CREDS_PATH
           value: "/vault/secrets/bmc-creds.json"
+        {{- end }}
+        {{- if .Values.observability.enabled }}
+        {{- include "nv-config-manager.otelAppEnv" (dict "root" . "serviceName" "nv-config-manager-temporal-worker") | nindent 8 }}
         {{- end }}
         resources:
           {{- toYaml .Values.temporal.configManagerWorker.resources | nindent 10 }}
@@ -450,6 +491,9 @@ spec:
         {{- if include "nv-config-manager.spiffe.enabled" . }}
         {{- include "nv-config-manager.spiffe.annotations" (dict "root" . "app" $temporalName) | nindent 8 }}
         {{- end }}
+        {{- if .Values.observability.enabled }}
+        {{- include "nv-config-manager.otelOptOutAnnotations" . | nindent 8 }}
+        {{- end }}
     spec:
       serviceAccountName: {{ include "nv-config-manager.serviceAccountName" . }}
       {{- if .Values.global.imagePullSecrets }}
@@ -460,7 +504,7 @@ spec:
       {{- end }}
       containers:
       - name: api
-        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ .Values.global.images.nvConfigManager.tag }}"
+        image: "{{ include "nv-config-manager.image" (dict "root" . "image" .Values.global.images.nvConfigManager) }}"
         imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
         command: ["nv-config-manager-temporal-api"]
         args: []
@@ -474,6 +518,9 @@ spec:
         {{- include "nv-config-manager.customLabelsEnv" . | nindent 8 }}
         - name: TEMPORAL_ADDRESS
           value: "{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.temporal.services.frontend.port }}"
+        {{- if .Values.observability.enabled }}
+        {{- include "nv-config-manager.otelAppEnv" (dict "root" . "serviceName" "nv-config-manager-temporal-api") | nindent 8 }}
+        {{- end }}
         ports:
         - containerPort: 9000
           name: http
@@ -564,6 +611,9 @@ spec:
         {{- if include "nv-config-manager.spiffe.enabled" . }}
         {{- include "nv-config-manager.spiffe.annotations" (dict "root" . "app" $temporalName) | nindent 8 }}
         {{- end }}
+        {{- if .Values.observability.enabled }}
+        {{- include "nv-config-manager.otelOptOutAnnotations" . | nindent 8 }}
+        {{- end }}
     spec:
       serviceAccountName: {{ include "nv-config-manager.serviceAccountName" . }}
       {{- if .Values.global.imagePullSecrets }}
@@ -580,7 +630,7 @@ spec:
       {{- include "nv-config-manager.waitForTemporalNamespace" . | nindent 6 }}
       containers:
       - name: scheduler
-        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ .Values.global.images.nvConfigManager.tag }}"
+        image: "{{ include "nv-config-manager.image" (dict "root" . "image" .Values.global.images.nvConfigManager) }}"
         imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
         command: ["nv-config-manager-temporal-scheduler"]
         env:
@@ -590,6 +640,9 @@ spec:
           value: {{ .Values.global.environment }}
         - name: TEMPORAL_ADDRESS
           value: "{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.temporal.services.frontend.port }}"
+        {{- if .Values.observability.enabled }}
+        {{- include "nv-config-manager.otelAppEnv" (dict "root" . "serviceName" "nv-config-manager-temporal-scheduler") | nindent 8 }}
+        {{- end }}
         resources:
           {{- toYaml .Values.temporal.scheduler.resources | nindent 10 }}
         volumeMounts:
@@ -642,6 +695,9 @@ spec:
         {{- if include "nv-config-manager.spiffe.enabled" . }}
         {{- include "nv-config-manager.spiffe.annotations" (dict "root" . "app" $temporalName) | nindent 8 }}
         {{- end }}
+        {{- if .Values.observability.enabled }}
+        {{- include "nv-config-manager.otelOptOutAnnotations" . | nindent 8 }}
+        {{- end }}
     spec:
       serviceAccountName: {{ include "nv-config-manager.serviceAccountName" . }}
       {{- if .Values.global.imagePullSecrets }}
@@ -652,7 +708,7 @@ spec:
       {{- end }}
       containers:
       - name: archive
-        image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ .Values.global.images.nvConfigManager.tag }}"
+        image: "{{ include "nv-config-manager.image" (dict "root" . "image" .Values.global.images.nvConfigManager) }}"
         imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
         command: ["nv-config-manager-temporal-archive"]
         args: ["-v"]
@@ -665,6 +721,9 @@ spec:
           value: {{ tpl .Values.temporal.gateway.api.hostname . | quote }}
         - name: TEMPORAL_ADDRESS
           value: "{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.temporal.services.frontend.port }}"
+        {{- if .Values.observability.enabled }}
+        {{- include "nv-config-manager.otelAppEnv" (dict "root" . "serviceName" "nv-config-manager-temporal-archive") | nindent 8 }}
+        {{- end }}
         resources:
           {{- toYaml .Values.temporal.archive.resources | nindent 10 }}
         volumeMounts:
@@ -755,4 +814,38 @@ spec:
     name: http
   selector:
     app: {{ $temporalName }}-web
+---
+# PodDisruptionBudget for Temporal server worker service
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ printf "%s-worker-pdb" $temporalName | trunc 63 | trimSuffix "-" }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ $temporalName }}
+    app.kubernetes.io/name: nv-config-manager
+    app.kubernetes.io/component: temporal-worker
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: {{ $temporalName }}
+      app.kubernetes.io/component: temporal-worker
+---
+# PodDisruptionBudget for nv-config-manager Temporal worker (workflow executor)
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ printf "%s-pdb" (include "nv-config-manager.temporalWorkerName" .) | trunc 63 | trimSuffix "-" }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ $temporalName }}
+    app.kubernetes.io/name: nv-config-manager
+    app.kubernetes.io/component: nv-config-manager-worker
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: {{ $temporalName }}
+      app.kubernetes.io/component: nv-config-manager-worker
 {{- end }}

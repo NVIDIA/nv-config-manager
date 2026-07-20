@@ -28,8 +28,10 @@ from nv_config_manager.temporal.common.mixins.device import NetworkDeviceData, P
 from nv_config_manager.temporal.ngc.activities.deploy import (
     ConfigApplyActivityInput,
     DiffActivityInput,
+    LoadPartialConfigurationActivityInput,
     WaitForTenantRenderInput,
     apply_approved_configuration,
+    load_partial_configuration,
     perform_candidate_diff,
     wait_for_tenant_render,
 )
@@ -294,6 +296,54 @@ def test_apply_approved_configuration_ignore_fail_without_transition(
     assert exc_info.value.non_retryable is True
     assert "Config apply failed with ignore_fail state" in str(exc_info.value)
     assert "MANUAL INTERVENTION REQUIRED" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_load_partial_configuration_at_pinned_commit():
+    """Load the exact tenant config version supplied by the render snapshot."""
+    mock_config_client = AsyncMock()
+    mock_config_client.__aenter__ = AsyncMock(return_value=mock_config_client)
+    mock_config_client.__aexit__ = AsyncMock(return_value=None)
+    mock_config_client.get_config_file = AsyncMock(
+        return_value={"content": "nv set interface swp1 ip vrf tenant", "version": 7}
+    )
+    mock_config_client.load_file = AsyncMock()
+    mock_config_client.file_url = MagicMock(return_value="https://config-store/tenant.yaml?v=7")
+
+    device_data = NetworkDeviceData(
+        id="test-device-id",
+        name="test-device",
+        platform="cumulus-linux",
+        role="test_role",
+        site="test_site",
+        device_type="test_device_type",
+        primary_ip4="192.0.2.1",
+        primary_ip6=None,
+    )
+
+    with patch(
+        "nv_config_manager.temporal.ngc.activities.deploy.config_store_client",
+        return_value=mock_config_client,
+    ):
+        result = await load_partial_configuration(
+            LoadPartialConfigurationActivityInput(
+                device_data=device_data,
+                config_file="tenant.yaml",
+                commit_id="7",
+            )
+        )
+
+    assert result == (
+        "nv set interface swp1 ip vrf tenant",
+        "7",
+        "https://config-store/tenant.yaml?v=7",
+    )
+    mock_config_client.get_config_file.assert_awaited_once_with(
+        device_uuid="test-device-id",
+        filename="tenant.yaml",
+        version=7,
+    )
+    mock_config_client.load_file.assert_not_awaited()
 
 
 @pytest.mark.asyncio

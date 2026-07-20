@@ -25,9 +25,15 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form } from "@/components/ui/form";
 import { useToast } from "@/components/ui/use-toast";
-import { useEnvData, useDevices } from "@/hooks";
+import {
+  SPX_OVERLAY_ISOLATION_TYPE,
+  useEnvData,
+  useDevices,
+  useOverlays,
+  useSyncSelectFromQuery,
+} from "@/hooks";
 import { WorkflowFormField } from "@/components/forms/formfield";
-import { startWorkflow } from "@/lib/utils";
+import { getErrorMessage, startWorkflow } from "@/lib/utils";
 import { SpXOverlayTenantChangeWorkflowInput } from "@/types/data-table.types";
 
 const SpXOverlayTenantChangeFormSchema = z.object({
@@ -63,12 +69,26 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
   });
 
   const site = form.watch("site");
-  const filterParams: [string, string][] = site ? [["site", site]] : [];
+  const filterParams: [string, string][] = site
+    ? [
+        ["site", site],
+        ["managed_only", "true"],
+      ]
+    : [];
   const {
     devices: deviceData,
     error: deviceError,
     isLoading: deviceIsLoading,
   } = useDevices({ site, filterParams });
+  const {
+    overlays: spxOverlays,
+    hasLoaded: spxOverlaysHaveLoaded,
+    isLoading: spxOverlaysAreLoading,
+  } = useOverlays({
+    enabled: Boolean(site),
+    isolationType: SPX_OVERLAY_ISOLATION_TYPE,
+    location: site,
+  });
 
   if (deviceError) console.error(`Failed to query devices: ${deviceError}`);
 
@@ -103,8 +123,18 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
   useEffect(() => {
     if (site) {
       form.setValue("device", ""); // Clear device when site changes
+      form.setValue("overlay_id", "");
     }
   }, [site, form]);
+
+  useSyncSelectFromQuery({
+    fieldName: "overlay_id",
+    form,
+    hasLoaded: spxOverlaysHaveLoaded,
+    isLoading: spxOverlaysAreLoading,
+    options: spxOverlays,
+    queryValue: queryOverlayId,
+  });
 
   const onSubmit = async (data: SpXOverlayTenantChangeFormData): Promise<void> => {
     setIsSubmitting(true);
@@ -126,7 +156,7 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
       toast({
         variant: "destructive",
         title: "SpX Overlay Tenant Change Workflow Failed",
-        description: error,
+        description: getErrorMessage(error),
       });
     });
     setIsSubmitting(false);
@@ -152,11 +182,14 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
                 disabled={isSubmitting || deviceIsLoading}
               />
               <WorkflowFormField
-                type="input"
+                type="select"
                 control={form.control}
                 name="overlay_id"
                 label="Overlay ID"
+                options={spxOverlays}
+                isLoading={spxOverlaysAreLoading}
                 isSubmitting={isSubmitting}
+                disabled={!site}
               />
               <WorkflowFormField
                 type="select"
@@ -186,6 +219,7 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
                   !form.watch("device") ||
                   !form.watch("port_names") ||
                   deviceIsLoading ||
+                  spxOverlaysAreLoading ||
                   siteIsLoading
                 }
               >

@@ -28,6 +28,13 @@ def _import_module():
 class _RedirectResponse(dict):
     status_code = 302
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.deleted_cookies = []
+
+    def delete_cookie(self, name):
+        self.deleted_cookies.append(name)
+
 
 class TestJWTCookieMiddleware:
     def test_init_reads_cookie_env(self, monkeypatch):
@@ -64,11 +71,50 @@ class TestJWTCookieMiddleware:
         request = MagicMock()
         request.user.is_authenticated = False
         request.COOKIES = {}
+        request.META = {}
 
-        with patch("nv_config_manager_auth.jwt_authentication._get_providers") as mock_gp:
+        with patch("nv_config_manager_auth.middleware._get_providers") as mock_gp:
             result = mw(request)
             mock_gp.assert_not_called()
 
+        assert result == "response"
+
+    def test_logs_in_user_from_proxy_bearer_token(self, monkeypatch):
+        monkeypatch.setenv("NV_CONFIG_MANAGER_JWT_COOKIE", "NVConfigManagerAccessToken")
+        mod = _import_module()
+
+        import nv_config_manager_auth.jwt_authentication as jwt_mod
+
+        provider = jwt_mod.JwtProviderConfig(
+            name="oidc",
+            issuer="https://issuer.com",
+            audiences=["aud"],
+            jwks_uri="https://issuer.com/jwks",
+            user_provider=True,
+        )
+        mock_user = MagicMock(username="jdoe")
+        request = MagicMock()
+        request.user.is_authenticated = False
+        request.COOKIES = {}
+        request.META = {"HTTP_AUTHORIZATION": "Bearer proxy-id-token"}
+        mw = mod.JWTCookieMiddleware(get_response=MagicMock(return_value="response"))
+
+        with (
+            patch("nv_config_manager_auth.middleware._get_providers", return_value=[provider]),
+            patch(
+                "nv_config_manager_auth.middleware._try_jwt_provider",
+                return_value=(mock_user, "oidc:jdoe"),
+            ) as mock_try,
+            patch("nv_config_manager_auth.middleware.login") as mock_login,
+        ):
+            result = mw(request)
+
+        mock_try.assert_called_once_with("proxy-id-token", provider)
+        mock_login.assert_called_once_with(
+            request,
+            mock_user,
+            backend="nautobot.core.authentication.ObjectPermissionBackend",
+        )
         assert result == "response"
 
     def test_logs_in_user_on_valid_jwt(self, monkeypatch):
@@ -96,11 +142,9 @@ class TestJWTCookieMiddleware:
         request.COOKIES = {"NVConfigManagerAccessToken": "valid-jwt"}
 
         with (
+            patch("nv_config_manager_auth.middleware._get_providers", return_value=[provider]),
             patch(
-                "nv_config_manager_auth.jwt_authentication._get_providers", return_value=[provider]
-            ),
-            patch(
-                "nv_config_manager_auth.jwt_authentication._try_jwt_provider",
+                "nv_config_manager_auth.middleware._try_jwt_provider",
                 return_value=(mock_user, "oidc:jdoe"),
             ),
             patch("nv_config_manager_auth.middleware.login") as mock_login,
@@ -137,10 +181,10 @@ class TestJWTCookieMiddleware:
 
         with (
             patch(
-                "nv_config_manager_auth.jwt_authentication._get_providers",
+                "nv_config_manager_auth.middleware._get_providers",
                 return_value=[service_provider],
             ),
-            patch("nv_config_manager_auth.jwt_authentication._try_jwt_provider") as mock_try,
+            patch("nv_config_manager_auth.middleware._try_jwt_provider") as mock_try,
             patch("nv_config_manager_auth.middleware.login") as mock_login,
         ):
             result = mw(request)
@@ -171,10 +215,8 @@ class TestJWTCookieMiddleware:
         request.COOKIES = {"NVConfigManagerAccessToken": "bad-jwt"}
 
         with (
-            patch(
-                "nv_config_manager_auth.jwt_authentication._get_providers", return_value=[provider]
-            ),
-            patch("nv_config_manager_auth.jwt_authentication._try_jwt_provider", return_value=None),
+            patch("nv_config_manager_auth.middleware._get_providers", return_value=[provider]),
+            patch("nv_config_manager_auth.middleware._try_jwt_provider", return_value=None),
             patch("nv_config_manager_auth.middleware.login") as mock_login,
         ):
             result = mw(request)
@@ -187,7 +229,7 @@ class TestLogoutRedirectMiddleware:
     def test_rewrites_logout_redirect(self, monkeypatch):
         monkeypatch.setenv(
             "NAUTOBOT_LOGOUT_REDIRECT_URL",
-            "https://nautobot.config-manager.local/oauth2/logout",
+            "https://config-manager.local/auth/logout?rd=https%3A%2F%2Fnautobot.config-manager.local%2F",
         )
         mod = _import_module()
 
@@ -199,12 +241,15 @@ class TestLogoutRedirectMiddleware:
         mw = mod.LogoutRedirectMiddleware(get_response=get_response)
         result = mw(request)
 
-        assert result["Location"] == "https://nautobot.config-manager.local/oauth2/logout"
+        assert result["Location"] == (
+            "https://config-manager.local/auth/logout?rd=https%3A%2F%2Fnautobot.config-manager.local%2F"
+        )
+        assert result.deleted_cookies == ["messages"]
 
     def test_leaves_other_paths_unchanged(self, monkeypatch):
         monkeypatch.setenv(
             "NAUTOBOT_LOGOUT_REDIRECT_URL",
-            "https://nautobot.config-manager.local/oauth2/logout",
+            "https://config-manager.local/auth/logout",
         )
         mod = _import_module()
 
@@ -217,6 +262,7 @@ class TestLogoutRedirectMiddleware:
         result = mw(request)
 
         assert result["Location"] == "/"
+        assert result.deleted_cookies == []
 
     def test_leaves_logout_unchanged_without_redirect_env(self, monkeypatch):
         monkeypatch.delenv("NAUTOBOT_LOGOUT_REDIRECT_URL", raising=False)
@@ -231,11 +277,12 @@ class TestLogoutRedirectMiddleware:
         result = mw(request)
 
         assert result["Location"] == "/"
+        assert result.deleted_cookies == []
 
     def test_leaves_non_redirect_logout_response_unchanged(self, monkeypatch):
         monkeypatch.setenv(
             "NAUTOBOT_LOGOUT_REDIRECT_URL",
-            "https://nautobot.config-manager.local/oauth2/logout",
+            "https://config-manager.local/auth/logout",
         )
         mod = _import_module()
 
@@ -249,3 +296,4 @@ class TestLogoutRedirectMiddleware:
         result = mw(request)
 
         assert result["Location"] == "/"
+        assert result.deleted_cookies == []
