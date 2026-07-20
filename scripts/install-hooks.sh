@@ -42,8 +42,22 @@ echo ""
 echo "Git hooks installed successfully!"
 echo ""
 echo "Hooks installed:"
-echo "  - pre-commit: Auto-formats staged Python files with ruff, checks SPDX license headers"
+echo "  - pre-commit: Checks GPG signing, formats staged Python, checks SPDX license headers"
 echo "  - commit-msg: Requires a DCO Signed-off-by trailer"
 echo ""
+
+GPG_SIGNING_ENABLED="$(git -C "$REPO_ROOT" config --bool --get commit.gpgsign 2>/dev/null || true)"
+GPG_SIGNING_KEY="$(git -C "$REPO_ROOT" config --get user.signingkey 2>/dev/null || true)"
+
+if [[ "$GPG_SIGNING_ENABLED" == "true" && -n "$GPG_SIGNING_KEY" ]]; then
+    echo "Cryptographic commit signing is configured with key $GPG_SIGNING_KEY."
+else
+    echo "Cryptographic commit signing is not configured."
+    echo "NVIDIA trustees need GitHub-verified commits for copy-pr-bot auto-sync."
+    echo "Configure an existing GPG key with:"
+    echo "  ./scripts/configure-gpg-signing.sh <GPG_KEY_ID_OR_FINGERPRINT>"
+fi
+echo ""
+
 echo "To skip local hooks for a specific commit, use:"
 echo "  git commit --no-verify"

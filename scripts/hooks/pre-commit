@@ -24,6 +24,70 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
+check_gpg_signing() {
+    local signing_enabled
+    local signing_key
+    local signing_format
+    local gpg_program
+    local secret_key_output
+
+    signing_enabled="$(git config --bool --get commit.gpgsign 2>/dev/null || true)"
+    signing_key="$(git config --get user.signingkey 2>/dev/null || true)"
+    signing_format="$(git config --get gpg.format 2>/dev/null || true)"
+
+    # OpenPGP is Git's default when gpg.format is unset.
+    if [[ -z "$signing_format" ]]; then
+        signing_format="openpgp"
+    fi
+
+    if [[ "$signing_enabled" != "true" || -z "$signing_key" || "$signing_format" != "openpgp" ]]; then
+        echo -e "${RED}ERROR: OpenPGP commit signing is not configured.${NC}"
+        echo ""
+        echo "NVIDIA trustees need GitHub-verified commits for copy-pr-bot auto-sync."
+        echo "List your GPG keys and configure one for this repository:"
+        echo ""
+        echo "  gpg --list-secret-keys --keyid-format=long"
+        echo "  ./scripts/configure-gpg-signing.sh <GPG_KEY_ID_OR_FINGERPRINT>"
+        echo ""
+        exit 1
+    fi
+
+    gpg_program="$(git config --get gpg.program 2>/dev/null || true)"
+    if [[ -z "$gpg_program" ]]; then
+        if command -v gpg >/dev/null 2>&1; then
+            gpg_program="gpg"
+        elif command -v gpg2 >/dev/null 2>&1; then
+            gpg_program="gpg2"
+        else
+            echo -e "${RED}ERROR: Neither 'gpg' nor 'gpg2' was found in PATH.${NC}"
+            echo "Install GnuPG, then run ./scripts/configure-gpg-signing.sh."
+            exit 1
+        fi
+    elif ! command -v "$gpg_program" >/dev/null 2>&1; then
+        echo -e "${RED}ERROR: Configured GPG program '$gpg_program' was not found.${NC}"
+        echo "Run ./scripts/configure-gpg-signing.sh again after installing GnuPG."
+        exit 1
+    fi
+
+    secret_key_output="$(
+        "$gpg_program" --batch --with-colons --list-secret-keys "$signing_key" 2>/dev/null || true
+    )"
+    if ! printf '%s\n' "$secret_key_output" | grep '^sec:' >/dev/null; then
+        echo -e "${RED}ERROR: Configured GPG secret key '$signing_key' was not found.${NC}"
+        echo ""
+        echo "Import the secret key or configure a key available on this machine:"
+        echo ""
+        echo "  gpg --list-secret-keys --keyid-format=long"
+        echo "  ./scripts/configure-gpg-signing.sh <GPG_KEY_ID_OR_FINGERPRINT>"
+        echo ""
+        exit 1
+    fi
+
+    echo -e "${GREEN}✓ OpenPGP commit signing configured${NC}"
+}
+
+check_gpg_signing
+
 EXTENSIONS=("py" "ts" "tsx" "js" "jsx" "mjs" "cjs" "go")
 
 CHECK_DIRS=(

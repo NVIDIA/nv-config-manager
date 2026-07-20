@@ -64,7 +64,8 @@ Install the repository hooks after cloning and whenever hook scripts change:
 
 Installed hooks:
 
-- `pre-commit`: formats all staged Python files outside ignored/generated
+- `pre-commit`: verifies that automatic OpenPGP signing and its local secret key
+  are available, formats all staged Python files outside ignored/generated
   directories with `uv run ruff format`, re-stages those files, and checks SPDX
   license headers for supported source files (`.py`, `.ts`, `.tsx`, `.js`,
   `.jsx`, `.mjs`, `.cjs`, and `.go`) under `src/`, `ui/src/`, `ui/tests/`,
@@ -73,6 +74,19 @@ Installed hooks:
 - `commit-msg`: rejects commits that do not include a valid DCO
   `Signed-off-by: Name <email>` trailer. Use `git commit -s` or
   `git commit --amend -s` to add the trailer automatically.
+
+The hook installer also reports whether cryptographic commit signing is enabled.
+NVIDIA trustees need GitHub-verified commits for copy-pr-bot auto-sync. Configure
+an existing GPG key for this repository with:
+
+```bash
+gpg --list-secret-keys --keyid-format=long
+./scripts/configure-gpg-signing.sh <GPG_KEY_ID_OR_FINGERPRINT>
+```
+
+This configuration is separate from the DCO trailer. See
+[Cryptographically Signing Commits](CONTRIBUTING.md#cryptographically-signing-commits)
+for GitHub key registration and existing-branch remediation.
 
 Local hooks can be skipped with `git commit --no-verify`, so the organization DCO
 app remains the merge-time enforcement gate in CI.

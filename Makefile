@@ -1,4 +1,4 @@
-.PHONY: help install dev test lint format clean docker-build docker-push ui-install ui-dev ui-build \
+.PHONY: help install dev test test-git-signing lint format clean docker-build docker-push ui-install ui-dev ui-build \
         local-up local-down local-destroy local-status local-logs deploy kind-up kind-up-sec kind-up-sec-kgateway kind-up-secure kind-down topology install-cert workflow-perf-seed \
         openapi openapi-check go-bindings api-generate docs-assets docs-assets-check docs-format docs-lint docs-lint-fern docs-live docs-preview docs-publish docs-publish-in-ci docs-screenshots docs-air-sim-screenshots docs-ui-screenshots \
         obs-grafana obs-prometheus obs-loki obs-alloy obs-port-forward obs-port-forward-stop
@@ -108,6 +108,7 @@ help:
 	@echo "  make dev              - Install with dev dependencies"
 	@echo "  make test             - Run all tests (parallel)"
 	@echo "  make test-cov         - Run tests with coverage (parallel)"
+	@echo "  make test-git-signing - Test GPG setup under installed Bash versions"
 	@echo "  make test-integration - Run integration tests (requires running cluster)"
 	@echo "  make test-nautobot-plugin - Run vendored Nautobot plugin's Django suite in one-shot container"
 	@echo "  make lint             - Run linters"
@@ -163,6 +164,9 @@ test:
 
 test-cov:
 	uv run pytest -n auto --cov=src/nv_config_manager --cov-report=html --cov-report=xml
+
+test-git-signing:
+	./scripts/tests/configure-gpg-signing.sh
 
 test-integration:
 	@echo "🧪 Running integration tests against running cluster..."
