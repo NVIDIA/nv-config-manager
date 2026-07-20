@@ -268,6 +268,14 @@ jobs:
           helm dependency build deploy/helm/
       - run: helm lint deploy/helm/ --values deploy/helm/values-ci.yaml
       - run: helm template test deploy/helm/ --values deploy/helm/values-ci.yaml >/tmp/nvcm-helm.yaml
+      - name: Temporal codec CORS render
+        run: |
+          expected="cors_origins = https://ci.config-manager.example.com,https://temporal.ci.config-manager.example.com"
+          if ! grep -qF "$expected" /tmp/nvcm-helm.yaml; then
+            echo "ERROR: rendered Temporal API CORS allowlist is missing the Temporal Web origin"
+            grep -nE 'temporal\.api|cors_origins' /tmp/nvcm-helm.yaml || true
+            exit 1
+          fi
       - name: Probe SLO customLabels render
         run: |
           # Blackbox Probe samples don't inherit the CR's metadata.labels, so
