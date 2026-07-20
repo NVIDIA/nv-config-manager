@@ -108,7 +108,11 @@ instrumentator.expose(app, include_in_schema=False)
 
 
 @app.get("/healthcheck")
-def healthcheck() -> str:
+async def healthcheck() -> str:
+    # Async so the liveness/readiness probe runs directly on the event loop
+    # instead of the anyio threadpool. Under a boot storm the threadpool can be
+    # saturated by blocking per-request I/O, which would otherwise starve a sync
+    # probe handler and trigger spurious liveness-kill restarts of http-lb.
     """Execute healthcheck."""
     return "OK"
 
