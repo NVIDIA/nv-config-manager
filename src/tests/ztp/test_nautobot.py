@@ -104,6 +104,45 @@ async def test_not_found_does_not_trip_breaker(mock_not_found_data):
 
 
 @pytest.mark.asyncio
+async def test_transient_error_retried_then_succeeds(mock_device_data):
+    """A transient failure is retried; a healthy second attempt succeeds."""
+    with patch(
+        "nv_config_manager.ztp.nautobot.NautobotClient.graphql_query",
+        new_callable=AsyncMock,
+        side_effect=[aiohttp.ClientError("blip"), mock_device_data],
+    ) as mock_query:
+        nb = NautobotClient()
+        nb._retry_backoff = 0.0
+
+        data = await nb.get_device_data(str(uuid4()))
+
+        assert data.id == "80ce0a9a-d3c8-5b8e-b755-e9c16d92237b"
+        assert mock_query.await_count == 2
+        # A retried-then-successful call must not count against the breaker.
+        assert nb._consecutive_failures == 0
+
+
+@pytest.mark.asyncio
+async def test_transient_exhaustion_raises_503_not_500():
+    """When every attempt is transient, the caller gets a 503-worthy error
+    (NautobotUnavailableError), not the raw timeout that would become a 500."""
+    with patch(
+        "nv_config_manager.ztp.nautobot.NautobotClient.graphql_query",
+        new_callable=AsyncMock,
+        side_effect=TimeoutError("stuck"),
+    ) as mock_query:
+        nb = NautobotClient()
+        nb._retry_backoff = 0.0
+
+        with pytest.raises(NautobotUnavailableError):
+            await nb.get_device_data(str(uuid4()))
+
+        # Attempted request_max_attempts times, then gave up as one failure.
+        assert mock_query.await_count == nb._max_attempts
+        assert nb._consecutive_failures == 1
+
+
+@pytest.mark.asyncio
 async def test_circuit_breaker_opens_on_transient_failures():
     """Repeated Nautobot errors open the breaker, then it fails fast."""
     with patch(
@@ -113,17 +152,20 @@ async def test_circuit_breaker_opens_on_transient_failures():
     ) as mock_query:
         nb = NautobotClient()
         nb._breaker_threshold = 3
+        nb._retry_backoff = 0.0
 
+        # Each call retries internally, then surfaces a 503-worthy error and
+        # records exactly one breaker failure.
         for _ in range(3):
-            with pytest.raises(aiohttp.ClientError):
+            with pytest.raises(NautobotUnavailableError):
                 await nb.get_device_data(str(uuid4()))
 
-        assert mock_query.await_count == 3
+        assert mock_query.await_count == 3 * nb._max_attempts
 
         # Breaker now open: fails fast without hitting Nautobot again.
         with pytest.raises(NautobotUnavailableError):
             await nb.get_device_data(str(uuid4()))
-        assert mock_query.await_count == 3
+        assert mock_query.await_count == 3 * nb._max_attempts
 
 
 @pytest.mark.asyncio

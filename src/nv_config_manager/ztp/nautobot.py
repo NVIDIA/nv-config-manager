@@ -23,6 +23,12 @@ defaults so no config change is required):
 
 * Short request timeout so a stuck call releases its slot quickly
   (``request_timeout``, default 8s).
+* A bounded retry on transient failures (timeout, connection error, 5xx): each
+  guarded call is attempted up to ``request_max_attempts`` times (default 2) so
+  a fresh attempt can land on a healthy pod/connection. If every attempt fails,
+  the caller gets a fast :class:`NautobotUnavailableError` (surfaced as HTTP 503
+  ``Retry-After``) instead of a raw timeout leaking as a 500 — so a device (or
+  ONIE) backs off and retries rather than failing its boot.
 * A bounded concurrency semaphore so ZTP applies backpressure toward Nautobot
   instead of opening unbounded connections during a boot storm. Callers that
   cannot get a slot within ``acquire_timeout`` (default 3s) get a fast
@@ -126,6 +132,10 @@ class NautobotClient(BaseNautobotClient):
         nb_config: SectionProxy = config["nautobot"]
 
         self._request_timeout = nb_config.getint("request_timeout", fallback=8)
+        # Retry a transient failure a bounded number of times before giving up;
+        # a fresh attempt usually lands on a healthy pod / connection.
+        self._max_attempts = max(1, nb_config.getint("request_max_attempts", fallback=2))
+        self._retry_backoff = nb_config.getfloat("request_retry_backoff", fallback=0.1)
         self._acquire_timeout = nb_config.getfloat("acquire_timeout", fallback=3.0)
         self._cache_ttl = nb_config.getfloat("cache_ttl", fallback=5.0)
         self._breaker_threshold = nb_config.getint("breaker_failure_threshold", fallback=8)
@@ -202,30 +212,50 @@ class NautobotClient(BaseNautobotClient):
             ) from exc
 
     async def _guarded(self, make_coro: Callable[[], Awaitable[_T]]) -> _T:
-        """Run a coroutine behind the breaker + concurrency limiter.
+        """Run a coroutine behind the breaker + concurrency limiter, retrying
+        transient failures a bounded number of times.
 
         Takes a factory (not a coroutine) so the underlying request is only
-        created after the breaker and limiter admit it — no orphaned, never
-        awaited coroutines when we fail fast.
+        created after the breaker and limiter admit it, and so every retry gets
+        a fresh request — no orphaned, never-awaited coroutines when we fail
+        fast.
 
-        Only genuine Nautobot health failures (timeouts, connection errors,
-        5xx) count toward the breaker; logical errors (e.g. NotFoundError)
-        propagate without tripping it.
+        A transient Nautobot health failure (timeout, connection error, 5xx) is
+        retried up to ``request_max_attempts`` times; a fresh attempt usually
+        lands on a healthy pod / fresh connection (e.g. after a rollout churns
+        the endpoint list or a pod was momentarily cold). If every attempt
+        fails, we record a single breaker failure and surface a
+        :class:`NautobotUnavailableError` (HTTP 503 ``Retry-After``) rather than
+        letting the raw timeout leak out as a 500 — so a device backs off and
+        retries instead of failing its boot. Logical errors (e.g. NotFoundError)
+        mean a healthy Nautobot answered and propagate immediately without
+        tripping the breaker.
         """
         self._breaker_check()
         await self._acquire_slot()
         try:
-            result = await make_coro()
-        except _TRANSIENT_ERRORS:
+            last_exc: BaseException | None = None
+            for attempt in range(self._max_attempts):
+                try:
+                    result = await make_coro()
+                except _TRANSIENT_ERRORS as exc:
+                    last_exc = exc
+                    if attempt + 1 < self._max_attempts and self._retry_backoff > 0:
+                        await asyncio.sleep(self._retry_backoff)
+                    continue
+                except Exception:
+                    # Non-transient (e.g. NotFoundError): Nautobot answered.
+                    self._record_success()
+                    raise
+                else:
+                    self._record_success()
+                    return result
+            # Every attempt hit a transient failure: count one breaker failure
+            # and surface a retryable 503 instead of the raw timeout/conn error.
             self._record_failure()
-            raise
-        except Exception:
-            # Non-transient (e.g. NotFoundError): a healthy Nautobot answered.
-            self._record_success()
-            raise
-        else:
-            self._record_success()
-            return result
+            raise NautobotUnavailableError(
+                "Nautobot is slow or unavailable after retries; retry shortly."
+            ) from last_exc
         finally:
             self._semaphore.release()
 
