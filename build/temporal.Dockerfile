@@ -6,12 +6,15 @@
 
 # Keep this source line aligned with the currently approved production server
 # version.  Changing it requires the Temporal database-upgrade procedure.
-ARG TEMPORAL_VERSION=1.29
+ARG TEMPORAL_SERVER_VERSION=1.29.7
+# The bootstrap-only admin-tools image supplies Temporal's schema files and
+# command-line tools. Temporal does not publish an admin-tools:1.29.7 tag.
+ARG TEMPORAL_ADMIN_TOOLS_VERSION=1.29.6
 # The UI is independently deployable and does not change Temporal persistence.
 ARG TEMPORAL_UI_VERSION=2.52.1
 
-FROM temporalio/server:${TEMPORAL_VERSION} AS server-upstream
-FROM temporalio/admin-tools:${TEMPORAL_VERSION} AS admin-tools-upstream
+FROM temporalio/server:${TEMPORAL_SERVER_VERSION} AS server-upstream
+FROM temporalio/admin-tools:${TEMPORAL_ADMIN_TOOLS_VERSION} AS admin-tools-upstream
 FROM temporalio/ui:${TEMPORAL_UI_VERSION} AS ui-upstream
 
 FROM golang:1.26.5-alpine AS bootstrap-builder
@@ -32,8 +35,8 @@ ENTRYPOINT ["/usr/local/bin/temporal-server"]
 # =============================================================================
 # Temporal Bootstrap
 # =============================================================================
-# This image is coupled to the supported Temporal server version: it carries
-# the matching schema files plus NVIDIA Config Manager's bootstrap binary.
+# This image carries Temporal's v1.29 schema files plus NVIDIA Config Manager's
+# bootstrap binary. It runs only as a chart-managed init container.
 FROM nvcr.io/nvidia/distroless/go:v4.0.8 AS bootstrap
 COPY --from=admin-tools-upstream /usr/local/bin/temporal /usr/local/bin/temporal
 COPY --from=admin-tools-upstream /usr/local/bin/temporal-sql-tool /usr/local/bin/temporal-sql-tool

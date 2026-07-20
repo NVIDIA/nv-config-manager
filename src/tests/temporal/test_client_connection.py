@@ -59,9 +59,17 @@ def test_mtls_connection_uses_mounted_secret_files(custom_ini, tmp_path: Path) -
 
 
 def test_mtls_requires_client_certificate_and_key(
+    tmp_path: Path,
     custom_ini,
 ) -> None:
     custom_ini("[temporal]\ntls_enabled = true\n")
 
     with pytest.raises(ValueError, match="tls_client_cert_path"):
+        client_connect_options()
+
+    certificate = tmp_path / "tls.crt"
+    certificate.write_bytes(b"certificate")
+    custom_ini(f"[temporal]\ntls_enabled = true\ntls_client_cert_path = {certificate}\n")
+
+    with pytest.raises(ValueError, match="tls_client_key_path"):
         client_connect_options()

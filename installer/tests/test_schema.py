@@ -96,6 +96,13 @@ class TestNVConfigManagerInstallConfig:
         with pytest.raises(ValueError, match="tls_server_name may contain only"):
             ExternalTemporalConfig(tls_server_name=server_name)
 
+    @pytest.mark.parametrize(
+        "namespace", ["network\nautomation", "network\rautomation", "network\x00automation"]
+    )
+    def test_external_temporal_rejects_unsafe_namespace(self, namespace: str):
+        with pytest.raises(ValueError, match="namespace must not contain control characters"):
+            ExternalTemporalConfig(namespace=namespace)
+
     def test_ztp_image_rejects_unsupported_platform(self):
         with pytest.raises(ValueError, match="Unsupported ZTP platform 'sonic'"):
             ZTPOSImage(platform="sonic", version="4.0.0", path="/images/sonic.bin")

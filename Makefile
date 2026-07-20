@@ -52,10 +52,13 @@ NAUTOBOT_NV_CONFIG_MANAGER_VERSION ?= $(TEMPLATE_ENGINE_VERSION)
 NAUTOBOT_NV_CONFIG_MANAGER_VERSION_ARG = $(if $(NAUTOBOT_NV_CONFIG_MANAGER_VERSION),--build-arg NAUTOBOT_NV_CONFIG_MANAGER_VERSION=$(NAUTOBOT_NV_CONFIG_MANAGER_VERSION),)
 # Keep this aligned with the currently approved production server version.
 # A Temporal server upgrade is a separately planned schema migration.
-TEMPORAL_VERSION ?= 1.29
+TEMPORAL_SERVER_VERSION ?= 1.29.7
+# Admin tools run only in the bootstrap init containers.  Temporal does not
+# publish an admin-tools:1.29.7 tag, so retain the available 1.29.6 release.
+TEMPORAL_ADMIN_TOOLS_VERSION ?= 1.29.6
 # UI is independently deployable and does not change Temporal persistence.
 TEMPORAL_UI_VERSION ?= 2.52.1
-TEMPORAL_BUILD_ARGS = --build-arg TEMPORAL_VERSION=$(TEMPORAL_VERSION) --build-arg TEMPORAL_UI_VERSION=$(TEMPORAL_UI_VERSION)
+TEMPORAL_BUILD_ARGS = --build-arg TEMPORAL_SERVER_VERSION=$(TEMPORAL_SERVER_VERSION) --build-arg TEMPORAL_ADMIN_TOOLS_VERSION=$(TEMPORAL_ADMIN_TOOLS_VERSION) --build-arg TEMPORAL_UI_VERSION=$(TEMPORAL_UI_VERSION)
 
 # Default target
 help:
@@ -400,14 +403,25 @@ ui-lint:
 
 # Build all local Docker images
 docker-build:
-	$(MAKE) docker-build-nv-config-manager &\
-	$(MAKE) docker-build-kea &\
-	$(MAKE) docker-build-kea-admin &\
-	$(MAKE) docker-build-ui &\
-	$(MAKE) docker-build-nb &\
-	$(MAKE) docker-build-nats-ready &\
-	$(MAKE) docker-build-temporal &\
-	wait
+	@pids=""; \
+	$(MAKE) docker-build-nv-config-manager & pids="$$pids $$!"; \
+	$(MAKE) docker-build-kea & pids="$$pids $$!"; \
+	$(MAKE) docker-build-kea-admin & pids="$$pids $$!"; \
+	$(MAKE) docker-build-ui & pids="$$pids $$!"; \
+	$(MAKE) docker-build-nb & pids="$$pids $$!"; \
+	$(MAKE) docker-build-nats-ready & pids="$$pids $$!"; \
+	$(MAKE) docker-build-temporal & pids="$$pids $$!"; \
+	failed=0; \
+	for pid in $$pids; do \
+		if ! wait "$$pid"; then \
+			echo "❌ Docker build process $$pid failed"; \
+			failed=1; \
+		fi; \
+	done; \
+	if [ "$$failed" -ne 0 ]; then \
+		echo "❌ One or more Docker image builds failed"; \
+		exit 1; \
+	fi
 	@echo "✅ All images built successfully"
 
 # Build NVIDIA Config Manager services image

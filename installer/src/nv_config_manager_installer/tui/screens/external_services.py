@@ -20,7 +20,11 @@ from textual.app import ComposeResult
 from textual.containers import Container
 from textual.widgets import Input, Label
 
-from nv_config_manager_installer.schema import NVConfigManagerInstallConfig, TemporalAuthMethod
+from nv_config_manager_installer.schema import (
+    ExternalTemporalConfig,
+    NVConfigManagerInstallConfig,
+    TemporalAuthMethod,
+)
 from nv_config_manager_installer.tui.widgets import LabeledSwitch
 
 _W_EXT_NAUTOBOT = "#ext-nautobot-enabled"
@@ -235,23 +239,22 @@ class ExternalServicesScreen(Container):
 
         es.slack.channel = self.query_one("#ext-slack-channel", Input).value.strip()
 
-        temporal = es.temporal
         temporal_enabled = self.query_one(_W_EXT_TEMPORAL, LabeledSwitch).value
-        temporal.address = (
-            self.query_one("#ext-temporal-address", Input).value.strip() if temporal_enabled else ""
+        es.temporal = ExternalTemporalConfig(
+            address=(
+                self.query_one("#ext-temporal-address", Input).value.strip()
+                if temporal_enabled
+                else ""
+            ),
+            namespace=self.query_one("#ext-temporal-namespace", Input).value.strip() or "default",
+            auth_method=(
+                TemporalAuthMethod.MTLS
+                if temporal_enabled and self.query_one(_W_EXT_TEMPORAL_MTLS, LabeledSwitch).value
+                else TemporalAuthMethod.NONE
+            ),
+            tls_secret_name=self.query_one("#ext-temporal-tls-secret", Input).value.strip(),
+            tls_server_name=self.query_one("#ext-temporal-tls-server-name", Input).value.strip(),
         )
-        temporal.namespace = (
-            self.query_one("#ext-temporal-namespace", Input).value.strip() or "default"
-        )
-        temporal.auth_method = (
-            TemporalAuthMethod.MTLS
-            if temporal_enabled and self.query_one(_W_EXT_TEMPORAL_MTLS, LabeledSwitch).value
-            else TemporalAuthMethod.NONE
-        )
-        temporal.tls_secret_name = self.query_one("#ext-temporal-tls-secret", Input).value.strip()
-        temporal.tls_server_name = self.query_one(
-            "#ext-temporal-tls-server-name", Input
-        ).value.strip()
 
         pg = es.postgres
         pg.enabled = self.query_one(_W_EXT_PG, LabeledSwitch).value

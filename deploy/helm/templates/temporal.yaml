@@ -370,6 +370,8 @@ spec:
         env:
         - name: TEMPORAL_ADDR
           value: "{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.temporal.services.frontend.port }}"
+        - name: TEMPORAL_NAMESPACE
+          value: {{ .Values.temporal.client.namespace | default "default" | quote }}
         resources:
           requests:
             cpu: 50m
@@ -601,7 +603,7 @@ spec:
       initContainers:
       # Wait for Nautobot to be available before starting scheduler
       {{- include "nv-config-manager.waitForNautobot" . | nindent 6 }}
-      # A locally managed Temporal server creates the default namespace.
+      # A locally managed Temporal server creates the configured namespace.
       {{- if .Values.temporal.server.enabled }}
       {{- include "nv-config-manager.waitForTemporalNamespace" . | nindent 6 }}
       {{- end }}

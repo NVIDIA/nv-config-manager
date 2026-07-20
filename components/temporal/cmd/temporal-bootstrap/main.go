@@ -23,6 +23,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -36,6 +37,8 @@ const (
 	defaultRetries = 30
 	retryDelay     = 5 * time.Second
 )
+
+var commandTimeout = 2 * time.Minute
 
 var searchAttributes = [][2]string{
 	{"User", "Keyword"},
@@ -128,12 +131,13 @@ func databaseName(name string) string {
 
 func setupNamespace() error {
 	address := temporalAddress()
+	namespace := temporalNamespace()
 	if err := waitForAddress(address); err != nil {
 		return err
 	}
 
-	if err := retry("create default namespace", func() (bool, error) {
-		output, err := temporal(address, "operator", "namespace", "create", "--namespace", "default", "--retention", "336h")
+	if err := retry("create namespace "+namespace, func() (bool, error) {
+		output, err := temporal(address, "operator", "namespace", "create", "--namespace", namespace, "--retention", "336h")
 		if err == nil || alreadyExists(output) {
 			return true, nil
 		}
@@ -142,8 +146,8 @@ func setupNamespace() error {
 		return err
 	}
 
-	if err := retry("update default namespace retention", func() (bool, error) {
-		output, err := temporal(address, "operator", "namespace", "update", "--namespace", "default", "--retention", "336h")
+	if err := retry("update namespace "+namespace+" retention", func() (bool, error) {
+		output, err := temporal(address, "operator", "namespace", "update", "--namespace", namespace, "--retention", "336h")
 		if err == nil {
 			return true, nil
 		}
@@ -169,11 +173,12 @@ func setupNamespace() error {
 
 func waitForNamespace() error {
 	address := temporalAddress()
+	namespace := temporalNamespace()
 	if err := waitForAddress(address); err != nil {
 		return err
 	}
-	return retry("wait for default namespace", func() (bool, error) {
-		output, err := temporal(address, "operator", "namespace", "describe", "--namespace", "default")
+	return retry("wait for namespace "+namespace, func() (bool, error) {
+		output, err := temporal(address, "operator", "namespace", "describe", "--namespace", namespace)
 		if err == nil {
 			return true, nil
 		}
@@ -217,12 +222,18 @@ func retry(name string, operation func() (bool, error)) error {
 }
 
 func run(path string, arguments ...string) (string, error) {
-	command := exec.Command(path, arguments...)
+	commandContext, cancel := context.WithTimeout(context.Background(), commandTimeout)
+	defer cancel()
+
+	command := exec.CommandContext(commandContext, path, arguments...)
 	command.Env = append(os.Environ(), "HOME=/tmp")
 	var output bytes.Buffer
 	command.Stdout = &output
 	command.Stderr = &output
 	err := command.Run()
+	if commandContext.Err() != nil {
+		err = fmt.Errorf("command timed out after %s: %w", commandTimeout, commandContext.Err())
+	}
 	return output.String(), err
 }
 
@@ -232,6 +243,10 @@ func temporalAddress() string {
 		fatal("TEMPORAL_ADDR is required")
 	}
 	return address
+}
+
+func temporalNamespace() string {
+	return getenv("TEMPORAL_NAMESPACE", "default")
 }
 
 func alreadyExists(output string) bool {

@@ -830,7 +830,7 @@ Usage: {{ include "nv-config-manager.waitForNats" . | nindent 6 }}
 
 {{/*
 Wait-for-Temporal-namespace init container
-Polls the Temporal frontend until the default namespace is registered.
+Polls the Temporal frontend until the configured namespace is registered.
 This must run after the nv-config-manager-worker "temporal-setup" init container has
 created the namespace; use it in deployments that depend on the namespace
 existing (e.g. the scheduler).
@@ -845,6 +845,8 @@ Usage: {{ include "nv-config-manager.waitForTemporalNamespace" . | nindent 6 }}
   env:
   - name: TEMPORAL_ADDR
     value: "{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.temporal.services.frontend.port }}"
+  - name: TEMPORAL_NAMESPACE
+    value: {{ .Values.temporal.client.namespace | default "default" | quote }}
   resources:
     requests:
       cpu: 10m

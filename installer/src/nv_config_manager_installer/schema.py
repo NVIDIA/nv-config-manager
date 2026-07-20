@@ -625,6 +625,14 @@ class ExternalTemporalConfig(BaseModel):
     tls_secret_name: str = ""
     tls_server_name: str = ""
 
+    @field_validator("namespace")
+    @classmethod
+    def validate_namespace(cls, value: str) -> str:
+        """Reject control characters that can alter generated configuration."""
+        if any(ord(character) < 32 or ord(character) == 127 for character in value):
+            raise ValueError("namespace must not contain control characters")
+        return value
+
     @field_validator("tls_server_name")
     @classmethod
     def validate_tls_server_name(cls, value: str) -> str:
