@@ -18,6 +18,7 @@ These tests verify that Temporal workflows can be started and completed
 successfully through the Temporal API gateway.
 """
 
+import os
 import time
 from typing import Any
 
@@ -267,7 +268,7 @@ class TestTemporalAPI:
                 "Access-Control-Request-Headers": "content-type,x-namespace",
             },
             timeout=10,
-            verify=False,
+            verify=os.environ["REQUESTS_CA_BUNDLE"],
             allow_redirects=False,
         )
 
