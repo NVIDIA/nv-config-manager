@@ -33,6 +33,11 @@ from nv_config_manager.temporal.common.mixins.stage import (
 with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.common.mixins.archive import ArchiveMixin
     from nv_config_manager.temporal.common.mixins.device import DeviceMixin
+    from nv_config_manager.temporal.ngc.activities.deploy import (
+        DiffActivityInput,
+        load_intended_configuration,
+        perform_candidate_diff,
+    )
     from nv_config_manager.temporal.ngc.activities.nautobot import (
         GetNetworkDeviceInput,
         get_network_device,
@@ -53,6 +58,7 @@ DEFAULT_ACTIVITY_RETRY_POLICY = RetryPolicy(
     maximum_attempts=3,
     non_retryable_error_types=["FirmwareUpgradeException"],
 )
+VALIDATE_INTENDED_CONFIG_PATCH_ID = "reprovision-validate-intended-config-v1"
 
 
 class ReprovisionInput(BaseModel):
@@ -112,6 +118,22 @@ class ReprovisionWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
         DeviceMixin.attach_device_search_attributes(result.device)
 
         device_data = result.device
+
+        # Validate that the rendered config exists and can be loaded as a candidate
+        # before factory reset makes the current configuration unavailable.
+        if workflow.patched(VALIDATE_INTENDED_CONFIG_PATCH_ID):
+            intended_config, _commit_id, _url = await workflow.execute_activity(
+                load_intended_configuration,
+                device_data,
+                start_to_close_timeout=timedelta(minutes=1),
+                retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+            )
+            await workflow.execute_activity(
+                perform_candidate_diff,
+                DiffActivityInput(device_data=device_data, configuration=intended_config),
+                start_to_close_timeout=timedelta(minutes=1),
+                retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+            )
 
         # Trigger ZTP through factory reset
         ztp_execute_result = await workflow.execute_activity(

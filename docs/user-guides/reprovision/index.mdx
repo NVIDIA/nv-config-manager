@@ -55,6 +55,7 @@ The workflow runs two stages in order. Each stage is defined as a Pydantic-valid
    This stage drives the full ZTP cycle:
 
    - Fetches the device record from Nautobot to confirm it exists and to attach device search attributes to the workflow for observability.
+   - Loads the latest intended configuration and builds a candidate diff on the live switch. This validates that the rendered configuration exists and that the device can parse it without applying any changes. If validation fails, the stage stops before factory reset.
    - Calls the `execute_ztp` activity, which triggers a factory reset on the switch. The switch reboots, requests DHCP, and downloads its boot script and rendered configuration from the ZTP service. See [Network ZTP](../../network-ztp/index.mdx) for how this works under the hood.
    - Polls ZTP status for up to 30 minutes (with a 5-minute buffer), heartbeating every 3 minutes so that a hung activity is detected and retried promptly. The poll uses the ZTP execution timestamp captured during the reset so that it can verify the reboot actually happened and is not reading a stale "success" state from the previous provisioning.
    - Activities retry up to 3 times on transient errors; ZTP failures surface as `ApplicationError`.

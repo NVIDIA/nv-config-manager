@@ -22,8 +22,9 @@ from unittest.mock import patch
 
 import pytest
 from temporalio import activity
-from temporalio.client import Client, WorkflowHandle
+from temporalio.client import Client, WorkflowFailureError, WorkflowHandle
 from temporalio.common import RetryPolicy
+from temporalio.exceptions import ApplicationError
 from temporalio.worker import Worker
 
 from nv_config_manager.temporal.common.mixins.device import NetworkDeviceData
@@ -211,6 +212,65 @@ async def test_reprovision_workflow(
         backup_handle = client.get_workflow_handle(backup_workflow_id)
         backup_result = await backup_handle.result()
         assert backup_result is True
+
+
+@pytest.mark.asyncio
+@patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
+@patch(
+    "nv_config_manager.temporal.ngc.workflows.reprovision.DEFAULT_ACTIVITY_RETRY_POLICY",
+    return_value=TEST_RETRY_POLICY,
+)
+@patch("nv_config_manager.temporal.ngc.workflows.reprovision.timedelta", return_value=TEST_TIMEOUT)
+async def test_reprovision_validates_intended_config_before_factory_reset(
+    mock_timedelta,
+    mock_retry_policy,
+    mock_time,
+    env,
+):
+    """An invalid intended config must fail before factory reset is requested."""
+    factory_reset_calls: list[ExecuteZTPInput] = []
+
+    @activity.defn(name="perform_candidate_diff")
+    def mock_invalid_candidate_diff(_activity_input: DiffActivityInput) -> str:
+        raise ApplicationError("Invalid intended configuration", non_retryable=True)
+
+    @activity.defn(name="execute_ztp")
+    def mock_counting_execute_ztp(activity_input: ExecuteZTPInput) -> ExecuteZTPOutput:
+        factory_reset_calls.append(activity_input)
+        return ExecuteZTPOutput(start_time=datetime.now().isoformat())
+
+    task_queue_name = str(uuid.uuid4())
+    async with Worker(
+        env.client,
+        task_queue=task_queue_name,
+        workflows=[ReprovisionWorkflow],
+        activities=[
+            mock_get_network_device,
+            mock_load_intended_configuration,
+            mock_invalid_candidate_diff,
+            mock_counting_execute_ztp,
+            mock_poll_ztp_status,
+        ],
+        activity_executor=ThreadPoolExecutor(5),
+    ):
+        handle: WorkflowHandle = await env.client.start_workflow(
+            ReprovisionWorkflow.run,
+            ReprovisionInput(device_id="test-device"),
+            id=str(uuid.uuid4()),
+            task_queue=task_queue_name,
+            run_timeout=timedelta(minutes=1),
+        )
+
+        with pytest.raises(WorkflowFailureError):
+            await handle.result()
+
+        stages = await handle.query("stages")
+        execute_ztp_stage = next(stage for stage in stages if stage["name"] == "execute_ztp")
+        backup_stage = next(stage for stage in stages if stage["name"] == "perform_backup")
+        assert execute_ztp_stage["state"] == "FAILED"
+        assert "Invalid intended configuration" in execute_ztp_stage["traceback"]
+        assert backup_stage["state"] == "NOT_STARTED"
+        assert factory_reset_calls == []
 
 
 @pytest.mark.asyncio
