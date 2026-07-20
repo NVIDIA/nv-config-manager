@@ -113,8 +113,6 @@ images:
       tag: "0.14.3"
     temporalServer:
       repository: registry.example.com/nv-config-manager/nvidian/cfa/nv-config-manager-temporal
-    temporalBootstrap:
-      repository: registry.example.com/nv-config-manager/nvidian/cfa/nv-config-manager-temporal-bootstrap
     temporalUi:
       repository: registry.example.com/nv-config-manager/nvidian/cfa/nv-config-manager-temporal-ui
     nautobotNginx:

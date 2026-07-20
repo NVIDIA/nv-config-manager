@@ -166,6 +166,20 @@ def _replace_short_header(content: str, pattern: re.Pattern[str], header: str) -
     return (match.group("preamble") or "") + header + content[match.end("header") :]
 
 
+def replace_existing_short_header(
+    file_path: Path,
+    content: str,
+    replace_header: Callable[[str], str],
+) -> HeaderResult:
+    """Write a normalized short header or report a header outside the preamble."""
+    new_content = replace_header(content)
+    if new_content == content:
+        print(f"Error processing {file_path}: short SPDX header is not at the supported preamble")
+        return HeaderResult.FAILED
+    file_path.write_text(new_content, encoding="utf-8")
+    return HeaderResult.ADDED
+
+
 def add_header_to_python(file_path: Path) -> HeaderResult:
     try:
         content = file_path.read_text(encoding="utf-8")
@@ -174,10 +188,7 @@ def add_header_to_python(file_path: Path) -> HeaderResult:
             return HeaderResult.SKIPPED
 
         if has_short_header(content):
-            new_content = replace_short_header_python(content)
-            if new_content != content:
-                file_path.write_text(new_content, encoding="utf-8")
-                return HeaderResult.ADDED
+            return replace_existing_short_header(file_path, content, replace_short_header_python)
 
         if content.startswith("#!"):
             lines = content.split("\n", 1)
@@ -200,10 +211,7 @@ def add_header_to_js_ts(file_path: Path) -> HeaderResult:
             return HeaderResult.SKIPPED
 
         if has_short_header(content):
-            new_content = replace_short_header_js(content)
-            if new_content != content:
-                file_path.write_text(new_content, encoding="utf-8")
-                return HeaderResult.ADDED
+            return replace_existing_short_header(file_path, content, replace_short_header_js)
 
         stripped = content.strip()
         if stripped.startswith(('"use client"', "'use client'", '"use server"', "'use server'")):
@@ -227,10 +235,7 @@ def add_header_to_go(file_path: Path) -> HeaderResult:
             return HeaderResult.SKIPPED
 
         if has_short_header(content):
-            new_content = replace_short_header_go(content)
-            if new_content != content:
-                file_path.write_text(new_content, encoding="utf-8")
-                return HeaderResult.ADDED
+            return replace_existing_short_header(file_path, content, replace_short_header_go)
 
         if content.startswith("//go:build") or content.startswith("// +build"):
             lines = content.split("\n")
