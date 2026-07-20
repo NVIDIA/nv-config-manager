@@ -8,6 +8,7 @@ const reportKindIntegrationResult = require("./kind-integration-result.js");
 
 const SHA = "a".repeat(40);
 const RUN_URL = "https://github.com/NVIDIA/nv-config-manager/actions/runs/123";
+const COMMIT_URL = `https://github.com/NVIDIA/nv-config-manager/commit/${SHA}`;
 const TEMPLATE_BODY = `## Description
 
 Example PR.
@@ -29,6 +30,7 @@ function createFixture(options = {}) {
   const warnings = [];
   const context = {
     repo: { owner: "NVIDIA", repo: "nv-config-manager" },
+    serverUrl: "https://github.com",
     payload: {},
   };
   if (!options.omitWorkflowRun) {
@@ -98,7 +100,7 @@ Example PR.
 
 Passing Kind Integration run, if not automatically reported:
 <!-- kind-integration-result:start -->
-Kind integration completed with **success** for [\`aaaaaaaaaaaa\`](${RUN_URL}).
+Kind integration completed with **success** for [\`aaaaaaa\`](${COMMIT_URL}) in [this workflow run](${RUN_URL}).
 <!-- kind-integration-result:end -->
 
 ## Checklist
@@ -129,7 +131,7 @@ Kind integration completed with **success** for [\`bbbbbbbbbbbb\`](https://old.e
 
 Passing Kind Integration run, if not automatically reported:
 <!-- kind-integration-result:start -->
-Kind integration completed with **failure** for [\`aaaaaaaaaaaa\`](${RUN_URL}).
+Kind integration completed with **failure** for [\`aaaaaaa\`](${COMMIT_URL}) in [this workflow run](${RUN_URL}).
 <!-- kind-integration-result:end -->
 `,
     },
@@ -202,7 +204,7 @@ No validation section.
 ## Kind Integration
 
 <!-- kind-integration-result:start -->
-Kind integration completed with **success** for [\`aaaaaaaaaaaa\`](${RUN_URL}).
+Kind integration completed with **success** for [\`aaaaaaa\`](${COMMIT_URL}) in [this workflow run](${RUN_URL}).
 <!-- kind-integration-result:end -->
 `,
   );
@@ -224,7 +226,7 @@ No validation section.
 ## Kind Integration
 
 <!-- kind-integration-result:start -->
-Kind integration completed with **failure** for [\`aaaaaaaaaaaa\`](${RUN_URL}).
+Kind integration completed with **failure** for [\`aaaaaaa\`](${COMMIT_URL}) in [this workflow run](${RUN_URL}).
 <!-- kind-integration-result:end -->
 `,
   );
