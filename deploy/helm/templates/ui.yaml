@@ -108,7 +108,7 @@ spec:
         - name: DHCP_URL
           value: "https://{{ tpl .Values.networkDhcp.gateway.hostname . }}"
         # Temporal UI URL (native Temporal web interface)
-        {{- if .Values.temporal.enabled }}
+        {{- if and .Values.temporal.enabled .Values.temporal.server.enabled }}
         - name: TEMPORAL_UI_URL
           value: "https://{{ tpl .Values.temporal.gateway.devUi.hostname . }}"
         {{- end }}

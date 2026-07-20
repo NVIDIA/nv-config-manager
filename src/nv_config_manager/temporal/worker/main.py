@@ -24,6 +24,7 @@ from temporalio.contrib.opentelemetry import TracingInterceptor
 from temporalio.worker import Worker
 
 from nv_config_manager.common.log import configure_logging
+from nv_config_manager.temporal.client.connection import client_connect_options, temporal_address
 from nv_config_manager.temporal.common.activities import REGISTERED_COMMON_ACTIVITIES
 from nv_config_manager.temporal.converter import get_data_converter
 from nv_config_manager.temporal.hello_world.activities import (
@@ -53,12 +54,11 @@ def _enabled_env_flag(name: str) -> bool:
 
 async def main() -> None:
     """Run the temporal worker."""
-    temporal_server = os.getenv("TEMPORAL_ADDRESS", "localhost:7233")
     runtime = setup_telemetry("nv-config-manager-temporal-worker")
 
     client = await Client.connect(
-        temporal_server,
-        namespace="default",
+        temporal_address(),
+        **client_connect_options(),
         data_converter=get_data_converter(),
         interceptors=[TracingInterceptor(always_create_workflow_spans=True)],
         runtime=runtime,

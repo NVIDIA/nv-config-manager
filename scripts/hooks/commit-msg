@@ -38,6 +38,10 @@ trim() {
     printf '%s' "$value"
 }
 
+lowercase() {
+    printf '%s' "$1" | tr '[:upper:]' '[:lower:]'
+}
+
 trailers="$(git interpret-trailers --parse "$COMMIT_MSG_FILE")"
 valid_signoff_count=0
 invalid_signoffs=()
@@ -46,14 +50,15 @@ git_user_email="$(git config user.email || true)"
 
 while IFS= read -r line; do
     token="$(trim "${line%%:*}")"
-    if [[ "${token,,}" != "signed-off-by" ]]; then
+    if [[ "$(lowercase "$token")" != "signed-off-by" ]]; then
         continue
     fi
 
     value="$(trim "${line#*:}")"
+    lowercase_value="$(lowercase "$value")"
     if [[ "$value" =~ ^[^[:space:]\<\>][^\<\>]*[[:space:]]\<[^\<\>@[:space:]]+@[^\<\>[:space:]]+\>$ ]] \
-        && [[ "${value,,}" != *"your name"* ]] \
-        && [[ "${value,,}" != *"your.email@example.com"* ]]; then
+        && [[ "$lowercase_value" != *"your name"* ]] \
+        && [[ "$lowercase_value" != *"your.email@example.com"* ]]; then
         ((valid_signoff_count += 1))
     else
         invalid_signoffs+=("$value")

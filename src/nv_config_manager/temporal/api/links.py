@@ -32,7 +32,9 @@ def temporal_ui_workflow_href(workflow_id: str, config: ConfigParser | None = No
     if not ui_url:
         return ""
 
-    return f"{_normalize_base_url(ui_url)}/namespaces/default/workflows/{safe_workflow_id}"
+    namespace = config.get("temporal", "namespace", fallback="default").strip() or "default"
+    safe_namespace = quote(namespace, safe="")
+    return f"{_normalize_base_url(ui_url)}/namespaces/{safe_namespace}/workflows/{safe_workflow_id}"
 
 
 def _normalize_base_url(url: str) -> str:

@@ -153,6 +153,23 @@ async def test_collect_config():
 
 
 @pytest.mark.asyncio
+async def test_external_temporal_screen_revalidates_form_values():
+    """External Temporal form values must pass model validation before saving."""
+    config = NVConfigManagerInstallConfig()
+    app = NVConfigManagerInstallerApp(config=config)
+
+    async with app.run_test():
+        app.switch_section("external_services")
+        screen = app._screens["external_services"]
+        screen.query_one("#ext-temporal-enabled", LabeledSwitch).value = True
+        screen.query_one("#ext-temporal-address", Input).value = "temporal.example.com:7233"
+        screen.query_one("#ext-temporal-namespace", Input).value = "remote\nnamespace"
+
+        with pytest.raises(ValueError, match="namespace must not contain control characters"):
+            screen.write_to_config(config)
+
+
+@pytest.mark.asyncio
 async def test_sites_list_in_cluster_section():
     """Sites list widget should be present in the cluster section."""
     config = NVConfigManagerInstallConfig(sites=[SiteConfig(name="dc01")])
