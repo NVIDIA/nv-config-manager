@@ -27,6 +27,7 @@ from unittest.mock import ANY, MagicMock, call, patch
 import pytest
 
 from nv_config_manager_installer.pvc_updater import (
+    _LOADER_ARCHIVE_PATH,
     JOBS_PVC_NAME,
     PVCUpdater,
     ZTPImageSource,
@@ -103,7 +104,9 @@ def test_jobs_updates_existing_pvc_and_restarts_consumers(tmp_path: Path) -> Non
     ]
     assert k8s.wait_for_rollout.call_count == 3
     command = k8s.exec_command.call_args.args[2][2]
-    assert 'tar xzf /tmp/content.tar.gz -C "$staging"' in command
+    assert f'tar xzf {_LOADER_ARCHIVE_PATH} -C "$staging"' in command
+    assert k8s.copy_to_pod.call_args.args[3] == _LOADER_ARCHIVE_PATH
+    assert not _LOADER_ARCHIVE_PATH.startswith("/tmp/")
     assert command.index("tar xzf") < command.index("move_old_content")
     assert "rollback_new_content" in command
 
@@ -500,7 +503,7 @@ def test_pvc_content_replacement_stages_then_replaces_live_content(tmp_path: Pat
     tarball = tmp_path / "content.tar.gz"
     _make_tarball(staged, tarball)
     command = _replace_pvc_content_command(str(live), "").replace(
-        "/tmp/content.tar.gz", str(tarball)
+        _LOADER_ARCHIVE_PATH, str(tarball)
     )
 
     subprocess.run(["sh", "-c", command], check=True)
@@ -530,7 +533,7 @@ def test_ztp_content_replacement_publishes_manifest_last(tmp_path: Path) -> None
     tarball = tmp_path / "content.tar.gz"
     _make_tarball(staged, tarball)
     command = _replace_ztp_pvc_content_command(str(live)).replace(
-        "/tmp/content.tar.gz", str(tarball)
+        _LOADER_ARCHIVE_PATH, str(tarball)
     )
 
     real_mv = shutil.which("mv")
@@ -583,7 +586,7 @@ def test_pvc_content_replacement_preserves_live_content_when_validation_fails(
     tarball = tmp_path / "content.tar.gz"
     _make_tarball(staged, tarball)
     command = _replace_pvc_content_command(str(live), "false").replace(
-        "/tmp/content.tar.gz", str(tarball)
+        _LOADER_ARCHIVE_PATH, str(tarball)
     )
 
     with pytest.raises(subprocess.CalledProcessError):
@@ -604,7 +607,7 @@ def test_pvc_content_replacement_rolls_back_when_a_move_fails(tmp_path: Path) ->
     tarball = tmp_path / "content.tar.gz"
     _make_tarball(staged, tarball)
     command = _replace_pvc_content_command(str(live), "").replace(
-        "/tmp/content.tar.gz", str(tarball)
+        _LOADER_ARCHIVE_PATH, str(tarball)
     )
 
     real_mv = shutil.which("mv")

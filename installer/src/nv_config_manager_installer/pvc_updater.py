@@ -46,6 +46,7 @@ ZTP_PVC_NAME = "ztp-os-images"
 PVC_UPDATE_LEASE_DURATION_SECONDS = 3_600
 
 _COMMON_IGNORES = (".venv", "__pycache__", ".git", "*.pyc", "tests")
+_LOADER_ARCHIVE_PATH = "/nvcm-pvc-updater-content.tar.gz"
 _TEMPLATE_IGNORES = (*_COMMON_IGNORES, "tests")
 
 
@@ -165,7 +166,7 @@ cleanup_staging() {{
 }}
 trap cleanup_staging EXIT
 mkdir "$staging"
-tar xzf /tmp/content.tar.gz -C "$staging"{post_extract_command}
+tar xzf {_LOADER_ARCHIVE_PATH} -C "$staging"{post_extract_command}
 mkdir "$backup"
 move_old_content() {{
     for entry in "$live"/.[!.]* "$live"/..?* "$live"/*; do
@@ -242,7 +243,7 @@ cleanup_workdirs() {{
 }}
 trap cleanup_workdirs EXIT
 mkdir "$staging" "$desired"
-tar xzf /tmp/content.tar.gz -C "$staging"
+tar xzf {_LOADER_ARCHIVE_PATH} -C "$staging"
 if [ ! -f "$staging/manifest.json" ]; then
     echo "ZTP content archive does not contain manifest.json" >&2
     exit 1
@@ -578,7 +579,10 @@ class PVCUpdater:
                         self._k8s.wait_for_pod_ready(pod_name, self.namespace)
                         self._on_log(f"{kind}: copying content into PVC {pvc_name}")
                         self._k8s.copy_to_pod(
-                            str(tarball), pod_name, self.namespace, "/tmp/content.tar.gz"
+                            str(tarball),
+                            pod_name,
+                            self.namespace,
+                            _LOADER_ARCHIVE_PATH,
                         )
                         lease_renewer.ensure_healthy()
                         command = (
