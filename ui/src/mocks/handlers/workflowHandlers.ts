@@ -23,6 +23,7 @@ import { createGenericWorkflow } from "@/mocks/data/workflows/genericWorkflow";
 
 export const workflowTypes = [
   "BackupWorkflow",
+  "SiteBackupWorkflow",
   "ConnectedHostMetadataWorkflow",
   "DeployWorkflow",
   "TenantDeployWorkflow",
@@ -55,6 +56,7 @@ export const workflowTypes = [
 
 const workflowDisplayNames: Record<string, string> = {
   BackupWorkflow: "Configuration Backup",
+  SiteBackupWorkflow: "Site Configuration Backup",
   ConnectedHostMetadataWorkflow: "Connected Host Metadata",
   DeployWorkflow: "Configuration Deploy",
   TenantDeployWorkflow: "Tenant Deploy",
@@ -84,6 +86,7 @@ const workflowDisplayNames: Record<string, string> = {
 
 const workflowEndpoints: Record<string, string> = {
   BackupWorkflow: "/ngc/backup",
+  SiteBackupWorkflow: "/ngc/site_backup",
   ConnectedHostMetadataWorkflow: "/ngc/connected_host_metadata",
   DeployWorkflow: "/ngc/deploy",
   TenantDeployWorkflow: "/ngc/tenant-deploy",

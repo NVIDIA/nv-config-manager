@@ -52,7 +52,7 @@ PYTHONIOENCODING: "utf-8"
 LC_ALL: "C.UTF-8"
 LANG: "C.UTF-8"
 {{- if .Values.nautobot.customJobs.enabled }}
-# Custom jobs are mounted to NAUTOBOT_ROOT/jobs/
+# Custom jobs are mounted to NAUTOBOT_ROOT/jobs/custom/
 NAUTOBOT_JOBS_ROOT: "/opt/nautobot/jobs"
 # JOBS_ROOT must be on PYTHONPATH for multi-module job packages to import correctly.
 # Nautobot's import_modules_privately only temporarily adds JOBS_ROOT during startup scanning,

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import tarfile
 import tempfile
 import threading
 from pathlib import Path
@@ -43,6 +44,7 @@ from nv_config_manager_installer.deployer import (
     _unready_pod_summary_lines,
 )
 from nv_config_manager_installer.k8s import LOADER_POD_IMAGE
+from nv_config_manager_installer.nautobot_jobs import NautobotJobRunner
 from nv_config_manager_installer.schema import (
     ClusterConfig,
     ContentConfig,
@@ -58,6 +60,7 @@ from nv_config_manager_installer.schema import (
     KubernetesSecretsConfig,
     NetworkSecretEntry,
     NVConfigManagerInstallConfig,
+    PostDeployJob,
     RedfishConfig,
     RedfishVendorCreds,
     SecretsConfig,
@@ -190,7 +193,7 @@ class TestDeployerInit:
     def test_steps_initialized(self):
         config = _make_config()
         deployer = Deployer(config, DeployOptions())
-        assert len(deployer.steps) == 18
+        assert len(deployer.steps) == 19
         assert all(s.status == StepStatus.PENDING for s in deployer.steps)
 
     def test_step_ids_unique(self):
@@ -198,6 +201,14 @@ class TestDeployerInit:
         deployer = Deployer(config, DeployOptions())
         ids = [s.id for s in deployer.steps]
         assert len(ids) == len(set(ids))
+
+    def test_revalidates_tui_config_before_deployment(self):
+        config = _make_config()
+        config.services.nautobot = False
+        config.content.run_after_deploy = [PostDeployJob(job="jobs.bootstrap.SiteBootstrap")]
+
+        with pytest.raises(ValueError, match="post-deploy jobs require a local Nautobot"):
+            Deployer(config, DeployOptions())
 
 
 class TestGatewayClassReuse:
@@ -543,6 +554,7 @@ class TestDeployOptions:
         assert opts.helm_debug is False
         assert opts.watch_pods is False
         assert opts.dry_run is False
+        assert opts.populate_vault is True
 
     def test_custom_options(self):
         opts = DeployOptions(
@@ -552,11 +564,26 @@ class TestDeployOptions:
             helm_debug=True,
             watch_pods=True,
             dry_run=True,
+            populate_vault=False,
         )
         assert opts.build_images is True
         assert opts.kind_cluster == "test-cluster"
         assert opts.helm_debug is True
         assert opts.watch_pods is True
+        assert opts.populate_vault is False
+
+
+def test_vault_population_can_use_preprovisioned_eso_paths() -> None:
+    config = _make_config()
+    config.secrets = SecretsConfig(method=SecretsMethod.ESO)
+    callback = RecordingCallback()
+    deployer = Deployer(config, DeployOptions(populate_vault=False), callback)
+
+    deployer._populate_vault()
+
+    step = deployer._get_step("populate-vault")
+    assert step.status == StepStatus.SKIPPED
+    assert step.output == ["Vault population disabled; using pre-provisioned ESO paths"]
 
 
 class TestImageBuilds:
@@ -1219,7 +1246,7 @@ class TestConditionalRestart:
     """Verify _restart_nautobot and _restart_render_service skip logic."""
 
     def _make_deployer(self, *, jobs=True, templates=False) -> tuple:
-        content_kwargs: dict = {"include_bootstrap_jobs": False}
+        content_kwargs: dict = {}
         if jobs:
             content_kwargs["jobs"] = [JobPath(path="/fake/jobs")]
         if templates:
@@ -1299,22 +1326,34 @@ class TestConditionalRestart:
 class TestPvcContentUpload:
     """Verify PVC content uploads replace prior extracted content."""
 
-    def test_jobs_upload_clears_existing_content(self, tmp_path: Path):
+    def test_jobs_upload_clears_existing_content(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         job_dir = tmp_path / "mock_topology"
         job_dir.mkdir()
         (job_dir / "__init__.py").write_text("")
+        monkeypatch.chdir(Path(__file__).resolve().parents[2])
 
         config = _make_config()
         config.content = ContentConfig(
-            include_bootstrap_jobs=False,
             jobs=[JobPath(path=str(job_dir))],
         )
         deployer = Deployer(config, DeployOptions(), RecordingCallback())
         deployer._k8s = _mock_k8s()
         deployer._rerun = _RerunState(is_rerun=True, jobs_changed=True)
+        uploaded_members: list[str] = []
+
+        def capture_tarball(source: str, *_args: object) -> None:
+            with tarfile.open(source) as archive:
+                uploaded_members.extend(archive.getnames())
+
+        deployer._k8s.copy_to_pod.side_effect = capture_tarball
 
         deployer._setup_jobs_pvc()
 
+        assert "__init__.py" in uploaded_members
+        assert "mock_topology/__init__.py" in uploaded_members
+        assert not any(name.startswith("nv_config_manager_jobs/") for name in uploaded_members)
         exec_command = deployer._k8s.exec_command.call_args.args[2]
         assert "find . -mindepth 1 -maxdepth 1 -exec rm -rf {} \\;" in exec_command[2]
         assert "tar xzf /tmp/jobs.tar.gz" in exec_command[2]
@@ -1326,7 +1365,6 @@ class TestPvcContentUpload:
 
         config = _make_config()
         config.content = ContentConfig(
-            include_bootstrap_jobs=False,
             template_plugins=[TemplatePath(path=str(plugin_dir))],
         )
         deployer = Deployer(config, DeployOptions(), RecordingCallback())
@@ -1485,7 +1523,9 @@ class TestK8sClientIntegration:
         deployer._k8s = _mock_k8s()
         deployer._k8s.read_secret_data.return_value = {"api_token": "test-token-123"}
 
-        token = deployer._get_nautobot_api_token()
+        token = NautobotJobRunner(
+            deployer._k8s, "nv-config-manager", "nv-config-manager"
+        )._get_api_token()
         assert token == "test-token-123"
         deployer._k8s.read_secret_data.assert_called_with("nautobot-admin", "nv-config-manager")
 
@@ -1498,7 +1538,9 @@ class TestK8sClientIntegration:
             {"token": "fallback-token"},
         ]
 
-        token = deployer._get_nautobot_api_token()
+        token = NautobotJobRunner(
+            deployer._k8s, "nv-config-manager", "nv-config-manager"
+        )._get_api_token()
         assert token == "fallback-token"
 
     def test_network_secret_updates_stale_existing_content(self):
@@ -1668,7 +1710,6 @@ class TestK8sClientIntegration:
         config = _make_config()
         config.content = ContentConfig(
             jobs=[JobPath(path="/fake/jobs")],
-            include_bootstrap_jobs=False,
             jobs_config=JobsConfig(
                 storage_class="local-path",
                 access_mode="ReadWriteOnce",
@@ -1695,6 +1736,16 @@ class TestK8sClientIntegration:
             mount_path="/jobs",
             node_selector={"kubernetes.io/hostname": "worker-1"},
         )
+
+    def test_jobs_pvc_is_skipped_without_custom_jobs(self):
+        callback = RecordingCallback()
+        deployer = Deployer(_make_config(), DeployOptions(), callback)
+        deployer._k8s = _mock_k8s()
+
+        deployer._setup_jobs_pvc()
+
+        assert dict(callback.step_updates)["setup-jobs-pvc"] == StepStatus.SKIPPED
+        deployer._k8s.ensure_pvc.assert_not_called()
 
 
 class TestContentAddressedTags:

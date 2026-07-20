@@ -103,6 +103,7 @@ from fastapi.responses import JSONResponse
 from jwt.types import Options as JWTDecodeOptions
 from pydantic import BaseModel
 
+from nv_config_manager.common.config import load_config
 from nv_config_manager.common.log import LogCategory, get_logger
 
 logger = get_logger(__name__, category=LogCategory.AUTH)
@@ -230,6 +231,8 @@ ANONYMOUS_IDENTITY = SSOIdentity(
 
 _auth_config: AuthConfig | None = None
 _auth_config_lock = threading.Lock()
+_auth_config_source: ConfigParser | None = None
+_auth_config_tracks_file = False
 
 _JWT_SECTION_PREFIX = "auth.jwt."
 
@@ -298,24 +301,29 @@ def _load_spiffe_from_ini(config: ConfigParser) -> SpiffeConfig | None:
 def load_auth_config(config: ConfigParser | None = None) -> AuthConfig:
     """Load auth configuration from ``nv-config-manager.ini``.
 
-    The result is cached for the lifetime of the process.  Call
-    :func:`reload_auth_config` to force a re-read.
+    File-backed configuration is rebuilt automatically when ``load_config``
+    observes a new INI version. Explicitly supplied configuration remains
+    pinned until :func:`reload_auth_config` is called.
     """
-    global _auth_config
-    if _auth_config is not None:
+    global _auth_config, _auth_config_source, _auth_config_tracks_file
+    tracks_file = config is None
+
+    if config is None:
+        if _auth_config is not None and not _auth_config_tracks_file:
+            return _auth_config
+        try:
+            config = load_config()
+        except Exception:
+            config = ConfigParser()
+    elif _auth_config is not None:
+        return _auth_config
+
+    if _auth_config is not None and _auth_config_source is config:
         return _auth_config
 
     with _auth_config_lock:
-        if _auth_config is not None:
+        if _auth_config is not None and (not tracks_file or _auth_config_source is config):
             return _auth_config
-
-        if config is None:
-            try:
-                from nv_config_manager.common.config import load_config
-
-                config = load_config()
-            except Exception:
-                config = ConfigParser()
 
         auth_section = "auth"
 
@@ -342,13 +350,17 @@ def load_auth_config(config: ConfigParser | None = None) -> AuthConfig:
             spiffe=_load_spiffe_from_ini(config),
             allowed_groups=allowed_groups,
         )
+        _auth_config_source = config
+        _auth_config_tracks_file = tracks_file
         return _auth_config
 
 
 def reload_auth_config() -> AuthConfig:
     """Force-reload the auth configuration (clears cache)."""
-    global _auth_config
+    global _auth_config, _auth_config_source, _auth_config_tracks_file
     _auth_config = None
+    _auth_config_source = None
+    _auth_config_tracks_file = False
     return load_auth_config()
 
 

@@ -69,6 +69,15 @@ class TestNVConfigManagerInstallConfig:
         assert config.secrets.config_manager_service_username == "nv-config-manager"
         assert config.services.render is True
 
+    def test_ztp_image_rejects_unsupported_platform(self):
+        with pytest.raises(ValueError, match="Unsupported ZTP platform 'sonic'"):
+            ZTPOSImage(platform="sonic", version="4.0.0", path="/images/sonic.bin")
+
+    def test_ztp_image_accepts_nv_os_platform(self):
+        image = ZTPOSImage(platform="nv-os", version="25.02.2344", path="/images/nv-os.bin")
+
+        assert image.platform == "nv-os"
+
     def test_yaml_roundtrip(self):
         config = NVConfigManagerInstallConfig(
             cluster=ClusterConfig(
@@ -136,7 +145,11 @@ class TestNVConfigManagerInstallConfig:
 
         assert data["secrets"]["method"] == "eso"
         assert "vault" in data["secrets"]
-        assert "k8s" not in data["secrets"]
+        assert data["secrets"]["k8s"]["nautobot"]["values"]["token"] == "stale-k8s-token"
+        assert (
+            NVConfigManagerInstallConfig.model_validate(data).secrets.k8s.nautobot.values["token"]
+            == "stale-k8s-token"
+        )
         assert "token_secret_name" not in data["secrets"]["vault"]["auth"]
         assert data["secrets"]["vault"]["paths"]["slack"] == {"enabled": False}
 
@@ -288,17 +301,19 @@ class TestNVConfigManagerInstallConfig:
                 content=ContentConfig(jobs=[{"path": "jobs/my_job"}]),
             )
 
-    def test_bootstrap_jobs_require_local_nautobot(self):
-        with pytest.raises(ValueError, match="Custom jobs.*require a local Nautobot"):
+    def test_post_deploy_jobs_require_local_nautobot(self):
+        with pytest.raises(ValueError, match="post-deploy jobs require a local Nautobot"):
             NVConfigManagerInstallConfig(
-                services=ServicesConfig(nautobot=False),
-                content=ContentConfig(include_bootstrap_jobs=True),
+                services=ServicesConfig(
+                    nautobot=False, external_nautobot_url="https://nb.example.com"
+                ),
+                content=ContentConfig(run_after_deploy=[{"job": "jobs.bootstrap.SiteBootstrap"}]),
             )
 
     def test_external_nautobot_valid_without_jobs(self):
         config = NVConfigManagerInstallConfig(
             services=ServicesConfig(nautobot=False, external_nautobot_url="https://nb.example.com"),
-            content=ContentConfig(jobs=[], include_bootstrap_jobs=False),
+            content=ContentConfig(jobs=[]),
         )
         assert config.services.nautobot is False
         assert config.services.external_nautobot_url == "https://nb.example.com"

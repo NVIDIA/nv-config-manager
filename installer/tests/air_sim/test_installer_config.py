@@ -57,7 +57,7 @@ def test_install_config_uses_mock_topology_with_paired_template_plugin() -> None
     assert content["jobs"] == [{"path": f"{CONFIG_MANAGER_REMOTE_DIR}/development/mock_topology"}]
     assert content["run_after_deploy"] == [
         {
-            "job": "mock_topology.jobs.mock_topology_design.MockTopologyDesign",
+            "job": "custom.mock_topology.jobs.mock_topology_design.MockTopologyDesign",
             "input": json.dumps({"blueprint": "air_trial", "deployment_name": "demo"}),
         }
     ]
@@ -81,7 +81,7 @@ def test_build_content_jobs_appends_extra_jobs() -> None:
         {"path": f"{CONFIG_MANAGER_REMOTE_DIR}/development/custom_jobs"},
     ]
     assert run_after_deploy[0]["job"] == (
-        "mock_topology.jobs.mock_topology_design.MockTopologyDesign"
+        "custom.mock_topology.jobs.mock_topology_design.MockTopologyDesign"
     )
     assert run_after_deploy[1] == {
         "job": "custom.jobs.RunDemo",

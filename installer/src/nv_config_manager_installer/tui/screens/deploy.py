@@ -22,6 +22,7 @@ import subprocess
 import threading
 from collections.abc import Callable
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from kubernetes import client as k8s_client
@@ -53,6 +54,7 @@ from nv_config_manager_installer.schema import (
     GatewayType,
     ImageSource,
     NVConfigManagerInstallConfig,
+    SecretsMethod,
 )
 from nv_config_manager_installer.tui.widgets import LabeledSwitch
 
@@ -594,10 +596,14 @@ class DeployScreen(Container):
                 with Vertical(classes="compact-field"):
                     yield Label("Helm timeout", classes="field-label-compact")
                     yield Input(value="15m", id="opt-helm-timeout")
+                with Vertical(classes="compact-field"):
+                    yield Label("Vault token file (ESO)", classes="field-label-compact")
+                    yield Input(placeholder="/path/to/token", id="opt-openbao-token-file")
 
             with Horizontal(classes="compact-field-row"):
                 yield LabeledSwitch("Recreate existing secrets", id="opt-recreate-secrets")
                 yield LabeledSwitch("Run integration tests", id="opt-run-tests")
+                yield LabeledSwitch("Populate Vault secrets", id="opt-populate-vault", value=True)
 
         yield Button("Start Deployment", id="start-deploy", variant="success", classes="add-button")
 
@@ -616,14 +622,17 @@ class DeployScreen(Container):
             DeployStep("install-crds", "Install CRDs / operators"),
             DeployStep("create-namespace", "Create namespace"),
             DeployStep("create-secrets", "Create Kubernetes secrets"),
+            DeployStep("populate-vault", "Populate Vault secrets"),
             DeployStep("setup-jobs-pvc", "Setup custom jobs PVC"),
             DeployStep("setup-templates-pvc", "Setup template plugins PVC"),
+            DeployStep("setup-ztp-pvc", "Setup ZTP images PVC"),
             DeployStep("generate-values", "Generate Helm values"),
             DeployStep("helm-install", "Helm install / upgrade"),
-            DeployStep("patch-gateway", "Patch Envoy Gateway"),
+            DeployStep("patch-gateway", "Configure local Gateway access"),
             DeployStep("restart-nautobot", "Restart Nautobot"),
             DeployStep("restart-render", "Restart Render Service"),
             DeployStep("run-jobs", "Run post-deploy jobs"),
+            DeployStep("refresh-cache", "Refresh caches"),
             DeployStep("run-tests", "Run integration tests"),
             DeployStep("endpoints", "Collect endpoints"),
         ]
@@ -632,6 +641,7 @@ class DeployScreen(Container):
         self._sync_image_defaults()
         self._sync_gateway_options()
         self._sync_test_toggle()
+        self._sync_secret_options()
 
     def _sync_image_defaults(self) -> None:
         """Auto-toggle build/load switches based on config.images.source."""
@@ -663,6 +673,42 @@ class DeployScreen(Container):
             test_switch.disabled = False
             test_switch.tooltip = ""
 
+    def _sync_secret_options(self) -> None:
+        """Enable only the deploy controls supported by the secrets backend."""
+        is_eso = self._config.secrets.method == SecretsMethod.ESO
+
+        recreate_switch = self.query_one("#opt-recreate-secrets", LabeledSwitch)
+        recreate_switch.disabled = is_eso
+        recreate_switch.tooltip = (
+            "Only applies to Kubernetes secrets. ESO-managed secrets are reconciled from Vault."
+            if is_eso
+            else ""
+        )
+        if is_eso:
+            recreate_switch.value = False
+
+        populate_switch = self.query_one("#opt-populate-vault", LabeledSwitch)
+        was_disabled = populate_switch.disabled
+        populate_switch.disabled = not is_eso
+        populate_switch.tooltip = "" if is_eso else "Only applies when ESO is selected."
+        if not is_eso:
+            populate_switch.value = False
+        elif was_disabled:
+            populate_switch.value = True
+
+        token_input = self.query_one("#opt-openbao-token-file", Input)
+        token_input.disabled = not is_eso or not populate_switch.value
+        if not is_eso:
+            token_input.tooltip = "Only applies when ESO is selected."
+        elif not populate_switch.value:
+            token_input.tooltip = "Not needed when Vault population is disabled."
+        else:
+            token_input.tooltip = ""
+
+    def on_labeled_switch_changed(self, event: LabeledSwitch.Changed) -> None:
+        if event.labeled_switch.id == "opt-populate-vault":
+            self._sync_secret_options()
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "start-deploy" and not self._deploy_running:
             opts = self.query_one(_W_DEPLOY_OPTIONS)
@@ -674,6 +720,9 @@ class DeployScreen(Container):
             self._start_deploy()
 
     def _collect_deploy_options(self) -> DeployOptions:
+        token_input = self.query_one("#opt-openbao-token-file", Input)
+        token_file_value = "" if token_input.disabled else token_input.value.strip()
+        vault_token_file = Path(token_file_value).expanduser() if token_file_value else None
         return DeployOptions(
             chart_dir="deploy/helm",
             build_images=self.query_one("#opt-build-images", LabeledSwitch).value,
@@ -685,9 +734,17 @@ class DeployScreen(Container):
             helm_timeout=self.query_one("#opt-helm-timeout", Input).value,
             recreate_secrets=self.query_one("#opt-recreate-secrets", LabeledSwitch).value,
             run_tests=self.query_one("#opt-run-tests", LabeledSwitch).value,
+            vault_token_file=vault_token_file,
+            populate_vault=self.query_one("#opt-populate-vault", LabeledSwitch).value,
         )
 
+    def _sync_image_source_from_options(self, options: DeployOptions) -> None:
+        """Use locally built or loaded images for the deployment."""
+        if options.build_images or options.load_kind:
+            self._config.images.source = ImageSource.LOCAL
+
     def _start_deploy(self) -> None:
+        # Import here to avoid the app -> DeployScreen -> app circular dependency.
         from nv_config_manager_installer.tui.app import NVConfigManagerInstallerApp
 
         app = self.app
@@ -695,6 +752,7 @@ class DeployScreen(Container):
             app.collect_config()
             self._config = app.config
             self._sync_gateway_options()
+            self._sync_secret_options()
 
         self._deploy_running = True
         btn = self.query_one("#start-deploy", Button)
@@ -706,6 +764,7 @@ class DeployScreen(Container):
         log_viewer.clear_deploy_log()
 
         options = self._collect_deploy_options()
+        self._sync_image_source_from_options(options)
         callback = _TuiCallback(self)
 
         try:
@@ -753,9 +812,12 @@ class DeployScreen(Container):
             self.app.notify("Deployment failed. Check logs for details.", severity="error")
 
     def sync_from_config(self, config: NVConfigManagerInstallConfig) -> None:
+        """Refresh deploy controls after another TUI section updates the config."""
         self._config = config
         self._sync_image_defaults()
         self._sync_gateway_options()
+        self._sync_test_toggle()
+        self._sync_secret_options()
 
     def get_status(self, config: NVConfigManagerInstallConfig) -> str:
         if self._deploy_running:

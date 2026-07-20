@@ -263,7 +263,7 @@ class TestGenerateHelmValues:
     def test_nautobot_disabled(self):
         config = _make_config(
             services=ServicesConfig(nautobot=False),
-            content=ContentConfig(jobs=[], include_bootstrap_jobs=False),
+            content=ContentConfig(jobs=[]),
         )
         values = _gen(config)
 
@@ -358,6 +358,26 @@ class TestGenerateHelmValues:
         nb = values["secrets"]["vault"]["paths"]["nautobot"]
         assert nb["path"] == "custom/nb"
         assert nb["keys"]["token"] == "token"
+
+    def test_eso_partial_key_override_preserves_default_keys(self):
+        config = _make_config(
+            secrets=SecretsConfig(
+                method=SecretsMethod.ESO,
+                vault=VaultConfig(
+                    server="https://vault.test",
+                    secrets_path="nv-config-manager",
+                    paths=VaultPathsConfig(
+                        nautobot=VaultPathConfig(keys={"token": "api_token"}),
+                    ),
+                ),
+            ),
+        )
+
+        values = _gen(config)
+        keys = values["secrets"]["vault"]["paths"]["nautobot"]["keys"]
+
+        assert keys["token"] == "api_token"
+        assert keys["readOnlyToken"] == "read_only_token"
 
     def test_eso_ztp_s3_path(self):
         config = _make_config(
@@ -677,7 +697,6 @@ class TestGenerateHelmValues:
         config = _make_config(
             content=ContentConfig(
                 jobs=[JobPath(path="/opt/jobs/custom")],
-                include_bootstrap_jobs=True,
             ),
         )
         values = _gen(config)
@@ -685,6 +704,11 @@ class TestGenerateHelmValues:
         assert values["nautobot"]["customJobs"]["enabled"] is True
         assert values["nautobot"]["customJobs"]["createPvc"] is False
         assert values["nautobot"]["customJobs"]["pvcName"] == "nautobot-custom-jobs"
+
+    def test_no_custom_jobs_omits_custom_jobs_values(self):
+        values = _gen(_make_config(content=ContentConfig()))
+
+        assert "customJobs" not in values["nautobot"]
 
     def test_custom_jobs_node_selector_in_values(self):
         config = _make_config(
@@ -728,7 +752,7 @@ class TestGenerateHelmValues:
                 nautobot=False,
                 external_nautobot_url="https://nb.prod.example.com",
             ),
-            content=ContentConfig(jobs=[], include_bootstrap_jobs=False),
+            content=ContentConfig(jobs=[]),
         )
         values = _gen(config)
 
