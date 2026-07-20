@@ -49,6 +49,7 @@ from nv_config_manager.temporal.ngc.workflows.multi_deploy import (
     BatchDeployWorkflow,
     MultiDeployInput,
     MultiDeployWorkflow,
+    _format_batch_status,
 )
 
 
@@ -266,7 +267,27 @@ async def test_multi_deploy_workflow_basic_flow(
 
         stages = await handle.query("stages")
         execute_stage = next(stage for stage in stages if stage["name"] == "execute_batches")
-        assert "3 backups successful, 0 backups failed" in execute_stage["output"]["display"]
+        assert "**Deployment complete**" in execute_stage["output"]["display"]
+        assert (
+            "**Devices:** 3 configured · 0 failed · 0 rejected"
+            in execute_stage["output"]["display"]
+        )
+        assert "Configured **3/3** · Backups **3/3**" in execute_stage["output"]["display"]
+
+
+def test_format_batch_status_with_backup_failure():
+    """Show partial backup completion compactly and flag it for attention."""
+    result = {
+        "approved": True,
+        "successful_devices": ["spine-01", "spine-02"],
+        "failed_devices": {},
+        "backups": {"total": 2, "successful": 1, "failed": 1},
+    }
+
+    assert _format_batch_status(result, 2) == (
+        "⚠️",
+        "Configured **2/2** · Backups **1/2**",
+    )
 
 
 @pytest.mark.asyncio
