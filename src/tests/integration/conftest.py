@@ -1197,6 +1197,32 @@ def rbac_keycloak_url(
             _port_forward_processes.remove(proc)
 
 
+def _select_service_port(raw: str) -> tuple[int, str]:
+    """Pick the app HTTP(S) port + scheme from kubectl ``name=port ...`` output.
+
+    Prefer a port named ``https``/``http`` over the positional first port: if a
+    metrics (or other) port is ever added ahead of the app port, blindly taking
+    ``.spec.ports[0]`` would point the port-forward at the wrong target. Falls
+    back to the first port when nothing is usefully named, deriving the scheme
+    from 443, and to ``80/http`` when the service reports no ports at all.
+    """
+    pairs: list[tuple[str, int]] = []
+    for tok in raw.split():
+        name, _, port = tok.partition("=")
+        if port.isdigit():
+            pairs.append((name, int(port)))
+    if not pairs:
+        return 80, "http"
+    by_name = dict(pairs)
+    if "https" in by_name:
+        return by_name["https"], "https"
+    if "http" in by_name:
+        port = by_name["http"]
+        return port, ("https" if port == 443 else "http")
+    port = pairs[0][1]
+    return port, ("https" if port == 443 else "http")
+
+
 @pytest.fixture(scope="session")
 def rbac_nautobot_url(
     rbac_enabled: bool,
@@ -1208,7 +1234,7 @@ def rbac_nautobot_url(
 
     We hit Nautobot directly (bypassing the gateway) so a raw JWT Bearer token
     reaches the app's authenticator without the gateway's OIDC redirect getting
-    in the way. The scheme is derived from the Service's first port (443 → https).
+    in the way. The scheme is derived from the chosen Service port (443 → https).
     """
     _rbac_skip_unless_enabled(rbac_enabled)
     svc_res = _kubectl_run(
@@ -1223,10 +1249,15 @@ def rbac_nautobot_url(
     )
     svc = svc_res.stdout.strip() or f"{rbac_release}-nautobot"
     port_res = _kubectl_run(
-        "get", "svc", "-n", config_manager_namespace, svc, "-o", "jsonpath={.spec.ports[0].port}"
+        "get",
+        "svc",
+        "-n",
+        config_manager_namespace,
+        svc,
+        "-o",
+        "jsonpath={range .spec.ports[*]}{.name}={.port} {end}",
     )
-    remote_port = int(port_res.stdout.strip() or "80")
-    scheme = "https" if remote_port == 443 else "http"
+    remote_port, scheme = _select_service_port(port_res.stdout)
     local_port = 18443
     proc = _start_service_port_forward(config_manager_namespace, svc, local_port, remote_port)
     if proc is None:

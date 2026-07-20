@@ -199,55 +199,6 @@ jobs:
             "deploy/${NV_CONFIG_MANAGER_RELEASE}-nautobot" --timeout=15m
 
           kubectl get pods -n "${NV_CONFIG_MANAGER_NAMESPACE}" -o wide
-      - name: Mint headless OIDC token
-        # Only the security (default) deploy runs the --sso suite; observability
-        # runs stay unauthenticated on the plain deploy.
-        if: inputs.observability != true
-        timeout-minutes: 5
-        env:
-          KEYCLOAK_NAMESPACE: keycloak
-          KEYCLOAK_SERVICE: keycloak
-          OIDC_REALM: nv-config-manager
-          OIDC_CLIENT_ID: nv-config-manager
-          OIDC_CLIENT_SECRET: nvcm-local-client-secret
-          OIDC_USERNAME: nvcm-admin
-        run: |
-          set -euo pipefail
-          # The --sso suite authenticates headlessly with a caller-supplied token
-          # (NVCM_OIDC_ACCESS_TOKEN) instead of the browser OIDC redirect, which
-          # can't run on a headless runner. Mint one for the seeded superuser via
-          # the confidential client's direct-access (ROPC) grant — the client
-          # secret already lives in-cluster, and the realm's accessTokenLifespan
-          # (3600s) comfortably outlives a full suite run. This is the CI analogue
-          # of the per-user token minting the --rbac fixtures do in-process.
-          kubectl -n "${KEYCLOAK_NAMESPACE}" port-forward "svc/${KEYCLOAK_SERVICE}" 18080:80 >/tmp/keycloak-pf.log 2>&1 &
-          PF_PID=$!
-          trap 'kill ${PF_PID} 2>/dev/null || true' EXIT
-          for _ in $(seq 1 30); do
-            if curl -sf "http://127.0.0.1:18080/realms/${OIDC_REALM}/.well-known/openid-configuration" >/dev/null 2>&1; then
-              break
-            fi
-            sleep 2
-          done
-          # -s (not -sf) so an HTTP error still yields a body for jq to parse to
-          # empty, letting the guard below print the port-forward log instead of
-          # aborting on the pipefail.
-          TOKEN="$(curl -s -X POST \
-            "http://127.0.0.1:18080/realms/${OIDC_REALM}/protocol/openid-connect/token" \
-            -d "client_id=${OIDC_CLIENT_ID}" \
-            -d "client_secret=${OIDC_CLIENT_SECRET}" \
-            -d "grant_type=password" \
-            -d "scope=openid" \
-            -d "username=${OIDC_USERNAME}" \
-            -d "password=${OIDC_USERNAME}" | jq -r '.access_token // empty')"
-          if [ -z "${TOKEN}" ]; then
-            echo "Failed to mint OIDC token via ROPC grant" >&2
-            cat /tmp/keycloak-pf.log >&2 || true
-            exit 1
-          fi
-          echo "::add-mask::${TOKEN}"
-          echo "NVCM_OIDC_ACCESS_TOKEN=${TOKEN}" >> "${GITHUB_ENV}"
-          echo "Minted headless OIDC token for ${OIDC_USERNAME} (length ${#TOKEN})"
       - name: Run integration tests
         timeout-minutes: 50
         env:
@@ -255,12 +206,20 @@ jobs:
           # skip themselves unless this is "true". Mirrors the JIRA_ISSUE_KEY
           # gate on the diagnostics tests.
           OBSERVABILITY: ${{ inputs.observability }}
+          # Keycloak coordinates for the headless --sso token mint (see
+          # mint_oidc_token below). Only consumed on the default security run.
+          KEYCLOAK_NAMESPACE: keycloak
+          KEYCLOAK_SERVICE: keycloak
+          OIDC_REALM: nv-config-manager
+          OIDC_CLIENT_ID: nv-config-manager
+          OIDC_CLIENT_SECRET: nvcm-local-client-secret
+          OIDC_USERNAME: nvcm-admin
         run: |
           # Default runs exercise the whole suite against the security deploy,
           # authenticated end to end:
           #   --sso    routes service calls through the svc-* JWT-only hostnames
-          #            and attaches the headless NVCM_OIDC_ACCESS_TOKEN minted in
-          #            the previous step (browser OIDC can't run on the runner).
+          #            and attaches a headless NVCM_OIDC_ACCESS_TOKEN minted fresh
+          #            per attempt below (browser OIDC can't run on the runner).
           #   --rbac   runs the group-mapping suite (test_rbac_group_mapping.py),
           #            which mints its own per-user tokens against the local
           #            Keycloak; needs the CONFIGURED mapping deployed above.
@@ -278,8 +237,56 @@ jobs:
           fi
           TEST_TARGET="${TEST_PATH}"
 
+          # Mint a fresh headless OIDC token for the --sso suite. The browser OIDC
+          # redirect can't run on a headless runner, so the suite authenticates
+          # with a caller-supplied NVCM_OIDC_ACCESS_TOKEN. We mint it via the
+          # confidential client's direct-access (ROPC) grant (the secret already
+          # lives in-cluster). Minting *inside the retry loop* keeps every attempt
+          # on a fresh 1h token, so the SSO tests can't fail with a stale-token
+          # 401 on a late retry no matter how long earlier attempts ran. The
+          # --rbac fixtures mint their own per-user tokens in-process, so this
+          # only feeds --sso. The port-forward is local to the mint and torn down
+          # before pytest, so it can't clash with the fixtures' own forward.
+          mint_oidc_token() {
+            local token="" pf_pid
+            kubectl -n "${KEYCLOAK_NAMESPACE}" port-forward "svc/${KEYCLOAK_SERVICE}" 18080:80 >/tmp/keycloak-pf.log 2>&1 &
+            pf_pid=$!
+            for _ in $(seq 1 30); do
+              if curl -sf "http://127.0.0.1:18080/realms/${OIDC_REALM}/.well-known/openid-configuration" >/dev/null 2>&1; then
+                break
+              fi
+              sleep 2
+            done
+            # -s (not -sf) so an HTTP error still yields a body for jq to parse to
+            # empty, letting the guard below print the port-forward log instead of
+            # aborting on the pipefail.
+            token="$(curl -s -X POST \
+              "http://127.0.0.1:18080/realms/${OIDC_REALM}/protocol/openid-connect/token" \
+              -d "client_id=${OIDC_CLIENT_ID}" \
+              -d "client_secret=${OIDC_CLIENT_SECRET}" \
+              -d "grant_type=password" \
+              -d "scope=openid" \
+              -d "username=${OIDC_USERNAME}" \
+              -d "password=${OIDC_USERNAME}" | jq -r '.access_token // empty')"
+            kill "${pf_pid}" 2>/dev/null || true
+            wait "${pf_pid}" 2>/dev/null || true
+            if [ -z "${token}" ]; then
+              echo "Failed to mint OIDC token via ROPC grant" >&2
+              cat /tmp/keycloak-pf.log >&2 || true
+              return 1
+            fi
+            echo "::add-mask::${token}"
+            export NVCM_OIDC_ACCESS_TOKEN="${token}"
+            echo "Minted headless OIDC token for ${OIDC_USERNAME} (length ${#token})"
+          }
+
           for attempt in 1 2 3; do
             echo "Attempt ${attempt} of 3"
+            # Refresh the SSO token each attempt (skipped on observability runs,
+            # which pass no auth flags).
+            if [ -n "${EXTRA_FLAGS}" ]; then
+              mint_oidc_token
+            fi
             results_file="integration-test-results-${attempt}.xml"
             set +e
             timeout --kill-after=1m 15m uv run pytest "${TEST_TARGET}" -v \
