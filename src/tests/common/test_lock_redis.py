@@ -24,6 +24,7 @@ import asyncio
 import contextlib
 import os
 import time
+import uuid
 from collections.abc import AsyncIterator
 
 import pytest
@@ -37,6 +38,11 @@ pytestmark = pytest.mark.timeout(120)
 
 HOLD_S = 0.3
 TTL_S = 30
+
+
+def _unique_key(label: str) -> str:
+    """Per-run lock key so parallel workers and reruns never share a Redis key."""
+    return f"wf-lock:test:{label}:{uuid.uuid4().hex}"
 
 
 @pytest.fixture
@@ -100,10 +106,11 @@ def _kinds_in_time_order(events: list[tuple[str, str, float]]) -> list[str]:
 async def test_same_key_holders_are_serialized(redis_lock_backend):
     """Two concurrent holders of one key never overlap their critical sections."""
     events: list[tuple[str, str, float]] = []
+    key = _unique_key("same")
 
     await asyncio.gather(
-        _critical_section("wf-lock:ngc:pkey=0x0005", "run-a", events),
-        _critical_section("wf-lock:ngc:pkey=0x0005", "run-b", events),
+        _critical_section(key, "run-a", events),
+        _critical_section(key, "run-b", events),
     )
 
     assert _kinds_in_time_order(events) == ["enter", "exit", "enter", "exit"]
@@ -115,8 +122,8 @@ async def test_distinct_keys_run_concurrently(redis_lock_backend):
     events: list[tuple[str, str, float]] = []
 
     await asyncio.gather(
-        _critical_section("wf-lock:ngc:pkey=0x0005", "run-a", events),
-        _critical_section("wf-lock:ngc:pkey=0x0006", "run-b", events),
+        _critical_section(_unique_key("distinct-a"), "run-a", events),
+        _critical_section(_unique_key("distinct-b"), "run-b", events),
     )
 
     assert _kinds_in_time_order(events) == ["enter", "enter", "exit", "exit"]
@@ -125,7 +132,7 @@ async def test_distinct_keys_run_concurrently(redis_lock_backend):
 @pytest.mark.asyncio
 async def test_renew_extends_holder_and_release_frees_key(redis_lock_backend):
     """A holder can renew its own lock, and release lets another token take it."""
-    key = "wf-lock:ngc:pkey=0x0007"
+    key = _unique_key("renew")
 
     assert await acquire_lock(key, "run-a", timeout=TTL_S, blocking_timeout=5)
     # The holder can extend its own TTL.
@@ -142,7 +149,7 @@ async def test_renew_extends_holder_and_release_frees_key(redis_lock_backend):
 @pytest.mark.asyncio
 async def test_renew_fails_when_lock_lost_to_another_holder(redis_lock_backend):
     """Renewing a key owned by a different token reports the loss."""
-    key = "wf-lock:ngc:pkey=0x0008"
+    key = _unique_key("lost")
 
     assert await acquire_lock(key, "run-b", timeout=TTL_S, blocking_timeout=5)
     # run-a never held it, so it cannot renew (and must not steal a held lock).
