@@ -36,7 +36,7 @@ def client_connect_options() -> dict[str, Any]:
         if temporal
         else _DEFAULT_NAMESPACE
     }
-    if temporal and temporal.getboolean("tls_enabled", fallback=False):
+    if temporal and (temporal.getboolean("tls_enabled") if "tls_enabled" in temporal else False):
         options["tls"] = TLSConfig(
             server_root_ca_cert=_read_optional_file(temporal.get("tls_ca_cert_path")),
             domain=temporal.get("tls_server_name") or None,
