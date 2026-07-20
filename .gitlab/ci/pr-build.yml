@@ -31,10 +31,12 @@
 # uploads, and lets the promote side download by job id.
 pr-build-image:
   stage: build
+  # Restricted, isolated runners for untrusted PR builds (no privileged access
+  # to the internal DCA fleet). Protected promote jobs stay on the dca runners.
   tags:
-    - dca
-    - linux/amd64
+    - dgxc-corp-restricted
     - docker
+    - linux/amd64
   needs: []
   image: $NVCM_CI_IMAGE_DOCKER
   services:
@@ -108,10 +110,12 @@ pr-build-image:
 # from PR source.
 pr-build-chart:
   stage: build
+  # Restricted, isolated runners for untrusted PR builds (no privileged access
+  # to the internal DCA fleet). Protected promote jobs stay on the dca runners.
   tags:
-    - dca
-    - linux/amd64
+    - dgxc-corp-restricted
     - docker
+    - linux/amd64
   needs: []
   image: $NVCM_CI_IMAGE_ALPINE
   rules: *pr-build-rules
