@@ -513,6 +513,7 @@ async def test_batch_deploy_workflow_directly(
         activities=[
             mock_get_network_device,
             mock_load_intended_configuration,
+            get_ui_base_url,
             perform_candidate_diff,
             apply_approved_configuration,
             load_running_configuration,
@@ -631,6 +632,11 @@ async def test_batch_deploy_workflow_directly(
         assert backups_stage["state"] == "COMPLETE"
         assert backups_stage["output"]["successful_backups"] == 1
         assert backups_stage["output"]["failed_backups"] == 1
-        assert backups_stage["output"]["display"] == (
-            "**Backups complete**\n\n**Devices:** 1 successful · 1 failed"
-        )
+        backup_display = backups_stage["output"]["display"]
+        assert "**Backups complete**" in backup_display
+        assert "**Devices:** 1 successful · 1 failed" in backup_display
+        assert "**Backup workflows**" in backup_display
+        assert "[spine-01 backup]" in backup_display
+        assert "[spine-02 backup]" in backup_display
+        for backup_result in result["backups"]["results"].values():
+            assert backup_result["child_workflow_id"] in backup_display

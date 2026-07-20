@@ -105,6 +105,27 @@ def _format_batch_status(result: dict[str, Any], device_count: int) -> tuple[str
     return icon, f"Configured **{successful}/{device_count}** · {backup_status}"
 
 
+def _format_backup_workflow_links(
+    ui_base_url: str,
+    backup_handles: dict[str, Any],
+    backup_results: dict[str, Any],
+) -> str:
+    """Format backup child workflow links with their current status."""
+    links = []
+    for device_name, handle in backup_handles.items():
+        result = backup_results.get(device_name)
+        if result is None:
+            icon, status = "⏳", "In progress"
+        elif result.success:
+            icon, status = "✅", "Successful"
+        else:
+            icon, status = "❌", "Failed"
+
+        workflow_url = build_workflow_url(ui_base_url, handle.id)
+        links.append(f"- {icon} [{device_name} backup]({workflow_url}) — {status}")
+    return "\n".join(links) or "*No backup workflows were started.*"
+
+
 class MultiDeployInput(BaseModel):
     """Multi-Deploy Workflow Input Definition."""
 
@@ -365,6 +386,11 @@ class BatchDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
     @stage_executor("perform_backups")
     async def perform_backups(self, stage_input: BackupsStageInput) -> BackupsStageOutput:
         """Perform backups for all successfully configured devices."""
+        ui_base_url = await workflow.execute_activity(
+            get_ui_base_url,
+            start_to_close_timeout=timedelta(seconds=30),
+            retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+        )
         backup_handles: dict[str, Any] = {}
 
         for device_data in stage_input.successful_devices:
@@ -386,6 +412,20 @@ class BatchDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
         backup_results: dict[str, BatchBackupResultData] = {}
         remaining_items = list(backup_handles.items())
         total_backups = len(backup_handles)
+        initial_links = _format_backup_workflow_links(ui_base_url, backup_handles, backup_results)
+        self.set_stage_output(
+            "perform_backups",
+            BatchDeployWorkflow.BackupsStageOutput(
+                backup_results={},
+                successful_backups=0,
+                failed_backups=0,
+                display=(
+                    f"**Backups in progress** — 0/{total_backups} complete\n\n"
+                    f"**Devices:** 0 successful · 0 failed · {total_backups} in progress\n\n"
+                    f"**Backup workflows**\n{initial_links}"
+                ),
+            ),
+        )
 
         while remaining_items:
             remaining_handles = [handle for _, handle in remaining_items]
@@ -419,6 +459,9 @@ class BatchDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
             successful_backups = sum(result.success for result in backup_results.values())
             failed_backups = len(backup_results) - successful_backups
             completed_backups = len(backup_results)
+            backup_links = _format_backup_workflow_links(
+                ui_base_url, backup_handles, backup_results
+            )
             self.set_stage_output(
                 "perform_backups",
                 BatchDeployWorkflow.BackupsStageOutput(
@@ -428,13 +471,15 @@ class BatchDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
                     display=(
                         f"**Backups in progress** — {completed_backups}/{total_backups} complete\n\n"
                         f"**Devices:** {successful_backups} successful · {failed_backups} failed · "
-                        f"{total_backups - completed_backups} in progress"
+                        f"{total_backups - completed_backups} in progress\n\n"
+                        f"**Backup workflows**\n{backup_links}"
                     ),
                 ),
             )
 
         successful_backups = sum(result.success for result in backup_results.values())
         failed_backups = len(backup_results) - successful_backups
+        backup_links = _format_backup_workflow_links(ui_base_url, backup_handles, backup_results)
 
         return BatchDeployWorkflow.BackupsStageOutput(
             backup_results=backup_results,
@@ -442,7 +487,8 @@ class BatchDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
             failed_backups=failed_backups,
             display=(
                 f"**Backups complete**\n\n"
-                f"**Devices:** {successful_backups} successful · {failed_backups} failed"
+                f"**Devices:** {successful_backups} successful · {failed_backups} failed\n\n"
+                f"**Backup workflows**\n{backup_links}"
             ),
         )
 

@@ -48,7 +48,7 @@ The workflow runs three stages in order. Only the first stage requires human app
 
    For each device in `successful_devices`, the workflow starts the [Configuration Backup](../configuration-backup/index.mdx) workflow as a child workflow with `trigger=WORKFLOW`, attaching the device's intended-config commit SHA so the new backup is correlated with the configuration version that was just applied. All backup children are started immediately and awaited concurrently with a 10-minute run timeout.
 
-   The stage updates its display as children finish and records each terminal result by device name, including whether the backup succeeded, whether it changed the stored configuration, any error, and the child workflow ID. A failed backup is included in `failed_backups` and the per-device result, but it does not fail the deployment batch — the device is configured and in service; only the post-deploy backup is missing.
+   The stage displays a direct link to every backup child as soon as it starts and updates each link as the child succeeds or fails. It also records each terminal result by device name, including whether the backup succeeded, whether it changed the stored configuration, any error, and the child workflow ID. A failed backup is included in `failed_backups` and the per-device result, but it does not fail the deployment batch — the device is configured and in service; only the post-deploy backup is missing.
 
 If `review_shared_diff` rejects, the workflow archives the result and exits without running the two subsequent stages.
 
@@ -60,7 +60,7 @@ Confirm the run succeeded by checking all of the following:
 - **`successful_devices`** in the workflow result lists every device the operator expected to receive the change.
 - **`failed_devices`** is empty. Any entry is a `{device_name: error}` pair; investigate the error and re-run with a corrected batch input.
 - **The `backups` summary is complete.** Its `total` count should equal the number of successfully configured devices, and `successful + failed` should equal `total`. The `results` map contains the success state, changed state, error, and child workflow ID for every device backup.
-- **A fresh backup exists** for every result with `success=true`. For a failed result, use its `error` and `child_workflow_id` to inspect the child run and correct the underlying problem.
+- **A fresh backup exists** for every result with `success=true`. Open its link in the `perform_backups` stage to inspect the child run. For a failed result, use the same link and its recorded error to correct the underlying problem.
 - **Parent workflow link** (when invoked by Multi-Deploy) shows the configuration and backup success/failure counts in the parent's `execute_batches` display.
 
 ## Common issues
