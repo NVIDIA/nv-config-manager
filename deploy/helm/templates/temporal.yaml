@@ -12,8 +12,8 @@ metadata:
 data:
   {{- include "nv-config-manager.configmap.temporal-rbac" . | nindent 2 }}
 {{- end }}
-{{- if .Values.temporal.server.enabled }}
 ---
+{{- if .Values.temporal.server.enabled }}
 # Temporal Server ConfigMap (PostgreSQL configuration)
 apiVersion: v1
 kind: ConfigMap
