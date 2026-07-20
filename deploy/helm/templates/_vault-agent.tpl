@@ -389,7 +389,7 @@ nv-config-manager.ini body (consul-template): must stay in sync with vault-secre
           # -----------------------------------------------------------------
           [temporal.api]
           # CORS origins allowed to make cross-origin requests with credentials
-          cors_origins = https://{{ $root.Values.gateway.baseHostname }}
+          cors_origins = https://{{ $root.Values.gateway.baseHostname }},https://{{ tpl $root.Values.temporal.gateway.devUi.hostname $root }}
           {{- if $root.Values.temporal.gateway.api.allowedGroups }}
           allowed_groups = {{ $root.Values.temporal.gateway.api.allowedGroups | join "," }}
           {{- end }}
