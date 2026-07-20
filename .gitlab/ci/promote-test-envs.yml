@@ -48,9 +48,9 @@
 test-promote-build:
   stage: deploy
   tags:
-    - dca
-    - linux/amd64
+    - dgxc-corp-restricted
     - docker
+    - linux/amd64
   needs: []
   image: $NVCM_CI_IMAGE_ALPINE
   rules: *test-promote-rules
@@ -69,9 +69,9 @@ test-promote-build:
 test-promote-push-images:
   stage: deploy
   tags:
-    - dca
-    - linux/amd64
+    - dgxc-corp-restricted
     - docker
+    - linux/amd64
   image: $NVCM_CI_IMAGE_DOCKER
   services:
     - name: $NVCM_CI_IMAGE_DOCKER_DIND
@@ -111,9 +111,9 @@ test-promote-push-images:
 test-promote-chart:
   stage: deploy
   tags:
-    - dca
-    - linux/amd64
+    - dgxc-corp-restricted
     - docker
+    - linux/amd64
   image:
     name: $NVCM_CI_IMAGE_UBUNTU
     entrypoint: ['']
@@ -220,9 +220,9 @@ test-promote-chart:
 test-promote-deploy-state:
   stage: deploy
   tags:
-    - dca
-    - linux/amd64
+    - dgxc-corp-restricted
     - docker
+    - linux/amd64
   image: $NVCM_CI_IMAGE_ALPINE
   rules: *test-promote-rules
   needs:
@@ -253,9 +253,9 @@ test-promote-deploy-state:
 test-rollback-env:
   stage: deploy
   tags:
-    - dca
-    - linux/amd64
+    - dgxc-corp-restricted
     - docker
+    - linux/amd64
   image: $NVCM_CI_IMAGE_ALPINE
   rules: *test-env-ops-rules
   needs: []
@@ -316,9 +316,9 @@ test-rollback-env:
 test-release-env:
   stage: deploy
   tags:
-    - dca
-    - linux/amd64
+    - dgxc-corp-restricted
     - docker
+    - linux/amd64
   image: $NVCM_CI_IMAGE_ALPINE
   rules: *test-env-ops-rules
   needs: []
