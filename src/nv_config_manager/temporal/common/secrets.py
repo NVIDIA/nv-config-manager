@@ -30,43 +30,45 @@ from __future__ import annotations
 
 import os
 from configparser import ConfigParser
+from functools import lru_cache
 from typing import Any
 
+from nv_config_manager.common.ini import FileFingerprint, file_fingerprint
 from nv_config_manager.common.log import LogCategory, get_logger
 
 logger = get_logger(__name__, category=LogCategory.AUTH)
 
-# Module-level cache for secrets config to avoid repeated file reads
-_secrets_config_cache: tuple[ConfigParser, bool] | None = None
+
+@lru_cache(maxsize=1)
+def _load_secrets_config(
+    secrets_path: str | None,
+    fingerprint: FileFingerprint | None,
+) -> tuple[ConfigParser, bool]:
+    """Parse one version of the site-specific secrets INI file."""
+    secrets_config = ConfigParser(interpolation=None)
+
+    if secrets_path and fingerprint is not None:
+        secrets_config.read(secrets_path)
+        logger.debug("Loaded secrets config from: %s", secrets_path)
+        return secrets_config, True
+
+    if secrets_path:
+        logger.debug("Secrets config path set but file not found: %s", secrets_path)
+    return secrets_config, False
 
 
 def load_secrets_config() -> tuple[ConfigParser, bool]:
     """Load the secrets config file if available.
 
     Reads from the path specified by NV_CONFIG_MANAGER_CONFIG_SECRET_PATH environment variable.
-    Results are cached at the module level to avoid repeated file reads.
+    The parsed result is reused while the file is unchanged and invalidated
+    automatically after direct writes or Kubernetes Secret-volume updates.
 
     Returns:
         Tuple of (ConfigParser, found) where found indicates if the file exists
     """
-    global _secrets_config_cache
-
-    if _secrets_config_cache is not None:
-        return _secrets_config_cache
-
     secrets_path = os.environ.get("NV_CONFIG_MANAGER_CONFIG_SECRET_PATH")
-    secrets_config = ConfigParser(interpolation=None)
-
-    if secrets_path and os.path.exists(secrets_path):
-        secrets_config.read(secrets_path)
-        logger.debug("Loaded secrets config from: %s", secrets_path)
-        _secrets_config_cache = (secrets_config, True)
-    else:
-        if secrets_path:
-            logger.debug("Secrets config path set but file not found: %s", secrets_path)
-        _secrets_config_cache = (secrets_config, False)
-
-    return _secrets_config_cache
+    return _load_secrets_config(secrets_path, file_fingerprint(secrets_path))
 
 
 def clear_secrets_cache() -> None:
@@ -74,8 +76,7 @@ def clear_secrets_cache() -> None:
 
     Useful for testing or when the secrets file has been updated.
     """
-    global _secrets_config_cache
-    _secrets_config_cache = None
+    _load_secrets_config.cache_clear()
 
 
 def get_site_slug(site: str) -> str:

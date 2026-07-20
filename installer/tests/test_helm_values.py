@@ -263,7 +263,7 @@ class TestGenerateHelmValues:
     def test_nautobot_disabled(self):
         config = _make_config(
             services=ServicesConfig(nautobot=False),
-            content=ContentConfig(jobs=[], include_bootstrap_jobs=False),
+            content=ContentConfig(jobs=[]),
         )
         values = _gen(config)
 
@@ -697,7 +697,6 @@ class TestGenerateHelmValues:
         config = _make_config(
             content=ContentConfig(
                 jobs=[JobPath(path="/opt/jobs/custom")],
-                include_bootstrap_jobs=True,
             ),
         )
         values = _gen(config)
@@ -705,6 +704,11 @@ class TestGenerateHelmValues:
         assert values["nautobot"]["customJobs"]["enabled"] is True
         assert values["nautobot"]["customJobs"]["createPvc"] is False
         assert values["nautobot"]["customJobs"]["pvcName"] == "nautobot-custom-jobs"
+
+    def test_no_custom_jobs_omits_custom_jobs_values(self):
+        values = _gen(_make_config(content=ContentConfig()))
+
+        assert "customJobs" not in values["nautobot"]
 
     def test_custom_jobs_node_selector_in_values(self):
         config = _make_config(
@@ -748,7 +752,7 @@ class TestGenerateHelmValues:
                 nautobot=False,
                 external_nautobot_url="https://nb.prod.example.com",
             ),
-            content=ContentConfig(jobs=[], include_bootstrap_jobs=False),
+            content=ContentConfig(jobs=[]),
         )
         values = _gen(config)
 

@@ -25,10 +25,12 @@ import click
 import pytest
 from click.testing import CliRunner
 
-from nv_config_manager_installer.cli import _run_pvc_updater, main
+from nv_config_manager_installer.cli import _collect_validation_errors, _run_pvc_updater, main
 from nv_config_manager_installer.schema import (
     ClusterConfig,
+    ContentConfig,
     NVConfigManagerInstallConfig,
+    ServicesConfig,
     SiteConfig,
 )
 
@@ -116,6 +118,18 @@ class TestValidateCommand:
         result = runner.invoke(main, ["air-sim", "deploy", "--help"])
         assert result.exit_code == 0
         assert "--config" in result.output
+
+    def test_external_nautobot_rejects_post_deploy_jobs(self):
+        config = NVConfigManagerInstallConfig()
+        config.services = ServicesConfig(
+            nautobot=False,
+            external_nautobot_url="https://nb.example.com",
+        )
+        config.content = ContentConfig(run_after_deploy=[{"job": "jobs.bootstrap.SiteBootstrap"}])
+
+        errors = _collect_validation_errors(config)
+
+        assert any("post-deploy jobs require a local Nautobot" in error for error in errors)
 
 
 class TestInitCommand:

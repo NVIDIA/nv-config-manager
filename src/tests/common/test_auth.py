@@ -41,6 +41,7 @@ from nv_config_manager.common.auth import (
     require_authenticated_identity,
     require_group,
 )
+from nv_config_manager.common.config import clear_config_cache
 
 # ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -79,9 +80,13 @@ def _clear_caches():
     """Reset module-level caches between tests."""
     _jwks_clients.clear()
     auth_mod._auth_config = None
+    auth_mod._auth_config_source = None
+    auth_mod._auth_config_tracks_file = False
     yield
     _jwks_clients.clear()
     auth_mod._auth_config = None
+    auth_mod._auth_config_source = None
+    auth_mod._auth_config_tracks_file = False
 
 
 @pytest.fixture
@@ -238,6 +243,21 @@ class TestConfigLoading:
         )
         cfg = load_auth_config(cp)
         assert len(cfg.jwt_providers) == 0
+
+    def test_file_backed_auth_config_reloads_after_ini_update(self, monkeypatch, tmp_path):
+        config_file = tmp_path / "nv-config-manager.ini"
+        config_file.write_text("[auth]\nrequired = true\n")
+        monkeypatch.setenv("NV_CONFIG_MANAGER_INI", str(config_file))
+        clear_config_cache()
+
+        first = load_auth_config()
+        assert first.required is True
+
+        config_file.write_text("[auth]\nrequired = false\n")
+        second = load_auth_config()
+
+        assert second is not first
+        assert second.required is False
 
 
 # ── install_identity_probe enforcement tests ─────────────────────────────

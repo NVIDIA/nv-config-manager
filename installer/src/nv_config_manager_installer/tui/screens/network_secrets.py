@@ -298,6 +298,9 @@ class NetworkSecretsScreen(Container):
     def get_status(self, config: NVConfigManagerInstallConfig) -> str:
         if not config.network_secrets:
             return "[ ]"
-        if all(e.secret_key for e in config.network_secrets):
+        if all(
+            e.secret_key and (e.source != PasswordSource.MANUAL or e.value.strip())
+            for e in config.network_secrets
+        ):
             return "[*]"
         return "[!]"

@@ -166,7 +166,6 @@ def generate_air_sim_install_config(
         "content": {
             "jobs": content_jobs,
             "template_plugins": template_plugins,
-            "include_bootstrap_jobs": True,
             "run_after_deploy": run_after_deploy,
         },
         "infrastructure": {

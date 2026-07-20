@@ -22,7 +22,8 @@ from unittest.mock import Mock, patch
 import pytest
 from aiohttp import ClientResponse
 
-from nv_config_manager.common.config import load_config
+from nv_config_manager.common import auth as auth_mod
+from nv_config_manager.common.config import clear_config_cache
 
 _CLIENT_RESPONSE_INIT = ClientResponse.__init__
 
@@ -160,6 +161,13 @@ channel_name = nv-config-manager-test
 _current_ini = {"content": DEFAULT_INI}
 
 
+def _clear_auth_config_cache() -> None:
+    """Clear derived auth state when the backing INI cache is reset."""
+    auth_mod._auth_config = None
+    auth_mod._auth_config_source = None
+    auth_mod._auth_config_tracks_file = False
+
+
 @pytest.fixture(autouse=True)
 def mock_ini_config(mocker):
     """
@@ -172,7 +180,8 @@ def mock_ini_config(mocker):
     _current_ini["content"] = DEFAULT_INI
 
     # Clear any cached config from previous tests
-    load_config.cache_clear()
+    clear_config_cache()
+    _clear_auth_config_cache()
 
     read_func = configparser.ConfigParser.read
 
@@ -185,7 +194,8 @@ def mock_ini_config(mocker):
     yield
 
     # Clear cache after test to prevent leaking to next test
-    load_config.cache_clear()
+    clear_config_cache()
+    _clear_auth_config_cache()
 
 
 @pytest.fixture()
@@ -208,6 +218,6 @@ def custom_ini():
         # Update the shared INI content
         _current_ini["content"] = ini_content
         # Clear the cached config so it will be reloaded with new settings
-        load_config.cache_clear()
+        clear_config_cache()
 
     return _set_ini

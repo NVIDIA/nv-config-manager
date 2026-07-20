@@ -16,17 +16,20 @@
 
 import pytest
 
-from nv_config_manager.common.config import get_storage_client, load_config
+from nv_config_manager.common.config import (
+    clear_config_cache,
+    get_storage_client,
+)
 from nv_config_manager.ztp.filestore import FileStoreClient
 from nv_config_manager.ztp.s3 import S3Client
 
 
 @pytest.fixture(autouse=True)
-def clear_config_cache():
+def reset_config_cache():
     """Keep config loaded in one test from leaking into another."""
-    load_config.cache_clear()
+    clear_config_cache()
     yield
-    load_config.cache_clear()
+    clear_config_cache()
 
 
 def test_get_storage_client_default_s3(monkeypatch):

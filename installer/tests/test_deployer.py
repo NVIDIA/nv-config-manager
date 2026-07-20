@@ -60,6 +60,7 @@ from nv_config_manager_installer.schema import (
     KubernetesSecretsConfig,
     NetworkSecretEntry,
     NVConfigManagerInstallConfig,
+    PostDeployJob,
     RedfishConfig,
     RedfishVendorCreds,
     SecretsConfig,
@@ -200,6 +201,14 @@ class TestDeployerInit:
         deployer = Deployer(config, DeployOptions())
         ids = [s.id for s in deployer.steps]
         assert len(ids) == len(set(ids))
+
+    def test_revalidates_tui_config_before_deployment(self):
+        config = _make_config()
+        config.services.nautobot = False
+        config.content.run_after_deploy = [PostDeployJob(job="jobs.bootstrap.SiteBootstrap")]
+
+        with pytest.raises(ValueError, match="post-deploy jobs require a local Nautobot"):
+            Deployer(config, DeployOptions())
 
 
 class TestGatewayClassReuse:
@@ -1237,7 +1246,7 @@ class TestConditionalRestart:
     """Verify _restart_nautobot and _restart_render_service skip logic."""
 
     def _make_deployer(self, *, jobs=True, templates=False) -> tuple:
-        content_kwargs: dict = {"include_bootstrap_jobs": False}
+        content_kwargs: dict = {}
         if jobs:
             content_kwargs["jobs"] = [JobPath(path="/fake/jobs")]
         if templates:
@@ -1327,7 +1336,6 @@ class TestPvcContentUpload:
 
         config = _make_config()
         config.content = ContentConfig(
-            include_bootstrap_jobs=True,
             jobs=[JobPath(path=str(job_dir))],
         )
         deployer = Deployer(config, DeployOptions(), RecordingCallback())
@@ -1357,7 +1365,6 @@ class TestPvcContentUpload:
 
         config = _make_config()
         config.content = ContentConfig(
-            include_bootstrap_jobs=False,
             template_plugins=[TemplatePath(path=str(plugin_dir))],
         )
         deployer = Deployer(config, DeployOptions(), RecordingCallback())
@@ -1703,7 +1710,6 @@ class TestK8sClientIntegration:
         config = _make_config()
         config.content = ContentConfig(
             jobs=[JobPath(path="/fake/jobs")],
-            include_bootstrap_jobs=False,
             jobs_config=JobsConfig(
                 storage_class="local-path",
                 access_mode="ReadWriteOnce",
@@ -1730,6 +1736,16 @@ class TestK8sClientIntegration:
             mount_path="/jobs",
             node_selector={"kubernetes.io/hostname": "worker-1"},
         )
+
+    def test_jobs_pvc_is_skipped_without_custom_jobs(self):
+        callback = RecordingCallback()
+        deployer = Deployer(_make_config(), DeployOptions(), callback)
+        deployer._k8s = _mock_k8s()
+
+        deployer._setup_jobs_pvc()
+
+        assert dict(callback.step_updates)["setup-jobs-pvc"] == StepStatus.SKIPPED
+        deployer._k8s.ensure_pvc.assert_not_called()
 
 
 class TestContentAddressedTags:
