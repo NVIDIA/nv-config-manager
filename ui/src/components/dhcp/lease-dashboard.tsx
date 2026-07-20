@@ -689,7 +689,7 @@ function ClearLeaseDialog({
             <span className="font-mono font-medium text-foreground">
               {lease?.ip_address}
             </span>
-            . The address can be assigned again immediately.
+            {". The address can be assigned again immediately."}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
