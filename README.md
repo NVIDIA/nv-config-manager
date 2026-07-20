@@ -64,8 +64,8 @@ Install the repository hooks after cloning and whenever hook scripts change:
 
 Installed hooks:
 
-- `pre-commit`: verifies that automatic OpenPGP signing and its local secret key
-  are available, formats all staged Python files outside ignored/generated
+- `pre-commit`: reports whether automatic OpenPGP signing and its local secret
+  key are available, formats all staged Python files outside ignored/generated
   directories with `uv run ruff format`, re-stages those files, and checks SPDX
   license headers for supported source files (`.py`, `.ts`, `.tsx`, `.js`,
   `.jsx`, `.mjs`, `.cjs`, and `.go`) under `src/`, `ui/src/`, `ui/tests/`,
@@ -73,10 +73,10 @@ Installed hooks:
   `installer/src/`, `installer/tests/`, and `installer/scripts/`.
 
 The hook installer also reports whether cryptographic commit signing is enabled.
-All contributors need GitHub-verified commits. Ready pull requests from trustees
-can auto-sync; other contributors and draft pull requests need an authorized
-maintainer to approve the exact commit with `/ok to test <sha>`. Configure an
-existing GPG key for this repository with:
+Trustees need GitHub-verified commits for automatic sync. Other contributors and
+draft pull requests instead need an authorized maintainer to approve the exact
+commit with `/ok to test <sha>`. Configure an existing GPG key for this repository
+with:
 
 ```bash
 gpg --list-secret-keys --keyid-format=long
@@ -85,6 +85,9 @@ gpg --list-secret-keys --keyid-format=long
 
 See [Cryptographically Signing Commits](CONTRIBUTING.md#cryptographically-signing-commits)
 for GitHub key registration and existing-branch remediation.
+
+The local signing check is advisory. GitHub and copy-pr-bot make the authoritative
+decision about signature verification and protected CI branch creation.
 
 For UI work:
 

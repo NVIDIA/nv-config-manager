@@ -13,8 +13,9 @@ Thank you for your interest in contributing to NVIDIA Config Manager! This docum
 
 ## Cryptographically Signing Commits
 
-All contributors must configure GPG signing so GitHub can verify the identity
-and integrity of commits before they are copied to the protected CI branch.
+Trustees who want copy-pr-bot to automatically sync their ready pull requests
+must configure GPG signing so GitHub can verify every commit. Other contributors
+may sign their commits, but signing does not remove the maintainer-approval step.
 
 A `Verified` signature does not grant trustee status or authorize CI by itself.
 Copy-pr-bot automatically syncs ready pull requests from configured trustees
@@ -47,10 +48,10 @@ gpg --list-secret-keys --keyid-format=long
 The helper validates that the secret key can sign and writes only repository-local
 Git configuration. It does not create, export, upload, or otherwise manage private
 key material. Once configured, `commit.gpgsign=true` signs new commits
-automatically. The pre-commit hook checks that automatic OpenPGP signing is
-enabled and that the configured secret key exists locally. It cannot determine
-whether the public key has been added to GitHub, so confirm the `Verified` status
-after pushing.
+automatically. The pre-commit hook reports a warning when the local OpenPGP setup
+is missing or incomplete, but it does not block the commit. It also cannot
+determine whether the public key has been added to GitHub, so confirm the
+`Verified` status after pushing.
 
 Verify a new commit locally and confirm that GitHub displays `Verified` after it is
 pushed:
@@ -97,12 +98,13 @@ force-pushing it.
    ```
    This installs:
 
-   - `pre-commit`, which verifies local GPG signing configuration, auto-formats
-     staged Python files outside ignored/generated directories with `ruff format`,
-     and verifies SPDX license headers in supported source files.
+   - `pre-commit`, which reports GPG signing readiness, auto-formats staged
+     Python files outside ignored/generated directories with `ruff format`, and
+     verifies SPDX license headers in supported source files.
 
    The installer also reports whether cryptographic commit signing is configured.
-   Every contributor should configure an existing GPG key as described above.
+   Trustees who rely on automatic sync should configure an existing GPG key as
+   described above.
 
 5. **Create a branch** for your changes:
    ```bash

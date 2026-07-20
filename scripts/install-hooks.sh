@@ -27,7 +27,7 @@ echo "Installing git hooks..."
 
 mkdir -p "$HOOKS_DIR"
 
-for hook in pre-commit commit-msg; do
+for hook in pre-commit; do
     if [[ -f "$SOURCE_HOOKS_DIR/$hook" ]]; then
         cp "$SOURCE_HOOKS_DIR/$hook" "$HOOKS_DIR/$hook"
         chmod +x "$HOOKS_DIR/$hook"
@@ -38,22 +38,39 @@ for hook in pre-commit commit-msg; do
     fi
 done
 
+# Remove the retired hook only when it is the version previously installed by
+# this repository. Preserve custom commit-msg hooks owned by the contributor.
+LEGACY_COMMIT_MSG_HOOK="$HOOKS_DIR/commit-msg"
+LEGACY_COMMIT_MSG_MARKER="Commit message hook to require Developer Certificate of Origin sign-off."
+if [[ -f "$LEGACY_COMMIT_MSG_HOOK" ]]; then
+    if grep -F "$LEGACY_COMMIT_MSG_MARKER" "$LEGACY_COMMIT_MSG_HOOK" >/dev/null 2>&1; then
+        rm -f "$LEGACY_COMMIT_MSG_HOOK"
+        echo "  ✓ Removed retired commit-msg hook"
+    else
+        echo "  • Preserved existing contributor-managed commit-msg hook"
+    fi
+fi
+
 echo ""
 echo "Git hooks installed successfully!"
 echo ""
 echo "Hooks installed:"
-echo "  - pre-commit: Checks GPG signing, formats staged Python, checks SPDX license headers"
-echo "  - commit-msg: Requires a DCO Signed-off-by trailer"
+echo "  - pre-commit: Reports GPG signing readiness, formats staged Python, checks SPDX license headers"
 echo ""
 
-GPG_SIGNING_ENABLED="$(git -C "$REPO_ROOT" config --bool --get commit.gpgsign 2>/dev/null || true)"
-GPG_SIGNING_KEY="$(git -C "$REPO_ROOT" config --get user.signingkey 2>/dev/null || true)"
+GPG_SIGNING_ENABLED="$(git -C "$REPO_ROOT" config --local --bool --get commit.gpgsign 2>/dev/null || true)"
+GPG_SIGNING_KEY="$(git -C "$REPO_ROOT" config --local --get user.signingkey 2>/dev/null || true)"
+GPG_SIGNING_FORMAT="$(git -C "$REPO_ROOT" config --local --get gpg.format 2>/dev/null || true)"
 
-if [[ "$GPG_SIGNING_ENABLED" == "true" && -n "$GPG_SIGNING_KEY" ]]; then
+if [[ -z "$GPG_SIGNING_FORMAT" ]]; then
+    GPG_SIGNING_FORMAT="openpgp"
+fi
+
+if [[ "$GPG_SIGNING_ENABLED" == "true" && -n "$GPG_SIGNING_KEY" && "$GPG_SIGNING_FORMAT" == "openpgp" ]]; then
     echo "Cryptographic commit signing is configured with key $GPG_SIGNING_KEY."
 else
     echo "Cryptographic commit signing is not configured."
-    echo "All contributors must use GitHub-verified commits for protected CI."
+    echo "Trustees need GitHub-verified commits for copy-pr-bot automatic sync."
     echo "Configure an existing GPG key with:"
     echo "  ./scripts/configure-gpg-signing.sh <GPG_KEY_ID_OR_FINGERPRINT>"
 fi

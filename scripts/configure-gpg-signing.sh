@@ -97,7 +97,7 @@ if [[ -t 0 && -z "${GPG_TTY:-}" ]]; then
     export GPG_TTY
 fi
 
-echo "Testing OpenPGP signing with $FINGERPRINT..."
+echo "Testing OpenPGP signing with $FINGERPRINT (GnuPG may prompt for the key passphrase)..."
 if ! printf '%s\n' "nv-config-manager commit-signing check" |
     "$GPG_PROGRAM_PATH" --local-user "$FINGERPRINT" --armor --detach-sign --output - >/dev/null; then
     fail "GnuPG could not sign with $FINGERPRINT. Check the key, agent, and pinentry configuration."
@@ -111,7 +111,8 @@ git -C "$REPO_ROOT" config --local commit.gpgsign true
 GIT_USER_EMAIL="$(git -C "$REPO_ROOT" config --get user.email || true)"
 if [[ -z "$GIT_USER_EMAIL" ]]; then
     echo "WARNING: Git user.email is not configured; GitHub cannot associate signatures without it." >&2
-elif ! printf '%s\n' "$SECRET_KEY_OUTPUT" | grep -F "$GIT_USER_EMAIL" >/dev/null; then
+elif ! printf '%s\n' "$SECRET_KEY_OUTPUT" |
+    awk -F: -v email="$GIT_USER_EMAIL" '$1 == "uid" && index($10, email) { found = 1 } END { exit !found }'; then
     echo "WARNING: Git user.email '$GIT_USER_EMAIL' was not found in this key's identities." >&2
     echo "GitHub requires the commit email to match a verified email associated with the GPG key." >&2
 fi
@@ -127,7 +128,7 @@ Configured repository-local commit signing:
 
 Add the public key to GitHub if it is not already registered:
 
-  gpg --armor --export $FINGERPRINT
+  $GPG_PROGRAM_PATH --armor --export $FINGERPRINT
 
 Then open https://github.com/settings/keys and add it as a GPG key.
 
