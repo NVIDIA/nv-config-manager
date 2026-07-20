@@ -131,6 +131,6 @@ Add the public key to GitHub if it is not already registered:
 
 Then open https://github.com/settings/keys and add it as a GPG key.
 
-Commit signing and DCO sign-off are separate. Continue using git commit -s;
-commit.gpgsign=true adds the cryptographic signature automatically.
+New commits are now signed automatically. After pushing, confirm that GitHub
+displays the commit as Verified.
 EOF

@@ -71,9 +71,6 @@ Installed hooks:
   `.jsx`, `.mjs`, `.cjs`, and `.go`) under `src/`, `ui/src/`, `ui/tests/`,
   `components/`, `db/migrations/`, `scripts/`, `development/`,
   `installer/src/`, `installer/tests/`, and `installer/scripts/`.
-- `commit-msg`: rejects commits that do not include a valid DCO
-  `Signed-off-by: Name <email>` trailer. Use `git commit -s` or
-  `git commit --amend -s` to add the trailer automatically.
 
 The hook installer also reports whether cryptographic commit signing is enabled.
 NVIDIA trustees need GitHub-verified commits for copy-pr-bot auto-sync. Configure
@@ -84,12 +81,8 @@ gpg --list-secret-keys --keyid-format=long
 ./scripts/configure-gpg-signing.sh <GPG_KEY_ID_OR_FINGERPRINT>
 ```
 
-This configuration is separate from the DCO trailer. See
-[Cryptographically Signing Commits](CONTRIBUTING.md#cryptographically-signing-commits)
+See [Cryptographically Signing Commits](CONTRIBUTING.md#cryptographically-signing-commits)
 for GitHub key registration and existing-branch remediation.
-
-Local hooks can be skipped with `git commit --no-verify`, so the organization DCO
-app remains the merge-time enforcement gate in CI.
 
 For UI work:
 
@@ -438,8 +431,7 @@ These packages are published separately:
 
 ## Contributing
 
-Start with [CONTRIBUTING.md](CONTRIBUTING.md). Contributions must follow the
-Developer Certificate of Origin sign-off process described there.
+Start with [CONTRIBUTING.md](CONTRIBUTING.md).
 
 1. Fork the repository.
 2. Create a feature branch.

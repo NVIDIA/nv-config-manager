@@ -4,91 +4,18 @@ Thank you for your interest in contributing to NVIDIA Config Manager! This docum
 
 ## Table of Contents
 
-- [Developer Certificate of Origin (DCO)](#developer-certificate-of-origin-dco)
+- [Cryptographically Signing Commits](#cryptographically-signing-commits)
 - [Getting Started](#getting-started)
 - [How to Contribute](#how-to-contribute)
 - [Pull Request Process](#pull-request-process)
 - [Coding Standards](#coding-standards)
 - [License](#license)
 
-## Developer Certificate of Origin (DCO)
+## Cryptographically Signing Commits
 
-NVIDIA Config Manager requires the Developer Certificate of Origin (DCO) process for all contributions.
-
-The DCO is a lightweight way for contributors to certify that they wrote or otherwise have the right to submit the code they are contributing to the project. Here is the full text of the [DCO](https://developercertificate.org/):
-
-```
-Developer Certificate of Origin
-Version 1.1
-
-Copyright (C) 2004, 2006 The Linux Foundation and its contributors.
-
-Everyone is permitted to copy and distribute verbatim copies of this
-license document, but changing it is not allowed.
-
-Developer's Certificate of Origin 1.1
-
-By making a contribution to this project, I certify that:
-
-(a) The contribution was created in whole or in part by me and I
-    have the right to submit it under the open source license
-    indicated in the file; or
-
-(b) The contribution is based upon previous work that, to the best
-    of my knowledge, is covered under an appropriate open source
-    license and I have the right under that license to submit that
-    work with modifications, whether created in whole or in part
-    by me, under the same open source license (unless I am
-    permitted to submit under a different license), as indicated
-    in the file; or
-
-(c) The contribution was provided directly to me by some other
-    person who certified (a), (b) or (c) and I have not modified
-    it.
-
-(d) I understand and agree that this project and the contribution
-    are public and that a record of the contribution (including all
-    personal information I submit with it, including my sign-off) is
-    maintained indefinitely and may be redistributed consistent with
-    this project or the open source license(s) involved.
-```
-
-### DCO Sign-off
-
-To sign off your commits, add a `Signed-off-by` line to your commit messages:
-
-```
-This is my commit message
-
-Signed-off-by: Your Name <your.email@example.com>
-```
-
-You can do this automatically by using the `-s` or `--signoff` flag when committing:
-
-```bash
-git commit -s -m "Your commit message"
-```
-
-If you've already made commits without signing off, you can amend your last commit:
-
-```bash
-git commit --amend -s
-```
-
-Or rebase to sign off multiple commits:
-
-```bash
-git rebase --signoff HEAD~<number_of_commits>
-```
-
-**Note:** Your sign-off must use your real name (no pseudonyms or anonymous contributions) and must match the author information in your Git configuration.
-
-### Cryptographically Signing Commits
-
-A DCO `Signed-off-by` trailer is not a cryptographic signature. Copy-pr-bot only
-auto-syncs an otherwise trusted pull request when every commit has GitHub's
-`Verified` signature status. NVIDIA trustees who expect automatic CI branch
-creation must configure GPG signing in addition to using the DCO sign-off.
+Copy-pr-bot only auto-syncs an otherwise trusted pull request when every commit
+has GitHub's `Verified` signature status. NVIDIA trustees who expect automatic
+CI branch creation must configure GPG signing.
 
 Create or select a personal GPG key whose email matches a verified email on your
 GitHub account, then add its public key under
@@ -108,10 +35,10 @@ gpg --list-secret-keys --keyid-format=long
 The helper validates that the secret key can sign and writes only repository-local
 Git configuration. It does not create, export, upload, or otherwise manage private
 key material. Once configured, `commit.gpgsign=true` signs new commits
-automatically; continue using `git commit -s` to add the separate DCO trailer.
-The pre-commit hook checks that automatic OpenPGP signing is enabled and that the
-configured secret key exists locally. It cannot determine whether the public key
-has been added to GitHub, so confirm the `Verified` status after pushing.
+automatically. The pre-commit hook checks that automatic OpenPGP signing is
+enabled and that the configured secret key exists locally. It cannot determine
+whether the public key has been added to GitHub, so confirm the `Verified` status
+after pushing.
 
 Verify a new commit locally and confirm that GitHub displays `Verified` after it is
 pushed:
@@ -161,8 +88,6 @@ force-pushing it.
    - `pre-commit`, which verifies local GPG signing configuration, auto-formats
      staged Python files outside ignored/generated directories with `ruff format`,
      and verifies SPDX license headers in supported source files.
-   - `commit-msg`, which rejects commit messages missing a DCO
-     `Signed-off-by: Name <email>` trailer.
 
    The installer also reports whether cryptographic commit signing is configured.
    NVIDIA trustees should configure an existing GPG key as described above.
@@ -192,8 +117,7 @@ force-pushing it.
 1. Ensure your code follows the project's coding standards
 2. Write or update tests as needed
 3. Update documentation if applicable
-4. Sign off all commits (see DCO section above)
-5. Submit a pull request
+4. Submit a pull request
 
 ## Pull Request Process
 
@@ -259,7 +183,6 @@ By contributing to NVIDIA Config Manager, you agree that your contributions will
 
 All contributions must:
 - Include the appropriate SPDX license identifier in new source files
-- Be signed off using the DCO process described above
 - Not include code from incompatible licenses without prior approval
 ### SPDX License Headers
 
