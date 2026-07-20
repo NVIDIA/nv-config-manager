@@ -73,8 +73,10 @@ Installed hooks:
   `installer/src/`, `installer/tests/`, and `installer/scripts/`.
 
 The hook installer also reports whether cryptographic commit signing is enabled.
-NVIDIA trustees need GitHub-verified commits for copy-pr-bot auto-sync. Configure
-an existing GPG key for this repository with:
+All contributors need GitHub-verified commits. Ready pull requests from trustees
+can auto-sync; other contributors and draft pull requests need an authorized
+maintainer to approve the exact commit with `/ok to test <sha>`. Configure an
+existing GPG key for this repository with:
 
 ```bash
 gpg --list-secret-keys --keyid-format=long

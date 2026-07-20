@@ -43,7 +43,7 @@ check_gpg_signing() {
     if [[ "$signing_enabled" != "true" || -z "$signing_key" || "$signing_format" != "openpgp" ]]; then
         echo -e "${RED}ERROR: OpenPGP commit signing is not configured.${NC}"
         echo ""
-        echo "NVIDIA trustees need GitHub-verified commits for copy-pr-bot auto-sync."
+        echo "All contributors must use GitHub-verified commits for protected CI."
         echo "List your GPG keys and configure one for this repository:"
         echo ""
         echo "  gpg --list-secret-keys --keyid-format=long"

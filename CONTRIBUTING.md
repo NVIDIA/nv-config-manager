@@ -13,9 +13,21 @@ Thank you for your interest in contributing to NVIDIA Config Manager! This docum
 
 ## Cryptographically Signing Commits
 
-Copy-pr-bot only auto-syncs an otherwise trusted pull request when every commit
-has GitHub's `Verified` signature status. NVIDIA trustees who expect automatic
-CI branch creation must configure GPG signing.
+All contributors must configure GPG signing so GitHub can verify the identity
+and integrity of commits before they are copied to the protected CI branch.
+
+A `Verified` signature does not grant trustee status or authorize CI by itself.
+Copy-pr-bot automatically syncs ready pull requests from configured trustees
+when every commit is `Verified`. Pull requests from other contributors, and
+draft pull requests, require an authorized maintainer to approve the current
+commit with:
+
+```text
+/ok to test <sha>
+```
+
+Approval applies only to that exact commit. After the pull request is updated,
+an authorized maintainer must approve the new commit before CI can use it.
 
 Create or select a personal GPG key whose email matches a verified email on your
 GitHub account, then add its public key under
@@ -90,7 +102,7 @@ force-pushing it.
      and verifies SPDX license headers in supported source files.
 
    The installer also reports whether cryptographic commit signing is configured.
-   NVIDIA trustees should configure an existing GPG key as described above.
+   Every contributor should configure an existing GPG key as described above.
 
 5. **Create a branch** for your changes:
    ```bash

@@ -53,7 +53,7 @@ if [[ "$GPG_SIGNING_ENABLED" == "true" && -n "$GPG_SIGNING_KEY" ]]; then
     echo "Cryptographic commit signing is configured with key $GPG_SIGNING_KEY."
 else
     echo "Cryptographic commit signing is not configured."
-    echo "NVIDIA trustees need GitHub-verified commits for copy-pr-bot auto-sync."
+    echo "All contributors must use GitHub-verified commits for protected CI."
     echo "Configure an existing GPG key with:"
     echo "  ./scripts/configure-gpg-signing.sh <GPG_KEY_ID_OR_FINGERPRINT>"
 fi
