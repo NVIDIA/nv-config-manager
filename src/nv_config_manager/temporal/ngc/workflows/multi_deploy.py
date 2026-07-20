@@ -426,28 +426,23 @@ class BatchDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
                     successful_backups=successful_backups,
                     failed_backups=failed_backups,
                     display=(
-                        f"**Backups in progress ({completed_backups}/{total_backups} completed):**\n"
-                        f"- {successful_backups} backups successful\n"
-                        f"- {failed_backups} backups failed\n"
-                        f"- {total_backups - completed_backups} backups in progress"
+                        f"**Backups in progress** — {completed_backups}/{total_backups} complete\n\n"
+                        f"**Devices:** {successful_backups} successful · {failed_backups} failed · "
+                        f"{total_backups - completed_backups} in progress"
                     ),
                 ),
             )
 
         successful_backups = sum(result.success for result in backup_results.values())
         failed_backups = len(backup_results) - successful_backups
-        changed_backups = sum(
-            result.changed is True for result in backup_results.values() if result.success
-        )
 
         return BatchDeployWorkflow.BackupsStageOutput(
             backup_results=backup_results,
             successful_backups=successful_backups,
             failed_backups=failed_backups,
             display=(
-                f"Backups completed for {total_backups} devices. "
-                f"Success: {successful_backups} ({changed_backups} changed), "
-                f"Failed: {failed_backups}"
+                f"**Backups complete**\n\n"
+                f"**Devices:** {successful_backups} successful · {failed_backups} failed"
             ),
         )
 

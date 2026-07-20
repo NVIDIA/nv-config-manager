@@ -631,4 +631,6 @@ async def test_batch_deploy_workflow_directly(
         assert backups_stage["state"] == "COMPLETE"
         assert backups_stage["output"]["successful_backups"] == 1
         assert backups_stage["output"]["failed_backups"] == 1
-        assert "Backups completed for 2 devices" in backups_stage["output"]["display"]
+        assert backups_stage["output"]["display"] == (
+            "**Backups complete**\n\n**Devices:** 1 successful · 1 failed"
+        )
