@@ -268,6 +268,42 @@ jobs:
           helm dependency build deploy/helm/
       - run: helm lint deploy/helm/ --values deploy/helm/values-ci.yaml
       - run: helm template test deploy/helm/ --values deploy/helm/values-ci.yaml >/tmp/nvcm-helm.yaml
+      - name: Temporal codec CORS render
+        run: |
+          # The application CORS tests use an explicit test origin, but the
+          # deployable allowlist is assembled independently by each secret
+          # backend. Keep the Temporal Web origin present in every rendered INI.
+          set -euo pipefail
+          expected="cors_origins = https://ci.config-manager.example.com,https://temporal.ci.config-manager.example.com"
+          for method in eso kubernetes vault-agent; do
+            case "$method" in
+              eso)
+                template=templates/vault-secrets.yaml
+                set_args=()
+                ;;
+              kubernetes)
+                template=templates/kubernetes-secrets.yaml
+                set_args=(--set secrets.method=kubernetes)
+                ;;
+              vault-agent)
+                template=templates/vault-agent-configmap.yaml
+                set_args=(--set secrets.method=vault-agent --set secrets.vaultAgent.esoForOperators=false)
+                ;;
+            esac
+
+            output="/tmp/nvcm-codec-cors-${method}.yaml"
+            helm template test deploy/helm/ \
+              --values deploy/helm/values-ci.yaml \
+              --show-only "$template" \
+              "${set_args[@]}" >"$output"
+
+            count=$(grep -cF "$expected" "$output" || true)
+            if [ "$count" -ne 1 ]; then
+              echo "ERROR: $method rendered $count Temporal codec CORS allowlists; expected exactly 1"
+              grep -nE 'temporal\.api|cors_origins' "$output" || true
+              exit 1
+            fi
+          done
       - name: Probe SLO customLabels render
         run: |
           # Blackbox Probe samples don't inherit the CR's metadata.labels, so
