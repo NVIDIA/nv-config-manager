@@ -47,12 +47,18 @@ def _unique_key(label: str) -> str:
 
 @pytest.fixture
 async def redis_lock_backend(monkeypatch) -> AsyncIterator[None]:
-    """Point the lock helpers at a real Redis, or skip when none is available."""
-    host = os.environ.get("REDIS_HOST")
+    """Point the lock helpers at a real Redis, or skip when none is available.
+
+    ``REDIS_HOST`` / ``REDIS_PORT`` mark an explicitly configured Redis (CI). A
+    ping failure there must fail the test. ``LOCK_REDIS_TEST`` is the local
+    opt-in path and may skip when Redis cannot be reached.
+    """
+    configured_host = os.environ.get("REDIS_HOST")
     port = int(os.environ.get("REDIS_PORT", "6379"))
     container = None
+    host = configured_host
 
-    if not host:
+    if not configured_host:
         if not os.environ.get("LOCK_REDIS_TEST"):
             pytest.skip("Set REDIS_HOST or LOCK_REDIS_TEST=1 to run the Redis-backed lock test")
         try:
@@ -73,6 +79,9 @@ async def redis_lock_backend(monkeypatch) -> AsyncIterator[None]:
         await client.close()
         if container is not None:
             container.stop()
+        # Configured CI Redis must fail loudly; local opt-in may skip.
+        if configured_host:
+            raise
         pytest.skip(f"Redis not reachable for lock test: {exc}")
 
     # Force the Redis-backed path (bypass the local no-op).
