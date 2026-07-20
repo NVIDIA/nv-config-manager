@@ -686,7 +686,7 @@ class TestImageBuilds:
 
         commands, max_parallel = parallel_calls[0]
         assert max_parallel == 2
-        assert len(commands) == 6
+        assert len(commands) == 9
         assert all(
             command.cmd[:4] == ["docker", "build", "--provenance=false", "--progress=plain"]
             for command in commands
@@ -694,9 +694,19 @@ class TestImageBuilds:
         assert all("--load" not in command.cmd for command in commands)
         assert all(command.timeout == 900 for command in commands)
         assert all(command.env and command.env["DOCKER_BUILDKIT"] == "1" for command in commands)
-        assert len(run_commands) == 6
+        assert len(run_commands) == 9
         assert all(cmd[:2] == ["docker", "tag"] for cmd in run_commands)
         assert deployer._local_image_tags["nv-config-manager-ui"].startswith("sha-")
+        targets = {
+            command.label: command.cmd[command.cmd.index("--target") + 1]
+            for command in commands
+            if "--target" in command.cmd
+        }
+        assert targets == {
+            "nv-config-manager-temporal": "server",
+            "nv-config-manager-temporal-bootstrap": "bootstrap",
+            "nv-config-manager-temporal-ui": "ui",
+        }
 
     def test_build_images_loads_buildx_container_outputs(self, monkeypatch):
         parallel_calls: list[list[_ParallelCommand]] = []
@@ -724,7 +734,7 @@ class TestImageBuilds:
         deployer._build_images()
 
         commands = parallel_calls[0]
-        assert len(commands) == 6
+        assert len(commands) == 9
         assert all("--load" in command.cmd for command in commands)
         assert all(command.cmd[:3] == ["docker", "buildx", "build"] for command in commands)
         assert all(
@@ -828,6 +838,21 @@ class TestKindImageLoading:
         )
         deployer._load_kind()
 
+        assert {
+            command[3]
+            for command in logged_commands
+            if command[:3] == ["kind", "load", "docker-image"]
+        } == {
+            "nv-config-manager-nautobot:local",
+            "nv-config-manager-nats-ready:local",
+            "nv-config-manager:local",
+            "nv-config-manager-ui:local",
+            "nv-config-manager-kea:local",
+            "nv-config-manager-kea-admin:local",
+            "nv-config-manager-temporal:local",
+            "nv-config-manager-temporal-bootstrap:local",
+            "nv-config-manager-temporal-ui:local",
+        }
         assert [
             "docker",
             "version",

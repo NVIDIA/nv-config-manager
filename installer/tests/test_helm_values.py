@@ -26,6 +26,7 @@ from nv_config_manager_installer.schema import (
     ClusterConfig,
     ContentConfig,
     ExternalServicesConfig,
+    ExternalTemporalConfig,
     GatewayType,
     GitTokenEntry,
     ImageOverride,
@@ -296,6 +297,25 @@ class TestGenerateHelmValues:
         assert values["cnpg"]["dhcp"]["enabled"] is False
         assert values["cnpg"]["nautobot"]["enabled"] is True
 
+    def test_external_temporal_keeps_workloads_and_disables_managed_server(self):
+        config = _make_config(
+            external_services=ExternalServicesConfig(
+                temporal=ExternalTemporalConfig(
+                    address="temporal.example.com:7233",
+                    namespace="network-automation",
+                )
+            )
+        )
+
+        values = _gen(config)
+
+        assert values["temporal"]["enabled"] is True
+        assert values["temporal"]["server"]["enabled"] is False
+        assert values["temporal"]["client"]["address"] == "temporal.example.com:7233"
+        assert values["temporal"]["client"]["namespace"] == "network-automation"
+        assert values["cnpg"]["temporal"]["enabled"] is False
+        assert values["cnpg"]["temporalVisibility"]["enabled"] is False
+
     def test_network_policy(self):
         values = _gen(_make_config())
         assert values["networkPolicy"]["enabled"] is True
@@ -410,6 +430,9 @@ class TestGenerateHelmValues:
         assert images["nvConfigManager"]["pullPolicy"] == "IfNotPresent"
         assert images["nautobot"]["repository"] == "nv-config-manager-nautobot"
         assert images["natsReady"]["repository"] == "nv-config-manager-nats-ready"
+        assert images["temporalServer"]["repository"] == "nv-config-manager-temporal"
+        assert images["temporalBootstrap"]["repository"] == "nv-config-manager-temporal-bootstrap"
+        assert images["temporalUi"]["repository"] == "nv-config-manager-temporal-ui"
 
     def test_registry_images_present_by_default(self):
         values = _gen(_make_config())
@@ -816,6 +839,28 @@ class TestImagesInHelmValues:
         assert images["nvConfigManager"]["tag"] == "dev-branch"
         assert images["nautobot"]["tag"] == "v1.0"
 
+    def test_temporal_server_and_ui_overrides_keep_project_bootstrap(self):
+        config = _make_config(
+            images=ImagesConfig(
+                source=ImageSource.REGISTRY,
+                registry="registry.example.com/nvcm",
+                tag="v1.29",
+                overrides={
+                    "temporalServer": ImageOverride(repository="temporalio/server"),
+                    "temporalUi": ImageOverride(repository="temporalio/ui"),
+                },
+            )
+        )
+
+        images = _gen(config)["global"]["images"]
+
+        assert images["temporalServer"]["repository"] == "temporalio/server"
+        assert images["temporalUi"]["repository"] == "temporalio/ui"
+        assert (
+            images["temporalBootstrap"]["repository"]
+            == "registry.example.com/nvcm/nv-config-manager-temporal-bootstrap"
+        )
+
     def test_pull_secret_name_from_config(self):
         config = _make_config(
             images=ImagesConfig(
@@ -871,6 +916,9 @@ class TestImagesInHelmValues:
         assert images["nvConfigManager"]["tag"] == "a1b2c3d4e5f6"
         assert images["nautobot"]["tag"] == "deadbeef0123"
         assert images["nvConfigManagerUi"]["tag"] == "111222333444"
+        assert images["temporalServer"]["tag"] == "local"
+        assert images["temporalBootstrap"]["tag"] == "local"
+        assert images["temporalUi"]["tag"] == "local"
         # Images not in local_tags fall back to "local"
         assert images["kea"]["tag"] == "local"
         assert images["keaAdmin"]["tag"] == "local"
@@ -913,7 +961,7 @@ class TestImagesInHelmValues:
         )
         assert (
             images["temporalServer"]["repository"]
-            == "registry.example.com/nv-config-manager/temporalio/server"
+            == "registry.example.com/nv-config-manager/nvidian/cfa/nv-config-manager-temporal"
         )
         assert (
             values["nautobot"]["nginx"]["image"]["repository"]
