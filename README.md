@@ -71,6 +71,9 @@ Installed hooks:
   `.jsx`, `.mjs`, `.cjs`, and `.go`) under `src/`, `ui/src/`, `ui/tests/`,
   `components/`, `db/migrations/`, `scripts/`, `development/`,
   `installer/src/`, `installer/tests/`, and `installer/scripts/`.
+- `commit-msg`: rejects commits that do not include a valid DCO
+  `Signed-off-by: Name <email>` trailer. Use `git commit -s` or
+  `git commit --amend -s` to add the trailer automatically.
 
 The hook installer also reports whether cryptographic commit signing is enabled.
 Trustees need GitHub-verified commits for automatic sync. Other contributors and
@@ -88,6 +91,9 @@ for GitHub key registration and existing-branch remediation.
 
 The local signing check is advisory. GitHub and copy-pr-bot make the authoritative
 decision about signature verification and protected CI branch creation.
+
+Local hooks can be skipped with `git commit --no-verify`; maintainers must still
+ensure every commit satisfies the DCO before accepting a contribution.
 
 For UI work:
 
@@ -436,7 +442,8 @@ These packages are published separately:
 
 ## Contributing
 
-Start with [CONTRIBUTING.md](CONTRIBUTING.md).
+Start with [CONTRIBUTING.md](CONTRIBUTING.md). Contributions must follow the
+Developer Certificate of Origin sign-off process described there.
 
 1. Fork the repository.
 2. Create a feature branch.

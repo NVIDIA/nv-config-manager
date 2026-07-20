@@ -16,7 +16,8 @@ Maintainers are responsible for:
 ## Contribution Model
 
 Contributions are accepted through pull requests. Contributors must follow
-[CONTRIBUTING.md](CONTRIBUTING.md).
+[CONTRIBUTING.md](CONTRIBUTING.md), including the Developer Certificate of
+Origin sign-off process.
 
 Technical decisions are made through normal issue and pull request discussion.
 Maintainers may request design notes for broad behavior changes, compatibility

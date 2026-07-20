@@ -27,7 +27,7 @@ echo "Installing git hooks..."
 
 mkdir -p "$HOOKS_DIR"
 
-for hook in pre-commit; do
+for hook in pre-commit commit-msg; do
     if [[ -f "$SOURCE_HOOKS_DIR/$hook" ]]; then
         cp "$SOURCE_HOOKS_DIR/$hook" "$HOOKS_DIR/$hook"
         chmod +x "$HOOKS_DIR/$hook"
@@ -38,24 +38,12 @@ for hook in pre-commit; do
     fi
 done
 
-# Remove the retired hook only when it is the version previously installed by
-# this repository. Preserve custom commit-msg hooks owned by the contributor.
-LEGACY_COMMIT_MSG_HOOK="$HOOKS_DIR/commit-msg"
-LEGACY_COMMIT_MSG_MARKER="Commit message hook to require Developer Certificate of Origin sign-off."
-if [[ -f "$LEGACY_COMMIT_MSG_HOOK" ]]; then
-    if grep -F "$LEGACY_COMMIT_MSG_MARKER" "$LEGACY_COMMIT_MSG_HOOK" >/dev/null 2>&1; then
-        rm -f "$LEGACY_COMMIT_MSG_HOOK"
-        echo "  ✓ Removed retired commit-msg hook"
-    else
-        echo "  • Preserved existing contributor-managed commit-msg hook"
-    fi
-fi
-
 echo ""
 echo "Git hooks installed successfully!"
 echo ""
 echo "Hooks installed:"
 echo "  - pre-commit: Reports GPG signing readiness, formats staged Python, checks SPDX license headers"
+echo "  - commit-msg: Requires a DCO Signed-off-by trailer"
 echo ""
 
 GPG_SIGNING_ENABLED="$(git -C "$REPO_ROOT" config --local --bool --get commit.gpgsign 2>/dev/null || true)"

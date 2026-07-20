@@ -19,6 +19,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIGURE_SCRIPT="$(cd "$SCRIPT_DIR/.." && pwd)/configure-gpg-signing.sh"
 PRE_COMMIT_HOOK="$(cd "$SCRIPT_DIR/.." && pwd)/hooks/pre-commit"
+COMMIT_MSG_HOOK="$(cd "$SCRIPT_DIR/.." && pwd)/hooks/commit-msg"
 INSTALL_HOOKS_SCRIPT="$(cd "$SCRIPT_DIR/.." && pwd)/install-hooks.sh"
 FINGERPRINT="0123456789ABCDEF0123456789ABCDEF01234567"
 
@@ -46,6 +47,8 @@ run_suite() {
     local missing_output
     local sign_failure_output
     local installer_repo
+    local unsigned_message
+    local signed_message
     local email_repo
     local email_output
 
@@ -180,12 +183,10 @@ EOF
     git init -q "$installer_repo"
     cp "$INSTALL_HOOKS_SCRIPT" "$installer_repo/scripts/install-hooks.sh"
     cp "$PRE_COMMIT_HOOK" "$installer_repo/scripts/hooks/pre-commit"
-    chmod +x "$installer_repo/scripts/install-hooks.sh" "$installer_repo/scripts/hooks/pre-commit"
-    cat >"$installer_repo/.git/hooks/commit-msg" <<'EOF'
-#!/bin/bash
-# Commit message hook to require Developer Certificate of Origin sign-off.
-EOF
-    chmod +x "$installer_repo/.git/hooks/commit-msg"
+    cp "$COMMIT_MSG_HOOK" "$installer_repo/scripts/hooks/commit-msg"
+    chmod +x "$installer_repo/scripts/install-hooks.sh" \
+        "$installer_repo/scripts/hooks/pre-commit" \
+        "$installer_repo/scripts/hooks/commit-msg"
 
     if ! (
         cd "$installer_repo"
@@ -193,18 +194,26 @@ EOF
     ); then
         fail "hook installer failed"
     fi
-    if [[ -e "$installer_repo/.git/hooks/commit-msg" ]]; then
-        fail "hook installer did not remove the retired repository-managed commit-msg hook"
+    if [[ ! -x "$installer_repo/.git/hooks/commit-msg" ]]; then
+        fail "hook installer did not install the commit-msg hook"
     fi
 
-    printf '%s\n' '#!/bin/bash' 'echo contributor-managed' >"$installer_repo/.git/hooks/commit-msg"
-    chmod +x "$installer_repo/.git/hooks/commit-msg"
-    (
+    unsigned_message="$test_root/unsigned-message"
+    signed_message="$test_root/signed-message"
+    printf '%s\n' 'Unsigned test commit' >"$unsigned_message"
+    printf '%s\n' 'Signed test commit' '' 'Signed-off-by: Test User <test@example.com>' >"$signed_message"
+
+    if (
         cd "$installer_repo"
-        HOME="$test_root/home" "$bash_path" ./scripts/install-hooks.sh >/dev/null
-    )
-    if ! grep -F "contributor-managed" "$installer_repo/.git/hooks/commit-msg" >/dev/null; then
-        fail "hook installer replaced a contributor-managed commit-msg hook"
+        HOME="$test_root/home" "$bash_path" .git/hooks/commit-msg "$unsigned_message" >/dev/null 2>&1
+    ); then
+        fail "commit-msg hook accepted a commit without a sign-off"
+    fi
+    if ! (
+        cd "$installer_repo"
+        HOME="$test_root/home" "$bash_path" .git/hooks/commit-msg "$signed_message" >/dev/null
+    ); then
+        fail "commit-msg hook rejected a valid sign-off"
     fi
 
     echo "PASS: $($bash_path --version | head -n 1)"

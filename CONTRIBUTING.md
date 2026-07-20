@@ -4,6 +4,7 @@ Thank you for your interest in contributing to NVIDIA Config Manager! This docum
 
 ## Table of Contents
 
+- [Developer Certificate of Origin (DCO)](#developer-certificate-of-origin-dco)
 - [Cryptographically Signing Commits](#cryptographically-signing-commits)
 - [Getting Started](#getting-started)
 - [How to Contribute](#how-to-contribute)
@@ -11,11 +12,70 @@ Thank you for your interest in contributing to NVIDIA Config Manager! This docum
 - [Coding Standards](#coding-standards)
 - [License](#license)
 
+## Developer Certificate of Origin (DCO)
+
+### Signing Off Your Work
+
+- We require that all contributors sign off on their commits. This certifies that
+  the contribution is their original work, or that they have the right to submit
+  it under the same or a compatible license.
+- Contributions containing commits that are not signed off will not be accepted.
+- To sign off on a commit, use the `--signoff` (or `-s`) option:
+
+  ```bash
+  git commit -s -m "Add cool feature."
+  ```
+
+  This appends the following trailer to the commit message:
+
+  ```text
+  Signed-off-by: Your Name <your@email.com>
+  ```
+
+- Full text of the [Developer Certificate of Origin](https://developercertificate.org/):
+
+  ```text
+  Developer Certificate of Origin
+  Version 1.1
+
+  Copyright (C) 2004, 2006 The Linux Foundation and its contributors.
+
+  Everyone is permitted to copy and distribute verbatim copies of this
+  license document, but changing it is not allowed.
+
+  Developer's Certificate of Origin 1.1
+
+  By making a contribution to this project, I certify that:
+
+  (a) The contribution was created in whole or in part by me and I
+      have the right to submit it under the open source license
+      indicated in the file; or
+
+  (b) The contribution is based upon previous work that, to the best
+      of my knowledge, is covered under an appropriate open source
+      license and I have the right under that license to submit that
+      work with modifications, whether created in whole or in part
+      by me, under the same open source license (unless I am
+      permitted to submit under a different license), as indicated
+      in the file; or
+
+  (c) The contribution was provided directly to me by some other
+      person who certified (a), (b) or (c) and I have not modified
+      it.
+
+  (d) I understand and agree that this project and the contribution
+      are public and that a record of the contribution (including all
+      personal information I submit with it, including my sign-off) is
+      maintained indefinitely and may be redistributed consistent with
+      this project or the open source license(s) involved.
+  ```
+
 ## Cryptographically Signing Commits
 
 Trustees who want copy-pr-bot to automatically sync their ready pull requests
 must configure GPG signing so GitHub can verify every commit. Other contributors
-may sign their commits, but signing does not remove the maintainer-approval step.
+may cryptographically sign their commits, but doing so does not remove the
+maintainer-approval step.
 
 A `Verified` signature does not grant trustee status or authorize CI by itself.
 Copy-pr-bot automatically syncs ready pull requests from configured trustees
@@ -101,6 +161,8 @@ force-pushing it.
    - `pre-commit`, which reports GPG signing readiness, auto-formats staged
      Python files outside ignored/generated directories with `ruff format`, and
      verifies SPDX license headers in supported source files.
+   - `commit-msg`, which rejects commit messages missing a DCO
+     `Signed-off-by: Name <email>` trailer.
 
    The installer also reports whether cryptographic commit signing is configured.
    Trustees who rely on automatic sync should configure an existing GPG key as
@@ -131,7 +193,8 @@ force-pushing it.
 1. Ensure your code follows the project's coding standards
 2. Write or update tests as needed
 3. Update documentation if applicable
-4. Submit a pull request
+4. Sign off all commits as described above
+5. Submit a pull request
 
 ## Pull Request Process
 
@@ -197,6 +260,7 @@ By contributing to NVIDIA Config Manager, you agree that your contributions will
 
 All contributions must:
 - Include the appropriate SPDX license identifier in new source files
+- Be signed off using the DCO process described above
 - Not include code from incompatible licenses without prior approval
 ### SPDX License Headers
 

@@ -40,7 +40,7 @@ Passing Kind Integration run, if not automatically reported:
 ## Checklist
 
 - [ ] I am familiar with the contributing guidelines in `CONTRIBUTING.md`.
-- [ ] If relying on trustee auto-sync, every commit displays a `Verified` signature on GitHub.
+- [ ] Commits are signed off for DCO compliance.
 - [ ] New or existing tests cover these changes, or the PR explains why tests are not needed.
 - [ ] Documentation is updated for user-facing behavior changes.
 - [ ] Generated artifacts are updated when applicable, such as OpenAPI specs,
