@@ -21,8 +21,9 @@ from datetime import timedelta
 from unittest.mock import patch
 
 import pytest
-from temporalio import activity
+from temporalio import activity, workflow
 from temporalio.client import Client, WorkflowHandle
+from temporalio.exceptions import ApplicationError
 from temporalio.worker import Worker
 
 from nv_config_manager.temporal.common.mixins.device import NetworkDeviceData
@@ -43,7 +44,7 @@ from nv_config_manager.temporal.ngc.activities.nautobot import (
     GetNetworkDevicesInput,
     GetNetworkDevicesOutput,
 )
-from nv_config_manager.temporal.ngc.workflows.backup import BackupWorkflow
+from nv_config_manager.temporal.ngc.workflows.backup import BackupInput, BackupWorkflow
 from nv_config_manager.temporal.ngc.workflows.multi_deploy import (
     BatchDeployWorkflow,
     MultiDeployInput,
@@ -115,6 +116,18 @@ async def mock_record_backup_config_manager_plugin(activity_input) -> tuple[bool
 [Latest Commit](https://gitlab.example.com/example-user/deployed-network-configs/-/commit/mock_commit_id)
 """
     return True, f"Persisted new backup configuration:\n{markdown}"
+
+
+@workflow.defn(name="BackupWorkflow", sandboxed=False)
+class MockBatchBackupWorkflow:
+    """Return mixed terminal results for batch backup aggregation tests."""
+
+    @workflow.run
+    async def run(self, workflow_input: BackupInput) -> bool:
+        """Fail one device and report a changed backup for the other."""
+        if workflow_input.device_id == "device_2":
+            raise ApplicationError("mock backup failure", non_retryable=True)
+        return True
 
 
 @pytest.mark.asyncio
@@ -215,8 +228,45 @@ async def test_multi_deploy_workflow_basic_flow(
             "1 total batches" in group_stage["output"]["display"]
         )  # 3 devices with max_batch_size=10
 
-        # Cancel the workflow as we've verified the core functionality
-        await handle.cancel()
+        # Wait for the batch child workflow to request approval
+        start_time = 0
+        while start_time < max_wait_time:
+            stages = await handle.query("stages")
+            execute_stage = next((s for s in stages if s["name"] == "execute_batches"), None)
+            if execute_stage and execute_stage["child_workflows"]:
+                break
+            await asyncio.sleep(0.5)
+            start_time += 0.5
+
+        assert execute_stage and len(execute_stage["child_workflows"]) == 1
+        batch_handle = client.get_workflow_handle(execute_stage["child_workflows"][0])
+
+        start_time = 0
+        while start_time < max_wait_time:
+            batch_stages = await batch_handle.query("stages")
+            review_stage = next(
+                (s for s in batch_stages if s["name"] == "review_shared_diff"), None
+            )
+            if review_stage and review_stage["state"] == "PENDING_APPROVAL":
+                break
+            await asyncio.sleep(0.5)
+            start_time += 0.5
+
+        assert review_stage and review_stage["state"] == "PENDING_APPROVAL"
+        await batch_handle.signal(
+            "approve", {"stage_name": "review_shared_diff", "user": "TestUser"}
+        )
+
+        result = await handle.result()
+        assert result["successful_devices"] == 3
+        assert result["failed_devices"] == 0
+        assert result["total_backups"] == 3
+        assert result["successful_backups"] == 3
+        assert result["failed_backups"] == 0
+
+        stages = await handle.query("stages")
+        execute_stage = next(stage for stage in stages if stage["name"] == "execute_batches")
+        assert "3 backups successful, 0 backups failed" in execute_stage["output"]["display"]
 
 
 @pytest.mark.asyncio
@@ -277,6 +327,9 @@ async def test_multi_deploy_workflow_no_devices(
         assert result["successful_devices"] == 0
         assert result["failed_devices"] == 0
         assert result["rejected_devices"] == 0
+        assert result["total_backups"] == 0
+        assert result["successful_backups"] == 0
+        assert result["failed_backups"] == 0
         assert result["message"] == "No devices found with role 'nonexistent'"
 
 
@@ -335,6 +388,9 @@ async def test_multi_deploy_workflow_no_diffs(
         assert result["successful_devices"] == 0
         assert result["failed_devices"] == 0
         assert result["rejected_devices"] == 0
+        assert result["total_backups"] == 0
+        assert result["successful_backups"] == 0
+        assert result["failed_backups"] == 0
         assert result["message"] == "No devices have configuration changes to deploy"
 
 
@@ -432,7 +488,7 @@ async def test_batch_deploy_workflow_directly(
     async with Worker(
         client,
         task_queue=task_queue_name,
-        workflows=[BatchDeployWorkflow, BackupWorkflow],
+        workflows=[BatchDeployWorkflow, MockBatchBackupWorkflow],
         activities=[
             mock_get_network_device,
             mock_load_intended_configuration,
@@ -536,3 +592,22 @@ async def test_batch_deploy_workflow_directly(
         assert len(result["failed_devices"]) == 0
         assert "spine-01" in result["successful_devices"]
         assert "spine-02" in result["successful_devices"]
+        assert result["backups"]["total"] == 2
+        assert result["backups"]["successful"] == 1
+        assert result["backups"]["failed"] == 1
+        assert set(result["backups"]["results"]) == {"spine-01", "spine-02"}
+        assert result["backups"]["results"]["spine-01"]["success"] is True
+        assert result["backups"]["results"]["spine-01"]["changed"] is True
+        assert result["backups"]["results"]["spine-02"]["success"] is False
+        assert "mock backup failure" in result["backups"]["results"]["spine-02"]["error"]
+        assert all(
+            backup_result["child_workflow_id"]
+            for backup_result in result["backups"]["results"].values()
+        )
+
+        stages = await handle.query("stages")
+        backups_stage = next(stage for stage in stages if stage["name"] == "perform_backups")
+        assert backups_stage["state"] == "COMPLETE"
+        assert backups_stage["output"]["successful_backups"] == 1
+        assert backups_stage["output"]["failed_backups"] == 1
+        assert "Backups completed for 2 devices" in backups_stage["output"]["display"]

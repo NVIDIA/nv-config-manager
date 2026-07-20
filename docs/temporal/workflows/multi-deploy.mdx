@@ -137,6 +137,9 @@ The workflow returns comprehensive results:
     "successful_devices": 12,     # Successfully configured devices
     "failed_devices": 2,          # Devices that failed configuration
     "rejected_devices": 1,        # Devices in rejected batches
+    "total_backups": 12,          # Backup child workflows completed
+    "successful_backups": 11,     # Backup child workflows that succeeded
+    "failed_backups": 1,          # Backup child workflows that failed
     "discovery_failures": {},     # Devices that failed diff collection
     "diff_groups": 3,             # Number of unique diff groups
     "total_batches": 5,           # Total batch workflows created
@@ -144,7 +147,26 @@ The workflow returns comprehensive results:
         "batch_0_abc123": {
             "approved": true,
             "successful_devices": ["spine-01", "spine-02"],
-            "failed_devices": {}
+            "failed_devices": {},
+            "backups": {
+                "total": 2,
+                "successful": 2,
+                "failed": 0,
+                "results": {
+                    "spine-01": {
+                        "success": true,
+                        "changed": true,
+                        "error": null,
+                        "child_workflow_id": "backup-workflow-id"
+                    },
+                    "spine-02": {
+                        "success": true,
+                        "changed": false,
+                        "error": null,
+                        "child_workflow_id": "another-backup-workflow-id"
+                    }
+                }
+            }
         }
     }
 }
