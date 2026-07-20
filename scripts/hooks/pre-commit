@@ -57,7 +57,10 @@ LICENSE_TEXT="Licensed under the Apache License"
 missing_files=()
 checked_count=0
 
-mapfile -d '' -t staged_files < <(git diff --cached --name-only -z --diff-filter=ACM)
+staged_files=()
+while IFS= read -r -d '' staged_file; do
+    staged_files+=("$staged_file")
+done < <(git diff --cached --name-only -z --diff-filter=ACM)
 
 should_skip() {
     local file="$1"
