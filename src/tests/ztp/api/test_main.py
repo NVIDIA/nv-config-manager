@@ -26,6 +26,7 @@ from nv_config_manager.common.client import (
     ConfigStoreFileNotFound,
 )
 from nv_config_manager.ztp.api.main import app
+from nv_config_manager.ztp.api.storage_clients import StorageUnavailableError
 from nv_config_manager.ztp.nautobot import NautobotUnavailableError
 from nv_config_manager.ztp.s3 import (
     S3ExistsException,
@@ -283,7 +284,8 @@ def test_device_v1_firmware_checksum(mock_device_data, mock_not_found_data, clie
         mock_s3_class.return_value = mock_s3_instance
 
         with patch(
-            "nv_config_manager.ztp.api.device_v1.get_storage_client", return_value=mock_s3_instance
+            "nv_config_manager.ztp.api.device_v1.get_object_storage_client",
+            new=AsyncMock(return_value=mock_s3_instance),
         ):
             rsp = client.get(f"/v1/device/{uuid4()}/firmware/checksum", headers=SSO_HEADERS)
             assert rsp.status_code == 200
@@ -293,7 +295,8 @@ def test_device_v1_firmware_checksum(mock_device_data, mock_not_found_data, clie
         mock_s3_instance.get_firmware_checksum = AsyncMock(side_effect=S3NotFoundException())
 
         with patch(
-            "nv_config_manager.ztp.api.device_v1.get_storage_client", return_value=mock_s3_instance
+            "nv_config_manager.ztp.api.device_v1.get_object_storage_client",
+            new=AsyncMock(return_value=mock_s3_instance),
         ):
             rsp = client.get(f"/v1/device/{uuid4()}/firmware/checksum", headers=SSO_HEADERS)
             assert rsp.status_code == 404
@@ -304,6 +307,25 @@ def test_device_v1_firmware_checksum(mock_device_data, mock_not_found_data, clie
     ):
         rsp = client.get(f"/v1/device/{uuid4()}/firmware/checksum", headers=SSO_HEADERS)
         assert rsp.status_code == 404
+
+
+def test_device_v1_firmware_checksum_returns_503_when_storage_unavailable(mock_device_data, client):
+    """Storage backpressure/timeout surfaces to devices as a retryable 503."""
+    mock_s3_instance = MagicMock()
+    mock_s3_instance.get_firmware_checksum = AsyncMock(
+        side_effect=StorageUnavailableError("storage busy")
+    )
+    with patch(
+        "nv_config_manager.ztp.nautobot.NautobotClient.graphql_query",
+        return_value=mock_device_data,
+    ):
+        with patch(
+            "nv_config_manager.ztp.api.device_v1.get_object_storage_client",
+            new=AsyncMock(return_value=mock_s3_instance),
+        ):
+            rsp = client.get(f"/v1/device/{uuid4()}/firmware/checksum", headers=SSO_HEADERS)
+            assert rsp.status_code == 503
+            assert rsp.headers["retry-after"] == "5"
 
 
 @patch("nv_config_manager.ztp.api.device_v1.Request.client")
@@ -502,7 +524,8 @@ def test_v1_firmware_checksum(client):
     mock_s3_class.return_value = mock_s3_instance
 
     with patch(
-        "nv_config_manager.ztp.api.firmware_v1.get_storage_client", return_value=mock_s3_instance
+        "nv_config_manager.ztp.api.firmware_v1.get_object_storage_client",
+        new=AsyncMock(return_value=mock_s3_instance),
     ):
         rsp = client.get("/v1/firmware/arista_eos/4.29.3M/checksum", headers=SSO_HEADERS)
         assert rsp.status_code == 200
@@ -512,7 +535,8 @@ def test_v1_firmware_checksum(client):
     mock_s3_instance.get_firmware_checksum = AsyncMock(side_effect=S3NotFoundException())
 
     with patch(
-        "nv_config_manager.ztp.api.firmware_v1.get_storage_client", return_value=mock_s3_instance
+        "nv_config_manager.ztp.api.firmware_v1.get_object_storage_client",
+        new=AsyncMock(return_value=mock_s3_instance),
     ):
         rsp = client.get("/v1/firmware/arista_eos/4.29.3M/checksum", headers=SSO_HEADERS)
         assert rsp.status_code == 404

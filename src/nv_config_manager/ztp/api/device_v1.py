@@ -24,6 +24,7 @@ from nv_config_manager.common.config import get_storage_client, temporal_client
 from nv_config_manager.common.log import LogCategory, get_logger
 from nv_config_manager.ztp.api.clients import get_nautobot_client
 from nv_config_manager.ztp.api.schemas import ChecksumResponse
+from nv_config_manager.ztp.api.storage_clients import get_object_storage_client, guarded_storage
 from nv_config_manager.ztp.api.streaming import create_object_storage_streaming_response
 from nv_config_manager.ztp.nautobot import NotFoundError
 from nv_config_manager.ztp.storage import ObjectStorageNotFoundException
@@ -136,12 +137,11 @@ async def load_firmware_checksum(device_uuid: str, request: Request) -> Checksum
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-    storage_client = get_storage_client()
+    storage_client = await get_object_storage_client()
     try:
-        async with storage_client:
-            checksum = await storage_client.get_firmware_checksum(
-                device_data.platform, device_data.version
-            )
+        checksum = await guarded_storage(
+            lambda: storage_client.get_firmware_checksum(device_data.platform, device_data.version)
+        )
         return ChecksumResponse(checksum=checksum)
     except ObjectStorageNotFoundException as exc:
         raise HTTPException(status_code=404, detail="Firmware image not found in S3.") from exc

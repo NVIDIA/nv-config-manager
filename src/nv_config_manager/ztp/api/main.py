@@ -30,6 +30,11 @@ from nv_config_manager.common.log import configure_logging
 from nv_config_manager.ztp.api import device_v1, files_v1, firmware_v1
 from nv_config_manager.ztp.api.clients import close_nautobot_client, get_nautobot_client
 from nv_config_manager.ztp.api.metrics import device_http_requests
+from nv_config_manager.ztp.api.storage_clients import (
+    StorageUnavailableError,
+    close_storage_clients,
+    warm_storage_clients,
+)
 from nv_config_manager.ztp.nautobot import NautobotUnavailableError
 
 configure_logging(service="ztp")
@@ -58,12 +63,19 @@ def main() -> None:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    """Create the shared Nautobot client on startup, close it on shutdown."""
+    """Create shared backend clients on startup, close them on shutdown.
+
+    The Nautobot, object storage, and Config Store clients are process-wide
+    singletons so their connection pools / keepalive / backpressure are shared
+    across requests instead of rebuilt per request.
+    """
     get_nautobot_client()
+    await warm_storage_clients()
     try:
         yield
     finally:
         await close_nautobot_client()
+        await close_storage_clients()
 
 
 app = FastAPI(lifespan=lifespan)
@@ -80,6 +92,22 @@ async def _nautobot_unavailable_handler(
     """
     return PlainTextResponse(
         str(exc) or "Nautobot temporarily unavailable.",
+        status_code=503,
+        headers={"Retry-After": "5"},
+    )
+
+
+@app.exception_handler(StorageUnavailableError)
+async def _storage_unavailable_handler(
+    _request: Request, exc: StorageUnavailableError
+) -> PlainTextResponse:
+    """Surface object-storage / Config Store backpressure as a retryable 503.
+
+    Sheds load fast (rather than letting per-request S3/Config Store I/O pile up
+    on the event loop) so a device/ONIE backs off and retries its boot.
+    """
+    return PlainTextResponse(
+        str(exc) or "Storage temporarily unavailable.",
         status_code=503,
         headers={"Retry-After": "5"},
     )

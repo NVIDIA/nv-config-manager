@@ -25,6 +25,7 @@ from nv_config_manager.common.client import (
     ConfigStoreFileNotFound,
 )
 from nv_config_manager.common.config import get_internal_auth_headers, load_config
+from nv_config_manager.ztp.api.storage_clients import get_config_store_client, guarded_storage
 
 
 @dataclass
@@ -98,9 +99,11 @@ class DeviceData:  # pylint: disable=too-many-instance-attributes
         if self.config_store_instance is None:
             raise ConfigStoreFileNotFound(f"No config store file found for device {self.name}")
 
-        client = self.config_store_client()
-        async with client:
-            config_file = await client.load_file(self.id, filename)
+        # Use the process-wide shared Config Store client (pooled connector +
+        # backpressure) rather than building/closing a fresh client per call,
+        # which under load piles TCP+TLS handshakes and coroutines onto the loop.
+        client = get_config_store_client(self)
+        config_file = await guarded_storage(lambda: client.load_file(self.id, filename))
         return config_file.content
 
     @staticmethod
