@@ -471,7 +471,7 @@ async def test_reprovision_pre_backup_rejects_invalid_config_before_factory_rese
         assert len(pre_backup_stage["child_workflows"]) == 1
         assert execute_ztp_stage["state"] == "NOT_STARTED"
         assert backup_stage["state"] == "NOT_STARTED"
-        assert len(candidate_diff_calls) == 1
+        assert len(candidate_diff_calls) == 3
         assert factory_reset_calls == []
         workflow_desc = await handle.describe()
         assert workflow_desc.status.name == "RUNNING"
@@ -498,7 +498,7 @@ async def test_reprovision_retries_pre_backup_stage(
     @activity.defn(name="perform_candidate_diff")
     def mock_retryable_candidate_diff(activity_input: DiffActivityInput) -> str:
         candidate_diff_calls.append(activity_input)
-        if len(candidate_diff_calls) == 1:
+        if len(candidate_diff_calls) <= 3:
             raise ConfigSyntaxException("Invalid intended configuration")
         return ""
 
@@ -571,7 +571,7 @@ async def test_reprovision_retries_pre_backup_stage(
         assert "No configuration drift was detected" in pre_backup_stage["output"]["display"]
         assert len(pre_backup_stage["child_workflows"]) == 2
         assert execute_ztp_stage["state"] == "COMPLETE"
-        assert len(candidate_diff_calls) >= 2
+        assert len(candidate_diff_calls) >= 4
         assert len(factory_reset_calls) == 1
 
 

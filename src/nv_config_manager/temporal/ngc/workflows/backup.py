@@ -21,7 +21,7 @@ from enum import StrEnum
 from pydantic import BaseModel, Field
 from temporalio import workflow
 from temporalio.common import RetryPolicy
-from temporalio.exceptions import ActivityError, ApplicationError
+from temporalio.exceptions import ApplicationError
 
 from nv_config_manager.temporal.common.decorators.workflow import run_nv_config_manager_workflow
 from nv_config_manager.temporal.common.mixins.metadata import WorkflowMetadataMixin
@@ -58,10 +58,6 @@ with workflow.unsafe.imports_passed_through():
 
 
 DEFAULT_ACTIVITY_RETRY_POLICY = RetryPolicy(maximum_attempts=3)
-TERMINATE_ON_FAILURE_CONFIG_RETRY_POLICY = RetryPolicy(
-    maximum_attempts=3,
-    non_retryable_error_types=["ConfigSyntaxException"],
-)
 
 
 class TriggerEnum(StrEnum):
@@ -208,32 +204,12 @@ class BackupWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, ArchiveMixi
         )
 
         # Perform diff
-        try:
-            diff = await workflow.execute_activity(
-                perform_candidate_diff,
-                DiffActivityInput(device_data=result.device, configuration=content),
-                start_to_close_timeout=timedelta(minutes=1),
-                retry_policy=(
-                    TERMINATE_ON_FAILURE_CONFIG_RETRY_POLICY
-                    if self.terminate_on_failure
-                    else DEFAULT_ACTIVITY_RETRY_POLICY
-                ),
-            )
-        except ActivityError as exc:
-            config_syntax_error = (
-                isinstance(exc.cause, ApplicationError)
-                and (exc.cause.type or exc.cause.__class__.__name__) == "ConfigSyntaxException"
-            )
-            if not self.terminate_on_failure or not config_syntax_error:
-                raise
-
-            raise ApplicationError(
-                "Invalid intended configuration",
-                result.device.name,
-                url,
-                type="ConfigSyntaxException",
-                non_retryable=True,
-            ) from exc
+        diff = await workflow.execute_activity(
+            perform_candidate_diff,
+            DiffActivityInput(device_data=result.device, configuration=content),
+            start_to_close_timeout=timedelta(minutes=1),
+            retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+        )
 
         has_drift = bool(diff.strip())
         if not has_drift:

@@ -37,6 +37,7 @@ with workflow.unsafe.imports_passed_through():
         build_workflow_url,
         get_ui_base_url,
     )
+    from nv_config_manager.temporal.ngc.activities.deploy import load_intended_configuration
     from nv_config_manager.temporal.ngc.activities.nautobot import (
         CheckRecordedConfigDriftInput,
         GetNetworkDeviceInput,
@@ -133,18 +134,14 @@ class ReprovisionWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
             return ""
 
     @staticmethod
-    def _invalid_config_details(error: BaseException) -> tuple[str, str] | None:
-        """Find intended-config details propagated by a failed backup child workflow."""
+    def _is_invalid_config_error(error: BaseException) -> bool:
+        """Return whether a failed backup child encountered invalid intended config."""
         current: BaseException | None = error
         while current is not None:
-            if (
-                isinstance(current, ApplicationError)
-                and current.type == "ConfigSyntaxException"
-                and len(current.details) >= 2
-            ):
-                return str(current.details[0]), str(current.details[1])
+            if isinstance(current, ApplicationError) and current.type == "ConfigSyntaxException":
+                return True
             current = getattr(current, "cause", None)
-        return None
+        return False
 
     @staticmethod
     def _backup_workflow_reference(ui_base_url: str, workflow_id: str) -> str:
@@ -186,15 +183,20 @@ class ReprovisionWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
         try:
             await backup_handle
         except ChildWorkflowError as exc:
-            invalid_config_details = self._invalid_config_details(exc)
-            if invalid_config_details is not None:
-                device_name, intended_config_url = invalid_config_details
+            if self._is_invalid_config_error(exc):
+                device_data = await self._fetch_device(stage_input.device_id)
+                _content, _commit_id, intended_config_url = await workflow.execute_activity(
+                    load_intended_configuration,
+                    device_data,
+                    start_to_close_timeout=timedelta(minutes=1),
+                    retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+                )
                 self.set_stage_output(
                     "pre_reprovision_backup",
                     ReprovisionWorkflow.PreReprovisionBackupStageOutput(
                         display=(
                             "### Invalid intended configuration\n\n"
-                            f"The intended configuration for **{device_name}** is invalid "
+                            f"The intended configuration for **{device_data.name}** is invalid "
                             "and could not be loaded as a candidate. No factory reset was "
                             "requested.\n\n"
                             "Check the intended configuration "
