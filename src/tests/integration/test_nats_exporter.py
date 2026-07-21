@@ -185,7 +185,9 @@ def nats_deployment(config_manager_namespace: str, nats_podmonitor: dict) -> dic
 
 
 def _exporter_container(deployment: dict) -> dict | None:
-    containers = deployment.get("spec", {}).get("template", {}).get("spec", {}).get("containers", [])
+    containers = (
+        deployment.get("spec", {}).get("template", {}).get("spec", {}).get("containers", [])
+    )
     for container in containers:
         if container.get("name") == EXPORTER_CONTAINER:
             return container
