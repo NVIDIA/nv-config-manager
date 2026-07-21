@@ -33,6 +33,10 @@ from nv_config_manager.temporal.common.mixins.stage import (
 with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.common.mixins.archive import ArchiveMixin
     from nv_config_manager.temporal.common.mixins.device import DeviceMixin
+    from nv_config_manager.temporal.ngc.activities.config import (
+        build_workflow_url,
+        get_ui_base_url,
+    )
     from nv_config_manager.temporal.ngc.activities.deploy import (
         DiffActivityInput,
         load_intended_configuration,
@@ -59,6 +63,7 @@ DEFAULT_ACTIVITY_RETRY_POLICY = RetryPolicy(
     non_retryable_error_types=["FirmwareUpgradeException"],
 )
 VALIDATE_INTENDED_CONFIG_PATCH_ID = "reprovision-validate-intended-config-v1"
+BACKUP_WORKFLOW_LINK_PATCH_ID = "reprovision-backup-workflow-link-v1"
 
 
 class ReprovisionInput(BaseModel):
@@ -174,6 +179,14 @@ class ReprovisionWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
     @stage_executor("perform_backup")
     async def perform_backup(self, stage_input: BackupStageInput) -> BackupStageOutput:
         """Perform a configuration backup."""
+        ui_base_url = ""
+        if workflow.patched(BACKUP_WORKFLOW_LINK_PATCH_ID):
+            ui_base_url = await workflow.execute_activity(
+                get_ui_base_url,
+                start_to_close_timeout=timedelta(seconds=10),
+                retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+            )
+
         backup_input = BackupInput(
             device_id=stage_input.device_id,
             trigger=TriggerEnum.WORKFLOW,
@@ -189,8 +202,16 @@ class ReprovisionWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
         self.append_child_workflow("perform_backup", backup_handle.id)
         await workflow.wait_condition(backup_handle.done)
 
+        if ui_base_url:
+            backup_workflow_url = build_workflow_url(ui_base_url, backup_handle.id)
+            display = (
+                f"Configuration backup completed via [backup workflow]({backup_workflow_url})."
+            )
+        else:
+            display = f"Configuration backup completed via workflow {backup_handle.id}."
+
         return ReprovisionWorkflow.BackupStageOutput(
-            display=f"Configuration backup completed via workflow {backup_handle.id}."
+            display=display,
         )
 
     @run_nv_config_manager_workflow

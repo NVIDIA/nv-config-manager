@@ -144,6 +144,12 @@ async def mock_publish_nats(activity_input: PublishNatsInput) -> None:
     return None
 
 
+@activity.defn(name="get_ui_base_url")
+async def mock_get_ui_base_url() -> str:
+    """Return the Temporal UI base URL used for child workflow links."""
+    return "https://temporal.example.com"
+
+
 @pytest.mark.asyncio
 @patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
 @patch(
@@ -175,6 +181,7 @@ async def test_reprovision_workflow(
             mock_persist_config_backup,
             mock_record_backup_config_manager_plugin,
             mock_publish_nats,
+            mock_get_ui_base_url,
         ],
         activity_executor=ThreadPoolExecutor(5),
     ):
@@ -209,6 +216,10 @@ async def test_reprovision_workflow(
 
         # Verify backup workflow was executed
         backup_workflow_id = backup_stage["child_workflows"][0]
+        assert backup_stage["output"]["display"] == (
+            "Configuration backup completed via "
+            f"[backup workflow](https://temporal.example.com/workflows/{backup_workflow_id})."
+        )
         backup_handle = client.get_workflow_handle(backup_workflow_id)
         backup_result = await backup_handle.result()
         assert backup_result is True
@@ -311,6 +322,7 @@ async def test_reprovision_workflow_ztp_failure(
             mock_persist_config_backup,
             mock_record_backup_config_manager_plugin,
             mock_publish_nats,
+            mock_get_ui_base_url,
         ],
         activity_executor=ThreadPoolExecutor(5),
     ):
@@ -374,6 +386,7 @@ async def test_reprovision_workflow_ztp_timeout(
             mock_persist_config_backup,
             mock_record_backup_config_manager_plugin,
             mock_publish_nats,
+            mock_get_ui_base_url,
         ],
         activity_executor=ThreadPoolExecutor(5),
     ):

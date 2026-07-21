@@ -66,6 +66,8 @@ The workflow runs two stages in order. Each stage is defined as a Pydantic-valid
 
    Once ZTP succeeds, the workflow starts the [Configuration Backup](../configuration-backup/index.mdx) workflow as a child workflow against the same device, with `trigger=WORKFLOW` and a 10-minute run timeout. The child workflow ID is recorded on the parent so you can drill into the backup run from the Reprovision status page.
 
+   When the backup completes, the stage output links directly to the child backup workflow in the Temporal UI.
+
    The backup gives you a known-good starting point for future change tracking on the freshly provisioned device.
 
 After both stages complete, the workflow archives its results and returns success.
