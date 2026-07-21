@@ -22,11 +22,11 @@ from unittest.mock import patch
 
 import pytest
 from temporalio import activity
-from temporalio.client import Client, WorkflowFailureError, WorkflowHandle
+from temporalio.client import Client, WorkflowHandle
 from temporalio.common import RetryPolicy
-from temporalio.exceptions import ApplicationError
 from temporalio.worker import Worker
 
+from nv_config_manager.temporal.client.device import ConfigSyntaxException
 from nv_config_manager.temporal.common.mixins.device import NetworkDeviceData
 from nv_config_manager.temporal.ngc.activities.backup import (
     PersistConfigBackupInput,
@@ -238,11 +238,13 @@ async def test_reprovision_validates_intended_config_before_factory_reset(
     env,
 ):
     """An invalid intended config must fail before factory reset is requested."""
+    candidate_diff_calls: list[DiffActivityInput] = []
     factory_reset_calls: list[ExecuteZTPInput] = []
 
     @activity.defn(name="perform_candidate_diff")
-    def mock_invalid_candidate_diff(_activity_input: DiffActivityInput) -> str:
-        raise ApplicationError("Invalid intended configuration", non_retryable=True)
+    def mock_invalid_candidate_diff(activity_input: DiffActivityInput) -> str:
+        candidate_diff_calls.append(activity_input)
+        raise ConfigSyntaxException("Invalid intended configuration")
 
     @activity.defn(name="execute_ztp")
     def mock_counting_execute_ztp(activity_input: ExecuteZTPInput) -> ExecuteZTPOutput:
@@ -271,16 +273,30 @@ async def test_reprovision_validates_intended_config_before_factory_reset(
             run_timeout=timedelta(minutes=1),
         )
 
-        with pytest.raises(WorkflowFailureError):
-            await handle.result()
-
         stages = await handle.query("stages")
+        while stages[0]["state"] != "FAILED":
+            await asyncio.sleep(0.1)
+            stages = await handle.query("stages")
+
         execute_ztp_stage = next(stage for stage in stages if stage["name"] == "execute_ztp")
         backup_stage = next(stage for stage in stages if stage["name"] == "perform_backup")
         assert execute_ztp_stage["state"] == "FAILED"
         assert "Invalid intended configuration" in execute_ztp_stage["traceback"]
+        assert execute_ztp_stage["output"]["display"] == (
+            "### Invalid intended configuration\n\n"
+            "The intended configuration for **mock_device** is invalid and could not be loaded "
+            "as a candidate. No factory reset was requested.\n\n"
+            "[Open the intended configuration](https://gitlab.example.com/example-user/"
+            "intended-network-configs/-/blob/mock_intended_commit_id/SITEA/MOCK_DEVICE/"
+            "startup.yaml), fix the errors, then retry this stage."
+        )
         assert backup_stage["state"] == "NOT_STARTED"
+        assert len(candidate_diff_calls) == 1
         assert factory_reset_calls == []
+        workflow_desc = await handle.describe()
+        assert workflow_desc.status.name == "RUNNING"
+
+        await handle.terminate()
 
 
 @pytest.mark.asyncio

@@ -19,7 +19,7 @@ from datetime import timedelta
 from pydantic import BaseModel, Field
 from temporalio import workflow
 from temporalio.common import RetryPolicy
-from temporalio.exceptions import ApplicationError
+from temporalio.exceptions import ActivityError, ApplicationError
 
 from nv_config_manager.temporal.common.decorators.workflow import run_nv_config_manager_workflow
 from nv_config_manager.temporal.common.mixins.metadata import WorkflowMetadataMixin
@@ -60,9 +60,10 @@ with workflow.unsafe.imports_passed_through():
 
 DEFAULT_ACTIVITY_RETRY_POLICY = RetryPolicy(
     maximum_attempts=3,
-    non_retryable_error_types=["FirmwareUpgradeException"],
+    non_retryable_error_types=["ConfigSyntaxException", "FirmwareUpgradeException"],
 )
 VALIDATE_INTENDED_CONFIG_PATCH_ID = "reprovision-validate-intended-config-v1"
+INTENDED_CONFIG_FAILURE_GUIDANCE_PATCH_ID = "reprovision-config-failure-guidance-v1"
 BACKUP_WORKFLOW_LINK_PATCH_ID = "reprovision-backup-workflow-link-v1"
 
 
@@ -127,18 +128,45 @@ class ReprovisionWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
         # Validate that the rendered config exists and can be loaded as a candidate
         # before factory reset makes the current configuration unavailable.
         if workflow.patched(VALIDATE_INTENDED_CONFIG_PATCH_ID):
-            intended_config, _commit_id, _url = await workflow.execute_activity(
+            intended_config, _commit_id, intended_config_url = await workflow.execute_activity(
                 load_intended_configuration,
                 device_data,
                 start_to_close_timeout=timedelta(minutes=1),
                 retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
             )
-            await workflow.execute_activity(
-                perform_candidate_diff,
-                DiffActivityInput(device_data=device_data, configuration=intended_config),
-                start_to_close_timeout=timedelta(minutes=1),
-                retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
-            )
+            try:
+                await workflow.execute_activity(
+                    perform_candidate_diff,
+                    DiffActivityInput(device_data=device_data, configuration=intended_config),
+                    start_to_close_timeout=timedelta(minutes=1),
+                    retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+                )
+            except ActivityError as exc:
+                config_syntax_error = (
+                    isinstance(exc.cause, ApplicationError)
+                    and (exc.cause.type or exc.cause.__class__.__name__) == "ConfigSyntaxException"
+                )
+                if not config_syntax_error or not workflow.patched(
+                    INTENDED_CONFIG_FAILURE_GUIDANCE_PATCH_ID
+                ):
+                    raise
+
+                self.set_stage_output(
+                    "execute_ztp",
+                    ReprovisionWorkflow.ExecuteZTPStageOutput(
+                        display=(
+                            "### Invalid intended configuration\n\n"
+                            f"The intended configuration for **{device_data.name}** is invalid "
+                            "and could not be loaded as a candidate. No factory reset was "
+                            "requested.\n\n"
+                            f"[Open the intended configuration]({intended_config_url}), fix the "
+                            "errors, then retry this stage."
+                        )
+                    ),
+                )
+                raise ApplicationError(
+                    "The intended configuration is invalid. Fix the errors and retry this stage."
+                ) from exc
 
         # Trigger ZTP through factory reset
         ztp_execute_result = await workflow.execute_activity(

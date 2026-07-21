@@ -365,4 +365,34 @@ ServiceUnavailableError: service: retry later`;
       tracebackCard.getByText("Unknown Error", { exact: true })
     ).toHaveCount(0);
   });
+
+  test("renders actionable Markdown output for a failed stage", async ({ page }) => {
+    const workflowId = "failed-workflow-with-guidance";
+    const workflow = createWorkflowWithStage({
+      id: workflowId,
+      retryable: true,
+      stageName: "execute_ztp",
+      stageState: "FAILED",
+      status: "RUNNING",
+    });
+    workflow.stages[0].output = {
+      display:
+        "The intended configuration is invalid. [Open the intended configuration](https://config.example.com/device/test/startup.yaml), fix it, then retry this stage.",
+    };
+
+    await page.route(`**/v1/workflow/${workflowId}`, async (route) => {
+      await route.fulfill({ status: 200, json: workflow });
+    });
+
+    await page.goto(`/workflows/${workflowId}`);
+
+    await expect(
+      page.getByRole("link", { name: "Open the intended configuration" })
+    ).toHaveAttribute(
+      "href",
+      "https://config.example.com/device/test/startup.yaml"
+    );
+    await expect(page.getByTestId("error-traceback-card")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
+  });
 });

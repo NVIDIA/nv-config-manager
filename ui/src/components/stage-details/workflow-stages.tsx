@@ -147,14 +147,26 @@ function customUrlTransform(url: string) {
 }
 
 const StageOutput = ({ stage }: { stage: WorkflowStage }) => {
+  const stageOutput = stage?.output as { display?: string } | null | undefined;
+  const output = stageOutput?.display;
+
   if (stage.state === "FAILED") {
     return (
-      <ErrorTracebackViewer error={{ traceback: stage.traceback || "" }} />
+      <div className="space-y-4">
+        {output && (
+          <Markdown
+            className="stageMarkdown"
+            remarkPlugins={[remarkGfm]}
+            urlTransform={customUrlTransform}
+          >
+            {output}
+          </Markdown>
+        )}
+        <ErrorTracebackViewer error={{ traceback: stage.traceback || "" }} />
+      </div>
     );
   }
 
-  const stageOutput = stage?.output as { display?: string } | null | undefined;
-  const output = stageOutput?.display;
   if (!output) {
     return <div>No output to display</div>;
   }

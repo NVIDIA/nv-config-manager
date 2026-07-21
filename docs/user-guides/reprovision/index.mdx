@@ -76,13 +76,17 @@ After both stages complete, the workflow archives its results and returns succes
 
 Confirm the reprovision succeeded by checking all of the following:
 
-- **Workflow status** shows both stages green on the Config Manager run page, and the run reports `display: "ZTP completed successfully"` and `display: "Configuration backup completed via workflow <id>."`.
+- **Workflow status** shows both stages green on the Config Manager run page, and the run reports `display: "ZTP completed successfully"` and links to the completed backup workflow.
 - **Nautobot device status** has returned to **Provisioned**. ZTP is the process that flips the device into this state, so if the device is still showing Provisioning, ZTP did not finalize.
 - **Backup record** is present in the Config Manager backup store with a timestamp matching the workflow run. If the backup child workflow failed but ZTP succeeded, the device is provisioned but you should re-run the backup workflow directly — see [Configuration Backup](../configuration-backup/index.mdx).
 - **Device is reachable** over its management IP using the current site root credentials from your secrets store, and the cumulus user is restored.
 - **Cable validation** still passes for any ports on the reprovisioned device. If you replaced hardware, run the [Cable Validation](../cable-validation/index.mdx) workflow on the device's site to confirm the new unit is cabled the same way as the old one.
 
 ## Common issues
+
+**The intended configuration is invalid.**
+
+Reprovision stops before factory reset and links to the intended configuration that the switch could not load as a candidate. Open the link from the failed stage, fix and re-render the configuration, then retry the stage.
 
 **ZTP failed to complete within 30 minutes.**
 
