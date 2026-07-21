@@ -165,6 +165,14 @@ jobs:
             KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME}" \
             INSTALL_CONFIG=deploy/configs/ci-integration-test.yaml \
             HELM_TIMEOUT=20m
+
+          kind_ca_bundle="${RUNNER_TEMP}/nvcm-kind-ca-bundle.crt"
+          cp "${REQUESTS_CA_BUNDLE:-/etc/ssl/certs/ca-certificates.crt}" "${kind_ca_bundle}"
+          printf '\n' >>"${kind_ca_bundle}"
+          kubectl get secret -n "${NV_CONFIG_MANAGER_NAMESPACE}" nv-config-manager-gateway-tls \
+            -o jsonpath='{.data.tls\.crt}' | base64 --decode >>"${kind_ca_bundle}"
+          echo "REQUESTS_CA_BUNDLE=${kind_ca_bundle}" >>"${GITHUB_ENV}"
+
           kubectl get pods -n "${NV_CONFIG_MANAGER_NAMESPACE}" -o wide
       - name: Run integration tests
         timeout-minutes: 50

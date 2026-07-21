@@ -15,7 +15,10 @@
 # limitations under the License.
 """Add SPDX license headers to source files in the NVIDIA Config Manager repository."""
 
+import re
 import sys
+from collections.abc import Callable
+from enum import Enum, auto
 from pathlib import Path
 
 PYTHON_HEADER = """\
@@ -90,7 +93,7 @@ JS_TS_DIRS = [
 ]
 
 GO_DIRS = [
-    "components/nats-ready",
+    "components",
 ]
 
 SKIP_PATTERNS = {
@@ -102,21 +105,26 @@ SKIP_PATTERNS = {
     "uv.lock",
 }
 
-SHORT_SPDX_PYTHON = (
-    "# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES."
-    " All rights reserved.\n"
-    "# SPDX-License-Identifier: Apache-2.0\n"
-)
 
-SHORT_SPDX_PYTHON_ALT = (
-    "# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES.\n"
-    "# SPDX-License-Identifier: Apache-2.0\n"
-)
+class HeaderResult(Enum):
+    """Outcome of processing a single source file."""
 
-SHORT_SPDX_JS = (
-    "// SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES."
-    " All rights reserved.\n"
-    "// SPDX-License-Identifier: Apache-2.0\n"
+    ADDED = auto()
+    SKIPPED = auto()
+    FAILED = auto()
+
+
+_PYTHON_SHORT_HEADER = re.compile(
+    r"\A(?P<preamble>\#![^\n]*\n)?"
+    r"(?P<header>\# SPDX-FileCopyrightText:[^\n]*\n\# SPDX-License-Identifier: Apache-2\.0\n)"
+)
+_JS_TS_SHORT_HEADER = re.compile(
+    r"\A(?P<preamble>(?:[ \t]*(?:\"use (?:client|server)\"|'use (?:client|server)')[ \t]*;?[ \t]*\n)?)"
+    r"(?P<header>// SPDX-FileCopyrightText:[^\n]*\n// SPDX-License-Identifier: Apache-2\.0\n)"
+)
+_GO_SHORT_HEADER = re.compile(
+    r"\A(?P<preamble>(?:(?://go:build[^\n]*|// \+build[^\n]*)\n)*(?:\n)?)"
+    r"(?P<header>// SPDX-FileCopyrightText:[^\n]*\n// SPDX-License-Identifier: Apache-2\.0\n)"
 )
 
 
@@ -136,28 +144,51 @@ def has_short_header(content: str) -> bool:
 
 
 def replace_short_header_python(content: str) -> str:
-    """Replace a short 2-line SPDX header with the full license block."""
-    if SHORT_SPDX_PYTHON in content:
-        return content.replace(SHORT_SPDX_PYTHON, PYTHON_HEADER, 1)
-    if SHORT_SPDX_PYTHON_ALT in content:
-        return content.replace(SHORT_SPDX_PYTHON_ALT, PYTHON_HEADER, 1)
-    return content
+    """Replace a Python short SPDX header at the source-file preamble."""
+    return _replace_short_header(content, _PYTHON_SHORT_HEADER, PYTHON_HEADER)
 
 
 def replace_short_header_js(content: str) -> str:
-    return content.replace(SHORT_SPDX_JS, JS_TS_HEADER, 1)
+    """Replace a JavaScript short SPDX header at the source-file preamble."""
+    return _replace_short_header(content, _JS_TS_SHORT_HEADER, JS_TS_HEADER)
 
 
-def add_header_to_python(file_path: Path) -> bool:
+def replace_short_header_go(content: str) -> str:
+    """Replace a Go short SPDX header at the source-file preamble."""
+    return _replace_short_header(content, _GO_SHORT_HEADER, GO_HEADER)
+
+
+def _replace_short_header(content: str, pattern: re.Pattern[str], header: str) -> str:
+    """Replace a matched preamble header while preserving language directives."""
+    match = pattern.match(content)
+    if match is None:
+        return content
+    return (match.group("preamble") or "") + header + content[match.end("header") :]
+
+
+def replace_existing_short_header(
+    file_path: Path,
+    content: str,
+    replace_header: Callable[[str], str],
+) -> HeaderResult:
+    """Write a normalized short header or report a header outside the preamble."""
+    new_content = replace_header(content)
+    if new_content == content:
+        print(f"Error processing {file_path}: short SPDX header is not at the supported preamble")
+        return HeaderResult.FAILED
+    file_path.write_text(new_content, encoding="utf-8")
+    return HeaderResult.ADDED
+
+
+def add_header_to_python(file_path: Path) -> HeaderResult:
     try:
         content = file_path.read_text(encoding="utf-8")
 
         if has_full_header(content):
-            return False
+            return HeaderResult.SKIPPED
 
         if has_short_header(content):
-            file_path.write_text(replace_short_header_python(content), encoding="utf-8")
-            return True
+            return replace_existing_short_header(file_path, content, replace_short_header_python)
 
         if content.startswith("#!"):
             lines = content.split("\n", 1)
@@ -166,22 +197,21 @@ def add_header_to_python(file_path: Path) -> bool:
             new_content = PYTHON_HEADER + content
 
         file_path.write_text(new_content, encoding="utf-8")
-        return True
-    except Exception as e:
-        print(f"Error processing {file_path}: {e}")
-        return False
+        return HeaderResult.ADDED
+    except (OSError, UnicodeError) as error:
+        print(f"Error processing {file_path}: {error}")
+        return HeaderResult.FAILED
 
 
-def add_header_to_js_ts(file_path: Path) -> bool:
+def add_header_to_js_ts(file_path: Path) -> HeaderResult:
     try:
         content = file_path.read_text(encoding="utf-8")
 
         if has_full_header(content):
-            return False
+            return HeaderResult.SKIPPED
 
         if has_short_header(content):
-            file_path.write_text(replace_short_header_js(content), encoding="utf-8")
-            return True
+            return replace_existing_short_header(file_path, content, replace_short_header_js)
 
         stripped = content.strip()
         if stripped.startswith(('"use client"', "'use client'", '"use server"', "'use server'")):
@@ -191,22 +221,21 @@ def add_header_to_js_ts(file_path: Path) -> bool:
             new_content = JS_TS_HEADER + content
 
         file_path.write_text(new_content, encoding="utf-8")
-        return True
-    except Exception as e:
-        print(f"Error processing {file_path}: {e}")
-        return False
+        return HeaderResult.ADDED
+    except (OSError, UnicodeError) as error:
+        print(f"Error processing {file_path}: {error}")
+        return HeaderResult.FAILED
 
 
-def add_header_to_go(file_path: Path) -> bool:
+def add_header_to_go(file_path: Path) -> HeaderResult:
     try:
         content = file_path.read_text(encoding="utf-8")
 
         if has_full_header(content):
-            return False
+            return HeaderResult.SKIPPED
 
         if has_short_header(content):
-            file_path.write_text(replace_short_header_js(content), encoding="utf-8")
-            return True
+            return replace_existing_short_header(file_path, content, replace_short_header_go)
 
         if content.startswith("//go:build") or content.startswith("// +build"):
             lines = content.split("\n")
@@ -226,72 +255,91 @@ def add_header_to_go(file_path: Path) -> bool:
             new_content = GO_HEADER + content
 
         file_path.write_text(new_content, encoding="utf-8")
-        return True
-    except Exception as e:
-        print(f"Error processing {file_path}: {e}")
-        return False
+        return HeaderResult.ADDED
+    except (OSError, UnicodeError) as error:
+        print(f"Error processing {file_path}: {error}")
+        return HeaderResult.FAILED
 
 
 def process_directory(
-    base_path: Path, dir_path: str, extension: str, add_header_func: object
-) -> tuple[int, int]:
+    base_path: Path,
+    dir_path: str,
+    extension: str,
+    add_header_func: Callable[[Path], HeaderResult],
+) -> tuple[int, int, int]:
     full_path = base_path / dir_path
     if not full_path.exists():
         print(f"  Directory not found: {full_path}")
-        return 0, 0
+        return 0, 0, 0
 
     modified = 0
     skipped = 0
+    failed = 0
 
     for file_path in sorted(full_path.rglob(f"*{extension}")):
         if should_skip(file_path):
             continue
-        if add_header_func(file_path):
+        result = add_header_func(file_path)
+        if result is HeaderResult.ADDED:
             print(f"  Added header: {file_path.relative_to(base_path)}")
             modified += 1
-        else:
+        elif result is HeaderResult.SKIPPED:
             skipped += 1
+        else:
+            failed += 1
 
-    return modified, skipped
+    return modified, skipped, failed
 
 
-def main() -> None:
+def main() -> int:
     script_path = Path(__file__).resolve()
     repo_root = script_path.parent.parent
 
     if not (repo_root / "pyproject.toml").exists():
         print("Error: Could not find repository root")
-        sys.exit(1)
+        return 1
 
     print(f"Repository root: {repo_root}")
     print()
 
     total_modified = 0
     total_skipped = 0
+    total_failed = 0
 
     print("Processing Python files...")
     for dir_path in PYTHON_DIRS:
-        modified, skipped = process_directory(repo_root, dir_path, ".py", add_header_to_python)
+        modified, skipped, failed = process_directory(
+            repo_root, dir_path, ".py", add_header_to_python
+        )
         total_modified += modified
         total_skipped += skipped
+        total_failed += failed
 
     print("\nProcessing TypeScript/JavaScript files...")
     for dir_path in JS_TS_DIRS:
         for ext in (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"):
-            modified, skipped = process_directory(repo_root, dir_path, ext, add_header_to_js_ts)
+            modified, skipped, failed = process_directory(
+                repo_root, dir_path, ext, add_header_to_js_ts
+            )
             total_modified += modified
             total_skipped += skipped
+            total_failed += failed
 
     print("\nProcessing Go files...")
     for dir_path in GO_DIRS:
-        modified, skipped = process_directory(repo_root, dir_path, ".go", add_header_to_go)
+        modified, skipped, failed = process_directory(repo_root, dir_path, ".go", add_header_to_go)
         total_modified += modified
         total_skipped += skipped
+        total_failed += failed
 
     print()
     print(f"Total files modified: {total_modified}")
     print(f"Total files skipped (already had header): {total_skipped}")
+    print(f"Total files failed: {total_failed}")
+    if total_modified:
+        print("Re-stage modified files before committing.")
+    return int(total_failed > 0)
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

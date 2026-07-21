@@ -372,6 +372,7 @@ spec:
     {{- include "nv-config-manager.browserBackendRefs" (dict "root" . "backendName" (printf "%s-api" $temporalName) "backendPort" 9000 "proxyPort" 9104) | nindent 4 }}
 ---
 # Temporal Web UI HTTPRoute (temporal.<base>) - OIDC-only, via browser proxy
+{{- if .Values.temporal.server.enabled }}
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -390,6 +391,7 @@ spec:
         value: /
     {{- include "nv-config-manager.protectedIdentityHeaders" (dict "redirectHostname" (tpl .Values.temporal.gateway.devUi.hostname .)) | nindent 4 }}
     {{- include "nv-config-manager.browserBackendRefs" (dict "root" . "backendName" (printf "%s-web-service" $temporalName) "backendPort" 8080 "proxyPort" 9105) | nindent 4 }}
+{{- end }}
 {{- end }}
 
 ---

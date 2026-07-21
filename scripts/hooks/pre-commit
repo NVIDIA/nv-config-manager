@@ -57,7 +57,10 @@ LICENSE_TEXT="Licensed under the Apache License"
 missing_files=()
 checked_count=0
 
-mapfile -d '' -t staged_files < <(git diff --cached --name-only -z --diff-filter=ACM)
+staged_files=()
+while IFS= read -r -d '' staged_file; do
+    staged_files+=("$staged_file")
+done < <(git diff --cached --name-only -z --diff-filter=ACM)
 
 should_skip() {
     local file="$1"
@@ -93,15 +96,12 @@ has_extension() {
 check_spdx_header() {
     local file="$1"
 
-    if [[ ! -f "$file" ]]; then
+    if [[ "$(git cat-file -s ":$file")" == "0" ]]; then
         return 0
     fi
 
-    if [[ ! -s "$file" ]]; then
-        return 0
-    fi
-
-    if head -n 20 "$file" | grep -q "$SPDX_IDENTIFIER" && head -n 20 "$file" | grep -q "$LICENSE_TEXT"; then
+    if git show ":$file" | head -n 20 | grep -q "$SPDX_IDENTIFIER" && \
+        git show ":$file" | head -n 20 | grep -q "$LICENSE_TEXT"; then
         return 0
     fi
 
@@ -239,7 +239,7 @@ if [[ ${#missing_files[@]} -gt 0 ]]; then
     echo "   * ..."
     echo "   */"
     echo ""
-    echo -e "Run ${GREEN}uv run python scripts/add_spdx_headers.py${NC} to add headers automatically."
+    echo -e "Run ${GREEN}uv run python scripts/add_spdx_headers.py${NC}, then re-stage the modified files."
     echo ""
     exit 1
 fi

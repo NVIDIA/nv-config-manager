@@ -46,7 +46,9 @@ The workflow runs three stages in order. Only the first stage requires human app
 
 1. **`perform_backups` — Capture a fresh backup for every successful device.**
 
-   For each device in `successful_devices`, the workflow starts the [Configuration Backup](../configuration-backup/index.mdx) workflow as a child workflow with `trigger=WORKFLOW`, attaching the device's intended-config commit SHA so the new backup is correlated with the configuration version that was just applied. All backup children are started immediately and awaited in parallel with a 10-minute run timeout. Backup failures are not surfaced as workflow failures — the device is configured and in service; only the post-deploy backup is missing.
+   For each device in `successful_devices`, the workflow starts the [Configuration Backup](../configuration-backup/index.mdx) workflow as a child workflow with `trigger=WORKFLOW`, attaching the device's intended-config commit SHA so the new backup is correlated with the configuration version that was just applied. All backup children are started immediately and awaited concurrently with a 10-minute run timeout.
+
+   The stage displays a direct link to every backup child as soon as it starts and updates each link as the child succeeds or fails. It also records each terminal result by device name, including whether the backup succeeded, whether it changed the stored configuration, any error, and the child workflow ID. A failed backup is included in `failed_backups` and the per-device result, but it does not fail the deployment batch — the device is configured and in service; only the post-deploy backup is missing.
 
 If `review_shared_diff` rejects, the workflow archives the result and exits without running the two subsequent stages.
 
@@ -57,8 +59,9 @@ Confirm the run succeeded by checking all of the following:
 - **All three stages green** on the Config Manager run page (or `review_shared_diff` green and the others marked unreachable, if the diff was rejected).
 - **`successful_devices`** in the workflow result lists every device the operator expected to receive the change.
 - **`failed_devices`** is empty. Any entry is a `{device_name: error}` pair; investigate the error and re-run with a corrected batch input.
-- **A fresh backup exists** for every successful device. The `perform_backups` stage display reports the number of backup child workflows it initiated; cross-check those child runs from the status page if a device is in production and you need the new backup confirmed.
-- **Parent workflow link** (when invoked by Multi-Deploy) reflects the batch result in the parent's `execute_batches` display.
+- **The `backups` summary is complete.** Its `total` count should equal the number of successfully configured devices, and `successful + failed` should equal `total`. The `results` map contains the success state, changed state, error, and child workflow ID for every device backup.
+- **A fresh backup exists** for every result with `success=true`. Open its link in the `perform_backups` stage to inspect the child run. For a failed result, use the same link and its recorded error to correct the underlying problem.
+- **Parent workflow link** (when invoked by Multi-Deploy) shows the configuration and backup success/failure counts in the parent's `execute_batches` display.
 
 ## Common issues
 
@@ -80,7 +83,7 @@ Something is rewriting devices' running configurations out of band (a parallel m
 
 **Backup workflow failed but apply succeeded.**
 
-The device is configured and in service; only the post-deploy backup is missing. Re-run the [Configuration Backup](../configuration-backup/index.mdx) workflow against the device once the underlying issue is resolved.
+The device is configured and in service; only the post-deploy backup is missing. Inspect the device's entry in `backups.results` for the error and child workflow ID, then re-run the [Configuration Backup](../configuration-backup/index.mdx) workflow against the device once the underlying issue is resolved.
 
 **Deploy-disabled switch ended up in a direct Batch Deploy invocation.**
 
