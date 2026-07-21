@@ -320,7 +320,6 @@ class BackupWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, ArchiveMixi
             # therefore the user did not get set.
             raise ApplicationError("Missing user for backup attribution.")
         self.set_input(workflow_input)
-        self.set_terminate_on_failure(workflow_input.terminate_on_failure)
 
         # Execute load_running_configuration and check_drift in parallel
         load_config_output, drift_output = await asyncio.gather(

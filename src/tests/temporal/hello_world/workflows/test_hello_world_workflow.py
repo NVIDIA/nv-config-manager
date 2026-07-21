@@ -19,6 +19,7 @@ from datetime import timedelta
 from unittest.mock import patch
 
 import pytest
+from pydantic import BaseModel
 from temporalio import activity, workflow
 from temporalio.api.enums.v1 import IndexedValueType
 from temporalio.api.operatorservice.v1 import (
@@ -49,6 +50,20 @@ from nv_config_manager.temporal.hello_world.workflows.hello_world_workflow impor
     HelloWorldInput,
 )
 from nv_config_manager.temporal.ngc.activities.slack import SlackMessageInput, SlackMessageOutput
+
+
+class TerminateOnFailureInput(BaseModel):
+    """Workflow input exposing the generic stage failure behavior."""
+
+    terminate_on_failure: bool = False
+
+
+def test_stage_mixin_reads_terminate_on_failure_from_workflow_input() -> None:
+    workflow_state = StageMixin()
+
+    workflow_state.set_input(TerminateOnFailureInput(terminate_on_failure=True))
+
+    assert workflow_state.terminate_on_failure is True
 
 
 @patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))

@@ -321,6 +321,7 @@ class StageMixin(BaseMixin):
     def set_input(self, workflow_input: BaseModel) -> None:
         """Set the workflow input."""
         self._input = workflow_input
+        self.set_terminate_on_failure(bool(getattr(workflow_input, "terminate_on_failure", False)))
 
     def stage_exists(self, name: str) -> bool:
         """Return true if a stage has been defined with the given name."""
