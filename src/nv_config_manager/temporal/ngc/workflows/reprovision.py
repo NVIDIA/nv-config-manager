@@ -85,11 +85,22 @@ class ReprovisionWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
     def __init__(self) -> None:
         """Initialize workflow."""
         StageMixin.__init__(self)
+        self._validate_intended_config_enabled = workflow.patched(VALIDATE_INTENDED_CONFIG_PATCH_ID)
+        if self._validate_intended_config_enabled:
+            self.define_stage(
+                name="validate_configuration",
+                description="Validate the intended configuration before reprovisioning.",
+                requires_approval=False,
+                depends_on=[],
+            )
+
         self.define_stage(
             name="execute_ztp",
             description="Execute ZTP and wait for completion.",
             requires_approval=False,
-            depends_on=[],
+            depends_on=(
+                ["validate_configuration"] if self._validate_intended_config_enabled else []
+            ),
         )
 
         self.define_stage(
@@ -97,6 +108,71 @@ class ReprovisionWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
             description="Run the backup workflow for the device.",
             requires_approval=False,
             depends_on=["execute_ztp"],
+        )
+
+    class ValidateConfigurationStageInput(StageInput):
+        """Validate Configuration Stage Input."""
+
+        device_id: str
+
+    class ValidateConfigurationStageOutput(StageOutput):
+        """Validate Configuration Stage Output."""
+
+    @stage_executor("validate_configuration")
+    async def validate_configuration(
+        self, stage_input: ValidateConfigurationStageInput
+    ) -> ValidateConfigurationStageOutput:
+        """Validate the intended configuration before factory reset."""
+        result = await workflow.execute_activity(
+            get_network_device,
+            GetNetworkDeviceInput(device_id=stage_input.device_id),
+            start_to_close_timeout=timedelta(minutes=1),
+            retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+        )
+        DeviceMixin.attach_device_search_attributes(result.device)
+
+        device_data = result.device
+        intended_config, _commit_id, intended_config_url = await workflow.execute_activity(
+            load_intended_configuration,
+            device_data,
+            start_to_close_timeout=timedelta(minutes=1),
+            retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+        )
+        try:
+            await workflow.execute_activity(
+                perform_candidate_diff,
+                DiffActivityInput(device_data=device_data, configuration=intended_config),
+                start_to_close_timeout=timedelta(minutes=1),
+                retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+            )
+        except ActivityError as exc:
+            config_syntax_error = (
+                isinstance(exc.cause, ApplicationError)
+                and (exc.cause.type or exc.cause.__class__.__name__) == "ConfigSyntaxException"
+            )
+            if not config_syntax_error:
+                raise
+
+            self.set_stage_output(
+                "validate_configuration",
+                ReprovisionWorkflow.ValidateConfigurationStageOutput(
+                    display=(
+                        "### Invalid intended configuration\n\n"
+                        f"The intended configuration for **{device_data.name}** is invalid "
+                        "and could not be loaded as a candidate. No factory reset was "
+                        "requested.\n\n"
+                        "Check the intended configuration "
+                        f"[here]({intended_config_url}). Once it is fixed this stage can be "
+                        "retried."
+                    )
+                ),
+            )
+            raise ApplicationError(
+                "The intended configuration is invalid. Fix the errors and retry this stage."
+            ) from exc
+
+        return ReprovisionWorkflow.ValidateConfigurationStageOutput(
+            display="Intended configuration validated successfully",
         )
 
     class ExecuteZTPStageInput(StageInput):
@@ -122,48 +198,6 @@ class ReprovisionWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
         DeviceMixin.attach_device_search_attributes(result.device)
 
         device_data = result.device
-
-        # Validate that the rendered config exists and can be loaded as a candidate
-        # before factory reset makes the current configuration unavailable.
-        if workflow.patched(VALIDATE_INTENDED_CONFIG_PATCH_ID):
-            intended_config, _commit_id, intended_config_url = await workflow.execute_activity(
-                load_intended_configuration,
-                device_data,
-                start_to_close_timeout=timedelta(minutes=1),
-                retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
-            )
-            try:
-                await workflow.execute_activity(
-                    perform_candidate_diff,
-                    DiffActivityInput(device_data=device_data, configuration=intended_config),
-                    start_to_close_timeout=timedelta(minutes=1),
-                    retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
-                )
-            except ActivityError as exc:
-                config_syntax_error = (
-                    isinstance(exc.cause, ApplicationError)
-                    and (exc.cause.type or exc.cause.__class__.__name__) == "ConfigSyntaxException"
-                )
-                if not config_syntax_error:
-                    raise
-
-                self.set_stage_output(
-                    "execute_ztp",
-                    ReprovisionWorkflow.ExecuteZTPStageOutput(
-                        display=(
-                            "### Invalid intended configuration\n\n"
-                            f"The intended configuration for **{device_data.name}** is invalid "
-                            "and could not be loaded as a candidate. No factory reset was "
-                            "requested.\n\n"
-                            "Check the intended configuration "
-                            f"[here]({intended_config_url}). Once it is fixed this stage can be "
-                            "retried."
-                        )
-                    ),
-                )
-                raise ApplicationError(
-                    "The intended configuration is invalid. Fix the errors and retry this stage."
-                ) from exc
 
         # Trigger ZTP through factory reset
         ztp_execute_result = await workflow.execute_activity(
@@ -205,7 +239,7 @@ class ReprovisionWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
     async def perform_backup(self, stage_input: BackupStageInput) -> BackupStageOutput:
         """Perform a configuration backup."""
         ui_base_url = ""
-        if workflow.patched(VALIDATE_INTENDED_CONFIG_PATCH_ID):
+        if self._validate_intended_config_enabled:
             try:
                 ui_base_url = await workflow.execute_activity(
                     get_ui_base_url,
@@ -248,6 +282,14 @@ class ReprovisionWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
     async def run(self, workflow_input: ReprovisionInput) -> bool:  # type: ignore[override, ty:invalid-method-override]
         """Execute reprovision workflow."""
         self.set_input(workflow_input)
+
+        # Validate intended configuration
+        if self._validate_intended_config_enabled:
+            await self.validate_configuration(
+                ReprovisionWorkflow.ValidateConfigurationStageInput(
+                    device_id=workflow_input.device_id
+                )
+            )
 
         # Execute ZTP
         await self.execute_ztp_stage(

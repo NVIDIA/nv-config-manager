@@ -371,13 +371,13 @@ ServiceUnavailableError: service: retry later`;
     const workflow = createWorkflowWithStage({
       id: workflowId,
       retryable: true,
-      stageName: "execute_ztp",
+      stageName: "validate_configuration",
       stageState: "FAILED",
       status: "RUNNING",
     });
     workflow.stages[0].output = {
       display:
-        "The intended configuration is invalid. [Open the intended configuration](https://config.example.com/device/test/startup.yaml), fix it, then retry this stage.",
+        "The intended configuration is invalid. Check the intended configuration [here](https://config.example.com/device/test/startup.yaml). Once it is fixed this stage can be retried.",
     };
 
     await page.route(`**/v1/workflow/${workflowId}`, async (route) => {
@@ -387,7 +387,7 @@ ServiceUnavailableError: service: retry later`;
     await page.goto(`/workflows/${workflowId}`);
 
     await expect(
-      page.getByRole("link", { name: "Open the intended configuration" })
+      page.getByRole("link", { name: "here" })
     ).toHaveAttribute(
       "href",
       "https://config.example.com/device/test/startup.yaml"

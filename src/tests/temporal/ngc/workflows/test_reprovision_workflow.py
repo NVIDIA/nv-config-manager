@@ -203,7 +203,16 @@ async def test_reprovision_workflow(
 
         # Now query stages after workflow is complete
         stages = await handle.query("stages")
-        assert len(stages) == 2  # execute_ztp and perform_backup stages
+        assert len(stages) == 3
+
+        # Verify validate_configuration stage
+        validate_configuration_stage = next(
+            s for s in stages if s["name"] == "validate_configuration"
+        )
+        assert validate_configuration_stage["state"] == "COMPLETE"
+        assert validate_configuration_stage["output"]["display"] == (
+            "Intended configuration validated successfully"
+        )
 
         # Verify execute_ztp stage
         execute_ztp_stage = next(s for s in stages if s["name"] == "execute_ztp")
@@ -333,7 +342,10 @@ async def test_reprovision_validates_intended_config_before_factory_reset(
         loop = asyncio.get_running_loop()
         deadline = loop.time() + TEST_TIMEOUT.total_seconds()
         stages = await handle.query("stages")
-        while stages[0]["state"] != "FAILED":
+        validate_configuration_stage = next(
+            stage for stage in stages if stage["name"] == "validate_configuration"
+        )
+        while validate_configuration_stage["state"] != "FAILED":
             if loop.time() >= deadline:
                 pytest.fail(
                     "Workflow did not fail before TEST_TIMEOUT; "
@@ -342,12 +354,15 @@ async def test_reprovision_validates_intended_config_before_factory_reset(
                 )
             await asyncio.sleep(0.1)
             stages = await handle.query("stages")
+            validate_configuration_stage = next(
+                stage for stage in stages if stage["name"] == "validate_configuration"
+            )
 
         execute_ztp_stage = next(stage for stage in stages if stage["name"] == "execute_ztp")
         backup_stage = next(stage for stage in stages if stage["name"] == "perform_backup")
-        assert execute_ztp_stage["state"] == "FAILED"
-        assert "Invalid intended configuration" in execute_ztp_stage["traceback"]
-        assert execute_ztp_stage["output"]["display"] == (
+        assert validate_configuration_stage["state"] == "FAILED"
+        assert "Invalid intended configuration" in validate_configuration_stage["traceback"]
+        assert validate_configuration_stage["output"]["display"] == (
             "### Invalid intended configuration\n\n"
             "The intended configuration for **mock_device** is invalid and could not be loaded "
             "as a candidate. No factory reset was requested.\n\n"
@@ -355,6 +370,7 @@ async def test_reprovision_validates_intended_config_before_factory_reset(
             "intended-network-configs/-/blob/mock_intended_commit_id/SITEA/MOCK_DEVICE/"
             "startup.yaml). Once it is fixed this stage can be retried."
         )
+        assert execute_ztp_stage["state"] == "NOT_STARTED"
         assert backup_stage["state"] == "NOT_STARTED"
         assert len(candidate_diff_calls) == 1
         assert factory_reset_calls == []
@@ -362,6 +378,102 @@ async def test_reprovision_validates_intended_config_before_factory_reset(
         assert workflow_desc.status.name == "RUNNING"
 
         await handle.terminate()
+
+
+@pytest.mark.asyncio
+@patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
+@patch(
+    "nv_config_manager.temporal.ngc.workflows.reprovision.DEFAULT_ACTIVITY_RETRY_POLICY",
+    new=TEST_RETRY_POLICY,
+)
+@patch("nv_config_manager.temporal.ngc.workflows.reprovision.timedelta", return_value=TEST_TIMEOUT)
+async def test_reprovision_retries_validation_stage(
+    mock_timedelta,
+    mock_time,
+    env,
+):
+    """The validation stage can succeed on retry before ZTP begins."""
+    candidate_diff_calls: list[DiffActivityInput] = []
+    factory_reset_calls: list[ExecuteZTPInput] = []
+
+    @activity.defn(name="perform_candidate_diff")
+    def mock_retryable_candidate_diff(activity_input: DiffActivityInput) -> str:
+        candidate_diff_calls.append(activity_input)
+        if len(candidate_diff_calls) == 1:
+            raise ConfigSyntaxException("Invalid intended configuration")
+        return ""
+
+    @activity.defn(name="execute_ztp")
+    def mock_counting_execute_ztp(activity_input: ExecuteZTPInput) -> ExecuteZTPOutput:
+        factory_reset_calls.append(activity_input)
+        return ExecuteZTPOutput(start_time=datetime.now().isoformat())
+
+    task_queue_name = str(uuid.uuid4())
+    async with Worker(
+        env.client,
+        task_queue=task_queue_name,
+        workflows=[ReprovisionWorkflow, BackupWorkflow],
+        activities=[
+            mock_get_network_device,
+            mock_load_running_configuration,
+            mock_load_intended_configuration,
+            mock_retryable_candidate_diff,
+            mock_counting_execute_ztp,
+            mock_poll_ztp_status,
+            mock_persist_config_backup,
+            mock_record_backup_config_manager_plugin,
+            mock_publish_nats,
+            mock_get_ui_base_url,
+        ],
+        activity_executor=ThreadPoolExecutor(5),
+    ):
+        handle: WorkflowHandle = await env.client.start_workflow(
+            ReprovisionWorkflow.run,
+            ReprovisionInput(device_id="test-device"),
+            id=str(uuid.uuid4()),
+            task_queue=task_queue_name,
+            run_timeout=timedelta(minutes=1),
+        )
+
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + TEST_TIMEOUT.total_seconds()
+        stages = await handle.query("stages")
+        validate_configuration_stage = next(
+            stage for stage in stages if stage["name"] == "validate_configuration"
+        )
+        while validate_configuration_stage["state"] != "FAILED":
+            if loop.time() >= deadline:
+                pytest.fail(
+                    "Validation stage did not fail before TEST_TIMEOUT; "
+                    f"stages={stages!r}, candidate_diff_calls={candidate_diff_calls!r}, "
+                    f"factory_reset_calls={factory_reset_calls!r}"
+                )
+            await asyncio.sleep(0.1)
+            stages = await handle.query("stages")
+            validate_configuration_stage = next(
+                stage for stage in stages if stage["name"] == "validate_configuration"
+            )
+
+        execute_ztp_stage = next(stage for stage in stages if stage["name"] == "execute_ztp")
+        assert execute_ztp_stage["state"] == "NOT_STARTED"
+        assert factory_reset_calls == []
+
+        await handle.signal("retry", "validate_configuration")
+        assert await handle.result() is True
+
+        stages = await handle.query("stages")
+        validate_configuration_stage = next(
+            stage for stage in stages if stage["name"] == "validate_configuration"
+        )
+        execute_ztp_stage = next(stage for stage in stages if stage["name"] == "execute_ztp")
+        assert validate_configuration_stage["state"] == "COMPLETE"
+        assert validate_configuration_stage["retry_count"] == 1
+        assert validate_configuration_stage["output"]["display"] == (
+            "Intended configuration validated successfully"
+        )
+        assert execute_ztp_stage["state"] == "COMPLETE"
+        assert len(candidate_diff_calls) >= 2
+        assert len(factory_reset_calls) == 1
 
 
 @pytest.mark.asyncio
@@ -420,17 +532,22 @@ async def test_reprovision_workflow_ztp_failure(
 
         # Wait for the execute_ztp stage to be marked as failed
         stages = await handle.query("stages")
-        while stages[0]["state"] != "FAILED":
+        execute_ztp_stage = next(s for s in stages if s["name"] == "execute_ztp")
+        while execute_ztp_stage["state"] != "FAILED":
             await asyncio.sleep(1)
             stages = await handle.query("stages")
+            execute_ztp_stage = next(s for s in stages if s["name"] == "execute_ztp")
 
         # Verify execute_ztp stage
-        execute_ztp_stage = next(s for s in stages if s["name"] == "execute_ztp")
         assert execute_ztp_stage["state"] == "FAILED"
         assert "ZTP failed to complete within 30 minutes" in execute_ztp_stage["traceback"]
 
-        # Verify other stages are defined but UNREACHABLE
-        assert len(stages) == 2  # execute_ztp and perform_backup stages
+        # Verify surrounding stage states
+        assert len(stages) == 3
+        validate_configuration_stage = next(
+            s for s in stages if s["name"] == "validate_configuration"
+        )
+        assert validate_configuration_stage["state"] == "COMPLETE"
         backup_stage = next(s for s in stages if s["name"] == "perform_backup")
         assert backup_stage["state"] == "NOT_STARTED"
 
@@ -484,19 +601,24 @@ async def test_reprovision_workflow_ztp_timeout(
 
         # Wait for the execute_ztp stage to be marked as failed
         stages = await handle.query("stages")
-        while stages[0]["state"] != "FAILED":
+        execute_ztp_stage = next(s for s in stages if s["name"] == "execute_ztp")
+        while execute_ztp_stage["state"] != "FAILED":
             await asyncio.sleep(1)
             stages = await handle.query("stages")
+            execute_ztp_stage = next(s for s in stages if s["name"] == "execute_ztp")
 
         # Verify execute_ztp stage
-        execute_ztp_stage = next(s for s in stages if s["name"] == "execute_ztp")
         assert execute_ztp_stage["state"] == "FAILED"
         assert (
             "ZTP failed to complete within 30 minutes, check the device logs for details"
             in execute_ztp_stage["traceback"]
         )
 
-        # Verify other stages are defined but UNREACHABLE
-        assert len(stages) == 2  # execute_ztp and perform_backup stages
+        # Verify surrounding stage states
+        assert len(stages) == 3
+        validate_configuration_stage = next(
+            s for s in stages if s["name"] == "validate_configuration"
+        )
+        assert validate_configuration_stage["state"] == "COMPLETE"
         backup_stage = next(s for s in stages if s["name"] == "perform_backup")
         assert backup_stage["state"] == "NOT_STARTED"
