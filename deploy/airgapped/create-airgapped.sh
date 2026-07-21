@@ -1079,7 +1079,7 @@ pull_docker_images() {
                 export_exit=$?
                 
                 # If export failed, try re-pulling
-                if [[ $export_exit -ne 0 ]] && echo "$export_err" | grep -q "content digest.*not found\|not found"; then
+                if [[ $export_exit -ne 0 ]] && echo "$export_err" | grep -q "content digest.*not found"; then
                     log_info "  Export failed, re-pulling image..."
                     # Remove the image first to ensure clean state
                     ctr image rm "$image" &> /dev/null || true
