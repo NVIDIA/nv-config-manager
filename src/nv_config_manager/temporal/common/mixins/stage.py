@@ -28,7 +28,7 @@ from enum import StrEnum
 from typing import Any, TypeVar, cast
 
 from py_markdown_table.markdown_table import markdown_table
-from pydantic import BaseModel, computed_field, field_serializer, field_validator
+from pydantic import BaseModel, Field, computed_field, field_serializer, field_validator
 from temporalio import workflow
 from temporalio.exceptions import (
     ActivityError,
@@ -201,6 +201,15 @@ class HistoryEntry(BaseModel):
         return datetime.fromisoformat(raw).timestamp()
 
 
+class StageWorkflowInput(BaseModel):
+    """Base input for workflows that configure stage failure behavior."""
+
+    terminate_on_failure: bool = Field(
+        default=False,
+        description="Terminate the workflow instead of waiting to retry a failed stage.",
+    )
+
+
 class StageInput(BaseModel):
     """Dataclass to represent Stage Input."""
 
@@ -321,7 +330,9 @@ class StageMixin(BaseMixin):
     def set_input(self, workflow_input: BaseModel) -> None:
         """Set the workflow input."""
         self._input = workflow_input
-        self.set_terminate_on_failure(bool(getattr(workflow_input, "terminate_on_failure", False)))
+        self.set_terminate_on_failure(
+            isinstance(workflow_input, StageWorkflowInput) and workflow_input.terminate_on_failure
+        )
 
     def stage_exists(self, name: str) -> bool:
         """Return true if a stage has been defined with the given name."""

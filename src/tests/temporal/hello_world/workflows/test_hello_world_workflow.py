@@ -19,7 +19,6 @@ from datetime import timedelta
 from unittest.mock import patch
 
 import pytest
-from pydantic import BaseModel
 from temporalio import activity, workflow
 from temporalio.api.enums.v1 import IndexedValueType
 from temporalio.api.operatorservice.v1 import (
@@ -34,7 +33,12 @@ from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
 from nv_config_manager.temporal.common.decorators.workflow import run_nv_config_manager_workflow
-from nv_config_manager.temporal.common.mixins.stage import StageMixin, StateEnum, stage_executor
+from nv_config_manager.temporal.common.mixins.stage import (
+    StageMixin,
+    StageWorkflowInput,
+    StateEnum,
+    stage_executor,
+)
 from nv_config_manager.temporal.common.search_attributes import (
     FAILED_STAGE_SEARCH_ATTRIBUTE,
     PENDING_APPROVAL_SEARCH_ATTRIBUTE,
@@ -52,16 +56,10 @@ from nv_config_manager.temporal.hello_world.workflows.hello_world_workflow impor
 from nv_config_manager.temporal.ngc.activities.slack import SlackMessageInput, SlackMessageOutput
 
 
-class TerminateOnFailureInput(BaseModel):
-    """Workflow input exposing the generic stage failure behavior."""
-
-    terminate_on_failure: bool = False
-
-
 def test_stage_mixin_reads_terminate_on_failure_from_workflow_input() -> None:
     workflow_state = StageMixin()
 
-    workflow_state.set_input(TerminateOnFailureInput(terminate_on_failure=True))
+    workflow_state.set_input(StageWorkflowInput(terminate_on_failure=True))
 
     assert workflow_state.terminate_on_failure is True
 
