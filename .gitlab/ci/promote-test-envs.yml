@@ -201,6 +201,9 @@ test-promote-chart:
         --set "global.images.keaAdmin.digest=${DIGEST_NV_CONFIG_MANAGER_KEA_ADMIN}" \
         --set "global.images.nautobot.digest=${DIGEST_NV_CONFIG_MANAGER_NAUTOBOT}" \
         --set "global.images.natsReady.digest=${DIGEST_NV_CONFIG_MANAGER_NATS_READY}" \
+        --set "global.images.temporalServer.digest=${DIGEST_NV_CONFIG_MANAGER_TEMPORAL}" \
+        --set "global.images.temporalBootstrap.digest=${DIGEST_NV_CONFIG_MANAGER_TEMPORAL_BOOTSTRAP}" \
+        --set "global.images.temporalUi.digest=${DIGEST_NV_CONFIG_MANAGER_TEMPORAL_UI}" \
         > /dev/null
       echo "✅ Render OK"
 

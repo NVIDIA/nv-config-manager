@@ -32,6 +32,9 @@ set -euo pipefail
 : "${DIGEST_NV_CONFIG_MANAGER_KEA_ADMIN:?missing dotenv from test-promote-push-images}"
 : "${DIGEST_NV_CONFIG_MANAGER_NAUTOBOT:?missing dotenv from test-promote-push-images}"
 : "${DIGEST_NV_CONFIG_MANAGER_NATS_READY:?missing dotenv from test-promote-push-images}"
+: "${DIGEST_NV_CONFIG_MANAGER_TEMPORAL:?missing dotenv from test-promote-push-images}"
+: "${DIGEST_NV_CONFIG_MANAGER_TEMPORAL_BOOTSTRAP:?missing dotenv from test-promote-push-images}"
+: "${DIGEST_NV_CONFIG_MANAGER_TEMPORAL_UI:?missing dotenv from test-promote-push-images}"
 
 if [ -n "${NV_CONFIG_MANAGER_VALUES_REPO_URL:-}" ]; then
     # A full URL override is used as-is (provide any auth it needs in the URL).
@@ -90,7 +93,9 @@ export NVCM_ENV NVCM_ENV_NAMESPACE NVCM_ENV_BRANCH NVCM_ENV_RELEASE_NAME \
     NVCM_CHART_REPO PROMOTE_VERSION PR_SHA PR_NUM occupant baseline_rev \
     DIGEST_NV_CONFIG_MANAGER DIGEST_NV_CONFIG_MANAGER_UI \
     DIGEST_NV_CONFIG_MANAGER_KEA DIGEST_NV_CONFIG_MANAGER_KEA_ADMIN \
-    DIGEST_NV_CONFIG_MANAGER_NAUTOBOT DIGEST_NV_CONFIG_MANAGER_NATS_READY
+    DIGEST_NV_CONFIG_MANAGER_NAUTOBOT DIGEST_NV_CONFIG_MANAGER_NATS_READY \
+    DIGEST_NV_CONFIG_MANAGER_TEMPORAL DIGEST_NV_CONFIG_MANAGER_TEMPORAL_BOOTSTRAP \
+    DIGEST_NV_CONFIG_MANAGER_TEMPORAL_UI
 updated_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 export updated_at
 
@@ -108,6 +113,9 @@ yq -n '
   .images.keaAdmin = strenv(DIGEST_NV_CONFIG_MANAGER_KEA_ADMIN) |
   .images.nautobot = strenv(DIGEST_NV_CONFIG_MANAGER_NAUTOBOT) |
   .images.natsReady = strenv(DIGEST_NV_CONFIG_MANAGER_NATS_READY) |
+  .images.temporalServer = strenv(DIGEST_NV_CONFIG_MANAGER_TEMPORAL) |
+  .images.temporalBootstrap = strenv(DIGEST_NV_CONFIG_MANAGER_TEMPORAL_BOOTSTRAP) |
+  .images.temporalUi = strenv(DIGEST_NV_CONFIG_MANAGER_TEMPORAL_UI) |
   .sourceSHA = strenv(PR_SHA) |
   .pr = (strenv(PR_NUM) | tonumber) |
   .occupant = strenv(occupant) |

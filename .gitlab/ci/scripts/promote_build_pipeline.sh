@@ -45,7 +45,10 @@ kea|nv-config-manager-kea
 kea-admin|nv-config-manager-kea-admin
 ui|nv-config-manager-ui
 nb|nv-config-manager-nautobot
-nats-ready|nv-config-manager-nats-ready"
+nats-ready|nv-config-manager-nats-ready
+temporal-server|nv-config-manager-temporal
+temporal-bootstrap|nv-config-manager-temporal-bootstrap
+temporal-ui|nv-config-manager-temporal-ui"
 
 api_get() {
     curl -fsS --max-time 30 -H "PRIVATE-TOKEN: ${NVCM_MIRROR_API_TOKEN}" "$@"

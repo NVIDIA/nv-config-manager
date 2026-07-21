@@ -31,7 +31,10 @@ nv-config-manager-kea
 nv-config-manager-kea-admin
 nv-config-manager-ui
 nv-config-manager-nautobot
-nv-config-manager-nats-ready"
+nv-config-manager-nats-ready
+nv-config-manager-temporal
+nv-config-manager-temporal-bootstrap
+nv-config-manager-temporal-ui"
 
 : > digests.env
 
