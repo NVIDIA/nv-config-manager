@@ -59,7 +59,11 @@ def test_hash_staged_content_frames_each_file_bytes(tmp_path: Path) -> None:
     (two_files / "a").write_bytes(first_content)
     (two_files / "b").write_bytes(second_content)
 
-    assert _hash_staged_content(one_file) != _hash_staged_content(two_files)
+    one_file_hash = _hash_staged_content(one_file)
+    two_files_hash = _hash_staged_content(two_files)
+    assert one_file_hash.startswith("v2:")
+    assert two_files_hash.startswith("v2:")
+    assert one_file_hash != two_files_hash
 
 
 def test_jobs_updates_existing_pvc_and_restarts_consumers(tmp_path: Path) -> None:
@@ -151,15 +155,41 @@ def test_unchanged_templates_do_not_create_loader_or_restart(tmp_path: Path) -> 
     (source / "plugin.py").write_text("PLUGIN = True\n")
     k8s = MagicMock()
     k8s.pvc_exists.return_value = True
-    k8s.get_pvc_annotation.return_value = "same-content"
+    k8s.get_pvc_annotation.return_value = "v2:same-content"
 
     with patch(
         "nv_config_manager_installer.pvc_updater._hash_staged_content",
-        return_value="same-content",
+        return_value="v2:same-content",
     ):
         changed = _updater(k8s).update_templates([source])
 
     assert changed is False
+    k8s.annotate_pvc.assert_not_called()
+    k8s.create_loader_pod.assert_not_called()
+    k8s.restart_deployment.assert_not_called()
+
+
+def test_legacy_hash_is_migrated_without_loader_or_restart(tmp_path: Path) -> None:
+    source = tmp_path / "templates"
+    source.mkdir()
+    (source / "plugin.py").write_text("PLUGIN = True\n")
+    k8s = MagicMock()
+    k8s.pvc_exists.return_value = True
+    with patch(
+        "nv_config_manager_installer.pvc_updater._hash_staged_content",
+        return_value="v2:" + "a" * 64,
+    ):
+        k8s.get_pvc_annotation.return_value = "a" * 64
+        changed = _updater(k8s).update_templates([source])
+
+    assert changed is False
+    annotation = k8s.annotate_pvc.call_args.args
+    assert annotation[:3] == (
+        "render-service-template-plugins",
+        "nv-config-manager",
+        "nv-config-manager.nvidia.com/content-sha256",
+    )
+    assert annotation[3].startswith("v2:")
     k8s.create_loader_pod.assert_not_called()
     k8s.restart_deployment.assert_not_called()
 

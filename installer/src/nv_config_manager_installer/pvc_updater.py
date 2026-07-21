@@ -39,6 +39,7 @@ from nv_config_manager_installer.k8s import K8sClient
 from nv_config_manager_installer.nautobot_jobs import NautobotJobRunner
 
 CONTENT_HASH_ANNOTATION = "nv-config-manager.nvidia.com/content-sha256"
+CONTENT_HASH_VERSION = "v2"
 CUSTOM_JOBS_PACKAGE_MARKER = "# Custom Nautobot jobs package maintained by nvcm-installer.\n"
 JOBS_PVC_NAME = "nautobot-custom-jobs"
 TEMPLATES_PVC_NAME = "render-service-template-plugins"
@@ -131,7 +132,41 @@ def _hash_staged_content(staging: Path) -> str:
         with path.open("rb") as content:
             for chunk in iter(lambda: content.read(8 * 1024 * 1024), b""):
                 digest.update(chunk)
-    return digest.hexdigest()
+    return f"{CONTENT_HASH_VERSION}:{digest.hexdigest()}"
+
+
+def hash_content_sources(
+    sources: Iterable[Path],
+    *,
+    ignore_patterns: tuple[str, ...],
+    package_marker: bool = False,
+) -> str:
+    """Stage and hash content independently of its transport archive encoding."""
+    with tempfile.TemporaryDirectory(prefix="nvcm-content-hash-") as tmpdir:
+        staging = Path(tmpdir) / "content"
+        staging.mkdir()
+        _stage_sources(sources, staging, ignore_patterns=ignore_patterns)
+        package_init = staging / "__init__.py"
+        if package_marker and not package_init.exists():
+            package_init.write_text(CUSTOM_JOBS_PACKAGE_MARKER)
+        return _hash_staged_content(staging)
+
+
+def is_legacy_content_hash(content_hash: str | None) -> bool:
+    """Return whether an annotation contains an unversioned SHA-256 digest."""
+    return bool(
+        content_hash
+        and len(content_hash) == 64
+        and all(character in "0123456789abcdef" for character in content_hash)
+    )
+
+
+def legacy_content_hash_matches(content_hash: str | None, current_hash: str) -> bool:
+    """Compare a legacy digest with the equivalent versioned content hash."""
+    return bool(
+        is_legacy_content_hash(content_hash)
+        and current_hash == f"{CONTENT_HASH_VERSION}:{content_hash}"
+    )
 
 
 def _make_tarball(staging: Path, output: Path) -> None:
@@ -549,6 +584,17 @@ class PVCUpdater:
                 )
                 if current_hash == content_hash:
                     self._on_log(f"{kind}: content unchanged; PVC and workloads left untouched")
+                    return False
+                if legacy_content_hash_matches(current_hash, content_hash):
+                    # The staged-content algorithm is unchanged; only its version
+                    # prefix is new, so this legacy digest is safe to migrate in place.
+                    lease_renewer.ensure_healthy()
+                    self._k8s.annotate_pvc(
+                        pvc_name, self.namespace, CONTENT_HASH_ANNOTATION, content_hash
+                    )
+                    self._on_log(
+                        f"{kind}: migrated legacy content hash; PVC and workloads left untouched"
+                    )
                     return False
 
                 deployment_names = (

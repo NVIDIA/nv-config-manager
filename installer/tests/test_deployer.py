@@ -1216,12 +1216,8 @@ class TestContentHashing:
             (job_dir / "main.py").write_text("print('hello')")
             (job_dir / "util.py").write_text("x = 1")
 
-            with patch(
-                "nv_config_manager_installer.deployer.gzip.time.time",
-                side_effect=[1, 2],
-            ):
-                h1 = _hash_content_dir([job_dir])
-                h2 = _hash_content_dir([job_dir])
+            h1 = _hash_content_dir([job_dir])
+            h2 = _hash_content_dir([job_dir])
             assert h1 == h2, "Same content should produce the same hash"
 
     def test_different_content_different_hash(self):
@@ -1250,11 +1246,51 @@ class TestContentHashing:
 
     def test_empty_paths(self):
         h = _hash_content_dir([])
-        assert isinstance(h, str) and len(h) == 64
+        version, digest = h.split(":", maxsplit=1)
+        assert version == "v2"
+        assert len(digest) == 64
 
     def test_missing_path_ignored(self):
-        h = _hash_content_dir([Path("/nonexistent/path")])
-        assert isinstance(h, str) and len(h) == 64
+        assert _hash_content_dir([Path("/nonexistent/path")]) == _hash_content_dir([])
+
+    def test_legacy_hash_is_migrated_without_content_change(self, tmp_path: Path):
+        job_dir = tmp_path / "my_job"
+        job_dir.mkdir()
+        (job_dir / "main.py").write_text("print('hello')")
+        expected_hash = _hash_content_dir([job_dir], package_marker=True)
+        k8s = _mock_k8s()
+        k8s.get_pvc_annotation.return_value = expected_hash.removeprefix("v2:")
+        deployer = Deployer(_make_config(), DeployOptions())
+        deployer._k8s = k8s
+
+        changed = deployer._check_content_diff(
+            [job_dir], "jobs-pvc", "test-ns", "Jobs", package_marker=True
+        )
+
+        assert changed is False
+        k8s.annotate_pvc.assert_called_once_with(
+            "jobs-pvc",
+            "test-ns",
+            "nv-config-manager.nvidia.com/content-sha256",
+            expected_hash,
+        )
+
+    def test_current_hash_does_not_migrate_or_change_content(self, tmp_path: Path):
+        job_dir = tmp_path / "my_job"
+        job_dir.mkdir()
+        (job_dir / "main.py").write_text("print('hello')")
+        expected_hash = _hash_content_dir([job_dir], package_marker=True)
+        k8s = _mock_k8s()
+        k8s.get_pvc_annotation.return_value = expected_hash
+        deployer = Deployer(_make_config(), DeployOptions())
+        deployer._k8s = k8s
+
+        changed = deployer._check_content_diff(
+            [job_dir], "jobs-pvc", "test-ns", "Jobs", package_marker=True
+        )
+
+        assert changed is False
+        k8s.annotate_pvc.assert_not_called()
 
 
 class TestRerunState:

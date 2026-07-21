@@ -22,9 +22,7 @@ are reserved for tools without clean Python equivalents: ``helm``, ``docker``,
 
 from __future__ import annotations
 
-import gzip
 import hashlib
-import io
 import json
 import os
 import platform
@@ -57,6 +55,8 @@ from nv_config_manager_installer.openbao import OpenBaoClient, OpenBaoPopulator
 from nv_config_manager_installer.operator_versions import load_operator_versions
 from nv_config_manager_installer.pvc_updater import (
     CUSTOM_JOBS_PACKAGE_MARKER,
+    hash_content_sources,
+    legacy_content_hash_matches,
     normalize_ztp_platform,
     validate_ztp_path_component,
 )
@@ -224,39 +224,19 @@ def _build_job_paths(config: NVConfigManagerInstallConfig) -> list[Path]:
 def _hash_content_dir(
     paths: list[Path],
     ignore_patterns: tuple[str, ...] = _IGNORE_COMMON,
+    *,
+    package_marker: bool = False,
 ) -> str:
     """Produce a deterministic SHA-256 of the content that would be uploaded to a PVC.
 
-    Stages files into memory with sorted names and a fixed mtime so the hash is
-    reproducible across runs regardless of filesystem metadata.
+    The versioned digest covers staged paths, sizes, and bytes, so transport
+    archive metadata and compression settings cannot change content identity.
     """
-    h = hashlib.sha256()
-    buf = io.BytesIO()
-    with gzip.GzipFile(fileobj=buf, mode="wb", compresslevel=1, mtime=0) as gz:
-        with tarfile.open(fileobj=gz, mode="w") as tf:
-            for src in sorted(paths):
-                if not src.exists():
-                    continue
-                if src.is_dir():
-                    ignore = shutil.ignore_patterns(*ignore_patterns)
-                    with tempfile.TemporaryDirectory() as tmp:
-                        staged = Path(tmp) / src.name
-                        shutil.copytree(src, staged, dirs_exist_ok=True, ignore=ignore)
-                        for f in sorted(staged.rglob("*")):
-                            if f.is_file():
-                                info = tarfile.TarInfo(name=str(f.relative_to(tmp)))
-                                info.size = f.stat().st_size
-                                info.mtime = 0
-                                with f.open("rb") as fh:
-                                    tf.addfile(info, fh)
-                elif src.is_file():
-                    info = tarfile.TarInfo(name=src.name)
-                    info.size = src.stat().st_size
-                    info.mtime = 0
-                    with src.open("rb") as fh:
-                        tf.addfile(info, fh)
-    h.update(buf.getvalue())
-    return h.hexdigest()
+    return hash_content_sources(
+        [path for path in paths if path.exists()],
+        ignore_patterns=ignore_patterns,
+        package_marker=package_marker,
+    )
 
 
 def _get_image_digest_tag(image: str) -> str:
@@ -1343,12 +1323,30 @@ class Deployer:
 
         step.output.append(f"inotify limits OK (instances={instances}, watches={watches})")
 
-    def _check_content_diff(self, paths: list[Path], pvc_name: str, ns: str, label: str) -> bool:
+    def _check_content_diff(
+        self,
+        paths: list[Path],
+        pvc_name: str,
+        ns: str,
+        label: str,
+        *,
+        package_marker: bool = False,
+    ) -> bool:
         """Compare local content hash with the PVC annotation. Returns True if changed."""
         assert self._k8s is not None
-        local_hash = _hash_content_dir(paths)
+        local_hash = _hash_content_dir(paths, package_marker=package_marker)
         remote_hash = self._k8s.get_pvc_annotation(pvc_name, ns, _CONTENT_HASH_ANNOTATION)
-        changed = local_hash != remote_hash
+        if local_hash == remote_hash:
+            changed = False
+        elif legacy_content_hash_matches(remote_hash, local_hash):
+            # Unversioned staged-content hashes written by pvc-updater use the
+            # same digest and can be migrated without touching workloads. Older
+            # timestamp-dependent archive hashes do not match and refresh once.
+            self._k8s.annotate_pvc(pvc_name, ns, _CONTENT_HASH_ANNOTATION, local_hash)
+            self.callback.on_log(f"{label} legacy content hash migrated")
+            changed = False
+        else:
+            changed = True
         if self._rerun.is_rerun:
             self.callback.on_log(
                 f"{label} {'changed since last deploy' if changed else 'unchanged'}"
@@ -1370,7 +1368,11 @@ class Deployer:
 
         if self.config.content.jobs:
             self._rerun.jobs_changed = self._check_content_diff(
-                _build_job_paths(self.config), "nautobot-custom-jobs", ns, "Jobs content"
+                _build_job_paths(self.config),
+                "nautobot-custom-jobs",
+                ns,
+                "Jobs content",
+                package_marker=True,
             )
 
         if self.config.content.template_plugins:
@@ -2368,7 +2370,7 @@ class Deployer:
             self._k8s.delete_pod(pod_name, ns)
             step.output.append("Jobs uploaded to PVC")
 
-        content_hash = _hash_content_dir(_build_job_paths(self.config))
+        content_hash = _hash_content_dir(_build_job_paths(self.config), package_marker=True)
         self._k8s.annotate_pvc(pvc_name, ns, _CONTENT_HASH_ANNOTATION, content_hash)
 
         self._finish_step(step)
