@@ -63,8 +63,6 @@ DEFAULT_ACTIVITY_RETRY_POLICY = RetryPolicy(
     non_retryable_error_types=["ConfigSyntaxException", "FirmwareUpgradeException"],
 )
 VALIDATE_INTENDED_CONFIG_PATCH_ID = "reprovision-validate-intended-config-v1"
-INTENDED_CONFIG_FAILURE_GUIDANCE_PATCH_ID = "reprovision-config-failure-guidance-v1"
-BACKUP_WORKFLOW_LINK_PATCH_ID = "reprovision-backup-workflow-link-v1"
 
 
 class ReprovisionInput(BaseModel):
@@ -146,9 +144,7 @@ class ReprovisionWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
                     isinstance(exc.cause, ApplicationError)
                     and (exc.cause.type or exc.cause.__class__.__name__) == "ConfigSyntaxException"
                 )
-                if not config_syntax_error or not workflow.patched(
-                    INTENDED_CONFIG_FAILURE_GUIDANCE_PATCH_ID
-                ):
+                if not config_syntax_error:
                     raise
 
                 self.set_stage_output(
@@ -208,7 +204,7 @@ class ReprovisionWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
     async def perform_backup(self, stage_input: BackupStageInput) -> BackupStageOutput:
         """Perform a configuration backup."""
         ui_base_url = ""
-        if workflow.patched(BACKUP_WORKFLOW_LINK_PATCH_ID):
+        if workflow.patched(VALIDATE_INTENDED_CONFIG_PATCH_ID):
             try:
                 ui_base_url = await workflow.execute_activity(
                     get_ui_base_url,
