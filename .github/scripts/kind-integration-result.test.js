@@ -170,7 +170,11 @@ test("updates from explicit run details when workflow_run did not fire", async (
 test("uses the GitHub Enterprise server URL for commit links", async () => {
   const result = await runFixture({ serverUrl: "https://github.example.com" });
 
-  assert.ok(result.updates[0].body.includes(expectedCommitUrl(result.context)));
+  assert.ok(
+    result.updates[0].body.includes(
+      `[\`aaaaaaa\`](${expectedCommitUrl(result.context)})`,
+    ),
+  );
 });
 
 test("does nothing without workflow_run or explicit run details", async () => {
