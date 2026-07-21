@@ -1216,8 +1216,12 @@ class TestContentHashing:
             (job_dir / "main.py").write_text("print('hello')")
             (job_dir / "util.py").write_text("x = 1")
 
-            h1 = _hash_content_dir([job_dir])
-            h2 = _hash_content_dir([job_dir])
+            with patch(
+                "nv_config_manager_installer.deployer.gzip.time.time",
+                side_effect=[1, 2],
+            ):
+                h1 = _hash_content_dir([job_dir])
+                h2 = _hash_content_dir([job_dir])
             assert h1 == h2, "Same content should produce the same hash"
 
     def test_different_content_different_hash(self):
