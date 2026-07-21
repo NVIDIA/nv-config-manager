@@ -24,6 +24,11 @@ SPIFFE_TRUST_DOMAIN=""
 KEYCLOAK_ADMIN_PASSWORD="admin"
 OIDC_CLIENT_SECRET="nvcm-local-client-secret"
 GATEWAY_CONTROLLER="envoyGateway"
+# Ceiling for each security-dependency `helm install --wait`. The default suits
+# a fast local machine; CI overrides it (via the Makefile's HELM_TIMEOUT) because
+# in-cluster image pulls on shared runners routinely need longer than 5m for the
+# SPIRE server/agent/controller to all report ready.
+HELM_TIMEOUT="5m"
 
 GATEWAY_API_VERSION="v1.4.1"
 ENVOY_GATEWAY_VERSION="v1.6.5"
@@ -50,6 +55,7 @@ Options:
   --keycloak-admin-password PASS   Local Keycloak admin password (default: admin)
   --oidc-client-secret SECRET      OIDC client secret shared with installer config
   --gateway-controller TYPE       envoyGateway or kgateway (default: envoyGateway)
+  --helm-timeout DURATION          Per-install helm --wait timeout (default: 5m)
   --help                           Show this help
 EOF
 }
@@ -99,6 +105,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --gateway-controller)
             GATEWAY_CONTROLLER="$(require_option_value "$1" "${2:-}")"
+            shift 2
+            ;;
+        --helm-timeout)
+            HELM_TIMEOUT="$(require_option_value "$1" "${2:-}")"
             shift 2
             ;;
         --help|-h)
@@ -211,7 +221,7 @@ install_cert_manager() {
         --namespace cert-manager \
         --create-namespace \
         --version "${CERT_MANAGER_VERSION}" \
-        --wait --timeout 5m
+        --wait --timeout "$HELM_TIMEOUT"
 
     kubectl wait --timeout=2m -n cert-manager deployment/cert-manager --for=condition=Available
     kubectl wait --timeout=2m -n cert-manager deployment/cert-manager-webhook --for=condition=Available
@@ -301,7 +311,7 @@ install_envoy_gateway() {
         -n envoy-gateway-system \
         --create-namespace \
         --skip-crds \
-        --wait --timeout 5m
+        --wait --timeout "$HELM_TIMEOUT"
 }
 
 install_kgateway() {
@@ -314,12 +324,12 @@ install_kgateway() {
         --namespace kgateway-system \
         --create-namespace \
         --version "${KGATEWAY_VERSION}" \
-        --wait --timeout 5m
+        --wait --timeout "$HELM_TIMEOUT"
     helm upgrade --install kgateway \
         oci://cr.kgateway.dev/kgateway-dev/charts/kgateway \
         --namespace kgateway-system \
         --version "${KGATEWAY_VERSION}" \
-        --wait --timeout 5m
+        --wait --timeout "$HELM_TIMEOUT"
     kubectl wait --timeout=120s -n kgateway-system deployment/kgateway --for=condition=Available
 }
 
@@ -343,7 +353,7 @@ install_spire() {
         --set spire-server.controllerManager.identities.clusterSPIFFEIDs.default.enabled=true \
         --set spiffe-csi-driver.enabled=true \
         --set spiffe-oidc-discovery-provider.enabled=true \
-        --wait --timeout 5m
+        --wait --timeout "$HELM_TIMEOUT"
 
     kubectl wait --for=condition=ready pod -n spire-system -l app.kubernetes.io/name=server --timeout=120s 2>/dev/null || true
     kubectl wait --for=condition=ready pod -n spire-system -l app.kubernetes.io/name=agent --timeout=120s 2>/dev/null || true

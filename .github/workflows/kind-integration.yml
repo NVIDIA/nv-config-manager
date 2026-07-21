@@ -326,11 +326,20 @@ jobs:
         timeout-minutes: 10
         run: |
           mkdir -p integration-test-logs
-          kubectl get pods -n "${NV_CONFIG_MANAGER_NAMESPACE}" -o wide > integration-test-logs/pods.txt 2>&1 || true
-          kubectl get events -n "${NV_CONFIG_MANAGER_NAMESPACE}" --sort-by='.lastTimestamp' > integration-test-logs/events.txt 2>&1 || true
-          for pod in $(kubectl get pods -n "${NV_CONFIG_MANAGER_NAMESPACE}" -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
-            kubectl logs -n "${NV_CONFIG_MANAGER_NAMESPACE}" "$pod" --all-containers > "integration-test-logs/${pod}.log" 2>&1 || true
-          done
+          # Collect cluster-wide, not just the app namespace: a failed security
+          # bring-up lives in the dependency namespaces (spire-system, keycloak,
+          # envoy-gateway-system, cert-manager, cnpg-system, ...), so scoping to
+          # the app namespace would miss exactly the pods that failed.
+          kubectl get pods -A -o wide > integration-test-logs/pods.txt 2>&1 || true
+          kubectl get events -A --sort-by='.lastTimestamp' > integration-test-logs/events.txt 2>&1 || true
+          # Per-pod logs, organised into a subdirectory per namespace.
+          kubectl get pods -A \
+            -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}' 2>/dev/null | \
+            while read -r ns pod; do
+              [ -z "$ns" ] && continue
+              mkdir -p "integration-test-logs/${ns}"
+              kubectl logs -n "$ns" "$pod" --all-containers > "integration-test-logs/${ns}/${pod}.log" 2>&1 || true
+            done
       - name: Delete Kind cluster
         if: always()
         timeout-minutes: 5

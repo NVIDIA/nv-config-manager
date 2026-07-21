@@ -867,7 +867,8 @@ kind-up-secure:
 		--keycloak-hostname $(KIND_SEC_KEYCLOAK_HOSTNAME) \
 		--spiffe-trust-domain $(KIND_SEC_SPIFFE_TRUST_DOMAIN) \
 		--keycloak-admin-password $(KIND_SEC_KEYCLOAK_ADMIN_PASSWORD) \
-		--oidc-client-secret $(KIND_SEC_OIDC_CLIENT_SECRET)
+		--oidc-client-secret $(KIND_SEC_OIDC_CLIENT_SECRET) \
+		--helm-timeout $(HELM_TIMEOUT)
 	uv run python scripts/render-local-security-config \
 		--gateway $(KIND_SEC_GATEWAY_CONTROLLER) \
 		--input $(KIND_SEC_INSTALL_CONFIG) \
