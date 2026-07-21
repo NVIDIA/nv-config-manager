@@ -31,8 +31,6 @@
 # uploads, and lets the promote side download by job id.
 pr-build-image:
   stage: build
-  # Restricted, isolated runners for untrusted PR builds (no privileged access
-  # to the internal DCA fleet). Protected promote jobs stay on the dca runners.
   tags:
     - dgxc-corp-restricted
     - docker
