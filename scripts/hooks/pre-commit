@@ -24,33 +24,39 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-check_gpg_signing() {
-    local signing_enabled
-    local signing_key
-    local signing_format
-    local gpg_program
-    local secret_key_output
+show_signing_setup_help() {
+    echo "Trustees need GitHub-verified commits for copy-pr-bot automatic sync."
+    echo "GitHub supports OpenPGP, SSH, and X.509/S/MIME signing."
+    echo "To configure OpenPGP for this repository:"
+    echo ""
+    echo "  gpg --list-secret-keys --keyid-format=long"
+    echo "  ./scripts/configure-gpg-signing.sh <GPG_KEY_ID_OR_FINGERPRINT>"
+    echo ""
+}
 
-    signing_enabled="$(git config --local --bool --get commit.gpgsign 2>/dev/null || true)"
-    signing_key="$(git config --local --get user.signingkey 2>/dev/null || true)"
-    signing_format="$(git config --local --get gpg.format 2>/dev/null || true)"
+check_signing_program() {
+    local format="$1"
+    local program_config="$2"
+    local default_program="$3"
+    local signing_program
 
-    # OpenPGP is Git's default when gpg.format is unset.
-    if [[ -z "$signing_format" ]]; then
-        signing_format="openpgp"
+    signing_program="$(git config --local --get "$program_config" 2>/dev/null || true)"
+    if [[ -z "$signing_program" ]]; then
+        signing_program="$default_program"
     fi
 
-    if [[ "$signing_enabled" != "true" || -z "$signing_key" || "$signing_format" != "openpgp" ]]; then
-        echo -e "${YELLOW}WARNING: OpenPGP commit signing is not configured.${NC}"
-        echo ""
-        echo "Trustees need GitHub-verified commits for copy-pr-bot automatic sync."
-        echo "List your GPG keys and configure one for this repository:"
-        echo ""
-        echo "  gpg --list-secret-keys --keyid-format=long"
-        echo "  ./scripts/configure-gpg-signing.sh <GPG_KEY_ID_OR_FINGERPRINT>"
-        echo ""
+    if ! command -v "$signing_program" >/dev/null 2>&1; then
+        echo -e "${YELLOW}WARNING: The $format signing program '$signing_program' was not found.${NC}"
         return 0
     fi
+
+    echo -e "${GREEN}✓ $format commit signing configured${NC}"
+}
+
+check_openpgp_signing() {
+    local signing_key="$1"
+    local gpg_program
+    local secret_key_output
 
     gpg_program="$(git config --local --get gpg.program 2>/dev/null || true)"
     if [[ -z "$gpg_program" ]]; then
@@ -86,7 +92,46 @@ check_gpg_signing() {
     echo -e "${GREEN}✓ OpenPGP commit signing configured${NC}"
 }
 
-check_gpg_signing
+check_commit_signing() {
+    local signing_enabled
+    local signing_key
+    local signing_format
+
+    signing_enabled="$(git config --local --bool --get commit.gpgsign 2>/dev/null || true)"
+    signing_key="$(git config --local --get user.signingkey 2>/dev/null || true)"
+    signing_format="$(git config --local --get gpg.format 2>/dev/null || true)"
+
+    # OpenPGP is Git's default when gpg.format is unset.
+    if [[ -z "$signing_format" ]]; then
+        signing_format="openpgp"
+    fi
+
+    if [[ "$signing_enabled" != "true" || -z "$signing_key" ]]; then
+        echo -e "${YELLOW}WARNING: Cryptographic commit signing is not configured.${NC}"
+        echo ""
+        show_signing_setup_help
+        return 0
+    fi
+
+    case "$signing_format" in
+        openpgp)
+            check_openpgp_signing "$signing_key"
+            ;;
+        ssh)
+            check_signing_program "SSH" "gpg.ssh.program" "ssh-keygen"
+            ;;
+        x509)
+            check_signing_program "X.509/S/MIME" "gpg.x509.program" "gpgsm"
+            ;;
+        *)
+            echo -e "${YELLOW}WARNING: Unsupported commit signing format '$signing_format'.${NC}"
+            echo "GitHub supports OpenPGP, SSH, and X.509/S/MIME signing."
+            return 0
+            ;;
+    esac
+}
+
+check_commit_signing
 
 EXTENSIONS=("py" "ts" "tsx" "js" "jsx" "mjs" "cjs" "go")
 

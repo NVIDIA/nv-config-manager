@@ -47,10 +47,15 @@ run_suite() {
     local missing_output
     local sign_failure_output
     local installer_repo
+    local installer_output
     local unsigned_message
     local signed_message
     local email_repo
     local email_output
+    local ssh_repo
+    local ssh_output
+    local x509_repo
+    local x509_output
 
     test_root="$(mktemp -d "${TMPDIR:-/tmp}/nvcm-gpg-signing.XXXXXX")"
     repo="$test_root/repo"
@@ -83,6 +88,16 @@ KEY_OUTPUT
 esac
 EOF
     chmod +x "$test_root/bin/gpg"
+
+    cat >"$test_root/bin/ssh-keygen" <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+    cat >"$test_root/bin/gpgsm" <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+    chmod +x "$test_root/bin/ssh-keygen" "$test_root/bin/gpgsm"
 
     git init -q "$repo"
     git -C "$repo" config user.name "Test User"
@@ -132,6 +147,40 @@ EOF
         fail "pre-commit hook rejected a configured secret key"
     fi
 
+    ssh_repo="$test_root/ssh-repo"
+    mkdir -p "$ssh_repo"
+    git init -q "$ssh_repo"
+    git -C "$ssh_repo" config --local commit.gpgsign true
+    git -C "$ssh_repo" config --local user.signingkey "$test_root/test-key.pub"
+    git -C "$ssh_repo" config --local gpg.format ssh
+    git -C "$ssh_repo" config --local gpg.ssh.program "$test_root/bin/ssh-keygen"
+    ssh_output="$test_root/ssh-output"
+    (
+        cd "$ssh_repo"
+        PATH="$test_root/bin:$PATH" HOME="$test_root/home" \
+            "$bash_path" "$PRE_COMMIT_HOOK" >"$ssh_output" 2>&1
+    )
+    if ! grep -F "SSH commit signing configured" "$ssh_output" >/dev/null; then
+        fail "pre-commit hook did not accept SSH signing configuration"
+    fi
+
+    x509_repo="$test_root/x509-repo"
+    mkdir -p "$x509_repo"
+    git init -q "$x509_repo"
+    git -C "$x509_repo" config --local commit.gpgsign true
+    git -C "$x509_repo" config --local user.signingkey "test-certificate"
+    git -C "$x509_repo" config --local gpg.format x509
+    git -C "$x509_repo" config --local gpg.x509.program "$test_root/bin/gpgsm"
+    x509_output="$test_root/x509-output"
+    (
+        cd "$x509_repo"
+        PATH="$test_root/bin:$PATH" HOME="$test_root/home" \
+            "$bash_path" "$PRE_COMMIT_HOOK" >"$x509_output" 2>&1
+    )
+    if ! grep -F "X.509/S/MIME commit signing configured" "$x509_output" >/dev/null; then
+        fail "pre-commit hook did not accept X.509/S/MIME signing configuration"
+    fi
+
     missing_repo="$test_root/missing-repo"
     mkdir -p "$missing_repo"
     git init -q "$missing_repo"
@@ -154,7 +203,7 @@ EOF
     if ! grep -F "./scripts/configure-gpg-signing.sh" "$missing_output" >/dev/null; then
         fail "pre-commit warning did not provide the setup command"
     fi
-    if ! grep -F "WARNING: OpenPGP commit signing is not configured" "$missing_output" >/dev/null; then
+    if ! grep -F "WARNING: Cryptographic commit signing is not configured" "$missing_output" >/dev/null; then
         fail "pre-commit hook did not report missing repository-local configuration"
     fi
 
@@ -188,11 +237,19 @@ EOF
         "$installer_repo/scripts/hooks/pre-commit" \
         "$installer_repo/scripts/hooks/commit-msg"
 
+    git -C "$installer_repo" config --local commit.gpgsign true
+    git -C "$installer_repo" config --local user.signingkey "test-certificate"
+    git -C "$installer_repo" config --local gpg.format x509
+
+    installer_output="$test_root/installer-output"
     if ! (
         cd "$installer_repo"
-        HOME="$test_root/home" "$bash_path" ./scripts/install-hooks.sh >/dev/null
+        HOME="$test_root/home" "$bash_path" ./scripts/install-hooks.sh >"$installer_output"
     ); then
         fail "hook installer failed"
+    fi
+    if ! grep -F "configured with format x509" "$installer_output" >/dev/null; then
+        fail "hook installer did not accept X.509/S/MIME signing configuration"
     fi
     if [[ ! -x "$installer_repo/.git/hooks/commit-msg" ]]; then
         fail "hook installer did not install the commit-msg hook"

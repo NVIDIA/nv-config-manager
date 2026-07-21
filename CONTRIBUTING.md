@@ -14,68 +14,82 @@ Thank you for your interest in contributing to NVIDIA Config Manager! This docum
 
 ## Developer Certificate of Origin (DCO)
 
-### Signing Off Your Work
+NVIDIA Config Manager requires the Developer Certificate of Origin (DCO) process for all contributions.
 
-- We require that all contributors sign off on their commits. This certifies that
-  the contribution is their original work, or that they have the right to submit
-  it under the same or a compatible license.
-- Contributions containing commits that are not signed off will not be accepted.
-- To sign off on a commit, use the `--signoff` (or `-s`) option:
+The DCO is a lightweight way for contributors to certify that they wrote or otherwise have the right to submit the code they are contributing to the project. Here is the full text of the [DCO](https://developercertificate.org/):
 
-  ```bash
-  git commit -s -m "Add cool feature."
-  ```
+```
+Developer Certificate of Origin
+Version 1.1
 
-  This appends the following trailer to the commit message:
+Copyright (C) 2004, 2006 The Linux Foundation and its contributors.
 
-  ```text
-  Signed-off-by: Your Name <your@email.com>
-  ```
+Everyone is permitted to copy and distribute verbatim copies of this
+license document, but changing it is not allowed.
 
-- Full text of the [Developer Certificate of Origin](https://developercertificate.org/):
+Developer's Certificate of Origin 1.1
 
-  ```text
-  Developer Certificate of Origin
-  Version 1.1
+By making a contribution to this project, I certify that:
 
-  Copyright (C) 2004, 2006 The Linux Foundation and its contributors.
+(a) The contribution was created in whole or in part by me and I
+    have the right to submit it under the open source license
+    indicated in the file; or
 
-  Everyone is permitted to copy and distribute verbatim copies of this
-  license document, but changing it is not allowed.
+(b) The contribution is based upon previous work that, to the best
+    of my knowledge, is covered under an appropriate open source
+    license and I have the right under that license to submit that
+    work with modifications, whether created in whole or in part
+    by me, under the same open source license (unless I am
+    permitted to submit under a different license), as indicated
+    in the file; or
 
-  Developer's Certificate of Origin 1.1
+(c) The contribution was provided directly to me by some other
+    person who certified (a), (b) or (c) and I have not modified
+    it.
 
-  By making a contribution to this project, I certify that:
+(d) I understand and agree that this project and the contribution
+    are public and that a record of the contribution (including all
+    personal information I submit with it, including my sign-off) is
+    maintained indefinitely and may be redistributed consistent with
+    this project or the open source license(s) involved.
+```
 
-  (a) The contribution was created in whole or in part by me and I
-      have the right to submit it under the open source license
-      indicated in the file; or
+### Signing Off Your Commits
 
-  (b) The contribution is based upon previous work that, to the best
-      of my knowledge, is covered under an appropriate open source
-      license and I have the right under that license to submit that
-      work with modifications, whether created in whole or in part
-      by me, under the same open source license (unless I am
-      permitted to submit under a different license), as indicated
-      in the file; or
+To sign off your commits, add a `Signed-off-by` line to your commit messages:
 
-  (c) The contribution was provided directly to me by some other
-      person who certified (a), (b) or (c) and I have not modified
-      it.
+```
+This is my commit message
 
-  (d) I understand and agree that this project and the contribution
-      are public and that a record of the contribution (including all
-      personal information I submit with it, including my sign-off) is
-      maintained indefinitely and may be redistributed consistent with
-      this project or the open source license(s) involved.
-  ```
+Signed-off-by: Your Name <your.email@example.com>
+```
+
+You can do this automatically by using the `-s` or `--signoff` flag when committing:
+
+```bash
+git commit -s -m "Your commit message"
+```
+
+If you've already made commits without signing off, you can amend your last commit:
+
+```bash
+git commit --amend -s
+```
+
+Or rebase to sign off multiple commits:
+
+```bash
+git rebase --signoff HEAD~<number_of_commits>
+```
+
+**Note:** Your sign-off must use your real name (no pseudonyms or anonymous contributions) and must match the author information in your Git configuration.
 
 ## Cryptographically Signing Commits
 
 Trustees who want copy-pr-bot to automatically sync their ready pull requests
-must configure GPG signing so GitHub can verify every commit. Other contributors
-may cryptographically sign their commits, but doing so does not remove the
-maintainer-approval step.
+must configure OpenPGP, SSH, or X.509/S/MIME signing so GitHub can verify every
+commit. Other contributors may cryptographically sign their commits, but doing
+so does not remove the maintainer-approval step.
 
 A `Verified` signature does not grant trustee status or authorize CI by itself.
 Copy-pr-bot automatically syncs ready pull requests from configured trustees
@@ -90,8 +104,11 @@ commit with:
 Approval applies only to that exact commit. After the pull request is updated,
 an authorized maintainer must approve the new commit before CI can use it.
 
-Create or select a personal GPG key whose email matches a verified email on your
-GitHub account, then add its public key under
+GitHub documents how to configure each supported
+[commit-signing method](https://docs.github.com/en/authentication/managing-commit-signature-verification/signing-commits).
+The included helper configures the traditional OpenPGP option. Create or select
+a personal GPG key whose email matches a verified email on your GitHub account,
+then add its public key under
 [GitHub SSH and GPG keys](https://github.com/settings/keys). GitHub documents the
 complete process for
 [generating a GPG key](https://docs.github.com/en/authentication/managing-commit-signature-verification/generating-a-new-gpg-key)
@@ -108,10 +125,10 @@ gpg --list-secret-keys --keyid-format=long
 The helper validates that the secret key can sign and writes only repository-local
 Git configuration. It does not create, export, upload, or otherwise manage private
 key material. Once configured, `commit.gpgsign=true` signs new commits
-automatically. The pre-commit hook reports a warning when the local OpenPGP setup
-is missing or incomplete, but it does not block the commit. It also cannot
-determine whether the public key has been added to GitHub, so confirm the
-`Verified` status after pushing.
+automatically. The pre-commit hook recognizes all three supported formats and
+reports a warning when the local signing setup is missing or incomplete, but it
+does not block the commit. It also cannot determine whether the public key has
+been added to GitHub, so confirm the `Verified` status after pushing.
 
 Verify a new commit locally and confirm that GitHub displays `Verified` after it is
 pushed:
@@ -158,15 +175,15 @@ force-pushing it.
    ```
    This installs:
 
-   - `pre-commit`, which reports GPG signing readiness, auto-formats staged
+   - `pre-commit`, which reports commit signing readiness, auto-formats staged
      Python files outside ignored/generated directories with `ruff format`, and
      verifies SPDX license headers in supported source files.
    - `commit-msg`, which rejects commit messages missing a DCO
      `Signed-off-by: Name <email>` trailer.
 
    The installer also reports whether cryptographic commit signing is configured.
-   Trustees who rely on automatic sync should configure an existing GPG key as
-   described above.
+   Trustees who rely on automatic sync should configure a GitHub-supported
+   signing method as described above.
 
 5. **Create a branch** for your changes:
    ```bash

@@ -108,7 +108,7 @@ help:
 	@echo "  make dev              - Install with dev dependencies"
 	@echo "  make test             - Run all tests (parallel)"
 	@echo "  make test-cov         - Run tests with coverage (parallel)"
-	@echo "  make test-git-signing - Test GPG setup under installed Bash versions"
+	@echo "  make test-git-signing - Test commit-signing setup under installed Bash versions"
 	@echo "  make test-integration - Run integration tests (requires running cluster)"
 	@echo "  make test-nautobot-plugin - Run vendored Nautobot plugin's Django suite in one-shot container"
 	@echo "  make lint             - Run linters"

@@ -64,8 +64,8 @@ Install the repository hooks after cloning and whenever hook scripts change:
 
 Installed hooks:
 
-- `pre-commit`: reports whether automatic OpenPGP signing and its local secret
-  key are available, formats all staged Python files outside ignored/generated
+- `pre-commit`: reports whether automatic OpenPGP, SSH, or X.509/S/MIME signing
+  is configured, formats all staged Python files outside ignored/generated
   directories with `uv run ruff format`, re-stages those files, and checks SPDX
   license headers for supported source files (`.py`, `.ts`, `.tsx`, `.js`,
   `.jsx`, `.mjs`, `.cjs`, and `.go`) under `src/`, `ui/src/`, `ui/tests/`,
@@ -78,8 +78,8 @@ Installed hooks:
 The hook installer also reports whether cryptographic commit signing is enabled.
 Trustees need GitHub-verified commits for automatic sync. Other contributors and
 draft pull requests instead need an authorized maintainer to approve the exact
-commit with `/ok to test <sha>`. Configure an existing GPG key for this repository
-with:
+commit with `/ok to test <sha>`. GitHub supports OpenPGP, SSH, and X.509/S/MIME
+signatures. The included helper configures the OpenPGP option for this repository:
 
 ```bash
 gpg --list-secret-keys --keyid-format=long

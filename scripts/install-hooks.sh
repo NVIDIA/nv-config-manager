@@ -42,24 +42,30 @@ echo ""
 echo "Git hooks installed successfully!"
 echo ""
 echo "Hooks installed:"
-echo "  - pre-commit: Reports GPG signing readiness, formats staged Python, checks SPDX license headers"
+echo "  - pre-commit: Reports commit signing readiness, formats staged Python, checks SPDX license headers"
 echo "  - commit-msg: Requires a DCO Signed-off-by trailer"
 echo ""
 
-GPG_SIGNING_ENABLED="$(git -C "$REPO_ROOT" config --local --bool --get commit.gpgsign 2>/dev/null || true)"
-GPG_SIGNING_KEY="$(git -C "$REPO_ROOT" config --local --get user.signingkey 2>/dev/null || true)"
-GPG_SIGNING_FORMAT="$(git -C "$REPO_ROOT" config --local --get gpg.format 2>/dev/null || true)"
+SIGNING_ENABLED="$(git -C "$REPO_ROOT" config --local --bool --get commit.gpgsign 2>/dev/null || true)"
+SIGNING_KEY="$(git -C "$REPO_ROOT" config --local --get user.signingkey 2>/dev/null || true)"
+SIGNING_FORMAT="$(git -C "$REPO_ROOT" config --local --get gpg.format 2>/dev/null || true)"
 
-if [[ -z "$GPG_SIGNING_FORMAT" ]]; then
-    GPG_SIGNING_FORMAT="openpgp"
+if [[ -z "$SIGNING_FORMAT" ]]; then
+    SIGNING_FORMAT="openpgp"
 fi
 
-if [[ "$GPG_SIGNING_ENABLED" == "true" && -n "$GPG_SIGNING_KEY" && "$GPG_SIGNING_FORMAT" == "openpgp" ]]; then
-    echo "Cryptographic commit signing is configured with key $GPG_SIGNING_KEY."
+case "$SIGNING_FORMAT" in
+    openpgp | ssh | x509) SUPPORTED_SIGNING_FORMAT="true" ;;
+    *) SUPPORTED_SIGNING_FORMAT="false" ;;
+esac
+
+if [[ "$SIGNING_ENABLED" == "true" && -n "$SIGNING_KEY" && "$SUPPORTED_SIGNING_FORMAT" == "true" ]]; then
+    echo "Cryptographic commit signing is configured with format $SIGNING_FORMAT."
 else
     echo "Cryptographic commit signing is not configured."
     echo "Trustees need GitHub-verified commits for copy-pr-bot automatic sync."
-    echo "Configure an existing GPG key with:"
+    echo "GitHub supports OpenPGP, SSH, and X.509/S/MIME signing."
+    echo "To configure an existing OpenPGP key:"
     echo "  ./scripts/configure-gpg-signing.sh <GPG_KEY_ID_OR_FINGERPRINT>"
 fi
 echo ""
