@@ -43,6 +43,7 @@ run_suite() {
     local test_root
     local repo
     local output
+    local help_output
     local missing_repo
     local missing_output
     local sign_failure_output
@@ -98,6 +99,11 @@ EOF
 exit 0
 EOF
     chmod +x "$test_root/bin/ssh-keygen" "$test_root/bin/gpgsm"
+
+    help_output="$("$bash_path" "$CONFIGURE_SCRIPT" --help)"
+    if ! printf '%s\n' "$help_output" | grep -F "This helper configures OpenPGP signing only" >/dev/null; then
+        fail "help output did not explain that the helper is OpenPGP-only"
+    fi
 
     git init -q "$repo"
     git -C "$repo" config user.name "Test User"

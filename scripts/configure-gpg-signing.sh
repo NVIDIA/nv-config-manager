@@ -25,6 +25,9 @@ Usage: ./scripts/configure-gpg-signing.sh <GPG_KEY_ID_OR_FINGERPRINT>
 Configure this repository to sign every commit with an existing OpenPGP
 secret key. This does not create, export, or upload key material.
 
+This helper configures OpenPGP signing only. SSH and X.509/S/MIME signing
+must be configured directly with Git.
+
 Find available secret keys with:
 
   gpg --list-secret-keys --keyid-format=long
