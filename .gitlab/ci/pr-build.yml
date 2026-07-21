@@ -62,6 +62,12 @@ pr-build-image:
         NVCM_PR_IMAGE: nv-config-manager-nautobot
       - NVCM_PR_TARGET: nats-ready
         NVCM_PR_IMAGE: nv-config-manager-nats-ready
+      - NVCM_PR_TARGET: temporal-server
+        NVCM_PR_IMAGE: nv-config-manager-temporal
+      - NVCM_PR_TARGET: temporal-bootstrap
+        NVCM_PR_IMAGE: nv-config-manager-temporal-bootstrap
+      - NVCM_PR_TARGET: temporal-ui
+        NVCM_PR_IMAGE: nv-config-manager-temporal-ui
   before_script:
     - apk add -q make bash git curl coreutils
     - docker info

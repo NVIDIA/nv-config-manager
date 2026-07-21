@@ -650,13 +650,28 @@ docker-build-single-nats-ready: ## Builds and pushes NATS-ready image for PLATFO
 		components/nats-ready/
 	@echo "✅ nv-config-manager-nats-ready:$(VERSION) pushed to $(REGISTRY)"
 
+# One buildx invocation per Temporal image so each maps 1:1 to a build target,
+# matching the other docker-build-single-* recipes. This lets the secret-free
+# PR build produce a single tarball per image via DOCKER_BUILD_OUTPUT; the
+# aggregate target below preserves the push-all-three behavior for release/main.
 .PHONY: docker-build-single-temporal
-docker-build-single-temporal: ## Builds and pushes distroless Temporal images for PLATFORM.
-	@echo "🏗️  Building distroless Temporal images for $(PLATFORM)..."
-	docker buildx build --platform $(PLATFORM) -t $(REGISTRY)/nv-config-manager-temporal:$(VERSION) $(LATEST_TAG_temporal) $(EXTRA_TAGS) $(TEMPORAL_BUILD_ARGS) --target server -f build/temporal.Dockerfile --push .
-	docker buildx build --platform $(PLATFORM) -t $(REGISTRY)/nv-config-manager-temporal-bootstrap:$(VERSION) $(LATEST_TAG_temporal_bootstrap) $(EXTRA_TAGS) $(TEMPORAL_BUILD_ARGS) --target bootstrap -f build/temporal.Dockerfile --push .
-	docker buildx build --platform $(PLATFORM) -t $(REGISTRY)/nv-config-manager-temporal-ui:$(VERSION) $(LATEST_TAG_temporal_ui) $(EXTRA_TAGS) $(TEMPORAL_BUILD_ARGS) --target ui -f build/temporal.Dockerfile --push .
-	@echo "✅ Distroless Temporal images pushed to $(REGISTRY)"
+docker-build-single-temporal: docker-build-single-temporal-server docker-build-single-temporal-bootstrap docker-build-single-temporal-ui ## Builds/pushes all distroless Temporal images for PLATFORM.
+	@echo "✅ Distroless Temporal images built for $(PLATFORM)"
+
+.PHONY: docker-build-single-temporal-server
+docker-build-single-temporal-server: ## Builds the distroless Temporal server image for PLATFORM.
+	@echo "🏗️  Building distroless Temporal server image for $(PLATFORM)..."
+	docker buildx build --platform $(PLATFORM) -t $(REGISTRY)/nv-config-manager-temporal:$(VERSION) $(LATEST_TAG_temporal) $(EXTRA_TAGS) $(TEMPORAL_BUILD_ARGS) --target server -f build/temporal.Dockerfile $(DOCKER_BUILD_OUTPUT) .
+
+.PHONY: docker-build-single-temporal-bootstrap
+docker-build-single-temporal-bootstrap: ## Builds the distroless Temporal bootstrap image for PLATFORM.
+	@echo "🏗️  Building distroless Temporal bootstrap image for $(PLATFORM)..."
+	docker buildx build --platform $(PLATFORM) -t $(REGISTRY)/nv-config-manager-temporal-bootstrap:$(VERSION) $(LATEST_TAG_temporal_bootstrap) $(EXTRA_TAGS) $(TEMPORAL_BUILD_ARGS) --target bootstrap -f build/temporal.Dockerfile $(DOCKER_BUILD_OUTPUT) .
+
+.PHONY: docker-build-single-temporal-ui
+docker-build-single-temporal-ui: ## Builds the distroless Temporal UI image for PLATFORM.
+	@echo "🏗️  Building distroless Temporal UI image for $(PLATFORM)..."
+	docker buildx build --platform $(PLATFORM) -t $(REGISTRY)/nv-config-manager-temporal-ui:$(VERSION) $(LATEST_TAG_temporal_ui) $(EXTRA_TAGS) $(TEMPORAL_BUILD_ARGS) --target ui -f build/temporal.Dockerfile $(DOCKER_BUILD_OUTPUT) .
 
 # =============================================================================
 # Manifest Merge Targets (for combining arch-specific images)
