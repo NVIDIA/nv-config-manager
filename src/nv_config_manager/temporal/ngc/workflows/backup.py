@@ -21,7 +21,7 @@ from enum import StrEnum
 from pydantic import BaseModel, Field
 from temporalio import workflow
 from temporalio.common import RetryPolicy
-from temporalio.exceptions import ApplicationError
+from temporalio.exceptions import ActivityError, ApplicationError
 
 from nv_config_manager.temporal.common.decorators.workflow import run_nv_config_manager_workflow
 from nv_config_manager.temporal.common.mixins.metadata import WorkflowMetadataMixin
@@ -58,6 +58,10 @@ with workflow.unsafe.imports_passed_through():
 
 
 DEFAULT_ACTIVITY_RETRY_POLICY = RetryPolicy(maximum_attempts=3)
+TERMINATE_ON_FAILURE_CONFIG_RETRY_POLICY = RetryPolicy(
+    maximum_attempts=3,
+    non_retryable_error_types=["ConfigSyntaxException"],
+)
 
 
 class TriggerEnum(StrEnum):
@@ -83,6 +87,10 @@ class BackupInput(BaseModel):
     )
     intended_config_commit_id: str | None = Field(
         default=None, description="Config Store commit containing the intended configuration."
+    )
+    terminate_on_failure: bool = Field(
+        default=False,
+        description="Terminate the workflow instead of waiting to retry a failed stage.",
     )
 
 
@@ -200,12 +208,46 @@ class BackupWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, ArchiveMixi
         )
 
         # Perform diff
-        diff = await workflow.execute_activity(
-            perform_candidate_diff,
-            DiffActivityInput(device_data=result.device, configuration=content),
-            start_to_close_timeout=timedelta(minutes=1),
-            retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
-        )
+        try:
+            diff = await workflow.execute_activity(
+                perform_candidate_diff,
+                DiffActivityInput(device_data=result.device, configuration=content),
+                start_to_close_timeout=timedelta(minutes=1),
+                retry_policy=(
+                    TERMINATE_ON_FAILURE_CONFIG_RETRY_POLICY
+                    if self.terminate_on_failure
+                    else DEFAULT_ACTIVITY_RETRY_POLICY
+                ),
+            )
+        except ActivityError as exc:
+            config_syntax_error = (
+                isinstance(exc.cause, ApplicationError)
+                and (exc.cause.type or exc.cause.__class__.__name__) == "ConfigSyntaxException"
+            )
+            if not self.terminate_on_failure or not config_syntax_error:
+                raise
+
+            self.set_stage_output(
+                "check_drift",
+                BackupWorkflow.CheckDriftStageOutput(
+                    commit_id=commit_id,
+                    diff="",
+                    has_drift=False,
+                    display=(
+                        "### Invalid intended configuration\n\n"
+                        f"The intended configuration for **{result.device.name}** is invalid "
+                        "and could not be loaded as a candidate.\n\n"
+                        f"Check the intended configuration [here]({url})."
+                    ),
+                ),
+            )
+            raise ApplicationError(
+                "Invalid intended configuration",
+                result.device.name,
+                url,
+                type="ConfigSyntaxException",
+                non_retryable=True,
+            ) from exc
 
         has_drift = bool(diff.strip())
         if not has_drift:
@@ -292,6 +334,7 @@ class BackupWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, ArchiveMixi
             # therefore the user did not get set.
             raise ApplicationError("Missing user for backup attribution.")
         self.set_input(workflow_input)
+        self.set_terminate_on_failure(workflow_input.terminate_on_failure)
 
         # Execute load_running_configuration and check_drift in parallel
         load_config_output, drift_output = await asyncio.gather(

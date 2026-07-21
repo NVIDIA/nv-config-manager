@@ -39,6 +39,16 @@ test.describe("New Reprovision Workflow Form - Additional Tests", () => {
     await page.goto("/workflows/reprovisionworkflow/form");
   });
 
+  test("shows a destructive workflow warning", async ({ page }) => {
+    await expect(
+      page.getByRole("alert").filter({
+        hasText: "This workflow is destructive",
+      })
+    ).toHaveText(
+      "This workflow is destructive. It will replace all existing configuration on the device with the intended configuration."
+    );
+  });
+
   test("only shows Cumulus Linux devices in the device dropdown", async ({
     page,
   }) => {

@@ -76,7 +76,7 @@ def stage_executor(stage_name: str) -> Callable[[F], F]:
                     self.set_stage_state(stage_name, StateEnum.FAILED)
                     current_stage.traceback = traceback.format_exc()
 
-                    if not current_stage.retryable:
+                    if self.terminate_on_failure or not current_stage.retryable:
                         raise StageRuntimeFailure(
                             f"Stage {stage_name} has failed and is non-retryable: {{exc}}",
                             non_retryable=True,
@@ -307,6 +307,16 @@ class StageMixin(BaseMixin):
         """Initialize Workflow with Stages."""
         self._stages: list[Stage] = []
         self._input: BaseModel | None = None
+        self._terminate_on_failure = False
+
+    @property
+    def terminate_on_failure(self) -> bool:
+        """Return whether a stage failure should terminate the workflow."""
+        return self._terminate_on_failure
+
+    def set_terminate_on_failure(self, enabled: bool) -> None:
+        """Configure stage failures to terminate instead of waiting for retry."""
+        self._terminate_on_failure = enabled
 
     def set_input(self, workflow_input: BaseModel) -> None:
         """Set the workflow input."""

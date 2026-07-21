@@ -371,13 +371,13 @@ ServiceUnavailableError: service: retry later`;
     const workflow = createWorkflowWithStage({
       id: workflowId,
       retryable: true,
-      stageName: "validate_configuration",
+      stageName: "pre_reprovision_backup",
       stageState: "FAILED",
       status: "RUNNING",
     });
     workflow.stages[0].output = {
       display:
-        "The intended configuration is invalid. Check the intended configuration [here](https://config.example.com/device/test/startup.yaml). Once it is fixed this stage can be retried.",
+        "The intended configuration is invalid. Check the intended configuration [here](https://config.example.com/device/test/startup.yaml). Once it is fixed this stage can be retried. Review the [backup workflow](https://temporal.example.com/workflows/backup-test) for details.",
     };
 
     await page.route(`**/v1/workflow/${workflowId}`, async (route) => {
@@ -391,6 +391,12 @@ ServiceUnavailableError: service: retry later`;
     ).toHaveAttribute(
       "href",
       "https://config.example.com/device/test/startup.yaml"
+    );
+    await expect(
+      page.getByRole("link", { name: "backup workflow" })
+    ).toHaveAttribute(
+      "href",
+      "https://temporal.example.com/workflows/backup-test"
     );
     await expect(page.getByTestId("error-traceback-card")).toBeVisible();
     await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();

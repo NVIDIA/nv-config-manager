@@ -830,7 +830,8 @@ class MockHelloWorldRunActivityTimeout(StageMixin):
         )
 
     @run_nv_config_manager_workflow
-    async def run(self, _) -> None:
+    async def run(self, terminate_on_failure: bool | None) -> None:
+        self.set_terminate_on_failure(bool(terminate_on_failure))
         await self.test()
 
 
@@ -921,3 +922,31 @@ async def test_workflow_activity_timeout(mock_tb, mock_upsert, mock_patched, moc
             await handle.signal("retry", "test")
             with pytest.raises(WorkflowFailureError):
                 await handle.result()
+
+
+@pytest.mark.asyncio
+@patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
+@patch("nv_config_manager.temporal.common.mixins.stage.workflow.patched", return_value=True)
+@patch("nv_config_manager.temporal.common.mixins.stage.workflow.upsert_search_attributes")
+@patch("nv_config_manager.temporal.common.mixins.stage.traceback.format_exc", return_value="exists")
+async def test_workflow_terminates_on_stage_failure(mock_tb, mock_upsert, mock_patched, mock_time):
+    task_queue_name = str(uuid.uuid4())
+
+    async with await WorkflowEnvironment.start_time_skipping() as env:
+        async with Worker(
+            env.client,
+            task_queue=task_queue_name,
+            workflows=[MockHelloWorldRunActivityTimeout],
+            activities=[activity_timeout],
+        ):
+            handle = await env.client.start_workflow(
+                MockHelloWorldRunActivityTimeout.run,
+                True,
+                id=str(uuid.uuid4()),
+                task_queue=task_queue_name,
+            )
+
+            with pytest.raises(WorkflowFailureError) as error:
+                await handle.result()
+
+            assert "Stage test has failed and is non-retryable" in str(error.value.cause)

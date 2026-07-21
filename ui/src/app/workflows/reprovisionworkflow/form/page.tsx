@@ -46,6 +46,7 @@ const ReprovisionWorkflowForm = () => {
       title="New Reprovision Workflow"
       onSubmit={onSubmit}
       deviceFilterParams={[["platform", "Cumulus Linux"], ["platform", "NV-OS"]]}
+      destructiveWarning="This workflow is destructive. It will replace all existing configuration on the device with the intended configuration."
     />
   );
 };

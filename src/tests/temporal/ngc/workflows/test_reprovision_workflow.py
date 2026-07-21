@@ -36,6 +36,7 @@ from nv_config_manager.temporal.ngc.activities.backup import (
 from nv_config_manager.temporal.ngc.activities.deploy import DiffActivityInput
 from nv_config_manager.temporal.ngc.activities.nats import PublishNatsInput
 from nv_config_manager.temporal.ngc.activities.nautobot import (
+    CheckRecordedConfigDriftInput,
     GetNetworkDeviceInput,
     GetNetworkDeviceOutput,
 )
@@ -151,6 +152,14 @@ async def mock_get_ui_base_url() -> str:
     return "https://temporal.example.com"
 
 
+@activity.defn(name="check_recorded_config_drift")
+async def mock_check_recorded_config_drift(
+    activity_input: CheckRecordedConfigDriftInput,
+) -> bool:
+    """Report no configuration drift by default."""
+    return False
+
+
 @pytest.mark.asyncio
 @patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
 @patch(
@@ -183,6 +192,7 @@ async def test_reprovision_workflow(
             mock_record_backup_config_manager_plugin,
             mock_publish_nats,
             mock_get_ui_base_url,
+            mock_check_recorded_config_drift,
         ],
         activity_executor=ThreadPoolExecutor(5),
     ):
@@ -205,13 +215,15 @@ async def test_reprovision_workflow(
         stages = await handle.query("stages")
         assert len(stages) == 3
 
-        # Verify validate_configuration stage
-        validate_configuration_stage = next(
-            s for s in stages if s["name"] == "validate_configuration"
-        )
-        assert validate_configuration_stage["state"] == "COMPLETE"
-        assert validate_configuration_stage["output"]["display"] == (
-            "Intended configuration validated successfully"
+        # Verify pre-reprovision backup stage
+        pre_backup_stage = next(s for s in stages if s["name"] == "pre_reprovision_backup")
+        assert pre_backup_stage["state"] == "COMPLETE"
+        assert len(pre_backup_stage["child_workflows"]) == 1
+        pre_backup_workflow_id = pre_backup_stage["child_workflows"][0]
+        assert pre_backup_stage["output"]["display"] == (
+            "The pre-reprovision backup completed via "
+            f"[backup workflow](https://temporal.example.com/workflows/"
+            f"{pre_backup_workflow_id}). No configuration drift was detected."
         )
 
         # Verify execute_ztp stage
@@ -233,6 +245,76 @@ async def test_reprovision_workflow(
         backup_handle = client.get_workflow_handle(backup_workflow_id)
         backup_result = await backup_handle.result()
         assert backup_result is True
+        pre_backup_handle = client.get_workflow_handle(pre_backup_workflow_id)
+        assert await pre_backup_handle.result() is True
+
+
+@pytest.mark.asyncio
+@patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
+@patch(
+    "nv_config_manager.temporal.ngc.workflows.reprovision.DEFAULT_ACTIVITY_RETRY_POLICY",
+    new=TEST_RETRY_POLICY,
+)
+@patch("nv_config_manager.temporal.ngc.workflows.reprovision.timedelta", return_value=TEST_TIMEOUT)
+async def test_reprovision_pre_backup_reports_drift_and_continues(
+    mock_timedelta,
+    mock_time,
+    env,
+):
+    """Configuration drift is reported without blocking reprovisioning."""
+
+    @activity.defn(name="check_recorded_config_drift")
+    async def mock_check_recorded_config_drift_detected(
+        activity_input: CheckRecordedConfigDriftInput,
+    ) -> bool:
+        return True
+
+    task_queue_name = str(uuid.uuid4())
+    async with Worker(
+        env.client,
+        task_queue=task_queue_name,
+        workflows=[ReprovisionWorkflow, BackupWorkflow],
+        activities=[
+            mock_get_network_device,
+            mock_execute_ztp,
+            mock_poll_ztp_status,
+            mock_load_running_configuration,
+            mock_load_intended_configuration,
+            mock_perform_candidate_diff,
+            mock_persist_config_backup,
+            mock_record_backup_config_manager_plugin,
+            mock_publish_nats,
+            mock_get_ui_base_url,
+            mock_check_recorded_config_drift_detected,
+        ],
+        activity_executor=ThreadPoolExecutor(5),
+    ):
+        handle: WorkflowHandle = await env.client.start_workflow(
+            ReprovisionWorkflow.run,
+            ReprovisionInput(device_id="test-device"),
+            id=str(uuid.uuid4()),
+            task_queue=task_queue_name,
+            run_timeout=timedelta(minutes=1),
+        )
+
+        assert await handle.result() is True
+
+        stages = await handle.query("stages")
+        pre_backup_stage = next(
+            stage for stage in stages if stage["name"] == "pre_reprovision_backup"
+        )
+        backup_workflow_id = pre_backup_stage["child_workflows"][0]
+        assert pre_backup_stage["state"] == "COMPLETE"
+        assert pre_backup_stage["output"]["display"] == (
+            "### Configuration drift detected\n\n"
+            "The pre-reprovision backup completed via "
+            f"[backup workflow](https://temporal.example.com/workflows/"
+            f"{backup_workflow_id}). Configuration drift was detected, but reprovisioning "
+            "will continue."
+        )
+        assert (
+            next(stage for stage in stages if stage["name"] == "execute_ztp")["state"] == "COMPLETE"
+        )
 
 
 @pytest.mark.asyncio
@@ -269,6 +351,7 @@ async def test_reprovision_backup_continues_when_ui_url_lookup_fails(
             mock_record_backup_config_manager_plugin,
             mock_publish_nats,
             mock_get_ui_base_url_failure,
+            mock_check_recorded_config_drift,
         ],
         activity_executor=ThreadPoolExecutor(5),
     ):
@@ -283,6 +366,16 @@ async def test_reprovision_backup_continues_when_ui_url_lookup_fails(
         assert await handle.result() is True
 
         stages = await handle.query("stages")
+        pre_backup_stage = next(
+            stage for stage in stages if stage["name"] == "pre_reprovision_backup"
+        )
+        assert pre_backup_stage["state"] == "COMPLETE"
+        assert len(pre_backup_stage["child_workflows"]) == 1
+        assert pre_backup_stage["output"]["display"] == (
+            "The pre-reprovision backup completed via backup workflow "
+            f"`{pre_backup_stage['child_workflows'][0]}`. "
+            "No configuration drift was detected."
+        )
         backup_stage = next(stage for stage in stages if stage["name"] == "perform_backup")
         assert backup_stage["state"] == "COMPLETE"
         assert len(backup_stage["child_workflows"]) == 1
@@ -298,7 +391,7 @@ async def test_reprovision_backup_continues_when_ui_url_lookup_fails(
     new=TEST_RETRY_POLICY,
 )
 @patch("nv_config_manager.temporal.ngc.workflows.reprovision.timedelta", return_value=TEST_TIMEOUT)
-async def test_reprovision_validates_intended_config_before_factory_reset(
+async def test_reprovision_pre_backup_rejects_invalid_config_before_factory_reset(
     mock_timedelta,
     mock_time,
     env,
@@ -321,13 +414,15 @@ async def test_reprovision_validates_intended_config_before_factory_reset(
     async with Worker(
         env.client,
         task_queue=task_queue_name,
-        workflows=[ReprovisionWorkflow],
+        workflows=[ReprovisionWorkflow, BackupWorkflow],
         activities=[
             mock_get_network_device,
+            mock_load_running_configuration,
             mock_load_intended_configuration,
             mock_invalid_candidate_diff,
             mock_counting_execute_ztp,
             mock_poll_ztp_status,
+            mock_get_ui_base_url,
         ],
         activity_executor=ThreadPoolExecutor(5),
     ):
@@ -342,10 +437,10 @@ async def test_reprovision_validates_intended_config_before_factory_reset(
         loop = asyncio.get_running_loop()
         deadline = loop.time() + TEST_TIMEOUT.total_seconds()
         stages = await handle.query("stages")
-        validate_configuration_stage = next(
-            stage for stage in stages if stage["name"] == "validate_configuration"
+        pre_backup_stage = next(
+            stage for stage in stages if stage["name"] == "pre_reprovision_backup"
         )
-        while validate_configuration_stage["state"] != "FAILED":
+        while pre_backup_stage["state"] != "FAILED":
             if loop.time() >= deadline:
                 pytest.fail(
                     "Workflow did not fail before TEST_TIMEOUT; "
@@ -354,22 +449,26 @@ async def test_reprovision_validates_intended_config_before_factory_reset(
                 )
             await asyncio.sleep(0.1)
             stages = await handle.query("stages")
-            validate_configuration_stage = next(
-                stage for stage in stages if stage["name"] == "validate_configuration"
+            pre_backup_stage = next(
+                stage for stage in stages if stage["name"] == "pre_reprovision_backup"
             )
 
         execute_ztp_stage = next(stage for stage in stages if stage["name"] == "execute_ztp")
         backup_stage = next(stage for stage in stages if stage["name"] == "perform_backup")
-        assert validate_configuration_stage["state"] == "FAILED"
-        assert "Invalid intended configuration" in validate_configuration_stage["traceback"]
-        assert validate_configuration_stage["output"]["display"] == (
+        backup_workflow_id = pre_backup_stage["child_workflows"][0]
+        assert pre_backup_stage["state"] == "FAILED"
+        assert "Invalid intended configuration" in pre_backup_stage["traceback"]
+        assert pre_backup_stage["output"]["display"] == (
             "### Invalid intended configuration\n\n"
             "The intended configuration for **mock_device** is invalid and could not be loaded "
             "as a candidate. No factory reset was requested.\n\n"
             "Check the intended configuration [here](https://gitlab.example.com/example-user/"
             "intended-network-configs/-/blob/mock_intended_commit_id/SITEA/MOCK_DEVICE/"
-            "startup.yaml). Once it is fixed this stage can be retried."
+            "startup.yaml). Once it is fixed this stage can be retried.\n\n"
+            "Review the [backup workflow](https://temporal.example.com/workflows/"
+            f"{backup_workflow_id}) for details."
         )
+        assert len(pre_backup_stage["child_workflows"]) == 1
         assert execute_ztp_stage["state"] == "NOT_STARTED"
         assert backup_stage["state"] == "NOT_STARTED"
         assert len(candidate_diff_calls) == 1
@@ -387,7 +486,7 @@ async def test_reprovision_validates_intended_config_before_factory_reset(
     new=TEST_RETRY_POLICY,
 )
 @patch("nv_config_manager.temporal.ngc.workflows.reprovision.timedelta", return_value=TEST_TIMEOUT)
-async def test_reprovision_retries_validation_stage(
+async def test_reprovision_retries_pre_backup_stage(
     mock_timedelta,
     mock_time,
     env,
@@ -424,6 +523,7 @@ async def test_reprovision_retries_validation_stage(
             mock_record_backup_config_manager_plugin,
             mock_publish_nats,
             mock_get_ui_base_url,
+            mock_check_recorded_config_drift,
         ],
         activity_executor=ThreadPoolExecutor(5),
     ):
@@ -438,10 +538,10 @@ async def test_reprovision_retries_validation_stage(
         loop = asyncio.get_running_loop()
         deadline = loop.time() + TEST_TIMEOUT.total_seconds()
         stages = await handle.query("stages")
-        validate_configuration_stage = next(
-            stage for stage in stages if stage["name"] == "validate_configuration"
+        pre_backup_stage = next(
+            stage for stage in stages if stage["name"] == "pre_reprovision_backup"
         )
-        while validate_configuration_stage["state"] != "FAILED":
+        while pre_backup_stage["state"] != "FAILED":
             if loop.time() >= deadline:
                 pytest.fail(
                     "Validation stage did not fail before TEST_TIMEOUT; "
@@ -450,27 +550,26 @@ async def test_reprovision_retries_validation_stage(
                 )
             await asyncio.sleep(0.1)
             stages = await handle.query("stages")
-            validate_configuration_stage = next(
-                stage for stage in stages if stage["name"] == "validate_configuration"
+            pre_backup_stage = next(
+                stage for stage in stages if stage["name"] == "pre_reprovision_backup"
             )
 
         execute_ztp_stage = next(stage for stage in stages if stage["name"] == "execute_ztp")
         assert execute_ztp_stage["state"] == "NOT_STARTED"
         assert factory_reset_calls == []
 
-        await handle.signal("retry", "validate_configuration")
+        await handle.signal("retry", "pre_reprovision_backup")
         assert await handle.result() is True
 
         stages = await handle.query("stages")
-        validate_configuration_stage = next(
-            stage for stage in stages if stage["name"] == "validate_configuration"
+        pre_backup_stage = next(
+            stage for stage in stages if stage["name"] == "pre_reprovision_backup"
         )
         execute_ztp_stage = next(stage for stage in stages if stage["name"] == "execute_ztp")
-        assert validate_configuration_stage["state"] == "COMPLETE"
-        assert validate_configuration_stage["retry_count"] == 1
-        assert validate_configuration_stage["output"]["display"] == (
-            "Intended configuration validated successfully"
-        )
+        assert pre_backup_stage["state"] == "COMPLETE"
+        assert pre_backup_stage["retry_count"] == 1
+        assert "No configuration drift was detected" in pre_backup_stage["output"]["display"]
+        assert len(pre_backup_stage["child_workflows"]) == 2
         assert execute_ztp_stage["state"] == "COMPLETE"
         assert len(candidate_diff_calls) >= 2
         assert len(factory_reset_calls) == 1
@@ -516,6 +615,7 @@ async def test_reprovision_workflow_ztp_failure(
             mock_record_backup_config_manager_plugin,
             mock_publish_nats,
             mock_get_ui_base_url,
+            mock_check_recorded_config_drift,
         ],
         activity_executor=ThreadPoolExecutor(5),
     ):
@@ -544,10 +644,8 @@ async def test_reprovision_workflow_ztp_failure(
 
         # Verify surrounding stage states
         assert len(stages) == 3
-        validate_configuration_stage = next(
-            s for s in stages if s["name"] == "validate_configuration"
-        )
-        assert validate_configuration_stage["state"] == "COMPLETE"
+        pre_backup_stage = next(s for s in stages if s["name"] == "pre_reprovision_backup")
+        assert pre_backup_stage["state"] == "COMPLETE"
         backup_stage = next(s for s in stages if s["name"] == "perform_backup")
         assert backup_stage["state"] == "NOT_STARTED"
 
@@ -585,6 +683,7 @@ async def test_reprovision_workflow_ztp_timeout(
             mock_record_backup_config_manager_plugin,
             mock_publish_nats,
             mock_get_ui_base_url,
+            mock_check_recorded_config_drift,
         ],
         activity_executor=ThreadPoolExecutor(5),
     ):
@@ -616,9 +715,7 @@ async def test_reprovision_workflow_ztp_timeout(
 
         # Verify surrounding stage states
         assert len(stages) == 3
-        validate_configuration_stage = next(
-            s for s in stages if s["name"] == "validate_configuration"
-        )
-        assert validate_configuration_stage["state"] == "COMPLETE"
+        pre_backup_stage = next(s for s in stages if s["name"] == "pre_reprovision_backup")
+        assert pre_backup_stage["state"] == "COMPLETE"
         backup_stage = next(s for s in stages if s["name"] == "perform_backup")
         assert backup_stage["state"] == "NOT_STARTED"

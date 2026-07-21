@@ -19,7 +19,7 @@ from datetime import timedelta
 from pydantic import BaseModel, Field
 from temporalio import workflow
 from temporalio.common import RetryPolicy
-from temporalio.exceptions import ActivityError, ApplicationError
+from temporalio.exceptions import ActivityError, ApplicationError, ChildWorkflowError
 
 from nv_config_manager.temporal.common.decorators.workflow import run_nv_config_manager_workflow
 from nv_config_manager.temporal.common.mixins.metadata import WorkflowMetadataMixin
@@ -37,13 +37,10 @@ with workflow.unsafe.imports_passed_through():
         build_workflow_url,
         get_ui_base_url,
     )
-    from nv_config_manager.temporal.ngc.activities.deploy import (
-        DiffActivityInput,
-        load_intended_configuration,
-        perform_candidate_diff,
-    )
     from nv_config_manager.temporal.ngc.activities.nautobot import (
+        CheckRecordedConfigDriftInput,
         GetNetworkDeviceInput,
+        check_recorded_config_drift,
         get_network_device,
     )
     from nv_config_manager.temporal.ngc.activities.os import (
@@ -77,7 +74,7 @@ class ReprovisionWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
 
     # Workflow metadata
     workflow_name = "Reprovision"
-    workflow_description = "Reprovision network device using ZTP and perform post-provision backup"
+    workflow_description = "Reprovision a network device using pre- and post-ZTP backups"
     workflow_input_class = ReprovisionInput
     workflow_api_endpoint = "/ngc/reprovision"
     workflow_namespace = "ngc"
@@ -88,8 +85,8 @@ class ReprovisionWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
         self._workflow_updates_enabled = workflow.patched(REPROVISION_WORKFLOW_UPDATES_PATCH_ID)
         if self._workflow_updates_enabled:
             self.define_stage(
-                name="validate_configuration",
-                description="Validate the intended configuration before reprovisioning.",
+                name="pre_reprovision_backup",
+                description="Back up the device and validate the intended configuration.",
                 requires_approval=False,
                 depends_on=[],
             )
@@ -98,7 +95,7 @@ class ReprovisionWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
             name="execute_ztp",
             description="Execute ZTP and wait for completion.",
             requires_approval=False,
-            depends_on=(["validate_configuration"] if self._workflow_updates_enabled else []),
+            depends_on=(["pre_reprovision_backup"] if self._workflow_updates_enabled else []),
         )
 
         self.define_stage(
@@ -119,61 +116,130 @@ class ReprovisionWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
         DeviceMixin.attach_device_search_attributes(result.device)
         return result.device
 
-    class ValidateConfigurationStageInput(StageInput):
-        """Validate Configuration Stage Input."""
+    async def _get_ui_base_url(self) -> str:
+        """Return the Temporal UI URL without blocking backups when lookup fails."""
+        if not self._workflow_updates_enabled:
+            return ""
+        try:
+            return await workflow.execute_activity(
+                get_ui_base_url,
+                start_to_close_timeout=timedelta(seconds=10),
+                retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+            )
+        except ActivityError:
+            self.logger.warning(
+                "Unable to retrieve the Temporal UI URL; continuing backup without a link."
+            )
+            return ""
+
+    @staticmethod
+    def _invalid_config_details(error: BaseException) -> tuple[str, str] | None:
+        """Find intended-config details propagated by a failed backup child workflow."""
+        current: BaseException | None = error
+        while current is not None:
+            if (
+                isinstance(current, ApplicationError)
+                and current.type == "ConfigSyntaxException"
+                and len(current.details) >= 2
+            ):
+                return str(current.details[0]), str(current.details[1])
+            current = getattr(current, "cause", None)
+        return None
+
+    @staticmethod
+    def _backup_workflow_reference(ui_base_url: str, workflow_id: str) -> str:
+        """Format a linked child workflow reference when the UI URL is available."""
+        if ui_base_url:
+            return f"[backup workflow]({build_workflow_url(ui_base_url, workflow_id)})"
+        return f"backup workflow `{workflow_id}`"
+
+    class PreReprovisionBackupStageInput(StageInput):
+        """Pre-Reprovision Backup Stage Input."""
 
         device_id: str
 
-    class ValidateConfigurationStageOutput(StageOutput):
-        """Validate Configuration Stage Output."""
+    class PreReprovisionBackupStageOutput(StageOutput):
+        """Pre-Reprovision Backup Stage Output."""
 
-    @stage_executor("validate_configuration")
-    async def validate_configuration(
-        self, stage_input: ValidateConfigurationStageInput
-    ) -> ValidateConfigurationStageOutput:
-        """Validate the intended configuration before factory reset."""
-        device_data = await self._fetch_device(stage_input.device_id)
-        intended_config, _commit_id, intended_config_url = await workflow.execute_activity(
-            load_intended_configuration,
-            device_data,
-            start_to_close_timeout=timedelta(minutes=1),
-            retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+    @stage_executor("pre_reprovision_backup")
+    async def pre_reprovision_backup(
+        self, stage_input: PreReprovisionBackupStageInput
+    ) -> PreReprovisionBackupStageOutput:
+        """Back up the device and validate its intended configuration."""
+        ui_base_url = await self._get_ui_base_url()
+        backup_handle = await workflow.start_child_workflow(
+            BackupWorkflow.run,
+            BackupInput(
+                device_id=stage_input.device_id,
+                trigger=TriggerEnum.WORKFLOW,
+                user="nv-config-manager-temporal",
+                user_domain=None,
+                workflow_id=workflow.info().workflow_id,
+                intended_config_commit_id="",
+                terminate_on_failure=True,
+            ),
+            run_timeout=timedelta(minutes=10),
         )
+        self.append_child_workflow("pre_reprovision_backup", backup_handle.id)
+        backup_reference = self._backup_workflow_reference(ui_base_url, backup_handle.id)
+
         try:
-            await workflow.execute_activity(
-                perform_candidate_diff,
-                DiffActivityInput(device_data=device_data, configuration=intended_config),
-                start_to_close_timeout=timedelta(minutes=1),
-                retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
-            )
-        except ActivityError as exc:
-            config_syntax_error = (
-                isinstance(exc.cause, ApplicationError)
-                and (exc.cause.type or exc.cause.__class__.__name__) == "ConfigSyntaxException"
-            )
-            if not config_syntax_error:
-                raise
+            await backup_handle
+        except ChildWorkflowError as exc:
+            invalid_config_details = self._invalid_config_details(exc)
+            if invalid_config_details is not None:
+                device_name, intended_config_url = invalid_config_details
+                self.set_stage_output(
+                    "pre_reprovision_backup",
+                    ReprovisionWorkflow.PreReprovisionBackupStageOutput(
+                        display=(
+                            "### Invalid intended configuration\n\n"
+                            f"The intended configuration for **{device_name}** is invalid "
+                            "and could not be loaded as a candidate. No factory reset was "
+                            "requested.\n\n"
+                            "Check the intended configuration "
+                            f"[here]({intended_config_url}). Once it is fixed this stage can be "
+                            f"retried.\n\nReview the {backup_reference} for details."
+                        )
+                    ),
+                )
+                raise ApplicationError(
+                    "The intended configuration is invalid. Fix the errors and retry this stage."
+                ) from exc
 
             self.set_stage_output(
-                "validate_configuration",
-                ReprovisionWorkflow.ValidateConfigurationStageOutput(
+                "pre_reprovision_backup",
+                ReprovisionWorkflow.PreReprovisionBackupStageOutput(
                     display=(
-                        "### Invalid intended configuration\n\n"
-                        f"The intended configuration for **{device_data.name}** is invalid "
-                        "and could not be loaded as a candidate. No factory reset was "
-                        "requested.\n\n"
-                        "Check the intended configuration "
-                        f"[here]({intended_config_url}). Once it is fixed this stage can be "
-                        "retried."
+                        f"The pre-reprovision backup failed via {backup_reference}. "
+                        "Review the backup workflow for details, then retry this stage."
                     )
                 ),
             )
             raise ApplicationError(
-                "The intended configuration is invalid. Fix the errors and retry this stage."
+                "The pre-reprovision backup failed. Review it and retry this stage."
             ) from exc
 
-        return ReprovisionWorkflow.ValidateConfigurationStageOutput(
-            display="Intended configuration validated successfully",
+        config_drift = await workflow.execute_activity(
+            check_recorded_config_drift,
+            CheckRecordedConfigDriftInput(device_id=stage_input.device_id),
+            start_to_close_timeout=timedelta(minutes=5),
+            retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+        )
+        if config_drift:
+            display = (
+                "### Configuration drift detected\n\n"
+                f"The pre-reprovision backup completed via {backup_reference}. "
+                "Configuration drift was detected, but reprovisioning will continue."
+            )
+        else:
+            display = (
+                f"The pre-reprovision backup completed via {backup_reference}. "
+                "No configuration drift was detected."
+            )
+
+        return ReprovisionWorkflow.PreReprovisionBackupStageOutput(
+            display=display,
         )
 
     class ExecuteZTPStageInput(StageInput):
@@ -228,18 +294,7 @@ class ReprovisionWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
     @stage_executor("perform_backup")
     async def perform_backup(self, stage_input: BackupStageInput) -> BackupStageOutput:
         """Perform a configuration backup."""
-        ui_base_url = ""
-        if self._workflow_updates_enabled:
-            try:
-                ui_base_url = await workflow.execute_activity(
-                    get_ui_base_url,
-                    start_to_close_timeout=timedelta(seconds=10),
-                    retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
-                )
-            except ActivityError:
-                self.logger.warning(
-                    "Unable to retrieve the Temporal UI URL; continuing backup without a link."
-                )
+        ui_base_url = await self._get_ui_base_url()
 
         backup_input = BackupInput(
             device_id=stage_input.device_id,
@@ -275,8 +330,8 @@ class ReprovisionWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
 
         # Validate intended configuration
         if self._workflow_updates_enabled:
-            await self.validate_configuration(
-                ReprovisionWorkflow.ValidateConfigurationStageInput(
+            await self.pre_reprovision_backup(
+                ReprovisionWorkflow.PreReprovisionBackupStageInput(
                     device_id=workflow_input.device_id
                 )
             )

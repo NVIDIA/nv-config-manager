@@ -53,6 +53,7 @@ def test_backup_input_optional_metadata_defaults_to_none() -> None:
     assert workflow_input.user_domain is None
     assert workflow_input.workflow_id is None
     assert workflow_input.intended_config_commit_id is None
+    assert workflow_input.terminate_on_failure is False
     assert BackupInput.model_json_schema()["required"] == ["device_id", "trigger"]
 
 
