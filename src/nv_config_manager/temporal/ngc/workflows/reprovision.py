@@ -62,7 +62,7 @@ DEFAULT_ACTIVITY_RETRY_POLICY = RetryPolicy(
     maximum_attempts=3,
     non_retryable_error_types=["ConfigSyntaxException", "FirmwareUpgradeException"],
 )
-VALIDATE_INTENDED_CONFIG_PATCH_ID = "reprovision-validate-intended-config-v1"
+REPROVISION_WORKFLOW_UPDATES_PATCH_ID = "reprovision-workflow-updates-v1"
 
 
 class ReprovisionInput(BaseModel):
@@ -85,8 +85,8 @@ class ReprovisionWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
     def __init__(self) -> None:
         """Initialize workflow."""
         StageMixin.__init__(self)
-        self._validate_intended_config_enabled = workflow.patched(VALIDATE_INTENDED_CONFIG_PATCH_ID)
-        if self._validate_intended_config_enabled:
+        self._workflow_updates_enabled = workflow.patched(REPROVISION_WORKFLOW_UPDATES_PATCH_ID)
+        if self._workflow_updates_enabled:
             self.define_stage(
                 name="validate_configuration",
                 description="Validate the intended configuration before reprovisioning.",
@@ -98,9 +98,7 @@ class ReprovisionWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
             name="execute_ztp",
             description="Execute ZTP and wait for completion.",
             requires_approval=False,
-            depends_on=(
-                ["validate_configuration"] if self._validate_intended_config_enabled else []
-            ),
+            depends_on=(["validate_configuration"] if self._workflow_updates_enabled else []),
         )
 
         self.define_stage(
@@ -231,7 +229,7 @@ class ReprovisionWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
     async def perform_backup(self, stage_input: BackupStageInput) -> BackupStageOutput:
         """Perform a configuration backup."""
         ui_base_url = ""
-        if self._validate_intended_config_enabled:
+        if self._workflow_updates_enabled:
             try:
                 ui_base_url = await workflow.execute_activity(
                     get_ui_base_url,
@@ -276,7 +274,7 @@ class ReprovisionWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
         self.set_input(workflow_input)
 
         # Validate intended configuration
-        if self._validate_intended_config_enabled:
+        if self._workflow_updates_enabled:
             await self.validate_configuration(
                 ReprovisionWorkflow.ValidateConfigurationStageInput(
                     device_id=workflow_input.device_id
