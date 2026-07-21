@@ -4,7 +4,11 @@ sidebar-title: Device Reprovisioning
 position: 10
 ---
 
-Completely reprovisions a network device with a new configuration, credentials, and operational parameters.
+Backs up and validates a network device, factory-resets it, runs ZTP, and captures a post-provision backup.
+
+<Warning title="Destructive workflow">
+Reprovision replaces all existing configuration on the device with its intended configuration.
+</Warning>
 
 ## User Interface
 
@@ -19,7 +23,8 @@ Completely reprovisions a network device with a new configuration, credentials, 
 
 ### Execution Stages
 
-1. Prepare device for reprovisioning
-1. Deploy operating system
-1. Apply device configuration
-1. Validate reprovisioning
+1. **`pre_reprovision_backup`** starts a child Configuration Backup workflow, which captures the running configuration and validates the intended configuration with a candidate diff. Invalid configuration fails this retryable stage before factory reset. Configuration drift is reported but does not stop reprovisioning. The stage links to the child backup workflow on success and failure.
+1. **`execute_ztp`** factory-resets the device and waits up to 30 minutes for DHCP/ZTP and the device reboot to complete.
+1. **`perform_backup`** starts a second child Configuration Backup workflow after ZTP succeeds and links to that workflow in the stage output.
+
+For prerequisites, detailed behavior, and troubleshooting, see [Device Reprovision](../../user-guides/reprovision/index.mdx).
