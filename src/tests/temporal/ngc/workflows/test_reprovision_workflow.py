@@ -24,6 +24,7 @@ import pytest
 from temporalio import activity
 from temporalio.client import Client, WorkflowHandle
 from temporalio.common import RetryPolicy
+from temporalio.exceptions import ApplicationError
 from temporalio.worker import Worker
 
 from nv_config_manager.temporal.client.device import ConfigSyntaxException
@@ -232,6 +233,62 @@ async def test_reprovision_workflow(
     new=TEST_RETRY_POLICY,
 )
 @patch("nv_config_manager.temporal.ngc.workflows.reprovision.timedelta", return_value=TEST_TIMEOUT)
+async def test_reprovision_backup_continues_when_ui_url_lookup_fails(
+    mock_timedelta,
+    mock_time,
+    env,
+):
+    """A UI URL lookup failure must not prevent the backup child workflow."""
+
+    @activity.defn(name="get_ui_base_url")
+    async def mock_get_ui_base_url_failure() -> str:
+        raise ApplicationError("Temporal UI unavailable", non_retryable=True)
+
+    task_queue_name = str(uuid.uuid4())
+    async with Worker(
+        env.client,
+        task_queue=task_queue_name,
+        workflows=[ReprovisionWorkflow, BackupWorkflow],
+        activities=[
+            mock_get_network_device,
+            mock_execute_ztp,
+            mock_poll_ztp_status,
+            mock_load_running_configuration,
+            mock_load_intended_configuration,
+            mock_perform_candidate_diff,
+            mock_persist_config_backup,
+            mock_record_backup_config_manager_plugin,
+            mock_publish_nats,
+            mock_get_ui_base_url_failure,
+        ],
+        activity_executor=ThreadPoolExecutor(5),
+    ):
+        handle: WorkflowHandle = await env.client.start_workflow(
+            ReprovisionWorkflow.run,
+            ReprovisionInput(device_id="test-device"),
+            id=str(uuid.uuid4()),
+            task_queue=task_queue_name,
+            run_timeout=timedelta(minutes=1),
+        )
+
+        assert await handle.result() is True
+
+        stages = await handle.query("stages")
+        backup_stage = next(stage for stage in stages if stage["name"] == "perform_backup")
+        assert backup_stage["state"] == "COMPLETE"
+        assert len(backup_stage["child_workflows"]) == 1
+        assert backup_stage["output"]["display"] == (
+            f"Configuration backup completed via workflow {backup_stage['child_workflows'][0]}."
+        )
+
+
+@pytest.mark.asyncio
+@patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
+@patch(
+    "nv_config_manager.temporal.ngc.workflows.reprovision.DEFAULT_ACTIVITY_RETRY_POLICY",
+    new=TEST_RETRY_POLICY,
+)
+@patch("nv_config_manager.temporal.ngc.workflows.reprovision.timedelta", return_value=TEST_TIMEOUT)
 async def test_reprovision_validates_intended_config_before_factory_reset(
     mock_timedelta,
     mock_time,
@@ -273,8 +330,16 @@ async def test_reprovision_validates_intended_config_before_factory_reset(
             run_timeout=timedelta(minutes=1),
         )
 
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + TEST_TIMEOUT.total_seconds()
         stages = await handle.query("stages")
         while stages[0]["state"] != "FAILED":
+            if loop.time() >= deadline:
+                pytest.fail(
+                    "Workflow did not fail before TEST_TIMEOUT; "
+                    f"stages={stages!r}, candidate_diff_calls={candidate_diff_calls!r}, "
+                    f"factory_reset_calls={factory_reset_calls!r}"
+                )
             await asyncio.sleep(0.1)
             stages = await handle.query("stages")
 

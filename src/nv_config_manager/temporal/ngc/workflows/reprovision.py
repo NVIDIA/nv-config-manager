@@ -209,11 +209,16 @@ class ReprovisionWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
         """Perform a configuration backup."""
         ui_base_url = ""
         if workflow.patched(BACKUP_WORKFLOW_LINK_PATCH_ID):
-            ui_base_url = await workflow.execute_activity(
-                get_ui_base_url,
-                start_to_close_timeout=timedelta(seconds=10),
-                retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
-            )
+            try:
+                ui_base_url = await workflow.execute_activity(
+                    get_ui_base_url,
+                    start_to_close_timeout=timedelta(seconds=10),
+                    retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+                )
+            except ActivityError:
+                self.logger.warning(
+                    "Unable to retrieve the Temporal UI URL; continuing backup without a link."
+                )
 
         backup_input = BackupInput(
             device_id=stage_input.device_id,
