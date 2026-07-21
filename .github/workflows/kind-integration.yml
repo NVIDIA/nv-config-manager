@@ -13,6 +13,11 @@ on:
         required: false
         default: false
         type: boolean
+      security:
+        description: Deploy the full security stack (Keycloak + SPIRE) and run the auth-aware suite (--sso/--rbac/--spiffe). Slow (~9m+ for SPIRE alone); off by default.
+        required: false
+        default: false
+        type: boolean
       approved_sha:
         description: Exact PR commit set by /kind test; leave blank for manual runs
         required: false
@@ -128,6 +133,7 @@ jobs:
         env:
           BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
           OBSERVABILITY: ${{ inputs.observability }}
+          SECURITY: ${{ inputs.security }}
         run: |
           sudo sysctl -w fs.inotify.max_user_instances=512
           sudo sysctl -w fs.inotify.max_user_watches=524288
@@ -171,13 +177,16 @@ jobs:
             exit 0
           fi
 
-          # Default: the full security stack (Keycloak + SPIRE) via
-          # `make kind-up-sec`, then move the chart into the group-mapping
-          # CONFIGURED state so the mapping ConfigMap is mounted and the seeded
-          # nvcm-* users get real grants on login. The whole integration suite
-          # then runs auth-aware — SSO (headless token minted below), group-mapping
-          # RBAC, and SPIFFE — which is far more representative of production than
-          # the old unauthenticated plain run.
+          # Security stack (opt-in via `security: true`): the full Keycloak +
+          # SPIRE stack via `make kind-up-sec`, then move the chart into the
+          # group-mapping CONFIGURED state so the mapping ConfigMap is mounted and
+          # the seeded nvcm-* users get real grants on login. The whole integration
+          # suite then runs auth-aware — SSO (headless token minted below),
+          # group-mapping RBAC, and SPIFFE — which is far more representative of
+          # production than the plain run. It is also much slower (SPIRE alone
+          # takes ~9m and the security deps install serially with --wait), so it
+          # is gated behind the flag rather than run on every PR; most changes
+          # don't touch auth and shouldn't pay that cost.
           #
           # `make kind-up-sec` creates the cluster and installs the security
           # dependencies (cert-manager, Envoy Gateway, SPIRE, Keycloak) itself,
@@ -186,18 +195,31 @@ jobs:
           # runner's Docker uses the containerd image store, whose multi-arch
           # index `kind load` can't import ("content digest not found"), and the
           # in-cluster pulls complete within the helm timeout anyway.
-          echo "Default run: kind-up-sec security stack + CONFIGURED group mapping"
-          make kind-up-sec \
+          if [ "${SECURITY}" = "true" ]; then
+            echo "Security run: kind-up-sec security stack + CONFIGURED group mapping"
+            make kind-up-sec \
+              KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME}" \
+              HELM_TIMEOUT=20m
+
+            helm upgrade "${NV_CONFIG_MANAGER_RELEASE}" deploy/helm \
+              -n "${NV_CONFIG_MANAGER_NAMESPACE}" \
+              --reuse-values \
+              -f scripts/rbac-local-test/values-configured.yaml
+            kubectl -n "${NV_CONFIG_MANAGER_NAMESPACE}" rollout status \
+              "deploy/${NV_CONFIG_MANAGER_RELEASE}-nautobot" --timeout=15m
+
+            kubectl get pods -n "${NV_CONFIG_MANAGER_NAMESPACE}" -o wide
+            exit 0
+          fi
+
+          # Default: the fast, unauthenticated stack via plain `make kind-up`.
+          # Most PRs don't touch auth, so this gives quick feedback; the full
+          # security stack is opt-in via `security: true` (see above).
+          echo "Default run: plain kind-up (no security stack)"
+          make kind-up \
             KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME}" \
+            INSTALL_CONFIG=deploy/configs/ci-integration-test.yaml \
             HELM_TIMEOUT=20m
-
-          helm upgrade "${NV_CONFIG_MANAGER_RELEASE}" deploy/helm \
-            -n "${NV_CONFIG_MANAGER_NAMESPACE}" \
-            --reuse-values \
-            -f scripts/rbac-local-test/values-configured.yaml
-          kubectl -n "${NV_CONFIG_MANAGER_NAMESPACE}" rollout status \
-            "deploy/${NV_CONFIG_MANAGER_RELEASE}-nautobot" --timeout=15m
-
           kubectl get pods -n "${NV_CONFIG_MANAGER_NAMESPACE}" -o wide
       - name: Run integration tests
         timeout-minutes: 50
@@ -206,8 +228,9 @@ jobs:
           # skip themselves unless this is "true". Mirrors the JIRA_ISSUE_KEY
           # gate on the diagnostics tests.
           OBSERVABILITY: ${{ inputs.observability }}
+          SECURITY: ${{ inputs.security }}
           # Keycloak coordinates for the headless --sso token mint (see
-          # mint_oidc_token below). Only consumed on the default security run.
+          # mint_oidc_token below). Only consumed on the opt-in security run.
           KEYCLOAK_NAMESPACE: keycloak
           KEYCLOAK_SERVICE: keycloak
           OIDC_REALM: nv-config-manager
@@ -215,8 +238,8 @@ jobs:
           OIDC_CLIENT_SECRET: nvcm-local-client-secret
           OIDC_USERNAME: nvcm-admin
         run: |
-          # Default runs exercise the whole suite against the security deploy,
-          # authenticated end to end:
+          # Security runs (security: true) exercise the whole suite against the
+          # kind-up-sec deploy, authenticated end to end:
           #   --sso    routes service calls through the svc-* JWT-only hostnames
           #            and attaches a headless NVCM_OIDC_ACCESS_TOKEN minted fresh
           #            per attempt below (browser OIDC can't run on the runner).
@@ -229,10 +252,10 @@ jobs:
           # installs development/mock_topology and runs MockTopologyDesign), so the
           # data-dependent tests have fixtures.
           #
-          # Observability runs use the plain unauthenticated deploy, so they pass
-          # no auth flags.
+          # Default and observability runs use the plain unauthenticated deploy,
+          # so they pass no auth flags.
           EXTRA_FLAGS=""
-          if [ "${OBSERVABILITY}" != "true" ]; then
+          if [ "${SECURITY}" = "true" ]; then
             EXTRA_FLAGS="--sso --rbac --spiffe"
           fi
           TEST_TARGET="${TEST_PATH}"
