@@ -23,9 +23,9 @@ from typing import Any
 from uuid import UUID
 
 from nv_config_manager.common.client import RedisClient
-from nv_config_manager.common.config import load_config, redis_client
+from nv_config_manager.common.config import dcim_cache_ttl, dcim_client, load_config, redis_client
 from nv_config_manager.common.log import LogCategory, get_logger
-from nv_config_manager.config_store.client.nautobot import DeviceMetadata, NautobotClient
+from nv_config_manager.dcim import DCIMClient, DeviceMetadata
 
 logger = get_logger(__name__, category=LogCategory.CACHE)
 
@@ -37,7 +37,7 @@ class CachedDeviceMetadata:
         """Initialize cached metadata.
 
         Args:
-            metadata: Device metadata from Nautobot
+            metadata: Device metadata from the selected DCIM provider
             cached_at: When this was cached
         """
         self.metadata = metadata
@@ -54,7 +54,7 @@ class CachedDeviceMetadata:
 class DeviceCacheService:
     """Redis-based service for managing device metadata cache.
 
-    This service maintains a cache of device metadata from Nautobot in Redis
+    This service maintains a cache of device metadata from the selected DCIM in Redis
     to avoid expensive GraphQL queries on every API request. It supports:
     - Background refresh of all devices at regular intervals
     - On-demand population for cache misses
@@ -72,21 +72,18 @@ class DeviceCacheService:
     def __init__(
         self,
         redis_client: RedisClient,
-        nautobot_client: NautobotClient,
-        nautobot_base_url: str,
+        dcim_client: DCIMClient,
         cache_ttl: int = CACHE_TTL,
     ) -> None:
         """Initialize cache service.
 
         Args:
             redis_client: Redis async client for caching
-            nautobot_client: Client for querying Nautobot
-            nautobot_base_url: Base URL for Nautobot (for generating links)
+            dcim_client: Client for querying the selected DCIM provider
             cache_ttl: Cache TTL in seconds (default 24 hours)
         """
         self.redis_client = redis_client
-        self.nautobot_client = nautobot_client
-        self.nautobot_base_url = nautobot_base_url.rstrip("/")
+        self.dcim_client = dcim_client
         self.cache_ttl = cache_ttl
 
     @classmethod
@@ -94,7 +91,7 @@ class DeviceCacheService:
         """Create DeviceCacheService from INI configuration.
 
         Args:
-            config: ConfigParser with redis and nautobot sections. If None, loads from default.
+            config: ConfigParser with redis and DCIM provider sections. If None, loads from default.
 
         Returns:
             Configured and connected DeviceCacheService instance
@@ -134,18 +131,10 @@ class DeviceCacheService:
             )
             raise
 
-        # Create Nautobot client
-        nautobot_client = NautobotClient.from_config(config)
-
-        # Use public_url for device links (user-facing); fall back to server when not set
-        nautobot_base_url = config.get(
-            "nautobot", "public_url", fallback=config.get("nautobot", "server")
-        )
         return cls(
             redis_client=redis,
-            nautobot_client=nautobot_client,
-            nautobot_base_url=nautobot_base_url,
-            cache_ttl=config.getint("nautobot", "cache_ttl", fallback=cls.CACHE_TTL),
+            dcim_client=dcim_client(config),
+            cache_ttl=dcim_cache_ttl(config, default=cls.CACHE_TTL),
         )
 
     def _make_key(self, device_uuid: UUID) -> str:
@@ -168,7 +157,7 @@ class DeviceCacheService:
 
         Args:
             device_uuid: Device UUID
-            refresh_on_miss: If True, query Nautobot on cache miss
+            refresh_on_miss: If True, query the selected DCIM on cache miss
 
         Returns:
             DeviceMetadata or None if not found
@@ -185,9 +174,9 @@ class DeviceCacheService:
         except Exception as e:
             logger.error("Failed to get device %s from cache: %s", device_uuid, e)
 
-        # Cache miss - optionally fetch from Nautobot
+        # Cache miss - optionally fetch from the selected DCIM.
         if refresh_on_miss:
-            logger.info("Cache miss for device %s, fetching from Nautobot", device_uuid)
+            logger.info("Cache miss for device %s, fetching from DCIM", device_uuid)
             metadata = await self.refresh_device(device_uuid)
             return metadata
 
@@ -203,15 +192,13 @@ class DeviceCacheService:
             DeviceMetadata or None if not found
         """
         try:
-            # Fetch from Nautobot
-            metadata = await self.nautobot_client.get_device(str(device_uuid))
+            metadata = await self.dcim_client.get_device_metadata(str(device_uuid))
 
             if not metadata:
-                logger.warning("Device %s not found in Nautobot", device_uuid)
+                logger.warning("Device %s not found in DCIM", device_uuid)
                 return None
 
-            # Add Nautobot URL
-            metadata.nautobot_url = f"{self.nautobot_base_url}/dcim/devices/{metadata.device_id}/"
+            metadata.device_url = self.dcim_client.get_device_ui_url(metadata.device_id)
 
             # Cache it
             await self._cache_metadata(device_uuid, metadata)
@@ -224,7 +211,7 @@ class DeviceCacheService:
             return None
 
     async def refresh_all_devices(self, limit: int = 1000) -> int:
-        """Refresh metadata for all devices from Nautobot.
+        """Refresh metadata for all devices from the selected DCIM provider.
 
         Fetches all nv-config-manager devices, updates the metadata cache, and replaces
         the active device set so inactive devices can be identified.
@@ -238,19 +225,17 @@ class DeviceCacheService:
         logger.info("Starting full cache refresh (limit=%d)", limit)
 
         try:
-            devices = await self.nautobot_client.get_all_devices(page_size=limit)
+            devices = await self.dcim_client.get_managed_device_metadata(page_size=limit)
 
             if not devices:
-                logger.warning("No devices returned from Nautobot")
+                logger.warning("No devices returned from DCIM")
                 return 0
 
             active_uuids: set[str] = set()
             count = 0
             for metadata in devices:
                 try:
-                    metadata.nautobot_url = (
-                        f"{self.nautobot_base_url}/dcim/devices/{metadata.device_id}/"
-                    )
+                    metadata.device_url = self.dcim_client.get_device_ui_url(metadata.device_id)
 
                     device_uuid = UUID(metadata.device_id)
                     await self._cache_metadata(device_uuid, metadata)

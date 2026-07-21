@@ -91,7 +91,7 @@ def mock_configs():
     )
     with (
         patch("nv_config_manager.temporal.client.ufm.load_config", return_value=ufm_cfg),
-        patch("nv_config_manager.temporal.client.nautobot.load_config", return_value=nb_cfg),
+        patch("nv_config_manager_dcim_nautobot.workflow.load_config", return_value=nb_cfg),
     ):
         yield
 

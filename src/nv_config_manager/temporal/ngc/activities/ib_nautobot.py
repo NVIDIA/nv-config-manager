@@ -12,7 +12,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Nautobot activities for InfiniBand overlay management."""
+"""Provider-neutral activities for InfiniBand overlay management.
+
+The module and activity names retain their historical ``nautobot`` suffixes
+for Temporal workflow compatibility.
+"""
 
 from __future__ import annotations
 
@@ -25,19 +29,14 @@ from pydantic import BaseModel, field_validator
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
-from nv_config_manager.temporal.client.nautobot import NautobotClient, NautobotException
+from nv_config_manager.dcim import create_dcim_workflow_client
 from nv_config_manager.temporal.common.mixins.stage import StageOutput
 
 log = logging.getLogger(__name__)
 
-PLUGIN_BASE = "plugins/overlays"
-ISOLATION_TYPE_IB_PKEY = "ib_pkey"
-DEFAULT_STATUS_NAME = "Active"
-
 DEFAULT_MEMBERSHIP_TYPE = "full"
 _VALID_MEMBERSHIP_TYPES = frozenset({"full", "limited"})
 
-_IPV4_PATTERN = re.compile(r"^\d{1,3}(\.\d{1,3}){3}$")
 _PKEY_PATTERN = re.compile(r"^0[xX][0-9a-fA-F]{1,4}$")
 
 
@@ -70,7 +69,7 @@ def _normalize_membership_override(value: object) -> str | None:
 
 
 class CreatePartitionInNautobotInput(BaseModel):
-    """Parameters for recording an IB overlay partition in Nautobot."""
+    """Parameters for recording an IB overlay partition in the configured DCIM."""
 
     pkey: str
     partition_name: str | None = None
@@ -80,7 +79,7 @@ class CreatePartitionInNautobotInput(BaseModel):
 
 
 class CreatePartitionInNautobotOutput(StageOutput):
-    """Nautobot IDs for the created or reused overlay and PKey objects."""
+    """DCIM IDs for the created or reused overlay and PKey objects."""
 
     partition_id: str
     partition_name: str
@@ -92,80 +91,43 @@ class CreatePartitionInNautobotOutput(StageOutput):
 async def create_partition_in_nautobot(
     input: CreatePartitionInNautobotInput,
 ) -> CreatePartitionInNautobotOutput:
-    """Create an Overlay and InfiniBandPKey record in Nautobot."""
+    """Create an Overlay and InfiniBandPKey record in the configured DCIM."""
     partition_name = input.partition_name or f"ib-pkey-{input.pkey}"
 
-    client = NautobotClient()
+    client = create_dcim_workflow_client()
     async with client:
-        location = await _lookup_by_name(client, "dcim/locations/", input.location_name, "Location")
-        location_id: str = location["id"]
-
-        tenant_id: str | None = None
-        if input.tenant_name:
-            tenant = await _lookup_by_name(client, "tenancy/tenants/", input.tenant_name, "Tenant")
-            tenant_id = tenant["id"]
-
-        status_id = await _resolve_status_id(client)
-
-        existing_overlay = await _find_existing_overlay(client, partition_name, location_id)
-        if existing_overlay:
-            partition_id: str = existing_overlay["id"]
-            log.info("Overlay '%s' already exists (%s), reusing", partition_name, partition_id)
-        else:
-            overlay_payload: dict[str, Any] = {
-                "name": partition_name,
-                "location": location_id,
-                "isolation_type": ISOLATION_TYPE_IB_PKEY,
-                "status": status_id,
-            }
-            if tenant_id:
-                overlay_payload["tenant"] = tenant_id
-            log.info("Creating Overlay '%s' in Nautobot", partition_name)
-            overlay = await client.post(f"{PLUGIN_BASE}/overlays/", data=overlay_payload)
-            partition_id = overlay["id"]
-
-        existing_pkey = await _find_existing_pkey(client, input.pkey, partition_id)
-        if existing_pkey:
-            pkey_id: str = existing_pkey["id"]
-            log.info("InfiniBandPKey '%s' already exists (%s), reusing", input.pkey, pkey_id)
-        else:
-            pkey_payload: dict[str, Any] = {
-                "pkey": input.pkey,
-                "name": f"PKey-{input.pkey}",
-                "overlay": partition_id,
-                "membership_type": input.membership_type,
-                "status": status_id,
-            }
-            if tenant_id:
-                pkey_payload["tenant"] = tenant_id
-            log.info("Creating InfiniBandPKey %s in Nautobot", input.pkey)
-            pkey_record = await client.post(f"{PLUGIN_BASE}/pkeys/", data=pkey_payload)
-            pkey_id = pkey_record["id"]
+        partition = await client.ensure_ib_pkey_partition(
+            input.pkey,
+            partition_name,
+            input.location_name,
+            input.tenant_name,
+            input.membership_type,
+        )
 
     return CreatePartitionInNautobotOutput(
-        partition_id=partition_id,
-        partition_name=partition_name,
-        pkey_id=pkey_id,
-        pkey=input.pkey,
-        display=f"Partition '{partition_name}' and PKey {input.pkey} recorded in Nautobot",
+        partition_id=str(partition.partition_id),
+        partition_name=str(partition.partition_name),
+        pkey_id=partition.pkey_id,
+        pkey=partition.pkey,
+        display=f"Partition '{partition.partition_name}' and PKey {partition.pkey} recorded in DCIM",
     )
 
 
 class RecordIBPKeyInNautobotInput(BaseModel):
-    """Parameters for recording an InfiniBandPKey in Nautobot."""
+    """Parameters for recording an InfiniBandPKey in the configured DCIM."""
 
     pkey: str
 
 
 class RecordIBPKeyInNautobotOutput(StageOutput):
-    """Nautobot ID for the created or reused InfiniBandPKey."""
+    """DCIM ID for the created or reused InfiniBandPKey."""
 
     pkey_id: str
     pkey: str
 
 
 class InterfaceRef(BaseModel):
-    """A device/interface name pair used to look up an interface in Nautobot.
+    """A device/interface name pair used to look up an interface in the DCIM.
 
     ``membership`` is an optional per-port override ("full"/"limited"); when unset
     the caller's workflow-level default is applied.
@@ -182,7 +144,7 @@ class InterfaceRef(BaseModel):
 
 
 class ResolvedInterface(BaseModel):
-    """An interface that has been resolved to its Nautobot UUID and IB GUID.
+    """An interface that has been resolved to its DCIM ID and IB GUID.
 
     ``membership`` is the effective membership for this port (per-port override
     if supplied, otherwise the workflow default).
@@ -203,13 +165,13 @@ class ResolveInterfaceGuidsInput(BaseModel):
 
 
 class ResolveInterfaceGuidsOutput(StageOutput):
-    """Resolved interfaces with their Nautobot UUIDs and IB GUIDs."""
+    """Resolved interfaces with their DCIM IDs and IB GUIDs."""
 
     resolved: list[ResolvedInterface]
 
 
 class ResolveGuidsToInterfacesInput(BaseModel):
-    """A list of IB GUIDs to resolve back to Nautobot interface records.
+    """A list of IB GUIDs to resolve back to DCIM interface records.
 
     ``guid_memberships`` is an optional per-GUID membership list index-aligned
     with ``guids``; any GUID without an entry falls back to ``default_membership``.
@@ -254,118 +216,24 @@ class RemovePKeyAssignmentsOutput(StageOutput):
     interface_ids_not_assigned: list[str]
 
 
-async def _lookup_by_name(
-    client: NautobotClient,
-    path: str,
-    name: str,
-    entity_label: str,
-) -> dict[str, Any]:
-    """Look up a single Nautobot object by name, raising on not-found."""
-    results = await client.get(path, params={"name": name})
-    items = results.get("results", [])
-    if not items:
-        raise ApplicationError(
-            f"{entity_label} '{name}' not found in Nautobot",
-            non_retryable=True,
-        )
-    result: dict[str, Any] = items[0]
-    return result
-
-
-async def _resolve_status_id(client: NautobotClient) -> str:
-    """Resolve the UUID of the 'Active' status."""
-    status = await _lookup_by_name(client, "extras/statuses/", DEFAULT_STATUS_NAME, "Status")
-    status_id: str = status["id"]
-    return status_id
-
-
-async def _find_existing_overlay(
-    client: NautobotClient,
-    name: str,
-    location_id: str,
-) -> dict[str, Any] | None:
-    """Return an existing Overlay if one matches name + location."""
-    results = await client.get(
-        f"{PLUGIN_BASE}/overlays/",
-        params={"name": name, "location": location_id},
-    )
-    items = results.get("results", [])
-    return items[0] if items else None
-
-
-async def _find_existing_pkey(
-    client: NautobotClient,
-    pkey: str,
-    overlay_id: str,
-) -> dict[str, Any] | None:
-    """Return an existing InfiniBandPKey if one matches pkey + overlay."""
-    results = await client.get(
-        f"{PLUGIN_BASE}/pkeys/",
-        params={"pkey": pkey, "overlay": overlay_id},
-    )
-    items = results.get("results", [])
-    return items[0] if items else None
-
-
-async def _find_orphan_pkey(
-    client: NautobotClient,
-    pkey: str,
-) -> dict[str, Any] | None:
-    """Return an existing InfiniBandPKey with this pkey value and no overlay."""
-    results = await client.get(
-        f"{PLUGIN_BASE}/pkeys/",
-        params={"pkey": pkey},
-    )
-    items = [item for item in results.get("results", []) if item.get("overlay") is None]
-    if len(items) > 1:
-        details = ", ".join(
-            f"id={item.get('id', '<missing>')}, name={item.get('name', '<missing>')}"
-            for item in items
-        )
-        raise ApplicationError(
-            f"Multiple orphan InfiniBandPKey rows found for {pkey}: {details}",
-            non_retryable=True,
-        )
-    return items[0] if items else None
-
-
 @activity.defn
 async def record_ib_pkey_in_nautobot(
     input: RecordIBPKeyInNautobotInput,
 ) -> RecordIBPKeyInNautobotOutput:
-    """Record an InfiniBandPKey in Nautobot."""
-    name = f"PKey-{input.pkey}"
-
-    client = NautobotClient()
+    """Record an InfiniBandPKey in the configured DCIM."""
+    client = create_dcim_workflow_client()
     async with client:
-        existing = await _find_orphan_pkey(client, input.pkey)
-        if existing:
-            pkey_id: str = existing["id"]
-            log.info(
-                "InfiniBandPKey %s already recorded (id=%s, no overlay), reusing",
-                input.pkey,
-                pkey_id,
-            )
-        else:
-            status_id = await _resolve_status_id(client)
-            payload: dict[str, Any] = {
-                "name": name,
-                "pkey": input.pkey,
-                "status": status_id,
-            }
-            log.info("Creating InfiniBandPKey %s in Nautobot", input.pkey)
-            record = await client.post(f"{PLUGIN_BASE}/pkeys/", data=payload)
-            pkey_id = record["id"]
+        partition = await client.ensure_orphan_ib_pkey(input.pkey)
 
     return RecordIBPKeyInNautobotOutput(
-        pkey_id=pkey_id,
-        pkey=input.pkey,
-        display=f"PKey {input.pkey} recorded in Nautobot (id={pkey_id})",
+        pkey_id=partition.pkey_id,
+        pkey=partition.pkey,
+        display=f"PKey {partition.pkey} recorded in DCIM (id={partition.pkey_id})",
     )
 
 
 class CurrentAssignment(BaseModel):
-    """A single OverlayAssignment record from Nautobot."""
+    """A single OverlayAssignment record from the configured DCIM."""
 
     assignment_id: str
     interface_id: str
@@ -401,49 +269,35 @@ class SyncPKeyAssignmentsOutput(StageOutput):
     unchanged: list[str]
 
 
-async def _find_existing_assignment(
-    client: NautobotClient,
-    overlay_id: str,
-    interface_id: str,
-) -> dict[str, Any] | None:
-    """Return an existing OverlayAssignment for this overlay + interface, if any."""
-    results = await client.get(
-        f"{PLUGIN_BASE}/overlay-assignments/",
-        params={"overlay": overlay_id, "assigned_object_id": interface_id},
-    )
-    items = results.get("results", [])
-    return items[0] if items else None
-
-
 @activity.defn
 async def resolve_interface_guids(
     input: ResolveInterfaceGuidsInput,
 ) -> ResolveInterfaceGuidsOutput:
-    """Resolve Nautobot interface records to their IB GUIDs."""
+    """Resolve DCIM interface records to their IB GUIDs."""
     resolved: list[ResolvedInterface] = []
 
-    client = NautobotClient()
+    client = create_dcim_workflow_client()
     async with client:
+        records = await client.get_ib_interface_records(
+            [(reference.device, reference.interface) for reference in input.interfaces]
+        )
+        records_by_name = {
+            (record.device_name, record.interface_name): record for record in records
+        }
         for ref in input.interfaces:
-            results = await client.get(
-                "dcim/interfaces/",
-                params={"device": ref.device, "name": ref.interface},
-            )
-            items = results.get("results", [])
-
-            if not items:
+            record = records_by_name.get((ref.device, ref.interface))
+            if record is None:
                 raise ApplicationError(
-                    f"Interface '{ref.interface}' on device '{ref.device}' not found in Nautobot",
+                    f"Interface '{ref.interface}' on device '{ref.device}' not found in DCIM",
                     non_retryable=True,
                 )
 
-            iface = items[0]
-            guid = (iface.get("custom_fields") or {}).get("ib_guid") or ""
+            guid = record.guid
 
             if not guid:
                 raise ApplicationError(
                     f"Interface '{ref.interface}' on device '{ref.device}' "
-                    "has no IB GUID (cf_ib_guid) set in Nautobot",
+                    "has no IB GUID set in DCIM",
                     non_retryable=True,
                 )
 
@@ -451,7 +305,7 @@ async def resolve_interface_guids(
                 ResolvedInterface(
                     device=ref.device,
                     interface=ref.interface,
-                    interface_id=iface["id"],
+                    interface_id=record.interface_id,
                     guid=guid,
                     membership=ref.membership or input.default_membership,
                 )
@@ -461,12 +315,12 @@ async def resolve_interface_guids(
                 ref.device,
                 ref.interface,
                 guid,
-                iface["id"],
+                record.interface_id,
             )
 
     return ResolveInterfaceGuidsOutput(
         resolved=resolved,
-        display=f"Resolved {len(resolved)} interface GUID(s) from Nautobot",
+        display=f"Resolved {len(resolved)} interface GUID(s) from DCIM",
     )
 
 
@@ -487,7 +341,7 @@ query ($guids: [String]) {
 def _normalize_ib_guid(guid: str) -> str:
     """Normalize an IB GUID for matching: trim, drop an optional ``0x`` prefix, lowercase.
 
-    UFM and Nautobot store port GUIDs as bare hex (e.g. ``946dae0300598000``),
+    UFM and the DCIM store port GUIDs as bare hex (e.g. ``946dae0300598000``),
     but users commonly enter the ``0x``-prefixed form. Normalizing both sides
     lets either representation resolve.
     """
@@ -532,7 +386,7 @@ def _index_resolved_interfaces(
     }
     if duplicates:
         raise ApplicationError(
-            f"GUID(s) matched multiple Nautobot interfaces: {duplicates}",
+            f"GUID(s) matched multiple DCIM interfaces: {duplicates}",
             non_retryable=True,
         )
     return {g: matches[0] for g, matches in grouped.items()}
@@ -542,10 +396,9 @@ def _index_resolved_interfaces(
 async def resolve_guids_to_interfaces(
     input: ResolveGuidsToInterfacesInput,
 ) -> ResolveGuidsToInterfacesOutput:
-    """Reverse-lookup IB GUIDs to Nautobot interface records.
+    """Reverse-lookup IB GUIDs to DCIM interface records.
 
-    Each input GUID must map to exactly one Nautobot interface (via the
-    ``cf_ib_guid`` custom field). Missing or duplicate matches raise a
+    Each input GUID must map to exactly one DCIM interface. Missing or duplicate matches raise a
     non-retryable error so the caller can surface the problem directly.
     """
     if not input.guids:
@@ -571,20 +424,25 @@ async def resolve_guids_to_interfaces(
             if key:
                 membership_by_guid[key] = membership
 
-    client = NautobotClient()
+    client = create_dcim_workflow_client()
     async with client:
-        data = await client.graphql_query(
-            _RESOLVE_GUIDS_QUERY,
-            {"guids": deduped},
-        )
+        records = await client.find_ib_interfaces_by_guids(deduped)
 
-    interfaces = ((data.get("data") or {}).get("interfaces")) or []
+    interfaces = [
+        {
+            "id": record.interface_id,
+            "name": record.interface_name,
+            "cf_ib_guid": record.guid,
+            "device": {"name": record.device_name},
+        }
+        for record in records
+    ]
     by_guid = _index_resolved_interfaces(interfaces, input.default_membership, membership_by_guid)
 
     missing = [g for g in deduped if g not in by_guid]
     if missing:
         raise ApplicationError(
-            f"No Nautobot interface found for GUID(s): {missing}",
+            f"No DCIM interface found for GUID(s): {missing}",
             non_retryable=True,
         )
 
@@ -600,7 +458,7 @@ async def resolve_guids_to_interfaces(
 
     return ResolveGuidsToInterfacesOutput(
         resolved=resolved,
-        display=f"Resolved {len(resolved)} GUID(s) to Nautobot interface(s)",
+        display=f"Resolved {len(resolved)} GUID(s) to DCIM interface(s)",
     )
 
 
@@ -608,67 +466,25 @@ async def resolve_guids_to_interfaces(
 async def record_pkey_assignments(
     input: RecordPKeyAssignmentsInput,
 ) -> RecordPKeyAssignmentsOutput:
-    """Create OverlayAssignment records in Nautobot for each resolved interface."""
+    """Create OverlayAssignment records in the DCIM for each resolved interface."""
 
-    assignment_ids: list[str] = []
-
-    client = NautobotClient()
+    client = create_dcim_workflow_client()
     async with client:
-        status_id = await _resolve_status_id(client)
-
-        for resolved in input.resolved:
-            existing = await _find_existing_assignment(
-                client, input.overlay_id, resolved.interface_id
-            )
-            if existing:
-                assignment_id = existing["id"]
-                desired_membership = normalize_membership_type(
-                    resolved.membership or input.membership_type
+        assignment_ids = await client.ensure_ib_pkey_assignments(
+            input.overlay_id,
+            [
+                (
+                    resolved.interface_id,
+                    resolved.guid,
+                    normalize_membership_type(resolved.membership or input.membership_type),
                 )
-                current_membership = normalize_membership_type(existing.get("membership_type"))
-                if desired_membership != current_membership:
-                    log.info(
-                        "Updating OverlayAssignment %s membership %s -> %s",
-                        assignment_id,
-                        current_membership,
-                        desired_membership,
-                    )
-                    await client.patch(
-                        f"{PLUGIN_BASE}/overlay-assignments/{assignment_id}/",
-                        data={"membership_type": desired_membership},
-                    )
-                else:
-                    log.info(
-                        "OverlayAssignment for %s/%s already exists (%s), reusing",
-                        resolved.device,
-                        resolved.interface,
-                        assignment_id,
-                    )
-                assignment_ids.append(assignment_id)
-                continue
-
-            payload: dict[str, Any] = {
-                "overlay": input.overlay_id,
-                "assigned_object_type": "dcim.interface",
-                "assigned_object_id": resolved.interface_id,
-                "guid": resolved.guid,
-                "membership_type": resolved.membership or input.membership_type,
-                "status": status_id,
-            }
-
-            log.info(
-                "Creating OverlayAssignment for %s/%s (guid=%s, membership=%s)",
-                resolved.device,
-                resolved.interface,
-                resolved.guid,
-                payload["membership_type"],
-            )
-            assignment = await client.post(f"{PLUGIN_BASE}/overlay-assignments/", data=payload)
-            assignment_ids.append(assignment["id"])
+                for resolved in input.resolved
+            ],
+        )
 
     return RecordPKeyAssignmentsOutput(
         assignment_ids=assignment_ids,
-        display=(f"Recorded {len(assignment_ids)} OverlayAssignment(s) in Nautobot"),
+        display=(f"Recorded {len(assignment_ids)} OverlayAssignment(s) in DCIM"),
     )
 
 
@@ -678,30 +494,11 @@ async def remove_pkey_assignments(
 ) -> RemovePKeyAssignmentsOutput:
     """Delete OverlayAssignment records for the given overlay + interface IDs."""
 
-    removed: list[str] = []
-    not_assigned: list[str] = []
-
-    client = NautobotClient()
+    client = create_dcim_workflow_client()
     async with client:
-        for interface_id in input.interface_ids:
-            existing = await _find_existing_assignment(client, input.overlay_id, interface_id)
-            if not existing:
-                log.info(
-                    "No OverlayAssignment for overlay=%s interface=%s, nothing to delete",
-                    input.overlay_id,
-                    interface_id,
-                )
-                not_assigned.append(interface_id)
-                continue
-
-            assignment_id = existing["id"]
-            log.info(
-                "Deleting OverlayAssignment %s (interface=%s)",
-                assignment_id,
-                interface_id,
-            )
-            await client.delete(f"{PLUGIN_BASE}/overlay-assignments/{assignment_id}/")
-            removed.append(assignment_id)
+        removed, not_assigned = await client.remove_ib_pkey_assignments(
+            input.overlay_id, input.interface_ids
+        )
 
     return RemovePKeyAssignmentsOutput(
         assignment_ids_removed=removed,
@@ -711,16 +508,6 @@ async def remove_pkey_assignments(
             f"{len(not_assigned)} interface(s) had no assignment"
         ),
     )
-
-
-async def _delete_if_present(client: NautobotClient, path: str, *, description: str) -> None:
-    """Delete a Nautobot record, treating an already-deleted (404) record as success."""
-    try:
-        await client.delete(path)
-    except NautobotException as error:
-        if "returned 404" not in str(error):
-            raise
-        log.info("%s already absent in Nautobot; treating as cleaned", description)
 
 
 def _is_auto_created_overlay_name(overlay_name: str, pkey: str) -> bool:
@@ -734,11 +521,11 @@ def _is_auto_created_overlay_name(overlay_name: str, pkey: str) -> bool:
 
 
 class CleanupEmptyPartitionInput(BaseModel):
-    """Parameters for reconciling Nautobot after a PKey partition empties out.
+    """Parameters for reconciling the DCIM after a PKey partition empties out.
 
     ``ufm_partition_empty`` is the verified UFM state (404 or zero members). The
-    Nautobot PKey/Overlay are only deleted when UFM agrees the partition is
-    empty, so untracked UFM-only members can't be silently orphaned.
+    Provider PKey/Overlay records are only deleted when UFM agrees the partition
+    is empty, so untracked UFM-only members cannot be silently orphaned.
     """
 
     overlay_id: str
@@ -749,7 +536,7 @@ class CleanupEmptyPartitionInput(BaseModel):
 
 
 class CleanupEmptyPartitionOutput(StageOutput):
-    """Result of the post-removal Nautobot reconciliation."""
+    """Result of the post-removal DCIM reconciliation."""
 
     partition_empty: bool
     pkey_deleted: bool
@@ -760,127 +547,61 @@ class CleanupEmptyPartitionOutput(StageOutput):
 async def cleanup_empty_pkey_partition(
     input: CleanupEmptyPartitionInput,
 ) -> CleanupEmptyPartitionOutput:
-    """Delete the Nautobot InfiniBandPKey and auto-created Overlay once empty.
+    """Delete an InfiniBandPKey and auto-created Overlay once empty.
 
     UFM auto-removes a PKey partition when its last member leaves.
-    After assignments are removed, this reconciles Nautobot -- but only when the
-    UFM partition is also verified empty, so UFM-only members (drift Nautobot
-    never tracked) don't get orphaned as a live partition with no Nautobot record.
+    After assignments are removed, this reconciles the DCIM -- but only when the
+    UFM partition is also verified empty, so UFM-only members that the provider
+    never tracked do not get orphaned as a live partition with no DCIM record.
     If the overlay was auto-created and has no other PKeys, it is also deleted.
     """
-    client = NautobotClient()
+    client = create_dcim_workflow_client()
     async with client:
-        assignments = await client.get(
-            f"{PLUGIN_BASE}/overlay-assignments/",
-            params={"overlay": input.overlay_id},
-        )
-        remaining = assignments.get("results", [])
-        if remaining:
-            return CleanupEmptyPartitionOutput(
-                partition_empty=False,
-                pkey_deleted=False,
-                overlay_deleted=False,
-                display=(
-                    f"Overlay {input.overlay_id} still has {len(remaining)} member(s); "
-                    "leaving PKey and Overlay in place"
-                ),
-            )
-
-        if not input.ufm_partition_empty:
-            log.warning(
-                "PKey %s has no Nautobot assignments but its UFM partition still has "
-                "members; leaving Nautobot PKey/Overlay in place to avoid orphaning "
-                "untracked UFM members",
-                input.pkey,
-            )
-            return CleanupEmptyPartitionOutput(
-                partition_empty=False,
-                pkey_deleted=False,
-                overlay_deleted=False,
-                display=(
-                    f"PKey {input.pkey} still has untracked members on UFM; "
-                    "leaving Nautobot PKey and Overlay in place"
-                ),
-            )
-
-        log.info(
-            "PKey partition %s (overlay=%s) is empty; deleting stale InfiniBandPKey %s",
-            input.pkey,
+        cleanup = await client.cleanup_ib_pkey_partition(
             input.overlay_id,
-            input.pkey_id,
-        )
-        await _delete_if_present(
-            client,
-            f"{PLUGIN_BASE}/pkeys/{input.pkey_id}/",
-            description=f"InfiniBandPKey {input.pkey_id}",
-        )
-
-        overlay_deleted = await _delete_overlay_if_auto_created(client, input)
-
-        deleted = "InfiniBandPKey + Overlay" if overlay_deleted else "InfiniBandPKey"
-        return CleanupEmptyPartitionOutput(
-            partition_empty=True,
-            pkey_deleted=True,
-            overlay_deleted=overlay_deleted,
-            display=f"Empty PKey partition reconciled; deleted {deleted}",
-        )
-
-
-async def _delete_overlay_if_auto_created(
-    client: NautobotClient, input: CleanupEmptyPartitionInput
-) -> bool:
-    """Delete the overlay when it is auto-created and holds no remaining PKeys."""
-    if not _is_auto_created_overlay_name(input.overlay_name, input.pkey):
-        return False
-
-    pkeys = await client.get(
-        f"{PLUGIN_BASE}/pkeys/",
-        params={"overlay": input.overlay_id},
-    )
-    remaining_pkeys = pkeys.get("results", [])
-    if remaining_pkeys:
-        log.info(
-            "Auto-created overlay %s still has %d PKey(s); keeping overlay",
             input.overlay_name,
-            len(remaining_pkeys),
+            input.pkey_id,
+            input.pkey,
+            input.ufm_partition_empty,
         )
-        return False
-
-    log.info(
-        "Deleting auto-created empty overlay %s (id=%s)",
-        input.overlay_name,
-        input.overlay_id,
+    if cleanup.remaining_assignments:
+        display = (
+            f"Overlay {input.overlay_id} still has {cleanup.remaining_assignments} member(s); "
+            "leaving PKey and Overlay in place"
+        )
+    elif not cleanup.partition_empty:
+        display = (
+            f"PKey {input.pkey} still has untracked members on UFM; "
+            "leaving PKey and Overlay in place"
+        )
+    else:
+        deleted = "InfiniBandPKey + Overlay" if cleanup.overlay_deleted else "InfiniBandPKey"
+        display = f"Empty PKey partition reconciled; deleted {deleted}"
+    return CleanupEmptyPartitionOutput(
+        partition_empty=cleanup.partition_empty,
+        pkey_deleted=cleanup.pkey_deleted,
+        overlay_deleted=cleanup.overlay_deleted,
+        display=display,
     )
-    await _delete_if_present(
-        client,
-        f"{PLUGIN_BASE}/overlays/{input.overlay_id}/",
-        description=f"Overlay {input.overlay_id}",
-    )
-    return True
 
 
 @activity.defn
 async def fetch_pkey_assignments(
     input: FetchPKeyAssignmentsInput,
 ) -> FetchPKeyAssignmentsOutput:
-    """Fetch current OverlayAssignment records for a PKey overlay from Nautobot."""
-    client = NautobotClient()
-    assignments: list[CurrentAssignment] = []
-
+    """Fetch current OverlayAssignment records for a PKey overlay from the DCIM."""
+    client = create_dcim_workflow_client()
     async with client:
-        results = await client.get_all(
-            f"{PLUGIN_BASE}/overlay-assignments/",
-            params={"overlay": input.overlay_id},
+        provider_assignments = await client.get_ib_pkey_assignments(input.overlay_id)
+    assignments = [
+        CurrentAssignment(
+            assignment_id=assignment.assignment_id,
+            interface_id=assignment.interface_id,
+            guid=assignment.guid,
+            membership_type=normalize_membership_type(assignment.membership_type),
         )
-        for item in results:
-            assignments.append(
-                CurrentAssignment(
-                    assignment_id=item["id"],
-                    interface_id=item.get("assigned_object_id", ""),
-                    guid=item.get("guid", ""),
-                    membership_type=normalize_membership_type(item.get("membership_type")),
-                )
-            )
+        for assignment in provider_assignments
+    ]
 
     log.info(
         "Found %d existing OverlayAssignment(s) for overlay %s",
@@ -898,74 +619,21 @@ async def fetch_pkey_assignments(
 async def sync_pkey_assignments(
     input: SyncPKeyAssignmentsInput,
 ) -> SyncPKeyAssignmentsOutput:
-    """Reconcile Nautobot OverlayAssignment records to match the desired member list."""
+    """Reconcile DCIM OverlayAssignment records to match the desired member list."""
 
-    desired_by_iface: dict[str, ResolvedInterface] = {r.interface_id: r for r in input.desired}
-
-    client = NautobotClient()
-    added: list[str] = []
-    removed: list[str] = []
-    unchanged: list[str] = []
-
+    client = create_dcim_workflow_client()
     async with client:
-        status_id = await _resolve_status_id(client)
-
-        current_items = await client.get_all(
-            f"{PLUGIN_BASE}/overlay-assignments/",
-            params={"overlay": input.overlay_id},
-        )
-        current_by_iface: dict[str, dict[str, Any]] = {
-            item["assigned_object_id"]: item for item in current_items
-        }
-
-        for iface_id, item in current_by_iface.items():
-            assignment_id = item["id"]
-            if iface_id not in desired_by_iface:
-                log.info(
-                    "Removing stale OverlayAssignment %s (interface %s)",
-                    assignment_id,
-                    iface_id,
-                )
-                await client.delete(f"{PLUGIN_BASE}/overlay-assignments/{assignment_id}/")
-                removed.append(assignment_id)
-                continue
-
-            unchanged.append(assignment_id)
-            desired_membership = desired_by_iface[iface_id].membership or input.membership_type
-            current_membership = normalize_membership_type(item.get("membership_type"))
-            if desired_membership != current_membership:
-                log.info(
-                    "Updating OverlayAssignment %s membership %s -> %s",
-                    assignment_id,
-                    current_membership,
-                    desired_membership,
-                )
-                await client.patch(
-                    f"{PLUGIN_BASE}/overlay-assignments/{assignment_id}/",
-                    data={"membership_type": desired_membership},
-                )
-
-        for iface_id, resolved in desired_by_iface.items():
-            if iface_id not in current_by_iface:
-                payload: dict[str, Any] = {
-                    "overlay": input.overlay_id,
-                    "assigned_object_type": "dcim.interface",
-                    "assigned_object_id": iface_id,
-                    "guid": resolved.guid,
-                    "membership_type": resolved.membership or input.membership_type,
-                    "status": status_id,
-                }
-                log.info(
-                    "Creating OverlayAssignment for %s/%s (guid=%s, membership=%s)",
-                    resolved.device,
-                    resolved.interface,
+        added, removed, unchanged = await client.sync_ib_pkey_assignments(
+            input.overlay_id,
+            [
+                (
+                    resolved.interface_id,
                     resolved.guid,
-                    payload["membership_type"],
+                    normalize_membership_type(resolved.membership or input.membership_type),
                 )
-                new_assignment = await client.post(
-                    f"{PLUGIN_BASE}/overlay-assignments/", data=payload
-                )
-                added.append(new_assignment["id"])
+                for resolved in input.desired
+            ],
+        )
 
     log.info(
         "OverlayAssignment sync complete: +%d added, -%d removed, %d unchanged",
@@ -979,7 +647,7 @@ async def sync_pkey_assignments(
         removed=removed,
         unchanged=unchanged,
         display=(
-            f"Nautobot assignments synced: "
+            f"DCIM assignments synced: "
             f"+{len(added)} added, -{len(removed)} removed, {len(unchanged)} unchanged"
         ),
     )
@@ -989,7 +657,7 @@ async def sync_pkey_assignments(
 # IB context resolver
 #
 # Lets clients call ib_pkey_member_{add,delete,update} with just (host, pkey)
-# and have the workflow derive the location and overlay from Nautobot.
+# and have the workflow derive the location and overlay from the DCIM.
 # ---------------------------------------------------------------------------
 
 
@@ -1010,7 +678,7 @@ class ResolveIBSiteForHostOutput(StageOutput):
 
 
 class ResolveIBContextInput(BaseModel):
-    """Inputs for resolving the Nautobot context of an IB PKey operation."""
+    """Inputs for resolving the DCIM context of an IB PKey operation."""
 
     host: str
     pkey: str
@@ -1150,69 +818,20 @@ def _normalize_pkey(value: str) -> str:
     return f"0x{int(value, 16):04x}"
 
 
-async def _find_device_by_name(client: NautobotClient, host: str) -> list[dict[str, Any]]:
-    """Query Nautobot for devices with the given name."""
-    data = await client.graphql_query(_RESOLVE_BY_NAME_QUERY, {"host": [host]})
-    return ((data.get("data") or {}).get("devices")) or []
-
-
-async def _find_device_by_ip(client: NautobotClient, host: str) -> list[dict[str, Any]]:
-    """Query Nautobot for devices reachable via the given IPv4 address."""
-    data = await client.graphql_query(_RESOLVE_BY_IP_QUERY, {"ip": [host]})
-    devices: list[dict[str, Any]] = []
-    for ip_record in ((data.get("data") or {}).get("ip_addresses")) or []:
-        for iface in ip_record.get("interfaces") or []:
-            if device := iface.get("device"):
-                devices.append(device)
-    return devices
-
-
-async def _find_device(client: NautobotClient, host: str) -> dict[str, Any]:
-    """Resolve a UFM device by name OR primary IPv4 address."""
-    if _IPV4_PATTERN.match(host):
-        devices = await _find_device_by_ip(client, host)
-        attempted = "IPv4 address"
-    else:
-        devices = await _find_device_by_name(client, host)
-        attempted = "name"
-
-    if not devices:
-        raise ApplicationError(
-            f"UFM device {host!r} not found in Nautobot (tried as {attempted})",
-            non_retryable=True,
-        )
-
-    by_id = {d["id"]: d for d in devices}
-    if len(by_id) > 1:
-        raise ApplicationError(
-            f"Multiple UFM devices match {host!r}: {sorted(by_id.keys())}",
-            non_retryable=True,
-        )
-    return next(iter(by_id.values()))
-
-
 async def canonicalize_ufm_host(host: str) -> str:
     """Resolve a UFM host (device name or IPv4) to one identifier."""
-    client = NautobotClient()
+    client = create_dcim_workflow_client()
     async with client:
-        device = await _find_device(client, host)
-    canonical = (device.get("primary_ip4") or {}).get("host") or device["name"]
-    return str(canonical)
+        return await client.canonicalize_ib_host(host)
 
 
 async def canonicalize_ufm_host_for_site(host: str, site_reference: str | None) -> str:
     """Resolve an API-supplied UFM host and verify its optional Site reference."""
-    client = NautobotClient()
+    client = create_dcim_workflow_client()
     async with client:
-        device = await _find_device(client, host)
+        host_site = await client.resolve_ib_host_site(host)
+        canonical_host = await client.canonicalize_ib_host(host)
 
-    if (device.get("role") or {}).get("name") != "UFM":
-        raise ApplicationError(
-            f"Device {device['name']!r} is not assigned the UFM role in Nautobot",
-            non_retryable=True,
-        )
-
-    site = _require_device_site(device)
     normalized_reference = site_reference
     if site_reference is not None:
         try:
@@ -1220,17 +839,15 @@ async def canonicalize_ufm_host_for_site(host: str, site_reference: str | None) 
         except ValueError:
             pass
     if normalized_reference is not None and normalized_reference not in {
-        str(site["id"]),
-        str(site["name"]),
+        host_site.site_id,
+        host_site.site_name,
     }:
         raise ApplicationError(
-            f"UFM device {device['name']!r} belongs to Site {site['name']!r}, "
+            f"UFM device {host_site.device_name!r} belongs to Site {host_site.site_name!r}, "
             f"not {site_reference!r}",
             non_retryable=True,
         )
-
-    canonical = (device.get("primary_ip4") or {}).get("host") or device["name"]
-    return str(canonical)
+    return canonical_host
 
 
 def _walk_location_chain(location: dict[str, Any] | None) -> list[dict[str, Any]]:
@@ -1307,7 +924,7 @@ def _select_pkey_match(
         raise ApplicationError(
             f"PKey {canonical_pkey!r} ambiguous near location {device_loc_name!r}: "
             f"matches [{candidates}]. Resolve the duplicate PKey/Overlay "
-            f"entries in Nautobot before retrying.",
+            f"entries in the DCIM before retrying.",
             non_retryable=True,
         )
     return matches[0]
@@ -1319,29 +936,24 @@ async def resolve_ib_site_for_host(
 ) -> ResolveIBSiteForHostOutput:
     """Resolve the Site for a UFM host. Allows site specific UFM credentials."""
 
-    client = NautobotClient()
+    client = create_dcim_workflow_client()
     async with client:
-        device = await _find_device(client, input.host)
-
-    site = _require_device_site(device)
-
-    primary_ip = (device.get("primary_ip4") or {}).get("host")
+        host_site = await client.resolve_ib_host_site(input.host)
 
     log.info(
-        "Resolved IB site for host=%s -> device=%s device_location=%s site=%s",
+        "Resolved IB site for host=%s -> device=%s site=%s",
         input.host,
-        device.get("name"),
-        (device.get("location") or {}).get("name"),
-        site.get("name"),
+        host_site.device_name,
+        host_site.site_name,
     )
 
     return ResolveIBSiteForHostOutput(
-        ufm_device_id=device["id"],
-        ufm_device_name=device["name"],
-        ufm_device_primary_ip=primary_ip,
-        location_id=site["id"],
-        location_name=site["name"],
-        display=f"Resolved {input.host} -> site {site.get('name')}",
+        ufm_device_id=host_site.device_id,
+        ufm_device_name=host_site.device_name,
+        ufm_device_primary_ip=host_site.device_primary_ip,
+        location_id=host_site.site_id,
+        location_name=host_site.site_name,
+        display=f"Resolved {input.host} -> site {host_site.site_name}",
     )
 
 
@@ -1350,119 +962,31 @@ async def resolve_ib_context(
     input: ResolveIBContextInput,
 ) -> ResolveIBContextOutput:
     """Resolve UFM device, location, overlay, and PKey records from (host, pkey)."""
-    canonical_pkey = _normalize_pkey(input.pkey)
-
-    client = NautobotClient()
+    client = create_dcim_workflow_client()
     async with client:
-        device = await _find_device(client, input.host)
-
-    overlay_location, overlay, pkey_record = _select_pkey_match(device, canonical_pkey)
-
-    chain = _walk_location_chain(device.get("location") or {})
-    site = _find_site_in_chain(chain)
-    if site is None:
-        chain_repr = " -> ".join(
-            f"{loc.get('name', '?')}:{(loc.get('location_type') or {}).get('name', '?')}"
-            for loc in chain
-        )
-        raise ApplicationError(
-            f"No {SITE_LOCATION_TYPE_NAME}-typed location in hierarchy for device "
-            f"{device.get('name')!r}: {chain_repr}",
-            non_retryable=True,
-        )
-
-    primary_ip = (device.get("primary_ip4") or {}).get("host")
+        context = await client.resolve_ib_pkey_context(input.host, input.pkey)
 
     log.info(
-        "Resolved IB context for host=%s pkey=%s -> device=%s "
-        "device_location=%s site=%s overlay_location=%s overlay=%s",
+        "Resolved IB context for host=%s pkey=%s -> device=%s site=%s overlay=%s",
         input.host,
-        canonical_pkey,
-        device.get("name"),
-        (device.get("location") or {}).get("name"),
-        site.get("name"),
-        overlay_location.get("name"),
-        overlay.get("name"),
+        context.pkey,
+        context.host_site.device_name,
+        context.host_site.site_name,
+        context.overlay_name,
     )
 
     return ResolveIBContextOutput(
-        ufm_device_id=device["id"],
-        ufm_device_name=device["name"],
-        ufm_device_primary_ip=primary_ip,
-        location_id=site["id"],
-        location_name=site["name"],
-        overlay_id=overlay["id"],
-        overlay_name=overlay["name"],
-        pkey_id=pkey_record["id"],
-        pkey=canonical_pkey,
-        display=f"Resolved {input.host}+{canonical_pkey} -> overlay {overlay.get('name')}",
+        ufm_device_id=context.host_site.device_id,
+        ufm_device_name=context.host_site.device_name,
+        ufm_device_primary_ip=context.host_site.device_primary_ip,
+        location_id=context.host_site.site_id,
+        location_name=context.host_site.site_name,
+        overlay_id=context.overlay_id,
+        overlay_name=context.overlay_name,
+        pkey_id=context.pkey_id,
+        pkey=context.pkey,
+        display=f"Resolved {input.host}+{context.pkey} -> overlay {context.overlay_name}",
     )
-
-
-async def _create_overlay_for_orphan_pkey(
-    client: NautobotClient,
-    *,
-    pkey_value: str,
-    orphan_pkey_id: str,
-    location_id: str,
-    location_name: str,
-    tenant_id: str,
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Create an Overlay at the given location and link the orphan PKey to it."""
-    overlay_name = f"ib-pkey-overlay-{pkey_value}"
-
-    overlay = await _find_existing_overlay(client, overlay_name, location_id)
-    if overlay:
-        log.info(
-            "Reusing existing Overlay '%s' (id=%s) at location %s for orphan PKey %s",
-            overlay_name,
-            overlay["id"],
-            location_name,
-            pkey_value,
-        )
-    else:
-        status_id = await _resolve_status_id(client)
-        payload: dict[str, Any] = {
-            "name": overlay_name,
-            "location": location_id,
-            "tenant": tenant_id,
-            "isolation_type": ISOLATION_TYPE_IB_PKEY,
-            "status": status_id,
-            "description": f"Auto-created for orphan PKey {pkey_value} during member-add",
-        }
-        log.info(
-            "Creating Overlay '%s' at location %s for orphan PKey %s",
-            overlay_name,
-            location_name,
-            pkey_value,
-        )
-        overlay = await client.post(f"{PLUGIN_BASE}/overlays/", data=payload)
-
-    pkey_record = await client.get(f"{PLUGIN_BASE}/pkeys/{orphan_pkey_id}/")
-    raw_overlay = pkey_record.get("overlay")
-    current_overlay_id = raw_overlay["id"] if isinstance(raw_overlay, dict) else raw_overlay
-
-    if current_overlay_id is None:
-        log.info(
-            "Linking orphan PKey %s (id=%s) to Overlay %s",
-            pkey_value,
-            orphan_pkey_id,
-            overlay["id"],
-        )
-        pkey_record = await client.patch(
-            f"{PLUGIN_BASE}/pkeys/{orphan_pkey_id}/",
-            data={"overlay": overlay["id"]},
-        )
-    elif current_overlay_id != overlay["id"]:
-        raise ApplicationError(
-            f"PKey {pkey_value!r} (id={orphan_pkey_id}) is already linked to "
-            f"Overlay {current_overlay_id!r}; refusing to relink to "
-            f"{overlay['id']!r}. Unlink the PKey from the other Overlay or "
-            f"use a different PKey value.",
-            non_retryable=True,
-        )
-
-    return overlay, pkey_record
 
 
 @activity.defn
@@ -1470,95 +994,31 @@ async def resolve_ib_context_for_add(
     input: ResolveIBContextInput,
 ) -> ResolveIBContextOutput:
     """Resolve UFM/site/overlay/pkey for member-add with lazy Overlay creation."""
-    canonical_pkey = _normalize_pkey(input.pkey)
-
-    client = NautobotClient()
+    client = create_dcim_workflow_client()
     async with client:
-        device = await _find_device(client, input.host)
-
-        device_location = device.get("location") or {}
-        chain = _walk_location_chain(device_location)
-        site = _find_site_in_chain(chain)
-        if site is None:
-            chain_repr = " -> ".join(
-                f"{loc.get('name', '?')}:{(loc.get('location_type') or {}).get('name', '?')}"
-                for loc in chain
-            )
-            raise ApplicationError(
-                f"No {SITE_LOCATION_TYPE_NAME}-typed location in hierarchy for device "
-                f"{device.get('name')!r}: {chain_repr}",
-                non_retryable=True,
-            )
-
-        matches = _iter_pkey_matches(chain, canonical_pkey)
-        device_loc_name = device_location.get("name") or "<unknown>"
-        if len(matches) > 1:
-            candidates = ", ".join(
-                f"{loc.get('name', '<unnamed>')}/{ovl.get('name', '<unnamed>')}"
-                for loc, ovl, _ in matches
-            )
-            raise ApplicationError(
-                f"PKey {canonical_pkey!r} ambiguous near location {device_loc_name!r}: "
-                f"matches [{candidates}]. Resolve the duplicate PKey/Overlay "
-                f"entries in Nautobot before retrying.",
-                non_retryable=True,
-            )
-
-        if matches:
-            overlay_location, overlay, pkey_record = matches[0]
-        else:
-            orphan = await _find_orphan_pkey(client, canonical_pkey)
-            if orphan is None:
-                raise ApplicationError(
-                    f"PKey {canonical_pkey!r} not found in Nautobot. Run the IB "
-                    f"PKey Creation workflow first to register the partition.",
-                    non_retryable=True,
-                )
-
-            tenant = device.get("tenant") or {}
-            tenant_id = tenant.get("id")
-            if not tenant_id:
-                raise ApplicationError(
-                    f"Device {device.get('name')!r} has no Tenant set; cannot "
-                    f"auto-create Overlay for orphan PKey {canonical_pkey}. "
-                    f"Set Tenant on the device or pre-create an Overlay and "
-                    f"link PKey {canonical_pkey} to it.",
-                    non_retryable=True,
-                )
-
-            overlay, pkey_record = await _create_overlay_for_orphan_pkey(
-                client,
-                pkey_value=canonical_pkey,
-                orphan_pkey_id=orphan["id"],
-                location_id=device_location["id"],
-                location_name=device_loc_name,
-                tenant_id=tenant_id,
-            )
-            overlay_location = device_location
-
-    primary_ip = (device.get("primary_ip4") or {}).get("host")
+        context = await client.resolve_ib_pkey_context(
+            input.host, input.pkey, create_overlay_for_orphan=True
+        )
 
     log.info(
         "Resolved IB context (with lazy-create) for host=%s pkey=%s -> "
-        "device=%s device_location=%s site=%s overlay_location=%s overlay=%s",
+        "device=%s site=%s overlay=%s",
         input.host,
-        canonical_pkey,
-        device.get("name"),
-        device_location.get("name"),
-        site.get("name"),
-        overlay_location.get("name"),
-        overlay.get("name"),
+        context.pkey,
+        context.host_site.device_name,
+        context.host_site.site_name,
+        context.overlay_name,
     )
 
     return ResolveIBContextOutput(
-        ufm_device_id=device["id"],
-        ufm_device_name=device["name"],
-        ufm_device_primary_ip=primary_ip,
-        location_id=site["id"],
-        location_name=site["name"],
-        overlay_id=overlay["id"],
-        overlay_name=overlay["name"],
-        pkey_id=pkey_record["id"],
-        pkey=canonical_pkey,
-        display=f"Resolved {input.host}+{canonical_pkey} -> overlay {overlay.get('name')}",
+        ufm_device_id=context.host_site.device_id,
+        ufm_device_name=context.host_site.device_name,
+        ufm_device_primary_ip=context.host_site.device_primary_ip,
+        location_id=context.host_site.site_id,
+        location_name=context.host_site.site_name,
+        overlay_id=context.overlay_id,
+        overlay_name=context.overlay_name,
+        pkey_id=context.pkey_id,
+        pkey=context.pkey,
+        display=f"Resolved {input.host}+{context.pkey} -> overlay {context.overlay_name}",
     )

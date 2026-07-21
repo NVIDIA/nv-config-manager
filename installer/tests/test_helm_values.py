@@ -26,6 +26,8 @@ from nv_config_manager_installer.schema import (
     NV_CONFIG_MANAGER_IMAGE_KEYS,
     ClusterConfig,
     ContentConfig,
+    DCIMConfig,
+    DCIMProviderPackage,
     ExternalServicesConfig,
     ExternalTemporalConfig,
     GatewayType,
@@ -804,6 +806,54 @@ class TestGenerateHelmValues:
         assert "server" not in ext.get("nats", {})
         assert ext["redis"]["local"] is True
         assert ext["postgres"]["temporal"]["host"] == "cluster-temporal-rw"
+        assert values["mcp"]["enabled"] is True
+
+    def test_external_dcim_values_use_generic_configuration(self):
+        config = _make_config(
+            dcim=DCIMConfig(
+                provider="synthetic",
+                server="https://synthetic.example",
+                public_url="https://synthetic-ui.example",
+                display_name="Synthetic DCIM",
+                event_stream="synthetic-dcim",
+                event_subject="synthetic.change",
+                options={"tenant": "lab"},
+                token_secret_name="synthetic-dcim-token",
+                token_secret_key="access-token",
+                provider_packages=[
+                    DCIMProviderPackage(
+                        name="synthetic",
+                        image="registry.example/synthetic-provider:1.0",
+                    )
+                ],
+            ),
+            services=ServicesConfig(nautobot=False),
+            content=ContentConfig(jobs=[]),
+        )
+
+        values = _gen(config)
+
+        assert values["dcim"] == {
+            "provider": "synthetic",
+            "server": "https://synthetic.example",
+            "publicUrl": "https://synthetic-ui.example",
+            "displayName": "Synthetic DCIM",
+            "events": {"stream": "synthetic-dcim", "subject": "synthetic.change"},
+            "tokenSecret": {"name": "synthetic-dcim-token", "key": "access-token"},
+            "options": {"tenant": "lab"},
+            "providerPackages": {
+                "enabled": True,
+                "images": [
+                    {
+                        "name": "synthetic",
+                        "image": "registry.example/synthetic-provider:1.0",
+                        "pullPolicy": "IfNotPresent",
+                    }
+                ],
+            },
+        }
+        assert values["externalServices"]["nautobot"] == {"local": False}
+        assert values["nautobot"]["enabled"] is False
         assert values["mcp"]["enabled"] is True
 
 

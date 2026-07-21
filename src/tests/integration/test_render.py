@@ -95,6 +95,24 @@ class TestRenderPipeline:
             # If we can't reach the API, assume queues are not ready
             return {"pending": -1, "ack_pending": -1}
 
+    @pytest.mark.timeout(60)
+    def test_render_all_queues_enabled_devices(
+        self,
+        render_api_url: str,
+        render_client: requests.Session,
+    ) -> None:
+        """Force render work into the queue before asserting that it drains."""
+        response = render_client.post(
+            f"{render_api_url}/v1/render/all",
+            json={"commit_message": "Integration test render-all"},
+            timeout=30,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        assert response.status_code == 202
+        assert payload["queued_count"] == payload["total_devices"]
+        assert payload["queued_count"] > 0
+
     @pytest.mark.timeout(660)  # 11 minutes - allow time for queue drain
     def test_render_queues_drain(
         self,

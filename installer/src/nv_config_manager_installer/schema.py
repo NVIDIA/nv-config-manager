@@ -152,6 +152,8 @@ def _path(enabled: bool = True, **keys: str) -> VaultPathConfig:
 class VaultPathsConfig(BaseModel):
     """All vault secret path groups consumed by the Helm chart."""
 
+    dcim: VaultPathConfig = Field(default_factory=lambda: _path(enabled=False, token="token"))
+    nats: VaultPathConfig = Field(default_factory=lambda: _path(enabled=False, password="password"))
     nautobot: VaultPathConfig = Field(
         default_factory=lambda: _path(
             token="token",
@@ -256,6 +258,9 @@ class KubernetesSecretsConfig(BaseModel):
     by the deployer.
     """
 
+    # ``dcim`` is the canonical provider token group. ``nautobot`` remains
+    # available for the built-in provider's compatibility credentials.
+    dcim: K8sSecretGroup = Field(default_factory=K8sSecretGroup)
     nautobot: K8sSecretGroup = Field(default_factory=K8sSecretGroup)
     redis: K8sSecretGroup = Field(default_factory=K8sSecretGroup)
     postgres: K8sSecretGroup = Field(default_factory=K8sSecretGroup)
@@ -411,6 +416,83 @@ class ContentConfig(BaseModel):
     def requires_local_nautobot(self) -> bool:
         """Return whether the configured content needs the local Nautobot deployment."""
         return bool(self.jobs or self.run_after_deploy)
+
+
+class DCIMProviderPackage(BaseModel):
+    """One OCI image containing offline wheels for an external DCIM provider."""
+
+    name: str
+    image: str
+    pull_policy: str = "IfNotPresent"
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        """Require a DNS-compatible package name for Kubernetes resources."""
+        if not re.fullmatch(r"[a-z0-9]([a-z0-9-]*[a-z0-9])?", value):
+            raise ValueError("DCIM provider package name must be DNS-compatible")
+        return value
+
+    @field_validator("image", "pull_policy")
+    @classmethod
+    def reject_control_characters(cls, value: str) -> str:
+        """Keep generated Helm values safe to render into YAML."""
+        if any(character in value for character in "\r\n\x00"):
+            raise ValueError("DCIM provider package values must not contain control characters")
+        return value
+
+
+class DCIMConfig(BaseModel):
+    """Provider-neutral DCIM selection, connection, and package settings."""
+
+    provider: str = "nautobot"
+    server: str = ""
+    public_url: str = ""
+    display_name: str = ""
+    verify: bool | str = ""
+    cache_refresh_interval: int = 0
+    cache_ttl: int = 0
+    event_stream: str = ""
+    event_subject: str = ""
+    token_secret_name: str = "nautobot-token"
+    token_secret_key: str = "token"
+    options: dict[str, str] = Field(default_factory=dict)
+    provider_packages: list[DCIMProviderPackage] = Field(default_factory=list)
+
+    @field_validator("provider")
+    @classmethod
+    def validate_provider(cls, value: str) -> str:
+        """Accept stable entry-point names and reject INI/YAML injection."""
+        if not re.fullmatch(r"[a-z0-9]([a-z0-9-]*[a-z0-9])?", value):
+            raise ValueError("dcim.provider must be a lowercase entry-point name")
+        return value
+
+    @field_validator(
+        "server",
+        "public_url",
+        "display_name",
+        "event_stream",
+        "event_subject",
+        "token_secret_name",
+        "token_secret_key",
+    )
+    @classmethod
+    def reject_unsafe_strings(cls, value: str) -> str:
+        """Reject values that could introduce additional rendered configuration lines."""
+        if any(character in value for character in "\r\n\x00"):
+            raise ValueError("DCIM configuration values must not contain control characters")
+        return value
+
+    @field_validator("options")
+    @classmethod
+    def validate_options(cls, value: dict[str, str]) -> dict[str, str]:
+        """Keep provider options as scalar, INI-safe non-secret configuration."""
+        for key, option_value in value.items():
+            if not key or any(character in key for character in "\r\n\x00="):
+                raise ValueError("DCIM option names must be non-empty and INI-safe")
+            if any(character in option_value for character in "\r\n\x00"):
+                raise ValueError("DCIM option values must not contain control characters")
+        return value
 
 
 class ServicesConfig(BaseModel):
@@ -923,6 +1005,7 @@ class NVConfigManagerInstallConfig(BaseModel):
     sso: SSOConfig = Field(default_factory=SSOConfig)
     spiffe: SPIFFEConfig = Field(default_factory=SPIFFEConfig)
     content: ContentConfig = Field(default_factory=ContentConfig)
+    dcim: DCIMConfig = Field(default_factory=DCIMConfig)
     services: ServicesConfig = Field(default_factory=ServicesConfig)
     external_services: ExternalServicesConfig = Field(default_factory=ExternalServicesConfig)
     infrastructure: InfrastructureConfig = Field(default_factory=InfrastructureConfig)
@@ -932,7 +1015,20 @@ class NVConfigManagerInstallConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_external_nautobot(self) -> NVConfigManagerInstallConfig:
-        """Reject content that cannot run against an external Nautobot instance."""
+        """Validate provider selection and local Nautobot-only content."""
+        if self.dcim.provider != "nautobot":
+            if self.services.nautobot:
+                raise ValueError("External DCIM providers require services.nautobot=false")
+            if not self.dcim.server:
+                raise ValueError("dcim.server is required when dcim.provider is not nautobot")
+            if (
+                self.secrets.method == SecretsMethod.ESO
+                and not self.secrets.vault.paths.dcim.enabled
+            ):
+                raise ValueError(
+                    "secrets.vault.paths.dcim.enabled must be true for an external DCIM provider with ESO"
+                )
+
         if not self.services.nautobot and self.content.requires_local_nautobot:
             msg = (
                 "Custom jobs and post-deploy jobs require a local Nautobot deployment "
@@ -940,6 +1036,7 @@ class NVConfigManagerInstallConfig(BaseModel):
                 "content.run_after_deploy or switch to local Nautobot."
             )
             raise ValueError(msg)
+
         return self
 
     # -- Serialization helpers -----------------------------------------------

@@ -66,6 +66,8 @@ navigation:
     - folder: ../overview
       collapsible: true
       collapsed-by-default: true
+    - page: Contribute a DCIM Provider
+      path: ../development/contributing-dcim-provider.mdx
     - folder: ../nautobot
       title: Nautobot Overview
       collapsible: true

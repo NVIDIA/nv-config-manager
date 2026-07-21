@@ -39,7 +39,7 @@ from nv_config_manager.temporal.common.workflow_references import (
 )
 
 with workflow.unsafe.imports_passed_through():
-    from nv_config_manager.temporal.client.nautobot import DeviceVrfInfo
+    from nv_config_manager.dcim import DeviceVRF
     from nv_config_manager.temporal.common.mixins.archive import ArchiveMixin
     from nv_config_manager.temporal.common.mixins.device import DeviceMixin, NetworkDeviceData
     from nv_config_manager.temporal.ngc.activities.deploy import (
@@ -456,11 +456,7 @@ class SpXOverlayAssignmentWorkflowOutput(BaseModel):
     assigned_ports: list[str]
     unassigned_ports: list[str]
     vrf_assigned: bool
-    removed_vrf_ids: list[str]
-    overlay_assignments_created: int
-    overlay_assignments_removed: int
-    overlay_reconciliation_changed: bool = False
-    vrf: DeviceVrfInfo | None
+    vrf: DeviceVRF
 
 
 @workflow.defn
@@ -770,17 +766,9 @@ class SpXOverlayAssignmentWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixi
             assigned_ports=ports_output.assigned_ports,
             unassigned_ports=ports_output.unassigned_ports,
             vrf_assigned=not device_output.already_assigned,
-            removed_vrf_ids=ports_output.removed_vrf_ids,
-            overlay_assignments_created=ports_output.overlay_assignments_created,
-            overlay_assignments_removed=ports_output.overlay_assignments_removed,
-            overlay_reconciliation_changed=ports_output.overlay_reconciliation_changed,
-            vrf=(
-                DeviceVrfInfo(
-                    vrf_id=device_vrf_output.vrf.id,
-                    vrf_name=device_vrf_output.vrf.name,
-                )
-                if device_vrf_output.vrf
-                else None
+            vrf=DeviceVRF(
+                vrf_id=device_vrf_output.vrf.id,
+                vrf_name=device_vrf_output.vrf.name,
             ),
         )
 
@@ -815,10 +803,7 @@ class SpXOverlayTenantChangeWorkflowOutput(BaseModel):
     assigned_ports: list[str]
     unassigned_ports: list[str]
     vrf_assigned: bool
-    removed_vrf_ids: list[str]
-    overlay_assignments_created: int
-    overlay_assignments_removed: int
-    vrf: DeviceVrfInfo | None
+    vrf: DeviceVRF | None
     device_deployed: str | None
 
 
@@ -918,12 +903,8 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
         assigned_ports: list[str]
         unassigned_ports: list[str]
         vrf_assigned: bool
-        removed_vrf_ids: list[str]
-        overlay_assignments_created: int
-        overlay_assignments_removed: int
-        overlay_reconciliation_changed: bool = False
-        vrf: DeviceVrfInfo | None
-        overlay_name: str | None
+        vrf: DeviceVRF | None
+        overlay_name: str
         vxlan_name: str | None
         error: str | None = None
 

@@ -250,7 +250,7 @@ class Interface:  # pylint: disable=too-many-instance-attributes
             )
             peer_asn = Interface._bgp_asn_from_routing_instances(device, connected_vrf)
             if peer_asn is None:
-                peer_asn = (device.get("config_context") or {}).get("bgp", {}).get("asn")
+                peer_asn = (device.get("intent") or {}).get("bgp", {}).get("asn")
                 if peer_asn is not None:
                     peer_asn = str(peer_asn)
 
@@ -277,7 +277,7 @@ class Interface:  # pylint: disable=too-many-instance-attributes
         return connected_interface
 
     @staticmethod
-    def _from_nautobot_graphql_v2(entry: dict[str, Any]) -> Interface:
+    def _from_render_data(entry: dict[str, Any]) -> Interface:
         (
             primary_ipv4,
             primary_ipv6,
@@ -314,6 +314,6 @@ class Interface:  # pylint: disable=too-many-instance-attributes
         )
 
     @staticmethod
-    def from_nautobot_graphql(entry: dict[str, Any]) -> Interface:
-        """Create interface object from nautobot data."""
-        return Interface._from_nautobot_graphql_v2(entry)
+    def from_render_data(entry: dict[str, Any]) -> Interface:
+        """Create an interface object from normalized render data."""
+        return Interface._from_render_data(entry)

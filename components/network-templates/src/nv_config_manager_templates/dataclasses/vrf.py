@@ -33,8 +33,8 @@ class VRF:
     import_targets: tuple[str, ...]
 
     @staticmethod
-    def from_nautobot_graphql(entry: dict[str, Any]) -> VRF | None:
-        """Craft a VRF object from Graphql."""
+    def from_render_data(entry: dict[str, Any]) -> VRF | None:
+        """Create a VRF object from normalized render data."""
         if entry["name"] == "NSV":
             return None
 

@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import replace
 from typing import Any
 
 import pytest
@@ -194,3 +195,16 @@ async def test_list_nautobot_types_preserves_upstream_truncation(
 
     assert result["truncated"] is True
     assert result["data"]["types"][0]["name"] == "Device"
+
+
+def test_non_nautobot_provider_omits_nautobot_specific_tools(settings: MCPSettings) -> None:
+    """Nautobot schema and REST tools are not exposed for another provider."""
+    server = FakeServer()
+
+    tools.register_tools(server, replace(settings, dcim_provider_name="synthetic"))
+
+    assert "search_devices" not in server.tools
+    assert "get_device_id" not in server.tools
+    assert "query_nautobot" not in server.tools
+    assert "list_nautobot_types" not in server.tools
+    assert "get_nautobot_type" not in server.tools

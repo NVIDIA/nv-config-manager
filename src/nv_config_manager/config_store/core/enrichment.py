@@ -52,7 +52,8 @@ async def enrich_with_device_metadata(
             role=metadata.role,
             rack=metadata.rack,
             primary_ip4=metadata.primary_ip4,
-            nautobot_url=metadata.nautobot_url,
+            device_url=metadata.device_url,
+            nautobot_url=metadata.device_url,
             last_updated=None,  # Redis cache doesn't track this separately
         )
     except Exception as e:

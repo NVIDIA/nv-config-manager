@@ -1,0 +1,119 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+"""Tests for Nautobot-owned render event interpretation."""
+
+from unittest.mock import AsyncMock
+
+import pytest
+from nv_config_manager_dcim_nautobot.events import cable, configcontext, prefix
+from nv_config_manager_dcim_nautobot.provider import NautobotDCIMClient, NautobotProvider
+
+from nv_config_manager.dcim import DCIMChangeEvent, RenderEventRequest
+
+
+def _event(object_type: str, record: dict) -> DCIMChangeEvent:
+    """Build a representative normalized Nautobot changelog event."""
+    return DCIMChangeEvent(
+        provider="nautobot",
+        operation="update",
+        object_type=object_type,
+        object_id=str(record.get("id", "event-id")),
+        timestamp="2026-07-20T00:00:00Z",
+        actor="test-user",
+        record=record,
+    )
+
+
+def _client() -> NautobotDCIMClient:
+    """Build a provider client without opening an HTTP session."""
+    return NautobotDCIMClient("https://nautobot.example", "token")
+
+
+def test_nautobot_provider_registers_its_event_types():
+    """The provider, not core render code, chooses event types and handlers."""
+
+    class Registry:
+        handlers: dict[str, object] = {}
+
+        def register_render_event_handler(self, object_type, handler) -> None:
+            self.handlers[object_type] = handler
+
+    registry = Registry()
+    NautobotProvider().register_render_event_handlers(registry)
+
+    assert {
+        "dcim.cable",
+        "extras.configcontext",
+        "ipam.vrf",
+        "nautobot_bgp_models.peering",
+        "nv_config_manager.configmanagerdevicestatus",
+    } <= registry.handlers.keys()
+
+
+@pytest.mark.asyncio
+async def test_cable_handler_resolves_compact_nautobot_terminations():
+    """Compact Nautobot termination references are resolved by the provider."""
+    client = _client()
+    client.get_cable_termination_device_id = AsyncMock(side_effect=["leaf-1", "leaf-2"])
+    event = _event(
+        "dcim.cable",
+        {
+            "id": "cable-1",
+            "name": "uplink",
+            "termination_a": {"id": "port-1", "url": "/api/dcim/interfaces/port-1/"},
+            "termination_b": {"id": "port-2", "url": "/api/dcim/interfaces/port-2/"},
+        },
+    )
+
+    requests = await cable(event, client)
+
+    assert requests == (
+        RenderEventRequest(
+            device_id="leaf-1",
+            commit_message="Triggered from nb dcim.cable update on uplink by test-user at 2026-07-20T00:00:00Z",
+        ),
+        RenderEventRequest(
+            device_id="leaf-2",
+            commit_message="Triggered from nb dcim.cable update on uplink by test-user at 2026-07-20T00:00:00Z",
+        ),
+    )
+    assert client.get_cable_termination_device_id.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_config_context_handler_uses_nautobot_filtering():
+    """Nautobot owns config-context filter interpretation and affected-device lookup."""
+    client = _client()
+    client.get_render_enabled_devices_matching = AsyncMock(return_value=["leaf-1", "leaf-2"])
+    event = _event(
+        "extras.configcontext",
+        {
+            "id": "context-1",
+            "name": "base-settings",
+            "locations": [{"id": "site-1"}],
+            "roles": [{"id": "leaf"}],
+            "platforms": [],
+        },
+    )
+
+    requests = await configcontext(event, client)
+
+    client.get_render_enabled_devices_matching.assert_awaited_once_with(
+        {"locations": ["site-1"], "roles": ["leaf"]}
+    )
+    assert [request.device_id for request in requests] == ["leaf-1", "leaf-2"]
+
+
+@pytest.mark.asyncio
+async def test_prefix_without_locations_does_not_request_a_render():
+    """Provider-specific impact rules can ignore events without usable scope."""
+    client = _client()
+    client.get_render_enabled_devices_matching = AsyncMock()
+
+    requests = await prefix(
+        _event("ipam.prefix", {"id": "prefix-1", "prefix": "10.0.0.0/8", "locations": []}),
+        client,
+    )
+
+    assert requests == ()
+    client.get_render_enabled_devices_matching.assert_not_awaited()

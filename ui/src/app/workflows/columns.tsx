@@ -219,7 +219,10 @@ function DeviceNameCell({
       param="device_name"
       value={deviceNameValue}
     >
-      {renderDeviceNameField(workflow, config?.nautobotUrl)}
+      {renderDeviceNameField(
+        workflow,
+        config?.dcimProvider === "nautobot" ? config.dcimUrl : undefined
+      )}
     </FilterableValue>
   );
 }

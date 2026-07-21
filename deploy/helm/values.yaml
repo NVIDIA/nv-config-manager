@@ -33,6 +33,46 @@
 
 nameOverride: ""
 fullnameOverride: ""
+
+# =============================================================================
+# DCIM Provider Configuration
+# =============================================================================
+# The built-in provider remains the default. Provider-specific non-secret
+# configuration is rendered into [dcim.options]. External provider packages
+# are installed separately through the provider package settings.
+dcim:
+  provider: nautobot
+  # Shared provider connection settings. Empty values inherit the legacy
+  # Nautobot settings only when provider=nautobot. Other providers must set
+  # server explicitly and may use dcim.options for provider-specific auth.
+  server: ""
+  publicUrl: ""
+  # Label used by the Config Manager UI. Empty uses "Nautobot" for the
+  # built-in provider and the provider name for an external provider.
+  displayName: ""
+  # true, false, a CA bundle path, or empty to inherit Nautobot's legacy value.
+  verify: ""
+  cacheRefreshInterval: 0
+  cacheTtl: 0
+  # Kubernetes secret used by secrets.method=kubernetes. ESO and Vault Agent
+  # use secrets.vault.paths.dcim for non-Nautobot providers instead.
+  tokenSecret:
+    name: nautobot-token
+    key: token
+  options: {}
+  # Provider-neutral DCIM event stream. Empty values retain the historical
+  # Nautobot changelog stream during the compatibility window.
+  events:
+    stream: ""
+    subject: ""
+  # Optional external provider packages. Each image must contain one or more
+  # provider/dependency wheels under /plugin-wheels. Installation is offline;
+  # the image therefore carries every dependency required by the provider.
+  providerPackages:
+    enabled: false
+    installerImage: python:3.13-alpine
+    images: []
+
 # =============================================================================
 # Global Configuration
 # =============================================================================
@@ -356,6 +396,17 @@ secrets:
     #       token: "api_token"               # Map logical name to actual key
     # -------------------------------------------------------------------------
     paths:
+      # Generic external DCIM token. Used when dcim.provider is not nautobot.
+      dcim:
+        path: "" # Required for an external provider with ESO or Vault Agent
+        keys:
+          token: "token"
+      # NATS credentials are separate from DCIM credentials for external
+      # providers. Nautobot deployments retain the legacy nautobot path.
+      nats:
+        path: "" # Required when an external provider uses NATS password auth
+        keys:
+          password: "password"
       nautobot:
         # Full path to nautobot secret in Vault
         path: "" # Required: e.g., "my-org/nv-config-manager/dev/nautobot"
@@ -1786,7 +1837,8 @@ temporal:
   # matchLabels:
   # app.kubernetes.io/component: nv-config-manager-worker
 
-  # Scheduler (for automatic backup scheduling)
+  # Scheduler (for automatic backup scheduling; currently available only with
+  # the built-in Nautobot provider)
   scheduler:
     enabled: true
     resources:

@@ -26,6 +26,7 @@ from nv_config_manager_installer.schema import (
     ClusterConfig,
     CNPGBackupConfig,
     ContentConfig,
+    DCIMConfig,
     DeploySize,
     ExternalPostgresConfig,
     ExternalRedisConfig,
@@ -351,6 +352,31 @@ class TestNVConfigManagerInstallConfig:
         )
         assert config.services.nautobot is False
         assert config.services.external_nautobot_url == "https://nb.example.com"
+
+    def test_external_dcim_requires_disabled_nautobot_and_server(self):
+        with pytest.raises(ValueError, match="services.nautobot=false"):
+            NVConfigManagerInstallConfig(dcim=DCIMConfig(provider="synthetic", server="https://dcim"))
+
+        with pytest.raises(ValueError, match="dcim.server is required"):
+            NVConfigManagerInstallConfig(
+                dcim=DCIMConfig(provider="synthetic"),
+                services=ServicesConfig(nautobot=False),
+            )
+
+        config = NVConfigManagerInstallConfig(
+            dcim=DCIMConfig(provider="synthetic", server="https://synthetic.example"),
+            services=ServicesConfig(nautobot=False),
+        )
+
+        assert config.dcim.provider == "synthetic"
+
+    def test_external_dcim_eso_requires_provider_secret_path(self):
+        with pytest.raises(ValueError, match="paths.dcim.enabled"):
+            NVConfigManagerInstallConfig(
+                dcim=DCIMConfig(provider="synthetic", server="https://synthetic.example"),
+                services=ServicesConfig(nautobot=False),
+                secrets=SecretsConfig(method=SecretsMethod.ESO),
+            )
 
 
 class TestImagesConfig:

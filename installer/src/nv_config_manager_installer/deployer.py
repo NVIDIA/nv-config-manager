@@ -2199,12 +2199,15 @@ class Deployer:
         self._finish_step(step)
 
     def _create_core_secrets(self, step: DeployStep, s: dict[str, str]) -> None:
-        """Create Redis, Nautobot, DB, NATS, and device credential secrets."""
+        """Create Redis, DCIM, DB, NATS, and device credential secrets."""
         self._apply_secret(step, "redis-password", {"password": s.get("redis_password", "")})
-        nautobot_token_data = {"token": s.get("nautobot_token", "")}
-        if ro_token := s.get("nautobot_read_only_token"):
-            nautobot_token_data["read-only-token"] = ro_token
-        self._apply_secret(step, "nautobot-token", nautobot_token_data)
+        dcim = self.config.dcim
+        token_state_key = "nautobot_token" if dcim.provider == "nautobot" else "dcim_token"
+        dcim_token_data = {dcim.token_secret_key: s.get(token_state_key, "")}
+        if dcim.provider == "nautobot":
+            if ro_token := s.get("nautobot_read_only_token"):
+                dcim_token_data["read-only-token"] = ro_token
+        self._apply_secret(step, dcim.token_secret_name, dcim_token_data)
 
         for db in ["temporal", "temporal_visibility", "config_store", "dhcp", "nautobot"]:
             self._apply_secret(
@@ -2216,21 +2219,22 @@ class Deployer:
                 },
             )
 
-        self._apply_secret(
-            step,
-            "nautobot-admin",
-            {
-                "password": s.get("nautobot_admin_password", ""),
-                "api_token": s.get("nautobot_token", ""),
-            },
-        )
-        self._apply_secret(
-            step, "nautobot-django-secret", {"secret_key": s.get("django_secret_key", "")}
-        )
+        if self.config.services.nautobot:
+            self._apply_secret(
+                step,
+                "nautobot-admin",
+                {
+                    "password": s.get("nautobot_admin_password", ""),
+                    "api_token": s.get("nautobot_token", ""),
+                },
+            )
+            self._apply_secret(
+                step, "nautobot-django-secret", {"secret_key": s.get("django_secret_key", "")}
+            )
 
-        nats_pw = s.get("nats_password", "")
-        for nats_name in ("nats-sys", "nats-nv-config-manager", "nats-nautobot"):
-            self._apply_secret(step, nats_name, {"password": nats_pw})
+            nats_pw = s.get("nats_password", "")
+            for nats_name in ("nats-sys", "nats-nv-config-manager", "nats-nautobot"):
+                self._apply_secret(step, nats_name, {"password": nats_pw})
 
         if self.config.services.temporal:
             svc_user = self.config.secrets.config_manager_service_username or "nv-config-manager"

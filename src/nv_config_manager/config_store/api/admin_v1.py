@@ -109,6 +109,7 @@ async def cache_status(request: Request) -> CacheStatusResponse:
             message="Cache service is not initialized",
             cache_ttl=None,
             redis_connected=None,
+            dcim_connected=None,
             nautobot_connected=None,
         )
 
@@ -117,7 +118,8 @@ async def cache_status(request: Request) -> CacheStatusResponse:
         message=None,
         cache_ttl=cache_service.cache_ttl,
         redis_connected=cache_service.redis_client is not None,
-        nautobot_connected=cache_service.nautobot_client is not None,
+        dcim_connected=cache_service.dcim_client is not None,
+        nautobot_connected=cache_service.dcim_client is not None,
     )
 
 
@@ -153,7 +155,7 @@ async def test_cache_lookup(
             return CacheTestNotFoundResponse(
                 found=False,
                 device_uuid=str(device_uuid),
-                message="Device not found in cache (not querying Nautobot)",
+                message="Device not found in cache (not querying the DCIM provider)",
             )
     except Exception as e:
         return CacheTestErrorResponse(

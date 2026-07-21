@@ -45,8 +45,8 @@ class ConsoleServerPort:  # pylint: disable=too-many-instance-attributes
     connected: bool
 
     @staticmethod
-    def from_nautobot_graphql(entry: dict[str, Any]) -> ConsoleServerPort:
-        """Create ConsoleServerPort object from nautobot data."""
+    def from_render_data(entry: dict[str, Any]) -> ConsoleServerPort:
+        """Create a console-server port from normalized render data."""
         connected_console_port = None
 
         if entry["connected_console_port"]:

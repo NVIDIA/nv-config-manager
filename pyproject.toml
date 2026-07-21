@@ -66,8 +66,6 @@ dependencies = [
     "protobuf>=6.33.5",
     # Network Automation
     "pyeapi>=1.0.2",
-    "junos-eznc>=2.8.2",
-    "pynautobot>=2.4.0",
     "netmiko>=4.3.0",
     "macaddress>=2.0.2",
     "netaddr>=0.10.1",
@@ -111,6 +109,10 @@ dependencies = [
     "mcp>=1.29.0,<2",
     # Network Templates (render service)
     "nv-config-manager-templates",
+    # Provider-neutral DCIM SDK
+    "nv-config-manager-dcim",
+    # Built-in reference DCIM provider (also distributed as a standalone provider package)
+    "nv-config-manager-dcim-nautobot",
 ]
 
 [project.scripts]
@@ -200,9 +202,11 @@ docs = [
 package = true
 
 [tool.uv.workspace]
-members = ["components/network-templates"]
+members = ["components/dcim", "components/dcim-nautobot", "components/network-templates"]
 
 [tool.uv.sources]
+nv-config-manager-dcim = { workspace = true }
+nv-config-manager-dcim-nautobot = { workspace = true }
 nv-config-manager-templates = { workspace = true }
 
 [build-system]
@@ -248,7 +252,6 @@ module = [
     "ruamel.*",
     "brotli.*",
     "netaddr.*",
-    "pynautobot.*",
     "macaddress",
     "requests",
 ]

@@ -47,33 +47,42 @@ class MCPSettings:
     nautobot_auth_mode: str
     nautobot_token_fallback_enabled: bool
     max_response_bytes: int
+    dcim_provider_name: str = "nautobot"
 
     @classmethod
     def from_config(cls, config: ConfigParser | None = None) -> MCPSettings:
         """Resolve MCP settings from nv-config-manager.ini."""
         config = config or load_config()
         use_internal = _get_bool(config, "mcp", "use_internal_endpoints", True)
-        configured_auth_mode = _get_value(config, "mcp", "nautobot_auth_mode", "auto").lower()
-        if configured_auth_mode not in NAUTOBOT_AUTH_MODES:
-            raise ValueError(
-                f"mcp.nautobot_auth_mode must be one of: {', '.join(sorted(NAUTOBOT_AUTH_MODES))}"
-            )
+        dcim_provider_name = _get_value(config, "dcim", "provider", "nautobot").strip() or "nautobot"
+        nautobot_url = ""
+        nautobot_verify: bool | str = True
+        nautobot_auth_mode = "auto"
+        if dcim_provider_name == "nautobot":
+            configured_auth_mode = _get_value(config, "mcp", "nautobot_auth_mode", "auto").lower()
+            if configured_auth_mode not in NAUTOBOT_AUTH_MODES:
+                raise ValueError(
+                    "mcp.nautobot_auth_mode must be one of: "
+                    f"{', '.join(sorted(NAUTOBOT_AUTH_MODES))}"
+                )
+            nautobot_url = _get_required(config, "nautobot", "server")
+            nautobot_verify = _verify_value(config, "nautobot")
+            nautobot_auth_mode = _resolve_nautobot_auth_mode(configured_auth_mode, nautobot_url)
 
         return cls(
             workflow_api_url=_service_url(config, "temporal", use_internal),
             workflow_ui_url=_workflow_ui_url(config),
             config_store_api_url=_service_url(config, "config_store.client", use_internal),
             dhcp_api_url=_service_url(config, "dhcp", use_internal),
-            nautobot_url=_get_required(config, "nautobot", "server"),
+            nautobot_url=nautobot_url,
             nautobot_read_only_token=_get_value(config, "mcp", "nautobot_read_only_token", ""),
-            nautobot_verify=_verify_value(config, "nautobot"),
-            nautobot_auth_mode=_resolve_nautobot_auth_mode(
-                configured_auth_mode, _get_required(config, "nautobot", "server")
-            ),
+            nautobot_verify=nautobot_verify,
+            nautobot_auth_mode=nautobot_auth_mode,
             nautobot_token_fallback_enabled=_get_bool(
                 config, "mcp", "nautobot_token_fallback_enabled", False
             ),
             max_response_bytes=_get_int(config, "mcp", "max_response_bytes", 100_000),
+            dcim_provider_name=dcim_provider_name,
         )
 
 

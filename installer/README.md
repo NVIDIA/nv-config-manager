@@ -310,6 +310,19 @@ Toggle individual NVIDIA Config Manager services on or off.
 When Nautobot is disabled, configure an external Nautobot URL in the
 [External Services](#3-external-services) section.
 
+For an independently packaged DCIM provider, set `dcim.provider`,
+`dcim.server`, and `services.nautobot: false` in the installer YAML. Provider
+wheel images are configured with `dcim.provider_packages`. The installer TUI
+accepts the provider name and endpoint; provider-specific non-secret settings
+are supplied through `dcim.options`. See the external-provider example in
+[Configuration Samples](../docs/install/configuration-samples.mdx). Core
+Temporal workflows remain available for every selected DCIM provider; the
+provider package supplies their normalized data operations.
+
+See [Contribute a DCIM Provider](../docs/development/contributing-dcim-provider.mdx)
+for provider packaging, provider-owned event handlers, render data, and test
+expectations.
+
 #### 3. External Services
 
 ![External Services](../docs/assets/images/installer/03-external-services.svg)
@@ -317,12 +330,13 @@ When Nautobot is disabled, configure an external Nautobot URL in the
 Override in-cluster services with external instances. Leave disabled to use the
 default in-cluster deployments.
 
-**Nautobot**
+**DCIM provider**
 
 | Field | Description |
 |-------|-------------|
-| Use external Nautobot | Toggle — disables the in-cluster Nautobot stack |
-| Nautobot URL | URL of the external Nautobot instance |
+| Provider name | `nautobot` for the built-in provider, or the installed external provider's entry-point name |
+| Use external DCIM | Toggle — disables the in-cluster Nautobot stack |
+| DCIM endpoint | URL of the external provider; required for a non-Nautobot provider |
 
 **Redis**
 

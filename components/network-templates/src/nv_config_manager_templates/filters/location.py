@@ -17,13 +17,14 @@
 from __future__ import annotations
 
 import ipaddress
-from typing import Any
+
+from nv_config_manager_dcim import LocationRenderData
 
 from nv_config_manager_templates.filters import FilterException
 
 
 def site_aggregates(
-    value: dict[str, Any],
+    value: LocationRenderData,
     role_name: str,
     tags: set[str] | list[str] | None = None,
     exclude_tags: set[str] | list[str] | None = None,
@@ -32,7 +33,7 @@ def site_aggregates(
     """Return the site level aggregates by name."""
     aggregates = []
 
-    for prefix_entry in value["data"]["prefixes"]:
+    for prefix_entry in value.inventory.get("prefixes", []):
         prefix_tags = {entry["name"] for entry in prefix_entry["tags"]}
 
         # Check if prefix should be excluded
@@ -58,11 +59,6 @@ def site_aggregates(
     return sorted(set(aggregates), key=ipaddress.ip_network)
 
 
-def location_has_tag(value: dict[str, Any], tag_name: str) -> bool:
+def location_has_tag(value: LocationRenderData, tag_name: str) -> bool:
     """Return true if the location has a specific tag."""
-    if not value.get("data", {}).get("locations"):
-        return False
-
-    location = value["data"]["locations"][0]
-    location_tags = {entry["name"] for entry in location.get("tags", [])}
-    return tag_name in location_tags
+    return tag_name in value.location.tags

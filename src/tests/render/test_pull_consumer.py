@@ -30,6 +30,7 @@ from nv_config_manager.render.pull_consumer import (
     CONSUMER_REDELIVERED,
     CONSUMER_WAITING,
     PullConsumer,
+    PullDCIMConsumer,
     PullDeviceChangeConsumer,
     PullNautobotConsumer,
 )
@@ -63,6 +64,7 @@ def mock_dispatcher():
     """Mock event dispatcher."""
     with patch("nv_config_manager.render.pull_consumer.EventDispatcher") as mock:
         mock_instance = MagicMock()
+        mock_instance.dcim_event_dispatch = AsyncMock()
         mock_instance.nautobot_event_dispatch = AsyncMock()
         mock_instance.nautobot_change_dispatch = MagicMock()
         mock.return_value = mock_instance
@@ -220,6 +222,39 @@ async def test_pull_consumer_uses_configured_durable_name(custom_ini):
     consumer = PullNautobotConsumer()
 
     assert consumer.queue == "externally-owned-nautobot"
+
+
+@pytest.mark.asyncio
+async def test_pull_dcim_consumer_uses_generic_event_configuration(custom_ini):
+    """The generic consumer retains legacy stream and durable settings during migration."""
+    custom_ini(TEST_NATS_CONFIG)
+    consumer = PullDCIMConsumer()
+
+    assert consumer.stream == "nautobot"
+    assert consumer.subject == "nautobot"
+    assert consumer.queue == "nv-config-manager-nautobot"
+    assert consumer.api_prefix == "$JS.CUSTOM.API"
+
+
+@pytest.mark.asyncio
+async def test_pull_dcim_consumer_normalizes_before_dispatch(mock_dispatcher, custom_ini):
+    """Render routing only receives the provider-neutral event representation."""
+    custom_ini(TEST_NATS_CONFIG)
+    consumer = PullDCIMConsumer()
+    mock_msg = AsyncMock(spec=Msg)
+    mock_msg.data = json.dumps({"provider": "synthetic"}).encode()
+    mock_msg.ack = AsyncMock()
+    normalized_event = MagicMock()
+
+    with patch(
+        "nv_config_manager.render.pull_consumer.normalize_dcim_event",
+        return_value=normalized_event,
+    ) as normalize:
+        await consumer.message_handler(mock_msg)
+
+    normalize.assert_called_once_with({"provider": "synthetic"})
+    mock_dispatcher.dcim_event_dispatch.assert_awaited_once_with(normalized_event)
+    mock_msg.ack.assert_called_once()
 
 
 @pytest.mark.asyncio

@@ -55,7 +55,7 @@ async def mock_get_network_device(
             deploy_enabled=False,
             backup_enabled=False,
             ztp_enabled=False,
-            config_context=None,
+            intent=None,
         )
     )
 
@@ -179,7 +179,7 @@ def _preloaded_device() -> NetworkDeviceData:
         deploy_enabled=False,
         backup_enabled=False,
         ztp_enabled=False,
-        config_context=None,
+        intent=None,
     )
 
 

@@ -18,19 +18,16 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any, ClassVar, cast
+from typing import Any, ClassVar
 
 import netaddr
+from nv_config_manager_dcim import DeviceInventoryFilter
 from pydantic import BaseModel, computed_field
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
 from nv_config_manager.common.log import LogCategory, get_logger
-from nv_config_manager.temporal.client.nautobot import (
-    OVERLAYS_PLUGIN_BASE,
-    DeviceVrfInfo,
-    NautobotClient,
-)
+from nv_config_manager.dcim import DCIMError, DeviceVRF, SpectrumXVRF, create_dcim_workflow_client
 from nv_config_manager.temporal.common.mixins.device import (
     HostDeviceData,
     InterfaceData,
@@ -41,12 +38,13 @@ from nv_config_manager.temporal.common.mixins.device import (
 logger = get_logger(__name__, category=LogCategory.NAUTOBOT)
 logger.setLevel(logging.INFO)
 
-SPECTRUMX_ISOLATION_TYPE = "spectrum_x_vrf"
-VXLAN_L3_VNI_TYPE = "l3"
-DEFAULT_STATUS_NAME = "Active"
-OVERLAY_ASSIGNMENTS_PATH = f"{OVERLAYS_PLUGIN_BASE}/overlay-assignments/"
-VRF_DEVICE_ASSIGNMENTS_PATH = "ipam/vrf-device-assignments/"
+# Compatibility import for workflow callers while they migrate to DeviceVRF.
+DeviceVrfInfo = DeviceVRF
 
+
+def _as_application_error(error: DCIMError) -> ApplicationError:
+    """Translate provider-neutral errors at the Temporal service boundary."""
+    return ApplicationError(str(error), non_retryable=bool(getattr(error, "non_retryable", False)))
 
 def _vni_from_rd(route_distinguisher: str) -> int:
     """Derive the VNI from a route distinguisher of the form ``*:<vni>``."""
@@ -73,7 +71,7 @@ async def get_network_device(
     activity_input: GetNetworkDeviceInput,
 ) -> GetNetworkDeviceOutput:
     """Get network device data."""
-    client = NautobotClient()
+    client = create_dcim_workflow_client()
     async with client:
         device = await client.get_network_device(activity_input.device_id)
     return GetNetworkDeviceOutput(device=device)
@@ -96,7 +94,7 @@ async def get_host_device(
     activity_input: GetHostDeviceInput,
 ) -> GetHostDeviceOutput:
     """Get host device data."""
-    client = NautobotClient()
+    client = create_dcim_workflow_client()
     async with client:
         device = await client.get_host_device(activity_input.device_id)
     return GetHostDeviceOutput(device=device)
@@ -131,23 +129,23 @@ async def get_network_devices(
     activity_input: GetNetworkDevicesInput,
 ) -> GetNetworkDevicesOutput:
     """Get network devices for a specific site."""
-    client = NautobotClient()
+    client = create_dcim_workflow_client()
     async with client:
-        devices = await client.get_network_devices(
+        devices = await client.get_network_devices(DeviceInventoryFilter(
             site=activity_input.site,
-            role=activity_input.roles,
-            status=activity_input.status,
+            roles=activity_input.roles,
+            statuses=activity_input.status,
             tenant=activity_input.tenant,
-            device_type_id=activity_input.device_type_ids,
-            mac_address=activity_input.mac_addresses,
+            device_type_ids=activity_input.device_type_ids,
+            mac_addresses=activity_input.mac_addresses,
             device_ids=activity_input.device_ids,
             render_enabled=activity_input.render_enabled,
             deploy_enabled=activity_input.deploy_enabled,
             backup_enabled=activity_input.backup_enabled,
             ztp_enabled=activity_input.ztp_enabled,
             managed_only=activity_input.managed_only,
-            platform=activity_input.platforms,
-        )
+            platforms=activity_input.platforms,
+        ))
     return GetNetworkDevicesOutput(devices=devices)
 
 
@@ -173,16 +171,16 @@ async def get_host_devices(
     activity_input: GetHostDevicesInput,
 ) -> GetHostDevicesOutput:
     """Get host devices."""
-    client = NautobotClient()
+    client = create_dcim_workflow_client()
     async with client:
-        devices = await client.get_host_devices(
+        devices = await client.get_host_devices(DeviceInventoryFilter(
             site=activity_input.site,
-            role=activity_input.roles,
-            status=activity_input.status,
+            roles=activity_input.roles,
+            statuses=activity_input.status,
             tenant=activity_input.tenant,
-            device_type_id=activity_input.device_type_ids,
-            mac_address=activity_input.mac_addresses,
-        )
+            device_type_ids=activity_input.device_type_ids,
+            mac_addresses=activity_input.mac_addresses,
+        ))
     return GetHostDevicesOutput(devices=devices)
 
 
@@ -207,80 +205,42 @@ class HostData(BaseModel):
 @activity.defn
 async def get_host_data_by_macs(mac_addresses: list[str]) -> list[HostData]:
     """Load host data from list of mac addresses."""
-    query = """
-query ($macs: [String]!) {
-  devices(mac_address: $macs) {
-    id
-    name
-    cf_alias
-    tenant {
-      name
-    }
-    interfaces {
-      name
-      mac_address
-    }
-  }
-}
-    """
-    client = NautobotClient()
+    client = create_dcim_workflow_client()
     async with client:
-        data = await client.graphql_query(query, {"macs": mac_addresses})
-        hosts = []
-        for device in data["data"]["devices"]:
-            interfaces = []
-            for intf in device["interfaces"]:
-                # Used for joining with device data,
-                # interfaces with no mac set are not relevant
-                if not intf["mac_address"]:
-                    continue
-                interfaces.append(
-                    HostInterface(name=intf["name"], mac=str(netaddr.EUI(intf["mac_address"])))
-                )
-            hosts.append(
-                HostData(
-                    interfaces=interfaces,
-                    name=device["name"],
-                    tenant=device["tenant"]["name"],
-                    device_id=device["id"],
-                    alias=device["cf_alias"],
-                    url=client.get_device_ui_url(device["id"]),
-                )
-            )
-    return hosts
+        hosts = await client.get_host_metadata_by_macs(mac_addresses)
+    return [
+        HostData(
+            interfaces=[
+                HostInterface(name=interface.name, mac=str(netaddr.EUI(interface.mac_address)))
+                for interface in host.interfaces
+            ],
+            name=host.name,
+            tenant=host.tenant,
+            device_id=host.device_id,
+            alias=host.alias,
+            url=client.get_device_ui_url(host.device_id),
+        )
+        for host in hosts
+    ]
 
 
 @activity.defn
 async def get_host_data_by_names(device_names: list[str]) -> list[HostData]:
     """Load host data from list of device names."""
-    query = """
-query ($names: [String]!) {
-  devices(name: $names) {
-    id
-    name
-    cf_alias
-    tenant {
-      name
-    }
-  }
-}
-    """
-    client = NautobotClient()
+    client = create_dcim_workflow_client()
     async with client:
-        data = await client.graphql_query(query, {"names": device_names})
-        hosts = []
-        for device in data["data"]["devices"]:
-            hosts.append(
-                HostData(
-                    interfaces=[],  # Empty list since we don't need interface data for LLDP neighbors
-                    name=device["name"],
-                    tenant=device["tenant"]["name"],
-                    device_id=device["id"],
-                    alias=device["cf_alias"],
-                    url=client.get_device_ui_url(device["id"]),
-                )
-            )
-    return hosts
+        hosts = await client.get_host_metadata_by_names(device_names)
+    return [
+        HostData(
+            interfaces=[],
+            name=host.name,
+            tenant=host.tenant,
+            device_id=host.device_id,
+            alias=host.alias,
+            url=client.get_device_ui_url(host.device_id),
+        )
+        for host in hosts
+    ]
 
 
 class GetAvailableRouteDistinguishersInput(BaseModel):
@@ -304,55 +264,37 @@ async def get_available_route_distinguishers(
     activity_input: GetAvailableRouteDistinguishersInput,
 ) -> GetAvailableRouteDistinguishersOutput:
     """Get Available Route Distinguishers Activity."""
-    namespace_query = """
-        query ($tag: String, $location: String) {
-            namespaces(location: $location, tags: [$tag]) {
-                id
-                name
-                vrfs {
-                    rd
-                }
-            }
-        }
-    """
-    client = NautobotClient()
+    client = create_dcim_workflow_client()
     async with client:
-        results = await client.graphql_query(
-            namespace_query,
-            {
-                "tag": activity_input.namespace_tag,
-                "location": activity_input.site,
-            },
+        namespaces = await client.get_namespace_route_distinguishers(
+            activity_input.site, activity_input.namespace_tag
         )
-        namespaces = [namespace["id"] for namespace in results["data"]["namespaces"]]
-        if not namespaces:
-            raise ApplicationError(
-                f"No namespaces for site {activity_input.site} and "
-                f"tag {activity_input.namespace_tag}."
-            )
-        logger.info("Found namespaces: %s", namespaces)
-
-        route_distinguishers = {
-            vrf["rd"]
-            for namespace in results["data"]["namespaces"]
-            for vrf in namespace["vrfs"]
-            if vrf.get("rd")
-        }
-        logger.info("Found RDs: %s", route_distinguishers)
-
-        assigned_numbers = {
-            int(rd.split(":")[1]) for rd in route_distinguishers if re.match(r"\*:\d+", rd)
-        }
-
-        available_numbers = (
-            set(range(activity_input.rd_min, activity_input.rd_max + 1)) - assigned_numbers
+    namespace_ids = [namespace.namespace_id for namespace in namespaces]
+    if not namespace_ids:
+        raise ApplicationError(
+            f"No namespaces for site {activity_input.site} and "
+            f"tag {activity_input.namespace_tag}."
         )
-        if not available_numbers:
-            raise ApplicationError(f"Namespaces {namespaces} out of space for new RDs")
-        route_distinguisher = f"*:{min(available_numbers)}"
+    logger.info("Found namespaces: %s", namespace_ids)
+
+    route_distinguishers = {
+        route_distinguisher
+        for namespace in namespaces
+        for route_distinguisher in namespace.route_distinguishers
+    }
+    logger.info("Found RDs: %s", route_distinguishers)
+
+    assigned_numbers = {
+        int(rd.split(":")[1]) for rd in route_distinguishers if re.match(r"\*:\d+", rd)
+    }
+
+    available_numbers = set(range(activity_input.rd_min, activity_input.rd_max + 1)) - assigned_numbers
+    if not available_numbers:
+        raise ApplicationError(f"Namespaces {namespace_ids} out of space for new RDs")
+    route_distinguisher = f"*:{min(available_numbers)}"
     return GetAvailableRouteDistinguishersOutput(
         route_distinguisher=route_distinguisher,
-        namespaces=namespaces,
+        namespaces=namespace_ids,
     )
 
 
@@ -406,6 +348,18 @@ query ($ids: [String]!) {
             ],
         )
 
+    @staticmethod
+    def from_spectrum_x_vrf(vrf: SpectrumXVRF) -> Vrf:
+        """Convert a provider-neutral Spectrum-X VRF to the activity output."""
+        return Vrf(
+            name=vrf.name,
+            namespace=vrf.namespace,
+            site=vrf.site,
+            id=vrf.vrf_id,
+            rd=vrf.route_distinguisher,
+            interfaces=list(vrf.interfaces),
+        )
+
 
 class ProvisionVrfInput(BaseModel):
     """Provision VRF Activity Input."""
@@ -428,97 +382,20 @@ async def provision_vrf(
     Resources created in this call are rolled back on failure; the overlay is left
     in place since it is found-or-created and may be shared.
     """
-    client = NautobotClient()
     vni = _vni_from_rd(activity_input.route_distinguisher)
-    vrf_name = f"SpXTenant{vni}"
-    overlay_name = activity_input.overlay_id
-    vrfs_created: list[Any] = []
-    vxlans_created: list[Any] = []
-    assignments_created: list[Any] = []
-    async with client:
-        status_id = await client.lookup_id_by_name("extras/statuses/", DEFAULT_STATUS_NAME)
-        if not status_id:
-            raise ApplicationError(f"Status '{DEFAULT_STATUS_NAME}' not found in Nautobot")
-        location_id = activity_input.site
-        tenant_id = await client.lookup_id_by_name("tenancy/tenants/", activity_input.tenant)
-        if not tenant_id:
-            raise ApplicationError(f"Tenant '{activity_input.tenant}' not found in Nautobot")
-
-        overlay = await client.find_overlay(overlay_name, location_id)
-        if overlay:
-            existing_tenant = (overlay.get("tenant") or {}).get("id")
-            if existing_tenant != tenant_id:
-                raise ApplicationError(
-                    f"Overlay '{overlay_name}' exists but belongs to tenant "
-                    f"{existing_tenant!r}, expected {tenant_id!r}"
-                )
-            overlay_id = overlay["id"]
-            logger.info("Reusing existing overlay %s (%s)", overlay_name, overlay_id)
-        else:
-            overlay = await client.create_overlay(
-                data={
-                    "name": overlay_name,
-                    "location": location_id,
-                    "tenant": tenant_id,
-                    "isolation_type": SPECTRUMX_ISOLATION_TYPE,
-                    "status": status_id,
-                }
+    client = create_dcim_workflow_client()
+    try:
+        async with client:
+            await client.provision_spectrum_x_vrf(
+                activity_input.namespaces,
+                activity_input.route_distinguisher,
+                vni,
+                activity_input.overlay_id,
+                activity_input.site,
+                activity_input.tenant,
             )
-            overlay_id = overlay["id"]
-            logger.info("Created overlay %s (%s)", overlay_name, overlay_id)
-
-        try:
-            for namespace in activity_input.namespaces:
-                vrf = await client.create_vrf(
-                    data={
-                        "name": vrf_name,
-                        "rd": activity_input.route_distinguisher,
-                        "namespace": namespace,
-                        "tenant": tenant_id,
-                    }
-                )
-                vrfs_created.append(vrf)
-                assignment = await _create_overlay_assignment(
-                    client,
-                    target_overlay_id=str(overlay_id),
-                    assigned_object_type="ipam.vrf",
-                    assigned_object_id=str(vrf["id"]),
-                    status_id=status_id,
-                )
-                assignments_created.append(assignment)
-                vxlan = await client.create_vxlan(
-                    data={
-                        "vnid": vni,
-                        "name": vrf_name,
-                        "vni_type": VXLAN_L3_VNI_TYPE,
-                        "namespace": namespace,
-                        "vrf": vrf["id"],
-                        "overlay": overlay_id,
-                        "status": status_id,
-                    }
-                )
-                vxlans_created.append(vxlan)
-        except Exception as error:
-            logger.exception("Failed to provision VPC", exc_info=error)
-            for vxlan in vxlans_created:
-                try:
-                    await client.delete_vxlan(vxlan["id"])
-                except Exception:
-                    logger.exception("Failed to delete vxlan %s during rollback", vxlan["id"])
-            for assignment in assignments_created:
-                try:
-                    await client.delete(f"{OVERLAY_ASSIGNMENTS_PATH}{assignment['id']}/")
-                except Exception:
-                    logger.exception(
-                        "Failed to delete overlay assignment %s during rollback",
-                        assignment["id"],
-                    )
-            for vrf in vrfs_created:
-                try:
-                    await client.delete_vrf(vrf["id"])
-                except Exception:
-                    logger.exception("Failed to delete vrf %s during rollback", vrf["id"])
-            raise ApplicationError("Failed to provision VPC") from error
+    except DCIMError as error:
+        raise _as_application_error(error) from error
 
 
 class QueryVRFByVPCInput(BaseModel):
@@ -533,21 +410,14 @@ class QueryVRFByVPCInput(BaseModel):
 @activity.defn
 async def get_vrfs_by_overlay_id(activity_input: QueryVRFByVPCInput) -> list[Vrf] | None:
     """Get VRFs for an overlay by looking up overlay → vxlans → VRF IDs → GraphQL."""
-    client = NautobotClient()
+    client = create_dcim_workflow_client()
     async with client:
-        overlay = await client.find_overlay(activity_input.overlay_id, activity_input.site)
-        if not overlay:
-            return None
-        vxlans = await client.get_vxlans_by_overlay(overlay["id"], depth=1)
-        if activity_input.namespace:
-            vxlans = [
-                v for v in vxlans if v.get("namespace", {}).get("name") == activity_input.namespace
-            ]
-        vrf_ids = [v["vrf"]["id"] for v in vxlans if v.get("vrf")]
-        if not vrf_ids:
-            return None
-        rsp = await client.graphql_query(Vrf.QUERY_BY_IDS, {"ids": vrf_ids})
-        vrfs = [Vrf.from_nautobot_graphql(v) for v in rsp["data"]["vrfs"]]
+        spectrum_x_vrfs = await client.get_spectrum_x_vrfs(
+            activity_input.overlay_id,
+            activity_input.site,
+            activity_input.namespace,
+        )
+    vrfs = [Vrf.from_spectrum_x_vrf(vrf) for vrf in spectrum_x_vrfs]
     return vrfs if vrfs else None
 
 
@@ -566,18 +436,9 @@ async def delete_vrf(activity_input: VrfDeletionActivityInput) -> None:
     vrf_id (the VRF FK is SET_NULL on VRF deletion, so they are removed
     explicitly to keep the overlay clean).
     """
-    client = NautobotClient()
+    client = create_dcim_workflow_client()
     async with client:
-        vxlans = await client.get_vxlans_by_vnid(activity_input.vnid)
-        for vxlan in vxlans:
-            if (vxlan.get("vrf") or {}).get("id") == activity_input.vrf_id:
-                await client.delete_vxlan(vxlan["id"])
-        assignments = await _get_overlay_assignments(client, activity_input.vrf_id)
-        await _delete_overlay_assignments(
-            client,
-            [str(assignment["id"]) for assignment in assignments],
-        )
-        await client.delete_vrf(activity_input.vrf_id)
+        await client.delete_spectrum_x_vrf(activity_input.vrf_id, activity_input.vnid)
 
 
 class DeleteOverlayInput(BaseModel):
@@ -598,21 +459,14 @@ class DeleteOverlayOutput(BaseModel):
 async def delete_overlay(activity_input: DeleteOverlayInput) -> DeleteOverlayOutput:
     """Delete the SpectrumX overlay and its assignments if no VXLANs remain."""
     overlay_name = activity_input.overlay_id
-    client = NautobotClient()
+    client = create_dcim_workflow_client()
     async with client:
-        overlay = await client.find_overlay(overlay_name, activity_input.site)
-        if not overlay:
-            return DeleteOverlayOutput(deleted=False, overlay_name=overlay_name)
-
-        remaining_vxlans = await client.get_vxlans_by_overlay(overlay["id"])
-        if remaining_vxlans:
+        deleted = await client.delete_spectrum_x_overlay_if_unused(
+            overlay_name, activity_input.site
+        )
+        if not deleted:
             logger.info("Overlay %s still has VXLANs, leaving in place", overlay_name)
-            return DeleteOverlayOutput(deleted=False, overlay_name=overlay_name)
-
-        # OverlayAssignment.overlay uses on_delete=CASCADE, so deleting the
-        # overlay also removes its device, interface, and VRF assignments.
-        await client.delete_overlay(overlay["id"])
-        return DeleteOverlayOutput(deleted=True, overlay_name=overlay_name)
+    return DeleteOverlayOutput(deleted=deleted, overlay_name=overlay_name)
 
 
 class SwitchPortByMacActivityInput(BaseModel):
@@ -633,38 +487,12 @@ async def get_switch_port_by_remote_mac_address(
     activity_input: SwitchPortByMacActivityInput,
 ) -> SwitchPortByMacActivityOutput:
     """Get Switch Port by Remote MAC Address."""
-    query = """
-        query ($mac: [String!]) {
-            interfaces(mac_address: $mac) {
-                connected_interface {
-                    name
-                    device {
-                        id
-                    }
-                }
-            }
-        }
-    """
-    client = NautobotClient()
+    client = create_dcim_workflow_client()
     async with client:
-        data = await client.graphql_query(query, {"mac": [activity_input.remote_mac_address]})
-        if not data["data"]["interfaces"]:
-            raise ApplicationError(
-                f"No interfaces found for MAC {activity_input.remote_mac_address}"
-            )
-        interface = data["data"]["interfaces"][0]
-        try:
-            device = await client.get_network_device(
-                interface["connected_interface"]["device"]["id"]
-            )
-            return SwitchPortByMacActivityOutput(
-                device=device,
-                interface=interface["connected_interface"]["name"],
-            )
-        except KeyError as error:
-            raise ApplicationError(
-                f"No connected interface found for MAC {activity_input.remote_mac_address}"
-            ) from error
+        device, interface = await client.get_connected_switch_port_by_remote_mac(
+            activity_input.remote_mac_address
+        )
+    return SwitchPortByMacActivityOutput(device=device, interface=interface)
 
 
 class CheckRecordedConfigDriftInput(BaseModel):
@@ -678,32 +506,9 @@ async def check_recorded_config_drift(
     activity_input: CheckRecordedConfigDriftInput,
 ) -> bool:
     """Check Recorded Config Drift."""
-    client = NautobotClient()
-    query = """
-query ($id: ID!) {
-  config_manager_device(id: $id) {
-    intended_config {
-      commit_id
-    }
-    backup_config{
-      deployed_commit_id
-    }
-  }
-}
-"""
+    client = create_dcim_workflow_client()
     async with client:
-        data = await client.graphql_query(query, {"id": activity_input.device_id})
-        intended_commit_id = (
-            data["data"]["config_manager_device"]["intended_config"]["commit_id"]
-            if data["data"]["config_manager_device"]["intended_config"]
-            else None
-        )
-        deployed_commit_id = (
-            data["data"]["config_manager_device"]["backup_config"]["deployed_commit_id"]
-            if data["data"]["config_manager_device"]["backup_config"]
-            else None
-        )
-    return intended_commit_id != deployed_commit_id
+        return await client.has_recorded_config_drift(activity_input.device_id)
 
 
 class GetDeviceVrfsInput(BaseModel):
@@ -715,7 +520,7 @@ class GetDeviceVrfsInput(BaseModel):
 class GetDeviceVrfsOutput(BaseModel):
     """Get Device VRFs Output."""
 
-    vrfs: list[DeviceVrfInfo]
+    vrfs: list[DeviceVRF]
 
 
 @activity.defn(name="get_device_vrfs")
@@ -723,9 +528,12 @@ async def get_device_vrfs(
     activity_input: GetDeviceVrfsInput,
 ) -> GetDeviceVrfsOutput:
     """Get VRFs assigned to a device."""
-    client = NautobotClient()
-    async with client:
-        vrfs = await client.get_device_vrfs(activity_input.device_id)
+    client = create_dcim_workflow_client()
+    try:
+        async with client:
+            vrfs = await client.get_device_vrfs(activity_input.device_id)
+    except DCIMError as error:
+        raise _as_application_error(error) from error
     return GetDeviceVrfsOutput(vrfs=vrfs)
 
 
@@ -741,7 +549,7 @@ async def assign_vrf_to_device(
     activity_input: AssignVrfToDeviceInput,
 ) -> None:
     """Assign a VRF to a device."""
-    client = NautobotClient()
+    client = create_dcim_workflow_client()
     async with client:
         await client.assign_vrf_to_device(activity_input.device_id, activity_input.vrf_id)
 
@@ -764,7 +572,7 @@ async def get_device_interfaces(
     activity_input: GetDeviceInterfacesInput,
 ) -> GetDeviceInterfacesOutput:
     """Get interfaces for a device by name."""
-    client = NautobotClient()
+    client = create_dcim_workflow_client()
     async with client:
         interfaces = await client.get_device_interfaces(device_id=activity_input.device_id)
 
@@ -795,12 +603,10 @@ class AssignVrfToInterfaceInput(BaseModel):
 async def assign_vrf_to_interface(
     activity_input: AssignVrfToInterfaceInput,
 ) -> None:
-    """Set or clear the VRF assigned to an interface."""
-    client = NautobotClient()
+    """Assign a VRF to an interface."""
+    client = create_dcim_workflow_client()
     async with client:
-        await client.update_interface(
-            activity_input.interface_id, data={"vrf": activity_input.vrf_id}
-        )
+        await client.assign_vrf_to_interface(activity_input.interface_id, activity_input.vrf_id)
 
 
 class ReconcileSpXOverlayAssignmentsInput(BaseModel):
@@ -830,110 +636,6 @@ def _activity_was_retried() -> bool:
         return False
 
 
-def _related_object_id(value: Any) -> str | None:
-    """Extract a related object's ID from a Nautobot REST value."""
-    if isinstance(value, dict):
-        object_id = value.get("id")
-        return str(object_id) if object_id else None
-    return str(value) if value else None
-
-
-async def _get_overlay_assignments(
-    client: NautobotClient,
-    assigned_object_id: str,
-) -> list[dict[str, Any]]:
-    """Fetch all overlay-plugin assignments for a Nautobot object."""
-    return await client.get_all(
-        OVERLAY_ASSIGNMENTS_PATH,
-        params={"assigned_object_id": assigned_object_id, "depth": 1},
-    )
-
-
-def _has_overlay_assignment(assignments: list[dict[str, Any]], overlay_id: str) -> bool:
-    """Return whether the object is already assigned to the target overlay."""
-    return any(
-        _related_object_id(assignment.get("overlay")) == overlay_id for assignment in assignments
-    )
-
-
-async def _get_assignment_overlay_isolation_type(
-    client: NautobotClient,
-    assignment: dict[str, Any],
-) -> str | None:
-    """Return the overlay isolation type for an overlay assignment."""
-    assignment_overlay = assignment.get("overlay")
-    if isinstance(assignment_overlay, dict) and assignment_overlay.get("isolation_type"):
-        return str(assignment_overlay["isolation_type"])
-
-    assignment_overlay_id = _related_object_id(assignment_overlay)
-    if not assignment_overlay_id:
-        return None
-
-    overlay_details = await client.get_overlay(assignment_overlay_id)
-    isolation_type = overlay_details.get("isolation_type")
-    return str(isolation_type) if isolation_type else None
-
-
-async def _stale_spectrumx_assignment_ids(
-    client: NautobotClient,
-    assignments: list[dict[str, Any]],
-    target_overlay_id: str | None,
-) -> list[str]:
-    """Return stale Spectrum-X assignment IDs, preserving other overlay types."""
-    stale_assignment_ids: list[str] = []
-    for assignment in assignments:
-        assignment_overlay_id = _related_object_id(assignment.get("overlay"))
-        if assignment_overlay_id == target_overlay_id:
-            continue
-
-        isolation_type = await _get_assignment_overlay_isolation_type(client, assignment)
-        if isolation_type == SPECTRUMX_ISOLATION_TYPE:
-            stale_assignment_ids.append(str(assignment["id"]))
-
-    return stale_assignment_ids
-
-
-async def _lookup_overlay_assignment_status_id(client: NautobotClient) -> str:
-    """Return the default status ID used for new overlay assignments."""
-    status_id = await client.lookup_id_by_name("extras/statuses/", DEFAULT_STATUS_NAME)
-    if status_id is None:
-        raise ApplicationError(f"Status {DEFAULT_STATUS_NAME} not found for overlay assignment")
-    return status_id
-
-
-async def _create_overlay_assignment(
-    client: NautobotClient,
-    *,
-    target_overlay_id: str,
-    assigned_object_type: str,
-    assigned_object_id: str,
-    status_id: str,
-) -> dict[str, Any]:
-    """Create an overlay assignment for a Nautobot object."""
-    return cast(
-        dict[str, Any],
-        await client.post(
-            OVERLAY_ASSIGNMENTS_PATH,
-            data={
-                "overlay": target_overlay_id,
-                "assigned_object_type": assigned_object_type,
-                "assigned_object_id": assigned_object_id,
-                "status": status_id,
-            },
-        ),
-    )
-
-
-async def _delete_overlay_assignments(
-    client: NautobotClient,
-    assignment_ids: list[str],
-) -> int:
-    """Delete the given overlay assignments and return the count removed."""
-    for assignment_id in assignment_ids:
-        await client.delete(f"{OVERLAY_ASSIGNMENTS_PATH}{assignment_id}/")
-    return len(assignment_ids)
-
-
 @activity.defn
 async def reconcile_spx_overlay_assignments(
     activity_input: ReconcileSpXOverlayAssignmentsInput,
@@ -945,76 +647,17 @@ async def reconcile_spx_overlay_assignments(
     target overlay removes the selected ports' Spectrum-X assignments. Device
     assignments are removed when no interface on the device uses their overlay.
     """
-    client = NautobotClient()
-    created = 0
-    removed = 0
-    status_id: str | None = None
-    target_overlay_id: str | None = None
-
-    async with client:
-        if activity_input.overlay_id is not None:
-            overlay = await client.find_overlay(activity_input.overlay_id, activity_input.site)
-            if not overlay:
-                raise ApplicationError(
-                    f"Overlay {activity_input.overlay_id} not found in site {activity_input.site}"
-                )
-            if overlay.get("isolation_type") != SPECTRUMX_ISOLATION_TYPE:
-                raise ApplicationError(
-                    f"Overlay {activity_input.overlay_id} in site {activity_input.site} "
-                    f"is not a {SPECTRUMX_ISOLATION_TYPE} overlay"
-                )
-            target_overlay_id = str(overlay["id"])
-
-        device_assignments = await _get_overlay_assignments(client, activity_input.device_id)
-        if target_overlay_id is not None and not _has_overlay_assignment(
-            device_assignments, target_overlay_id
-        ):
-            status_id = await _lookup_overlay_assignment_status_id(client)
-            await _create_overlay_assignment(
-                client,
-                target_overlay_id=target_overlay_id,
-                assigned_object_type="dcim.device",
-                assigned_object_id=activity_input.device_id,
-                status_id=status_id,
+    client = create_dcim_workflow_client()
+    try:
+        async with client:
+            created, removed = await client.reconcile_spectrum_x_overlay_assignments(
+                activity_input.overlay_id,
+                activity_input.site,
+                activity_input.device_id,
+                activity_input.interface_ids,
             )
-            created += 1
-
-        assignments_by_interface: dict[str, list[dict[str, Any]]] = {}
-        for interface_id in activity_input.interface_ids:
-            interface_assignments = await _get_overlay_assignments(client, interface_id)
-            assignments_by_interface[interface_id] = interface_assignments
-            stale_assignment_ids = await _stale_spectrumx_assignment_ids(
-                client,
-                interface_assignments,
-                target_overlay_id,
-            )
-
-            if target_overlay_id is not None and not _has_overlay_assignment(
-                interface_assignments, target_overlay_id
-            ):
-                if status_id is None:
-                    status_id = await _lookup_overlay_assignment_status_id(client)
-                await _create_overlay_assignment(
-                    client,
-                    target_overlay_id=target_overlay_id,
-                    assigned_object_type="dcim.interface",
-                    assigned_object_id=interface_id,
-                    status_id=status_id,
-                )
-                created += 1
-                interface_assignments.append(
-                    {"id": "created", "overlay": {"id": target_overlay_id}}
-                )
-
-            removed += await _delete_overlay_assignments(
-                client,
-                stale_assignment_ids,
-            )
-            assignments_by_interface[interface_id] = [
-                assignment
-                for assignment in interface_assignments
-                if str(assignment["id"]) not in stale_assignment_ids
-            ]
+    except DCIMError as error:
+        raise _as_application_error(error) from error
 
         # Always rebuild the complete active interface state. On an activity
         # retry, selected-interface deletions from an earlier attempt may

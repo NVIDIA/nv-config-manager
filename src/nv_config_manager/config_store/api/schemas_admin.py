@@ -37,8 +37,9 @@ class CacheStatusResponse(BaseModel):
     message: str | None = Field(None, description="Status message if disabled")
     cache_ttl: int | None = Field(None, description="Cache TTL in seconds")
     redis_connected: bool | None = Field(None, description="Whether Redis is connected")
+    dcim_connected: bool | None = Field(None, description="Whether the selected DCIM client is available")
     nautobot_connected: bool | None = Field(
-        None, description="Whether Nautobot client is available"
+        None, description="Legacy alias for dcim_connected"
     )
 
 

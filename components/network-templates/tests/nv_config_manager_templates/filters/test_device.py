@@ -17,6 +17,12 @@
 from copy import deepcopy
 
 import pytest
+from nv_config_manager_dcim import (
+    DeviceRenderData,
+    LocationRenderData,
+    RenderDeviceIdentity,
+    RenderLocation,
+)
 
 from nv_config_manager_templates.dataclasses.interface import Interface
 from nv_config_manager_templates.dataclasses.vrf import VRF
@@ -75,6 +81,29 @@ from nv_config_manager_templates.filters.device import (
 )
 
 
+def _render_device(
+    name: str = "test-device",
+    *,
+    interfaces: tuple[dict, ...] = (),
+    inventory: dict | None = None,
+    intent: dict | None = None,
+) -> DeviceRenderData:
+    """Build compact provider-neutral device data for focused filter tests."""
+    return DeviceRenderData(
+        identity=RenderDeviceIdentity(
+            id=name,
+            name=name,
+            platform="Cumulus Linux",
+            role="Leaf",
+            model="SN5600",
+            location=RenderLocation(name="TEST-SITE", kind="Site"),
+        ),
+        interfaces=interfaces,
+        inventory=inventory or {},
+        intent=intent or {},
+    )
+
+
 def test_basic_device_fields(public_leaf_data: dict, public_tor_data: dict) -> None:
     """Basic device metadata is extracted from public fixtures."""
     assert hostname(public_leaf_data) == "a08-u32-p01-cleaf-01"
@@ -97,8 +126,9 @@ def test_tags(public_leaf_data: dict) -> None:
     assert device_tags(public_leaf_data) == []
     assert has_tag(public_leaf_data, "dns-exempt") is False
 
-    tagged_data = deepcopy(public_leaf_data)
-    tagged_data["data"]["device"]["tags"] = [{"name": "dns-exempt"}]
+    tagged_data = public_leaf_data.model_copy(
+        update={"identity": public_leaf_data.identity.model_copy(update={"tags": ("dns-exempt",)})}
+    )
     assert device_tags(tagged_data) == ["dns-exempt"]
     assert has_tag(tagged_data, "dns-exempt")
 
@@ -106,8 +136,8 @@ def test_tags(public_leaf_data: dict) -> None:
 def test_interface_has_tag(public_leaf_data: dict) -> None:
     """Interface tag matching is case-insensitive."""
     data = deepcopy(public_leaf_data)
-    data["data"]["device"]["interfaces"][0]["tags"] = [{"name": "Cable-Validation"}]
-    intf = interface_by_name(data, data["data"]["device"]["interfaces"][0]["name"])
+    data.interfaces[0]["tags"] = [{"name": "Cable-Validation"}]
+    intf = interface_by_name(data, data.interfaces[0]["name"])
 
     assert interface_has_tag(intf, "cable-validation")
     assert interface_has_tag(intf, "CABLE-VALIDATION")
@@ -117,7 +147,7 @@ def test_interface_has_tag(public_leaf_data: dict) -> None:
 def test_desired_firmware_missing(public_leaf_data: dict) -> None:
     """Missing intended firmware reports a clear filter error."""
     no_desired_data = deepcopy(public_leaf_data)
-    del no_desired_data["data"]["device"]["config_context"]["intended-firmware"]
+    del no_desired_data.intent["intended-firmware"]
 
     with pytest.raises(FilterException, match="No intended firmware image set for device."):
         desired_firmware(no_desired_data)
@@ -145,13 +175,11 @@ def test_connected_interface_asn_uses_neighbor_routing_instance(
 ) -> None:
     """Connected peer ASN is sourced from the peer BGP routing instance."""
     interface_entry = next(
-        interface
-        for interface in public_leaf_data["data"]["device"]["interfaces"]
-        if interface["name"] == "swp53s0"
+        interface for interface in public_leaf_data.interfaces if interface["name"] == "swp53s0"
     )
     peer_device = interface_entry["connected_interface"]["device"]
 
-    assert "config_context" not in peer_device
+    assert "intent" not in peer_device
     assert peer_device["bgp_routing_instances"][0]["autonomous_system"]["asn"] == 4230000001
 
     intf = interface_by_name(public_leaf_data, "swp53s0")
@@ -166,9 +194,7 @@ def test_connected_interface_asn_uses_matching_neighbor_routing_instance(
     """Connected peer ASN matches the peer routing instance for the connected VRF."""
     data = deepcopy(public_leaf_data)
     interface_entry = next(
-        interface
-        for interface in data["data"]["device"]["interfaces"]
-        if interface["name"] == "swp53s0"
+        interface for interface in data.interfaces if interface["name"] == "swp53s0"
     )
     interface_entry["connected_interface"]["vrf"] = {"name": "TEST-SITE_BLUE"}
     interface_entry["connected_interface"]["device"]["bgp_routing_instances"] = [
@@ -202,8 +228,9 @@ def test_management_interface(public_leaf_data: dict) -> None:
     """Management interface lookup returns platform-specific management ports."""
     assert management_interface(public_leaf_data).name == "eth0"
 
-    bad_platform_data = deepcopy(public_leaf_data)
-    bad_platform_data["data"]["device"]["platform"]["name"] = "Blah"
+    bad_platform_data = public_leaf_data.model_copy(
+        update={"identity": public_leaf_data.identity.model_copy(update={"platform": "Blah"})}
+    )
 
     with pytest.raises(
         FilterException, match="No Management Interface lookup implemnented for Blah"
@@ -264,12 +291,10 @@ def test_common_context_servers(public_leaf_data: dict) -> None:
 def test_gni_context_helpers(public_leaf_data: dict) -> None:
     """Generic context helpers expose common site config values."""
     data = deepcopy(public_leaf_data)
-    data["data"]["device"]["config_context"]["dhcp"] = {
-        "nv-config-manager": {"ipv4": ["192.0.2.20"]}
-    }
-    data["data"]["device"]["config_context"]["management_prefixes"] = {"ipv4": ["192.0.2.0/24"]}
-    data["data"]["device"]["config_context"]["provisioning_servers"] = {"ipv4": ["192.0.2.10"]}
-    data["data"]["device"]["config_context"]["isis"] = {"interfaces": {"swp1": 30}}
+    data.intent["dhcp"] = {"nv-config-manager": {"ipv4": ["192.0.2.20"]}}
+    data.intent["management_prefixes"] = {"ipv4": ["192.0.2.0/24"]}
+    data.intent["provisioning_servers"] = {"ipv4": ["192.0.2.10"]}
+    data.intent["isis"] = {"interfaces": {"swp1": 30}}
 
     assert dhcp_servers(data, "nv-config-manager") == ["192.0.2.20"]
     assert dhcp_servers(data, "missing") == []
@@ -281,44 +306,38 @@ def test_gni_context_helpers(public_leaf_data: dict) -> None:
 
 def test_spx_subnets() -> None:
     """Spectrum-X subnet helper returns /31 subnet and rail prefix pairs."""
-    data = {
-        "data": {
-            "device": {
-                "interfaces": [
+    data = _render_device(
+        interfaces=(
+            {
+                "name": "swp1",
+                "role": {"name": "Downlink"},
+                "ip_addresses": [
                     {
-                        "name": "swp1",
-                        "role": {"name": "Downlink"},
-                        "ip_addresses": [
-                            {
-                                "ip_version": 4,
-                                "parent": {
-                                    "prefix": "10.0.0.0/31",
-                                    "parent": {
-                                        "prefix": "10.0.0.0/26",
-                                        "parent": {"prefix": "10.0.0.0/16"},
-                                    },
-                                },
-                            }
-                        ],
+                        "ip_version": 4,
+                        "parent": {
+                            "prefix": "10.0.0.0/31",
+                            "parent": {
+                                "prefix": "10.0.0.0/26",
+                                "parent": {"prefix": "10.0.0.0/16"},
+                            },
+                        },
                     }
-                ]
-            }
-        }
-    }
+                ],
+            },
+        )
+    )
 
     assert spx_subnets(data) == [{"subnet": "10.0.0.0/31", "rail_prefix": "10.0.0.0/16"}]
 
-    data["data"]["device"]["interfaces"][0]["ip_addresses"][0]["parent"]["parent"]["parent"] = {
-        "prefix": "10.0.0.0/18"
-    }
+    data.interfaces[0]["ip_addresses"][0]["parent"]["parent"]["parent"] = {"prefix": "10.0.0.0/18"}
     with pytest.raises(FilterException, match="Invalid rail prefix length /18"):
         spx_subnets(data)
 
 
 def test_l2vni_vrfs() -> None:
     """L2VNI helper resolves route targets from direct and assignment payload shapes."""
-    data = {
-        "data": {
+    data = _render_device(
+        inventory={
             "vxlans": [
                 {
                     "id": "vxlan-without-overlay",
@@ -380,7 +399,7 @@ def test_l2vni_vrfs() -> None:
                 },
             ],
         }
-    }
+    )
 
     assert l2vni_vrfs(data) == [
         {
@@ -400,21 +419,12 @@ def test_l2vni_vrfs() -> None:
 
 def test_firmware_cache_fallback_explicit() -> None:
     """firmware_cache falls back to ZTP servers unless explicitly configured."""
-    mock_data = {
-        "data": {
-            "device": {
-                "config_context": {"ztp": {"ipv4": ["192.168.1.100", "192.168.1.101"]}},
-                "location": {"name": "TEST01"},
-            }
-        }
-    }
+    mock_data = _render_device(intent={"ztp": {"ipv4": ["192.168.1.100", "192.168.1.101"]}})
 
     assert firmware_cache(mock_data) == ["192.168.1.100", "192.168.1.101"]
 
     mock_data_with_cache = deepcopy(mock_data)
-    mock_data_with_cache["data"]["device"]["config_context"]["firmware_cache"] = {
-        "ipv4": ["192.168.2.100", "192.168.2.101"]
-    }
+    mock_data_with_cache.intent["firmware_cache"] = {"ipv4": ["192.168.2.100", "192.168.2.101"]}
 
     assert firmware_cache(mock_data_with_cache) == ["192.168.2.100", "192.168.2.101"]
 
@@ -427,56 +437,51 @@ def test_breakout_count(public_leaf_data: dict, public_border_leaf_data: dict) -
 
 def test_firmware_bundle_filters() -> None:
     """Firmware bundle helper filters resolve bundle defaults, overrides, and components."""
-    mock_data_with_bundle = {
-        "data": {
-            "device": {
-                "name": "test-device",
-                "config_context": {
-                    "firmware_bundle_version": "1.2.2",
-                    "firmware_bundles": {
-                        "1.2.0": {
-                            "nv_os": {
-                                "version": "25.02.2342",
-                                "image_file": "nvos-amd64-25.02.2342.bin",
-                            },
-                            "firmware": {
-                                "bmc": {
-                                    "file": "old_bmc.fwpkg",
-                                    "s3_path": "nv-os/25.02.2342/old_bmc.fwpkg",
-                                }
-                            },
-                        },
-                        "1.2.2": {
-                            "nv_os": {
-                                "version": "25.02.2344",
-                                "image_file": "nvos-amd64-25.02.2344.bin",
-                            },
-                            "firmware": {
-                                "bmc": {
-                                    "file": "new_bmc.fwpkg",
-                                    "s3_path": "ytl-bundles/1.2.2/new_bmc.fwpkg",
-                                },
-                                "cpld": {
-                                    "file": "new_cpld.bin",
-                                    "s3_path": "ytl-bundles/1.2.2/new_cpld.bin",
-                                },
-                            },
-                        },
+    mock_data_with_bundle = _render_device(
+        intent={
+            "firmware_bundle_version": "1.2.2",
+            "firmware_bundles": {
+                "1.2.0": {
+                    "nv_os": {
+                        "version": "25.02.2342",
+                        "image_file": "nvos-amd64-25.02.2342.bin",
                     },
-                    "firmware_overrides": {
-                        "skip_components": ["cpld"],
-                        "custom_components": {
-                            "bios": {
-                                "file": "custom_bios.fwpkg",
-                                "s3_path": "custom/custom_bios.fwpkg",
-                            }
+                    "firmware": {
+                        "bmc": {
+                            "file": "old_bmc.fwpkg",
+                            "s3_path": "nv-os/25.02.2342/old_bmc.fwpkg",
+                        }
+                    },
+                },
+                "1.2.2": {
+                    "nv_os": {
+                        "version": "25.02.2344",
+                        "image_file": "nvos-amd64-25.02.2344.bin",
+                    },
+                    "firmware": {
+                        "bmc": {
+                            "file": "new_bmc.fwpkg",
+                            "s3_path": "ytl-bundles/1.2.2/new_bmc.fwpkg",
+                        },
+                        "cpld": {
+                            "file": "new_cpld.bin",
+                            "s3_path": "ytl-bundles/1.2.2/new_cpld.bin",
                         },
                     },
                 },
-            }
+            },
+            "firmware_overrides": {
+                "skip_components": ["cpld"],
+                "custom_components": {
+                    "bios": {
+                        "file": "custom_bios.fwpkg",
+                        "s3_path": "custom/custom_bios.fwpkg",
+                    }
+                },
+            },
         }
-    }
-    mock_data_no_bundle = {"data": {"device": {"name": "test-device", "config_context": {}}}}
+    )
+    mock_data_no_bundle = _render_device()
 
     assert firmware_bundle_version(mock_data_with_bundle) == "1.2.2"
     assert firmware_bundle_version(mock_data_no_bundle) == "1.2.0"
@@ -511,8 +516,9 @@ def test_firmware_bundle_filters() -> None:
 
 def test_helper_addresses_by_vlan(public_border_leaf_data: dict) -> None:
     """Helper addresses are grouped by VLANs present on the device."""
-    location_data_with_vlans = {
-        "data": {
+    location_data_with_vlans = LocationRenderData(
+        location=RenderLocation(name="TEST-SITE", kind="Site"),
+        inventory={
             "vlans": [
                 {
                     "vid": 101,
@@ -521,20 +527,27 @@ def test_helper_addresses_by_vlan(public_border_leaf_data: dict) -> None:
                 {"vid": 150, "rel_vlan_to_helper_address": [{"host": "192.0.2.10"}]},
                 {"vid": 999, "rel_vlan_to_helper_address": [{"host": "192.0.2.11"}]},
             ]
-        }
-    }
+        },
+    )
 
     assert helper_addresses_by_vlan(public_border_leaf_data, location_data_with_vlans) == {
         101: ["192.0.2.8", "192.0.2.9"],
         150: ["192.0.2.10"],
     }
-    assert helper_addresses_by_vlan(public_border_leaf_data, {"data": {}}) == {}
+    assert (
+        helper_addresses_by_vlan(
+            public_border_leaf_data,
+            LocationRenderData(location=RenderLocation(name="TEST-SITE", kind="Site")),
+        )
+        == {}
+    )
 
 
 def test_helper_addresses_by_vrf(public_border_leaf_data: dict) -> None:
     """Helper addresses are grouped by attached VRF."""
-    location_data_with_vlans = {
-        "data": {
+    location_data_with_vlans = LocationRenderData(
+        location=RenderLocation(name="TEST-SITE", kind="Site"),
+        inventory={
             "vlans": [
                 {
                     "vid": 101,
@@ -542,38 +555,39 @@ def test_helper_addresses_by_vrf(public_border_leaf_data: dict) -> None:
                 },
                 {"vid": 150, "rel_vlan_to_helper_address": [{"host": "192.0.2.10"}]},
             ]
-        }
-    }
+        },
+    )
 
     assert helper_addresses_by_vrf(public_border_leaf_data, location_data_with_vlans) == {
         "INBAND": {"vlans": [101, 150], "helpers": ["192.0.2.8", "192.0.2.9", "192.0.2.10"]}
     }
-    assert helper_addresses_by_vrf(public_border_leaf_data, {"data": {}}) == {}
+    assert (
+        helper_addresses_by_vrf(
+            public_border_leaf_data,
+            LocationRenderData(location=RenderLocation(name="TEST-SITE", kind="Site")),
+        )
+        == {}
+    )
 
 
 def test_users() -> None:
     """Users are converted from password mappings into sorted password keys."""
-    mock_data = {
-        "data": {
-            "device": {
-                "name": "test-device",
-                "config_context": {
-                    "password_mappings": {
-                        "admin": {
-                            "password": "admin_password",
-                            "rotation": "r2",
-                            "role": "system-admin",
-                        },
-                        "cumulus": {
-                            "password": "root_password",
-                            "rotation": "r1",
-                            "role": "system-admin",
-                        },
-                    }
+    mock_data = _render_device(
+        intent={
+            "password_mappings": {
+                "admin": {
+                    "password": "admin_password",
+                    "rotation": "r2",
+                    "role": "system-admin",
+                },
+                "cumulus": {
+                    "password": "root_password",
+                    "rotation": "r1",
+                    "role": "system-admin",
                 },
             }
         }
-    }
+    )
 
     assert users(mock_data) == [
         {"username": "admin", "role": "system-admin", "password_key": "admin_password_r2"},
@@ -583,19 +597,15 @@ def test_users() -> None:
 
 def test_users_missing_required_key() -> None:
     """Missing password mapping keys raise clear filter errors."""
-    mock_data = {
-        "data": {
-            "device": {
-                "name": "my-device",
-                "config_context": {
-                    "password_mappings": {
-                        "admin": {"password": "secret", "rotation": "r1", "role": "admin"},
-                        "broken": {"rotation": "r1"},
-                    }
-                },
+    mock_data = _render_device(
+        name="my-device",
+        intent={
+            "password_mappings": {
+                "admin": {"password": "secret", "rotation": "r1", "role": "admin"},
+                "broken": {"rotation": "r1"},
             }
-        }
-    }
+        },
+    )
 
     with pytest.raises(
         FilterException,
@@ -603,7 +613,7 @@ def test_users_missing_required_key() -> None:
     ):
         users(mock_data)
 
-    mock_data["data"]["device"]["config_context"]["password_mappings"]["broken"] = {"password": "x"}
+    mock_data.intent["password_mappings"]["broken"] = {"password": "x"}
     with pytest.raises(
         FilterException,
         match="password_mappings: user 'broken' is missing required key 'rotation'",
@@ -622,21 +632,11 @@ def test_l3vni_mappings(public_tor_data: dict) -> None:
 
     assert (
         l3vni_mappings(
-            {
-                "data": {
-                    "vxlans": [
-                        {
-                            "vni_type": "l3",
-                            "l3_vlan_id": None,
-                            "vrf": {"name": "OOB"},
-                        }
-                    ],
-                    "device": {
-                        "name": "test-device",
-                        "config_context": {},
-                    },
+            _render_device(
+                inventory={
+                    "vxlans": [{"vni_type": "l3", "l3_vlan_id": None, "vrf": {"name": "OOB"}}]
                 }
-            },
+            ),
             "OOB",
         )
         == ""
@@ -656,7 +656,7 @@ def test_vni_mappings(public_tor_data: dict) -> None:
 def test_vni_mapping_filters_accept_nautobot_choice_labels(public_tor_data: dict) -> None:
     """Overlay VNI filters tolerate Nautobot GraphQL choice labels."""
     data = deepcopy(public_tor_data)
-    for vxlan in data["data"]["vxlans"]:
+    for vxlan in data.inventory["vxlans"]:
         vxlan["vni_type"] = vxlan["vni_type"].upper()
 
     assert l3vni_mappings(data, "OOB") == "4002"
@@ -664,18 +664,8 @@ def test_vni_mapping_filters_accept_nautobot_choice_labels(public_tor_data: dict
 
 
 def test_mapping_filters_keep_device_name_safe_when_data_is_missing() -> None:
-    """Legacy mapping context is ignored when overlay VXLAN data is missing."""
-    data = {
-        "data": {
-            "device": {
-                "name": "leaf01",
-                "config_context": {
-                    "l3vni_mappings": {"default": {"l3_vni": "1000", "l3_vlan": "4001"}},
-                    "vni_mappings": {"10": "10010"},
-                },
-            }
-        }
-    }
+    """Missing normalized overlay inventory retains the device name in errors."""
+    data = _render_device(name="leaf01")
 
     with pytest.raises(FilterException, match="leaf01"):
         l3vni_mappings(data, "default")
@@ -688,38 +678,24 @@ def test_global_fabric_mac(public_tor_data: dict) -> None:
     assert global_fabric_mac(public_tor_data) == "00:00:5E:00:01:69"
     assert (
         global_fabric_mac(
-            {"data": {"device": {"name": "test-device", "config_context": {}}}},
+            _render_device(),
             fail_if_missing=False,
         )
         == ""
     )
 
     with pytest.raises(FilterException, match="No fabric-mac found"):
-        global_fabric_mac({"data": {"device": {"name": "test-device", "config_context": {}}}})
+        global_fabric_mac(_render_device())
 
 
 def test_evpn_esi_mac(public_tor_data: dict) -> None:
     """ESI MAC math carries across octets and refuses overflow."""
     assert evpn_esi_mac(public_tor_data, 1) == "44:38:39:ff:69:01"
 
-    data = {
-        "data": {
-            "device": {
-                "name": "leaf01",
-                "config_context": {"evpn_esi_base_mac": "00:00:00:00:00:ff"},
-            }
-        }
-    }
+    data = _render_device(name="leaf01", intent={"evpn_esi_base_mac": "00:00:00:00:00:ff"})
     assert evpn_esi_mac(data, 1) == "00:00:00:00:01:00"
 
-    overflow_data = {
-        "data": {
-            "device": {
-                "name": "leaf01",
-                "config_context": {"evpn_esi_base_mac": "ff:ff:ff:ff:ff:ff"},
-            }
-        }
-    }
+    overflow_data = _render_device(name="leaf01", intent={"evpn_esi_base_mac": "ff:ff:ff:ff:ff:ff"})
     with pytest.raises(FilterException, match="overflow"):
         evpn_esi_mac(overflow_data, 1)
 

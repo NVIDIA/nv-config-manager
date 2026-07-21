@@ -23,7 +23,7 @@ from nv_config_manager.config_store.db.models import FileType
 
 
 class DeviceMetadata(BaseModel):
-    """Device metadata from Nautobot."""
+    """Device metadata from the selected DCIM provider."""
 
     name: str = Field(..., description="Device name")
     site: str = Field(..., description="Site name")
@@ -31,7 +31,11 @@ class DeviceMetadata(BaseModel):
     role: str | None = Field(None, description="Device role")
     rack: str | None = Field(None, description="Rack name")
     primary_ip4: str | None = Field(None, description="Primary IPv4 address")
-    nautobot_url: str | None = Field(None, description="Link to device in Nautobot")
+    device_url: str | None = Field(None, description="Provider UI link for the device")
+    nautobot_url: str | None = Field(
+        None,
+        description="Legacy alias for device_url when the selected provider is Nautobot",
+    )
     last_updated: datetime | None = Field(None, description="When metadata was last refreshed")
 
 
@@ -73,7 +77,9 @@ class ConfigResponse(BaseModel):
     author: str = Field(..., description="Author email")
     commit_message: str = Field(..., description="Commit message")
     created_at: datetime = Field(..., description="Timestamp when version was created")
-    device: DeviceMetadata | None = Field(None, description="Device metadata from Nautobot")
+    device: DeviceMetadata | None = Field(
+        None, description="Device metadata from the selected DCIM provider"
+    )
 
 
 class ConfigVersionsResponse(BaseModel):
@@ -82,7 +88,9 @@ class ConfigVersionsResponse(BaseModel):
     device_uuid: UUID = Field(..., description="Device UUID")
     filename: str = Field(..., description="File name")
     versions: list[ConfigVersionResponse] = Field(..., description="List of versions")
-    device: DeviceMetadata | None = Field(None, description="Device metadata from Nautobot")
+    device: DeviceMetadata | None = Field(
+        None, description="Device metadata from the selected DCIM provider"
+    )
 
 
 class BatchConfigItem(BaseModel):

@@ -56,18 +56,23 @@ class ExternalServicesScreen(Container):
             "Leave disabled to use the default in-cluster deployments."
         )
 
-        # ── Nautobot ───────────────────────────────────────────────────────
-        yield Label("Nautobot", classes="field-label")
+        # ── DCIM provider ─────────────────────────────────────────────────
+        yield Label("DCIM Provider", classes="field-label")
+        yield Input(
+            value=self._config.dcim.provider,
+            placeholder="nautobot",
+            id="ext-dcim-provider",
+        )
         yield LabeledSwitch(
-            "Use external Nautobot",
+            "Use external DCIM",
             value=not svc.nautobot,
             id="ext-nautobot-enabled",
         )
         with Container(id="ext-nautobot-fields"):
-            yield Label("Nautobot URL", classes="field-label")
+            yield Label("DCIM endpoint", classes="field-label")
             yield Input(
-                value=svc.external_nautobot_url,
-                placeholder="https://nautobot.example.com",
+                value=self._config.dcim.server or svc.external_nautobot_url,
+                placeholder="https://dcim.example.com",
                 id="ext-nautobot-url",
             )
 
@@ -224,10 +229,18 @@ class ExternalServicesScreen(Container):
             return default
 
     def write_to_config(self, config: NVConfigManagerInstallConfig) -> None:
-        nautobot_external = self.query_one(_W_EXT_NAUTOBOT, LabeledSwitch).value
-        nautobot_url = self.query_one("#ext-nautobot-url", Input).value.strip()
-        config.services.nautobot = not nautobot_external
-        config.services.external_nautobot_url = nautobot_url if nautobot_external else ""
+        dcim_external = self.query_one(_W_EXT_NAUTOBOT, LabeledSwitch).value
+        dcim_provider = self.query_one("#ext-dcim-provider", Input).value.strip() or "nautobot"
+        dcim_server = self.query_one("#ext-nautobot-url", Input).value.strip()
+        config.dcim.provider = dcim_provider
+        if dcim_provider == "nautobot":
+            config.services.nautobot = not dcim_external
+            config.services.external_nautobot_url = dcim_server if dcim_external else ""
+            config.dcim.server = dcim_server if dcim_external else ""
+        else:
+            config.services.nautobot = False
+            config.services.external_nautobot_url = ""
+            config.dcim.server = dcim_server
 
         es = config.external_services
         r = es.redis
@@ -273,8 +286,11 @@ class ExternalServicesScreen(Container):
         temporal = es.temporal
         svc = config.services
         try:
+            self.query_one("#ext-dcim-provider", Input).value = config.dcim.provider
             self.query_one(_W_EXT_NAUTOBOT, LabeledSwitch).value = not svc.nautobot
-            self.query_one("#ext-nautobot-url", Input).value = svc.external_nautobot_url
+            self.query_one("#ext-nautobot-url", Input).value = (
+                config.dcim.server or svc.external_nautobot_url
+            )
             self.query_one(_W_EXT_REDIS, LabeledSwitch).value = r.enabled
             self.query_one("#ext-redis-host", Input).value = r.host
             self.query_one("#ext-redis-port", Input).value = str(r.port)
@@ -305,7 +321,9 @@ class ExternalServicesScreen(Container):
 
     def get_status(self, config: NVConfigManagerInstallConfig) -> str:
         es = config.external_services
-        if not config.services.nautobot and not config.services.external_nautobot_url:
+        if not config.services.nautobot and not (
+            config.dcim.server or config.services.external_nautobot_url
+        ):
             return "[!]"
         if es.redis.enabled and not es.redis.host:
             return "[!]"

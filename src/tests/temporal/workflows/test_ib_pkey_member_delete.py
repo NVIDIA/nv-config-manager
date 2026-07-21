@@ -105,7 +105,7 @@ def mock_all_configs():
     """Mock both UFM and Nautobot config loading."""
     with (
         patch("nv_config_manager.temporal.client.ufm.load_config", return_value=_ufm_config()),
-        patch("nv_config_manager.temporal.client.nautobot.load_config", return_value=_nb_config()),
+        patch("nv_config_manager_dcim_nautobot.workflow.load_config", return_value=_nb_config()),
     ):
         yield
 

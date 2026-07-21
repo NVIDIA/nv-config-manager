@@ -6,7 +6,7 @@ position: 0
 
 ## Overview
 
-This template rendering system provides a flexible, inheritance-based approach to generating network device configurations. It queries structured data from Nautobot (a network source of truth) and renders device configurations using Jinja2 templates with custom filters.
+This template rendering system provides a flexible, inheritance-based approach to generating network device configurations. The selected DCIM provider supplies one normalized `RenderData` payload, and the renderer produces device configurations using Jinja2 templates with custom filters. Nautobot is the bundled reference provider.
 
 ### Key Features
 
@@ -14,7 +14,7 @@ This template rendering system provides a flexible, inheritance-based approach t
 * **Role-based Templates**: Different device roles (leaf, spine, core, and so on) have customized configurations
 * **Version Management**: Support for multiple firmware versions per platform/role
 * **Template Inheritance**: DRY (Don't Repeat Yourself) principle with multi-level template inheritance
-* **Custom Filters**: Powerful Jinja2 filters to extract and transform Nautobot data
+* **Custom Filters**: Powerful Jinja2 filters to extract and transform provider-supplied render data
 * **Type Safety**: Python dataclasses provide structured, validated data objects
 
 ## System Architecture
@@ -22,9 +22,9 @@ This template rendering system provides a flexible, inheritance-based approach t
 ### High-Level Flow
 
 ```text
-Nautobot (Source of Truth)
-    ↓ (GraphQL Query)
-Device Data + Location Data
+Selected DCIM Provider
+    ↓ (provider-owned REST, GraphQL, or client calls)
+RenderData: Device + Location + Plugin Data
     ↓ (Pass to Renderer)
 Jinja2 Template Engine
     ↓ (Apply Filters & Render)
@@ -35,7 +35,7 @@ Device Configuration Files
 
 1. **Renderer**: Main orchestration class that:
 
-   * Queries Nautobot through GraphQL
+   * Accepts complete `RenderData` from the selected provider
    * Loads and configures Jinja2 environment
    * Dynamically registers custom filters
    * Renders templates with device and location data
@@ -92,7 +92,7 @@ The renderer determines which entrypoint templates to use based on device attrib
 
 1. **Platform**: Extracted from device's platform field (e.g., "Cumulus Linux" → `cumulus-linux`)
 1. **Role**: Extracted from device's role field (e.g., "TAN-Leaf" → `tan-leaf`)
-1. **Version**: Extracted from device's config context `intended-firmware.version`
+1. **Version**: Extracted from the provider's normalized intended-firmware data
 
 **Example Path**: `cumulus-linux/tan-leaf/5.6.0/entrypoint/startup.yaml.j2`
 
@@ -106,11 +106,11 @@ Common commands:
 
 | Command | Purpose |
 | :------ | :------ |
-| `cache-query` | Pull device and location GraphQL payloads once; write JSON fixtures for fast iteration and pytest. Supports `--output-plugin-file` when plugins add queries. |
-| `list-entrypoints` | Show which entrypoint templates match a device (live Nautobot, cached JSON, or test fixtures). |
-| `render` | Render an `--entrypoint` name or a full `--template` path. Accepts `--cached-data`, `--cached-location-data`, `--cached-plugin-data`, optional `--output-file`, and `--vault` to perform real Vault lookups instead of dummy secrets. |
+| `cache-query` | Query the selected provider once and write a portable `RenderData` JSON fixture for fast iteration and pytest. |
+| `list-entrypoints` | Show which entrypoint templates match a device from a live provider or cached render data. |
+| `render` | Render an `--entrypoint` name or a full `--template` path from `--provider-config` or `--cached-render-data`. |
 
-Without `--vault`, encrypted fields in CLI output are placeholders. Use `--vault` before copying rendered configs to lab hardware. For render regression tests, add expected files under `tests/resources/expected_config/` and matching Nautobot JSON under `tests/resources/nautobot/`, then run `uv run pytest` (see the `nv-config-manager-templates` README).
+Without `--vault`, encrypted fields in CLI output are placeholders. Use `--vault` before copying rendered configs to lab hardware. For render regression tests, add expected files under `tests/resources/expected_config/` and matching portable `RenderData` JSON under `tests/resources/`, then run `uv run pytest` (see the `nv-config-manager-templates` README).
 
 ## Template Inheritance
 
@@ -246,7 +246,7 @@ This inherits management and loopback blocks from common, only implementing swp-
 
 ## Jinja2 Filters
 
-Filters are the primary mechanism for extracting and transforming Nautobot data within templates. All filters are pure Python functions that take data as input and return processed output.
+Filters are the primary mechanism for extracting and transforming provider-supplied render data within templates. All filters are pure Python functions that take data as input and return processed output.
 
 ### Filter Organization
 
@@ -261,21 +261,29 @@ Filters are organized into modules by functionality:
 
 ### Device Filters
 
-Extract device attributes from Nautobot GraphQL data.
+Extract stable device attributes from render data.
+
+<Note>
+The last column describes how the bundled Nautobot provider maps its native
+records into the provider-neutral contract. It is not a requirement that
+another provider use GraphQL or Nautobot fields. A provider must supply the
+stable concept consumed by the filter, and provider-specific shape conversion
+belongs outside templates.
+</Note>
 
 #### Basic Device Information
 
-| Filter | Input | Output | Description | Nautobot Field |
+| Filter | Input | Output | Description | Nautobot source mapping |
 | :----- | :---- | :----- | :---------- | :------------- |
 | `hostname` | device_data | string | Device hostname | `device.name` |
 | `site_name` | device_data | string | Site name (handles nested locations) | `device.location` hierarchy |
 | `platform` | device_data | string | Platform name | `device.platform.name` |
 | `role` | device_data | string | Device role | `device.role.name` |
 | `model` | device_data | string | Device model | `device.device_type.model` |
-| `uuid` | device_data | string | Nautobot UUID | `device.id` |
+| `uuid` | device_data | string | Provider device identifier | `device.id` |
 | `device_tags` | device_data | list[str] | List of device tags | `device.tags[].name` |
 | `has_tag` | device_data, tag | bool | Check if device has specific tag | `device.tags[].name` |
-| `desired_firmware` | device_data | string | Target firmware version | `device.config_context['intended-firmware']['version']` |
+| `desired_firmware` | device_data | string | Target firmware version | `device_data.intent['intended-firmware']['version']` |
 
 **Example Usage:**
 
@@ -291,7 +299,7 @@ hostname {{ device_data|hostname }}
 | :----- | :---- | :----- | :---------- | :------------- |
 | `router_id` | device_data | string | Router ID (IPv4 without mask) | Loopback interface IP |
 | `asn` | device_data, vrf="default" | string | BGP ASN for device/VRF | `device.bgp_routing_instances[].autonomous_system.asn` or config context |
-| `local_asn` | device_data | string | Local ASN for Azure devices | `device.config_context['bgp']['local-asn']` |
+| `local_asn` | device_data | string | Local ASN for Azure devices | `device_data.intent['bgp']['local-asn']` |
 | `bgp_peers` | device_data, vrf="default" | list[BGPPeer] | List of BGP peers | `device.bgp_routing_instances[].endpoints` |
 
 **Example Usage:**
@@ -428,7 +436,7 @@ Extract site/location-level data (operates on `location_data`, not `device_data`
 | Filter | Input | Output | Description | Nautobot Field |
 | :----- | :---- | :----- | :---------- | :------------- |
 | `site_aggregates` | location_data, role_name, tags=None, exclude_tags=None | list[str] | Prefixes with specific role; optional tag include/exclude lists | `location.prefixes[]` filtered by role |
-| `site_asn` | location_data | string | Site-level BGP ASN | `location.config_contexts[0].data.site_asn` |
+| `site_asn` | location_data | string | Site-level BGP ASN | `location_data.intent['site_asn']` |
 | `route_server_peers` | location_data | list[BGPPeer] | BGP route server peers at site | `location.route_servers[]` |
 | `wan_loopbacks` | location_data | list[tuple] | WAN router names and loopbacks | `location.wan_devices[].interfaces[]` |
 | `uc_jumphost_prefixes` | location_data | list[str] | UC jumphost prefixes | `location.uc_jumphost_prefixes[]` |
@@ -477,9 +485,13 @@ username admin secret {{ admin_pass|encrypt("sha512") }}
 tacacs-server key {{ tacacs_key|encrypt("ciscot7") }}
 ```
 
-## Nautobot Data Model
+## Nautobot Provider Source Mapping
 
-The system queries Nautobot using GraphQL to retrieve comprehensive device and location data.
+The following detail is specific to the bundled Nautobot provider's current
+render-data mapping. It is useful for maintaining the Nautobot provider, but
+its native response shape is never exposed to templates or cache fixtures.
+Other providers build the same `RenderData` concepts through their own native
+APIs.
 
 ### Device Query Structure
 
@@ -537,9 +549,10 @@ location
 └── uc_jumphost_prefixes[]: Jumphost prefixes
 ```
 
-### Config Context
+### Intent Mapping
 
-The `config_context` field contains custom JSON data defined in Nautobot:
+Nautobot's `config_context` field contains custom JSON data. The provider maps
+that value to `DeviceRenderData.intent` before invoking the renderer:
 
 ```json
 {
@@ -635,9 +648,10 @@ new-feature enable
 {% endblock new_feature %}
 ```
 
-### Configure Nautobot
+### Configure the bundled Nautobot provider
 
-Ensure the device in Nautobot has:
+Ensure the device in Nautobot has the compatibility data required by these
+reference templates:
 
 1. **Platform** set correctly
 1. **Role** set correctly
@@ -649,17 +663,17 @@ Ensure the device in Nautobot has:
 1. Cache device data:
 
    ```bash
-   uv run template-cli cache-query --hostname my-device \
-     --output-file tests/resources/nautobot/my-device.json \
-     --output-location-file tests/resources/nautobot/MY-SITE.json
+   uv run template-cli cache-query \
+     --provider-config nautobot-provider.toml \
+     --device-name my-device \
+     --output-render-data-file tests/resources/render-data/my-device.json
    ```
 
 1. Render locally:
 
    ```bash
    uv run template-cli render \
-     --cached-data tests/resources/nautobot/my-device.json \
-     --cached-location-data tests/resources/nautobot/MY-SITE.json \
+     --cached-render-data tests/resources/render-data/my-device.json \
      --entrypoint startup.yaml.j2
    ```
 
@@ -732,7 +746,7 @@ Ensure the device in Nautobot has:
 
 1. **Immutable Data**: Use `frozen=True` dataclasses to prevent accidental mutations.
 
-### Nautobot Data Management
+### Provider Data Management
 
 1. **Consistent Naming**: Follow consistent naming conventions for devices, interfaces, VLANs, and so on.
 
@@ -967,7 +981,7 @@ This template rendering system provides a powerful, maintainable approach to net
 
 * **Jinja2 inheritance** for code reuse
 * **Custom filters** for data transformation
-* **Nautobot as source of truth** for structured data
+* **Selected DCIM provider as source of truth** for structured data
 * **Python dataclasses** for type safety
 
 You can build scalable configuration templates that adapt to diverse network environments while maintaining consistency and reliability.

@@ -79,6 +79,27 @@ def test_nautobot_auth_explicit_override() -> None:
     assert settings.nautobot_auth_mode == "jwt"
 
 
+def test_mcp_tracks_the_selected_dcim_provider() -> None:
+    config = _config("https://nautobot.example.test")
+    config["dcim"] = {"provider": "synthetic"}
+
+    settings = MCPSettings.from_config(config)
+
+    assert settings.dcim_provider_name == "synthetic"
+
+
+def test_non_nautobot_provider_does_not_require_nautobot_settings() -> None:
+    """Generic MCP tools remain available when no Nautobot connection exists."""
+    config = _config("https://nautobot.example.test")
+    config["dcim"] = {"provider": "synthetic"}
+    del config["nautobot"]
+
+    settings = MCPSettings.from_config(config)
+
+    assert settings.dcim_provider_name == "synthetic"
+    assert settings.nautobot_url == ""
+
+
 def test_workflow_ui_url_falls_back_to_base_hostname() -> None:
     config = _config("http://nv-config-manager-nautobot")
     del config["temporal"]["ui_url"]

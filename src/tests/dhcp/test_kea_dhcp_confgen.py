@@ -20,6 +20,7 @@ from unittest.mock import patch
 
 import pytest
 import requests
+from nv_config_manager_dcim_nautobot.provider import NautobotDCIMClient as NautobotClient
 from testcontainers.core.container import DockerContainer
 
 from nv_config_manager.dhcp.kea import KeaClient
@@ -28,7 +29,6 @@ from nv_config_manager.dhcp.kea_dhcp_confgen import (
     generate_config,
     inject_lease_db_config,
 )
-from nv_config_manager.dhcp.nautobot import NautobotClient
 from nv_config_manager.dhcp.redis import RedisClient
 
 # Get the directory containing this test file

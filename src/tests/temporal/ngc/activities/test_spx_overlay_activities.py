@@ -19,10 +19,9 @@ from unittest.mock import patch
 
 import pytest
 from aioresponses import aioresponses
+from nv_config_manager_dcim_nautobot.workflow import NautobotClient, NautobotException
 from temporalio.exceptions import ApplicationError
 
-from nv_config_manager.common.client.nautobot import NautobotException
-from nv_config_manager.temporal.client.nautobot import NautobotClient
 from nv_config_manager.temporal.ngc.activities.nautobot import (
     DeleteOverlayInput,
     GetAvailableRouteDistinguishersInput,
@@ -302,7 +301,7 @@ async def test_reconcile_spx_overlay_assignments_keeps_old_assignment_if_create_
             status=204,
         )
 
-        with pytest.raises(NautobotException, match="replacement rejected"):
+        with pytest.raises(ApplicationError, match="replacement rejected"):
             await reconcile_spx_overlay_assignments(
                 ReconcileSpXOverlayAssignmentsInput(
                     overlay_id="Panda",

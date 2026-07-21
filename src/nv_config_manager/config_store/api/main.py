@@ -46,20 +46,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
     # Startup
     cache_service = None
-    if settings.nautobot_token:
-        try:
-            logger.info("Initializing Redis-based Nautobot cache service (read-only)")
-            cache_service = await DeviceCacheService.from_config(settings.config)
-            app.state.cache_service = cache_service
-            logger.info(
-                "Redis-based Nautobot cache service initialized "
-                "(cache refresh runs in separate container)"
-            )
-        except Exception as e:
-            logger.error("Failed to initialize Nautobot cache service: %s", e)
-            app.state.cache_service = None
-    else:
-        logger.info("Nautobot cache service disabled")
+    try:
+        logger.info("Initializing Redis-based DCIM cache service (read-only)")
+        cache_service = await DeviceCacheService.from_config(settings.config)
+        app.state.cache_service = cache_service
+        logger.info(
+            "Redis-based DCIM cache service initialized "
+            "(cache refresh runs in separate container)"
+        )
+    except Exception as e:
+        logger.error("Failed to initialize DCIM cache service: %s", e)
+        app.state.cache_service = None
         app.state.cache_service = None
 
     yield
@@ -67,8 +64,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     # Shutdown
     logger.info("API service shutting down")
     if cache_service:
-        await cache_service.nautobot_client.close()
-        logger.info("Closed Nautobot client")
+        await cache_service.dcim_client.close()
+        logger.info("Closed DCIM client")
         await cache_service.redis_client.close()
         logger.info("Closed Redis connection")
 

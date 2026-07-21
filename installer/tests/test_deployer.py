@@ -48,6 +48,7 @@ from nv_config_manager_installer.nautobot_jobs import NautobotJobRunner
 from nv_config_manager_installer.schema import (
     ClusterConfig,
     ContentConfig,
+    DCIMConfig,
     GatewayType,
     GitTokenEntry,
     ImagePullSecret,
@@ -1527,6 +1528,37 @@ class TestK8sClientIntegration:
             if call.args[0] == "nautobot-token"
         )
         assert "read-only-token" not in nautobot_token_call.args[2]
+
+    @patch("nv_config_manager_installer.deployer._run_logged")
+    @patch("nv_config_manager_installer.deployer._run")
+    @patch("nv_config_manager_installer.deployer.K8sClient")
+    @patch("nv_config_manager_installer.deployer.shutil.which", return_value="/usr/bin/kubectl")
+    def test_external_dcim_creates_the_configured_token_secret(
+        self, mock_which, mock_k8s_cls, mock_run, mock_run_logged
+    ):
+        mock_k8s = _mock_k8s()
+        mock_k8s_cls.return_value = mock_k8s
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        mock_run_logged.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        config = _make_config()
+        config.dcim = DCIMConfig(
+            provider="synthetic",
+            server="https://synthetic.example",
+            token_secret_name="synthetic-dcim-token",
+            token_secret_key="access-token",
+        )
+        config.services = ServicesConfig(nautobot=False)
+
+        Deployer(config, DeployOptions(dry_run=True), RecordingCallback()).run()
+
+        token_call = next(
+            call
+            for call in mock_k8s.apply_secret.call_args_list
+            if call.args[0] == "synthetic-dcim-token"
+        )
+        assert token_call.args[2]["access-token"]
+        secret_names = [call.args[0] for call in mock_k8s.apply_secret.call_args_list]
+        assert "nautobot-admin" not in secret_names
 
     @patch("nv_config_manager_installer.deployer._run_logged")
     @patch("nv_config_manager_installer.deployer._run")
