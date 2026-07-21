@@ -17,7 +17,7 @@ Until the publishing story is finalized, install it from a sibling checkout:
 ```bash
 uv run --no-project \
   --with ../nv-config-manager/components/dcim \
-  --with ../nv-config-manager/components/dcim-nautobot \
+  --with ../nv-config-manager/components/dcim-nautobot-2x \
   --with ../nv-config-manager/components/network-templates \
   --with-editable . template-cli --help
 ```
@@ -28,5 +28,5 @@ file parsing, secrets, logging, and lifecycle policy.
 
 See [Contribute a DCIM Provider](../../docs/development/contributing-dcim-provider.mdx)
 for the package, event, render-data, test, and deployment contract. The
-Nautobot provider in `../dcim-nautobot` is the reference implementation; its
+Nautobot 2.x provider in `../dcim-nautobot-2x` is the reference implementation; its
 GraphQL transport is not part of this SDK contract.

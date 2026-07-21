@@ -14,7 +14,7 @@ resolution-markers = [
 members = [
     "nv-config-manager",
     "nv-config-manager-dcim",
-    "nv-config-manager-dcim-nautobot",
+    "nv-config-manager-dcim-nautobot-2x",
     "nv-config-manager-templates",
 ]
 
@@ -1104,6 +1104,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/b5/c8/f439cffde755cffa462bfbb156278fa6f9d09119719af9814b858fd4f81f/googleapis_common_protos-1.75.0.tar.gz", hash = "sha256:53a062ff3c32552fbd62c11fe23768b78e4ddf0494d5e5fd97d3f4689c75fbbd", size = 151035, upload-time = "2026-05-07T08:04:49.423Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e7/c8/e2645aa8ed02fd4c7a2f59d68783b65b1f3cbdfe39a6308e156509d1fee8/googleapis_common_protos-1.75.0-py3-none-any.whl", hash = "sha256:961ed60399c457ceb0ee8f285a84c870aabc9c6a832b9d37bb281b5bebde43ed", size = 300631, upload-time = "2026-05-07T08:03:30.345Z" },
+]
+
+[[package]]
+name = "graphql-core"
+version = "3.2.11"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/4d/90/f2aff026ab4aebd80eb71905106a0885f4cfde85dcf965543f45bed0d9ee/graphql_core-3.2.11.tar.gz", hash = "sha256:e7e156d10beb127cab5c89ff0da71416fc73d27c484a4757d3b2d35633774802", size = 528407, upload-time = "2026-06-05T13:45:22.915Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/00/15/b92b4e1d88d02c6eff9733c9eea21846ab435cc4d813d84ccc5d335955df/graphql_core-3.2.11-py3-none-any.whl", hash = "sha256:0b3e35ff41e9adba53021ab0cef475eb18f57c7f53f0f2ca55567fbf3c537ea0", size = 214879, upload-time = "2026-06-05T13:45:21.245Z" },
 ]
 
 [[package]]
@@ -2262,7 +2271,7 @@ dependencies = [
     { name = "nkeys" },
     { name = "numpy" },
     { name = "nv-config-manager-dcim" },
-    { name = "nv-config-manager-dcim-nautobot" },
+    { name = "nv-config-manager-dcim-nautobot-2x" },
     { name = "nv-config-manager-templates" },
     { name = "openpyxl" },
     { name = "opentelemetry-exporter-otlp-proto-grpc" },
@@ -2376,7 +2385,7 @@ requires-dist = [
     { name = "nkeys", specifier = ">=0.2.0" },
     { name = "numpy", specifier = ">=2.1.0,<3.0.0" },
     { name = "nv-config-manager-dcim", editable = "components/dcim" },
-    { name = "nv-config-manager-dcim-nautobot", editable = "components/dcim-nautobot" },
+    { name = "nv-config-manager-dcim-nautobot-2x", editable = "components/dcim-nautobot-2x" },
     { name = "nv-config-manager-templates", editable = "components/network-templates" },
     { name = "openpyxl", specifier = ">=3.1.0" },
     { name = "opentelemetry-exporter-otlp-proto-grpc", specifier = ">=1.11.1,<2" },
@@ -2487,11 +2496,12 @@ dev = [
 ]
 
 [[package]]
-name = "nv-config-manager-dcim-nautobot"
+name = "nv-config-manager-dcim-nautobot-2x"
 version = "1.0.0"
-source = { editable = "components/dcim-nautobot" }
+source = { editable = "components/dcim-nautobot-2x" }
 dependencies = [
     { name = "aiohttp", extra = ["speedups"] },
+    { name = "graphql-core" },
     { name = "nv-config-manager-dcim" },
 ]
 
@@ -2505,6 +2515,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiohttp", extras = ["speedups"], specifier = ">=3.14.1" },
+    { name = "graphql-core", specifier = ">=3.2.7,<3.3" },
     { name = "nv-config-manager-dcim", editable = "components/dcim" },
 ]
 

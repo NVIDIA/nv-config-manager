@@ -24,6 +24,7 @@ import requests
 
 from nv_config_manager_installer.accounts import build_eso_config_secrets
 from nv_config_manager_installer.schema import (
+    BUILT_IN_NAUTOBOT_PROVIDER,
     NVConfigManagerInstallConfig,
     PasswordSource,
     VaultPathsConfig,
@@ -202,7 +203,7 @@ class OpenBaoPopulator:
         desired_groups = build_openbao_secret_data(self.config)
         defaults = VaultPathsConfig()
         environment = self.config.cluster.environment
-        if self.config.dcim.provider == "nautobot":
+        if self.config.dcim.provider == BUILT_IN_NAUTOBOT_PROVIDER:
             self._align_nautobot_tokens(mount, desired_groups, defaults, environment)
         for group, desired in desired_groups.items():
             path_config = getattr(self.config.secrets.vault.paths, group)

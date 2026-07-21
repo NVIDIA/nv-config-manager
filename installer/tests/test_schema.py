@@ -71,6 +71,7 @@ class TestNVConfigManagerInstallConfig:
         assert config.secrets.method == SecretsMethod.KUBERNETES
         assert config.secrets.config_manager_service_username == "nv-config-manager"
         assert config.services.render is True
+        assert config.dcim.provider == "nautobot-2x"
 
     def test_external_temporal_mtls_requires_address_and_secret(self):
         with pytest.raises(ValueError, match="requires an address"):
@@ -355,7 +356,9 @@ class TestNVConfigManagerInstallConfig:
 
     def test_external_dcim_requires_disabled_nautobot_and_server(self):
         with pytest.raises(ValueError, match="services.nautobot=false"):
-            NVConfigManagerInstallConfig(dcim=DCIMConfig(provider="synthetic", server="https://dcim"))
+            NVConfigManagerInstallConfig(
+                dcim=DCIMConfig(provider="synthetic", server="https://dcim")
+            )
 
         with pytest.raises(ValueError, match="dcim.server is required"):
             NVConfigManagerInstallConfig(

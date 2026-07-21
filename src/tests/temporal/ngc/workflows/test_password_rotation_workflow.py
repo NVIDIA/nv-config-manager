@@ -20,7 +20,9 @@ from pydantic import ValidationError
 from temporalio import workflow
 
 with workflow.unsafe.imports_passed_through():
-    from nv_config_manager_dcim_nautobot.workflow_models import network_device_from_nautobot_graphql
+    from nv_config_manager_dcim_nautobot_2x.workflow_models import (
+        network_device_from_nautobot_graphql,
+    )
 
     from nv_config_manager.temporal.ngc.workflows.site_password_rotation import (
         PasswordRotationResultData,

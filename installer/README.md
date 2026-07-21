@@ -334,9 +334,9 @@ default in-cluster deployments.
 
 | Field | Description |
 |-------|-------------|
-| Provider name | `nautobot` for the built-in provider, or the installed external provider's entry-point name |
+| Provider name | `nautobot-2x` for the built-in provider, or the installed external provider's entry-point name |
 | Use external DCIM | Toggle — disables the in-cluster Nautobot stack |
-| DCIM endpoint | URL of the external provider; required for a non-Nautobot provider |
+| DCIM endpoint | URL of the external provider; required when the provider is not the bundled `nautobot-2x` implementation |
 
 **Redis**
 

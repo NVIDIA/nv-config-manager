@@ -96,7 +96,7 @@ spec:
         - name: DCIM_URL
           value: {{ include "nv-config-manager.dcimPublicUrl" . | quote }}
         - name: DCIM_PROVIDER
-          value: {{ .Values.dcim.provider | default "nautobot" | quote }}
+          value: {{ .Values.dcim.provider | default "nautobot-2x" | quote }}
         - name: DCIM_DISPLAY_NAME
           value: {{ include "nv-config-manager.dcimDisplayName" . | quote }}
         # Render Service URL

@@ -59,8 +59,8 @@ from nv_config_manager.common.log import (
     get_logger,
 )
 from nv_config_manager.dcim import dcim_client_session
-from nv_config_manager.ztp.download_control import ThreadDownloadLimiter, get_positive_int_config
 from nv_config_manager.ztp.device import DeviceData
+from nv_config_manager.ztp.download_control import ThreadDownloadLimiter, get_positive_int_config
 from nv_config_manager.ztp.storage import (
     ObjectStorageClient,
     ObjectStorageDownload,

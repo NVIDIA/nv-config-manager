@@ -1,5 +1,5 @@
 [project]
-name = "nv-config-manager-dcim-nautobot"
+name = "nv-config-manager-dcim-nautobot-2x"
 version = "1.0.0"
 description = "Nautobot reference implementation of the NVIDIA Config Manager DCIM provider API"
 authors = [{ name = "NVIDIA Corporation" }]
@@ -8,11 +8,12 @@ license = { text = "Apache-2.0" }
 requires-python = ">=3.13"
 dependencies = [
     "aiohttp[speedups]>=3.14.1",
+    "graphql-core>=3.2.7,<3.3",
     "nv-config-manager-dcim",
 ]
 
 [project.entry-points."nv_config_manager.dcim"]
-nautobot = "nv_config_manager_dcim_nautobot:NautobotProvider"
+nautobot-2x = "nv_config_manager_dcim_nautobot_2x:NautobotProvider"
 
 [dependency-groups]
 dev = [
@@ -26,7 +27,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/nv_config_manager_dcim_nautobot"]
+packages = ["src/nv_config_manager_dcim_nautobot_2x"]
 
 [tool.ruff]
 line-length = 100

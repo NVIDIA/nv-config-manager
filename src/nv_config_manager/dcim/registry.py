@@ -1,5 +1,17 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 """NVCM service adapter for the standalone DCIM SDK.
 
 This module is intentionally the only INI-aware layer. The SDK and provider
@@ -19,6 +31,7 @@ from nv_config_manager_dcim import (
     DCIMEventProvider,
     DCIMInvalidDataError,
     DCIMProviderConfigurationError,
+    DCIMProviderNotFoundError,
     NautobotMCPClient,
     NautobotMCPProvider,
 )
@@ -33,7 +46,7 @@ from nv_config_manager_dcim import (
 )
 
 DCIM_PROVIDER_ENTRY_POINT_GROUP = "nv_config_manager.dcim"
-DEFAULT_DCIM_PROVIDER = "nautobot"
+DEFAULT_DCIM_PROVIDER = "nautobot-2x"
 
 
 def discover_dcim_providers() -> dict[str, Any]:
@@ -42,7 +55,7 @@ def discover_dcim_providers() -> dict[str, Any]:
 
 
 def configured_dcim_provider_name(config: ConfigParser | None = None) -> str:
-    """Return the service-selected provider, defaulting to Nautobot."""
+    """Return the service-selected provider, defaulting to Nautobot 2.x."""
     if config is None:
         from nv_config_manager.common.config import load_config  # avoid circular import
 
@@ -60,16 +73,11 @@ def provider_settings(config: ConfigParser, provider_name: str | None = None) ->
 
     ``[dcim]`` and ``[dcim.options]`` are the portable service configuration
     surface. A provider-specific ``[dcim.<provider>]`` section takes
-    precedence. The historical provider-named sections, including
-    ``[nautobot]``, remain fallback input for existing installations without
-    leaking ``ConfigParser`` into the provider SDK.
+    precedence without leaking ``ConfigParser`` into the provider SDK.
     """
     provider_name = provider_name or configured_dcim_provider_name(config)
     settings: dict[str, str] = {}
-    legacy_sections = ("nautobot",) if provider_name == DEFAULT_DCIM_PROVIDER else ()
     for section in (
-        *legacy_sections,
-        provider_name,
         "dcim",
         "dcim.options",
         f"dcim.{provider_name}",
@@ -125,6 +133,25 @@ def create_nautobot_mcp_client(
     settings = provider_settings(config, name)
     provider.validate_settings(settings)
     return provider.create_nautobot_mcp_client(settings, headers)
+
+
+def supports_nautobot_mcp(config: ConfigParser | None = None) -> bool:
+    """Return whether the selected provider implements the Nautobot MCP capability.
+
+    This is deliberately a capability check rather than a provider-name check.
+    Nautobot 2.x and 3.x providers can expose the same MCP surface by implementing
+    :class:`NautobotMCPProvider`; an unknown provider simply leaves those optional
+    tools unavailable.
+    """
+    if config is None:
+        from nv_config_manager.common.config import load_config  # avoid circular import
+
+        config = load_config()
+    try:
+        provider = get_sdk_dcim_provider(configured_dcim_provider_name(config))
+    except DCIMProviderNotFoundError:
+        return False
+    return isinstance(provider, NautobotMCPProvider)
 
 
 def normalize_dcim_event(

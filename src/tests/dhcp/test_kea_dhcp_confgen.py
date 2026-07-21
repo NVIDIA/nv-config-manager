@@ -20,7 +20,7 @@ from unittest.mock import patch
 
 import pytest
 import requests
-from nv_config_manager_dcim_nautobot.provider import NautobotDCIMClient as NautobotClient
+from nv_config_manager_dcim_nautobot_2x.provider import NautobotDCIMClient as NautobotClient
 from testcontainers.core.container import DockerContainer
 
 from nv_config_manager.dhcp.kea import KeaClient

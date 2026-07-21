@@ -27,7 +27,7 @@ from temporalio.exceptions import ApplicationError
 from temporalio.worker import Worker
 
 with workflow.unsafe.imports_passed_through():
-    from nv_config_manager_dcim_nautobot.workflow_models import (
+    from nv_config_manager_dcim_nautobot_2x.workflow_models import (
         host_device_from_nautobot_graphql,
         network_device_from_nautobot_graphql,
     )

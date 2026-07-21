@@ -19,7 +19,7 @@ from unittest.mock import patch
 
 import pytest
 from aioresponses import aioresponses
-from nv_config_manager_dcim_nautobot.workflow import NautobotClient, NautobotException
+from nv_config_manager_dcim_nautobot_2x.workflow import NautobotClient, NautobotException
 from temporalio.exceptions import ApplicationError
 
 from nv_config_manager.temporal.ngc.activities.nautobot import (

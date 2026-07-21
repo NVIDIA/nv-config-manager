@@ -198,17 +198,17 @@ endpoint directly; Nautobot inherits the historical configuration by default.
 {{- define "nv-config-manager.dcimServer" -}}
 {{- if .Values.dcim.server -}}
 {{- tpl .Values.dcim.server . -}}
-{{- else if eq (.Values.dcim.provider | default "nautobot") "nautobot" -}}
+{{- else if eq (.Values.dcim.provider | default "nautobot-2x") "nautobot-2x" -}}
 {{- include "nv-config-manager.nautobotServer" . -}}
 {{- else -}}
-{{- fail "dcim.server is required when dcim.provider is not nautobot" -}}
+{{- fail "dcim.server is required when dcim.provider is not nautobot-2x" -}}
 {{- end -}}
 {{- end -}}
 
 {{- define "nv-config-manager.dcimPublicUrl" -}}
 {{- if .Values.dcim.publicUrl -}}
 {{- tpl .Values.dcim.publicUrl . -}}
-{{- else if eq (.Values.dcim.provider | default "nautobot") "nautobot" -}}
+{{- else if eq (.Values.dcim.provider | default "nautobot-2x") "nautobot-2x" -}}
 {{- include "nv-config-manager.nautobotPublicUrl" . -}}
 {{- else -}}
 {{- include "nv-config-manager.dcimServer" . -}}
@@ -218,7 +218,7 @@ endpoint directly; Nautobot inherits the historical configuration by default.
 {{- define "nv-config-manager.dcimDisplayName" -}}
 {{- if .Values.dcim.displayName -}}
 {{- .Values.dcim.displayName -}}
-{{- else if eq (.Values.dcim.provider | default "nautobot") "nautobot" -}}
+{{- else if eq (.Values.dcim.provider | default "nautobot-2x") "nautobot-2x" -}}
 Nautobot
 {{- else -}}
 {{- .Values.dcim.provider | default "DCIM" -}}

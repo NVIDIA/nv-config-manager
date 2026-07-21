@@ -60,6 +60,7 @@ from nv_config_manager_installer.pvc_updater import (
     validate_ztp_path_component,
 )
 from nv_config_manager_installer.schema import (
+    BUILT_IN_NAUTOBOT_PROVIDER,
     GatewayType,
     ImageSource,
     LBProvider,
@@ -2202,9 +2203,11 @@ class Deployer:
         """Create Redis, DCIM, DB, NATS, and device credential secrets."""
         self._apply_secret(step, "redis-password", {"password": s.get("redis_password", "")})
         dcim = self.config.dcim
-        token_state_key = "nautobot_token" if dcim.provider == "nautobot" else "dcim_token"
+        token_state_key = (
+            "nautobot_token" if dcim.provider == BUILT_IN_NAUTOBOT_PROVIDER else "dcim_token"
+        )
         dcim_token_data = {dcim.token_secret_key: s.get(token_state_key, "")}
-        if dcim.provider == "nautobot":
+        if dcim.provider == BUILT_IN_NAUTOBOT_PROVIDER:
             if ro_token := s.get("nautobot_read_only_token"):
                 dcim_token_data["read-only-token"] = ro_token
         self._apply_secret(step, dcim.token_secret_name, dcim_token_data)

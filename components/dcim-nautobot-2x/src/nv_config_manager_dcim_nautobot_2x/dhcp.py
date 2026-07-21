@@ -5,10 +5,11 @@
 from __future__ import annotations
 
 import ipaddress
-from importlib.resources import files
 from typing import Any, cast
 
 from nv_config_manager_dcim.errors import DCIMInvalidDataError
+
+from nv_config_manager_dcim_nautobot_2x.queries import load_graphql_query
 
 NV_CONFIG_MANAGER_MANAGED_VLANS = [
     "vlan13",
@@ -24,11 +25,6 @@ NV_CONFIG_MANAGER_MANAGED_VLANS = [
 
 class DHCPDataError(DCIMInvalidDataError):
     """Nautobot returned invalid data required for DHCP configuration."""
-
-
-def _dhcp_query(filename: str) -> str:
-    """Load a DHCP query owned by the built-in Nautobot provider."""
-    return files(__package__).joinpath("graphql", filename).read_text(encoding="utf-8")
 
 
 def _get_gateway_ip(
@@ -183,7 +179,9 @@ class NautobotDHCPOperations:
 
     async def load_site_dhcp_options(self) -> dict[str, object]:
         """Compatibility hook implemented by the built-in Nautobot provider."""
-        response = await self.graphql_query(_dhcp_query("site_dhcp_options.graphql"))
+        response = await self.graphql_query(
+            load_graphql_query("provider/dhcp.graphql", "site_dhcp_options")
+        )
         contexts = response["data"].get("config_contexts", [])
         return contexts[0].get("data", {}) if contexts else {}
 
@@ -192,7 +190,7 @@ class NautobotDHCPOperations:
     ) -> dict[str, dict[str, object]]:
         """Compatibility hook returning DHCP contexts from Nautobot GraphQL."""
         response = await self.graphql_query(
-            _dhcp_query("dhcp_contexts.graphql"),
+            load_graphql_query("provider/dhcp.graphql", "dhcp_contexts"),
             {"is_aggregate_managed": is_aggregate_managed},
         )
         return {
@@ -202,14 +200,18 @@ class NautobotDHCPOperations:
 
     async def load_static_data(self) -> list[dict[str, object]]:
         """Compatibility hook returning static DHCP contexts."""
-        response = await self.graphql_query(_dhcp_query("static_dhcp_data.graphql"))
+        response = await self.graphql_query(
+            load_graphql_query("provider/dhcp.graphql", "static_data")
+        )
         return [entry["data"] for entry in response["data"].get("config_contexts", [])]
 
     async def load_auto_dhcp_subnets(
         self, family: int = 4, is_aggregate_managed: bool | None = None
     ) -> list[dict[str, object]]:
         """Compatibility hook returning normalized automatic DHCP subnet data."""
-        response = await self.graphql_query(_dhcp_query("auto_dhcp_subnets.graphql"))
+        response = await self.graphql_query(
+            load_graphql_query("provider/dhcp.graphql", "auto_dhcp_subnets")
+        )
         prefixes = response["data"].get("prefixes", [])
         if not prefixes:
             return []

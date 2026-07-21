@@ -64,6 +64,7 @@ def settings() -> MCPSettings:
         nautobot_auth_mode="jwt",
         nautobot_token_fallback_enabled=False,
         max_response_bytes=10_000,
+        nautobot_mcp_enabled=True,
     )
 
 
@@ -197,11 +198,16 @@ async def test_list_nautobot_types_preserves_upstream_truncation(
     assert result["data"]["types"][0]["name"] == "Device"
 
 
-def test_non_nautobot_provider_omits_nautobot_specific_tools(settings: MCPSettings) -> None:
-    """Nautobot schema and REST tools are not exposed for another provider."""
+def test_provider_without_mcp_capability_omits_nautobot_specific_tools(
+    settings: MCPSettings,
+) -> None:
+    """Nautobot tools require the selected provider capability, not its name."""
     server = FakeServer()
 
-    tools.register_tools(server, replace(settings, dcim_provider_name="synthetic"))
+    tools.register_tools(
+        server,
+        replace(settings, dcim_provider_name="nautobot-3x", nautobot_mcp_enabled=False),
+    )
 
     assert "search_devices" not in server.tools
     assert "get_device_id" not in server.tools

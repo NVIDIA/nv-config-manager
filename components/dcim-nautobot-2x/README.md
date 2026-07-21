@@ -1,7 +1,7 @@
-# Nautobot DCIM Provider
+# Nautobot 2.x DCIM Provider
 
-This package is the Nautobot reference implementation of the NVIDIA Config
-Manager DCIM provider API. It deliberately owns every Nautobot-specific detail:
+This package is the Nautobot 2.x reference implementation of the NVIDIA
+Config Manager DCIM provider API. It deliberately owns every Nautobot-specific detail:
 HTTP transport, GraphQL and REST queries, changelog event interpretation, and
 workflow data operations.
 
@@ -17,6 +17,23 @@ providers choose their own native transport and must not implement Nautobot MCP
 tools merely to satisfy Config Manager. Provider-owned render event handlers
 identify the devices affected by each backend event before the provider-neutral
 render dispatcher queues work.
+
+## Provider selection
+
+Select this implementation with `[dcim] provider = nautobot-2x`. A versioned
+name makes a future Nautobot 3.x implementation an explicit provider change.
+Provider settings belong in `[dcim]`, `[dcim.options]`, or the more specific
+`[dcim.nautobot-2x]` section.
+
+## GraphQL documents
+
+Provider GraphQL lives in `src/nv_config_manager_dcim_nautobot_2x/graphql/`, grouped
+by provider capability (`provider/` and `workflow/`). Documents define named
+operations and may import reusable fragments with `# import "relative/path.graphql"`.
+The provider validates documents with `graphql-core`, resolves imports, and sends
+only the selected operation and its fragment closure with GraphQL's standard
+`operationName` field. Keep dynamic field selections in the dedicated
+`*_fields.graphql` files; they preserve the legacy `fields=` extension point.
 
 Until the publishing story is finalized, install this component and the SDK
 from sibling Git checkouts. The NVCM host image installs the reference provider

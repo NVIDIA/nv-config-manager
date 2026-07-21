@@ -7,7 +7,6 @@ from __future__ import annotations
 import logging
 import re
 from collections.abc import Callable, Mapping
-from importlib.resources import files
 from typing import Any, Self
 
 from nv_config_manager_dcim.api import (
@@ -37,226 +36,64 @@ from nv_config_manager_dcim.models import (
 )
 from nv_config_manager_dcim.render import RenderData, RenderDataRequest
 
-from nv_config_manager_dcim_nautobot.dhcp import NautobotDHCPOperations
-from nv_config_manager_dcim_nautobot.events import register_render_event_handlers
-from nv_config_manager_dcim_nautobot.render import build_render_data
-from nv_config_manager_dcim_nautobot.workflow import NautobotWorkflowClient
+from nv_config_manager_dcim_nautobot_2x.dhcp import NautobotDHCPOperations
+from nv_config_manager_dcim_nautobot_2x.events import register_render_event_handlers
+from nv_config_manager_dcim_nautobot_2x.queries import load_graphql_query
+from nv_config_manager_dcim_nautobot_2x.render import build_render_data
+from nv_config_manager_dcim_nautobot_2x.workflow import NautobotWorkflowClient
 
 logger = logging.getLogger(__name__)
 
-_ZTP_DEVICE_QUERY = """
-query ($id: ID!) {
-  config_manager_device(id: $id) {
-    intended_config {
-      config_store_instance
-      path
-    }
-    device {
-      id
-      name
-      platform { name }
-      config_context
-      interfaces: interfaces(has_ip_addresses: true) {
-        ip_addresses { host }
-      }
-    }
-  }
-}
-"""
-
-_RENDER_DEVICE_STATUS_QUERY = """
-query ($id: ID!) {
-  config_manager_device(id: $id) {
-    render_enabled
-    is_aggregate_managed
-  }
-}
-"""
-
-_RENDER_ENABLED_DEVICES_QUERY = """
-query render_devices($is_aggregate_managed: Boolean) {
-  config_manager_devices(render_enabled: true, is_aggregate_managed: $is_aggregate_managed) {
-    id
-  }
-}
-"""
-
-_RENDER_TEMPLATE_VERSIONS_QUERY = """
-query {
-  config_manager_devices {
-    device { id }
-    intended_config { template_version }
-  }
-}
-"""
-
-_MANAGED_DEVICES_QUERY = """
-query(
-  $names: [String], $locations: [String], $roles: [String], $device_types: [String],
-  $platforms: [String], $tenant_groups: [String], $tenants: [String],
-  $device_redundancy_groups: [String], $tags: [String]
-) {
-  devices(
-    name: $names, location: $locations, role: $roles, device_type: $device_types,
-    platform: $platforms, tenant_group: $tenant_groups, tenant: $tenants,
-    device_redundancy_group: $device_redundancy_groups, tags: $tags,
-    nv_config_manager_device_status: true
-  ) {
-    id
-    configmanagerdevicestatus { render_enabled }
-  }
-}
-"""
-
-_VRF_AFFECTED_DEVICES_QUERY = """
-query ($id: ID) {
-  vrf(id: $id) {
-    devices { id configmanagerdevicestatus { render_enabled } }
-  }
-}
-"""
-
-_IP_ADDRESS_AFFECTED_DEVICES_QUERY = """
-query ($id: ID) {
-  ip_address(id: $id) {
-    interfaces { device { id configmanagerdevicestatus { render_enabled } } }
-  }
-}
-"""
-
-_AUTONOMOUS_SYSTEM_AFFECTED_DEVICES_QUERY = """
-query ($id: [String]) {
-  bgp_routing_instances(autonomous_system: $id) {
-    device { id configmanagerdevicestatus { render_enabled } }
-  }
-}
-"""
-
-_BGP_PEERING_AFFECTED_DEVICES_QUERY = """
-query ($id: ID) {
-  bgp_peering(id: $id) {
-    endpoints { routing_instance { device { id configmanagerdevicestatus { render_enabled } } } }
-  }
-}
-"""
-
-_BGP_ROUTING_INSTANCE_AFFECTED_DEVICE_QUERY = """
-query ($id: ID) {
-  bgp_routing_instance(id: $id) {
-    device { id configmanagerdevicestatus { render_enabled } }
-  }
-}
-"""
-
-_INTENDED_INTERFACE_NEIGHBORS_QUERY = """
-query ($device_id: String) {
-  interfaces(device: [$device_id], enabled: true) {
-    name
-    tags {
-      name
-    }
-    connected_interface {
-      name
-      mac_address
-      device {
-        name
-        rack {
-          name
-        }
-        position
-        serial
-        role {
-          name
-        }
-      }
-      module {
-        device {
-          name
-          serial
-          rack {
-            name
-          }
-          position
-          role {
-            name
-          }
-        }
-      }
-    }
-  }
-}
-"""
-
-_PARAMETER_LOCATIONS_QUERY = """
-query ($location_types: [String]) {
-  locations(location_type: $location_types) { id name }
-}
-"""
-
-_PARAMETER_TENANTS_QUERY = """
-query { tenants { id name } }
-"""
-
-_PARAMETER_ROLES_QUERY = """
-query { roles { id name } }
-"""
-
-_PARAMETER_MANAGED_TENANTS_QUERY = """
-query ($limit: Int!, $offset: Int!) {
-  config_manager_devices(limit: $limit, offset: $offset) {
-    device { tenant { id name } }
-  }
-}
-"""
-
-_PARAMETER_MANAGED_ROLES_QUERY = """
-query ($limit: Int!, $offset: Int!) {
-  config_manager_devices(limit: $limit, offset: $offset) {
-    device { role { id name } }
-  }
-}
-"""
-
-_PARAMETER_NAMESPACE_TAGS_QUERY = """
-query ($location: String) {
-  namespaces(location: $location) { tags { name } }
-}
-"""
-
-_PARAMETER_STATUSES_QUERY = """
-query ($content_types: [String]) {
-  statuses(content_types: $content_types) { id name }
-}
-"""
-
-_PARAMETER_DEVICES_QUERY = """
-query (
-  $site: [String], $status: [String], $role: [String], $tenant: [String],
-  $device_type_id: [String], $manufacturer: [String], $platform: [String],
-  $managed_only: Boolean
-) {
-  devices(
-    location: $site, status: $status, role: $role, tenant: $tenant,
-    device_type: $device_type_id, manufacturer: $manufacturer, platform: $platform,
-    has_primary_ip: true, nv_config_manager_device_status: $managed_only
-  ) {
-    id
-    name
-    platform { name }
-  }
-}
-"""
-
-_PARAMETER_DEVICE_BY_NAME_QUERY = """
-query ($name: [String]!) { devices(name: $name) { id name } }
-"""
+_ZTP_DEVICE_QUERY = load_graphql_query("provider/devices.graphql", "GetZTPDevice")
+_RENDER_DEVICE_STATUS_QUERY = load_graphql_query(
+    "provider/devices.graphql", "GetRenderDeviceStatus"
+)
+_RENDER_ENABLED_DEVICES_QUERY = load_graphql_query(
+    "provider/devices.graphql", "ListRenderEnabledDevices"
+)
+_RENDER_TEMPLATE_VERSIONS_QUERY = load_graphql_query(
+    "provider/devices.graphql", "ListRenderTemplateVersions"
+)
+_MANAGED_DEVICES_QUERY = load_graphql_query(
+    "provider/events.graphql", "ListManagedRenderEnabledDevices"
+)
+_VRF_AFFECTED_DEVICES_QUERY = load_graphql_query(
+    "provider/events.graphql", "ListVRFAffectedDevices"
+)
+_IP_ADDRESS_AFFECTED_DEVICES_QUERY = load_graphql_query(
+    "provider/events.graphql", "ListIPAddressAffectedDevices"
+)
+_AUTONOMOUS_SYSTEM_AFFECTED_DEVICES_QUERY = load_graphql_query(
+    "provider/events.graphql", "ListAutonomousSystemAffectedDevices"
+)
+_BGP_PEERING_AFFECTED_DEVICES_QUERY = load_graphql_query(
+    "provider/events.graphql", "ListBGPPeeringAffectedDevices"
+)
+_BGP_ROUTING_INSTANCE_AFFECTED_DEVICE_QUERY = load_graphql_query(
+    "provider/events.graphql", "GetBGPRoutingInstanceAffectedDevice"
+)
+_INTENDED_INTERFACE_NEIGHBORS_QUERY = load_graphql_query(
+    "provider/events.graphql", "GetIntendedInterfaceNeighbors"
+)
+_PARAMETER_LOCATIONS_QUERY = load_graphql_query("provider/parameters.graphql", "ListLocations")
+_PARAMETER_TENANTS_QUERY = load_graphql_query("provider/parameters.graphql", "ListTenants")
+_PARAMETER_ROLES_QUERY = load_graphql_query("provider/parameters.graphql", "ListRoles")
+_PARAMETER_MANAGED_TENANTS_QUERY = load_graphql_query(
+    "provider/parameters.graphql", "ListManagedTenants"
+)
+_PARAMETER_MANAGED_ROLES_QUERY = load_graphql_query(
+    "provider/parameters.graphql", "ListManagedRoles"
+)
+_PARAMETER_NAMESPACE_TAGS_QUERY = load_graphql_query(
+    "provider/parameters.graphql", "ListNamespaceTags"
+)
+_PARAMETER_STATUSES_QUERY = load_graphql_query("provider/parameters.graphql", "ListStatuses")
+_PARAMETER_DEVICES_QUERY = load_graphql_query("provider/parameters.graphql", "ListDeviceSelections")
+_PARAMETER_DEVICE_BY_NAME_QUERY = load_graphql_query(
+    "provider/parameters.graphql", "GetDeviceSelectionByName"
+)
 
 _NAUTOBOT_CONNECTION_KEYS = ("server", "token", "public_url", "verify")
-
-
-def _template_query(filename: str) -> str:
-    """Load a template data query owned by the Nautobot provider."""
-    return files(__package__).joinpath("graphql", filename).read_text(encoding="utf-8")
 
 
 def _parse_verify(value: object) -> bool | str:
@@ -279,7 +116,7 @@ def _nautobot_connection_settings(settings: ProviderSettings) -> dict[str, str |
     missing = [key for key in ("server", "token") if not str(values[key] or "").strip()]
     if missing:
         raise DCIMProviderConfigurationError(
-            'DCIM provider "nautobot" requires ' + ", ".join(missing)
+            'DCIM provider "nautobot-2x" requires ' + ", ".join(missing)
         )
     return {
         "server": str(values["server"]),
@@ -354,32 +191,11 @@ class NautobotDCIMClient(NautobotDHCPOperations, NautobotWorkflowClient):
 
     async def get_device_metadata(self, device_id: str) -> DeviceMetadata | None:
         """Return normalized metadata for a Nautobot device UUID."""
-        query = """
-            query ($id: ID!) {
-              device(id: $id) {
-                id
-                name
-                role { name }
-                platform { name }
-                rack { name }
-                primary_ip4 { host }
-                location {
-                  name
-                  location_type { name }
-                  parent {
-                    name
-                    location_type { name }
-                    parent {
-                      name
-                      location_type { name }
-                    }
-                  }
-                }
-              }
-            }
-        """
         try:
-            result = await self.graphql_query(query, {"id": device_id})
+            result = await self.graphql_query(
+                load_graphql_query("provider/devices.graphql", "GetDeviceMetadata"),
+                {"id": device_id},
+            )
             device_data = result.get("data", {}).get("device")
             if not device_data:
                 logger.warning("Device %s not found in Nautobot", device_id)
@@ -635,32 +451,7 @@ class NautobotDCIMClient(NautobotDHCPOperations, NautobotWorkflowClient):
 
     async def get_managed_device_metadata(self, page_size: int = 100) -> list[DeviceMetadata]:
         """Return normalized metadata for every NVCM-managed Nautobot device."""
-        query = """
-            query ($limit: Int!, $offset: Int!) {
-              config_manager_devices(limit: $limit, offset: $offset) {
-                device {
-                  id
-                  name
-                  role { name }
-                  platform { name }
-                  rack { name }
-                  primary_ip4 { host }
-                  location {
-                    name
-                    location_type { name }
-                    parent {
-                      name
-                      location_type { name }
-                      parent {
-                        name
-                        location_type { name }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-        """
+        query = load_graphql_query("provider/devices.graphql", "ListManagedDeviceMetadata")
         devices: list[DeviceMetadata] = []
         offset = 0
 
@@ -731,12 +522,10 @@ class NautobotDCIMClient(NautobotDHCPOperations, NautobotWorkflowClient):
 
     async def get_device_serial(self, device_id: str) -> str:
         """Return a Nautobot device serial number for ZTP validation."""
-        query = """
-query ($id: ID!) {
-  device(id: $id) { serial }
-}
-"""
-        result = await self.graphql_query(query, variables={"id": device_id})
+        result = await self.graphql_query(
+            load_graphql_query("provider/devices.graphql", "GetDeviceSerial"),
+            variables={"id": device_id},
+        )
         serial = result.get("data", {}).get("device", {}).get("serial")
         if not serial:
             raise DCIMNotFoundError(f"No serial found in DCIM for {device_id}.")
@@ -750,7 +539,7 @@ query ($id: ID!) {
         """Return the Nautobot data set consumed by the template engine."""
         device_id = request.device_id
         device_data = await self.graphql_query(
-            _template_query("query_config_data_by_device_id_v2.graphql"),
+            load_graphql_query("query_config_data_by_device_id_v2.graphql"),
             {"id": device_id, "id_str": device_id},
         )
         try:
@@ -764,7 +553,7 @@ query ($id: ID!) {
             ) from exc
 
         location_data = await self.graphql_query(
-            _template_query("query_location_data.graphql"), {"location": location_name}
+            load_graphql_query("query_location_data.graphql"), {"location": location_name}
         )
         return build_render_data(device_data, location_data)
 
@@ -910,8 +699,8 @@ class NautobotProvider:
     """Built-in provider that defines the reference API behavior."""
 
     metadata = DCIMProviderMetadata(
-        name="nautobot",
-        display_name="Nautobot",
+        name="nautobot-2x",
+        display_name="Nautobot 2.x",
         provider_version="1.0.0",
         supported_api_versions=("1.0",),
     )

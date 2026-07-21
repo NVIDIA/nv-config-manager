@@ -59,9 +59,14 @@ from nv_config_manager_dcim.workflow_models import (
     NetworkDeviceData,
 )
 
-from nv_config_manager_dcim_nautobot.client import NautobotClient as BaseNautobotClient
-from nv_config_manager_dcim_nautobot.client import NautobotException
-from nv_config_manager_dcim_nautobot.workflow_models import (
+from nv_config_manager_dcim_nautobot_2x.client import NautobotClient as BaseNautobotClient
+from nv_config_manager_dcim_nautobot_2x.client import NautobotException
+from nv_config_manager_dcim_nautobot_2x.queries import (
+    load_graphql_query,
+    load_graphql_selection,
+    render_graphql_fields_template,
+)
+from nv_config_manager_dcim_nautobot_2x.workflow_models import (
     host_device_from_nautobot_graphql,
     interface_from_nautobot_graphql,
     network_device_from_nautobot_graphql,
@@ -91,200 +96,29 @@ CONFIG_MANAGER_BACKUP_CONFIG_PATH = "plugins/nv-config-manager/backupconfig"
 # REST API base path for the nautobot_app_overlays plugin (Overlay/VXLAN models).
 OVERLAYS_PLUGIN_BASE = "plugins/overlays"
 
-_BACKUP_ENABLED_DEVICES_QUERY = """
-query ($is_aggregate_managed: Boolean) {
-  config_manager_devices(backup_enabled: true, is_aggregate_managed: $is_aggregate_managed) {
-    device {
-      id
-      platform {
-        name
-      }
-      status {
-        name
-      }
-    }
-  }
-}
-"""
+_BACKUP_ENABLED_DEVICES_QUERY = load_graphql_query(
+    "workflow/operations.graphql", "GetBackupEnabledDevices"
+)
 _BACKUP_SUPPORTED_PLATFORMS = {"Arista EOS", "Cumulus Linux", "NV-OS"}
 _BACKUP_SUPPORTED_STATUSES = {"Provisioned", "Active"}
 
-_OS_IMAGE_DEVICE_QUERY = """
-query ($id: ID!) {
-  device(id: $id) {
-    role { name }
-    platform { name }
-    config_context
-    location {
-      id
-      location_type { name }
-      parent {
-        id
-        location_type { name }
-      }
-    }
-  }
-}
-"""
-_OS_IMAGE_DESIRED_QUERY = """
-query ($id: [String]!) {
-  config_contexts(location: $id, schema:"location-firmware-targets") {
-    data
-  }
-}
-"""
-_DEVICE_CONFIG_CONTEXT_QUERY = """
-query ($id: ID!) {
-  device(id: $id) {
-    config_context
-  }
-}
-"""
-
-_IB_SWITCH_TOPOLOGY_QUERY = """
-query ($device_ids: [String]) {
-  devices(id: $device_ids) {
-    id
-    name
-    interfaces {
-      name
-      connected_interface {
-        name
-        device { name }
-      }
-    }
-  }
-}
-"""
-
-_IB_INTERFACE_GUIDS_QUERY = """
-query ($device_names: [String]) {
-  devices(name: $device_names) {
-    name
-    interfaces {
-      id
-      name
-      cf_ib_guid
-    }
-  }
-}
-"""
-
-_IB_INTERFACES_BY_GUID_QUERY = """
-query ($guids: [String]) {
-  interfaces(cf_ib_guid__ie: $guids) {
-    id
-    name
-    cf_ib_guid
-    device { name }
-  }
-}
-"""
-
-_IB_PKEY_RESOLVE_BY_NAME_QUERY = """
-query ($host: [String]) {
-  devices(name: $host) {
-    id
-    name
-    primary_ip4 { host }
-    tenant { id name }
-    location {
-      id
-      name
-      location_type { name }
-      overlays(isolation_type: ["ib_pkey"]) {
-        id
-        name
-        pkeys { id pkey }
-      }
-      parent {
-        id
-        name
-        location_type { name }
-        overlays(isolation_type: ["ib_pkey"]) {
-          id
-          name
-          pkeys { id pkey }
-        }
-        parent {
-          id
-          name
-          location_type { name }
-          overlays(isolation_type: ["ib_pkey"]) {
-            id
-            name
-            pkeys { id pkey }
-          }
-        }
-      }
-    }
-  }
-}
-"""
-
-_IB_PKEY_RESOLVE_BY_IP_QUERY = """
-query ($ip: [String]) {
-  ip_addresses(address: $ip) {
-    address
-    interfaces {
-      device {
-        id
-        name
-        primary_ip4 { host }
-        tenant { id name }
-        location {
-          id
-          name
-          location_type { name }
-          overlays(isolation_type: ["ib_pkey"]) {
-            id
-            name
-            pkeys { id pkey }
-          }
-          parent {
-            id
-            name
-            location_type { name }
-            overlays(isolation_type: ["ib_pkey"]) {
-              id
-              name
-              pkeys { id pkey }
-            }
-            parent {
-              id
-              name
-              location_type { name }
-              overlays(isolation_type: ["ib_pkey"]) {
-                id
-                name
-                pkeys { id pkey }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}
-"""
-
-_SPECTRUM_X_VRFS_QUERY = """
-query ($ids: [String]!) {
-  vrfs(id: $ids) {
-    id
-    name
-    rd
-    namespace {
-      name
-      location { name }
-    }
-    interfaces {
-      name
-      device { name }
-    }
-  }
-}
-"""
+_OS_IMAGE_DEVICE_QUERY = load_graphql_query("workflow/operations.graphql", "GetOSImageDevice")
+_OS_IMAGE_DESIRED_QUERY = load_graphql_query("workflow/operations.graphql", "GetOSImageDesired")
+_DEVICE_CONFIG_CONTEXT_QUERY = load_graphql_query(
+    "workflow/operations.graphql", "GetDeviceConfigContext"
+)
+_IB_SWITCH_TOPOLOGY_QUERY = load_graphql_query("workflow/infiniband.graphql", "GetIBSwitchTopology")
+_IB_INTERFACE_GUIDS_QUERY = load_graphql_query("workflow/infiniband.graphql", "GetIBInterfaceGUIDs")
+_IB_INTERFACES_BY_GUID_QUERY = load_graphql_query(
+    "workflow/infiniband.graphql", "GetIBInterfacesByGUID"
+)
+_IB_PKEY_RESOLVE_BY_NAME_QUERY = load_graphql_query(
+    "workflow/infiniband.graphql", "ResolveIBPKeyDeviceByName"
+)
+_IB_PKEY_RESOLVE_BY_IP_QUERY = load_graphql_query(
+    "workflow/infiniband.graphql", "ResolveIBPKeyDeviceByIP"
+)
+_SPECTRUM_X_VRFS_QUERY = load_graphql_query("workflow/infiniband.graphql", "GetSpectrumXVRFs")
 
 _SPECTRUM_X_ISOLATION_TYPE = "spectrum_x_vrf"
 _SPECTRUM_X_VXLAN_L3_VNI_TYPE = "l3"
@@ -569,125 +403,22 @@ class NautobotWorkflowClient(BaseNautobotClient):
 
     async def get_device(self, fields: str, device_id: str) -> Any:
         """Query device by device UUID."""
-        query = (
-            """
-            query ($id: ID!) {
-              device(id: $id) {
-        """
-            f"{fields}"
-            """
-              }
-            }
-        """
-        )
+        query = render_graphql_fields_template("device_by_id.graphql", fields)
         data = await self.graphql_query(query, {"id": device_id})
         return data["data"]["device"]
 
     async def get_network_device(self, device_id: str) -> NetworkDeviceData:
         """Get a network device by ID."""
-        fields = """
-              id
-              name
-              rack {
-                name
-              }
-              position
-              role {
-                name
-              }
-              platform {
-                name
-              }
-              device_type {
-                model
-              }
-              primary_ip4{
-                host
-              }
-              primary_ip6{
-                host
-              }
-              config_context
-              location {
-                name
-                location_type {
-                  name
-                }
-                parent {
-                  name
-                  location_type {
-                    name
-                  }
-                  parent {
-                    name
-                    location_type {
-                      name
-                    }
-                  }
-                }
-              }
-              configmanagerdevicestatus {
-                render_enabled
-                deploy_enabled
-                backup_enabled
-                ztp_enabled
-              }
-          """
-
-        device = await self.get_device(fields, device_id)
+        device = await self.get_device(
+            load_graphql_selection("network_device_fields.graphql"), device_id
+        )
         return network_device_from_nautobot_graphql(device)
 
     async def get_host_device(self, device_id: str) -> HostDeviceData:
         """Get a host device by ID."""
-        fields = """
-              id
-              name
-              rack {
-                name
-              }
-              position
-              role {
-                name
-              }
-              device_type {
-                model
-              }
-              location {
-                name
-                location_type {
-                  name
-                }
-                parent {
-                  name
-                  location_type {
-                    name
-                  }
-                  parent {
-                    name
-                    location_type {
-                      name
-                    }
-                  }
-                }
-              }
-              device_bays {
-                id
-                name
-                installed_device {
-                  id
-                }
-              }
-              interfaces {
-                id
-                name
-                mac_address
-                device {
-                  name
-                }
-              }
-          """
-
-        device = await self.get_device(fields, device_id)
+        device = await self.get_device(
+            load_graphql_selection("host_device_fields.graphql"), device_id
+        )
         return host_device_from_nautobot_graphql(device)
 
     @staticmethod
@@ -784,94 +515,14 @@ class NautobotWorkflowClient(BaseNautobotClient):
             managed_only,
         )
 
-        query = (
-            """
-            query (
-              $site: [String],
-              $status: [String],
-              $role: [String],
-              $tenant: [String],
-              $device_type_id: [String],
-              $mac_address: [String],
-              $device_ids: [String],
-              $platform: [String],
-              $managed_only: Boolean
-            ) {
-              devices(
-                location: $site,
-                status: $status,
-                role: $role,
-                tenant: $tenant,
-                device_type: $device_type_id,
-                mac_address: $mac_address,
-                id: $device_ids,
-                platform: $platform,
-                nv_config_manager_device_status: $managed_only
-              ) {
-        """
-            f"{fields}"
-            """
-              }
-            }
-        """
-        )
+        query = render_graphql_fields_template("devices_by_filter.graphql", fields)
 
         data = await self.graphql_query(query, variables)
         return self._deduplicate_devices(data["data"]["devices"])
 
     async def get_network_devices(self, filters: DeviceInventoryFilter) -> list[NetworkDeviceData]:
         """Get network devices."""
-        fields = """
-                id
-                name
-                rack {
-                  name
-                }
-                position
-                role {
-                  name
-                }
-                tenant {
-                  name
-                }
-                device_type {
-                  model
-                }
-                platform {
-                  name
-                }
-                location {
-                  name
-                  location_type {
-                    name
-                  }
-                  parent {
-                    name
-                    location_type {
-                      name
-                    }
-                    parent {
-                      name
-                      location_type {
-                        name
-                      }
-                    }
-                  }
-                }
-                primary_ip4 {
-                  host
-                }
-                primary_ip6 {
-                  host
-                }
-                config_context
-                configmanagerdevicestatus {
-                  render_enabled
-                  deploy_enabled
-                  backup_enabled
-                  ztp_enabled
-                }
-        """
+        fields = load_graphql_selection("network_devices_fields.graphql")
         # Remove filtering parameters that are not supported by get_devices
         device_status_filters = {
             "render_enabled": filters.render_enabled,
@@ -921,57 +572,7 @@ class NautobotWorkflowClient(BaseNautobotClient):
 
     async def get_host_devices(self, filters: DeviceInventoryFilter) -> list[HostDeviceData]:
         """Get host devices."""
-
-        fields = """
-                id
-                name
-                rack {
-                  name
-                }
-                position
-                role {
-                  name
-                }
-                tenant {
-                  name
-                }
-                device_type {
-                  model
-                }
-                location {
-                  name
-                  location_type {
-                    name
-                  }
-                  parent {
-                    name
-                    location_type {
-                      name
-                    }
-                    parent {
-                      name
-                      location_type {
-                        name
-                      }
-                    }
-                  }
-                }
-                device_bays {
-                  id
-                  name
-                  installed_device {
-                    id
-                  }
-                }
-                interfaces {
-                  id
-                  name
-                  mac_address
-                  device {
-                    name
-                  }
-                }
-        """
+        fields = load_graphql_selection("host_device_fields.graphql")
         device_data_list = await self.get_devices(
             fields,
             site=filters.site,
@@ -988,18 +589,10 @@ class NautobotWorkflowClient(BaseNautobotClient):
 
     async def get_host_metadata_by_macs(self, mac_addresses: list[str]) -> list[HostMetadata]:
         """Return provider-neutral host metadata for the supplied MAC addresses."""
-        query = """
-query ($macs: [String]!) {
-  devices(mac_address: $macs) {
-    id
-    name
-    cf_alias
-    tenant { name }
-    interfaces { name mac_address }
-  }
-}
-        """
-        data = await self.graphql_query(query, {"macs": mac_addresses})
+        data = await self.graphql_query(
+            load_graphql_query("workflow/operations.graphql", "GetHostMetadataByMacs"),
+            {"macs": mac_addresses},
+        )
         return [
             HostMetadata(
                 device_id=device["id"],
@@ -1019,17 +612,10 @@ query ($macs: [String]!) {
 
     async def get_host_metadata_by_names(self, device_names: list[str]) -> list[HostMetadata]:
         """Return provider-neutral host metadata for the supplied device names."""
-        query = """
-query ($names: [String]!) {
-  devices(name: $names) {
-    id
-    name
-    cf_alias
-    tenant { name }
-  }
-}
-        """
-        data = await self.graphql_query(query, {"names": device_names})
+        data = await self.graphql_query(
+            load_graphql_query("workflow/operations.graphql", "GetHostMetadataByNames"),
+            {"names": device_names},
+        )
         return [
             HostMetadata(
                 device_id=device["id"],
@@ -1044,15 +630,10 @@ query ($names: [String]!) {
         self, site: str, namespace_tag: str
     ) -> list[NamespaceRouteDistinguisher]:
         """Return route distinguisher state for namespaces selected by site and tag."""
-        query = """
-query ($tag: String, $location: String) {
-  namespaces(location: $location, tags: [$tag]) {
-    id
-    vrfs { rd }
-  }
-}
-        """
-        data = await self.graphql_query(query, {"tag": namespace_tag, "location": site})
+        data = await self.graphql_query(
+            load_graphql_query("workflow/operations.graphql", "GetNamespaceRouteDistinguishers"),
+            {"tag": namespace_tag, "location": site},
+        )
         return [
             NamespaceRouteDistinguisher(
                 namespace_id=namespace["id"],
@@ -1063,25 +644,11 @@ query ($tag: String, $location: String) {
 
     async def get_interfaces_by_mac(self, mac_addresses: list[str]) -> list[InterfaceData]:
         """Get a list of interfaces by MAC addresses."""
-        query = """
-              query($mac_address: [String]) {
-                interfaces(mac_address: $mac_address) {
-                  id
-                  name
-                  mac_address
-                  device {
-                    name
-                  }
-                  module {
-                    device {
-                      name
-                    }
-                  }
-                }
-              }
-        """
         interfaces = []
-        data = await self.graphql_query(query, {"mac_address": mac_addresses})
+        data = await self.graphql_query(
+            load_graphql_query("workflow/operations.graphql", "GetInterfacesByMac"),
+            {"mac_address": mac_addresses},
+        )
         for interface_data in data["data"]["interfaces"]:
             try:
                 interfaces.append(interface_from_nautobot_graphql(interface_data))
@@ -1092,43 +659,20 @@ query ($tag: String, $location: String) {
 
     async def get_device_interfaces(self, device_id: str) -> list[InterfaceData]:
         """Get interfaces for a device."""
-        query = """
-              query ($device_id: [String]) {
-                interfaces(device_id: $device_id) {
-                  id
-                  device {
-                    name
-                  }
-                  mac_address
-                  name
-                  ip_addresses {
-                    address
-                  }
-                  vrf {
-                    id
-                    name
-                  }
-                }
-              }
-              """
-        data = await self.graphql_query(query, {"device_id": [device_id]})
+        data = await self.graphql_query(
+            load_graphql_query("workflow/operations.graphql", "GetDeviceInterfaces"),
+            {"device_id": [device_id]},
+        )
         return [
             interface_from_nautobot_graphql(interface) for interface in data["data"]["interfaces"]
         ]
 
     async def get_device_vrfs(self, device_id: str) -> list[DeviceVrfInfo]:
         """Get VRFs assigned to a device."""
-        query = """
-              query ($device_id: ID!) {
-                device(id: $device_id) {
-                  vrfs {
-                    id
-                    name
-                  }
-                }
-              }
-              """
-        data = await self.graphql_query(query, {"device_id": device_id})
+        data = await self.graphql_query(
+            load_graphql_query("workflow/operations.graphql", "GetDeviceVRFs"),
+            {"device_id": device_id},
+        )
         device_data = data["data"]["device"]
         if not device_data:
             raise ApplicationError(f"Device {device_id} not found")
@@ -1141,17 +685,10 @@ query ($tag: String, $location: String) {
         self, mac_address: str
     ) -> tuple[NetworkDeviceData, str]:
         """Resolve a switch and connected port from a remote MAC address."""
-        query = """
-query ($mac: [String!]) {
-  interfaces(mac_address: $mac) {
-    connected_interface {
-      name
-      device { id }
-    }
-  }
-}
-        """
-        data = await self.graphql_query(query, {"mac": [mac_address]})
+        data = await self.graphql_query(
+            load_graphql_query("workflow/operations.graphql", "GetConnectedSwitchPortByRemoteMac"),
+            {"mac": [mac_address]},
+        )
         if not data["data"]["interfaces"]:
             raise ApplicationError(f"No interfaces found for MAC {mac_address}")
         try:
@@ -1163,15 +700,10 @@ query ($mac: [String!]) {
 
     async def has_recorded_config_drift(self, device_id: str) -> bool:
         """Compare intended and deployed revisions using Nautobot plugin records."""
-        query = """
-query ($id: ID!) {
-  config_manager_device(id: $id) {
-    intended_config { commit_id }
-    backup_config { deployed_commit_id }
-  }
-}
-        """
-        data = await self.graphql_query(query, {"id": device_id})
+        data = await self.graphql_query(
+            load_graphql_query("workflow/operations.graphql", "GetRecordedConfigDrift"),
+            {"id": device_id},
+        )
         device_data = data["data"]["config_manager_device"]
         intended_config = device_data["intended_config"]
         backup_config = device_data["backup_config"]

@@ -36,7 +36,9 @@ from tests.temporal.ngc.workflows.test_cable_validation_data import (
 )
 
 with workflow.unsafe.imports_passed_through():
-    from nv_config_manager_dcim_nautobot.workflow_models import network_device_from_nautobot_graphql
+    from nv_config_manager_dcim_nautobot_2x.workflow_models import (
+        network_device_from_nautobot_graphql,
+    )
 
     from nv_config_manager.temporal.client.device import DeviceArpTable, DeviceMacTable
     from nv_config_manager.temporal.common.decorators.workflow import run_nv_config_manager_workflow

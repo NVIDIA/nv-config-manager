@@ -123,7 +123,7 @@ uses.
 
 <Tip>
 The code fragment intentionally omits the large client implementation. Start
-from `components/dcim-nautobot` for its package layout, error mapping, lifecycle
+from `components/dcim-nautobot-2x` for its package layout, error mapping, lifecycle
 handling, and tests, but replace its Nautobot-specific transport and schemas.
 </Tip>
 
@@ -258,10 +258,9 @@ service surface instead.
 ## Configuration boundaries
 
 In an NVCM service configuration, `[dcim] provider` chooses the entry-point
-name. NVCM assembles provider settings from `[dcim]`, `[dcim.options]`,
-`[<provider>]`, and `[dcim.<provider>]`, with later portable or
-provider-specific values taking precedence, then passes a plain mapping into
-the SDK. Keep names, endpoint and non-secret provider options in the
+name. NVCM assembles provider settings from `[dcim]`, `[dcim.options]`, and
+`[dcim.<provider>]`, with later portable or provider-specific values taking
+precedence, then passes a plain mapping into the SDK. Keep names, endpoint and non-secret provider options in the
 application configuration; keep tokens and other sensitive values in the
 deployment's secret mechanism.
 

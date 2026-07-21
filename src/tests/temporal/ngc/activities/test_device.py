@@ -42,7 +42,7 @@ from tests.temporal.ngc.activities.test_device_data import (
 )
 
 with workflow.unsafe.imports_passed_through():
-    from nv_config_manager_dcim_nautobot.workflow import NetworkDeviceData
+    from nv_config_manager_dcim_nautobot_2x.workflow import NetworkDeviceData
 
     from nv_config_manager.temporal.client.device import (
         AristaConnection,
@@ -505,8 +505,8 @@ def test_validate_hostname_mismatch():
     with pytest.raises(ApplicationError) as error:
         validate_hostname(activity_input)
     assert (
-            str(error.value.message)
-            == "Hostname on 172.0.0.1 (rno1-m04-c10-leaf2-hss-tan-lab1) does not match the DCIM record (mock_device1)."
+        str(error.value.message)
+        == "Hostname on 172.0.0.1 (rno1-m04-c10-leaf2-hss-tan-lab1) does not match the DCIM record (mock_device1)."
     )
 
     def mock_enable(cmd, encoding="json"):

@@ -106,7 +106,7 @@ def test_load_ztp_file(sftp_server):
     )
     with (
         patch(
-            "nv_config_manager_dcim_nautobot.provider.NautobotDCIMClient.get_ztp_device",
+            "nv_config_manager_dcim_nautobot_2x.provider.NautobotDCIMClient.get_ztp_device",
             new_callable=AsyncMock,
             return_value=dcim_device,
         ),

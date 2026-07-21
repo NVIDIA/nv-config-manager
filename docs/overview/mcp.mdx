@@ -202,7 +202,7 @@ The available tools are discoverable at runtime, so exact tool names may vary by
 - "Run cable validation for this site and summarize the result."
 - "Check the InfiniBand fabric for unhealthy ports."
 
-When `[dcim] provider = nautobot`, the server also exposes Nautobot-specific inventory search and read-only GraphQL schema tools. Those tools are deliberately omitted for other DCIM providers because Nautobot GraphQL types and REST paths are not portable. If you are using Nautobot for a broad inventory question, let the client explore the schema and then issue targeted read-only queries.
+When the selected provider implements the optional `NautobotMCPProvider` capability, the server also exposes Nautobot-specific inventory search and read-only GraphQL schema tools. The bundled `nautobot-2x` provider and a Nautobot 3.x provider can implement this capability because they expose the required GraphQL and REST endpoints. Those tools are deliberately omitted for providers without that capability because Nautobot GraphQL types and REST paths are not portable. If you are using Nautobot for a broad inventory question, let the client explore the schema and then issue targeted read-only queries.
 
 ## Public Documentation MCP
 

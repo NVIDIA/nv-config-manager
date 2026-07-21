@@ -41,9 +41,9 @@ fullnameOverride: ""
 # configuration is rendered into [dcim.options]. External provider packages
 # are installed separately through the provider package settings.
 dcim:
-  provider: nautobot
+  provider: nautobot-2x
   # Shared provider connection settings. Empty values inherit the legacy
-  # Nautobot settings only when provider=nautobot. Other providers must set
+  # Nautobot settings only when provider=nautobot-2x. Other providers must set
   # server explicitly and may use dcim.options for provider-specific auth.
   server: ""
   publicUrl: ""
@@ -396,7 +396,7 @@ secrets:
     #       token: "api_token"               # Map logical name to actual key
     # -------------------------------------------------------------------------
     paths:
-      # Generic external DCIM token. Used when dcim.provider is not nautobot.
+      # Generic external DCIM token. Used when dcim.provider is not nautobot-2x.
       dcim:
         path: "" # Required for an external provider with ESO or Vault Agent
         keys:

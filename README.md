@@ -442,7 +442,7 @@ These components are consumed from this repository by Git or sibling checkout
 until the publishing story is finalized:
 
 - `nv-config-manager-dcim`: Provider-neutral SDK for DCIM integrations
-- `nv-config-manager-dcim-nautobot`: Nautobot reference implementation
+- `nv-config-manager-dcim-nautobot-2x`: Nautobot reference implementation
 - `nv-config-manager-templates`: Network configuration Jinja2 templates
 - `nautobot-plugin-nv-config-manager`: Nautobot plugin for NVIDIA Config Manager integration
 - `nautobot-broker-nats`: NATS event broker for Nautobot

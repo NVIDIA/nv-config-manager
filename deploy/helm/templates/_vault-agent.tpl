@@ -217,8 +217,8 @@ Consul-template prelude: declare $secret vars for nv-config-manager.ini (same KV
 {{- define "nv-config-manager.vaultAgent.configManagerIniPrelude" -}}
 {{- $root := . -}}
 {{- $m := include "nv-config-manager.vault.kvMountPath" $root -}}
-{{- $dcimProvider := $root.Values.dcim.provider | default "nautobot" -}}
-{{- if eq $dcimProvider "nautobot" -}}
+{{- $dcimProvider := $root.Values.dcim.provider | default "nautobot-2x" -}}
+{{- if eq $dcimProvider "nautobot-2x" -}}
 {{- $nbp := include "nv-config-manager.vault.secretPath" (dict "root" $root "secret" "nautobot") -}}
 {{- printf "{{- $nautobot := secret %q -}}\n" (printf "%s/data/%s" $m $nbp) -}}
 {{- else -}}
@@ -260,7 +260,7 @@ nv-config-manager.ini body (consul-template): must stay in sync with vault-secre
 */}}
 {{- define "nv-config-manager.vaultAgent.configManagerIniBody" -}}
 {{- $root := . -}}
-{{- $dcimProvider := $root.Values.dcim.provider | default "nautobot" -}}
+{{- $dcimProvider := $root.Values.dcim.provider | default "nautobot-2x" -}}
 {{- $dhcpName := include "nv-config-manager.componentName" (dict "root" $root "component" "dhcp") -}}
 {{- $configStoreName := include "nv-config-manager.componentName" (dict "root" $root "component" "config-store") -}}
 {{- $temporalName := include "nv-config-manager.componentName" (dict "root" $root "component" "temporal") -}}
@@ -278,7 +278,7 @@ nv-config-manager.ini body (consul-template): must stay in sync with vault-secre
           # -----------------------------------------------------------------
           # Nautobot Configuration (shared by all services)
           # -----------------------------------------------------------------
-          {{- if eq $dcimProvider "nautobot" }}
+          {{- if eq $dcimProvider "nautobot-2x" }}
           [nautobot]
           server = {{ include "nv-config-manager.nautobotServer" $root }}
           public_url = {{ include "nv-config-manager.nautobotPublicUrl" $root }}
@@ -299,10 +299,10 @@ nv-config-manager.ini body (consul-template): must stay in sync with vault-secre
           # DCIM Provider Configuration (canonical shared connection settings)
           # -----------------------------------------------------------------
           [dcim]
-          provider = {{ $root.Values.dcim.provider | default "nautobot" }}
+          provider = {{ $root.Values.dcim.provider | default "nautobot-2x" }}
           server = {{ include "nv-config-manager.dcimServer" $root }}
           public_url = {{ include "nv-config-manager.dcimPublicUrl" $root }}
-          {{- if eq $dcimProvider "nautobot" }}
+          {{- if eq $dcimProvider "nautobot-2x" }}
           token = {{ include "nv-config-manager.vaultAgent.ctKv2Key" (dict "var" "nautobot" "key" (include "nv-config-manager.vault.keyName" (dict "root" $root "secret" "nautobot" "key" "token"))) }}
           {{- else }}
           token = {{ include "nv-config-manager.vaultAgent.ctKv2Key" (dict "var" "dcim" "key" (include "nv-config-manager.vault.keyName" (dict "root" $root "secret" "dcim" "key" "token"))) }}
@@ -325,7 +325,7 @@ nv-config-manager.ini body (consul-template): must stay in sync with vault-secre
           auth_method = {{ $root.Values.externalServices.nats.authMethod }}
           {{- if eq $root.Values.externalServices.nats.authMethod "password" }}
           user = {{ $root.Values.externalServices.nats.user }}
-          {{- if eq $dcimProvider "nautobot" }}
+          {{- if eq $dcimProvider "nautobot-2x" }}
           password = {{ include "nv-config-manager.vaultAgent.ctKv2Key" (dict "var" "nautobot" "key" (include "nv-config-manager.vault.keyName" (dict "root" $root "secret" "nautobot" "key" "natsPassword"))) }}
           {{- else }}
           password = {{ include "nv-config-manager.vaultAgent.ctKv2Key" (dict "var" "nats" "key" (include "nv-config-manager.vault.keyName" (dict "root" $root "secret" "nats" "key" "password"))) }}
@@ -564,7 +564,7 @@ nv-config-manager.ini body (consul-template): must stay in sync with vault-secre
           # to Config Manager APIs. It does not fall back to service-to-service auth.
           use_internal_endpoints = {{ $root.Values.mcp.client.useInternalEndpoints | default true }}
           max_response_bytes = {{ $root.Values.mcp.client.maxResponseBytes | default 100000 }}
-          {{- if eq $dcimProvider "nautobot" }}
+          {{- if eq $dcimProvider "nautobot-2x" }}
           {{ include "nv-config-manager.vaultAgent.ctKv2OptionalIniLine" (dict "var" "nautobot" "key" (include "nv-config-manager.vault.keyName" (dict "root" $root "secret" "nautobot" "key" "readOnlyToken")) "name" "nautobot_read_only_token") }}
           # auto resolves to jwt for bundled/local Nautobot and the MCP read-only token for external Nautobot.
           nautobot_auth_mode = {{ $root.Values.mcp.nautobot.authMode | default "auto" }}

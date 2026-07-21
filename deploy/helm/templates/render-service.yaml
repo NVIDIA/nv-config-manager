@@ -409,7 +409,7 @@ spec:
       {{- include "nv-config-manager.podSecurityContext" . | nindent 6 }}
       initContainers:
       # Wait for dependencies before running direct template update renders.
-      {{- if eq (.Values.dcim.provider | default "nautobot") "nautobot" }}
+      {{- if eq (.Values.dcim.provider | default "nautobot-2x") "nautobot-2x" }}
       {{- include "nv-config-manager.waitForNautobot" . | nindent 6 }}
       {{- end }}
       {{- include "nv-config-manager.waitForRedis" . | nindent 6 }}

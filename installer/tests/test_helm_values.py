@@ -115,6 +115,7 @@ class TestGenerateHelmValues:
         assert values["global"]["baseDomain"] == "test.example.com"
         assert values["global"]["environment"] == "prod"
         assert values["secrets"]["method"] == "kubernetes"
+        assert values["dcim"]["provider"] == "nautobot-2x"
 
         ext = values["externalServices"]
         assert ext["nautobot"]["local"] is True

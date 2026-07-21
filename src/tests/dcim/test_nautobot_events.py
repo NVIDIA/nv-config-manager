@@ -1,12 +1,24 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 """Tests for Nautobot-owned render event interpretation."""
 
 from unittest.mock import AsyncMock
 
 import pytest
-from nv_config_manager_dcim_nautobot.events import cable, configcontext, prefix
-from nv_config_manager_dcim_nautobot.provider import NautobotDCIMClient, NautobotProvider
+from nv_config_manager_dcim_nautobot_2x.events import cable, configcontext, prefix
+from nv_config_manager_dcim_nautobot_2x.provider import NautobotDCIMClient, NautobotProvider
 
 from nv_config_manager.dcim import DCIMChangeEvent, RenderEventRequest
 
@@ -14,7 +26,7 @@ from nv_config_manager.dcim import DCIMChangeEvent, RenderEventRequest
 def _event(object_type: str, record: dict) -> DCIMChangeEvent:
     """Build a representative normalized Nautobot changelog event."""
     return DCIMChangeEvent(
-        provider="nautobot",
+        provider="nautobot-2x",
         operation="update",
         object_type=object_type,
         object_id=str(record.get("id", "event-id")),

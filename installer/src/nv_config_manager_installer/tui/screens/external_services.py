@@ -21,6 +21,7 @@ from textual.containers import Container
 from textual.widgets import Input, Label
 
 from nv_config_manager_installer.schema import (
+    BUILT_IN_NAUTOBOT_PROVIDER,
     ExternalTemporalConfig,
     NVConfigManagerInstallConfig,
     TemporalAuthMethod,
@@ -60,7 +61,7 @@ class ExternalServicesScreen(Container):
         yield Label("DCIM Provider", classes="field-label")
         yield Input(
             value=self._config.dcim.provider,
-            placeholder="nautobot",
+            placeholder=BUILT_IN_NAUTOBOT_PROVIDER,
             id="ext-dcim-provider",
         )
         yield LabeledSwitch(
@@ -230,10 +231,12 @@ class ExternalServicesScreen(Container):
 
     def write_to_config(self, config: NVConfigManagerInstallConfig) -> None:
         dcim_external = self.query_one(_W_EXT_NAUTOBOT, LabeledSwitch).value
-        dcim_provider = self.query_one("#ext-dcim-provider", Input).value.strip() or "nautobot"
+        dcim_provider = (
+            self.query_one("#ext-dcim-provider", Input).value.strip() or BUILT_IN_NAUTOBOT_PROVIDER
+        )
         dcim_server = self.query_one("#ext-nautobot-url", Input).value.strip()
         config.dcim.provider = dcim_provider
-        if dcim_provider == "nautobot":
+        if dcim_provider == BUILT_IN_NAUTOBOT_PROVIDER:
             config.services.nautobot = not dcim_external
             config.services.external_nautobot_url = dcim_server if dcim_external else ""
             config.dcim.server = dcim_server if dcim_external else ""

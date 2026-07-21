@@ -16,13 +16,13 @@ from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
-from nv_config_manager_dcim_nautobot.provider import NautobotDCIMClient as NautobotClient
+from nv_config_manager_dcim_nautobot_2x.provider import NautobotDCIMClient as NautobotClient
 
 
 @pytest.mark.asyncio
 async def test_ztp_device_data(mock_device_data):
     with patch(
-        "nv_config_manager_dcim_nautobot.provider.NautobotDCIMClient.graphql_query",
+        "nv_config_manager_dcim_nautobot_2x.provider.NautobotDCIMClient.graphql_query",
         new_callable=AsyncMock,
         return_value=mock_device_data,
     ):

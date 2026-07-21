@@ -191,6 +191,9 @@ class NautobotClient:
         """
         session = await self._ensure_session()
         payload = {"query": query, "variables": variables or {}}
+        operation_name = getattr(query, "operation_name", None)
+        if operation_name is not None:
+            payload["operationName"] = operation_name
 
         logger.debug("Executing GraphQL query: %s with variables: %s", query[:100], variables)
 

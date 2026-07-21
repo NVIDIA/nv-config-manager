@@ -42,7 +42,7 @@ def test_dcim_settings_override_legacy_nautobot_settings(custom_ini):
     custom_ini(
         """
         [dcim]
-        provider = nautobot
+        provider = nautobot-2x
         server = https://dcim.example.com
         token = dcim-token
         cache_refresh_interval = 120

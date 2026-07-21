@@ -52,8 +52,8 @@ def register_tools(server: FastMCP, settings: MCPSettings) -> None:
     """Register NVIDIA Config Manager MCP tools."""
 
     def nautobot_tool() -> Any:
-        """Register an optional Nautobot-specific tool when Nautobot is selected."""
-        if settings.dcim_provider_name == "nautobot":
+        """Register an optional tool when the selected provider supports it."""
+        if settings.nautobot_mcp_enabled:
             return server.tool()
         return lambda function: function
 

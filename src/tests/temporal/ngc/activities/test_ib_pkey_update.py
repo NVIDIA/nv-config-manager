@@ -102,7 +102,9 @@ def mock_ufm_config():
 
 @pytest.fixture()
 def mock_nb_config():
-    with patch("nv_config_manager_dcim_nautobot.workflow.load_config", return_value=_nb_config()):
+    with patch(
+        "nv_config_manager_dcim_nautobot_2x.workflow.load_config", return_value=_nb_config()
+    ):
         yield
 
 

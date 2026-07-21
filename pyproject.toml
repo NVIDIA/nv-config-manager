@@ -112,7 +112,7 @@ dependencies = [
     # Provider-neutral DCIM SDK
     "nv-config-manager-dcim",
     # Built-in reference DCIM provider (also distributed as a standalone provider package)
-    "nv-config-manager-dcim-nautobot",
+    "nv-config-manager-dcim-nautobot-2x",
 ]
 
 [project.scripts]
@@ -202,11 +202,11 @@ docs = [
 package = true
 
 [tool.uv.workspace]
-members = ["components/dcim", "components/dcim-nautobot", "components/network-templates"]
+members = ["components/dcim", "components/dcim-nautobot-2x", "components/network-templates"]
 
 [tool.uv.sources]
 nv-config-manager-dcim = { workspace = true }
-nv-config-manager-dcim-nautobot = { workspace = true }
+nv-config-manager-dcim-nautobot-2x = { workspace = true }
 nv-config-manager-templates = { workspace = true }
 
 [build-system]

@@ -29,6 +29,7 @@ import yaml
 
 from nv_config_manager_installer.accounts import build_eso_config_secrets
 from nv_config_manager_installer.schema import (
+    BUILT_IN_NAUTOBOT_PROVIDER,
     NV_CONFIG_MANAGER_IMAGE_KEYS,
     ExternalPostgresConfig,
     ImageSource,
@@ -645,9 +646,9 @@ def _build_external_services(config: NVConfigManagerInstallConfig) -> dict[str, 
         ext["nautobot"] = {"local": True, "localServer": "http://nautobot-nv-config-manager"}
     elif svc.external_nautobot_url:
         ext["nautobot"] = {"local": False, "server": svc.external_nautobot_url}
-    elif config.dcim.provider == "nautobot" and config.dcim.server:
+    elif config.dcim.provider == BUILT_IN_NAUTOBOT_PROVIDER and config.dcim.server:
         ext["nautobot"] = {"local": False, "server": config.dcim.server}
-    elif config.dcim.provider != "nautobot":
+    elif config.dcim.provider != BUILT_IN_NAUTOBOT_PROVIDER:
         # Retain a disabled compatibility section for templates that still
         # carry Nautobot deployment settings but are not used by this provider.
         ext["nautobot"] = {"local": False}

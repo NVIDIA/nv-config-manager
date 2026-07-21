@@ -93,6 +93,7 @@ class ZTPStorageType(StrEnum):
 
 
 SUPPORTED_ZTP_IMAGE_PLATFORMS = frozenset({"cumulus-linux", "arista-eos", "nv-os", "mlnx-os"})
+BUILT_IN_NAUTOBOT_PROVIDER = "nautobot-2x"
 
 
 class ImageSource(StrEnum):
@@ -445,7 +446,7 @@ class DCIMProviderPackage(BaseModel):
 class DCIMConfig(BaseModel):
     """Provider-neutral DCIM selection, connection, and package settings."""
 
-    provider: str = "nautobot"
+    provider: str = BUILT_IN_NAUTOBOT_PROVIDER
     server: str = ""
     public_url: str = ""
     display_name: str = ""
@@ -1016,11 +1017,13 @@ class NVConfigManagerInstallConfig(BaseModel):
     @model_validator(mode="after")
     def validate_external_nautobot(self) -> NVConfigManagerInstallConfig:
         """Validate provider selection and local Nautobot-only content."""
-        if self.dcim.provider != "nautobot":
+        if self.dcim.provider != BUILT_IN_NAUTOBOT_PROVIDER:
             if self.services.nautobot:
                 raise ValueError("External DCIM providers require services.nautobot=false")
             if not self.dcim.server:
-                raise ValueError("dcim.server is required when dcim.provider is not nautobot")
+                raise ValueError(
+                    "dcim.server is required when dcim.provider is not the built-in nautobot-2x"
+                )
             if (
                 self.secrets.method == SecretsMethod.ESO
                 and not self.secrets.vault.paths.dcim.enabled

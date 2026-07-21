@@ -28,6 +28,7 @@ import string
 from typing import Any
 
 from nv_config_manager_installer.schema import (
+    BUILT_IN_NAUTOBOT_PROVIDER,
     NVConfigManagerInstallConfig,
     PasswordSource,
     SecretsMethod,
@@ -114,7 +115,7 @@ def _generate_core_k8s_secrets(
     config: NVConfigManagerInstallConfig, state: dict[str, str], _v: Any
 ) -> None:
     """Populate core Kubernetes secrets for the selected DCIM and services."""
-    if config.dcim.provider == "nautobot":
+    if config.dcim.provider == BUILT_IN_NAUTOBOT_PROVIDER:
         state["nautobot_token"] = _v("nautobot", "token") or _generate_token(40)
         if ro_token := _v("nautobot", "readOnlyToken"):
             state["nautobot_read_only_token"] = ro_token
@@ -125,7 +126,9 @@ def _generate_core_k8s_secrets(
     state["nats_password"] = _validate_nats_config_password(nats_password)
     state["redis_password"] = _v("redis", "password") or _generate_url_safe_password()
     if config.services.nautobot:
-        state["nautobot_admin_password"] = _v("nautobot_app", "adminPassword") or _generate_password()
+        state["nautobot_admin_password"] = (
+            _v("nautobot_app", "adminPassword") or _generate_password()
+        )
         state["django_secret_key"] = _v("nautobot_app", "djangoSecretKey") or _generate_password(50)
         if sv := _v("nautobot_app", "superuserApiToken"):
             state["superuser_api_token"] = sv
@@ -240,7 +243,7 @@ def build_openbao_secret_data(
             "password": value("network", "password") or _generate_url_safe_password(),
         },
     }
-    if config.dcim.provider == "nautobot":
+    if config.dcim.provider == BUILT_IN_NAUTOBOT_PROVIDER:
         nats_password = value("nautobot", "natsPassword") or _generate_nats_config_password()
         nautobot_token = (
             value("nautobot", "token")

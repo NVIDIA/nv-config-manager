@@ -275,7 +275,7 @@ spec:
       {{- include "nv-config-manager.copyDCIMProviderImages" . | nindent 6 }}
       {{- include "nv-config-manager.installDCIMProviderPackages" . | nindent 6 }}
       # Wait for Nautobot to be available before starting refresh
-      {{- if eq (.Values.dcim.provider | default "nautobot") "nautobot" }}
+      {{- if eq (.Values.dcim.provider | default "nautobot-2x") "nautobot-2x" }}
       {{- include "nv-config-manager.waitForNautobot" . | nindent 6 }}
       {{- end }}
       containers:
