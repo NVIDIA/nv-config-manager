@@ -25,6 +25,8 @@ type BackupInput struct {
 	DeviceId string `json:"device_id"`
 	// Config Store commit containing the intended configuration.
 	IntendedConfigCommitId NullableString `json:"intended_config_commit_id,omitempty"`
+	// Terminate the workflow instead of waiting to retry a failed stage.
+	TerminateOnFailure *bool `json:"terminate_on_failure,omitempty"`
 	// Reason the backup workflow was started.
 	Trigger TriggerEnum `json:"trigger"`
 	// User that requested the backup.
@@ -44,6 +46,8 @@ type _BackupInput BackupInput
 func NewBackupInput(deviceId string, trigger TriggerEnum) *BackupInput {
 	this := BackupInput{}
 	this.DeviceId = deviceId
+	var terminateOnFailure bool = false
+	this.TerminateOnFailure = &terminateOnFailure
 	this.Trigger = trigger
 	return &this
 }
@@ -53,6 +57,8 @@ func NewBackupInput(deviceId string, trigger TriggerEnum) *BackupInput {
 // but it doesn't guarantee that properties required by API are set
 func NewBackupInputWithDefaults() *BackupInput {
 	this := BackupInput{}
+	var terminateOnFailure bool = false
+	this.TerminateOnFailure = &terminateOnFailure
 	return &this
 }
 
@@ -123,6 +129,39 @@ func (o *BackupInput) SetIntendedConfigCommitIdNil() {
 // UnsetIntendedConfigCommitId ensures that no value is present for IntendedConfigCommitId, not even an explicit nil
 func (o *BackupInput) UnsetIntendedConfigCommitId() {
 	o.IntendedConfigCommitId.Unset()
+}
+
+// GetTerminateOnFailure returns the TerminateOnFailure field value if set, zero value otherwise.
+func (o *BackupInput) GetTerminateOnFailure() bool {
+	if o == nil || IsNil(o.TerminateOnFailure) {
+		var ret bool
+		return ret
+	}
+	return *o.TerminateOnFailure
+}
+
+// GetTerminateOnFailureOk returns a tuple with the TerminateOnFailure field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+
+func (o *BackupInput) GetTerminateOnFailureOk() (*bool, bool) {
+	if o == nil || IsNil(o.TerminateOnFailure) {
+		return nil, false
+	}
+	return o.TerminateOnFailure, true
+}
+
+// HasTerminateOnFailure returns a boolean if a field has been set.
+func (o *BackupInput) HasTerminateOnFailure() bool {
+	if o != nil && !IsNil(o.TerminateOnFailure) {
+		return true
+	}
+
+	return false
+}
+
+// SetTerminateOnFailure gets a reference to the given bool and assigns it to the TerminateOnFailure field.
+func (o *BackupInput) SetTerminateOnFailure(v bool) {
+	o.TerminateOnFailure = &v
 }
 
 // GetTrigger returns the Trigger field value
@@ -297,6 +336,9 @@ func (o BackupInput) ToMap() (map[string]interface{}, error) {
 	toSerialize["device_id"] = o.DeviceId
 	if o.IntendedConfigCommitId.IsSet() {
 		toSerialize["intended_config_commit_id"] = o.IntendedConfigCommitId.Get()
+	}
+	if !IsNil(o.TerminateOnFailure) {
+		toSerialize["terminate_on_failure"] = o.TerminateOnFailure
 	}
 	toSerialize["trigger"] = o.Trigger
 	if o.User.IsSet() {
