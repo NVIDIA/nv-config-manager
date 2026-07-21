@@ -859,14 +859,30 @@ kind-up-secure:
 		kind create cluster --name $(KIND_CLUSTER_NAME) --config deploy/kind-config.yaml --wait 5m; \
 	fi
 	kind export kubeconfig --name $(KIND_CLUSTER_NAME)
-	@echo "🐳 Preloading SPIRE busybox init image (avoids in-cluster Docker Hub 429 during the SPIRE install)..."
+	@echo "🐳 Preloading Docker Hub images via the runner's cached daemon (the secure stack's extra image volume exhausts the anonymous pull budget, so in-cluster pulls of these 429)..."
+	@# SPIRE's init container is arch-specific and pulled by a digest-less tag, so
+	@# it must be retagged to the canonical name after pulling the per-arch repo.
 	@src=docker.io/amd64/busybox:1.37.0-uclibc; \
 	if [ "$$(uname -m)" != "x86_64" ] && [ "$$(uname -m)" != "amd64" ]; then src=docker.io/arm64v8/busybox:1.37.0-uclibc; fi; \
 	if docker pull "$$src" && docker tag "$$src" docker.io/library/busybox:1.37.0-uclibc; then \
-		kind load docker-image docker.io/library/busybox:1.37.0-uclibc --name $(KIND_CLUSTER_NAME) || echo "⚠️  kind load busybox failed; SPIRE will fall back to an in-cluster pull"; \
+		kind load docker-image docker.io/library/busybox:1.37.0-uclibc --name $(KIND_CLUSTER_NAME) || echo "⚠️  kind load busybox failed; will fall back to an in-cluster pull"; \
 	else \
-		echo "⚠️  busybox preload failed; SPIRE will fall back to an in-cluster pull"; \
+		echo "⚠️  busybox preload failed; will fall back to an in-cluster pull"; \
 	fi
+	@# App dependencies that also live on Docker Hub. Keep these tags in sync with
+	@# the redis/nats subchart versions; a drifted tag just falls back to an
+	@# in-cluster pull (and may 429). The durable fix is a containerd registry
+	@# mirror -- see the Docker Hub rate-limit tracking issue.
+	@for img in \
+		docker.io/library/redis:7-alpine \
+		docker.io/library/nats:2.10-alpine \
+		docker.io/natsio/nats-box:0.14.3; do \
+		if docker pull "$$img"; then \
+			kind load docker-image "$$img" --name $(KIND_CLUSTER_NAME) || echo "⚠️  kind load $$img failed; will fall back to an in-cluster pull"; \
+		else \
+			echo "⚠️  preload of $$img failed; will fall back to an in-cluster pull"; \
+		fi; \
+	done
 	./scripts/install-security-dependencies \
 		--gateway-controller $(KIND_SEC_GATEWAY_CONTROLLER) \
 		--cluster-name $(KIND_CLUSTER_NAME) \
