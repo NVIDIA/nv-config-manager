@@ -192,6 +192,22 @@ _SKIP_REASON = "Not requested"
 _CI_ENV_VAR = "CI"
 _DOCKER_SYSTEM_PRUNE_COMMAND = ("docker", "system", "prune", "-af")
 _TRUTHY_ENV_VALUES = {"1", "true", "yes", "on"}
+_LOCAL_IMAGE_BUILDS: tuple[tuple[str, str, str, str | None], ...] = (
+    ("nv-config-manager-nautobot", "build/nautobot.Dockerfile", "components/nautobot", None),
+    ("nv-config-manager-nats-ready", "build/nats-ready.Dockerfile", "components/nats-ready", None),
+    ("nv-config-manager", "build/nv-config-manager.Dockerfile", ".", None),
+    ("nv-config-manager-ui", "build/ui.Dockerfile", "ui", None),
+    ("nv-config-manager-kea", "build/kea.Dockerfile", ".", None),
+    ("nv-config-manager-kea-admin", "build/kea-admin.Dockerfile", ".", None),
+    ("nv-config-manager-temporal", "build/temporal.Dockerfile", ".", "server"),
+    (
+        "nv-config-manager-temporal-bootstrap",
+        "build/temporal.Dockerfile",
+        ".",
+        "bootstrap",
+    ),
+    ("nv-config-manager-temporal-ui", "build/temporal.Dockerfile", ".", "ui"),
+)
 
 
 def _is_ci_environment() -> bool:
@@ -1367,18 +1383,6 @@ class Deployer:
             return
 
         step = self._start_step("build-images")
-        images = [
-            ("nv-config-manager-nautobot", "build/nautobot.Dockerfile", "components/nautobot"),
-            (
-                "nv-config-manager-nats-ready",
-                "build/nats-ready.Dockerfile",
-                "components/nats-ready",
-            ),
-            ("nv-config-manager", "build/nv-config-manager.Dockerfile", "."),
-            ("nv-config-manager-ui", "build/ui.Dockerfile", "ui"),
-            ("nv-config-manager-kea", "build/kea.Dockerfile", "."),
-            ("nv-config-manager-kea-admin", "build/kea-admin.Dockerfile", "."),
-        ]
         apt_mirror_args: list[str] = []
         for env_var in ("APT_MIRROR", "APT_MIRROR_DEBIAN", "APT_MIRROR_GPG_KEY_URL"):
             val = os.environ.get(env_var, "")
@@ -1400,11 +1404,13 @@ class Deployer:
         build_cmd = ["docker", "buildx", "build"] if use_buildx else ["docker", "build"]
         build_output_args = ["--load"] if use_buildx else []
         build_commands: list[_ParallelCommand] = []
-        for name, dockerfile, context in images:
+        for name, dockerfile, context, target in _LOCAL_IMAGE_BUILDS:
             build_tag = f"{name}:local"
             image_build_args = [*apt_mirror_args]
             if name == "nv-config-manager":
                 image_build_args += nv_config_manager_build_args
+            if target:
+                image_build_args += ["--target", target]
             build_commands.append(
                 _ParallelCommand(
                     label=name,
@@ -1439,7 +1445,7 @@ class Deployer:
             max_parallel=max_parallel,
         )
 
-        for name, _, _ in images:
+        for name, _, _, _ in _LOCAL_IMAGE_BUILDS:
             build_tag = f"{name}:local"
             digest_tag = _get_image_digest_tag(build_tag)
             if digest_tag:
@@ -1459,15 +1465,7 @@ class Deployer:
 
         step = self._start_step("load-kind")
         cluster = self.options.kind_cluster
-        image_names = [
-            "nv-config-manager-nautobot",
-            "nv-config-manager-nats-ready",
-            "nv-config-manager",
-            "nv-config-manager-ui",
-            "nv-config-manager-kea",
-            "nv-config-manager-kea-admin",
-        ]
-        for name in image_names:
+        for name, _, _, _ in _LOCAL_IMAGE_BUILDS:
             tag = self._local_image_tags.get(name, "local")
             img = f"{name}:{tag}"
             self.callback.on_log(f"Loading {img} into Kind cluster {cluster}...")

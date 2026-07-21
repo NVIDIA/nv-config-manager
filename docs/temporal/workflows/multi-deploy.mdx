@@ -137,6 +137,9 @@ The workflow returns comprehensive results:
     "successful_devices": 12,     # Successfully configured devices
     "failed_devices": 2,          # Devices that failed configuration
     "rejected_devices": 1,        # Devices in rejected batches
+    "total_backups": 12,          # Backup child workflows completed
+    "successful_backups": 11,     # Backup child workflows that succeeded
+    "failed_backups": 1,          # Backup child workflows that failed
     "discovery_failures": {},     # Devices that failed diff collection
     "diff_groups": 3,             # Number of unique diff groups
     "total_batches": 5,           # Total batch workflows created
@@ -144,7 +147,26 @@ The workflow returns comprehensive results:
         "batch_0_abc123": {
             "approved": true,
             "successful_devices": ["spine-01", "spine-02"],
-            "failed_devices": {}
+            "failed_devices": {},
+            "backups": {
+                "total": 2,
+                "successful": 2,
+                "failed": 0,
+                "results": {
+                    "spine-01": {
+                        "success": true,
+                        "changed": true,
+                        "error": null,
+                        "child_workflow_id": "backup-workflow-id"
+                    },
+                    "spine-02": {
+                        "success": true,
+                        "changed": false,
+                        "error": null,
+                        "child_workflow_id": "another-backup-workflow-id"
+                    }
+                }
+            }
         }
     }
 }
@@ -186,32 +208,31 @@ Each batch requires manual approval:
    - Full diff content
 1. **Approve or reject**: Manual approval gate for each batch
 1. **Deployment**: Parallel configuration application to all devices in batch
-1. **Backup**: Automatic backup creation for successful deployments
+1. **Backup**: Automatic backup creation for successful deployments, with a direct link to every backup child workflow
 
 ### Navigation Example
 
 The parent workflow displays clickable links with full UI URLs like:
 
 ```text
-Started 2 batch workflows for approval:
+2 batches awaiting approval
 
-- [Batch 2](https://config-manager.example.com/workflows/a1b2c3d4-5e6f-7890-1234-567890abcdef) - 1 devices (spine-03)
-- [Batch 1](https://config-manager.example.com/workflows/23292a68-4a9d-4f15-bac6-6d3c1520d602) - 2 devices (spine-01, spine-02)
+- ⏳ [Batch 1](https://config-manager.example.com/workflows/23292a68-4a9d-4f15-bac6-6d3c1520d602) — spine-01, spine-02
+- ⏳ [Batch 2](https://config-manager.example.com/workflows/a1b2c3d4-5e6f-7890-1234-567890abcdef) — spine-03
 
-Click on the batch links above to review and approve configuration diffs.
+Select a batch to review and approve its shared diff.
 ```
 
 After completion, status is shown with full UI URLs:
 
 ```text
-Batch deployment completed:
-- 3 devices configured successfully
-- 0 devices failed
-- 0 devices rejected (not configured)
+Deployment complete
 
-Child Workflows (click to view details):
-- [Batch 1](https://config-manager.example.com/workflows/23292a68-4a9d-4f15-bac6-6d3c1520d602) - 2 devices (spine-01, spine-02) - Completed (2 success, 0 failed)
-- [Batch 2](https://config-manager.example.com/workflows/a1b2c3d4-5e6f-7890-1234-567890abcdef) - 1 devices (spine-03) - Completed (1 success, 0 failed)
+Devices: 3 configured · 0 failed · 0 rejected
+
+Batches
+- ✅ [Batch 1](https://config-manager.example.com/workflows/23292a68-4a9d-4f15-bac6-6d3c1520d602) — spine-01, spine-02 · Configured 2/2 · Backups 2/2
+- ✅ [Batch 2](https://config-manager.example.com/workflows/a1b2c3d4-5e6f-7890-1234-567890abcdef) — spine-03 · Configured 1/1 · Backups 1/1
 ```
 
 ### UI URL Construction

@@ -168,9 +168,6 @@ _GLOBAL_IMAGE_DEFAULTS: dict[str, tuple[str, str]] = {
     "redis": ("docker.io/library/redis", "7-alpine"),
     "nats": ("docker.io/library/nats", "2.10-alpine"),
     "natsBox": ("docker.io/natsio/nats-box", "0.14.3"),
-    "temporalServer": ("docker.io/temporalio/server", "1.29"),
-    "temporalAdminTools": ("docker.io/temporalio/admin-tools", "1.29"),
-    "temporalUi": ("docker.io/temporalio/ui", "v2.37.4"),
 }
 
 _NESTED_IMAGE_DEFAULTS: dict[str, tuple[tuple[str, ...], str, str]] = {
@@ -842,8 +839,9 @@ def _build_cnpg(config: NVConfigManagerInstallConfig) -> dict[str, Any]:
             }
         return cluster
 
-    section["temporal"] = _cluster(svc.temporal)
-    section["temporalVisibility"] = _cluster(svc.temporal)
+    temporal_server_enabled = svc.temporal and not bool(config.external_services.temporal.address)
+    section["temporal"] = _cluster(temporal_server_enabled)
+    section["temporalVisibility"] = _cluster(temporal_server_enabled)
     section["configStore"] = _cluster(svc.config_store)
     section["dhcp"] = _cluster(svc.dhcp)
     section["nautobot"] = _cluster(svc.nautobot)
@@ -941,9 +939,21 @@ def build_values(
     values["networkZtp"] = ztp
     values["networkDhcp"] = dhcp
 
+    external_temporal = config.external_services.temporal
+    temporal_client: dict[str, Any] = {
+        "useInternalEndpoint": True,
+        "address": external_temporal.address,
+        "namespace": external_temporal.namespace,
+        "tls": {
+            "enabled": external_temporal.auth_method.value == "mtls",
+            "secretName": external_temporal.tls_secret_name,
+            "serverName": external_temporal.tls_server_name,
+        },
+    }
     temporal_section: dict[str, Any] = {
         "enabled": svc.temporal,
-        "client": {"useInternalEndpoint": True},
+        "server": {"enabled": not bool(external_temporal.address)},
+        "client": temporal_client,
         "redfish": {"enabled": config.redfish.enabled},
     }
     values["temporal"] = temporal_section

@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import os
 import re
 from datetime import UTC, datetime
 from typing import Any, ClassVar, cast
@@ -47,6 +46,7 @@ from nv_config_manager.temporal.api.dynamic_endpoints import (
     set_start_workflow_function,
 )
 from nv_config_manager.temporal.api.links import temporal_ui_workflow_href
+from nv_config_manager.temporal.client.connection import client_connect_options, temporal_address
 from nv_config_manager.temporal.client.redis import RedisClient
 from nv_config_manager.temporal.common.mixins.base import BaseMixin
 from nv_config_manager.temporal.common.mixins.stage import (
@@ -461,10 +461,9 @@ class WorkflowDetailResponse(WorkflowSummaryResponse):
 
 async def get_client() -> Client:
     """Create a temporal client."""
-    temporal_server = os.getenv("TEMPORAL_ADDRESS", "localhost:7233")
     return await Client.connect(
-        temporal_server,
-        namespace="default",
+        temporal_address(),
+        **client_connect_options(),
         data_converter=get_data_converter(),
         interceptors=[TracingInterceptor(always_create_workflow_spans=True)],
         runtime=get_runtime(),

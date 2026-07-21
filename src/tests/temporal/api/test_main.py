@@ -87,6 +87,24 @@ def test_temporal_ui_workflow_href_uses_ini(monkeypatch):
     )
 
 
+def test_temporal_ui_workflow_href_uses_configured_namespace():
+    """Verify Workflow API href generation uses the configured Temporal namespace."""
+    config = ConfigParser()
+    config.read_dict(
+        {
+            "temporal": {
+                "temporal_ui_url": "https://temporal-ui.example.com",
+                "namespace": "network automation",
+            }
+        }
+    )
+
+    assert (
+        temporal_ui_workflow_href("workflow-id", config=config)
+        == "https://temporal-ui.example.com/namespaces/network%20automation/workflows/workflow-id"
+    )
+
+
 def test_temporal_ui_workflow_href_returns_empty_without_ini_url():
     """Verify missing Temporal UI URL does not raise after workflow start."""
     config = ConfigParser()

@@ -112,14 +112,9 @@ images:
       repository: registry.example.com/nv-config-manager/natsio/nats-box
       tag: "0.14.3"
     temporalServer:
-      repository: registry.example.com/nv-config-manager/temporalio/server
-      tag: "1.29"
-    temporalAdminTools:
-      repository: registry.example.com/nv-config-manager/temporalio/admin-tools
-      tag: "1.29"
+      repository: registry.example.com/nv-config-manager/nvidian/cfa/nv-config-manager-temporal
     temporalUi:
-      repository: registry.example.com/nv-config-manager/temporalio/ui
-      tag: "v2.37.4"
+      repository: registry.example.com/nv-config-manager/nvidian/cfa/nv-config-manager-temporal-ui
     nautobotNginx:
       repository: registry.example.com/nv-config-manager/nginxinc/nginx-unprivileged
       tag: "1.27"
