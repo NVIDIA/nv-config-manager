@@ -1382,6 +1382,18 @@ networkZtp:
     idleTimeout: 300s
   # Deployment configuration
   replicas: 3
+  # Device-facing (http-lb) listener tuning
+  httpLb:
+    # Number of uvicorn worker processes for the device-facing http-lb container.
+    # Each worker is its own process (own event loop + GIL + CPU core), so raising
+    # this spreads a pod's concurrent device sessions across loops and stops a
+    # single loop from stalling under a boot storm — the stall otherwise fails the
+    # liveness probe and restarts the container. 0/unset => single worker (uvicorn
+    # default). Load testing (~100 concurrent devices / 3 pods) showed 1 worker
+    # crashlooped while 4 held 0 restarts at ~4x throughput. Each worker adds
+    # ~100Mi RSS; size against resources.http and consider raising resources.http
+    # requests.cpu to match the worker count on busy nodes.
+    workers: 4
   # Resources per container type
   resources:
     http:

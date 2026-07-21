@@ -114,7 +114,15 @@ spec:
         image: "{{ .Values.global.images.nvConfigManager.repository }}:{{ include "nv-config-manager.imageTag" (dict "root" . "image" .Values.global.images.nvConfigManager) }}"
         imagePullPolicy: {{ .Values.global.images.nvConfigManager.pullPolicy }}
         {{- include "nv-config-manager.containerSecurityContext" . | nindent 8 }}
-        {{- include "nv-config-manager.networkZtpEntrypoint" (dict "root" . "command" (list "nv-config-manager-ztp-api") "args" (list "--port" "8000")) | nindent 8 }}
+        {{- /* Device-facing listener: run N uvicorn workers so per-pod device
+               concurrency is spread across event loops (one loop per worker),
+               preventing a single loop from stalling under a boot storm. */}}
+        {{- $lbArgs := list "--port" "8000" }}
+        {{- $lbWorkers := int (dig "httpLb" "workers" 0 .Values.networkZtp) }}
+        {{- if gt $lbWorkers 0 }}
+        {{- $lbArgs = concat $lbArgs (list "--workers" (toString $lbWorkers)) }}
+        {{- end }}
+        {{- include "nv-config-manager.networkZtpEntrypoint" (dict "root" . "command" (list "nv-config-manager-ztp-api") "args" $lbArgs) | nindent 8 }}
         env:
         - name: NV_CONFIG_MANAGER_INI
           value: {{ include "nv-config-manager.vaultAgent.configManagerIniPathApp" . | quote }}
