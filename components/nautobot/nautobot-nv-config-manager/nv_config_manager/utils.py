@@ -14,7 +14,9 @@
 #  limitations under the License.
 """Util Functions."""
 
-from nautobot.dcim.models import Location
+from django.db import transaction
+from nautobot.dcim.models import Device, Location
+from nautobot.extras.models import Role
 
 from nv_config_manager import models
 
@@ -34,6 +36,62 @@ def get_all_descendants(node: Location):
     # Use Nautobot's built-in TreeModel method for efficient tree traversal
     # Return only IDs as a list for better performance
     return list(node.descendants(include_self=True).values_list("id", flat=True))
+
+
+def get_eligible_unmanaged_devices(
+    location: Location,
+    roles: list[Role] | tuple[Role, ...],
+):
+    """Return unmanaged devices in a location tree matching the given roles."""
+    location_ids = get_all_descendants(location)
+    return (
+        Device.objects.filter(
+            location_id__in=location_ids,
+            role__in=roles,
+            configmanagerdevicestatus__isnull=True,
+        )
+        .select_related("location", "role")
+        .order_by("name")
+    )
+
+
+def nullbool_to_bool(value: bool | None) -> bool:
+    """Map form values to boolean model values."""
+    return bool(value) if value is not None else False
+
+
+def bulk_create_managed_devices(
+    devices,
+    *,
+    render_enabled: bool | None = None,
+    ztp_enabled: bool | None = None,
+    deploy_enabled: bool | None = None,
+    backup_enabled: bool | None = None,
+    is_aggregate_managed: bool | None = None,
+) -> tuple[int, int]:
+    """Create managed-device rows for devices, skipping existing enrollments."""
+    defaults = {
+        "render_enabled": nullbool_to_bool(render_enabled),
+        "ztp_enabled": nullbool_to_bool(ztp_enabled),
+        "deploy_enabled": nullbool_to_bool(deploy_enabled),
+        "backup_enabled": nullbool_to_bool(backup_enabled),
+        "is_aggregate_managed": nullbool_to_bool(is_aggregate_managed),
+    }
+    created_count = 0
+    skipped_count = 0
+
+    with transaction.atomic():
+        for device in devices:
+            _, created = models.ConfigManagerDeviceStatus.objects.get_or_create(
+                device=device,
+                defaults=defaults,
+            )
+            if created:
+                created_count += 1
+            else:
+                skipped_count += 1
+
+    return created_count, skipped_count
 
 
 def generate_config_store_url(
