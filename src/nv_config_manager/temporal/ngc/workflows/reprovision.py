@@ -232,7 +232,8 @@ class ReprovisionWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
             display = (
                 "### Configuration drift detected\n\n"
                 f"The pre-reprovision backup completed via {backup_reference}. "
-                "Configuration drift was detected, but reprovisioning will continue."
+                "Configuration drift was detected. Check the backup workflow for details. "
+                "Reprovisioning will continue."
             )
         else:
             display = (

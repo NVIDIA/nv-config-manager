@@ -309,8 +309,8 @@ async def test_reprovision_pre_backup_reports_drift_and_continues(
             "### Configuration drift detected\n\n"
             "The pre-reprovision backup completed via "
             f"[backup workflow](https://temporal.example.com/workflows/"
-            f"{backup_workflow_id}). Configuration drift was detected, but reprovisioning "
-            "will continue."
+            f"{backup_workflow_id}). Configuration drift was detected. Check the backup "
+            "workflow for details. Reprovisioning will continue."
         )
         assert (
             next(stage for stage in stages if stage["name"] == "execute_ztp")["state"] == "COMPLETE"
