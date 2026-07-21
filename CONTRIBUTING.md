@@ -18,7 +18,7 @@ NVIDIA Config Manager requires the Developer Certificate of Origin (DCO) process
 
 The DCO is a lightweight way for contributors to certify that they wrote or otherwise have the right to submit the code they are contributing to the project. Here is the full text of the [DCO](https://developercertificate.org/):
 
-```
+```text
 Developer Certificate of Origin
 Version 1.1
 
@@ -58,7 +58,7 @@ By making a contribution to this project, I certify that:
 
 To sign off your commits, add a `Signed-off-by` line to your commit messages:
 
-```
+```text
 This is my commit message
 
 Signed-off-by: Your Name <your.email@example.com>
