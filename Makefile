@@ -859,6 +859,14 @@ kind-up-secure:
 		kind create cluster --name $(KIND_CLUSTER_NAME) --config deploy/kind-config.yaml --wait 5m; \
 	fi
 	kind export kubeconfig --name $(KIND_CLUSTER_NAME)
+	@echo "🐳 Preloading SPIRE busybox init image (avoids in-cluster Docker Hub 429 during the SPIRE install)..."
+	@src=docker.io/amd64/busybox:1.37.0-uclibc; \
+	if [ "$$(uname -m)" != "x86_64" ] && [ "$$(uname -m)" != "amd64" ]; then src=docker.io/arm64v8/busybox:1.37.0-uclibc; fi; \
+	if docker pull "$$src" && docker tag "$$src" docker.io/library/busybox:1.37.0-uclibc; then \
+		kind load docker-image docker.io/library/busybox:1.37.0-uclibc --name $(KIND_CLUSTER_NAME) || echo "⚠️  kind load busybox failed; SPIRE will fall back to an in-cluster pull"; \
+	else \
+		echo "⚠️  busybox preload failed; SPIRE will fall back to an in-cluster pull"; \
+	fi
 	./scripts/install-security-dependencies \
 		--gateway-controller $(KIND_SEC_GATEWAY_CONTROLLER) \
 		--cluster-name $(KIND_CLUSTER_NAME) \
