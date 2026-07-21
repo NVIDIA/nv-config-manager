@@ -56,7 +56,7 @@ The parent workflow runs four stages in order. None of the parent stages require
 
    For each batch, the parent starts a child [Batch Deploy](../batch-deploy/index.mdx) and posts a clickable link to it on the stage display. The parent stage stays running and updates the display as each child completes (succeeded, failed, or rejected). The approval gate for each batch lives inside its child workflow — open the child link to review the diff and approve or reject.
 
-The parent workflow is complete only after every child batch workflow terminates. The final result aggregates total successes, failures, and rejections across all batches.
+The parent workflow is complete only after every child batch workflow terminates. The final result aggregates configuration successes, failures, and rejections across all batches, along with `total_backups`, `successful_backups`, and `failed_backups` from the backup children spawned by those batches.
 
 ## Diff grouping and batching
 
@@ -82,10 +82,10 @@ That is 30 devices, 3 diff groups, and 5 child batch workflows — meaning 5 app
 
 Confirm the run succeeded by checking all of the following:
 
-- **Parent workflow status** shows all four stages green on the Config Manager run page and reports a final summary with `total_devices`, `successful_devices`, `failed_devices`, and `rejected_devices`.
+- **Parent workflow status** shows all four stages green on the Config Manager run page and reports a final summary with device deployment counts and `total_backups`, `successful_backups`, and `failed_backups`.
 - **Every child batch workflow** linked from the `execute_batches` display reached a terminal state. Click each batch link to confirm the per-batch outcome (approved + applied, approved with some device failures, or rejected).
 - **Discovery failures** in the parent result are an expected output, not a workflow failure. Any device that failed diff collection is listed under `discovery_failures` with the error string — typically unreachable devices, missing intended configs, or render failures. Address these separately and re-run the workflow.
-- **Backups completed** for every successfully applied device. The child workflow's `perform_backups` stage triggers a [Configuration Backup](../configuration-backup/index.mdx) per device as a child workflow; failures there mean the device is configured but no fresh backup was captured.
+- **Backup totals reconcile.** `successful_backups + failed_backups` should equal `total_backups`, and `total_backups` should equal the number of successfully applied devices. Per-device details are available under each entry in `batch_results` at `backups.results`, including the backup child workflow ID and any error.
 - **Rejected batches.** If an approver rejected a batch, its devices appear in `rejected_devices` and never had configuration applied. Re-run a smaller scope once the underlying objection is resolved.
 
 ## Common issues
