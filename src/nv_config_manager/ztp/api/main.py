@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -47,12 +48,24 @@ def main() -> None:
         "--host", type=str, default="0.0.0.0", help="Host to bind to (default: 0.0.0.0)"
     )
     parser.add_argument("--port", type=int, default=9000, help="Port to listen on (default: 9000)")
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=int(os.environ.get("ZTP_API_WORKERS") or os.environ.get("WEB_CONCURRENCY") or "1"),
+        help=(
+            "Number of uvicorn worker processes (default: 1, or $ZTP_API_WORKERS / "
+            "$WEB_CONCURRENCY). Each worker runs its own event loop and its own shared "
+            "backend-client singletons, spreading per-pod device concurrency across loops "
+            "so a single loop is less likely to stall (liveness kill) under a boot storm."
+        ),
+    )
     args = parser.parse_args()
 
     uvicorn.run(
         "nv_config_manager.ztp.api.main:app",
         host=args.host,
         port=args.port,
+        workers=args.workers,
         proxy_headers=True,
         log_config=None,
         timeout_keep_alive=75,
