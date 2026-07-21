@@ -39,9 +39,7 @@ with workflow.unsafe.imports_passed_through():
     )
     from nv_config_manager.temporal.ngc.activities.deploy import load_intended_configuration
     from nv_config_manager.temporal.ngc.activities.nautobot import (
-        CheckRecordedConfigDriftInput,
         GetNetworkDeviceInput,
-        check_recorded_config_drift,
         get_network_device,
     )
     from nv_config_manager.temporal.ngc.activities.os import (
@@ -222,27 +220,8 @@ class ReprovisionWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
                 "The pre-reprovision backup failed. Review it and retry this stage."
             ) from exc
 
-        config_drift = await workflow.execute_activity(
-            check_recorded_config_drift,
-            CheckRecordedConfigDriftInput(device_id=stage_input.device_id),
-            start_to_close_timeout=timedelta(minutes=5),
-            retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
-        )
-        if config_drift:
-            display = (
-                "### Configuration drift detected\n\n"
-                f"The pre-reprovision backup completed via {backup_reference}. "
-                "Configuration drift was detected. Check the backup workflow for details. "
-                "Reprovisioning will continue."
-            )
-        else:
-            display = (
-                f"The pre-reprovision backup completed via {backup_reference}. "
-                "No configuration drift was detected."
-            )
-
         return ReprovisionWorkflow.PreReprovisionBackupStageOutput(
-            display=display,
+            display=f"The pre-reprovision backup completed via {backup_reference}.",
         )
 
     class ExecuteZTPStageInput(StageInput):
