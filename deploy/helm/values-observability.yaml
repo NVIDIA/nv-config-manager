@@ -79,6 +79,23 @@ monitoring:
     enabled: true
     blackboxExporterUrl: "blackbox-exporter:9115"
 
+# -----------------------------------------------------------------------------
+# Nautobot NATS metrics exporter
+# -----------------------------------------------------------------------------
+# Turn on the prometheus-nats-exporter sidecar + NATS PodMonitor so the
+# observability path (local-dev + the opt-in kind integration run) actually
+# exercises NATS JetStream metric collection — the prerequisite for KEDA render
+# autoscaling on nats_consumer_num_pending. The installer flips
+# monitoring.{enabled,podMonitors.enabled} on when observability_enabled; this
+# makes the sidecar + PodMonitor render alongside them (see
+# templates/nautobot.yaml and templates/monitoring.yaml). Both default to off in
+# values.yaml, so only this overlay (and real deployments that opt in) run them.
+# test_nats_exporter.py asserts the PodMonitor CR + exporter sidecar exist when
+# OBSERVABILITY=true.
+nautobotNats:
+  metrics:
+    enabled: true
+
 # NOTE: prometheus-operator-crds is NOT configured here. It's installed
 # as a sibling Helm release by the deployer (Deployer._install_crds) before
 # this chart, to avoid the helm validation deadlock where the parent chart
