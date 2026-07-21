@@ -138,6 +138,16 @@ jobs:
           sudo sysctl -w fs.inotify.max_user_instances=512
           sudo sysctl -w fs.inotify.max_user_watches=524288
 
+          # Observability and security are mutually exclusive: observability
+          # deploys the plain stack, but the test step keys the auth flags
+          # (--sso/--rbac/--spiffe) off SECURITY. Enabling both would run the
+          # authenticated suites against a deploy with no security deps, so fail
+          # fast instead of producing a confusing mid-run failure.
+          if [ "${OBSERVABILITY}" = "true" ] && [ "${SECURITY}" = "true" ]; then
+            echo "observability and security inputs are mutually exclusive" >&2
+            exit 2
+          fi
+
           # Observability is the one lightweight exception: it flips the two
           # monitoring switches on the base config in place (the runner checkout
           # is throwaway, so we keep a single source of truth instead of a
@@ -281,7 +291,7 @@ jobs:
             kubectl -n "${KEYCLOAK_NAMESPACE}" port-forward "svc/${KEYCLOAK_SERVICE}" 18080:80 >/tmp/keycloak-pf.log 2>&1 &
             pf_pid=$!
             for _ in $(seq 1 30); do
-              if curl -sf "http://127.0.0.1:18080/realms/${OIDC_REALM}/.well-known/openid-configuration" >/dev/null 2>&1; then
+              if curl -sf --connect-timeout 5 --max-time 10 "http://127.0.0.1:18080/realms/${OIDC_REALM}/.well-known/openid-configuration" >/dev/null 2>&1; then
                 break
               fi
               sleep 2
@@ -289,7 +299,7 @@ jobs:
             # -s (not -sf) so an HTTP error still yields a body for jq to parse to
             # empty, letting the guard below print the port-forward log instead of
             # aborting on the pipefail.
-            token="$(curl -s -X POST \
+            token="$(curl -s --connect-timeout 5 --max-time 30 -X POST \
               "http://127.0.0.1:18080/realms/${OIDC_REALM}/protocol/openid-connect/token" \
               -d "client_id=${OIDC_CLIENT_ID}" \
               -d "client_secret=${OIDC_CLIENT_SECRET}" \
