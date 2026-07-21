@@ -27,10 +27,7 @@ NC='\033[0m'
 show_signing_setup_help() {
     echo "Trustees need GitHub-verified commits for copy-pr-bot automatic sync."
     echo "GitHub supports OpenPGP, SSH, and X.509/S/MIME signing."
-    echo "To configure OpenPGP for this repository:"
-    echo ""
-    echo "  gpg --list-secret-keys --keyid-format=long"
-    echo "  ./scripts/configure-gpg-signing.sh <GPG_KEY_ID_OR_FINGERPRINT>"
+    echo "Follow the internal trustee setup guidance, then verify the pushed commit on GitHub."
     echo ""
 }
 
@@ -66,12 +63,12 @@ check_openpgp_signing() {
             gpg_program="gpg2"
         else
             echo -e "${YELLOW}WARNING: Neither 'gpg' nor 'gpg2' was found in PATH.${NC}"
-            echo "Install GnuPG, then run ./scripts/configure-gpg-signing.sh."
+            echo "Install GnuPG or update the repository-local signing configuration."
             return 0
         fi
     elif ! command -v "$gpg_program" >/dev/null 2>&1; then
         echo -e "${YELLOW}WARNING: Configured GPG program '$gpg_program' was not found.${NC}"
-        echo "Run ./scripts/configure-gpg-signing.sh again after installing GnuPG."
+        echo "Update the repository-local gpg.program setting after installing GnuPG."
         return 0
     fi
 
@@ -81,10 +78,7 @@ check_openpgp_signing() {
     if ! printf '%s\n' "$secret_key_output" | grep '^sec:' >/dev/null; then
         echo -e "${YELLOW}WARNING: Configured GPG secret key '$signing_key' was not found.${NC}"
         echo ""
-        echo "Import the secret key or configure a key available on this machine:"
-        echo ""
-        echo "  gpg --list-secret-keys --keyid-format=long"
-        echo "  ./scripts/configure-gpg-signing.sh <GPG_KEY_ID_OR_FINGERPRINT>"
+        echo "Import the secret key or update the repository-local user.signingkey setting."
         echo ""
         return 0
     fi
@@ -100,6 +94,12 @@ check_commit_signing() {
     signing_enabled="$(git config --local --bool --get commit.gpgsign 2>/dev/null || true)"
     signing_key="$(git config --local --get user.signingkey 2>/dev/null || true)"
     signing_format="$(git config --local --get gpg.format 2>/dev/null || true)"
+
+    # Signing is an opt-in check for trustees. Contributors without any
+    # repository-local signing settings should not be prompted to configure it.
+    if [[ "$signing_enabled" != "true" && -z "$signing_key" && -z "$signing_format" ]]; then
+        return 0
+    fi
 
     # OpenPGP is Git's default when gpg.format is unset.
     if [[ -z "$signing_format" ]]; then

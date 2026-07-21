@@ -42,7 +42,7 @@ echo ""
 echo "Git hooks installed successfully!"
 echo ""
 echo "Hooks installed:"
-echo "  - pre-commit: Reports commit signing readiness, formats staged Python, checks SPDX license headers"
+echo "  - pre-commit: Checks opted-in commit signing, formats staged Python, checks SPDX license headers"
 echo "  - commit-msg: Requires a DCO Signed-off-by trailer"
 echo ""
 
@@ -50,25 +50,24 @@ SIGNING_ENABLED="$(git -C "$REPO_ROOT" config --local --bool --get commit.gpgsig
 SIGNING_KEY="$(git -C "$REPO_ROOT" config --local --get user.signingkey 2>/dev/null || true)"
 SIGNING_FORMAT="$(git -C "$REPO_ROOT" config --local --get gpg.format 2>/dev/null || true)"
 
-if [[ -z "$SIGNING_FORMAT" ]]; then
-    SIGNING_FORMAT="openpgp"
-fi
+if [[ "$SIGNING_ENABLED" == "true" || -n "$SIGNING_KEY" || -n "$SIGNING_FORMAT" ]]; then
+    if [[ -z "$SIGNING_FORMAT" ]]; then
+        SIGNING_FORMAT="openpgp"
+    fi
 
-case "$SIGNING_FORMAT" in
-    openpgp | ssh | x509) SUPPORTED_SIGNING_FORMAT="true" ;;
-    *) SUPPORTED_SIGNING_FORMAT="false" ;;
-esac
+    case "$SIGNING_FORMAT" in
+        openpgp | ssh | x509) SUPPORTED_SIGNING_FORMAT="true" ;;
+        *) SUPPORTED_SIGNING_FORMAT="false" ;;
+    esac
 
-if [[ "$SIGNING_ENABLED" == "true" && -n "$SIGNING_KEY" && "$SUPPORTED_SIGNING_FORMAT" == "true" ]]; then
-    echo "Cryptographic commit signing is configured with format $SIGNING_FORMAT."
-else
-    echo "Cryptographic commit signing is not configured."
-    echo "Trustees need GitHub-verified commits for copy-pr-bot automatic sync."
-    echo "GitHub supports OpenPGP, SSH, and X.509/S/MIME signing."
-    echo "To configure an existing OpenPGP key:"
-    echo "  ./scripts/configure-gpg-signing.sh <GPG_KEY_ID_OR_FINGERPRINT>"
+    if [[ "$SIGNING_ENABLED" == "true" && -n "$SIGNING_KEY" && "$SUPPORTED_SIGNING_FORMAT" == "true" ]]; then
+        echo "Cryptographic commit signing is configured with format $SIGNING_FORMAT."
+    else
+        echo "Cryptographic commit signing is incomplete."
+        echo "Trustees should follow the internal signing setup guidance."
+    fi
+    echo ""
 fi
-echo ""
 
 echo "To skip local hooks for a specific commit, use:"
 echo "  git commit --no-verify"

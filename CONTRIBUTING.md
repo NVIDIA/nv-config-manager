@@ -106,29 +106,16 @@ an authorized maintainer must approve the new commit before CI can use it.
 
 GitHub documents how to configure each supported
 [commit-signing method](https://docs.github.com/en/authentication/managing-commit-signature-verification/signing-commits).
-The included helper configures the traditional OpenPGP option. Create or select
-a personal GPG key whose email matches a verified email on your GitHub account,
-then add its public key under
-[GitHub SSH and GPG keys](https://github.com/settings/keys). GitHub documents the
-complete process for
-[generating a GPG key](https://docs.github.com/en/authentication/managing-commit-signature-verification/generating-a-new-gpg-key)
-and
-[adding it to your account](https://docs.github.com/en/authentication/managing-commit-signature-verification/adding-a-gpg-key-to-your-github-account).
+Trustees should follow the internal setup guidance for their chosen method.
+Once configured, `commit.gpgsign=true` signs new commits automatically.
 
-List the secret keys available locally and configure one for this repository:
-
-```bash
-gpg --list-secret-keys --keyid-format=long
-./scripts/configure-gpg-signing.sh <GPG_KEY_ID_OR_FINGERPRINT>
-```
-
-The helper validates that the secret key can sign and writes only repository-local
-Git configuration. It does not create, export, upload, or otherwise manage private
-key material. Once configured, `commit.gpgsign=true` signs new commits
-automatically. The pre-commit hook recognizes all three supported formats and
-reports a warning when the local signing setup is missing or incomplete, but it
-does not block the commit. It also cannot determine whether the public key has
-been added to GitHub, so confirm the `Verified` status after pushing.
+The pre-commit hook recognizes all three supported formats, but signing checks
+are opt-in. The hook remains silent unless repository-local
+`commit.gpgsign=true`, `user.signingkey`, or `gpg.format` settings indicate that
+signing is being used. Contributors who do not rely on trustee auto-sync are
+therefore not asked to configure a signing key. When opted in, the check reports
+incomplete local setup without blocking the commit. It cannot determine whether
+GitHub recognizes the key, so confirm the `Verified` status after pushing.
 
 Verify a new commit locally and confirm that GitHub displays `Verified` after it is
 pushed:
@@ -175,15 +162,15 @@ force-pushing it.
    ```
    This installs:
 
-   - `pre-commit`, which reports commit signing readiness, auto-formats staged
+   - `pre-commit`, which checks opted-in commit signing, auto-formats staged
      Python files outside ignored/generated directories with `ruff format`, and
      verifies SPDX license headers in supported source files.
    - `commit-msg`, which rejects commit messages missing a DCO
      `Signed-off-by: Name <email>` trailer.
 
-   The installer also reports whether cryptographic commit signing is configured.
-   Trustees who rely on automatic sync should configure a GitHub-supported
-   signing method as described above.
+   The installer reports signing readiness only when repository-local signing
+   settings are present. Trustees who rely on automatic sync should follow the
+   internal setup guidance for a GitHub-supported signing method.
 
 5. **Create a branch** for your changes:
    ```bash
