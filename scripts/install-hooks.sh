@@ -55,12 +55,46 @@ if [[ "$SIGNING_ENABLED" == "true" || -n "$SIGNING_KEY" || -n "$SIGNING_FORMAT" 
         SIGNING_FORMAT="openpgp"
     fi
 
-    case "$SIGNING_FORMAT" in
-        openpgp | ssh | x509) SUPPORTED_SIGNING_FORMAT="true" ;;
-        *) SUPPORTED_SIGNING_FORMAT="false" ;;
-    esac
+    SIGNING_READY="false"
+    if [[ "$SIGNING_ENABLED" == "true" && -n "$SIGNING_KEY" ]]; then
+        case "$SIGNING_FORMAT" in
+            openpgp)
+                GPG_PROGRAM="$(git -C "$REPO_ROOT" config --local --get gpg.program 2>/dev/null || true)"
+                if [[ -z "$GPG_PROGRAM" ]]; then
+                    if command -v gpg >/dev/null 2>&1; then
+                        GPG_PROGRAM="gpg"
+                    elif command -v gpg2 >/dev/null 2>&1; then
+                        GPG_PROGRAM="gpg2"
+                    fi
+                fi
 
-    if [[ "$SIGNING_ENABLED" == "true" && -n "$SIGNING_KEY" && "$SUPPORTED_SIGNING_FORMAT" == "true" ]]; then
+                if [[ -n "$GPG_PROGRAM" ]] && command -v "$GPG_PROGRAM" >/dev/null 2>&1; then
+                    SECRET_KEY_OUTPUT="$(
+                        "$GPG_PROGRAM" --batch --with-colons --list-secret-keys "$SIGNING_KEY" 2>/dev/null || true
+                    )"
+                    if printf '%s\n' "$SECRET_KEY_OUTPUT" | grep '^sec:' >/dev/null; then
+                        SIGNING_READY="true"
+                    fi
+                fi
+                ;;
+            ssh)
+                SIGNING_PROGRAM="$(git -C "$REPO_ROOT" config --local --get gpg.ssh.program 2>/dev/null || true)"
+                SIGNING_PROGRAM="${SIGNING_PROGRAM:-ssh-keygen}"
+                if command -v "$SIGNING_PROGRAM" >/dev/null 2>&1; then
+                    SIGNING_READY="true"
+                fi
+                ;;
+            x509)
+                SIGNING_PROGRAM="$(git -C "$REPO_ROOT" config --local --get gpg.x509.program 2>/dev/null || true)"
+                SIGNING_PROGRAM="${SIGNING_PROGRAM:-gpgsm}"
+                if command -v "$SIGNING_PROGRAM" >/dev/null 2>&1; then
+                    SIGNING_READY="true"
+                fi
+                ;;
+        esac
+    fi
+
+    if [[ "$SIGNING_READY" == "true" ]]; then
         echo "Cryptographic commit signing is configured with format $SIGNING_FORMAT."
     else
         echo "Cryptographic commit signing is incomplete."
