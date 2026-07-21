@@ -155,8 +155,9 @@ class ReprovisionWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
                             f"The intended configuration for **{device_data.name}** is invalid "
                             "and could not be loaded as a candidate. No factory reset was "
                             "requested.\n\n"
-                            f"[Open the intended configuration]({intended_config_url}), fix the "
-                            "errors, then retry this stage."
+                            "Check the intended configuration "
+                            f"[here]({intended_config_url}). Once it is fixed this stage can be "
+                            "retried."
                         )
                     ),
                 )

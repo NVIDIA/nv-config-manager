@@ -351,9 +351,9 @@ async def test_reprovision_validates_intended_config_before_factory_reset(
             "### Invalid intended configuration\n\n"
             "The intended configuration for **mock_device** is invalid and could not be loaded "
             "as a candidate. No factory reset was requested.\n\n"
-            "[Open the intended configuration](https://gitlab.example.com/example-user/"
+            "Check the intended configuration [here](https://gitlab.example.com/example-user/"
             "intended-network-configs/-/blob/mock_intended_commit_id/SITEA/MOCK_DEVICE/"
-            "startup.yaml), fix the errors, then retry this stage."
+            "startup.yaml). Once it is fixed this stage can be retried."
         )
         assert backup_stage["state"] == "NOT_STARTED"
         assert len(candidate_diff_calls) == 1
