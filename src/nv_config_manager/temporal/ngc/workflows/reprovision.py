@@ -32,7 +32,7 @@ from nv_config_manager.temporal.common.mixins.stage import (
 
 with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.common.mixins.archive import ArchiveMixin
-    from nv_config_manager.temporal.common.mixins.device import DeviceMixin
+    from nv_config_manager.temporal.common.mixins.device import DeviceMixin, NetworkDeviceData
     from nv_config_manager.temporal.ngc.activities.config import (
         build_workflow_url,
         get_ui_base_url,
@@ -110,6 +110,17 @@ class ReprovisionWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
             depends_on=["execute_ztp"],
         )
 
+    async def _fetch_device(self, device_id: str) -> NetworkDeviceData:
+        """Fetch fresh device data and attach workflow search attributes."""
+        result = await workflow.execute_activity(
+            get_network_device,
+            GetNetworkDeviceInput(device_id=device_id),
+            start_to_close_timeout=timedelta(minutes=1),
+            retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+        )
+        DeviceMixin.attach_device_search_attributes(result.device)
+        return result.device
+
     class ValidateConfigurationStageInput(StageInput):
         """Validate Configuration Stage Input."""
 
@@ -123,15 +134,7 @@ class ReprovisionWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
         self, stage_input: ValidateConfigurationStageInput
     ) -> ValidateConfigurationStageOutput:
         """Validate the intended configuration before factory reset."""
-        result = await workflow.execute_activity(
-            get_network_device,
-            GetNetworkDeviceInput(device_id=stage_input.device_id),
-            start_to_close_timeout=timedelta(minutes=1),
-            retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
-        )
-        DeviceMixin.attach_device_search_attributes(result.device)
-
-        device_data = result.device
+        device_data = await self._fetch_device(stage_input.device_id)
         intended_config, _commit_id, intended_config_url = await workflow.execute_activity(
             load_intended_configuration,
             device_data,
@@ -186,18 +189,7 @@ class ReprovisionWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
     @stage_executor("execute_ztp")
     async def execute_ztp_stage(self, stage_input: ExecuteZTPStageInput) -> ExecuteZTPStageOutput:
         """Execute ZTP and wait for completion."""
-        # Get device data
-        result = await workflow.execute_activity(
-            get_network_device,
-            GetNetworkDeviceInput(device_id=stage_input.device_id),
-            start_to_close_timeout=timedelta(minutes=1),
-            retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
-        )
-        # Add device search attributes the first time we pull
-        # them from nautobot
-        DeviceMixin.attach_device_search_attributes(result.device)
-
-        device_data = result.device
+        device_data = await self._fetch_device(stage_input.device_id)
 
         # Trigger ZTP through factory reset
         ztp_execute_result = await workflow.execute_activity(
