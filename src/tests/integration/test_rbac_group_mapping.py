@@ -42,7 +42,11 @@ from collections.abc import Callable
 
 import pytest
 
-pytestmark = [pytest.mark.integration, pytest.mark.rbac]
+# Every test here drives several ``nbshell`` round-trips (kubectl exec + Django
+# shell startup) plus a login/token mint, so under CI contention they can exceed
+# the strict global 30s per-test timeout without actually hanging. Give this
+# module more headroom; the rest of the suite keeps the tight default.
+pytestmark = [pytest.mark.integration, pytest.mark.rbac, pytest.mark.timeout(120)]
 
 # Users seeded by scripts/create-local-security-nautobot-users, with the roles
 # the local Keycloak realm assigns (password == username).
