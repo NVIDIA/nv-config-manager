@@ -227,20 +227,6 @@ class BackupWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, ArchiveMixi
             if not self.terminate_on_failure or not config_syntax_error:
                 raise
 
-            self.set_stage_output(
-                "check_drift",
-                BackupWorkflow.CheckDriftStageOutput(
-                    commit_id=commit_id,
-                    diff="",
-                    has_drift=False,
-                    display=(
-                        "### Invalid intended configuration\n\n"
-                        f"The intended configuration for **{result.device.name}** is invalid "
-                        "and could not be loaded as a candidate.\n\n"
-                        f"Check the intended configuration [here]({url})."
-                    ),
-                ),
-            )
             raise ApplicationError(
                 "Invalid intended configuration",
                 result.device.name,
