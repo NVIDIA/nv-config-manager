@@ -173,9 +173,6 @@ jobs:
               KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME}" \
               INSTALL_CONFIG=deploy/configs/ci-integration-test.yaml \
               HELM_TIMEOUT=20m
-            kubectl get pods -n "${NV_CONFIG_MANAGER_NAMESPACE}" -o wide
-            exit 0
-          fi
 
           # Security stack (opt-in via `security: true`): the full Keycloak +
           # SPIRE stack via `make kind-up-sec`, then move the chart into the
@@ -195,7 +192,7 @@ jobs:
           # runner's Docker uses the containerd image store, whose multi-arch
           # index `kind load` can't import ("content digest not found"), and the
           # in-cluster pulls complete within the helm timeout anyway.
-          if [ "${SECURITY}" = "true" ]; then
+          elif [ "${SECURITY}" = "true" ]; then
             echo "Security run: kind-up-sec security stack + CONFIGURED group mapping"
             make kind-up-sec \
               KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME}" \
@@ -208,18 +205,27 @@ jobs:
             kubectl -n "${NV_CONFIG_MANAGER_NAMESPACE}" rollout status \
               "deploy/${NV_CONFIG_MANAGER_RELEASE}-nautobot" --timeout=15m
 
-            kubectl get pods -n "${NV_CONFIG_MANAGER_NAMESPACE}" -o wide
-            exit 0
+          else
+            # Default: the fast, unauthenticated stack via plain `make kind-up`.
+            # Most PRs don't touch auth, so this gives quick feedback; the full
+            # security stack is opt-in via `security: true` (see above).
+            echo "Default run: plain kind-up (no security stack)"
+            make kind-up \
+              KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME}" \
+              INSTALL_CONFIG=deploy/configs/ci-integration-test.yaml \
+              HELM_TIMEOUT=20m
           fi
 
-          # Default: the fast, unauthenticated stack via plain `make kind-up`.
-          # Most PRs don't touch auth, so this gives quick feedback; the full
-          # security stack is opt-in via `security: true` (see above).
-          echo "Default run: plain kind-up (no security stack)"
-          make kind-up \
-            KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME}" \
-            INSTALL_CONFIG=deploy/configs/ci-integration-test.yaml \
-            HELM_TIMEOUT=20m
+          # Trust the in-cluster gateway's TLS cert so pytest can verify HTTPS
+          # against the app behind the Envoy gateway. Every deploy path above
+          # fronts the app with that gateway, so this runs for all of them.
+          kind_ca_bundle="${RUNNER_TEMP}/nvcm-kind-ca-bundle.crt"
+          cp "${REQUESTS_CA_BUNDLE:-/etc/ssl/certs/ca-certificates.crt}" "${kind_ca_bundle}"
+          printf '\n' >>"${kind_ca_bundle}"
+          kubectl get secret -n "${NV_CONFIG_MANAGER_NAMESPACE}" nv-config-manager-gateway-tls \
+            -o jsonpath='{.data.tls\.crt}' | base64 --decode >>"${kind_ca_bundle}"
+          echo "REQUESTS_CA_BUNDLE=${kind_ca_bundle}" >>"${GITHUB_ENV}"
+
           kubectl get pods -n "${NV_CONFIG_MANAGER_NAMESPACE}" -o wide
       - name: Run integration tests
         timeout-minutes: 50
