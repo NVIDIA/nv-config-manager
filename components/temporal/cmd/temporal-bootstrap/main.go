@@ -136,39 +136,46 @@ func setupNamespace() error {
 		return err
 	}
 
-	if err := retry("create namespace "+namespace, func() (bool, error) {
-		output, err := temporal(address, "operator", "namespace", "create", "--namespace", namespace, "--retention", "336h")
-		if err == nil || alreadyExists(output) {
-			return true, nil
-		}
-		return false, fmt.Errorf("%w: %s", err, output)
-	}); err != nil {
+	if err := retryTemporalCommand(
+		"create namespace "+namespace,
+		address,
+		true,
+		"operator", "namespace", "create", "--namespace", namespace, "--retention", "336h",
+	); err != nil {
 		return err
 	}
 
-	if err := retry("update namespace "+namespace+" retention", func() (bool, error) {
-		output, err := temporal(address, "operator", "namespace", "update", "--namespace", namespace, "--retention", "336h")
-		if err == nil {
-			return true, nil
-		}
-		return false, fmt.Errorf("%w: %s", err, output)
-	}); err != nil {
+	if err := retryTemporalCommand(
+		"update namespace "+namespace+" retention",
+		address,
+		false,
+		"operator", "namespace", "update", "--namespace", namespace, "--retention", "336h",
+	); err != nil {
 		return err
 	}
 
 	for _, attribute := range searchAttributes {
 		name, kind := attribute[0], attribute[1]
-		if err := retry("create search attribute "+name, func() (bool, error) {
-			output, err := temporal(address, "operator", "search-attribute", "create", "--name", name, "--type", kind)
-			if err == nil || alreadyExists(output) {
-				return true, nil
-			}
-			return false, fmt.Errorf("%w: %s", err, output)
-		}); err != nil {
+		if err := retryTemporalCommand(
+			"create search attribute "+name,
+			address,
+			true,
+			"operator", "search-attribute", "create", "--name", name, "--type", kind,
+		); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func retryTemporalCommand(name, address string, acceptExisting bool, arguments ...string) error {
+	return retry(name, func() (bool, error) {
+		output, err := temporal(address, arguments...)
+		if err == nil || acceptExisting && alreadyExists(output) {
+			return true, nil
+		}
+		return false, fmt.Errorf("%w: %s", err, output)
+	})
 }
 
 func waitForNamespace() error {
