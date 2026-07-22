@@ -31,10 +31,10 @@ INI sections::
     claim_user = preferred_username
     claim_groups = roles
 
-    [auth.jwt.ssa]
-    issuer = https://example.ssa.nvidia.com
-    audiences = s:my-audience
-    jwks_uri = https://example.ssa.nvidia.com/.well-known/jwks.json
+    [auth.jwt.service]
+    issuer = https://service-idp.example.com
+    audiences = service-api
+    jwks_uri = https://service-idp.example.com/.well-known/jwks.json
     claim_email = sub
     claim_user = sub
     claim_groups = scopes
@@ -391,10 +391,56 @@ def _extract_bearer_token(request: Request) -> str | None:
     return request.cookies.get(cfg.cookie_name)
 
 
+def _unverified_jwt_claims(token: str) -> dict[str, Any] | None:
+    """Return unverified claims used only to select a configured validator.
+
+    The returned claims must never grant access.  Signature, issuer, audience,
+    and expiry validation still happens in the selected provider below.  Reading
+    the issuer first prevents a token from causing PyJWT to refresh every
+    unrelated provider's JWKS key set when its ``kid`` is absent there.
+    """
+    try:
+        claims = pyjwt.decode(
+            token,
+            options={
+                "verify_signature": False,
+                "verify_aud": False,
+                "verify_exp": False,
+                "verify_iat": False,
+                "verify_iss": False,
+                "verify_nbf": False,
+            },
+        )
+    except pyjwt.exceptions.PyJWTError:
+        return None
+    return claims if isinstance(claims, dict) else None
+
+
+def _unverified_jwt_issuer(token: str) -> str | None:
+    """Return a token issuer for provider selection, without trusting it."""
+    claims = _unverified_jwt_claims(token)
+    issuer = claims.get("iss") if claims else None
+    return issuer if isinstance(issuer, str) and issuer else None
+
+
+def _is_spiffe_jwt(token: str) -> bool:
+    """Return whether an unverified token has the required SPIFFE subject shape."""
+    claims = _unverified_jwt_claims(token)
+    subject = claims.get("sub") if claims else None
+    return isinstance(subject, str) and subject.startswith("spiffe://")
+
+
 # ── OIDC / JWT validation (multi-issuer) ─────────────────────────────────
 
 _jwks_clients: dict[str, pyjwt.PyJWKClient] = {}
 _jwks_lock = threading.Lock()
+_jwks_signing_key_locks: dict[str, threading.Lock] = {}
+
+# PyJWT owns the cached response and refreshes immediately for a previously
+# unseen key ID, so key rotation does not wait for this normal cache lifetime.
+# A per-URI lock prevents a cold or expired cache from stampeding a rate-limited
+# issuer before its first response repopulates the shared key-set cache.
+JWKS_KEYSET_CACHE_LIFESPAN_SECONDS = 600
 
 _JWT_ALGORITHMS = ["RS256", "RS384", "RS512", "ES256", "ES384", "ES512"]
 
@@ -408,9 +454,23 @@ def _get_jwks_client(jwks_uri: str) -> pyjwt.PyJWKClient:
         client = _jwks_clients.get(jwks_uri)
         if client is not None:
             return client
-        client = pyjwt.PyJWKClient(jwks_uri, cache_jwk_set=True, lifespan=600)
+        client = pyjwt.PyJWKClient(
+            jwks_uri,
+            cache_jwk_set=True,
+            lifespan=JWKS_KEYSET_CACHE_LIFESPAN_SECONDS,
+        )
         _jwks_clients[jwks_uri] = client
         return client
+
+
+def _get_jwks_signing_key_lock(jwks_uri: str) -> threading.Lock:
+    """Return the lock that serializes a JWKS cache miss for one URI."""
+    with _jwks_lock:
+        lock = _jwks_signing_key_locks.get(jwks_uri)
+        if lock is None:
+            lock = threading.Lock()
+            _jwks_signing_key_locks[jwks_uri] = lock
+        return lock
 
 
 def _try_jwt_provider(
@@ -419,8 +479,7 @@ def _try_jwt_provider(
 ) -> SSOIdentity | None:
     """Attempt to validate *token* against a single JWT provider."""
     try:
-        jwks_client = _get_jwks_client(provider.jwks_uri)
-        signing_key = jwks_client.get_signing_key_from_jwt(token)
+        signing_key = _get_signing_key_from_jwks(provider.jwks_uri, token)
 
         options = JWTDecodeOptions()
         if not provider.audiences:
@@ -462,9 +521,10 @@ def _try_jwt_provider(
 def identity_from_jwt(request: Request) -> SSOIdentity | None:
     """Validate JWT from Authorization header or cookie against all providers.
 
-    Iterates through every configured ``[auth.jwt.*]`` provider and returns
-    the first successful match.  Returns ``None`` when no provider is
-    configured, no token is present, or no provider accepts the token.
+    The unverified issuer selects a configured ``[auth.jwt.*]`` provider;
+    that provider then verifies the token and returns the identity.  Returns
+    ``None`` when no provider is configured, no token is present, or no
+    provider accepts the token.
     """
     cfg = load_auth_config()
     if not cfg.jwt_providers:
@@ -474,7 +534,13 @@ def identity_from_jwt(request: Request) -> SSOIdentity | None:
     if not token:
         return None
 
+    issuer = _unverified_jwt_issuer(token)
+    if issuer is None:
+        return None
+
     for provider in cfg.jwt_providers:
+        if provider.issuer != issuer:
+            continue
         identity = _try_jwt_provider(token, provider)
         if identity is not None:
             return identity
@@ -491,7 +557,9 @@ def _get_signing_key_from_jwks(jwks_uri: str, token: str) -> pyjwt.PyJWK:
     re-read on each call so key rotations are picked up immediately.
     """
     if jwks_uri.startswith(("http://", "https://")):
-        return _get_jwks_client(jwks_uri).get_signing_key_from_jwt(token)
+        client = _get_jwks_client(jwks_uri)
+        with _get_jwks_signing_key_lock(jwks_uri):
+            return client.get_signing_key_from_jwt(token)
 
     bundle_path = Path(jwks_uri)
     jwks_data = json.loads(bundle_path.read_text())
@@ -547,6 +615,8 @@ def identity_from_spiffe(request: Request) -> SSOIdentity | None:
 
     token = _extract_bearer_token(request)
     if not token:
+        return None
+    if not _is_spiffe_jwt(token):
         return None
 
     try:

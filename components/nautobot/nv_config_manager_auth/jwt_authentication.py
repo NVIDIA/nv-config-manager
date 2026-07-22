@@ -162,6 +162,13 @@ def _load_jwt_providers() -> list[JwtProviderConfig]:
 
 _jwks_clients: dict[str, pyjwt.PyJWKClient] = {}
 _jwks_lock = threading.Lock()
+_jwks_signing_key_locks: dict[str, threading.Lock] = {}
+
+# PyJWT owns the cached response and refreshes immediately for a previously
+# unseen key ID, so key rotation does not wait for this normal cache lifetime.
+# A per-URI lock prevents a cold or expired cache from stampeding a rate-limited
+# issuer before its first response repopulates the shared key-set cache.
+JWKS_KEYSET_CACHE_LIFESPAN_SECONDS = 600
 
 
 def _get_jwks_client(jwks_uri: str) -> pyjwt.PyJWKClient:
@@ -178,9 +185,23 @@ def _get_jwks_client(jwks_uri: str) -> pyjwt.PyJWKClient:
         client = _jwks_clients.get(jwks_uri)
         if client is not None:
             return client
-        client = pyjwt.PyJWKClient(jwks_uri, cache_jwk_set=True, lifespan=600)
+        client = pyjwt.PyJWKClient(
+            jwks_uri,
+            cache_jwk_set=True,
+            lifespan=JWKS_KEYSET_CACHE_LIFESPAN_SECONDS,
+        )
         _jwks_clients[jwks_uri] = client
         return client
+
+
+def _get_jwks_signing_key_lock(jwks_uri: str) -> threading.Lock:
+    """Return the lock that serializes a JWKS cache miss for one URI."""
+    with _jwks_lock:
+        lock = _jwks_signing_key_locks.get(jwks_uri)
+        if lock is None:
+            lock = threading.Lock()
+            _jwks_signing_key_locks[jwks_uri] = lock
+        return lock
 
 
 def _get_spiffe_jwks_uri() -> str:
@@ -201,7 +222,9 @@ def _get_signing_key_from_jwks(jwks_uri: str, token: str) -> pyjwt.PyJWK:
     re-read on each call so key rotations are picked up immediately.
     """
     if jwks_uri.startswith(("http://", "https://")):
-        return _get_jwks_client(jwks_uri).get_signing_key_from_jwt(token)
+        client = _get_jwks_client(jwks_uri)
+        with _get_jwks_signing_key_lock(jwks_uri):
+            return client.get_signing_key_from_jwt(token)
 
     bundle_path = Path(jwks_uri)
     jwks_data = json.loads(bundle_path.read_text())
@@ -437,6 +460,44 @@ def _extract_token(request: Request) -> str | None:
     return request.COOKIES.get(cookie_name)
 
 
+def _unverified_jwt_claims(token: str) -> dict[str, Any] | None:
+    """Return unverified claims used only to select a configured validator.
+
+    The selected validator still verifies the signature, issuer, audience, and
+    expiry.  Issuer selection stops a token from forcing PyJWT to refresh every
+    unrelated provider's JWKS key set when its ``kid`` is absent there.
+    """
+    try:
+        claims = pyjwt.decode(
+            token,
+            options={
+                "verify_signature": False,
+                "verify_aud": False,
+                "verify_exp": False,
+                "verify_iat": False,
+                "verify_iss": False,
+                "verify_nbf": False,
+            },
+        )
+    except pyjwt.exceptions.PyJWTError:
+        return None
+    return claims if isinstance(claims, dict) else None
+
+
+def _unverified_jwt_issuer(token: str) -> str | None:
+    """Return a token issuer for provider selection, without trusting it."""
+    claims = _unverified_jwt_claims(token)
+    issuer = claims.get("iss") if claims else None
+    return issuer if isinstance(issuer, str) and issuer else None
+
+
+def _is_spiffe_jwt(token: str) -> bool:
+    """Return whether an unverified token has the required SPIFFE subject shape."""
+    claims = _unverified_jwt_claims(token)
+    subject = claims.get("sub") if claims else None
+    return isinstance(subject, str) and subject.startswith("spiffe://")
+
+
 # ── Validation methods ────────────────────────────────────────────────────
 
 
@@ -448,6 +509,8 @@ def _try_spiffe(token: str) -> tuple[Any, str] | None:
 
     audiences = _get_spiffe_audiences()
     if not audiences:
+        return None
+    if not _is_spiffe_jwt(token):
         return None
 
     try:
@@ -476,8 +539,7 @@ def _try_spiffe(token: str) -> tuple[Any, str] | None:
 def _try_jwt_provider(token: str, provider: JwtProviderConfig) -> tuple[Any, str] | None:
     """Validate *token* against a single JWT provider."""
     try:
-        jwks_client = _get_jwks_client(provider.jwks_uri)
-        signing_key = jwks_client.get_signing_key_from_jwt(token)
+        signing_key = _get_signing_key_from_jwks(provider.jwks_uri, token)
 
         options: dict[str, Any] = {}
         if not provider.audiences:
@@ -553,7 +615,8 @@ class NVConfigManagerJWTAuthentication(BaseAuthentication):
     Validation (in order):
 
       1. SPIFFE JWT-SVID (via PyJWT + JWKS)
-      2. Each configured JWT provider (via PyJWT + JWKS)
+      2. The configured JWT provider matching the token's unverified issuer
+         (via PyJWT + JWKS)
 
     Providers with ``user_provider: true`` create individual Django users
     from JWT claims (for OIDC / browser users).  All other providers map
@@ -567,7 +630,7 @@ class NVConfigManagerJWTAuthentication(BaseAuthentication):
     keyword = "Bearer"
 
     def authenticate(self, request: Request) -> tuple[Any, str] | None:
-        """Authenticate *request*, trying SPIFFE then each configured JWT provider.
+        """Authenticate *request*, trying SPIFFE then the issuer-matched JWT provider.
 
         Returns a ``(user, auth)`` tuple on success, or ``None`` to fall
         through to the next authenticator when no token is present or no
@@ -582,9 +645,18 @@ class NVConfigManagerJWTAuthentication(BaseAuthentication):
         if result is not None:
             return result
 
-        # 2. Try each JWT provider
+        # 2. Try only the provider named by the unverified issuer. The
+        # selected provider still verifies the issuer and signature; this only
+        # avoids refreshing unrelated JWKS endpoints for every request.
         providers = _get_providers()
+        if not providers:
+            return None
+        issuer = _unverified_jwt_issuer(token)
+        if issuer is None:
+            return None
         for provider in providers:
+            if provider.issuer != issuer:
+                continue
             result = _try_jwt_provider(token, provider)
             if result is not None:
                 return result
